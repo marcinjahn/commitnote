@@ -1,0 +1,211 @@
+import { afterAll, afterEach, beforeAll } from "vitest";
+import { setupServer } from "msw/node";
+import type { SetupServer } from "msw/node";
+import { http, HttpResponse } from "msw";
+import { MAIN_BRANCH, SAVE_SUBJECT } from "../../format/v1";
+import type {
+  ContractOperation,
+  ContractSeed,
+  ContractSubject,
+  ForgeContractHarness,
+  InjectedFailure,
+} from "../contract/forge-adapter-contract";
+import { describeForgeAdapterContract } from "../contract/forge-adapter-contract";
+import { commitFiles } from "../fake/in-memory-git-repo";
+import type { ContentCreatingRequest } from "../forge-adapter";
+import { createGitHubAdapter } from "./github-adapter";
+import type { MockFailure } from "./testing/mock-github-server";
+import { MockGitHubRepo } from "./testing/mock-github-server";
+
+const OWNER = "acme";
+const REPO = "notes";
+const TOKEN = "s3cr3t-token";
+
+let server: SetupServer;
+
+beforeAll(() => {
+  server = setupServer();
+  server.listen({ onUnhandledRequest: "error" });
+});
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+afterAll(() => {
+  server.close();
+});
+
+interface FailureMatch {
+  readonly method: string;
+  readonly pathPattern: RegExp;
+}
+
+// Where an injected failure lands on the wire: most kinds hit the operation's
+// first request, but 'stale' is a specific status on a later, specific
+// request rather than a transport-level failure.
+const FIRST_REQUEST_MATCH: Record<ContractOperation, FailureMatch> = {
+  inspect: { method: "GET", pathPattern: /\/repos\/[^/]+\/[^/]+$/ },
+  initialize: { method: "PUT", pathPattern: /\/contents\// },
+  getHead: { method: "GET", pathPattern: /\/git\/ref\/heads\/main$/ },
+  listTree: { method: "GET", pathPattern: /\/git\/commits\// },
+  readBlob: { method: "GET", pathPattern: /\/git\/blobs\// },
+  commit: { method: "GET", pathPattern: /\/git\/commits\// },
+};
+
+// 'stale' isn't an injectable MockGitHubRepo status (GitHub's real 422/409
+// responses there come from the mock's own business logic, not a canned
+// failure), so it's simulated with a one-shot MSW override on the exact
+// request the adapter is documented to treat as stale, ahead of the mock's
+// own handlers, and consumed without touching the mock's git state.
+const STALE_OVERRIDE: Record<
+  "initialize" | "commit",
+  { method: "put" | "patch"; urlPattern: RegExp; message: string }
+> = {
+  initialize: {
+    method: "put",
+    urlPattern: /\/contents\//,
+    message: 'Invalid request.\n\n"sha" wasn\'t supplied.',
+  },
+  commit: {
+    method: "patch",
+    urlPattern: /\/git\/refs\/heads\/main$/,
+    message: "Validation Failed",
+  },
+};
+
+function forceStale(operation: ContractOperation): void {
+  if (operation !== "initialize" && operation !== "commit") {
+    throw new Error(`'stale' is not supported for '${operation}'`);
+  }
+  const override = STALE_OVERRIDE[operation];
+  const resolver = (): Response =>
+    HttpResponse.json({ message: override.message }, { status: 422 });
+  server.use(
+    override.method === "put"
+      ? http.put(override.urlPattern, resolver, { once: true })
+      : http.patch(override.urlPattern, resolver, { once: true }),
+  );
+}
+
+function toMockFailure(
+  failure: Exclude<InjectedFailure, { kind: "stale" }>,
+): MockFailure {
+  switch (failure.kind) {
+    case "Unauthorized":
+      return { status: 401 };
+    case "Forbidden":
+      return { status: 403 };
+    case "NotFound":
+      return { status: 404 };
+    case "Server":
+      return { status: 500 };
+    case "Network":
+      return { network: true };
+    case "RateLimited":
+      return {
+        status: 429,
+        headers: { "retry-after": String(failure.retryAfterSeconds) },
+      };
+  }
+}
+
+function applyFailure(
+  mock: MockGitHubRepo,
+  operation: ContractOperation,
+  failure: InjectedFailure,
+): void {
+  if (failure.kind === "stale") {
+    forceStale(operation);
+    return;
+  }
+
+  mock.failNext(FIRST_REQUEST_MATCH[operation], toMockFailure(failure));
+}
+
+function buildSubject(mock: MockGitHubRepo): ContractSubject {
+  server.use(...mock.handlers());
+
+  const contentCreatingRequests: ContentCreatingRequest[] = [];
+  const adapter = createGitHubAdapter(
+    { owner: OWNER, repo: REPO },
+    {
+      accessToken: TOKEN,
+      onContentCreatingRequest: (request) =>
+        contentCreatingRequests.push(request),
+    },
+  );
+
+  return {
+    adapter,
+    contentCreatingRequests,
+    async pushFromAnotherDevice(changes) {
+      const parent = mock.git.getRef(MAIN_BRANCH) ?? null;
+      const parentCommit =
+        parent === null ? undefined : mock.git.getCommit(parent);
+      const treeSha = await mock.git.applyChanges(
+        parentCommit?.tree ?? null,
+        changes,
+      );
+      const commitSha = await mock.git.putCommit({
+        tree: treeSha,
+        parent,
+        message: SAVE_SUBJECT,
+      });
+      mock.git.setRef(MAIN_BRANCH, commitSha);
+      return commitSha;
+    },
+    failNext: (operation, failure) => applyFailure(mock, operation, failure),
+    async readFileAtMain(path) {
+      const head = mock.git.getRef(MAIN_BRANCH);
+      if (head === undefined) {
+        return undefined;
+      }
+      const commit = mock.git.getCommit(head);
+      if (commit === undefined) {
+        return undefined;
+      }
+      const sha = mock.git.getTree(commit.tree)?.get(path);
+      return sha === undefined ? undefined : mock.git.getBlob(sha);
+    },
+    async mainHead() {
+      return mock.git.getRef(MAIN_BRANCH);
+    },
+  };
+}
+
+const harness: ForgeContractHarness = {
+  async createEmpty(options) {
+    const mock = new MockGitHubRepo({
+      owner: OWNER,
+      repo: REPO,
+      token: TOKEN,
+      canWrite: options?.canWrite,
+      defaultBranch: options?.defaultBranch,
+    });
+    return buildSubject(mock);
+  },
+
+  async createPopulated(seed: ContractSeed, options) {
+    const mock = new MockGitHubRepo({
+      owner: OWNER,
+      repo: REPO,
+      token: TOKEN,
+      canWrite: options?.canWrite,
+    });
+    const branch = seed.branch ?? MAIN_BRANCH;
+    let parent: string | null = null;
+    for (const [index, commitSeed] of seed.commits.entries()) {
+      const isLastCommit = index === seed.commits.length - 1;
+      parent = await commitFiles(mock.git, {
+        parent,
+        files: { ...commitSeed.files },
+        message: commitSeed.message,
+        branch: isLastCommit ? branch : undefined,
+      });
+    }
+    return buildSubject(mock);
+  },
+};
+
+describeForgeAdapterContract("GitHubAdapter", harness);
