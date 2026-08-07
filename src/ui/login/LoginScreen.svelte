@@ -9,7 +9,11 @@
   import type { Session } from "../../session/session";
   import type { ForgeAdapter } from "../../forge/forge-adapter";
   import { untrack } from "svelte";
-  import { describeLoginError, describeLoginStep } from "./login-messages";
+  import {
+    describeLoginError,
+    describeLoginStep,
+    GENERIC_LOGIN_ERROR,
+  } from "./login-messages";
   import InitializeStep from "./InitializeStep.svelte";
 
   interface Props {
@@ -95,11 +99,17 @@
     error = null;
     step = null;
     busy = true;
-    const result = await logIn({ repoUrl, accessToken, passphrase }, (s) => {
-      step = s;
-    });
-    busy = false;
-    handleResult(result);
+    try {
+      const result = await logIn({ repoUrl, accessToken, passphrase }, (s) => {
+        step = s;
+      });
+      handleResult(result);
+    } catch (e) {
+      console.error(e);
+      error = GENERIC_LOGIN_ERROR;
+    } finally {
+      busy = false;
+    }
   }
 
   async function handleInitializeConfirm(
@@ -114,11 +124,17 @@
     error = null;
     step = null;
     busy = true;
-    const result = await initialize(pending, passphrase, (s) => {
-      step = s;
-    });
-    busy = false;
-    handleResult(result);
+    try {
+      const result = await initialize(pending, passphrase, (s) => {
+        step = s;
+      });
+      handleResult(result);
+    } catch (e) {
+      console.error(e);
+      error = GENERIC_LOGIN_ERROR;
+    } finally {
+      busy = false;
+    }
   }
 
   function handleInitializeCancel(): void {

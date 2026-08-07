@@ -115,27 +115,32 @@
 
   onMount(() => {
     void (async () => {
-      const session = await store.loadRememberedSession();
-      if (session === null) {
-        showLogin(null);
-        return;
-      }
-
-      const result = await resumeSession(session, loginDeps());
-      switch (result.kind) {
-        case "loggedIn":
-          await startApp(result.session, result.adapter, true);
+      try {
+        const session = await store.loadRememberedSession();
+        if (session === null) {
+          showLogin(null);
           return;
-        case "failed": {
-          const keepStoredRecord =
-            result.error.kind === "network" ||
-            result.error.kind === "server" ||
-            result.error.kind === "rateLimited";
-          if (!keepStoredRecord) {
-            await store.clear();
-          }
-          showLogin(result.error);
         }
+
+        const result = await resumeSession(session, loginDeps());
+        switch (result.kind) {
+          case "loggedIn":
+            await startApp(result.session, result.adapter, true);
+            return;
+          case "failed": {
+            const keepStoredRecord =
+              result.error.kind === "network" ||
+              result.error.kind === "server" ||
+              result.error.kind === "rateLimited";
+            if (!keepStoredRecord) {
+              await store.clear();
+            }
+            showLogin(result.error);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        showLogin(null);
       }
     })();
   });

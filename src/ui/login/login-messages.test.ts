@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { LoginError, LoginStep } from "../../login/login";
-import { describeLoginError, describeLoginStep } from "./login-messages";
+import {
+  describeLoginError,
+  describeLoginStep,
+  GENERIC_LOGIN_ERROR,
+} from "./login-messages";
 
 describe("describeLoginError", () => {
   it("describes a malformed repo URL", () => {
@@ -107,6 +111,12 @@ describe("describeLoginError", () => {
     expect(describeLoginError(error)).toBe(
       "GitHub's rate limit was reached. Try again in 2 minutes.",
     );
+  });
+});
+
+describe("GENERIC_LOGIN_ERROR", () => {
+  it("is the generic fallback copy", () => {
+    expect(GENERIC_LOGIN_ERROR).toBe("Something went wrong. Try again.");
   });
 });
 
