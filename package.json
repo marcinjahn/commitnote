@@ -5,11 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:fake": "vite --mode fake-forge",
     "build": "vite build",
+    "build:fake": "vite build --mode fake-forge --outDir dist-fake",
     "preview": "vite preview",
+    "preview:fake": "vite preview --outDir dist-fake",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "check:bundle": "npm run build && npm run build:fake && tsx scripts/check-bundle.ts",
     "fixture:sample-notes-repo": "tsx scripts/generate-sample-notes-repo.ts"
   },
   "dependencies": {
