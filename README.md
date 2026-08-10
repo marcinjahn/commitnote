@@ -80,6 +80,16 @@ access to that browser profile can then read your notes. The passphrase itself i
 Without Remember me, only the repo URL is kept, so you re-enter the access token and passphrase
 next time.
 
+## Editing and saving
+
+- Autosave saves 2 s after you stop typing, at least every 30 s while you keep typing, and
+  immediately on structure changes, note switch, tab hide, and logout.
+- The sync state is synced, syncing, or out of sync, with reason pending (waiting to save), failed
+  (retrying with back-off), or conflict.
+- A conflicting change opens the conflict view, where you choose Keep mine, Keep theirs, or Edit
+  merged.
+- Notices report failures, retries, and other sync events as they happen.
+
 ## Production build
 
 `npm run build` writes plain static files to `dist/`. The build ships with a strict Content
