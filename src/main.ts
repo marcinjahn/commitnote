@@ -13,8 +13,11 @@ let createAdapter: ForgeAdapterFactory = createForgeAdapter;
 let testModeBanner: string | null = null;
 if (import.meta.env.MODE === "fake-forge") {
   const fake = await import("./testing/fake-forge/fake-forge-factory");
-  createAdapter = await fake.createFakeForgeFactory();
+  const { factory, controls } = await fake.createFakeForge();
+  createAdapter = factory;
   testModeBanner = fake.FAKE_FORGE_BANNER;
+  (window as unknown as Record<string, unknown>)[fake.FAKE_FORGE_CONTROLS_KEY] =
+    controls;
 }
 
 const app = mount(App, { target, props: { createAdapter, testModeBanner } });

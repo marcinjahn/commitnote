@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { argon2idDirect } from "../../crypto/argon2";
+import { deriveKeyring } from "../../crypto/keyring";
+import { encryptPath } from "../../crypto/name-cipher";
+import { decryptNote } from "../../crypto/note-cipher";
+import { parseRepoConfig } from "../../crypto/repo-config";
 import { REPO_CONFIG_PATH } from "../../format/v1";
+import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../sample-notes-repo/sample-source";
 import {
+  createFakeForge,
   createFakeForgeFactory,
   FAKE_FORGE_INVALID_TOKEN,
 } from "./fake-forge-factory";
@@ -174,5 +181,82 @@ describe("createFakeForgeFactory", () => {
     await expect(adapter.getHead()).rejects.toMatchObject({
       kind: "NotFound",
     });
+  });
+});
+
+describe("createFakeForge controls", () => {
+  it("editNote moves main and the change is visible through the factory", async () => {
+    const { factory, controls } = await createFakeForge({
+      argon2id: argon2idDirect,
+    });
+    const adapter = factory(coordinatesFor("sample/notes"), {
+      accessToken: TOKEN,
+    });
+
+    const before = await adapter.inspect();
+    if (before.kind !== "populated" || before.main === null) {
+      throw new Error("expected a populated repo with a main head");
+    }
+
+    await controls.editNote("sample/notes", ["Welcome"], "# Changed\n");
+
+    const after = await adapter.inspect();
+    if (
+      after.kind !== "populated" ||
+      after.main === null ||
+      after.main.repoConfigText === null
+    ) {
+      throw new Error("expected a populated repo with a main head");
+    }
+    expect(after.main.head).not.toBe(before.main.head);
+
+    const parsed = parseRepoConfig(after.main.repoConfigText);
+    if (parsed.kind !== "valid") {
+      throw new Error("expected a valid repo config");
+    }
+    const keyring = await deriveKeyring(
+      SAMPLE_NOTES_REPO_PASSPHRASE,
+      parsed.config.kdf,
+      argon2idDirect,
+    );
+    const storedWelcomePath = await encryptPath(keyring, ["Welcome"]);
+
+    const entries = await adapter.listTree(after.main.head);
+    const welcome = entries.find((entry) => entry.path === storedWelcomePath);
+    if (welcome === undefined) {
+      throw new Error("expected the Welcome note to still exist");
+    }
+    const storedText = await adapter.readBlob(welcome.sha);
+    expect(await decryptNote(keyring, storedText)).toBe("# Changed\n");
+  });
+
+  it("failNext makes the next commit reject with the given ForgeError kind", async () => {
+    const { factory, controls } = await createFakeForge();
+    const adapter = factory(coordinatesFor("sample/notes"), {
+      accessToken: TOKEN,
+    });
+
+    controls.failNext("sample/notes", "commit", "Unauthorized");
+
+    const head = await adapter.getHead();
+    await expect(
+      adapter.commit({ parent: head, changes: [], message: "test" }),
+    ).rejects.toMatchObject({ kind: "Unauthorized" });
+  });
+
+  it("editNote throws for an unknown fixture repository", async () => {
+    const { controls } = await createFakeForge();
+
+    await expect(
+      controls.editNote("sample/unknown", ["Note"], "# Note\n"),
+    ).rejects.toThrow();
+  });
+
+  it("failNext throws for an unknown fixture repository", async () => {
+    const { controls } = await createFakeForge();
+
+    expect(() =>
+      controls.failNext("sample/unknown", "commit", "Unauthorized"),
+    ).toThrow();
   });
 });
