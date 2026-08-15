@@ -104,7 +104,7 @@ describe("createSyncEngine", () => {
     const unsubscribe = engine.subscribe((state) => seen.push(state));
 
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toEqual({
+    expect(seen[0]).toMatchObject({
       synced: null,
       refresh: { inFlight: false, lastError: null, lastCompletedAt: null },
       openNote: null,

@@ -1,0 +1,868 @@
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import type { ChangeSet, NotePath } from "../changes/change";
+import {
+  encodeChangeSet,
+  encodeInitializeMessage,
+} from "../changes/encode-change-set";
+import { argon2idDirect } from "../crypto/argon2";
+import {
+  createRepoConfig,
+  deriveKeyring,
+  type Keyring,
+} from "../crypto/keyring";
+import { decryptNote } from "../crypto/note-cipher";
+import { parseRepoConfig } from "../crypto/repo-config";
+import { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
+import { ForgeError } from "../forge/errors";
+import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
+import { FOLDER_MARKER, TRAILER } from "../format/v1";
+import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
+import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
+import { buildNoteTree, findNode, type NoteTree } from "../tree/note-tree";
+import { createTestClock } from "./testing/test-clock";
+import { createSyncEngine, type SyncEngine } from "./sync-engine";
+
+let keyring: Keyring;
+
+beforeAll(async () => {
+  const probe = await createSampleNotesRepoAdapter();
+  const inspection = await probe.inspect();
+  if (inspection.kind !== "populated" || inspection.main === null) {
+    throw new Error("expected a populated sample notes repo");
+  }
+  const parsed = parseRepoConfig(inspection.main.repoConfigText ?? "");
+  if (parsed.kind !== "valid") {
+    throw new Error(`expected a valid repo config, got ${parsed.kind}`);
+  }
+  keyring = await deriveKeyring(
+    SAMPLE_NOTES_REPO_PASSPHRASE,
+    parsed.config.kdf,
+    argon2idDirect,
+  );
+});
+
+interface Harness {
+  readonly fake: FakeForgeAdapter;
+  readonly clock: ReturnType<typeof createTestClock>;
+  readonly engine: SyncEngine;
+  readonly commits: CommitRequest[];
+  // Makes every following commit wait until the returned release is called.
+  gateCommits(): () => void;
+}
+
+function wrap(
+  inner: FakeForgeAdapter,
+  commits: CommitRequest[],
+  gate: { current: Promise<void> | null },
+): ForgeAdapter {
+  return {
+    inspect: () => inner.inspect(),
+    initialize: (configText, message) => inner.initialize(configText, message),
+    getHead: () => inner.getHead(),
+    listTree: (sha) => inner.listTree(sha),
+    readBlob: (sha) => inner.readBlob(sha),
+    commit: async (request) => {
+      commits.push(request);
+      if (gate.current !== null) await gate.current;
+      return inner.commit(request);
+    },
+  };
+}
+
+async function setup(
+  fake?: FakeForgeAdapter,
+  engineKeyring?: Keyring,
+): Promise<Harness> {
+  const forge = fake ?? (await createSampleNotesRepoAdapter());
+  const commits: CommitRequest[] = [];
+  const gate: { current: Promise<void> | null } = { current: null };
+  const clock = createTestClock(1_000_000);
+  const engine = createSyncEngine({
+    adapter: wrap(forge, commits, gate),
+    keyring: engineKeyring ?? keyring,
+    clock,
+  });
+  await engine.refresh();
+  return {
+    fake: forge,
+    clock,
+    engine,
+    commits,
+    gateCommits() {
+      let release!: () => void;
+      gate.current = new Promise((resolve) => {
+        release = () => {
+          gate.current = null;
+          resolve();
+        };
+      });
+      return release;
+    },
+  };
+}
+
+async function waitIdle(engine: SyncEngine): Promise<void> {
+  await vi.waitFor(
+    () => {
+      expect(engine.getState().save.kind).not.toBe("saving");
+    },
+    { timeout: 5_000, interval: 2 },
+  );
+}
+
+async function mainTree(
+  fake: FakeForgeAdapter,
+  withKeyring = keyring,
+): Promise<{ head: string; tree: NoteTree }> {
+  const head = await fake.getHead();
+  const tree = await buildNoteTree(await fake.listTree(head), withKeyring);
+  return { head, tree };
+}
+
+async function mainContent(
+  fake: FakeForgeAdapter,
+  path: NotePath,
+  withKeyring = keyring,
+): Promise<string | undefined> {
+  const { tree } = await mainTree(fake, withKeyring);
+  const node = findNode(tree, path);
+  if (node?.kind !== "note") return undefined;
+  return decryptNote(withKeyring, await fake.readBlob(node.blobSha));
+}
+
+async function pushRemote(
+  fake: FakeForgeAdapter,
+  changeSet: ChangeSet,
+): Promise<string> {
+  const listing = await fake.listTree(await fake.getHead());
+  const encoded = await encodeChangeSet({ listing, changeSet, keyring });
+  return fake.pushFromAnotherDevice(encoded.changes, encoded.message);
+}
+
+function messageOf(fake: FakeForgeAdapter, head: string): string {
+  const commit = fake.repo.getCommit(head);
+  if (commit === undefined) throw new Error("unknown commit");
+  return commit.message;
+}
+
+function okCommitCount(fake: FakeForgeAdapter, since: string): number {
+  let count = 0;
+  let current: string | null | undefined = fake.repo.getRef("main");
+  while (current !== since && current != null) {
+    count++;
+    current = fake.repo.getCommit(current)?.parent;
+  }
+  return count;
+}
+
+const WELCOME = ["Welcome"];
+const IDEAS = ["Projects", "git-notes", "Ideas"];
+const ZAZOLC = ["Zażółć gęślą jaźń"];
+
+async function welcomeText(fake: FakeForgeAdapter): Promise<string> {
+  const text = await mainContent(fake, WELCOME);
+  if (text === undefined) throw new Error("expected Welcome");
+  return text;
+}
+
+function replaceLine(text: string, from: string, to: string): string {
+  if (!text.includes(from)) throw new Error(`missing line ${from}`);
+  return text.replace(from, to);
+}
+
+// Leaves a held conflict on Welcome: mine and theirs both rewrite its title.
+async function heldWelcomeConflict(h: Harness): Promise<{
+  readonly mine: string;
+  readonly theirs: string;
+  readonly remoteHead: string;
+}> {
+  const original = await welcomeText(h.fake);
+  const mine = replaceLine(original, "# Welcome", "# Welcome (mine)");
+  const theirs = replaceLine(original, "# Welcome", "# Welcome (theirs)");
+  const remoteHead = await pushRemote(h.fake, [
+    { kind: "update-note", path: WELCOME, content: theirs },
+  ]);
+  h.engine.editNote(WELCOME, mine);
+  await h.engine.flush();
+  return { mine, theirs, remoteHead };
+}
+
+describe("sync engine saves", () => {
+  it("autosaves after the debounce and at the max wait during continuous edits", async () => {
+    const h = await setup();
+    const start = await h.fake.getHead();
+
+    h.engine.editNote(WELCOME, "one");
+    h.clock.advance(1_999);
+    expect(h.engine.getState().save.kind).toBe("idle");
+    expect(h.commits).toHaveLength(0);
+    h.clock.advance(1);
+    await waitIdle(h.engine);
+    expect(h.commits).toHaveLength(1);
+    expect(okCommitCount(h.fake, start)).toBe(1);
+
+    const second = await setup();
+    for (let index = 0; index < 29; index++) {
+      second.engine.editNote(WELCOME, `edit ${index}`);
+      second.clock.advance(1_000);
+    }
+    second.engine.editNote(WELCOME, "last");
+    expect(second.commits).toHaveLength(0);
+    second.clock.advance(1_000);
+    await waitIdle(second.engine);
+    expect(second.commits).toHaveLength(1);
+    expect(await mainContent(second.fake, WELCOME)).toBe("last");
+  });
+
+  it("commits edits and a folder create as one format v1 commit with stored paths only", async () => {
+    const h = await setup();
+    const start = await h.fake.getHead();
+
+    h.engine.editNote(WELCOME, "welcome secret text");
+    h.engine.editNote(ZAZOLC, "zazolc secret text");
+    expect(h.engine.createFolder([], "Plain folder name").ok).toBe(true);
+    await waitIdle(h.engine);
+
+    expect(okCommitCount(h.fake, start)).toBe(1);
+    const head = await h.fake.getHead();
+    const message = messageOf(h.fake, head);
+    expect(message).toContain(`${TRAILER.format}: 1`);
+    const trailers = message
+      .split("\n")
+      .filter(
+        (line) =>
+          line.startsWith("Gitnotes-") && !line.startsWith(TRAILER.format),
+      );
+    expect(trailers).toHaveLength(3);
+    for (const plaintext of [
+      "Welcome",
+      "Zażółć",
+      "Plain folder name",
+      "secret",
+    ]) {
+      expect(message).not.toContain(plaintext);
+    }
+    expect(await mainContent(h.fake, WELCOME)).toBe("welcome secret text");
+    expect(await mainContent(h.fake, ZAZOLC)).toBe("zazolc secret text");
+    expect(h.engine.getState().synced?.head).toBe(head);
+  });
+
+  it("commits each structure operation immediately with its trailer", async () => {
+    const h = await setup();
+
+    async function expectCommit(
+      trailer: string,
+      check: (tree: NoteTree) => void,
+    ): Promise<void> {
+      const before = h.commits.length;
+      expect(h.engine.getState().save.kind).toBe("saving");
+      await waitIdle(h.engine);
+      expect(h.commits).toHaveLength(before + 1);
+      const { head, tree } = await mainTree(h.fake);
+      expect(messageOf(h.fake, head)).toContain(`${trailer}: `);
+      check(tree);
+    }
+
+    expect(h.engine.createNote([], "Fresh")).toEqual({
+      ok: true,
+      path: ["Fresh"],
+    });
+    await expectCommit(TRAILER.create, (tree) =>
+      expect(findNode(tree, ["Fresh"])?.kind).toBe("note"),
+    );
+
+    h.engine.createFolder([], "Box");
+    await expectCommit(TRAILER.create, (tree) =>
+      expect(findNode(tree, ["Box"])?.kind).toBe("folder"),
+    );
+    const listing = await h.fake.listTree(await h.fake.getHead());
+    const box = findNode((await mainTree(h.fake)).tree, ["Box"]);
+    expect(
+      listing.some(
+        (entry) => entry.path === `${box?.storedPath}/${FOLDER_MARKER}`,
+      ),
+    ).toBe(true);
+
+    h.engine.rename(WELCOME, "Hello");
+    await expectCommit(TRAILER.rename, (tree) => {
+      expect(findNode(tree, WELCOME)).toBeUndefined();
+      expect(findNode(tree, ["Hello"])?.kind).toBe("note");
+    });
+
+    h.engine.rename(["Projects"], "Work");
+    await expectCommit(TRAILER.rename, (tree) =>
+      expect(findNode(tree, ["Work", "git-notes", "Ideas"])?.kind).toBe("note"),
+    );
+
+    expect(h.engine.move(["Hello"], ["Box"])).toEqual({
+      ok: true,
+      path: ["Box", "Hello"],
+    });
+    await expectCommit(TRAILER.rename, (tree) =>
+      expect(findNode(tree, ["Box", "Hello"])?.kind).toBe("note"),
+    );
+
+    h.engine.delete(ZAZOLC);
+    await expectCommit(TRAILER.delete, (tree) =>
+      expect(findNode(tree, ZAZOLC)).toBeUndefined(),
+    );
+
+    h.engine.delete(["Empty folder"]);
+    await expectCommit(TRAILER.delete, (tree) =>
+      expect(findNode(tree, ["Empty folder"])).toBeUndefined(),
+    );
+  });
+
+  it("rejects invalid names and move targets without saving", async () => {
+    const h = await setup();
+    const invalid = (kind: string, extra: object = {}) => ({
+      ok: false,
+      error: { kind: "invalidName", error: { kind, ...extra } },
+    });
+
+    expect(h.engine.createNote([], "  ")).toEqual(invalid("empty"));
+    expect(h.engine.createNote([], "a/b")).toEqual(invalid("containsSlash"));
+    expect(h.engine.createFolder([], "..")).toEqual(invalid("dotName"));
+    expect(h.engine.createNote([], "x".repeat(151))).toEqual(
+      invalid("tooLong", { maxBytes: 150 }),
+    );
+    expect(h.engine.createNote([], "Projects")).toEqual(invalid("duplicate"));
+    expect(h.engine.createFolder([], "Welcome")).toEqual(invalid("duplicate"));
+    expect(h.engine.rename(WELCOME, "Journal")).toEqual(invalid("duplicate"));
+    expect(h.engine.move(["Projects"], ["Projects"])).toEqual({
+      ok: false,
+      error: { kind: "invalidTarget" },
+    });
+    expect(h.engine.move(["Projects"], ["Projects", "git-notes"])).toEqual({
+      ok: false,
+      error: { kind: "invalidTarget" },
+    });
+    expect(h.engine.createNote(WELCOME, "Child")).toEqual({
+      ok: false,
+      error: { kind: "notFound" },
+    });
+    expect(h.engine.delete(["Nope"])).toEqual({
+      ok: false,
+      error: { kind: "notFound" },
+    });
+
+    expect(h.engine.getState().pending).toEqual([]);
+    expect(h.engine.getState().save.kind).toBe("idle");
+    expect(h.commits).toHaveLength(0);
+  });
+
+  it("serializes saves: a structure command during a save goes into the next commit", async () => {
+    const h = await setup();
+    const release = h.gateCommits();
+
+    h.engine.createNote([], "First");
+    await vi.waitFor(() => expect(h.commits).toHaveLength(1));
+    h.engine.createFolder([], "Second");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(h.commits).toHaveLength(1);
+    expect(h.engine.getState().pending).toEqual([
+      { kind: "create-folder", path: ["Second"] },
+    ]);
+
+    release();
+    await vi.waitFor(() => expect(h.commits).toHaveLength(2));
+    await waitIdle(h.engine);
+    const { tree } = await mainTree(h.fake);
+    expect(findNode(tree, ["First"])?.kind).toBe("note");
+    expect(findNode(tree, ["Second"])?.kind).toBe("folder");
+    expect(h.engine.getState().pending).toEqual([]);
+  });
+
+  it("reports pending, syncing and synced states with folder roll-up", async () => {
+    const h = await setup();
+    const states = () => h.engine.getState().syncStates;
+
+    h.engine.editNote(IDEAS, "ideas");
+    expect(states().stateOf(IDEAS)).toEqual({
+      kind: "out-of-sync",
+      reason: "pending",
+    });
+    expect(states().stateOf(["Projects"])).toEqual({
+      kind: "out-of-sync",
+      reason: "pending",
+    });
+    expect(states().stateOf(WELCOME)).toEqual({ kind: "synced" });
+
+    const release = h.gateCommits();
+    h.clock.advance(2_000);
+    expect(states().stateOf(IDEAS)).toEqual({ kind: "syncing" });
+    expect(states().stateOf(["Projects"])).toEqual({ kind: "syncing" });
+
+    h.engine.editNote(WELCOME, "welcome");
+    expect(states().stateOf(WELCOME)).toEqual({
+      kind: "out-of-sync",
+      reason: "pending",
+    });
+
+    release();
+    await waitIdle(h.engine);
+    expect(states().stateOf(IDEAS)).toEqual({ kind: "synced" });
+    expect(states().stateOf(WELCOME)).toEqual({
+      kind: "out-of-sync",
+      reason: "pending",
+    });
+    expect(states().unsavedCount).toBe(1);
+  });
+
+  it("merges cleanly with another device's edit of a different note", async () => {
+    const h = await setup();
+    const remoteHead = await pushRemote(h.fake, [
+      { kind: "update-note", path: IDEAS, content: "remote ideas" },
+    ]);
+
+    h.engine.editNote(WELCOME, "local welcome");
+    h.clock.advance(2_000);
+    await waitIdle(h.engine);
+
+    const head = await h.fake.getHead();
+    expect(h.fake.repo.getCommit(head)?.parent).toBe(remoteHead);
+    expect(await mainContent(h.fake, WELCOME)).toBe("local welcome");
+    expect(await mainContent(h.fake, IDEAS)).toBe("remote ideas");
+    expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+      kind: "synced",
+    });
+    expect(h.engine.getState().synced?.head).toBe(head);
+  });
+
+  it("merges cleanly with a non-overlapping remote edit of the same note", async () => {
+    const h = await setup();
+    const original = await welcomeText(h.fake);
+    const theirs = replaceLine(original, "- Second bullet", "- Second bullet!");
+    const mine = replaceLine(original, "# Welcome", "# Welcome home");
+    const remoteHead = await pushRemote(h.fake, [
+      { kind: "update-note", path: WELCOME, content: theirs },
+    ]);
+
+    h.engine.editNote(WELCOME, mine);
+    h.clock.advance(2_000);
+    await waitIdle(h.engine);
+
+    const head = await h.fake.getHead();
+    expect(h.fake.repo.getCommit(head)?.parent).toBe(remoteHead);
+    const merged = await welcomeText(h.fake);
+    expect(merged).toContain("# Welcome home");
+    expect(merged).toContain("- Second bullet!");
+    expect(h.engine.getState().syncStates.hasUnsaved).toBe(false);
+  });
+
+  it("holds an overlapping edit back as a conflict while the rest commits", async () => {
+    const h = await setup();
+    const original = await welcomeText(h.fake);
+    const theirs = replaceLine(original, "# Welcome", "# Welcome (theirs)");
+    const mine = replaceLine(original, "# Welcome", "# Welcome (mine)");
+    await pushRemote(h.fake, [
+      { kind: "update-note", path: WELCOME, content: theirs },
+    ]);
+
+    h.engine.editNote(WELCOME, mine);
+    h.engine.editNote(IDEAS, "clean ideas");
+    h.clock.advance(2_000);
+    await waitIdle(h.engine);
+
+    expect(await mainContent(h.fake, IDEAS)).toBe("clean ideas");
+    expect(await welcomeText(h.fake)).toBe(theirs);
+    const state = h.engine.getState();
+    expect(state.syncStates.stateOf(WELCOME)).toEqual({
+      kind: "out-of-sync",
+      reason: "conflict",
+    });
+    expect(state.syncStates.stateOf(IDEAS)).toEqual({ kind: "synced" });
+    expect(state.conflicts).toHaveLength(1);
+    const conflict = state.conflicts[0];
+    expect(conflict.path).toEqual(WELCOME);
+    expect(conflict.mine).toBe(mine);
+    expect(conflict.theirs).toBe(theirs);
+    expect(conflict.merged).toContain("<<<<<<< mine");
+    expect(conflict.merged).toContain(">>>>>>> theirs");
+    expect(conflict.editing).toBeNull();
+    expect(
+      state.notices.filter((notice) => notice.kind === "conflict"),
+    ).toEqual([expect.objectContaining({ kind: "conflict", path: WELCOME })]);
+  });
+
+  describe("an empty merged change set", () => {
+    async function expectNothingCommitted(
+      h: Harness,
+      remoteHead: string,
+    ): Promise<void> {
+      await waitIdle(h.engine);
+      const state = h.engine.getState();
+      expect(await h.fake.getHead()).toBe(remoteHead);
+      expect(state.synced?.head).toBe(remoteHead);
+      expect(state.save).toEqual({ kind: "idle" });
+      expect(state.inFlight).toEqual([]);
+      expect(state.pending).toEqual([]);
+      expect(state.syncStates.stateOf([])).not.toEqual({ kind: "syncing" });
+    }
+
+    it("skips a delete of a note another device edited", async () => {
+      const h = await setup();
+      const remoteHead = await pushRemote(h.fake, [
+        { kind: "update-note", path: WELCOME, content: "remote edit" },
+      ]);
+
+      expect(h.engine.delete(WELCOME).ok).toBe(true);
+      await expectNothingCommitted(h, remoteHead);
+
+      const state = h.engine.getState();
+      expect(state.notices).toEqual([
+        expect.objectContaining({
+          kind: "merge",
+          notice: { kind: "delete-skipped", path: WELCOME, target: "note" },
+        }),
+      ]);
+      expect(state.syncStates.stateOf(WELCOME)).toEqual({ kind: "synced" });
+      expect(await welcomeText(h.fake)).toBe("remote edit");
+    });
+
+    it("skips a rename onto a name another device created", async () => {
+      const h = await setup();
+      const remoteHead = await pushRemote(h.fake, [
+        { kind: "create-note", path: ["Hello"], content: "remote hello" },
+      ]);
+
+      expect(h.engine.rename(WELCOME, "Hello").ok).toBe(true);
+      await expectNothingCommitted(h, remoteHead);
+
+      expect(h.engine.getState().notices).toEqual([
+        expect.objectContaining({
+          kind: "merge",
+          notice: expect.objectContaining({
+            kind: "rename-skipped",
+            reason: "target-exists",
+          }),
+        }),
+      ]);
+    });
+
+    it("holds an overlapping edit that was the only change", async () => {
+      const h = await setup();
+      const { remoteHead } = await heldWelcomeConflict(h);
+      await expectNothingCommitted(h, remoteHead);
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "out-of-sync",
+        reason: "conflict",
+      });
+    });
+  });
+
+  describe("resolving a conflict", () => {
+    it("keepMine commits mine", async () => {
+      const h = await setup();
+      const { mine } = await heldWelcomeConflict(h);
+
+      h.engine.resolveConflict(WELCOME, "keepMine");
+      await waitIdle(h.engine);
+
+      expect(await welcomeText(h.fake)).toBe(mine);
+      expect(h.engine.getState().conflicts).toEqual([]);
+      expect(h.engine.getState().syncStates.hasUnsaved).toBe(false);
+    });
+
+    it("keepTheirs leaves the remote content and the note synced", async () => {
+      const h = await setup();
+      const { theirs, remoteHead } = await heldWelcomeConflict(h);
+
+      h.engine.resolveConflict(WELCOME, "keepTheirs");
+      await waitIdle(h.engine);
+
+      expect(await h.fake.getHead()).toBe(remoteHead);
+      expect(await welcomeText(h.fake)).toBe(theirs);
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "synced",
+      });
+    });
+
+    it("editMerged saves only once the markers are gone", async () => {
+      const h = await setup();
+      const { remoteHead } = await heldWelcomeConflict(h);
+      await h.engine.openNote(WELCOME);
+
+      h.engine.resolveConflict(WELCOME, "editMerged");
+      const merged = h.engine.getState().conflicts[0].merged;
+      expect(h.engine.getState().openNote).toEqual({
+        kind: "loaded",
+        path: WELCOME,
+        blobSha: null,
+        content: merged,
+      });
+
+      h.engine.editNote(WELCOME, `${merged}\nmore`);
+      h.clock.advance(60_000);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(await h.fake.getHead()).toBe(remoteHead);
+      expect(h.engine.getState().conflicts[0].editing).toBe(`${merged}\nmore`);
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "out-of-sync",
+        reason: "conflict",
+      });
+
+      h.engine.editNote(WELCOME, "# Resolved\n");
+      expect(h.engine.getState().conflicts).toEqual([]);
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "out-of-sync",
+        reason: "pending",
+      });
+      h.clock.advance(1_999);
+      expect(h.engine.getState().save.kind).toBe("idle");
+      h.clock.advance(1);
+      await waitIdle(h.engine);
+      expect(await welcomeText(h.fake)).toBe("# Resolved\n");
+    });
+  });
+
+  describe("a held conflict when the remote changes again", () => {
+    it("resolves itself when the remote change merges cleanly", async () => {
+      const h = await setup();
+      const { mine, theirs } = await heldWelcomeConflict(h);
+      const newTheirs = replaceLine(theirs, "- First bullet", "- First!");
+      await pushRemote(h.fake, [
+        { kind: "update-note", path: WELCOME, content: newTheirs },
+      ]);
+
+      await h.engine.refresh();
+      await waitIdle(h.engine);
+
+      expect(h.engine.getState().conflicts).toEqual([]);
+      const text = await welcomeText(h.fake);
+      expect(text).toContain("# Welcome (mine)");
+      expect(text).toContain("- First!");
+      expect(text).not.toBe(mine);
+      expect(h.engine.getState().syncStates.hasUnsaved).toBe(false);
+    });
+
+    it("restores mine when the remote deletes the note", async () => {
+      const h = await setup();
+      const { mine } = await heldWelcomeConflict(h);
+      await pushRemote(h.fake, [{ kind: "delete-note", path: WELCOME }]);
+
+      await h.engine.refresh();
+      await waitIdle(h.engine);
+
+      expect(h.engine.getState().conflicts).toEqual([]);
+      expect(await welcomeText(h.fake)).toBe(mine);
+      expect(h.engine.getState().notices).toContainEqual(
+        expect.objectContaining({
+          kind: "merge",
+          notice: { kind: "edit-restored", path: WELCOME },
+        }),
+      );
+    });
+  });
+
+  it("restores an edit of a note another device deleted", async () => {
+    const h = await setup();
+    await pushRemote(h.fake, [{ kind: "delete-note", path: WELCOME }]);
+
+    h.engine.editNote(WELCOME, "kept");
+    await h.engine.flush();
+
+    expect(await welcomeText(h.fake)).toBe("kept");
+    expect(h.engine.getState().notices).toContainEqual(
+      expect.objectContaining({
+        kind: "merge",
+        notice: { kind: "edit-restored", path: WELCOME },
+      }),
+    );
+  });
+
+  it("keeps typed content on refresh with a pending edit and merges at the save", async () => {
+    const h = await setup();
+    await h.engine.openNote(WELCOME);
+    h.engine.editNote(WELCOME, "typed");
+    await pushRemote(h.fake, [
+      { kind: "update-note", path: IDEAS, content: "remote ideas" },
+    ]);
+
+    await h.engine.refresh();
+    expect(h.engine.getState().openNote).toEqual({
+      kind: "loaded",
+      path: WELCOME,
+      blobSha: null,
+      content: "typed",
+    });
+    await waitIdle(h.engine);
+
+    expect(await welcomeText(h.fake)).toBe("typed");
+    expect(await mainContent(h.fake, IDEAS)).toBe("remote ideas");
+    expect(h.engine.getState().openNote).toMatchObject({
+      kind: "loaded",
+      content: "typed",
+    });
+  });
+
+  it("commits immediately when switching notes with a pending edit", async () => {
+    const h = await setup();
+    await h.engine.openNote(WELCOME);
+    h.engine.editNote(WELCOME, "switched");
+
+    const opening = h.engine.openNote(IDEAS);
+    expect(h.engine.getState().save.kind).toBe("saving");
+    await opening;
+    await waitIdle(h.engine);
+
+    expect(await welcomeText(h.fake)).toBe("switched");
+  });
+
+  it("shows local content when opening a note with unsaved changes", async () => {
+    const h = await setup();
+    h.gateCommits();
+    h.engine.createNote([], "Draft");
+
+    await h.engine.openNote(["Draft"]);
+    expect(h.engine.getState().openNote).toEqual({
+      kind: "loaded",
+      path: ["Draft"],
+      blobSha: null,
+      content: "",
+    });
+  });
+
+  it("keeps the open note through a folder rename and marks it missing after its delete", async () => {
+    const h = await setup();
+    await h.engine.openNote(IDEAS);
+
+    h.engine.rename(["Projects"], "Work");
+    const moved = ["Work", "git-notes", "Ideas"];
+    expect(h.engine.getState().openNote).toMatchObject({
+      kind: "loaded",
+      path: moved,
+    });
+
+    h.engine.delete(moved);
+    expect(h.engine.getState().openNote).toEqual({
+      kind: "missing",
+      path: moved,
+    });
+    await waitIdle(h.engine);
+    const { tree } = await mainTree(h.fake);
+    expect(findNode(tree, moved)).toBeUndefined();
+    expect(findNode(tree, ["Work", "git-notes", "Roadmap"])?.kind).toBe("note");
+  });
+
+  it("keeps changes after a failed save and commits them once on the next edit", async () => {
+    const h = await setup();
+    const start = await h.fake.getHead();
+    h.fake.failNext("commit", new ForgeError("Network"));
+
+    h.engine.editNote(WELCOME, "after failure");
+    h.clock.advance(2_000);
+    await waitIdle(h.engine);
+
+    let state = h.engine.getState();
+    expect(state.save).toEqual({
+      kind: "waiting",
+      reason: "failed",
+      retryAt: null,
+      error: { kind: "network" },
+    });
+    expect(state.syncStates.stateOf(WELCOME)).toEqual({
+      kind: "out-of-sync",
+      reason: "failed",
+    });
+    expect(state.pending).toHaveLength(1);
+    expect(state.inFlight).toEqual([]);
+
+    h.engine.editNote(IDEAS, "second");
+    h.clock.advance(2_000);
+    await waitIdle(h.engine);
+
+    state = h.engine.getState();
+    expect(state.save).toEqual({ kind: "idle" });
+    expect(okCommitCount(h.fake, start)).toBe(1);
+    expect(await welcomeText(h.fake)).toBe("after failure");
+    expect(await mainContent(h.fake, IDEAS)).toBe("second");
+  });
+
+  it("stops saving when the access token is rejected and keeps the changes", async () => {
+    const h = await setup();
+    const start = await h.fake.getHead();
+    h.fake.failNext("commit", new ForgeError("Unauthorized"));
+
+    h.engine.editNote(WELCOME, "unauthorized");
+    await h.engine.flush();
+    expect(h.engine.getState().save).toEqual({
+      kind: "stopped",
+      error: { kind: "unauthorized" },
+    });
+
+    h.engine.editNote(WELCOME, "still here");
+    const result = await h.engine.flush();
+    expect(result).toEqual({ kind: "unsaved", count: 1 });
+    expect(h.engine.getState().pending).toEqual([
+      { kind: "update-note", path: WELCOME, content: "still here" },
+    ]);
+    expect(await h.fake.getHead()).toBe(start);
+  });
+
+  it("never commits twice when loading the tree after a commit fails", async () => {
+    const h = await setup();
+    const start = await h.fake.getHead();
+
+    h.engine.editNote(WELCOME, "committed once");
+    h.fake.failNext("listTree", new ForgeError("Network"));
+    await h.engine.flush();
+    expect(h.engine.getState().save.kind).toBe("waiting");
+    expect(h.commits).toHaveLength(1);
+
+    expect(await h.engine.flush()).toEqual({ kind: "saved" });
+    expect(h.commits).toHaveLength(1);
+    expect(okCommitCount(h.fake, start)).toBe(1);
+    expect(h.engine.getState().synced?.head).toBe(await h.fake.getHead());
+    expect(await welcomeText(h.fake)).toBe("committed once");
+  });
+
+  it("flush reports saved or the unsaved count", async () => {
+    const h = await setup();
+    h.engine.editNote(WELCOME, "flushed");
+    expect(await h.engine.flush()).toEqual({ kind: "saved" });
+    expect(await welcomeText(h.fake)).toBe("flushed");
+
+    h.fake.failNext("commit", new ForgeError("Server"));
+    h.engine.editNote(WELCOME, "not flushed");
+    expect(await h.engine.flush()).toEqual({ kind: "unsaved", count: 1 });
+
+    const conflicted = await setup();
+    await heldWelcomeConflict(conflicted);
+    expect(await conflicted.engine.flush()).toEqual({
+      kind: "unsaved",
+      count: 1,
+    });
+  });
+
+  it("dismisses notices by id", async () => {
+    const h = await setup();
+    await heldWelcomeConflict(h);
+    const [notice] = h.engine.getState().notices;
+    h.engine.dismissNotice(notice.id);
+    expect(h.engine.getState().notices).toEqual([]);
+  });
+
+  it("works on a freshly initialized notes repo", async () => {
+    const fake = new FakeForgeAdapter();
+    const created = await createRepoConfig("fresh passphrase", {
+      argon2id: argon2idDirect,
+    });
+    await fake.initialize(created.configText, encodeInitializeMessage());
+    const h = await setup(fake, created.keyring);
+
+    expect(h.engine.createFolder([], "Notes")).toEqual({
+      ok: true,
+      path: ["Notes"],
+    });
+    expect(h.engine.createNote(["Notes"], "First").ok).toBe(true);
+    h.engine.editNote(["Notes", "First"], "# First\n");
+    expect(await h.engine.flush()).toEqual({ kind: "saved" });
+
+    const { tree } = await mainTree(fake, created.keyring);
+    expect(findNode(tree, ["Notes"])?.kind).toBe("folder");
+    expect(await mainContent(fake, ["Notes", "First"], created.keyring)).toBe(
+      "# First\n",
+    );
+  });
+});
