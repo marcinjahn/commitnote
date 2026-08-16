@@ -1,20 +1,30 @@
 <script lang="ts">
   import type { NotePath } from "../../changes/change";
   import { notePathEquals } from "../../changes/change";
-  import type { TreeNode } from "../../tree/note-tree";
+  import type { SyncStates } from "../../sync/sync-state";
+  import type { WorkingNode } from "../../sync/working-tree";
   import NoteTreeFolder from "./NoteTreeFolder.svelte";
+  import SyncStateIcon from "./SyncStateIcon.svelte";
 
   interface Props {
-    node: TreeNode;
+    node: WorkingNode;
     depth: number;
     selectedPath: NotePath | null;
+    syncStates: SyncStates;
     isExpanded: (key: string) => boolean;
     onToggle: (key: string) => void;
     onSelect: (path: NotePath) => void;
   }
 
-  const { node, depth, selectedPath, isExpanded, onToggle, onSelect }: Props =
-    $props();
+  const {
+    node,
+    depth,
+    selectedPath,
+    syncStates,
+    isExpanded,
+    onToggle,
+    onSelect,
+  }: Props = $props();
 
   const key = $derived(node.path.join("/"));
   const expanded = $derived(node.kind === "folder" && isExpanded(key));
@@ -23,6 +33,7 @@
       selectedPath !== null &&
       notePathEquals(node.path, selectedPath),
   );
+  const syncState = $derived(syncStates.stateOf(node.path));
 
   function handleActivate(): void {
     if (node.kind === "folder") {
@@ -34,6 +45,7 @@
 </script>
 
 <li role="none">
+  <div class="tree-row-container">
   <button
     type="button"
     role="treeitem"
@@ -87,6 +99,10 @@
     {/if}
     <span class="tree-row-label">{node.name}</span>
   </button>
+  <span class="sync-indicator">
+    <SyncStateIcon state={syncState} />
+  </span>
+  </div>
   {#if node.kind === "folder" && expanded && node.children.length > 0}
     <ul role="group">
       {#each node.children as child (child.path.join("/"))}
@@ -94,6 +110,7 @@
           node={child}
           depth={depth + 1}
           {selectedPath}
+          {syncStates}
           {isExpanded}
           {onToggle}
           {onSelect}
@@ -114,11 +131,17 @@
     padding: 0;
   }
 
+  .tree-row-container {
+    display: flex;
+    align-items: center;
+  }
+
   .tree-row {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     min-height: var(--touch-target);
     padding-left: calc(var(--depth, 0) * 20px + var(--space-2));
     padding-right: var(--space-2);
@@ -128,6 +151,13 @@
     text-align: left;
     cursor: pointer;
     border-radius: 0;
+  }
+
+  .sync-indicator {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    padding-right: var(--space-2);
   }
 
   .tree-row:hover {

@@ -19,7 +19,9 @@ import {
   type NoteTree,
 } from "../tree/note-tree";
 import { createAutosave } from "./autosave";
+import { retryDelayMs } from "./backoff";
 import type { Clock } from "./clock";
+import { createRateBudget, type RateBudget } from "./rate-budget";
 import {
   computeSyncStates,
   hasConflictMarkers,
@@ -29,6 +31,7 @@ import {
   AUTOSAVE_DEBOUNCE_MS,
   AUTOSAVE_MAX_WAIT_MS,
   MAX_IMMEDIATE_STALE_RETRIES,
+  SAVE_FIXED_REQUEST_COST,
 } from "./tuning";
 import {
   appendChange,
@@ -156,6 +159,8 @@ export interface SyncEngine {
   move(path: NotePath, newParent: NotePath): StructureResult;
   delete(path: NotePath): StructureResult;
   flush(): Promise<FlushResult>;
+  retryNow(): void;
+  replaceAdapter(adapter: ForgeAdapter): void;
   resolveConflict(path: NotePath, resolution: ConflictResolution): void;
   dismissNotice(id: number): void;
   dispose(): void;
@@ -203,7 +208,18 @@ function childNames(folder: WorkingFolder, exclude?: string): string[] {
 }
 
 function isFailedSave(save: SaveStatus): boolean {
-  return save.kind === "waiting" || save.kind === "stopped";
+  return (
+    (save.kind === "waiting" && save.reason === "failed") ||
+    save.kind === "stopped"
+  );
+}
+
+function isStoppingError(error: ForgeError): boolean {
+  return (
+    error.kind === "Unauthorized" ||
+    error.kind === "Forbidden" ||
+    error.kind === "NotFound"
+  );
 }
 
 function syncedNoteAt(
@@ -242,8 +258,11 @@ export function createSyncEngine(options: {
   readonly adapter: ForgeAdapter;
   readonly keyring: Keyring;
   readonly clock: Clock;
+  readonly rateBudget?: RateBudget;
 }): SyncEngine {
-  const { adapter, keyring, clock } = options;
+  const { keyring, clock } = options;
+  let adapter = options.adapter;
+  const rateBudget = options.rateBudget ?? createRateBudget(clock);
 
   let state: SyncEngineState = INITIAL_STATE;
   const subscribers = new Set<(state: SyncEngineState) => void>();
@@ -260,6 +279,8 @@ export function createSyncEngine(options: {
   // A head whose commit already holds `inFlight` but whose tree could not be
   // loaded yet; the next save loads it instead of committing again.
   let committedHead: string | null = null;
+  let consecutiveFailures = 0;
+  let retryTimer: unknown = undefined;
 
   const autosave = createAutosave({
     clock,
@@ -661,7 +682,41 @@ export function createSyncEngine(options: {
 
   // ---- Save loop ----
 
-  function triggerSave(): Promise<void> {
+  function cancelRetry(): void {
+    if (retryTimer !== undefined) {
+      clock.clearTimeout(retryTimer);
+      retryTimer = undefined;
+    }
+  }
+
+  function scheduleRetry(at: number): void {
+    cancelRetry();
+    retryTimer = clock.setTimeout(
+      () => {
+        retryTimer = undefined;
+        void triggerSave(true);
+      },
+      Math.max(0, at - clock.now()),
+    );
+  }
+
+  // A stop reported by a refresh while a save runs must survive the save's
+  // own outcome.
+  function unlessStopped(current: SyncEngineState, save: SaveStatus): SaveStatus {
+    return current.save.kind === "stopped" ? current.save : save;
+  }
+
+  function saveSucceeded(): void {
+    consecutiveFailures = 0;
+    update((current) => ({
+      ...current,
+      save: unlessStopped(current, { kind: "idle" }),
+    }));
+  }
+
+  // Waits (back-off or rate budget) are only ended by their own timer,
+  // retryNow(), flush() or replaceAdapter(); other triggers are ignored.
+  function triggerSave(endWait = false): Promise<void> {
     if (disposed) return Promise.resolve();
     if (saveLoop !== null) {
       saveAgain = true;
@@ -670,7 +725,14 @@ export function createSyncEngine(options: {
     if (state.save.kind === "stopped" || state.synced === null) {
       return Promise.resolve();
     }
+    if (state.save.kind === "waiting" && !endWait) {
+      return Promise.resolve();
+    }
+    cancelRetry();
     if (state.pending.length === 0 && committedHead === null) {
+      if (state.save.kind === "waiting") {
+        update((current) => ({ ...current, save: { kind: "idle" } }));
+      }
       return Promise.resolve();
     }
     const loop = runSaves().finally(() => {
@@ -684,7 +746,7 @@ export function createSyncEngine(options: {
     for (;;) {
       saveAgain = false;
       await runOneSave();
-      if (disposed || !saveAgain || state.save.kind === "stopped") return;
+      if (disposed || !saveAgain || state.save.kind !== "idle") return;
       if (state.pending.length === 0) return;
     }
   }
@@ -705,7 +767,7 @@ export function createSyncEngine(options: {
         await adoptCommittedHead(committedHead);
       }
       if (state.pending.length === 0) {
-        update((current) => ({ ...current, save: { kind: "idle" } }));
+        saveSucceeded();
         return;
       }
 
@@ -723,6 +785,14 @@ export function createSyncEngine(options: {
           changeSet: state.inFlight,
           keyring,
         });
+        const cost =
+          encoded.changes.filter((change) => change.kind === "upsert-text")
+            .length + SAVE_FIXED_REQUEST_COST;
+        const availableAt = rateBudget.availableAt(cost);
+        if (availableAt > clock.now()) {
+          waitForBudget(availableAt);
+          return;
+        }
         const result = await adapter.commit({
           parent: attemptSynced.head,
           changes: encoded.changes,
@@ -732,35 +802,29 @@ export function createSyncEngine(options: {
         if (result.kind === "ok") {
           committedHead = result.head;
           await adoptCommittedHead(result.head);
-          update((current) => ({ ...current, save: { kind: "idle" } }));
+          saveSucceeded();
           return;
         }
 
         staleCount++;
         if (staleCount >= MAX_IMMEDIATE_STALE_RETRIES) {
-          failAttempt(null);
+          failAttempt({ kind: "server" });
           return;
         }
 
         const committed = await mergeWithRemote(attemptSynced);
         if (!committed) {
-          update((current) => ({
-            ...current,
-            inFlight: EMPTY_CHANGES,
-            save: { kind: "idle" },
-          }));
+          update((current) => ({ ...current, inFlight: EMPTY_CHANGES }));
+          saveSucceeded();
           return;
         }
       }
     } catch (error) {
       if (isForgeError(error)) {
         const mapped = mapForgeError(error);
-        if (
-          error.kind === "Unauthorized" ||
-          error.kind === "Forbidden" ||
-          error.kind === "NotFound"
-        ) {
-          failAttempt(mapped, true);
+        if (isStoppingError(error)) {
+          stopSaving(mapped);
+          returnUncommitted();
         } else {
           failAttempt(mapped);
         }
@@ -771,22 +835,52 @@ export function createSyncEngine(options: {
     }
   }
 
-  function failAttempt(error: SyncError | null, stop = false): void {
-    update((current) => {
-      const save: SaveStatus =
-        stop && error !== null
-          ? { kind: "stopped", error }
-          : { kind: "waiting", reason: "failed", retryAt: null, error };
-      // Changes already committed stay in flight so a retry only loads
-      // their tree and never commits them twice.
-      if (committedHead !== null) return { ...current, save };
-      return {
-        ...current,
-        pending: appendAll(current.inFlight, current.pending),
-        inFlight: EMPTY_CHANGES,
-        save,
-      };
-    });
+  // Changes already committed stay in flight so a retry only loads their
+  // tree and never commits them twice.
+  function returnUncommitted(): void {
+    if (committedHead !== null) return;
+    update((current) => ({
+      ...current,
+      pending: appendAll(current.inFlight, current.pending),
+      inFlight: EMPTY_CHANGES,
+    }));
+  }
+
+  function stopSaving(error: SyncError): void {
+    cancelRetry();
+    update((current) => ({ ...current, save: { kind: "stopped", error } }));
+  }
+
+  function failAttempt(error: SyncError): void {
+    consecutiveFailures++;
+    const retryAt =
+      clock.now() +
+      retryDelayMs(error, consecutiveFailures);
+    returnUncommitted();
+    update((current) => ({
+      ...current,
+      save: unlessStopped(current, {
+        kind: "waiting",
+        reason: "failed",
+        retryAt,
+        error,
+      }),
+    }));
+    if (state.save.kind === "waiting") scheduleRetry(retryAt);
+  }
+
+  function waitForBudget(retryAt: number): void {
+    returnUncommitted();
+    update((current) => ({
+      ...current,
+      save: unlessStopped(current, {
+        kind: "waiting",
+        reason: "rateBudget",
+        retryAt,
+        error: null,
+      }),
+    }));
+    if (state.save.kind === "waiting") scheduleRetry(retryAt);
   }
 
   function touchesPath(change: Change, path: NotePath): boolean {
@@ -967,14 +1061,16 @@ export function createSyncEngine(options: {
       }));
     } catch (error) {
       if (isForgeError(error)) {
+        const mapped = mapForgeError(error);
         update((current) => ({
           ...current,
           refresh: {
             inFlight: false,
-            lastError: mapForgeError(error),
+            lastError: mapped,
             lastCompletedAt: current.refresh.lastCompletedAt,
           },
         }));
+        if (isStoppingError(error)) stopSaving(mapped);
         return;
       }
       update((current) => ({
@@ -1157,11 +1253,39 @@ export function createSyncEngine(options: {
     return { ok: true, path };
   }
 
-  async function flush(): Promise<FlushResult> {
-    autosave.cancel();
-    await triggerSave();
+  function flushResult(): FlushResult {
     const count = state.syncStates.unsavedCount;
     return count === 0 ? { kind: "saved" } : { kind: "unsaved", count };
+  }
+
+  async function flush(): Promise<FlushResult> {
+    autosave.cancel();
+    const save = state.save;
+    if (
+      save.kind === "stopped" ||
+      (save.kind === "waiting" && save.reason === "rateBudget")
+    ) {
+      return flushResult();
+    }
+    await triggerSave(true);
+    return flushResult();
+  }
+
+  function retryNow(): void {
+    const save = state.save;
+    if (save.kind === "waiting" && save.reason === "failed") {
+      void triggerSave(true);
+    }
+  }
+
+  function replaceAdapter(next: ForgeAdapter): void {
+    if (disposed) return;
+    adapter = next;
+    consecutiveFailures = 0;
+    if (state.save.kind === "stopped") {
+      update((current) => ({ ...current, save: { kind: "idle" } }));
+    }
+    void refresh().then(() => triggerSave());
   }
 
   function resolveConflict(
@@ -1210,6 +1334,7 @@ export function createSyncEngine(options: {
   function dispose(): void {
     disposed = true;
     autosave.dispose();
+    cancelRetry();
     subscribers.clear();
   }
 
@@ -1234,6 +1359,8 @@ export function createSyncEngine(options: {
     move,
     delete: deleteItem,
     flush,
+    retryNow,
+    replaceAdapter,
     resolveConflict,
     dismissNotice,
     dispose,

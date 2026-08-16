@@ -1,17 +1,20 @@
 <script lang="ts">
   import { SvelteMap } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
-  import type { NoteTree as NoteTreeData } from "../../tree/note-tree";
+  import type { SyncStates } from "../../sync/sync-state";
+  import type { WorkingTree } from "../../sync/working-tree";
   import NoteTreeFolder from "./NoteTreeFolder.svelte";
 
   interface Props {
-    tree: NoteTreeData | null;
+    tree: WorkingTree | null;
     loading: boolean;
     selectedPath: NotePath | null;
+    syncStates: SyncStates;
     onSelect: (path: NotePath) => void;
   }
 
-  const { tree, loading, selectedPath, onSelect }: Props = $props();
+  const { tree, loading, selectedPath, syncStates, onSelect }: Props =
+    $props();
 
   const expanded = new SvelteMap<string, boolean>();
 
@@ -46,6 +49,7 @@
           node={child}
           depth={0}
           {selectedPath}
+          {syncStates}
           {isExpanded}
           {onToggle}
           {onSelect}

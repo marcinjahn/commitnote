@@ -1,12 +1,19 @@
 <script lang="ts">
+  import type { SyncState } from "../../sync/sync-state";
+  import { describeSyncState } from "./sync-messages";
+  import SyncStateIcon from "./SyncStateIcon.svelte";
+
   interface Props {
     name: string;
     refreshing: boolean;
+    syncState: SyncState;
     onRefresh: () => void;
     onBack: () => void;
   }
 
-  const { name, refreshing, onRefresh, onBack }: Props = $props();
+  const { name, refreshing, syncState, onRefresh, onBack }: Props = $props();
+
+  const syncLabel = $derived(describeSyncState(syncState));
 </script>
 
 <header class="note-header">
@@ -24,6 +31,10 @@
     Back to notes
   </button>
   <h2 class="note-title" title={name}>{name}</h2>
+  <span class="sync-status">
+    <SyncStateIcon state={syncState} />
+    <span class="sync-status-label">{syncLabel}</span>
+  </span>
   <button
     type="button"
     class="button button-icon"
@@ -84,9 +95,26 @@
     animation: spin 0.8s linear infinite;
   }
 
+  .sync-status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+  }
+
+  .sync-status-label {
+    display: none;
+  }
+
   @media (min-width: 768px) {
     .back-button {
       display: none;
+    }
+
+    .sync-status-label {
+      display: inline;
     }
   }
 

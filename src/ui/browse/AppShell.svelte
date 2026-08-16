@@ -24,7 +24,7 @@
     });
   });
 
-  const tree = $derived(engineState.synced?.tree ?? null);
+  const tree = $derived(engineState.workingTree);
   const treeLoading = $derived(engineState.synced === null && engineState.refresh.inFlight);
   const selectedPath = $derived(engineState.openNote?.path ?? null);
   const refreshing = $derived(engineState.refresh.inFlight);
@@ -91,6 +91,7 @@
       {tree}
       loading={treeLoading}
       {selectedPath}
+      syncStates={engineState.syncStates}
       onSelect={handleSelect}
     />
   </aside>
@@ -100,6 +101,7 @@
       <NoteHeader
         name={noteName(engineState.openNote.path)}
         {refreshing}
+        syncState={engineState.syncStates.stateOf(engineState.openNote.path)}
         onRefresh={handleRefresh}
         onBack={handleBack}
       />

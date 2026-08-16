@@ -1,4 +1,23 @@
 import type { SyncError } from "../../sync/sync-engine";
+import type { SyncState } from "../../sync/sync-state";
+
+export function describeSyncState(state: SyncState): string {
+  switch (state.kind) {
+    case "synced":
+      return "Synced";
+    case "syncing":
+      return "Syncing";
+    case "out-of-sync":
+      switch (state.reason) {
+        case "pending":
+          return "Out of sync: waiting to save";
+        case "failed":
+          return "Out of sync: saving failed, will retry";
+        case "conflict":
+          return "Out of sync: conflict, needs your decision";
+      }
+  }
+}
 
 export function describeSyncError(error: SyncError): string {
   switch (error.kind) {
