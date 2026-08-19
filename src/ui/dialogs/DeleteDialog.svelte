@@ -6,12 +6,20 @@
     itemName: string;
     itemKind: "note" | "folder";
     itemCount: number;
+    error: string | null;
     onConfirm: () => void;
     onClose: () => void;
   }
 
-  const { open, itemName, itemKind, itemCount, onConfirm, onClose }: Props =
-    $props();
+  const {
+    open,
+    itemName,
+    itemKind,
+    itemCount,
+    error,
+    onConfirm,
+    onClose,
+  }: Props = $props();
 
   const nonEmptyFolder = $derived(itemKind === "folder" && itemCount > 0);
 
@@ -35,6 +43,9 @@
 <Dialog {open} {title} {onClose}>
   {#snippet children()}
     <p>{body}</p>
+    {#if error !== null}
+      <p role="alert" class="alert-error">{error}</p>
+    {/if}
   {/snippet}
   {#snippet actions()}
     <button type="button" class="button button-ghost" onclick={onClose}>

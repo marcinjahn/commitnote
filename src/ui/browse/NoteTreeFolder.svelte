@@ -4,6 +4,7 @@
   import type { SyncStates } from "../../sync/sync-state";
   import type { WorkingNode } from "../../sync/working-tree";
   import NoteTreeFolder from "./NoteTreeFolder.svelte";
+  import type { MenuAnchor } from "./row-menu-types";
   import SyncStateIcon from "./SyncStateIcon.svelte";
 
   interface Props {
@@ -14,6 +15,13 @@
     isExpanded: (key: string) => boolean;
     onToggle: (key: string) => void;
     onSelect: (path: NotePath) => void;
+    menuOpenKey: string | null;
+    onOpenMenu: (
+      key: string,
+      node: WorkingNode,
+      anchor: MenuAnchor,
+      trigger: HTMLElement,
+    ) => void;
   }
 
   const {
@@ -24,6 +32,8 @@
     isExpanded,
     onToggle,
     onSelect,
+    menuOpenKey,
+    onOpenMenu,
   }: Props = $props();
 
   const key = $derived(node.path.join("/"));
@@ -34,6 +44,9 @@
       notePathEquals(node.path, selectedPath),
   );
   const syncState = $derived(syncStates.stateOf(node.path));
+  const menuOpen = $derived(menuOpenKey === key);
+
+  let actionsButton: HTMLButtonElement | undefined = $state();
 
   function handleActivate(): void {
     if (node.kind === "folder") {
@@ -42,9 +55,30 @@
       onSelect(node.path);
     }
   }
+
+  function handleActionsClick(): void {
+    if (actionsButton === undefined) return;
+    onOpenMenu(
+      key,
+      node,
+      { kind: "rect", rect: actionsButton.getBoundingClientRect() },
+      actionsButton,
+    );
+  }
+
+  function handleContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    if (actionsButton === undefined) return;
+    onOpenMenu(
+      key,
+      node,
+      { kind: "point", x: event.clientX, y: event.clientY },
+      actionsButton,
+    );
+  }
 </script>
 
-<li role="none">
+<li role="none" oncontextmenu={handleContextMenu}>
   <div class="tree-row-container">
   <button
     type="button"
@@ -102,6 +136,17 @@
   <span class="sync-indicator">
     <SyncStateIcon state={syncState} />
   </span>
+  <button
+    type="button"
+    class="row-actions"
+    class:menu-open={menuOpen}
+    bind:this={actionsButton}
+    aria-label={`Actions for ${node.name}`}
+    aria-haspopup="menu"
+    onclick={handleActionsClick}
+  >
+    <span aria-hidden="true">⋯</span>
+  </button>
   </div>
   {#if node.kind === "folder" && expanded && node.children.length > 0}
     <ul role="group">
@@ -114,6 +159,8 @@
           {isExpanded}
           {onToggle}
           {onSelect}
+          {menuOpenKey}
+          {onOpenMenu}
         />
       {/each}
     </ul>
@@ -187,5 +234,38 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .row-actions {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--touch-target);
+    height: var(--touch-target);
+    margin-right: var(--space-1);
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .row-actions:hover {
+    background: var(--color-hover);
+  }
+
+  @media (pointer: fine) and (min-width: 768px) {
+    .row-actions {
+      opacity: 0;
+    }
+
+    .tree-row-container:hover .row-actions,
+    .tree-row-container:focus-within .row-actions,
+    .row-actions.menu-open {
+      opacity: 1;
+    }
   }
 </style>

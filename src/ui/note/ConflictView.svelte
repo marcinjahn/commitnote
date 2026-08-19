@@ -1,0 +1,116 @@
+<script lang="ts">
+  import type { HeldConflict, SyncEngine } from "../../sync/sync-engine";
+  import { conflictMarkerHighlight } from "../../editor/conflict-highlight";
+  import MarkdownEditor from "../editor/MarkdownEditor.svelte";
+  import {
+    CONFLICT_BANNER_HEADING,
+    CONFLICT_BANNER_TEXT,
+    CONFLICT_EDIT_HINT,
+    CONFLICT_EDIT_MERGED_LABEL,
+    CONFLICT_KEEP_MINE_LABEL,
+    CONFLICT_KEEP_THEIRS_LABEL,
+  } from "./conflict-copy";
+
+  interface Props {
+    engine: SyncEngine;
+    conflict: HeldConflict;
+  }
+
+  const { engine, conflict }: Props = $props();
+
+  const highlightExtensions = [conflictMarkerHighlight()];
+
+  function keepMine(): void {
+    engine.resolveConflict(conflict.path, "keepMine");
+  }
+
+  function keepTheirs(): void {
+    engine.resolveConflict(conflict.path, "keepTheirs");
+  }
+
+  function editMerged(): void {
+    engine.resolveConflict(conflict.path, "editMerged");
+  }
+
+  function onMergedChange(text: string): void {
+    engine.editNote(conflict.path, text);
+  }
+</script>
+
+<div class="conflict-view">
+  <div role="region" aria-label="Conflict" class="conflict-banner">
+    <h2>{CONFLICT_BANNER_HEADING}</h2>
+    <p>{CONFLICT_BANNER_TEXT}</p>
+    <div class="conflict-actions">
+      <button type="button" class="button button-ghost" onclick={keepMine}>
+        {CONFLICT_KEEP_MINE_LABEL}
+      </button>
+      <button type="button" class="button button-ghost" onclick={keepTheirs}>
+        {CONFLICT_KEEP_THEIRS_LABEL}
+      </button>
+      <button
+        type="button"
+        class="button button-primary"
+        onclick={editMerged}
+      >
+        {CONFLICT_EDIT_MERGED_LABEL}
+      </button>
+    </div>
+  </div>
+  {#if conflict.editing === null}
+    <MarkdownEditor
+      text={conflict.merged}
+      readOnly={true}
+      onChange={() => {}}
+      extensions={highlightExtensions}
+      ariaLabel="Merged text"
+    />
+  {:else}
+    <p role="status" class="conflict-hint">{CONFLICT_EDIT_HINT}</p>
+    <MarkdownEditor
+      text={conflict.editing}
+      readOnly={false}
+      onChange={onMergedChange}
+      extensions={highlightExtensions}
+      ariaLabel="Note editor"
+    />
+  {/if}
+</div>
+
+<style>
+  .conflict-view {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .conflict-banner {
+    background: var(--color-notice-surface);
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .conflict-banner h2 {
+    margin: 0;
+    font-size: var(--font-size-base);
+  }
+
+  .conflict-banner p {
+    margin: 0;
+  }
+
+  .conflict-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .conflict-hint {
+    margin: var(--space-3) var(--space-3) 0;
+    color: var(--color-text-muted);
+  }
+</style>

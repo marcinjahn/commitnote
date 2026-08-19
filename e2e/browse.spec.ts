@@ -46,6 +46,7 @@ test("opening the Welcome note", async ({ page }, testInfo) => {
   await expectTree(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
+  await page.getByRole("button", { name: "Reading view" }).click();
 
   const article = page.getByRole("article", { name: "Reading view" });
   await expect(
@@ -78,6 +79,7 @@ test("tree and reading view are both visible on desktop", async ({
   await expectTree(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
+  await page.getByRole("button", { name: "Reading view" }).click();
 
   await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
   await expect(
@@ -93,6 +95,7 @@ test("opening a note hides the tree on mobile", async ({ page }, testInfo) => {
   await expectTree(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
+  await page.getByRole("button", { name: "Reading view" }).click();
   await expect(
     page.getByRole("article", { name: "Reading view" }),
   ).toBeVisible();
@@ -136,6 +139,7 @@ test("only the page's own origin is contacted", async ({ page }) => {
   await page.getByRole("treeitem", { name: "Projects" }).click();
   await page.getByRole("treeitem", { name: "git-notes" }).click();
   await page.getByRole("treeitem", { name: "Ideas" }).click();
+  await page.getByRole("button", { name: "Reading view" }).click();
   await expect(
     page.getByRole("article", { name: "Reading view" }).getByRole("heading", {
       level: 1,
