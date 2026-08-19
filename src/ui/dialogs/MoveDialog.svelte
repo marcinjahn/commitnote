@@ -12,12 +12,21 @@
     itemPath: NotePath;
     itemKind: "note" | "folder";
     tree: WorkingTree;
+    error: string | null;
     onSubmit: (newParent: NotePath) => void;
     onClose: () => void;
   }
 
-  const { open, itemName, itemPath, itemKind, tree, onSubmit, onClose }: Props =
-    $props();
+  const {
+    open,
+    itemName,
+    itemPath,
+    itemKind,
+    tree,
+    error,
+    onSubmit,
+    onClose,
+  }: Props = $props();
 
   const uid = $props.id();
   const formId = `move-dialog-form-${uid}`;
@@ -44,6 +53,9 @@
 
 <Dialog {open} {title} {onClose}>
   {#snippet children()}
+    {#if error !== null}
+      <p role="alert" class="alert-error">{error}</p>
+    {/if}
     <form id={formId} onsubmit={handleSubmit}>
       <div class="folder-picker" role="radiogroup" aria-label="Folder">
         {#each options as option (option.path.join("/"))}

@@ -11,6 +11,7 @@
     initialName: string;
     siblingNames: readonly string[];
     submitLabel: string;
+    error: string | null;
     onSubmit: (name: string) => void;
     onClose: () => void;
   }
@@ -22,6 +23,7 @@
     initialName,
     siblingNames,
     submitLabel,
+    error,
     onSubmit,
     onClose,
   }: Props = $props();
@@ -76,6 +78,10 @@
         {#if showError && !validation.ok}
           <p id={errorId} role="alert" class="alert-error">
             {describeNameError(validation.error)}
+          </p>
+        {:else if error !== null}
+          <p id={errorId} role="alert" class="alert-error">
+            {error}
           </p>
         {/if}
       </div>
