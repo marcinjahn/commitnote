@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Change, ChangeSet, NotePath } from "../changes/change";
-import { computeSyncStates, hasConflictMarkers, SYNCED } from "./sync-state";
+import {
+  computeSyncStates,
+  hasConflictMarkers,
+  removeConflictMarkerLines,
+  SYNCED,
+} from "./sync-state";
 
 function pathOf(...segments: string[]): NotePath {
   return segments;
@@ -251,5 +256,28 @@ describe("hasConflictMarkers", () => {
     ].join("\n");
 
     expect(hasConflictMarkers(text)).toBe(true);
+  });
+});
+
+describe("removeConflictMarkerLines", () => {
+  it("drops the marker lines and keeps both hunk sides and surrounding lines in order", () => {
+    const text = [
+      "before",
+      "<<<<<<< mine\r",
+      "my side",
+      "=======",
+      "their side",
+      ">>>>>>> theirs",
+      "after",
+    ].join("\n");
+
+    expect(removeConflictMarkerLines(text)).toBe(
+      ["before", "my side", "their side", "after"].join("\n"),
+    );
+  });
+
+  it("returns text without markers unchanged", () => {
+    const text = "one\r\ntwo <<<<<<< mine\n\nthree\n";
+    expect(removeConflictMarkerLines(text)).toBe(text);
   });
 });

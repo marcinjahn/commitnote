@@ -7,6 +7,14 @@ function merge(notice: Extract<EngineNotice, { kind: "merge" }>["notice"]): Engi
 }
 
 describe("describeNotice", () => {
+  it("describes an edited merge restored after the note disappeared", () => {
+    expect(
+      describeNotice({ id: 1, kind: "edited-merge-restored", path: ["a", "b"] }),
+    ).toBe(
+      "“a / b” was moved or deleted on another device while you were editing the merged text. Your merged text was saved at its original location — check it for parts you hadn't resolved yet.",
+    );
+  });
+
   it("describes restored edits", () => {
     expect(describeNotice(merge({ kind: "edit-restored", path: ["a", "b"] }))).toBe(
       "“a / b” was moved or deleted on another device. Your edits were saved at its original location.",

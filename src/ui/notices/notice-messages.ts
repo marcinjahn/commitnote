@@ -9,6 +9,8 @@ export function describeNotice(notice: EngineNotice): string {
   switch (notice.kind) {
     case "conflict":
       return `${quoted(notice.path)} was changed on another device too. Open it to resolve the conflict.`;
+    case "edited-merge-restored":
+      return `${quoted(notice.path)} was moved or deleted on another device while you were editing the merged text. Your merged text was saved at its original location — check it for parts you hadn't resolved yet.`;
     case "dropped": {
       const change = notice.change;
       switch (change.kind) {
