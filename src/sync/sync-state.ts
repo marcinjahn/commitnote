@@ -108,6 +108,17 @@ export function computeSyncStates(input: {
   };
 }
 
+export function removeConflictMarkerLines(text: string): string {
+  const markers: readonly string[] = Object.values(CONFLICT_MARKERS);
+  return text
+    .split("\n")
+    .filter((rawLine) => {
+      const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+      return !markers.includes(line);
+    })
+    .join("\n");
+}
+
 export function hasConflictMarkers(text: string): boolean {
   const markers: readonly string[] = Object.values(CONFLICT_MARKERS);
   for (const rawLine of text.split("\n")) {
