@@ -96,7 +96,7 @@ describe("sample notes repo fixture", () => {
   it("commit 2 carries the save subject, one Create trailer per source entry, and no plaintext leak", () => {
     const message = sampleNotesRepo.commits[1].message;
 
-    expect(message.startsWith("git-notes: save\n\nGitnotes-Format: 1\n")).toBe(
+    expect(message.startsWith("commitnote: save\n\nCommitnote-Format: 1\n")).toBe(
       true,
     );
 
@@ -106,8 +106,8 @@ describe("sample notes repo fixture", () => {
     expect(createTrailers).toHaveLength(10);
 
     for (const name of flattenNames(sampleNotesRepoSource)) {
-      // One source folder is named "git-notes", identical to the app id that
-      // legitimately appears in the subject line ("git-notes: save"); that
+      // One source folder is named "commitnote", identical to the app id that
+      // legitimately appears in the subject line ("commitnote: save"); that
       // coincidence isn't a plaintext-name leak, so it's exempt here.
       if (name === APP_ID) continue;
       expect(message).not.toContain(name);

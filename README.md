@@ -1,6 +1,6 @@
-# git-notes
+# commitnote
 
-git-notes is a static, client-side web app for encrypted markdown notes. Notes are encrypted
+commitnote is a static, client-side web app for encrypted markdown notes. Notes are encrypted
 entirely in your browser and stored as files in a GitHub repository you own — there is no backend
 server.
 
@@ -65,7 +65,7 @@ fixture repositories instead of GitHub, with no network access. The fixture repo
 - `https://github.com/sample/empty` — empty and writable
 - `https://github.com/sample/empty-read-only`, `https://github.com/sample/read-only` — read-only
   variants
-- `https://github.com/sample/foreign`, `https://github.com/sample/newer` — repositories git-notes
+- `https://github.com/sample/foreign`, `https://github.com/sample/newer` — repositories commitnote
   refuses to open
 
 The access token `invalid-token` is always rejected; any other non-empty token is accepted. All
@@ -74,7 +74,7 @@ fixture state resets on reload. Test mode is never part of `npm run build`, whic
 
 ## Remember me
 
-With Remember me checked, git-notes keeps your access token and the usable (non-extractable) keys
+With Remember me checked, commitnote keeps your access token and the usable (non-extractable) keys
 derived from your passphrase in this browser profile's IndexedDB until you log out. Anyone with
 access to that browser profile can then read your notes. The passphrase itself is never stored.
 Without Remember me, only the repo URL is kept, so you re-enter the access token and passphrase

@@ -119,7 +119,7 @@ describe("createSessionStore", () => {
     expect(loadedKeyring.nameIvKey.extractable).toBe(false);
     expect(loadedKeyring.keyCheckKey.extractable).toBe(false);
 
-    const plaintext = new TextEncoder().encode("hello git-notes");
+    const plaintext = new TextEncoder().encode("hello commitnote");
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ciphertext = await crypto.subtle.encrypt(
       { name: "AES-GCM", iv },
@@ -133,7 +133,7 @@ describe("createSessionStore", () => {
     );
     expect(new Uint8Array(decrypted)).toEqual(plaintext);
 
-    const message = new TextEncoder().encode("git-notes key check v1");
+    const message = new TextEncoder().encode("commitnote key check v1");
     const signature = await crypto.subtle.sign(
       "HMAC",
       session.keyring.keyCheckKey,
@@ -194,7 +194,7 @@ describe("createSessionStore", () => {
     await store.start(session, { rememberMe: true });
 
     const rawRecord = await new Promise<unknown>((resolve, reject) => {
-      const request = indexedDB.open("git-notes", 1);
+      const request = indexedDB.open("commitnote", 1);
       request.onsuccess = () => {
         const db = request.result;
         const transaction = db.transaction("session", "readonly");
@@ -222,7 +222,7 @@ describe("createSessionStore", () => {
     const store = createSessionStore({ indexedDB, storage });
 
     await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open("git-notes", 1);
+      const request = indexedDB.open("commitnote", 1);
       request.onupgradeneeded = () => {
         request.result.createObjectStore("session");
       };

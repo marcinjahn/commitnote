@@ -2,12 +2,12 @@ import type { Keyring } from "../crypto/keyring";
 import type { RepoCoordinates } from "../repo-url/parse-repo-url";
 import type { Session } from "./session";
 
-const DB_NAME = "git-notes";
+const DB_NAME = "commitnote";
 const DB_VERSION = 1;
 const STORE_NAME = "session";
 const RECORD_KEY = "current";
 const RECORD_VERSION = 1;
-const REPO_URL_STORAGE_KEY = "git-notes.repoUrl";
+const REPO_URL_STORAGE_KEY = "commitnote.repoUrl";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 

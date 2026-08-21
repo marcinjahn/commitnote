@@ -18,7 +18,7 @@ export interface KdfParams {
 
 export interface RepoConfig {
   readonly formatVersion: 1;
-  readonly app: "git-notes";
+  readonly app: "commitnote";
   readonly cipher: "AES-256-GCM";
   readonly nameScheme: "AES-256-GCM-SIV-HMAC-SHA256/base64url";
   readonly kdf: KdfParams;
@@ -85,7 +85,7 @@ export function parseRepoConfig(text: string): RepoConfigParseResult {
   }
 
   if (parsed.app !== APP_ID) {
-    return invalid("app is not git-notes");
+    return invalid("app is not commitnote");
   }
 
   if (!isPositiveSafeInteger(parsed.formatVersion)) {

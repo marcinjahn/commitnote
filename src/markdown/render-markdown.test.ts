@@ -11,7 +11,7 @@ const WELCOME_MARKDOWN = [
   'console.log("hello");',
   "```",
   "",
-  "See the [git-notes project](https://github.com/example/git-notes) for details.",
+  "See the [commitnote project](https://github.com/example/commitnote) for details.",
   "",
   "> Notes stay private even to the forge that hosts them.",
   "",

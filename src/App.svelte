@@ -255,7 +255,7 @@
 
 {#if phase.kind === "restoring"}
   <main>
-    <h1>git-notes</h1>
+    <h1>commitnote</h1>
     <p>Loading…</p>
   </main>
 {:else if phase.kind === "login"}

@@ -87,9 +87,9 @@ describe("encryptName / decryptName", () => {
     expect(await decryptName(kr, ".keep")).toBeNull();
   });
 
-  it("returns null for .gitnotes", async () => {
+  it("returns null for .commitnote", async () => {
     const kr = await keyring();
-    expect(await decryptName(kr, ".gitnotes")).toBeNull();
+    expect(await decryptName(kr, ".commitnote")).toBeNull();
   });
 
   it("returns null for a truncated segment", async () => {
@@ -136,7 +136,7 @@ describe("encryptName / decryptName", () => {
 describe("encryptPath / decryptPath", () => {
   it("round-trips a multi-segment path", async () => {
     const kr = await keyring();
-    const path = ["Projects", "git-notes", "Ideas"];
+    const path = ["Projects", "commitnote", "Ideas"];
     const stored = await encryptPath(kr, path);
     expect(await decryptPath(kr, stored)).toEqual(path);
   });

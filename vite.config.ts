@@ -4,9 +4,9 @@ import { defineConfig, type Plugin } from "vitest/config";
 const CSP =
   "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com; img-src 'self' https: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
-function gitNotesCsp(): Plugin {
+function commitNoteCsp(): Plugin {
   return {
-    name: "git-notes-csp",
+    name: "commitnote-csp",
     apply: "build",
     transformIndexHtml(html) {
       // Returned as a raw string, not a tag descriptor: Vite's tag serializer
@@ -19,7 +19,7 @@ function gitNotesCsp(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [svelte(), gitNotesCsp()],
+  plugins: [svelte(), commitNoteCsp()],
   test: {
     include: ["src/**/*.test.ts"],
     environment: "node",
