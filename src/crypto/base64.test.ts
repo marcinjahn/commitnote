@@ -102,7 +102,7 @@ describe("toBase64Url / fromBase64Url", () => {
 
 describe("utf8Encode / utf8Decode", () => {
   it("round-trips ASCII and multi-byte text", () => {
-    const text = "git-notes éè 🔒";
+    const text = "commitnote éè 🔒";
     expect(utf8Decode(utf8Encode(text))).toBe(text);
   });
 

@@ -26,7 +26,7 @@ function validKdf(overrides: Partial<KdfParams> = {}): KdfParams {
 function validConfig(overrides: Partial<RepoConfig> = {}): RepoConfig {
   return {
     formatVersion: 1,
-    app: "git-notes",
+    app: "commitnote",
     cipher: "AES-256-GCM",
     nameScheme: "AES-256-GCM-SIV-HMAC-SHA256/base64url",
     kdf: validKdf(),
@@ -41,7 +41,7 @@ function validJson(
 ): Record<string, unknown> {
   return {
     formatVersion: 1,
-    app: "git-notes",
+    app: "commitnote",
     cipher: "AES-256-GCM",
     nameScheme: "AES-256-GCM-SIV-HMAC-SHA256/base64url",
     kdf: {
@@ -102,7 +102,7 @@ describe("parseRepoConfig / serializeRepoConfig round trip", () => {
     expect(serializeRepoConfig(config)).toBe(
       `{
   "formatVersion": 1,
-  "app": "git-notes",
+  "app": "commitnote",
   "cipher": "AES-256-GCM",
   "nameScheme": "AES-256-GCM-SIV-HMAC-SHA256/base64url",
   "kdf": {
@@ -129,11 +129,11 @@ describe("parseRepoConfig: malformed input", () => {
     expectInvalid("42");
     expectInvalid("null");
     expectInvalid("[]");
-    expectInvalid('"git-notes"');
+    expectInvalid('"commitnote"');
   });
 
   it("rejects the wrong app id", () => {
-    expectInvalid(JSON.stringify(validJson({ app: "not-git-notes" })));
+    expectInvalid(JSON.stringify(validJson({ app: "not-commitnote" })));
   });
 
   it("rejects formatVersion 0", () => {
@@ -150,7 +150,7 @@ describe("parseRepoConfig: newer format", () => {
     const result = parseRepoConfig(
       JSON.stringify({
         formatVersion: 2,
-        app: "git-notes",
+        app: "commitnote",
         somethingUnknown: true,
       }),
     );

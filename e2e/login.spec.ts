@@ -107,18 +107,18 @@ const refusals: ReadonlyArray<{
   readonly message: string;
 }> = [
   {
-    name: "a repo git-notes did not initialize",
+    name: "a repo commitnote did not initialize",
     repo: "https://github.com/sample/foreign",
     passphrase: "whatever",
     message:
-      "This repository is neither empty nor a notes repo. git-notes only uses an empty repository or one it initialized, and it has not changed anything here.",
+      "This repository is neither empty nor a notes repo. commitnote only uses an empty repository or one it initialized, and it has not changed anything here.",
   },
   {
     name: "a repo initialized by a newer format version",
     repo: "https://github.com/sample/newer",
     passphrase: "whatever",
     message:
-      "This notes repo was created by a newer version of git-notes. Update the app to open it.",
+      "This notes repo was created by a newer version of commitnote. Update the app to open it.",
   },
   {
     name: "a read-only notes repo",

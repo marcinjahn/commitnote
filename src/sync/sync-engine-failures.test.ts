@@ -35,7 +35,7 @@ beforeAll(async () => {
 
 const START = 1_000_000;
 const WELCOME = ["Welcome"];
-const IDEAS = ["Projects", "git-notes", "Ideas"];
+const IDEAS = ["Projects", "commitnote", "Ideas"];
 
 interface Harness {
   readonly fake: FakeForgeAdapter;

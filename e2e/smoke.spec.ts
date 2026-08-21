@@ -24,8 +24,8 @@ test("login screen renders under the production CSP", async ({ page }) => {
 
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "git-notes" })).toBeVisible();
-  await expect(page).toHaveTitle("git-notes");
+  await expect(page.getByRole("heading", { name: "commitnote" })).toBeVisible();
+  await expect(page).toHaveTitle("commitnote");
 
   const cspMeta = page.locator('meta[http-equiv="Content-Security-Policy"]');
   await expect(cspMeta).toHaveAttribute("content", CSP);

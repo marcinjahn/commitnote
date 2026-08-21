@@ -31,9 +31,9 @@ export function describeLoginError(error: LoginError): string {
     case "readOnly":
       return 'This access token cannot write to the repository. Give it "Contents: read and write" access.';
     case "foreign":
-      return "This repository is neither empty nor a notes repo. git-notes only uses an empty repository or one it initialized, and it has not changed anything here.";
+      return "This repository is neither empty nor a notes repo. commitnote only uses an empty repository or one it initialized, and it has not changed anything here.";
     case "newerFormat":
-      return "This notes repo was created by a newer version of git-notes. Update the app to open it.";
+      return "This notes repo was created by a newer version of commitnote. Update the app to open it.";
     case "wrongPassphrase":
       return "Wrong passphrase.";
     case "initializationRaced":

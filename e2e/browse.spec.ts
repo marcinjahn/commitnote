@@ -24,18 +24,18 @@ test("expanding and collapsing folders", async ({ page }) => {
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);
 
-  await expect(page.getByRole("treeitem", { name: "git-notes" })).toHaveCount(
+  await expect(page.getByRole("treeitem", { name: "commitnote" })).toHaveCount(
     0,
   );
   await page.getByRole("treeitem", { name: "Projects" }).click();
-  await expect(page.getByRole("treeitem", { name: "git-notes" })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: "commitnote" })).toBeVisible();
 
   await expect(page.getByRole("treeitem", { name: "Ideas" })).toHaveCount(0);
-  await page.getByRole("treeitem", { name: "git-notes" }).click();
+  await page.getByRole("treeitem", { name: "commitnote" }).click();
   await expect(page.getByRole("treeitem", { name: "Ideas" })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: "Roadmap" })).toBeVisible();
 
-  await page.getByRole("treeitem", { name: "git-notes" }).click();
+  await page.getByRole("treeitem", { name: "commitnote" }).click();
   await expect(page.getByRole("treeitem", { name: "Ideas" })).toHaveCount(0);
   await expect(page.getByRole("treeitem", { name: "Roadmap" })).toHaveCount(0);
 });
@@ -54,7 +54,7 @@ test("opening the Welcome note", async ({ page }, testInfo) => {
   ).toBeVisible();
   await expect(article.locator("table")).toBeVisible();
 
-  const link = article.getByRole("link", { name: "git-notes project" });
+  const link = article.getByRole("link", { name: "commitnote project" });
   await expect(link).toBeVisible();
   await expect(link).toHaveAttribute("target", "_blank");
   await expect(link).toHaveAttribute("rel", /noopener/);
@@ -137,7 +137,7 @@ test("only the page's own origin is contacted", async ({ page }) => {
   await expectTree(page);
 
   await page.getByRole("treeitem", { name: "Projects" }).click();
-  await page.getByRole("treeitem", { name: "git-notes" }).click();
+  await page.getByRole("treeitem", { name: "commitnote" }).click();
   await page.getByRole("treeitem", { name: "Ideas" }).click();
   await page.getByRole("button", { name: "Reading view" }).click();
   await expect(

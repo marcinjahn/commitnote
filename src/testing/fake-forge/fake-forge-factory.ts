@@ -28,7 +28,7 @@ import {
 
 export const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
 export const FAKE_FORGE_INVALID_TOKEN = "invalid-token";
-export const FAKE_FORGE_CONTROLS_KEY = "__gitNotesFakeForge";
+export const FAKE_FORGE_CONTROLS_KEY = "__commitNoteFakeForge";
 
 export interface FakeForgeControls {
   /**

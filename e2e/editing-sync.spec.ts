@@ -31,7 +31,7 @@ const WELCOME_TAIL = [
   'console.log("hello");',
   "```",
   "",
-  "See the [git-notes project](https://github.com/example/git-notes) for details.",
+  "See the [commitnote project](https://github.com/example/commitnote) for details.",
   "",
   "> Notes stay private even to the forge that hosts them.",
   "",
@@ -125,7 +125,7 @@ async function editRemotely(
 ): Promise<void> {
   await page.evaluate(
     ([repoKey, path, text]) =>
-      (window as any).__gitNotesFakeForge.editNote(repoKey, path, text),
+      (window as any).__commitNoteFakeForge.editNote(repoKey, path, text),
     [REPO_KEY, notePath, markdown] as const,
   );
 }
@@ -202,7 +202,7 @@ test("creating a folder and a note walks through the sync states and survives lo
 
   await page.evaluate(
     (repoKey) =>
-      (window as any).__gitNotesFakeForge.failNext(
+      (window as any).__commitNoteFakeForge.failNext(
         repoKey,
         "commit",
         "Network",
@@ -312,11 +312,11 @@ test("a concurrent remote edit at the end of a note merges cleanly", async ({
 }) => {
   await startSession(page);
   await warmUpRemoteEdits(page);
-  await openNote(page, ["Projects", "git-notes", "Ideas"]);
+  await openNote(page, ["Projects", "commitnote", "Ideas"]);
 
   await editRemotely(
     page,
-    ["Projects", "git-notes", "Ideas"],
+    ["Projects", "commitnote", "Ideas"],
     `${IDEAS_MARKDOWN}\nRemote line`,
   );
 

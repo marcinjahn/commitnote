@@ -23,7 +23,7 @@ export interface SampleNotesRepo {
 }
 
 const SEED = 0x676e6f74;
-const README_TEXT = "# Notes\n\nThis repository is managed by git-notes.\n";
+const README_TEXT = "# Notes\n\nThis repository is managed by commitnote.\n";
 
 /** mulberry32: a small, deterministic 32-bit PRNG, used only to make the fixture reproducible. */
 export function createSeededRandom(seed: number): RandomSource {

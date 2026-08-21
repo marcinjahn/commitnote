@@ -62,7 +62,7 @@ describe("encodeChangeSet: one test per operation type", () => {
         "hello world",
       );
     }
-    expect(result.message).toContain(`Gitnotes-Create: ${storedNote}`);
+    expect(result.message).toContain(`Commitnote-Create: ${storedNote}`);
   });
 
   it("create-folder: yields exactly <stored>/.keep with text '' and one Create trailer", async () => {
@@ -80,7 +80,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       },
     ]);
     expect(result.message).toBe(
-      `git-notes: save\n\nGitnotes-Format: 1\nGitnotes-Create: ${storedFolder}`,
+      `commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Create: ${storedFolder}`,
     );
   });
 
@@ -104,7 +104,7 @@ describe("encodeChangeSet: one test per operation type", () => {
         "updated body",
       );
     }
-    expect(result.message).toContain(`Gitnotes-Update: ${storedNote}`);
+    expect(result.message).toContain(`Commitnote-Update: ${storedNote}`);
   });
 
   it("delete-note: removes the file at the stored path and one Delete trailer", async () => {
@@ -117,7 +117,7 @@ describe("encodeChangeSet: one test per operation type", () => {
 
     expect(result.changes).toEqual([{ kind: "delete", path: storedNote }]);
     expect(result.message).toBe(
-      `git-notes: save\n\nGitnotes-Format: 1\nGitnotes-Delete: ${storedNote}`,
+      `commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Delete: ${storedNote}`,
     );
   });
 
@@ -146,7 +146,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       path: foreignPath,
     });
     expect(result.message).toBe(
-      `git-notes: save\n\nGitnotes-Format: 1\nGitnotes-Delete: ${storedFolder}`,
+      `commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Delete: ${storedFolder}`,
     );
   });
 
@@ -177,7 +177,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       blobSha: "sha-note",
     });
     expect(result.message).toBe(
-      `git-notes: save\n\nGitnotes-Format: 1\nGitnotes-Rename: ${storedNote} -> ${storedTo}`,
+      `commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Rename: ${storedNote} -> ${storedTo}`,
     );
   });
 
@@ -225,7 +225,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       });
     }
     expect(result.message).toBe(
-      `git-notes: save\n\nGitnotes-Format: 1\nGitnotes-Rename: ${storedFrom} -> ${storedTo}`,
+      `commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Rename: ${storedFrom} -> ${storedTo}`,
     );
   });
 });
@@ -256,7 +256,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       );
     }
     expect(result.message).toBe(
-      `git-notes: save\n\nGitnotes-Format: 1\nGitnotes-Create: ${storedFolder}\nGitnotes-Create: ${storedNote}`,
+      `commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Create: ${storedFolder}\nCommitnote-Create: ${storedNote}`,
     );
   });
 
@@ -281,7 +281,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       );
     }
     expect(result.message).toBe(
-      `git-notes: save\n\nGitnotes-Format: 1\nGitnotes-Create: ${storedNote}\nGitnotes-Update: ${storedNote}\nGitnotes-Rename: ${storedNote} -> ${storedRenamed}`,
+      `commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Create: ${storedNote}\nCommitnote-Update: ${storedNote}\nCommitnote-Rename: ${storedNote} -> ${storedRenamed}`,
     );
   });
 
@@ -316,13 +316,13 @@ describe("encodeChangeSet: multi-change scenarios", () => {
     const result = await encodeChangeSet({ listing, changeSet, keyring });
 
     expect(result.message).toBe(
-      `git-notes: save\n\n` +
-        `Gitnotes-Format: 1\n` +
-        `Gitnotes-Create: ${storedNewNote}\n` +
-        `Gitnotes-Update: ${storedToUpdate}\n` +
-        `Gitnotes-Delete: ${storedToDelete}\n` +
-        `Gitnotes-Create: ${storedNewFolder}\n` +
-        `Gitnotes-Rename: ${storedFrom} -> ${storedTo}`,
+      `commitnote: save\n\n` +
+        `Commitnote-Format: 1\n` +
+        `Commitnote-Create: ${storedNewNote}\n` +
+        `Commitnote-Update: ${storedToUpdate}\n` +
+        `Commitnote-Delete: ${storedToDelete}\n` +
+        `Commitnote-Create: ${storedNewFolder}\n` +
+        `Commitnote-Rename: ${storedFrom} -> ${storedTo}`,
     );
     // The untouched note is neither modified nor listed among the changes.
     expect(result.changes.some((c) => c.path === storedKeep)).toBe(false);
@@ -496,7 +496,7 @@ describe("encodeChangeSet: invalid change sets", () => {
 describe("encodeInitializeMessage", () => {
   it("equals the pinned literal", () => {
     expect(encodeInitializeMessage()).toBe(
-      "git-notes: initialize\n\nGitnotes-Format: 1",
+      "commitnote: initialize\n\nCommitnote-Format: 1",
     );
   });
 });
