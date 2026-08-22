@@ -27,7 +27,6 @@
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
   let mobileView = $state<"tree" | "note">("tree");
-  let viewMode = $state<"editor" | "reading">("editor");
 
   type DialogState =
     | { readonly kind: "none" }
@@ -64,20 +63,6 @@
     });
   });
 
-  $effect(() => {
-    function handleKeydown(event: KeyboardEvent): void {
-      if (engineState.openNote === null) return;
-      const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
-      const modifierPressed = isMac ? event.metaKey : event.ctrlKey;
-      if (!modifierPressed || event.key.toLowerCase() !== "e") return;
-      event.preventDefault();
-      handleToggleView();
-    }
-
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
-  });
-
   const tree = $derived(engineState.workingTree);
   const treeLoading = $derived(engineState.synced === null && engineState.refresh.inFlight);
   const selectedPath = $derived(engineState.openNote?.path ?? null);
@@ -98,10 +83,6 @@
 
   function handleRefresh(): void {
     void engine.refresh();
-  }
-
-  function handleToggleView(): void {
-    viewMode = viewMode === "editor" ? "reading" : "editor";
   }
 
   function expandFolder(path: NotePath): void {
@@ -356,13 +337,11 @@
         name={noteName(engineState.openNote.path)}
         {refreshing}
         syncState={engineState.syncStates.stateOf(engineState.openNote.path)}
-        {viewMode}
-        onToggleView={handleToggleView}
         onRefresh={handleRefresh}
         onBack={handleBack}
       />
     {/if}
-    <NotePane {engine} openNote={engineState.openNote} {viewMode} />
+    <NotePane {engine} openNote={engineState.openNote} />
   </section>
 </div>
 

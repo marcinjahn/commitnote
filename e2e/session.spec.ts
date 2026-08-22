@@ -89,28 +89,3 @@ test("log out anyway discards unsaved changes", async ({ page }) => {
   await dialog.getByRole("button", { name: "Log out anyway" }).click();
   await expect(page.getByLabel("Repo URL")).toBeVisible({ timeout: 10_000 });
 });
-
-test("a rejected access token can be replaced without losing changes", async ({
-  page,
-}) => {
-  await loginAndOpen(page);
-  await openWelcomeAndType(page, " kept");
-  await failNext(page, "Unauthorized");
-
-  const dialog = page.getByRole("dialog", { name: "Access token needed" });
-  await expect(dialog).toBeVisible({ timeout: 10_000 });
-
-  await dialog.getByLabel("Access token").fill("invalid-token");
-  await dialog.getByRole("button", { name: "Continue" }).click();
-  await expect(dialog.getByRole("alert")).toHaveText(
-    "The access token is invalid or has expired.",
-  );
-
-  await dialog.getByLabel("Access token").fill("new-token");
-  await dialog.getByRole("button", { name: "Continue" }).click();
-  await expect(dialog).toBeHidden({ timeout: 10_000 });
-
-  await expect(
-    page.locator("header.note-header").getByRole("img", { name: "Synced" }),
-  ).toBeVisible({ timeout: 15_000 });
-});

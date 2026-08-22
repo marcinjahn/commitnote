@@ -364,56 +364,46 @@ describe("sync engine failure handling", () => {
     }
   });
 
-  it("stops on a rejected access token until the adapter is replaced", async () => {
+  it("keeps the changes pending and retries when a save's access token is rejected", async () => {
     const h = await setup();
     h.fake.failNext("commit", new ForgeError("Unauthorized"));
 
     h.engine.editNote(WELCOME, "kept");
     await h.engine.flush();
-    expect(h.engine.getState().save).toEqual({
-      kind: "stopped",
+    const save = h.engine.getState().save;
+    expect(save).toEqual({
+      kind: "waiting",
+      reason: "failed",
+      retryAt: expect.any(Number),
       error: { kind: "unauthorized" },
     });
-    expect(h.engine.getState().pending).toHaveLength(1);
+    expect(h.engine.getState().pending).toEqual([
+      { kind: "update-note", path: WELCOME, content: "kept" },
+    ]);
 
-    h.engine.editNote(IDEAS, "kept too");
-    await advance(h, 600_000);
-    expect(h.commits).toHaveLength(1);
-    expect(await h.engine.flush()).toEqual({ kind: "unsaved", count: 2 });
-    expect(h.commits).toHaveLength(1);
-
-    const replacementCommits: CommitRequest[] = [];
-    h.engine.replaceAdapter(wrap(h.fake, replacementCommits));
-    await settle(h.engine);
-    await vi.waitFor(() => {
-      expect(replacementCommits).toHaveLength(1);
-    });
+    const retryAt = (save as { retryAt: number }).retryAt;
+    await advance(h, retryAt - h.clock.now() + 1);
     await settle(h.engine);
 
-    expect(h.commits).toHaveLength(1);
     expect(h.engine.getState().save).toEqual({ kind: "idle" });
     expect(h.engine.getState().pending).toEqual([]);
     expect(okCommitCount(h.fake, h.start)).toBe(1);
     expect(await mainContent(h.fake, WELCOME)).toBe("kept");
-    expect(await mainContent(h.fake, IDEAS)).toBe("kept too");
   });
 
-  it("stops when a refresh is rejected", async () => {
+  it("reports a rejected refresh as a refresh error without stopping saves", async () => {
     const h = await setup();
-    h.engine.editNote(WELCOME, "not yet");
     h.fake.failNext("getHead", new ForgeError("Unauthorized"));
 
     await h.engine.refresh();
     const state = h.engine.getState();
-    expect(state.save).toEqual({
-      kind: "stopped",
-      error: { kind: "unauthorized" },
-    });
     expect(state.refresh.lastError).toEqual({ kind: "unauthorized" });
+    expect(state.save.kind).toBe("idle");
 
-    await advance(h, 600_000);
-    expect(h.commits).toHaveLength(0);
-    expect(h.engine.getState().pending).toHaveLength(1);
+    h.engine.editNote(WELCOME, "after refresh error");
+    await h.engine.flush();
+    expect(h.engine.getState().save).toEqual({ kind: "idle" });
+    expect(await mainContent(h.fake, WELCOME)).toBe("after refresh error");
   });
 
   it("flush bypasses back-off but not the rate budget", async () => {

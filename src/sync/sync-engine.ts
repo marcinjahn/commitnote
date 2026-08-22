@@ -92,8 +92,7 @@ export type SaveStatus =
       readonly reason: "failed" | "rateBudget";
       readonly retryAt: number | null;
       readonly error: SyncError | null;
-    }
-  | { readonly kind: "stopped"; readonly error: SyncError };
+    };
 
 export interface HeldConflict {
   readonly path: NotePath;
@@ -167,7 +166,6 @@ export interface SyncEngine {
   delete(path: NotePath): StructureResult;
   flush(): Promise<FlushResult>;
   retryNow(): void;
-  replaceAdapter(adapter: ForgeAdapter): void;
   resolveConflict(path: NotePath, resolution: ConflictResolution): void;
   dismissNotice(id: number): void;
   dispose(): void;
@@ -215,18 +213,7 @@ function childNames(folder: WorkingFolder, exclude?: string): string[] {
 }
 
 function isFailedSave(save: SaveStatus): boolean {
-  return (
-    (save.kind === "waiting" && save.reason === "failed") ||
-    save.kind === "stopped"
-  );
-}
-
-function isStoppingError(error: ForgeError): boolean {
-  return (
-    error.kind === "Unauthorized" ||
-    error.kind === "Forbidden" ||
-    error.kind === "NotFound"
-  );
+  return save.kind === "waiting" && save.reason === "failed";
 }
 
 function syncedNoteAt(
@@ -268,7 +255,7 @@ export function createSyncEngine(options: {
   readonly rateBudget?: RateBudget;
 }): SyncEngine {
   const { keyring, clock } = options;
-  let adapter = options.adapter;
+  const adapter = options.adapter;
   const rateBudget = options.rateBudget ?? createRateBudget(clock);
 
   let state: SyncEngineState = INITIAL_STATE;
@@ -747,29 +734,23 @@ export function createSyncEngine(options: {
     );
   }
 
-  // A stop reported by a refresh while a save runs must survive the save's
-  // own outcome.
-  function unlessStopped(current: SyncEngineState, save: SaveStatus): SaveStatus {
-    return current.save.kind === "stopped" ? current.save : save;
-  }
-
   function saveSucceeded(): void {
     consecutiveFailures = 0;
     update((current) => ({
       ...current,
-      save: unlessStopped(current, { kind: "idle" }),
+      save: { kind: "idle" },
     }));
   }
 
   // Waits (back-off or rate budget) are only ended by their own timer,
-  // retryNow(), flush() or replaceAdapter(); other triggers are ignored.
+  // retryNow() or flush(); other triggers are ignored.
   function triggerSave(endWait = false): Promise<void> {
     if (disposed) return Promise.resolve();
     if (saveLoop !== null) {
       saveAgain = true;
       return saveLoop;
     }
-    if (state.save.kind === "stopped" || state.synced === null) {
+    if (state.synced === null) {
       return Promise.resolve();
     }
     if (state.save.kind === "waiting" && !endWait) {
@@ -869,12 +850,7 @@ export function createSyncEngine(options: {
     } catch (error) {
       if (isForgeError(error)) {
         const mapped = mapForgeError(error);
-        if (isStoppingError(error)) {
-          stopSaving(mapped);
-          returnUncommitted();
-        } else {
-          failAttempt(mapped);
-        }
+        failAttempt(mapped);
         return;
       }
       console.error("Save failed", error);
@@ -893,11 +869,6 @@ export function createSyncEngine(options: {
     }));
   }
 
-  function stopSaving(error: SyncError): void {
-    cancelRetry();
-    update((current) => ({ ...current, save: { kind: "stopped", error } }));
-  }
-
   function failAttempt(error: SyncError): void {
     consecutiveFailures++;
     const retryAt =
@@ -906,12 +877,12 @@ export function createSyncEngine(options: {
     returnUncommitted();
     update((current) => ({
       ...current,
-      save: unlessStopped(current, {
+      save: {
         kind: "waiting",
         reason: "failed",
         retryAt,
         error,
-      }),
+      },
     }));
     if (state.save.kind === "waiting") scheduleRetry(retryAt);
   }
@@ -920,12 +891,12 @@ export function createSyncEngine(options: {
     returnUncommitted();
     update((current) => ({
       ...current,
-      save: unlessStopped(current, {
+      save: {
         kind: "waiting",
         reason: "rateBudget",
         retryAt,
         error: null,
-      }),
+      },
     }));
     if (state.save.kind === "waiting") scheduleRetry(retryAt);
   }
@@ -1117,7 +1088,6 @@ export function createSyncEngine(options: {
             lastCompletedAt: current.refresh.lastCompletedAt,
           },
         }));
-        if (isStoppingError(error)) stopSaving(mapped);
         return;
       }
       update((current) => ({
@@ -1308,10 +1278,7 @@ export function createSyncEngine(options: {
   async function flush(): Promise<FlushResult> {
     autosave.cancel();
     const save = state.save;
-    if (
-      save.kind === "stopped" ||
-      (save.kind === "waiting" && save.reason === "rateBudget")
-    ) {
+    if (save.kind === "waiting" && save.reason === "rateBudget") {
       return flushResult();
     }
     await triggerSave(true);
@@ -1323,16 +1290,6 @@ export function createSyncEngine(options: {
     if (save.kind === "waiting" && save.reason === "failed") {
       void triggerSave(true);
     }
-  }
-
-  function replaceAdapter(next: ForgeAdapter): void {
-    if (disposed) return;
-    adapter = next;
-    consecutiveFailures = 0;
-    if (state.save.kind === "stopped") {
-      update((current) => ({ ...current, save: { kind: "idle" } }));
-    }
-    void refresh().then(() => triggerSave());
   }
 
   function resolveConflict(
@@ -1407,7 +1364,6 @@ export function createSyncEngine(options: {
     delete: deleteItem,
     flush,
     retryNow,
-    replaceAdapter,
     resolveConflict,
     dismissNotice,
     dispose,

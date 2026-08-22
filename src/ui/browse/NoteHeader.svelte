@@ -7,18 +7,13 @@
     name: string;
     refreshing: boolean;
     syncState: SyncState;
-    viewMode: "editor" | "reading";
-    onToggleView: () => void;
     onRefresh: () => void;
     onBack: () => void;
   }
 
-  const { name, refreshing, syncState, viewMode, onToggleView, onRefresh, onBack }: Props =
-    $props();
+  const { name, refreshing, syncState, onRefresh, onBack }: Props = $props();
 
   const syncLabel = $derived(describeSyncState(syncState));
-  const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
-  const shortcutHint = isMac ? "⌘E" : "Ctrl+E";
 </script>
 
 <header class="note-header">
@@ -40,15 +35,6 @@
     <SyncStateIcon state={syncState} />
     <span class="sync-status-label">{syncLabel}</span>
   </span>
-  <button
-    type="button"
-    class="button view-toggle"
-    aria-pressed={viewMode === "reading"}
-    title={`Reading view (${shortcutHint})`}
-    onclick={onToggleView}
-  >
-    Reading view
-  </button>
   <button
     type="button"
     class="button button-icon"
@@ -107,16 +93,6 @@
 
   .refresh-icon.spinning {
     animation: spin 0.8s linear infinite;
-  }
-
-  .view-toggle {
-    flex-shrink: 0;
-    white-space: nowrap;
-  }
-
-  .view-toggle[aria-pressed="true"] {
-    background: var(--color-selected);
-    border-color: var(--color-accent);
   }
 
   .sync-status {

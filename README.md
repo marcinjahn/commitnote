@@ -88,10 +88,26 @@ next time.
 
 ## Editing and saving
 
+- Each note has one view: an editable name field on top and the live-preview markdown editor below.
+  Task checkboxes toggle on click or tap, and the toggle autosaves like typing.
+- "New note" in the sidebar header, or "New note..." in a folder's row menu, opens an empty draft
+  with the name field focused. The note is created when you confirm a name (Enter or leaving the
+  field) or when you type content first; then it gets an auto name, the current local date and time
+  as `YYYY-MM-DD HH:mm:ss`, with ` (2)`, ` (3)`, ... appended on a clash. A draft left untouched
+  disappears without creating anything.
+- To rename a note, edit its name field and press Enter or leave the field. Escape or an empty
+  value restores the name, and an invalid or duplicate name shows an inline error. The field is
+  read-only while the note has a conflict. Folders are renamed from their row menu.
+- Remote changes are pulled only when you click Refresh in the sidebar header, at startup or login,
+  or when a save finds that the remote moved and merges. Switching windows or tabs does not
+  refresh.
 - Autosave saves 2 s after you stop typing, at least every 30 s while you keep typing, and
   immediately on structure changes, note switch, tab hide, and logout.
 - The sync state is synced, syncing, or out of sync, with reason pending (waiting to save), failed
   (retrying with back-off), or conflict.
+- If the access token is revoked or rejected mid-session, saving shows the failed state and keeps
+  retrying, and the edits stay unsaved. The unload warning and the logout choice still protect
+  them.
 - A conflicting change opens the conflict view, where you choose Keep mine, Keep theirs, or Edit
   merged.
 - Notices report failures, retries, and other sync events as they happen.
