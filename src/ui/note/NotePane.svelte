@@ -9,17 +9,15 @@
     SyncEngineState,
   } from "../../sync/sync-engine";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
-  import ReadingView from "../browse/ReadingView.svelte";
   import { describeSyncError } from "../browse/sync-messages";
   import ConflictView from "./ConflictView.svelte";
 
   interface Props {
     engine: SyncEngine;
     openNote: OpenNoteState | null;
-    viewMode: "editor" | "reading";
   }
 
-  const { engine, openNote, viewMode }: Props = $props();
+  const { engine, openNote }: Props = $props();
 
   const editorExtensions = [livePreview()];
 
@@ -46,8 +44,6 @@
   {:else if openNote.kind === "loaded"}
     {#if conflict !== undefined}
       <ConflictView {engine} conflict={conflict} />
-    {:else if viewMode === "reading"}
-      <ReadingView content={openNote.content} />
     {:else}
       <MarkdownEditor
         text={openNote.content}

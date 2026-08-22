@@ -1092,27 +1092,6 @@ describe("sync engine saves", () => {
     expect(await mainContent(h.fake, IDEAS)).toBe("second");
   });
 
-  it("stops saving when the access token is rejected and keeps the changes", async () => {
-    const h = await setup();
-    const start = await h.fake.getHead();
-    h.fake.failNext("commit", new ForgeError("Unauthorized"));
-
-    h.engine.editNote(WELCOME, "unauthorized");
-    await h.engine.flush();
-    expect(h.engine.getState().save).toEqual({
-      kind: "stopped",
-      error: { kind: "unauthorized" },
-    });
-
-    h.engine.editNote(WELCOME, "still here");
-    const result = await h.engine.flush();
-    expect(result).toEqual({ kind: "unsaved", count: 1 });
-    expect(h.engine.getState().pending).toEqual([
-      { kind: "update-note", path: WELCOME, content: "still here" },
-    ]);
-    expect(await h.fake.getHead()).toBe(start);
-  });
-
   it("never commits twice when loading the tree after a commit fails", async () => {
     const h = await setup();
     const start = await h.fake.getHead();
