@@ -31,7 +31,6 @@ test("toggling a task checkbox autosaves without focusing the editor", async ({
   await expectTree(page);
   await openWelcome(page);
 
-  const editor = page.getByRole("textbox", { name: "Note editor" });
   const syncIcon = page.locator("header.note-header").getByRole("img");
   const openTask = page
     .locator(".cm-line", { hasText: "Open task" })
@@ -42,9 +41,7 @@ test("toggling a task checkbox autosaves without focusing the editor", async ({
 
   await expect(openTask).toBeChecked();
   expect(
-    await page.evaluate(
-      () => !!document.activeElement?.closest(".cm-content"),
-    ),
+    await page.evaluate(() => !!document.activeElement?.closest(".cm-content")),
   ).toBe(false);
   await expect(syncIcon).not.toHaveAccessibleName("Synced");
   await expect(syncIcon).toHaveAccessibleName("Synced", { timeout: 10_000 });
