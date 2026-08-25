@@ -15,9 +15,11 @@
   interface Props {
     engine: SyncEngine;
     openNote: OpenNoteState | null;
+    draft: boolean;
+    onDraftContent: (content: string) => void;
   }
 
-  const { engine, openNote }: Props = $props();
+  const { engine, openNote, draft, onDraftContent }: Props = $props();
 
   const editorExtensions = [livePreview()];
 
@@ -34,24 +36,41 @@
       ? engineState.conflicts.find((held) => notePathEquals(held.path, openNote.path))
       : undefined,
   );
+
+  const editorText = $derived<string | null>(
+    draft ? "" : openNote?.kind === "loaded" && conflict === undefined ? openNote.content : null,
+  );
+
+  let editor: ReturnType<typeof MarkdownEditor> | undefined = $state();
+
+  export function focusEditor(): void {
+    editor?.focus();
+  }
+
+  function handleEditorChange(text: string): void {
+    if (draft) {
+      onDraftContent(text);
+    } else if (openNote?.kind === "loaded") {
+      engine.editNote(openNote.path, text);
+    }
+  }
 </script>
 
 <div class="note-content">
-  {#if openNote === null}
+  {#if editorText !== null}
+    <MarkdownEditor
+      bind:this={editor}
+      text={editorText}
+      readOnly={false}
+      extensions={editorExtensions}
+      onChange={handleEditorChange}
+    />
+  {:else if openNote === null}
     <p class="note-placeholder">Select a note to read it.</p>
   {:else if openNote.kind === "loading"}
     <p class="note-status">Loading…</p>
-  {:else if openNote.kind === "loaded"}
-    {#if conflict !== undefined}
-      <ConflictView {engine} conflict={conflict} />
-    {:else}
-      <MarkdownEditor
-        text={openNote.content}
-        readOnly={false}
-        extensions={editorExtensions}
-        onChange={(text) => engine.editNote(openNote.path, text)}
-      />
-    {/if}
+  {:else if openNote.kind === "loaded" && conflict !== undefined}
+    <ConflictView {engine} {conflict} />
   {:else if openNote.kind === "missing"}
     <p class="note-status">This note no longer exists.</p>
   {:else if openNote.kind === "failed"}

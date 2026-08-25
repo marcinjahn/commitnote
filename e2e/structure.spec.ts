@@ -41,8 +41,9 @@ test("creating, renaming, moving and deleting through row menus", async ({
   // Create a note inside it through its row menu; it opens in the editor.
   await page.getByRole("button", { name: "Actions for Recipes" }).click();
   await page.getByRole("menuitem", { name: "New note…" }).click();
-  await page.getByLabel("Note name").fill("Idea One");
-  await page.getByRole("button", { name: "Create" }).click();
+  const firstName = page.getByRole("textbox", { name: "Note name" });
+  await firstName.fill("Idea One");
+  await firstName.press("Enter");
   await expect(
     page.getByRole("textbox", { name: "Note editor" }),
   ).toBeVisible();
@@ -54,32 +55,42 @@ test("creating, renaming, moving and deleting through row menus", async ({
   // with when renaming below.
   await page.getByRole("button", { name: "Actions for Recipes" }).click();
   await page.getByRole("menuitem", { name: "New note…" }).click();
-  await page.getByLabel("Note name").fill("Idea Two");
-  await page.getByRole("button", { name: "Create" }).click();
+  const secondName = page.getByRole("textbox", { name: "Note name" });
+  await secondName.fill("Idea Two");
+  await secondName.press("Enter");
   await expect(
     page.getByRole("textbox", { name: "Note editor" }),
   ).toBeVisible();
   await backToTreeIfMobile(page, testInfo);
 
-  // Rename it; an existing sibling name and an over-the-cap name are both
-  // rejected before the folder can be renamed to something valid.
+  // A note has no rename item in its row menu, a folder does.
   await page.getByRole("button", { name: "Actions for Idea Two" }).click();
-  await page.getByRole("menuitem", { name: "Rename…" }).click();
-  const renameDialog = page.getByRole("dialog", { name: "Rename note" });
-  const renameInput = renameDialog.getByLabel("Note name");
+  await expect(page.getByRole("menuitem", { name: "Rename…" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Actions for Recipes" }).click();
+  await expect(page.getByRole("menuitem", { name: "Rename…" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // Rename it in the note header; an existing sibling name and an
+  // over-the-cap name are both rejected.
+  await page.getByRole("treeitem", { name: "Idea Two" }).click();
+  const renameInput = page.getByRole("textbox", { name: "Note name" });
 
   await renameInput.fill("Idea One");
-  await expect(renameDialog.getByRole("alert")).toHaveText(
+  await renameInput.press("Enter");
+  await expect(page.getByRole("alert")).toHaveText(
     "A note or folder with this name already exists here.",
   );
 
   await renameInput.fill("a".repeat(151));
-  await expect(renameDialog.getByRole("alert")).toHaveText(
+  await renameInput.press("Enter");
+  await expect(page.getByRole("alert")).toHaveText(
     "Names can be at most 150 bytes. Some characters, like accented letters or emoji, count as more than one byte.",
   );
 
   await renameInput.fill("Grocery List");
-  await renameDialog.getByRole("button", { name: "Rename" }).click();
+  await renameInput.press("Enter");
+  await backToTreeIfMobile(page, testInfo);
   await expect(
     page.getByRole("treeitem", { name: "Grocery List" }),
   ).toBeVisible();

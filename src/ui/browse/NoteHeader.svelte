@@ -2,18 +2,39 @@
   import type { SyncState } from "../../sync/sync-state";
   import { describeSyncState } from "./sync-messages";
   import SyncStateIcon from "./SyncStateIcon.svelte";
+  import NameField from "../note/NameField.svelte";
 
   interface Props {
     name: string;
-    refreshing: boolean;
-    syncState: SyncState;
-    onRefresh: () => void;
+    draft: boolean;
+    syncState: SyncState | null;
+    nameError: string | null;
+    nameReadOnly: boolean;
+    nameResetKey: number;
+    namePendingText?: string | null;
+    onNamePendingConsumed?: () => void;
+    onNameCommit: (edited: string) => void;
+    onNameEscape: () => void;
+    onNameEnterDone: () => void;
+    onNameInput?: (edited: string) => void;
     onBack: () => void;
   }
 
-  const { name, refreshing, syncState, onRefresh, onBack }: Props = $props();
-
-  const syncLabel = $derived(describeSyncState(syncState));
+  const {
+    name,
+    draft,
+    syncState,
+    nameError,
+    nameReadOnly,
+    nameResetKey,
+    namePendingText = null,
+    onNamePendingConsumed,
+    onNameCommit,
+    onNameEscape,
+    onNameEnterDone,
+    onNameInput,
+    onBack,
+  }: Props = $props();
 </script>
 
 <header class="note-header">
@@ -30,36 +51,25 @@
     </svg>
     Back to notes
   </button>
-  <h2 class="note-title" title={name}>{name}</h2>
-  <span class="sync-status">
-    <SyncStateIcon state={syncState} />
-    <span class="sync-status-label">{syncLabel}</span>
-  </span>
-  <button
-    type="button"
-    class="button button-icon"
-    aria-label="Refresh"
-    aria-busy={refreshing}
-    disabled={refreshing}
-    onclick={onRefresh}
-  >
-    <svg
-      class="refresh-icon"
-      class:spinning={refreshing}
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path
-        d="M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2.5v3.5H10"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.4"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-    </svg>
-  </button>
+  <NameField
+    value={name}
+    readOnly={nameReadOnly}
+    error={nameError}
+    resetKey={nameResetKey}
+    autofocus={draft}
+    pendingText={namePendingText}
+    onPendingConsumed={onNamePendingConsumed}
+    onCommit={onNameCommit}
+    onEscape={onNameEscape}
+    onEnterDone={onNameEnterDone}
+    onInput={onNameInput}
+  />
+  {#if !draft && syncState !== null}
+    <span class="sync-status">
+      <SyncStateIcon state={syncState} />
+      <span class="sync-status-label">{describeSyncState(syncState)}</span>
+    </span>
+  {/if}
 </header>
 
 <style>
@@ -76,23 +86,13 @@
     align-items: center;
     gap: var(--space-1);
     flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .back-button svg {
     flex-shrink: 0;
-  }
-
-  .note-title {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    margin: 0;
-  }
-
-  .refresh-icon.spinning {
-    animation: spin 0.8s linear infinite;
+    width: 1rem;
+    height: 1rem;
   }
 
   .sync-status {
@@ -115,15 +115,6 @@
 
     .sync-status-label {
       display: inline;
-    }
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
     }
   }
 </style>

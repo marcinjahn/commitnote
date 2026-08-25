@@ -20,6 +20,8 @@ test("Welcome shows a synced state in the tree and the note header", async ({
   await welcomeItem.click();
 
   const header = page.locator("header.note-header");
-  await expect(header.getByRole("heading", { name: "Welcome" })).toBeVisible();
+  await expect(header.getByRole("textbox", { name: "Note name" })).toHaveValue(
+    "Welcome",
+  );
   await expect(header.getByRole("img", { name: "Synced" })).toBeVisible();
 });
