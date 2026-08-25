@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { installRefreshTriggers } from "./app/refresh-triggers";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
   import type {
     LoginError,
@@ -16,7 +15,7 @@
   import { systemClock } from "./sync/clock";
   import { createRateBudget } from "./sync/rate-budget";
   import { createSyncEngine } from "./sync/sync-engine";
-  import type { SyncEngine, SyncEngineState } from "./sync/sync-engine";
+  import type { SyncEngine } from "./sync/sync-engine";
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
   import AppShell from "./ui/browse/AppShell.svelte";
@@ -55,25 +54,13 @@
 
   let phase = $state<Phase>({ kind: "restoring" });
   let loginKey = $state(0);
-  let uninstallRefreshTriggers: (() => void) | null = null;
   let uninstallLifecycleTriggers: (() => void) | null = null;
 
-  let engineState = $state<SyncEngineState | null>(null);
   let logout = $state<
     | null
     | { readonly kind: "saving" }
     | { readonly kind: "unsaved"; readonly count: number }
   >(null);
-
-  $effect(() => {
-    if (phase.kind !== "app") {
-      engineState = null;
-      return;
-    }
-    return phase.engine.subscribe((next) => {
-      engineState = next;
-    });
-  });
 
   function loginDeps() {
     return { createAdapter: budgetedCreateAdapter };
@@ -100,9 +87,6 @@
       keyring: session.keyring,
       clock: systemClock,
       rateBudget,
-    });
-    uninstallRefreshTriggers = installRefreshTriggers({ window, document }, () => {
-      void engine.refresh();
     });
     uninstallLifecycleTriggers = installLifecycleTriggers(
       { window, document },
@@ -131,8 +115,6 @@
 
   async function finishLogOut(): Promise<void> {
     if (phase.kind !== "app") return;
-    uninstallRefreshTriggers?.();
-    uninstallRefreshTriggers = null;
     uninstallLifecycleTriggers?.();
     uninstallLifecycleTriggers = null;
     phase.engine.dispose();

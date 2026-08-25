@@ -144,8 +144,9 @@ async function createNoteThroughRowMenu(
 ): Promise<void> {
   await page.getByRole("button", { name: `Actions for ${folderName}` }).click();
   await page.getByRole("menuitem", { name: "New note…" }).click();
-  await page.getByLabel("Note name").fill(noteName);
-  await page.getByRole("button", { name: "Create" }).click();
+  const nameField = page.getByRole("textbox", { name: "Note name" });
+  await nameField.fill(noteName);
+  await nameField.press("Enter");
   await expect(
     page.getByRole("textbox", { name: "Note editor" }),
   ).toBeVisible();
@@ -240,22 +241,21 @@ test("creating a folder and a note walks through the sync states and survives lo
   await expectTree(page);
 
   await openNote(page, ["Work", "Plan"]);
-  await page.getByRole("button", { name: "Reading view" }).click();
-  const article = page.getByRole("article", { name: "Reading view" });
-  await expect(article.getByRole("heading", { name: "Plan" })).toBeVisible();
-  await expect(article).toContainText("Ship the editing tests");
+  const reopened = page.getByRole("textbox", { name: "Note editor" });
+  await expect(reopened).toContainText("Plan");
+  await expect(reopened).toContainText("Ship the editing tests");
 });
 
-test("renaming, moving and deleting notes and folders", async ({ page }) => {
+test("renaming, moving and deleting notes and folders", async ({
+  page,
+}, testInfo) => {
   await startSession(page);
 
-  await page.getByRole("button", { name: "Actions for Welcome" }).click();
-  await page.getByRole("menuitem", { name: "Rename…" }).click();
-  await page.getByLabel("Note name").fill("Hello");
-  await page
-    .getByRole("dialog", { name: "Rename note" })
-    .getByRole("button", { name: "Rename" })
-    .click();
+  await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
+  const nameField = page.getByRole("textbox", { name: "Note name" });
+  await nameField.fill("Hello");
+  await nameField.press("Enter");
+  await backToTreeIfMobile(page, testInfo);
   await expect(
     page.getByRole("treeitem", { name: "Welcome", exact: true }),
   ).toHaveCount(0);
@@ -331,10 +331,9 @@ test("a concurrent remote edit at the end of a note merges cleanly", async ({
     timeout: 10_000,
   });
 
-  await page.getByRole("button", { name: "Reading view" }).click();
-  const article = page.getByRole("article", { name: "Reading view" });
-  await expect(article).toContainText("Local line");
-  await expect(article).toContainText("Remote line");
+  const note = page.getByRole("textbox", { name: "Note editor" });
+  await expect(note).toContainText("Local line");
+  await expect(note).toContainText("Remote line");
   await expect(page.getByText(/Open it to resolve the conflict/)).toHaveCount(
     0,
   );
@@ -371,12 +370,9 @@ test("a conflict is resolved by editing the merged text", async ({ page }) => {
   });
 
   await expect(page.getByRole("region", { name: "Conflict" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Reading view" }).click();
-  const article = page.getByRole("article", { name: "Reading view" });
-  await expect(
-    article.getByRole("heading", { name: "Welcome from here" }),
-  ).toBeVisible();
-  await expect(article).not.toContainText("Welcome from elsewhere");
+  const note = page.getByRole("textbox", { name: "Note editor" });
+  await expect(note).toContainText("Welcome from here");
+  await expect(note).not.toContainText("Welcome from elsewhere");
 });
 
 test("a conflict is resolved by keeping theirs", async ({ page }) => {
@@ -390,10 +386,7 @@ test("a conflict is resolved by keeping theirs", async ({ page }) => {
   await expect(headerIcon(page)).toHaveAccessibleName("Synced", {
     timeout: 10_000,
   });
-  await page.getByRole("button", { name: "Reading view" }).click();
-  const article = page.getByRole("article", { name: "Reading view" });
-  await expect(
-    article.getByRole("heading", { name: "Welcome from elsewhere" }),
-  ).toBeVisible();
-  await expect(article).not.toContainText("Welcome from here");
+  const note = page.getByRole("textbox", { name: "Note editor" });
+  await expect(note).toContainText("Welcome from elsewhere");
+  await expect(note).not.toContainText("Welcome from here");
 });

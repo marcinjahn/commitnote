@@ -118,6 +118,7 @@ class TaskCheckboxWidget extends WidgetType {
     };
 
     input.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
       event.preventDefault();
       toggle();
     });

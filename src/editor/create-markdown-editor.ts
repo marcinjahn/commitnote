@@ -36,13 +36,16 @@ export interface MarkdownEditor {
   destroy(): void;
 }
 
-export function markdownEditorExtensions(): Extension[] {
+function baseExtensions(): Extension[] {
   return [
     markdown({ base: markdownLanguage }),
-    history(),
     keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
     EditorView.lineWrapping,
   ];
+}
+
+export function markdownEditorExtensions(): Extension[] {
+  return [...baseExtensions(), history()];
 }
 
 function readOnlyExtensions(readOnly: boolean): Extension[] {
@@ -62,6 +65,7 @@ export function createMarkdownEditor(
   } = options;
 
   const readOnlyCompartment = new Compartment();
+  const historyCompartment = new Compartment();
 
   const updateListener = EditorView.updateListener.of((update) => {
     if (!update.docChanged) return;
@@ -75,7 +79,8 @@ export function createMarkdownEditor(
   const state = EditorState.create({
     doc: text,
     extensions: [
-      markdownEditorExtensions(),
+      baseExtensions(),
+      historyCompartment.of(history()),
       readOnlyCompartment.of(readOnlyExtensions(readOnly)),
       EditorView.contentAttributes.of({ "aria-label": ariaLabel }),
       updateListener,
@@ -92,6 +97,8 @@ export function createMarkdownEditor(
         changes: { from: 0, to: view.state.doc.length, insert: newText },
         annotations: Transaction.userEvent.of(SET_TEXT_USER_EVENT),
       });
+      view.dispatch({ effects: historyCompartment.reconfigure([]) });
+      view.dispatch({ effects: historyCompartment.reconfigure(history()) });
     },
     setReadOnly(nextReadOnly: boolean): void {
       view.dispatch({

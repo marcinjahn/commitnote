@@ -19,6 +19,10 @@
   let container: HTMLDivElement;
   let editor: MarkdownEditor | undefined;
 
+  export function focus(): void {
+    editor?.focus();
+  }
+
   onMount(() => {
     editor = createMarkdownEditor({
       parent: container,

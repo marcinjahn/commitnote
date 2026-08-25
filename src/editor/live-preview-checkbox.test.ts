@@ -39,10 +39,11 @@ function checkbox(parent: HTMLElement): HTMLInputElement {
   return input;
 }
 
-function mousedown(target: HTMLElement): Event {
+function mousedown(target: HTMLElement, button: number = 0): Event {
   const event = new MouseEvent("mousedown", {
     bubbles: true,
     cancelable: true,
+    button,
   });
   target.dispatchEvent(event);
   return event;
@@ -113,5 +114,18 @@ describe("livePreview task checkbox", () => {
 
     expect(editor.view.state.doc.toString()).toBe("- [ ] task");
     expect(changes).toEqual([]);
+  });
+
+  it("does not toggle on a non-primary mouse button", () => {
+    const { editor, parent, changes } = setup(false);
+    const selectionBefore = editor.view.state.selection.main;
+
+    const event = mousedown(checkbox(parent), 2);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(editor.view.state.doc.toString()).toBe("- [ ] task");
+    expect(changes).toEqual([]);
+    expect(editor.view.state.selection.main.eq(selectionBefore)).toBe(true);
+    expect(checkbox(parent).checked).toBe(false);
   });
 });

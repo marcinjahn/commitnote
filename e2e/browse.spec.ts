@@ -46,18 +46,11 @@ test("opening the Welcome note", async ({ page }, testInfo) => {
   await expectTree(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
-  await page.getByRole("button", { name: "Reading view" }).click();
 
-  const article = page.getByRole("article", { name: "Reading view" });
-  await expect(
-    article.getByRole("heading", { level: 1, name: "Welcome" }),
-  ).toBeVisible();
-  await expect(article.locator("table")).toBeVisible();
-
-  const link = article.getByRole("link", { name: "commitnote project" });
-  await expect(link).toBeVisible();
-  await expect(link).toHaveAttribute("target", "_blank");
-  await expect(link).toHaveAttribute("rel", /noopener/);
+  const editor = page.getByRole("textbox", { name: "Note editor" });
+  await expect(editor).toContainText("Welcome");
+  await expect(editor).toContainText("commitnote project");
+  await expect(editor).toContainText("Column A");
 
   // On mobile, opening a note hides the tree entirely (covered by its own
   // test below), so the row can't be inspected until the tree is visible
@@ -69,7 +62,7 @@ test("opening the Welcome note", async ({ page }, testInfo) => {
   }
 });
 
-test("tree and reading view are both visible on desktop", async ({
+test("tree and note are both visible on desktop", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "desktop-only layout");
@@ -79,11 +72,10 @@ test("tree and reading view are both visible on desktop", async ({
   await expectTree(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
-  await page.getByRole("button", { name: "Reading view" }).click();
 
   await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
   await expect(
-    page.getByRole("article", { name: "Reading view" }),
+    page.getByRole("textbox", { name: "Note editor" }),
   ).toBeVisible();
 });
 
@@ -95,9 +87,8 @@ test("opening a note hides the tree on mobile", async ({ page }, testInfo) => {
   await expectTree(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
-  await page.getByRole("button", { name: "Reading view" }).click();
   await expect(
-    page.getByRole("article", { name: "Reading view" }),
+    page.getByRole("textbox", { name: "Note editor" }),
   ).toBeVisible();
   await expect(page.getByRole("tree", { name: "Notes" })).toBeHidden();
 
@@ -139,13 +130,9 @@ test("only the page's own origin is contacted", async ({ page }) => {
   await page.getByRole("treeitem", { name: "Projects" }).click();
   await page.getByRole("treeitem", { name: "commitnote" }).click();
   await page.getByRole("treeitem", { name: "Ideas" }).click();
-  await page.getByRole("button", { name: "Reading view" }).click();
   await expect(
-    page.getByRole("article", { name: "Reading view" }).getByRole("heading", {
-      level: 1,
-      name: "Ideas",
-    }),
-  ).toBeVisible();
+    page.getByRole("textbox", { name: "Note editor" }),
+  ).toContainText("Ideas");
 
   expect([...origins]).toEqual(["http://localhost:4173"]);
 });

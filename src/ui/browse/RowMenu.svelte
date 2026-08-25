@@ -26,7 +26,6 @@
           { action: "delete", label: "Delete…" },
         ]
       : [
-          { action: "rename", label: "Rename…" },
           { action: "move", label: "Move to folder…" },
           { action: "delete", label: "Delete…" },
         ],
