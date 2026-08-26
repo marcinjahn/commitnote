@@ -21,6 +21,10 @@ function commitNoteCsp(): Plugin {
 export default defineConfig({
   base: "./",
   plugins: [svelte(), commitNoteCsp()],
+  build: {
+    assetsInlineLimit: (filePath) =>
+      /\.(woff2|svg)$/.test(filePath) ? false : undefined,
+  },
   test: {
     include: ["src/**/*.test.ts"],
     environment: "node",

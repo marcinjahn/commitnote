@@ -24,7 +24,7 @@
 >
   {#snippet children()}
     {#if saving}
-      <p role="status">Saving…</p>
+      <p role="status" class="status">Saving…</p>
     {:else}
       <p>{message}</p>
     {/if}
@@ -42,13 +42,7 @@
 </Dialog>
 
 <style>
-  .button-danger {
-    background: var(--color-danger-surface);
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-  }
-
-  .button-danger:hover {
-    filter: brightness(0.95);
+  .status {
+    color: var(--color-text-muted);
   }
 </style>

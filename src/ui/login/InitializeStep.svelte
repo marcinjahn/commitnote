@@ -77,21 +77,32 @@
 <style>
   .initialize-step {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-4);
+  }
+
+  h2 {
+    margin: 0;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: var(--letter-spacing-tight);
   }
 
   form {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-4);
   }
 
   .step-progress {
     display: grid;
     gap: var(--space-1);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
   }
 
   .step-progress progress {
     width: 100%;
+    height: var(--space-1);
+    accent-color: var(--color-ink);
   }
 
   .initialize-actions {

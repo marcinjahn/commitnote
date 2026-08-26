@@ -87,8 +87,10 @@
   }
 
   .conflict-banner {
-    background: var(--color-notice-surface);
-    padding: var(--space-3);
+    background: var(--color-surface);
+    border-bottom: var(--hairline) solid var(--color-border);
+    border-left: 2px solid var(--color-danger);
+    padding: var(--space-3) var(--space-4);
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
@@ -97,10 +99,12 @@
   .conflict-banner h2 {
     margin: 0;
     font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
   }
 
   .conflict-banner p {
     margin: 0;
+    font-size: var(--font-size-sm);
   }
 
   .conflict-actions {
@@ -110,7 +114,8 @@
   }
 
   .conflict-hint {
-    margin: var(--space-3) var(--space-3) 0;
+    margin: var(--space-3) var(--space-4) 0;
     color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
   }
 </style>

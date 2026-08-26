@@ -1,24 +1,41 @@
-:root {
-  --color-background: #ffffff;
-  --color-surface: #f4f4f5;
-  --color-surface-raised: #ffffff;
-  --color-text: #18181b;
-  --color-text-muted: #52525b;
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
-  --color-on-accent: #ffffff;
-  --color-selected: #dbeafe;
-  --color-hover: #f4f4f5;
-  --color-border: #d4d4d8;
-  --color-danger: #b91c1c;
-  --color-danger-surface: #fee2e2;
-  --color-notice-surface: #eff6ff;
-  --color-focus: #2563eb;
-  --color-code-surface: #f4f4f5;
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/fonts/InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
 
-  --radius: 8px;
-  --radius-sm: 4px;
-  --shadow-raised: 0 2px 8px rgba(24, 24, 27, 0.12);
+:root {
+  --color-background: #fafafa;
+  --color-surface: #f2f2f2;
+  --color-surface-raised: #ffffff;
+  --color-text: #0a0a0a;
+  --color-text-muted: #5c5c5c;
+  --color-accent: #3358d4;
+  --color-link: #3358d4;
+  --color-ink: #0a0a0a;
+  --color-ink-hover: #2e2e2e;
+  --color-on-ink: #ffffff;
+  --color-selected: #e2e2e2;
+  --color-hover: #e9e9e9;
+  --color-border: #e5e5e5;
+  --color-border-strong: #8f8f8f;
+  --color-danger: #b3261e;
+  --color-danger-surface: #fdecea;
+  --color-notice-surface: #f2f2f2;
+  --color-code-surface: #f2f2f2;
+  --color-backdrop: rgb(10 10 10 / 0.24);
+  --color-conflict-mine: #fdecea;
+  --color-conflict-theirs: #e6eefb;
+  --color-conflict-marker: #f7d3cf;
+  --color-focus: var(--color-accent);
+  --color-selection: color-mix(in srgb, var(--color-accent) 22%, transparent);
+
+  --radius: 0;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 12px rgb(0 0 0 / 0.06);
+  --shadow-2: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.08);
+  --shadow-3: 0 2px 4px rgb(0 0 0 / 0.04), 0 16px 48px rgb(0 0 0 / 0.14);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -27,15 +44,33 @@
   --space-5: 32px;
   --space-6: 48px;
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans:
+    "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --font-size-sm: 0.875rem;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
   --font-size-base: 1rem;
   --font-size-lg: 1.25rem;
   --font-size-xl: 1.75rem;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --letter-spacing-tight: -0.011em;
+  --letter-spacing-tighter: -0.022em;
   --line-height: 1.55;
 
+  --motion-duration: 140ms;
+  --motion-easing: cubic-bezier(0.2, 0, 0, 1);
+  --hairline: 1px;
+
   --touch-target: 44px;
+  --icon-size: 16px;
+  --icon-stroke: 1.5;
+  --checkbox-size: 20px;
+  --menu-min-width: 190px;
+  --toast-width: 380px;
+  --login-card-width: 420px;
+  --dialog-width: 28rem;
   --sidebar-width: 300px;
   --content-max-width: 760px;
   --breakpoint-desktop: 768px;
@@ -45,22 +80,49 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-background: #18181b;
-    --color-surface: #27272a;
-    --color-surface-raised: #2f2f33;
-    --color-text: #fafafa;
-    --color-text-muted: #a1a1aa;
-    --color-accent: #60a5fa;
-    --color-accent-hover: #93c5fd;
-    --color-on-accent: #0b1220;
-    --color-selected: #1e3a5f;
-    --color-hover: #27272a;
-    --color-border: #3f3f46;
-    --color-danger: #f87171;
-    --color-danger-surface: #451a1a;
-    --color-notice-surface: #1e293b;
-    --color-focus: #60a5fa;
-    --color-code-surface: #27272a;
+    --color-background: #0b0b0b;
+    --color-surface: #141414;
+    --color-surface-raised: #1a1a1a;
+    --color-text: #ededed;
+    --color-text-muted: #a0a0a0;
+    --color-accent: #86a4ff;
+    --color-link: #86a4ff;
+    --color-ink: #ededed;
+    --color-ink-hover: #cfcfcf;
+    --color-on-ink: #0b0b0b;
+    --color-selected: #232323;
+    --color-hover: #1c1c1c;
+    --color-border: #262626;
+    --color-border-strong: #6e6e6e;
+    --color-danger: #ff7a70;
+    --color-danger-surface: #2a1412;
+    --color-notice-surface: #161616;
+    --color-code-surface: #161616;
+    --color-backdrop: rgb(0 0 0 / 0.6);
+    --color-conflict-mine: #2e1513;
+    --color-conflict-theirs: #142038;
+    --color-conflict-marker: #43201c;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.5);
+    --shadow-3: 0 2px 4px rgb(0 0 0 / 0.4), 0 16px 48px rgb(0 0 0 / 0.6);
+  }
+}
+
+@supports (color: AccentColor) {
+  :root {
+    --color-accent: AccentColor;
+  }
+}
+
+@supports (color: oklch(from red l c h)) {
+  :root {
+    --color-link: oklch(from var(--color-accent) min(l, 0.48) c h);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-link: oklch(from var(--color-accent) max(l, 0.78) c h);
+    }
   }
 }
 
@@ -97,10 +159,24 @@ h5,
 h6 {
   margin: 0 0 var(--space-2);
   line-height: 1.25;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-tight);
+}
+
+::selection {
+  background: var(--color-selection);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--color-accent);
+}
+
+input[type="radio"] {
+  accent-color: var(--color-ink);
 }
 
 a {
-  color: var(--color-accent);
+  color: var(--color-link);
 }
 
 button,
@@ -118,10 +194,15 @@ textarea {
   min-width: var(--touch-target);
   padding: 0 var(--space-3);
   border-radius: var(--radius);
-  border: 1px solid var(--color-border);
+  border: var(--hairline) solid var(--color-border-strong);
+  font-weight: var(--font-weight-medium);
   background: var(--color-surface-raised);
   color: var(--color-text);
   cursor: pointer;
+  transition:
+    background-color var(--motion-duration) var(--motion-easing),
+    border-color var(--motion-duration) var(--motion-easing),
+    color var(--motion-duration) var(--motion-easing);
 }
 
 .button:hover {
@@ -134,13 +215,14 @@ textarea {
 }
 
 .button-primary {
-  background: var(--color-accent);
-  color: var(--color-on-accent);
-  border: none;
+  background: var(--color-ink);
+  color: var(--color-on-ink);
+  border-color: var(--color-ink);
 }
 
 .button-primary:hover {
-  background: var(--color-accent-hover);
+  background: var(--color-ink-hover);
+  border-color: var(--color-ink-hover);
 }
 
 .button-ghost {
@@ -150,6 +232,20 @@ textarea {
 
 .button-ghost:hover {
   background: var(--color-hover);
+}
+
+.button-danger {
+  background: var(--color-danger-surface);
+  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+}
+
+.button-danger:hover {
+  background: color-mix(
+    in srgb,
+    var(--color-danger) 14%,
+    var(--color-danger-surface)
+  );
 }
 
 .button-icon {
@@ -163,13 +259,28 @@ textarea {
   gap: var(--space-1);
 }
 
+.field label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
 .field input {
   min-height: var(--touch-target);
   padding: 0 var(--space-2);
   border-radius: var(--radius);
-  border: 1px solid var(--color-border);
+  border: var(--hairline) solid var(--color-border-strong);
   background: var(--color-surface-raised);
   color: var(--color-text);
+  transition: border-color var(--motion-duration) var(--motion-easing);
+}
+
+.field input:hover,
+.field input:focus {
+  border-color: var(--color-text);
+}
+
+.field input[aria-invalid="true"] {
+  border-color: var(--color-danger);
 }
 
 .field-hint {
@@ -185,8 +296,8 @@ textarea {
 }
 
 .checkbox-field input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
 }
 
 .alert-error {
@@ -194,10 +305,13 @@ textarea {
   background: var(--color-danger-surface);
   padding: var(--space-3);
   border-radius: var(--radius);
+  border: var(--hairline) solid
+    color-mix(in srgb, var(--color-danger) 30%, transparent);
 }
 
 .notice {
   background: var(--color-notice-surface);
+  border-bottom: var(--hairline) solid var(--color-border);
   padding: var(--space-3);
   font-size: var(--font-size-sm);
 }
@@ -210,6 +324,17 @@ textarea:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+}
+
+.icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--icon-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .visually-hidden {

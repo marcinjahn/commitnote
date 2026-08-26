@@ -10,15 +10,15 @@ import { CONFLICT_MARKERS } from "../merge/merge-text";
 
 const conflictHighlightBaseTheme = EditorView.baseTheme({
   ".cm-conflict-marker": {
-    backgroundColor: "var(--color-danger-surface)",
+    backgroundColor: "var(--color-conflict-marker)",
     color: "var(--color-danger)",
-    fontWeight: "700",
+    fontWeight: "var(--font-weight-semibold)",
   },
   ".cm-conflict-mine": {
-    backgroundColor: "var(--color-danger-surface)",
+    backgroundColor: "var(--color-conflict-mine)",
   },
   ".cm-conflict-theirs": {
-    backgroundColor: "var(--color-notice-surface)",
+    backgroundColor: "var(--color-conflict-theirs)",
   },
 });
 

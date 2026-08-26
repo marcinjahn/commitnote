@@ -39,15 +39,8 @@
 
 <header class="note-header">
   <button type="button" class="button button-ghost back-button" onclick={onBack}>
-    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path
-        d="M10 3L5 8l5 5"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M12.5 8h-9M7.5 3.5L3 8l4.5 4.5" />
     </svg>
     Back to notes
   </button>
@@ -77,8 +70,10 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    min-height: calc(var(--touch-target) + var(--space-2) * 2);
     padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: var(--hairline) solid var(--color-border);
+    background: var(--color-background);
   }
 
   .back-button {
@@ -87,12 +82,7 @@
     gap: var(--space-1);
     flex-shrink: 0;
     white-space: nowrap;
-  }
-
-  .back-button svg {
-    flex-shrink: 0;
-    width: 1rem;
-    height: 1rem;
+    font-size: var(--font-size-sm);
   }
 
   .sync-status {
@@ -101,7 +91,8 @@
     gap: var(--space-1);
     flex-shrink: 0;
     color: var(--color-text-muted);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
   }
 
   .sync-status-label {

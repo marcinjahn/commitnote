@@ -15,6 +15,7 @@
     GENERIC_LOGIN_ERROR,
   } from "./login-messages";
   import InitializeStep from "./InitializeStep.svelte";
+  import Wordmark from "../wordmark/Wordmark.svelte";
 
   interface Props {
     initialRepoUrl: string;
@@ -148,7 +149,7 @@
 
 <div class="login-shell">
   <div class="login-card">
-    <h1>commitnote</h1>
+    <Wordmark element="h1" />
     <p class="login-tagline">
       Encrypted markdown notes in your own git repository.
     </p>
@@ -249,37 +250,58 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-4) var(--space-3);
+    background: var(--color-background);
+    padding: var(--space-5) var(--space-4);
   }
 
   .login-card {
     width: 100%;
-    max-width: 420px;
+    max-width: var(--login-card-width);
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-4);
     background: var(--color-surface-raised);
-    border: 1px solid var(--color-border);
+    border: var(--hairline) solid var(--color-border);
     border-radius: var(--radius);
-    padding: var(--space-4);
-    box-shadow: var(--shadow-raised);
+    padding: var(--space-5);
+    box-shadow: var(--shadow-2);
   }
 
   .login-tagline {
+    margin: 0;
+    font-size: var(--font-size-sm);
     color: var(--color-text-muted);
-    margin: 0 0 var(--space-2);
   }
 
   form {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-4);
   }
 
   .step-progress {
     display: grid;
     gap: var(--space-1);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
   }
 
   .step-progress progress {
     width: 100%;
+    height: var(--space-1);
+    accent-color: var(--color-ink);
+  }
+
+  form > .button-primary {
+    width: 100%;
+  }
+
+  @media (max-width: 767px) {
+    .login-shell {
+      padding: var(--space-4) var(--space-3);
+    }
+
+    .login-card {
+      border: none;
+      box-shadow: none;
+    }
   }
 </style>

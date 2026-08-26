@@ -109,19 +109,21 @@
     width: 100%;
     min-height: var(--touch-target);
     padding: 0 var(--space-2);
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
+    border: var(--hairline) solid transparent;
+    border-radius: var(--radius);
     background: transparent;
+    transition: border-color var(--motion-duration) var(--motion-easing);
     color: var(--color-text);
     font: inherit;
-    font-size: 1.25rem;
-    font-weight: 600;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: var(--letter-spacing-tight);
     text-overflow: ellipsis;
   }
 
   .name-input:hover:not([readonly]),
   .name-input:focus {
-    border-color: var(--color-border);
+    border-color: var(--color-border-strong);
   }
 
   .name-input[aria-invalid="true"] {

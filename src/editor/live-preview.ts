@@ -21,23 +21,44 @@ const QUOTE_LINE_CLASS = "cm-quote-line";
 const CODE_BLOCK_LINE_CLASS = "cm-code-block-line";
 
 const livePreviewHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading1, fontWeight: "700", fontSize: "var(--font-size-xl)" },
-  { tag: tags.heading2, fontWeight: "700", fontSize: "var(--font-size-lg)" },
+  {
+    tag: tags.heading1,
+    fontSize: "var(--font-size-xl)",
+    fontWeight: "var(--font-weight-semibold)",
+    letterSpacing: "var(--letter-spacing-tighter)",
+  },
+  {
+    tag: tags.heading2,
+    fontSize: "var(--font-size-lg)",
+    fontWeight: "var(--font-weight-semibold)",
+    letterSpacing: "var(--letter-spacing-tight)",
+  },
   {
     tag: tags.heading3,
-    fontWeight: "700",
     fontSize: "calc(var(--font-size-base) * 1.125)",
+    fontWeight: "var(--font-weight-semibold)",
+    letterSpacing: "var(--letter-spacing-tight)",
   },
-  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: "700" },
+  {
+    tag: [tags.heading4, tags.heading5, tags.heading6],
+    fontWeight: "var(--font-weight-semibold)",
+  },
   { tag: tags.emphasis, fontStyle: "italic" },
-  { tag: tags.strong, fontWeight: "700" },
+  { tag: tags.strong, fontWeight: "var(--font-weight-semibold)" },
   { tag: tags.strikethrough, textDecoration: "line-through" },
   {
     tag: tags.monospace,
     fontFamily: "var(--font-mono)",
+    fontSize: "0.875em",
     backgroundColor: "var(--color-code-surface)",
+    padding: "0.1em 0.3em",
   },
-  { tag: tags.link, color: "var(--color-accent)" },
+  {
+    tag: tags.link,
+    color: "var(--color-link)",
+    textDecoration: "underline",
+    textUnderlineOffset: "0.15em",
+  },
   { tag: tags.url, color: "var(--color-text-muted)" },
   { tag: tags.quote, color: "var(--color-text-muted)" },
   {
@@ -51,16 +72,21 @@ const livePreviewHighlightStyle = HighlightStyle.define([
 
 const livePreviewBaseTheme = EditorView.baseTheme({
   [`.${QUOTE_LINE_CLASS}`]: {
-    borderLeft: "3px solid var(--color-border)",
-    paddingLeft: "0.75em",
+    borderLeft: "var(--hairline) solid var(--color-border-strong)",
+    paddingLeft: "var(--space-3)",
+    color: "var(--color-text-muted)",
   },
   [`.${CODE_BLOCK_LINE_CLASS}`]: {
     backgroundColor: "var(--color-code-surface)",
     fontFamily: "var(--font-mono)",
+    fontSize: "0.875em",
+  },
+  [`.${CODE_BLOCK_LINE_CLASS} *`]: {
+    fontSize: "inherit",
   },
   [`.${TASK_LINE_CLASS}`]: {
-    paddingTop: "12px",
-    paddingBottom: "12px",
+    paddingTop: "calc(var(--space-2) + var(--space-1))",
+    paddingBottom: "calc(var(--space-2) + var(--space-1))",
   },
   ".cm-task-checkbox": {
     display: "inline-flex",
@@ -68,15 +94,18 @@ const livePreviewBaseTheme = EditorView.baseTheme({
     verticalAlign: "middle",
   },
   ".cm-task-checkbox input": {
-    width: "20px",
-    height: "20px",
+    width: "var(--checkbox-size)",
+    height: "var(--checkbox-size)",
     cursor: "pointer",
   },
   ".cm-hr-widget": {
     display: "block",
     height: "0",
-    margin: "0.5em 0",
-    borderTop: "2px solid var(--color-border)",
+    margin: "var(--space-3) 0",
+    borderTop: "var(--hairline) solid var(--color-border)",
+  },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
+    background: "var(--color-selection)",
   },
 });
 
