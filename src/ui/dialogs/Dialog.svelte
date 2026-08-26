@@ -89,28 +89,51 @@
   }
 
   .dialog::backdrop {
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--color-backdrop);
+    transition: opacity var(--motion-duration) var(--motion-easing);
+  }
+
+  @starting-style {
+    .dialog[open]::backdrop {
+      opacity: 0;
+    }
   }
 
   .dialog-card {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: var(--space-4);
     max-height: 90dvh;
     overflow: hidden;
     background: var(--color-surface-raised);
     color: var(--color-text);
-    box-shadow: var(--shadow-raised);
+    box-shadow: var(--shadow-3);
+    border: var(--hairline) solid var(--color-border);
+    border-bottom: none;
     border-radius: var(--radius) var(--radius) 0 0;
-    padding: var(--space-4);
-    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    padding: var(--space-5) var(--space-4);
+    padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
+    transition:
+      opacity var(--motion-duration) var(--motion-easing),
+      transform var(--motion-duration) var(--motion-easing);
+  }
+
+  @starting-style {
+    .dialog[open] .dialog-card {
+      opacity: 0;
+      transform: translateY(var(--space-2));
+    }
   }
 
   .dialog-title {
     margin: 0;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: var(--letter-spacing-tight);
   }
 
   .dialog-body {
+    font-size: var(--font-size-base);
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -129,13 +152,14 @@
       inset: 0;
       margin: auto;
       width: auto;
-      max-width: 28rem;
+      max-width: var(--dialog-width);
     }
 
     .dialog-card {
       max-height: 80dvh;
+      border-bottom: var(--hairline) solid var(--color-border);
       border-radius: var(--radius);
-      padding-bottom: var(--space-4);
+      padding-bottom: var(--space-5);
     }
   }
 </style>

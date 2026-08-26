@@ -38,3 +38,47 @@ test("login screen renders under the production CSP", async ({ page }) => {
   );
   expect(unexpectedConsoleErrors).toEqual([]);
 });
+
+test("self-hosted font loads under a dark colour scheme", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      consoleErrors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+
+  const fontResponse = page.waitForResponse((r) => r.url().endsWith(".woff2"));
+
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "commitnote" })).toBeVisible();
+
+  const response = await fontResponse;
+  expect(response.status()).toBe(200);
+  expect(response.url().startsWith("http://localhost:4173/")).toBe(true);
+
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        await document.fonts.ready;
+        return [...document.fonts].some(
+          (f) =>
+            f.family.replace(/["']/g, "") === "Inter" && f.status === "loaded",
+        );
+      }),
+    )
+    .toBe(true);
+
+  expect(pageErrors).toEqual([]);
+  const unexpectedConsoleErrors = consoleErrors.filter(
+    (text) => !text.includes("frame-ancestors"),
+  );
+  expect(unexpectedConsoleErrors).toEqual([]);
+});

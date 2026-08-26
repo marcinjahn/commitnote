@@ -19,6 +19,7 @@
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
   import AppShell from "./ui/browse/AppShell.svelte";
+  import Wordmark from "./ui/wordmark/Wordmark.svelte";
 
   interface Props {
     createAdapter: ForgeAdapterFactory;
@@ -188,13 +189,13 @@
 </script>
 
 {#if testModeBanner !== null}
-  <p class="notice" role="note">{testModeBanner}</p>
+  <p class="notice test-mode-banner" role="note">{testModeBanner}</p>
 {/if}
 
 {#if phase.kind === "restoring"}
-  <main>
-    <h1>commitnote</h1>
-    <p>Loading…</p>
+  <main class="restoring">
+    <Wordmark element="h1" />
+    <p class="restoring-text">Loading…</p>
   </main>
 {:else if phase.kind === "login"}
   {#key loginKey}
@@ -216,3 +217,28 @@
     onLogOutAnyway={finishLogOut}
   />
 {/if}
+
+<style>
+  .test-mode-banner {
+    margin: 0;
+    text-align: center;
+    font-size: var(--font-size-xs);
+    letter-spacing: 0.02em;
+    padding: var(--space-1) var(--space-3);
+  }
+
+  .restoring {
+    min-height: 100dvh;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: var(--space-2);
+    padding: var(--space-4);
+  }
+
+  .restoring-text {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+  }
+</style>

@@ -111,9 +111,15 @@
     align-items: center;
     gap: var(--space-2);
     min-height: var(--touch-target);
-    padding: 0 var(--space-2);
+    padding: 0 var(--space-3);
     border-radius: var(--radius);
+    font-size: var(--font-size-sm);
     cursor: pointer;
+    transition: background var(--motion-duration) var(--motion-easing);
+  }
+
+  .folder-option:has(input:checked) {
+    background: var(--color-selected);
   }
 
   .folder-option.disabled {
@@ -127,14 +133,14 @@
 
   .folder-option input {
     flex-shrink: 0;
-    width: 20px;
-    height: 20px;
+    width: var(--checkbox-size);
+    height: var(--checkbox-size);
   }
 
   .folder-option-label {
     flex: 1;
     min-width: 0;
-    padding-left: calc(var(--depth, 0) * 20px);
+    padding-left: calc(var(--depth, 0) * var(--space-4));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -142,6 +148,6 @@
 
   .folder-option-hint {
     color: var(--color-text-muted);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-xs);
   }
 </style>

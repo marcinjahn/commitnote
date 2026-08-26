@@ -1,4 +1,6 @@
-# commitnote
+<p align="center"><img src="src/assets/favicon.svg" alt="commitnote logo" width="96" height="96" /></p>
+
+<h1 align="center">commitnote</h1>
 
 commitnote is a static, client-side web app for encrypted markdown notes. Notes are encrypted
 entirely in your browser and stored as files in a GitHub repository you own — there is no backend

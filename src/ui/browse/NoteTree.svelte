@@ -137,5 +137,6 @@
   .tree-message {
     padding: var(--space-3);
     color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
   }
 </style>

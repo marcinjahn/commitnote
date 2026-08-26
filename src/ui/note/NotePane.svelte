@@ -95,13 +95,19 @@
     align-items: center;
     justify-content: center;
     color: var(--color-text-muted);
-    padding: var(--space-4);
+    font-size: var(--font-size-sm);
+    padding: var(--space-6) var(--space-4);
     text-align: center;
   }
 
   .note-status {
-    padding: var(--space-3);
+    box-sizing: border-box;
+    width: 100%;
+    max-width: var(--content-max-width);
+    margin-inline: auto;
+    padding: var(--space-4);
     color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
   }
 
   .alert-error {

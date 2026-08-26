@@ -14,101 +14,53 @@
 <span class="sync-state-icon" role="img" aria-label={label} title={label}>
   {#if state.kind === "synced"}
     <svg
-      class="glyph synced"
+      class="icon glyph synced"
       viewBox="0 0 16 16"
       aria-hidden="true"
       focusable="false"
     >
-      <path
-        d="M3 8.5l3 3 7-7"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
+      <path d="M3 8.5l3.5 3.5 6.5-7.5" />
     </svg>
   {:else if state.kind === "syncing"}
     <svg
-      class="glyph syncing spinning"
+      class="icon glyph syncing spinning"
       viewBox="0 0 16 16"
       aria-hidden="true"
       focusable="false"
     >
-      <path
-        d="M13.5 8a5.5 5.5 0 1 1-1.7-3.98"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.6"
-        stroke-linecap="round"
-      />
-      <path
-        d="M2.5 8a5.5 5.5 0 1 1 1.7 3.98"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.6"
-        stroke-linecap="round"
-      />
+      <path d="M3 8a5 5 0 0 1 9-3M12.5 2v3h-3" />
+      <path d="M13 8a5 5 0 0 1-9 3M3.5 14v-3h3" />
     </svg>
   {:else if state.reason === "pending"}
     <svg
-      class="glyph pending"
+      class="icon glyph pending"
       viewBox="0 0 16 16"
       aria-hidden="true"
       focusable="false"
     >
-      <circle cx="8" cy="8" r="4" fill="currentColor" />
+      <circle cx="8" cy="8" r="3" fill="currentColor" stroke="none" />
     </svg>
   {:else if state.reason === "failed"}
     <svg
-      class="glyph failed"
+      class="icon glyph failed"
       viewBox="0 0 16 16"
       aria-hidden="true"
       focusable="false"
     >
-      <path
-        d="M8 2L14.5 13.5H1.5Z"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.3"
-        stroke-linejoin="round"
-      />
-      <line
-        x1="8"
-        y1="6.3"
-        x2="8"
-        y2="9.3"
-        stroke="currentColor"
-        stroke-width="1.3"
-        stroke-linecap="round"
-      />
-      <circle cx="8" cy="11.4" r="0.65" fill="currentColor" />
+      <path d="M8 2.5L14 13H2z" />
+      <path d="M8 6.5v3" />
+      <circle cx="8" cy="11.25" r="0.75" fill="currentColor" stroke="none" />
     </svg>
   {:else}
     <svg
-      class="glyph conflict"
+      class="icon glyph conflict"
       viewBox="0 0 16 16"
       aria-hidden="true"
       focusable="false"
     >
-      <circle
-        cx="8"
-        cy="8"
-        r="6"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.3"
-      />
-      <line
-        x1="8"
-        y1="5"
-        x2="8"
-        y2="9"
-        stroke="currentColor"
-        stroke-width="1.3"
-        stroke-linecap="round"
-      />
-      <circle cx="8" cy="11.2" r="0.7" fill="currentColor" />
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 5v3.5" />
+      <circle cx="8" cy="11" r="0.75" fill="currentColor" stroke="none" />
     </svg>
   {/if}
 </span>
@@ -118,23 +70,17 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: var(--icon-size);
+    height: var(--icon-size);
     flex-shrink: 0;
   }
 
-  .glyph {
-    width: 100%;
-    height: 100%;
-  }
-
-  .synced {
-    color: var(--color-text-muted);
-    opacity: 0.7;
-  }
-
-  .syncing,
+  .synced,
   .pending {
+    color: var(--color-text-muted);
+  }
+
+  .syncing {
     color: var(--color-accent);
   }
 

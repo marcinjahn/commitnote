@@ -93,42 +93,31 @@
   >
     {#if node.kind === "folder"}
       <svg
-        class="row-icon chevron"
+        class="icon row-icon chevron"
         class:expanded
         viewBox="0 0 16 16"
         aria-hidden="true"
         focusable="false"
       >
-        <path
-          d="M6 4l4 4-4 4"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
+        <path d="M6 3.5L10.5 8 6 12.5" />
       </svg>
-    {:else}
       <svg
-        class="row-icon note-glyph"
+        class="icon row-icon folder-glyph"
         viewBox="0 0 16 16"
         aria-hidden="true"
         focusable="false"
       >
-        <path
-          d="M4 1.5h5.5L12 4v10.5H4z"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.2"
-          stroke-linejoin="round"
-        />
-        <path
-          d="M9.5 1.5V4H12"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.2"
-          stroke-linejoin="round"
-        />
+        <path d="M1.5 3.5h4L7 5h7.5v8.5h-13z" />
+      </svg>
+    {:else}
+      <svg
+        class="icon row-icon note-glyph"
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M3.5 1.5h6l3 3v10h-9z" />
+        <path d="M9.5 1.5v3h3" />
       </svg>
     {/if}
     <span class="tree-row-label">{node.name}</span>
@@ -145,7 +134,11 @@
     aria-haspopup="menu"
     onclick={handleActionsClick}
   >
-    <span aria-hidden="true">⋯</span>
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <circle cx="3.5" cy="8" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="8" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="12.5" cy="8" r="1.25" fill="currentColor" stroke="none" />
+    </svg>
   </button>
   </div>
   {#if node.kind === "folder" && expanded && node.children.length > 0}
@@ -190,7 +183,7 @@
     flex: 1;
     min-width: 0;
     min-height: var(--touch-target);
-    padding-left: calc(var(--depth, 0) * 20px + var(--space-2));
+    padding-left: calc(var(--depth, 0) * var(--space-4) + var(--space-2));
     padding-right: var(--space-2);
     border: none;
     background: transparent;
@@ -198,6 +191,12 @@
     text-align: left;
     cursor: pointer;
     border-radius: 0;
+    transition: background-color var(--motion-duration) var(--motion-easing);
+  }
+
+  .tree-row:focus-visible,
+  .row-actions:focus-visible {
+    outline-offset: -2px;
   }
 
   .sync-indicator {
@@ -213,6 +212,11 @@
 
   .tree-row.selected {
     background: var(--color-selected);
+    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+
+  .tree-row.selected .tree-row-label {
+    font-weight: var(--font-weight-medium);
   }
 
   .row-icon {
@@ -221,7 +225,7 @@
   }
 
   .chevron {
-    transition: transform 0.15s ease;
+    transition: transform var(--motion-duration) var(--motion-easing);
   }
 
   .chevron.expanded {
@@ -234,6 +238,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
   }
 
   .row-actions {
@@ -249,8 +255,10 @@
     background: transparent;
     color: var(--color-text-muted);
     cursor: pointer;
-    font-size: 1.1rem;
     line-height: 1;
+    transition:
+      background-color var(--motion-duration) var(--motion-easing),
+      opacity var(--motion-duration) var(--motion-easing);
   }
 
   .row-actions:hover {

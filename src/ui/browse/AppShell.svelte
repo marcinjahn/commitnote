@@ -15,6 +15,7 @@
   import NoticeToasts from "../notices/NoticeToasts.svelte";
   import NoteHeader from "./NoteHeader.svelte";
   import NoteTree from "./NoteTree.svelte";
+  import Wordmark from "../wordmark/Wordmark.svelte";
   import type { RowAction } from "./row-menu-types";
   import { describeStructureError } from "./structure-messages";
   import { describeSyncError } from "./sync-messages";
@@ -29,6 +30,21 @@
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
   let mobileView = $state<"tree" | "note">("tree");
+  let repoLabelEl = $state<HTMLSpanElement | null>(null);
+  let repoLabelTruncated = $state(false);
+
+  $effect(() => {
+    const el = repoLabelEl;
+    if (el === null) return;
+    void repoLabel;
+    const measure = () => {
+      repoLabelTruncated = el.scrollWidth > el.clientWidth;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
 
   type DialogState =
     | { readonly kind: "none" }
@@ -364,90 +380,50 @@
 <div class="shell">
   <aside class="sidebar" class:mobile-hidden={mobileView !== "tree"}>
     <div class="tree-header">
-      <span class="repo-label" title={repoLabel}>{repoLabel}</span>
+      <Wordmark />
       <div class="tree-header-actions">
         <button
           type="button"
-          class="button button-icon"
+          class="button button-icon button-ghost"
           aria-label="New note"
           disabled={tree === null}
           onclick={handleHeaderNewNote}
         >
-          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <path
-              d="M4 1.5h5.5L12 4v10.5H4z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.2"
-              stroke-linejoin="round"
-            />
-            <path
-              d="M9.5 1.5V4H12"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.2"
-              stroke-linejoin="round"
-            />
-            <path
-              d="M8 7.5v4M6 9.5h4"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.3"
-              stroke-linecap="round"
-            />
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M3.5 1.5h6l3 3v10h-9z" />
+            <path d="M9.5 1.5v3h3" />
+            <path d="M8 8v4M6 10h4" />
           </svg>
         </button>
         <button
           type="button"
-          class="button button-icon"
+          class="button button-icon button-ghost"
           aria-label="New folder"
           disabled={tree === null}
           onclick={handleHeaderNewFolder}
         >
-          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <path
-              d="M1.5 4.5h4l1.2 1.5H14.5v8h-13z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.2"
-              stroke-linejoin="round"
-            />
-            <path
-              d="M8 8v4M6 10h4"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.3"
-              stroke-linecap="round"
-            />
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M1.5 3.5h4L7 5h7.5v8.5h-13z" />
+            <path d="M8 8v4M6 10h4" />
           </svg>
         </button>
         <button
           type="button"
-          class="button button-icon"
+          class="button button-icon button-ghost"
           aria-label="Refresh"
           aria-busy={refreshing}
           disabled={refreshing}
           onclick={handleRefresh}
         >
           <svg
-            class="refresh-icon"
+            class="icon refresh-icon"
             class:spinning={refreshing}
             viewBox="0 0 16 16"
             aria-hidden="true"
             focusable="false"
           >
-            <path
-              d="M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2.5v3.5H10"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.4"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+            <path d="M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2.5v3.5H10" />
           </svg>
-        </button>
-        <button type="button" class="button" onclick={handleLogOut}>
-          Log out
         </button>
       </div>
     </div>
@@ -465,6 +441,16 @@
       onSelect={handleSelect}
       onAction={handleTreeAction}
     />
+    <div class="sidebar-footer">
+      <span
+        class="repo-label"
+        bind:this={repoLabelEl}
+        title={repoLabelTruncated ? repoLabel : undefined}>{repoLabel}</span
+      >
+      <button type="button" class="button button-ghost" onclick={handleLogOut}>
+        Log out
+      </button>
+    </div>
   </aside>
 
   <section class="note-pane" class:mobile-hidden={mobileView !== "note"}>
@@ -587,12 +573,28 @@
     overflow: hidden;
   }
 
+  .sidebar {
+    background: var(--color-background);
+  }
+
   .tree-header {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    min-height: calc(var(--touch-target) + var(--space-2) * 2);
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+    justify-content: space-between;
+    border-bottom: var(--hairline) solid var(--color-border);
+  }
+
+  .sidebar-footer {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--color-border);
+    padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+    border-top: var(--hairline) solid var(--color-border);
+    flex-shrink: 0;
   }
 
   .repo-label {
@@ -601,7 +603,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 600;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sidebar-footer .button {
+    font-size: var(--font-size-sm);
   }
 
   .tree-header-actions {
@@ -609,6 +617,14 @@
     align-items: center;
     gap: var(--space-1);
     flex-shrink: 0;
+  }
+
+  .tree-header-actions .button {
+    color: var(--color-text-muted);
+  }
+
+  .tree-header-actions .button:hover:not(:disabled) {
+    color: var(--color-text);
   }
 
   .refresh-icon.spinning {
@@ -628,7 +644,8 @@
     .sidebar {
       width: var(--sidebar-width);
       flex-shrink: 0;
-      border-right: 1px solid var(--color-border);
+      background: var(--color-surface);
+      border-right: var(--hairline) solid var(--color-border);
     }
 
     .note-pane {

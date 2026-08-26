@@ -60,15 +60,3 @@
     </button>
   {/snippet}
 </Dialog>
-
-<style>
-  .button-danger {
-    background: var(--color-danger-surface);
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-  }
-
-  .button-danger:hover {
-    filter: brightness(0.95);
-  }
-</style>

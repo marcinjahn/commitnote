@@ -93,7 +93,7 @@
         {/if}
         <button
           type="button"
-          class="button"
+          class="button button-ghost"
           aria-label="Dismiss notice"
           onclick={() => onDismiss(notice.id)}
         >
@@ -124,15 +124,26 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-    padding: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     background: var(--color-surface-raised);
-    border: 1px solid var(--color-border);
+    border: var(--hairline) solid var(--color-border);
     border-radius: var(--radius);
-    box-shadow: var(--shadow-raised);
+    box-shadow: var(--shadow-2);
+    transition:
+      opacity var(--motion-duration) var(--motion-easing),
+      transform var(--motion-duration) var(--motion-easing);
+  }
+
+  @starting-style {
+    .toast {
+      opacity: 0;
+      transform: translateY(var(--space-2));
+    }
   }
 
   .text {
     margin: 0;
+    font-size: var(--font-size-sm);
     overflow-wrap: anywhere;
   }
 
@@ -149,7 +160,7 @@
   @media (min-width: 768px) {
     .toasts {
       left: auto;
-      width: 380px;
+      width: var(--toast-width);
       max-width: 100%;
       padding-right: var(--space-3);
       padding-bottom: var(--space-3);

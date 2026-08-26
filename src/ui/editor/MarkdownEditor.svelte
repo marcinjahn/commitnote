@@ -64,17 +64,22 @@
     font-size: var(--font-size-base);
     line-height: var(--line-height);
     color: var(--color-text);
-    background: var(--color-surface-raised);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
+    background: transparent;
+    border: none;
+    border-radius: 0;
   }
 
   .markdown-editor :global(.cm-content) {
-    padding: var(--space-4) var(--space-3);
+    padding: var(--space-5) var(--space-4);
+    caret-color: var(--color-text);
+  }
+
+  .markdown-editor :global(.cm-scroller) {
+    font-family: var(--font-sans);
   }
 
   .markdown-editor :global(.cm-editor.cm-focused) {
-    outline: 2px solid var(--color-focus);
-    outline-offset: -1px;
+    outline: none;
+    box-shadow: inset 2px 0 0 var(--color-focus);
   }
 </style>
