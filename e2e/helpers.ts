@@ -8,9 +8,19 @@ export interface LogInOptions {
   readonly rememberMe?: boolean;
 }
 
+export async function continueWithToken(
+  page: Page,
+  token = "test-token",
+): Promise<void> {
+  await page.getByLabel("Access token").fill(token);
+  await page.getByRole("button", { name: "Continue" }).click();
+}
+
 export async function logIn(page: Page, options: LogInOptions): Promise<void> {
-  await page.getByLabel("Repo URL").fill(options.repo);
-  await page.getByLabel("Access token").fill(options.token ?? "test-token");
+  await continueWithToken(page, options.token);
+  await page
+    .getByLabel("Repository", { exact: true })
+    .selectOption({ label: options.repo.replace("https://github.com/", "") });
   await page.getByLabel("Passphrase", { exact: true }).fill(options.passphrase);
   if (options.rememberMe) {
     await page.getByRole("checkbox", { name: "Remember me" }).check();

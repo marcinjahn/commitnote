@@ -6,15 +6,18 @@
   import { findWorkingNode } from "../../sync/working-tree";
   import type { WorkingNode } from "../../sync/working-tree";
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
+  import { actionIcons } from "./action-icons";
   import { countDescendants } from "../dialogs/folder-options";
   import MoveDialog from "../dialogs/MoveDialog.svelte";
   import NameDialog from "../dialogs/NameDialog.svelte";
   import { decideNameCommit } from "../note/name-field-commit";
   import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
   import NotePane from "../note/NotePane.svelte";
+  import type { ToastMessage } from "../notices/notice-messages";
   import NoticeToasts from "../notices/NoticeToasts.svelte";
   import NoteHeader from "./NoteHeader.svelte";
   import NoteTree from "./NoteTree.svelte";
+  import RefreshButton from "./RefreshButton.svelte";
   import Wordmark from "../wordmark/Wordmark.svelte";
   import type { RowAction } from "./row-menu-types";
   import { describeStructureError } from "./structure-messages";
@@ -23,14 +26,15 @@
   interface Props {
     engine: SyncEngine;
     repoLabel: string;
+    repoUrl: string;
     onLogOut: () => void;
   }
 
-  const { engine, repoLabel, onLogOut }: Props = $props();
+  const { engine, repoLabel, repoUrl, onLogOut }: Props = $props();
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
   let mobileView = $state<"tree" | "note">("tree");
-  let repoLabelEl = $state<HTMLSpanElement | null>(null);
+  let repoLabelEl = $state<HTMLAnchorElement | null>(null);
   let repoLabelTruncated = $state(false);
 
   $effect(() => {
@@ -82,6 +86,8 @@
   let pendingFieldText = $state<string | null>(null);
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
+  let refreshMessages = $state<readonly ToastMessage[]>([]);
+  let nextRefreshMessageId = 0;
 
   $effect(() => {
     return engine.subscribe((next) => {
@@ -216,8 +222,26 @@
     notePane?.focusEditor();
   }
 
-  function handleRefresh(): void {
-    void engine.refresh();
+  function showRefreshError(text: string): void {
+    // The inline alert explains an empty sidebar; a toast would repeat it.
+    if (tree === null) return;
+    refreshMessages = [{ id: ++nextRefreshMessageId, text }];
+  }
+
+  async function handleRefresh(): Promise<boolean> {
+    try {
+      await engine.refresh();
+    } catch {
+      showRefreshError("Refresh failed. Try again later.");
+      return false;
+    }
+    const error = engine.getState().refresh.lastError;
+    if (error === null) {
+      refreshMessages = [];
+      return true;
+    }
+    showRefreshError(describeSyncError(error));
+    return false;
   }
 
   function expandFolder(path: NotePath): void {
@@ -390,9 +414,9 @@
           onclick={handleHeaderNewNote}
         >
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <path d="M3.5 1.5h6l3 3v10h-9z" />
-            <path d="M9.5 1.5v3h3" />
-            <path d="M8 8v4M6 10h4" />
+            {#each actionIcons["new-note"] as d (d)}
+              <path {d} />
+            {/each}
           </svg>
         </button>
         <button
@@ -403,31 +427,15 @@
           onclick={handleHeaderNewFolder}
         >
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <path d="M1.5 3.5h4L7 5h7.5v8.5h-13z" />
-            <path d="M8 8v4M6 10h4" />
+            {#each actionIcons["new-folder"] as d (d)}
+              <path {d} />
+            {/each}
           </svg>
         </button>
-        <button
-          type="button"
-          class="button button-icon button-ghost"
-          aria-label="Refresh"
-          aria-busy={refreshing}
-          disabled={refreshing}
-          onclick={handleRefresh}
-        >
-          <svg
-            class="icon refresh-icon"
-            class:spinning={refreshing}
-            viewBox="0 0 16 16"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <path d="M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2.5v3.5H10" />
-          </svg>
-        </button>
+<RefreshButton {refreshing} onRefresh={handleRefresh} />
       </div>
     </div>
-    {#if engineState.refresh.lastError !== null}
+    {#if tree === null && engineState.refresh.lastError !== null}
       <p role="alert" class="alert-error">
         {describeSyncError(engineState.refresh.lastError)}
       </p>
@@ -440,12 +448,16 @@
       {expandRequest}
       onSelect={handleSelect}
       onAction={handleTreeAction}
+      onNewNote={handleHeaderNewNote}
     />
     <div class="sidebar-footer">
-      <span
+      <a
         class="repo-label"
+        href={repoUrl}
+        target="_blank"
+        rel="noopener noreferrer"
         bind:this={repoLabelEl}
-        title={repoLabelTruncated ? repoLabel : undefined}>{repoLabel}</span
+        title={repoLabelTruncated ? repoLabel : undefined}>{repoLabel}</a
       >
       <button type="button" class="button button-ghost" onclick={handleLogOut}>
         Log out
@@ -491,14 +503,19 @@
       {engine}
       openNote={engineState.openNote}
       draft={draft !== null}
+      hasNotes={tree !== null && tree.root.children.length > 0}
       onDraftContent={handleDraftContent}
+      onNewNote={handleHeaderNewNote}
     />
   </section>
 </div>
 
 <NoticeToasts
   notices={engineState.notices}
+  messages={refreshMessages}
   onDismiss={(id) => engine.dismissNotice(id)}
+  onDismissMessage={(id) =>
+    (refreshMessages = refreshMessages.filter((message) => message.id !== id))}
   onOpen={handleSelect}
 />
 
@@ -606,6 +623,12 @@
     color: var(--color-text-muted);
     font-size: var(--font-size-xs);
     font-variant-numeric: tabular-nums;
+    text-decoration: none;
+  }
+
+  .repo-label:hover {
+    color: var(--color-text);
+    text-decoration: underline;
   }
 
   .sidebar-footer .button {
@@ -619,16 +642,12 @@
     flex-shrink: 0;
   }
 
-  .tree-header-actions .button {
+  .tree-header-actions :global(.button) {
     color: var(--color-text-muted);
   }
 
-  .tree-header-actions .button:hover:not(:disabled) {
+  .tree-header-actions :global(.button:hover:not(:disabled)) {
     color: var(--color-text);
-  }
-
-  .refresh-icon.spinning {
-    animation: spin 0.8s linear infinite;
   }
 
   .alert-error {
@@ -654,15 +673,6 @@
 
     .mobile-hidden {
       display: flex;
-    }
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
     }
   }
 </style>

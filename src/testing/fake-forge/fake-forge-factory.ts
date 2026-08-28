@@ -13,7 +13,12 @@ import {
   InMemoryGitRepo,
 } from "../../forge/fake/in-memory-git-repo";
 import type { ForgeAdapter } from "../../forge/forge-adapter";
-import type { ForgeAdapterFactory } from "../../forge/registry";
+import type { RepositorySummary } from "../../forge/forge-provider";
+import { createGitHubProvider } from "../../forge/github/github-provider";
+import type {
+  ForgeAdapterFactory,
+  ForgeRegistry,
+} from "../../forge/registry";
 import {
   INITIALIZE_SUBJECT,
   MAIN_BRANCH,
@@ -106,7 +111,11 @@ async function createNewerRepoAdapter(): Promise<FakeForgeAdapter> {
 
 export async function createFakeForge(options?: {
   readonly argon2id?: Argon2idFunction;
-}): Promise<{ factory: ForgeAdapterFactory; controls: FakeForgeControls }> {
+}): Promise<{
+  factory: ForgeAdapterFactory;
+  registry: ForgeRegistry;
+  controls: FakeForgeControls;
+}> {
   const argon2id = options?.argon2id ?? argon2idInWorker;
 
   const fixtures = new Map<string, ForgeAdapter>([
@@ -193,7 +202,28 @@ export async function createFakeForge(options?: {
     return fixtures.get(key) ?? notFoundAdapter();
   };
 
-  return { factory, controls };
+  const repositories: RepositorySummary[] = [...fixtures.keys()].map((key) => {
+    const [owner, repo] = key.split("/");
+    return {
+      coordinates: { forge: "github", owner, repo },
+      url: `https://github.com/${key}`,
+    };
+  });
+
+  const registry: ForgeRegistry = {
+    github: {
+      ...createGitHubProvider(),
+      listRepositories: async (accessToken) => {
+        if (accessToken === FAKE_FORGE_INVALID_TOKEN) {
+          throw new ForgeError("Unauthorized");
+        }
+        return repositories;
+      },
+      createAdapter: factory,
+    },
+  };
+
+  return { factory, registry, controls };
 }
 
 export async function createFakeForgeFactory(): Promise<ForgeAdapterFactory> {

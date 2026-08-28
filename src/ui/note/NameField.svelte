@@ -107,7 +107,7 @@
   .name-input {
     box-sizing: border-box;
     width: 100%;
-    min-height: var(--touch-target);
+    height: var(--touch-target);
     padding: 0 var(--space-2);
     border: var(--hairline) solid transparent;
     border-radius: var(--radius);
@@ -116,6 +116,7 @@
     color: var(--color-text);
     font: inherit;
     font-size: var(--font-size-lg);
+    line-height: normal;
     font-weight: var(--font-weight-semibold);
     letter-spacing: var(--letter-spacing-tight);
     text-overflow: ellipsis;

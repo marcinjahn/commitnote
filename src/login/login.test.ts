@@ -4,13 +4,23 @@ import { argon2idDirect } from "../crypto/argon2";
 import { deriveKeyring, verifyKeyCheck } from "../crypto/keyring";
 import { parseRepoConfig, type RepoConfig } from "../crypto/repo-config";
 import { ForgeError } from "../forge/errors";
+import type {
+  ForgeProvider,
+  RepositorySummary,
+} from "../forge/forge-provider";
 import { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { commitFiles, InMemoryGitRepo } from "../forge/fake/in-memory-git-repo";
 import { APP_ID, MAIN_BRANCH, REPO_CONFIG_PATH } from "../format/v1";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
+import {
+  README_COMMIT_MESSAGE,
+  README_PATH,
+  README_TEXT,
+} from "./repo-readme";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import {
   initializeNotesRepo,
+  listRepositories,
   logIn,
   resumeSession,
   type LoginDependencies,
@@ -20,6 +30,10 @@ import {
 import type { Session } from "../session/session";
 
 const REPO_URL = "https://github.com/alice/notes";
+const REPOSITORY: RepositorySummary = {
+  coordinates: { forge: "github", owner: "alice", repo: "notes" },
+  url: REPO_URL,
+};
 
 function deps(
   adapter: FakeForgeAdapter,
@@ -64,7 +78,7 @@ describe("logIn", () => {
 
     const result = await logIn(
       {
-        repoUrl: `  ${REPO_URL}  `,
+        repository: REPOSITORY,
         accessToken: "  token  ",
         passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
       },
@@ -86,7 +100,7 @@ describe("logIn", () => {
     const adapter = await createSampleNotesRepoAdapter();
 
     const result = await logIn(
-      { repoUrl: REPO_URL, accessToken: "token", passphrase: "wrong one" },
+      { repository: REPOSITORY, accessToken: "token", passphrase: "wrong one" },
       deps(adapter),
     );
 
@@ -95,31 +109,6 @@ describe("logIn", () => {
       error: { kind: "wrongPassphrase" },
     });
   });
-
-  it.each([
-    ["a malformed URL", "not a url", { kind: "malformed" }],
-    [
-      "a non-GitHub host",
-      "https://gitlab.com/alice/notes",
-      { kind: "unsupportedForge", host: "gitlab.com" },
-    ],
-  ])(
-    "returns a repoUrl error for %s, without creating an adapter",
-    async (_label, repoUrl, error) => {
-      const createAdapter = vi.fn();
-
-      const result = await logIn(
-        { repoUrl, accessToken: "token", passphrase: "x" },
-        { createAdapter, argon2id: argon2idDirect },
-      );
-
-      expect(result).toEqual({
-        kind: "failed",
-        error: { kind: "repoUrl", error },
-      });
-      expect(createAdapter).not.toHaveBeenCalled();
-    },
-  );
 
   it.each([
     ["Unauthorized", new ForgeError("Unauthorized"), { kind: "unauthorized" }],
@@ -137,7 +126,7 @@ describe("logIn", () => {
     adapter.failNext("inspect", forgeError);
 
     const result = await logIn(
-      { repoUrl: REPO_URL, accessToken: "token", passphrase: "x" },
+      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
       deps(adapter),
     );
 
@@ -149,7 +138,7 @@ describe("logIn", () => {
 
     const result = await logIn(
       {
-        repoUrl: REPO_URL,
+        repository: REPOSITORY,
         accessToken: "token",
         passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
       },
@@ -163,7 +152,7 @@ describe("logIn", () => {
     const adapter = new FakeForgeAdapter({ canWrite: false });
 
     const result = await logIn(
-      { repoUrl: REPO_URL, accessToken: "token", passphrase: "x" },
+      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
       deps(adapter),
     );
 
@@ -181,7 +170,7 @@ describe("logIn", () => {
     const adapter = new FakeForgeAdapter({ repo });
 
     const result = await logIn(
-      { repoUrl: REPO_URL, accessToken: "token", passphrase: "x" },
+      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
       deps(adapter),
     );
 
@@ -201,7 +190,7 @@ describe("logIn", () => {
     const adapter = new FakeForgeAdapter({ repo });
 
     const result = await logIn(
-      { repoUrl: REPO_URL, accessToken: "token", passphrase: "x" },
+      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
       deps(adapter),
     );
 
@@ -220,7 +209,7 @@ describe("logIn", () => {
     const adapter = new FakeForgeAdapter({ repo });
 
     const result = await logIn(
-      { repoUrl: REPO_URL, accessToken: "token", passphrase: "x" },
+      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
       deps(adapter),
     );
 
@@ -241,7 +230,7 @@ describe("logIn", () => {
     const adapter = new FakeForgeAdapter({ repo });
 
     const result = await logIn(
-      { repoUrl: REPO_URL, accessToken: "token", passphrase: "x" },
+      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
       deps(adapter),
     );
 
@@ -257,7 +246,7 @@ describe("logIn", () => {
     const passphrase = "a fresh passphrase";
 
     const needsInit = await logIn(
-      { repoUrl: REPO_URL, accessToken: "token", passphrase },
+      { repository: REPOSITORY, accessToken: "token", passphrase },
       deps(adapter),
     );
     expect(needsInit.kind).toBe("needsInitialization");
@@ -279,24 +268,35 @@ describe("logIn", () => {
     const head = adapter.repo.getRef(MAIN_BRANCH);
     expect(head).toBeDefined();
     const commit = adapter.repo.getCommit(head as string);
-    expect(commit?.message).toBe(encodeInitializeMessage());
+    expect(commit?.message).toBe(README_COMMIT_MESSAGE);
+    expect(adapter.repo.getCommit(commit?.parent as string)?.message).toBe(
+      encodeInitializeMessage(),
+    );
 
     const entries = await adapter.listTree(head as string);
     const fileEntries = entries.filter((entry) => entry.type === "blob");
-    expect(fileEntries).toHaveLength(1);
-    expect(fileEntries[0].path).toBe(REPO_CONFIG_PATH);
+    expect(fileEntries.map((entry) => entry.path).sort()).toEqual(
+      [REPO_CONFIG_PATH, README_PATH].sort(),
+    );
 
-    const configText = await adapter.readBlob(fileEntries[0].sha);
+    const configEntry = fileEntries.find(
+      (entry) => entry.path === REPO_CONFIG_PATH,
+    );
+    const readmeEntry = fileEntries.find((entry) => entry.path === README_PATH);
+    const configText = await adapter.readBlob(configEntry?.sha as string);
     expect(parseRepoConfig(configText).kind).toBe("valid");
+    expect(await adapter.readBlob(readmeEntry?.sha as string)).toBe(
+      README_TEXT,
+    );
 
     const sameLogin = await logIn(
-      { repoUrl: REPO_URL, accessToken: "token", passphrase },
+      { repository: REPOSITORY, accessToken: "token", passphrase },
       deps(adapter),
     );
     expectLoggedIn(sameLogin);
 
     const wrongLogin = await logIn(
-      { repoUrl: REPO_URL, accessToken: "token", passphrase: "another one" },
+      { repository: REPOSITORY, accessToken: "token", passphrase: "another one" },
       deps(adapter),
     );
     expect(wrongLogin).toEqual({
@@ -310,7 +310,7 @@ describe("logIn", () => {
     const passphrase = "a passphrase";
 
     const needsInit = await logIn(
-      { repoUrl: REPO_URL, accessToken: "token", passphrase },
+      { repository: REPOSITORY, accessToken: "token", passphrase },
       deps(adapter),
     );
     if (needsInit.kind !== "needsInitialization") {
@@ -339,7 +339,7 @@ describe("resumeSession", () => {
     adapter = await createSampleNotesRepoAdapter();
     const loginResult = await logIn(
       {
-        repoUrl: REPO_URL,
+        repository: REPOSITORY,
         accessToken: "token",
         passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
       },
@@ -386,5 +386,63 @@ describe("resumeSession", () => {
     const result = await resumeSession(session, deps(adapter));
 
     expect(result).toEqual({ kind: "failed", error: { kind: "unauthorized" } });
+  });
+});
+
+describe("listRepositories", () => {
+  function providerListing(
+    listing: () => Promise<RepositorySummary[]>,
+  ): ForgeProvider {
+    return {
+      id: "github",
+      name: "GitHub",
+      accessTokenCreationUrl: () => "https://example.test/token",
+      listRepositories: vi.fn(listing),
+      createAdapter: () => new FakeForgeAdapter(),
+    };
+  }
+
+  function summary(owner: string, repo: string): RepositorySummary {
+    return {
+      coordinates: { forge: "github", owner, repo },
+      url: `https://github.com/${owner}/${repo}`,
+    };
+  }
+
+  it("lists the token's repositories sorted by owner/repo, with the token trimmed", async () => {
+    const provider = providerListing(async () => [
+      summary("bob", "notes"),
+      summary("alice", "zeta"),
+      summary("alice", "notes"),
+    ]);
+
+    const result = await listRepositories(provider, "  token  ");
+
+    expect(result).toEqual({
+      kind: "listed",
+      repositories: [
+        summary("alice", "notes"),
+        summary("alice", "zeta"),
+        summary("bob", "notes"),
+      ],
+    });
+    expect(provider.listRepositories).toHaveBeenCalledWith("token");
+  });
+
+  it.each([
+    ["Unauthorized", new ForgeError("Unauthorized"), { kind: "unauthorized" }],
+    ["Network", new ForgeError("Network"), { kind: "network" }],
+    [
+      "RateLimited",
+      new ForgeError("RateLimited", { retryAfterMs: 5_000 }),
+      { kind: "rateLimited", retryAfterMs: 5_000 },
+    ],
+  ])("maps a %s listing failure", async (_label, forgeError, error) => {
+    const provider = providerListing(() => Promise.reject(forgeError));
+
+    expect(await listRepositories(provider, "token")).toEqual({
+      kind: "failed",
+      error,
+    });
   });
 });

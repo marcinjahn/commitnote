@@ -97,10 +97,11 @@ async function recordHeaderIconLabels(page: Page): Promise<void> {
     const seen: string[] = [];
     (window as unknown as { __iconLabels: string[] }).__iconLabels = seen;
     const record = () => {
-      const label = document
-        .querySelector("header.note-header [role='img']")
-        ?.getAttribute("aria-label");
-      if (label && seen[seen.length - 1] !== label) seen.push(label);
+      const label =
+        document
+          .querySelector("header.note-header [role='img']")
+          ?.getAttribute("aria-label") ?? "(no status)";
+      if (seen[seen.length - 1] !== label) seen.push(label);
     };
     record();
     new MutationObserver(record).observe(document.body, {
@@ -193,11 +194,11 @@ test("creating a folder and a note walks through the sync states and survives lo
 
   await page.getByRole("button", { name: "New folder" }).click();
   await page.getByLabel("Folder name").fill("Work");
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: "Work" })).toBeVisible();
 
   await createNoteThroughRowMenu(page, "Work", "Plan");
-  await expect(headerIcon(page)).toHaveAccessibleName("Synced", {
+  await expect(headerIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });
 
@@ -222,7 +223,7 @@ test("creating a folder and a note walks through the sync states and survives lo
   await expect(headerIcon(page)).toHaveAccessibleName(FAILED, {
     timeout: 10_000,
   });
-  await expect(headerIcon(page)).toHaveAccessibleName("Synced", {
+  await expect(headerIcon(page)).toHaveCount(0, {
     timeout: 15_000,
   });
 
@@ -231,10 +232,10 @@ test("creating a folder and a note walks through the sync states and survives lo
   expect(labels.indexOf(WAITING)).toBeGreaterThanOrEqual(0);
   expect(failedAt).toBeGreaterThan(labels.indexOf(WAITING));
   expect(labels.lastIndexOf("Syncing")).toBeGreaterThan(failedAt);
-  expect(labels.at(-1)).toBe("Synced");
+  expect(labels.at(-1)).toBe("(no status)");
 
   await backToTreeIfMobile(page, testInfo);
-  await expect(rowIcon(page, "Work")).toHaveAccessibleName("Synced");
+  await expect(rowIcon(page, "Work")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Log out", exact: true }).click();
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
@@ -259,7 +260,7 @@ test("renaming, moving and deleting notes and folders", async ({
   await expect(
     page.getByRole("treeitem", { name: "Welcome", exact: true }),
   ).toHaveCount(0);
-  await expect(rowIcon(page, "Hello")).toHaveAccessibleName("Synced", {
+  await expect(rowIcon(page, "Hello")).toHaveCount(0, {
     timeout: 10_000,
   });
 
@@ -276,7 +277,7 @@ test("renaming, moving and deleting notes and folders", async ({
     await page.getByRole("treeitem", { name: "Projects", exact: true }).click();
   }
   await expect(hello).toBeVisible();
-  await expect(rowIcon(page, "Hello")).toHaveAccessibleName("Synced", {
+  await expect(rowIcon(page, "Hello")).toHaveCount(0, {
     timeout: 10_000,
   });
 
@@ -290,7 +291,7 @@ test("renaming, moving and deleting notes and folders", async ({
   await expect(
     page.getByRole("treeitem", { name: "Projects", exact: true }),
   ).toBeVisible();
-  await expect(rowIcon(page, "Projects")).toHaveAccessibleName("Synced", {
+  await expect(rowIcon(page, "Projects")).toHaveCount(0, {
     timeout: 10_000,
   });
 
@@ -302,7 +303,7 @@ test("renaming, moving and deleting notes and folders", async ({
   await expect(
     page.getByRole("treeitem", { name: "Journal", exact: true }),
   ).toHaveCount(0);
-  await expect(rowIcon(page, "Empty folder")).toHaveAccessibleName("Synced", {
+  await expect(rowIcon(page, "Empty folder")).toHaveCount(0, {
     timeout: 10_000,
   });
 });
@@ -326,8 +327,8 @@ test("a concurrent remote edit at the end of a note merges cleanly", async ({
   await page.keyboard.type("Local line");
   await page.keyboard.press("Enter");
 
-  await expect(headerIcon(page)).not.toHaveAccessibleName("Synced");
-  await expect(headerIcon(page)).toHaveAccessibleName("Synced", {
+  await expect(headerIcon(page)).toBeVisible();
+  await expect(headerIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });
 
@@ -365,7 +366,7 @@ test("a conflict is resolved by editing the merged text", async ({ page }) => {
   await page.keyboard.press("Delete");
 
   await expect(headerIcon(page)).toHaveAccessibleName(WAITING);
-  await expect(headerIcon(page)).toHaveAccessibleName("Synced", {
+  await expect(headerIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });
 
@@ -383,7 +384,7 @@ test("a conflict is resolved by keeping theirs", async ({ page }) => {
     .getByRole("button", { name: CONFLICT_KEEP_THEIRS_LABEL })
     .click();
 
-  await expect(headerIcon(page)).toHaveAccessibleName("Synced", {
+  await expect(headerIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });
   const note = page.getByRole("textbox", { name: "Note editor" });

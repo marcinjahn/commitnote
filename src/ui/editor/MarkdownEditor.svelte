@@ -80,6 +80,21 @@
 
   .markdown-editor :global(.cm-editor.cm-focused) {
     outline: none;
-    box-shadow: inset 2px 0 0 var(--color-focus);
+  }
+
+  .markdown-editor :global(.cm-editor.cm-focused::before) {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 2px;
+    background: var(--color-focus);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  @media (min-width: 768px) {
+    .markdown-editor :global(.cm-editor.cm-focused::before) {
+      inset-block: var(--space-4);
+    }
   }
 </style>

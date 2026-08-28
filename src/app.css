@@ -264,7 +264,8 @@ textarea {
   font-weight: var(--font-weight-medium);
 }
 
-.field input {
+.field input,
+.field select {
   min-height: var(--touch-target);
   padding: 0 var(--space-2);
   border-radius: var(--radius);
@@ -274,8 +275,14 @@ textarea {
   transition: border-color var(--motion-duration) var(--motion-easing);
 }
 
+.field select {
+  min-width: 0;
+}
+
 .field input:hover,
-.field input:focus {
+.field input:focus,
+.field select:hover,
+.field select:focus {
   border-color: var(--color-text);
 }
 

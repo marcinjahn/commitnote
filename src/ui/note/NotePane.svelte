@@ -16,10 +16,12 @@
     engine: SyncEngine;
     openNote: OpenNoteState | null;
     draft: boolean;
+    hasNotes: boolean;
     onDraftContent: (content: string) => void;
+    onNewNote: () => void;
   }
 
-  const { engine, openNote, draft, onDraftContent }: Props = $props();
+  const { engine, openNote, draft, hasNotes, onDraftContent, onNewNote }: Props = $props();
 
   const editorExtensions = [livePreview()];
 
@@ -66,7 +68,14 @@
       onChange={handleEditorChange}
     />
   {:else if openNote === null}
-    <p class="note-placeholder">Select a note to read it.</p>
+    <p class="note-placeholder">
+      <span>
+        {hasNotes ? "Select a note to read it, or" : ""}
+        <button type="button" class="link-button" onclick={onNewNote}>
+          <span aria-hidden="true">+</span> {hasNotes ? "create a new note" : "Create a new note"}</button
+        >.
+      </span>
+    </p>
   {:else if openNote.kind === "loading"}
     <p class="note-status">Loading…</p>
   {:else if openNote.kind === "loaded" && conflict !== undefined}
@@ -98,6 +107,22 @@
     font-size: var(--font-size-sm);
     padding: var(--space-6) var(--space-4);
     text-align: center;
+  }
+
+  .link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--color-link);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .link-button:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 
   .note-status {

@@ -1,6 +1,11 @@
 import type { NotePath } from "../../changes/change";
 import type { EngineNotice } from "../../sync/sync-engine";
 
+export interface ToastMessage {
+  readonly id: number;
+  readonly text: string;
+}
+
 function quoted(path: NotePath): string {
   return `“${path.join(" / ")}”`;
 }

@@ -13,7 +13,6 @@ import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
 import { isForgeError } from "../errors";
 import type { ContentCreatingRequest } from "../forge-adapter";
 import { commitFiles } from "../fake/in-memory-git-repo";
-import { createForgeAdapter } from "../registry";
 import {
   createGitHubAdapter,
   type GitHubAdapterOptions,
@@ -346,12 +345,4 @@ describe("GitHubAdapter", () => {
     }
   });
 
-  it("createForgeAdapter builds a working GitHub adapter via the registry", async () => {
-    useMock();
-    const adapter = createForgeAdapter(
-      { forge: "github", owner: OWNER, repo: REPO },
-      { accessToken: TOKEN },
-    );
-    expect(await adapter.inspect()).toEqual({ kind: "empty", canWrite: true });
-  });
 });

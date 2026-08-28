@@ -66,3 +66,43 @@ test("focus and visibility do not refresh; clicking Refresh does", async ({
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(remoteNote).toBeVisible();
 });
+
+test("clicking Refresh briefly shows a checkmark", async ({ page }) => {
+  await startSession(page);
+  const refresh = page.getByRole("button", { name: "Refresh" });
+
+  await refresh.click();
+  await expect(refresh).toHaveAttribute("data-feedback", "success");
+  await expect(page.getByRole("status").filter({ hasText: "Refreshed" })).toHaveCount(1);
+  await expect(refresh).not.toHaveAttribute("data-feedback");
+});
+
+test("a failed Refresh shows the error in a toast and an x", async ({
+  page,
+}) => {
+  await startSession(page);
+  const refresh = page.getByRole("button", { name: "Refresh" });
+
+  await page.evaluate(
+    (repoKey) =>
+      (window as any).__commitNoteFakeForge.failNext(
+        repoKey,
+        "getHead",
+        "Network",
+      ),
+    REPO_KEY,
+  );
+  await refresh.click();
+
+  await expect(refresh).toHaveAttribute("data-feedback", "error");
+  const toast = page.getByRole("group").filter({
+    hasText: "Could not reach GitHub. Showing the last loaded notes.",
+  });
+  await expect(toast).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(refresh).not.toHaveAttribute("data-feedback");
+
+  await refresh.click();
+  await expect(refresh).toHaveAttribute("data-feedback", "success");
+  await expect(toast).toHaveCount(0);
+});
