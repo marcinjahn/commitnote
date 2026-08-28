@@ -49,7 +49,7 @@ test("logging out saves pending edits first", async ({ page }) => {
   await openWelcomeAndType(page, " typed before logout");
   await clickLogOut(page);
 
-  await expect(page.getByLabel("Repo URL")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
 
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);
@@ -70,7 +70,7 @@ test("keep trying retries the save and then logs out", async ({ page }) => {
   await expect(dialog).toContainText("1 note or folder is not saved yet.");
 
   await dialog.getByRole("button", { name: "Keep trying" }).click();
-  await expect(page.getByLabel("Repo URL")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
 });
 
 test("log out anyway discards unsaved changes", async ({ page }) => {
@@ -87,5 +87,5 @@ test("log out anyway discards unsaved changes", async ({ page }) => {
   await expect(dialog).toContainText("1 note or folder is not saved yet.");
 
   await dialog.getByRole("button", { name: "Log out anyway" }).click();
-  await expect(page.getByLabel("Repo URL")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
 });

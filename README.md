@@ -66,7 +66,8 @@ viewport.
 ## Test mode
 
 `npm run dev:fake` (and `npm run build:fake` / `preview:fake`) run the app against in-memory
-fixture repositories instead of GitHub, with no network access. The fixture repo URLs:
+fixture repositories instead of GitHub, with no network access. Any access token lists all of
+these fixture repositories:
 
 - `https://github.com/sample/notes` — an initialized notes repo, passphrase
   `sample notes repo passphrase`
@@ -79,6 +80,19 @@ fixture repositories instead of GitHub, with no network access. The fixture repo
 The access token `invalid-token` is always rejected; any other non-empty token is accepted. All
 fixture state resets on reload. Test mode is never part of `npm run build`, which
 `npm run check:bundle` verifies.
+
+## Logging in
+
+1. Paste a fine-grained access token. "Create a token on GitHub" opens GitHub's token form with the
+   name, a one-year expiry and the "Contents: read and write" permission already filled in; you
+   only choose the notes repository there.
+2. Continue: commitnote lists the repositories the token can see. Choose your notes repository, or
+   an empty one to start a new notes repo. The last used repository is preselected, and a single
+   one is picked for you.
+3. Enter the passphrase and log in.
+
+Each git host is a forge provider in `src/forge/` (token link, repository listing, adapter). GitHub
+is currently the only one.
 
 ## Remember me
 

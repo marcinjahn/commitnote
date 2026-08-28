@@ -1,7 +1,7 @@
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Keyring } from "../crypto/keyring";
-import type { RepoCoordinates } from "../repo-url/parse-repo-url";
+import type { RepoCoordinates } from "../forge/repo-coordinates";
 import { createSessionStore } from "./session-store";
 import type { Session } from "./session";
 

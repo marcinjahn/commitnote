@@ -5,7 +5,8 @@ import {
   utf8Decode,
   utf8Encode,
 } from "../../crypto/base64";
-import type { RepoCoordinates } from "../../repo-url/parse-repo-url";
+import type { RepoCoordinates } from "../repo-coordinates";
+import { gitHubErrorFor, sendGitHubRequest } from "./github-api";
 import { ForgeError } from "../errors";
 import type {
   CommitFileChange,
@@ -29,9 +30,6 @@ export function createGitHubAdapter(
 ): ForgeAdapter {
   return new GitHubAdapter(coordinates, options);
 }
-
-const API_BASE = "https://api.github.com";
-const API_VERSION = "2022-11-28";
 
 interface GitHubTreeEntryBody {
   readonly path: string;
@@ -77,96 +75,20 @@ class GitHubAdapter implements ForgeAdapter {
     this.onContentCreatingRequest?.({ operation });
   }
 
-  private async send(
+  private send(
     path: string,
     init: { method: string; body?: unknown },
   ): Promise<Response> {
-    const url = `${API_BASE}/repos/${this.ownerPath}/${this.repoPath}${path}`;
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${this.accessToken}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": API_VERSION,
-    };
-    const requestInit: RequestInit = {
-      method: init.method,
-      headers,
-      cache: "no-store",
-    };
-    if (init.body !== undefined) {
-      headers["Content-Type"] = "application/json";
-      requestInit.body = JSON.stringify(init.body);
-    }
-
-    try {
-      return await this.fetchImpl(url, requestInit);
-    } catch (cause) {
-      throw new ForgeError("Network", { cause });
-    }
+    return sendGitHubRequest(
+      this.fetchImpl,
+      this.accessToken,
+      `/repos/${this.ownerPath}/${this.repoPath}${path}`,
+      init,
+    );
   }
 
-  private retryAfterMs(response: Response): number {
-    const retryAfter = response.headers.get("retry-after");
-    if (retryAfter !== null) {
-      const seconds = Number(retryAfter);
-      if (Number.isFinite(seconds)) {
-        return seconds * 1000;
-      }
-    }
-    const reset = response.headers.get("x-ratelimit-reset");
-    if (reset !== null) {
-      const resetSeconds = Number(reset);
-      if (Number.isFinite(resetSeconds)) {
-        return Math.max(0, resetSeconds * 1000 - this.now());
-      }
-    }
-    return 60_000;
-  }
-
-  private async errorFor(response: Response): Promise<ForgeError> {
-    const status = response.status;
-    let message: string | undefined;
-    try {
-      const body: unknown = await response.clone().json();
-      if (
-        body !== null &&
-        typeof body === "object" &&
-        "message" in body &&
-        typeof (body as { message: unknown }).message === "string"
-      ) {
-        message = (body as { message: string }).message;
-      }
-    } catch {
-      // non-JSON or empty body: leave message undefined
-    }
-
-    if (status === 401) {
-      return new ForgeError("Unauthorized", { status, message });
-    }
-    if (status === 429) {
-      return new ForgeError("RateLimited", {
-        status,
-        message,
-        retryAfterMs: this.retryAfterMs(response),
-      });
-    }
-    if (status === 403) {
-      const isRateLimited =
-        response.headers.get("retry-after") !== null ||
-        response.headers.get("x-ratelimit-remaining") === "0" ||
-        (message !== undefined && /rate limit/i.test(message));
-      if (isRateLimited) {
-        return new ForgeError("RateLimited", {
-          status,
-          message,
-          retryAfterMs: this.retryAfterMs(response),
-        });
-      }
-      return new ForgeError("Forbidden", { status, message });
-    }
-    if (status === 404) {
-      return new ForgeError("NotFound", { status, message });
-    }
-    return new ForgeError("Server", { status, message });
+  private errorFor(response: Response): Promise<ForgeError> {
+    return gitHubErrorFor(response, this.now);
   }
 
   async inspect(): Promise<RepoInspection> {

@@ -7,9 +7,15 @@
     LoginStep,
     PendingInitialization,
   } from "./login/login";
-  import { initializeNotesRepo, logIn, resumeSession } from "./login/login";
+  import {
+    initializeNotesRepo,
+    logIn,
+    repositoryLabel,
+    resumeSession,
+  } from "./login/login";
   import type { ForgeAdapter } from "./forge/forge-adapter";
-  import type { ForgeAdapterFactory } from "./forge/registry";
+  import type { ForgeAdapterFactory, ForgeRegistry } from "./forge/registry";
+  import { adapterFactoryFor, forgeProviders } from "./forge/registry";
   import { createSessionStore } from "./session/session-store";
   import type { Session } from "./session/session";
   import { systemClock } from "./sync/clock";
@@ -22,11 +28,11 @@
   import Wordmark from "./ui/wordmark/Wordmark.svelte";
 
   interface Props {
-    createAdapter: ForgeAdapterFactory;
+    registry: ForgeRegistry;
     testModeBanner: string | null;
   }
 
-  const { createAdapter, testModeBanner }: Props = $props();
+  const { registry, testModeBanner }: Props = $props();
 
   type Phase =
     | { readonly kind: "restoring" }
@@ -44,8 +50,9 @@
   const store = createSessionStore();
   const rateBudget = createRateBudget(systemClock);
 
+  const providers = $derived(forgeProviders(registry));
   const budgetedCreateAdapter: ForgeAdapterFactory = (coordinates, options) =>
-    createAdapter(coordinates, {
+    adapterFactoryFor(registry)(coordinates, {
       ...options,
       onContentCreatingRequest: (request) => {
         rateBudget.record();
@@ -101,7 +108,7 @@
     phase = {
       kind: "app",
       engine,
-      repoLabel: `${session.coordinates.owner}/${session.coordinates.repo}`,
+      repoLabel: repositoryLabel(session.coordinates),
     };
     void engine.refresh();
   }
@@ -200,6 +207,7 @@
 {:else if phase.kind === "login"}
   {#key loginKey}
     <LoginScreen
+      {providers}
       initialRepoUrl={phase.initialRepoUrl}
       initialError={phase.initialError}
       logIn={boundLogIn}

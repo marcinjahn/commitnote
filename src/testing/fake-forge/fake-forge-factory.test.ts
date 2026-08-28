@@ -260,3 +260,40 @@ describe("createFakeForge controls", () => {
     ).toThrow();
   });
 });
+
+describe("createFakeForge registry", () => {
+  it("lists every fixture repository as a GitHub repository", async () => {
+    const { registry } = await createFakeForge({ argon2id: argon2idDirect });
+
+    const repositories = await registry.github.listRepositories(TOKEN);
+
+    expect(repositories.map((r) => r.url)).toEqual([
+      "https://github.com/sample/notes",
+      "https://github.com/sample/empty",
+      "https://github.com/sample/empty-read-only",
+      "https://github.com/sample/read-only",
+      "https://github.com/sample/foreign",
+      "https://github.com/sample/newer",
+    ]);
+    expect(repositories[0].coordinates).toEqual(coordinatesFor("sample/notes"));
+  });
+
+  it("rejects the invalid token when listing", async () => {
+    const { registry } = await createFakeForge({ argon2id: argon2idDirect });
+
+    await expect(
+      registry.github.listRepositories(FAKE_FORGE_INVALID_TOKEN),
+    ).rejects.toMatchObject({ kind: "Unauthorized" });
+  });
+
+  it("creates fixture adapters through the registry", async () => {
+    const { registry } = await createFakeForge({ argon2id: argon2idDirect });
+
+    const adapter = registry.github.createAdapter(
+      coordinatesFor("sample/empty"),
+      { accessToken: TOKEN },
+    );
+
+    expect(await adapter.inspect()).toEqual({ kind: "empty", canWrite: true });
+  });
+});

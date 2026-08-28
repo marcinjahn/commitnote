@@ -14,13 +14,12 @@ import type {
   ForgeAdapter,
   RepoInspection,
 } from "../forge/forge-adapter";
+import type { ForgeProvider, RepositorySummary } from "../forge/forge-provider";
 import type { ForgeAdapterFactory } from "../forge/registry";
-import type { RepoCoordinates, RepoUrlError } from "../repo-url/parse-repo-url";
-import { parseRepoUrl } from "../repo-url/parse-repo-url";
+import type { RepoCoordinates } from "../forge/repo-coordinates";
 import type { Session } from "../session/session";
 
 export type LoginError =
-  | { readonly kind: "repoUrl"; readonly error: RepoUrlError }
   | { readonly kind: "unauthorized" }
   | { readonly kind: "noAccess" }
   | { readonly kind: "rateLimited"; readonly retryAfterMs: number }
@@ -32,10 +31,12 @@ export type LoginError =
   | { readonly kind: "wrongPassphrase" }
   | { readonly kind: "initializationRaced" };
 
-export type LoginStep = "checkingRepository" | "derivingKeys" | "initializing";
+export type LoginStep =
+  | "listingRepositories"
+  | "checkingRepository" | "derivingKeys" | "initializing";
 
 export interface LoginInput {
-  readonly repoUrl: string;
+  readonly repository: RepositorySummary;
   readonly accessToken: string;
   readonly passphrase: string;
 }
@@ -137,22 +138,39 @@ async function checkRepository(
   return { kind: "config", config: parsed.config };
 }
 
+export type RepositoryListResult =
+  | { readonly kind: "listed"; readonly repositories: RepositorySummary[] }
+  | { readonly kind: "failed"; readonly error: LoginError };
+
+export function repositoryLabel(coordinates: RepoCoordinates): string {
+  return `${coordinates.owner}/${coordinates.repo}`;
+}
+
+export async function listRepositories(
+  provider: ForgeProvider,
+  accessToken: string,
+): Promise<RepositoryListResult> {
+  let repositories: RepositorySummary[];
+  try {
+    repositories = await provider.listRepositories(accessToken.trim());
+  } catch (error) {
+    return { kind: "failed", error: mapInspectError(error) };
+  }
+  const sorted = repositories.toSorted((a, b) =>
+    repositoryLabel(a.coordinates).localeCompare(
+      repositoryLabel(b.coordinates),
+    ),
+  );
+  return { kind: "listed", repositories: sorted };
+}
+
 export async function logIn(
   input: LoginInput,
   deps: LoginDependencies,
   onStep?: (step: LoginStep) => void,
 ): Promise<LoginResult> {
-  const repoUrl = input.repoUrl.trim();
+  const { url: repoUrl, coordinates } = input.repository;
   const accessToken = input.accessToken.trim();
-
-  const parsedUrl = parseRepoUrl(repoUrl);
-  if (!parsedUrl.ok) {
-    return {
-      kind: "failed",
-      error: { kind: "repoUrl", error: parsedUrl.error },
-    };
-  }
-  const coordinates = parsedUrl.coordinates;
 
   const adapter = deps.createAdapter(coordinates, { accessToken });
 

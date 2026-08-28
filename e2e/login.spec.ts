@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { logIn, expectTree } from "./helpers";
+import { continueWithToken, logIn, expectTree } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";
 const NOTES_PASSPHRASE = "sample notes repo passphrase";
@@ -23,9 +23,7 @@ test("first-time initialization and login", async ({ page }) => {
   await expect(page.getByText("No notes yet")).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "Log out" }).click();
-  await expect(page.getByLabel("Repo URL")).toHaveValue(EMPTY_REPO);
   await expect(page.getByLabel("Access token")).toHaveValue("");
-  await expect(page.getByLabel("Passphrase", { exact: true })).toHaveValue("");
 
   await logIn(page, { repo: EMPTY_REPO, passphrase: "first passphrase" });
   await expect(page.getByText("No notes yet")).toBeVisible();
@@ -71,20 +69,24 @@ test("Remember me across reload", async ({ page }) => {
 
   await page.reload();
   await expectTree(page);
-  await expect(page.getByRole("button", { name: "Log in" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Continue" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Log out" }).click();
   // Wait for the logged-out login screen before reloading, so the reload
   // can't race the async IndexedDB record deletion that log out kicks off.
-  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
-  await expect(page.getByLabel("Repo URL")).toHaveValue(NOTES_REPO);
+  await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
+  await continueWithToken(page);
+  await expect(page.getByLabel("Repository", { exact: true })).toHaveValue(
+    NOTES_REPO,
+  );
 });
 
 test("no Remember me", async ({ page }) => {
   await page.goto("/");
 
+  await continueWithToken(page);
   await expect(
     page.getByRole("checkbox", { name: "Remember me" }),
   ).not.toBeChecked();
@@ -93,16 +95,66 @@ test("no Remember me", async ({ page }) => {
   await expectTree(page);
 
   await page.reload();
-  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
-  await expect(page.getByLabel("Repo URL")).toHaveValue(NOTES_REPO);
   await expect(page.getByLabel("Access token")).toHaveValue("");
+  await continueWithToken(page);
+  await expect(page.getByLabel("Repository", { exact: true })).toHaveValue(
+    NOTES_REPO,
+  );
   await expect(page.getByLabel("Passphrase", { exact: true })).toHaveValue("");
+});
+
+test("the token link opens a pre-filled fine-grained token form", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const link = page.getByRole("link", { name: "Create a token on GitHub" });
+  const url = new URL((await link.getAttribute("href")) ?? "");
+  expect(url.origin + url.pathname).toBe(
+    "https://github.com/settings/personal-access-tokens/new",
+  );
+  expect(url.searchParams.get("contents")).toBe("write");
+  await expect(link).toHaveAttribute("target", "_blank");
+});
+
+test("the repository list comes from the access token", async ({ page }) => {
+  await page.goto("/");
+
+  await continueWithToken(page);
+  const repository = page.getByLabel("Repository", { exact: true });
+  await expect(repository).toHaveValue("");
+  await expect(repository.getByRole("option")).toHaveText([
+    "Choose a repository",
+    "sample/empty",
+    "sample/empty-read-only",
+    "sample/foreign",
+    "sample/newer",
+    "sample/notes",
+    "sample/read-only",
+  ]);
+
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Choose a repository.");
+
+  await page.getByLabel("Access token").fill("another-token");
+  await expect(repository).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
+});
+
+test("refusal: an invalid access token", async ({ page }) => {
+  await page.goto("/");
+
+  await continueWithToken(page, "invalid-token");
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "The access token is invalid or has expired.",
+  );
+  await expect(page.getByLabel("Repository", { exact: true })).toHaveCount(0);
 });
 
 const refusals: ReadonlyArray<{
   readonly name: string;
   readonly repo: string;
-  readonly token?: string;
   readonly passphrase: string;
   readonly message: string;
 }> = [
@@ -134,26 +186,6 @@ const refusals: ReadonlyArray<{
     message:
       'This access token cannot write to the repository. Give it "Contents: read and write" access.',
   },
-  {
-    name: "an invalid access token",
-    repo: NOTES_REPO,
-    token: "invalid-token",
-    passphrase: NOTES_PASSPHRASE,
-    message: "The access token is invalid or has expired.",
-  },
-  {
-    name: "a repository that does not exist",
-    repo: "https://github.com/sample/missing",
-    passphrase: "whatever",
-    message:
-      "The repository was not found, or the access token has no access to it.",
-  },
-  {
-    name: "an unsupported forge",
-    repo: "https://gitlab.com/a/b",
-    passphrase: "whatever",
-    message: "Only github.com repositories are supported, not gitlab.com.",
-  },
 ];
 
 for (const refusal of refusals) {
@@ -162,7 +194,6 @@ for (const refusal of refusals) {
 
     await logIn(page, {
       repo: refusal.repo,
-      token: refusal.token,
       passphrase: refusal.passphrase,
     });
 
@@ -174,3 +205,24 @@ for (const refusal of refusals) {
     await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
   });
 }
+
+test("a long repository name keeps the form inside the login card", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await continueWithToken(page, `github_pat_${"x".repeat(82)}`);
+  const repository = page.getByLabel("Repository", { exact: true });
+  await repository.evaluate((select) => {
+    const option = document.createElement("option");
+    option.textContent =
+      "some-organization-name/a-really-long-repository-name-for-notes";
+    select.append(option);
+  });
+
+  const card = await page.locator(".login-card").boundingBox();
+  const button = await page
+    .getByRole("button", { name: "Log in" })
+    .boundingBox();
+  expect(button!.x + button!.width).toBeLessThanOrEqual(card!.x + card!.width);
+});

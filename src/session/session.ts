@@ -1,5 +1,5 @@
 import type { Keyring } from "../crypto/keyring";
-import type { RepoCoordinates } from "../repo-url/parse-repo-url";
+import type { RepoCoordinates } from "../forge/repo-coordinates";
 
 export interface Session {
   readonly repoUrl: string;

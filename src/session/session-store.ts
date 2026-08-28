@@ -1,5 +1,6 @@
 import type { Keyring } from "../crypto/keyring";
-import type { RepoCoordinates } from "../repo-url/parse-repo-url";
+import type { RepoCoordinates } from "../forge/repo-coordinates";
+import { isForgeId } from "../forge/repo-coordinates";
 import type { Session } from "./session";
 
 const DB_NAME = "commitnote";
@@ -76,7 +77,7 @@ function isWellFormedRecord(value: unknown): value is StoredRecord {
   if (
     typeof coordinates !== "object" ||
     coordinates === null ||
-    coordinates.forge !== "github" ||
+    !isForgeId(coordinates.forge) ||
     typeof coordinates.owner !== "string" ||
     typeof coordinates.repo !== "string"
   ) {
