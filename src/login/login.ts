@@ -1,4 +1,9 @@
 import { encodeInitializeMessage } from "../changes/encode-change-set";
+import {
+  README_COMMIT_MESSAGE,
+  README_PATH,
+  README_TEXT,
+} from "./repo-readme";
 import type { Argon2idFunction } from "../crypto/argon2";
 import {
   createRepoConfig,
@@ -229,6 +234,16 @@ export async function initializeNotesRepo(
 
   if (result.kind === "stale") {
     return { kind: "failed", error: { kind: "initializationRaced" } };
+  }
+
+  try {
+    await pending.adapter.commit({
+      parent: result.head,
+      changes: [{ kind: "upsert-text", path: README_PATH, text: README_TEXT }],
+      message: README_COMMIT_MESSAGE,
+    });
+  } catch {
+    // The README is informational; the initialized repo is already usable.
   }
 
   const session: Session = {

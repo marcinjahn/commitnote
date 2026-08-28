@@ -137,6 +137,9 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    /* room for the 2px focus outline + 2px offset that overflow would clip */
+    padding: var(--space-1);
+    margin: calc(-1 * var(--space-1));
   }
 
   .dialog-actions {

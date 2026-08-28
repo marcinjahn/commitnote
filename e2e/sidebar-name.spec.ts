@@ -39,3 +39,20 @@ test("sidebar wordmark and repo label are not clipped", async ({ page }) => {
 
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
 });
+
+test("the sidebar repo label links to the repository in a new tab", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await logIn(page, {
+    repo: "https://github.com/sample/notes",
+    passphrase: "sample notes repo passphrase",
+  });
+  await expectTree(page);
+
+  const link = page
+    .locator(".sidebar-footer")
+    .getByRole("link", { name: "sample/notes", exact: true });
+  await expect(link).toHaveAttribute("href", "https://github.com/sample/notes");
+  await expect(link).toHaveAttribute("target", "_blank");
+});

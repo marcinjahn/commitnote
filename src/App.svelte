@@ -45,6 +45,7 @@
         readonly kind: "app";
         readonly engine: SyncEngine;
         readonly repoLabel: string;
+        readonly repoUrl: string;
       };
 
   const store = createSessionStore();
@@ -109,6 +110,7 @@
       kind: "app",
       engine,
       repoLabel: repositoryLabel(session.coordinates),
+      repoUrl: session.repoUrl,
     };
     void engine.refresh();
   }
@@ -216,7 +218,7 @@
     />
   {/key}
 {:else if phase.kind === "app"}
-  <AppShell engine={phase.engine} repoLabel={phase.repoLabel} onLogOut={logOut} />
+  <AppShell engine={phase.engine} repoLabel={phase.repoLabel} repoUrl={phase.repoUrl} onLogOut={logOut} />
   <LogoutDialog
     open={logout !== null}
     saving={logout?.kind !== "unsaved"}

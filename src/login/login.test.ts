@@ -12,6 +12,11 @@ import { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { commitFiles, InMemoryGitRepo } from "../forge/fake/in-memory-git-repo";
 import { APP_ID, MAIN_BRANCH, REPO_CONFIG_PATH } from "../format/v1";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
+import {
+  README_COMMIT_MESSAGE,
+  README_PATH,
+  README_TEXT,
+} from "./repo-readme";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import {
   initializeNotesRepo,
@@ -263,15 +268,26 @@ describe("logIn", () => {
     const head = adapter.repo.getRef(MAIN_BRANCH);
     expect(head).toBeDefined();
     const commit = adapter.repo.getCommit(head as string);
-    expect(commit?.message).toBe(encodeInitializeMessage());
+    expect(commit?.message).toBe(README_COMMIT_MESSAGE);
+    expect(adapter.repo.getCommit(commit?.parent as string)?.message).toBe(
+      encodeInitializeMessage(),
+    );
 
     const entries = await adapter.listTree(head as string);
     const fileEntries = entries.filter((entry) => entry.type === "blob");
-    expect(fileEntries).toHaveLength(1);
-    expect(fileEntries[0].path).toBe(REPO_CONFIG_PATH);
+    expect(fileEntries.map((entry) => entry.path).sort()).toEqual(
+      [REPO_CONFIG_PATH, README_PATH].sort(),
+    );
 
-    const configText = await adapter.readBlob(fileEntries[0].sha);
+    const configEntry = fileEntries.find(
+      (entry) => entry.path === REPO_CONFIG_PATH,
+    );
+    const readmeEntry = fileEntries.find((entry) => entry.path === README_PATH);
+    const configText = await adapter.readBlob(configEntry?.sha as string);
     expect(parseRepoConfig(configText).kind).toBe("valid");
+    expect(await adapter.readBlob(readmeEntry?.sha as string)).toBe(
+      README_TEXT,
+    );
 
     const sameLogin = await logIn(
       { repository: REPOSITORY, accessToken: "token", passphrase },

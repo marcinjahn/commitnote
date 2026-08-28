@@ -15,6 +15,7 @@
     expandRequest: { readonly path: NotePath } | null;
     onSelect: (path: NotePath) => void;
     onAction: (action: RowAction, node: WorkingNode) => void;
+    onNewNote: () => void;
   }
 
   const {
@@ -25,6 +26,7 @@
     expandRequest,
     onSelect,
     onAction,
+    onNewNote,
   }: Props = $props();
 
   const expanded = new SvelteMap<string, boolean>();
@@ -62,6 +64,12 @@
     readonly trigger: HTMLElement;
   }
 
+  function containsFolder(nodes: readonly WorkingNode[]): boolean {
+    return nodes.some((n) => n.kind === "folder");
+  }
+
+  const hasFolders = $derived(tree !== null && containsFolder(tree.root.children));
+
   let openMenu = $state<OpenMenu | null>(null);
 
   function handleOpenMenu(
@@ -70,6 +78,10 @@
     anchor: MenuAnchor,
     trigger: HTMLElement,
   ): void {
+    if (openMenu?.key === key && anchor.kind === "rect") {
+      handleCloseMenu();
+      return;
+    }
     openMenu = { key, node, anchor, trigger };
   }
 
@@ -92,7 +104,10 @@
       <p class="tree-message">Loading notes…</p>
     {/if}
   {:else if tree.root.children.length === 0}
-    <p class="tree-message">No notes yet</p>
+    <p class="tree-message">
+      No notes yet,
+      <button type="button" class="link-button" onclick={onNewNote}>create one</button>
+    </p>
   {:else}
     <ul class="tree" role="tree" aria-label="Notes">
       {#each tree.root.children as child (child.path.join("/"))}
@@ -116,6 +131,8 @@
   <RowMenu
     name={openMenu.node.name}
     kind={openMenu.node.kind}
+    {hasFolders}
+    trigger={openMenu.trigger}
     anchor={openMenu.anchor}
     onAction={handleMenuAction}
     onClose={handleCloseMenu}
@@ -132,6 +149,22 @@
     list-style: none;
     margin: 0;
     padding: 0;
+  }
+
+  .link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--color-link);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .link-button:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 
   .tree-message {

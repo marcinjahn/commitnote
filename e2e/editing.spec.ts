@@ -35,8 +35,8 @@ test("editing the note autosaves, and the edit is there after reopening it", asy
 
   const header = page.locator("header.note-header");
   const syncIcon = header.getByRole("img");
-  await expect(syncIcon).not.toHaveAccessibleName("Synced");
-  await expect(syncIcon).toHaveAccessibleName("Synced", { timeout: 10_000 });
+  await expect(syncIcon).toBeVisible();
+  await expect(syncIcon).toHaveCount(0, { timeout: 10_000 });
 
   const backButton = page.getByRole("button", { name: "Back to notes" });
   const isMobile = testInfo.project.name === "mobile";

@@ -28,7 +28,7 @@ function accessTokenCreationUrl(now: Date): string {
     name: `commitnote ${localDate(now)}`,
     description:
       "commitnote: reads and saves encrypted notes. Select only your notes repository.",
-    expires_in: "366",
+    expires_in: "365",
     contents: "write",
   });
   return `${TOKEN_CREATION_URL}?${params.toString()}`;

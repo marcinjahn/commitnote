@@ -1,41 +1,66 @@
 <script lang="ts">
   import type { NotePath } from "../../changes/change";
   import type { EngineNotice } from "../../sync/sync-engine";
-  import { describeNotice } from "./notice-messages";
+  import { describeNotice, type ToastMessage } from "./notice-messages";
 
   interface Props {
     notices: readonly EngineNotice[];
+    messages?: readonly ToastMessage[];
     onDismiss: (id: number) => void;
+    onDismissMessage?: (id: number) => void;
     onOpen?: (path: NotePath) => void;
   }
 
-  const { notices, onDismiss, onOpen }: Props = $props();
+  const { notices, messages = [], onDismiss, onDismissMessage, onOpen }: Props =
+    $props();
 
   const MAX_VISIBLE = 3;
   const AUTO_DISMISS_MS = 10_000;
 
-  const visible = $derived(notices.slice(-MAX_VISIBLE));
-  let pausedIds = $state<ReadonlySet<number>>(new Set());
-  const timers = new Map<number, ReturnType<typeof setTimeout>>();
+  interface Toast {
+    readonly key: string;
+    readonly text: string;
+    readonly conflict: Extract<EngineNotice, { kind: "conflict" }> | null;
+    readonly dismiss: () => void;
+  }
+
+  const visible = $derived<readonly Toast[]>(
+    [
+      ...notices.map((notice) => ({
+        key: `notice-${notice.id}`,
+        text: describeNotice(notice),
+        conflict: notice.kind === "conflict" ? notice : null,
+        dismiss: () => onDismiss(notice.id),
+      })),
+      ...messages.map((message) => ({
+        key: `message-${message.id}`,
+        text: message.text,
+        conflict: null,
+        dismiss: () => onDismissMessage?.(message.id),
+      })),
+    ].slice(-MAX_VISIBLE),
+  );
+  let pausedKeys = $state<ReadonlySet<string>>(new Set());
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
   $effect(() => {
-    const active = new Set<number>();
-    for (const notice of visible) {
-      if (!pausedIds.has(notice.id)) active.add(notice.id);
+    const active = new Map<string, Toast>();
+    for (const toast of visible) {
+      if (!pausedKeys.has(toast.key)) active.set(toast.key, toast);
     }
-    for (const [id, timer] of timers) {
-      if (!active.has(id)) {
+    for (const [key, timer] of timers) {
+      if (!active.has(key)) {
         clearTimeout(timer);
-        timers.delete(id);
+        timers.delete(key);
       }
     }
-    for (const id of active) {
-      if (timers.has(id)) continue;
+    for (const [key, toast] of active) {
+      if (timers.has(key)) continue;
       timers.set(
-        id,
+        key,
         setTimeout(() => {
-          timers.delete(id);
-          onDismiss(id);
+          timers.delete(key);
+          toast.dismiss();
         }, AUTO_DISMISS_MS),
       );
     }
@@ -48,46 +73,46 @@
     };
   });
 
-  function pause(id: number): void {
-    if (pausedIds.has(id)) return;
-    pausedIds = new Set(pausedIds).add(id);
+  function pause(key: string): void {
+    if (pausedKeys.has(key)) return;
+    pausedKeys = new Set(pausedKeys).add(key);
   }
 
-  function resume(id: number): void {
-    if (!pausedIds.has(id)) return;
-    const next = new Set(pausedIds);
-    next.delete(id);
-    pausedIds = next;
+  function resume(key: string): void {
+    if (!pausedKeys.has(key)) return;
+    const next = new Set(pausedKeys);
+    next.delete(key);
+    pausedKeys = next;
   }
 
-  function handleFocusOut(event: FocusEvent, id: number): void {
+  function handleFocusOut(event: FocusEvent, key: string): void {
     const toast = event.currentTarget as HTMLElement;
     if (event.relatedTarget instanceof Node && toast.contains(event.relatedTarget)) {
       return;
     }
-    resume(id);
+    resume(key);
   }
 
-  function handleOpen(notice: Extract<EngineNotice, { kind: "conflict" }>): void {
-    onOpen?.(notice.path);
-    onDismiss(notice.id);
+  function handleOpen(toast: Toast): void {
+    if (toast.conflict !== null) onOpen?.(toast.conflict.path);
+    toast.dismiss();
   }
 </script>
 
 <div class="toasts" role="status" aria-live="polite">
-  {#each visible as notice (notice.id)}
+  {#each visible as toast (toast.key)}
     <div
       class="toast"
       role="group"
-      onmouseenter={() => pause(notice.id)}
-      onmouseleave={() => resume(notice.id)}
-      onfocusin={() => pause(notice.id)}
-      onfocusout={(event) => handleFocusOut(event, notice.id)}
+      onmouseenter={() => pause(toast.key)}
+      onmouseleave={() => resume(toast.key)}
+      onfocusin={() => pause(toast.key)}
+      onfocusout={(event) => handleFocusOut(event, toast.key)}
     >
-      <p class="text">{describeNotice(notice)}</p>
+      <p class="text">{toast.text}</p>
       <div class="actions">
-        {#if notice.kind === "conflict" && onOpen}
-          <button type="button" class="button" onclick={() => handleOpen(notice)}>
+        {#if toast.conflict !== null && onOpen}
+          <button type="button" class="button" onclick={() => handleOpen(toast)}>
             Open note
           </button>
         {/if}
@@ -95,7 +120,7 @@
           type="button"
           class="button button-ghost"
           aria-label="Dismiss notice"
-          onclick={() => onDismiss(notice.id)}
+          onclick={toast.dismiss}
         >
           Dismiss
         </button>

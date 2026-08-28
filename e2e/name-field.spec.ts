@@ -46,7 +46,7 @@ test("renaming a note with Enter updates the tree and syncs", async ({
   await nameField(page).press("Enter");
 
   await expect(nameField(page)).toHaveValue("Greetings");
-  await expect(headerIcon(page)).toHaveAccessibleName("Synced", {
+  await expect(headerIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });
   await backToTreeIfMobile(page, testInfo);

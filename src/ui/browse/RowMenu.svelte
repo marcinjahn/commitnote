@@ -1,22 +1,25 @@
 <script lang="ts">
+  import { actionIcons } from "./action-icons";
   import type { MenuAnchor, RowAction } from "./row-menu-types";
 
   interface Props {
     name: string;
     kind: "note" | "folder";
+    hasFolders: boolean;
     anchor: MenuAnchor;
     onAction: (action: RowAction) => void;
     onClose: () => void;
+    trigger: HTMLElement;
   }
 
-  const { name, kind, anchor, onAction, onClose }: Props = $props();
+  const { name, kind, hasFolders, anchor, onAction, onClose, trigger }: Props = $props();
 
   interface MenuItem {
     readonly action: RowAction;
     readonly label: string;
   }
 
-  const items: readonly MenuItem[] = $derived(
+  const allItems: readonly MenuItem[] = $derived(
     kind === "folder"
       ? [
           { action: "new-note", label: "New note…" },
@@ -29,6 +32,10 @@
           { action: "move", label: "Move to folder…" },
           { action: "delete", label: "Delete…" },
         ],
+  );
+
+  const items = $derived(
+    hasFolders ? allItems : allItems.filter((item) => item.action !== "move"),
   );
 
   let menuEl: HTMLDivElement | undefined = $state();
@@ -54,13 +61,17 @@
     const rawLeft =
       anchor.kind === "rect" ? anchor.rect.right - rect.width : anchor.x;
     position = {
-      top: Math.min(
-        Math.max(margin, rawTop),
-        window.innerHeight - rect.height - margin,
+      top: Math.round(
+        Math.min(
+          Math.max(margin, rawTop),
+          window.innerHeight - rect.height - margin,
+        ),
       ),
-      left: Math.min(
-        Math.max(margin, rawLeft),
-        window.innerWidth - rect.width - margin,
+      left: Math.round(
+        Math.min(
+          Math.max(margin, rawLeft),
+          window.innerWidth - rect.width - margin,
+        ),
       ),
     };
   });
@@ -71,7 +82,8 @@
 
   $effect(() => {
     function handlePointerDown(event: PointerEvent): void {
-      if (menuEl?.contains(event.target as Node)) return;
+      const target = event.target as Node;
+      if (menuEl?.contains(target) || trigger.contains(target)) return;
       onClose();
     }
     document.addEventListener("pointerdown", handlePointerDown);
@@ -112,6 +124,11 @@
       class="row-menu-item"
       onclick={() => onAction(item.action)}
     >
+      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        {#each actionIcons[item.action] as d (d)}
+          <path {d} />
+        {/each}
+      </svg>
       {item.label}
     </button>
   {/each}
@@ -129,21 +146,19 @@
     border: var(--hairline) solid var(--color-border);
     background: var(--color-surface-raised);
     box-shadow: var(--shadow-1);
-    transition:
-      opacity var(--motion-duration) var(--motion-easing),
-      transform var(--motion-duration) var(--motion-easing);
+    transition: opacity var(--motion-duration) var(--motion-easing);
   }
 
   @starting-style {
     .row-menu {
       opacity: 0;
-      transform: translateY(-4px);
     }
   }
 
   .row-menu-item {
     display: flex;
     align-items: center;
+    gap: var(--space-2);
     min-height: var(--touch-target);
     padding: 0 var(--space-3);
     border: none;

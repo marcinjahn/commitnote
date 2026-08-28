@@ -84,7 +84,7 @@ test("hiding the tab flushes pending edits immediately", async ({
 
   const header = page.locator("header.note-header");
   const syncIcon = header.getByRole("img");
-  await expect(syncIcon).not.toHaveAccessibleName("Synced");
+  await expect(syncIcon).toBeVisible();
 
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", {
@@ -95,5 +95,5 @@ test("hiding the tab flushes pending edits immediately", async ({
   });
 
   // Flushed well within the 2 s autosave debounce.
-  await expect(syncIcon).toHaveAccessibleName("Synced", { timeout: 1_500 });
+  await expect(syncIcon).toHaveCount(0, { timeout: 1_500 });
 });

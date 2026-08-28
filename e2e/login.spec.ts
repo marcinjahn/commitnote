@@ -36,6 +36,19 @@ test("first-time initialization and login", async ({ page }) => {
   await expect(page.getByRole("alert")).toHaveText("Wrong passphrase.");
 });
 
+test("an empty repo offers creating a note from the sidebar", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await logIn(page, { repo: EMPTY_REPO, passphrase: "first passphrase" });
+  await page.getByLabel("Repeat passphrase").fill("first passphrase");
+  await page.getByRole("button", { name: "Initialize notes repo" }).click();
+  await expect(page.getByText("No notes yet")).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("button", { name: "create one" }).click();
+  await expect(page.getByRole("textbox", { name: "Note name" })).toBeFocused();
+});
+
 test("progress is visible", async ({ page }) => {
   await page.goto("/");
 

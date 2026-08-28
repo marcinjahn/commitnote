@@ -43,8 +43,8 @@ test("toggling a task checkbox autosaves without focusing the editor", async ({
   expect(
     await page.evaluate(() => !!document.activeElement?.closest(".cm-content")),
   ).toBe(false);
-  await expect(syncIcon).not.toHaveAccessibleName("Synced");
-  await expect(syncIcon).toHaveAccessibleName("Synced", { timeout: 10_000 });
+  await expect(syncIcon).toBeVisible();
+  await expect(syncIcon).toHaveCount(0, { timeout: 10_000 });
 
   // The fake forge lives in page memory, so a reload would reseed it; refresh
   // and reopen instead to prove the toggle reached the forge.
@@ -61,5 +61,5 @@ test("toggling a task checkbox autosaves without focusing the editor", async ({
   await expect(reopenedTask).toBeChecked();
   await press(reopenedTask, testInfo);
   await expect(reopenedTask).not.toBeChecked();
-  await expect(syncIcon).toHaveAccessibleName("Synced", { timeout: 10_000 });
+  await expect(syncIcon).toHaveCount(0, { timeout: 10_000 });
 });

@@ -35,7 +35,7 @@ test("creating, renaming, moving and deleting through row menus", async ({
   // Create a folder at the top level.
   await page.getByRole("button", { name: "New folder" }).click();
   await page.getByLabel("Folder name").fill("Recipes");
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: "Recipes" })).toBeVisible();
 
   // Create a note inside it through its row menu; it opens in the editor.
@@ -49,7 +49,7 @@ test("creating, renaming, moving and deleting through row menus", async ({
   ).toBeVisible();
   await backToTreeIfMobile(page, testInfo);
 
-  await expect(syncIconFor(page, "Recipes")).toHaveAccessibleName("Synced");
+  await expect(syncIconFor(page, "Recipes")).toHaveCount(0);
 
   // A second note in the same folder, so there is a sibling name to collide
   // with when renaming below.
@@ -94,18 +94,14 @@ test("creating, renaming, moving and deleting through row menus", async ({
   await expect(
     page.getByRole("treeitem", { name: "Grocery List" }),
   ).toBeVisible();
-  await expect(syncIconFor(page, "Grocery List")).toHaveAccessibleName(
-    "Synced",
-  );
+  await expect(syncIconFor(page, "Grocery List")).toHaveCount(0);
 
   // Move it to the top level.
   await page.getByRole("button", { name: "Actions for Grocery List" }).click();
   await page.getByRole("menuitem", { name: "Move to folder…" }).click();
   await page.getByRole("radio", { name: "Notes (top level)" }).check();
   await page.getByRole("button", { name: "Move" }).click();
-  await expect(syncIconFor(page, "Grocery List")).toHaveAccessibleName(
-    "Synced",
-  );
+  await expect(syncIconFor(page, "Grocery List")).toHaveCount(0);
 
   // Delete it after confirming.
   await page.getByRole("button", { name: "Actions for Grocery List" }).click();
@@ -123,7 +119,7 @@ test("creating, renaming, moving and deleting through row menus", async ({
   await expect(page.getByRole("treeitem", { name: "Recipes" })).toHaveCount(0);
 
   // Everything settles back to synced afterwards.
-  await expect(syncIconFor(page, "Welcome")).toHaveAccessibleName("Synced");
+  await expect(syncIconFor(page, "Welcome")).toHaveCount(0);
 });
 
 test("right-click on a row opens its menu", async ({ page }, testInfo) => {
@@ -139,4 +135,16 @@ test("right-click on a row opens its menu", async ({ page }, testInfo) => {
   await expect(
     page.getByRole("menu", { name: "Actions for Welcome" }),
   ).toBeVisible();
+});
+
+test("the row actions button toggles its menu", async ({ page }) => {
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  const button = page.getByRole("button", { name: "Actions for Welcome" });
+  await button.click();
+  await expect(page.getByRole("menu")).toBeVisible();
+  await button.click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
 });

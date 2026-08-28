@@ -57,7 +57,7 @@
     onEnterDone={onNameEnterDone}
     onInput={onNameInput}
   />
-  {#if !draft && syncState !== null}
+  {#if !draft && syncState !== null && syncState.kind !== "synced"}
     <span class="sync-status">
       <SyncStateIcon state={syncState} />
       <span class="sync-status-label">{describeSyncState(syncState)}</span>

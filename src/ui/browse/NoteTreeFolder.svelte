@@ -79,12 +79,11 @@
 </script>
 
 <li role="none" oncontextmenu={handleContextMenu}>
-  <div class="tree-row-container">
+  <div class="tree-row-container" class:selected>
   <button
     type="button"
     role="treeitem"
     class="tree-row"
-    class:selected
     style="--depth: {depth}"
     aria-expanded={node.kind === "folder" ? expanded : undefined}
     aria-selected={node.kind === "note" ? selected : undefined}
@@ -122,9 +121,11 @@
     {/if}
     <span class="tree-row-label">{node.name}</span>
   </button>
-  <span class="sync-indicator">
-    <SyncStateIcon state={syncState} />
-  </span>
+  {#if syncState.kind !== "synced"}
+    <span class="sync-indicator">
+      <SyncStateIcon state={syncState} />
+    </span>
+  {/if}
   <button
     type="button"
     class="row-actions"
@@ -174,6 +175,20 @@
   .tree-row-container {
     display: flex;
     align-items: center;
+    transition: background-color var(--motion-duration) var(--motion-easing);
+  }
+
+  .tree-row-container:hover {
+    background: var(--color-hover);
+  }
+
+  .tree-row-container.selected {
+    background: var(--color-selected);
+    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+
+  .tree-row-container.selected .tree-row-label {
+    font-weight: var(--font-weight-medium);
   }
 
   .tree-row {
@@ -191,7 +206,6 @@
     text-align: left;
     cursor: pointer;
     border-radius: 0;
-    transition: background-color var(--motion-duration) var(--motion-easing);
   }
 
   .tree-row:focus-visible,
@@ -204,19 +218,6 @@
     display: inline-flex;
     align-items: center;
     padding-right: var(--space-2);
-  }
-
-  .tree-row:hover {
-    background: var(--color-hover);
-  }
-
-  .tree-row.selected {
-    background: var(--color-selected);
-    box-shadow: inset 2px 0 0 var(--color-accent);
-  }
-
-  .tree-row.selected .tree-row-label {
-    font-weight: var(--font-weight-medium);
   }
 
   .row-icon {
@@ -262,7 +263,7 @@
   }
 
   .row-actions:hover {
-    background: var(--color-hover);
+    background: color-mix(in srgb, var(--color-text) 8%, transparent);
   }
 
   @media (pointer: fine) and (min-width: 768px) {
