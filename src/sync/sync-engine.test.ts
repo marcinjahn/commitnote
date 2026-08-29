@@ -8,7 +8,10 @@ import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
 import type { ForgeAdapter } from "../forge/forge-adapter";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
+import {
+  SAMPLE_NOTES_REPO_PASSPHRASE,
+  sampleNotesRepoSource,
+} from "../testing/sample-notes-repo/sample-source";
 import { findNode, listNotes } from "../tree/note-tree";
 import { createTestClock } from "./testing/test-clock";
 import {
@@ -381,5 +384,39 @@ describe("createSyncEngine", () => {
       kind: "loading",
       path: ["Welcome"],
     });
+  });
+});
+
+describe("snapshotNotes", () => {
+  function sampleMarkdown(name: string): string {
+    const entry = sampleNotesRepoSource.find((e) => e.name === name);
+    if (entry?.kind !== "note") throw new Error("expected a sample note");
+    return entry.markdown;
+  }
+
+  it("returns null before the first refresh", async () => {
+    const { engine } = await setup();
+
+    expect(engine.snapshotNotes()).toBeNull();
+  });
+
+  it("reads synced notes and unsaved local notes as they were when taken", async () => {
+    const { engine } = await setup();
+    await engine.refresh();
+    const created = engine.createNote([], "Draft");
+    if (!created.ok) throw new Error("expected the note to be created");
+    engine.editNote(created.path, "first");
+
+    const snapshot = engine.snapshotNotes();
+    engine.editNote(created.path, "second");
+
+    expect(snapshot?.tree.root.children.map((child) => child.name)).toContain(
+      "Draft",
+    );
+    expect(await snapshot?.readNote(["Draft"])).toBe("first");
+    expect(await snapshot?.readNote(["Welcome"])).toBe(
+      sampleMarkdown("Welcome"),
+    );
+    engine.dispose();
   });
 });

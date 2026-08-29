@@ -153,6 +153,11 @@ export type FlushResult =
   | { readonly kind: "saved" }
   | { readonly kind: "unsaved"; readonly count: number };
 
+export interface NotesSnapshot {
+  readonly tree: WorkingTree;
+  readNote(path: NotePath): Promise<string>;
+}
+
 export interface SyncEngine {
   getState(): SyncEngineState;
   subscribe(run: (state: SyncEngineState) => void): () => void;
@@ -168,6 +173,7 @@ export interface SyncEngine {
   retryNow(): void;
   resolveConflict(path: NotePath, resolution: ConflictResolution): void;
   dismissNotice(id: number): void;
+  snapshotNotes(): NotesSnapshot | null;
   dispose(): void;
 }
 
@@ -1111,6 +1117,47 @@ export function createSyncEngine(options: {
     return promise;
   }
 
+  function snapshotNotes(): NotesSnapshot | null {
+    const tree = state.workingTree;
+    if (disposed || tree === null) return null;
+
+    const resolutions = new Map<string, NoteResolution>();
+    function collect(folder: WorkingFolder): void {
+      for (const child of folder.children) {
+        if (child.kind === "folder") {
+          collect(child);
+          continue;
+        }
+        const conflict = conflictAt(child.path);
+        resolutions.set(
+          JSON.stringify(child.path),
+          conflict === undefined
+            ? resolveWorkingNote(child.path)
+            : { kind: "local", content: conflict.editing ?? conflict.merged },
+        );
+      }
+    }
+    collect(tree.root);
+
+    return {
+      tree,
+      async readNote(path) {
+        const resolution = resolutions.get(JSON.stringify(path));
+        switch (resolution?.kind) {
+          case "local":
+            return resolution.content;
+          case "blob":
+            return decryptNote(
+              keyring,
+              await adapter.readBlob(resolution.blobSha),
+            );
+          default:
+            throw new Error("No note at the requested path");
+        }
+      },
+    };
+  }
+
   // ---- Commands ----
 
   function editNote(path: NotePath, content: string): void {
@@ -1366,6 +1413,7 @@ export function createSyncEngine(options: {
     retryNow,
     resolveConflict,
     dismissNotice,
+    snapshotNotes,
     dispose,
   };
 }

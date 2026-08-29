@@ -5,6 +5,7 @@
   import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
   import { findWorkingNode } from "../../sync/working-tree";
   import type { WorkingNode } from "../../sync/working-tree";
+  import { buildNotesArchive } from "../../export/notes-archive";
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
   import { actionIcons } from "./action-icons";
   import { countDescendants } from "../dialogs/folder-options";
@@ -87,7 +88,9 @@
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
   let refreshMessages = $state<readonly ToastMessage[]>([]);
-  let nextRefreshMessageId = 0;
+  let nextMessageId = 0;
+  let exporting = $state(false);
+  let exportMessages = $state<readonly ToastMessage[]>([]);
 
   $effect(() => {
     return engine.subscribe((next) => {
@@ -225,7 +228,7 @@
   function showRefreshError(text: string): void {
     // The inline alert explains an empty sidebar; a toast would repeat it.
     if (tree === null) return;
-    refreshMessages = [{ id: ++nextRefreshMessageId, text }];
+    refreshMessages = [{ id: ++nextMessageId, text }];
   }
 
   async function handleRefresh(): Promise<boolean> {
@@ -242,6 +245,34 @@
     }
     showRefreshError(describeSyncError(error));
     return false;
+  }
+
+  function exportFileName(now: Date): string {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `commitnote-export-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.zip`;
+  }
+
+  async function handleExport(): Promise<void> {
+    const snapshot = engine.snapshotNotes();
+    if (snapshot === null || exporting) return;
+    exporting = true;
+    exportMessages = [];
+    try {
+      const now = new Date();
+      const archive = await buildNotesArchive(snapshot.tree.root, snapshot.readNote, now);
+      const url = URL.createObjectURL(new Blob([archive], { type: "application/zip" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = exportFileName(now);
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch {
+      exportMessages = [{ id: ++nextMessageId, text: "Export failed. Try again later." }];
+    } finally {
+      exporting = false;
+    }
   }
 
   function expandFolder(path: NotePath): void {
@@ -459,6 +490,14 @@
         bind:this={repoLabelEl}
         title={repoLabelTruncated ? repoLabel : undefined}>{repoLabel}</a
       >
+      <button
+        type="button"
+        class="button button-ghost"
+        disabled={tree === null || exporting}
+        onclick={handleExport}
+      >
+        {exporting ? "Exporting…" : "Export"}
+      </button>
       <button type="button" class="button button-ghost" onclick={handleLogOut}>
         Log out
       </button>
@@ -512,10 +551,12 @@
 
 <NoticeToasts
   notices={engineState.notices}
-  messages={refreshMessages}
+  messages={[...refreshMessages, ...exportMessages]}
   onDismiss={(id) => engine.dismissNotice(id)}
-  onDismissMessage={(id) =>
-    (refreshMessages = refreshMessages.filter((message) => message.id !== id))}
+  onDismissMessage={(id) => {
+    refreshMessages = refreshMessages.filter((message) => message.id !== id);
+    exportMessages = exportMessages.filter((message) => message.id !== id);
+  }}
   onOpen={handleSelect}
 />
 
