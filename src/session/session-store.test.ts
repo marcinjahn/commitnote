@@ -93,6 +93,24 @@ describe("createSessionStore", () => {
     storage = new MemoryStorage();
   });
 
+  it("remembers a GitLab session whose owner is a nested group path", async () => {
+    const session: Session = {
+      ...(await makeSession()),
+      repoUrl: "https://gitlab.com/acme/team/notes",
+      coordinates: { forge: "gitlab", owner: "acme/team", repo: "notes" },
+    };
+    await createSessionStore({ indexedDB, storage }).start(session, {
+      rememberMe: true,
+    });
+
+    const loaded = await createSessionStore({
+      indexedDB,
+      storage,
+    }).loadRememberedSession();
+
+    expect(loaded?.coordinates).toEqual(session.coordinates);
+  });
+
   it("remembers a session across stores when Remember me is on", async () => {
     const session = await makeSession();
     const store = createSessionStore({ indexedDB, storage });
@@ -159,6 +177,17 @@ describe("createSessionStore", () => {
     const loaded = await otherStore.loadRememberedSession();
     expect(loaded).toBeNull();
     expect(otherStore.lastRepoUrl()).toBe(session.repoUrl);
+  });
+
+  it("remembers the last used forge even without Remember me", async () => {
+    const session = await makeSession();
+    const store = createSessionStore({ indexedDB, storage });
+    expect(store.lastForgeId()).toBeNull();
+
+    await store.start(session, { rememberMe: false });
+
+    const otherStore = createSessionStore({ indexedDB, storage });
+    expect(otherStore.lastForgeId()).toBe("github");
   });
 
   it("removes a previously remembered record when starting again without Remember me", async () => {

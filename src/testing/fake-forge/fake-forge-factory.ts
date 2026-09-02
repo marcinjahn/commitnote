@@ -13,7 +13,11 @@ import {
   InMemoryGitRepo,
 } from "../../forge/fake/in-memory-git-repo";
 import type { ForgeAdapter } from "../../forge/forge-adapter";
-import type { RepositorySummary } from "../../forge/forge-provider";
+import type {
+  ForgeProvider,
+  RepositorySummary,
+} from "../../forge/forge-provider";
+import type { ForgeId } from "../../forge/repo-coordinates";
 import { createGitHubProvider } from "../../forge/github/github-provider";
 import type {
   ForgeAdapterFactory,
@@ -33,6 +37,11 @@ import {
 
 export const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
 export const FAKE_FORGE_INVALID_TOKEN = "invalid-token";
+export const SECOND_FAKE_FORGE_NAME = "Fakelab";
+export const SECOND_FAKE_FORGE_URL_PREFIX = "https://fakelab.test/";
+// Stands in for the second real provider so the login UI can be exercised with
+// several providers; only its display name and fixtures differ.
+const SECOND_FAKE_FORGE_ID: ForgeId = "gitlab";
 export const FAKE_FORGE_CONTROLS_KEY = "__commitNoteFakeForge";
 
 export interface FakeForgeControls {
@@ -202,25 +211,67 @@ export async function createFakeForge(options?: {
     return fixtures.get(key) ?? notFoundAdapter();
   };
 
-  const repositories: RepositorySummary[] = [...fixtures.keys()].map((key) => {
-    const [owner, repo] = key.split("/");
+  function fakeProvider(options: {
+    readonly base: ForgeProvider;
+    readonly fixtures: ReadonlyMap<string, ForgeAdapter>;
+    readonly urlPrefix: string;
+    readonly createAdapter: ForgeAdapterFactory;
+  }): ForgeProvider {
+    const forge = options.base.id;
+    const repositories: RepositorySummary[] = [...options.fixtures.keys()].map(
+      (key) => {
+        const [owner, repo] = key.split("/");
+        return {
+          coordinates: { forge, owner, repo },
+          url: `${options.urlPrefix}${key}`,
+        };
+      },
+    );
     return {
-      coordinates: { forge: "github", owner, repo },
-      url: `https://github.com/${key}`,
-    };
-  });
-
-  const registry: ForgeRegistry = {
-    github: {
-      ...createGitHubProvider(),
+      ...options.base,
       listRepositories: async (accessToken) => {
         if (accessToken === FAKE_FORGE_INVALID_TOKEN) {
           throw new ForgeError("Unauthorized");
         }
         return repositories;
       },
+      createAdapter: options.createAdapter,
+    };
+  }
+
+  const secondFixtures = new Map<string, ForgeAdapter>([
+    ["team/notes", await createSampleNotesRepoAdapter()],
+    ["team/empty", new FakeForgeAdapter()],
+  ]);
+
+  const secondFactory: ForgeAdapterFactory = (coordinates, factoryOptions) => {
+    if (factoryOptions.accessToken === FAKE_FORGE_INVALID_TOKEN) {
+      return unauthorizedAdapter();
+    }
+    const key = `${coordinates.owner}/${coordinates.repo}`.toLowerCase();
+    return secondFixtures.get(key) ?? notFoundAdapter();
+  };
+
+  const registry = {
+    github: fakeProvider({
+      base: createGitHubProvider(),
+      fixtures,
+      urlPrefix: "https://github.com/",
       createAdapter: factory,
-    },
+    }),
+    gitlab: fakeProvider({
+      base: {
+        id: SECOND_FAKE_FORGE_ID,
+        name: SECOND_FAKE_FORGE_NAME,
+        accessTokenHint: "A Fakelab token with the write_repository scope.",
+        accessTokenCreationUrl: () => `${SECOND_FAKE_FORGE_URL_PREFIX}tokens/new`,
+        listRepositories: () => Promise.resolve([]),
+        createAdapter: secondFactory,
+      },
+      fixtures: secondFixtures,
+      urlPrefix: SECOND_FAKE_FORGE_URL_PREFIX,
+      createAdapter: secondFactory,
+    }),
   };
 
   return { factory, registry, controls };

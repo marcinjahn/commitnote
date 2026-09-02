@@ -297,3 +297,29 @@ describe("createFakeForge registry", () => {
     expect(await adapter.inspect()).toEqual({ kind: "empty", canWrite: true });
   });
 });
+
+describe("createFakeForge registry", () => {
+  it("exposes a second provider with its own repositories", async () => {
+    const { registry } = await createFakeForge();
+    const providers = Object.values(registry);
+
+    expect(providers.map((p) => p.name)).toEqual(["GitHub", "Fakelab"]);
+    const second = providers[1];
+    const repositories = await second.listRepositories(TOKEN);
+    expect(repositories.map((r) => r.url)).toEqual([
+      "https://fakelab.test/team/notes",
+      "https://fakelab.test/team/empty",
+    ]);
+    expect(repositories.every((r) => r.coordinates.forge === second.id)).toBe(
+      true,
+    );
+    await expect(
+      second.listRepositories(FAKE_FORGE_INVALID_TOKEN),
+    ).rejects.toMatchObject({ kind: "Unauthorized" });
+
+    const adapter = second.createAdapter(repositories[0].coordinates, {
+      accessToken: TOKEN,
+    });
+    expect((await adapter.inspect()).kind).toBe("populated");
+  });
+});

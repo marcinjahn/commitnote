@@ -9,6 +9,7 @@
   import { listRepositories, repositoryLabel } from "../../login/login";
   import type { Session } from "../../session/session";
   import type { ForgeAdapter } from "../../forge/forge-adapter";
+  import type { ForgeId } from "../../forge/repo-coordinates";
   import type {
     ForgeProvider,
     RepositorySummary,
@@ -25,6 +26,7 @@
   interface Props {
     providers: readonly ForgeProvider[];
     initialRepoUrl: string;
+    initialForgeId?: string | null;
     initialError?: LoginError | null;
     logIn: (
       input: LoginInput,
@@ -45,6 +47,7 @@
   const {
     providers,
     initialRepoUrl,
+    initialForgeId = null,
     initialError = null,
     logIn,
     initialize,
@@ -52,7 +55,9 @@
   }: Props = $props();
 
   let mode = $state<"login" | "initialize">("login");
-  let providerId = $state(untrack(() => providers[0].id));
+  let providerId = $state(
+    untrack(() => (providers.find((p) => p.id === initialForgeId) ?? providers[0]).id),
+  );
   let accessToken = $state("");
   let repositories = $state.raw<RepositorySummary[] | null>(null);
   let selectedRepoUrl = $state("");
@@ -65,7 +70,11 @@
   let error = $state<string | null>(
     untrack(() =>
       initialError
-        ? describeLoginError(initialError, providers[0].name)
+        ? describeLoginError(
+            initialError,
+            (providers.find((p) => p.id === initialForgeId) ?? providers[0])
+              .name,
+          )
         : null,
     ),
   );
@@ -84,6 +93,15 @@
   function forgetRepositories(): void {
     repositories = null;
     selectedRepoUrl = "";
+  }
+
+  function selectProvider(id: ForgeId): void {
+    if (id === providerId) return;
+    providerId = id;
+    accessToken = "";
+    passphrase = "";
+    error = null;
+    forgetRepositories();
   }
 
   function preselectedRepoUrl(listed: readonly RepositorySummary[]): string {
@@ -221,19 +239,23 @@
     {#if mode === "login"}
       <form onsubmit={handleSubmit}>
         {#if providers.length > 1}
-          <div class="field">
-            <label for="login-forge">Git host</label>
-            <select
-              id="login-forge"
-              bind:value={providerId}
-              onchange={forgetRepositories}
-              disabled={busy}
-            >
+          <fieldset class="provider-picker" disabled={busy}>
+            <legend>Git host</legend>
+            <div class="provider-options">
               {#each providers as option (option.id)}
-                <option value={option.id}>{option.name}</option>
+                <label class="provider-option">
+                  <input
+                    type="radio"
+                    name="login-forge"
+                    value={option.id}
+                    checked={option.id === providerId}
+                    onchange={() => selectProvider(option.id)}
+                  />
+                  <span>{option.name}</span>
+                </label>
               {/each}
-            </select>
-          </div>
+            </div>
+          </fieldset>
         {/if}
 
         <div class="field">
@@ -248,8 +270,8 @@
             aria-describedby="login-access-token-hint"
           />
           <p id="login-access-token-hint" class="field-hint">
-            A fine-grained token for your notes repository only, with
-            "Contents: read and write".
+            {provider.accessTokenHint ??
+              "An access token for your notes repository only, with read and write access to its contents."}
             <a href={tokenCreationUrl} target="_blank" rel="noopener noreferrer"
               >Create a token on {provider.name}</a
             > with these settings filled in, then choose the repository there.
@@ -386,6 +408,77 @@
     width: 100%;
     height: var(--space-1);
     accent-color: var(--color-ink);
+  }
+
+  .provider-picker {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+  }
+
+  .provider-picker legend {
+    padding: 0;
+    margin-bottom: var(--space-1);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+  }
+
+  .provider-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: var(--space-1);
+  }
+
+  .provider-option {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--touch-target);
+    padding: 0 var(--space-2);
+    border: var(--hairline) solid var(--color-border-strong);
+    border-radius: var(--radius);
+    background: var(--color-surface-raised);
+    font-weight: var(--font-weight-medium);
+    text-align: center;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    transition:
+      background-color var(--motion-duration) var(--motion-easing),
+      border-color var(--motion-duration) var(--motion-easing);
+  }
+
+  .provider-option:hover {
+    border-color: var(--color-text);
+  }
+
+  .provider-option:has(input:checked) {
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+    color: var(--color-on-ink);
+  }
+
+  .provider-option:has(input:focus-visible) {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  .provider-option input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  fieldset:disabled .provider-option {
+    cursor: default;
+    opacity: 0.6;
   }
 
   form > .button-primary {

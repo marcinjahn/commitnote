@@ -51,6 +51,8 @@ export function createGitHubProvider(
   return {
     id: "github",
     name: "GitHub",
+    accessTokenHint:
+      'A fine-grained token for your notes repository only, with "Contents: read and write".',
     accessTokenCreationUrl,
 
     async listRepositories(accessToken) {

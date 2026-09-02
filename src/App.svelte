@@ -39,6 +39,7 @@
     | {
         readonly kind: "login";
         readonly initialRepoUrl: string;
+        readonly initialForgeId: string | null;
         readonly initialError: LoginError | null;
       }
     | {
@@ -46,6 +47,7 @@
         readonly engine: SyncEngine;
         readonly repoLabel: string;
         readonly repoUrl: string;
+        readonly forgeName: string;
       };
 
   const store = createSessionStore();
@@ -80,6 +82,7 @@
     phase = {
       kind: "login",
       initialRepoUrl: store.lastRepoUrl() ?? "",
+      initialForgeId: store.lastForgeId(),
       initialError,
     };
   }
@@ -111,6 +114,7 @@
       engine,
       repoLabel: repositoryLabel(session.coordinates),
       repoUrl: session.repoUrl,
+      forgeName: registry[session.coordinates.forge].name,
     };
     void engine.refresh();
   }
@@ -211,6 +215,7 @@
     <LoginScreen
       {providers}
       initialRepoUrl={phase.initialRepoUrl}
+      initialForgeId={phase.initialForgeId}
       initialError={phase.initialError}
       logIn={boundLogIn}
       initialize={boundInitialize}
@@ -218,7 +223,13 @@
     />
   {/key}
 {:else if phase.kind === "app"}
-  <AppShell engine={phase.engine} repoLabel={phase.repoLabel} repoUrl={phase.repoUrl} onLogOut={logOut} />
+  <AppShell
+    engine={phase.engine}
+    repoLabel={phase.repoLabel}
+    repoUrl={phase.repoUrl}
+    forgeName={phase.forgeName}
+    onLogOut={logOut}
+  />
   <LogoutDialog
     open={logout !== null}
     saving={logout?.kind !== "unsaved"}
