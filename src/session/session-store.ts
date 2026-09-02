@@ -9,6 +9,7 @@ const STORE_NAME = "session";
 const RECORD_KEY = "current";
 const RECORD_VERSION = 1;
 const REPO_URL_STORAGE_KEY = "commitnote.repoUrl";
+const FORGE_ID_STORAGE_KEY = "commitnote.forge";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -29,6 +30,7 @@ export interface SessionStore {
   loadRememberedSession(): Promise<Session | null>;
   clear(): Promise<void>;
   lastRepoUrl(): string | null;
+  lastForgeId(): string | null;
 }
 
 function wrapRequest<T>(request: IDBRequest<T>): Promise<T> {
@@ -129,21 +131,22 @@ export function createSessionStore(options?: {
     return dbPromise;
   }
 
-  function readRepoUrl(): string | null {
+  function readItem(key: string): string | null {
     const storage = getStorage();
     if (!storage) return null;
     try {
-      return storage.getItem(REPO_URL_STORAGE_KEY);
+      return storage.getItem(key);
     } catch {
       return null;
     }
   }
 
-  function writeRepoUrl(repoUrl: string): void {
+  function writeLastLogin(session: Session): void {
     const storage = getStorage();
     if (!storage) return;
     try {
-      storage.setItem(REPO_URL_STORAGE_KEY, repoUrl);
+      storage.setItem(REPO_URL_STORAGE_KEY, session.repoUrl);
+      storage.setItem(FORGE_ID_STORAGE_KEY, session.coordinates.forge);
     } catch {
       // Treated as an unavailable store: the in-memory session still starts.
     }
@@ -193,7 +196,7 @@ export function createSessionStore(options?: {
 
     async start(session, { rememberMe }) {
       current = session;
-      writeRepoUrl(session.repoUrl);
+      writeLastLogin(session);
 
       if (!rememberMe) {
         await deleteRecord();
@@ -235,7 +238,11 @@ export function createSessionStore(options?: {
     },
 
     lastRepoUrl() {
-      return readRepoUrl();
+      return readItem(REPO_URL_STORAGE_KEY);
+    },
+
+    lastForgeId() {
+      return readItem(FORGE_ID_STORAGE_KEY);
     },
   };
 }

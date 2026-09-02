@@ -12,6 +12,8 @@ export interface RepositorySummary {
 export interface ForgeProvider {
   readonly id: ForgeId;
   readonly name: string;
+  /** Short sentence telling the user which token to create. */
+  readonly accessTokenHint?: string;
   accessTokenCreationUrl(now: Date): string;
   /** Throws ForgeError. */
   listRepositories(accessToken: string): Promise<RepositorySummary[]>;

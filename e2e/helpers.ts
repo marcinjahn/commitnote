@@ -6,6 +6,7 @@ export interface LogInOptions {
   readonly token?: string;
   readonly passphrase: string;
   readonly rememberMe?: boolean;
+  readonly provider?: string;
 }
 
 export async function continueWithToken(
@@ -17,10 +18,13 @@ export async function continueWithToken(
 }
 
 export async function logIn(page: Page, options: LogInOptions): Promise<void> {
+  if (options.provider) {
+    await page.getByRole("radio", { name: options.provider }).check();
+  }
   await continueWithToken(page, options.token);
-  await page
-    .getByLabel("Repository", { exact: true })
-    .selectOption({ label: options.repo.replace("https://github.com/", "") });
+  await page.getByLabel("Repository", { exact: true }).selectOption({
+    label: options.repo.replace(/^https:\/\/[^/]+\//, ""),
+  });
   await page.getByLabel("Passphrase", { exact: true }).fill(options.passphrase);
   if (options.rememberMe) {
     await page.getByRole("checkbox", { name: "Remember me" }).check();

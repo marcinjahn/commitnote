@@ -14,6 +14,7 @@
 
   interface Props {
     engine: SyncEngine;
+    forgeName: string;
     openNote: OpenNoteState | null;
     draft: boolean;
     hasNotes: boolean;
@@ -21,7 +22,7 @@
     onNewNote: () => void;
   }
 
-  const { engine, openNote, draft, hasNotes, onDraftContent, onNewNote }: Props = $props();
+  const { engine, forgeName, openNote, draft, hasNotes, onDraftContent, onNewNote }: Props = $props();
 
   const editorExtensions = [livePreview()];
 
@@ -84,7 +85,7 @@
     <p class="note-status">This note no longer exists.</p>
   {:else if openNote.kind === "failed"}
     <p role="alert" class="alert-error">
-      {describeSyncError(openNote.error)}
+      {describeSyncError(openNote.error, forgeName)}
     </p>
   {/if}
 </div>

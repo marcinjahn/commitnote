@@ -28,10 +28,11 @@
     engine: SyncEngine;
     repoLabel: string;
     repoUrl: string;
+    forgeName: string;
     onLogOut: () => void;
   }
 
-  const { engine, repoLabel, repoUrl, onLogOut }: Props = $props();
+  const { engine, repoLabel, repoUrl, forgeName, onLogOut }: Props = $props();
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
   let mobileView = $state<"tree" | "note">("tree");
@@ -243,7 +244,7 @@
       refreshMessages = [];
       return true;
     }
-    showRefreshError(describeSyncError(error));
+    showRefreshError(describeSyncError(error, forgeName));
     return false;
   }
 
@@ -468,7 +469,7 @@
     </div>
     {#if tree === null && engineState.refresh.lastError !== null}
       <p role="alert" class="alert-error">
-        {describeSyncError(engineState.refresh.lastError)}
+        {describeSyncError(engineState.refresh.lastError, forgeName)}
       </p>
     {/if}
     <NoteTree
@@ -540,6 +541,7 @@
     <NotePane
       bind:this={notePane}
       {engine}
+      {forgeName}
       openNote={engineState.openNote}
       draft={draft !== null}
       hasNotes={tree !== null && tree.root.children.length > 0}

@@ -103,6 +103,39 @@ describe("GitHubAdapter", () => {
     expect(mock.git.getRef("master")).toBe(head);
   });
 
+  it("reports createBlob per text upsert, then createTree, createCommit, updateRef in order", async () => {
+    const mock = useMock();
+    const parent = await commitFiles(mock.git, {
+      parent: null,
+      files: { [REPO_CONFIG_PATH]: "{}", "old.md": "move me" },
+      message: "init",
+      branch: MAIN_BRANCH,
+    });
+    const { adapter, reports } = makeAdapter();
+    const oldEntry = (await adapter.listTree(parent)).find(
+      (entry) => entry.path === "old.md",
+    );
+
+    await adapter.commit({
+      parent,
+      changes: [
+        { kind: "upsert-text", path: "a.md", text: "one" },
+        { kind: "upsert-text", path: "b.md", text: "two" },
+        { kind: "upsert-blob", path: "c.md", blobSha: oldEntry?.sha ?? "" },
+        { kind: "delete", path: "old.md" },
+      ],
+      message: "save",
+    });
+
+    expect(reports.map((report) => report.operation)).toEqual([
+      "createBlob",
+      "createBlob",
+      "createTree",
+      "createCommit",
+      "updateRef",
+    ]);
+  });
+
   it("returns stale when the update-ref PATCH rejects a non-fast-forward push", async () => {
     const mock = useMock();
     const parent = await seedConfig(mock);

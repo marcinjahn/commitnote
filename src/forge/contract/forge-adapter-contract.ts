@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { REPO_CONFIG_DIR, REPO_CONFIG_PATH } from "../../format/v1";
+import { SAVE_FIXED_REQUEST_COST } from "../../sync/tuning";
 import type {
   CommitFileChange,
   ContentCreatingRequest,
@@ -445,7 +446,7 @@ export function describeForgeAdapterContract(
     });
 
     describe("reporting", () => {
-      it("reports createBlob per text upsert, then createTree, createCommit, updateRef in order", async () => {
+      it("reports a commit's content-creating requests within the save cost the rate budget reserves", async () => {
         const subject = await harness.createPopulated(
           configSeed({ "old.md": "move me" }),
         );
@@ -469,15 +470,13 @@ export function describeForgeAdapterContract(
           message: "save",
         });
 
-        expect(
-          subject.contentCreatingRequests.map((request) => request.operation),
-        ).toEqual([
-          "createBlob",
-          "createBlob",
-          "createTree",
-          "createCommit",
-          "updateRef",
-        ]);
+        const operations = subject.contentCreatingRequests.map(
+          (request) => request.operation,
+        );
+        expect(operations).toContain("createCommit");
+        expect(operations.length).toBeLessThanOrEqual(
+          2 + SAVE_FIXED_REQUEST_COST,
+        );
       });
 
       it("reports initialize first when initializing an empty repo", async () => {

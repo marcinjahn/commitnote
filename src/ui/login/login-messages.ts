@@ -20,7 +20,7 @@ export function describeLoginError(
     case "server":
       return `${forgeName} returned an error. Try again later.`;
     case "readOnly":
-      return 'This access token cannot write to the repository. Give it "Contents: read and write" access.';
+      return 'This access token cannot write to the repository. Give it read and write access to the repository contents.';
     case "foreign":
       return "This repository is neither empty nor a notes repo. commitnote only uses an empty repository or one it initialized, and it has not changed anything here.";
     case "newerFormat":

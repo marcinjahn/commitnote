@@ -190,14 +190,14 @@ const refusals: ReadonlyArray<{
     repo: "https://github.com/sample/read-only",
     passphrase: NOTES_PASSPHRASE,
     message:
-      'This access token cannot write to the repository. Give it "Contents: read and write" access.',
+      'This access token cannot write to the repository. Give it read and write access to the repository contents.',
   },
   {
     name: "a read-only empty repo",
     repo: "https://github.com/sample/empty-read-only",
     passphrase: "whatever",
     message:
-      'This access token cannot write to the repository. Give it "Contents: read and write" access.',
+      'This access token cannot write to the repository. Give it read and write access to the repository contents.',
   },
 ];
 
@@ -238,4 +238,126 @@ test("a long repository name keeps the form inside the login card", async ({
     .getByRole("button", { name: "Log in" })
     .boundingBox();
   expect(button!.x + button!.width).toBeLessThanOrEqual(card!.x + card!.width);
+});
+
+test.describe("several providers", () => {
+  const SECOND_NOTES_REPO = "https://fakelab.test/team/notes";
+  const SECOND_EMPTY_REPO = "https://fakelab.test/team/empty";
+
+  test("the provider picker lists every provider and defaults to the first", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    const github = page.getByRole("radio", { name: "GitHub" });
+    const fakelab = page.getByRole("radio", { name: "Fakelab" });
+    await expect(github).toBeChecked();
+    await expect(fakelab).not.toBeChecked();
+  });
+
+  test("switching provider updates the token help and link and clears the token", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    await page.getByLabel("Access token").fill("secret-token");
+    await page.getByRole("radio", { name: "Fakelab" }).check();
+
+    await expect(page.getByLabel("Access token")).toHaveValue("");
+    await expect(page.getByText("A Fakelab token with the")).toBeVisible();
+    const link = page.getByRole("link", { name: "Create a token on Fakelab" });
+    await expect(link).toHaveAttribute(
+      "href",
+      "https://fakelab.test/tokens/new",
+    );
+    await expect(
+      page.getByRole("link", { name: "Create a token on GitHub" }),
+    ).toHaveCount(0);
+  });
+
+  test("switching provider drops the loaded repository list", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    await continueWithToken(page);
+    await expect(page.getByLabel("Repository", { exact: true })).toBeVisible();
+
+    await page.getByRole("radio", { name: "Fakelab" }).check();
+    await expect(page.getByLabel("Repository", { exact: true })).toHaveCount(0);
+
+    await continueWithToken(page);
+    await expect(
+      page.getByLabel("Repository", { exact: true }).getByRole("option"),
+    ).toHaveText(["Choose a repository", "team/empty", "team/notes"]);
+  });
+
+  test("logging in with the second provider", async ({ page }) => {
+    await page.goto("/");
+
+    await logIn(page, {
+      provider: "Fakelab",
+      repo: SECOND_NOTES_REPO,
+      passphrase: NOTES_PASSPHRASE,
+    });
+    await expectTree(page);
+  });
+
+  test("initializing a repository on the second provider", async ({ page }) => {
+    await page.goto("/");
+
+    await logIn(page, {
+      provider: "Fakelab",
+      repo: SECOND_EMPTY_REPO,
+      passphrase: "first passphrase",
+    });
+    await page.getByLabel("Repeat passphrase").fill("first passphrase");
+    await page.getByRole("button", { name: "Initialize notes repo" }).click();
+    await expect(page.getByText("No notes yet")).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
+  test("errors name the selected provider", async ({ page }) => {
+    await page.goto("/");
+
+    await page.getByRole("radio", { name: "Fakelab" }).check();
+    await continueWithToken(page, "invalid-token");
+    await expect(page.getByRole("alert")).toHaveText(
+      "The access token is invalid or has expired.",
+    );
+  });
+
+  test("the last used provider is preselected after logging out", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    await logIn(page, {
+      provider: "Fakelab",
+      repo: SECOND_NOTES_REPO,
+      passphrase: NOTES_PASSPHRASE,
+    });
+    await expectTree(page);
+
+    await page.getByRole("button", { name: "Log out" }).click();
+    await expect(page.getByRole("radio", { name: "Fakelab" })).toBeChecked();
+
+    await page.reload();
+    await expect(page.getByRole("radio", { name: "Fakelab" })).toBeChecked();
+  });
+
+  test("the provider picker stays inside the login card", async ({ page }) => {
+    await page.goto("/");
+
+    const card = (await page.locator(".login-card").boundingBox())!;
+    for (const name of ["GitHub", "Fakelab"]) {
+      const box = (await page
+        .getByRole("radio", { name })
+        .locator("xpath=..")
+        .boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(card.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(card.x + card.width);
+    }
+  });
 });

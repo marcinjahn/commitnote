@@ -38,7 +38,7 @@ describe("describeLoginError", () => {
   it("describes a readOnly error", () => {
     const error: LoginError = { kind: "readOnly" };
     expect(describeLoginError(error, "GitHub")).toBe(
-      'This access token cannot write to the repository. Give it "Contents: read and write" access.',
+      'This access token cannot write to the repository. Give it read and write access to the repository contents.',
     );
   });
 

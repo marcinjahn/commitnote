@@ -1,4 +1,5 @@
 import { createGitHubProvider } from "./github/github-provider";
+import { createGitLabProvider } from "./gitlab/gitlab-provider";
 import type { ForgeAdapter, ForgeAdapterOptions } from "./forge-adapter";
 import type { ForgeProvider } from "./forge-provider";
 import type { ForgeId, RepoCoordinates } from "./repo-coordinates";
@@ -12,6 +13,7 @@ export type ForgeRegistry = Readonly<Record<ForgeId, ForgeProvider>>;
 
 export const forgeRegistry: ForgeRegistry = {
   github: createGitHubProvider(),
+  gitlab: createGitLabProvider(),
 };
 
 export function forgeProviders(registry: ForgeRegistry): ForgeProvider[] {

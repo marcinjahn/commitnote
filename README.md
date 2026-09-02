@@ -91,8 +91,9 @@ fixture state resets on reload. Test mode is never part of `npm run build`, whic
    one is picked for you.
 3. Enter the passphrase and log in.
 
-Each git host is a forge provider in `src/forge/` (token link, repository listing, adapter). GitHub
-is currently the only one.
+Each git host is a forge provider in `src/forge/` (token link, repository listing, adapter): GitHub
+and GitLab (gitlab.com only, personal access token with the `api` scope; self-hosted instances are
+not supported yet). A GitLab project in nested groups keeps the whole group path as its owner.
 
 ## Remember me
 
