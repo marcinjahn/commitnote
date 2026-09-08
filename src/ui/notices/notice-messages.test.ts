@@ -88,4 +88,28 @@ describe("describeNotice", () => {
       "A change to “a” couldn't be saved because it changed on another device.",
     );
   });
+
+  it("describes a skipped restore", () => {
+    expect(
+      describeNotice(merge({ kind: "restore-skipped", path: ["a", "b"], target: "note" })),
+    ).toBe("Couldn't restore “a / b”: it is no longer in the trash.");
+  });
+
+  it("describes a dropped restore", () => {
+    expect(
+      describeNotice({
+        id: 6,
+        kind: "dropped",
+        change: { kind: "restore-trash", entryId: "e", subPath: [], target: "note", to: ["a"] },
+      }),
+    ).toBe("Couldn't restore “a” from the trash: it changed on another device.");
+  });
+
+  it("describes a dropped purge without naming anything", () => {
+    expect(
+      describeNotice({ id: 7, kind: "dropped", change: { kind: "purge-trash", entryIds: ["e"] } }),
+    ).toBe(
+      "Some items couldn't be permanently deleted from the trash because it changed on another device.",
+    );
+  });
 });

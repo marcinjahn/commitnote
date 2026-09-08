@@ -66,6 +66,35 @@ describe("computeSyncStates entry paths", () => {
       change: { kind: "delete-folder", path: pathOf("folder") },
       expectedPath: [],
     },
+    {
+      description: "trash-note marks the parent folder",
+      change: {
+        kind: "trash-note",
+        path: pathOf("folder", "a.md"),
+        entryId: "20260930T100000Z-2-aaaaaaaa",
+      },
+      expectedPath: pathOf("folder"),
+    },
+    {
+      description: "trash-folder at the root marks the root",
+      change: {
+        kind: "trash-folder",
+        path: pathOf("folder"),
+        entryId: "20260930T100000Z-1-aaaaaaaa",
+      },
+      expectedPath: [],
+    },
+    {
+      description: "restore-trash marks the restore target",
+      change: {
+        kind: "restore-trash",
+        entryId: "20260930T100000Z-1-aaaaaaaa",
+        subPath: [],
+        target: "folder",
+        to: pathOf("parent", "restored"),
+      },
+      expectedPath: pathOf("parent", "restored"),
+    },
   ];
 
   it.each(cases)("$description", ({ change, expectedPath }) => {
@@ -81,6 +110,25 @@ describe("computeSyncStates entry paths", () => {
       reason: "pending",
     });
     expect(states.unsavedCount).toBe(1);
+  });
+});
+
+describe("computeSyncStates purge", () => {
+  it("never counts a purge as unsaved, pending or in flight", () => {
+    const purge = {
+      kind: "purge-trash",
+      entryIds: ["20260901T080000Z-1-aaaaaaaa"],
+    } as const;
+    const states = computeSyncStates({
+      pending: [purge],
+      inFlight: [purge],
+      failed: true,
+      conflicts: [],
+    });
+
+    expect(states.stateOf([])).toBe(SYNCED);
+    expect(states.unsavedCount).toBe(0);
+    expect(states.hasUnsaved).toBe(false);
   });
 });
 

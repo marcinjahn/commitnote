@@ -25,6 +25,10 @@ export function describeNotice(notice: EngineNotice): string {
         case "delete-note":
         case "delete-folder":
           return `${quoted(change.path)} was not deleted because it changed on another device.`;
+        case "restore-trash":
+          return `Couldn't restore ${quoted(change.to)} from the trash: it changed on another device.`;
+        case "purge-trash":
+          return "Some items couldn't be permanently deleted from the trash because it changed on another device.";
         default:
           return `A change to ${quoted(change.path)} couldn't be saved because it changed on another device.`;
       }
@@ -42,6 +46,8 @@ export function describeNotice(notice: EngineNotice): string {
             : `Couldn't rename or move ${quoted(merge.from)}: it no longer exists.`;
         case "relocated":
           return `${quoted(merge.from)} was saved as ${quoted(merge.to)} because another device created an item with the same name.`;
+        case "restore-skipped":
+          return `Couldn't restore ${quoted(merge.path)}: it is no longer in the trash.`;
       }
     }
   }

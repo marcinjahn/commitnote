@@ -11,6 +11,9 @@ import {
   type NoteConflict,
 } from "../merge/merge-change-set";
 import { mergeText } from "../merge/merge-text";
+import { selectExpired, type PurgeCaps } from "../trash/expiry";
+import { createTrashEntryId } from "../trash/trash-entry-id";
+import { buildTrashIndex, type TrashEntry } from "../trash/trash-index";
 import { validateName, type NameError } from "../tree/note-names";
 import {
   buildNoteTree,
@@ -33,9 +36,16 @@ import {
   AUTOSAVE_MAX_WAIT_MS,
   MAX_IMMEDIATE_STALE_RETRIES,
   SAVE_FIXED_REQUEST_COST,
+  TRASH_PURGE_HEADROOM,
 } from "./tuning";
 import {
+  findTrashItem,
+  findWorkingTrashEntry,
+  type WorkingTrashEntry,
+} from "./working-trash";
+import {
   appendChange,
+  buildWorkingState,
   buildWorkingTree,
   findWorkingNode,
   localContentAt,
@@ -61,6 +71,7 @@ export interface SyncedState {
   readonly head: string;
   readonly listing: readonly TreeEntry[];
   readonly tree: NoteTree;
+  readonly trash: readonly TrashEntry[];
 }
 
 export type OpenNoteState =
@@ -129,6 +140,7 @@ export interface SyncEngineState {
   readonly refresh: RefreshState;
   readonly openNote: OpenNoteState | null;
   readonly workingTree: WorkingTree | null;
+  readonly trash: readonly WorkingTrashEntry[] | null;
   readonly pending: ChangeSet;
   readonly inFlight: ChangeSet;
   readonly save: SaveStatus;
@@ -169,6 +181,14 @@ export interface SyncEngine {
   rename(path: NotePath, newName: string): StructureResult;
   move(path: NotePath, newParent: NotePath): StructureResult;
   delete(path: NotePath): StructureResult;
+  moveFromTrash(
+    entryId: string,
+    subPath: NotePath,
+    newParent: NotePath,
+  ): StructureResult;
+  deleteFromTrash(entryIds: readonly string[]): void;
+  emptyTrash(): void;
+  purgeExpiredTrash(): void;
   flush(): Promise<FlushResult>;
   retryNow(): void;
   resolveConflict(path: NotePath, resolution: ConflictResolution): void;
@@ -241,6 +261,7 @@ const INITIAL_STATE: SyncEngineState = {
   refresh: { inFlight: false, lastError: null, lastCompletedAt: null },
   openNote: null,
   workingTree: null,
+  trash: null,
   pending: EMPTY_CHANGES,
   inFlight: EMPTY_CHANGES,
   save: { kind: "idle" },
@@ -259,6 +280,7 @@ export function createSyncEngine(options: {
   readonly keyring: Keyring;
   readonly clock: Clock;
   readonly rateBudget?: RateBudget;
+  readonly purgeCaps?: PurgeCaps;
 }): SyncEngine {
   const { keyring, clock } = options;
   const adapter = options.adapter;
@@ -281,6 +303,10 @@ export function createSyncEngine(options: {
   let committedHead: string | null = null;
   let consecutiveFailures = 0;
   let retryTimer: unknown = undefined;
+  let purgeAttempted = false;
+  // Entries purged by the startup purge; changes purging only these are
+  // best-effort and dropped instead of retried.
+  const autoPurgedIds = new Set<string>();
 
   const autosave = createAutosave({
     clock,
@@ -301,15 +327,18 @@ export function createSyncEngine(options: {
       next.pending !== previous.pending ||
       next.inFlight !== previous.inFlight
     ) {
+      const working =
+        next.synced === null
+          ? null
+          : buildWorkingState(
+              next.synced.tree,
+              [...next.inFlight, ...next.pending],
+              next.synced.trash,
+            );
       result = {
         ...result,
-        workingTree:
-          next.synced === null
-            ? null
-            : buildWorkingTree(next.synced.tree, [
-                ...next.inFlight,
-                ...next.pending,
-              ]),
+        workingTree: working?.tree ?? null,
+        trash: working?.trash ?? null,
       };
     }
     if (
@@ -382,7 +411,8 @@ export function createSyncEngine(options: {
   async function loadSynced(head: string): Promise<SyncedState> {
     const listing = await adapter.listTree(head);
     const tree = await buildNoteTree(listing, keyring);
-    return { head, listing, tree };
+    const trash = await buildTrashIndex(listing, keyring);
+    return { head, listing, tree, trash };
   }
 
   // ---- Open note ----
@@ -408,8 +438,13 @@ export function createSyncEngine(options: {
     }
 
     const syncedNode = syncedNoteAt(synced, workingTree, path);
-    if (syncedNode === undefined) return { kind: "missing" };
-    return { kind: "blob", blobSha: syncedNode.blobSha };
+    if (syncedNode !== undefined) {
+      return { kind: "blob", blobSha: syncedNode.blobSha };
+    }
+    if (node.trashBlobSha !== undefined) {
+      return { kind: "blob", blobSha: node.trashBlobSha };
+    }
+    return { kind: "missing" };
   }
 
   function applyOpenNoteResult(epoch: number, next: OpenNoteState): void {
@@ -575,6 +610,7 @@ export function createSyncEngine(options: {
         current.synced.tree,
         [...current.inFlight, ...current.pending],
         [change],
+        current.synced.trash,
       );
       return {
         ...current,
@@ -875,7 +911,33 @@ export function createSyncEngine(options: {
     }));
   }
 
+  function isAutoPurgeOnly(changes: ChangeSet): boolean {
+    return (
+      changes.length > 0 &&
+      changes.every(
+        (change) =>
+          change.kind === "purge-trash" &&
+          change.entryIds.every((id) => autoPurgedIds.has(id)),
+      )
+    );
+  }
+
+  function dropAutoPurge(error: SyncError | null): boolean {
+    if (!isAutoPurgeOnly([...state.inFlight, ...state.pending])) return false;
+    if (error !== null) console.error("Trash purge failed", error.kind);
+    committedHead = null;
+    consecutiveFailures = 0;
+    update((current) => ({
+      ...current,
+      inFlight: EMPTY_CHANGES,
+      pending: EMPTY_CHANGES,
+      save: { kind: "idle" },
+    }));
+    return true;
+  }
+
   function failAttempt(error: SyncError): void {
+    if (dropAutoPurge(error)) return;
     consecutiveFailures++;
     const retryAt =
       clock.now() +
@@ -894,6 +956,7 @@ export function createSyncEngine(options: {
   }
 
   function waitForBudget(retryAt: number): void {
+    if (dropAutoPurge(null)) return;
     returnUncommitted();
     update((current) => ({
       ...current,
@@ -916,10 +979,16 @@ export function createSyncEngine(options: {
         return false;
       case "delete-note":
       case "delete-folder":
+      case "trash-note":
+      case "trash-folder":
         return isAtOrWithin(path, change.path);
       case "rename-note":
       case "rename-folder":
         return isAtOrWithin(path, change.from) || isAtOrWithin(path, change.to);
+      case "restore-trash":
+        return isAtOrWithin(path, change.to);
+      case "purge-trash":
+        return false;
     }
   }
 
@@ -939,11 +1008,17 @@ export function createSyncEngine(options: {
       base: base.tree,
       remote: remote.tree,
       changeSet: state.inFlight,
+      baseTrash: base.trash,
+      remoteTrash: remote.trash,
       readBaseContent: (path) => readNoteText(base.tree, path),
       readRemoteContent: (path) => readNoteText(remote.tree, path),
     });
 
-    const mergedTree = buildWorkingTree(remote.tree, merged.changeSet);
+    const mergedTree = buildWorkingTree(
+      remote.tree,
+      merged.changeSet,
+      remote.trash,
+    );
     const newConflicts = merged.conflicts.map((conflict) =>
       toHeldConflict(conflict, remote, mergedTree),
     );
@@ -995,7 +1070,12 @@ export function createSyncEngine(options: {
         }
       }
 
-      const rebased = rebaseChanges(remote.tree, merged.changeSet, toRebase);
+      const rebased = rebaseChanges(
+        remote.tree,
+        merged.changeSet,
+        toRebase,
+        remote.trash,
+      );
       for (const dropped of rebased.dropped) {
         bodies.push({ kind: "dropped", change: dropped });
       }
@@ -1208,9 +1288,15 @@ export function createSyncEngine(options: {
         break;
       case "delete-note":
       case "delete-folder":
+      case "trash-note":
+      case "trash-folder":
         followDelete(change.path);
         break;
-      default:
+      case "create-note":
+      case "update-note":
+      case "create-folder":
+      case "restore-trash":
+      case "purge-trash":
         break;
     }
     autosave.saveNow();
@@ -1310,11 +1396,95 @@ export function createSyncEngine(options: {
     const node = findWorkingNode(state.workingTree, path);
     if (node === undefined) return failure({ kind: "notFound" });
     if (isConflictedWithin(path)) return failure({ kind: "conflicted" });
-    applyStructureChange({
-      kind: node.kind === "note" ? "delete-note" : "delete-folder",
-      path,
-    });
+    if (node.kind === "folder" && node.children.length === 0) {
+      applyStructureChange({ kind: "delete-folder", path });
+      return { ok: true, path };
+    }
+    const entryId = createTrashEntryId(clock.now(), path.length);
+    applyStructureChange(
+      node.kind === "note"
+        ? { kind: "trash-note", path, entryId }
+        : { kind: "trash-folder", path, entryId },
+    );
     return { ok: true, path };
+  }
+
+  function moveFromTrash(
+    entryId: string,
+    subPath: NotePath,
+    newParent: NotePath,
+  ): StructureResult {
+    if (disposed || state.trash === null) return failure({ kind: "notFound" });
+    const entry = findWorkingTrashEntry(state.trash, entryId);
+    if (entry === undefined || entry.undecryptable) {
+      return failure({ kind: "notFound" });
+    }
+    const item = findTrashItem(entry, subPath);
+    if (item === undefined) return failure({ kind: "notFound" });
+    const target = workingFolderAt(newParent);
+    if (target === undefined) return failure({ kind: "notFound" });
+    const validation = validateName(item.name, childNames(target));
+    if (!validation.ok) {
+      return failure({ kind: "invalidName", error: validation.error });
+    }
+    const to = [...newParent, item.name];
+    applyStructureChange({
+      kind: "restore-trash",
+      entryId,
+      subPath,
+      target: item.kind,
+      to,
+    });
+    return { ok: true, path: to };
+  }
+
+  function purge(entryIds: readonly string[]): void {
+    if (disposed || state.trash === null) return;
+    const trash = state.trash;
+    const known = entryIds.filter(
+      (id) => findWorkingTrashEntry(trash, id) !== undefined,
+    );
+    if (known.length === 0) return;
+    applyStructureChange({ kind: "purge-trash", entryIds: known });
+  }
+
+  function emptyTrash(): void {
+    if (state.trash === null) return;
+    purge(state.trash.map((entry) => entry.id));
+  }
+
+  // Best-effort startup housekeeping: at most one bounded purge commit per
+  // engine, only while the rate budget has room to spare.
+  function purgeExpiredTrash(): void {
+    if (disposed || purgeAttempted) return;
+    purgeAttempted = true;
+    const { synced, trash } = state;
+    if (synced === null || trash === null || state.refresh.lastError !== null) {
+      return;
+    }
+    const budgetAt = rateBudget.availableAt(
+      SAVE_FIXED_REQUEST_COST + TRASH_PURGE_HEADROOM,
+    );
+    if (budgetAt > clock.now()) return;
+    const [batch] = selectExpired(
+      synced.trash,
+      clock.now(),
+      options.purgeCaps,
+    );
+    if (batch === undefined) return;
+    const entryIds = batch
+      .map((entry) => entry.id)
+      .filter((id) => findWorkingTrashEntry(trash, id) !== undefined);
+    if (entryIds.length === 0) return;
+    for (const id of entryIds) autoPurgedIds.add(id);
+    update((current) => ({
+      ...current,
+      pending: appendChange(current.pending, {
+        kind: "purge-trash",
+        entryIds,
+      }),
+    }));
+    autosave.saveNow();
   }
 
   function flushResult(): FlushResult {
@@ -1409,6 +1579,10 @@ export function createSyncEngine(options: {
     rename,
     move,
     delete: deleteItem,
+    moveFromTrash,
+    deleteFromTrash: purge,
+    emptyTrash,
+    purgeExpiredTrash,
     flush,
     retryNow,
     resolveConflict,

@@ -23,7 +23,25 @@ export type Change =
       readonly kind: "rename-folder";
       readonly from: NotePath;
       readonly to: NotePath;
-    };
+    }
+  | {
+      readonly kind: "trash-note";
+      readonly path: NotePath;
+      readonly entryId: string;
+    }
+  | {
+      readonly kind: "trash-folder";
+      readonly path: NotePath;
+      readonly entryId: string;
+    }
+  | {
+      readonly kind: "restore-trash";
+      readonly entryId: string;
+      readonly subPath: NotePath;
+      readonly target: "note" | "folder";
+      readonly to: NotePath;
+    }
+  | { readonly kind: "purge-trash"; readonly entryIds: readonly string[] };
 
 export type ChangeSet = readonly Change[];
 

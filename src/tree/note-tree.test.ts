@@ -4,7 +4,7 @@ import { deriveKeyring, type Keyring } from "../crypto/keyring";
 import { encryptName } from "../crypto/name-cipher";
 import type { KdfParams } from "../crypto/repo-config";
 import type { TreeEntry } from "../forge/forge-adapter";
-import { FOLDER_MARKER, REPO_CONFIG_PATH } from "../format/v1";
+import { FOLDER_MARKER, REPO_CONFIG_PATH, TRASH_DIR } from "../format/v1";
 import { buildNoteTree, findNode, listNotes } from "./note-tree";
 
 const REDUCED_KDF: Pick<KdfParams, "memoryKiB" | "iterations" | "parallelism"> =
@@ -193,6 +193,21 @@ describe("buildNoteTree", () => {
     expect(
       tree.root.children.some((c) => c.storedPath.startsWith(".commitnote")),
     ).toBe(false);
+  });
+
+  it("ignores trashed items, even when their stored paths decrypt", async () => {
+    const keyring = await testKeyring();
+    const folder = await encryptName(keyring, "Trashed folder");
+    const note = await encryptName(keyring, "Trashed note");
+    const entryId = "20260930T154358Z-1-abcdefgh";
+    const files = new Map<string, string>([
+      [`${TRASH_DIR}/${entryId}/${folder}/${note}`, "sha-trashed"],
+      [`${TRASH_DIR}/${entryId}/${folder}/${FOLDER_MARKER}`, "sha-keep"],
+    ]);
+    const tree = await buildNoteTree(entriesFor(files), keyring);
+
+    expect(tree.root.children).toEqual([]);
+    expect(listNotes(tree)).toEqual([]);
   });
 
   it("ignores a plaintext top-level file like README.md", async () => {

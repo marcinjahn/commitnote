@@ -1,13 +1,18 @@
 import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
+import { parseTrashEntryId } from "../trash/trash-entry-id";
+import type { TrashEntry } from "../trash/trash-index";
 import { compareNames } from "../tree/note-names";
 import type { NoteTree, TreeNode } from "../tree/note-tree";
+import type { WorkingTrashEntry } from "./working-trash";
 
 export interface WorkingNote {
   readonly kind: "note";
   readonly name: string;
   readonly path: NotePath;
   readonly syncedPath: NotePath | null;
+  /** Set for a note restored from a committed trash entry: its content is this blob. */
+  readonly trashBlobSha?: string;
 }
 
 export interface WorkingFolder {
@@ -23,11 +28,17 @@ export interface WorkingTree {
   readonly root: WorkingFolder;
 }
 
+export interface WorkingState {
+  readonly tree: WorkingTree;
+  readonly trash: readonly WorkingTrashEntry[];
+}
+
 interface MutNote {
   readonly kind: "note";
   name: string;
   path: NotePath;
   syncedPath: NotePath | null;
+  trashBlobSha: string | null;
 }
 
 interface MutFolder {
@@ -39,20 +50,72 @@ interface MutFolder {
 
 type MutTreeNode = MutNote | MutFolder;
 
-function cloneFromSynced(node: TreeNode): MutTreeNode {
+type MutTrashEntry =
+  | {
+      readonly id: string;
+      readonly deletedAt: number;
+      readonly undecryptable: false;
+      readonly synced: boolean;
+      readonly kind: "note" | "folder";
+      readonly originalPath: NotePath;
+      readonly node: MutTreeNode;
+    }
+  | {
+      readonly id: string;
+      readonly deletedAt: number;
+      readonly undecryptable: true;
+      readonly synced: true;
+    };
+
+interface MutState {
+  readonly root: MutFolder;
+  readonly trash: Map<string, MutTrashEntry>;
+}
+
+function cloneNode(node: TreeNode, fromTrash: boolean): MutTreeNode {
   if (node.kind === "note") {
     return {
       kind: "note",
       name: node.name,
       path: node.path,
-      syncedPath: node.path,
+      syncedPath: fromTrash ? null : node.path,
+      trashBlobSha: fromTrash ? node.blobSha : null,
     };
   }
   const children = new Map<string, MutTreeNode>();
   for (const child of node.children) {
-    children.set(child.name, cloneFromSynced(child));
+    children.set(child.name, cloneNode(child, fromTrash));
   }
   return { kind: "folder", name: node.name, path: node.path, children };
+}
+
+function initialState(
+  synced: NoteTree,
+  syncedTrash: readonly TrashEntry[],
+): MutState {
+  const trash = new Map<string, MutTrashEntry>();
+  for (const entry of syncedTrash) {
+    trash.set(
+      entry.id,
+      entry.undecryptable
+        ? {
+            id: entry.id,
+            deletedAt: entry.deletedAt,
+            undecryptable: true,
+            synced: true,
+          }
+        : {
+            id: entry.id,
+            deletedAt: entry.deletedAt,
+            undecryptable: false,
+            synced: true,
+            kind: entry.kind,
+            originalPath: entry.originalPath,
+            node: cloneNode(entry.tree, true),
+          },
+    );
+  }
+  return { root: cloneNode(synced.root, false) as MutFolder, trash };
 }
 
 function findMutNode(root: MutFolder, path: NotePath): MutTreeNode | undefined {
@@ -85,7 +148,24 @@ function invalidChange(): never {
   throw new RangeError("Change is invalid for this working tree");
 }
 
-function applyChangeOrThrow(root: MutFolder, change: Change): void {
+function findInTrashItem(
+  item: MutTreeNode,
+  subPath: NotePath,
+): { node: MutTreeNode; parent: MutFolder | undefined } | undefined {
+  let node = item;
+  let parent: MutFolder | undefined;
+  for (const name of subPath) {
+    if (node.kind !== "folder") return undefined;
+    const next = node.children.get(name);
+    if (next === undefined) return undefined;
+    parent = node;
+    node = next;
+  }
+  return { node, parent };
+}
+
+function applyChangeOrThrow(state: MutState, change: Change): void {
+  const root = state.root;
   switch (change.kind) {
     case "create-folder": {
       const parent = findMutFolder(root, parentPath(change.path));
@@ -112,6 +192,7 @@ function applyChangeOrThrow(root: MutFolder, change: Change): void {
         name,
         path: change.path,
         syncedPath: null,
+        trashBlobSha: null,
       });
       return;
     }
@@ -174,7 +255,76 @@ function applyChangeOrThrow(root: MutFolder, change: Change): void {
       targetParent.children.set(targetName, source);
       return;
     }
+    case "trash-note":
+    case "trash-folder": {
+      const kind = change.kind === "trash-note" ? "note" : "folder";
+      const node =
+        change.path.length === 0 ? undefined : findMutNode(root, change.path);
+      const parsed = parseTrashEntryId(change.entryId);
+      if (
+        node === undefined ||
+        node.kind !== kind ||
+        parsed === null ||
+        parsed.depth !== change.path.length ||
+        state.trash.has(change.entryId)
+      ) {
+        invalidChange();
+      }
+      findMutFolder(root, parentPath(change.path))!.children.delete(node.name);
+      state.trash.set(change.entryId, {
+        id: change.entryId,
+        deletedAt: parsed.deletedAt,
+        undecryptable: false,
+        synced: false,
+        kind,
+        originalPath: change.path,
+        node,
+      });
+      return;
+    }
+    case "restore-trash": {
+      const entry = state.trash.get(change.entryId);
+      if (entry === undefined || entry.undecryptable || change.to.length === 0) {
+        invalidChange();
+      }
+      const found = findInTrashItem(entry.node, change.subPath);
+      const targetParent = findMutFolder(root, parentPath(change.to));
+      const targetName = change.to[change.to.length - 1];
+      if (
+        found === undefined ||
+        found.node.kind !== change.target ||
+        targetParent === undefined ||
+        targetParent.children.has(targetName)
+      ) {
+        invalidChange();
+      }
+      if (found.parent === undefined) {
+        state.trash.delete(entry.id);
+      } else {
+        found.parent.children.delete(found.node.name);
+      }
+      relocate(found.node, change.to);
+      targetParent.children.set(targetName, found.node);
+      return;
+    }
+    case "purge-trash":
+      for (const entryId of change.entryIds) {
+        state.trash.delete(entryId);
+      }
+      return;
   }
+}
+
+function finalizeNote(note: MutNote): WorkingNote {
+  const base: WorkingNote = {
+    kind: "note",
+    name: note.name,
+    path: note.path,
+    syncedPath: note.syncedPath,
+  };
+  return note.trashBlobSha === null
+    ? base
+    : { ...base, trashBlobSha: note.trashBlobSha };
 }
 
 function finalize(folder: MutFolder): WorkingFolder {
@@ -187,27 +337,58 @@ function finalize(folder: MutFolder): WorkingFolder {
     name: folder.name,
     path: folder.path,
     children: sorted.map((child) =>
-      child.kind === "folder"
-        ? finalize(child)
-        : {
-            kind: "note",
-            name: child.name,
-            path: child.path,
-            syncedPath: child.syncedPath,
-          },
+      child.kind === "folder" ? finalize(child) : finalizeNote(child),
     ),
+  };
+}
+
+function finalizeTrash(
+  trash: ReadonlyMap<string, MutTrashEntry>,
+): WorkingTrashEntry[] {
+  return [...trash.values()]
+    .sort(
+      (a, b) =>
+        a.deletedAt - b.deletedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    )
+    .map((entry) =>
+      entry.undecryptable
+        ? entry
+        : {
+            id: entry.id,
+            deletedAt: entry.deletedAt,
+            undecryptable: false,
+            synced: entry.synced,
+            kind: entry.kind,
+            originalPath: entry.originalPath,
+            tree:
+              entry.node.kind === "folder"
+                ? finalize(entry.node)
+                : finalizeNote(entry.node),
+          },
+    );
+}
+
+export function buildWorkingState(
+  synced: NoteTree,
+  changes: ChangeSet,
+  syncedTrash: readonly TrashEntry[] = [],
+): WorkingState {
+  const state = initialState(synced, syncedTrash);
+  for (const change of changes) {
+    applyChangeOrThrow(state, change);
+  }
+  return {
+    tree: { root: finalize(state.root) },
+    trash: finalizeTrash(state.trash),
   };
 }
 
 export function buildWorkingTree(
   synced: NoteTree,
   changes: ChangeSet,
+  syncedTrash: readonly TrashEntry[] = [],
 ): WorkingTree {
-  const root = cloneFromSynced(synced.root) as MutFolder;
-  for (const change of changes) {
-    applyChangeOrThrow(root, change);
-  }
-  return { root: finalize(root) };
+  return buildWorkingState(synced, changes, syncedTrash).tree;
 }
 
 export function findWorkingNode(
@@ -234,13 +415,20 @@ function touchesPath(change: Change, path: NotePath): boolean {
   switch (change.kind) {
     case "delete-note":
     case "delete-folder":
+    case "trash-note":
+    case "trash-folder":
       return isAtOrAncestorOf(change.path, path);
     case "rename-note":
     case "rename-folder":
       return (
         isAtOrAncestorOf(change.from, path) || isAtOrAncestorOf(change.to, path)
       );
-    default:
+    case "restore-trash":
+      return isAtOrAncestorOf(change.to, path);
+    case "create-note":
+    case "update-note":
+    case "create-folder":
+    case "purge-trash":
       return false;
   }
 }
@@ -268,6 +456,17 @@ export function localContentAt(
   path: NotePath,
 ): string | undefined {
   const contents = new Map<string, string>();
+  // Content of trashed notes, by entry id and path relative to the trashed item.
+  const trashed = new Map<string, Map<string, string>>();
+
+  function trashedIn(entryId: string): Map<string, string> {
+    let entry = trashed.get(entryId);
+    if (entry === undefined) {
+      entry = new Map();
+      trashed.set(entryId, entry);
+    }
+    return entry;
+  }
 
   function moveNote(from: NotePath, to: NotePath): void {
     const key = JSON.stringify(from);
@@ -310,6 +509,49 @@ export function localContentAt(
         break;
       case "create-folder":
         break;
+      case "trash-note": {
+        const key = JSON.stringify(change.path);
+        const content = contents.get(key);
+        if (content === undefined) break;
+        contents.delete(key);
+        trashedIn(change.entryId).set(JSON.stringify([]), content);
+        break;
+      }
+      case "trash-folder":
+        for (const [key, content] of [...contents]) {
+          const notePath = JSON.parse(key) as string[];
+          if (!isWithinFolder(notePath, change.path)) continue;
+          contents.delete(key);
+          trashedIn(change.entryId).set(
+            JSON.stringify(notePath.slice(change.path.length)),
+            content,
+          );
+        }
+        break;
+      case "restore-trash": {
+        const entry = trashed.get(change.entryId);
+        if (entry === undefined) break;
+        for (const [key, content] of [...entry]) {
+          const relative = JSON.parse(key) as string[];
+          const restored =
+            change.target === "note"
+              ? notePathEquals(relative, change.subPath)
+              : isWithinFolder(relative, change.subPath);
+          if (!restored) continue;
+          entry.delete(key);
+          contents.set(
+            JSON.stringify([
+              ...change.to,
+              ...relative.slice(change.subPath.length),
+            ]),
+            content,
+          );
+        }
+        break;
+      }
+      case "purge-trash":
+        for (const entryId of change.entryIds) trashed.delete(entryId);
+        break;
     }
   }
 
@@ -320,14 +562,27 @@ export function rebaseChanges(
   synced: NoteTree,
   prefix: ChangeSet,
   changes: ChangeSet,
+  syncedTrash: readonly TrashEntry[] = [],
 ): { readonly changes: ChangeSet; readonly dropped: readonly Change[] } {
-  const root = cloneFromSynced(synced.root) as MutFolder;
+  const state = initialState(synced, syncedTrash);
   for (const change of prefix) {
-    applyChangeOrThrow(root, change);
+    applyChangeOrThrow(state, change);
   }
+  const root = state.root;
 
   const kept: Change[] = [];
   const dropped: Change[] = [];
+
+  function keepIfValid(change: Change): void {
+    try {
+      applyChangeOrThrow(state, change);
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      dropped.push(change);
+      return;
+    }
+    kept.push(change);
+  }
 
   function parentFolderOf(path: NotePath): MutFolder | undefined {
     if (path.length === 0) return undefined;
@@ -380,6 +635,7 @@ export function rebaseChanges(
           name,
           path: change.path,
           syncedPath: null,
+          trashBlobSha: null,
         });
         kept.push({
           kind: "create-note",
@@ -402,6 +658,7 @@ export function rebaseChanges(
             name,
             path: change.path,
             syncedPath: null,
+            trashBlobSha: null,
           });
           kept.push(change);
         } else if (existing.kind === "note") {
@@ -500,6 +757,27 @@ export function rebaseChanges(
         relocate(source, change.to);
         targetParent.children.set(targetName, source);
         kept.push(change);
+        break;
+      }
+      case "trash-note":
+      case "trash-folder": {
+        const kind = change.kind === "trash-note" ? "note" : "folder";
+        if (change.path.length === 0) break;
+        if (findMutNode(root, change.path)?.kind !== kind) break;
+        keepIfValid(change);
+        break;
+      }
+      case "restore-trash":
+        keepIfValid(change);
+        break;
+      case "purge-trash": {
+        const entryIds = change.entryIds.filter((id) => state.trash.has(id));
+        if (entryIds.length === 0) break;
+        keepIfValid(
+          entryIds.length === change.entryIds.length
+            ? change
+            : { kind: "purge-trash", entryIds },
+        );
         break;
       }
     }

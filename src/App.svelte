@@ -116,7 +116,13 @@
       repoUrl: session.repoUrl,
       forgeName: registry[session.coordinates.forge].name,
     };
-    void engine.refresh();
+    void engine.refresh().then(() => {
+      try {
+        engine.purgeExpiredTrash();
+      } catch {
+        console.error("Trash purge failed");
+      }
+    });
   }
 
   async function handleLoggedIn(result: {

@@ -2,8 +2,13 @@ import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
 import { utf8Encode } from "../crypto/base64";
 import { MAX_NAME_BYTES } from "../format/v1";
+import {
+  parseTrashEntryId,
+  withTrashEntryDepth,
+} from "../trash/trash-entry-id";
+import type { TrashEntry } from "../trash/trash-index";
 import { validateName } from "../tree/note-names";
-import type { FolderNode, NoteTree } from "../tree/note-tree";
+import type { FolderNode, NoteTree, TreeNode } from "../tree/note-tree";
 import { findNode, listNotes } from "../tree/note-tree";
 import type { ConflictHunk, TextMergeResult } from "./merge-text";
 import { mergeText } from "./merge-text";
@@ -26,6 +31,12 @@ export type MergeNotice =
       readonly from: NotePath;
       readonly to: NotePath;
       readonly target: "note" | "folder";
+    }
+  | {
+      readonly kind: "restore-skipped";
+      /** Where the item was before it was trashed. */
+      readonly path: NotePath;
+      readonly target: "note" | "folder";
     };
 
 export interface NoteConflict {
@@ -41,6 +52,8 @@ export interface MergeChangeSetInput {
   readonly base: NoteTree;
   readonly remote: NoteTree;
   readonly changeSet: ChangeSet;
+  readonly baseTrash: readonly TrashEntry[];
+  readonly remoteTrash: readonly TrashEntry[];
   readonly readBaseContent: (path: NotePath) => Promise<string>;
   readonly readRemoteContent: (path: NotePath) => Promise<string>;
 }
@@ -69,6 +82,22 @@ interface NoteState {
   readonly origin: NotePath | null;
   mode: MergeMode;
   conflict?: NoteConflict;
+}
+
+interface TrashItem {
+  /** Relative to the trashed item. */
+  readonly path: NotePath;
+  readonly kind: "note" | "folder";
+}
+
+/** `null` items: undecryptable, so it can only be purged. */
+type TrashItems = Map<string, TrashItem> | null;
+
+/** A local trash that was not applied because the item changed remotely. */
+interface SkippedTrash {
+  readonly path: NotePath;
+  /** Local note states of the item, keyed by path relative to it. */
+  states: [NotePath, NoteState][];
 }
 
 interface Redirect {
@@ -158,6 +187,17 @@ class WorkingTree {
   }
 }
 
+function trashItemsOf(tree: TreeNode, root: NotePath): Map<string, TrashItem> {
+  const items = new Map<string, TrashItem>();
+  const walk = (node: TreeNode): void => {
+    const path = node.path.slice(root.length);
+    items.set(keyOf(path), { path, kind: node.kind });
+    if (node.kind === "folder") node.children.forEach(walk);
+  };
+  walk(tree);
+  return items;
+}
+
 function conflictName(name: string, attempt: number): string {
   const suffix = attempt === 1 ? " (conflict)" : ` (conflict ${attempt})`;
   const codePoints = Array.from(name);
@@ -179,6 +219,10 @@ class ChangeSetMerger {
   private readonly output: Change[] = [];
   private readonly notices: MergeNotice[] = [];
   private readonly conflictStates: NoteState[] = [];
+  private readonly trash = new Map<string, TrashItems>();
+  private readonly skippedTrash = new Map<string, SkippedTrash>();
+  private readonly trashOrigins = new Map<string, NotePath>();
+  private readonly emittedEntryIds = new Map<string, string>();
 
   constructor(private readonly input: MergeChangeSetInput) {
     this.working = new WorkingTree(input.remote);
@@ -187,6 +231,17 @@ class ChangeSetMerger {
         origin: note.path,
         mode: { kind: "unset" },
       });
+    }
+    for (const entry of input.remoteTrash) {
+      this.trash.set(
+        entry.id,
+        entry.undecryptable ? null : trashItemsOf(entry.tree, entry.originalPath),
+      );
+    }
+    for (const entry of [...input.remoteTrash, ...input.baseTrash]) {
+      if (!entry.undecryptable && !this.trashOrigins.has(entry.id)) {
+        this.trashOrigins.set(entry.id, entry.originalPath);
+      }
     }
   }
 
@@ -216,6 +271,14 @@ class ChangeSetMerger {
       case "rename-note":
       case "rename-folder":
         return this.rename(change.kind, change.from, change.to);
+      case "trash-note":
+        return this.trashNote(change.path, change.entryId);
+      case "trash-folder":
+        return this.trashFolder(change.path, change.entryId);
+      case "restore-trash":
+        return this.restoreTrash(change);
+      case "purge-trash":
+        return this.purgeTrash(change.entryIds);
     }
   }
 
@@ -490,7 +553,16 @@ class ChangeSetMerger {
     this.dropRedirects(localPath);
 
     if (!this.working.isFolder(path) || path.length === 0) return;
-    const remoteAdditions = this.working
+    if (this.hasRemoteChangesWithin(path)) {
+      this.notices.push({ kind: "delete-skipped", path, target: "folder" });
+      return;
+    }
+    this.emit({ kind: "delete-folder", path });
+    this.working.delete(path);
+  }
+
+  private hasRemoteChangesWithin(path: NotePath): boolean {
+    return this.working
       .within(path)
       .some(
         ({ item }) =>
@@ -498,12 +570,178 @@ class ChangeSetMerger {
           item.remote !== undefined &&
           !this.isUnchangedRemotely(item.remote),
       );
-    if (remoteAdditions) {
+  }
+
+  private trashNote(localPath: NotePath, entryId: string): void {
+    const state = this.notes.get(keyOf(localPath));
+    this.notes.delete(keyOf(localPath));
+    const path = this.resolve(localPath);
+    this.trashOrigins.set(entryId, localPath);
+    const skip = (): void => {
+      this.skippedTrash.set(entryId, {
+        path,
+        states: state === undefined ? [] : [[[], state]],
+      });
+    };
+    if (state?.conflict !== undefined) return skip();
+    this.dropRedirects(localPath);
+
+    const item = this.working.get(path);
+    if (item?.kind !== "note") return;
+    if (item.remote !== undefined && !this.isUnchangedRemotely(item.remote)) {
+      this.notices.push({ kind: "delete-skipped", path, target: "note" });
+      return skip();
+    }
+    this.emitTrash("note", path, entryId);
+  }
+
+  private trashFolder(localPath: NotePath, entryId: string): void {
+    const removed = this.takeLocalNotesWithin(localPath);
+    const path = this.resolve(localPath);
+    this.trashOrigins.set(entryId, localPath);
+    const skip = (): void => {
+      this.skippedTrash.set(entryId, {
+        path,
+        states: removed.map(([key, state]) => [
+          (JSON.parse(key) as string[]).slice(localPath.length),
+          state,
+        ]),
+      });
+    };
+    if (removed.some(([, state]) => state.conflict !== undefined)) {
+      return skip();
+    }
+    this.dropRedirects(localPath);
+
+    if (!this.working.isFolder(path) || path.length === 0) return;
+    if (this.hasRemoteChangesWithin(path)) {
       this.notices.push({ kind: "delete-skipped", path, target: "folder" });
+      return skip();
+    }
+    this.emitTrash("folder", path, entryId);
+  }
+
+  // The entry id encodes the item's depth, which differs from the local one
+  // when the item's working path was redirected.
+  private emitTrash(
+    target: "note" | "folder",
+    path: NotePath,
+    entryId: string,
+  ): void {
+    const emittedId =
+      parseTrashEntryId(entryId)?.depth === path.length
+        ? entryId
+        : withTrashEntryDepth(entryId, path.length);
+    const items = new Map<string, TrashItem>([
+      [keyOf([]), { path: [], kind: target }],
+    ]);
+    for (const entry of this.working.within(path)) {
+      const relative = entry.path.slice(path.length);
+      items.set(keyOf(relative), { path: relative, kind: entry.item.kind });
+    }
+    this.trash.set(entryId, items);
+    this.emittedEntryIds.set(entryId, emittedId);
+    this.emit(
+      target === "note"
+        ? { kind: "trash-note", path, entryId: emittedId }
+        : { kind: "trash-folder", path, entryId: emittedId },
+    );
+    this.working.delete(path);
+  }
+
+  private skipRestore(
+    entryId: string,
+    subPath: NotePath,
+    target: "note" | "folder",
+    to: NotePath,
+  ): void {
+    const origin = this.trashOrigins.get(entryId);
+    this.notices.push({
+      kind: "restore-skipped",
+      path: origin === undefined ? to : [...origin, ...subPath],
+      target,
+    });
+  }
+
+  private restoreTrash(
+    change: Extract<Change, { kind: "restore-trash" }>,
+  ): void {
+    const { entryId, subPath, target } = change;
+    const skipped = this.skippedTrash.get(entryId);
+    if (skipped !== undefined) {
+      this.restoreSkippedTrash(change, skipped);
       return;
     }
-    this.emit({ kind: "delete-folder", path });
-    this.working.delete(path);
+
+    const items = this.trash.get(entryId);
+    if (
+      items === undefined ||
+      items === null ||
+      items.get(keyOf(subPath))?.kind !== target ||
+      change.to.length === 0
+    ) {
+      this.skipRestore(entryId, subPath, target, change.to);
+      return;
+    }
+
+    let path = this.ensureParents(this.resolve(change.to));
+    if (this.working.get(path) !== undefined) {
+      const relocated = this.relocate(path);
+      this.notices.push({ kind: "relocated", from: path, to: relocated, target });
+      this.addRedirect(change.to, relocated);
+      path = relocated;
+    }
+    this.emit({
+      kind: "restore-trash",
+      entryId: this.emittedEntryIds.get(entryId) ?? entryId,
+      subPath,
+      target,
+      to: path,
+    });
+    for (const [key, item] of [...items]) {
+      if (!isAtOrWithin(item.path, subPath)) continue;
+      items.delete(key);
+      this.working.set(
+        rebase(item.path, subPath, path),
+        item.kind === "note" ? { kind: "note" } : { kind: "folder" },
+      );
+    }
+    if (subPath.length === 0) this.trash.delete(entryId);
+  }
+
+  // The item stayed in place, so the restored local path points back at it.
+  private restoreSkippedTrash(
+    change: Extract<Change, { kind: "restore-trash" }>,
+    skipped: SkippedTrash,
+  ): void {
+    const { entryId, subPath, target, to } = change;
+    const source = [...skipped.path, ...subPath];
+    if (this.working.get(source)?.kind !== target || to.length === 0) {
+      this.skipRestore(entryId, subPath, target, to);
+      return;
+    }
+    const remaining: [NotePath, NoteState][] = [];
+    for (const [relative, state] of skipped.states) {
+      if (isAtOrWithin(relative, subPath)) {
+        this.notes.set(keyOf(rebase(relative, subPath, to)), state);
+      } else {
+        remaining.push([relative, state]);
+      }
+    }
+    skipped.states = remaining;
+    this.addRedirect(to, source);
+    if (subPath.length === 0) this.skippedTrash.delete(entryId);
+  }
+
+  private purgeTrash(entryIds: readonly string[]): void {
+    const purged: string[] = [];
+    for (const entryId of entryIds) {
+      this.skippedTrash.delete(entryId);
+      if (!this.trash.has(entryId)) continue;
+      this.trash.delete(entryId);
+      purged.push(this.emittedEntryIds.get(entryId) ?? entryId);
+    }
+    if (purged.length > 0) this.emit({ kind: "purge-trash", entryIds: purged });
   }
 
   private moveLocalState(
