@@ -8,10 +8,14 @@ import { createRepoConfig } from "../../crypto/keyring";
 import type { RandomSource } from "../../crypto/random";
 import { InMemoryGitRepo } from "../../forge/fake/in-memory-git-repo";
 import { REPO_CONFIG_PATH } from "../../format/v1";
+import { createTrashEntryId } from "../../trash/trash-entry-id";
 import {
   SAMPLE_NOTES_REPO_PASSPHRASE,
   sampleNotesRepoSource,
+  sampleTrashRepoSource,
+  sampleTrashRepoTrashed,
   type SampleEntry,
+  type SampleTrashEntry,
 } from "./sample-source";
 
 export interface SampleNotesRepo {
@@ -23,6 +27,7 @@ export interface SampleNotesRepo {
 }
 
 const SEED = 0x676e6f74;
+const TRASH_SEED = 0x74726173;
 const README_TEXT = "# Notes\n\nThis repository is managed by commitnote.\n";
 
 /** mulberry32: a small, deterministic 32-bit PRNG, used only to make the fixture reproducible. */
@@ -91,8 +96,20 @@ async function snapshotFiles(
   return files;
 }
 
-export async function generateSampleNotesRepo(): Promise<SampleNotesRepo> {
-  const random = createSeededRandom(SEED);
+export function generateSampleNotesRepo(): Promise<SampleNotesRepo> {
+  return generateRepo(SEED, sampleNotesRepoSource, []);
+}
+
+export function generateSampleTrashRepo(): Promise<SampleNotesRepo> {
+  return generateRepo(TRASH_SEED, sampleTrashRepoSource, sampleTrashRepoTrashed);
+}
+
+async function generateRepo(
+  seed: number,
+  source: readonly SampleEntry[],
+  trashed: readonly SampleTrashEntry[],
+): Promise<SampleNotesRepo> {
+  const random = createSeededRandom(seed);
   const { configText, keyring } = await createRepoConfig(
     SAMPLE_NOTES_REPO_PASSPHRASE,
     {
@@ -115,7 +132,7 @@ export async function generateSampleNotesRepo(): Promise<SampleNotesRepo> {
   });
 
   const commit1Entries = await repo.listTreeEntries(commit1Tree);
-  const changeSet = buildChangeSet(sampleNotesRepoSource);
+  const changeSet = buildChangeSet(source);
   const encoded = await encodeChangeSet({
     listing: commit1Entries,
     changeSet,
@@ -129,31 +146,59 @@ export async function generateSampleNotesRepo(): Promise<SampleNotesRepo> {
     message: encoded.message,
   });
 
-  const commit3Message = "Add README";
-  const commit3Tree = await repo.applyChanges(commit2Tree, [
+  const commits = [
+    { message: commit1Message, tree: commit1Tree },
+    { message: encoded.message, tree: commit2Tree },
+  ];
+  let parentSha = commit2Sha;
+  let parentTree = commit2Tree;
+
+  for (const entry of trashed) {
+    const entryId = createTrashEntryId(
+      Date.parse(entry.deletedAt),
+      entry.path.length,
+      random,
+    );
+    const listing = await repo.listTreeEntries(parentTree);
+    const trashEncoded = await encodeChangeSet({
+      listing,
+      changeSet: [
+        {
+          kind: entry.kind === "note" ? "trash-note" : "trash-folder",
+          path: entry.path,
+          entryId,
+        },
+      ],
+      keyring,
+      random,
+    });
+    parentTree = await repo.applyChanges(parentTree, trashEncoded.changes);
+    parentSha = await repo.putCommit({
+      tree: parentTree,
+      parent: parentSha,
+      message: trashEncoded.message,
+    });
+    commits.push({ message: trashEncoded.message, tree: parentTree });
+  }
+
+  const readmeMessage = "Add README";
+  const readmeTree = await repo.applyChanges(parentTree, [
     { kind: "upsert-text", path: "README.md", text: README_TEXT },
   ]);
   await repo.putCommit({
-    tree: commit3Tree,
-    parent: commit2Sha,
-    message: commit3Message,
+    tree: readmeTree,
+    parent: parentSha,
+    message: readmeMessage,
   });
+  commits.push({ message: readmeMessage, tree: readmeTree });
 
   return {
     passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
-    commits: [
-      {
-        message: commit1Message,
-        files: await snapshotFiles(repo, commit1Tree),
-      },
-      {
-        message: encoded.message,
-        files: await snapshotFiles(repo, commit2Tree),
-      },
-      {
-        message: commit3Message,
-        files: await snapshotFiles(repo, commit3Tree),
-      },
-    ],
+    commits: await Promise.all(
+      commits.map(async ({ message, tree }) => ({
+        message,
+        files: await snapshotFiles(repo, tree),
+      })),
+    ),
   };
 }

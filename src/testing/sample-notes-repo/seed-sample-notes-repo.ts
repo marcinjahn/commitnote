@@ -7,6 +7,7 @@ import type { ForgeAdapterOptions } from "../../forge/forge-adapter";
 import { MAIN_BRANCH } from "../../format/v1";
 import type { SampleNotesRepo } from "./generate-sample-notes-repo";
 import sampleNotesRepoJson from "./sample-notes-repo.json";
+import sampleTrashRepoJson from "./sample-trash-repo.json";
 
 // Each commit's `files` has a different literal key set, so TS infers a
 // union of narrow object shapes instead of the generic Record<string,
@@ -15,12 +16,28 @@ import sampleNotesRepoJson from "./sample-notes-repo.json";
 export const sampleNotesRepo: SampleNotesRepo =
   sampleNotesRepoJson as unknown as SampleNotesRepo;
 
-export async function createSampleNotesRepoAdapter(options?: {
+export const sampleTrashRepo: SampleNotesRepo =
+  sampleTrashRepoJson as unknown as SampleNotesRepo;
+
+export function createSampleNotesRepoAdapter(options?: SampleRepoAdapterOptions) {
+  return createAdapterFor(sampleNotesRepo, options);
+}
+
+export function createSampleTrashRepoAdapter(options?: SampleRepoAdapterOptions) {
+  return createAdapterFor(sampleTrashRepo, options);
+}
+
+interface SampleRepoAdapterOptions {
   readonly canWrite?: boolean;
   readonly onContentCreatingRequest?: ForgeAdapterOptions["onContentCreatingRequest"];
-}): Promise<FakeForgeAdapter> {
+}
+
+async function createAdapterFor(
+  fixture: SampleNotesRepo,
+  options?: SampleRepoAdapterOptions,
+): Promise<FakeForgeAdapter> {
   const repo = new InMemoryGitRepo();
-  const commits = sampleNotesRepo.commits;
+  const commits = fixture.commits;
 
   let parent: string | null = null;
   for (let i = 0; i < commits.length; i++) {

@@ -10,6 +10,7 @@
   import { actionIcons } from "./action-icons";
   import { countDescendants } from "../dialogs/folder-options";
   import MoveDialog from "../dialogs/MoveDialog.svelte";
+  import ConfirmDialog from "../dialogs/ConfirmDialog.svelte";
   import NameDialog from "../dialogs/NameDialog.svelte";
   import { decideNameCommit } from "../note/name-field-commit";
   import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
@@ -19,6 +20,13 @@
   import NoteHeader from "./NoteHeader.svelte";
   import NoteTree from "./NoteTree.svelte";
   import RefreshButton from "./RefreshButton.svelte";
+  import TrashDialog from "../trash/TrashDialog.svelte";
+  import {
+    describeEmptyTrash,
+    describeMovedToTrash,
+    describeUndoError,
+  } from "../trash/trash-messages";
+  import type { ReadableWorkingTrashEntry } from "../../sync/working-trash";
   import Wordmark from "../wordmark/Wordmark.svelte";
   import type { RowAction } from "./row-menu-types";
   import { describeStructureError } from "./structure-messages";
@@ -78,6 +86,20 @@
         readonly error: string | null;
       };
 
+  type TrashDialogState =
+    | { readonly kind: "none" }
+    | {
+        readonly kind: "restore";
+        readonly entry: ReadableWorkingTrashEntry;
+        readonly node: WorkingNode;
+        readonly error: string | null;
+      }
+    | { readonly kind: "deleteEntry"; readonly entry: ReadableWorkingTrashEntry }
+    | { readonly kind: "empty" };
+
+  let trashOpen = $state(false);
+  let trashNow = $state(Date.now());
+  let trashDialog = $state<TrashDialogState>({ kind: "none" });
   let dialog = $state<DialogState>({ kind: "none" });
   let nameError = $state<string | null>(null);
   let nameResetKey = $state(0);
@@ -92,6 +114,8 @@
   let nextMessageId = 0;
   let exporting = $state(false);
   let exportMessages = $state<readonly ToastMessage[]>([]);
+  const UNDO_TOAST_MS = 8_000;
+  let trashMessages = $state<readonly ToastMessage[]>([]);
 
   $effect(() => {
     return engine.subscribe((next) => {
@@ -101,6 +125,7 @@
 
   const tree = $derived(engineState.workingTree);
   const treeLoading = $derived(engineState.synced === null && engineState.refresh.inFlight);
+  const trashEntries = $derived(engineState.visibleTrash ?? []);
   const selectedPath = $derived(engineState.openNote?.path ?? null);
   const refreshing = $derived(engineState.refresh.inFlight);
 
@@ -109,6 +134,13 @@
     openPath !== null &&
       engineState.conflicts.some((held) => notePathEquals(held.path, openPath)),
   );
+
+  $effect(() => {
+    if (trashOpen && trashEntries.length === 0) {
+      trashOpen = false;
+      trashDialog = { kind: "none" };
+    }
+  });
 
   let previousOpenPath: NotePath | null = null;
   $effect(() => {
@@ -415,18 +447,94 @@
     closeDialog();
   }
 
+  function dismissMessage(id: number): void {
+    refreshMessages = refreshMessages.filter((message) => message.id !== id);
+    exportMessages = exportMessages.filter((message) => message.id !== id);
+    trashMessages = trashMessages.filter((message) => message.id !== id);
+  }
+
+  function openTrash(): void {
+    trashNow = Date.now();
+    trashOpen = true;
+  }
+
+  function closeTrashDialog(): void {
+    trashDialog = { kind: "none" };
+  }
+
+  function handleTrashRestoreSubmit(newParent: NotePath): void {
+    if (trashDialog.kind !== "restore") return;
+    const { entry, node } = trashDialog;
+    const result = engine.moveFromTrash(
+      entry.id,
+      node.path.slice(entry.originalPath.length),
+      newParent,
+    );
+    if (!result.ok) {
+      trashDialog = { ...trashDialog, error: describeStructureError(result.error) };
+      return;
+    }
+    closeTrashDialog();
+  }
+
+  function handleTrashDeleteConfirm(): void {
+    if (trashDialog.kind === "deleteEntry") {
+      engine.deleteFromTrash([trashDialog.entry.id]);
+    } else if (trashDialog.kind === "empty") {
+      engine.emptyTrash();
+    }
+    closeTrashDialog();
+  }
+
+  function handleUndoTrash(entryId: string, reopen: NotePath | null): void {
+    const result = engine.undoTrash(entryId);
+    if (!result.ok) {
+      trashMessages = [
+        { id: ++nextMessageId, text: describeUndoError(result.error) },
+      ];
+      return;
+    }
+    const open = engine.getState().openNote;
+    if (
+      reopen !== null &&
+      open?.kind === "missing" &&
+      notePathEquals(open.path, reopen)
+    ) {
+      void engine.openNote(reopen);
+    }
+  }
+
   function handleDeleteConfirm(): void {
     if (dialog.kind !== "delete") return;
     const path = dialog.node.path;
     const affectsOpenNote =
       openPath !== null &&
       (notePathEquals(openPath, path) || isWithinFolder(openPath, path));
+    const name = dialog.node.name;
     const result = engine.delete(path);
     if (!result.ok) {
       dialog = { ...dialog, error: describeStructureError(result.error) };
       return;
     }
     closeDialog();
+    const { trashEntryId } = result;
+    const reopen = affectsOpenNote ? openPath : null;
+    if (trashEntryId !== undefined) {
+      trashMessages = [
+        {
+          id: ++nextMessageId,
+          text: describeMovedToTrash(name),
+          durationMs: UNDO_TOAST_MS,
+          action: {
+            label: "Undo",
+            run: () =>
+              handleUndoTrash(trashEntryId, reopen),
+          },
+        },
+      ];
+    } else {
+      trashMessages = [];
+    }
     if (affectsOpenNote) {
       mobileView = "tree";
     }
@@ -483,6 +591,21 @@
       onNewNote={handleHeaderNewNote}
     />
     <div class="sidebar-footer">
+      {#if trashEntries.length > 0}
+        <button
+          type="button"
+          class="button button-ghost"
+          data-testid="open-trash"
+          onclick={openTrash}
+        >
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            {#each actionIcons.delete as d (d)}
+              <path {d} />
+            {/each}
+          </svg>
+          Trash ({trashEntries.length})
+        </button>
+      {/if}
       <a
         class="repo-label"
         href={repoUrl}
@@ -553,12 +676,9 @@
 
 <NoticeToasts
   notices={engineState.notices}
-  messages={[...refreshMessages, ...exportMessages]}
+  messages={[...refreshMessages, ...exportMessages, ...trashMessages]}
   onDismiss={(id) => engine.dismissNotice(id)}
-  onDismissMessage={(id) => {
-    refreshMessages = refreshMessages.filter((message) => message.id !== id);
-    exportMessages = exportMessages.filter((message) => message.id !== id);
-  }}
+  onDismissMessage={dismissMessage}
   onOpen={handleSelect}
 />
 
@@ -606,6 +726,49 @@
     error={dialog.error}
     onConfirm={handleDeleteConfirm}
     onClose={closeDialog}
+  />
+{/if}
+
+<TrashDialog
+  open={trashOpen}
+  entries={trashEntries}
+  now={trashNow}
+  onRestore={(entry, node) =>
+    (trashDialog = { kind: "restore", entry, node, error: null })}
+  onDelete={(entry) => (trashDialog = { kind: "deleteEntry", entry })}
+  onEmpty={() => (trashDialog = { kind: "empty" })}
+  onClose={() => (trashOpen = false)}
+/>
+
+{#if trashDialog.kind === "restore" && tree !== null}
+  <MoveDialog
+    open={true}
+    restore={true}
+    itemName={trashDialog.node.name}
+    itemPath={null}
+    itemKind={trashDialog.node.kind}
+    {tree}
+    error={trashDialog.error}
+    onSubmit={handleTrashRestoreSubmit}
+    onClose={closeTrashDialog}
+  />
+{:else if trashDialog.kind === "deleteEntry"}
+  <ConfirmDialog
+    open={true}
+    title="Delete permanently?"
+    body="This can't be undone."
+    confirmLabel="Delete permanently"
+    onConfirm={handleTrashDeleteConfirm}
+    onClose={closeTrashDialog}
+  />
+{:else if trashDialog.kind === "empty"}
+  <ConfirmDialog
+    open={true}
+    title="Empty trash?"
+    body={describeEmptyTrash(trashEntries.length)}
+    confirmLabel="Empty trash"
+    onConfirm={handleTrashDeleteConfirm}
+    onClose={closeTrashDialog}
   />
 {/if}
 
@@ -675,6 +838,8 @@
   }
 
   .sidebar-footer .button {
+    gap: var(--space-1);
+    flex-shrink: 0;
     font-size: var(--font-size-sm);
   }
 

@@ -125,3 +125,11 @@ describe("countDescendants", () => {
     expect(countDescendants(empty)).toBe(0);
   });
 });
+
+describe("listMoveTargets for an item outside the tree", () => {
+  it("disables nothing and excludes no folder", () => {
+    const targets = listMoveTargets(tree(), null, "folder");
+    expect(targets.every((target) => !target.disabled)).toBe(true);
+    expect(targets.map((target) => target.label)).toContain("Nested");
+  });
+});

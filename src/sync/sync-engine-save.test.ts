@@ -322,7 +322,9 @@ describe("sync engine saves", () => {
 
     h.engine.rename(["Projects"], "Work");
     await expectCommit(TRAILER.rename, (tree) =>
-      expect(findNode(tree, ["Work", "commitnote", "Ideas"])?.kind).toBe("note"),
+      expect(findNode(tree, ["Work", "commitnote", "Ideas"])?.kind).toBe(
+        "note",
+      ),
     );
 
     expect(h.engine.move(["Hello"], ["Box"])).toEqual({
@@ -334,7 +336,7 @@ describe("sync engine saves", () => {
     );
 
     h.engine.delete(ZAZOLC);
-    await expectCommit(TRAILER.delete, (tree) =>
+    await expectCommit(TRAILER.trash, (tree) =>
       expect(findNode(tree, ZAZOLC)).toBeUndefined(),
     );
 
@@ -674,7 +676,9 @@ describe("sync engine saves", () => {
       expect(conflict.merged).toContain("# Welcome (theirs)");
       expect(conflict.merged).toContain("- First!");
       expect(
-        h.engine.getState().notices.filter((notice) => notice.kind === "conflict"),
+        h.engine
+          .getState()
+          .notices.filter((notice) => notice.kind === "conflict"),
       ).toHaveLength(noticesBefore + 1);
       expect(await h.fake.getHead()).toBe(remoteHead);
       expect(h.engine.getState().pending).toEqual([]);
@@ -761,7 +765,9 @@ describe("sync engine saves", () => {
       expect(await h.fake.getHead()).toBe(remoteHead);
       expect(h.engine.getState().pending).toEqual([]);
       expect(
-        h.engine.getState().notices.filter((notice) => notice.kind === "conflict"),
+        h.engine
+          .getState()
+          .notices.filter((notice) => notice.kind === "conflict"),
       ).toHaveLength(noticesBefore + 1);
 
       h.engine.editNote(WELCOME, withoutTheirsSide(editing));
@@ -906,10 +912,7 @@ describe("sync engine saves", () => {
       return mine;
     }
 
-    async function expectRestoredAt(
-      h: Harness,
-      mine: string,
-    ): Promise<void> {
+    async function expectRestoredAt(h: Harness, mine: string): Promise<void> {
       await h.engine.refresh();
       await waitIdle(h.engine);
       await h.engine.flush();
@@ -1055,7 +1058,9 @@ describe("sync engine saves", () => {
     await waitIdle(h.engine);
     const { tree } = await mainTree(h.fake);
     expect(findNode(tree, moved)).toBeUndefined();
-    expect(findNode(tree, ["Work", "commitnote", "Roadmap"])?.kind).toBe("note");
+    expect(findNode(tree, ["Work", "commitnote", "Roadmap"])?.kind).toBe(
+      "note",
+    );
   });
 
   it("keeps changes after a failed save and commits them once on the retry", async () => {
@@ -1125,6 +1130,44 @@ describe("sync engine saves", () => {
       kind: "unsaved",
       count: 1,
     });
+  });
+
+  it("loads trash from the same listing as the tree", async () => {
+    const h = await setup();
+    const entryId = "20260930T100000Z-1-aaaaaaaa";
+    await pushRemote(h.fake, [{ kind: "trash-note", path: WELCOME, entryId }]);
+
+    await h.engine.refresh();
+
+    const state = h.engine.getState();
+    const syncedEntry = state.synced?.trash.find(
+      (entry) => entry.id === entryId,
+    );
+    if (syncedEntry === undefined || syncedEntry.undecryptable) {
+      throw new Error("expected a readable synced trash entry");
+    }
+    expect(syncedEntry.originalPath).toEqual(WELCOME);
+    expect(state.trash).toEqual([
+      {
+        id: entryId,
+        deletedAt: Date.UTC(2026, 8, 30, 10, 0, 0),
+        undecryptable: false,
+        synced: true,
+        kind: "note",
+        originalPath: WELCOME,
+        tree: {
+          kind: "note",
+          name: "Welcome",
+          path: WELCOME,
+          syncedPath: null,
+          trashBlobSha:
+            syncedEntry.tree.kind === "note" ? syncedEntry.tree.blobSha : "",
+        },
+      },
+    ]);
+    expect(
+      state.workingTree?.root.children.map((child) => child.name),
+    ).not.toContain("Welcome");
   });
 
   it("dismisses notices by id", async () => {

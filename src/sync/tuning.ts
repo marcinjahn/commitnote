@@ -9,3 +9,7 @@ export const BACKOFF_INITIAL_MS = 5_000;
 export const BACKOFF_MAX_MS = 300_000;
 export const RATE_LIMITED_MIN_WAIT_MS = 60_000;
 export const MAX_IMMEDIATE_STALE_RETRIES = 3;
+
+export const TRASH_PURGE_HEADROOM = 10;
+export const MAX_PURGE_ENTRIES_PER_STARTUP = 100;
+export const MAX_PURGE_FILES_PER_COMMIT = 2_000;

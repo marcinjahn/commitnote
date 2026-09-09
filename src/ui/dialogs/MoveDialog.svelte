@@ -9,10 +9,11 @@
   interface Props {
     open: boolean;
     itemName: string;
-    itemPath: NotePath;
+    itemPath: NotePath | null;
     itemKind: "note" | "folder";
     tree: WorkingTree;
     error: string | null;
+    restore?: boolean;
     onSubmit: (newParent: NotePath) => void;
     onClose: () => void;
   }
@@ -24,6 +25,7 @@
     itemKind,
     tree,
     error,
+    restore = false,
     onSubmit,
     onClose,
   }: Props = $props();
@@ -33,7 +35,9 @@
 
   let selected = $state<NotePath | null>(null);
 
-  const title = $derived(`Move “${itemName}” to folder`);
+  const title = $derived(
+    restore ? `Restore “${itemName}” to folder` : `Move “${itemName}” to folder`,
+  );
   const options = $derived(listMoveTargets(tree, itemPath, itemKind));
 
   $effect(() => {
@@ -92,7 +96,7 @@
       class="button button-primary"
       disabled={selected === null}
     >
-      Move
+      {restore ? "Restore" : "Move"}
     </button>
     <button type="button" class="button button-ghost" onclick={onClose}>
       Cancel

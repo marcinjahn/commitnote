@@ -32,6 +32,7 @@ import {
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../sample-notes-repo/sample-source";
 import {
   createSampleNotesRepoAdapter,
+  createSampleTrashRepoAdapter,
   sampleNotesRepo,
 } from "../sample-notes-repo/seed-sample-notes-repo";
 
@@ -55,6 +56,8 @@ export interface FakeForgeControls {
     markdown: string,
     passphrase?: string,
   ): Promise<void>;
+  /** Messages of the commits on main of `repoKey`, newest first. */
+  commitMessages(repoKey: string): string[];
   /**
    * Make the next call of `operation` on that fixture fail with a
    * ForgeError of `kind` (or "stale" for commit).
@@ -137,6 +140,7 @@ export async function createFakeForge(options?: {
     ],
     ["sample/foreign", await createForeignRepoAdapter()],
     ["sample/newer", await createNewerRepoAdapter()],
+    ["sample/trash", await createSampleTrashRepoAdapter()],
   ]);
 
   const keyrings = new Map<string, Promise<Keyring>>();
@@ -193,6 +197,18 @@ export async function createFakeForge(options?: {
         [{ kind: "upsert-text", path: storedPath, text }],
         SAVE_SUBJECT,
       );
+    },
+    commitMessages(repoKey) {
+      const { repo } = fixtureAdapter(repoKey);
+      const messages: string[] = [];
+      let sha = repo.getRef("main") ?? null;
+      while (sha !== null) {
+        const commit = repo.getCommit(sha);
+        if (commit === undefined) break;
+        messages.push(commit.message);
+        sha = commit.parent;
+      }
+      return messages;
     },
     failNext(repoKey, operation, kind) {
       const adapter = fixtureAdapter(repoKey);

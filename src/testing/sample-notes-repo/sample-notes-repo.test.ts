@@ -15,12 +15,25 @@ import {
   type FolderNode,
 } from "../../tree/note-tree";
 import { compareNames } from "../../tree/note-names";
-import { generateSampleNotesRepo } from "./generate-sample-notes-repo";
+import {
+  generateSampleNotesRepo,
+  generateSampleTrashRepo,
+} from "./generate-sample-notes-repo";
 import {
   createSampleNotesRepoAdapter,
+  createSampleTrashRepoAdapter,
   sampleNotesRepo,
+  sampleTrashRepo,
 } from "./seed-sample-notes-repo";
-import { sampleNotesRepoSource, type SampleEntry } from "./sample-source";
+import {
+  sampleNotesRepoSource,
+  sampleTrashRepoSource,
+  sampleTrashRepoTrashed,
+  SAMPLE_TRASH_NOW,
+  type SampleEntry,
+} from "./sample-source";
+import { TRASH_DIR, TRASH_RETENTION_MS } from "../../format/v1";
+import { buildTrashIndex } from "../../trash/trash-index";
 
 function flattenNames(entries: readonly SampleEntry[]): string[] {
   const names: string[] = [];
@@ -170,5 +183,110 @@ describe("sample notes repo fixture", () => {
     const notes = listNotes(tree);
     expect(notes).toHaveLength(5);
     expect(notes.some((note) => note.name === "README.md")).toBe(false);
+  });
+});
+
+describe("sample trash repo fixture", () => {
+  const finalFiles = () =>
+    sampleTrashRepo.commits[sampleTrashRepo.commits.length - 1].files;
+
+  async function openKeyring(): Promise<{
+    adapter: FakeForgeAdapter;
+    keyring: Keyring;
+  }> {
+    const adapter = await createSampleTrashRepoAdapter();
+    const inspection = await adapter.inspect();
+    if (inspection.kind !== "populated" || inspection.main?.repoConfigText == null) {
+      throw new Error("expected a populated repo with a config");
+    }
+    const parsed = parseRepoConfig(inspection.main.repoConfigText);
+    if (parsed.kind !== "valid") throw new Error("invalid repo config");
+    const keyring = await deriveKeyring(
+      sampleTrashRepo.passphrase,
+      parsed.config.kdf,
+      argon2idDirect,
+    );
+    return { adapter, keyring };
+  }
+
+  it("regenerating the fixture reproduces the committed JSON exactly", async () => {
+    expect(await generateSampleTrashRepo()).toEqual(sampleTrashRepo);
+  });
+
+  it("lays out one trash entry per trashed item, with the depth and date in the id", () => {
+    const ids = Object.keys(finalFiles())
+      .filter((path) => path.startsWith(`${TRASH_DIR}/`))
+      .map((path) => path.split("/")[2]);
+    const uniqueIds = [...new Set(ids)].sort();
+
+    expect(uniqueIds).toHaveLength(3);
+    expect(uniqueIds.map((id) => id.replace(/-[a-z2-7]{8}$/, ""))).toEqual([
+      "20260105T090000Z-2",
+      "20260112T103000Z-1",
+      "20260927T081500Z-1",
+    ]);
+    expect(ids.filter((id) => id.startsWith("20260112"))).toHaveLength(2);
+  });
+
+  it("leaks no note names or contents into paths or commit messages", () => {
+    const names = flattenNames(sampleTrashRepoSource).filter(
+      (name) => name !== APP_ID,
+    );
+    const markdowns = flattenMarkdown(sampleTrashRepoSource);
+    const texts = [
+      ...Object.keys(finalFiles()),
+      ...sampleTrashRepo.commits.map((commit) => commit.message),
+    ];
+    for (const text of texts) {
+      for (const name of names) expect(text).not.toContain(name);
+      for (const markdown of markdowns) expect(text).not.toContain(markdown);
+    }
+  });
+
+  it("indexes the trash entries with decrypted names and expiry relative to the pinned now", async () => {
+    const { adapter, keyring } = await openKeyring();
+    const entries = await buildTrashIndex(
+      await adapter.listTree(await adapter.getHead()),
+      keyring,
+    );
+
+    expect(
+      entries.map((entry) =>
+        entry.undecryptable
+          ? null
+          : [entry.kind, entry.originalPath, new Date(entry.deletedAt).toISOString()],
+      ),
+    ).toEqual(
+      sampleTrashRepoTrashed.map((item) => [
+        item.kind,
+        item.path,
+        item.deletedAt,
+      ]),
+    );
+
+    const now = Date.parse(SAMPLE_TRASH_NOW);
+    expect(entries.map((entry) => now - entry.deletedAt > TRASH_RETENTION_MS)).toEqual([
+      true,
+      true,
+      false,
+    ]);
+
+    const folder = entries[1];
+    if (folder.undecryptable || folder.tree.kind !== "folder") {
+      throw new Error("expected a readable folder entry");
+    }
+    expect(folder.tree.children.map((child) => child.name)).toEqual(["Outline"]);
+  });
+
+  it("keeps the remaining notes in the tree", async () => {
+    const { adapter, keyring } = await openKeyring();
+    const tree = await buildNoteTree(
+      await adapter.listTree(await adapter.getHead()),
+      keyring,
+    );
+    expect(listNotes(tree).map((note) => note.path)).toEqual([
+      ["Archive", "Kept note"],
+      ["Welcome"],
+    ]);
   });
 });

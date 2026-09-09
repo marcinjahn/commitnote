@@ -282,10 +282,10 @@ test("renaming, moving and deleting notes and folders", async ({
   });
 
   await page.getByRole("button", { name: "Actions for Hello" }).click();
-  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Delete" })
+    .getByRole("button", { name: "Move to trash", exact: true })
     .click();
   await expect(hello).toHaveCount(0);
   await expect(
@@ -296,10 +296,10 @@ test("renaming, moving and deleting notes and folders", async ({
   });
 
   await page.getByRole("button", { name: "Actions for Journal" }).click();
-  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText(/is not empty/)).toBeVisible();
-  await dialog.getByRole("button", { name: "Delete" }).click();
+  await expect(dialog.getByText(/and everything in it/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Move to trash", exact: true }).click();
   await expect(
     page.getByRole("treeitem", { name: "Journal", exact: true }),
   ).toHaveCount(0);

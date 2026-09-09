@@ -8,8 +8,10 @@ import {
   FORMAT_VERSION,
   INITIALIZE_SUBJECT,
   SAVE_SUBJECT,
+  TRASH_DIR,
   TRAILER,
 } from "../format/v1";
+import { parseTrashEntryId } from "../trash/trash-entry-id";
 import type { Change, ChangeSet, NotePath } from "./change";
 
 export class InvalidChangeSetError extends Error {}
@@ -67,6 +69,60 @@ function isFree(
     if (key.startsWith(prefix)) return false;
   }
   return true;
+}
+
+function moveEntries(
+  working: Map<string, WorkingEntry>,
+  from: string,
+  to: string,
+  isFolder: boolean,
+): void {
+  const moves: [oldKey: string, newKey: string, value: WorkingEntry][] = [];
+  if (isFolder) {
+    const prefix = `${from}/`;
+    for (const [key, value] of working) {
+      if (key.startsWith(prefix)) {
+        moves.push([key, `${to}/${key.slice(prefix.length)}`, value]);
+      }
+    }
+  } else {
+    const value = working.get(from);
+    if (value !== undefined) moves.push([from, to, value]);
+  }
+  for (const [oldKey] of moves) working.delete(oldKey);
+  for (const [, newKey, value] of moves) working.set(newKey, value);
+}
+
+function ensureFolderKept(
+  working: Map<string, WorkingEntry>,
+  storedFolder: string,
+): void {
+  if (storedFolder === "" || folderExists(working, storedFolder)) return;
+  working.set(`${storedFolder}/${FOLDER_MARKER}`, {
+    kind: "text",
+    text: "",
+    encrypt: false,
+  });
+}
+
+function parentOfStored(storedPath: string): string {
+  const slash = storedPath.lastIndexOf("/");
+  return slash === -1 ? "" : storedPath.slice(0, slash);
+}
+
+function trashEntryRoot(
+  working: ReadonlyMap<string, WorkingEntry>,
+  entryId: string,
+  depth: number,
+): string | undefined {
+  const prefix = `${TRASH_DIR}/${entryId}/`;
+  for (const key of working.keys()) {
+    if (!key.startsWith(prefix)) continue;
+    const segments = key.slice(prefix.length).split("/");
+    if (segments.length < depth) return undefined;
+    return segments.slice(0, depth).join("/");
+  }
+  return undefined;
 }
 
 async function applyChange(
@@ -186,6 +242,60 @@ async function applyChange(
       for (const [oldKey] of moves) working.delete(oldKey);
       for (const [, newKey, value] of moves) working.set(newKey, value);
       trailers.push(`${TRAILER.rename}: ${fromStored} -> ${toStored}`);
+      break;
+    }
+    case "trash-note":
+    case "trash-folder": {
+      const isFolder = change.kind === "trash-folder";
+      const parsed = parseTrashEntryId(change.entryId);
+      if (parsed === null || parsed.depth !== change.path.length) fail();
+      const stored = await storedPathOf(change.path);
+      const exists = isFolder
+        ? folderExists(working, stored)
+        : working.has(stored);
+      const trashed = `${TRASH_DIR}/${change.entryId}`;
+      if (!exists || stored === "" || !isFree(working, trashed)) fail();
+      moveEntries(working, stored, `${trashed}/${stored}`, isFolder);
+      ensureFolderKept(working, parentOfStored(stored));
+      trailers.push(`${TRAILER.trash}: ${stored} -> ${change.entryId}`);
+      break;
+    }
+    case "restore-trash": {
+      const parsed = parseTrashEntryId(change.entryId);
+      if (parsed === null || change.to.length === 0) fail();
+      const root = trashEntryRoot(working, change.entryId, parsed.depth);
+      if (root === undefined) fail();
+      const isFolder = change.target === "folder";
+      const subStored =
+        change.subPath.length === 0 ? "" : await storedPathOf(change.subPath);
+      const from = `${TRASH_DIR}/${change.entryId}/${root}${subStored === "" ? "" : `/${subStored}`}`;
+      const toStored = await storedPathOf(change.to);
+      const toParentStored = await storedPathOf(change.to.slice(0, -1));
+      const exists = isFolder
+        ? folderExists(working, from)
+        : working.has(from);
+      if (
+        !exists ||
+        !isFree(working, toStored) ||
+        !folderExists(working, toParentStored)
+      ) {
+        fail();
+      }
+      moveEntries(working, from, toStored, isFolder);
+      if (change.subPath.length > 0) {
+        ensureFolderKept(working, parentOfStored(from));
+      }
+      trailers.push(`${TRAILER.restore}: ${change.entryId} -> ${toStored}`);
+      break;
+    }
+    case "purge-trash": {
+      for (const entryId of change.entryIds) {
+        const prefix = `${TRASH_DIR}/${entryId}/`;
+        for (const key of [...working.keys()]) {
+          if (key.startsWith(prefix)) working.delete(key);
+        }
+        trailers.push(`${TRAILER.purge}: ${entryId}`);
+      }
       break;
     }
   }

@@ -42,7 +42,9 @@ const STATE_BY_LEVEL: readonly SyncState[] = [
   OUT_OF_SYNC_CONFLICT,
 ];
 
-function entryPathOf(change: Change): NotePath {
+// Purges are background housekeeping of already-deleted items, so they never
+// count as unsaved work.
+function entryPathOf(change: Change): NotePath | null {
   switch (change.kind) {
     case "create-note":
     case "update-note":
@@ -53,7 +55,13 @@ function entryPathOf(change: Change): NotePath {
       return change.to;
     case "delete-note":
     case "delete-folder":
+    case "trash-note":
+    case "trash-folder":
       return parentPath(change.path);
+    case "restore-trash":
+      return change.to;
+    case "purge-trash":
+      return null;
   }
 }
 
@@ -83,6 +91,7 @@ export function computeSyncStates(input: {
   function applyChangeSet(changes: ChangeSet, level: number): void {
     for (const change of changes) {
       const path = entryPathOf(change);
+      if (path === null) continue;
       entryKeys.add(keyOf(path));
       raise(path, level);
     }

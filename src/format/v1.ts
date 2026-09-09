@@ -5,6 +5,8 @@ export const MAIN_BRANCH = "main";
 export const REPO_CONFIG_DIR = ".commitnote";
 export const REPO_CONFIG_PATH = ".commitnote/config.json";
 export const FOLDER_MARKER = ".keep";
+export const TRASH_DIR = ".commitnote/trash";
+export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const CIPHER_ID = "AES-256-GCM";
 export const NAME_SCHEME_ID = "AES-256-GCM-SIV-HMAC-SHA256/base64url";
@@ -48,4 +50,7 @@ export const TRAILER = {
   update: "Commitnote-Update",
   delete: "Commitnote-Delete",
   rename: "Commitnote-Rename",
+  trash: "Commitnote-Trash",
+  restore: "Commitnote-Restore",
+  purge: "Commitnote-Purge",
 } as const;

@@ -7,7 +7,9 @@ import { deriveKeyring, type Keyring } from "../crypto/keyring";
 import { encryptPath } from "../crypto/name-cipher";
 import { encryptNote } from "../crypto/note-cipher";
 import type { TreeEntry } from "../forge/forge-adapter";
-import { FOLDER_MARKER } from "../format/v1";
+import { FOLDER_MARKER, TRASH_DIR } from "../format/v1";
+import { buildWorkingTree } from "../sync/working-tree";
+import { buildTrashIndex, type TrashEntry } from "../trash/trash-index";
 import { buildNoteTree, type NoteTree } from "../tree/note-tree";
 import {
   mergeChangeSet,
@@ -31,14 +33,22 @@ beforeAll(async () => {
   );
 });
 
+interface TrashSnapshot {
+  /** Original paths; the entry id's depth selects the trashed item. */
+  readonly notes?: Readonly<Record<string, string>>;
+  readonly folders?: readonly string[];
+}
+
 interface Snapshot {
   readonly notes?: Readonly<Record<string, string>>;
   readonly folders?: readonly string[];
+  readonly trash?: Readonly<Record<string, TrashSnapshot>>;
 }
 
 interface BuiltSnapshot {
   readonly listing: TreeEntry[];
   readonly tree: NoteTree;
+  readonly trash: TrashEntry[];
   readonly read: (path: NotePath) => Promise<string>;
 }
 
@@ -93,7 +103,35 @@ async function build(snapshot: Snapshot): Promise<BuiltSnapshot> {
     });
   }
 
+  for (const [id, entry] of Object.entries(snapshot.trash ?? {})) {
+    const depth = Number(id.split("-")[1]);
+    const trashFolders = new Set(entry.folders ?? []);
+    for (const path of Object.keys(entry.notes ?? {})) {
+      const segments = split(path);
+      for (let i = depth; i < segments.length; i++) {
+        trashFolders.add(segments.slice(0, i).join("/"));
+      }
+    }
+    for (const folder of trashFolders) {
+      const stored = await encryptPath(keyring, split(folder));
+      listing.push({
+        path: `${TRASH_DIR}/${id}/${stored}/${FOLDER_MARKER}`,
+        type: "blob",
+        sha: await blobSha(""),
+      });
+    }
+    for (const [path, content] of Object.entries(entry.notes ?? {})) {
+      const ciphertext = await encryptNote(keyring, content, fixedRandom);
+      listing.push({
+        path: `${TRASH_DIR}/${id}/${await encryptPath(keyring, split(path))}`,
+        type: "blob",
+        sha: await blobSha(ciphertext),
+      });
+    }
+  }
+
   const tree = await buildNoteTree(listing, keyring);
+  const trash = await buildTrashIndex(listing, keyring);
   const read = async (path: NotePath): Promise<string> => {
     const content = notes[path.join("/")];
     if (content === undefined) {
@@ -101,7 +139,7 @@ async function build(snapshot: Snapshot): Promise<BuiltSnapshot> {
     }
     return content;
   };
-  return { listing, tree, read };
+  return { listing, tree, trash, read };
 }
 
 interface MergeCase {
@@ -119,9 +157,14 @@ async function runCase(mergeCase: MergeCase): Promise<MergeChangeSetResult> {
     base: base.tree,
     remote: remote.tree,
     changeSet: mergeCase.changeSet,
+    baseTrash: base.trash,
+    remoteTrash: remote.trash,
     readBaseContent: base.read,
     readRemoteContent: remote.read,
   });
+  expect(() =>
+    buildWorkingTree(remote.tree, result.changeSet, remote.trash),
+  ).not.toThrow();
   await expect(
     encodeChangeSet({
       listing: remote.listing,
@@ -164,6 +207,39 @@ const renameFolder = (from: string, to: string): Change => ({
   from: split(from),
   to: split(to),
 });
+
+const trashNote = (path: string, entryId: string): Change => ({
+  kind: "trash-note",
+  path: split(path),
+  entryId,
+});
+const trashFolder = (path: string, entryId: string): Change => ({
+  kind: "trash-folder",
+  path: split(path),
+  entryId,
+});
+const restoreTrash = (
+  entryId: string,
+  to: string,
+  target: "note" | "folder",
+  subPath = "",
+): Change => ({
+  kind: "restore-trash",
+  entryId,
+  subPath: subPath === "" ? [] : split(subPath),
+  target,
+  to: split(to),
+});
+const purgeTrash = (...entryIds: string[]): Change => ({
+  kind: "purge-trash",
+  entryIds,
+});
+
+const entryId = (depth: number, suffix: string): string =>
+  `20260930T154358Z-${depth}-${suffix.padEnd(8, "a")}`;
+const E1 = entryId(1, "one");
+const E2 = entryId(1, "two");
+const E1_DEEP = entryId(2, "one");
 
 const FILLER = createNote("filler.md", "filler content");
 
@@ -596,6 +672,196 @@ const cases: MergeCase[] = [
       expect(conflict.theirs).toBe("theirs");
     },
   },
+  {
+    name: "passes trash, restore and purge through when the remote did not move",
+    base: {
+      notes: { "n.md": "n", "f/x.md": "x" },
+      trash: { [E2]: { notes: { "old.md": "old" } } },
+    },
+    remote: {
+      notes: { "n.md": "n", "f/x.md": "x" },
+      trash: { [E2]: { notes: { "old.md": "old" } } },
+    },
+    changeSet: [
+      trashNote("n.md", E1),
+      trashFolder("f", entryId(1, "three")),
+      restoreTrash(E1, "back.md", "note"),
+      updateNote("back.md", "n2"),
+      createFolder("g"),
+      restoreTrash(entryId(1, "three"), "g/x.md", "note", "x.md"),
+      purgeTrash(E2),
+    ],
+    check(result) {
+      expect(result.changeSet).toEqual(this.changeSet);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "skips trashing a remotely edited note and keeps it",
+    base: { notes: { "n.md": BASE_TEXT } },
+    remote: { notes: { "n.md": THEIRS_TEXT } },
+    changeSet: [FILLER, trashNote("n.md", E1)],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+      expect(result.notices).toEqual([
+        { kind: "delete-skipped", path: ["n.md"], target: "note" },
+      ]);
+    },
+  },
+  {
+    name: "skips trashing a folder the remote added a note to",
+    base: { notes: { "f/x.md": "x" } },
+    remote: { notes: { "f/x.md": "x", "f/new.md": "new" } },
+    changeSet: [FILLER, trashFolder("f", E1)],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+      expect(result.notices).toEqual([
+        { kind: "delete-skipped", path: ["f"], target: "folder" },
+      ]);
+    },
+  },
+  {
+    name: "drops trashing a remotely renamed note silently",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "renamed.md": "n" } },
+    changeSet: [FILLER, trashNote("n.md", E1)],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "restoring a skipped trash follows the kept note and merges later edits",
+    base: { notes: { "n.md": BASE_TEXT } },
+    remote: { notes: { "n.md": THEIRS_TEXT } },
+    changeSet: [
+      trashNote("n.md", E1),
+      restoreTrash(E1, "moved.md", "note"),
+      updateNote("moved.md", MINE_TEXT),
+    ],
+    check(result) {
+      expect(result.changeSet).toEqual([updateNote("n.md", MERGED_TEXT)]);
+      expect(result.notices).toEqual([
+        { kind: "delete-skipped", path: ["n.md"], target: "note" },
+      ]);
+    },
+  },
+  {
+    name: "re-encodes the entry id depth when the trashed note was redirected",
+    base: { notes: { "a.md": "a" } },
+    remote: { notes: { "a.md": "a", "d/a.md": "taken" } },
+    changeSet: [renameNote("a.md", "d/a.md"), trashNote("d/a.md", E1_DEEP)],
+    check(result) {
+      expect(result.changeSet).toEqual([trashNote("a.md", E1)]);
+    },
+  },
+  {
+    name: "skips restoring an entry purged remotely and keeps later edits",
+    base: { trash: { [E1]: { notes: { "n.md": "old" } } } },
+    remote: {},
+    changeSet: [
+      restoreTrash(E1, "back.md", "note"),
+      updateNote("back.md", "edited"),
+    ],
+    check(result) {
+      expect(result.changeSet).toEqual([createNote("back.md", "edited")]);
+      expect(result.notices).toEqual([
+        { kind: "restore-skipped", path: ["n.md"], target: "note" },
+        { kind: "edit-restored", path: ["back.md"] },
+      ]);
+    },
+  },
+  {
+    name: "skips restoring a sub-item restored remotely but restores the rest",
+    base: {
+      trash: { [E1]: { notes: { "f/a.md": "a", "f/b.md": "b" } } },
+    },
+    remote: {
+      notes: { "a.md": "a" },
+      trash: { [E1]: { notes: { "f/b.md": "b" } } },
+    },
+    changeSet: [
+      restoreTrash(E1, "mine-a.md", "note", "a.md"),
+      restoreTrash(E1, "f", "folder"),
+    ],
+    check(result) {
+      expect(result.changeSet).toEqual([restoreTrash(E1, "f", "folder")]);
+      expect(result.notices).toEqual([
+        { kind: "restore-skipped", path: ["f", "a.md"], target: "note" },
+      ]);
+    },
+  },
+  {
+    name: "relocates a restore whose target is now taken remotely, and later edits follow",
+    base: { trash: { [E1]: { notes: { "n.md": "old" } } } },
+    remote: {
+      notes: { "n.md": "theirs" },
+      trash: { [E1]: { notes: { "n.md": "old" } } },
+    },
+    changeSet: [
+      restoreTrash(E1, "n.md", "note"),
+      updateNote("n.md", "mine"),
+    ],
+    check(result) {
+      expect(result.changeSet).toEqual([
+        restoreTrash(E1, "n.md (conflict)", "note"),
+        updateNote("n.md (conflict)", "mine"),
+      ]);
+      expect(result.notices).toEqual([
+        {
+          kind: "relocated",
+          from: ["n.md"],
+          to: ["n.md (conflict)"],
+          target: "note",
+        },
+      ]);
+    },
+  },
+  {
+    name: "recreates a restore target folder renamed remotely",
+    base: {
+      notes: { "f/x.md": "x" },
+      trash: { [E1]: { notes: { "n.md": "old" } } },
+    },
+    remote: {
+      notes: { "g/x.md": "x" },
+      trash: { [E1]: { notes: { "n.md": "old" } } },
+    },
+    changeSet: [restoreTrash(E1, "f/n.md", "note"), updateNote("f/n.md", "new")],
+    check(result) {
+      expect(result.changeSet).toEqual([
+        createFolder("f"),
+        restoreTrash(E1, "f/n.md", "note"),
+        updateNote("f/n.md", "new"),
+      ]);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "purges only entries still in the remote trash",
+    base: {
+      trash: {
+        [E1]: { notes: { "a.md": "a" } },
+        [E2]: { notes: { "b.md": "b" } },
+      },
+    },
+    remote: { trash: { [E1]: { notes: { "a.md": "a" } } } },
+    changeSet: [purgeTrash(E1, E2)],
+    check(result) {
+      expect(result.changeSet).toEqual([purgeTrash(E1)]);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "emits no purge when no entry is left remotely",
+    base: { trash: { [E2]: { notes: { "b.md": "b" } } } },
+    remote: {},
+    changeSet: [FILLER, purgeTrash(E2)],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+      expect(result.notices).toEqual([]);
+    },
+  },
 ];
 
 describe("mergeChangeSet", () => {
@@ -652,6 +918,7 @@ describe("mergeChangeSet", () => {
         "delete-skipped",
         "rename-skipped",
         "relocated",
+        "restore-skipped",
       ]),
     );
   });

@@ -98,3 +98,69 @@ export const sampleNotesRepoSource: readonly SampleEntry[] = [
   { kind: "folder", name: "Empty folder", children: [] },
   { kind: "note", name: "Zażółć gęślą jaźń", markdown: ZAZOLC_MARKDOWN },
 ];
+
+export interface SampleTrashEntry {
+  readonly path: readonly string[];
+  readonly kind: "note" | "folder";
+  readonly deletedAt: string;
+}
+
+export const SAMPLE_TRASH_NOW = "2026-09-30T12:00:00.000Z";
+
+export const sampleTrashRepoSource: readonly SampleEntry[] = [
+  {
+    kind: "note",
+    name: "Welcome",
+    markdown: "# Welcome\n\nA notes repo with a populated trash.\n",
+  },
+  {
+    kind: "folder",
+    name: "Archive",
+    children: [
+      {
+        kind: "note",
+        name: "Kept note",
+        markdown: "# Kept note\n\nStays in the tree.\n",
+      },
+      {
+        kind: "note",
+        name: "Old meeting",
+        markdown: "# Old meeting\n\nExpired note in the trash.\n",
+      },
+    ],
+  },
+  {
+    kind: "folder",
+    name: "Drafts",
+    children: [
+      {
+        kind: "note",
+        name: "Outline",
+        markdown: "# Outline\n\nNested note in an expired folder.\n",
+      },
+    ],
+  },
+  {
+    kind: "note",
+    name: "Scratch",
+    markdown: "# Scratch\n\nFresh note in the trash.\n",
+  },
+];
+
+export const sampleTrashRepoTrashed: readonly SampleTrashEntry[] = [
+  {
+    path: ["Archive", "Old meeting"],
+    kind: "note",
+    deletedAt: "2026-01-05T09:00:00.000Z",
+  },
+  {
+    path: ["Drafts"],
+    kind: "folder",
+    deletedAt: "2026-01-12T10:30:00.000Z",
+  },
+  {
+    path: ["Scratch"],
+    kind: "note",
+    deletedAt: "2026-09-27T08:15:00.000Z",
+  },
+];

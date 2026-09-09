@@ -105,17 +105,18 @@ test("creating, renaming, moving and deleting through row menus", async ({
 
   // Delete it after confirming.
   await page.getByRole("button", { name: "Actions for Grocery List" }).click();
-  await page.getByRole("menuitem", { name: "Delete…" }).click();
-  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
+  await expect(page.getByRole("heading", { name: "Move to trash?" })).toBeVisible();
+  await page.getByRole("button", { name: "Move to trash", exact: true }).click();
   await expect(
     page.getByRole("treeitem", { name: "Grocery List" }),
   ).toHaveCount(0);
 
-  // Deleting a non-empty folder (it still holds "Idea One") warns first.
+  // Deleting a non-empty folder (it still holds "Idea One") moves it to the trash.
   await page.getByRole("button", { name: "Actions for Recipes" }).click();
-  await page.getByRole("menuitem", { name: "Delete…" }).click();
-  await expect(page.getByText(/is not empty/)).toBeVisible();
-  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
+  await expect(page.getByText(/and everything in it/)).toBeVisible();
+  await page.getByRole("button", { name: "Move to trash", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: "Recipes" })).toHaveCount(0);
 
   // Everything settles back to synced afterwards.

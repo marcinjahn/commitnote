@@ -15,18 +15,18 @@ export interface MoveTarget {
 
 export function listMoveTargets(
   tree: WorkingTree,
-  itemPath: NotePath,
+  itemPath: NotePath | null,
   itemKind: "note" | "folder",
 ): MoveTarget[] {
-  const currentParent = parentPath(itemPath);
-  const excludeSubtree = itemKind === "folder";
+  const currentParent = itemPath === null ? null : parentPath(itemPath);
+  const excludeSubtree = itemPath !== null && itemKind === "folder";
 
   const targets: MoveTarget[] = [
     {
       path: [],
       label: "Notes (top level)",
       depth: 0,
-      disabled: notePathEquals(currentParent, []),
+      disabled: currentParent !== null && notePathEquals(currentParent, []),
     },
   ];
 
@@ -35,6 +35,7 @@ export function listMoveTargets(
       if (child.kind !== "folder") continue;
       if (
         excludeSubtree &&
+        itemPath !== null &&
         (notePathEquals(child.path, itemPath) ||
           isWithinFolder(child.path, itemPath))
       ) {
@@ -44,7 +45,8 @@ export function listMoveTargets(
         path: child.path,
         label: child.name,
         depth,
-        disabled: notePathEquals(child.path, currentParent),
+        disabled:
+          currentParent !== null && notePathEquals(child.path, currentParent),
       });
       visit(child, depth + 1);
     }

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ChangeSet, NotePath } from "../changes/change";
-import type { FolderNode, NoteNode, NoteTree } from "../tree/note-tree";
+import type { TrashEntry } from "../trash/trash-index";
+import type { FolderNode, NoteNode, NoteTree, TreeNode } from "../tree/note-tree";
 import {
   appendChange,
+  buildWorkingState,
   buildWorkingTree,
   findWorkingNode,
   localContentAt,
@@ -64,6 +66,52 @@ const SAMPLE_TREE: NoteTree = tree(
     ],
   ),
 );
+
+// Entry ids encode the depth of the trashed item's original path.
+const WELCOME_ID = "20260930T100000Z-1-aaaaaaaa";
+const DOCS_ID = "20260930T110000Z-1-bbbbbbbb";
+const TODO_ID = "20260930T120000Z-3-cccccccc";
+const OLD_NOTE_ID = "20260901T080000Z-2-dddddddd";
+const OLD_FOLDER_ID = "20260902T080000Z-1-eeeeeeee";
+const BROKEN_ID = "20260903T080000Z-1-ffffffff";
+
+function trashEntry(id: string, item: TreeNode): TrashEntry {
+  return {
+    id,
+    deletedAt: Date.parse(
+      id.replace(
+        /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z.*$/,
+        "$1-$2-$3T$4:$5:$6Z",
+      ),
+    ),
+    files: [],
+    undecryptable: false,
+    kind: item.kind,
+    originalPath: item.path,
+    storedRoot: item.storedPath,
+    tree: item,
+  };
+}
+
+const SYNCED_TRASH: readonly TrashEntry[] = [
+  trashEntry(OLD_NOTE_ID, note("Old", ["Archive", "Old"], "sha-trashed-old")),
+  trashEntry(
+    OLD_FOLDER_ID,
+    folder(
+      "Trashed",
+      ["Trashed"],
+      [
+        folder(
+          "Inner",
+          ["Trashed", "Inner"],
+          [note("Deep", ["Trashed", "Inner", "Deep"], "sha-trashed-deep")],
+        ),
+        note("Top", ["Trashed", "Top"], "sha-trashed-top"),
+      ],
+    ),
+  ),
+  { id: BROKEN_ID, deletedAt: 0, files: [], undecryptable: true },
+];
 
 describe("buildWorkingTree", () => {
   it("applies create-note", () => {
@@ -197,6 +245,267 @@ describe("buildWorkingTree", () => {
   });
 });
 
+describe("buildWorkingState trash", () => {
+  it("moves a trashed note out of the tree into a not yet synced trash entry", () => {
+    const { tree: working, trash } = buildWorkingState(SAMPLE_TREE, [
+      { kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID },
+    ]);
+
+    expect(findWorkingNode(working, ["Welcome"])).toBeUndefined();
+    expect(trash).toEqual([
+      {
+        id: WELCOME_ID,
+        deletedAt: Date.UTC(2026, 8, 30, 10, 0, 0),
+        undecryptable: false,
+        synced: false,
+        kind: "note",
+        originalPath: ["Welcome"],
+        tree: {
+          kind: "note",
+          name: "Welcome",
+          path: ["Welcome"],
+          syncedPath: ["Welcome"],
+        },
+      },
+    ]);
+  });
+
+  it("moves a trashed folder with its contents, keeping original paths", () => {
+    const { tree: working, trash } = buildWorkingState(SAMPLE_TREE, [
+      { kind: "rename-note", from: ["Docs", "Guide"], to: ["Docs", "Manual"] },
+      { kind: "trash-folder", path: ["Docs"], entryId: DOCS_ID },
+    ]);
+
+    expect(findWorkingNode(working, ["Docs"])).toBeUndefined();
+    expect(trash).toHaveLength(1);
+    const [entry] = trash;
+    if (entry.undecryptable) throw new Error("expected a readable entry");
+    expect(entry).toMatchObject({ kind: "folder", originalPath: ["Docs"] });
+    expect(entry.tree).toEqual({
+      kind: "folder",
+      name: "Docs",
+      path: ["Docs"],
+      children: [
+        {
+          kind: "folder",
+          name: "Notes",
+          path: ["Docs", "Notes"],
+          children: [
+            {
+              kind: "note",
+              name: "Todo",
+              path: ["Docs", "Notes", "Todo"],
+              syncedPath: ["Docs", "Notes", "Todo"],
+            },
+          ],
+        },
+        {
+          kind: "note",
+          name: "Manual",
+          path: ["Docs", "Manual"],
+          syncedPath: ["Docs", "Guide"],
+        },
+      ],
+    });
+  });
+
+  it("lists synced trash entries, undecryptable ones included, oldest first", () => {
+    const { trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [{ kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID }],
+      SYNCED_TRASH,
+    );
+
+    expect(trash.map((entry) => [entry.id, entry.synced])).toEqual([
+      [BROKEN_ID, true],
+      [OLD_NOTE_ID, true],
+      [OLD_FOLDER_ID, true],
+      [WELCOME_ID, false],
+    ]);
+    expect(trash[0]).toEqual({
+      id: BROKEN_ID,
+      deletedAt: 0,
+      undecryptable: true,
+      synced: true,
+    });
+    const old = trash[1];
+    if (old.undecryptable) throw new Error("expected a readable entry");
+    expect(old.tree).toEqual({
+      kind: "note",
+      name: "Old",
+      path: ["Archive", "Old"],
+      syncedPath: null,
+      trashBlobSha: "sha-trashed-old",
+    });
+  });
+
+  it("restores a whole synced note entry to the chosen folder, carrying its trash blob", () => {
+    const { tree: working, trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [
+        {
+          kind: "restore-trash",
+          entryId: OLD_NOTE_ID,
+          subPath: [],
+          target: "note",
+          to: ["Docs", "Old"],
+        },
+      ],
+      SYNCED_TRASH,
+    );
+
+    expect(findWorkingNode(working, ["Docs", "Old"])).toEqual({
+      kind: "note",
+      name: "Old",
+      path: ["Docs", "Old"],
+      syncedPath: null,
+      trashBlobSha: "sha-trashed-old",
+    });
+    expect(trash.map((entry) => entry.id)).not.toContain(OLD_NOTE_ID);
+  });
+
+  it("restores a sub-item of a folder entry under a new name, leaving the rest in trash", () => {
+    const { tree: working, trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [
+        {
+          kind: "restore-trash",
+          entryId: OLD_FOLDER_ID,
+          subPath: ["Inner"],
+          target: "folder",
+          to: ["Recovered"],
+        },
+      ],
+      SYNCED_TRASH,
+    );
+
+    expect(findWorkingNode(working, ["Recovered", "Deep"])).toEqual({
+      kind: "note",
+      name: "Deep",
+      path: ["Recovered", "Deep"],
+      syncedPath: null,
+      trashBlobSha: "sha-trashed-deep",
+    });
+    const entry = trash.find((candidate) => candidate.id === OLD_FOLDER_ID);
+    if (entry === undefined || entry.undecryptable) {
+      throw new Error("expected the folder entry to stay");
+    }
+    expect(childNames(entry.tree as WorkingFolder)).toEqual(["Top"]);
+  });
+
+  it("restores a pending-trashed note, keeping its synced location", () => {
+    const { tree: working, trash } = buildWorkingState(SAMPLE_TREE, [
+      { kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID },
+      {
+        kind: "restore-trash",
+        entryId: WELCOME_ID,
+        subPath: [],
+        target: "note",
+        to: ["Empty", "Welcome"],
+      },
+    ]);
+
+    expect(findWorkingNode(working, ["Empty", "Welcome"])).toEqual({
+      kind: "note",
+      name: "Welcome",
+      path: ["Empty", "Welcome"],
+      syncedPath: ["Welcome"],
+    });
+    expect(trash).toEqual([]);
+  });
+
+  it("purges entries and ignores ids that are not in trash", () => {
+    const { trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [{ kind: "purge-trash", entryIds: [OLD_NOTE_ID, BROKEN_ID, DOCS_ID] }],
+      SYNCED_TRASH,
+    );
+
+    expect(trash.map((entry) => entry.id)).toEqual([OLD_FOLDER_ID]);
+  });
+
+  it.each<{ description: string; changes: ChangeSet }>([
+    {
+      description: "trashing a note whose entry id has the wrong depth",
+      changes: [{ kind: "trash-note", path: ["Welcome"], entryId: TODO_ID }],
+    },
+    {
+      description: "trashing a folder as a note",
+      changes: [{ kind: "trash-note", path: ["Docs"], entryId: DOCS_ID }],
+    },
+    {
+      description: "trashing under an entry id already in trash",
+      changes: [
+        { kind: "trash-note", path: ["Welcome"], entryId: OLD_FOLDER_ID },
+      ],
+    },
+    {
+      description: "restoring a missing entry",
+      changes: [
+        {
+          kind: "restore-trash",
+          entryId: DOCS_ID,
+          subPath: [],
+          target: "folder",
+          to: ["Docs2"],
+        },
+      ],
+    },
+    {
+      description: "restoring an undecryptable entry",
+      changes: [
+        {
+          kind: "restore-trash",
+          entryId: BROKEN_ID,
+          subPath: [],
+          target: "folder",
+          to: ["Broken"],
+        },
+      ],
+    },
+    {
+      description: "restoring with the wrong target kind",
+      changes: [
+        {
+          kind: "restore-trash",
+          entryId: OLD_FOLDER_ID,
+          subPath: ["Top"],
+          target: "folder",
+          to: ["Top"],
+        },
+      ],
+    },
+    {
+      description: "restoring onto a taken name",
+      changes: [
+        {
+          kind: "restore-trash",
+          entryId: OLD_NOTE_ID,
+          subPath: [],
+          target: "note",
+          to: ["Welcome"],
+        },
+      ],
+    },
+    {
+      description: "restoring into a missing folder",
+      changes: [
+        {
+          kind: "restore-trash",
+          entryId: OLD_NOTE_ID,
+          subPath: [],
+          target: "note",
+          to: ["Missing", "Old"],
+        },
+      ],
+    },
+  ])("throws RangeError for $description", ({ changes }) => {
+    expect(() =>
+      buildWorkingState(SAMPLE_TREE, changes, SYNCED_TRASH),
+    ).toThrow(RangeError);
+  });
+});
+
 describe("appendChange", () => {
   it("coalesces repeated typing into one update-note", () => {
     let changes: ChangeSet = [
@@ -279,6 +588,61 @@ describe("appendChange", () => {
     ]);
   });
 
+  it("does not coalesce across a trash of the note's containing folder", () => {
+    const changes: ChangeSet = [
+      { kind: "update-note", path: ["Docs", "Guide"], content: "v1" },
+      { kind: "trash-folder", path: ["Docs"], entryId: DOCS_ID },
+    ];
+    const result = appendChange(changes, {
+      kind: "update-note",
+      path: ["Docs", "Guide"],
+      content: "v2",
+    });
+    expect(result).toEqual([
+      ...changes,
+      { kind: "update-note", path: ["Docs", "Guide"], content: "v2" },
+    ]);
+  });
+
+  it("does not coalesce across a restore onto the note's path", () => {
+    const changes: ChangeSet = [
+      { kind: "update-note", path: ["Welcome"], content: "v1" },
+      { kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID },
+      {
+        kind: "restore-trash",
+        entryId: WELCOME_ID,
+        subPath: [],
+        target: "note",
+        to: ["Welcome"],
+      },
+    ];
+    const result = appendChange(changes, {
+      kind: "update-note",
+      path: ["Welcome"],
+      content: "v2",
+    });
+    expect(result).toEqual([
+      ...changes,
+      { kind: "update-note", path: ["Welcome"], content: "v2" },
+    ]);
+  });
+
+  it("coalesces across a purge", () => {
+    const changes: ChangeSet = [
+      { kind: "update-note", path: ["Welcome"], content: "v1" },
+      { kind: "purge-trash", entryIds: [OLD_NOTE_ID] },
+    ];
+    const result = appendChange(changes, {
+      kind: "update-note",
+      path: ["Welcome"],
+      content: "v2",
+    });
+    expect(result).toEqual([
+      { kind: "update-note", path: ["Welcome"], content: "v2" },
+      { kind: "purge-trash", entryIds: [OLD_NOTE_ID] },
+    ]);
+  });
+
   it("appends every other change kind unchanged", () => {
     const changes: ChangeSet = [];
     const created = appendChange(changes, {
@@ -357,6 +721,71 @@ describe("localContentAt", () => {
       { kind: "delete-folder", path: ["Docs"] },
     ];
     expect(localContentAt(changes, ["Docs", "Guide"])).toBeUndefined();
+  });
+});
+
+describe("localContentAt trash", () => {
+  it("has no local content at the old path of a trashed note", () => {
+    const changes: ChangeSet = [
+      { kind: "update-note", path: ["Welcome"], content: "unsaved" },
+      { kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID },
+    ];
+    expect(localContentAt(changes, ["Welcome"])).toBeUndefined();
+  });
+
+  it("keeps unsaved text of a note through trash and restore", () => {
+    const changes: ChangeSet = [
+      { kind: "update-note", path: ["Welcome"], content: "unsaved" },
+      { kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID },
+      {
+        kind: "restore-trash",
+        entryId: WELCOME_ID,
+        subPath: [],
+        target: "note",
+        to: ["Empty", "Hello"],
+      },
+    ];
+    expect(localContentAt(changes, ["Empty", "Hello"])).toBe("unsaved");
+  });
+
+  it("keeps unsaved text inside a folder restored in parts", () => {
+    const changes: ChangeSet = [
+      { kind: "update-note", path: ["Docs", "Guide"], content: "guide" },
+      { kind: "update-note", path: ["Docs", "Notes", "Todo"], content: "todo" },
+      { kind: "trash-folder", path: ["Docs"], entryId: DOCS_ID },
+      {
+        kind: "restore-trash",
+        entryId: DOCS_ID,
+        subPath: ["Notes"],
+        target: "folder",
+        to: ["Back"],
+      },
+      {
+        kind: "restore-trash",
+        entryId: DOCS_ID,
+        subPath: ["Guide"],
+        target: "note",
+        to: ["Guide"],
+      },
+    ];
+    expect(localContentAt(changes, ["Back", "Todo"])).toBe("todo");
+    expect(localContentAt(changes, ["Guide"])).toBe("guide");
+  });
+
+  it("drops trashed text when its entry is purged", () => {
+    const changes: ChangeSet = [
+      { kind: "update-note", path: ["Welcome"], content: "unsaved" },
+      { kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID },
+      { kind: "purge-trash", entryIds: [WELCOME_ID] },
+      {
+        kind: "restore-trash",
+        entryId: WELCOME_ID,
+        subPath: [],
+        target: "note",
+        to: ["Welcome"],
+      },
+    ];
+    expect(localContentAt(changes, ["Welcome"])).toBeUndefined();
   });
 });
 
@@ -548,5 +977,107 @@ describe("rebaseChanges", () => {
       { kind: "create-note", path: ["Fresh"], content: "x" },
       { kind: "rename-note", from: ["Fresh"], to: ["Renamed"] },
     ]);
+  });
+
+  it("keeps a trash whose source still exists", () => {
+    const change = {
+      kind: "trash-folder",
+      path: ["Docs"],
+      entryId: DOCS_ID,
+    } as const;
+    const result = rebaseChanges(SAMPLE_TREE, [], [change]);
+    expect(result).toEqual({ changes: [change], dropped: [] });
+  });
+
+  it("silently skips a trash whose source is gone or changed kind", () => {
+    const result = rebaseChanges(
+      SAMPLE_TREE,
+      [{ kind: "delete-note", path: ["Welcome"] }],
+      [
+        { kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID },
+        { kind: "trash-note", path: ["Docs"], entryId: DOCS_ID },
+      ],
+    );
+    expect(result).toEqual({ changes: [], dropped: [] });
+  });
+
+  it("keeps a restore of an entry trashed in the prefix", () => {
+    const restore = {
+      kind: "restore-trash",
+      entryId: WELCOME_ID,
+      subPath: [],
+      target: "note",
+      to: ["Welcome"],
+    } as const;
+    const result = rebaseChanges(
+      SAMPLE_TREE,
+      [{ kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID }],
+      [restore],
+    );
+    expect(result).toEqual({ changes: [restore], dropped: [] });
+  });
+
+  it.each<{ description: string; prefix: ChangeSet; to: NotePath }>([
+    {
+      description: "its entry is gone",
+      prefix: [{ kind: "purge-trash", entryIds: [OLD_FOLDER_ID] }],
+      to: ["Inner"],
+    },
+    {
+      description: "its sub-item is gone",
+      prefix: [
+        {
+          kind: "restore-trash",
+          entryId: OLD_FOLDER_ID,
+          subPath: ["Inner"],
+          target: "folder",
+          to: ["Elsewhere"],
+        },
+      ],
+      to: ["Inner"],
+    },
+    {
+      description: "its target is taken",
+      prefix: [{ kind: "create-note", path: ["Inner"], content: "" }],
+      to: ["Inner"],
+    },
+    {
+      description: "its target folder is gone",
+      prefix: [{ kind: "delete-folder", path: ["Docs"] }],
+      to: ["Docs", "Inner"],
+    },
+  ])("drops a restore when $description", ({ prefix, to }) => {
+    const restore = {
+      kind: "restore-trash",
+      entryId: OLD_FOLDER_ID,
+      subPath: ["Inner"],
+      target: "folder",
+      to,
+    } as const;
+    const result = rebaseChanges(SAMPLE_TREE, prefix, [restore], SYNCED_TRASH);
+    expect(result).toEqual({ changes: [], dropped: [restore] });
+  });
+
+  it("filters purged ids to entries still in trash", () => {
+    const result = rebaseChanges(
+      SAMPLE_TREE,
+      [{ kind: "purge-trash", entryIds: [OLD_NOTE_ID] }],
+      [{ kind: "purge-trash", entryIds: [OLD_NOTE_ID, BROKEN_ID, DOCS_ID] }],
+      SYNCED_TRASH,
+    );
+    expect(result).toEqual({
+      changes: [{ kind: "purge-trash", entryIds: [BROKEN_ID] }],
+      dropped: [],
+    });
+  });
+
+  it("silently skips a purge of entries no longer in trash", () => {
+    const result = rebaseChanges(
+      SAMPLE_TREE,
+      [],
+      [{ kind: "purge-trash", entryIds: [DOCS_ID] }],
+      SYNCED_TRASH,
+    );
+    expect(result).toEqual({ changes: [], dropped: [] });
   });
 });

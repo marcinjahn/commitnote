@@ -500,3 +500,182 @@ describe("encodeInitializeMessage", () => {
     );
   });
 });
+
+describe("encodeChangeSet: trash", () => {
+  const ID1 = "20260101T000000Z-1-aaaaaaaa";
+  const ID2 = "20260102T000000Z-2-bbbbbbbb";
+  const ID3 = "20260103T000000Z-1-cccccccc";
+  const trashed = (id: string, stored: string) =>
+    `.commitnote/trash/${id}/${stored}`;
+
+  it("trash-note: moves the blob into the entry dir, keeps the parent folder with a .keep, writes a Trash trailer", async () => {
+    const keyring = await testKeyring();
+    const folder = await encryptPath(keyring, ["Secret folder"]);
+    const note = await encryptPath(keyring, ["Secret folder", "Secret note"]);
+    const result = await encodeChangeSet({
+      listing: [blob(note, "sha-n")],
+      changeSet: [{ kind: "trash-note", path: ["Secret folder", "Secret note"], entryId: ID2 }],
+      keyring,
+    });
+
+    expect(result.changes).toEqual(
+      [
+        { kind: "delete", path: note },
+        { kind: "upsert-blob", path: trashed(ID2, note), blobSha: "sha-n" },
+        { kind: "upsert-text", path: `${folder}/${FOLDER_MARKER}`, text: "" },
+      ].sort((a, b) => (a.path < b.path ? -1 : 1)),
+    );
+    expect(result.message).toBe(
+      `commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Trash: ${note} -> ${ID2}`,
+    );
+    const everything = result.message + result.changes.map((c) => c.path).join();
+    expect(everything).not.toContain("Secret");
+  });
+
+  it("trash-folder: moves nested files and .keep by sha; no blob creation", async () => {
+    const keyring = await testKeyring();
+    const folder = await encryptPath(keyring, ["F"]);
+    const sub = await encryptPath(keyring, ["F", "Sub"]);
+    const note = await encryptPath(keyring, ["F", "Sub", "N"]);
+    const listing = [
+      keepBlob(folder, "sha-k1"),
+      keepBlob(sub, "sha-k2"),
+      blob(note, "sha-n"),
+    ];
+    const result = await encodeChangeSet({
+      listing,
+      changeSet: [{ kind: "trash-folder", path: ["F"], entryId: ID1 }],
+      keyring,
+    });
+
+    expect(result.changes.every((c) => c.kind !== "upsert-text")).toBe(true);
+    expect(result.changes).toHaveLength(6);
+    for (const [p, sha] of [
+      [`${folder}/${FOLDER_MARKER}`, "sha-k1"],
+      [`${sub}/${FOLDER_MARKER}`, "sha-k2"],
+      [note, "sha-n"],
+    ]) {
+      expect(result.changes).toContainEqual({ kind: "delete", path: p });
+      expect(result.changes).toContainEqual({
+        kind: "upsert-blob",
+        path: trashed(ID1, p),
+        blobSha: sha,
+      });
+    }
+    expect(result.message).toContain(`Commitnote-Trash: ${folder} -> ${ID1}`);
+  });
+
+  it("restore-trash: moves a whole entry into an existing folder", async () => {
+    const keyring = await testKeyring();
+    const note = await encryptPath(keyring, ["Old"]);
+    const target = await encryptPath(keyring, ["Target"]);
+    const to = await encryptPath(keyring, ["Target", "Renamed"]);
+    const result = await encodeChangeSet({
+      listing: [keepBlob(target, "sha-k"), blob(trashed(ID1, note), "sha-n")],
+      changeSet: [
+        { kind: "restore-trash", entryId: ID1, subPath: [], target: "note", to: ["Target", "Renamed"] },
+      ],
+      keyring,
+    });
+
+    expect(result.changes).toHaveLength(2);
+    expect(result.changes).toContainEqual({ kind: "delete", path: trashed(ID1, note) });
+    expect(result.changes).toContainEqual({ kind: "upsert-blob", path: to, blobSha: "sha-n" });
+    expect(result.message).toContain(`Commitnote-Restore: ${ID1} -> ${to}`);
+  });
+
+  it("restore-trash: rejects a missing target folder", async () => {
+    const keyring = await testKeyring();
+    const note = await encryptPath(keyring, ["Old"]);
+    await expect(
+      encodeChangeSet({
+        listing: [blob(trashed(ID1, note), "sha-n")],
+        changeSet: [
+          { kind: "restore-trash", entryId: ID1, subPath: [], target: "note", to: ["Nope", "X"] },
+        ],
+        keyring,
+      }),
+    ).rejects.toThrow(InvalidChangeSetError);
+  });
+
+  it("restore-trash: sub-item out of a trashed folder leaves a .keep in the remaining structure", async () => {
+    const keyring = await testKeyring();
+    const folder = await encryptPath(keyring, ["F"]);
+    const note = await encryptPath(keyring, ["F", "Sub", "N"]);
+    const result = await encodeChangeSet({
+      listing: [blob(trashed(ID3, note), "sha-n")],
+      changeSet: [
+        {
+          kind: "restore-trash",
+          entryId: ID3,
+          subPath: ["Sub", "N"],
+          target: "note",
+          to: ["Back"],
+        },
+      ],
+      keyring,
+    });
+    const back = await encryptPath(keyring, ["Back"]);
+    const sub = await encryptPath(keyring, ["F", "Sub"]);
+
+    expect(folder).toBeTruthy();
+    expect(result.changes).toContainEqual({ kind: "upsert-blob", path: back, blobSha: "sha-n" });
+    expect(result.changes).toContainEqual({ kind: "delete", path: trashed(ID3, note) });
+    expect(result.changes).toContainEqual({
+      kind: "upsert-text",
+      path: trashed(ID3, `${sub}/${FOLDER_MARKER}`),
+      text: "",
+    });
+  });
+
+  it("restore-trash: a sub-folder moves with its contents", async () => {
+    const keyring = await testKeyring();
+    const a = await encryptPath(keyring, ["F", "A", "N1"]);
+    const b = await encryptPath(keyring, ["F", "A", "Deep", "N2"]);
+    const other = await encryptPath(keyring, ["F", "Other"]);
+    const result = await encodeChangeSet({
+      listing: [
+        blob(trashed(ID3, a), "s1"),
+        blob(trashed(ID3, b), "s2"),
+        blob(trashed(ID3, other), "s3"),
+      ],
+      changeSet: [
+        { kind: "restore-trash", entryId: ID3, subPath: ["A"], target: "folder", to: ["A2"] },
+      ],
+      keyring,
+    });
+    expect(result.changes.filter((c) => c.kind === "upsert-blob")).toEqual([
+      { kind: "upsert-blob", path: `${await encryptPath(keyring, ["A2", "Deep", "N2"])}`, blobSha: "s2" },
+      { kind: "upsert-blob", path: `${await encryptPath(keyring, ["A2", "N1"])}`, blobSha: "s1" },
+    ].sort((x, y) => (x.path < y.path ? -1 : 1)));
+    expect(result.changes.filter((c) => c.kind === "upsert-text")).toEqual([]);
+  });
+
+  it("purge-trash: deletes everything under each id, one trailer per id, ignores unknown ids", async () => {
+    const keyring = await testKeyring();
+    const n1 = await encryptPath(keyring, ["A"]);
+    const n2 = await encryptPath(keyring, ["F", "B"]);
+    const keep = await encryptPath(keyring, ["Keep"]);
+    const unknown = "20260105T000000Z-1-dddddddd";
+    const result = await encodeChangeSet({
+      listing: [
+        blob(trashed(ID1, n1), "s1"),
+        blob(trashed(ID2, n2), "s2"),
+        blob(trashed(ID3, n1), "s3"),
+        blob(keep, "s4"),
+      ],
+      changeSet: [{ kind: "purge-trash", entryIds: [ID1, ID2, unknown] }],
+      keyring,
+    });
+
+    expect(result.changes).toEqual(
+      [
+        { kind: "delete", path: trashed(ID1, n1) },
+        { kind: "delete", path: trashed(ID2, n2) },
+      ].sort((a, b) => (a.path < b.path ? -1 : 1)),
+    );
+    expect(result.message).toBe(
+      `commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Purge: ${ID1}\nCommitnote-Purge: ${ID2}\nCommitnote-Purge: ${unknown}`,
+    );
+  });
+});
