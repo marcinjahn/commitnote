@@ -21,6 +21,8 @@
     readonly key: string;
     readonly text: string;
     readonly conflict: Extract<EngineNotice, { kind: "conflict" }> | null;
+    readonly action: ToastMessage["action"] | undefined;
+    readonly durationMs: number;
     readonly dismiss: () => void;
   }
 
@@ -30,12 +32,16 @@
         key: `notice-${notice.id}`,
         text: describeNotice(notice),
         conflict: notice.kind === "conflict" ? notice : null,
+        action: undefined,
+        durationMs: AUTO_DISMISS_MS,
         dismiss: () => onDismiss(notice.id),
       })),
       ...messages.map((message) => ({
         key: `message-${message.id}`,
         text: message.text,
         conflict: null,
+        action: message.action,
+        durationMs: message.durationMs ?? AUTO_DISMISS_MS,
         dismiss: () => onDismissMessage?.(message.id),
       })),
     ].slice(-MAX_VISIBLE),
@@ -61,7 +67,7 @@
         setTimeout(() => {
           timers.delete(key);
           toast.dismiss();
-        }, AUTO_DISMISS_MS),
+        }, toast.durationMs),
       );
     }
   });
@@ -93,6 +99,11 @@
     resume(key);
   }
 
+  function handleAction(toast: Toast): void {
+    toast.dismiss();
+    toast.action?.run();
+  }
+
   function handleOpen(toast: Toast): void {
     if (toast.conflict !== null) onOpen?.(toast.conflict.path);
     toast.dismiss();
@@ -111,6 +122,16 @@
     >
       <p class="text">{toast.text}</p>
       <div class="actions">
+        {#if toast.action}
+          <button
+            type="button"
+            class="button"
+            data-testid="toast-action"
+            onclick={() => handleAction(toast)}
+          >
+            {toast.action.label}
+          </button>
+        {/if}
         {#if toast.conflict !== null && onOpen}
           <button type="button" class="button" onclick={() => handleOpen(toast)}>
             Open note
@@ -135,12 +156,14 @@
     z-index: 50;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: calc(
+      var(--touch-target) + var(--space-2) * 2 + var(--hairline) +
+        env(safe-area-inset-bottom, 0px)
+    );
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-3)
-      calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+    padding: var(--space-2) var(--space-3);
     pointer-events: none;
   }
 
@@ -185,6 +208,7 @@
   @media (min-width: 768px) {
     .toasts {
       left: auto;
+      bottom: 0;
       width: var(--toast-width);
       max-width: 100%;
       padding-right: var(--space-3);

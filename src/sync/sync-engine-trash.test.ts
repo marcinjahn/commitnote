@@ -48,11 +48,16 @@ const JANUARY = ["Journal", "2026", "January"];
 const EXPIRED_WELCOME = "20260801T100000Z-1-aaaaaaaa";
 const EXPIRED_ZAZOLC = "20260802T100000Z-1-bbbbbbbb";
 const FRESH_PROJECTS = "20260925T100000Z-1-cccccccc";
+const FRESH_WELCOME = "20260920T100000Z-1-eeeeeeee";
 
 const TRASHED: ChangeSet = [
   { kind: "trash-note", path: WELCOME, entryId: EXPIRED_WELCOME },
   { kind: "trash-note", path: ZAZOLC, entryId: EXPIRED_ZAZOLC },
   { kind: "trash-folder", path: PROJECTS, entryId: FRESH_PROJECTS },
+];
+
+const TRASHED_FRESH_WELCOME: ChangeSet = [
+  { kind: "trash-note", path: WELCOME, entryId: FRESH_WELCOME },
 ];
 
 interface Harness {
@@ -184,13 +189,30 @@ function workingTrashIds(engine: SyncEngine): string[] {
   return (engine.getState().trash ?? []).map((entry) => entry.id);
 }
 
+function visibleTrashIds(engine: SyncEngine): string[] {
+  return (engine.getState().visibleTrash ?? []).map((entry) => entry.id);
+}
+
+async function pushUndecryptableEntry(
+  fake: FakeForgeAdapter,
+  entryId: string,
+): Promise<void> {
+  await fake.pushFromAnotherDevice([
+    {
+      kind: "upsert-text",
+      path: `.commitnote/trash/${entryId}/not-an-encrypted-name`,
+      text: "x",
+    },
+  ]);
+}
+
 describe("sync engine trash commands", () => {
   it("moves a deleted note to the trash under an entry id taken at delete time", async () => {
     const h = await setup();
     const welcome = await remoteContent(h.fake, WELCOME);
     await h.engine.openNote(WELCOME);
 
-    expect(h.engine.delete(WELCOME)).toEqual({ ok: true, path: WELCOME });
+    expect(h.engine.delete(WELCOME)).toMatchObject({ ok: true, path: WELCOME });
 
     const [change] = localChanges(h.engine);
     if (change?.kind !== "trash-note") throw new Error("expected trash-note");
@@ -252,14 +274,13 @@ describe("sync engine trash commands", () => {
   });
 
   it("moves a trashed note into a folder and shows its content before the commit lands", async () => {
-    const h = await setup({ seed: TRASHED });
-    const original = (await remoteTrashIds(h.fake)).length;
+    const h = await setup({ seed: TRASHED_FRESH_WELCOME });
     const release = h.gateCommits();
 
-    const result = h.engine.moveFromTrash(EXPIRED_WELCOME, [], ["Journal"]);
+    const result = h.engine.moveFromTrash(FRESH_WELCOME, [], ["Journal"]);
 
     expect(result).toEqual({ ok: true, path: ["Journal", "Welcome"] });
-    expect(workingTrashIds(h.engine)).not.toContain(EXPIRED_WELCOME);
+    expect(workingTrashIds(h.engine)).not.toContain(FRESH_WELCOME);
     await h.engine.openNote(["Journal", "Welcome"]);
     const open = h.engine.getState().openNote;
     if (open?.kind !== "loaded") throw new Error("expected a loaded note");
@@ -270,7 +291,7 @@ describe("sync engine trash commands", () => {
     expect(await remoteContent(h.fake, ["Journal", "Welcome"])).toBe(
       open.content,
     );
-    expect(await remoteTrashIds(h.fake)).toHaveLength(original - 1);
+    expect(await remoteTrashIds(h.fake)).toEqual([]);
   });
 
   it("moves one item out of a trashed folder and keeps the rest in the trash", async () => {
@@ -299,12 +320,12 @@ describe("sync engine trash commands", () => {
   });
 
   it("rejects moving out of the trash onto a taken name like move does", async () => {
-    const h = await setup({ seed: TRASHED });
+    const h = await setup({ seed: TRASHED_FRESH_WELCOME });
     h.engine.createNote([], "Welcome");
     h.engine.createNote(["Journal"], "Welcome");
     const pending = h.engine.getState().pending;
 
-    const result = h.engine.moveFromTrash(EXPIRED_WELCOME, [], ["Journal"]);
+    const result = h.engine.moveFromTrash(FRESH_WELCOME, [], ["Journal"]);
 
     expect(result).toEqual({
       ok: false,
@@ -312,7 +333,7 @@ describe("sync engine trash commands", () => {
     });
     expect(result).toEqual(h.engine.move(WELCOME, ["Journal"]));
     expect(h.engine.getState().pending).toEqual(pending);
-    expect(workingTrashIds(h.engine)).toContain(EXPIRED_WELCOME);
+    expect(workingTrashIds(h.engine)).toContain(FRESH_WELCOME);
   });
 
   it("reports unknown trash entries, items and targets as not found", async () => {
@@ -326,11 +347,57 @@ describe("sync engine trash commands", () => {
       ok: false,
       error: { kind: "notFound" },
     });
-    expect(h.engine.moveFromTrash(EXPIRED_WELCOME, [], ["missing"])).toEqual({
+    expect(h.engine.moveFromTrash(FRESH_PROJECTS, [], ["missing"])).toEqual({
       ok: false,
       error: { kind: "notFound" },
     });
     expect(h.engine.getState().pending).toEqual([]);
+  });
+
+  it("reports expired entries as not found even though they are still stored", async () => {
+    const h = await setup({ seed: TRASHED });
+
+    expect(h.engine.moveFromTrash(EXPIRED_WELCOME, [], [])).toEqual({
+      ok: false,
+      error: { kind: "notFound" },
+    });
+    expect(h.engine.getState().pending).toEqual([]);
+    expect(workingTrashIds(h.engine)).toContain(EXPIRED_WELCOME);
+  });
+
+  it("shows only readable entries that have not expired", async () => {
+    const unreadable = "20260920T100000Z-1-dddddddd";
+    const h = await setup({ seed: TRASHED });
+    await pushUndecryptableEntry(h.fake, unreadable);
+    await h.engine.refresh();
+
+    expect(workingTrashIds(h.engine)).toEqual(
+      expect.arrayContaining([EXPIRED_WELCOME, EXPIRED_ZAZOLC, unreadable]),
+    );
+    expect(visibleTrashIds(h.engine)).toEqual([FRESH_PROJECTS]);
+  });
+
+  it("shows nothing when every entry has expired", async () => {
+    const h = await setup({
+      seed: TRASHED.filter((change) => change.kind === "trash-note"),
+    });
+
+    expect(workingTrashIds(h.engine)).toHaveLength(2);
+    expect(h.engine.getState().visibleTrash).toEqual([]);
+  });
+
+  it("hides an entry that expired while the app was open once the state is next derived", async () => {
+    const h = await setup({ seed: TRASHED_FRESH_WELCOME });
+    expect(visibleTrashIds(h.engine)).toEqual([FRESH_WELCOME]);
+
+    h.clock.advance(Date.UTC(2026, 9, 20, 10, 0, 0) - START);
+    h.engine.editNote(JANUARY, "local edit");
+
+    expect(h.engine.getState().visibleTrash).toEqual([]);
+    expect(h.engine.moveFromTrash(FRESH_WELCOME, [], [])).toEqual({
+      ok: false,
+      error: { kind: "notFound" },
+    });
   });
 
   it("deletes chosen trash entries forever in one commit", async () => {
@@ -360,12 +427,265 @@ describe("sync engine trash commands", () => {
     expect(await remoteTrashIds(h.fake)).toEqual([]);
     expect(h.engine.getState().trash).toEqual([]);
   });
+
+  it("keeps fresh undecryptable entries, which the trash does not show, when emptying it", async () => {
+    const unreadable = "20260920T100000Z-1-dddddddd";
+    const h = await setup({ seed: TRASHED });
+    await pushUndecryptableEntry(h.fake, unreadable);
+    await h.engine.refresh();
+
+    h.engine.emptyTrash();
+    await settle(h.engine);
+
+    expect(await remoteTrashIds(h.fake)).toEqual([unreadable]);
+  });
+
+  it("also purges hidden expired entries, undecryptable ones included, when emptying it", async () => {
+    const unreadable = "20260805T100000Z-1-dddddddd";
+    const h = await setup({ seed: TRASHED });
+    await pushUndecryptableEntry(h.fake, unreadable);
+    await h.engine.refresh();
+
+    h.engine.emptyTrash();
+
+    expect(localChanges(h.engine)).toEqual([
+      {
+        kind: "purge-trash",
+        entryIds: expect.arrayContaining([
+          EXPIRED_WELCOME,
+          EXPIRED_ZAZOLC,
+          FRESH_PROJECTS,
+          unreadable,
+        ]),
+      },
+    ]);
+    await settle(h.engine);
+    expect(await remoteTrashIds(h.fake)).toEqual([]);
+  });
+});
+
+describe("sync engine undoing a trash", () => {
+  function deleted(engine: SyncEngine, path: NotePath): string {
+    const result = engine.delete(path);
+    if (!result.ok || result.trashEntryId === undefined) {
+      throw new Error("expected the item to go to the trash");
+    }
+    return result.trashEntryId;
+  }
+
+  it("drops a still pending trash change without any commit", async () => {
+    const h = await setup();
+    const release = h.gateCommits();
+    deleted(h.engine, WELCOME);
+    const entryId = deleted(h.engine, ZAZOLC);
+    expect(h.engine.getState().pending).toHaveLength(1);
+
+    expect(h.engine.undoTrash(entryId)).toEqual({ ok: true, path: ZAZOLC });
+
+    expect(findWorkingNode(h.engine.getState().workingTree!, ZAZOLC)).toBeDefined();
+    expect(workingTrashIds(h.engine)).not.toContain(entryId);
+    expect(h.engine.getState().pending).toEqual([]);
+
+    release();
+    await settle(h.engine);
+    expect(okCommitCount(h.fake, h.start)).toBe(1);
+    expect(h.commits).toHaveLength(1);
+    expect(await remoteContent(h.fake, ZAZOLC)).toBeDefined();
+    expect(await remoteTrashIds(h.fake)).toHaveLength(1);
+  });
+
+  it("restores a committed trash entry to its original parent with a restore commit", async () => {
+    const h = await setup();
+    await h.engine.openNote(WELCOME);
+    const before = await remoteContent(h.fake, WELCOME);
+    const entryId = deleted(h.engine, WELCOME);
+    await settle(h.engine);
+    expect(okCommitCount(h.fake, h.start)).toBe(1);
+
+    expect(h.engine.undoTrash(entryId)).toEqual({ ok: true, path: WELCOME });
+    expect(localChanges(h.engine)).toMatchObject([
+      { kind: "restore-trash", entryId, subPath: [], to: WELCOME },
+    ]);
+    await settle(h.engine);
+
+    expect(okCommitCount(h.fake, h.start)).toBe(2);
+    expect(await remoteContent(h.fake, WELCOME)).toBe(before);
+    expect(await remoteTrashIds(h.fake)).toEqual([]);
+  });
+
+  it("restores an item whose trash commit is still in flight", async () => {
+    const h = await setup();
+    const release = h.gateCommits();
+    const entryId = deleted(h.engine, WELCOME);
+    expect(h.engine.getState().inFlight).toHaveLength(1);
+
+    expect(h.engine.undoTrash(entryId)).toEqual({ ok: true, path: WELCOME });
+    expect(findWorkingNode(h.engine.getState().workingTree!, WELCOME)).toBeDefined();
+
+    release();
+    await settle(h.engine);
+    expect(await remoteContent(h.fake, WELCOME)).toBeDefined();
+    expect(await remoteTrashIds(h.fake)).toEqual([]);
+  });
+
+  it("puts a trashed folder back with its contents", async () => {
+    const h = await setup();
+    const entryId = deleted(h.engine, PROJECTS);
+    await settle(h.engine);
+
+    expect(h.engine.undoTrash(entryId)).toEqual({ ok: true, path: PROJECTS });
+    await settle(h.engine);
+
+    const tree = await buildNoteTree(
+      await h.fake.listTree(await h.fake.getHead()),
+      keyring,
+    );
+    expect(findNode(tree, PROJECTS)?.kind).toBe("folder");
+    expect(await remoteTrashIds(h.fake)).toEqual([]);
+  });
+
+  it.each([
+    ["pending", true],
+    ["committed", false],
+  ])("refuses when the name is taken again (%s)", async (_label, gated) => {
+    const h = await setup();
+    const release = gated ? h.gateCommits() : null;
+    if (gated) deleted(h.engine, ZAZOLC);
+    const entryId = deleted(h.engine, WELCOME);
+    if (!gated) await settle(h.engine);
+    expect(h.engine.createNote([], "Welcome").ok).toBe(true);
+    const changesBefore = localChanges(h.engine);
+
+    const result = h.engine.undoTrash(entryId);
+
+    expect(result).toMatchObject({ ok: false, error: { kind: "invalidName" } });
+    expect(localChanges(h.engine)).toEqual(changesBefore);
+    expect(workingTrashIds(h.engine)).toContain(entryId);
+    release?.();
+    await settle(h.engine);
+  });
+
+  it("recreates the original folder when it was deleted after the trash was saved", async () => {
+    const h = await setup();
+    const entryId = deleted(h.engine, JANUARY);
+    await settle(h.engine);
+    expect(h.engine.delete(["Journal", "2026"]).ok).toBe(true);
+    await settle(h.engine);
+
+    expect(h.engine.undoTrash(entryId)).toEqual({ ok: true, path: JANUARY });
+    expect(localChanges(h.engine)).toEqual([
+      { kind: "create-folder", path: ["Journal", "2026"] },
+      expect.objectContaining({ kind: "restore-trash", to: JANUARY }),
+    ]);
+    await settle(h.engine);
+
+    expect(await remoteContent(h.fake, JANUARY)).toBeDefined();
+    expect(workingTrashIds(h.engine)).not.toContain(entryId);
+  });
+
+  it("recreates every missing ancestor, outermost first, in one save", async () => {
+    const h = await setup();
+    const entryId = deleted(h.engine, JANUARY);
+    await settle(h.engine);
+    h.engine.delete(["Journal", "2026"]);
+    h.engine.delete(["Journal"]);
+    await settle(h.engine);
+
+    expect(h.engine.undoTrash(entryId)).toEqual({ ok: true, path: JANUARY });
+    expect(localChanges(h.engine).map((change) => change.kind)).toEqual([
+      "create-folder",
+      "create-folder",
+      "restore-trash",
+    ]);
+    expect(localChanges(h.engine).slice(0, 2)).toEqual([
+      { kind: "create-folder", path: ["Journal"] },
+      { kind: "create-folder", path: ["Journal", "2026"] },
+    ]);
+    await settle(h.engine);
+
+    expect(await remoteContent(h.fake, JANUARY)).toBeDefined();
+  });
+
+  it("restores into a folder the remote deleted meanwhile", async () => {
+    const h = await setup();
+    const entryId = deleted(h.engine, JANUARY);
+    await settle(h.engine);
+    const release = h.gateCommits();
+    expect(h.engine.undoTrash(entryId)).toEqual({ ok: true, path: JANUARY });
+    await pushRemote(h.fake, [
+      { kind: "delete-folder", path: ["Journal", "2026"] },
+    ]);
+    release();
+    await settle(h.engine);
+    await h.engine.refresh();
+    await settle(h.engine);
+
+    expect(await remoteContent(h.fake, JANUARY)).toBeDefined();
+    expect(workingTrashIds(h.engine)).not.toContain(entryId);
+  });
+
+  it("refuses when a note now occupies the place of a missing folder", async () => {
+    const h = await setup();
+    const entryId = deleted(h.engine, JANUARY);
+    await settle(h.engine);
+    h.engine.delete(["Journal", "2026"]);
+    await settle(h.engine);
+    h.engine.createNote(["Journal"], "2026");
+    const changesBefore = localChanges(h.engine);
+
+    expect(h.engine.undoTrash(entryId)).toMatchObject({
+      ok: false,
+      error: { kind: "invalidName" },
+    });
+    expect(localChanges(h.engine)).toEqual(changesBefore);
+    expect(workingTrashIds(h.engine)).toContain(entryId);
+  });
+
+  it("reports an entry that expired as not found", async () => {
+    const h = await setup();
+    const entryId = deleted(h.engine, WELCOME);
+    await settle(h.engine);
+    h.clock.advance(31 * 24 * 60 * 60 * 1000);
+
+    expect(h.engine.undoTrash(entryId)).toEqual({
+      ok: false,
+      error: { kind: "notFound" },
+    });
+  });
+
+  it("reports an entry that was already restored elsewhere as not found", async () => {
+    const h = await setup();
+    const entryId = deleted(h.engine, WELCOME);
+    await settle(h.engine);
+    expect(h.engine.moveFromTrash(entryId, [], ["Journal"]).ok).toBe(true);
+
+    expect(h.engine.undoTrash(entryId)).toEqual({
+      ok: false,
+      error: { kind: "notFound" },
+    });
+    expect(findWorkingNode(h.engine.getState().workingTree!, ["Journal", "Welcome"])).toBeDefined();
+  });
+
+  it("restores through a commit when other structure changes follow the trash", async () => {
+    const h = await setup();
+    const release = h.gateCommits();
+    deleted(h.engine, ZAZOLC);
+    const entryId = deleted(h.engine, WELCOME);
+    h.engine.createFolder([], "Extra");
+    expect(h.engine.undoTrash(entryId)).toEqual({ ok: true, path: WELCOME });
+    expect(localChanges(h.engine).at(-1)).toMatchObject({ kind: "restore-trash" });
+    release();
+    await settle(h.engine);
+    expect(await remoteContent(h.fake, WELCOME)).toBeDefined();
+  });
 });
 
 describe("sync engine startup trash purge", () => {
   it("purges expired entries in exactly one commit", async () => {
     const h = await setup({ seed: TRASHED });
     const requestsBefore = h.requestTimes.length;
+
+    expect(visibleTrashIds(h.engine)).toEqual([FRESH_PROJECTS]);
 
     h.engine.purgeExpiredTrash();
     await settle(h.engine);
@@ -451,6 +771,7 @@ describe("sync engine startup trash purge", () => {
     expect(state.pending).toEqual([]);
     expect(state.inFlight).toEqual([]);
     expect(workingTrashIds(h.engine)).toContain(EXPIRED_WELCOME);
+    expect(visibleTrashIds(h.engine)).toEqual([FRESH_PROJECTS]);
     expect(error).toHaveBeenCalledWith("Trash purge failed", "network");
     error.mockRestore();
   });
@@ -503,17 +824,24 @@ describe("sync engine startup trash purge", () => {
   });
 
   it("does not purge entries a pending change already took out of the trash", async () => {
-    const h = await setup({ seed: TRASHED });
+    const expiresInAnHour = "20260831T130000Z-1-eeeeeeee";
+    const h = await setup({
+      seed: [
+        { kind: "trash-note", path: WELCOME, entryId: expiresInAnHour },
+        { kind: "trash-note", path: ZAZOLC, entryId: EXPIRED_ZAZOLC },
+      ],
+    });
     const release = h.gateCommits();
-    h.engine.moveFromTrash(EXPIRED_WELCOME, [], []);
+    h.engine.moveFromTrash(expiresInAnHour, [], []);
     await vi.waitFor(() => expect(h.commits).toHaveLength(1));
+    h.clock.advance(2 * 3_600_000);
 
     h.engine.purgeExpiredTrash();
     release();
     await settle(h.engine);
 
     expect(h.commits).toHaveLength(2);
-    expect(await remoteTrashIds(h.fake)).toEqual([FRESH_PROJECTS]);
+    expect(await remoteTrashIds(h.fake)).toEqual([]);
     expect(await remoteContent(h.fake, WELCOME)).toContain("# Welcome");
     expect(
       findWorkingNode(h.engine.getState().workingTree!, WELCOME)?.kind,

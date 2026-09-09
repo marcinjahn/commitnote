@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { TrashEntry } from "../trash/trash-index";
 import type { NoteTree } from "../tree/note-tree";
 import {
-  buildWorkingTrash,
   findTrashItem,
   findWorkingTrashEntry,
   type ReadableWorkingTrashEntry,
 } from "./working-trash";
+import { buildWorkingState } from "./working-tree";
+
+const buildWorkingTrash = (
+  ...args: Parameters<typeof buildWorkingState>
+) => buildWorkingState(...args).trash;
 
 const SYNCED_ID = "20260901T080000Z-1-aaaaaaaa";
 const PENDING_ID = "20260930T100000Z-1-bbbbbbbb";
@@ -73,7 +77,7 @@ function readable(
   return entry;
 }
 
-describe("buildWorkingTrash", () => {
+describe("working trash", () => {
   it("combines synced entries with ones trashed by local changes", () => {
     const trash = buildWorkingTrash(
       TREE,

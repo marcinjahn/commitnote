@@ -11,7 +11,7 @@ import {
   type NoteConflict,
 } from "../merge/merge-change-set";
 import { mergeText } from "../merge/merge-text";
-import { selectExpired, type PurgeCaps } from "../trash/expiry";
+import { isExpired, selectExpired, type PurgeCaps } from "../trash/expiry";
 import { createTrashEntryId } from "../trash/trash-entry-id";
 import { buildTrashIndex, type TrashEntry } from "../trash/trash-index";
 import { validateName, type NameError } from "../tree/note-names";
@@ -41,6 +41,8 @@ import {
 import {
   findTrashItem,
   findWorkingTrashEntry,
+  visibleTrashEntries,
+  type ReadableWorkingTrashEntry,
   type WorkingTrashEntry,
 } from "./working-trash";
 import {
@@ -140,7 +142,10 @@ export interface SyncEngineState {
   readonly refresh: RefreshState;
   readonly openNote: OpenNoteState | null;
   readonly workingTree: WorkingTree | null;
+  /** Every stored entry, including expired and undecryptable ones. */
   readonly trash: readonly WorkingTrashEntry[] | null;
+  /** What the user sees: readable entries not yet past retention. */
+  readonly visibleTrash: readonly ReadableWorkingTrashEntry[] | null;
   readonly pending: ChangeSet;
   readonly inFlight: ChangeSet;
   readonly save: SaveStatus;
@@ -156,7 +161,12 @@ export type StructureError =
   | { readonly kind: "invalidTarget" };
 
 export type StructureResult =
-  | { readonly ok: true; readonly path: NotePath }
+  | {
+      readonly ok: true;
+      readonly path: NotePath;
+      /** Set by `delete` when the item went to the trash. */
+      readonly trashEntryId?: string;
+    }
   | { readonly ok: false; readonly error: StructureError };
 
 export type ConflictResolution = "keepMine" | "keepTheirs" | "editMerged";
@@ -186,6 +196,7 @@ export interface SyncEngine {
     subPath: NotePath,
     newParent: NotePath,
   ): StructureResult;
+  undoTrash(entryId: string): StructureResult;
   deleteFromTrash(entryIds: readonly string[]): void;
   emptyTrash(): void;
   purgeExpiredTrash(): void;
@@ -262,6 +273,7 @@ const INITIAL_STATE: SyncEngineState = {
   openNote: null,
   workingTree: null,
   trash: null,
+  visibleTrash: null,
   pending: EMPTY_CHANGES,
   inFlight: EMPTY_CHANGES,
   save: { kind: "idle" },
@@ -339,6 +351,10 @@ export function createSyncEngine(options: {
         ...result,
         workingTree: working?.tree ?? null,
         trash: working?.trash ?? null,
+        visibleTrash:
+          working === null
+            ? null
+            : visibleTrashEntries(working.trash, clock.now()),
       };
     }
     if (
@@ -1406,7 +1422,85 @@ export function createSyncEngine(options: {
         ? { kind: "trash-note", path, entryId }
         : { kind: "trash-folder", path, entryId },
     );
-    return { ok: true, path };
+    return { ok: true, path, trashEntryId: entryId };
+  }
+
+  // Puts a just-trashed item back where it was. A trash change that has not
+  // left the pending queue is dropped, leaving no trace in the history.
+  function undoTrash(entryId: string): StructureResult {
+    if (disposed || state.trash === null) return failure({ kind: "notFound" });
+    const entry = findWorkingTrashEntry(state.trash, entryId);
+    if (
+      entry === undefined ||
+      entry.undecryptable ||
+      isExpired(entry, clock.now())
+    ) {
+      return failure({ kind: "notFound" });
+    }
+    const originalParent = parentPath(entry.originalPath);
+
+    const index = state.pending.findIndex(
+      (change) =>
+        (change.kind === "trash-note" || change.kind === "trash-folder") &&
+        change.entryId === entryId,
+    );
+    const droppable =
+      index !== -1 &&
+      state.pending
+        .slice(index + 1)
+        .every((change) => change.kind === "update-note");
+    if (!droppable) return restoreRecreatingParents(entry, originalParent);
+
+    const target = workingFolderAt(originalParent);
+    if (target === undefined) return failure({ kind: "notFound" });
+    const validation = validateName(entry.tree.name, childNames(target));
+    if (!validation.ok) {
+      return failure({ kind: "invalidName", error: validation.error });
+    }
+    update((current) => ({
+      ...current,
+      pending: current.pending.filter((_, i) => i !== index),
+    }));
+    return { ok: true, path: entry.originalPath };
+  }
+
+  function restoreRecreatingParents(
+    entry: ReadableWorkingTrashEntry,
+    originalParent: NotePath,
+  ): StructureResult {
+    const missing: NotePath[] = [];
+    let existing = originalParent;
+    while (existing.length > 0 && workingFolderAt(existing) === undefined) {
+      if (findWorkingNode(state.workingTree!, existing) !== undefined) {
+        return failure({
+          kind: "invalidName",
+          error: { kind: "duplicate" },
+        });
+      }
+      missing.unshift(existing);
+      existing = parentPath(existing);
+    }
+    if (missing.length === 0) return moveFromTrash(entry.id, [], originalParent);
+
+    const item = findTrashItem(entry, []);
+    if (item === undefined) return failure({ kind: "notFound" });
+    const to = [...originalParent, item.name];
+    const changes: Change[] = [
+      ...missing.map((path): Change => ({ kind: "create-folder", path })),
+      {
+        kind: "restore-trash",
+        entryId: entry.id,
+        subPath: [],
+        target: item.kind,
+        to,
+      },
+    ];
+    update((current) => ({
+      ...current,
+      pending: changes.reduce(appendChange, current.pending),
+    }));
+    autosave.saveNow();
+    return { ok: true, path: to };
   }
 
   function moveFromTrash(
@@ -1416,7 +1510,11 @@ export function createSyncEngine(options: {
   ): StructureResult {
     if (disposed || state.trash === null) return failure({ kind: "notFound" });
     const entry = findWorkingTrashEntry(state.trash, entryId);
-    if (entry === undefined || entry.undecryptable) {
+    if (
+      entry === undefined ||
+      entry.undecryptable ||
+      isExpired(entry, clock.now())
+    ) {
       return failure({ kind: "notFound" });
     }
     const item = findTrashItem(entry, subPath);
@@ -1448,9 +1546,16 @@ export function createSyncEngine(options: {
     applyStructureChange({ kind: "purge-trash", entryIds: known });
   }
 
+  // Expired entries are purged too, even undecryptable ones, since the
+  // startup purge would remove them anyway.
   function emptyTrash(): void {
     if (state.trash === null) return;
-    purge(state.trash.map((entry) => entry.id));
+    const now = clock.now();
+    purge(
+      state.trash
+        .filter((entry) => !entry.undecryptable || isExpired(entry, now))
+        .map((entry) => entry.id),
+    );
   }
 
   // Best-effort startup housekeeping: at most one bounded purge commit per
@@ -1580,6 +1685,7 @@ export function createSyncEngine(options: {
     move,
     delete: deleteItem,
     moveFromTrash,
+    undoTrash,
     deleteFromTrash: purge,
     emptyTrash,
     purgeExpiredTrash,

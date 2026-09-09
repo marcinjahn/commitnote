@@ -4,6 +4,7 @@
   import type { SyncStates } from "../../sync/sync-state";
   import type { WorkingNode, WorkingTree } from "../../sync/working-tree";
   import NoteTreeFolder from "./NoteTreeFolder.svelte";
+  import { countDescendants } from "../dialogs/folder-options";
   import RowMenu from "./RowMenu.svelte";
   import type { MenuAnchor, RowAction } from "./row-menu-types";
 
@@ -132,6 +133,7 @@
     name={openMenu.node.name}
     kind={openMenu.node.kind}
     {hasFolders}
+    trashes={openMenu.node.kind === "note" || countDescendants(openMenu.node) > 0}
     trigger={openMenu.trigger}
     anchor={openMenu.anchor}
     onAction={handleMenuAction}

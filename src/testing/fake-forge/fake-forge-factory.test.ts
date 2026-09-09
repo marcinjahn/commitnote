@@ -274,6 +274,7 @@ describe("createFakeForge registry", () => {
       "https://github.com/sample/read-only",
       "https://github.com/sample/foreign",
       "https://github.com/sample/newer",
+      "https://github.com/sample/trash",
     ]);
     expect(repositories[0].coordinates).toEqual(coordinatesFor("sample/notes"));
   });

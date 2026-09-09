@@ -7,9 +7,10 @@
     onClose: () => void;
     children: Snippet;
     actions?: Snippet;
+    large?: boolean;
   }
 
-  const { open, title, onClose, children, actions }: Props = $props();
+  const { open, title, onClose, children, actions, large = false }: Props = $props();
 
   const uid = $props.id();
   const titleId = `dialog-title-${uid}`;
@@ -58,11 +59,12 @@
 <dialog
   bind:this={dialogEl}
   class="dialog"
+  class:large
   aria-labelledby={titleId}
   oncancel={handleCancel}
   onclick={handleBackdropClick}
 >
-  <div class="dialog-card">
+  <div class="dialog-card" class:large>
     <h2 id={titleId} class="dialog-title">{title}</h2>
     <div class="dialog-body">
       {@render children()}
@@ -149,6 +151,19 @@
     gap: var(--space-2);
   }
 
+  .dialog.large {
+    height: 100dvh;
+    max-height: none;
+  }
+
+  .dialog-card.large {
+    height: 100dvh;
+    max-height: 100dvh;
+    border: none;
+    border-radius: 0;
+    padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0px));
+  }
+
   @media (min-width: 768px) {
     .dialog {
       position: fixed;
@@ -163,6 +178,19 @@
       border-bottom: var(--hairline) solid var(--color-border);
       border-radius: var(--radius);
       padding-bottom: var(--space-5);
+    }
+
+    .dialog.large {
+      height: fit-content;
+      max-width: var(--dialog-width-large);
+    }
+
+    .dialog-card.large {
+      height: auto;
+      max-height: 80dvh;
+      border: var(--hairline) solid var(--color-border);
+      border-radius: var(--radius);
+      padding-top: var(--space-5);
     }
   }
 </style>

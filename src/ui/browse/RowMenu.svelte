@@ -6,18 +6,21 @@
     name: string;
     kind: "note" | "folder";
     hasFolders: boolean;
+    trashes: boolean;
     anchor: MenuAnchor;
     onAction: (action: RowAction) => void;
     onClose: () => void;
     trigger: HTMLElement;
   }
 
-  const { name, kind, hasFolders, anchor, onAction, onClose, trigger }: Props = $props();
+  const { name, kind, hasFolders, trashes, anchor, onAction, onClose, trigger }: Props = $props();
 
   interface MenuItem {
     readonly action: RowAction;
     readonly label: string;
   }
+
+  const deleteLabel = $derived(trashes ? "Move to trash…" : "Delete…");
 
   const allItems: readonly MenuItem[] = $derived(
     kind === "folder"
@@ -26,11 +29,11 @@
           { action: "new-folder", label: "New folder…" },
           { action: "rename", label: "Rename…" },
           { action: "move", label: "Move to folder…" },
-          { action: "delete", label: "Delete…" },
+          { action: "delete", label: deleteLabel },
         ]
       : [
           { action: "move", label: "Move to folder…" },
-          { action: "delete", label: "Delete…" },
+          { action: "delete", label: deleteLabel },
         ],
   );
 

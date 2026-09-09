@@ -1,7 +1,6 @@
-import type { ChangeSet, NotePath } from "../changes/change";
-import type { TrashEntry } from "../trash/trash-index";
-import type { NoteTree } from "../tree/note-tree";
-import { buildWorkingState, type WorkingNode } from "./working-tree";
+import type { NotePath } from "../changes/change";
+import { isExpired } from "../trash/expiry";
+import type { WorkingNode } from "./working-tree";
 
 export interface ReadableWorkingTrashEntry {
   readonly id: string;
@@ -25,12 +24,15 @@ export interface UndecryptableWorkingTrashEntry {
 export type WorkingTrashEntry =
   ReadableWorkingTrashEntry | UndecryptableWorkingTrashEntry;
 
-export function buildWorkingTrash(
-  synced: NoteTree,
-  changes: ChangeSet,
-  syncedTrash: readonly TrashEntry[],
-): readonly WorkingTrashEntry[] {
-  return buildWorkingState(synced, changes, syncedTrash).trash;
+/** Entries past retention stay stored until purged, but are never shown. */
+export function visibleTrashEntries(
+  trash: readonly WorkingTrashEntry[],
+  now: number,
+): readonly ReadableWorkingTrashEntry[] {
+  return trash.filter(
+    (entry): entry is ReadableWorkingTrashEntry =>
+      !entry.undecryptable && !isExpired(entry, now),
+  );
 }
 
 export function findWorkingTrashEntry(

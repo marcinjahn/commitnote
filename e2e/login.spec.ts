@@ -144,6 +144,7 @@ test("the repository list comes from the access token", async ({ page }) => {
     "sample/newer",
     "sample/notes",
     "sample/read-only",
+    "sample/trash",
   ]);
 
   await page.getByRole("button", { name: "Log in" }).click();

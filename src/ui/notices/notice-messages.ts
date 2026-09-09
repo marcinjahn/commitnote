@@ -4,6 +4,11 @@ import type { EngineNotice } from "../../sync/sync-engine";
 export interface ToastMessage {
   readonly id: number;
   readonly text: string;
+  readonly action?: {
+    readonly label: string;
+    readonly run: () => void;
+  };
+  readonly durationMs?: number;
 }
 
 function quoted(path: NotePath): string {

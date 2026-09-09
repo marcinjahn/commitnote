@@ -105,7 +105,7 @@ test("a note's row menu has no Rename item but a folder's has", async ({
   await startSession(page);
 
   await page.getByRole("button", { name: "Actions for Welcome" }).click();
-  await expect(page.getByRole("menuitem", { name: "Delete…" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Move to trash…" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Rename…" })).toHaveCount(0);
   await page.keyboard.press("Escape");
 

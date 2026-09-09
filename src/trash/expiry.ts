@@ -15,7 +15,10 @@ export const DEFAULT_PURGE_CAPS: PurgeCaps = {
   maxFilesPerCommit: MAX_PURGE_FILES_PER_COMMIT,
 };
 
-export function isExpired(entry: TrashEntry, now: number): boolean {
+export function isExpired(
+  entry: Pick<TrashEntry, "deletedAt">,
+  now: number,
+): boolean {
   return now - entry.deletedAt >= TRASH_RETENTION_MS;
 }
 

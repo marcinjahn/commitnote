@@ -71,6 +71,11 @@ these fixture repositories:
 
 - `https://github.com/sample/notes` — an initialized notes repo, passphrase
   `sample notes repo passphrase`
+- `https://github.com/sample/trash` — same passphrase; a few notes plus three trash entries. With
+  the clock pinned to `2026-09-30T12:00:00Z` (the `SAMPLE_TRASH_NOW` constant in
+  `src/testing/sample-notes-repo/sample-source.ts`), the note deleted 2026-01-05 and the folder
+  (with a nested note) deleted 2026-01-12 are expired, and the note deleted 2026-09-27 is fresh.
+  `sample/notes` has no trash, so it never triggers a startup purge
 - `https://github.com/sample/empty` — empty and writable
 - `https://github.com/sample/empty-read-only`, `https://github.com/sample/read-only` — read-only
   variants
