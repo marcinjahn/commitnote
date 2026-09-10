@@ -92,6 +92,7 @@
     adapter: ForgeAdapter,
     rememberMe: boolean,
   ): Promise<void> {
+    phase = { kind: "restoring" };
     await store.start(session, { rememberMe });
 
     const engine = createSyncEngine({
@@ -109,6 +110,15 @@
       },
     );
 
+    // Forge errors resolve with `refresh.lastError` set, which the shell shows.
+    let refreshed = true;
+    try {
+      await engine.refresh();
+    } catch (e) {
+      console.error(e);
+      refreshed = false;
+    }
+
     phase = {
       kind: "app",
       engine,
@@ -116,13 +126,13 @@
       repoUrl: session.repoUrl,
       forgeName: registry[session.coordinates.forge].name,
     };
-    void engine.refresh().then(() => {
+    if (refreshed) {
       try {
         engine.purgeExpiredTrash();
       } catch {
         console.error("Trash purge failed");
       }
-    });
+    }
   }
 
   async function handleLoggedIn(result: {

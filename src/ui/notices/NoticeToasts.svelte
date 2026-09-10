@@ -154,8 +154,10 @@
   .toasts {
     position: fixed;
     z-index: 50;
-    left: 0;
-    right: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    box-sizing: border-box;
+    width: min(var(--toast-width), 100%);
     bottom: calc(
       var(--touch-target) + var(--space-2) * 2 + var(--hairline) +
         env(safe-area-inset-bottom, 0px)
@@ -202,16 +204,23 @@
   }
 
   .actions .button {
-    min-height: var(--touch-target);
+    min-height: 0;
+    min-width: 0;
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--font-size-sm);
+  }
+
+  .actions .button:hover {
+    background: color-mix(
+      in srgb,
+      var(--color-text) 14%,
+      var(--color-surface-raised)
+    );
   }
 
   @media (min-width: 768px) {
     .toasts {
-      left: auto;
       bottom: 0;
-      width: var(--toast-width);
-      max-width: 100%;
-      padding-right: var(--space-3);
       padding-bottom: var(--space-3);
     }
   }

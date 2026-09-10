@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { continueWithToken, logIn, expectTree } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";
@@ -94,6 +95,65 @@ test("Remember me across reload", async ({ page }) => {
   await expect(page.getByLabel("Repository", { exact: true })).toHaveValue(
     NOTES_REPO,
   );
+});
+
+async function rememberSession(page: Page): Promise<void> {
+  await page.goto("/");
+  await logIn(page, {
+    repo: NOTES_REPO,
+    passphrase: NOTES_PASSPHRASE,
+    rememberMe: true,
+  });
+  await expectTree(page);
+}
+
+test("a remembered session keeps the loading screen until the notes load", async ({
+  page,
+}) => {
+  await rememberSession(page);
+  await page.addInitScript(() => {
+    const seen = new Set<string>();
+    (window as any).__seenTexts = seen;
+    new MutationObserver(() => {
+      const text = document.body?.textContent ?? "";
+      for (const phrase of ["Loading notes", "Create a new note", "create a new note"]) {
+        if (text.includes(phrase)) seen.add(phrase);
+      }
+    }).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+
+  await page.reload();
+  await expectTree(page);
+
+  expect(await page.evaluate(() => [...(window as any).__seenTexts])).toEqual([
+    "create a new note",
+  ]);
+});
+
+test("a remembered session whose notes fail to load shows the error", async ({
+  page,
+}) => {
+  await rememberSession(page);
+  await page.addInitScript(() => {
+    let controls: any;
+    Object.defineProperty(window, "__commitNoteFakeForge", {
+      configurable: true,
+      get: () => controls,
+      set: (value) => {
+        controls = value;
+        controls.failNext("sample/notes", "getHead", "Network");
+      },
+    });
+  });
+
+  await page.reload();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "Could not reach GitHub. Showing the last loaded notes.",
+    { timeout: 15_000 },
+  );
+  await expect(page.getByText("Loading…")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /create a new note/i })).toHaveCount(0);
 });
 
 test("no Remember me", async ({ page }) => {

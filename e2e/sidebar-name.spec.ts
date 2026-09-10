@@ -38,6 +38,11 @@ test("sidebar wordmark and repo label are not clipped", async ({ page }) => {
   await expect(repo).not.toHaveAttribute("title");
 
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
+
+  const sidebar = page.locator(".sidebar");
+  expect(
+    await sidebar.evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ).toBe(true);
 });
 
 test("the sidebar repo label links to the repository in a new tab", async ({
