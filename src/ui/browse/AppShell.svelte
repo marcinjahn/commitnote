@@ -7,7 +7,8 @@
   import type { WorkingNode } from "../../sync/working-tree";
   import { buildNotesArchive } from "../../export/notes-archive";
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
-  import { actionIcons } from "./action-icons";
+  import { actionIcons, commandIcons } from "./action-icons";
+  import CommandMenu from "./CommandMenu.svelte";
   import { countDescendants } from "../dialogs/folder-options";
   import MoveDialog from "../dialogs/MoveDialog.svelte";
   import ConfirmDialog from "../dialogs/ConfirmDialog.svelte";
@@ -28,7 +29,7 @@
   } from "../trash/trash-messages";
   import type { ReadableWorkingTrashEntry } from "../../sync/working-trash";
   import Wordmark from "../wordmark/Wordmark.svelte";
-  import type { RowAction } from "./row-menu-types";
+  import type { Command, RowAction } from "./row-menu-types";
   import { describeStructureError } from "./structure-messages";
   import { describeSyncError } from "./sync-messages";
 
@@ -128,6 +129,16 @@
   const trashEntries = $derived(engineState.visibleTrash ?? []);
   const selectedPath = $derived(engineState.openNote?.path ?? null);
   const refreshing = $derived(engineState.refresh.inFlight);
+
+  const commands: readonly Command[] = $derived([
+    {
+      id: "export",
+      label: exporting ? "Exporting…" : "Export notes",
+      icon: commandIcons.export,
+      disabled: tree === null || exporting,
+      run: () => void handleExport(),
+    },
+  ]);
 
   const openPath = $derived(engineState.openNote?.path ?? null);
   const openConflicted = $derived(
@@ -572,7 +583,8 @@
             {/each}
           </svg>
         </button>
-<RefreshButton {refreshing} onRefresh={handleRefresh} />
+        <RefreshButton {refreshing} onRefresh={handleRefresh} />
+        <CommandMenu {commands} />
       </div>
     </div>
     {#if tree === null && engineState.refresh.lastError !== null}
@@ -590,22 +602,25 @@
       onAction={handleTreeAction}
       onNewNote={handleHeaderNewNote}
     />
-    <div class="sidebar-footer">
-      {#if trashEntries.length > 0}
+    {#if trashEntries.length > 0}
+      <div class="trash-slot">
         <button
           type="button"
-          class="button button-ghost"
+          class="trash-row"
           data-testid="open-trash"
           onclick={openTrash}
         >
-          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <svg class="icon trash-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
             {#each actionIcons.delete as d (d)}
               <path {d} />
             {/each}
           </svg>
-          Trash ({trashEntries.length})
+          <span class="trash-label">Trash</span>
+          <span class="trash-count">({trashEntries.length})</span>
         </button>
-      {/if}
+      </div>
+    {/if}
+    <div class="sidebar-footer">
       <a
         class="repo-label"
         href={repoUrl}
@@ -614,14 +629,6 @@
         bind:this={repoLabelEl}
         title={repoLabelTruncated ? repoLabel : undefined}>{repoLabel}</a
       >
-      <button
-        type="button"
-        class="button button-ghost"
-        disabled={tree === null || exporting}
-        onclick={handleExport}
-      >
-        {exporting ? "Exporting…" : "Export"}
-      </button>
       <button type="button" class="button button-ghost" onclick={handleLogOut}>
         Log out
       </button>
@@ -667,6 +674,7 @@
       {forgeName}
       openNote={engineState.openNote}
       draft={draft !== null}
+      treeLoaded={tree !== null}
       hasNotes={tree !== null && tree.root.children.length > 0}
       onDraftContent={handleDraftContent}
       onNewNote={handleHeaderNewNote}
@@ -820,6 +828,56 @@
     flex-shrink: 0;
   }
 
+  .trash-slot {
+    flex-shrink: 0;
+    padding: var(--space-1) 0;
+    border-top: var(--hairline) solid var(--color-border);
+  }
+
+  .trash-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: var(--touch-target);
+    padding: 0 var(--space-2);
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    text-align: left;
+    cursor: pointer;
+    transition:
+      background-color var(--motion-duration) var(--motion-easing),
+      color var(--motion-duration) var(--motion-easing);
+  }
+
+  .trash-row:hover {
+    background: var(--color-hover);
+    color: var(--color-text);
+  }
+
+  .trash-row:focus-visible {
+    outline-offset: -2px;
+  }
+
+  .trash-icon {
+    flex-shrink: 0;
+  }
+
+  .trash-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .trash-count {
+    flex-shrink: 0;
+    padding-right: var(--space-1);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
   .repo-label {
     flex: 1;
     min-width: 0;
@@ -877,6 +935,16 @@
 
     .note-pane {
       flex: 1;
+    }
+
+    /* The 300px sidebar can't fit the wordmark plus four 44px-wide buttons. */
+    .tree-header-actions {
+      gap: 0;
+    }
+
+    .tree-header-actions :global(.button-icon) {
+      width: 36px;
+      min-width: 36px;
     }
 
     .mobile-hidden {

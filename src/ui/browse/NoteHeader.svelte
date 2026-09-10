@@ -38,11 +38,15 @@
 </script>
 
 <header class="note-header">
-  <button type="button" class="button button-ghost back-button" onclick={onBack}>
+  <button
+    type="button"
+    class="button button-ghost button-icon back-button"
+    aria-label="Back to notes"
+    onclick={onBack}
+  >
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M12.5 8h-9M7.5 3.5L3 8l4.5 4.5" />
+      <path d="M10 3L5 8l5 5" />
     </svg>
-    Back to notes
   </button>
   <NameField
     value={name}
@@ -69,20 +73,25 @@
   .note-header {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-1);
     min-height: calc(var(--touch-target) + var(--space-2) * 2);
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-1);
     border-bottom: var(--hairline) solid var(--color-border);
     background: var(--color-background);
   }
 
   .back-button {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
     flex-shrink: 0;
-    white-space: nowrap;
-    font-size: var(--font-size-sm);
+  }
+
+  .back-button .icon {
+    width: 22px;
+    height: 22px;
+    stroke-width: 1.75;
+  }
+
+  .note-header :global(.name-input) {
+    font-size: 1.0625rem;
   }
 
   .sync-status {
@@ -100,8 +109,17 @@
   }
 
   @media (min-width: 768px) {
+    .note-header {
+      gap: var(--space-2);
+      padding-left: var(--space-3);
+    }
+
     .back-button {
       display: none;
+    }
+
+    .note-header :global(.name-input) {
+      font-size: var(--font-size-lg);
     }
 
     .sync-status-label {

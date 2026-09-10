@@ -12,7 +12,11 @@ test("exporting downloads a zip of all notes and folders", async ({ page }) => {
   await expectTree(page);
 
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("button", { name: "More commands" }).click();
+  await page
+    .getByRole("menu", { name: "Commands" })
+    .getByRole("menuitem", { name: "Export notes" })
+    .click();
   const download = await downloadPromise;
 
   expect(download.suggestedFilename()).toMatch(
@@ -34,4 +38,27 @@ test("exporting downloads a zip of all notes and folders", async ({ page }) => {
     ].sort(),
   );
   expect(strFromU8(files["Welcome.md"])).toContain("# Welcome");
+});
+
+test("the commands menu opens from the keyboard and closes on Escape", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  const trigger = page.getByRole("button", { name: "More commands" });
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+
+  const menu = page.getByRole("menu", { name: "Commands" });
+  await expect(menu).toBeVisible();
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await expect(menu.getByRole("menuitem", { name: "Export notes" })).toBeFocused();
+  await expect(page.locator(".sidebar-footer").getByText("Export")).toHaveCount(0);
+
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });

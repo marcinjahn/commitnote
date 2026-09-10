@@ -17,12 +17,13 @@
     forgeName: string;
     openNote: OpenNoteState | null;
     draft: boolean;
+    treeLoaded: boolean;
     hasNotes: boolean;
     onDraftContent: (content: string) => void;
     onNewNote: () => void;
   }
 
-  const { engine, forgeName, openNote, draft, hasNotes, onDraftContent, onNewNote }: Props = $props();
+  const { engine, forgeName, openNote, draft, treeLoaded, hasNotes, onDraftContent, onNewNote }: Props = $props();
 
   const editorExtensions = [livePreview()];
 
@@ -69,6 +70,7 @@
       onChange={handleEditorChange}
     />
   {:else if openNote === null}
+    {#if treeLoaded}
     <p class="note-placeholder">
       <span>
         {hasNotes ? "Select a note to read it, or" : ""}
@@ -77,6 +79,7 @@
         >.
       </span>
     </p>
+    {/if}
   {:else if openNote.kind === "loading"}
     <p class="note-status">Loading…</p>
   {:else if openNote.kind === "loaded" && conflict !== undefined}

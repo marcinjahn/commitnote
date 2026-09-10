@@ -26,7 +26,7 @@
   );
 </script>
 
-<Dialog {open} title="Trash" large {onClose}>
+<Dialog {open} title="Trash" large closeButton {onClose}>
   {#snippet children()}
     <ul class="trash-list" data-testid="trash-list">
       {#each sorted as entry (entry.id)}
@@ -48,9 +48,6 @@
       onclick={onEmpty}
     >
       Empty trash
-    </button>
-    <button type="button" class="button button-ghost" onclick={onClose}>
-      Close
     </button>
   {/snippet}
 </Dialog>

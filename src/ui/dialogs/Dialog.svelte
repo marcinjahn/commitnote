@@ -8,9 +8,18 @@
     children: Snippet;
     actions?: Snippet;
     large?: boolean;
+    closeButton?: boolean;
   }
 
-  const { open, title, onClose, children, actions, large = false }: Props = $props();
+  const {
+    open,
+    title,
+    onClose,
+    children,
+    actions,
+    large = false,
+    closeButton = false,
+  }: Props = $props();
 
   const uid = $props.id();
   const titleId = `dialog-title-${uid}`;
@@ -65,7 +74,21 @@
   onclick={handleBackdropClick}
 >
   <div class="dialog-card" class:large>
-    <h2 id={titleId} class="dialog-title">{title}</h2>
+    <div class="dialog-header">
+      <h2 id={titleId} class="dialog-title">{title}</h2>
+      {#if closeButton}
+        <button
+          type="button"
+          class="button button-icon button-ghost dialog-close"
+          aria-label="Close"
+          onclick={onClose}
+        >
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      {/if}
+    </div>
     <div class="dialog-body">
       {@render children()}
     </div>
@@ -88,6 +111,9 @@
     border: none;
     background: transparent;
     color: inherit;
+    /* the card scrolls its own body; a scrolling <dialog> would flash a
+       scrollbar while the opening translateY pushes the card past its box */
+    overflow: visible;
   }
 
   .dialog::backdrop {
@@ -125,6 +151,19 @@
       opacity: 0;
       transform: translateY(var(--space-2));
     }
+  }
+
+  .dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .dialog-close {
+    flex-shrink: 0;
+    margin-block: calc(-1 * var(--space-2));
+    margin-inline-end: calc(-1 * var(--space-2));
   }
 
   .dialog-title {

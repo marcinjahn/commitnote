@@ -64,6 +64,33 @@ test("the Trash button is hidden while the trash is empty", async ({
   await expect(page.getByTestId("open-trash")).toHaveCount(0);
 });
 
+test("the Trash row sits below the tree and leaves the repo link visible", async ({
+  page,
+}) => {
+  await startSession(page);
+
+  await moveToTrash(page, "Welcome");
+
+  const trash = page.getByTestId("open-trash");
+  await expect(trash).toBeVisible();
+  const tree = page.getByRole("tree", { name: "Notes" });
+  await expect(tree.getByTestId("open-trash")).toHaveCount(0);
+  const treeBox = await tree.boundingBox();
+  const trashBox = await trash.boundingBox();
+  expect(treeBox).not.toBeNull();
+  expect(trashBox).not.toBeNull();
+  expect(trashBox!.y).toBeGreaterThanOrEqual(treeBox!.y + treeBox!.height);
+
+  const repo = page
+    .locator(".sidebar-footer")
+    .getByRole("link", { name: "sample/notes", exact: true });
+  await expect(repo).toBeVisible();
+  expect(await repo.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
+  await expect(page.locator(".sidebar-footer").getByTestId("open-trash")).toHaveCount(0);
+});
+
 test("a deleted note shows up in the trash and can be restored into a folder", async ({
   page,
 }) => {
@@ -136,7 +163,10 @@ test("a trashed folder expands and a sub-item can be restored on its own", async
 
   await expect(page.getByRole("dialog", { name: "Trash" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: /^Restore/ })).toHaveCount(0);
-  await page.getByRole("button", { name: "Close" }).click();
+  await page
+    .getByRole("dialog", { name: "Trash" })
+    .getByRole("button", { name: "Close" })
+    .click();
   await expect(treeItem(page, "January")).toBeVisible();
   await expect(page.getByTestId("open-trash")).toHaveText(/Trash \(1\)/);
 });
@@ -362,4 +392,26 @@ test("a newer trash toast replaces the previous one", async ({ page }) => {
 
   await expect(moveToTrashToast(page)).toHaveCount(1);
   await expect(moveToTrashToast(page)).toContainText("Zażółć gęślą jaźń");
+});
+
+test("the Trash dialog closes from its corner close button and from Escape", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(SAMPLE_TRASH_NOW);
+  await startSession(page, TRASH_REPO);
+
+  let dialog = await openTrash(page);
+  const close = dialog.getByRole("button", { name: "Close" });
+  await expect(close).toBeFocused();
+  const closeBox = await close.boundingBox();
+  const headingBox = await dialog.getByRole("heading", { name: "Trash" }).boundingBox();
+  expect(closeBox).not.toBeNull();
+  expect(headingBox).not.toBeNull();
+  expect(closeBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width);
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+
+  dialog = await openTrash(page);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
 });
