@@ -22,6 +22,7 @@
   import { createRateBudget } from "./sync/rate-budget";
   import { createSyncEngine } from "./sync/sync-engine";
   import type { SyncEngine } from "./sync/sync-engine";
+  import KeyChangedScreen from "./ui/session/KeyChangedScreen.svelte";
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
   import AppShell from "./ui/browse/AppShell.svelte";
@@ -66,6 +67,8 @@
   let phase = $state<Phase>({ kind: "restoring" });
   let loginKey = $state(0);
   let uninstallLifecycleTriggers: (() => void) | null = null;
+  let unsubscribeStopped: (() => void) | null = null;
+  let keyChanged = $state<{ readonly unsavedCount: number } | null>(null);
 
   let logout = $state<
     | null
@@ -100,6 +103,12 @@
       keyring: session.keyring,
       clock: systemClock,
       rateBudget,
+    });
+    unsubscribeStopped = engine.subscribe((state) => {
+      keyChanged =
+        state.stopped?.kind === "keyChanged"
+          ? { unsavedCount: state.syncStates.unsavedCount }
+          : null;
     });
     uninstallLifecycleTriggers = installLifecycleTriggers(
       { window, document },
@@ -147,6 +156,9 @@
     if (phase.kind !== "app") return;
     uninstallLifecycleTriggers?.();
     uninstallLifecycleTriggers = null;
+    unsubscribeStopped?.();
+    unsubscribeStopped = null;
+    keyChanged = null;
     phase.engine.dispose();
     await store.clear();
     logout = null;
@@ -238,6 +250,12 @@
       onLoggedIn={handleLoggedIn}
     />
   {/key}
+{:else if phase.kind === "app" && keyChanged !== null}
+  <KeyChangedScreen
+    engine={phase.engine}
+    unsavedCount={keyChanged.unsavedCount}
+    onLogInAgain={finishLogOut}
+  />
 {:else if phase.kind === "app"}
   <AppShell
     engine={phase.engine}

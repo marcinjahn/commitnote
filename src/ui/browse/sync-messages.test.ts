@@ -82,6 +82,13 @@ describe("describeSyncError", () => {
     expect(describeSyncError(error, "GitHub")).toBe("This note could not be decrypted.");
   });
 
+  it("describes a keyChanged error", () => {
+    const error: SyncError = { kind: "keyChanged" };
+    expect(describeSyncError(error, "GitHub")).toBe(
+      "The passphrase was changed on another device. Log in again.",
+    );
+  });
+
   it("rounds up to whole minutes for rateLimited", () => {
     const error: SyncError = { kind: "rateLimited", retryAfterMs: 61_000 };
     expect(describeSyncError(error, "GitHub")).toBe(
