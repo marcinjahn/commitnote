@@ -5,7 +5,7 @@
   import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
   import { findWorkingNode } from "../../sync/working-tree";
   import type { WorkingNode } from "../../sync/working-tree";
-  import { buildNotesArchive } from "../../export/notes-archive";
+  import { downloadNotesArchive } from "../../export/download-notes-archive";
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
   import { actionIcons, commandIcons } from "./action-icons";
   import CommandMenu from "./CommandMenu.svelte";
@@ -291,27 +291,13 @@
     return false;
   }
 
-  function exportFileName(now: Date): string {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `commitnote-export-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.zip`;
-  }
-
   async function handleExport(): Promise<void> {
     const snapshot = engine.snapshotNotes();
     if (snapshot === null || exporting) return;
     exporting = true;
     exportMessages = [];
     try {
-      const now = new Date();
-      const archive = await buildNotesArchive(snapshot.tree.root, snapshot.readNote, now);
-      const url = URL.createObjectURL(new Blob([archive], { type: "application/zip" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = exportFileName(now);
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      await downloadNotesArchive(snapshot);
     } catch {
       exportMessages = [{ id: ++nextMessageId, text: "Export failed. Try again later." }];
     } finally {

@@ -2,6 +2,7 @@ import type { Argon2idFunction } from "../../crypto/argon2";
 import { argon2idInWorker } from "../../crypto/argon2";
 import type { Keyring } from "../../crypto/keyring";
 import { deriveKeyring } from "../../crypto/keyring";
+import { toBase64 } from "../../crypto/base64";
 import { encryptPath } from "../../crypto/name-cipher";
 import { encryptNote } from "../../crypto/note-cipher";
 import { parseRepoConfig } from "../../crypto/repo-config";
@@ -58,6 +59,11 @@ export interface FakeForgeControls {
   ): Promise<void>;
   /** Messages of the commits on main of `repoKey`, newest first. */
   commitMessages(repoKey: string): string[];
+  /**
+   * Commit a repo config whose key check no longer matches, as a passphrase
+   * change on another device would.
+   */
+  changeRepoKey(repoKey: string): Promise<void>;
   /**
    * Make the next call of `operation` on that fixture fail with a
    * ForgeError of `kind` (or "stale" for commit).
@@ -209,6 +215,29 @@ export async function createFakeForge(options?: {
         sha = commit.parent;
       }
       return messages;
+    },
+    async changeRepoKey(repoKey) {
+      const adapter = fixtureAdapter(repoKey);
+      const inspection = await adapter.inspect();
+      const configText =
+        inspection.kind === "populated"
+          ? (inspection.main?.repoConfigText ?? null)
+          : null;
+      if (configText === null) {
+        throw new Error(`Fake forge fixture '${repoKey}' has no repo config`);
+      }
+      const config = JSON.parse(configText) as Record<string, unknown>;
+      config.keyCheck = toBase64(new Uint8Array(32).fill(7));
+      await adapter.pushFromAnotherDevice(
+        [
+          {
+            kind: "upsert-text",
+            path: REPO_CONFIG_PATH,
+            text: JSON.stringify(config, null, 2) + "\n",
+          },
+        ],
+        SAVE_SUBJECT,
+      );
     },
     failNext(repoKey, operation, kind) {
       const adapter = fixtureAdapter(repoKey);

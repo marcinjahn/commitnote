@@ -1,8 +1,10 @@
 import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
 import { encodeChangeSet } from "../changes/encode-change-set";
-import type { Keyring } from "../crypto/keyring";
+import { verifyKeyCheck, type Keyring } from "../crypto/keyring";
 import { decryptNote, NoteDecryptionError } from "../crypto/note-cipher";
+import { parseRepoConfig } from "../crypto/repo-config";
+import { REPO_CONFIG_PATH } from "../format/v1";
 import { isForgeError, type ForgeError } from "../forge/errors";
 import type { ForgeAdapter, TreeEntry } from "../forge/forge-adapter";
 import {
@@ -65,7 +67,8 @@ export type SyncError =
         | "network"
         | "server"
         | "treeTruncated"
-        | "undecryptable";
+        | "undecryptable"
+        | "keyChanged";
     }
   | { readonly kind: "rateLimited"; readonly retryAfterMs: number };
 
@@ -152,6 +155,8 @@ export interface SyncEngineState {
   readonly conflicts: readonly HeldConflict[];
   readonly notices: readonly EngineNotice[];
   readonly syncStates: SyncStates;
+  /** Set once syncing stopped for good; nothing is written after that. */
+  readonly stopped: SyncError | null;
 }
 
 export type StructureError =
@@ -285,7 +290,16 @@ const INITIAL_STATE: SyncEngineState = {
     failed: false,
     conflicts: [],
   }),
+  stopped: null,
 };
+
+const KEY_CHANGED: SyncError = { kind: "keyChanged" };
+
+class KeyChangedError extends Error {
+  constructor() {
+    super("The repo key no longer matches this session");
+  }
+}
 
 export function createSyncEngine(options: {
   readonly adapter: ForgeAdapter;
@@ -301,6 +315,10 @@ export function createSyncEngine(options: {
   let state: SyncEngineState = INITIAL_STATE;
   const subscribers = new Set<(state: SyncEngineState) => void>();
   let disposed = false;
+  let stopped = false;
+  // The config blob last verified against `keyring`; every loaded head is
+  // checked against it so no commit is ever based on a re-keyed tree.
+  let verifiedConfigSha: string | null = null;
   let refreshInFlight: Promise<void> | null = null;
   // Bumped on every openNote() call (and whenever the open note is replaced
   // synchronously) so a result from an earlier load can be told apart from
@@ -424,8 +442,25 @@ export function createSyncEngine(options: {
     return decryptNote(keyring, await adapter.readBlob(node.blobSha));
   }
 
+  async function verifyConfig(listing: readonly TreeEntry[]): Promise<void> {
+    const entry = listing.find(
+      (item) => item.type === "blob" && item.path === REPO_CONFIG_PATH,
+    );
+    if (entry === undefined) throw new KeyChangedError();
+    if (entry.sha === verifiedConfigSha) return;
+    const parsed = parseRepoConfig(await adapter.readBlob(entry.sha));
+    if (
+      parsed.kind !== "valid" ||
+      !(await verifyKeyCheck(keyring, parsed.config))
+    ) {
+      throw new KeyChangedError();
+    }
+    verifiedConfigSha = entry.sha;
+  }
+
   async function loadSynced(head: string): Promise<SyncedState> {
     const listing = await adapter.listTree(head);
+    await verifyConfig(listing);
     const tree = await buildNoteTree(listing, keyring);
     const trash = await buildTrashIndex(listing, keyring);
     return { head, listing, tree, trash };
@@ -803,7 +838,7 @@ export function createSyncEngine(options: {
   // Waits (back-off or rate budget) are only ended by their own timer,
   // retryNow() or flush(); other triggers are ignored.
   function triggerSave(endWait = false): Promise<void> {
-    if (disposed) return Promise.resolve();
+    if (disposed || stopped) return Promise.resolve();
     if (saveLoop !== null) {
       saveAgain = true;
       return saveLoop;
@@ -906,6 +941,10 @@ export function createSyncEngine(options: {
         }
       }
     } catch (error) {
+      if (error instanceof KeyChangedError) {
+        stopForKeyChange();
+        return;
+      }
       if (isForgeError(error)) {
         const mapped = mapForgeError(error);
         failAttempt(mapped);
@@ -969,6 +1008,23 @@ export function createSyncEngine(options: {
       },
     }));
     if (state.save.kind === "waiting") scheduleRetry(retryAt);
+  }
+
+  function stopForKeyChange(): void {
+    stopped = true;
+    autosave.cancel();
+    cancelRetry();
+    returnUncommitted();
+    update((current) => ({
+      ...current,
+      stopped: KEY_CHANGED,
+      save: {
+        kind: "waiting",
+        reason: "failed",
+        retryAt: null,
+        error: KEY_CHANGED,
+      },
+    }));
   }
 
   function waitForBudget(retryAt: number): void {
@@ -1180,8 +1236,14 @@ export function createSyncEngine(options: {
         },
       }));
     } catch (error) {
-      if (isForgeError(error)) {
-        const mapped = mapForgeError(error);
+      if (error instanceof KeyChangedError) stopForKeyChange();
+      const mapped =
+        error instanceof KeyChangedError
+          ? KEY_CHANGED
+          : isForgeError(error)
+            ? mapForgeError(error)
+            : null;
+      if (mapped !== null) {
         update((current) => ({
           ...current,
           refresh: {
@@ -1201,7 +1263,7 @@ export function createSyncEngine(options: {
   }
 
   function refresh(): Promise<void> {
-    if (disposed) return Promise.resolve();
+    if (disposed || stopped) return Promise.resolve();
     if (refreshInFlight !== null) return refreshInFlight;
 
     const promise = doRefresh().finally(() => {
@@ -1561,7 +1623,7 @@ export function createSyncEngine(options: {
   // Best-effort startup housekeeping: at most one bounded purge commit per
   // engine, only while the rate budget has room to spare.
   function purgeExpiredTrash(): void {
-    if (disposed || purgeAttempted) return;
+    if (disposed || stopped || purgeAttempted) return;
     purgeAttempted = true;
     const { synced, trash } = state;
     if (synced === null || trash === null || state.refresh.lastError !== null) {
@@ -1600,7 +1662,7 @@ export function createSyncEngine(options: {
   async function flush(): Promise<FlushResult> {
     autosave.cancel();
     const save = state.save;
-    if (save.kind === "waiting" && save.reason === "rateBudget") {
+    if (stopped || (save.kind === "waiting" && save.reason === "rateBudget")) {
       return flushResult();
     }
     await triggerSave(true);
