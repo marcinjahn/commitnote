@@ -61,6 +61,8 @@ function wrap(
   readGate: { current: Promise<void> | null },
 ): ForgeAdapter {
   return {
+    limits: inner.limits,
+    commitCost: (changes) => inner.commitCost(changes),
     inspect: () => inner.inspect(),
     initialize: (configText, message) => inner.initialize(configText, message),
     getHead: () => inner.getHead(),

@@ -9,7 +9,21 @@ export interface MockGitLabRepoOptions {
   projectPath: string;
   token: string;
   canWrite?: boolean;
+  /** Maintainers may change project settings. */
+  maintainer?: boolean;
   defaultBranch?: string;
+  mergeMethod?: "merge" | "rebase_merge" | "ff";
+  now?: () => number;
+}
+
+export interface MockMergeRequest {
+  readonly iid: number;
+  readonly sourceBranch: string;
+  readonly targetBranch: string;
+  readonly title: string;
+  readonly createdAt: string;
+  readonly removeSourceBranch: boolean;
+  state: "opened" | "closed" | "merged";
 }
 
 export type MockFailure =
@@ -49,6 +63,7 @@ interface CommitBody {
 
 const API_PREFIX = "/api/v4";
 const DEVELOPER_ACCESS_LEVEL = 30;
+const MAINTAINER_ACCESS_LEVEL = 40;
 const REPORTER_ACCESS_LEVEL = 20;
 
 function jsonResponse(
@@ -78,23 +93,49 @@ class CommitRejected extends Error {}
 export class MockGitLabRepo {
   readonly git = new InMemoryGitRepo();
   readonly requests: { method: string; path: string }[] = [];
+  readonly mergeRequests = new Map<number, MockMergeRequest>();
   treePageSize = 100;
+  mergeMethod: "merge" | "rebase_merge" | "ff";
+  squashOption = "default_off";
+  onlyAllowMergeIfPipelineSucceeds = false;
+  approvalsBeforeMerge = 0;
+  /** Merge-status reads that answer "checking" for each new merge request. */
+  mergeCheckingRounds = 0;
 
   private readonly projectPath: string;
   private readonly token: string;
   private readonly canWrite: boolean;
+  private readonly maintainer: boolean;
   private readonly defaultBranch: string;
+  private readonly now: () => number;
   private readonly failureQueue: QueuedFailure[] = [];
+  private readonly dropResponseQueue: FailureMatch[] = [];
+  private readonly commitDates = new Map<string, string>();
+  private readonly pendingChecks = new Map<number, number>();
+  private nextIid = 1;
 
   constructor(options: MockGitLabRepoOptions) {
     this.projectPath = options.projectPath;
     this.token = options.token;
     this.canWrite = options.canWrite ?? true;
+    this.maintainer = options.maintainer ?? false;
     this.defaultBranch = options.defaultBranch ?? "main";
+    this.mergeMethod = options.mergeMethod ?? "merge";
+    this.now = options.now ?? Date.now;
   }
 
   failNext(match: FailureMatch, failure: MockFailure): void {
     this.failureQueue.push({ match, failure });
+  }
+
+  /** Applies the next matching request, then fails it as a network error. */
+  dropNextResponse(match: FailureMatch): void {
+    this.dropResponseQueue.push(match);
+  }
+
+  /** Dates a commit for the sweep's age check. */
+  setCommitDate(sha: string, date: Date): void {
+    this.commitDates.set(sha, date.toISOString());
   }
 
   handlers(): HttpHandler[] {
@@ -135,7 +176,222 @@ export class MockGitLabRepo {
       return jsonResponse({ message: "404 Project Not Found" }, 404);
     }
 
-    return this.route(method, projectMatch[2] ?? "", url, request);
+    const response = await this.route(
+      method,
+      projectMatch[2] ?? "",
+      url,
+      request,
+    );
+    const dropIndex = this.dropResponseQueue.findIndex(
+      (match) =>
+        match.method.toUpperCase() === method && match.pathPattern.test(path),
+    );
+    if (dropIndex !== -1) {
+      this.dropResponseQueue.splice(dropIndex, 1);
+      return HttpResponse.error();
+    }
+    return response;
+  }
+
+  private accessLevel(): number {
+    if (!this.canWrite) return REPORTER_ACCESS_LEVEL;
+    return this.maintainer ? MAINTAINER_ACCESS_LEVEL : DEVELOPER_ACCESS_LEVEL;
+  }
+
+  private projectBody(): JsonBodyType {
+    return {
+      id: 1,
+      path_with_namespace: this.projectPath,
+      default_branch: this.isEmpty() ? null : this.defaultBranch,
+      empty_repo: this.isEmpty(),
+      merge_method: this.mergeMethod,
+      squash_option: this.squashOption,
+      only_allow_merge_if_pipeline_succeeds:
+        this.onlyAllowMergeIfPipelineSucceeds,
+      approvals_before_merge: this.approvalsBeforeMerge,
+      permissions: {
+        project_access: { access_level: this.accessLevel() },
+        group_access: null,
+      },
+    };
+  }
+
+  private branchBody(name: string, sha: string): JsonBodyType {
+    const commit = this.git.getCommit(sha);
+    return {
+      name,
+      commit: {
+        id: sha,
+        parent_ids:
+          commit?.parent === null || commit === undefined ? [] : [commit.parent],
+        committed_date:
+          this.commitDates.get(sha) ?? new Date(this.now()).toISOString(),
+      },
+      protected: false,
+      can_push: this.canWrite,
+    };
+  }
+
+  private detailedMergeStatus(mergeRequest: MockMergeRequest): string {
+    if (mergeRequest.state !== "opened") return "not_open";
+    const pending = this.pendingChecks.get(mergeRequest.iid) ?? 0;
+    if (pending > 0) return "checking";
+    if (this.approvalsBeforeMerge > 0) return "not_approved";
+    const source = this.git.getRef(mergeRequest.sourceBranch);
+    const target = this.git.getRef(mergeRequest.targetBranch);
+    if (source === undefined) return "commits_status";
+    if (target === undefined || !this.git.isAncestor(target, source)) {
+      return "need_rebase";
+    }
+    return "mergeable";
+  }
+
+  private mergeRequestBody(mergeRequest: MockMergeRequest): JsonBodyType {
+    return {
+      id: 1000 + mergeRequest.iid,
+      iid: mergeRequest.iid,
+      title: mergeRequest.title,
+      state: mergeRequest.state,
+      source_branch: mergeRequest.sourceBranch,
+      target_branch: mergeRequest.targetBranch,
+      created_at: mergeRequest.createdAt,
+      detailed_merge_status: this.detailedMergeStatus(mergeRequest),
+      merge_commit_sha: null,
+      squash_commit_sha: null,
+    };
+  }
+
+  private async routeMergeRequests(
+    method: string,
+    rest: string,
+    url: URL,
+    request: Request,
+  ): Promise<Response | undefined> {
+    if (method === "POST" && rest === "/merge_requests") {
+      if (!this.canWrite) {
+        return jsonResponse({ message: "403 Forbidden" }, 403);
+      }
+      const body = (await request.json()) as {
+        source_branch?: string;
+        target_branch?: string;
+        title?: string;
+        remove_source_branch?: boolean;
+      };
+      const source = body.source_branch ?? "";
+      const target = body.target_branch ?? "";
+      if (
+        this.git.getRef(source) === undefined ||
+        this.git.getRef(target) === undefined
+      ) {
+        return jsonResponse({ message: "Branch does not exist" }, 422);
+      }
+      const duplicate = [...this.mergeRequests.values()].some(
+        (existing) =>
+          existing.state === "opened" &&
+          existing.sourceBranch === source &&
+          existing.targetBranch === target,
+      );
+      if (duplicate) {
+        return jsonResponse(
+          { message: ["Another open merge request already exists"] },
+          409,
+        );
+      }
+      const mergeRequest: MockMergeRequest = {
+        iid: this.nextIid++,
+        sourceBranch: source,
+        targetBranch: target,
+        title: body.title ?? "",
+        createdAt: new Date(this.now()).toISOString(),
+        removeSourceBranch: body.remove_source_branch === true,
+        state: "opened",
+      };
+      this.mergeRequests.set(mergeRequest.iid, mergeRequest);
+      this.pendingChecks.set(mergeRequest.iid, this.mergeCheckingRounds);
+      return jsonResponse(this.mergeRequestBody(mergeRequest), 201);
+    }
+
+    if (method === "GET" && rest === "/merge_requests") {
+      const state = url.searchParams.get("state");
+      const source = url.searchParams.get("source_branch");
+      const target = url.searchParams.get("target_branch");
+      const matching = [...this.mergeRequests.values()].filter(
+        (mergeRequest) =>
+          (state === null || mergeRequest.state === state) &&
+          (source === null || mergeRequest.sourceBranch === source) &&
+          (target === null || mergeRequest.targetBranch === target),
+      );
+      return jsonResponse(
+        matching.map((mergeRequest) => this.mergeRequestBody(mergeRequest)),
+        200,
+      );
+    }
+
+    const singleMatch = /^\/merge_requests\/(\d+)(\/merge)?$/.exec(rest);
+    if (singleMatch === null) return undefined;
+    const mergeRequest = this.mergeRequests.get(Number(singleMatch[1]));
+    if (mergeRequest === undefined) {
+      return jsonResponse({ message: "404 Not found" }, 404);
+    }
+    const isMerge = singleMatch[2] !== undefined;
+
+    if (method === "GET" && !isMerge) {
+      const body = this.mergeRequestBody(mergeRequest);
+      const pending = this.pendingChecks.get(mergeRequest.iid) ?? 0;
+      if (pending > 0) this.pendingChecks.set(mergeRequest.iid, pending - 1);
+      return jsonResponse(body, 200);
+    }
+
+    if (method === "PUT" && !isMerge) {
+      if (!this.canWrite) {
+        return jsonResponse({ message: "403 Forbidden" }, 403);
+      }
+      const body = (await request.json()) as { state_event?: string };
+      if (body.state_event === "close" && mergeRequest.state === "opened") {
+        mergeRequest.state = "closed";
+      }
+      return jsonResponse(this.mergeRequestBody(mergeRequest), 200);
+    }
+
+    if (method === "PUT" && isMerge) {
+      if (!this.canWrite) {
+        return jsonResponse({ message: "401 Unauthorized" }, 401);
+      }
+      const body = (await request.json()) as {
+        sha?: string;
+        should_remove_source_branch?: boolean;
+      };
+      const status = this.detailedMergeStatus(mergeRequest);
+      if (status === "not_open" || status === "checking") {
+        return jsonResponse({ message: "405 Method Not Allowed" }, 405);
+      }
+      const source = this.git.getRef(mergeRequest.sourceBranch);
+      if (body.sha !== undefined && body.sha !== source) {
+        return jsonResponse(
+          { message: "SHA does not match HEAD of source branch" },
+          409,
+        );
+      }
+      if (status !== "mergeable" || source === undefined) {
+        return jsonResponse({ message: "405 Method Not Allowed" }, 405);
+      }
+      if (this.mergeMethod !== "ff") {
+        return jsonResponse(
+          { message: "The mock only fast-forwards" },
+          422,
+        );
+      }
+      this.git.setRef(mergeRequest.targetBranch, source);
+      mergeRequest.state = "merged";
+      if (
+        body.should_remove_source_branch === true ||
+        mergeRequest.removeSourceBranch
+      ) {
+        this.git.deleteRef(mergeRequest.sourceBranch);
+      }
+      return jsonResponse(this.mergeRequestBody(mergeRequest), 200);
+    }
+    return undefined;
   }
 
   private respondFailure(failure: MockFailure): Response {
@@ -178,23 +434,66 @@ export class MockGitLabRepo {
     request: Request,
   ): Promise<Response> {
     if (method === "GET" && rest === "") {
+      return jsonResponse(this.projectBody(), 200);
+    }
+
+    if (method === "PUT" && rest === "") {
+      if (!this.maintainer) {
+        return jsonResponse({ message: "403 Forbidden" }, 403);
+      }
+      const body = (await request.json()) as {
+        merge_method?: "merge" | "rebase_merge" | "ff";
+        squash_option?: string;
+        only_allow_merge_if_pipeline_succeeds?: boolean;
+      };
+      this.mergeMethod = body.merge_method ?? this.mergeMethod;
+      this.squashOption = body.squash_option ?? this.squashOption;
+      this.onlyAllowMergeIfPipelineSucceeds =
+        body.only_allow_merge_if_pipeline_succeeds ??
+        this.onlyAllowMergeIfPipelineSucceeds;
+      return jsonResponse(this.projectBody(), 200);
+    }
+
+    const mergeRequestResponse = await this.routeMergeRequests(
+      method,
+      rest,
+      url,
+      request,
+    );
+    if (mergeRequestResponse !== undefined) {
+      return mergeRequestResponse;
+    }
+
+    if (method === "GET" && rest === "/repository/branches") {
+      const search = url.searchParams.get("search") ?? "";
+      const names = this.git
+        .branchNames()
+        .filter((name) =>
+          search.startsWith("^")
+            ? name.startsWith(search.slice(1))
+            : name.includes(search),
+        );
       return jsonResponse(
-        {
-          id: 1,
-          path_with_namespace: this.projectPath,
-          default_branch: this.isEmpty() ? null : this.defaultBranch,
-          empty_repo: this.isEmpty(),
-          permissions: {
-            project_access: {
-              access_level: this.canWrite
-                ? DEVELOPER_ACCESS_LEVEL
-                : REPORTER_ACCESS_LEVEL,
-            },
-            group_access: null,
-          },
-        },
+        names.map((name) => this.branchBody(name, this.git.getRef(name) ?? "")),
         200,
       );
+    }
+
+    if (method === "GET" && rest === "/repository/merge_base") {
+      const [first, second] = url.searchParams
+        .getAll("refs[]")
+        .map((ref) => this.resolveCommit(ref));
+      if (first === undefined || second === undefined) {
+        return jsonResponse({ message: "404 Not Found" }, 404);
+      }
+      let base: string | null = second;
+      while (base !== null && !this.git.isAncestor(base, first)) {
+        base = this.git.getCommit(base)?.parent ?? null;
+      }
+      if (base === null) {
+        return jsonResponse({ message: "400 Bad Request" }, 400);
+      }
+      return jsonResponse({ id: base }, 200);
     }
 
     const branchMatch = /^\/repository\/branches\/([^/]+)$/.exec(rest);
@@ -204,15 +503,19 @@ export class MockGitLabRepo {
       if (sha === undefined) {
         return jsonResponse({ message: "404 Branch Not Found" }, 404);
       }
-      return jsonResponse(
-        {
-          name,
-          commit: { id: sha },
-          protected: false,
-          can_push: this.canWrite,
-        },
-        200,
-      );
+      return jsonResponse(this.branchBody(name, sha), 200);
+    }
+
+    if (method === "DELETE" && branchMatch !== null) {
+      if (!this.canWrite) {
+        return jsonResponse({ message: "403 Forbidden" }, 403);
+      }
+      const name = decodeURIComponent(branchMatch[1]);
+      if (this.git.getRef(name) === undefined) {
+        return jsonResponse({ message: "404 Branch Not Found" }, 404);
+      }
+      this.git.deleteRef(name);
+      return new HttpResponse(null, { status: 204 });
     }
 
     if (method === "GET" && rest === "/repository/tree") {
@@ -347,6 +650,7 @@ export class MockGitLabRepo {
       message: body.commit_message ?? "",
     });
     this.git.setRef(branch, sha);
+    this.commitDates.set(sha, new Date(this.now()).toISOString());
     return jsonResponse(
       {
         id: sha,

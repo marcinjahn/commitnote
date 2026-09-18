@@ -15,6 +15,7 @@ import type {
   ContentCreatingOperation,
   ForgeAdapter,
   ForgeAdapterOptions,
+  ForgeWriteLimits,
   RepoInspection,
   TreeEntry,
 } from "../forge-adapter";
@@ -31,11 +32,71 @@ export function createGitHubAdapter(
   return new GitHubAdapter(coordinates, options);
 }
 
-interface GitHubTreeEntryBody {
+// Within GitHub's secondary limits for content-creating requests (80 per
+// minute, 500 per hour).
+export const GITHUB_WRITE_LIMITS: ForgeWriteLimits = {
+  perMinute: 60,
+  perHour: 400,
+};
+
+// GitHub documents no size limit for POST /git/trees, but very large
+// requests time out; bigger change sets are split into chained tree requests
+// that still end in one commit.
+export const MAX_TREE_REQUEST_BYTES = 1_000_000;
+export const MAX_TREE_REQUEST_ENTRIES = 500;
+
+type GitHubTreeEntryBody = {
   readonly path: string;
-  readonly mode: "100644" | "040000";
-  readonly type: "blob" | "tree";
-  readonly sha: string | null;
+  readonly mode: "100644";
+  readonly type: "blob";
+} & ({ readonly sha: string | null } | { readonly content: string });
+
+function treeEntryFor(change: CommitFileChange): GitHubTreeEntryBody {
+  const base = { path: change.path, mode: "100644", type: "blob" } as const;
+  switch (change.kind) {
+    case "delete":
+      return { ...base, sha: null };
+    case "upsert-blob":
+      return { ...base, sha: change.blobSha };
+    case "upsert-text":
+      return { ...base, content: change.text };
+  }
+}
+
+function chunkTreeEntries(
+  entries: readonly GitHubTreeEntryBody[],
+): GitHubTreeEntryBody[][] {
+  const chunks: GitHubTreeEntryBody[][] = [];
+  let current: GitHubTreeEntryBody[] = [];
+  let currentBytes = 0;
+  for (const entry of entries) {
+    const bytes = utf8Encode(JSON.stringify(entry)).byteLength;
+    if (
+      current.length > 0 &&
+      (current.length >= MAX_TREE_REQUEST_ENTRIES ||
+        currentBytes + bytes > MAX_TREE_REQUEST_BYTES)
+    ) {
+      chunks.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(entry);
+    currentBytes += bytes;
+  }
+  if (current.length > 0 || chunks.length === 0) {
+    chunks.push(current);
+  }
+  return chunks;
+}
+
+export function gitHubTreeRequestCount(
+  changes: readonly CommitFileChange[],
+): number {
+  return chunkTreeEntries(changes.map(treeEntryFor)).length;
+}
+
+export function gitHubCommitCost(changes: readonly CommitFileChange[]): number {
+  return gitHubTreeRequestCount(changes) + 2;
 }
 
 // Decodes GitHub's whitespace-wrapped base64 blob/content payloads. readBlob
@@ -46,6 +107,7 @@ function decodeBase64Content(content: string): Uint8Array {
 }
 
 class GitHubAdapter implements ForgeAdapter {
+  readonly limits = GITHUB_WRITE_LIMITS;
   private readonly ownerPath: string;
   private readonly repoPath: string;
   private readonly accessToken: string;
@@ -69,6 +131,10 @@ class GitHubAdapter implements ForgeAdapter {
     this.fetchImpl =
       options.fetch ?? ((input, init) => globalThis.fetch(input, init));
     this.now = options.now ?? Date.now;
+  }
+
+  commitCost(changes: readonly CommitFileChange[]): number {
+    return gitHubCommitCost(changes);
   }
 
   private report(operation: ContentCreatingOperation): void {
@@ -269,29 +335,25 @@ class GitHubAdapter implements ForgeAdapter {
     const parentBody = (await parentResponse.json()) as {
       tree: { sha: string };
     };
-    const baseTree = parentBody.tree.sha;
-
-    const treeEntries: GitHubTreeEntryBody[] = [];
-    for (const change of request.changes) {
-      treeEntries.push(await this.treeEntryFor(change));
+    let tree = parentBody.tree.sha;
+    for (const chunk of chunkTreeEntries(request.changes.map(treeEntryFor))) {
+      this.report("createTree");
+      const treeResponse = await this.send("/git/trees", {
+        method: "POST",
+        body: { base_tree: tree, tree: chunk },
+      });
+      if (!treeResponse.ok) {
+        throw await this.errorFor(treeResponse);
+      }
+      tree = ((await treeResponse.json()) as { sha: string }).sha;
     }
-
-    this.report("createTree");
-    const treeResponse = await this.send("/git/trees", {
-      method: "POST",
-      body: { base_tree: baseTree, tree: treeEntries },
-    });
-    if (!treeResponse.ok) {
-      throw await this.errorFor(treeResponse);
-    }
-    const treeBody = (await treeResponse.json()) as { sha: string };
 
     this.report("createCommit");
     const commitResponse = await this.send("/git/commits", {
       method: "POST",
       body: {
         message: request.message,
-        tree: treeBody.sha,
+        tree,
         parents: [request.parent],
       },
     });
@@ -312,37 +374,5 @@ class GitHubAdapter implements ForgeAdapter {
       throw await this.errorFor(updateRefResponse);
     }
     return { kind: "ok", head: commitBody.sha };
-  }
-
-  private async treeEntryFor(
-    change: CommitFileChange,
-  ): Promise<GitHubTreeEntryBody> {
-    if (change.kind === "delete") {
-      return { path: change.path, mode: "100644", type: "blob", sha: null };
-    }
-    if (change.kind === "upsert-blob") {
-      return {
-        path: change.path,
-        mode: "100644",
-        type: "blob",
-        sha: change.blobSha,
-      };
-    }
-
-    this.report("createBlob");
-    const blobResponse = await this.send("/git/blobs", {
-      method: "POST",
-      body: { content: change.text, encoding: "utf-8" },
-    });
-    if (!blobResponse.ok) {
-      throw await this.errorFor(blobResponse);
-    }
-    const blobBody = (await blobResponse.json()) as { sha: string };
-    return {
-      path: change.path,
-      mode: "100644",
-      type: "blob",
-      sha: blobBody.sha,
-    };
   }
 }

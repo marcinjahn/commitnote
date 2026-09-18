@@ -1,13 +1,8 @@
 import type { Clock } from "./clock";
-import { RATE_BUDGET_PER_HOUR, RATE_BUDGET_PER_MINUTE } from "./tuning";
+import type { ForgeWriteLimits } from "../forge/forge-adapter";
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
-
-export interface RateBudgetLimits {
-  readonly perMinute: number;
-  readonly perHour: number;
-}
 
 export interface RateBudget {
   record(): void;
@@ -16,10 +11,9 @@ export interface RateBudget {
 
 export function createRateBudget(
   clock: Clock,
-  limits?: RateBudgetLimits,
+  limits: ForgeWriteLimits,
 ): RateBudget {
-  const perMinute = limits?.perMinute ?? RATE_BUDGET_PER_MINUTE;
-  const perHour = limits?.perHour ?? RATE_BUDGET_PER_HOUR;
+  const { perMinute, perHour } = limits;
 
   // Timestamps of past requests, oldest first. Pruned against the hour
   // window only: once a record has left the hour window it has also left

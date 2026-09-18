@@ -10,6 +10,7 @@ import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import { buildNoteTree, findNode } from "../tree/note-tree";
+import { GITHUB_WRITE_LIMITS } from "../forge/github/github-adapter";
 import { createRateBudget, type RateBudget } from "./rate-budget";
 import { createTestClock } from "./testing/test-clock";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
@@ -49,6 +50,8 @@ interface Harness {
 
 function wrap(inner: FakeForgeAdapter, commits: CommitRequest[]): ForgeAdapter {
   return {
+    limits: inner.limits,
+    commitCost: (changes) => inner.commitCost(changes),
     inspect: () => inner.inspect(),
     initialize: (configText, message) => inner.initialize(configText, message),
     getHead: () => inner.getHead(),
@@ -147,8 +150,10 @@ function retryAtOf(engine: SyncEngine): number | null {
 }
 
 function fullBudget(clock: ReturnType<typeof createTestClock>): RateBudget {
-  const budget = createRateBudget(clock);
-  for (let index = 0; index < 60; index++) budget.record();
+  const budget = createRateBudget(clock, GITHUB_WRITE_LIMITS);
+  for (let index = 0; index < GITHUB_WRITE_LIMITS.perMinute; index++) {
+    budget.record();
+  }
   return budget;
 }
 
@@ -338,7 +343,7 @@ describe("sync engine failure handling", () => {
 
   it("keeps rapid structure commands within the minute budget", async () => {
     const h = await setup({
-      budget: (clock) => createRateBudget(clock),
+      budget: (clock) => createRateBudget(clock, GITHUB_WRITE_LIMITS),
       wireBudget: true,
     });
 

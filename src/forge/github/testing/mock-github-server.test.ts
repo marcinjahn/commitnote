@@ -228,6 +228,52 @@ describe("MockGitHubRepo trees, commits and refs", () => {
     expect(mock.git.getRef("main")).toBe(secondSha);
   });
 
+  it("creates an empty blob from empty inline tree content", async () => {
+    const mock = useMock();
+    const { commitSha } = await putFirstFile("notes/a.md", "first");
+
+    const treeRes = await fetch(`${BASE}/git/trees`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        base_tree: mock.git.getCommit(commitSha)?.tree,
+        tree: [{ path: "dir/.keep", mode: "100644", type: "blob", content: "" }],
+      }),
+    });
+
+    expect(treeRes.status).toBe(201);
+    const { tree } = (await treeRes.json()) as {
+      tree: { path: string; sha: string }[];
+    };
+    const keep = tree.find((entry) => entry.path === "dir/.keep");
+    expect(keep?.sha).toBe("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391");
+    expect(mock.git.getBlob(keep?.sha ?? "")).toBe("");
+  });
+
+  it("rejects a tree entry carrying both sha and content", async () => {
+    const mock = useMock();
+    const { commitSha, blobSha } = await putFirstFile("notes/a.md", "first");
+
+    const treeRes = await fetch(`${BASE}/git/trees`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        base_tree: mock.git.getCommit(commitSha)?.tree,
+        tree: [
+          {
+            path: "notes/b.md",
+            mode: "100644",
+            type: "blob",
+            sha: blobSha,
+            content: "second",
+          },
+        ],
+      }),
+    });
+
+    expect(treeRes.status).toBe(422);
+  });
+
   it("returns 422 Update is not a fast forward for a non-ancestor sha", async () => {
     const mock = useMock();
     const { commitSha: firstSha } = await putFirstFile("notes/a.md", "first");

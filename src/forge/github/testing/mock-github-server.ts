@@ -400,6 +400,9 @@ export class MockGitHubRepo {
       }
       const changes: CommitFileChange[] = [];
       for (const item of body.tree) {
+        if (item.sha !== undefined && item.content !== undefined) {
+          return jsonResponse({ message: "Validation Failed" }, 422);
+        }
         if (item.sha === null) {
           changes.push({ kind: "delete", path: item.path });
         } else if (typeof item.sha === "string") {

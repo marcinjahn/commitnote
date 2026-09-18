@@ -6,9 +6,15 @@ import type {
   CommitResult,
   ContentCreatingRequest,
   ForgeAdapter,
+  ForgeWriteLimits,
   RepoInspection,
   TreeEntry,
 } from "../forge-adapter";
+import {
+  GITHUB_WRITE_LIMITS,
+  gitHubCommitCost,
+  gitHubTreeRequestCount,
+} from "../github/github-adapter";
 import { InMemoryGitRepo } from "./in-memory-git-repo";
 
 type FailableOperation =
@@ -29,6 +35,7 @@ function isStaleCapable(
  */
 export class FakeForgeAdapter implements ForgeAdapter {
   readonly repo: InMemoryGitRepo;
+  readonly limits: ForgeWriteLimits = GITHUB_WRITE_LIMITS;
   private readonly canWrite: boolean;
   private readonly defaultBranch: string;
   private readonly onContentCreatingRequest:
@@ -100,6 +107,10 @@ export class FakeForgeAdapter implements ForgeAdapter {
       throw new Error(`unreachable: 'stale' queued for '${operation}'`);
     }
     return failure;
+  }
+
+  commitCost(changes: readonly CommitFileChange[]): number {
+    return gitHubCommitCost(changes);
   }
 
   private report(request: ContentCreatingRequest): void {
@@ -240,13 +251,9 @@ export class FakeForgeAdapter implements ForgeAdapter {
       throw failure;
     }
 
-    for (const change of request.changes) {
-      if (change.kind === "upsert-text") {
-        this.report({ operation: "createBlob" });
-      }
+    for (let i = gitHubTreeRequestCount(request.changes); i > 0; i--) {
+      this.report({ operation: "createTree" });
     }
-
-    this.report({ operation: "createTree" });
     const parentCommit = this.repo.getCommit(request.parent);
     const newTreeSha = await this.repo.applyChanges(
       parentCommit?.tree ?? null,

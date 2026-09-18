@@ -141,6 +141,9 @@ function buildSubject(mock: MockGitLabRepo): ContractSubject {
       }
       mock.failNext(FAILURE_MATCH[operation], toMockFailure(failure));
     },
+    async commitParent(sha) {
+      return mock.git.getCommit(sha)?.parent;
+    },
     async readFileAtMain(path) {
       const head = mock.git.getRef(MAIN_BRANCH);
       const commit = head === undefined ? undefined : mock.git.getCommit(head);
@@ -160,6 +163,7 @@ const harness: ForgeContractHarness = {
       new MockGitLabRepo({
         projectPath: `${OWNER}/${REPO}`,
         token: TOKEN,
+        mergeMethod: "ff",
         canWrite: options?.canWrite,
         defaultBranch: options?.defaultBranch,
       }),
@@ -170,6 +174,7 @@ const harness: ForgeContractHarness = {
     const mock = new MockGitLabRepo({
       projectPath: `${OWNER}/${REPO}`,
       token: TOKEN,
+      mergeMethod: "ff",
       canWrite: options?.canWrite,
     });
     const branch = seed.branch ?? MAIN_BRANCH;

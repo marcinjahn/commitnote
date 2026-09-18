@@ -82,7 +82,7 @@ describe("FakeForgeAdapter.commit", () => {
     }
   });
 
-  it("reports createBlob per text upsert, then createTree, createCommit, updateRef", async () => {
+  it("reports createTree, createCommit, updateRef", async () => {
     const requests: ContentCreatingRequest[] = [];
     const { adapter, head } = await initializedAdapter();
     const existingBlobSha = await adapter.repo.putBlob("reused");
@@ -103,15 +103,13 @@ describe("FakeForgeAdapter.commit", () => {
     });
 
     expect(requests.map((request) => request.operation)).toEqual([
-      "createBlob",
-      "createBlob",
       "createTree",
       "createCommit",
       "updateRef",
     ]);
   });
 
-  it("still reports all four content-creating kinds when the ref update is stale", async () => {
+  it("still reports every content-creating request when the ref update is stale", async () => {
     const requests: ContentCreatingRequest[] = [];
     const { adapter, head } = await initializedAdapter();
     const reportingAdapter = new FakeForgeAdapter({
@@ -135,7 +133,6 @@ describe("FakeForgeAdapter.commit", () => {
 
     expect(result).toEqual({ kind: "stale" });
     expect(requests.map((request) => request.operation)).toEqual([
-      "createBlob",
       "createTree",
       "createCommit",
       "updateRef",

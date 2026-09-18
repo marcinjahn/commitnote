@@ -62,6 +62,8 @@ async function setup(engineKeyring = keyring): Promise<Harness> {
   const commits: CommitRequest[] = [];
   const blobReads: string[] = [];
   const adapter: ForgeAdapter = {
+    limits: fake.limits,
+    commitCost: (changes) => fake.commitCost(changes),
     inspect: () => fake.inspect(),
     initialize: (configText, message) => fake.initialize(configText, message),
     getHead: () => fake.getHead(),

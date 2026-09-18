@@ -14,12 +14,13 @@
     resumeSession,
   } from "./login/login";
   import type { ForgeAdapter } from "./forge/forge-adapter";
+  import type { ForgeId } from "./forge/repo-coordinates";
   import type { ForgeAdapterFactory, ForgeRegistry } from "./forge/registry";
   import { adapterFactoryFor, forgeProviders } from "./forge/registry";
   import { createSessionStore } from "./session/session-store";
   import type { Session } from "./session/session";
   import { systemClock } from "./sync/clock";
-  import { createRateBudget } from "./sync/rate-budget";
+  import { createRateBudget, type RateBudget } from "./sync/rate-budget";
   import { createSyncEngine } from "./sync/sync-engine";
   import type { SyncEngine } from "./sync/sync-engine";
   import KeyChangedScreen from "./ui/session/KeyChangedScreen.svelte";
@@ -52,17 +53,28 @@
       };
 
   const store = createSessionStore();
-  const rateBudget = createRateBudget(systemClock);
+  const rateBudgets = new Map<ForgeId, RateBudget>();
+
+  function rateBudgetFor(forge: ForgeId, adapter: ForgeAdapter): RateBudget {
+    let budget = rateBudgets.get(forge);
+    if (budget === undefined) {
+      budget = createRateBudget(systemClock, adapter.limits);
+      rateBudgets.set(forge, budget);
+    }
+    return budget;
+  }
 
   const providers = $derived(forgeProviders(registry));
-  const budgetedCreateAdapter: ForgeAdapterFactory = (coordinates, options) =>
-    adapterFactoryFor(registry)(coordinates, {
+  const budgetedCreateAdapter: ForgeAdapterFactory = (coordinates, options) => {
+    const adapter = adapterFactoryFor(registry)(coordinates, {
       ...options,
       onContentCreatingRequest: (request) => {
-        rateBudget.record();
+        rateBudgetFor(coordinates.forge, adapter).record();
         options.onContentCreatingRequest?.(request);
       },
     });
+    return adapter;
+  };
 
   let phase = $state<Phase>({ kind: "restoring" });
   let loginKey = $state(0);
@@ -102,7 +114,7 @@
       adapter,
       keyring: session.keyring,
       clock: systemClock,
-      rateBudget,
+      rateBudget: rateBudgetFor(session.coordinates.forge, adapter),
     });
     unsubscribeStopped = engine.subscribe((state) => {
       keyChanged =
@@ -141,6 +153,9 @@
       } catch {
         console.error("Trash purge failed");
       }
+      adapter.sweepAbandoned?.().catch(() => {
+        console.error("Sweeping abandoned atomic commits failed");
+      });
     }
   }
 

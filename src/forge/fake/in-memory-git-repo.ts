@@ -101,6 +101,21 @@ export class InMemoryGitRepo {
     this.refs.delete(branch);
   }
 
+  branchNames(): string[] {
+    return [...this.refs.keys()];
+  }
+
+  isAncestor(ancestor: string, descendant: string): boolean {
+    for (
+      let sha: string | null = descendant;
+      sha !== null;
+      sha = this.commits.get(sha)?.parent ?? null
+    ) {
+      if (sha === ancestor) return true;
+    }
+    return false;
+  }
+
   hasCommits(): boolean {
     return this.commits.size > 0;
   }

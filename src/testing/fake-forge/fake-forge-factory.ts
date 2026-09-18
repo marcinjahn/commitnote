@@ -19,6 +19,10 @@ import type {
   RepositorySummary,
 } from "../../forge/forge-provider";
 import type { ForgeId } from "../../forge/repo-coordinates";
+import {
+  GITHUB_WRITE_LIMITS,
+  gitHubCommitCost,
+} from "../../forge/github/github-adapter";
 import { createGitHubProvider } from "../../forge/github/github-provider";
 import type {
   ForgeAdapterFactory,
@@ -78,6 +82,8 @@ export interface FakeForgeControls {
 function createRejectingAdapter(makeError: () => ForgeError): ForgeAdapter {
   const reject = () => Promise.reject(makeError());
   return {
+    limits: GITHUB_WRITE_LIMITS,
+    commitCost: gitHubCommitCost,
     inspect: reject,
     initialize: reject,
     getHead: reject,

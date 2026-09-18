@@ -56,6 +56,7 @@ function buildSubject(
       return sha === undefined ? undefined : repo.getBlob(sha);
     },
     mainHead: async () => repo.getRef(MAIN_BRANCH),
+    commitParent: async (sha) => repo.getCommit(sha)?.parent,
   };
 }
 

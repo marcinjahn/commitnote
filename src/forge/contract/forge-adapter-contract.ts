@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { REPO_CONFIG_DIR, REPO_CONFIG_PATH } from "../../format/v1";
-import { SAVE_FIXED_REQUEST_COST } from "../../sync/tuning";
 import type {
   CommitFileChange,
   ContentCreatingRequest,
@@ -33,6 +32,7 @@ export interface ContractSubject {
   failNext(operation: ContractOperation, failure: InjectedFailure): void;
   readFileAtMain(path: string): Promise<string | undefined>; // inspects backing state directly
   mainHead(): Promise<string | undefined>;
+  commitParent(sha: string): Promise<string | null | undefined>;
 }
 
 export interface ForgeContractHarness {
@@ -310,6 +310,24 @@ export function describeForgeAdapterContract(
         expect(await subject.adapter.readBlob(entry?.sha ?? "")).toBe("hello");
       });
 
+      it("writes an empty file", async () => {
+        const subject = await harness.createPopulated(configSeed());
+        const parent = await requireMainHead(subject);
+
+        const result = await subject.adapter.commit({
+          parent,
+          changes: [{ kind: "upsert-text", path: "dir/.keep", text: "" }],
+          message: "save",
+        });
+        expect(result.kind).toBe("ok");
+        const head = result.kind === "ok" ? result.head : "";
+
+        const entries = await subject.adapter.listTree(head);
+        const entry = entries.find((candidate) => candidate.path === "dir/.keep");
+        expect(entry?.sha).toBe(await gitBlobSha(""));
+        expect(await subject.adapter.readBlob(entry?.sha ?? "")).toBe("");
+      });
+
       it("moves a file by reusing its blob SHA via upsert-blob", async () => {
         const subject = await harness.createPopulated(
           configSeed({ "old.md": "keep me" }),
@@ -445,8 +463,83 @@ export function describeForgeAdapterContract(
       });
     });
 
+    describe("atomic commit", () => {
+      it("reports atomic commits as available on a default repo", async () => {
+        const subject = await harness.createPopulated(configSeed());
+        const support = (await subject.adapter.atomicCommitSupport?.()) ?? {
+          kind: "available",
+        };
+        expect(support).toEqual({ kind: "available" });
+      });
+
+      it("lands exactly one commit on top of the parent", async () => {
+        const subject = await harness.createPopulated(
+          configSeed({ "keep.md": "keep", "gone.md": "gone" }),
+        );
+        const parent = await requireMainHead(subject);
+
+        const result = await subject.adapter.commit({
+          parent,
+          changes: [
+            { kind: "upsert-text", path: "bulk/a.md", text: "a" },
+            { kind: "upsert-text", path: "keep.md", text: "kept" },
+            { kind: "delete", path: "gone.md" },
+          ],
+          message: "bulk",
+          atomic: true,
+        });
+
+        expect(result.kind).toBe("ok");
+        const head = result.kind === "ok" ? result.head : "";
+        expect(await subject.mainHead()).toBe(head);
+        expect(await subject.commitParent(head)).toBe(parent);
+        expect(await subject.readFileAtMain("bulk/a.md")).toBe("a");
+        expect(await subject.readFileAtMain("keep.md")).toBe("kept");
+        expect(await subject.readFileAtMain("gone.md")).toBeUndefined();
+      });
+
+      it("becomes stale without changing main when main moved past the parent", async () => {
+        const subject = await harness.createPopulated(configSeed());
+        const parent = await requireMainHead(subject);
+        const movedHead = await subject.pushFromAnotherDevice([
+          { kind: "upsert-text", path: "elsewhere.md", text: "theirs" },
+        ]);
+
+        const result = await subject.adapter.commit({
+          parent,
+          changes: [{ kind: "upsert-text", path: "mine.md", text: "mine" }],
+          message: "bulk",
+          atomic: true,
+        });
+
+        expect(result).toEqual({ kind: "stale" });
+        expect(await subject.mainHead()).toBe(movedHead);
+        expect(await subject.readFileAtMain("mine.md")).toBeUndefined();
+      });
+
+      it("reports exactly the atomic commitCost content-creating requests", async () => {
+        const subject = await harness.createPopulated(configSeed());
+        const parent = await requireMainHead(subject);
+        const changes: CommitFileChange[] = [
+          { kind: "upsert-text", path: "a.md", text: "one" },
+          { kind: "upsert-text", path: "b.md", text: "two" },
+        ];
+
+        await subject.adapter.commit({
+          parent,
+          changes,
+          message: "bulk",
+          atomic: true,
+        });
+
+        expect(subject.contentCreatingRequests).toHaveLength(
+          subject.adapter.commitCost(changes, { atomic: true }),
+        );
+      });
+    });
+
     describe("reporting", () => {
-      it("reports a commit's content-creating requests within the save cost the rate budget reserves", async () => {
+      it("reports exactly commitCost content-creating requests for a commit", async () => {
         const subject = await harness.createPopulated(
           configSeed({ "old.md": "move me" }),
         );
@@ -458,24 +551,54 @@ export function describeForgeAdapterContract(
         if (oldEntry === undefined) {
           throw new Error("expected an old.md entry");
         }
+        const changes: CommitFileChange[] = [
+          { kind: "upsert-text", path: "a.md", text: "one" },
+          { kind: "upsert-text", path: "b.md", text: "two" },
+          { kind: "upsert-blob", path: "c.md", blobSha: oldEntry.sha },
+          { kind: "delete", path: "old.md" },
+        ];
 
-        await subject.adapter.commit({
-          parent,
-          changes: [
-            { kind: "upsert-text", path: "a.md", text: "one" },
-            { kind: "upsert-text", path: "b.md", text: "two" },
-            { kind: "upsert-blob", path: "c.md", blobSha: oldEntry.sha },
-            { kind: "delete", path: "old.md" },
-          ],
-          message: "save",
-        });
+        await subject.adapter.commit({ parent, changes, message: "save" });
 
         const operations = subject.contentCreatingRequests.map(
           (request) => request.operation,
         );
         expect(operations).toContain("createCommit");
-        expect(operations.length).toBeLessThanOrEqual(
-          2 + SAVE_FIXED_REQUEST_COST,
+        expect(operations).toHaveLength(subject.adapter.commitCost(changes));
+      });
+
+      it("commits a large change set as one commit costing exactly commitCost", async () => {
+        const subject = await harness.createPopulated(configSeed());
+        const parent = await requireMainHead(subject);
+        const changes: CommitFileChange[] = Array.from(
+          { length: 1_200 },
+          (_, index) => ({
+            kind: "upsert-text",
+            path: `bulk/${String(index).padStart(4, "0")}.md`,
+            text: `note ${index} `.repeat(200),
+          }),
+        );
+
+        const result = await subject.adapter.commit({
+          parent,
+          changes,
+          message: "bulk",
+        });
+
+        expect(result.kind).toBe("ok");
+        const head = result.kind === "ok" ? result.head : "";
+        expect(subject.contentCreatingRequests).toHaveLength(
+          subject.adapter.commitCost(changes),
+        );
+        const entries = await subject.adapter.listTree(head);
+        const bulk = entries.filter(
+          (entry) => entry.type === "blob" && entry.path.startsWith("bulk/"),
+        );
+        expect(bulk).toHaveLength(changes.length);
+        const last = changes[changes.length - 1];
+        const lastEntry = bulk.find((entry) => entry.path === last.path);
+        expect(await subject.adapter.readBlob(lastEntry?.sha ?? "")).toBe(
+          last.kind === "upsert-text" ? last.text : "",
         );
       });
 
