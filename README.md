@@ -8,7 +8,7 @@ server.
 
 ## Prerequisites
 
-- Node 24
+- Node 26
 - npm
 
 ## Run locally
