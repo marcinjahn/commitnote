@@ -156,6 +156,9 @@ function buildSubject(mock: MockGitHubRepo): ContractSubject {
       return commitSha;
     },
     failNext: (operation, failure) => applyFailure(mock, operation, failure),
+    async commitParent(sha) {
+      return mock.git.getCommit(sha)?.parent;
+    },
     async readFileAtMain(path) {
       const head = mock.git.getRef(MAIN_BRANCH);
       if (head === undefined) {

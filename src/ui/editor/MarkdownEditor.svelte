@@ -57,6 +57,9 @@
     width: 100%;
     max-width: var(--content-max-width);
     margin: 0 auto;
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
   }
 
   .markdown-editor :global(.cm-editor) {
@@ -67,6 +70,7 @@
     background: transparent;
     border: none;
     border-radius: 0;
+    flex: 1 0 auto;
   }
 
   .markdown-editor :global(.cm-content) {

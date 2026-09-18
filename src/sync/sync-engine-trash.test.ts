@@ -14,10 +14,14 @@ import type { PurgeCaps } from "../trash/expiry";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
 import { buildTrashIndex } from "../trash/trash-index";
 import { buildNoteTree, findNode } from "../tree/note-tree";
+import {
+  GITHUB_WRITE_LIMITS,
+  gitHubCommitCost,
+} from "../forge/github/github-adapter";
 import { createRateBudget } from "./rate-budget";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
 import { createTestClock } from "./testing/test-clock";
-import { SAVE_FIXED_REQUEST_COST, TRASH_PURGE_HEADROOM } from "./tuning";
+import { TRASH_PURGE_HEADROOM } from "./tuning";
 import { findWorkingNode } from "./working-tree";
 
 let keyring: Keyring;
@@ -86,7 +90,7 @@ async function setup(options?: {
   readonly purgeCaps?: PurgeCaps;
 }): Promise<Harness> {
   const clock = createTestClock(START);
-  const rateBudget = createRateBudget(clock);
+  const rateBudget = createRateBudget(clock, GITHUB_WRITE_LIMITS);
   for (let index = 0; index < (options?.usedRequests ?? 0); index++) {
     rateBudget.record();
   }
@@ -102,6 +106,8 @@ async function setup(options?: {
   const commits: CommitRequest[] = [];
   const gate: { current: Promise<void> | null } = { current: null };
   const adapter: ForgeAdapter = {
+    limits: fake.limits,
+    commitCost: (changes) => fake.commitCost(changes),
     inspect: () => fake.inspect(),
     initialize: (configText, message) => fake.initialize(configText, message),
     getHead: () => fake.getHead(),
@@ -692,7 +698,7 @@ describe("sync engine startup trash purge", () => {
 
     expect(h.commits).toHaveLength(1);
     expect(h.requestTimes.length - requestsBefore).toBe(
-      SAVE_FIXED_REQUEST_COST,
+      gitHubCommitCost(h.commits[0].changes),
     );
     expect(await remoteTrashIds(h.fake)).toEqual([FRESH_PROJECTS]);
     expect(h.engine.getState().save).toEqual({ kind: "idle" });
@@ -715,7 +721,11 @@ describe("sync engine startup trash purge", () => {
   it("skips the purge when the rate budget lacks headroom, and runs only once", async () => {
     const h = await setup({
       seed: TRASHED,
-      usedRequests: 60 - SAVE_FIXED_REQUEST_COST - TRASH_PURGE_HEADROOM + 1,
+      usedRequests:
+        GITHUB_WRITE_LIMITS.perMinute -
+        gitHubCommitCost([]) -
+        TRASH_PURGE_HEADROOM +
+        1,
     });
 
     h.engine.purgeExpiredTrash();

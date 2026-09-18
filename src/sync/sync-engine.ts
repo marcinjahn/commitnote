@@ -37,7 +37,6 @@ import {
   AUTOSAVE_DEBOUNCE_MS,
   AUTOSAVE_MAX_WAIT_MS,
   MAX_IMMEDIATE_STALE_RETRIES,
-  SAVE_FIXED_REQUEST_COST,
   TRASH_PURGE_HEADROOM,
 } from "./tuning";
 import {
@@ -310,7 +309,7 @@ export function createSyncEngine(options: {
 }): SyncEngine {
   const { keyring, clock } = options;
   const adapter = options.adapter;
-  const rateBudget = options.rateBudget ?? createRateBudget(clock);
+  const rateBudget = options.rateBudget ?? createRateBudget(clock, adapter.limits);
 
   let state: SyncEngineState = INITIAL_STATE;
   const subscribers = new Set<(state: SyncEngineState) => void>();
@@ -906,10 +905,9 @@ export function createSyncEngine(options: {
           changeSet: state.inFlight,
           keyring,
         });
-        const cost =
-          encoded.changes.filter((change) => change.kind === "upsert-text")
-            .length + SAVE_FIXED_REQUEST_COST;
-        const availableAt = rateBudget.availableAt(cost);
+        const availableAt = rateBudget.availableAt(
+          adapter.commitCost(encoded.changes),
+        );
         if (availableAt > clock.now()) {
           waitForBudget(availableAt);
           return;
@@ -1630,7 +1628,7 @@ export function createSyncEngine(options: {
       return;
     }
     const budgetAt = rateBudget.availableAt(
-      SAVE_FIXED_REQUEST_COST + TRASH_PURGE_HEADROOM,
+      adapter.commitCost([]) + TRASH_PURGE_HEADROOM,
     );
     if (budgetAt > clock.now()) return;
     const [batch] = selectExpired(

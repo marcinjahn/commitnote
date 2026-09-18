@@ -33,6 +33,8 @@ function wrapWithCounts(inner: ForgeAdapter): {
 } {
   const counts: CallCounts = { getHead: 0, listTree: 0, readBlob: 0 };
   const adapter: ForgeAdapter = {
+    limits: inner.limits,
+    commitCost: (changes) => inner.commitCost(changes),
     inspect: () => inner.inspect(),
     initialize: (configText, message) => inner.initialize(configText, message),
     getHead: () => {

@@ -11,10 +11,15 @@ import { setupServer } from "msw/node";
 import type { SetupServer } from "msw/node";
 import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
 import { isForgeError } from "../errors";
-import type { ContentCreatingRequest } from "../forge-adapter";
+import type {
+  CommitFileChange,
+  ContentCreatingRequest,
+} from "../forge-adapter";
 import { commitFiles } from "../fake/in-memory-git-repo";
 import {
   createGitHubAdapter,
+  MAX_TREE_REQUEST_BYTES,
+  MAX_TREE_REQUEST_ENTRIES,
   type GitHubAdapterOptions,
 } from "./github-adapter";
 import { MockGitHubRepo } from "./testing/mock-github-server";
@@ -67,6 +72,33 @@ function makeAdapter(options?: Partial<GitHubAdapterOptions>): {
   return { adapter, reports };
 }
 
+interface TreeRequestBody {
+  readonly base_tree: string;
+  readonly tree: readonly { readonly path: string }[];
+}
+
+function captureTreeRequests(): {
+  fetch: typeof fetch;
+  treeBodies: TreeRequestBody[];
+  treeShas: string[];
+} {
+  const treeBodies: TreeRequestBody[] = [];
+  const treeShas: string[] = [];
+  const capturingFetch: typeof fetch = async (input, init) => {
+    const isTreePost =
+      init?.method === "POST" && String(input).endsWith("/git/trees");
+    if (isTreePost) {
+      treeBodies.push(JSON.parse(String(init.body)) as TreeRequestBody);
+    }
+    const response = await fetch(input, init);
+    if (isTreePost) {
+      treeShas.push(((await response.clone().json()) as { sha: string }).sha);
+    }
+    return response;
+  };
+  return { fetch: capturingFetch, treeBodies, treeShas };
+}
+
 async function seedConfig(mock: MockGitHubRepo): Promise<string> {
   return commitFiles(mock.git, {
     parent: null,
@@ -103,7 +135,7 @@ describe("GitHubAdapter", () => {
     expect(mock.git.getRef("master")).toBe(head);
   });
 
-  it("reports createBlob per text upsert, then createTree, createCommit, updateRef in order", async () => {
+  it("reports createTree, createCommit, updateRef in order", async () => {
     const mock = useMock();
     const parent = await commitFiles(mock.git, {
       parent: null,
@@ -128,12 +160,90 @@ describe("GitHubAdapter", () => {
     });
 
     expect(reports.map((report) => report.operation)).toEqual([
-      "createBlob",
-      "createBlob",
       "createTree",
       "createCommit",
       "updateRef",
     ]);
+  });
+
+  it("sends new text inline in the tree request, including an empty .keep, without creating blobs", async () => {
+    const mock = useMock();
+    const parent = await seedConfig(mock);
+    const { fetch: capturingFetch, treeBodies } = captureTreeRequests();
+    const { adapter } = makeAdapter({ fetch: capturingFetch });
+
+    const result = await adapter.commit({
+      parent,
+      changes: [
+        { kind: "upsert-text", path: "note.md", text: "héllo" },
+        { kind: "upsert-text", path: "dir/.keep", text: "" },
+      ],
+      message: "save",
+    });
+
+    expect(result.kind).toBe("ok");
+    expect(treeBodies).toHaveLength(1);
+    expect(treeBodies[0].tree).toEqual([
+      { path: "note.md", mode: "100644", type: "blob", content: "héllo" },
+      { path: "dir/.keep", mode: "100644", type: "blob", content: "" },
+    ]);
+    expect(
+      mock.requests.some(
+        (request) =>
+          request.method === "POST" && request.path.endsWith("/git/blobs"),
+      ),
+    ).toBe(false);
+  });
+
+  it("splits a large change set into chained tree requests that end in one commit", async () => {
+    const mock = useMock();
+    const parent = await seedConfig(mock);
+    const parentTree = mock.git.getCommit(parent)?.tree;
+    const { fetch: capturingFetch, treeBodies, treeShas } =
+      captureTreeRequests();
+    const { adapter, reports } = makeAdapter({ fetch: capturingFetch });
+    const text = "x".repeat(Math.ceil(MAX_TREE_REQUEST_BYTES / 3));
+    const changes: CommitFileChange[] = [
+      ...Array.from({ length: 4 }, (_, index) => ({
+        kind: "upsert-text" as const,
+        path: `big-${index}.md`,
+        text,
+      })),
+      ...Array.from({ length: MAX_TREE_REQUEST_ENTRIES + 1 }, (_, index) => ({
+        kind: "upsert-text" as const,
+        path: `small/${index}.md`,
+        text: `small ${index}`,
+      })),
+    ];
+
+    const result = await adapter.commit({ parent, changes, message: "bulk" });
+
+    expect(result.kind).toBe("ok");
+    const head = result.kind === "ok" ? result.head : "";
+    expect(treeBodies.length).toBeGreaterThan(2);
+    expect(treeBodies.length + 2).toBe(adapter.commitCost(changes));
+    expect(reports).toHaveLength(adapter.commitCost(changes));
+    expect(treeBodies.map((body) => body.base_tree)).toEqual([
+      parentTree,
+      ...treeShas.slice(0, -1),
+    ]);
+    for (const body of treeBodies) {
+      expect(body.tree.length).toBeLessThanOrEqual(MAX_TREE_REQUEST_ENTRIES);
+      expect(
+        new TextEncoder().encode(JSON.stringify(body.tree)).byteLength,
+      ).toBeLessThanOrEqual(MAX_TREE_REQUEST_BYTES + 1_000);
+    }
+    expect(
+      treeBodies.flatMap((body) => body.tree.map((entry) => entry.path)),
+    ).toEqual(changes.map((change) => change.path));
+
+    const commit = mock.git.getCommit(head);
+    expect(commit?.parent).toBe(parent);
+    expect(commit?.tree).toBe(treeShas[treeShas.length - 1]);
+    const paths = (await adapter.listTree(head)).map((entry) => entry.path);
+    for (const change of changes) {
+      expect(paths).toContain(change.path);
+    }
   });
 
   it("returns stale when the update-ref PATCH rejects a non-fast-forward push", async () => {

@@ -48,3 +48,32 @@ test("editing the note autosaves, and the edit is there after reopening it", asy
     page.getByRole("textbox", { name: "Note editor" }),
   ).toContainText("extra");
 });
+
+test("clicking the empty area below a short note puts the cursor at its end", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  await page.getByRole("treeitem", { name: "Zażółć gęślą jaźń" }).click();
+  const editor = page.getByRole("textbox", { name: "Note editor" });
+  await expect(editor).toContainText("Testing non-ASCII");
+
+  const pane = page.locator(".note-content");
+  const box = await pane.boundingBox();
+  if (box === null) throw new Error("note pane is not rendered");
+  const position = { x: box.width / 2, y: box.height - 20 };
+  if (testInfo.project.name === "mobile") {
+    await pane.tap({ position });
+  } else {
+    await pane.click({ position });
+  }
+
+  await expect(editor).toBeFocused();
+  await page.keyboard.type("appended");
+  await expect(editor.locator(".cm-line").last()).toHaveText("appended");
+  await expect(editor.locator(".cm-line").nth(2)).toHaveText(
+    "Testing non-ASCII note names end to end.",
+  );
+});

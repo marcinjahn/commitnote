@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { createRateBudget } from "./rate-budget";
 import { createTestClock } from "./testing/test-clock";
 
+const LIMITS = { perMinute: 60, perHour: 400 };
+
 describe("createRateBudget", () => {
   it("fits immediately when well under both limits", () => {
     const clock = createTestClock(0);
-    const budget = createRateBudget(clock);
+    const budget = createRateBudget(clock, LIMITS);
     for (let i = 0; i < 10; i++) {
       budget.record();
     }
@@ -14,7 +16,7 @@ describe("createRateBudget", () => {
 
   it("the 61st request in a minute waits until the oldest record leaves the minute window", () => {
     const clock = createTestClock(0);
-    const budget = createRateBudget(clock);
+    const budget = createRateBudget(clock, LIMITS);
     for (let i = 0; i < 60; i++) {
       budget.record();
       clock.advance(100);
@@ -24,7 +26,7 @@ describe("createRateBudget", () => {
 
   it("400 requests spread over an hour make the next one wait for the hour window even though the minute window is free", () => {
     const clock = createTestClock(0);
-    const budget = createRateBudget(clock);
+    const budget = createRateBudget(clock, LIMITS);
     for (let batch = 0; batch < 8; batch++) {
       for (let i = 0; i < 50; i++) {
         budget.record();
