@@ -6,6 +6,28 @@
   import { findWorkingNode } from "../../sync/working-tree";
   import type { WorkingNode } from "../../sync/working-tree";
   import { downloadNotesArchive } from "../../export/download-notes-archive";
+  import {
+    planImport,
+    type CollisionPolicy,
+    type ImportDestination,
+    type ImportSummary,
+  } from "../../import/plan-import";
+  import {
+    MAX_ARCHIVE_UNCOMPRESSED_BYTES,
+    NotesArchiveError,
+    readNotesArchive,
+    type NotesArchiveContents,
+  } from "../../import/read-notes-archive";
+  import ImportDialog from "../import/ImportDialog.svelte";
+  import AtomicBlockedDialog from "../import/AtomicBlockedDialog.svelte";
+  import {
+    describeArchiveError,
+    describeEnableAtomicFailure,
+    describeImportDone,
+    describeImportRefusal,
+    IMPORT_RETRYING_MESSAGE,
+  } from "../import/import-messages";
+  import type { ImportOutcome } from "../import/import-outcome";
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
   import { actionIcons, commandIcons } from "./action-icons";
   import CommandMenu from "./CommandMenu.svelte";
@@ -117,6 +139,19 @@
   let exportMessages = $state<readonly ToastMessage[]>([]);
   const UNDO_TOAST_MS = 8_000;
   let trashMessages = $state<readonly ToastMessage[]>([]);
+  let importInput: HTMLInputElement | undefined = $state();
+  let reading = $state(false);
+  let importDialog = $state<{
+    readonly fileName: string;
+    readonly contents: NotesArchiveContents;
+  } | null>(null);
+  let importStarted = $state<{
+    readonly summary: ImportSummary;
+    retryingShown: boolean;
+  } | null>(null);
+  let importMessages = $state<readonly ToastMessage[]>([]);
+  let atomicBlockedOpen = $state(false);
+  let atomicBlockedSeen = false;
 
   $effect(() => {
     return engine.subscribe((next) => {
@@ -130,6 +165,7 @@
   const selectedPath = $derived(engineState.openNote?.path ?? null);
   const refreshing = $derived(engineState.refresh.inFlight);
 
+  const importing = $derived(engineState.importing || importStarted !== null);
   const commands: readonly Command[] = $derived([
     {
       id: "export",
@@ -137,6 +173,14 @@
       icon: commandIcons.export,
       disabled: tree === null || exporting,
       run: () => void handleExport(),
+    },
+    {
+      id: "import",
+      label: importing ? "Importing…" : "Import notes",
+      icon: commandIcons.import,
+      disabled:
+        tree === null || engineState.stopped !== null || importing || reading,
+      run: () => importInput?.click(),
     },
   ]);
 
@@ -305,6 +349,134 @@
     }
   }
 
+  function showImportMessage(text: string): void {
+    importMessages = [{ id: ++nextMessageId, text }];
+  }
+
+  $effect(() => {
+    const started = importStarted;
+    if (started === null) return;
+    const { importing: busy, save, stopped } = engineState;
+    if (stopped !== null) {
+      importStarted = null;
+      return;
+    }
+    if (!busy) {
+      importStarted = null;
+      showImportMessage(
+        describeImportDone(started.summary.notes, started.summary.folders),
+      );
+      return;
+    }
+    if (
+      !started.retryingShown &&
+      engineState.atomicBlocked === null &&
+      save.kind === "waiting" &&
+      save.reason === "failed"
+    ) {
+      started.retryingShown = true;
+      showImportMessage(IMPORT_RETRYING_MESSAGE);
+    }
+  });
+
+  $effect(() => {
+    const blocked = engineState.atomicBlocked !== null;
+    if (blocked && !atomicBlockedSeen) atomicBlockedOpen = true;
+    if (!blocked) atomicBlockedOpen = false;
+    atomicBlockedSeen = blocked;
+  });
+
+  async function handleEnableAtomic(): Promise<string | null> {
+    try {
+      const support = await engine.enableAtomicCommits();
+      return support.kind === "available"
+        ? null
+        : describeEnableAtomicFailure(forgeName);
+    } catch {
+      return describeEnableAtomicFailure(forgeName);
+    }
+  }
+
+  async function handleImportFile(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (file === undefined || reading) return;
+    importMessages = [];
+    if (file.size > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
+      showImportMessage(describeArchiveError("tooLarge"));
+      return;
+    }
+    reading = true;
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      importDialog = { fileName: file.name, contents: readNotesArchive(bytes) };
+    } catch (error) {
+      showImportMessage(
+        describeArchiveError(
+          error instanceof NotesArchiveError ? error.kind : "invalidArchive",
+        ),
+      );
+    } finally {
+      reading = false;
+    }
+  }
+
+  async function handleImport(
+    destination: ImportDestination,
+    policy: CollisionPolicy,
+  ): Promise<ImportOutcome> {
+    const pending = importDialog;
+    if (pending === null) return { kind: "error", message: describeImportRefusal("unavailable") };
+    try {
+      const support = await engine.atomicCommitSupport();
+      if (support.kind === "needsSetup") {
+        return { kind: "needsSetup", canConfigure: support.canConfigure };
+      }
+    } catch {
+      return {
+        kind: "error",
+        message: `Could not reach ${forgeName}. Try again later.`,
+      };
+    }
+    // A save before the import can change the tree, so the plan is redone once
+    // when it no longer applies.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const current = engine.getState().workingTree;
+      if (current === null) {
+        return { kind: "error", message: describeImportRefusal("unavailable") };
+      }
+      let plan;
+      try {
+        plan = planImport(current, destination, pending.contents.entries, policy);
+      } catch {
+        return {
+          kind: "error",
+          message: "The destination folder no longer exists.",
+        };
+      }
+      if (!plan.ok) return { kind: "conflicts", count: plan.conflicts };
+      const result = await engine.importChanges(plan.changes);
+      if (result.ok) {
+        importDialog = null;
+        if (plan.changes.length > 0) {
+          importStarted = { summary: plan.summary, retryingShown: false };
+        }
+        const first = plan.changes[0];
+        if (destination.kind === "folder") {
+          expandFolder(destination.path);
+        } else if (destination.kind === "new-folder" && first !== undefined) {
+          expandFolder(first.kind === "create-folder" ? first.path : []);
+        }
+        return { kind: "queued" };
+      }
+      if (result.reason !== "outdated") {
+        return { kind: "error", message: describeImportRefusal(result.reason) };
+      }
+    }
+    return { kind: "error", message: describeImportRefusal("outdated") };
+  }
+
   function expandFolder(path: NotePath): void {
     expandRequest = { path };
   }
@@ -448,6 +620,7 @@
     refreshMessages = refreshMessages.filter((message) => message.id !== id);
     exportMessages = exportMessages.filter((message) => message.id !== id);
     trashMessages = trashMessages.filter((message) => message.id !== id);
+    importMessages = importMessages.filter((message) => message.id !== id);
   }
 
   function openTrash(): void {
@@ -670,7 +843,12 @@
 
 <NoticeToasts
   notices={engineState.notices}
-  messages={[...refreshMessages, ...exportMessages, ...trashMessages]}
+  messages={[
+    ...refreshMessages,
+    ...exportMessages,
+    ...trashMessages,
+    ...importMessages,
+  ]}
   onDismiss={(id) => engine.dismissNotice(id)}
   onDismissMessage={dismissMessage}
   onOpen={handleSelect}
@@ -720,6 +898,41 @@
     error={dialog.error}
     onConfirm={handleDeleteConfirm}
     onClose={closeDialog}
+  />
+{/if}
+
+<input
+  bind:this={importInput}
+  type="file"
+  accept=".zip,application/zip"
+  class="visually-hidden"
+  tabindex="-1"
+  aria-hidden="true"
+  data-testid="import-file"
+  onchange={(event) => void handleImportFile(event)}
+/>
+
+{#if importDialog !== null && tree !== null}
+  <ImportDialog
+    open={true}
+    fileName={importDialog.fileName}
+    contents={importDialog.contents}
+    {tree}
+    {forgeName}
+    onEnableAtomic={handleEnableAtomic}
+    onImport={handleImport}
+    onClose={() => (importDialog = null)}
+  />
+{/if}
+
+{#if atomicBlockedOpen && engineState.atomicBlocked !== null}
+  <AtomicBlockedDialog
+    open={true}
+    {forgeName}
+    canConfigure={engineState.atomicBlocked.canConfigure}
+    onEnable={handleEnableAtomic}
+    onSaveWithoutAtomic={() => engine.saveImportWithoutAtomic()}
+    onClose={() => (atomicBlockedOpen = false)}
   />
 {/if}
 

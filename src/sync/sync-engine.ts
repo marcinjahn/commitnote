@@ -6,7 +6,11 @@ import { decryptNote, NoteDecryptionError } from "../crypto/note-cipher";
 import { parseRepoConfig } from "../crypto/repo-config";
 import { REPO_CONFIG_PATH } from "../format/v1";
 import { isForgeError, type ForgeError } from "../forge/errors";
-import type { ForgeAdapter, TreeEntry } from "../forge/forge-adapter";
+import type {
+  AtomicCommitSupport,
+  ForgeAdapter,
+  TreeEntry,
+} from "../forge/forge-adapter";
 import {
   mergeChangeSet,
   type MergeNotice,
@@ -156,6 +160,13 @@ export interface SyncEngineState {
   readonly syncStates: SyncStates;
   /** Set once syncing stopped for good; nothing is written after that. */
   readonly stopped: SyncError | null;
+  /** Imported changes are queued or being committed. */
+  readonly importing: boolean;
+  /**
+   * Set when the import commit was refused because the forge needs a
+   * setting change for atomic commits; saving waits until that is resolved.
+   */
+  readonly atomicBlocked: { readonly canConfigure: boolean } | null;
 }
 
 export type StructureError =
@@ -178,6 +189,17 @@ export type ConflictResolution = "keepMine" | "keepTheirs" | "editMerged";
 export type FlushResult =
   | { readonly kind: "saved" }
   | { readonly kind: "unsaved"; readonly count: number };
+
+export type ImportResult =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      /**
+       * `unsaved`: earlier changes could not be saved first. `outdated`: the
+       * changes no longer apply to the working tree.
+       */
+      readonly reason: "unavailable" | "unsaved" | "outdated";
+    };
 
 export interface NotesSnapshot {
   readonly tree: WorkingTree;
@@ -209,6 +231,16 @@ export interface SyncEngine {
   resolveConflict(path: NotePath, resolution: ConflictResolution): void;
   dismissNotice(id: number): void;
   snapshotNotes(): NotesSnapshot | null;
+  /**
+   * Saves earlier changes first, then queues `changes` to be committed on
+   * their own as one atomic commit.
+   */
+  importChanges(changes: ChangeSet): Promise<ImportResult>;
+  atomicCommitSupport(): Promise<AtomicCommitSupport>;
+  /** Changes forge settings so atomic commits work, then resumes saving. */
+  enableAtomicCommits(): Promise<AtomicCommitSupport>;
+  /** Resumes a blocked import, committing it without the atomic guarantee. */
+  saveImportWithoutAtomic(): void;
   dispose(): void;
 }
 
@@ -290,6 +322,8 @@ const INITIAL_STATE: SyncEngineState = {
     conflicts: [],
   }),
   stopped: null,
+  importing: false,
+  atomicBlocked: null,
 };
 
 const KEY_CHANGED: SyncError = { kind: "keyChanged" };
@@ -336,6 +370,11 @@ export function createSyncEngine(options: {
   // Entries purged by the startup purge; changes purging only these are
   // best-effort and dropped instead of retried.
   const autoPurgedIds = new Set<string>();
+  // Whether imported changes are in `pending` / `inFlight`; a commit holding
+  // them is requested as atomic.
+  let importPending = false;
+  let importInFlight = false;
+  let importNonAtomic = false;
 
   const autosave = createAutosave({
     clock,
@@ -398,7 +437,10 @@ export function createSyncEngine(options: {
   ): void {
     if (disposed) return;
     const previous = state;
-    state = derive(previous, updater(previous));
+    let next = updater(previous);
+    const importing = importPending || importInFlight;
+    if (next.importing !== importing) next = { ...next, importing };
+    state = derive(previous, next);
     for (const run of subscribers) {
       run(state);
     }
@@ -831,7 +873,59 @@ export function createSyncEngine(options: {
     update((current) => ({
       ...current,
       save: { kind: "idle" },
+      atomicBlocked: null,
     }));
+  }
+
+  async function atomicCommitSupport(): Promise<AtomicCommitSupport> {
+    return (await adapter.atomicCommitSupport?.()) ?? { kind: "available" };
+  }
+
+  // Retrying would only be refused again, so the changes stay pending, with
+  // no retry scheduled, until the setting is changed or the user opts out.
+  async function blockIfAtomicNeedsSetup(): Promise<boolean> {
+    let support: AtomicCommitSupport;
+    try {
+      support = await atomicCommitSupport();
+    } catch {
+      return false;
+    }
+    if (support.kind !== "needsSetup") return false;
+    cancelRetry();
+    returnUncommitted();
+    update((current) => ({
+      ...current,
+      save: {
+        kind: "waiting",
+        reason: "failed",
+        retryAt: null,
+        error: { kind: "forbidden" },
+      },
+      atomicBlocked: { canConfigure: support.canConfigure },
+    }));
+    return true;
+  }
+
+  function resumeBlockedImport(): void {
+    if (state.atomicBlocked === null) return;
+    update((current) => ({ ...current, atomicBlocked: null }));
+    void triggerSave(true);
+  }
+
+  async function enableAtomicCommits(): Promise<AtomicCommitSupport> {
+    const support = (await adapter.enableAtomicCommits?.()) ?? {
+      kind: "available",
+    };
+    if (support.kind === "available" && !disposed && !stopped) {
+      resumeBlockedImport();
+    }
+    return support;
+  }
+
+  function saveImportWithoutAtomic(): void {
+    if (disposed || stopped || state.atomicBlocked === null) return;
+    importNonAtomic = true;
+    resumeBlockedImport();
   }
 
   // Waits (back-off or rate budget) are only ended by their own timer,
@@ -881,6 +975,7 @@ export function createSyncEngine(options: {
 
   async function runOneSave(): Promise<void> {
     update((current) => ({ ...current, save: { kind: "saving" } }));
+    let atomicAttempt = false;
 
     try {
       if (committedHead !== null) {
@@ -891,6 +986,8 @@ export function createSyncEngine(options: {
         return;
       }
 
+      importInFlight = importPending;
+      importPending = false;
       update((current) => ({
         ...current,
         inFlight: current.pending,
@@ -905,8 +1002,11 @@ export function createSyncEngine(options: {
           changeSet: state.inFlight,
           keyring,
         });
+        atomicAttempt = importInFlight && !importNonAtomic;
         const availableAt = rateBudget.availableAt(
-          adapter.commitCost(encoded.changes),
+          atomicAttempt
+            ? adapter.commitCost(encoded.changes, { atomic: true })
+            : adapter.commitCost(encoded.changes),
         );
         if (availableAt > clock.now()) {
           waitForBudget(availableAt);
@@ -916,10 +1016,13 @@ export function createSyncEngine(options: {
           parent: attemptSynced.head,
           changes: encoded.changes,
           message: encoded.message,
+          ...(atomicAttempt ? { atomic: true } : {}),
         });
 
         if (result.kind === "ok") {
           committedHead = result.head;
+          if (importInFlight) importNonAtomic = false;
+          importInFlight = false;
           await adoptCommittedHead(result.head);
           saveSucceeded();
           return;
@@ -933,6 +1036,8 @@ export function createSyncEngine(options: {
 
         const committed = await mergeWithRemote(attemptSynced);
         if (!committed) {
+          if (importInFlight) importNonAtomic = false;
+          importInFlight = false;
           update((current) => ({ ...current, inFlight: EMPTY_CHANGES }));
           saveSucceeded();
           return;
@@ -944,6 +1049,13 @@ export function createSyncEngine(options: {
         return;
       }
       if (isForgeError(error)) {
+        if (
+          error.kind === "Forbidden" &&
+          atomicAttempt &&
+          (await blockIfAtomicNeedsSetup())
+        ) {
+          return;
+        }
         const mapped = mapForgeError(error);
         failAttempt(mapped);
         return;
@@ -957,6 +1069,8 @@ export function createSyncEngine(options: {
   // tree and never commits them twice.
   function returnUncommitted(): void {
     if (committedHead !== null) return;
+    importPending ||= importInFlight;
+    importInFlight = false;
     update((current) => ({
       ...current,
       pending: appendAll(current.inFlight, current.pending),
@@ -1068,6 +1182,8 @@ export function createSyncEngine(options: {
     const head = await adapter.getHead();
     const remote = await loadSynced(head);
 
+    importInFlight ||= importPending;
+    importPending = false;
     update((current) => ({
       ...current,
       inFlight: appendAll(current.inFlight, current.pending),
@@ -1710,6 +1826,30 @@ export function createSyncEngine(options: {
     }
   }
 
+  async function importChanges(changes: ChangeSet): Promise<ImportResult> {
+    if (disposed || stopped || state.synced === null) {
+      return { ok: false, reason: "unavailable" };
+    }
+    if (hasLocalWork() || saveLoop !== null) {
+      await flush();
+      if (disposed || stopped) return { ok: false, reason: "unavailable" };
+      if (hasLocalWork()) return { ok: false, reason: "unsaved" };
+    }
+    if (changes.length === 0) return { ok: true };
+    const synced = state.synced!;
+    try {
+      buildWorkingState(synced.tree, [...state.inFlight, ...changes], synced.trash);
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      return { ok: false, reason: "outdated" };
+    }
+    importPending = true;
+    update((current) => ({ ...current, pending: [...changes] }));
+    autosave.cancel();
+    void triggerSave(true);
+    return { ok: true };
+  }
+
   function dismissNotice(id: number): void {
     update((current) => ({
       ...current,
@@ -1754,6 +1894,10 @@ export function createSyncEngine(options: {
     resolveConflict,
     dismissNotice,
     snapshotNotes,
+    importChanges,
+    atomicCommitSupport,
+    enableAtomicCommits,
+    saveImportWithoutAtomic,
     dispose,
   };
 }
