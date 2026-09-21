@@ -19,4 +19,5 @@ export const actionIcons = {
 
 export const commandIcons = {
   export: ["M8 2.25v7.5M4.75 6.5 8 9.75l3.25-3.25", "M2.5 10.75v2.5h11v-2.5"],
+  import: ["M8 9.75v-7.5M4.75 5.5 8 2.25l3.25 3.25", "M2.5 10.75v2.5h11v-2.5"],
 } as const;
