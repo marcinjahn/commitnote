@@ -6,6 +6,7 @@
   import NoteTreeFolder from "./NoteTreeFolder.svelte";
   import type { MenuAnchor } from "./row-menu-types";
   import SyncStateIcon from "./SyncStateIcon.svelte";
+  import { syncIndicatorFade } from "./sync-indicator-fade";
 
   interface Props {
     node: WorkingNode;
@@ -122,7 +123,11 @@
     <span class="tree-row-label">{node.name}</span>
   </button>
   {#if syncState.kind !== "synced"}
-    <span class="sync-indicator">
+    <span
+      class="sync-indicator"
+      in:syncIndicatorFade={{ duration: 200 }}
+      out:syncIndicatorFade={{ duration: 400 }}
+    >
       <SyncStateIcon state={syncState} />
     </span>
   {/if}

@@ -231,7 +231,7 @@ test("creating a folder and a note walks through the sync states and survives lo
   const failedAt = labels.indexOf(FAILED);
   expect(labels.indexOf(WAITING)).toBeGreaterThanOrEqual(0);
   expect(failedAt).toBeGreaterThan(labels.indexOf(WAITING));
-  expect(labels.lastIndexOf("Syncing")).toBeGreaterThan(failedAt);
+  expect(labels.lastIndexOf("Saving")).toBeGreaterThan(failedAt);
   expect(labels.at(-1)).toBe("(no status)");
 
   await backToTreeIfMobile(page, testInfo);

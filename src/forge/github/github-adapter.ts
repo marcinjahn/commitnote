@@ -7,7 +7,7 @@ import {
 } from "../../crypto/base64";
 import type { RepoCoordinates } from "../repo-coordinates";
 import { gitHubErrorFor, sendGitHubRequest } from "./github-api";
-import { ForgeError } from "../errors";
+import { ForgeError, isForgeError, withMainUnchanged } from "../errors";
 import type {
   CommitFileChange,
   CommitRequest,
@@ -323,6 +323,39 @@ class GitHubAdapter implements ForgeAdapter {
   }
 
   async commit(request: CommitRequest): Promise<CommitResult> {
+    let commitSha: string;
+    try {
+      commitSha = await this.createCommitObject(request);
+    } catch (error) {
+      // Only the ref update below touches main.
+      throw isForgeError(error) ? withMainUnchanged(error) : error;
+    }
+
+    this.report("updateRef");
+    let updateRefResponse: Response;
+    try {
+      updateRefResponse = await this.send(`/git/refs/heads/${MAIN_BRANCH}`, {
+        method: "PATCH",
+        body: { sha: commitSha, force: false },
+      });
+    } catch (error) {
+      if (!isForgeError(error, "Network")) throw error;
+      return this.settleRefUpdate(request.parent, commitSha, error);
+    }
+    if (updateRefResponse.status === 422) {
+      return { kind: "stale" };
+    }
+    if (!updateRefResponse.ok) {
+      const error = await this.errorFor(updateRefResponse);
+      if (updateRefResponse.status >= 500) {
+        return this.settleRefUpdate(request.parent, commitSha, error);
+      }
+      throw withMainUnchanged(error);
+    }
+    return { kind: "ok", head: commitSha };
+  }
+
+  private async createCommitObject(request: CommitRequest): Promise<string> {
     const parentResponse = await this.send(`/git/commits/${request.parent}`, {
       method: "GET",
     });
@@ -360,19 +393,24 @@ class GitHubAdapter implements ForgeAdapter {
     if (!commitResponse.ok) {
       throw await this.errorFor(commitResponse);
     }
-    const commitBody = (await commitResponse.json()) as { sha: string };
+    return ((await commitResponse.json()) as { sha: string }).sha;
+  }
 
-    this.report("updateRef");
-    const updateRefResponse = await this.send(
-      `/git/refs/heads/${MAIN_BRANCH}`,
-      { method: "PATCH", body: { sha: commitBody.sha, force: false } },
-    );
-    if (updateRefResponse.status === 422) {
-      return { kind: "stale" };
+  // A ref update whose response was lost either happened or never will, so
+  // main tells which.
+  private async settleRefUpdate(
+    parent: string,
+    commitSha: string,
+    error: ForgeError,
+  ): Promise<CommitResult> {
+    let head: string;
+    try {
+      head = await this.getHead();
+    } catch {
+      throw error;
     }
-    if (!updateRefResponse.ok) {
-      throw await this.errorFor(updateRefResponse);
-    }
-    return { kind: "ok", head: commitBody.sha };
+    if (head === commitSha) return { kind: "ok", head };
+    if (head === parent) throw withMainUnchanged(error);
+    throw error;
   }
 }

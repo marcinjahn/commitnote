@@ -244,6 +244,34 @@ describe("createFakeForge controls", () => {
     ).rejects.toMatchObject({ kind: "Unauthorized" });
   });
 
+  it("adoptRepo moves a fixture to the state exported from another fake forge", async () => {
+    const first = await createFakeForge();
+    const second = await createFakeForge();
+    const source = first.factory(coordinatesFor("sample/notes"), {
+      accessToken: TOKEN,
+    });
+    const target = second.factory(coordinatesFor("sample/notes"), {
+      accessToken: TOKEN,
+    });
+    const head = await source.getHead();
+    const result = await source.commit({
+      parent: head,
+      changes: [{ kind: "upsert-text", path: "extra.txt", text: "extra" }],
+      message: "test",
+    });
+    if (result.kind !== "ok") throw new Error("expected a commit");
+
+    second.controls.adoptRepo(
+      "sample/notes",
+      first.controls.exportRepo("sample/notes"),
+    );
+
+    expect(await target.getHead()).toBe(result.head);
+    const listing = await target.listTree(result.head);
+    const entry = listing.find((item) => item.path === "extra.txt");
+    expect(await target.readBlob(entry!.sha)).toBe("extra");
+  });
+
   it("editNote throws for an unknown fixture repository", async () => {
     const { controls } = await createFakeForge();
 

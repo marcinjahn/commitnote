@@ -1,0 +1,78 @@
+import { describe, expect, it } from "vitest";
+import {
+  describeCarriedOver,
+  describeChangeFailure,
+  describeChangeStep,
+  describeRekeySummary,
+} from "./passphrase-messages";
+
+const SUMMARY = {
+  notes: 3,
+  folders: 1,
+  trashEntries: 0,
+  carriedTrashEntries: 0,
+  carriedFiles: 0,
+};
+
+describe("passphrase change messages", () => {
+  it("summarizes what is re-encrypted", () => {
+    expect(describeRekeySummary(SUMMARY)).toBe(
+      "Re-encrypts 3 notes and 1 folder with the new passphrase, saved as a single commit.",
+    );
+    expect(
+      describeRekeySummary({ ...SUMMARY, notes: 1, trashEntries: 2 }),
+    ).toBe(
+      "Re-encrypts 1 note, 1 folder and 2 items in the trash with the new passphrase, saved as a single commit.",
+    );
+  });
+
+  it("lists what is carried over unchanged", () => {
+    expect(describeCarriedOver(SUMMARY)).toEqual([]);
+    expect(
+      describeCarriedOver({
+        ...SUMMARY,
+        carriedTrashEntries: 1,
+        carriedFiles: 2,
+      }),
+    ).toEqual([
+      "1 item in the trash can't be decrypted and is kept as it is.",
+      "2 files that aren't notes, such as a README, are kept as they are.",
+    ]);
+  });
+
+  it("shows read and re-encryption progress", () => {
+    expect(describeChangeStep({ kind: "reading", done: 2, total: 9 })).toBe(
+      "Reading notes (2 of 9)…",
+    );
+  });
+
+  it("says nothing changed when a failure leaves the notes as they were", () => {
+    expect(
+      describeChangeFailure({ kind: "changedElsewhere" }, "GitHub", 0),
+    ).toContain("Nothing was changed.");
+    expect(
+      describeChangeFailure(
+        { kind: "forge", error: { kind: "network" } },
+        "GitHub",
+        0,
+      ),
+    ).toBe(
+      "Could not reach GitHub. Check your connection and try again. Nothing was changed.",
+    );
+    expect(
+      describeChangeFailure(
+        { kind: "rateBudget", retryAt: 90_000 },
+        "GitLab",
+        0,
+      ),
+    ).toBe(
+      "commitnote is pacing its requests to GitLab. Nothing was changed. Try again in 2 minutes.",
+    );
+  });
+
+  it("does not claim nothing changed when the outcome is unknown", () => {
+    expect(
+      describeChangeFailure({ kind: "outcomeUnknown" }, "GitHub", 0),
+    ).not.toContain("Nothing was changed");
+  });
+});

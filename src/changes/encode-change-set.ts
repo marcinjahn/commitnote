@@ -4,6 +4,7 @@ import { encryptNote } from "../crypto/note-cipher";
 import type { RandomSource } from "../crypto/random";
 import type { CommitFileChange, TreeEntry } from "../forge/forge-adapter";
 import {
+  CHANGE_PASSPHRASE_SUBJECT,
   FOLDER_MARKER,
   FORMAT_VERSION,
   INITIALIZE_SUBJECT,
@@ -308,6 +309,10 @@ function buildMessage(subject: string, trailers: readonly string[]): string {
 
 export function encodeInitializeMessage(): string {
   return buildMessage(INITIALIZE_SUBJECT, []);
+}
+
+export function encodeChangePassphraseMessage(): string {
+  return buildMessage(CHANGE_PASSPHRASE_SUBJECT, []);
 }
 
 export async function encodeChangeSet(

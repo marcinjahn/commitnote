@@ -95,6 +95,7 @@ export class MockGitHubRepo {
   private readonly canWrite: boolean;
   private readonly defaultBranch: string;
   private readonly failureQueue: QueuedFailure[] = [];
+  private readonly dropResponseQueue: FailureMatch[] = [];
 
   constructor(options: MockGitHubRepoOptions) {
     this.owner = options.owner;
@@ -106,6 +107,11 @@ export class MockGitHubRepo {
 
   failNext(match: FailureMatch, failure: MockFailure): void {
     this.failureQueue.push({ match, failure });
+  }
+
+  /** Applies the next matching request, then fails it as a network error. */
+  dropNextResponse(match: FailureMatch): void {
+    this.dropResponseQueue.push(match);
   }
 
   handlers(): HttpHandler[] {
@@ -146,7 +152,16 @@ export class MockGitHubRepo {
       return jsonResponse({ message: "Not Found" }, 404);
     }
 
-    return this.route(method, repoMatch[3] ?? "", url, request);
+    const response = await this.route(method, repoMatch[3] ?? "", url, request);
+    const dropIndex = this.dropResponseQueue.findIndex(
+      (match) =>
+        match.method.toUpperCase() === method && match.pathPattern.test(path),
+    );
+    if (dropIndex !== -1) {
+      this.dropResponseQueue.splice(dropIndex, 1);
+      return HttpResponse.error();
+    }
+    return response;
   }
 
   private respondFailure(failure: MockFailure): Response {

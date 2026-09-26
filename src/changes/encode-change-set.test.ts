@@ -9,6 +9,7 @@ import { FOLDER_MARKER } from "../format/v1";
 import type { ChangeSet } from "./change";
 import {
   encodeChangeSet,
+  encodeChangePassphraseMessage,
   encodeInitializeMessage,
   InvalidChangeSetError,
 } from "./encode-change-set";
@@ -497,6 +498,14 @@ describe("encodeInitializeMessage", () => {
   it("equals the pinned literal", () => {
     expect(encodeInitializeMessage()).toBe(
       "commitnote: initialize\n\nCommitnote-Format: 1",
+    );
+  });
+});
+
+describe("encodeChangePassphraseMessage", () => {
+  it("equals the pinned literal", () => {
+    expect(encodeChangePassphraseMessage()).toBe(
+      "commitnote: change passphrase\n\nCommitnote-Format: 1",
     );
   });
 });

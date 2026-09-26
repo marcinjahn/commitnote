@@ -23,7 +23,7 @@ export interface MockMergeRequest {
   readonly title: string;
   readonly createdAt: string;
   readonly removeSourceBranch: boolean;
-  state: "opened" | "closed" | "merged";
+  state: "opened" | "closed" | "merged" | "locked";
 }
 
 export type MockFailure =
@@ -101,6 +101,13 @@ export class MockGitLabRepo {
   approvalsBeforeMerge = 0;
   /** Merge-status reads that answer "checking" for each new merge request. */
   mergeCheckingRounds = 0;
+  /**
+   * Merge-request reads that answer "locked" after an accepted merge, which
+   * only reaches the target branch after them.
+   */
+  mergeLockedReads = 0;
+  /** Runs once, just before the next commit to main is applied. */
+  beforeCommitToMain: (() => Promise<void>) | null = null;
 
   private readonly projectPath: string;
   private readonly token: string;
@@ -112,6 +119,10 @@ export class MockGitLabRepo {
   private readonly dropResponseQueue: FailureMatch[] = [];
   private readonly commitDates = new Map<string, string>();
   private readonly pendingChecks = new Map<number, number>();
+  private readonly lockedMerges = new Map<
+    number,
+    { reads: number; source: string; removeSource: boolean }
+  >();
   private nextIid = 1;
 
   constructor(options: MockGitLabRepoOptions) {
@@ -233,6 +244,7 @@ export class MockGitLabRepo {
   }
 
   private detailedMergeStatus(mergeRequest: MockMergeRequest): string {
+    if (mergeRequest.state === "locked") return "locked";
     if (mergeRequest.state !== "opened") return "not_open";
     const pending = this.pendingChecks.get(mergeRequest.iid) ?? 0;
     if (pending > 0) return "checking";
@@ -336,6 +348,14 @@ export class MockGitLabRepo {
     const isMerge = singleMatch[2] !== undefined;
 
     if (method === "GET" && !isMerge) {
+      const locked = this.lockedMerges.get(mergeRequest.iid);
+      if (locked !== undefined) {
+        locked.reads--;
+        if (locked.reads <= 0) {
+          this.lockedMerges.delete(mergeRequest.iid);
+          this.completeMerge(mergeRequest, locked.source, locked.removeSource);
+        }
+      }
       const body = this.mergeRequestBody(mergeRequest);
       const pending = this.pendingChecks.get(mergeRequest.iid) ?? 0;
       if (pending > 0) this.pendingChecks.set(mergeRequest.iid, pending - 1);
@@ -347,6 +367,9 @@ export class MockGitLabRepo {
         return jsonResponse({ message: "403 Forbidden" }, 403);
       }
       const body = (await request.json()) as { state_event?: string };
+      if (mergeRequest.state === "locked") {
+        return jsonResponse({ message: "405 Method Not Allowed" }, 405);
+      }
       if (body.state_event === "close" && mergeRequest.state === "opened") {
         mergeRequest.state = "closed";
       }
@@ -381,17 +404,32 @@ export class MockGitLabRepo {
           422,
         );
       }
-      this.git.setRef(mergeRequest.targetBranch, source);
-      mergeRequest.state = "merged";
-      if (
+      const removeSource =
         body.should_remove_source_branch === true ||
-        mergeRequest.removeSourceBranch
-      ) {
-        this.git.deleteRef(mergeRequest.sourceBranch);
+        mergeRequest.removeSourceBranch;
+      if (this.mergeLockedReads > 0) {
+        mergeRequest.state = "locked";
+        this.lockedMerges.set(mergeRequest.iid, {
+          reads: this.mergeLockedReads,
+          source,
+          removeSource,
+        });
+        return jsonResponse(this.mergeRequestBody(mergeRequest), 200);
       }
+      this.completeMerge(mergeRequest, source, removeSource);
       return jsonResponse(this.mergeRequestBody(mergeRequest), 200);
     }
     return undefined;
+  }
+
+  private completeMerge(
+    mergeRequest: MockMergeRequest,
+    source: string,
+    removeSource: boolean,
+  ): void {
+    this.git.setRef(mergeRequest.targetBranch, source);
+    mergeRequest.state = "merged";
+    if (removeSource) this.git.deleteRef(mergeRequest.sourceBranch);
   }
 
   private respondFailure(failure: MockFailure): Response {
@@ -578,8 +616,14 @@ export class MockGitLabRepo {
       if (!this.canWrite) {
         return jsonResponse({ message: "403 Forbidden" }, 403);
       }
+      const body = (await request.json()) as CommitBody;
+      const hook = this.beforeCommitToMain;
+      if (hook !== null && body.branch === "main") {
+        this.beforeCommitToMain = null;
+        await hook();
+      }
       try {
-        return await this.createCommit((await request.json()) as CommitBody);
+        return await this.createCommit(body);
       } catch (error) {
         if (error instanceof CommitRejected) {
           return jsonResponse({ message: error.message }, 400);

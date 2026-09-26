@@ -23,6 +23,16 @@
   import { createRateBudget, type RateBudget } from "./sync/rate-budget";
   import { createSyncEngine } from "./sync/sync-engine";
   import type { SyncEngine } from "./sync/sync-engine";
+  import type { Keyring } from "./crypto/keyring";
+  import {
+    createPassphraseChange,
+    type LandedCheck,
+    type PassphraseChange,
+  } from "./rekey/change-passphrase";
+  import {
+    PASSPHRASE_CHANGED_MESSAGE,
+    PASSPHRASE_CHANGED_MISMATCH_MESSAGE,
+  } from "./ui/passphrase/passphrase-messages";
   import KeyChangedScreen from "./ui/session/KeyChangedScreen.svelte";
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
@@ -47,6 +57,11 @@
     | {
         readonly kind: "app";
         readonly engine: SyncEngine;
+        readonly session: Session;
+        readonly adapter: ForgeAdapter;
+        readonly rememberMe: boolean;
+        readonly passphraseChange: PassphraseChange;
+        readonly initialMessage: string | null;
         readonly repoLabel: string;
         readonly repoUrl: string;
         readonly forgeName: string;
@@ -76,7 +91,7 @@
     return adapter;
   };
 
-  let phase = $state<Phase>({ kind: "restoring" });
+  let phase = $state.raw<Phase>({ kind: "restoring" });
   let loginKey = $state(0);
   let uninstallLifecycleTriggers: (() => void) | null = null;
   let unsubscribeStopped: (() => void) | null = null;
@@ -106,15 +121,17 @@
     session: Session,
     adapter: ForgeAdapter,
     rememberMe: boolean,
+    initialMessage: string | null = null,
   ): Promise<void> {
     phase = { kind: "restoring" };
     await store.start(session, { rememberMe });
 
+    const rateBudget = rateBudgetFor(session.coordinates.forge, adapter);
     const engine = createSyncEngine({
       adapter,
       keyring: session.keyring,
       clock: systemClock,
-      rateBudget: rateBudgetFor(session.coordinates.forge, adapter),
+      rateBudget,
     });
     unsubscribeStopped = engine.subscribe((state) => {
       keyChanged =
@@ -143,6 +160,16 @@
     phase = {
       kind: "app",
       engine,
+      session,
+      adapter,
+      rememberMe,
+      passphraseChange: createPassphraseChange({
+        adapter,
+        engine,
+        rateBudget,
+        clock: systemClock,
+      }),
+      initialMessage,
       repoLabel: repositoryLabel(session.coordinates),
       repoUrl: session.repoUrl,
       forgeName: registry[session.coordinates.forge].name,
@@ -167,17 +194,71 @@
     await startApp(result.session, result.adapter, result.rememberMe);
   }
 
-  async function finishLogOut(): Promise<void> {
-    if (phase.kind !== "app") return;
+  function stopApp(engine: SyncEngine): void {
     uninstallLifecycleTriggers?.();
     uninstallLifecycleTriggers = null;
     unsubscribeStopped?.();
     unsubscribeStopped = null;
     keyChanged = null;
-    phase.engine.dispose();
-    await store.clear();
+    engine.dispose();
+  }
+
+  async function handlePassphraseChanged(
+    keyring: Keyring,
+    check: LandedCheck,
+  ): Promise<void> {
+    if (phase.kind !== "app") return;
+    const { engine, session, adapter, rememberMe } = phase;
+    stopApp(engine);
+    await startApp(
+      { ...session, keyring },
+      adapter,
+      rememberMe,
+      check === "mismatch"
+        ? PASSPHRASE_CHANGED_MISMATCH_MESSAGE
+        : PASSPHRASE_CHANGED_MESSAGE,
+    );
+  }
+
+  async function finishLogOut(clearStore = true): Promise<void> {
+    if (phase.kind !== "app") return;
+    stopApp(phase.engine);
+    if (clearStore) await store.clear();
     logout = null;
     showLogin(null);
+  }
+
+  // Another tab of this browser profile may have changed the passphrase and
+  // remembered the new keys; those are used instead of asking to log in.
+  async function logInAfterKeyChange(): Promise<void> {
+    if (phase.kind !== "app") return;
+    const { engine, session } = phase;
+    let remembered: Session | null = null;
+    try {
+      remembered = await store.loadRememberedSession();
+    } catch {
+      remembered = null;
+    }
+    if (
+      remembered === null ||
+      remembered.coordinates.forge !== session.coordinates.forge ||
+      remembered.coordinates.owner !== session.coordinates.owner ||
+      remembered.coordinates.repo !== session.coordinates.repo
+    ) {
+      await finishLogOut();
+      return;
+    }
+    const result = await resumeSession(remembered, loginDeps());
+    if (result.kind === "loggedIn") {
+      stopApp(engine);
+      await startApp(result.session, result.adapter, true);
+      return;
+    }
+    const transient =
+      result.error.kind === "network" ||
+      result.error.kind === "server" ||
+      result.error.kind === "rateLimited";
+    await finishLogOut(!transient);
   }
 
   async function attemptLogOut(): Promise<void> {
@@ -269,7 +350,7 @@
   <KeyChangedScreen
     engine={phase.engine}
     unsavedCount={keyChanged.unsavedCount}
-    onLogInAgain={finishLogOut}
+    onLogInAgain={() => void logInAfterKeyChange()}
   />
 {:else if phase.kind === "app"}
   <AppShell
@@ -277,6 +358,10 @@
     repoLabel={phase.repoLabel}
     repoUrl={phase.repoUrl}
     forgeName={phase.forgeName}
+    passphraseChange={phase.passphraseChange}
+    initialMessage={phase.initialMessage}
+    onPassphraseChanged={(keyring, check) =>
+      void handlePassphraseChanged(keyring, check)}
     onLogOut={logOut}
   />
   <LogoutDialog

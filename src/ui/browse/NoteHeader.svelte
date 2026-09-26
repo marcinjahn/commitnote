@@ -2,6 +2,7 @@
   import type { SyncState } from "../../sync/sync-state";
   import { describeSyncState } from "./sync-messages";
   import SyncStateIcon from "./SyncStateIcon.svelte";
+  import { syncIndicatorFade } from "./sync-indicator-fade";
   import NameField from "../note/NameField.svelte";
 
   interface Props {
@@ -62,7 +63,11 @@
     onInput={onNameInput}
   />
   {#if !draft && syncState !== null && syncState.kind !== "synced"}
-    <span class="sync-status">
+    <span
+      class="sync-status"
+      in:syncIndicatorFade={{ duration: 200 }}
+      out:syncIndicatorFade={{ duration: 400 }}
+    >
       <SyncStateIcon state={syncState} />
       <span class="sync-status-label">{describeSyncState(syncState)}</span>
     </span>

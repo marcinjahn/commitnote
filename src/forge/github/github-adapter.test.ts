@@ -267,6 +267,48 @@ describe("GitHubAdapter", () => {
     expect(result).toEqual({ kind: "stale" });
   });
 
+  describe("ref update outcome", () => {
+    const PATCH_REF = { method: "PATCH", pathPattern: /\/git\/refs\/heads\/main$/ };
+    const POST_COMMIT = { method: "POST", pathPattern: /\/git\/commits$/ };
+    const request = (parent: string) => ({
+      parent,
+      changes: [{ kind: "upsert-text", path: "note.md", text: "mine" }] as CommitFileChange[],
+      message: "save",
+    });
+
+    it("reports a ref update whose response was lost but which applied", async () => {
+      const mock = useMock();
+      const parent = await seedConfig(mock);
+      mock.dropNextResponse(PATCH_REF);
+
+      const result = await makeAdapter().adapter.commit(request(parent));
+
+      expect(result).toEqual({ kind: "ok", head: mock.git.getRef(MAIN_BRANCH) });
+      expect(mock.git.getRef(MAIN_BRANCH)).not.toBe(parent);
+    });
+
+    it("marks a lost ref update that did not apply as leaving main unchanged", async () => {
+      const mock = useMock();
+      const parent = await seedConfig(mock);
+      mock.failNext(PATCH_REF, { network: true });
+
+      await expect(
+        makeAdapter().adapter.commit(request(parent)),
+      ).rejects.toMatchObject({ kind: "Network", mainUnchanged: true });
+      expect(mock.git.getRef(MAIN_BRANCH)).toBe(parent);
+    });
+
+    it("marks failures before the ref update as leaving main unchanged", async () => {
+      const mock = useMock();
+      const parent = await seedConfig(mock);
+      mock.failNext(POST_COMMIT, { network: true });
+
+      await expect(
+        makeAdapter().adapter.commit(request(parent)),
+      ).rejects.toMatchObject({ kind: "Network", mainUnchanged: true });
+    });
+  });
+
   it("maps a 403 with retry-after to RateLimited with that many ms", async () => {
     const mock = useMock();
     await seedConfig(mock);

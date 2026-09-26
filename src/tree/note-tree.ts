@@ -170,3 +170,38 @@ export function listNotes(tree: NoteTree): NoteNode[] {
   walk(tree.root);
   return notes;
 }
+
+// IV, at least one byte and the tag, base64url-encoded.
+const ENCRYPTED_SEGMENT = /^[A-Za-z0-9_-]{39,}$/;
+
+/**
+ * Counts files outside the app's own folder whose names look encrypted but
+ * don't decrypt with `keyring`, for example notes written with another
+ * passphrase. They are left out of the note tree.
+ */
+export async function countUndecryptableFiles(
+  entries: readonly TreeEntry[],
+  keyring: Keyring,
+): Promise<number> {
+  const decrypts = new Map<string, Promise<boolean>>();
+  let count = 0;
+  for (const entry of entries) {
+    if (entry.type !== "blob" || isIgnoredPath(entry.path)) continue;
+    const segments = entry.path.split("/");
+    if (segments[segments.length - 1] === FOLDER_MARKER) segments.pop();
+    if (segments.length === 0) continue;
+    if (!segments.every((segment) => ENCRYPTED_SEGMENT.test(segment))) continue;
+    for (const segment of segments) {
+      let decrypted = decrypts.get(segment);
+      if (decrypted === undefined) {
+        decrypted = decryptName(keyring, segment).then((name) => name !== null);
+        decrypts.set(segment, decrypted);
+      }
+      if (!(await decrypted)) {
+        count++;
+        break;
+      }
+    }
+  }
+  return count;
+}

@@ -23,13 +23,14 @@
     </svg>
   {:else if state.kind === "syncing"}
     <svg
-      class="icon glyph syncing spinning"
+      class="icon glyph syncing"
       viewBox="0 0 16 16"
       aria-hidden="true"
       focusable="false"
     >
-      <path d="M3 8a5 5 0 0 1 9-3M12.5 2v3h-3" />
-      <path d="M13 8a5 5 0 0 1-9 3M3.5 14v-3h3" />
+      <circle class="dot" cx="3" cy="8" r="2" />
+      <circle class="dot" cx="8" cy="8" r="2" />
+      <circle class="dot" cx="13" cy="8" r="2" />
     </svg>
   {:else if state.reason === "pending"}
     <svg
@@ -76,12 +77,9 @@
   }
 
   .synced,
-  .pending {
-    color: var(--color-text-muted);
-  }
-
+  .pending,
   .syncing {
-    color: var(--color-accent);
+    color: var(--color-text-muted);
   }
 
   .failed,
@@ -89,16 +87,34 @@
     color: var(--color-danger);
   }
 
-  .spinning {
-    animation: sync-state-spin 0.9s linear infinite;
+  .syncing .dot {
+    fill: currentColor;
+    stroke: none;
+    opacity: 0.7;
+    animation: sync-state-wave 2.4s ease-in-out infinite;
   }
 
-  @keyframes sync-state-spin {
-    from {
-      transform: rotate(0deg);
+  /* Negative delays start every dot mid-cycle, so none jumps when it begins. */
+  .syncing .dot:nth-child(1) {
+    animation-delay: -2.4s;
+  }
+
+  .syncing .dot:nth-child(2) {
+    animation-delay: -2s;
+  }
+
+  .syncing .dot:nth-child(3) {
+    animation-delay: -1.6s;
+  }
+
+  @keyframes sync-state-wave {
+    0%,
+    60%,
+    100% {
+      opacity: 0.4;
     }
-    to {
-      transform: rotate(360deg);
+    30% {
+      opacity: 1;
     }
   }
 </style>

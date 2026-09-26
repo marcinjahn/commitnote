@@ -1,4 +1,10 @@
-import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
+import {
+  FORMAT_VERSION,
+  MAIN_BRANCH,
+  REPO_CONFIG_PATH,
+  TRAILER,
+  UNDO_OUTDATED_SAVE_SUBJECT,
+} from "../../format/v1";
 import { toBase64 } from "../../crypto/base64";
 import type { RepoCoordinates } from "../repo-coordinates";
 import {
@@ -8,7 +14,7 @@ import {
   projectApiPath,
   sendGitLabRequest,
 } from "./gitlab-api";
-import { ForgeError } from "../errors";
+import { ForgeError, isForgeError, withMainUnchanged } from "../errors";
 import type {
   AtomicCommitSupport,
   CommitFileChange,
@@ -48,6 +54,8 @@ const BLOB_FETCH_CONCURRENCY = 8;
 
 export const ATOMIC_BRANCH_PREFIX = "commitnote/tx-";
 const ATOMIC_MERGE_REQUEST_TITLE = "commitnote: atomic commit";
+export const UNDO_COMMIT_MESSAGE = `${UNDO_OUTDATED_SAVE_SUBJECT}\n\n${TRAILER.format}: ${FORMAT_VERSION}`;
+const EMPTY_BLOB_SHA = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391";
 // Create commit, open merge request, merge it.
 export const ATOMIC_COMMIT_COST = 3;
 export const MAX_MERGE_ATTEMPTS = 6;
@@ -404,7 +412,8 @@ class GitLabAdapter implements ForgeAdapter {
   // overwrites). So the commit applies to whatever main is: the head is
   // checked just before, and the reported parent just after, which leaves
   // only a narrow race; create/update/delete actions additionally fail when
-  // a concurrent commit touched the same file.
+  // a concurrent commit touched the same file, and a key guard (see
+  // `withKeyGuard`) makes the commit fail once main was re-keyed.
   async commit(request: CommitRequest): Promise<CommitResult> {
     if (request.atomic === true) {
       return this.commitAtomically(request);
@@ -415,6 +424,10 @@ class GitLabAdapter implements ForgeAdapter {
 
     const parentEntries = await this.listTree(request.parent);
     const actions = await this.actionsFor(request.changes, parentEntries);
+    const guarded = await this.withKeyGuard(request, actions, parentEntries);
+    if (guarded === null) {
+      return this.commitAtomically({ ...request, atomic: true });
+    }
 
     this.report("createCommit");
     const response = await this.send("/repository/commits", {
@@ -422,7 +435,7 @@ class GitLabAdapter implements ForgeAdapter {
       body: {
         branch: MAIN_BRANCH,
         commit_message: request.message,
-        actions,
+        actions: guarded,
       },
     });
     if (!response.ok) {
@@ -435,13 +448,151 @@ class GitLabAdapter implements ForgeAdapter {
       throw this.errorFor(response);
     }
     const body = (await response.json()) as CommitBody;
-    if (body.parent_ids?.[0] !== request.parent) {
+    const actualParent = body.parent_ids?.[0];
+    if (actualParent !== request.parent) {
+      if (
+        actualParent !== undefined &&
+        (await this.configDiffers(request.parent, actualParent))
+      ) {
+        await this.undoCommit(actualParent, guarded);
+        return { kind: "stale" };
+      }
       throw new ForgeError("Server", {
         status: response.status,
         message: "Commit was applied on top of a newer main head",
       });
     }
     return { kind: "ok", head: body.id };
+  }
+
+  // Unless the commit already updates, moves or deletes a key-bound file,
+  // adds an update of one with its unchanged content: the commit then fails
+  // as a whole once a passphrase change has renamed that file. Resolves to
+  // null when there is no such file to use, so the commit must go the
+  // atomic way to be safe.
+  private async withKeyGuard(
+    request: CommitRequest,
+    actions: readonly CommitAction[],
+    parentEntries: readonly TreeEntry[],
+  ): Promise<readonly CommitAction[] | null> {
+    const candidates = request.keyBoundFiles;
+    if (candidates === undefined) return actions;
+    const keyBound = new Set(candidates.map((file) => file.path));
+    const touched = new Set<string>();
+    for (const action of actions) {
+      touched.add(action.file_path);
+      if (action.action === "move") touched.add(action.previous_path);
+      const existingPath =
+        action.action === "move" ? action.previous_path : action.file_path;
+      if (action.action !== "create" && keyBound.has(existingPath)) {
+        return actions;
+      }
+    }
+    const parentBlobs = new Map<string, string>();
+    for (const entry of parentEntries) {
+      if (entry.type === "blob") parentBlobs.set(entry.path, entry.sha);
+    }
+    const usable = candidates.filter(
+      (file) =>
+        !touched.has(file.path) && parentBlobs.get(file.path) === file.blobSha,
+    );
+    const guard =
+      usable.find((file) => file.blobSha === EMPTY_BLOB_SHA) ?? usable[0];
+    if (guard === undefined) {
+      try {
+        if ((await this.atomicCommitSupport()).kind === "available") {
+          return null;
+        }
+      } catch {
+        // Falls back to the unguarded commit, checked after the fact.
+      }
+      return actions;
+    }
+    const content =
+      guard.blobSha === EMPTY_BLOB_SHA
+        ? ""
+        : toBase64(
+            new Uint8Array(await (await this.fetchBlob(guard.blobSha)).arrayBuffer()),
+          );
+    return [
+      ...actions,
+      {
+        action: "update",
+        file_path: guard.path,
+        content,
+        encoding: guard.blobSha === EMPTY_BLOB_SHA ? "text" : "base64",
+      },
+    ];
+  }
+
+  private async configDiffers(a: string, b: string): Promise<boolean> {
+    const configOf = async (sha: string) =>
+      (await this.listTree(sha)).find(
+        (entry) => entry.type === "blob" && entry.path === REPO_CONFIG_PATH,
+      )?.sha;
+    return (await configOf(a)) !== (await configOf(b));
+  }
+
+  // Reverts a commit that landed on a re-keyed main, restoring every file
+  // it touched to its state in `base`, the commit's actual parent.
+  private async undoCommit(
+    base: string,
+    actions: readonly CommitAction[],
+  ): Promise<void> {
+    const baseBlobs = new Map<string, string>();
+    for (const entry of await this.listTree(base)) {
+      if (entry.type === "blob") baseBlobs.set(entry.path, entry.sha);
+    }
+    const restore = async (path: string, action: "create" | "update") => {
+      const sha = baseBlobs.get(path);
+      if (sha === undefined) {
+        return { action: "delete", file_path: path } as const;
+      }
+      return {
+        action,
+        file_path: path,
+        content: toBase64(
+          new Uint8Array(await (await this.fetchBlob(sha)).arrayBuffer()),
+        ),
+        encoding: "base64",
+      } as const;
+    };
+    const inverse: CommitAction[] = [];
+    for (const action of actions) {
+      switch (action.action) {
+        case "create":
+          inverse.push({ action: "delete", file_path: action.file_path });
+          break;
+        case "update":
+          inverse.push(await restore(action.file_path, "update"));
+          break;
+        case "delete":
+          inverse.push(await restore(action.file_path, "create"));
+          break;
+        case "move":
+          inverse.push({
+            action: "move",
+            file_path: action.previous_path,
+            previous_path: action.file_path,
+          });
+          break;
+      }
+    }
+    this.report("createCommit");
+    const response = await this.send("/repository/commits", {
+      method: "POST",
+      body: {
+        branch: MAIN_BRANCH,
+        commit_message: UNDO_COMMIT_MESSAGE,
+        actions: inverse,
+      },
+    });
+    if (!response.ok) {
+      throw new ForgeError("Server", {
+        status: response.status,
+        message: "A commit that landed on a re-keyed main could not be undone",
+      });
+    }
   }
 
   async atomicCommitSupport(): Promise<AtomicCommitSupport> {
@@ -491,12 +642,17 @@ class GitLabAdapter implements ForgeAdapter {
     const parentEntries = await this.listTree(request.parent);
     const actions = await this.actionsFor(request.changes, parentEntries);
     const branch = `${ATOMIC_BRANCH_PREFIX}${this.randomId()}`;
-    const commitSha = await this.createTransactionCommit(
-      branch,
-      request,
-      actions,
-    );
-    const iid = await this.openTransactionMergeRequest(branch);
+    let commitSha: string;
+    let iid: number;
+    try {
+      commitSha = await this.createTransactionCommit(branch, request, actions);
+      iid = await this.openTransactionMergeRequest(branch);
+    } catch (error) {
+      // Nothing merges the merge request but this adapter, so main stays as
+      // it was even if removing the branch fails.
+      await this.discardTransaction(branch, null);
+      throw error instanceof ForgeError ? withMainUnchanged(error) : error;
+    }
     return this.mergeTransaction(branch, iid, commitSha);
   }
 
@@ -615,7 +771,16 @@ class GitLabAdapter implements ForgeAdapter {
     commitSha: string,
   ): Promise<CommitResult> {
     for (let attempt = 1; ; attempt++) {
-      const outcome = await this.tryMerge(iid, commitSha);
+      let outcome: MergeAttempt;
+      try {
+        outcome = await this.tryMerge(iid, commitSha);
+      } catch (error) {
+        if (isForgeError(error, "Forbidden")) {
+          await this.discardTransaction(branch, iid);
+          throw withMainUnchanged(error);
+        }
+        outcome = "unknown";
+      }
       if (outcome === "merged") {
         return { kind: "ok", head: commitSha };
       }
@@ -624,39 +789,78 @@ class GitLabAdapter implements ForgeAdapter {
         return { kind: "stale" };
       }
 
-      const mergeRequest = await this.getMergeRequest(iid);
+      let mergeRequest: MergeRequestBody;
+      let onMain = false;
+      try {
+        mergeRequest = await this.getMergeRequest(iid);
+        if (mergeRequest.state !== "merged" && outcome === "unknown") {
+          onMain = await this.isOnMain(commitSha);
+        }
+      } catch {
+        return this.settleTransaction(branch, iid, commitSha);
+      }
       if (mergeRequest.state === "merged") {
         return this.mergedResult(mergeRequest, commitSha);
       }
-      if (outcome === "unknown" && (await this.isOnMain(commitSha))) {
+      if (onMain) {
         return { kind: "ok", head: commitSha };
-      }
-      if (mergeRequest.state !== "opened") {
-        await this.discardTransaction(branch, iid);
-        return { kind: "stale" };
       }
 
       const status = mergeRequest.detailed_merge_status ?? "unchecked";
-      if (STALE_MERGE_STATUSES.has(status)) {
+      // `locked`: GitLab is merging right now.
+      const merging = mergeRequest.state === "locked" || status === "locked";
+      if (!merging && mergeRequest.state !== "opened") {
         await this.discardTransaction(branch, iid);
         return { kind: "stale" };
       }
-      if (!PENDING_MERGE_STATUSES.has(status)) {
+      if (!merging && STALE_MERGE_STATUSES.has(status)) {
+        await this.discardTransaction(branch, iid);
+        return { kind: "stale" };
+      }
+      if (!merging && !PENDING_MERGE_STATUSES.has(status)) {
         // Some project rule beyond the checked settings blocks the merge.
         this.atomicSupport = undefined;
         await this.discardTransaction(branch, iid);
         throw new ForgeError("Server", {
           message: `GitLab refused the merge (${status})`,
+          mainUnchanged: true,
         });
       }
       if (attempt >= MAX_MERGE_ATTEMPTS) {
-        await this.discardTransaction(branch, iid);
-        throw new ForgeError("Server", {
-          message: `GitLab merge did not become possible (${status})`,
-        });
+        if (merging) {
+          throw new ForgeError("Network", {
+            message: "GitLab was still merging the atomic commit",
+          });
+        }
+        return this.settleTransaction(branch, iid, commitSha);
       }
       await this.sleep(MERGE_STATUS_POLL_MS);
     }
+  }
+
+  // Ends a transaction whose merge may or may not have happened: once its
+  // merge request is closed and its branch gone it can no longer merge, so
+  // main then tells the outcome for good.
+  private async settleTransaction(
+    branch: string,
+    iid: number,
+    commitSha: string,
+  ): Promise<CommitResult> {
+    try {
+      if (await this.isOnMain(commitSha)) return { kind: "ok", head: commitSha };
+      await this.closeMergeRequest(iid);
+      await this.deleteBranch(branch);
+      if (await this.isOnMain(commitSha)) return { kind: "ok", head: commitSha };
+    } catch (error) {
+      throw new ForgeError("Network", {
+        message: "Could not determine whether the atomic commit landed",
+        cause: error,
+      });
+    }
+    throw new ForgeError("Server", {
+      message: "GitLab merge did not complete",
+      mainUnchanged: true,
+    });
   }
 
   private async tryMerge(iid: number, sha: string): Promise<MergeAttempt> {

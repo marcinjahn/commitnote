@@ -27,7 +27,7 @@
   <p class="notice">
     This repository is empty. commitnote will make it a notes repo by adding
     one configuration file. Your passphrase encrypts everything and cannot be
-    changed or recovered later.
+    recovered if you forget it.
   </p>
 
   <form onsubmit={handleSubmit}>
@@ -102,7 +102,6 @@
   .step-progress progress {
     width: 100%;
     height: var(--space-1);
-    accent-color: var(--color-ink);
   }
 
   .initialize-actions {

@@ -9,7 +9,7 @@ export function describeSyncState(state: SyncState): string {
     case "synced":
       return "Synced";
     case "syncing":
-      return "Syncing";
+      return "Saving";
     case "out-of-sync":
       switch (state.reason) {
         case "pending":
@@ -47,4 +47,10 @@ export function describeSyncError(
     case "keyChanged":
       return KEY_CHANGED_MESSAGE;
   }
+}
+
+export function describeUndecryptableFiles(count: number): string {
+  return count === 1
+    ? "1 file can't be decrypted with this passphrase and is not shown."
+    : `${count} files can't be decrypted with this passphrase and are not shown.`;
 }
