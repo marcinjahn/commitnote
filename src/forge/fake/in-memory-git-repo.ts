@@ -1,6 +1,13 @@
 import { ForgeError } from "../errors";
 import type { CommitFileChange, TreeEntry } from "../forge-adapter";
 
+/** Every object of a repo, in a JSON-serializable form. */
+export interface GitObjectsSnapshot {
+  readonly blobs: readonly (readonly [string, string])[];
+  readonly trees: readonly (readonly [string, readonly (readonly [string, string])[]])[];
+  readonly commits: readonly (readonly [string, StoredCommit])[];
+}
+
 interface StoredCommit {
   readonly tree: string;
   readonly parent: string | null;
@@ -114,6 +121,21 @@ export class InMemoryGitRepo {
       if (sha === ancestor) return true;
     }
     return false;
+  }
+
+  exportObjects(): GitObjectsSnapshot {
+    return {
+      blobs: [...this.blobs],
+      trees: [...this.trees].map(([sha, files]) => [sha, [...files]] as const),
+      commits: [...this.commits],
+    };
+  }
+
+  /** Adds objects of another repo, as a fetch would; refs stay as they are. */
+  importObjects(snapshot: GitObjectsSnapshot): void {
+    for (const [sha, text] of snapshot.blobs) this.blobs.set(sha, text);
+    for (const [sha, files] of snapshot.trees) this.trees.set(sha, new Map(files));
+    for (const [sha, commit] of snapshot.commits) this.commits.set(sha, commit);
   }
 
   hasCommits(): boolean {

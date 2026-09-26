@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { SyncError } from "../../sync/sync-engine";
 import type { SyncState } from "../../sync/sync-state";
-import { describeSyncError, describeSyncState } from "./sync-messages";
+import {
+  describeSyncError,
+  describeSyncState,
+  describeUndecryptableFiles,
+} from "./sync-messages";
 
 describe("describeSyncState", () => {
   it("describes synced", () => {
@@ -114,6 +118,17 @@ describe("describeSyncError", () => {
     const error: SyncError = { kind: "rateLimited", retryAfterMs: 120_000 };
     expect(describeSyncError(error, "GitHub")).toBe(
       "GitHub's rate limit was reached. Refresh again in 2 minutes.",
+    );
+  });
+});
+
+describe("describeUndecryptableFiles", () => {
+  it("counts the files left out of the tree", () => {
+    expect(describeUndecryptableFiles(1)).toBe(
+      "1 file can't be decrypted with this passphrase and is not shown.",
+    );
+    expect(describeUndecryptableFiles(3)).toBe(
+      "3 files can't be decrypted with this passphrase and are not shown.",
     );
   });
 });

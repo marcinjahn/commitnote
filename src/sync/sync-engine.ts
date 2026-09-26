@@ -4,11 +4,12 @@ import { encodeChangeSet } from "../changes/encode-change-set";
 import { verifyKeyCheck, type Keyring } from "../crypto/keyring";
 import { decryptNote, NoteDecryptionError } from "../crypto/note-cipher";
 import { parseRepoConfig } from "../crypto/repo-config";
-import { REPO_CONFIG_PATH } from "../format/v1";
+import { FOLDER_MARKER, REPO_CONFIG_PATH } from "../format/v1";
 import { isForgeError, type ForgeError } from "../forge/errors";
 import type {
   AtomicCommitSupport,
   ForgeAdapter,
+  KeyBoundFile,
   TreeEntry,
 } from "../forge/forge-adapter";
 import {
@@ -23,7 +24,9 @@ import { buildTrashIndex, type TrashEntry } from "../trash/trash-index";
 import { validateName, type NameError } from "../tree/note-names";
 import {
   buildNoteTree,
+  countUndecryptableFiles,
   findNode,
+  type FolderNode,
   type NoteNode,
   type NoteTree,
 } from "../tree/note-tree";
@@ -80,6 +83,8 @@ export interface SyncedState {
   readonly listing: readonly TreeEntry[];
   readonly tree: NoteTree;
   readonly trash: readonly TrashEntry[];
+  /** Files left out of `tree` because their names don't decrypt. */
+  readonly undecryptableFiles: number;
 }
 
 export type OpenNoteState =
@@ -167,6 +172,8 @@ export interface SyncEngineState {
    * setting change for atomic commits; saving waits until that is resolved.
    */
   readonly atomicBlocked: { readonly canConfigure: boolean } | null;
+  /** Saving, refreshing and every change are paused until `resume()`. */
+  readonly suspended: boolean;
 }
 
 export type StructureError =
@@ -241,10 +248,17 @@ export interface SyncEngine {
   enableAtomicCommits(): Promise<AtomicCommitSupport>;
   /** Resumes a blocked import, committing it without the atomic guarantee. */
   saveImportWithoutAtomic(): void;
+  /**
+   * Pauses saving, refreshing and every change, so the synced head stays
+   * the last thing this engine wrote. Refused (false) unless everything is
+   * saved and no conflict is held.
+   */
+  suspend(): boolean;
+  resume(): void;
   dispose(): void;
 }
 
-function mapForgeError(error: ForgeError): SyncError {
+export function mapForgeError(error: ForgeError): SyncError {
   switch (error.kind) {
     case "Unauthorized":
       return { kind: "unauthorized" };
@@ -300,6 +314,38 @@ function syncedNoteAt(
   return node?.kind === "note" ? node : undefined;
 }
 
+const MAX_KEY_BOUND_FILES = 8;
+
+// Folder markers first: an adapter can guard with one without reading it.
+function keyBoundFilesOf(synced: SyncedState): KeyBoundFile[] {
+  const folders = new Set<string>();
+  const notes: KeyBoundFile[] = [];
+  function walk(folder: FolderNode): void {
+    for (const child of folder.children) {
+      if (child.kind === "folder") {
+        folders.add(child.storedPath);
+        walk(child);
+      } else if (notes.length < MAX_KEY_BOUND_FILES) {
+        notes.push({ path: child.storedPath, blobSha: child.blobSha });
+      }
+    }
+  }
+  walk(synced.tree.root);
+  const markers: KeyBoundFile[] = [];
+  const suffix = `/${FOLDER_MARKER}`;
+  for (const entry of synced.listing) {
+    if (markers.length >= MAX_KEY_BOUND_FILES) break;
+    if (
+      entry.type === "blob" &&
+      entry.path.endsWith(suffix) &&
+      folders.has(entry.path.slice(0, -suffix.length))
+    ) {
+      markers.push({ path: entry.path, blobSha: entry.sha });
+    }
+  }
+  return [...markers, ...notes].slice(0, MAX_KEY_BOUND_FILES);
+}
+
 const EMPTY_CHANGES: ChangeSet = [];
 const EMPTY_CONFLICTS: readonly HeldConflict[] = [];
 
@@ -324,6 +370,7 @@ const INITIAL_STATE: SyncEngineState = {
   stopped: null,
   importing: false,
   atomicBlocked: null,
+  suspended: false,
 };
 
 const KEY_CHANGED: SyncError = { kind: "keyChanged" };
@@ -349,6 +396,7 @@ export function createSyncEngine(options: {
   const subscribers = new Set<(state: SyncEngineState) => void>();
   let disposed = false;
   let stopped = false;
+  let suspended = false;
   // The config blob last verified against `keyring`; every loaded head is
   // checked against it so no commit is ever based on a re-keyed tree.
   let verifiedConfigSha: string | null = null;
@@ -504,7 +552,8 @@ export function createSyncEngine(options: {
     await verifyConfig(listing);
     const tree = await buildNoteTree(listing, keyring);
     const trash = await buildTrashIndex(listing, keyring);
-    return { head, listing, tree, trash };
+    const undecryptableFiles = await countUndecryptableFiles(listing, keyring);
+    return { head, listing, tree, trash, undecryptableFiles };
   }
 
   // ---- Open note ----
@@ -931,7 +980,7 @@ export function createSyncEngine(options: {
   // Waits (back-off or rate budget) are only ended by their own timer,
   // retryNow() or flush(); other triggers are ignored.
   function triggerSave(endWait = false): Promise<void> {
-    if (disposed || stopped) return Promise.resolve();
+    if (disposed || stopped || suspended) return Promise.resolve();
     if (saveLoop !== null) {
       saveAgain = true;
       return saveLoop;
@@ -1016,6 +1065,7 @@ export function createSyncEngine(options: {
           parent: attemptSynced.head,
           changes: encoded.changes,
           message: encoded.message,
+          keyBoundFiles: keyBoundFilesOf(attemptSynced),
           ...(atomicAttempt ? { atomic: true } : {}),
         });
 
@@ -1377,7 +1427,7 @@ export function createSyncEngine(options: {
   }
 
   function refresh(): Promise<void> {
-    if (disposed || stopped) return Promise.resolve();
+    if (disposed || stopped || suspended) return Promise.resolve();
     if (refreshInFlight !== null) return refreshInFlight;
 
     const promise = doRefresh().finally(() => {
@@ -1433,7 +1483,7 @@ export function createSyncEngine(options: {
   // ---- Commands ----
 
   function editNote(path: NotePath, content: string): void {
-    if (disposed || state.workingTree === null) return;
+    if (disposed || suspended || state.workingTree === null) return;
     const node = findWorkingNode(state.workingTree, path);
     if (node?.kind !== "note") return;
 
@@ -1511,7 +1561,7 @@ export function createSyncEngine(options: {
     parent: NotePath,
     name: string,
   ): StructureResult {
-    if (disposed) return failure({ kind: "notFound" });
+    if (disposed || suspended) return failure({ kind: "notFound" });
     const folder = workingFolderAt(parent);
     if (folder === undefined) return failure({ kind: "notFound" });
     const validation = validateName(name, childNames(folder));
@@ -1528,7 +1578,12 @@ export function createSyncEngine(options: {
   }
 
   function rename(path: NotePath, newName: string): StructureResult {
-    if (disposed || state.workingTree === null || path.length === 0) {
+    if (
+      disposed ||
+      suspended ||
+      state.workingTree === null ||
+      path.length === 0
+    ) {
       return failure({ kind: "notFound" });
     }
     const node = findWorkingNode(state.workingTree, path);
@@ -1553,7 +1608,12 @@ export function createSyncEngine(options: {
   }
 
   function move(path: NotePath, newParent: NotePath): StructureResult {
-    if (disposed || state.workingTree === null || path.length === 0) {
+    if (
+      disposed ||
+      suspended ||
+      state.workingTree === null ||
+      path.length === 0
+    ) {
       return failure({ kind: "notFound" });
     }
     const node = findWorkingNode(state.workingTree, path);
@@ -1582,7 +1642,12 @@ export function createSyncEngine(options: {
   }
 
   function deleteItem(path: NotePath): StructureResult {
-    if (disposed || state.workingTree === null || path.length === 0) {
+    if (
+      disposed ||
+      suspended ||
+      state.workingTree === null ||
+      path.length === 0
+    ) {
       return failure({ kind: "notFound" });
     }
     const node = findWorkingNode(state.workingTree, path);
@@ -1604,7 +1669,9 @@ export function createSyncEngine(options: {
   // Puts a just-trashed item back where it was. A trash change that has not
   // left the pending queue is dropped, leaving no trace in the history.
   function undoTrash(entryId: string): StructureResult {
-    if (disposed || state.trash === null) return failure({ kind: "notFound" });
+    if (disposed || suspended || state.trash === null) {
+      return failure({ kind: "notFound" });
+    }
     const entry = findWorkingTrashEntry(state.trash, entryId);
     if (
       entry === undefined ||
@@ -1684,7 +1751,9 @@ export function createSyncEngine(options: {
     subPath: NotePath,
     newParent: NotePath,
   ): StructureResult {
-    if (disposed || state.trash === null) return failure({ kind: "notFound" });
+    if (disposed || suspended || state.trash === null) {
+      return failure({ kind: "notFound" });
+    }
     const entry = findWorkingTrashEntry(state.trash, entryId);
     if (
       entry === undefined ||
@@ -1713,7 +1782,7 @@ export function createSyncEngine(options: {
   }
 
   function purge(entryIds: readonly string[]): void {
-    if (disposed || state.trash === null) return;
+    if (disposed || suspended || state.trash === null) return;
     const trash = state.trash;
     const known = entryIds.filter(
       (id) => findWorkingTrashEntry(trash, id) !== undefined,
@@ -1737,7 +1806,7 @@ export function createSyncEngine(options: {
   // Best-effort startup housekeeping: at most one bounded purge commit per
   // engine, only while the rate budget has room to spare.
   function purgeExpiredTrash(): void {
-    if (disposed || stopped || purgeAttempted) return;
+    if (disposed || stopped || suspended || purgeAttempted) return;
     purgeAttempted = true;
     const { synced, trash } = state;
     if (synced === null || trash === null || state.refresh.lastError !== null) {
@@ -1795,7 +1864,7 @@ export function createSyncEngine(options: {
     resolution: ConflictResolution,
   ): void {
     const conflict = conflictAt(path);
-    if (disposed || conflict === undefined) return;
+    if (disposed || suspended || conflict === undefined) return;
 
     switch (resolution) {
       case "keepMine":
@@ -1827,7 +1896,7 @@ export function createSyncEngine(options: {
   }
 
   async function importChanges(changes: ChangeSet): Promise<ImportResult> {
-    if (disposed || stopped || state.synced === null) {
+    if (disposed || stopped || suspended || state.synced === null) {
       return { ok: false, reason: "unavailable" };
     }
     if (hasLocalWork() || saveLoop !== null) {
@@ -1848,6 +1917,32 @@ export function createSyncEngine(options: {
     autosave.cancel();
     void triggerSave(true);
     return { ok: true };
+  }
+
+  function suspend(): boolean {
+    if (
+      disposed ||
+      stopped ||
+      suspended ||
+      state.synced === null ||
+      saveLoop !== null ||
+      hasLocalWork() ||
+      state.conflicts.length > 0 ||
+      state.atomicBlocked !== null
+    ) {
+      return false;
+    }
+    suspended = true;
+    autosave.cancel();
+    cancelRetry();
+    update((current) => ({ ...current, suspended: true }));
+    return true;
+  }
+
+  function resume(): void {
+    if (!suspended) return;
+    suspended = false;
+    update((current) => ({ ...current, suspended: false }));
   }
 
   function dismissNotice(id: number): void {
@@ -1898,6 +1993,8 @@ export function createSyncEngine(options: {
     atomicCommitSupport,
     enableAtomicCommits,
     saveImportWithoutAtomic,
+    suspend,
+    resume,
     dispose,
   };
 }

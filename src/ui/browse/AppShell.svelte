@@ -28,6 +28,12 @@
     IMPORT_RETRYING_MESSAGE,
   } from "../import/import-messages";
   import type { ImportOutcome } from "../import/import-outcome";
+  import type { Keyring } from "../../crypto/keyring";
+  import type {
+    LandedCheck,
+    PassphraseChange,
+  } from "../../rekey/change-passphrase";
+  import ChangePassphraseDialog from "../passphrase/ChangePassphraseDialog.svelte";
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
   import { actionIcons, commandIcons } from "./action-icons";
   import CommandMenu from "./CommandMenu.svelte";
@@ -53,17 +59,29 @@
   import Wordmark from "../wordmark/Wordmark.svelte";
   import type { Command, RowAction } from "./row-menu-types";
   import { describeStructureError } from "./structure-messages";
-  import { describeSyncError } from "./sync-messages";
+  import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
     engine: SyncEngine;
     repoLabel: string;
     repoUrl: string;
     forgeName: string;
+    passphraseChange: PassphraseChange;
+    initialMessage?: string | null;
+    onPassphraseChanged: (keyring: Keyring, check: LandedCheck) => void;
     onLogOut: () => void;
   }
 
-  const { engine, repoLabel, repoUrl, forgeName, onLogOut }: Props = $props();
+  const {
+    engine,
+    repoLabel,
+    repoUrl,
+    forgeName,
+    passphraseChange,
+    initialMessage = null,
+    onPassphraseChanged,
+    onLogOut,
+  }: Props = $props();
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
   let mobileView = $state<"tree" | "note">("tree");
@@ -151,6 +169,12 @@
   } | null>(null);
   let importMessages = $state<readonly ToastMessage[]>([]);
   let atomicBlockedOpen = $state(false);
+  let changePassphraseOpen = $state(false);
+  let sessionMessages = $state<readonly ToastMessage[]>(
+    untrack(() =>
+      initialMessage === null ? [] : [{ id: -1, text: initialMessage }],
+    ),
+  );
   let atomicBlockedSeen = false;
 
   $effect(() => {
@@ -181,6 +205,16 @@
       disabled:
         tree === null || engineState.stopped !== null || importing || reading,
       run: () => importInput?.click(),
+    },
+    {
+      id: "change-passphrase",
+      label: "Change passphrase",
+      icon: commandIcons.passphrase,
+      disabled: tree === null || engineState.stopped !== null || importing,
+      run: () => {
+        leaveDraft();
+        changePassphraseOpen = true;
+      },
     },
   ]);
 
@@ -621,6 +655,7 @@
     exportMessages = exportMessages.filter((message) => message.id !== id);
     trashMessages = trashMessages.filter((message) => message.id !== id);
     importMessages = importMessages.filter((message) => message.id !== id);
+    sessionMessages = sessionMessages.filter((message) => message.id !== id);
   }
 
   function openTrash(): void {
@@ -761,6 +796,11 @@
       onAction={handleTreeAction}
       onNewNote={handleHeaderNewNote}
     />
+    {#if (engineState.synced?.undecryptableFiles ?? 0) > 0}
+      <p class="field-hint hidden-files" role="note">
+        {describeUndecryptableFiles(engineState.synced?.undecryptableFiles ?? 0)}
+      </p>
+    {/if}
     {#if trashEntries.length > 0}
       <div class="trash-slot">
         <button
@@ -848,6 +888,7 @@
     ...exportMessages,
     ...trashMessages,
     ...importMessages,
+    ...sessionMessages,
   ]}
   onDismiss={(id) => engine.dismissNotice(id)}
   onDismissMessage={dismissMessage}
@@ -933,6 +974,17 @@
     onEnable={handleEnableAtomic}
     onSaveWithoutAtomic={() => engine.saveImportWithoutAtomic()}
     onClose={() => (atomicBlockedOpen = false)}
+  />
+{/if}
+
+{#if changePassphraseOpen}
+  <ChangePassphraseDialog
+    open={true}
+    {forgeName}
+    change={passphraseChange}
+    onChanged={onPassphraseChanged}
+    onLogOut={handleLogOut}
+    onClose={() => (changePassphraseOpen = false)}
   />
 {/if}
 
@@ -1025,6 +1077,13 @@
     padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
     border-top: var(--hairline) solid var(--color-border);
     flex-shrink: 0;
+  }
+
+  .hidden-files {
+    flex-shrink: 0;
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    border-top: var(--hairline) solid var(--color-border);
   }
 
   .trash-slot {

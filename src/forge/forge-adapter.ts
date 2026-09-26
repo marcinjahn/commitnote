@@ -29,6 +29,18 @@ export interface CommitRequest {
    * use a cheaper path with a narrow race (see the GitLab adapter).
    */
   readonly atomic?: boolean;
+  /**
+   * Files of `parent` stored under the session's key (notes, folder
+   * markers). A passphrase change renames all of them, so an adapter whose
+   * plain commit is not a compare-and-swap makes the commit fail if the one
+   * it picks is gone, instead of landing old-key files on a re-keyed tree.
+   */
+  readonly keyBoundFiles?: readonly KeyBoundFile[];
+}
+
+export interface KeyBoundFile {
+  readonly path: string;
+  readonly blobSha: string;
 }
 
 export type CommitResult =

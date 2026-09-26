@@ -24,6 +24,7 @@ const COMMITS = { method: "POST", pathPattern: /\/repository\/commits$/ };
 const CREATE_MR = { method: "POST", pathPattern: /\/merge_requests$/ };
 const MERGE = { method: "PUT", pathPattern: /\/merge_requests\/\d+\/merge$/ };
 const GET_MR = { method: "GET", pathPattern: /\/merge_requests\/\d+$/ };
+const MERGE_BASE = { method: "GET", pathPattern: /\/repository\/merge_base\?/ };
 
 let server: SetupServer;
 
@@ -411,15 +412,27 @@ describe("GitLabAdapter atomic commits", () => {
       expect(mock.git.getCommit(head)?.parent).toBe(parent);
     });
 
-    it("rejects with Network when the merge outcome cannot be read back", async () => {
+    it("reads main to settle a merge whose response and status were lost", async () => {
       const mock = useMock();
       const parent = await seed(mock);
       mock.dropNextResponse(MERGE);
       mock.failNext(GET_MR, { network: true });
 
+      const result = await makeAdapter().adapter.commit(atomicRequest(parent));
+
+      expect(result).toEqual({ kind: "ok", head: mock.git.getRef(MAIN_BRANCH) });
+    });
+
+    it("rejects with Network when the merge outcome cannot be read back at all", async () => {
+      const mock = useMock();
+      const parent = await seed(mock);
+      mock.dropNextResponse(MERGE);
+      mock.failNext(GET_MR, { network: true });
+      mock.failNext(MERGE_BASE, { network: true });
+
       await expect(
         makeAdapter().adapter.commit(atomicRequest(parent)),
-      ).rejects.toMatchObject({ kind: "Network" });
+      ).rejects.toMatchObject({ kind: "Network", mainUnchanged: false });
     });
   });
 

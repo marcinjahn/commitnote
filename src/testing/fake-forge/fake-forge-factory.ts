@@ -12,6 +12,7 @@ import { FakeForgeAdapter } from "../../forge/fake/fake-forge-adapter";
 import {
   commitFiles,
   InMemoryGitRepo,
+  type GitObjectsSnapshot,
 } from "../../forge/fake/in-memory-git-repo";
 import type { ForgeAdapter } from "../../forge/forge-adapter";
 import type {
@@ -68,6 +69,13 @@ export interface FakeForgeControls {
    * change on another device would.
    */
   changeRepoKey(repoKey: string): Promise<void>;
+  /** Objects and main head of `repoKey`, to hand to another browser context. */
+  exportRepo(repoKey: string): string;
+  /**
+   * Fast-forward `repoKey` to a state exported by another browser context,
+   * as if that context's commits were pushed from another device.
+   */
+  adoptRepo(repoKey: string, exported: string): void;
   /**
    * Make the next call of `operation` on that fixture fail with a
    * ForgeError of `kind` (or "stale" for commit).
@@ -244,6 +252,22 @@ export async function createFakeForge(options?: {
         ],
         SAVE_SUBJECT,
       );
+    },
+    exportRepo(repoKey) {
+      const { repo } = fixtureAdapter(repoKey);
+      return JSON.stringify({
+        objects: repo.exportObjects(),
+        main: repo.getRef(MAIN_BRANCH) ?? null,
+      });
+    },
+    adoptRepo(repoKey, exported) {
+      const { repo } = fixtureAdapter(repoKey);
+      const { objects, main } = JSON.parse(exported) as {
+        objects: GitObjectsSnapshot;
+        main: string | null;
+      };
+      repo.importObjects(objects);
+      if (main !== null) repo.setRef(MAIN_BRANCH, main);
     },
     failNext(repoKey, operation, kind) {
       const adapter = fixtureAdapter(repoKey);

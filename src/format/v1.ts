@@ -43,6 +43,8 @@ export const KDF_LIMITS = {
 
 export const SAVE_SUBJECT = "commitnote: save";
 export const INITIALIZE_SUBJECT = "commitnote: initialize";
+export const CHANGE_PASSPHRASE_SUBJECT = "commitnote: change passphrase";
+export const UNDO_OUTDATED_SAVE_SUBJECT = "commitnote: undo save with outdated passphrase";
 
 export const TRAILER = {
   format: "Commitnote-Format",

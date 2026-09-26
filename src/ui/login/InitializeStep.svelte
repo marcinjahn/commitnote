@@ -27,7 +27,7 @@
   <p class="notice">
     This repository is empty. commitnote will make it a notes repo by adding
     one configuration file. Your passphrase encrypts everything and cannot be
-    changed or recovered later.
+    recovered if you forget it.
   </p>
 
   <form onsubmit={handleSubmit}>
