@@ -13,9 +13,9 @@ describe("describeSyncState", () => {
     expect(describeSyncState(state)).toBe("Synced");
   });
 
-  it("describes syncing", () => {
+  it("describes saving", () => {
     const state: SyncState = { kind: "syncing" };
-    expect(describeSyncState(state)).toBe("Syncing");
+    expect(describeSyncState(state)).toBe("Saving");
   });
 
   it("describes out-of-sync pending", () => {

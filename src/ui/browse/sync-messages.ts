@@ -9,7 +9,7 @@ export function describeSyncState(state: SyncState): string {
     case "synced":
       return "Synced";
     case "syncing":
-      return "Syncing";
+      return "Saving";
     case "out-of-sync":
       switch (state.reason) {
         case "pending":

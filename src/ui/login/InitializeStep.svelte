@@ -102,7 +102,6 @@
   .step-progress progress {
     width: 100%;
     height: var(--space-1);
-    accent-color: var(--color-ink);
   }
 
   .initialize-actions {
