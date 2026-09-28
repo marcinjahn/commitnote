@@ -1,4 +1,12 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { setupServer } from "msw/node";
 import type { SetupServer } from "msw/node";
 import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
@@ -310,6 +318,31 @@ describe("GitHubAdapter", () => {
 
     for (const request of mock.requests) {
       expect(request.path).not.toContain(TOKEN);
+    }
+  });
+
+  it("calls the default fetch without the adapter as receiver", async () => {
+    const mock = useMock();
+    const head = await seedConfig(mock);
+
+    const original = globalThis.fetch;
+    const receiverCheckingFetch = function (
+      this: unknown,
+      input: Parameters<typeof fetch>[0],
+      init: Parameters<typeof fetch>[1],
+    ): ReturnType<typeof fetch> {
+      if (this !== undefined && this !== globalThis) {
+        throw new TypeError("Illegal invocation");
+      }
+      return original(input, init);
+    };
+    vi.stubGlobal("fetch", receiverCheckingFetch);
+
+    try {
+      const { adapter } = makeAdapter();
+      expect(await adapter.getHead()).toBe(head);
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 

@@ -65,7 +65,11 @@ class GitHubAdapter implements ForgeAdapter {
     this.repoPath = encodeURIComponent(coordinates.repo);
     this.accessToken = options.accessToken;
     this.onContentCreatingRequest = options.onContentCreatingRequest;
-    this.fetchImpl = options.fetch ?? fetch;
+    // Browsers reject `fetch` called with a non-Window receiver (Illegal
+    // invocation), so the default resolves and calls globalThis.fetch
+    // unbound, at call time.
+    this.fetchImpl =
+      options.fetch ?? ((input, init) => globalThis.fetch(input, init));
     this.now = options.now ?? Date.now;
   }
 
