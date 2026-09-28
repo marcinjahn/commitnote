@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { installRefreshTriggers } from "./app/refresh-triggers";
+  import { installLifecycleTriggers } from "./app/lifecycle-triggers";
   import type {
     LoginError,
     LoginInput,
@@ -13,6 +14,7 @@
   import { createSessionStore } from "./session/session-store";
   import type { Session } from "./session/session";
   import { systemClock } from "./sync/clock";
+  import { createRateBudget } from "./sync/rate-budget";
   import { createSyncEngine } from "./sync/sync-engine";
   import type { SyncEngine } from "./sync/sync-engine";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
@@ -39,13 +41,24 @@
       };
 
   const store = createSessionStore();
+  const rateBudget = createRateBudget(systemClock);
+
+  const budgetedCreateAdapter: ForgeAdapterFactory = (coordinates, options) =>
+    createAdapter(coordinates, {
+      ...options,
+      onContentCreatingRequest: (request) => {
+        rateBudget.record();
+        options.onContentCreatingRequest?.(request);
+      },
+    });
 
   let phase = $state<Phase>({ kind: "restoring" });
   let loginKey = $state(0);
   let uninstallRefreshTriggers: (() => void) | null = null;
+  let uninstallLifecycleTriggers: (() => void) | null = null;
 
   function loginDeps() {
-    return { createAdapter };
+    return { createAdapter: budgetedCreateAdapter };
   }
 
   function showLogin(initialError: LoginError | null): void {
@@ -68,10 +81,19 @@
       adapter,
       keyring: session.keyring,
       clock: systemClock,
+      rateBudget,
     });
     uninstallRefreshTriggers = installRefreshTriggers({ window, document }, () => {
       void engine.refresh();
     });
+    uninstallLifecycleTriggers = installLifecycleTriggers(
+      { window, document },
+      {
+        flush: () => void engine.flush(),
+        retryNow: () => engine.retryNow(),
+        hasUnsaved: () => engine.getState().syncStates.hasUnsaved,
+      },
+    );
 
     phase = {
       kind: "app",
@@ -93,6 +115,8 @@
     if (phase.kind !== "app") return;
     uninstallRefreshTriggers?.();
     uninstallRefreshTriggers = null;
+    uninstallLifecycleTriggers?.();
+    uninstallLifecycleTriggers = null;
     phase.engine.dispose();
     await store.clear();
     showLogin(null);
