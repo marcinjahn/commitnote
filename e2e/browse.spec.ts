@@ -1,0 +1,147 @@
+import { test, expect } from "@playwright/test";
+import { logIn, expectTree } from "./helpers";
+
+const NOTES_REPO = "https://github.com/sample/notes";
+const NOTES_PASSPHRASE = "sample notes repo passphrase";
+
+test("root notes list in order", async ({ page }) => {
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  const rows = page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
+  await expect(rows).toHaveText([
+    "Empty folder",
+    "Journal",
+    "Projects",
+    "Welcome",
+    "Zażółć gęślą jaźń",
+  ]);
+});
+
+test("expanding and collapsing folders", async ({ page }) => {
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  await expect(page.getByRole("treeitem", { name: "git-notes" })).toHaveCount(
+    0,
+  );
+  await page.getByRole("treeitem", { name: "Projects" }).click();
+  await expect(page.getByRole("treeitem", { name: "git-notes" })).toBeVisible();
+
+  await expect(page.getByRole("treeitem", { name: "Ideas" })).toHaveCount(0);
+  await page.getByRole("treeitem", { name: "git-notes" }).click();
+  await expect(page.getByRole("treeitem", { name: "Ideas" })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: "Roadmap" })).toBeVisible();
+
+  await page.getByRole("treeitem", { name: "git-notes" }).click();
+  await expect(page.getByRole("treeitem", { name: "Ideas" })).toHaveCount(0);
+  await expect(page.getByRole("treeitem", { name: "Roadmap" })).toHaveCount(0);
+});
+
+test("opening the Welcome note", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  await page.getByRole("treeitem", { name: "Welcome" }).click();
+
+  const article = page.getByRole("article", { name: "Reading view" });
+  await expect(
+    article.getByRole("heading", { level: 1, name: "Welcome" }),
+  ).toBeVisible();
+  await expect(article.locator("table")).toBeVisible();
+
+  const link = article.getByRole("link", { name: "git-notes project" });
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", /noopener/);
+
+  // On mobile, opening a note hides the tree entirely (covered by its own
+  // test below), so the row can't be inspected until the tree is visible
+  // again.
+  if (testInfo.project.name === "desktop") {
+    await expect(
+      page.getByRole("treeitem", { name: "Welcome" }),
+    ).toHaveAttribute("aria-selected", "true");
+  }
+});
+
+test("tree and reading view are both visible on desktop", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop-only layout");
+
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  await page.getByRole("treeitem", { name: "Welcome" }).click();
+
+  await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
+  await expect(
+    page.getByRole("article", { name: "Reading view" }),
+  ).toBeVisible();
+});
+
+test("opening a note hides the tree on mobile", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "mobile-only layout");
+
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  await page.getByRole("treeitem", { name: "Welcome" }).click();
+  await expect(
+    page.getByRole("article", { name: "Reading view" }),
+  ).toBeVisible();
+  await expect(page.getByRole("tree", { name: "Notes" })).toBeHidden();
+
+  await page.getByRole("button", { name: "Back to notes" }).click();
+  await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: "Welcome" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+
+  const rows = await page.getByRole("treeitem").all();
+  expect(rows.length).toBeGreaterThan(0);
+  for (const row of rows) {
+    const box = await row.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test("refresh keeps the tree visible", async ({ page }) => {
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
+});
+
+test("only the page's own origin is contacted", async ({ page }) => {
+  const origins = new Set<string>();
+  page.on("request", (request) => {
+    origins.add(new URL(request.url()).origin);
+  });
+
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  await page.getByRole("treeitem", { name: "Projects" }).click();
+  await page.getByRole("treeitem", { name: "git-notes" }).click();
+  await page.getByRole("treeitem", { name: "Ideas" }).click();
+  await expect(
+    page.getByRole("article", { name: "Reading view" }).getByRole("heading", {
+      level: 1,
+      name: "Ideas",
+    }),
+  ).toBeVisible();
+
+  expect([...origins]).toEqual(["http://localhost:4173"]);
+});
