@@ -2,9 +2,9 @@
   import { untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
   import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
+  import NotePane from "../note/NotePane.svelte";
   import NoteHeader from "./NoteHeader.svelte";
   import NoteTree from "./NoteTree.svelte";
-  import ReadingView from "./ReadingView.svelte";
   import { describeSyncError } from "./sync-messages";
 
   interface Props {
@@ -17,11 +17,26 @@
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
   let mobileView = $state<"tree" | "note">("tree");
+  let viewMode = $state<"editor" | "reading">("editor");
 
   $effect(() => {
     return engine.subscribe((next) => {
       engineState = next;
     });
+  });
+
+  $effect(() => {
+    function handleKeydown(event: KeyboardEvent): void {
+      if (engineState.openNote === null) return;
+      const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
+      const modifierPressed = isMac ? event.metaKey : event.ctrlKey;
+      if (!modifierPressed || event.key.toLowerCase() !== "e") return;
+      event.preventDefault();
+      handleToggleView();
+    }
+
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
   });
 
   const tree = $derived(engineState.workingTree);
@@ -44,6 +59,10 @@
 
   function handleRefresh(): void {
     void engine.refresh();
+  }
+
+  function handleToggleView(): void {
+    viewMode = viewMode === "editor" ? "reading" : "editor";
   }
 </script>
 
@@ -102,25 +121,13 @@
         name={noteName(engineState.openNote.path)}
         {refreshing}
         syncState={engineState.syncStates.stateOf(engineState.openNote.path)}
+        {viewMode}
+        onToggleView={handleToggleView}
         onRefresh={handleRefresh}
         onBack={handleBack}
       />
     {/if}
-    <div class="note-content">
-      {#if engineState.openNote === null}
-        <p class="note-placeholder">Select a note to read it.</p>
-      {:else if engineState.openNote.kind === "loading"}
-        <p class="note-status">Loading…</p>
-      {:else if engineState.openNote.kind === "loaded"}
-        <ReadingView content={engineState.openNote.content} />
-      {:else if engineState.openNote.kind === "missing"}
-        <p class="note-status">This note no longer exists.</p>
-      {:else if engineState.openNote.kind === "failed"}
-        <p role="alert" class="alert-error">
-          {describeSyncError(engineState.openNote.error)}
-        </p>
-      {/if}
-    </div>
+    <NotePane {engine} openNote={engineState.openNote} {viewMode} />
   </section>
 </div>
 
@@ -146,14 +153,6 @@
   .sidebar,
   .note-pane {
     overflow: hidden;
-  }
-
-  .note-content {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
   }
 
   .tree-header {
@@ -182,21 +181,6 @@
 
   .refresh-icon.spinning {
     animation: spin 0.8s linear infinite;
-  }
-
-  .note-placeholder {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-text-muted);
-    padding: var(--space-4);
-    text-align: center;
-  }
-
-  .note-status {
-    padding: var(--space-3);
-    color: var(--color-text-muted);
   }
 
   .alert-error {
