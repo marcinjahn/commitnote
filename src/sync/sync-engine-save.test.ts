@@ -745,7 +745,7 @@ describe("sync engine saves", () => {
     expect(findNode(tree, ["Work", "git-notes", "Roadmap"])?.kind).toBe("note");
   });
 
-  it("keeps changes after a failed save and commits them once on the next edit", async () => {
+  it("keeps changes after a failed save and commits them once on the retry", async () => {
     const h = await setup();
     const start = await h.fake.getHead();
     h.fake.failNext("commit", new ForgeError("Network"));
@@ -758,7 +758,7 @@ describe("sync engine saves", () => {
     expect(state.save).toEqual({
       kind: "waiting",
       reason: "failed",
-      retryAt: null,
+      retryAt: h.clock.now() + 5_000,
       error: { kind: "network" },
     });
     expect(state.syncStates.stateOf(WELCOME)).toEqual({
@@ -769,7 +769,7 @@ describe("sync engine saves", () => {
     expect(state.inFlight).toEqual([]);
 
     h.engine.editNote(IDEAS, "second");
-    h.clock.advance(2_000);
+    h.clock.advance(5_000);
     await waitIdle(h.engine);
 
     state = h.engine.getState();
