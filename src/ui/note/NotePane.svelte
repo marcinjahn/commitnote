@@ -2,10 +2,16 @@
   import { untrack } from "svelte";
   import { notePathEquals } from "../../changes/change";
   import { livePreview } from "../../editor/live-preview";
-  import type { OpenNoteState, SyncEngine, SyncEngineState } from "../../sync/sync-engine";
+  import type {
+    HeldConflict,
+    OpenNoteState,
+    SyncEngine,
+    SyncEngineState,
+  } from "../../sync/sync-engine";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
   import ReadingView from "../browse/ReadingView.svelte";
   import { describeSyncError } from "../browse/sync-messages";
+  import ConflictView from "./ConflictView.svelte";
 
   interface Props {
     engine: SyncEngine;
@@ -25,9 +31,10 @@
     });
   });
 
-  const conflicted = $derived(
-    openNote?.kind === "loaded" &&
-      engineState.conflicts.some((conflict) => notePathEquals(conflict.path, openNote.path)),
+  const conflict = $derived<HeldConflict | undefined>(
+    openNote?.kind === "loaded"
+      ? engineState.conflicts.find((held) => notePathEquals(held.path, openNote.path))
+      : undefined,
   );
 </script>
 
@@ -37,7 +44,9 @@
   {:else if openNote.kind === "loading"}
     <p class="note-status">Loading…</p>
   {:else if openNote.kind === "loaded"}
-    {#if conflicted || viewMode === "reading"}
+    {#if conflict !== undefined}
+      <ConflictView {engine} conflict={conflict} />
+    {:else if viewMode === "reading"}
       <ReadingView content={openNote.content} />
     {:else}
       <MarkdownEditor
