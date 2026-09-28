@@ -545,6 +545,57 @@ const cases: MergeCase[] = [
       expect(result.conflicts).toEqual([]);
     },
   },
+  {
+    name: "holds back a folder delete containing a conflicted note",
+    base: { notes: { "f/n.md": BASE_TEXT } },
+    remote: { notes: { "f/n.md": THEIRS_OVERLAP } },
+    changeSet: [updateNote("f/n.md", MINE_TEXT), deleteFolder("f"), FILLER],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+      expect(result.conflicts).toHaveLength(1);
+      const [conflict] = result.conflicts;
+      expect(conflict.path).toEqual(["f", "n.md"]);
+      expect(conflict.mine).toBe(MINE_TEXT);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "holds back a folder rename containing a conflicted note, and later edits follow the redirect",
+    base: { notes: { "f/n.md": BASE_TEXT } },
+    remote: { notes: { "f/n.md": THEIRS_OVERLAP } },
+    changeSet: [
+      updateNote("f/n.md", MINE_TEXT),
+      renameFolder("f", "g"),
+      updateNote("g/n.md", `${MINE_TEXT} v2`),
+      FILLER,
+    ],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+      expect(result.conflicts).toHaveLength(1);
+      const [conflict] = result.conflicts;
+      expect(conflict.path).toEqual(["f", "n.md"]);
+      expect(conflict.mine).toBe(`${MINE_TEXT} v2`);
+    },
+  },
+  {
+    name: "re-merges a note create landing on a held note's path",
+    base: {},
+    remote: { notes: { "n.md": "theirs" } },
+    changeSet: [
+      createNote("n.md", "mine"),
+      deleteNote("n.md"),
+      createNote("n.md", "mine again"),
+      FILLER,
+    ],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+      expect(result.conflicts).toHaveLength(1);
+      const [conflict] = result.conflicts;
+      expect(conflict.path).toEqual(["n.md"]);
+      expect(conflict.mine).toBe("mine again");
+      expect(conflict.theirs).toBe("theirs");
+    },
+  },
 ];
 
 describe("mergeChangeSet", () => {
