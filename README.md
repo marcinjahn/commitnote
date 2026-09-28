@@ -80,7 +80,50 @@ access to that browser profile can then read your notes. The passphrase itself i
 Without Remember me, only the repo URL is kept, so you re-enter the access token and passphrase
 next time.
 
+## Editing and saving
+
+- Autosave saves 2 s after you stop typing, at least every 30 s while you keep typing, and
+  immediately on structure changes, note switch, tab hide, and logout.
+- The sync state is synced, syncing, or out of sync, with reason pending (waiting to save), failed
+  (retrying with back-off), or conflict.
+- A conflicting change opens the conflict view, where you choose Keep mine, Keep theirs, or Edit
+  merged.
+- Notices report failures, retries, and other sync events as they happen.
+
 ## Production build
 
 `npm run build` writes plain static files to `dist/`. The build ships with a strict Content
 Security Policy applied via a `<meta>` tag; it is not present in the dev server.
+
+## Manual live check
+
+The automated suite runs against a fake forge with no network access. This checklist runs the real
+app against a real GitHub repository and a real fine-grained access token, to confirm CORS and
+GitHub API behaviour the mocks cannot. It takes about 15 minutes.
+
+1. Create a throwaway **private** GitHub repository. Either leave it empty, or push
+   `/home/mnj/code/private/git-notes-sample` to it: add the new repo as a remote in that local
+   repository and push its `main` branch (the exact jj or git commands are left to you, since that
+   repository is outside this project).
+2. Create a fine-grained access token scoped to only that repository, with Contents read and
+   write, and a short expiry.
+3. Run `npm run build` and `npm run preview`, and open the `localhost` URL.
+4. Log in: initialize the repo if it's empty, or use the sample passphrase from Test mode above if
+   you pushed the sample notes repo.
+5. Create a folder and a note, type, and watch the sync state go from out of sync to syncing to
+   synced.
+6. On GitHub, check the new commit: subject `git-notes: save`, trailers present, no plaintext
+   names or content anywhere in the tree or commit messages, and linear history on `main`.
+7. Rename, move and delete a note, then check the trailers on those commits.
+8. Open the app in a second browser profile, edit different parts of the same note in both, and
+   check that they merge cleanly. Then edit the same line in both, and resolve the conflict.
+9. Try a read-only token and check that login is refused.
+10. Revoke the token while logged in, make an edit, see the access-token dialog, enter a new
+    token, and check that the edit is saved.
+11. Go offline in dev tools, make an edit, come back online, and check that the save resumes.
+12. Check the browser dev tools network tab: only requests to `api.github.com` and the page's own
+    origin.
+13. Close the tab with a pending edit and check the browser's own "Leave site?" warning.
+14. Log out and check that only the repo URL remains in application storage, unless Remember me
+    was ticked.
+15. Delete the throwaway repository and the token afterwards.
