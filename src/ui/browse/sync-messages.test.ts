@@ -1,6 +1,38 @@
 import { describe, expect, it } from "vitest";
 import type { SyncError } from "../../sync/sync-engine";
-import { describeSyncError } from "./sync-messages";
+import type { SyncState } from "../../sync/sync-state";
+import { describeSyncError, describeSyncState } from "./sync-messages";
+
+describe("describeSyncState", () => {
+  it("describes synced", () => {
+    const state: SyncState = { kind: "synced" };
+    expect(describeSyncState(state)).toBe("Synced");
+  });
+
+  it("describes syncing", () => {
+    const state: SyncState = { kind: "syncing" };
+    expect(describeSyncState(state)).toBe("Syncing");
+  });
+
+  it("describes out-of-sync pending", () => {
+    const state: SyncState = { kind: "out-of-sync", reason: "pending" };
+    expect(describeSyncState(state)).toBe("Out of sync: waiting to save");
+  });
+
+  it("describes out-of-sync failed", () => {
+    const state: SyncState = { kind: "out-of-sync", reason: "failed" };
+    expect(describeSyncState(state)).toBe(
+      "Out of sync: saving failed, will retry",
+    );
+  });
+
+  it("describes out-of-sync conflict", () => {
+    const state: SyncState = { kind: "out-of-sync", reason: "conflict" };
+    expect(describeSyncState(state)).toBe(
+      "Out of sync: conflict, needs your decision",
+    );
+  });
+});
 
 describe("describeSyncError", () => {
   it("describes an unauthorized error", () => {
