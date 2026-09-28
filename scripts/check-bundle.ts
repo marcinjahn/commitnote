@@ -1,7 +1,10 @@
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FAKE_FORGE_BANNER } from "../src/testing/fake-forge/fake-forge-factory";
+import {
+  FAKE_FORGE_BANNER,
+  FAKE_FORGE_CONTROLS_KEY,
+} from "../src/testing/fake-forge/fake-forge-factory";
 
 const SAMPLE_NOTES_REPO_PASSPHRASE = "sample notes repo passphrase";
 
@@ -59,6 +62,7 @@ async function main(): Promise<void> {
   const forbiddenInProd = await findForbidden(distDir, [
     FAKE_FORGE_BANNER,
     SAMPLE_NOTES_REPO_PASSPHRASE,
+    FAKE_FORGE_CONTROLS_KEY,
   ]);
   if (forbiddenInProd.length > 0) {
     for (const hit of forbiddenInProd) {
@@ -74,6 +78,17 @@ async function main(): Promise<void> {
   if (!fakeHasBanner) {
     console.error(
       `dist-fake/ does not contain the test-mode banner ("${FAKE_FORGE_BANNER}"); the check cannot prove it can detect a leak`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const fakeHasControlsKey = await fileContainsAny(fakeDistDir, [
+    FAKE_FORGE_CONTROLS_KEY,
+  ]);
+  if (!fakeHasControlsKey) {
+    console.error(
+      `dist-fake/ does not contain the test controls key ("${FAKE_FORGE_CONTROLS_KEY}"); the check cannot prove it can detect a leak`,
     );
     process.exitCode = 1;
     return;
