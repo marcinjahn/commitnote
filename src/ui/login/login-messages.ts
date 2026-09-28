@@ -1,6 +1,8 @@
 import type { LoginError, LoginStep } from "../../login/login";
 import type { RepoUrlError } from "../../repo-url/parse-repo-url";
 
+export const GENERIC_LOGIN_ERROR = "Something went wrong. Try again.";
+
 function describeRepoUrlError(error: RepoUrlError): string {
   switch (error.kind) {
     case "malformed":
