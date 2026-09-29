@@ -25,6 +25,7 @@ import { createRateBudget, type RateBudget } from "./rate-budget";
 import {
   computeSyncStates,
   hasConflictMarkers,
+  removeConflictMarkerLines,
   type SyncStates,
 } from "./sync-state";
 import {
@@ -111,11 +112,17 @@ export type EngineNotice =
       readonly notice: MergeNotice;
     }
   | { readonly id: number; readonly kind: "conflict"; readonly path: NotePath }
+  | {
+      readonly id: number;
+      readonly kind: "edited-merge-restored";
+      readonly path: NotePath;
+    }
   | { readonly id: number; readonly kind: "dropped"; readonly change: Change };
 
 type NoticeBody =
   | { readonly kind: "merge"; readonly notice: MergeNotice }
   | { readonly kind: "conflict"; readonly path: NotePath }
+  | { readonly kind: "edited-merge-restored"; readonly path: NotePath }
   | { readonly kind: "dropped"; readonly change: Change };
 
 export interface SyncEngineState {
@@ -634,18 +641,21 @@ export function createSyncEngine(options: {
       const without = state.conflicts.filter((held) => held !== conflict);
 
       if (theirs === null) {
-        const restored = hasConflictMarkers(conflict.editing ?? conflict.mine)
-          ? conflict.mine
-          : (conflict.editing ?? conflict.mine);
+        const restored =
+          conflict.editing === null
+            ? conflict.mine
+            : removeConflictMarkerLines(conflict.editing);
+        const notice: NoticeBody =
+          conflict.editing === null
+            ? {
+                kind: "merge",
+                notice: { kind: "edit-restored", path: conflict.path },
+              }
+            : { kind: "edited-merge-restored", path: conflict.path };
         update((current) => ({
           ...current,
           conflicts: without,
-          notices: notices(current.notices, [
-            {
-              kind: "merge",
-              notice: { kind: "edit-restored", path: conflict.path },
-            },
-          ]),
+          notices: notices(current.notices, [notice]),
         }));
         appendRebased({
           kind: "update-note",
