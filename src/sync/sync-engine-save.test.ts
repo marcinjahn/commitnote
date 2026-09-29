@@ -18,6 +18,7 @@ import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
 import { FOLDER_MARKER, TRAILER } from "../format/v1";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
+import { CONFLICT_MARKERS } from "../merge/merge-text";
 import { buildNoteTree, findNode, type NoteTree } from "../tree/note-tree";
 import { createTestClock } from "./testing/test-clock";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
@@ -48,19 +49,25 @@ interface Harness {
   readonly commits: CommitRequest[];
   // Makes every following commit wait until the returned release is called.
   gateCommits(): () => void;
+  // Makes every following blob read wait until the returned release is called.
+  gateReads(): () => void;
 }
 
 function wrap(
   inner: FakeForgeAdapter,
   commits: CommitRequest[],
   gate: { current: Promise<void> | null },
+  readGate: { current: Promise<void> | null },
 ): ForgeAdapter {
   return {
     inspect: () => inner.inspect(),
     initialize: (configText, message) => inner.initialize(configText, message),
     getHead: () => inner.getHead(),
     listTree: (sha) => inner.listTree(sha),
-    readBlob: (sha) => inner.readBlob(sha),
+    readBlob: async (sha) => {
+      if (readGate.current !== null) await readGate.current;
+      return inner.readBlob(sha);
+    },
     commit: async (request) => {
       commits.push(request);
       if (gate.current !== null) await gate.current;
@@ -76,9 +83,10 @@ async function setup(
   const forge = fake ?? (await createSampleNotesRepoAdapter());
   const commits: CommitRequest[] = [];
   const gate: { current: Promise<void> | null } = { current: null };
+  const readGate: { current: Promise<void> | null } = { current: null };
   const clock = createTestClock(1_000_000);
   const engine = createSyncEngine({
-    adapter: wrap(forge, commits, gate),
+    adapter: wrap(forge, commits, gate, readGate),
     keyring: engineKeyring ?? keyring,
     clock,
   });
@@ -98,7 +106,29 @@ async function setup(
       });
       return release;
     },
+    gateReads() {
+      let release!: () => void;
+      readGate.current = new Promise((resolve) => {
+        release = () => {
+          readGate.current = null;
+          resolve();
+        };
+      });
+      return release;
+    },
   };
+}
+
+function withoutTheirsSide(text: string): string {
+  const lines: string[] = [];
+  let skipping = false;
+  for (const line of text.split("\n")) {
+    if (line === CONFLICT_MARKERS.mine) continue;
+    if (line === CONFLICT_MARKERS.separator) skipping = true;
+    else if (line === CONFLICT_MARKERS.theirs) skipping = false;
+    else if (!skipping) lines.push(line);
+  }
+  return lines.join("\n");
 }
 
 async function waitIdle(engine: SyncEngine): Promise<void> {
@@ -695,11 +725,84 @@ describe("sync engine saves", () => {
       expect(h.commits).toHaveLength(commitsBefore);
       expect(h.engine.getState().pending).toEqual([]);
       expect(h.engine.getState().conflicts).toHaveLength(1);
-      expect(h.engine.getState().conflicts[0].editing).toBe(editing);
+      const after = h.engine.getState().conflicts[0].editing;
+      expect(after).not.toBe(editing);
+      expect(after).toContain("- First!");
+      expect(after).toContain(CONFLICT_MARKERS.mine);
       expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
         kind: "out-of-sync",
         reason: "conflict",
       });
+    });
+
+    it("rebases the edited merge onto the new remote version so saving it keeps the remote edit", async () => {
+      const h = await setup();
+      const { theirs } = await heldWelcomeConflict(h);
+      await h.engine.openNote(WELCOME);
+      h.engine.resolveConflict(WELCOME, "editMerged");
+      const remoteHead = await pushRemote(h.fake, [
+        {
+          kind: "update-note",
+          path: WELCOME,
+          content: replaceLine(theirs, "- First bullet", "- First!"),
+        },
+      ]);
+      const noticesBefore = h.engine
+        .getState()
+        .notices.filter((notice) => notice.kind === "conflict").length;
+
+      await h.engine.refresh();
+      await waitIdle(h.engine);
+
+      const editing = h.engine.getState().conflicts[0].editing ?? "";
+      expect(editing).toContain("- First!");
+      expect(editing).toContain(CONFLICT_MARKERS.mine);
+      expect(await h.fake.getHead()).toBe(remoteHead);
+      expect(h.engine.getState().pending).toEqual([]);
+      expect(
+        h.engine.getState().notices.filter((notice) => notice.kind === "conflict"),
+      ).toHaveLength(noticesBefore + 1);
+
+      h.engine.editNote(WELCOME, withoutTheirsSide(editing));
+      await h.engine.flush();
+
+      const text = await welcomeText(h.fake);
+      expect(text).toContain("# Welcome (mine)");
+      expect(text).toContain("- First!");
+    });
+
+    it("keeps a keystroke typed while the new remote version loads", async () => {
+      const h = await setup();
+      const { theirs } = await heldWelcomeConflict(h);
+      await h.engine.openNote(WELCOME);
+      h.engine.resolveConflict(WELCOME, "editMerged");
+      const remoteHead = await pushRemote(h.fake, [
+        {
+          kind: "update-note",
+          path: WELCOME,
+          content: replaceLine(theirs, "- First bullet", "- First!"),
+        },
+      ]);
+      const release = h.gateReads();
+
+      const refreshing = h.engine.refresh();
+      await vi.waitFor(() => {
+        expect(h.engine.getState().synced?.head).toBe(remoteHead);
+      });
+      const typed = `${h.engine.getState().conflicts[0].editing}\nmy own line\n${CONFLICT_MARKERS.mine}`;
+      h.engine.editNote(WELCOME, typed);
+      release();
+      await refreshing;
+      await waitIdle(h.engine);
+
+      const [conflict] = h.engine.getState().conflicts;
+      const { tree } = await mainTree(h.fake);
+      const node = findNode(tree, WELCOME);
+      if (node?.kind !== "note") throw new Error("expected Welcome");
+      expect(conflict.theirsBlobSha).toBe(node.blobSha);
+      expect(conflict.theirs).toContain("- First!");
+      expect(conflict.editing).toContain("my own line");
+      expect(conflict.editing).toContain("- First!");
     });
 
     it("restores mine without markers when the remote deletes a note whose edited merge has markers", async () => {
@@ -740,6 +843,64 @@ describe("sync engine saves", () => {
           notice: { kind: "edit-restored", path: WELCOME },
         }),
       );
+    });
+  });
+
+  describe("a held conflict whose folder disappears remotely", () => {
+    async function heldIdeasConflict(h: Harness): Promise<string> {
+      const original = (await mainContent(h.fake, IDEAS)) ?? "";
+      const mine = `${original}\nmine line`;
+      await pushRemote(h.fake, [
+        {
+          kind: "update-note",
+          path: IDEAS,
+          content: `${original}\ntheirs line`,
+        },
+      ]);
+      h.engine.editNote(IDEAS, mine);
+      await h.engine.flush();
+      expect(h.engine.getState().conflicts).toHaveLength(1);
+      return mine;
+    }
+
+    async function expectRestoredAt(
+      h: Harness,
+      mine: string,
+    ): Promise<void> {
+      await h.engine.refresh();
+      await waitIdle(h.engine);
+      await h.engine.flush();
+
+      expect(h.engine.getState().conflicts).toEqual([]);
+      expect(await mainContent(h.fake, IDEAS)).toBe(mine);
+      const { tree } = await mainTree(h.fake);
+      expect(findNode(tree, IDEAS.slice(0, 2))?.kind).toBe("folder");
+      const kinds = h.engine.getState().notices;
+      expect(kinds).toContainEqual(
+        expect.objectContaining({
+          kind: "merge",
+          notice: { kind: "edit-restored", path: IDEAS },
+        }),
+      );
+      expect(kinds.some((notice) => notice.kind === "dropped")).toBe(false);
+    }
+
+    it("recreates the note and its folders when the remote deletes an ancestor folder", async () => {
+      const h = await setup();
+      const mine = await heldIdeasConflict(h);
+      await pushRemote(h.fake, [{ kind: "delete-folder", path: ["Projects"] }]);
+
+      await expectRestoredAt(h, mine);
+    });
+
+    it("recreates the note at its original path when the remote renames an ancestor folder", async () => {
+      const h = await setup();
+      const mine = await heldIdeasConflict(h);
+      await pushRemote(h.fake, [
+        { kind: "rename-folder", from: ["Projects"], to: ["Work"] },
+      ]);
+
+      await expectRestoredAt(h, mine);
     });
   });
 

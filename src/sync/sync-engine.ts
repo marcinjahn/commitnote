@@ -596,33 +596,47 @@ export function createSyncEngine(options: {
     const { synced, workingTree } = state;
     if (synced === null || workingTree === null) return;
 
-    const newTheirs = new Map<
-      HeldConflict,
-      { blobSha: string; text: string } | null
-    >();
+    const reads: {
+      path: NotePath;
+      seenBlobSha: string;
+      theirs: { blobSha: string; text: string } | null;
+    }[] = [];
     for (const conflict of state.conflicts) {
       const node = syncedNoteAt(synced, workingTree, conflict.path);
       if (node === undefined) {
-        newTheirs.set(conflict, null);
+        reads.push({
+          path: conflict.path,
+          seenBlobSha: conflict.theirsBlobSha,
+          theirs: null,
+        });
       } else if (node.blobSha !== conflict.theirsBlobSha) {
         const text = await decryptNote(
           keyring,
           await adapter.readBlob(node.blobSha),
         );
-        newTheirs.set(conflict, { blobSha: node.blobSha, text });
+        reads.push({
+          path: conflict.path,
+          seenBlobSha: conflict.theirsBlobSha,
+          theirs: { blobSha: node.blobSha, text },
+        });
       }
     }
-    if (newTheirs.size === 0) return;
+    if (reads.length === 0) return;
 
     let needsSave = false;
     const paths = new Set<string>();
-    for (const [conflict, theirs] of newTheirs) {
-      // The conflict may have been resolved while the new version loaded.
-      if (!state.conflicts.includes(conflict)) continue;
-      const local = conflict.editing ?? conflict.mine;
+    for (const { path, seenBlobSha, theirs } of reads) {
+      // The conflict may have been resolved or re-taken while the new version loaded.
+      const conflict = conflictAt(path);
+      if (conflict === undefined || conflict.theirsBlobSha !== seenBlobSha) {
+        continue;
+      }
       const without = state.conflicts.filter((held) => held !== conflict);
 
       if (theirs === null) {
+        const restored = hasConflictMarkers(conflict.editing ?? conflict.mine)
+          ? conflict.mine
+          : (conflict.editing ?? conflict.mine);
         update((current) => ({
           ...current,
           conflicts: without,
@@ -634,13 +648,36 @@ export function createSyncEngine(options: {
           ]),
         }));
         appendRebased({
-          kind: "create-note",
+          kind: "update-note",
           path: conflict.path,
-          content: hasConflictMarkers(local) ? conflict.mine : local,
+          content: restored,
         });
         needsSave = true;
+      } else if (conflict.editing !== null) {
+        const rebased = mergeText(
+          conflict.theirs,
+          conflict.editing,
+          theirs.text,
+        );
+        const fresh = mergeText(conflict.base, conflict.mine, theirs.text);
+        const replaced: HeldConflict = {
+          ...conflict,
+          theirs: theirs.text,
+          theirsBlobSha: theirs.blobSha,
+          merged: fresh.text,
+          editing: rebased.text,
+        };
+        update((current) => ({
+          ...current,
+          conflicts: current.conflicts.map((held) =>
+            held === conflict ? replaced : held,
+          ),
+          notices: notices(current.notices, [
+            { kind: "conflict", path: conflict.path },
+          ]),
+        }));
       } else {
-        const result = mergeText(conflict.base, local, theirs.text);
+        const result = mergeText(conflict.base, conflict.mine, theirs.text);
         if (result.kind === "clean" && !hasConflictMarkers(result.text)) {
           update((current) => ({
             ...current,
