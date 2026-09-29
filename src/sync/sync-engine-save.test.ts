@@ -187,7 +187,7 @@ function okCommitCount(fake: FakeForgeAdapter, since: string): number {
 }
 
 const WELCOME = ["Welcome"];
-const IDEAS = ["Projects", "git-notes", "Ideas"];
+const IDEAS = ["Projects", "commitnote", "Ideas"];
 const ZAZOLC = ["Zażółć gęślą jaźń"];
 
 async function welcomeText(fake: FakeForgeAdapter): Promise<string> {
@@ -262,7 +262,7 @@ describe("sync engine saves", () => {
       .split("\n")
       .filter(
         (line) =>
-          line.startsWith("Gitnotes-") && !line.startsWith(TRAILER.format),
+          line.startsWith("Commitnote-") && !line.startsWith(TRAILER.format),
       );
     expect(trailers).toHaveLength(3);
     for (const plaintext of [
@@ -322,7 +322,7 @@ describe("sync engine saves", () => {
 
     h.engine.rename(["Projects"], "Work");
     await expectCommit(TRAILER.rename, (tree) =>
-      expect(findNode(tree, ["Work", "git-notes", "Ideas"])?.kind).toBe("note"),
+      expect(findNode(tree, ["Work", "commitnote", "Ideas"])?.kind).toBe("note"),
     );
 
     expect(h.engine.move(["Hello"], ["Box"])).toEqual({
@@ -364,7 +364,7 @@ describe("sync engine saves", () => {
       ok: false,
       error: { kind: "invalidTarget" },
     });
-    expect(h.engine.move(["Projects"], ["Projects", "git-notes"])).toEqual({
+    expect(h.engine.move(["Projects"], ["Projects", "commitnote"])).toEqual({
       ok: false,
       error: { kind: "invalidTarget" },
     });
@@ -1041,7 +1041,7 @@ describe("sync engine saves", () => {
     await h.engine.openNote(IDEAS);
 
     h.engine.rename(["Projects"], "Work");
-    const moved = ["Work", "git-notes", "Ideas"];
+    const moved = ["Work", "commitnote", "Ideas"];
     expect(h.engine.getState().openNote).toMatchObject({
       kind: "loaded",
       path: moved,
@@ -1055,7 +1055,7 @@ describe("sync engine saves", () => {
     await waitIdle(h.engine);
     const { tree } = await mainTree(h.fake);
     expect(findNode(tree, moved)).toBeUndefined();
-    expect(findNode(tree, ["Work", "git-notes", "Roadmap"])?.kind).toBe("note");
+    expect(findNode(tree, ["Work", "commitnote", "Roadmap"])?.kind).toBe("note");
   });
 
   it("keeps changes after a failed save and commits them once on the retry", async () => {

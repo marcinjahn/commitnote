@@ -17,7 +17,7 @@ const WELCOME_MARKDOWN = [
   'console.log("hello");',
   "```",
   "",
-  "See the [git-notes project](https://github.com/example/git-notes) for details.",
+  "See the [commitnote project](https://github.com/example/commitnote) for details.",
   "",
   "> Notes stay private even to the forge that hosts them.",
   "",
@@ -55,7 +55,7 @@ const ROADMAP_MARKDOWN = [
 const JANUARY_MARKDOWN = [
   "# January",
   "",
-  "Started the git-notes project this month.",
+  "Started the commitnote project this month.",
   "",
 ].join("\n");
 
@@ -74,7 +74,7 @@ export const sampleNotesRepoSource: readonly SampleEntry[] = [
     children: [
       {
         kind: "folder",
-        name: "git-notes",
+        name: "commitnote",
         children: [
           { kind: "note", name: "Ideas", markdown: IDEAS_MARKDOWN },
           { kind: "note", name: "Roadmap", markdown: ROADMAP_MARKDOWN },

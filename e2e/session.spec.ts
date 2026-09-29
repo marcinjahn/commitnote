@@ -29,11 +29,11 @@ async function failNext(
   await page.evaluate((failure) => {
     const controls = (
       window as unknown as {
-        __gitNotesFakeForge: {
+        __commitNoteFakeForge: {
           failNext(repoKey: string, operation: string, kind: string): void;
         };
       }
-    ).__gitNotesFakeForge;
+    ).__commitNoteFakeForge;
     controls.failNext("sample/notes", "commit", failure);
   }, kind);
 }

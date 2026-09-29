@@ -239,7 +239,7 @@ describe("createSyncEngine", () => {
 
     const ideasPath = await encryptPath(keyring, [
       "Projects",
-      "git-notes",
+      "commitnote",
       "Ideas",
     ]);
     const newIdeas = await encryptNote(keyring, "# Ideas (edited)\n");

@@ -148,7 +148,7 @@
 
 <div class="login-shell">
   <div class="login-card">
-    <h1>git-notes</h1>
+    <h1>commitnote</h1>
     <p class="login-tagline">
       Encrypted markdown notes in your own git repository.
     </p>

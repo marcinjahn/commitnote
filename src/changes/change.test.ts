@@ -30,7 +30,7 @@ describe("isWithinFolder", () => {
 
   it("is true for a deep descendant", () => {
     expect(
-      isWithinFolder(["Projects", "git-notes", "Ideas"], ["Projects"]),
+      isWithinFolder(["Projects", "commitnote", "Ideas"], ["Projects"]),
     ).toBe(true);
   });
 
@@ -61,9 +61,9 @@ describe("parentPath", () => {
   });
 
   it("drops the last segment", () => {
-    expect(parentPath(["Projects", "git-notes", "Ideas"])).toEqual([
+    expect(parentPath(["Projects", "commitnote", "Ideas"])).toEqual([
       "Projects",
-      "git-notes",
+      "commitnote",
     ]);
   });
 

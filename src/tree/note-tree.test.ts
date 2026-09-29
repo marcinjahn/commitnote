@@ -38,7 +38,7 @@ function directoryPrefixesOf(path: string): string[] {
 /**
  * Mirrors how a real recursive git tree listing looks: a "blob" entry for
  * every file plus a "tree" entry for every directory that contains at least
- * one file, regardless of whether git-notes will end up ignoring that file.
+ * one file, regardless of whether commitnote will end up ignoring that file.
  */
 function entriesFor(files: ReadonlyMap<string, string>): TreeEntry[] {
   const dirs = new Set<string>();
@@ -66,7 +66,7 @@ async function buildScenario(keyring: Keyring): Promise<{
     onlyIgnored: string;
     projects: string;
     ideas: string;
-    gitNotes: string;
+    commitNote: string;
     roadmap: string;
     aaaa: string;
   };
@@ -76,7 +76,7 @@ async function buildScenario(keyring: Keyring): Promise<{
   const onlyIgnored = await encryptName(keyring, "OnlyIgnored");
   const projects = await encryptName(keyring, "Projects");
   const ideas = await encryptName(keyring, "Ideas");
-  const gitNotes = await encryptName(keyring, "git-notes");
+  const commitNote = await encryptName(keyring, "commitnote");
   const roadmap = await encryptName(keyring, "Roadmap");
   const aaaa = await encryptName(keyring, "AAAA");
 
@@ -84,7 +84,7 @@ async function buildScenario(keyring: Keyring): Promise<{
     [`${archive}/${old}`, "sha-old"],
     [`${onlyIgnored}/${FOLDER_MARKER}`, "sha-keep"],
     [`${projects}/${ideas}`, "sha-ideas"],
-    [`${projects}/${gitNotes}/${roadmap}`, "sha-roadmap"],
+    [`${projects}/${commitNote}/${roadmap}`, "sha-roadmap"],
     [aaaa, "sha-aaaa"],
     ["README.md", "sha-readme"],
     ["Mystery/Secret", "sha-secret"],
@@ -99,7 +99,7 @@ async function buildScenario(keyring: Keyring): Promise<{
       onlyIgnored,
       projects,
       ideas,
-      gitNotes,
+      commitNote,
       roadmap,
       aaaa,
     },
@@ -147,19 +147,19 @@ describe("buildNoteTree", () => {
     const projects = tree.root.children[2];
     if (projects.kind !== "folder") throw new Error("expected folder");
     expect(projects.children.map((c) => [c.kind, c.name])).toEqual([
-      ["folder", "git-notes"],
+      ["folder", "commitnote"],
       ["note", "Ideas"],
     ]);
 
-    const gitNotesFolder = projects.children[0];
-    if (gitNotesFolder.kind !== "folder") throw new Error("expected folder");
-    expect(gitNotesFolder.path).toEqual(["Projects", "git-notes"]);
-    expect(gitNotesFolder.children).toEqual([
+    const commitNoteFolder = projects.children[0];
+    if (commitNoteFolder.kind !== "folder") throw new Error("expected folder");
+    expect(commitNoteFolder.path).toEqual(["Projects", "commitnote"]);
+    expect(commitNoteFolder.children).toEqual([
       {
         kind: "note",
         name: "Roadmap",
-        path: ["Projects", "git-notes", "Roadmap"],
-        storedPath: `${paths.projects}/${paths.gitNotes}/${paths.roadmap}`,
+        path: ["Projects", "commitnote", "Roadmap"],
+        storedPath: `${paths.projects}/${paths.commitNote}/${paths.roadmap}`,
         blobSha: "sha-roadmap",
       },
     ]);
@@ -191,7 +191,7 @@ describe("buildNoteTree", () => {
     const tree = await buildNoteTree(entries, keyring);
 
     expect(
-      tree.root.children.some((c) => c.storedPath.startsWith(".gitnotes")),
+      tree.root.children.some((c) => c.storedPath.startsWith(".commitnote")),
     ).toBe(false);
   });
 
@@ -218,12 +218,12 @@ describe("findNode", () => {
     const keyring = await testKeyring();
     const { entries, paths } = await buildScenario(keyring);
     const tree = await buildNoteTree(entries, keyring);
-    const node = findNode(tree, ["Projects", "git-notes", "Roadmap"]);
+    const node = findNode(tree, ["Projects", "commitnote", "Roadmap"]);
     expect(node).toEqual({
       kind: "note",
       name: "Roadmap",
-      path: ["Projects", "git-notes", "Roadmap"],
-      storedPath: `${paths.projects}/${paths.gitNotes}/${paths.roadmap}`,
+      path: ["Projects", "commitnote", "Roadmap"],
+      storedPath: `${paths.projects}/${paths.commitNote}/${paths.roadmap}`,
       blobSha: "sha-roadmap",
     });
   });
@@ -251,7 +251,7 @@ describe("listNotes", () => {
 
     expect(listNotes(tree).map((n) => n.path)).toEqual([
       ["Archive", "Old"],
-      ["Projects", "git-notes", "Roadmap"],
+      ["Projects", "commitnote", "Roadmap"],
       ["Projects", "Ideas"],
       ["AAAA"],
     ]);

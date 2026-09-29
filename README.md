@@ -1,6 +1,6 @@
-# git-notes
+# commitnote
 
-git-notes is a static, client-side web app for encrypted markdown notes. Notes are encrypted
+commitnote is a static, client-side web app for encrypted markdown notes. Notes are encrypted
 entirely in your browser and stored as files in a GitHub repository you own — there is no backend
 server.
 
@@ -65,7 +65,7 @@ fixture repositories instead of GitHub, with no network access. The fixture repo
 - `https://github.com/sample/empty` — empty and writable
 - `https://github.com/sample/empty-read-only`, `https://github.com/sample/read-only` — read-only
   variants
-- `https://github.com/sample/foreign`, `https://github.com/sample/newer` — repositories git-notes
+- `https://github.com/sample/foreign`, `https://github.com/sample/newer` — repositories commitnote
   refuses to open
 
 The access token `invalid-token` is always rejected; any other non-empty token is accepted. All
@@ -74,7 +74,7 @@ fixture state resets on reload. Test mode is never part of `npm run build`, whic
 
 ## Remember me
 
-With Remember me checked, git-notes keeps your access token and the usable (non-extractable) keys
+With Remember me checked, commitnote keeps your access token and the usable (non-extractable) keys
 derived from your passphrase in this browser profile's IndexedDB until you log out. Anyone with
 access to that browser profile can then read your notes. The passphrase itself is never stored.
 Without Remember me, only the repo URL is kept, so you re-enter the access token and passphrase
@@ -102,7 +102,7 @@ app against a real GitHub repository and a real fine-grained access token, to co
 GitHub API behaviour the mocks cannot. It takes about 15 minutes.
 
 1. Create a throwaway **private** GitHub repository. Either leave it empty, or push
-   `/home/mnj/code/private/git-notes-sample` to it: add the new repo as a remote in that local
+   `/home/mnj/code/private/commitnote-sample` to it: add the new repo as a remote in that local
    repository and push its `main` branch (the exact jj or git commands are left to you, since that
    repository is outside this project).
 2. Create a fine-grained access token scoped to only that repository, with Contents read and
@@ -112,7 +112,7 @@ GitHub API behaviour the mocks cannot. It takes about 15 minutes.
    you pushed the sample notes repo.
 5. Create a folder and a note, type, and watch the sync state go from out of sync to syncing to
    synced.
-6. On GitHub, check the new commit: subject `git-notes: save`, trailers present, no plaintext
+6. On GitHub, check the new commit: subject `commitnote: save`, trailers present, no plaintext
    names or content anywhere in the tree or commit messages, and linear history on `main`.
 7. Rename, move and delete a note, then check the trailers on those commits.
 8. Open the app in a second browser profile, edit different parts of the same note in both, and

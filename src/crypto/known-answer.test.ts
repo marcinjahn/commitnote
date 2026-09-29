@@ -10,7 +10,7 @@ import type { KdfParams } from "./repo-config";
 // createCipheriv), not against this app's own output. If these ever fail,
 // the app's implementation is wrong, not the literals.
 
-const PASSPHRASE = "git-notes known answer";
+const PASSPHRASE = "commitnote known answer";
 const SALT = Uint8Array.from({ length: 16 }, (_, i) => i); // 0x00..0x0f
 
 function kdf(
@@ -26,7 +26,7 @@ describe("known-answer vectors (format v1)", () => {
     it("matches the pinned key check", async () => {
       const keyring = await deriveKeyring(PASSPHRASE, kdfA, argon2idDirect);
       expect(await computeKeyCheck(keyring)).toBe(
-        "god9FJr0KLXNvqzK2H2L9i7gsc8Wyi5Y29Aq8XH/Mfo=",
+        "Fwgxw4kavCNV6MMT02X5Wx8gjuC5vuoOCV9+6uo7Fbc=",
       );
     });
 
@@ -34,7 +34,7 @@ describe("known-answer vectors (format v1)", () => {
       const keyring = await deriveKeyring(PASSPHRASE, kdfA, argon2idDirect);
       const encrypted = await encryptName(keyring, "Projects");
       expect(encrypted).toBe(
-        "APOmN75pr2_qhIvsjXwUE12zdjt07TZiwf1QVfABfg_ERhdZ",
+        "yPLu39QkVKbk49JHrV-ynCW3SVRZxK7zkHve0ofoHzy1WXyy",
       );
       expect(await decryptName(keyring, encrypted)).toBe("Projects");
     });
@@ -43,7 +43,7 @@ describe("known-answer vectors (format v1)", () => {
       const keyring = await deriveKeyring(PASSPHRASE, kdfA, argon2idDirect);
       const encrypted = await encryptName(keyring, "Zażółć gęślą jaźń");
       expect(encrypted).toBe(
-        "cOkJlW_sd7QSwqmuJCTjNTMmUHegZbkMXwLb8Ysjov-npyWs5_rYMxiVwUJhiRLcG023CDYq",
+        "9s-OyrV4-2oilTBQn2cgM0agia7r3Xp18bPbwJjCTS6y0L33sFZzD5RbuJt4dZvGM9vIfpQe",
       );
       expect(await decryptName(keyring, encrypted)).toBe("Zażółć gęślą jaźń");
     });
@@ -52,11 +52,11 @@ describe("known-answer vectors (format v1)", () => {
       const keyring = await deriveKeyring(PASSPHRASE, kdfA, argon2idDirect);
       const encrypted = await encryptPath(keyring, [
         "Projects",
-        "git-notes",
+        "commitnote",
         "Ideas",
       ]);
       expect(encrypted).toBe(
-        "APOmN75pr2_qhIvsjXwUE12zdjt07TZiwf1QVfABfg_ERhdZ/05_WTO5UgkI-ZdBTFdqbUSeqH4rQgaqTLzC-SGna9Fbwmn1AiQ/RNNj0kiUbFVhl4ZgYrHo0FqFI7-yNTjcYjCDlsKxySr_",
+        "yPLu39QkVKbk49JHrV-ynCW3SVRZxK7zkHve0ofoHzy1WXyy/cYt9sdtJT8xAhnnKzS_kpiIBj7n4oAGLCM6QhhZsbugPgLl_mAU/3SutLemgp6ja5VtAeZljHBPySNOHH02pO5OVgzqpcXM9",
       );
     });
 
@@ -70,7 +70,7 @@ describe("known-answer vectors (format v1)", () => {
       const markdown = "# Hello\n\n- [ ] task\n";
       const encrypted = await encryptNote(keyring, markdown, random);
       expect(encrypted).toBe(
-        "v1:EBESExQVFhcYGRobjBXgFjHO3pAw3WcNsQc/CX2RY3CS23Yyu2dJiVkFvOwXA/iv",
+        "v1:EBESExQVFhcYGRobV0RqAJINWc4SuhnwwhVtVLgsDpxszl4twB0GmbWmbIlPN++j",
       );
       expect(await decryptNote(keyring, encrypted)).toBe(markdown);
     });
@@ -84,7 +84,7 @@ describe("known-answer vectors (format v1)", () => {
         argon2idDirect,
       );
       expect(await computeKeyCheck(keyring)).toBe(
-        "62oJ0lFbhPZahM/dHmbvD74MSMI+8J3dKtxk/3uzXUs=",
+        "WgUuEkO4WJjQFMU5eGhGmNL9wAuFfycTjIbYTbIYsX0=",
       );
     });
   });

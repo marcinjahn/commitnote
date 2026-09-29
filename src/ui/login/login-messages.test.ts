@@ -62,14 +62,14 @@ describe("describeLoginError", () => {
   it("describes a foreign repository error", () => {
     const error: LoginError = { kind: "foreign" };
     expect(describeLoginError(error)).toBe(
-      "This repository is neither empty nor a notes repo. git-notes only uses an empty repository or one it initialized, and it has not changed anything here.",
+      "This repository is neither empty nor a notes repo. commitnote only uses an empty repository or one it initialized, and it has not changed anything here.",
     );
   });
 
   it("describes a newerFormat error", () => {
     const error: LoginError = { kind: "newerFormat", formatVersion: 3 };
     expect(describeLoginError(error)).toBe(
-      "This notes repo was created by a newer version of git-notes. Update the app to open it.",
+      "This notes repo was created by a newer version of commitnote. Update the app to open it.",
     );
   });
 
