@@ -19,6 +19,7 @@ function commitNoteCsp(): Plugin {
 }
 
 export default defineConfig({
+  base: "./",
   plugins: [svelte(), commitNoteCsp()],
   test: {
     include: ["src/**/*.test.ts"],

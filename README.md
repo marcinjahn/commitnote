@@ -38,6 +38,12 @@ through a LAN IP address over plain HTTP does not work.
 - `check:bundle` — build both `dist/` and `dist-fake/` and verify the production build never
   ships test-mode fixture data
 
+## Deployment
+
+Every push to `main` runs `.github/workflows/pages.yml`: type-check, unit tests, the bundle check, then
+a publish of `dist/` to GitHub Pages. In the repository settings, set Pages > Source to "GitHub
+Actions" once. The build uses relative asset paths, so it works under any Pages path.
+
 ## End-to-end tests
 
 Install the Chromium browser once:
