@@ -1,64 +1,117 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
-import { createMarkdownEditor } from "./create-markdown-editor";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  createMarkdownEditor,
+  type MarkdownEditor,
+} from "./create-markdown-editor";
 import { livePreview } from "./live-preview";
 
-// jsdom only fires a checkbox's native "change" event when it is connected
-// to the document, so the editor's parent is attached to the body here.
-describe("livePreview task checkbox", () => {
-  it("toggles the task marker when the rendered checkbox is clicked, and back", () => {
-    const changes: string[] = [];
-    const parent = document.createElement("div");
-    document.body.appendChild(parent);
-    const editor = createMarkdownEditor({
-      parent,
-      text: "- [ ] task",
-      readOnly: false,
-      onChange: (text) => changes.push(text),
-      extensions: [livePreview()],
-    });
+interface Setup {
+  readonly editor: MarkdownEditor;
+  readonly parent: HTMLElement;
+  readonly changes: string[];
+}
 
-    const firstCheckbox = parent.querySelector<HTMLInputElement>(
-      ".cm-task-checkbox input",
-    );
-    expect(firstCheckbox).not.toBeNull();
-    firstCheckbox?.click();
+let current: Setup | null = null;
+
+function setup(readOnly: boolean): Setup {
+  const changes: string[] = [];
+  const parent = document.createElement("div");
+  document.body.appendChild(parent);
+  const text = "- [ ] task";
+  const editor = createMarkdownEditor({
+    parent,
+    text,
+    readOnly,
+    onChange: (next) => changes.push(next),
+    extensions: [livePreview()],
+  });
+  editor.view.dispatch({ selection: { anchor: text.length } });
+  current = { editor, parent, changes };
+  return current;
+}
+
+function checkbox(parent: HTMLElement): HTMLInputElement {
+  const input = parent.querySelector<HTMLInputElement>(
+    ".cm-task-checkbox input",
+  );
+  if (!input) throw new Error("checkbox not rendered");
+  return input;
+}
+
+function mousedown(target: HTMLElement): Event {
+  const event = new MouseEvent("mousedown", {
+    bubbles: true,
+    cancelable: true,
+  });
+  target.dispatchEvent(event);
+  return event;
+}
+
+function touchstart(target: HTMLElement): Event {
+  const event =
+    typeof TouchEvent === "function"
+      ? new TouchEvent("touchstart", { bubbles: true, cancelable: true })
+      : new Event("touchstart", { bubbles: true, cancelable: true });
+  target.dispatchEvent(event);
+  return event;
+}
+
+afterEach(() => {
+  current?.editor.destroy();
+  current?.parent.remove();
+  current = null;
+});
+
+describe("livePreview task checkbox", () => {
+  it("toggles the task marker on mousedown, and back, without moving the selection", () => {
+    const { editor, parent, changes } = setup(false);
+    const selectionBefore = editor.view.state.selection.main;
+
+    const first = mousedown(checkbox(parent));
+    expect(first.defaultPrevented).toBe(true);
     expect(editor.view.state.doc.toString()).toBe("- [x] task");
     expect(changes).toEqual(["- [x] task"]);
+    expect(checkbox(parent).checked).toBe(true);
 
-    // Toggling replaces the checkbox's widget (checked state changed), so the
-    // rendered element must be re-queried before clicking it again.
-    parent.querySelector<HTMLInputElement>(".cm-task-checkbox input")?.click();
+    mousedown(checkbox(parent));
     expect(editor.view.state.doc.toString()).toBe("- [ ] task");
     expect(changes).toEqual(["- [x] task", "- [ ] task"]);
-
-    editor.destroy();
-    parent.remove();
+    expect(editor.view.state.selection.main.eq(selectionBefore)).toBe(true);
   });
 
-  it("does nothing when the editor is read-only", () => {
-    const changes: string[] = [];
-    const parent = document.createElement("div");
-    document.body.appendChild(parent);
-    const editor = createMarkdownEditor({
-      parent,
-      text: "- [ ] task",
-      readOnly: true,
-      onChange: (text) => changes.push(text),
-      extensions: [livePreview()],
-    });
+  it("toggles the task marker on touchstart without moving the selection", () => {
+    const { editor, parent, changes } = setup(false);
+    const selectionBefore = editor.view.state.selection.main;
 
-    const checkbox = parent.querySelector<HTMLInputElement>(
-      ".cm-task-checkbox input",
-    );
-    expect(checkbox).not.toBeNull();
+    const event = touchstart(checkbox(parent));
 
-    checkbox?.click();
+    expect(event.defaultPrevented).toBe(true);
+    expect(editor.view.state.doc.toString()).toBe("- [x] task");
+    expect(changes).toEqual(["- [x] task"]);
+    expect(editor.view.state.selection.main.eq(selectionBefore)).toBe(true);
+  });
+
+  it("does not toggle a second time on the click that follows a mousedown", () => {
+    const { editor, parent, changes } = setup(false);
+    const input = checkbox(parent);
+
+    mousedown(input);
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    input.dispatchEvent(click);
+
+    expect(click.defaultPrevented).toBe(true);
+    expect(editor.view.state.doc.toString()).toBe("- [x] task");
+    expect(changes).toEqual(["- [x] task"]);
+  });
+
+  it("leaves the document unchanged when the editor is read-only", () => {
+    const { editor, parent, changes } = setup(true);
+
+    mousedown(checkbox(parent));
+    touchstart(checkbox(parent));
 
     expect(editor.view.state.doc.toString()).toBe("- [ ] task");
     expect(changes).toEqual([]);
-
-    editor.destroy();
-    parent.remove();
   });
 });

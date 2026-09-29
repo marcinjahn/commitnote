@@ -105,21 +105,69 @@ class TaskCheckboxWidget extends WidgetType {
     input.type = "checkbox";
     input.checked = this.checked;
     input.setAttribute("aria-label", "Toggle task");
-    input.addEventListener("change", () => {
-      if (view.state.readOnly) {
-        input.checked = this.checked;
-        return;
-      }
-      const insert = this.checked ? "[ ]" : "[x]";
+
+    const toggle = (): void => {
+      if (view.state.readOnly) return;
+      const from = this.resolveMarkerStart(view, wrapper);
+      if (from === null) return;
+      const isChecked = markerState(view.state, from) === "checked";
       view.dispatch({
-        changes: { from: this.from, to: this.to, insert },
+        changes: { from, to: from + 3, insert: isChecked ? "[ ]" : "[x]" },
         userEvent: "input",
       });
+    };
+
+    input.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      toggle();
+    });
+    // Preventing touchstart suppresses the emulated mouse events, focus change and mobile keyboard.
+    input.addEventListener(
+      "touchstart",
+      (event) => {
+        event.preventDefault();
+        toggle();
+      },
+      { passive: false },
+    );
+    input.addEventListener("click", (event) => {
+      event.preventDefault();
     });
 
     wrapper.appendChild(input);
     return wrapper;
   }
+
+  private resolveMarkerStart(
+    view: EditorView,
+    wrapper: HTMLElement,
+  ): number | null {
+    let pos: number | null = null;
+    try {
+      pos = view.posAtDOM(wrapper);
+    } catch {
+      pos = null;
+    }
+    if (pos !== null && markerState(view.state, pos) !== null) return pos;
+    if (
+      this.to - this.from === 3 &&
+      markerState(view.state, this.from) !== null
+    ) {
+      return this.from;
+    }
+    return null;
+  }
+}
+
+function markerState(
+  state: EditorState,
+  from: number,
+): "checked" | "unchecked" | null {
+  if (from < 0 || from + 3 > state.doc.length) return null;
+  const text = state.doc.sliceString(from, from + 3);
+  if (text === "[ ]") return "unchecked";
+  if (text === "[x]" || text === "[X]") return "checked";
+  return null;
 }
 
 class HorizontalRuleWidget extends WidgetType {
