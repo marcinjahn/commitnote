@@ -88,10 +88,26 @@ next time.
 
 ## Editing and saving
 
+- Each note has one view: an editable name field on top and the live-preview markdown editor below.
+  Task checkboxes toggle on click or tap, and the toggle autosaves like typing.
+- "New note" in the sidebar header, or "New note..." in a folder's row menu, opens an empty draft
+  with the name field focused. The note is created when you confirm a name (Enter or leaving the
+  field) or when you type content first; then it gets an auto name, the current local date and time
+  as `YYYY-MM-DD HH:mm:ss`, with ` (2)`, ` (3)`, ... appended on a clash. A draft left untouched
+  disappears without creating anything.
+- To rename a note, edit its name field and press Enter or leave the field. Escape or an empty
+  value restores the name, and an invalid or duplicate name shows an inline error. The field is
+  read-only while the note has a conflict. Folders are renamed from their row menu.
+- Remote changes are pulled only when you click Refresh in the sidebar header, at startup or login,
+  or when a save finds that the remote moved and merges. Switching windows or tabs does not
+  refresh.
 - Autosave saves 2 s after you stop typing, at least every 30 s while you keep typing, and
   immediately on structure changes, note switch, tab hide, and logout.
 - The sync state is synced, syncing, or out of sync, with reason pending (waiting to save), failed
   (retrying with back-off), or conflict.
+- If the access token is revoked or rejected mid-session, saving shows the failed state and keeps
+  retrying, and the edits stay unsaved. The unload warning and the logout choice still protect
+  them.
 - A conflicting change opens the conflict view, where you choose Keep mine, Keep theirs, or Edit
   merged.
 - Notices report failures, retries, and other sync events as they happen.
@@ -116,20 +132,25 @@ GitHub API behaviour the mocks cannot. It takes about 15 minutes.
 3. Run `npm run build` and `npm run preview`, and open the `localhost` URL.
 4. Log in: initialize the repo if it's empty, or use the sample passphrase from Test mode above if
    you pushed the sample notes repo.
-5. Create a folder and a note, type, and watch the sync state go from out of sync to syncing to
-   synced.
+5. Create a folder, then create a note through the draft flow, checking both routes: once by
+   typing a name and pressing Enter, and once by typing content first (the note gets a
+   `YYYY-MM-DD HH:mm:ss` auto name). Watch the sync state go from out of sync to syncing to synced.
 6. On GitHub, check the new commit: subject `commitnote: save`, trailers present, no plaintext
    names or content anywhere in the tree or commit messages, and linear history on `main`.
-7. Rename, move and delete a note, then check the trailers on those commits.
-8. Open the app in a second browser profile, edit different parts of the same note in both, and
+7. Rename a note via its name field, then move and delete it, and check the trailers on those
+   commits.
+8. Tick a task checkbox in a note and check that the change saves.
+9. Open the app in a second browser profile, edit different parts of the same note in both, and
    check that they merge cleanly. Then edit the same line in both, and resolve the conflict.
-9. Try a read-only token and check that login is refused.
-10. Revoke the token while logged in, make an edit, see the access-token dialog, enter a new
-    token, and check that the edit is saved.
-11. Go offline in dev tools, make an edit, come back online, and check that the save resumes.
-12. Check the browser dev tools network tab: only requests to `api.github.com` and the page's own
+10. In the second profile, edit a note remotely and check that the change appears in the first
+    profile only after clicking Refresh.
+11. Try a read-only token and check that login is refused.
+12. Revoke the token while logged in and make an edit. Check that the sync state shows saving
+    failed and will retry, with the edit kept unsaved, and that no token prompt appears.
+13. Go offline in dev tools, make an edit, come back online, and check that the save resumes.
+14. Check the browser dev tools network tab: only requests to `api.github.com` and the page's own
     origin.
-13. Close the tab with a pending edit and check the browser's own "Leave site?" warning.
-14. Log out and check that only the repo URL remains in application storage, unless Remember me
+15. Close the tab with a pending edit and check the browser's own "Leave site?" warning.
+16. Log out and check that only the repo URL remains in application storage, unless Remember me
     was ticked.
-15. Delete the throwaway repository and the token afterwards.
+17. Delete the throwaway repository and the token afterwards.
