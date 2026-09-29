@@ -62,13 +62,6 @@
     | { readonly kind: "unsaved"; readonly count: number }
   >(null);
 
-  $effect(() => {
-    if (phase.kind !== "app") {
-      return;
-    }
-    return phase.engine.subscribe(() => {});
-  });
-
   function loginDeps() {
     return { createAdapter: budgetedCreateAdapter };
   }
