@@ -335,9 +335,7 @@
     {#if engineState.openNote !== null}
       <NoteHeader
         name={noteName(engineState.openNote.path)}
-        {refreshing}
         syncState={engineState.syncStates.stateOf(engineState.openNote.path)}
-        onRefresh={handleRefresh}
         onBack={handleBack}
       />
     {/if}

@@ -5,13 +5,11 @@
 
   interface Props {
     name: string;
-    refreshing: boolean;
     syncState: SyncState;
-    onRefresh: () => void;
     onBack: () => void;
   }
 
-  const { name, refreshing, syncState, onRefresh, onBack }: Props = $props();
+  const { name, syncState, onBack }: Props = $props();
 
   const syncLabel = $derived(describeSyncState(syncState));
 </script>
@@ -35,31 +33,6 @@
     <SyncStateIcon state={syncState} />
     <span class="sync-status-label">{syncLabel}</span>
   </span>
-  <button
-    type="button"
-    class="button button-icon"
-    aria-label="Refresh"
-    aria-busy={refreshing}
-    disabled={refreshing}
-    onclick={onRefresh}
-  >
-    <svg
-      class="refresh-icon"
-      class:spinning={refreshing}
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path
-        d="M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2.5v3.5H10"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.4"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-    </svg>
-  </button>
 </header>
 
 <style>
@@ -91,10 +64,6 @@
     margin: 0;
   }
 
-  .refresh-icon.spinning {
-    animation: spin 0.8s linear infinite;
-  }
-
   .sync-status {
     display: inline-flex;
     align-items: center;
@@ -115,15 +84,6 @@
 
     .sync-status-label {
       display: inline;
-    }
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
     }
   }
 </style>
