@@ -9,6 +9,7 @@
   import { countDescendants } from "../dialogs/folder-options";
   import MoveDialog from "../dialogs/MoveDialog.svelte";
   import NameDialog from "../dialogs/NameDialog.svelte";
+  import { decideNameCommit } from "../note/name-field-commit";
   import NotePane from "../note/NotePane.svelte";
   import NoticeToasts from "../notices/NoticeToasts.svelte";
   import NoteHeader from "./NoteHeader.svelte";
@@ -55,6 +56,8 @@
       };
 
   let dialog = $state<DialogState>({ kind: "none" });
+  let nameError = $state<string | null>(null);
+  let nameResetKey = $state(0);
   let expandRequest = $state<{ readonly path: NotePath } | null>(null);
 
   $effect(() => {
@@ -67,6 +70,25 @@
   const treeLoading = $derived(engineState.synced === null && engineState.refresh.inFlight);
   const selectedPath = $derived(engineState.openNote?.path ?? null);
   const refreshing = $derived(engineState.refresh.inFlight);
+
+  const openPath = $derived(engineState.openNote?.path ?? null);
+  const openConflicted = $derived(
+    openPath !== null &&
+      engineState.conflicts.some((held) => notePathEquals(held.path, openPath)),
+  );
+
+  let previousOpenPath: NotePath | null = null;
+  $effect(() => {
+    const path = openPath;
+    if (
+      previousOpenPath === null ||
+      path === null ||
+      !notePathEquals(previousOpenPath, path)
+    ) {
+      nameError = null;
+    }
+    previousOpenPath = path;
+  });
 
   function noteName(path: NotePath): string {
     return path[path.length - 1];
@@ -139,6 +161,7 @@
         };
         break;
       case "rename":
+        if (node.kind !== "folder") break;
         dialog = {
           kind: "rename",
           node,
@@ -196,6 +219,38 @@
     closeDialog();
   }
 
+  function handleNameCommit(edited: string): void {
+    if (openPath === null) return;
+    const currentName = noteName(openPath);
+    const decision = decideNameCommit({
+      currentName,
+      edited,
+      siblingNames: siblingNamesOf(parentPath(openPath), currentName),
+      conflicted: openConflicted,
+    });
+    switch (decision.kind) {
+      case "noop":
+        nameError = null;
+        break;
+      case "restore":
+        nameError = null;
+        nameResetKey += 1;
+        break;
+      case "error":
+        nameError = decision.message;
+        break;
+      case "commit": {
+        const result = engine.rename(openPath, decision.name);
+        nameError = result.ok ? null : describeStructureError(result.error);
+        break;
+      }
+    }
+  }
+
+  function handleNameEscape(): void {
+    nameError = null;
+  }
+
   function handleMoveSubmit(newParent: NotePath): void {
     if (dialog.kind !== "move") return;
     const result = engine.move(dialog.node.path, newParent);
@@ -209,7 +264,6 @@
   function handleDeleteConfirm(): void {
     if (dialog.kind !== "delete") return;
     const path = dialog.node.path;
-    const openPath = engineState.openNote?.path ?? null;
     const affectsOpenNote =
       openPath !== null &&
       (notePathEquals(openPath, path) || isWithinFolder(openPath, path));
@@ -336,6 +390,11 @@
       <NoteHeader
         name={noteName(engineState.openNote.path)}
         syncState={engineState.syncStates.stateOf(engineState.openNote.path)}
+        nameError={nameError}
+        nameReadOnly={openConflicted}
+        {nameResetKey}
+        onNameCommit={handleNameCommit}
+        onNameEscape={handleNameEscape}
         onBack={handleBack}
       />
     {/if}
@@ -366,8 +425,8 @@
 {:else if dialog.kind === "rename"}
   <NameDialog
     open={true}
-    title={dialog.node.kind === "note" ? "Rename note" : "Rename folder"}
-    label={dialog.node.kind === "note" ? "Note name" : "Folder name"}
+    title="Rename folder"
+    label="Folder name"
     initialName={dialog.node.name}
     siblingNames={dialog.siblingNames}
     submitLabel="Rename"

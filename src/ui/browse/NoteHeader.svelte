@@ -2,14 +2,29 @@
   import type { SyncState } from "../../sync/sync-state";
   import { describeSyncState } from "./sync-messages";
   import SyncStateIcon from "./SyncStateIcon.svelte";
+  import NameField from "../note/NameField.svelte";
 
   interface Props {
     name: string;
     syncState: SyncState;
+    nameError: string | null;
+    nameReadOnly: boolean;
+    nameResetKey: number;
+    onNameCommit: (edited: string) => void;
+    onNameEscape: () => void;
     onBack: () => void;
   }
 
-  const { name, syncState, onBack }: Props = $props();
+  const {
+    name,
+    syncState,
+    nameError,
+    nameReadOnly,
+    nameResetKey,
+    onNameCommit,
+    onNameEscape,
+    onBack,
+  }: Props = $props();
 
   const syncLabel = $derived(describeSyncState(syncState));
 </script>
@@ -28,7 +43,14 @@
     </svg>
     Back to notes
   </button>
-  <h2 class="note-title" title={name}>{name}</h2>
+  <NameField
+    value={name}
+    readOnly={nameReadOnly}
+    error={nameError}
+    resetKey={nameResetKey}
+    onCommit={onNameCommit}
+    onEscape={onNameEscape}
+  />
   <span class="sync-status">
     <SyncStateIcon state={syncState} />
     <span class="sync-status-label">{syncLabel}</span>
@@ -53,15 +75,6 @@
 
   .back-button svg {
     flex-shrink: 0;
-  }
-
-  .note-title {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    margin: 0;
   }
 
   .sync-status {
