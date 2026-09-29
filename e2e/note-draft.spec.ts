@@ -154,6 +154,29 @@ test("an untouched draft disappears when it is left", async ({
   expect(await treeItemNames(page)).toEqual(before);
 });
 
+test("undo in a new draft does not restore the previous note", async ({
+  page,
+}, testInfo) => {
+  await startSession(page);
+  const before = await treeItemNames(page);
+  await treeItem(page, "Welcome").click();
+  await expect(nameField(page)).toHaveValue("Welcome");
+  const newNote = page.getByRole("button", { name: "New note", exact: true });
+
+  if (!(await newNote.isVisible())) await backToTreeIfMobile(page, testInfo);
+  await newNote.click();
+  await expectEmptyDraft(page);
+
+  await editor(page).click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await page.waitForTimeout(1000);
+
+  await expect(nameField(page)).toHaveValue("");
+  await expect(editor(page)).toHaveText("");
+  await backToTreeIfMobile(page, testInfo);
+  expect(await treeItemNames(page)).toEqual(before);
+});
+
 test("a duplicate name in a draft shows an error and creates nothing", async ({
   page,
 }, testInfo) => {

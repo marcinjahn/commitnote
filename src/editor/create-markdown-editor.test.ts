@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { undo } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { insertNewlineContinueMarkup } from "@codemirror/lang-markdown";
 import {
@@ -124,6 +125,41 @@ describe("createMarkdownEditor", () => {
     });
 
     expect(changes).toEqual(["*a*", "*a*\n+ item"]);
+    editor.destroy();
+  });
+
+  it("does not restore the previous document when undoing after setText", () => {
+    const onChange = vi.fn();
+    const editor = createMarkdownEditor({
+      parent: document.createElement("div"),
+      text: "A",
+      readOnly: false,
+      onChange,
+    });
+
+    editor.setText("");
+    undo(editor.view);
+
+    expect(editor.view.state.doc.toString()).toBe("");
+    expect(onChange).not.toHaveBeenCalled();
+    editor.destroy();
+  });
+
+  it("undoes typing within the current document", () => {
+    const editor = createMarkdownEditor({
+      parent: document.createElement("div"),
+      text: "",
+      readOnly: false,
+      onChange: () => {},
+    });
+
+    editor.view.dispatch({
+      changes: { from: 0, insert: "abc" },
+      userEvent: "input.type",
+    });
+    undo(editor.view);
+
+    expect(editor.view.state.doc.toString()).toBe("");
     editor.destroy();
   });
 
