@@ -10,6 +10,7 @@
   import MoveDialog from "../dialogs/MoveDialog.svelte";
   import NameDialog from "../dialogs/NameDialog.svelte";
   import NotePane from "../note/NotePane.svelte";
+  import NoticeToasts from "../notices/NoticeToasts.svelte";
   import NoteHeader from "./NoteHeader.svelte";
   import NoteTree from "./NoteTree.svelte";
   import type { RowAction } from "./row-menu-types";
@@ -364,6 +365,12 @@
     <NotePane {engine} openNote={engineState.openNote} {viewMode} />
   </section>
 </div>
+
+<NoticeToasts
+  notices={engineState.notices}
+  onDismiss={(id) => engine.dismissNotice(id)}
+  onOpen={handleSelect}
+/>
 
 {#if dialog.kind === "createNote" || dialog.kind === "createFolder"}
   <NameDialog
