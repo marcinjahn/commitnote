@@ -619,7 +619,7 @@ export function createSyncEngine(options: {
     for (const [conflict, theirs] of newTheirs) {
       // The conflict may have been resolved while the new version loaded.
       if (!state.conflicts.includes(conflict)) continue;
-      const mine = conflict.editing ?? conflict.mine;
+      const local = conflict.editing ?? conflict.mine;
       const without = state.conflicts.filter((held) => held !== conflict);
 
       if (theirs === null) {
@@ -636,12 +636,12 @@ export function createSyncEngine(options: {
         appendRebased({
           kind: "create-note",
           path: conflict.path,
-          content: mine,
+          content: hasConflictMarkers(local) ? conflict.mine : local,
         });
         needsSave = true;
       } else {
-        const result = mergeText(conflict.theirs, mine, theirs.text);
-        if (result.kind === "clean") {
+        const result = mergeText(conflict.base, local, theirs.text);
+        if (result.kind === "clean" && !hasConflictMarkers(result.text)) {
           update((current) => ({
             ...current,
             conflicts: without,

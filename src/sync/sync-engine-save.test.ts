@@ -617,12 +617,47 @@ describe("sync engine saves", () => {
   });
 
   describe("a held conflict when the remote changes again", () => {
-    it("resolves itself when the remote change merges cleanly", async () => {
+    it("stays held with the new remote line when the remote edits a different line", async () => {
       const h = await setup();
-      const { mine, theirs } = await heldWelcomeConflict(h);
-      const newTheirs = replaceLine(theirs, "- First bullet", "- First!");
+      const { theirs } = await heldWelcomeConflict(h);
+      const remoteHead = await pushRemote(h.fake, [
+        {
+          kind: "update-note",
+          path: WELCOME,
+          content: replaceLine(theirs, "- First bullet", "- First!"),
+        },
+      ]);
+      const noticesBefore = h.engine
+        .getState()
+        .notices.filter((notice) => notice.kind === "conflict").length;
+
+      await h.engine.refresh();
+      await waitIdle(h.engine);
+
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "out-of-sync",
+        reason: "conflict",
+      });
+      const [conflict] = h.engine.getState().conflicts;
+      expect(conflict.merged).toContain("# Welcome (mine)");
+      expect(conflict.merged).toContain("# Welcome (theirs)");
+      expect(conflict.merged).toContain("- First!");
+      expect(
+        h.engine.getState().notices.filter((notice) => notice.kind === "conflict"),
+      ).toHaveLength(noticesBefore + 1);
+      expect(await h.fake.getHead()).toBe(remoteHead);
+      expect(h.engine.getState().pending).toEqual([]);
+    });
+
+    it("resolves cleanly when the remote makes the same change as mine", async () => {
+      const h = await setup();
+      const { mine } = await heldWelcomeConflict(h);
       await pushRemote(h.fake, [
-        { kind: "update-note", path: WELCOME, content: newTheirs },
+        {
+          kind: "update-note",
+          path: WELCOME,
+          content: replaceLine(mine, "- First bullet", "- First!"),
+        },
       ]);
 
       await h.engine.refresh();
@@ -632,8 +667,61 @@ describe("sync engine saves", () => {
       const text = await welcomeText(h.fake);
       expect(text).toContain("# Welcome (mine)");
       expect(text).toContain("- First!");
-      expect(text).not.toBe(mine);
-      expect(h.engine.getState().syncStates.hasUnsaved).toBe(false);
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "synced",
+      });
+    });
+
+    it("saves nothing while markers remain in the edited merge and the remote edits elsewhere", async () => {
+      const h = await setup();
+      const { theirs } = await heldWelcomeConflict(h);
+      await h.engine.openNote(WELCOME);
+      h.engine.resolveConflict(WELCOME, "editMerged");
+      const editing = h.engine.getState().conflicts[0].editing;
+      const commitsBefore = h.commits.length;
+      const remoteHead = await pushRemote(h.fake, [
+        {
+          kind: "update-note",
+          path: WELCOME,
+          content: replaceLine(theirs, "- First bullet", "- First!"),
+        },
+      ]);
+
+      await h.engine.refresh();
+      h.clock.advance(60_000);
+      await waitIdle(h.engine);
+
+      expect(await h.fake.getHead()).toBe(remoteHead);
+      expect(h.commits).toHaveLength(commitsBefore);
+      expect(h.engine.getState().pending).toEqual([]);
+      expect(h.engine.getState().conflicts).toHaveLength(1);
+      expect(h.engine.getState().conflicts[0].editing).toBe(editing);
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "out-of-sync",
+        reason: "conflict",
+      });
+    });
+
+    it("restores mine without markers when the remote deletes a note whose edited merge has markers", async () => {
+      const h = await setup();
+      const { mine } = await heldWelcomeConflict(h);
+      await h.engine.openNote(WELCOME);
+      h.engine.resolveConflict(WELCOME, "editMerged");
+      expect(h.engine.getState().conflicts[0].editing).not.toBeNull();
+      await pushRemote(h.fake, [{ kind: "delete-note", path: WELCOME }]);
+
+      await h.engine.refresh();
+      await waitIdle(h.engine);
+
+      const text = await welcomeText(h.fake);
+      expect(text).toBe(mine);
+      expect(text).not.toContain("<<<<<<<");
+      expect(h.engine.getState().notices).toContainEqual(
+        expect.objectContaining({
+          kind: "merge",
+          notice: { kind: "edit-restored", path: WELCOME },
+        }),
+      );
     });
 
     it("restores mine when the remote deletes the note", async () => {
