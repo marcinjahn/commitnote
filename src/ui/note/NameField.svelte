@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
 
   interface Props {
     value: string;
@@ -7,9 +7,12 @@
     error: string | null;
     resetKey: number;
     autofocus?: boolean;
+    pendingText?: string | null;
+    onPendingConsumed?: () => void;
     onCommit: (edited: string) => void;
     onEscape: () => void;
     onEnterDone?: () => void;
+    onInput?: (edited: string) => void;
   }
 
   const {
@@ -18,9 +21,12 @@
     error,
     resetKey,
     autofocus = false,
+    pendingText = null,
+    onPendingConsumed,
     onCommit,
     onEscape,
     onEnterDone,
+    onInput,
   }: Props = $props();
 
   let edited = $state("");
@@ -29,7 +35,15 @@
 
   $effect(() => {
     void resetKey;
-    edited = value;
+    const next = value;
+    untrack(() => {
+      if (pendingText !== null) {
+        edited = pendingText;
+        onPendingConsumed?.();
+      } else {
+        edited = next;
+      }
+    });
   });
 
   onMount(() => {
@@ -52,6 +66,7 @@
 
   function handleInput(): void {
     committedByEnter = false;
+    onInput?.(edited);
   }
 
   function handleBlur(): void {

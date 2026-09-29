@@ -6,27 +6,35 @@
 
   interface Props {
     name: string;
-    syncState: SyncState;
+    draft: boolean;
+    syncState: SyncState | null;
     nameError: string | null;
     nameReadOnly: boolean;
     nameResetKey: number;
+    namePendingText?: string | null;
+    onNamePendingConsumed?: () => void;
     onNameCommit: (edited: string) => void;
     onNameEscape: () => void;
+    onNameEnterDone: () => void;
+    onNameInput?: (edited: string) => void;
     onBack: () => void;
   }
 
   const {
     name,
+    draft,
     syncState,
     nameError,
     nameReadOnly,
     nameResetKey,
+    namePendingText = null,
+    onNamePendingConsumed,
     onNameCommit,
     onNameEscape,
+    onNameEnterDone,
+    onNameInput,
     onBack,
   }: Props = $props();
-
-  const syncLabel = $derived(describeSyncState(syncState));
 </script>
 
 <header class="note-header">
@@ -48,13 +56,20 @@
     readOnly={nameReadOnly}
     error={nameError}
     resetKey={nameResetKey}
+    autofocus={draft}
+    pendingText={namePendingText}
+    onPendingConsumed={onNamePendingConsumed}
     onCommit={onNameCommit}
     onEscape={onNameEscape}
+    onEnterDone={onNameEnterDone}
+    onInput={onNameInput}
   />
-  <span class="sync-status">
-    <SyncStateIcon state={syncState} />
-    <span class="sync-status-label">{syncLabel}</span>
-  </span>
+  {#if !draft && syncState !== null}
+    <span class="sync-status">
+      <SyncStateIcon state={syncState} />
+      <span class="sync-status-label">{describeSyncState(syncState)}</span>
+    </span>
+  {/if}
 </header>
 
 <style>
@@ -71,10 +86,13 @@
     align-items: center;
     gap: var(--space-1);
     flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .back-button svg {
     flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
   }
 
   .sync-status {

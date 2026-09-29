@@ -10,6 +10,7 @@
   import MoveDialog from "../dialogs/MoveDialog.svelte";
   import NameDialog from "../dialogs/NameDialog.svelte";
   import { decideNameCommit } from "../note/name-field-commit";
+  import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
   import NotePane from "../note/NotePane.svelte";
   import NoticeToasts from "../notices/NoticeToasts.svelte";
   import NoteHeader from "./NoteHeader.svelte";
@@ -32,7 +33,7 @@
   type DialogState =
     | { readonly kind: "none" }
     | {
-        readonly kind: "createNote" | "createFolder";
+        readonly kind: "createFolder";
         readonly parent: NotePath;
         readonly siblingNames: readonly string[];
         readonly error: string | null;
@@ -59,6 +60,12 @@
   let nameError = $state<string | null>(null);
   let nameResetKey = $state(0);
   let expandRequest = $state<{ readonly path: NotePath } | null>(null);
+  let draft = $state<NoteDraft | null>(null);
+  let draftError = $state<string | null>(null);
+  let draftSession = $state(0);
+  let pendingFieldText = $state<string | null>(null);
+  let focusEditorOnEnter = false;
+  let notePane: ReturnType<typeof NotePane> | undefined = $state();
 
   $effect(() => {
     return engine.subscribe((next) => {
@@ -95,12 +102,102 @@
   }
 
   function handleSelect(path: NotePath): void {
+    leaveDraft();
     mobileView = "note";
     void engine.openNote(path);
   }
 
   function handleBack(): void {
+    leaveDraft();
     mobileView = "tree";
+  }
+
+  function handleLogOut(): void {
+    leaveDraft();
+    onLogOut();
+  }
+
+  function leaveDraft(): void {
+    if (draft === null) return;
+    const action = resolveNoteDraft(draft, { kind: "left" }, []);
+    if (action.kind === "discard") {
+      draft = null;
+      draftError = null;
+    }
+  }
+
+  function startDraft(parent: NotePath): void {
+    leaveDraft();
+    void engine.openNote(null);
+    draft = { parent, name: "" };
+    draftError = null;
+    draftSession += 1;
+    mobileView = "note";
+  }
+
+  function handleDraftNameInput(edited: string): void {
+    if (draft === null) return;
+    draft = { ...draft, name: edited };
+  }
+
+  function handleDraftNameCommit(edited: string): void {
+    if (draft === null) return;
+    draft = { ...draft, name: edited };
+    const action = resolveNoteDraft(
+      draft,
+      { kind: "nameConfirmed" },
+      siblingNamesOf(draft.parent),
+    );
+    switch (action.kind) {
+      case "showError":
+        draftError = action.message;
+        break;
+      case "create": {
+        const result = engine.createNote(action.parent, action.name);
+        if (!result.ok) {
+          draftError = describeStructureError(result.error);
+          break;
+        }
+        draft = null;
+        draftError = null;
+        focusEditorOnEnter = true;
+        expandFolder(action.parent);
+        void engine.openNote(result.path);
+        break;
+      }
+    }
+  }
+
+  function handleDraftContent(content: string): void {
+    if (draft === null) return;
+    const action = resolveNoteDraft(
+      draft,
+      { kind: "contentChanged", content, now: new Date() },
+      siblingNamesOf(draft.parent),
+    );
+    if (action.kind !== "createWithContent") return;
+    const result = engine.createNote(action.parent, action.name);
+    if (!result.ok) {
+      draftError = describeStructureError(result.error);
+      return;
+    }
+    engine.editNote(result.path, action.content);
+    if (action.fieldError !== null) {
+      pendingFieldText = draft.name;
+      nameError = action.fieldError;
+      // Keeps the open-path effect from clearing the carried-over field error.
+      previousOpenPath = result.path;
+    }
+    void engine.openNote(result.path);
+    expandFolder(action.parent);
+    draft = null;
+    draftError = null;
+  }
+
+  function handleNameEnterDone(): void {
+    if (!focusEditorOnEnter) return;
+    focusEditorOnEnter = false;
+    notePane?.focusEditor();
   }
 
   function handleRefresh(): void {
@@ -125,12 +222,7 @@
   }
 
   function handleHeaderNewNote(): void {
-    dialog = {
-      kind: "createNote",
-      parent: [],
-      siblingNames: siblingNamesOf([]),
-      error: null,
-    };
+    startDraft([]);
   }
 
   function handleHeaderNewFolder(): void {
@@ -145,12 +237,7 @@
   function handleTreeAction(action: RowAction, node: WorkingNode): void {
     switch (action) {
       case "new-note":
-        dialog = {
-          kind: "createNote",
-          parent: node.path,
-          siblingNames: siblingNamesOf(node.path),
-          error: null,
-        };
+        startDraft(node.path);
         break;
       case "new-folder":
         dialog = {
@@ -183,20 +270,6 @@
     }
   }
 
-  function handleCreateNoteSubmit(name: string): void {
-    if (dialog.kind !== "createNote") return;
-    const result = engine.createNote(dialog.parent, name);
-    if (!result.ok) {
-      dialog = { ...dialog, error: describeStructureError(result.error) };
-      return;
-    }
-    const parent = dialog.parent;
-    closeDialog();
-    expandFolder(parent);
-    mobileView = "note";
-    void engine.openNote(result.path);
-  }
-
   function handleCreateFolderSubmit(name: string): void {
     if (dialog.kind !== "createFolder") return;
     const result = engine.createFolder(dialog.parent, name);
@@ -220,6 +293,11 @@
   }
 
   function handleNameCommit(edited: string): void {
+    focusEditorOnEnter = false;
+    if (draft !== null) {
+      handleDraftNameCommit(edited);
+      return;
+    }
     if (openPath === null) return;
     const currentName = noteName(openPath);
     const decision = decideNameCommit({
@@ -248,6 +326,10 @@
   }
 
   function handleNameEscape(): void {
+    if (draft !== null) {
+      draftError = null;
+      return;
+    }
     nameError = null;
   }
 
@@ -364,7 +446,7 @@
             />
           </svg>
         </button>
-        <button type="button" class="button" onclick={onLogOut}>
+        <button type="button" class="button" onclick={handleLogOut}>
           Log out
         </button>
       </div>
@@ -386,19 +468,45 @@
   </aside>
 
   <section class="note-pane" class:mobile-hidden={mobileView !== "note"}>
-    {#if engineState.openNote !== null}
-      <NoteHeader
-        name={noteName(engineState.openNote.path)}
-        syncState={engineState.syncStates.stateOf(engineState.openNote.path)}
-        nameError={nameError}
-        nameReadOnly={openConflicted}
-        {nameResetKey}
-        onNameCommit={handleNameCommit}
-        onNameEscape={handleNameEscape}
-        onBack={handleBack}
-      />
-    {/if}
-    <NotePane {engine} openNote={engineState.openNote} />
+    {#key draftSession}
+      {#if draft !== null}
+        <NoteHeader
+          name={draft.name}
+          draft={true}
+          syncState={null}
+          nameError={draftError}
+          nameReadOnly={false}
+          {nameResetKey}
+          onNameCommit={handleNameCommit}
+          onNameEscape={handleNameEscape}
+          onNameEnterDone={handleNameEnterDone}
+          onNameInput={handleDraftNameInput}
+          onBack={handleBack}
+        />
+      {:else if engineState.openNote !== null}
+        <NoteHeader
+          name={noteName(engineState.openNote.path)}
+          draft={false}
+          syncState={engineState.syncStates.stateOf(engineState.openNote.path)}
+          {nameError}
+          nameReadOnly={openConflicted}
+          {nameResetKey}
+          namePendingText={pendingFieldText}
+          onNamePendingConsumed={() => (pendingFieldText = null)}
+          onNameCommit={handleNameCommit}
+          onNameEscape={handleNameEscape}
+          onNameEnterDone={handleNameEnterDone}
+          onBack={handleBack}
+        />
+      {/if}
+    {/key}
+    <NotePane
+      bind:this={notePane}
+      {engine}
+      openNote={engineState.openNote}
+      draft={draft !== null}
+      onDraftContent={handleDraftContent}
+    />
   </section>
 </div>
 
@@ -408,18 +516,16 @@
   onOpen={handleSelect}
 />
 
-{#if dialog.kind === "createNote" || dialog.kind === "createFolder"}
+{#if dialog.kind === "createFolder"}
   <NameDialog
     open={true}
-    title={dialog.kind === "createNote" ? "New note" : "New folder"}
-    label={dialog.kind === "createNote" ? "Note name" : "Folder name"}
+    title="New folder"
+    label="Folder name"
     initialName=""
     siblingNames={dialog.siblingNames}
     submitLabel="Create"
     error={dialog.error}
-    onSubmit={dialog.kind === "createNote"
-      ? handleCreateNoteSubmit
-      : handleCreateFolderSubmit}
+    onSubmit={handleCreateFolderSubmit}
     onClose={closeDialog}
   />
 {:else if dialog.kind === "rename"}
