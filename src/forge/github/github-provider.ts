@@ -9,12 +9,15 @@ export interface GitHubProviderOptions {
 
 const TOKEN_CREATION_URL =
   "https://github.com/settings/personal-access-tokens/new";
+const REPOSITORY_CREATION_URL =
+  "https://github.com/new?name=notes&visibility=private";
 const MAX_REPOSITORY_PAGES = 10;
 
 interface GitHubRepositoryBody {
   readonly name: string;
   readonly owner: { readonly login: string };
   readonly html_url: string;
+  readonly private: boolean;
 }
 
 function localDate(now: Date): string {
@@ -54,6 +57,7 @@ export function createGitHubProvider(
     accessTokenHint:
       'A fine-grained token for your notes repository only, with "Contents: read and write".',
     accessTokenCreationUrl,
+    repositoryCreationUrl: () => REPOSITORY_CREATION_URL,
 
     async listRepositories(accessToken) {
       const repositories: RepositorySummary[] = [];
@@ -74,6 +78,7 @@ export function createGitHubProvider(
               repo: repo.name,
             },
             url: repo.html_url,
+            private: repo.private,
           });
         }
         url = nextPageUrl(response);

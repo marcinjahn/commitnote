@@ -1,25 +1,68 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { continueWithToken, logIn, expectTree } from "./helpers";
+import {
+  chooseRepository,
+  continueWithToken,
+  expectTree,
+  logIn,
+  setUpNotesRepo,
+} from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";
 const NOTES_PASSPHRASE = "sample notes repo passphrase";
 const EMPTY_REPO = "https://github.com/sample/empty";
+const ALMOST_EMPTY_REPO = "https://github.com/sample/almost-empty";
 
-test("first-time initialization and login", async ({ page }) => {
+const FIXTURE_CONTROLS = "__commitNoteFakeForge";
+
+async function failNextOnLoad(
+  page: Page,
+  repoKey: string,
+  operation: string,
+  kind: string,
+): Promise<void> {
+  await page.addInitScript(
+    ([key, repo, op, errorKind]) => {
+      let controls: any;
+      Object.defineProperty(window, key, {
+        configurable: true,
+        get: () => controls,
+        set: (value) => {
+          controls = value;
+          controls.failNext(repo, op, errorKind);
+        },
+      });
+    },
+    [FIXTURE_CONTROLS, repoKey, operation, kind],
+  );
+}
+
+test("setting up an empty repo, then logging in to it", async ({ page }) => {
   await page.goto("/");
 
-  await logIn(page, { repo: EMPTY_REPO, passphrase: "first passphrase" });
+  await chooseRepository(page, { repo: EMPTY_REPO });
   await expect(
-    page.getByRole("heading", { name: "Initialize this repository?" }),
+    page.getByText(
+      "This repository is empty. Setting it up as a notes repo adds a commitnote configuration file and a README.",
+    ),
   ).toBeVisible();
+  await expect(page.getByLabel("Passphrase", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Create passphrase")).toBeFocused();
 
+  await page.getByLabel("Create passphrase").fill("first passphrase");
   await page.getByLabel("Repeat passphrase").fill("a different passphrase");
-  await page.getByRole("button", { name: "Initialize notes repo" }).click();
+  await page.getByRole("button", { name: "Set up notes repo" }).click();
   await expect(page.getByRole("alert")).toHaveText("Passphrases do not match.");
+  await expect(page.getByLabel("Repeat passphrase")).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await expect(page.getByLabel("Repeat passphrase")).toHaveAccessibleDescription(
+    "Passphrases do not match.",
+  );
 
   await page.getByLabel("Repeat passphrase").fill("first passphrase");
-  await page.getByRole("button", { name: "Initialize notes repo" }).click();
+  await page.getByRole("button", { name: "Set up notes repo" }).click();
   // An empty notes repo has no tree, just the empty-state message.
   await expect(page.getByText("No notes yet")).toBeVisible({ timeout: 15_000 });
 
@@ -28,26 +71,184 @@ test("first-time initialization and login", async ({ page }) => {
 
   await logIn(page, { repo: EMPTY_REPO, passphrase: "first passphrase" });
   await expect(page.getByText("No notes yet")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Initialize this repository?" }),
-  ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Log out" }).click();
-  await logIn(page, { repo: EMPTY_REPO, passphrase: "wrong passphrase" });
+  await chooseRepository(page, { repo: EMPTY_REPO });
+  await expect(page.getByLabel("Create passphrase")).toHaveCount(0);
+  await page
+    .getByLabel("Passphrase", { exact: true })
+    .fill("wrong passphrase");
+  await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByRole("alert")).toHaveText("Wrong passphrase.");
+  await expect(page.getByLabel("Passphrase", { exact: true })).toHaveValue("");
+});
+
+test("a weak passphrase shows a strength warning but does not block setup", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await chooseRepository(page, { repo: EMPTY_REPO });
+
+  const strength = page.locator("#login-create-passphrase-strength");
+  const createField = page.getByLabel("Create passphrase");
+  await expect(strength).toHaveCount(0);
+
+  await createField.fill("password");
+  await expect(strength).toBeVisible();
+  await expect(strength).toContainText("Weak");
+  await expect(createField).toHaveAccessibleDescription(
+    /Passphrase strength: Weak\./,
+  );
+
+  await page
+    .getByLabel("Create passphrase")
+    .fill("violet anchor pepper tundra kayak");
+  await expect(strength).toContainText(/Good|Strong/);
+
+  await page.getByLabel("Create passphrase").fill("password");
+  await page.getByLabel("Repeat passphrase").fill("password");
+  await page.getByRole("button", { name: "Set up notes repo" }).click();
+  await expect(page.getByText("No notes yet")).toBeVisible({ timeout: 15_000 });
+});
+
+test("the log-in form has no strength meter", async ({ page }) => {
+  await page.goto("/");
+  await chooseRepository(page, { repo: NOTES_REPO });
+  await expect(page.getByLabel("Passphrase", { exact: true })).toBeVisible();
+  await page.getByLabel("Passphrase", { exact: true }).fill("password");
+  await expect(page.getByText(/Passphrase strength:/)).toHaveCount(0);
 });
 
 test("an empty repo offers creating a note from the sidebar", async ({
   page,
 }) => {
   await page.goto("/");
-  await logIn(page, { repo: EMPTY_REPO, passphrase: "first passphrase" });
-  await page.getByLabel("Repeat passphrase").fill("first passphrase");
-  await page.getByRole("button", { name: "Initialize notes repo" }).click();
+  await setUpNotesRepo(page, { repo: EMPTY_REPO, passphrase: "first passphrase" });
   await expect(page.getByText("No notes yet")).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "create one" }).click();
   await expect(page.getByRole("textbox", { name: "Note name" })).toBeFocused();
+});
+
+test("setting up a repo holding only a README, LICENSE and .gitignore keeps them", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await chooseRepository(page, { repo: ALMOST_EMPTY_REPO });
+  await expect(
+    page.getByText(
+      "This repository holds only .gitignore, LICENSE and README.md. Setting it up as a notes repo keeps them as they are and adds a commitnote configuration file.",
+    ),
+  ).toBeVisible();
+  await page.getByLabel("Create passphrase").fill("almost empty passphrase");
+  await page.getByLabel("Repeat passphrase").fill("almost empty passphrase");
+  await page.getByRole("button", { name: "Set up notes repo" }).click();
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  await page.getByRole("button", { name: "Log out" }).click();
+  await logIn(page, {
+    repo: ALMOST_EMPTY_REPO,
+    passphrase: "almost empty passphrase",
+  });
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible({
+    timeout: 15_000,
+  });
+});
+
+test("a repo changed during setup can be checked again and set up", async ({
+  page,
+}) => {
+  await failNextOnLoad(page, "sample/almost-empty", "commit", "stale");
+  await page.goto("/");
+
+  await setUpNotesRepo(page, {
+    repo: ALMOST_EMPTY_REPO,
+    passphrase: "almost empty passphrase",
+  });
+  await expect(page.getByRole("alert")).toHaveText(
+    "The repository changed while it was being set up. Check it again.",
+    { timeout: 15_000 },
+  );
+  await expect(page.getByLabel("Create passphrase")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Check again" }).click();
+  await page.getByLabel("Create passphrase").fill("almost empty passphrase");
+  await page.getByLabel("Repeat passphrase").fill("almost empty passphrase");
+  await page.getByRole("button", { name: "Set up notes repo" }).click();
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible({
+    timeout: 15_000,
+  });
+});
+
+test("a repository that could not be checked can be checked again", async ({
+  page,
+}) => {
+  await failNextOnLoad(page, "sample/notes", "inspect", "Network");
+  await page.goto("/");
+
+  await chooseRepository(page, { repo: NOTES_REPO });
+  await expect(page.getByRole("alert")).toHaveText(
+    "Could not reach GitHub. Check your connection and try again.",
+  );
+  await expect(page.getByLabel("Passphrase", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Check again" }).click();
+  await page
+    .getByLabel("Passphrase", { exact: true })
+    .fill(NOTES_PASSPHRASE);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expectTree(page);
+});
+
+test("a repository that is not private shows a warning", async ({ page }) => {
+  await page.goto("/");
+
+  await chooseRepository(page, { repo: "https://github.com/sample/public-empty" });
+  const warning = page.getByRole("note").filter({ hasText: "not private" });
+  await expect(warning).toHaveText(
+    "This repository is not private. Your notes stay encrypted, but anyone who can see the repository can see when you save, how many files there are, their sizes and how often you write.",
+  );
+  await expect(page.getByLabel("Create passphrase")).toBeVisible();
+
+  await page
+    .getByLabel("Repository", { exact: true })
+    .selectOption({ label: "sample/empty" });
+  await expect(page.getByLabel("Create passphrase")).toBeVisible();
+  await expect(warning).toHaveCount(0);
+});
+
+test("passphrase forms name the repository for password managers", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await chooseRepository(page, { repo: NOTES_REPO });
+  const passphrase = page.getByLabel("Passphrase", { exact: true });
+  await expect(passphrase).toHaveAttribute("autocomplete", "current-password");
+  const loginForm = page.locator("form", { has: passphrase });
+  const username = loginForm.locator('input[autocomplete="username"]');
+  await expect(username).toHaveValue("sample/notes");
+  await expect(username).toHaveAttribute("readonly", "");
+  await expect(username).toHaveAttribute("tabindex", "-1");
+  await expect(loginForm.getByLabel("Access token")).toHaveCount(0);
+
+  await page
+    .getByLabel("Repository", { exact: true })
+    .selectOption({ label: "sample/empty" });
+  const create = page.getByLabel("Create passphrase");
+  await expect(create).toHaveAttribute("autocomplete", "new-password");
+  await expect(page.getByLabel("Repeat passphrase")).toHaveAttribute(
+    "autocomplete",
+    "new-password",
+  );
+  await expect(
+    page
+      .locator("form", { has: create })
+      .locator('input[autocomplete="username"]'),
+  ).toHaveValue("sample/empty");
 });
 
 test("progress is visible", async ({ page }) => {
@@ -159,7 +360,7 @@ test("a remembered session whose notes fail to load shows the error", async ({
 test("no Remember me", async ({ page }) => {
   await page.goto("/");
 
-  await continueWithToken(page);
+  await chooseRepository(page, { repo: NOTES_REPO });
   await expect(
     page.getByRole("checkbox", { name: "Remember me" }),
   ).not.toBeChecked();
@@ -174,6 +375,7 @@ test("no Remember me", async ({ page }) => {
     NOTES_REPO,
   );
   await expect(page.getByLabel("Passphrase", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Passphrase", { exact: true })).toBeFocused();
 });
 
 test("the token link opens a pre-filled fine-grained token form", async ({
@@ -190,6 +392,42 @@ test("the token link opens a pre-filled fine-grained token form", async ({
   await expect(link).toHaveAttribute("target", "_blank");
 });
 
+test("the token help links to creating an empty private repository", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const link = page.getByRole("link", {
+    name: "Create an empty private repository",
+  });
+  await expect(link).toHaveAttribute(
+    "href",
+    "https://github.com/new?name=notes&visibility=private",
+  );
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+});
+
+test("a token without repositories says how to create one", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await continueWithToken(page, "no-repositories-token");
+
+  const alert = page.getByRole("alert");
+  await expect(alert).toContainText(
+    "This access token has no access to any repository. Edit it on GitHub and add your notes repository.",
+  );
+  await expect(alert).toContainText(
+    "No notes repo yet? Create an empty private repository first, then give the token access to it.",
+  );
+  await expect(
+    alert.getByRole("link", { name: "Create an empty private repository" }),
+  ).toHaveAttribute("href", "https://github.com/new?name=notes&visibility=private");
+  await expect(page.getByLabel("Repository", { exact: true })).toHaveCount(0);
+});
+
 test("the repository list comes from the access token", async ({ page }) => {
   await page.goto("/");
 
@@ -198,17 +436,21 @@ test("the repository list comes from the access token", async ({ page }) => {
   await expect(repository).toHaveValue("");
   await expect(repository.getByRole("option")).toHaveText([
     "Choose a repository",
+    "sample/almost-empty",
     "sample/empty",
     "sample/empty-read-only",
     "sample/foreign",
     "sample/newer",
     "sample/notes",
+    "sample/public-empty",
     "sample/read-only",
     "sample/trash",
   ]);
 
-  await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Choose a repository.");
+  await expect(page.getByLabel("Passphrase", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Create passphrase")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Log in" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Continue" })).toHaveCount(0);
 
   await page.getByLabel("Access token").fill("another-token");
   await expect(repository).toHaveCount(0);
@@ -229,34 +471,29 @@ test("refusal: an invalid access token", async ({ page }) => {
 const refusals: ReadonlyArray<{
   readonly name: string;
   readonly repo: string;
-  readonly passphrase: string;
   readonly message: string;
 }> = [
   {
     name: "a repo commitnote did not initialize",
     repo: "https://github.com/sample/foreign",
-    passphrase: "whatever",
     message:
-      "This repository is neither empty nor a notes repo. commitnote only uses an empty repository or one it initialized, and it has not changed anything here.",
+      "This repository has files commitnote does not use. commitnote accepts an empty repository, one with only a README, LICENSE or .gitignore, or a notes repo. Nothing was changed here.",
   },
   {
     name: "a repo initialized by a newer format version",
     repo: "https://github.com/sample/newer",
-    passphrase: "whatever",
     message:
       "This notes repo was created by a newer version of commitnote. Update the app to open it.",
   },
   {
     name: "a read-only notes repo",
     repo: "https://github.com/sample/read-only",
-    passphrase: NOTES_PASSPHRASE,
     message:
       'This access token cannot write to the repository. Give it read and write access to the repository contents.',
   },
   {
     name: "a read-only empty repo",
     repo: "https://github.com/sample/empty-read-only",
-    passphrase: "whatever",
     message:
       'This access token cannot write to the repository. Give it read and write access to the repository contents.',
   },
@@ -266,19 +503,45 @@ for (const refusal of refusals) {
   test(`refusal: ${refusal.name}`, async ({ page }) => {
     await page.goto("/");
 
-    await logIn(page, {
-      repo: refusal.repo,
-      passphrase: refusal.passphrase,
-    });
+    await chooseRepository(page, { repo: refusal.repo });
 
     await expect(page.getByRole("alert")).toHaveText(refusal.message);
+    await expect(page.getByLabel("Passphrase", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Create passphrase")).toHaveCount(0);
+    await expect(page.getByLabel("Repository", { exact: true })).toBeFocused();
     await expect(
-      page.getByRole("heading", { name: "Initialize this repository?" }),
-    ).toHaveCount(0);
-    await expect(page.getByRole("tree", { name: "Notes" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+      page.getByRole("button", { name: "Check again" }),
+    ).toBeVisible();
   });
 }
+
+test("after a refusal another repository can be chosen with the same token", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await chooseRepository(page, { repo: "https://github.com/sample/foreign" });
+  await expect(page.getByRole("alert")).toBeVisible();
+  const createLinks = page.getByRole("link", {
+    name: "Create an empty private repository",
+  });
+  await expect(createLinks).toHaveCount(2);
+  await expect(createLinks.nth(1)).toHaveAttribute(
+    "href",
+    "https://github.com/new?name=notes&visibility=private",
+  );
+  await expect(page.getByRole("button", { name: "Check again" })).toBeVisible();
+
+  await page
+    .getByLabel("Repository", { exact: true })
+    .selectOption({ label: "sample/notes" });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page
+    .getByLabel("Passphrase", { exact: true })
+    .fill(NOTES_PASSPHRASE);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expectTree(page);
+});
 
 test("a long repository name keeps the form inside the login card", async ({
   page,
@@ -294,11 +557,13 @@ test("a long repository name keeps the form inside the login card", async ({
     select.append(option);
   });
 
+  await repository.selectOption({
+    label: "some-organization-name/a-really-long-repository-name-for-notes",
+  });
+
   const card = await page.locator(".login-card").boundingBox();
-  const button = await page
-    .getByRole("button", { name: "Log in" })
-    .boundingBox();
-  expect(button!.x + button!.width).toBeLessThanOrEqual(card!.x + card!.width);
+  const select = await repository.boundingBox();
+  expect(select!.x + select!.width).toBeLessThanOrEqual(card!.x + card!.width);
 });
 
 test.describe("several providers", () => {
@@ -334,6 +599,9 @@ test.describe("several providers", () => {
     await expect(
       page.getByRole("link", { name: "Create a token on GitHub" }),
     ).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Create an empty private repository" }),
+    ).toHaveAttribute("href", "https://fakelab.test/projects/new");
   });
 
   test("switching provider drops the loaded repository list", async ({
@@ -364,16 +632,14 @@ test.describe("several providers", () => {
     await expectTree(page);
   });
 
-  test("initializing a repository on the second provider", async ({ page }) => {
+  test("setting up a repository on the second provider", async ({ page }) => {
     await page.goto("/");
 
-    await logIn(page, {
+    await setUpNotesRepo(page, {
       provider: "Fakelab",
       repo: SECOND_EMPTY_REPO,
       passphrase: "first passphrase",
     });
-    await page.getByLabel("Repeat passphrase").fill("first passphrase");
-    await page.getByRole("button", { name: "Initialize notes repo" }).click();
     await expect(page.getByText("No notes yet")).toBeVisible({
       timeout: 15_000,
     });

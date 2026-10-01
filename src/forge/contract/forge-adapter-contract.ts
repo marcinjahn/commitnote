@@ -5,6 +5,7 @@ import type {
   ContentCreatingRequest,
   ForgeAdapter,
 } from "../forge-adapter";
+import { ROOT_LISTING_LIMIT } from "../forge-adapter";
 
 export interface ContractSeed {
   readonly commits: readonly {
@@ -112,7 +113,7 @@ export function describeForgeAdapterContract(
         expect(await subject.adapter.inspect()).toEqual({
           kind: "populated",
           canWrite: true,
-          main: { head, repoConfigText: '{"seed":true}' },
+          main: { head, repoConfigText: '{"seed":true}', rootEntries: null },
         });
       });
 
@@ -124,8 +125,53 @@ export function describeForgeAdapterContract(
         expect(await subject.adapter.inspect()).toEqual({
           kind: "populated",
           canWrite: true,
-          main: { head, repoConfigText: null },
+          main: {
+            head,
+            repoConfigText: null,
+            rootEntries: [{ name: "note.md", type: "blob" }],
+          },
         });
+      });
+
+      it("lists a nested directory only as a root tree entry", async () => {
+        const subject = await harness.createPopulated({
+          commits: [
+            {
+              message: "init",
+              files: { "README.md": "readme", "docs/guide/a.md": "a" },
+            },
+          ],
+        });
+        const inspection = await subject.adapter.inspect();
+        const rootEntries =
+          inspection.kind === "populated"
+            ? [...(inspection.main?.rootEntries ?? [])]
+            : [];
+        rootEntries.sort((a, b) => (a.name < b.name ? -1 : 1));
+        expect(rootEntries).toEqual([
+          { name: "README.md", type: "blob" },
+          { name: "docs", type: "tree" },
+        ]);
+      });
+
+      it("lists at least ROOT_LISTING_LIMIT real root names of a larger root", async () => {
+        const files: Record<string, string> = {};
+        for (let i = 0; i < ROOT_LISTING_LIMIT + 5; i++) {
+          files[`file-${String(i).padStart(2, "0")}.txt`] = `content ${i}`;
+        }
+        const subject = await harness.createPopulated({
+          commits: [{ message: "init", files }],
+        });
+        const inspection = await subject.adapter.inspect();
+        const rootEntries =
+          inspection.kind === "populated"
+            ? (inspection.main?.rootEntries ?? [])
+            : [];
+        expect(rootEntries.length).toBeGreaterThanOrEqual(ROOT_LISTING_LIMIT);
+        for (const entry of rootEntries) {
+          expect(files[entry.name]).toBeDefined();
+          expect(entry.type).toBe("blob");
+        }
       });
 
       it("reports main as null when only another branch is populated", async () => {

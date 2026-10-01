@@ -7,6 +7,7 @@ import type { ForgeId, RepoCoordinates } from "./repo-coordinates";
 export interface RepositorySummary {
   readonly coordinates: RepoCoordinates;
   readonly url: string;
+  readonly private: boolean;
 }
 
 export interface ForgeProvider {
@@ -15,6 +16,7 @@ export interface ForgeProvider {
   /** Short sentence telling the user which token to create. */
   readonly accessTokenHint?: string;
   accessTokenCreationUrl(now: Date): string;
+  repositoryCreationUrl(): string;
   /** Throws ForgeError. */
   listRepositories(accessToken: string): Promise<RepositorySummary[]>;
   createAdapter(

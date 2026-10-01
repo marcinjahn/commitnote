@@ -77,12 +77,16 @@ these fixture repositories:
   (with a nested note) deleted 2026-01-12 are expired, and the note deleted 2026-09-27 is fresh.
   `sample/notes` has no trash, so it never triggers a startup purge
 - `https://github.com/sample/empty` — empty and writable
+- `https://github.com/sample/almost-empty` — writable, with only `README.md`, `LICENSE` and
+  `.gitignore`
+- `https://github.com/sample/public-empty` — empty and writable, listed as public
 - `https://github.com/sample/empty-read-only`, `https://github.com/sample/read-only` — read-only
   variants
-- `https://github.com/sample/foreign`, `https://github.com/sample/newer` — repositories commitnote
-  refuses to open
+- `https://github.com/sample/foreign` (a README and code), `https://github.com/sample/newer` —
+  repositories commitnote refuses to open
 
-The access token `invalid-token` is always rejected; any other non-empty token is accepted. All
+The access token `invalid-token` is always rejected and `no-repositories-token` lists no
+repositories; any other non-empty token is accepted. All
 fixture state resets on reload. Test mode is never part of `npm run build`, which
 `npm run check:bundle` verifies.
 
@@ -91,10 +95,19 @@ fixture state resets on reload. Test mode is never part of `npm run build`, whic
 1. Paste a fine-grained access token. "Create a token on GitHub" opens GitHub's token form with the
    name, a one-year expiry and the "Contents: read and write" permission already filled in; you
    only choose the notes repository there.
-2. Continue: commitnote lists the repositories the token can see. Choose your notes repository, or
-   an empty one to start a new notes repo. The last used repository is preselected, and a single
-   one is picked for you.
-3. Enter the passphrase and log in.
+   No notes repo yet? The link under the token field opens the host's form for a new private
+   repository; create it empty (or with only a README, LICENSE or .gitignore) and give the token
+   access to it.
+2. Continue: commitnote lists the repositories the token can see. The last used repository is
+   preselected, and a single one is picked for you. Choosing a repository checks it, and only then
+   asks for a passphrase:
+   - a notes repo asks for its passphrase and logs in;
+   - an empty repository, or one holding only a README, LICENSE or .gitignore, asks you to create
+     a passphrase and repeat it, then sets it up as a notes repo, keeping those files;
+   - any other repository says why it can't be used, and you can pick another one with the same
+     token.
+   A repository that is not private shows a warning: notes stay encrypted, but when you save, how
+   many files there are and their sizes are visible to anyone who can see it.
 
 Each git host is a forge provider in `src/forge/` (token link, repository listing, adapter): GitHub
 and GitLab (gitlab.com only, personal access token with the `api` scope; self-hosted instances are

@@ -25,8 +25,10 @@ import type {
   ForgeAdapterOptions,
   ForgeWriteLimits,
   RepoInspection,
+  RootEntry,
   TreeEntry,
 } from "../forge-adapter";
+import { ROOT_LISTING_LIMIT } from "../forge-adapter";
 
 export interface GitLabAdapterOptions extends ForgeAdapterOptions {
   readonly fetch?: typeof fetch;
@@ -291,7 +293,11 @@ class GitLabAdapter implements ForgeAdapter {
       return {
         kind: "populated",
         canWrite,
-        main: { head, repoConfigText: null },
+        main: {
+          head,
+          repoConfigText: null,
+          rootEntries: await this.listRootEntries(head),
+        },
       };
     }
     if (!configResponse.ok) {
@@ -300,7 +306,30 @@ class GitLabAdapter implements ForgeAdapter {
     const repoConfigText = new TextDecoder("utf-8").decode(
       await configResponse.arrayBuffer(),
     );
-    return { kind: "populated", canWrite, main: { head, repoConfigText } };
+    return {
+      kind: "populated",
+      canWrite,
+      main: { head, repoConfigText, rootEntries: null },
+    };
+  }
+
+  private async listRootEntries(commitSha: string): Promise<RootEntry[]> {
+    const response = await this.send(
+      `/repository/tree?ref=${encodeURIComponent(commitSha)}&per_page=${ROOT_LISTING_LIMIT}`,
+      { method: "GET" },
+    );
+    if (!response.ok) {
+      throw this.errorFor(response);
+    }
+    const body = (await response.json()) as readonly {
+      name: string;
+      type: string;
+    }[];
+    return body.map((entry) => ({
+      name: entry.name,
+      // Submodules ("commit") are listed as directories.
+      type: entry.type === "blob" ? "blob" : "tree",
+    }));
   }
 
   async initialize(configText: string, message: string): Promise<CommitResult> {

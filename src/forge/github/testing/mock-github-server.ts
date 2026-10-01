@@ -374,11 +374,15 @@ export class MockGitHubRepo {
       if (this.isEmpty()) {
         return jsonResponse({ message: EMPTY_REPO_MESSAGE }, 409);
       }
-      const sha = treeMatch[1];
+      const sha =
+        this.git.getCommit(treeMatch[1])?.tree ?? treeMatch[1];
       if (this.git.getTree(sha) === undefined) {
         return jsonResponse({ message: "Not Found" }, 404);
       }
-      const entries = await this.git.listTreeEntries(sha);
+      const recursive = url.searchParams.has("recursive");
+      const entries = (await this.git.listTreeEntries(sha)).filter(
+        (entry) => recursive || !entry.path.includes("/"),
+      );
       return jsonResponse(
         {
           sha,

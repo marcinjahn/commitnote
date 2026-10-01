@@ -9,11 +9,13 @@ export interface GitLabProviderOptions {
 
 const TOKEN_CREATION_URL =
   "https://gitlab.com/-/user_settings/personal_access_tokens";
+const REPOSITORY_CREATION_URL = "https://gitlab.com/projects/new#blank_project";
 const MAX_REPOSITORY_PAGES = 10;
 
 interface GitLabProjectBody {
   readonly path_with_namespace: string;
   readonly web_url: string;
+  readonly visibility: string;
 }
 
 function localDate(now: Date): string {
@@ -59,6 +61,7 @@ export function createGitLabProvider(
     accessTokenHint:
       "A personal access token with the api scope, which GitLab's commit API requires.",
     accessTokenCreationUrl,
+    repositoryCreationUrl: () => REPOSITORY_CREATION_URL,
 
     async listRepositories(accessToken) {
       const repositories: RepositorySummary[] = [];
@@ -79,6 +82,7 @@ export function createGitLabProvider(
               ...splitProjectPath(project.path_with_namespace),
             },
             url: project.web_url,
+            private: project.visibility === "private",
           });
         }
         url = nextPageUrl(response, url);

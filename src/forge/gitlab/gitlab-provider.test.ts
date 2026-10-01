@@ -23,10 +23,11 @@ afterAll(() => {
   server.close();
 });
 
-function projectBody(pathWithNamespace: string) {
+function projectBody(pathWithNamespace: string, visibility = "private") {
   return {
     path_with_namespace: pathWithNamespace,
     web_url: `https://gitlab.com/${pathWithNamespace}`,
+    visibility,
   };
 }
 
@@ -43,6 +44,12 @@ describe("GitLab provider", () => {
     );
     expect(url.searchParams.get("name")).toBe("commitnote 2026-09-30");
     expect(url.searchParams.get("scopes")).toBe("api");
+  });
+
+  it("links to creating a blank project", () => {
+    expect(createGitLabProvider().repositoryCreationUrl()).toBe(
+      "https://gitlab.com/projects/new#blank_project",
+    );
   });
 
   it("lists member projects across Link and x-next-page pages, keeping nested groups in the owner", async () => {
@@ -63,11 +70,13 @@ describe("GitLab provider", () => {
           });
         }
         if (page === "2") {
-          return HttpResponse.json([projectBody("acme/team/notes")], {
+          return HttpResponse.json([projectBody("acme/team/notes", "internal")], {
             headers: { "x-next-page": "3" },
           });
         }
-        return HttpResponse.json([], { headers: { "x-next-page": "" } });
+        return HttpResponse.json([projectBody("bob/notes", "public")], {
+          headers: { "x-next-page": "" },
+        });
       }),
     );
 
@@ -77,10 +86,17 @@ describe("GitLab provider", () => {
       {
         coordinates: { forge: "gitlab", owner: "alice", repo: "notes" },
         url: "https://gitlab.com/alice/notes",
+        private: true,
       },
       {
         coordinates: { forge: "gitlab", owner: "acme/team", repo: "notes" },
         url: "https://gitlab.com/acme/team/notes",
+        private: false,
+      },
+      {
+        coordinates: { forge: "gitlab", owner: "bob", repo: "notes" },
+        url: "https://gitlab.com/bob/notes",
+        private: false,
       },
     ]);
     expect(new URLSearchParams(requests[0].search).get("membership")).toBe(

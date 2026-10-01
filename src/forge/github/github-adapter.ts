@@ -17,6 +17,7 @@ import type {
   ForgeAdapterOptions,
   ForgeWriteLimits,
   RepoInspection,
+  RootEntry,
   TreeEntry,
 } from "../forge-adapter";
 
@@ -190,7 +191,11 @@ class GitHubAdapter implements ForgeAdapter {
       return {
         kind: "populated",
         canWrite,
-        main: { head, repoConfigText: null },
+        main: {
+          head,
+          repoConfigText: null,
+          rootEntries: await this.listRootEntries(head),
+        },
       };
     }
     if (!configResponse.ok) {
@@ -198,7 +203,28 @@ class GitHubAdapter implements ForgeAdapter {
     }
     const configBody = (await configResponse.json()) as { content: string };
     const repoConfigText = utf8Decode(decodeBase64Content(configBody.content));
-    return { kind: "populated", canWrite, main: { head, repoConfigText } };
+    return {
+      kind: "populated",
+      canWrite,
+      main: { head, repoConfigText, rootEntries: null },
+    };
+  }
+
+  private async listRootEntries(commitSha: string): Promise<RootEntry[]> {
+    const response = await this.send(`/git/trees/${commitSha}`, {
+      method: "GET",
+    });
+    if (!response.ok) {
+      throw await this.errorFor(response);
+    }
+    const body = (await response.json()) as {
+      tree: readonly { path: string; type: string }[];
+    };
+    return body.tree.map((entry) => ({
+      name: entry.path,
+      // Submodules ("commit") are listed as directories.
+      type: entry.type === "blob" ? "blob" : "tree",
+    }));
   }
 
   async initialize(configText: string, message: string): Promise<CommitResult> {

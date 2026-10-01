@@ -1,7 +1,11 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { encodeInitializeMessage } from "../changes/encode-change-set";
 import { argon2idDirect } from "../crypto/argon2";
-import { deriveKeyring, verifyKeyCheck } from "../crypto/keyring";
+import {
+  createRepoConfig,
+  deriveKeyring,
+  verifyKeyCheck,
+} from "../crypto/keyring";
 import { parseRepoConfig, type RepoConfig } from "../crypto/repo-config";
 import { ForgeError } from "../forge/errors";
 import type {
@@ -19,20 +23,26 @@ import {
 } from "./repo-readme";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import {
+  classifyRoot,
   initializeNotesRepo,
+  inspectRepository,
   listRepositories,
-  logIn,
   resumeSession,
+  unlockNotesRepo,
   type LoginDependencies,
   type LoginResult,
   type LoginStep,
+  type NotesRepoTarget,
+  type PendingInitialization,
 } from "./login";
+import type { RootEntry } from "../forge/forge-adapter";
 import type { Session } from "../session/session";
 
 const REPO_URL = "https://github.com/alice/notes";
 const REPOSITORY: RepositorySummary = {
   coordinates: { forge: "github", owner: "alice", repo: "notes" },
   url: REPO_URL,
+  private: true,
 };
 
 function deps(
@@ -71,18 +81,70 @@ async function repoConfigOf(adapter: FakeForgeAdapter): Promise<RepoConfig> {
   return parsed.config;
 }
 
-describe("logIn", () => {
+async function inspectAndUnlock(
+  adapter: FakeForgeAdapter,
+  passphrase: string,
+  onStep?: (step: LoginStep) => void,
+): Promise<LoginResult> {
+  const state = await inspectRepository(
+    REPOSITORY,
+    "  token  ",
+    deps(adapter),
+    onStep,
+  );
+  if (state.kind !== "notesRepo") {
+    throw new Error(`expected notesRepo, got ${JSON.stringify(state)}`);
+  }
+  return unlockNotesRepo(state.target, passphrase, deps(adapter), onStep);
+}
+
+async function inspectState(adapter: FakeForgeAdapter) {
+  return inspectRepository(REPOSITORY, "token", deps(adapter));
+}
+
+async function almostEmptyAdapter(
+  files: Record<string, string>,
+): Promise<{ adapter: FakeForgeAdapter; head: string }> {
+  const repo = new InMemoryGitRepo();
+  const head = await commitFiles(repo, {
+    parent: null,
+    files,
+    message: "Initial commit",
+    branch: MAIN_BRANCH,
+  });
+  return { adapter: new FakeForgeAdapter({ repo }), head };
+}
+
+async function inspectUninitialized(
+  adapter: FakeForgeAdapter,
+): Promise<PendingInitialization> {
+  const state = await inspectRepository(REPOSITORY, "token", deps(adapter));
+  if (state.kind !== "uninitialized") {
+    throw new Error(`expected uninitialized, got ${state.kind}`);
+  }
+  return state.pending;
+}
+
+async function blobShasAt(
+  adapter: FakeForgeAdapter,
+  head: string,
+): Promise<Record<string, string>> {
+  const entries = await adapter.listTree(head);
+  return Object.fromEntries(
+    entries
+      .filter((entry) => entry.type === "blob")
+      .map((entry) => [entry.path, entry.sha]),
+  );
+}
+
+describe("inspecting and unlocking", () => {
   it("logs in to the sample notes repo with its passphrase", async () => {
     const adapter = await createSampleNotesRepoAdapter();
     const steps: LoginStep[] = [];
 
-    const result = await logIn(
-      {
-        repository: REPOSITORY,
-        accessToken: "  token  ",
-        passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
-      },
-      deps(adapter),
+    const result = await inspectAndUnlock(
+      adapter,
+      SAMPLE_NOTES_REPO_PASSPHRASE,
       (step) => steps.push(step),
     );
 
@@ -99,10 +161,7 @@ describe("logIn", () => {
   it("fails with wrongPassphrase for the wrong passphrase", async () => {
     const adapter = await createSampleNotesRepoAdapter();
 
-    const result = await logIn(
-      { repository: REPOSITORY, accessToken: "token", passphrase: "wrong one" },
-      deps(adapter),
-    );
+    const result = await inspectAndUnlock(adapter, "wrong one");
 
     expect(result).toEqual({
       kind: "failed",
@@ -125,41 +184,28 @@ describe("logIn", () => {
     const adapter = new FakeForgeAdapter();
     adapter.failNext("inspect", forgeError);
 
-    const result = await logIn(
-      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
-      deps(adapter),
-    );
-
-    expect(result).toEqual({ kind: "failed", error });
+    expect(await inspectState(adapter)).toEqual({ kind: "unusable", error });
   });
 
   it("rejects a read-only access token for a populated repo, before deriving keys", async () => {
     const adapter = await createSampleNotesRepoAdapter({ canWrite: false });
 
-    const result = await logIn(
-      {
-        repository: REPOSITORY,
-        accessToken: "token",
-        passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
-      },
-      deps(adapter),
-    );
-
-    expect(result).toEqual({ kind: "failed", error: { kind: "readOnly" } });
+    expect(await inspectState(adapter)).toEqual({
+      kind: "unusable",
+      error: { kind: "readOnly" },
+    });
   });
 
   it("rejects a read-only access token for an empty repo", async () => {
     const adapter = new FakeForgeAdapter({ canWrite: false });
 
-    const result = await logIn(
-      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
-      deps(adapter),
-    );
-
-    expect(result).toEqual({ kind: "failed", error: { kind: "readOnly" } });
+    expect(await inspectState(adapter)).toEqual({
+      kind: "unusable",
+      error: { kind: "readOnly" },
+    });
   });
 
-  it("treats a populated repo whose main branch is missing as foreign, writing nothing", async () => {
+  it("reports a populated repo whose main branch is missing as noMainBranch, writing nothing", async () => {
     const repo = new InMemoryGitRepo();
     const otherHead = await commitFiles(repo, {
       parent: null,
@@ -169,12 +215,10 @@ describe("logIn", () => {
     });
     const adapter = new FakeForgeAdapter({ repo });
 
-    const result = await logIn(
-      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
-      deps(adapter),
-    );
-
-    expect(result).toEqual({ kind: "failed", error: { kind: "foreign" } });
+    expect(await inspectState(adapter)).toEqual({
+      kind: "unusable",
+      error: { kind: "noMainBranch" },
+    });
     expect(repo.getRef("other")).toBe(otherHead);
     expect(repo.getRef(MAIN_BRANCH)).toBeUndefined();
   });
@@ -189,12 +233,10 @@ describe("logIn", () => {
     });
     const adapter = new FakeForgeAdapter({ repo });
 
-    const result = await logIn(
-      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
-      deps(adapter),
-    );
-
-    expect(result).toEqual({ kind: "failed", error: { kind: "foreign" } });
+    expect(await inspectState(adapter)).toEqual({
+      kind: "unusable",
+      error: { kind: "foreign" },
+    });
     expect(repo.getRef(MAIN_BRANCH)).toBe(head);
   });
 
@@ -208,12 +250,10 @@ describe("logIn", () => {
     });
     const adapter = new FakeForgeAdapter({ repo });
 
-    const result = await logIn(
-      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
-      deps(adapter),
-    );
-
-    expect(result).toEqual({ kind: "failed", error: { kind: "foreign" } });
+    expect(await inspectState(adapter)).toEqual({
+      kind: "unusable",
+      error: { kind: "foreign" },
+    });
     expect(repo.getRef(MAIN_BRANCH)).toBe(head);
   });
 
@@ -229,13 +269,8 @@ describe("logIn", () => {
     });
     const adapter = new FakeForgeAdapter({ repo });
 
-    const result = await logIn(
-      { repository: REPOSITORY, accessToken: "token", passphrase: "x" },
-      deps(adapter),
-    );
-
-    expect(result).toEqual({
-      kind: "failed",
+    expect(await inspectState(adapter)).toEqual({
+      kind: "unusable",
       error: { kind: "newerFormat", formatVersion: 2 },
     });
     expect(repo.getRef(MAIN_BRANCH)).toBe(head);
@@ -245,19 +280,12 @@ describe("logIn", () => {
     const adapter = new FakeForgeAdapter({ defaultBranch: "master" });
     const passphrase = "a fresh passphrase";
 
-    const needsInit = await logIn(
-      { repository: REPOSITORY, accessToken: "token", passphrase },
-      deps(adapter),
-    );
-    expect(needsInit.kind).toBe("needsInitialization");
-    if (needsInit.kind !== "needsInitialization") {
-      throw new Error("expected needsInitialization");
-    }
+    const pending = await inspectUninitialized(adapter);
     expect(adapter.repo.hasCommits()).toBe(false);
 
     const steps: LoginStep[] = [];
     const initResult = await initializeNotesRepo(
-      needsInit.pending,
+      pending,
       passphrase,
       deps(adapter),
       (step) => steps.push(step),
@@ -289,16 +317,9 @@ describe("logIn", () => {
       README_TEXT,
     );
 
-    const sameLogin = await logIn(
-      { repository: REPOSITORY, accessToken: "token", passphrase },
-      deps(adapter),
-    );
-    expectLoggedIn(sameLogin);
+    expectLoggedIn(await inspectAndUnlock(adapter, passphrase));
 
-    const wrongLogin = await logIn(
-      { repository: REPOSITORY, accessToken: "token", passphrase: "another one" },
-      deps(adapter),
-    );
+    const wrongLogin = await inspectAndUnlock(adapter, "another one");
     expect(wrongLogin).toEqual({
       kind: "failed",
       error: { kind: "wrongPassphrase" },
@@ -309,17 +330,11 @@ describe("logIn", () => {
     const adapter = new FakeForgeAdapter();
     const passphrase = "a passphrase";
 
-    const needsInit = await logIn(
-      { repository: REPOSITORY, accessToken: "token", passphrase },
-      deps(adapter),
-    );
-    if (needsInit.kind !== "needsInitialization") {
-      throw new Error("expected needsInitialization");
-    }
+    const pending = await inspectUninitialized(adapter);
 
     adapter.failNext("initialize", "stale");
     const result = await initializeNotesRepo(
-      needsInit.pending,
+      pending,
       passphrase,
       deps(adapter),
     );
@@ -329,6 +344,375 @@ describe("logIn", () => {
       error: { kind: "initializationRaced" },
     });
   });
+  it("reports server when initializing an empty repository fails with Server", async () => {
+    const adapter = new FakeForgeAdapter();
+    const pending = await inspectUninitialized(adapter);
+    adapter.failNext("initialize", new ForgeError("Server"));
+
+    const result = await initializeNotesRepo(pending, "pass", deps(adapter));
+
+    expect(result).toEqual({ kind: "failed", error: { kind: "server" } });
+  });
+});
+
+describe("classifyRoot", () => {
+  const blob = (name: string): RootEntry => ({ name, type: "blob" });
+
+  it.each([
+    [[], { kind: "almostEmpty", hasReadme: false }],
+    [[blob("README.md")], { kind: "almostEmpty", hasReadme: true }],
+    [[blob("readme")], { kind: "almostEmpty", hasReadme: true }],
+    [[blob("ReadMe.rst")], { kind: "almostEmpty", hasReadme: true }],
+    [
+      [blob("README.md"), blob("LICENSE"), blob(".gitignore")],
+      { kind: "almostEmpty", hasReadme: true },
+    ],
+    [[blob("LICENSE.txt")], { kind: "almostEmpty", hasReadme: false }],
+    [[blob("licence.md")], { kind: "almostEmpty", hasReadme: false }],
+    [[blob("COPYING")], { kind: "almostEmpty", hasReadme: false }],
+    [[blob(".gitignore")], { kind: "almostEmpty", hasReadme: false }],
+    [[blob("README.md"), blob("index.js")], { kind: "foreign" }],
+    [[blob("LICENSE.js")], { kind: "foreign" }],
+    [[blob("readme-notes.md")], { kind: "foreign" }],
+    [[blob(".gitattributes")], { kind: "foreign" }],
+    [[{ name: "README.md", type: "tree" }], { kind: "foreign" }],
+    [[blob("README.md"), { name: "docs", type: "tree" }], { kind: "foreign" }],
+  ] satisfies [RootEntry[], ReturnType<typeof classifyRoot>][])(
+    "classifies %j",
+    (entries, expected) => {
+      expect(classifyRoot(entries)).toEqual(expected);
+    },
+  );
+});
+
+describe("inspectRepository", () => {
+  it("reports a notes repo with its parsed config, with the token trimmed", async () => {
+    const adapter = await createSampleNotesRepoAdapter();
+    const steps: LoginStep[] = [];
+
+    const state = await inspectRepository(
+      REPOSITORY,
+      "  token  ",
+      deps(adapter),
+      (step) => steps.push(step),
+    );
+
+    expect(state).toEqual({
+      kind: "notesRepo",
+      target: {
+        repoUrl: REPO_URL,
+        coordinates: REPOSITORY.coordinates,
+        accessToken: "token",
+        adapter,
+        config: await repoConfigOf(adapter),
+      },
+    });
+    expect(steps).toEqual(["checkingRepository"]);
+  });
+
+  it("reports an empty repository as uninitialized without a base", async () => {
+    const adapter = new FakeForgeAdapter();
+
+    const pending = await inspectUninitialized(adapter);
+
+    expect(pending).toMatchObject({ base: null, existingFiles: [] });
+  });
+
+  it("reports a repository with only README, LICENSE and .gitignore as uninitialized on its head", async () => {
+    const { adapter, head } = await almostEmptyAdapter({
+      "README.md": "# notes\n",
+      LICENSE: "MIT",
+      ".gitignore": "node_modules\n",
+    });
+
+    const pending = await inspectUninitialized(adapter);
+
+    expect(pending.base).toEqual({ head, hasReadme: true });
+    expect([...pending.existingFiles].sort()).toEqual(
+      [".gitignore", "LICENSE", "README.md"].sort(),
+    );
+  });
+
+  it("reports a repository with other root files as foreign", async () => {
+    const { adapter } = await almostEmptyAdapter({
+      "README.md": "# app\n",
+      "src/index.js": "console.log(1);\n",
+    });
+
+    const state = await inspectRepository(REPOSITORY, "token", deps(adapter));
+
+    expect(state).toEqual({ kind: "unusable", error: { kind: "foreign" } });
+  });
+
+  it("reports a read-only token for an almost-empty repo as readOnly", async () => {
+    const repo = new InMemoryGitRepo();
+    await commitFiles(repo, {
+      parent: null,
+      files: { "README.md": "# notes\n" },
+      message: "Initial commit",
+      branch: MAIN_BRANCH,
+    });
+    const adapter = new FakeForgeAdapter({ repo, canWrite: false });
+
+    const state = await inspectRepository(REPOSITORY, "token", deps(adapter));
+
+    expect(state).toEqual({ kind: "unusable", error: { kind: "readOnly" } });
+  });
+});
+
+describe("unlockNotesRepo", () => {
+  let adapter: FakeForgeAdapter;
+  let target: NotesRepoTarget;
+
+  beforeAll(async () => {
+    adapter = await createSampleNotesRepoAdapter();
+    const state = await inspectRepository(REPOSITORY, "token", deps(adapter));
+    if (state.kind !== "notesRepo") throw new Error("expected notesRepo");
+    target = state.target;
+  });
+
+  it("logs in with the right passphrase without inspecting the repository again", async () => {
+    const inspect = vi.spyOn(adapter, "inspect");
+    const steps: LoginStep[] = [];
+
+    const result = await unlockNotesRepo(
+      target,
+      SAMPLE_NOTES_REPO_PASSPHRASE,
+      deps(adapter),
+      (step) => steps.push(step),
+    );
+
+    const loggedIn = expectLoggedIn(result);
+    expect(loggedIn.adapter).toBe(adapter);
+    expect(loggedIn.session).toMatchObject({
+      repoUrl: REPO_URL,
+      coordinates: REPOSITORY.coordinates,
+      accessToken: "token",
+    });
+    expect(await verifyKeyCheck(loggedIn.session.keyring, target.config)).toBe(
+      true,
+    );
+    expect(inspect).not.toHaveBeenCalled();
+    expect(steps).toEqual(["derivingKeys"]);
+    inspect.mockRestore();
+  });
+
+  it("fails with wrongPassphrase for the wrong passphrase", async () => {
+    const result = await unlockNotesRepo(target, "wrong one", deps(adapter));
+
+    expect(result).toEqual({
+      kind: "failed",
+      error: { kind: "wrongPassphrase" },
+    });
+  });
+});
+
+describe("unlockNotesRepo after the repository changed since it was inspected", () => {
+  async function inspectedTarget(
+    adapter: FakeForgeAdapter,
+  ): Promise<NotesRepoTarget> {
+    const state = await inspectState(adapter);
+    if (state.kind !== "notesRepo") throw new Error("expected notesRepo");
+    return state.target;
+  }
+
+  async function changePassphraseElsewhere(
+    adapter: FakeForgeAdapter,
+    passphrase: string,
+  ): Promise<void> {
+    const { configText } = await createRepoConfig(passphrase, {
+      argon2id: argon2idDirect,
+    });
+    const head = adapter.repo.getRef(MAIN_BRANCH) as string;
+    const result = await adapter.commit({
+      parent: head,
+      changes: [
+        { kind: "upsert-text", path: REPO_CONFIG_PATH, text: configText },
+      ],
+      message: "rekey",
+    });
+    expect(result.kind).toBe("ok");
+  }
+
+  it("logs in with a passphrase changed on another device after the inspection", async () => {
+    const adapter = await createSampleNotesRepoAdapter();
+    const target = await inspectedTarget(adapter);
+    await changePassphraseElsewhere(adapter, "new passphrase");
+
+    const result = await unlockNotesRepo(
+      target,
+      "new passphrase",
+      deps(adapter),
+    );
+
+    const loggedIn = expectLoggedIn(result);
+    expect(
+      await verifyKeyCheck(loggedIn.session.keyring, await repoConfigOf(adapter)),
+    ).toBe(true);
+  });
+
+  it("returns the re-read target with wrongPassphrase when the changed config does not match either", async () => {
+    const adapter = await createSampleNotesRepoAdapter();
+    const target = await inspectedTarget(adapter);
+    await changePassphraseElsewhere(adapter, "new passphrase");
+
+    const result = await unlockNotesRepo(target, "wrong one", deps(adapter));
+
+    expect(result).toEqual({
+      kind: "failed",
+      error: { kind: "wrongPassphrase" },
+      target: { ...target, config: await repoConfigOf(adapter) },
+    });
+  });
+
+  it("derives keys only once when the config is unchanged", async () => {
+    const adapter = await createSampleNotesRepoAdapter();
+    const target = await inspectedTarget(adapter);
+    const argon2id = vi.fn(argon2idDirect);
+    const steps: LoginStep[] = [];
+
+    const result = await unlockNotesRepo(
+      target,
+      "wrong one",
+      deps(adapter, { argon2id }),
+      (step) => steps.push(step),
+    );
+
+    expect(result).toEqual({
+      kind: "failed",
+      error: { kind: "wrongPassphrase" },
+    });
+    expect(argon2id).toHaveBeenCalledTimes(1);
+    expect(steps).toEqual(["derivingKeys", "checkingRepository"]);
+  });
+
+  it("still reports wrongPassphrase when re-reading the repository fails transiently", async () => {
+    const adapter = await createSampleNotesRepoAdapter();
+    const target = await inspectedTarget(adapter);
+    adapter.failNext("inspect", new ForgeError("Network"));
+
+    const result = await unlockNotesRepo(target, "wrong one", deps(adapter));
+
+    expect(result).toEqual({
+      kind: "failed",
+      error: { kind: "wrongPassphrase" },
+    });
+  });
+
+  it("reports why the repository can no longer be used", async () => {
+    const adapter = await createSampleNotesRepoAdapter();
+    const target = await inspectedTarget(adapter);
+    adapter.failNext("inspect", new ForgeError("NotFound"));
+
+    const result = await unlockNotesRepo(target, "wrong one", deps(adapter));
+
+    expect(result).toEqual({ kind: "failed", error: { kind: "noAccess" } });
+  });
+
+  it("reports repositoryChanged when the repository no longer holds a notes repo", async () => {
+    const adapter = await createSampleNotesRepoAdapter();
+    const target = await inspectedTarget(adapter);
+    const { adapter: almostEmpty } = await almostEmptyAdapter({
+      "README.md": "x",
+    });
+
+    const result = await unlockNotesRepo(
+      { ...target, adapter: almostEmpty },
+      "wrong one",
+      deps(almostEmpty),
+    );
+
+    expect(result).toEqual({
+      kind: "failed",
+      error: { kind: "repositoryChanged" },
+    });
+  });
+});
+
+describe("initializeNotesRepo on an almost-empty repository", () => {
+  it("adds the repo config on top of the existing head, keeping its files byte-for-byte and adding no README", async () => {
+    const { adapter, head } = await almostEmptyAdapter({
+      "README.md": "# My notes\n",
+      LICENSE: "MIT License",
+      ".gitignore": ".DS_Store\n",
+    });
+    const before = await blobShasAt(adapter, head);
+    const pending = await inspectUninitialized(adapter);
+    const passphrase = "an almost-empty passphrase";
+
+    const result = await initializeNotesRepo(pending, passphrase, deps(adapter));
+
+    expectLoggedIn(result);
+    const newHead = adapter.repo.getRef(MAIN_BRANCH) as string;
+    const commit = adapter.repo.getCommit(newHead);
+    expect(commit?.parent).toBe(head);
+    expect(commit?.message).toBe(encodeInitializeMessage());
+    const after = await blobShasAt(adapter, newHead);
+    expect(Object.keys(after).sort()).toEqual(
+      [...Object.keys(before), REPO_CONFIG_PATH].sort(),
+    );
+    for (const [path, sha] of Object.entries(before)) {
+      expect(after[path]).toBe(sha);
+    }
+    expect(parseRepoConfig(await adapter.readBlob(after[REPO_CONFIG_PATH])).kind).toBe(
+      "valid",
+    );
+
+    expectLoggedIn(await inspectAndUnlock(adapter, passphrase));
+  });
+
+  it("adds commitnote's README after the config commit when the repository has none", async () => {
+    const { adapter, head } = await almostEmptyAdapter({ LICENSE: "MIT" });
+    const pending = await inspectUninitialized(adapter);
+
+    expectLoggedIn(await initializeNotesRepo(pending, "pass", deps(adapter)));
+
+    const newHead = adapter.repo.getRef(MAIN_BRANCH) as string;
+    const readmeCommit = adapter.repo.getCommit(newHead);
+    expect(readmeCommit?.message).toBe(README_COMMIT_MESSAGE);
+    const configCommit = adapter.repo.getCommit(readmeCommit?.parent as string);
+    expect(configCommit?.message).toBe(encodeInitializeMessage());
+    expect(configCommit?.parent).toBe(head);
+    const files = await blobShasAt(adapter, newHead);
+    expect(await adapter.readBlob(files[README_PATH])).toBe(README_TEXT);
+  });
+
+  it("reports initializationRaced when the config commit comes back stale", async () => {
+    const { adapter, head } = await almostEmptyAdapter({ "README.md": "x" });
+    const pending = await inspectUninitialized(adapter);
+    adapter.failNext("commit", "stale");
+
+    const result = await initializeNotesRepo(pending, "pass", deps(adapter));
+
+    expect(result).toEqual({
+      kind: "failed",
+      error: { kind: "initializationRaced" },
+    });
+    expect(adapter.repo.getRef(MAIN_BRANCH)).toBe(head);
+  });
+
+  it("reports initializationRaced when the config commit fails with Server, as GitLab does when main moved meanwhile", async () => {
+    const { adapter } = await almostEmptyAdapter({ "README.md": "x" });
+    const pending = await inspectUninitialized(adapter);
+    adapter.failNext("commit", new ForgeError("Server"));
+
+    const result = await initializeNotesRepo(pending, "pass", deps(adapter));
+
+    expect(result).toEqual({
+      kind: "failed",
+      error: { kind: "initializationRaced" },
+    });
+  });
+
+  it("reports readOnly when the config commit is forbidden", async () => {
+    const { adapter } = await almostEmptyAdapter({ "README.md": "x" });
+    const pending = await inspectUninitialized(adapter);
+    adapter.failNext("commit", new ForgeError("Forbidden"));
+
+    const result = await initializeNotesRepo(pending, "pass", deps(adapter));
+
+    expect(result).toEqual({ kind: "failed", error: { kind: "readOnly" } });
+  });
 });
 
 describe("resumeSession", () => {
@@ -337,13 +721,9 @@ describe("resumeSession", () => {
 
   beforeAll(async () => {
     adapter = await createSampleNotesRepoAdapter();
-    const loginResult = await logIn(
-      {
-        repository: REPOSITORY,
-        accessToken: "token",
-        passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
-      },
-      deps(adapter),
+    const loginResult = await inspectAndUnlock(
+      adapter,
+      SAMPLE_NOTES_REPO_PASSPHRASE,
     );
     session = expectLoggedIn(loginResult).session;
   });
@@ -380,7 +760,37 @@ describe("resumeSession", () => {
     });
   });
 
-  it("maps an inspect failure the same way logIn does", async () => {
+  it("treats an almost-empty repository as foreign", async () => {
+    const { adapter: almostEmpty } = await almostEmptyAdapter({
+      "README.md": "x",
+    });
+
+    const result = await resumeSession(session, deps(almostEmpty));
+
+    expect(result).toEqual({ kind: "failed", error: { kind: "foreign" } });
+  });
+
+  it("reports a repository without a main branch as noMainBranch", async () => {
+    const repo = new InMemoryGitRepo();
+    await commitFiles(repo, {
+      parent: null,
+      files: { "note.txt": "hello" },
+      message: "commit to another branch",
+      branch: "other",
+    });
+
+    const result = await resumeSession(
+      session,
+      deps(new FakeForgeAdapter({ repo })),
+    );
+
+    expect(result).toEqual({
+      kind: "failed",
+      error: { kind: "noMainBranch" },
+    });
+  });
+
+  it("maps an inspect failure the same way inspecting does", async () => {
     adapter.failNext("inspect", new ForgeError("Unauthorized"));
 
     const result = await resumeSession(session, deps(adapter));
@@ -397,6 +807,7 @@ describe("listRepositories", () => {
       id: "github",
       name: "GitHub",
       accessTokenCreationUrl: () => "https://example.test/token",
+      repositoryCreationUrl: () => "https://example.test/new",
       listRepositories: vi.fn(listing),
       createAdapter: () => new FakeForgeAdapter(),
     };
@@ -406,6 +817,7 @@ describe("listRepositories", () => {
     return {
       coordinates: { forge: "github", owner, repo },
       url: `https://github.com/${owner}/${repo}`,
+      private: true,
     };
   }
 

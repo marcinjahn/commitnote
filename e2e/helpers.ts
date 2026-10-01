@@ -17,7 +17,16 @@ export async function continueWithToken(
   await page.getByRole("button", { name: "Continue" }).click();
 }
 
-export async function logIn(page: Page, options: LogInOptions): Promise<void> {
+export interface ChooseRepositoryOptions {
+  readonly repo: string;
+  readonly token?: string;
+  readonly provider?: string;
+}
+
+export async function chooseRepository(
+  page: Page,
+  options: ChooseRepositoryOptions,
+): Promise<void> {
   if (options.provider) {
     await page.getByRole("radio", { name: options.provider }).check();
   }
@@ -25,11 +34,30 @@ export async function logIn(page: Page, options: LogInOptions): Promise<void> {
   await page.getByLabel("Repository", { exact: true }).selectOption({
     label: options.repo.replace(/^https:\/\/[^/]+\//, ""),
   });
-  await page.getByLabel("Passphrase", { exact: true }).fill(options.passphrase);
+}
+
+export async function logIn(page: Page, options: LogInOptions): Promise<void> {
+  await chooseRepository(page, options);
+  const passphrase = page.getByLabel("Passphrase", { exact: true });
+  await expect(passphrase).toBeVisible();
+  await passphrase.fill(options.passphrase);
   if (options.rememberMe) {
     await page.getByRole("checkbox", { name: "Remember me" }).check();
   }
   await page.getByRole("button", { name: "Log in" }).click();
+}
+
+export async function setUpNotesRepo(
+  page: Page,
+  options: LogInOptions,
+): Promise<void> {
+  await chooseRepository(page, options);
+  await page.getByLabel("Create passphrase").fill(options.passphrase);
+  await page.getByLabel("Repeat passphrase").fill(options.passphrase);
+  if (options.rememberMe) {
+    await page.getByRole("checkbox", { name: "Remember me" }).check();
+  }
+  await page.getByRole("button", { name: "Set up notes repo" }).click();
 }
 
 export async function expectTree(page: Page): Promise<void> {

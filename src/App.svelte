@@ -3,16 +3,18 @@
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
   import type {
     LoginError,
-    LoginInput,
     LoginStep,
+    NotesRepoTarget,
     PendingInitialization,
   } from "./login/login";
   import {
     initializeNotesRepo,
-    logIn,
+    inspectRepository,
     repositoryLabel,
     resumeSession,
+    unlockNotesRepo,
   } from "./login/login";
+  import type { RepositorySummary } from "./forge/forge-provider";
   import type { ForgeAdapter } from "./forge/forge-adapter";
   import type { ForgeId } from "./forge/repo-coordinates";
   import type { ForgeAdapterFactory, ForgeRegistry } from "./forge/registry";
@@ -277,11 +279,16 @@
     await attemptLogOut();
   }
 
-  function boundLogIn(
-    input: LoginInput,
+  function boundInspect(repository: RepositorySummary, accessToken: string) {
+    return inspectRepository(repository, accessToken, loginDeps());
+  }
+
+  function boundUnlock(
+    target: NotesRepoTarget,
+    passphrase: string,
     onStep: (step: LoginStep) => void,
   ) {
-    return logIn(input, loginDeps(), onStep);
+    return unlockNotesRepo(target, passphrase, loginDeps(), onStep);
   }
 
   function boundInitialize(
@@ -341,7 +348,8 @@
       initialRepoUrl={phase.initialRepoUrl}
       initialForgeId={phase.initialForgeId}
       initialError={phase.initialError}
-      logIn={boundLogIn}
+      inspect={boundInspect}
+      unlock={boundUnlock}
       initialize={boundInitialize}
       onLoggedIn={handleLoggedIn}
     />

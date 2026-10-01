@@ -24,12 +24,13 @@ afterAll(() => {
   server.close();
 });
 
-function repoBody(owner: string, name: string) {
+function repoBody(owner: string, name: string, isPrivate = true) {
   return {
     name,
     full_name: `${owner}/${name}`,
     owner: { login: owner },
     html_url: `https://github.com/${owner}/${name}`,
+    private: isPrivate,
   };
 }
 
@@ -49,6 +50,14 @@ describe("GitHub provider", () => {
     expect(url.searchParams.get("expires_in")).toBe("365");
   });
 
+  it("links to creating a private repository named notes", () => {
+    const url = new URL(createGitHubProvider().repositoryCreationUrl());
+
+    expect(url.origin + url.pathname).toBe("https://github.com/new");
+    expect(url.searchParams.get("name")).toBe("notes");
+    expect(url.searchParams.get("visibility")).toBe("private");
+  });
+
   it("lists repositories across pages, authenticated with the token", async () => {
     const authorizations: (string | null)[] = [];
     server.use(
@@ -59,7 +68,7 @@ describe("GitHub provider", () => {
           return HttpResponse.json([repoBody("acme", "notes")]);
         }
         return HttpResponse.json(
-          [repoBody("alice", "notes"), repoBody("alice", "work")],
+          [repoBody("alice", "notes"), repoBody("alice", "work", false)],
           {
             headers: {
               link: '<https://api.github.com/user/repos?per_page=100&page=2>; rel="next", <https://api.github.com/user/repos?per_page=100&page=2>; rel="last"',
@@ -76,14 +85,17 @@ describe("GitHub provider", () => {
       {
         coordinates: { forge: "github", owner: "alice", repo: "notes" },
         url: "https://github.com/alice/notes",
+        private: true,
       },
       {
         coordinates: { forge: "github", owner: "alice", repo: "work" },
         url: "https://github.com/alice/work",
+        private: false,
       },
       {
         coordinates: { forge: "github", owner: "acme", repo: "notes" },
         url: "https://github.com/acme/notes",
+        private: true,
       },
     ]);
     expect(authorizations).toEqual([`Bearer ${TOKEN}`, `Bearer ${TOKEN}`]);
