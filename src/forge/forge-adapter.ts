@@ -46,6 +46,14 @@ export interface KeyBoundFile {
 export type CommitResult =
   { readonly kind: "ok"; readonly head: string } | { readonly kind: "stale" };
 
+export interface RootEntry {
+  readonly name: string;
+  readonly type: "blob" | "tree";
+}
+
+/** Adapters may list only this many root entries when a root has more. */
+export const ROOT_LISTING_LIMIT = 20;
+
 export type RepoInspection =
   | { readonly kind: "empty"; readonly canWrite: boolean }
   | {
@@ -54,6 +62,8 @@ export type RepoInspection =
       readonly main: {
         readonly head: string;
         readonly repoConfigText: string | null;
+        /** Null when the repo config is present. */
+        readonly rootEntries: readonly RootEntry[] | null;
       } | null;
     };
 

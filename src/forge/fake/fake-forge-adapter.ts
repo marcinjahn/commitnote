@@ -8,6 +8,7 @@ import type {
   ForgeAdapter,
   ForgeWriteLimits,
   RepoInspection,
+  RootEntry,
   TreeEntry,
 } from "../forge-adapter";
 import {
@@ -149,8 +150,26 @@ export class FakeForgeAdapter implements ForgeAdapter {
     return {
       kind: "populated",
       canWrite: this.canWrite,
-      main: { head, repoConfigText },
+      main: {
+        head,
+        repoConfigText,
+        rootEntries: repoConfigText === null ? this.rootEntriesAt(head) : null,
+      },
     };
+  }
+
+  private rootEntriesAt(commitSha: string): RootEntry[] {
+    const commit = this.repo.getCommit(commitSha);
+    const files = commit === undefined ? undefined : this.repo.getTree(commit.tree);
+    const entries = new Map<string, RootEntry>();
+    for (const path of files?.keys() ?? []) {
+      const slash = path.indexOf("/");
+      const name = slash === -1 ? path : path.slice(0, slash);
+      entries.set(name, { name, type: slash === -1 ? "blob" : "tree" });
+    }
+    return [...entries.values()].sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    );
   }
 
   async initialize(configText: string, message: string): Promise<CommitResult> {

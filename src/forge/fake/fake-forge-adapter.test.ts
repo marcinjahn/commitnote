@@ -19,7 +19,7 @@ describe("FakeForgeAdapter.inspect", () => {
     expect(await adapter.inspect()).toEqual({
       kind: "populated",
       canWrite: true,
-      main: { head, repoConfigText: '{"x":1}' },
+      main: { head, repoConfigText: '{"x":1}', rootEntries: null },
     });
   });
 });

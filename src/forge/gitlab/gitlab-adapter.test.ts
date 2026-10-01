@@ -7,6 +7,8 @@ import { commitFiles } from "../fake/in-memory-git-repo";
 import { createGitLabAdapter, MAX_TREE_PAGES } from "./gitlab-adapter";
 import type { GitLabAdapterOptions } from "./gitlab-adapter";
 import { MockGitLabRepo } from "./testing/mock-gitlab-server";
+import { argon2idDirect } from "../../crypto/argon2";
+import { initializeNotesRepo, inspectRepository } from "../../login/login";
 
 const PROJECT = "acme/team/notes";
 const TOKEN = "s3cr3t-token";
@@ -61,7 +63,8 @@ async function pushFromAnotherDevice(
   text: string,
 ): Promise<string> {
   const parent = mock.git.getRef(MAIN_BRANCH) ?? null;
-  const tree = parent === null ? null : (mock.git.getCommit(parent)?.tree ?? null);
+  const tree =
+    parent === null ? null : (mock.git.getCommit(parent)?.tree ?? null);
   const sha = await mock.git.putCommit({
     tree: await mock.git.applyChanges(tree, [
       { kind: "upsert-text", path, text },
@@ -280,9 +283,74 @@ describe("GitLabAdapter", () => {
     });
   });
 
+  it("adds a repo config to a README-only project with a plain commit while atomic commits need setup", async () => {
+    const mock = useMock();
+    const parent = await commitFiles(mock.git, {
+      parent: null,
+      files: { "README.md": "# notes\n" },
+      message: "Initial commit",
+      branch: MAIN_BRANCH,
+    });
+    const adapter = makeAdapter();
+    expect(await adapter.atomicCommitSupport?.()).toMatchObject({
+      kind: "needsSetup",
+    });
+
+    const result = await adapter.commit({
+      parent,
+      changes: [{ kind: "upsert-text", path: REPO_CONFIG_PATH, text: "{}" }],
+      message: "init",
+    });
+
+    expect(result.kind).toBe("ok");
+    const head = mock.git.getRef(MAIN_BRANCH) ?? "";
+    expect(mock.git.getCommit(head)?.parent).toBe(parent);
+    const tree = mock.git.getTree(mock.git.getCommit(head)?.tree ?? "");
+    expect([...(tree?.keys() ?? [])].sort()).toEqual(
+      [REPO_CONFIG_PATH, "README.md"].sort(),
+    );
+    expect(
+      mock.requests.some((request) => request.path.includes("merge_requests")),
+    ).toBe(false);
+  });
+
+  it("setting up a README-only project reports initializationRaced, then a notes repo, when an unrelated commit lands after the head check", async () => {
+    const mock = useMock();
+    await commitFiles(mock.git, {
+      parent: null,
+      files: { "README.md": "# notes\n" },
+      message: "Initial commit",
+      branch: MAIN_BRANCH,
+    });
+    const adapter = makeAdapter();
+    const deps = { createAdapter: () => adapter, argon2id: argon2idDirect };
+    const repository = {
+      coordinates: { forge: "gitlab", owner: "acme/team", repo: "notes" },
+      url: "https://gitlab.com/acme/team/notes",
+      private: true,
+    } as const;
+    const state = await inspectRepository(repository, TOKEN, deps);
+    if (state.kind !== "uninitialized") throw new Error("expected uninitialized");
+    raceNextCommit(() => pushFromAnotherDevice(mock, "other.md", "theirs"));
+
+    const result = await initializeNotesRepo(state.pending, "pass", deps);
+
+    expect(result).toEqual({
+      kind: "failed",
+      error: { kind: "initializationRaced" },
+    });
+    expect((await inspectRepository(repository, TOKEN, deps)).kind).toBe(
+      "notesRepo",
+    );
+  });
+
   it("follows tree pagination across pages", async () => {
     const mock = useMock();
-    const head = await seed(mock, { "a.md": "a", "b.md": "b", "dir/c.md": "c" });
+    const head = await seed(mock, {
+      "a.md": "a",
+      "b.md": "b",
+      "dir/c.md": "c",
+    });
     mock.treePageSize = 2;
 
     const paths = (await makeAdapter().listTree(head)).map(

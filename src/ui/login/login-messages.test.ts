@@ -3,6 +3,7 @@ import type { LoginError, LoginStep } from "../../login/login";
 import {
   describeLoginError,
   describeLoginStep,
+  describeSetUp,
   GENERIC_LOGIN_ERROR,
 } from "./login-messages";
 
@@ -45,7 +46,7 @@ describe("describeLoginError", () => {
   it("describes a foreign repository error", () => {
     const error: LoginError = { kind: "foreign" };
     expect(describeLoginError(error, "GitHub")).toBe(
-      "This repository is neither empty nor a notes repo. commitnote only uses an empty repository or one it initialized, and it has not changed anything here.",
+      "This repository has files commitnote does not use. commitnote accepts an empty repository, one with only a README, LICENSE or .gitignore, or a notes repo. Nothing was changed here.",
     );
   });
 
@@ -64,7 +65,21 @@ describe("describeLoginError", () => {
   it("describes an initializationRaced error", () => {
     const error: LoginError = { kind: "initializationRaced" };
     expect(describeLoginError(error, "GitHub")).toBe(
-      "The repository changed while it was being initialized. Log in again.",
+      "The repository changed while it was being set up. Check it again.",
+    );
+  });
+
+  it("describes a repositoryChanged error", () => {
+    const error: LoginError = { kind: "repositoryChanged" };
+    expect(describeLoginError(error, "GitHub")).toBe(
+      "The repository changed since it was checked. Check it again.",
+    );
+  });
+
+  it("describes a noMainBranch error", () => {
+    const error: LoginError = { kind: "noMainBranch" };
+    expect(describeLoginError(error, "GitHub")).toBe(
+      "commitnote needs a branch named main, and this repository has none. Nothing was changed here.",
     );
   });
 
@@ -108,7 +123,7 @@ describe("describeLoginStep", () => {
     ["listingRepositories", "Loading repositories…"],
     ["checkingRepository", "Checking repository…"],
     ["derivingKeys", "Deriving keys from your passphrase…"],
-    ["initializing", "Initializing notes repo…"],
+    ["initializing", "Setting up notes repo…"],
   ];
 
   for (const [step, expected] of cases) {
@@ -116,4 +131,31 @@ describe("describeLoginStep", () => {
       expect(describeLoginStep(step)).toBe(expected);
     });
   }
+});
+
+describe("describeSetUp", () => {
+  it("describes an empty repository", () => {
+    expect(describeSetUp({ base: null, existingFiles: [] })).toBe(
+      "This repository is empty. Setting it up as a notes repo adds a commitnote configuration file and a README.",
+    );
+  });
+
+  it("names the kept files of a repository with a README", () => {
+    expect(
+      describeSetUp({
+        base: { hasReadme: true },
+        existingFiles: [".gitignore", "LICENSE", "README.md"],
+      }),
+    ).toBe(
+      "This repository holds only .gitignore, LICENSE and README.md. Setting it up as a notes repo keeps them as they are and adds a commitnote configuration file.",
+    );
+  });
+
+  it("adds a README when the repository has none", () => {
+    expect(
+      describeSetUp({ base: { hasReadme: false }, existingFiles: ["LICENSE"] }),
+    ).toBe(
+      "This repository holds only LICENSE. Setting it up as a notes repo keeps it as it is and adds a commitnote configuration file and a README.",
+    );
+  });
 });

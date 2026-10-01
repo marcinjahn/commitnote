@@ -557,10 +557,14 @@ export class MockGitLabRepo {
     }
 
     if (method === "GET" && rest === "/repository/tree") {
-      const entries = await this.entriesAt(url.searchParams.get("ref"));
-      if (entries === undefined) {
+      const allEntries = await this.entriesAt(url.searchParams.get("ref"));
+      if (allEntries === undefined) {
         return jsonResponse({ message: "404 Tree Not Found" }, 404);
       }
+      const recursive = url.searchParams.get("recursive") === "true";
+      const entries = allEntries.filter(
+        (entry) => recursive || !entry.path.includes("/"),
+      );
       const perPage = Math.min(
         Number(url.searchParams.get("per_page") ?? "20"),
         this.treePageSize,

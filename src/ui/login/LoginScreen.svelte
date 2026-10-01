@@ -1,10 +1,13 @@
 <script lang="ts">
   import type {
     LoginError,
-    LoginInput,
     LoginResult,
     LoginStep,
+    NotesRepoTarget,
     PendingInitialization,
+    RepositoryListResult,
+    RepositoryState,
+    UnlockResult,
   } from "../../login/login";
   import { listRepositories, repositoryLabel } from "../../login/login";
   import type { Session } from "../../session/session";
@@ -18,9 +21,12 @@
   import {
     describeLoginError,
     describeLoginStep,
+    describeSetUp,
     GENERIC_LOGIN_ERROR,
+    PUBLIC_REPOSITORY_WARNING,
   } from "./login-messages";
-  import InitializeStep from "./InitializeStep.svelte";
+  import UnlockForm from "./UnlockForm.svelte";
+  import CreateNotesRepoForm from "./CreateNotesRepoForm.svelte";
   import Wordmark from "../wordmark/Wordmark.svelte";
 
   interface Props {
@@ -28,10 +34,15 @@
     initialRepoUrl: string;
     initialForgeId?: string | null;
     initialError?: LoginError | null;
-    logIn: (
-      input: LoginInput,
+    inspect: (
+      repository: RepositorySummary,
+      accessToken: string,
+    ) => Promise<RepositoryState>;
+    unlock: (
+      target: NotesRepoTarget,
+      passphrase: string,
       onStep: (step: LoginStep) => void,
-    ) => Promise<LoginResult>;
+    ) => Promise<UnlockResult>;
     initialize: (
       pending: PendingInitialization,
       passphrase: string,
@@ -49,38 +60,60 @@
     initialRepoUrl,
     initialForgeId = null,
     initialError = null,
-    logIn,
+    inspect,
+    unlock,
     initialize,
     onLoggedIn,
   }: Props = $props();
 
-  let mode = $state<"login" | "initialize">("login");
+  type TokenError =
+    | { readonly kind: "message"; readonly text: string }
+    | { readonly kind: "noRepositories" };
+
+  /** `error: null` stands for an unexpected failure. */
+  type Inspection =
+    | { readonly kind: "checking" }
+    | Exclude<RepositoryState, { kind: "unusable" }>
+    | { readonly kind: "unusable"; readonly error: LoginError | null };
+
   let providerId = $state(
-    untrack(() => (providers.find((p) => p.id === initialForgeId) ?? providers[0]).id),
+    untrack(
+      () => (providers.find((p) => p.id === initialForgeId) ?? providers[0]).id,
+    ),
   );
   let accessToken = $state("");
   let repositories = $state.raw<RepositorySummary[] | null>(null);
   let selectedRepoUrl = $state("");
-  let passphrase = $state("");
-  let rememberMe = $state(false);
-  let pending = $state.raw<PendingInitialization | null>(null);
-
-  let busy = $state(false);
-  let step = $state<LoginStep | null>(null);
-  let error = $state<string | null>(
+  let listing = $state(false);
+  let tokenError = $state.raw<TokenError | null>(
     untrack(() =>
       initialError
-        ? describeLoginError(
-            initialError,
-            (providers.find((p) => p.id === initialForgeId) ?? providers[0])
-              .name,
-          )
+        ? {
+            kind: "message",
+            text: describeLoginError(
+              initialError,
+              (providers.find((p) => p.id === initialForgeId) ?? providers[0])
+                .name,
+            ),
+          }
         : null,
     ),
   );
 
+  let inspection = $state.raw<Inspection | null>(null);
+  let inspectedRepository = $state.raw<RepositorySummary | null>(null);
+  let inspectionRun = 0;
+
+  let passphrase = $state("");
+  let repeatedPassphrase = $state("");
+  let passphrasesDiffer = $state(false);
+  let rememberMe = $state(false);
+  let submitting = $state(false);
+  let step = $state<LoginStep | null>(null);
+  let formError = $state<string | null>(null);
+
   let repositorySelect = $state<HTMLSelectElement | null>(null);
-  let passphraseInput = $state<HTMLInputElement | null>(null);
+  let passphraseForm = $state<{ focus(): void } | null>(null);
 
   const provider = $derived(
     providers.find((p) => p.id === providerId) ?? providers[0],
@@ -88,19 +121,35 @@
   const tokenCreationUrl = $derived(
     provider.accessTokenCreationUrl(new Date()),
   );
-  const stepLabel = $derived(describeLoginStep(step ?? "checkingRepository"));
+  const repositoryCreationUrl = $derived(provider.repositoryCreationUrl());
+  const username = $derived(
+    inspectedRepository === null
+      ? ""
+      : repositoryLabel(inspectedRepository.coordinates),
+  );
+
+  function resetInspection(): void {
+    inspectionRun++;
+    inspection = null;
+    inspectedRepository = null;
+    passphrase = "";
+    repeatedPassphrase = "";
+    passphrasesDiffer = false;
+    formError = null;
+    step = null;
+  }
 
   function forgetRepositories(): void {
     repositories = null;
     selectedRepoUrl = "";
+    resetInspection();
   }
 
   function selectProvider(id: ForgeId): void {
     if (id === providerId) return;
     providerId = id;
     accessToken = "";
-    passphrase = "";
-    error = null;
+    tokenError = null;
     forgetRepositories();
   }
 
@@ -112,122 +161,207 @@
     return listed.length === 1 ? listed[0].url : "";
   }
 
-  function handleResult(result: LoginResult): void {
-    switch (result.kind) {
-      case "loggedIn":
-        onLoggedIn({
-          session: result.session,
-          adapter: result.adapter,
-          rememberMe,
-        });
-        break;
-      case "needsInitialization":
-        pending = result.pending;
-        mode = "initialize";
-        error = null;
-        break;
-      case "failed":
-        error = describeLoginError(result.error, provider.name);
-        if (result.error.kind === "wrongPassphrase") {
-          passphrase = "";
-        }
-        break;
-    }
+  function canMoveFocus(): boolean {
+    const active = document.activeElement;
+    return (
+      active === null || active === document.body || active === repositorySelect
+    );
   }
 
-  async function run(action: () => Promise<void>): Promise<void> {
-    error = null;
-    step = null;
-    busy = true;
+  async function inspectSelected(): Promise<void> {
+    const repository = repositories?.find((r) => r.url === selectedRepoUrl);
+    if (repository === undefined) return;
+    resetInspection();
+    const run = inspectionRun;
+    inspection = { kind: "checking" };
+    inspectedRepository = repository;
+
+    let state: Inspection;
     try {
-      await action();
+      state = await inspect(repository, accessToken);
     } catch (e) {
       console.error(e);
-      error = GENERIC_LOGIN_ERROR;
-    } finally {
-      busy = false;
+      state = { kind: "unusable", error: null };
+    }
+    if (run !== inspectionRun) return;
+    inspection = state;
+
+    await tick();
+    if (run !== inspectionRun || !canMoveFocus()) return;
+    if (state.kind === "unusable") {
+      repositorySelect?.focus();
+    } else {
+      passphraseForm?.focus();
     }
   }
 
-  async function loadRepositories(): Promise<void> {
-    step = "listingRepositories";
-    const result = await listRepositories(provider, accessToken);
+  function handleRepositoryChange(event: Event): void {
+    selectedRepoUrl = (event.currentTarget as HTMLSelectElement).value;
+    void inspectSelected();
+  }
+
+  async function handleTokenSubmit(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+    if (accessToken.trim() === "") {
+      tokenError = { kind: "message", text: "Enter the access token." };
+      return;
+    }
+
+    forgetRepositories();
+    tokenError = null;
+    listing = true;
+    let result: RepositoryListResult;
+    try {
+      result = await listRepositories(provider, accessToken);
+    } catch (e) {
+      console.error(e);
+      tokenError = { kind: "message", text: GENERIC_LOGIN_ERROR };
+      return;
+    } finally {
+      listing = false;
+    }
+
     if (result.kind === "failed") {
-      error = describeLoginError(result.error, provider.name);
+      tokenError = {
+        kind: "message",
+        text: describeLoginError(result.error, provider.name),
+      };
       return;
     }
     if (result.repositories.length === 0) {
-      error = `This access token has no access to any repository. Edit it on ${provider.name} and add your notes repository.`;
+      tokenError = { kind: "noRepositories" };
       return;
     }
+
     repositories = result.repositories;
     selectedRepoUrl = preselectedRepoUrl(result.repositories);
     await tick();
-    if (selectedRepoUrl === "") {
-      repositorySelect?.focus();
-    } else {
-      passphraseInput?.focus();
+    repositorySelect?.focus();
+    if (selectedRepoUrl !== "") {
+      void inspectSelected();
     }
   }
 
-  async function handleSubmit(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
-    if (accessToken.trim() === "") {
-      error = "Enter the access token.";
-      return;
-    }
-    if (repositories === null) {
-      await run(loadRepositories);
-      return;
-    }
-
-    const repository = repositories.find((r) => r.url === selectedRepoUrl);
-    if (repository === undefined) {
-      error = "Choose a repository.";
-      return;
-    }
-    if (passphrase.trim() === "") {
-      error = "Enter the passphrase.";
-      return;
-    }
-
-    await run(async () => {
-      const result = await logIn(
-        { repository, accessToken, passphrase },
-        (s) => {
-          step = s;
-        },
-      );
-      handleResult(result);
-    });
-  }
-
-  async function handleInitializeConfirm(
-    repeatedPassphrase: string,
-  ): Promise<void> {
-    if (pending === null) return;
-    if (repeatedPassphrase !== passphrase) {
-      error = "Passphrases do not match.";
-      return;
-    }
-
-    const toInitialize = pending;
-    await run(async () => {
-      const result = await initialize(toInitialize, passphrase, (s) => {
-        step = s;
-      });
-      handleResult(result);
-    });
-  }
-
-  function handleInitializeCancel(): void {
-    mode = "login";
-    pending = null;
-    error = null;
+  async function submit(action: () => Promise<UnlockResult>): Promise<void> {
+    formError = null;
     step = null;
-    busy = false;
+    submitting = true;
+    let result: UnlockResult;
+    try {
+      result = await action();
+    } catch (e) {
+      console.error(e);
+      formError = GENERIC_LOGIN_ERROR;
+      return;
+    } finally {
+      submitting = false;
+    }
+
+    if (result.kind === "loggedIn") {
+      onLoggedIn({
+        session: result.session,
+        adapter: result.adapter,
+        rememberMe,
+      });
+      return;
+    }
+
+    switch (result.error.kind) {
+      case "wrongPassphrase":
+        if (result.target !== undefined) {
+          inspection = { kind: "notesRepo", target: result.target };
+        }
+        formError = describeLoginError(result.error, provider.name);
+        passphrase = "";
+        await tick();
+        passphraseForm?.focus();
+        break;
+      case "network":
+      case "server":
+      case "rateLimited":
+        formError = describeLoginError(result.error, provider.name);
+        break;
+      default:
+        inspection = { kind: "unusable", error: result.error };
+    }
+  }
+
+  function onStep(s: LoginStep): void {
+    step = s;
+  }
+
+  async function handleUnlock(): Promise<void> {
+    if (inspection?.kind !== "notesRepo") return;
+    if (passphrase.trim() === "") {
+      formError = "Enter the passphrase.";
+      return;
+    }
+    const { target } = inspection;
+    const entered = passphrase;
+    await submit(() => unlock(target, entered, onStep));
+  }
+
+  async function handleSetUp(): Promise<void> {
+    if (inspection?.kind !== "uninitialized") return;
+    passphrasesDiffer = false;
+    if (passphrase.trim() === "") {
+      formError = "Create a passphrase.";
+      return;
+    }
+    if (repeatedPassphrase !== passphrase) {
+      formError = null;
+      passphrasesDiffer = true;
+      return;
+    }
+    const { pending } = inspection;
+    const entered = passphrase;
+    await submit(() => initialize(pending, entered, onStep));
+  }
+
+  function canCheckAgain(error: LoginError | null): boolean {
+    return error?.kind !== "unauthorized";
   }
 </script>
+
+{#snippet newRepositoryNote()}
+  No notes repo yet?
+  <a href={repositoryCreationUrl} target="_blank" rel="noopener noreferrer"
+    >Create an empty private repository</a
+  > first, then give the token access to it.
+{/snippet}
+
+{#snippet progress(label: string)}
+  <div role="status" class="step-progress">
+    <progress></progress>
+    <span>{label}</span>
+  </div>
+{/snippet}
+
+{#snippet passphraseFormFooter()}
+  <div>
+    <label class="checkbox-field">
+      <input
+        type="checkbox"
+        bind:checked={rememberMe}
+        disabled={submitting}
+        aria-describedby="login-remember-me-hint"
+      />
+      Remember me
+    </label>
+    <p id="login-remember-me-hint" class="field-hint">
+      Keeps your access token and keys in this browser until you log out. Use
+      only on your own device.
+    </p>
+  </div>
+
+  {#if submitting}
+    {@render progress(describeLoginStep(step ?? "derivingKeys"))}
+  {/if}
+
+  {#if formError !== null}
+    <p role="alert" class="alert-error">{formError}</p>
+  {/if}
+{/snippet}
 
 <div class="login-shell">
   <div class="login-card">
@@ -236,130 +370,152 @@
       Encrypted markdown notes in your own git repository.
     </p>
 
-    {#if mode === "login"}
-      <form onsubmit={handleSubmit}>
-        {#if providers.length > 1}
-          <fieldset class="provider-picker" disabled={busy}>
-            <legend>Git host</legend>
-            <div class="provider-options">
-              {#each providers as option (option.id)}
-                <label class="provider-option">
-                  <input
-                    type="radio"
-                    name="login-forge"
-                    value={option.id}
-                    checked={option.id === providerId}
-                    onchange={() => selectProvider(option.id)}
-                  />
-                  <span>{option.name}</span>
-                </label>
-              {/each}
-            </div>
-          </fieldset>
-        {/if}
+    <form onsubmit={handleTokenSubmit}>
+      {#if providers.length > 1}
+        <fieldset class="provider-picker" disabled={listing || submitting}>
+          <legend>Git host</legend>
+          <div class="provider-options">
+            {#each providers as option (option.id)}
+              <label class="provider-option">
+                <input
+                  type="radio"
+                  name="login-forge"
+                  value={option.id}
+                  checked={option.id === providerId}
+                  onchange={() => selectProvider(option.id)}
+                />
+                <span>{option.name}</span>
+              </label>
+            {/each}
+          </div>
+        </fieldset>
+      {/if}
 
-        <div class="field">
-          <label for="login-access-token">Access token</label>
-          <input
-            id="login-access-token"
-            type="password"
-            autocomplete="off"
-            bind:value={accessToken}
-            oninput={forgetRepositories}
-            disabled={busy}
-            aria-describedby="login-access-token-hint"
-          />
-          <p id="login-access-token-hint" class="field-hint">
-            {provider.accessTokenHint ??
-              "An access token for your notes repository only, with read and write access to its contents."}
-            <a href={tokenCreationUrl} target="_blank" rel="noopener noreferrer"
-              >Create a token on {provider.name}</a
-            > with these settings filled in, then choose the repository there.
+      <div class="field">
+        <label for="login-access-token">Access token</label>
+        <input
+          id="login-access-token"
+          type="password"
+          autocomplete="off"
+          bind:value={accessToken}
+          oninput={forgetRepositories}
+          disabled={listing || submitting}
+          aria-describedby="login-access-token-hint"
+        />
+        <p id="login-access-token-hint" class="field-hint">
+          {provider.accessTokenHint ??
+            "An access token for your notes repository only, with read and write access to its contents."}
+          <a href={tokenCreationUrl} target="_blank" rel="noopener noreferrer"
+            >Create a token on {provider.name}</a
+          > with these settings filled in, then choose the repository there.
+        </p>
+        <p class="field-hint">{@render newRepositoryNote()}</p>
+      </div>
+
+      {#if listing}
+        {@render progress(describeLoginStep("listingRepositories"))}
+      {/if}
+
+      {#if tokenError?.kind === "message"}
+        <p role="alert" class="alert-error">{tokenError.text}</p>
+      {:else if tokenError?.kind === "noRepositories"}
+        <div role="alert" class="alert-error">
+          <p>
+            This access token has no access to any repository. Edit it on {provider.name}
+            and add your notes repository.
           </p>
+          <p>{@render newRepositoryNote()}</p>
         </div>
+      {/if}
 
-        {#if repositories !== null}
-          <div class="field">
-            <label for="login-repository">Repository</label>
-            <select
-              id="login-repository"
-              bind:this={repositorySelect}
-              bind:value={selectedRepoUrl}
-              disabled={busy}
-              aria-describedby="login-repository-hint"
-            >
-              {#if selectedRepoUrl === ""}
-                <option value="" disabled>Choose a repository</option>
-              {/if}
-              {#each repositories as repository (repository.url)}
-                <option value={repository.url}>
-                  {repositoryLabel(repository.coordinates)}
-                </option>
-              {/each}
-            </select>
-            <p id="login-repository-hint" class="field-hint">
-              Repositories this access token can open. Pick an empty one to
-              start a new notes repo.
-            </p>
-          </div>
-
-          <div class="field">
-            <label for="login-passphrase">Passphrase</label>
-            <input
-              id="login-passphrase"
-              type="password"
-              autocomplete="current-password"
-              bind:this={passphraseInput}
-              bind:value={passphrase}
-              disabled={busy}
-              aria-describedby="login-passphrase-hint"
-            />
-            <p id="login-passphrase-hint" class="field-hint">
-              Use a long passphrase, for example several random words. It
-              cannot be recovered.
-            </p>
-          </div>
-
-          <div>
-            <label class="checkbox-field">
-              <input
-                type="checkbox"
-                bind:checked={rememberMe}
-                disabled={busy}
-                aria-describedby="login-remember-me-hint"
-              />
-              Remember me
-            </label>
-            <p id="login-remember-me-hint" class="field-hint">
-              Keeps your access token and keys in this browser until you log
-              out. Use only on your own device.
-            </p>
-          </div>
-        {/if}
-
-        {#if busy}
-          <div role="status" class="step-progress">
-            <progress></progress>
-            <span>{stepLabel}</span>
-          </div>
-        {/if}
-
-        {#if error !== null}
-          <p role="alert" class="alert-error">{error}</p>
-        {/if}
-
-        <button type="submit" class="button button-primary" disabled={busy}>
-          {repositories === null ? "Continue" : "Log in"}
+      {#if repositories === null}
+        <button type="submit" class="button button-primary" disabled={listing}>
+          Continue
         </button>
-      </form>
-    {:else}
-      <InitializeStep
-        {busy}
-        {step}
-        {error}
-        onConfirm={handleInitializeConfirm}
-        onCancel={handleInitializeCancel}
-      />
+      {/if}
+    </form>
+
+    {#if repositories !== null}
+      <div class="field">
+        <label for="login-repository">Repository</label>
+        <select
+          id="login-repository"
+          bind:this={repositorySelect}
+          bind:value={selectedRepoUrl}
+          onchange={handleRepositoryChange}
+          disabled={submitting}
+          aria-describedby="login-repository-hint"
+        >
+          {#if selectedRepoUrl === ""}
+            <option value="" disabled>Choose a repository</option>
+          {/if}
+          {#each repositories as repository (repository.url)}
+            <option value={repository.url}>
+              {repositoryLabel(repository.coordinates)}
+            </option>
+          {/each}
+        </select>
+        <p id="login-repository-hint" class="field-hint">
+          Repositories this access token can open. Pick your notes repo, or an
+          empty one to start a new notes repo.
+        </p>
+      </div>
+    {/if}
+
+    {#if inspection?.kind === "checking"}
+      {@render progress(describeLoginStep("checkingRepository"))}
+    {:else if inspection?.kind === "unusable"}
+      <div class="repository-problem">
+        <p role="alert" class="alert-error">
+          {inspection.error === null
+            ? GENERIC_LOGIN_ERROR
+            : describeLoginError(inspection.error, provider.name)}
+        </p>
+        {#if inspection.error?.kind === "foreign"}
+          <p class="field-hint">
+            To start a new notes repo,
+            <a
+              href={repositoryCreationUrl}
+              target="_blank"
+              rel="noopener noreferrer">create an empty private repository</a
+            > and give the token access to it.
+          </p>
+        {/if}
+        {#if canCheckAgain(inspection.error)}
+          <button type="button" class="button" onclick={inspectSelected}>
+            Check again
+          </button>
+        {/if}
+      </div>
+    {:else if inspection !== null}
+      {#if inspectedRepository !== null && !inspectedRepository.private}
+        <p role="note" class="callout">{PUBLIC_REPOSITORY_WARNING}</p>
+      {/if}
+
+      {#if inspection.kind === "notesRepo"}
+        <UnlockForm
+          bind:this={passphraseForm}
+          bind:passphrase
+          {username}
+          busy={submitting}
+          onsubmit={() => void handleUnlock()}
+        >
+          {@render passphraseFormFooter()}
+        </UnlockForm>
+      {:else}
+        <CreateNotesRepoForm
+          bind:this={passphraseForm}
+          bind:passphrase
+          bind:repeatedPassphrase
+          mismatch={passphrasesDiffer}
+          {username}
+          description={describeSetUp(inspection.pending)}
+          busy={submitting}
+          onsubmit={() => void handleSetUp()}
+        >
+          {@render passphraseFormFooter()}
+        </CreateNotesRepoForm>
+      {/if}
     {/if}
   </div>
 </div>
@@ -395,6 +551,36 @@
   form {
     display: grid;
     gap: var(--space-4);
+  }
+
+  div.alert-error {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  div.alert-error p {
+    margin: 0;
+  }
+
+  .repository-problem {
+    display: grid;
+    gap: var(--space-3);
+    justify-items: start;
+  }
+
+  .repository-problem p {
+    margin: 0;
+  }
+
+  .callout {
+    margin: 0;
+    padding: var(--space-3);
+    color: var(--color-warning);
+    background: var(--color-warning-surface);
+    border: var(--hairline) solid
+      color-mix(in srgb, var(--color-warning) 30%, transparent);
+    border-radius: var(--radius);
+    font-size: var(--font-size-sm);
   }
 
   .step-progress {

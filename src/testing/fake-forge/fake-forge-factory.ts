@@ -44,6 +44,7 @@ import {
 
 export const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
 export const FAKE_FORGE_INVALID_TOKEN = "invalid-token";
+export const FAKE_FORGE_NO_REPOSITORIES_TOKEN = "no-repositories-token";
 export const SECOND_FAKE_FORGE_NAME = "Fakelab";
 export const SECOND_FAKE_FORGE_URL_PREFIX = "https://fakelab.test/";
 // Stands in for the second real provider so the login UI can be exercised with
@@ -82,7 +83,7 @@ export interface FakeForgeControls {
    */
   failNext(
     repoKey: string,
-    operation: "getHead" | "listTree" | "readBlob" | "commit",
+    operation: "inspect" | "getHead" | "listTree" | "readBlob" | "commit",
     kind: ForgeErrorKind | "stale",
   ): void;
 }
@@ -118,8 +119,26 @@ async function createForeignRepoAdapter(): Promise<FakeForgeAdapter> {
   const repo = new InMemoryGitRepo();
   await commitFiles(repo, {
     parent: null,
-    files: { "README.md": "# Not a notes repo\n" },
+    files: {
+      "README.md": "# Not a notes repo\n",
+      "index.js": 'console.log("hello");\n',
+    },
     message: INITIALIZE_SUBJECT,
+    branch: MAIN_BRANCH,
+  });
+  return new FakeForgeAdapter({ repo });
+}
+
+async function createAlmostEmptyRepoAdapter(): Promise<FakeForgeAdapter> {
+  const repo = new InMemoryGitRepo();
+  await commitFiles(repo, {
+    parent: null,
+    files: {
+      "README.md": "# notes\n",
+      LICENSE: "MIT License\n",
+      ".gitignore": "node_modules/\n",
+    },
+    message: "Initial commit",
     branch: MAIN_BRANCH,
   });
   return new FakeForgeAdapter({ repo });
@@ -161,7 +180,10 @@ export async function createFakeForge(options?: {
     ["sample/foreign", await createForeignRepoAdapter()],
     ["sample/newer", await createNewerRepoAdapter()],
     ["sample/trash", await createSampleTrashRepoAdapter()],
+    ["sample/almost-empty", await createAlmostEmptyRepoAdapter()],
+    ["sample/public-empty", new FakeForgeAdapter()],
   ]);
+  const publicFixtures: ReadonlySet<string> = new Set(["sample/public-empty"]);
 
   const keyrings = new Map<string, Promise<Keyring>>();
 
@@ -289,6 +311,7 @@ export async function createFakeForge(options?: {
   function fakeProvider(options: {
     readonly base: ForgeProvider;
     readonly fixtures: ReadonlyMap<string, ForgeAdapter>;
+    readonly publicFixtures?: ReadonlySet<string>;
     readonly urlPrefix: string;
     readonly createAdapter: ForgeAdapterFactory;
   }): ForgeProvider {
@@ -299,6 +322,7 @@ export async function createFakeForge(options?: {
         return {
           coordinates: { forge, owner, repo },
           url: `${options.urlPrefix}${key}`,
+          private: options.publicFixtures?.has(key) !== true,
         };
       },
     );
@@ -308,6 +332,7 @@ export async function createFakeForge(options?: {
         if (accessToken === FAKE_FORGE_INVALID_TOKEN) {
           throw new ForgeError("Unauthorized");
         }
+        if (accessToken === FAKE_FORGE_NO_REPOSITORIES_TOKEN) return [];
         return repositories;
       },
       createAdapter: options.createAdapter,
@@ -331,6 +356,7 @@ export async function createFakeForge(options?: {
     github: fakeProvider({
       base: createGitHubProvider(),
       fixtures,
+      publicFixtures,
       urlPrefix: "https://github.com/",
       createAdapter: factory,
     }),
@@ -340,6 +366,7 @@ export async function createFakeForge(options?: {
         name: SECOND_FAKE_FORGE_NAME,
         accessTokenHint: "A Fakelab token with the write_repository scope.",
         accessTokenCreationUrl: () => `${SECOND_FAKE_FORGE_URL_PREFIX}tokens/new`,
+        repositoryCreationUrl: () => `${SECOND_FAKE_FORGE_URL_PREFIX}projects/new`,
         listRepositories: () => Promise.resolve([]),
         createAdapter: secondFactory,
       },

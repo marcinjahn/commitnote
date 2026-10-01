@@ -10,6 +10,7 @@ import {
   createFakeForge,
   createFakeForgeFactory,
   FAKE_FORGE_INVALID_TOKEN,
+  FAKE_FORGE_NO_REPOSITORIES_TOKEN,
 } from "./fake-forge-factory";
 
 const TOKEN = "some-access-token";
@@ -65,7 +66,7 @@ describe("createFakeForgeFactory", () => {
     expect(await adapter.inspect()).toEqual({
       kind: "populated",
       canWrite: true,
-      main: { head, repoConfigText: '{"formatVersion":1}' },
+      main: { head, repoConfigText: '{"formatVersion":1}', rootEntries: null },
     });
   });
 
@@ -95,7 +96,7 @@ describe("createFakeForgeFactory", () => {
     expect(inspection.main.repoConfigText).not.toBeNull();
   });
 
-  it("sample/foreign is populated with no repo config and only README.md", async () => {
+  it("sample/foreign is populated with no repo config, a README and code", async () => {
     const factory = await createFakeForgeFactory();
     const adapter = factory(coordinatesFor("sample/foreign"), {
       accessToken: TOKEN,
@@ -106,10 +107,38 @@ describe("createFakeForgeFactory", () => {
       throw new Error("expected a populated repo with a main head");
     }
     expect(inspection.main.repoConfigText).toBeNull();
+    expect(inspection.main.rootEntries).toEqual([
+      { name: "README.md", type: "blob" },
+      { name: "index.js", type: "blob" },
+    ]);
+  });
 
-    const entries = await adapter.listTree(inspection.main.head);
-    const files = entries.filter((entry) => entry.type === "blob");
-    expect(files.map((entry) => entry.path)).toEqual(["README.md"]);
+  it("sample/almost-empty has only a README, a licence and a .gitignore", async () => {
+    const factory = await createFakeForgeFactory();
+    const adapter = factory(coordinatesFor("sample/almost-empty"), {
+      accessToken: TOKEN,
+    });
+
+    const inspection = await adapter.inspect();
+    if (inspection.kind !== "populated" || inspection.main === null) {
+      throw new Error("expected a populated repo with a main head");
+    }
+    expect(inspection.canWrite).toBe(true);
+    expect(inspection.main.repoConfigText).toBeNull();
+    expect(inspection.main.rootEntries).toEqual([
+      { name: ".gitignore", type: "blob" },
+      { name: "LICENSE", type: "blob" },
+      { name: "README.md", type: "blob" },
+    ]);
+  });
+
+  it("sample/public-empty is empty and writable", async () => {
+    const factory = await createFakeForgeFactory();
+    const adapter = factory(coordinatesFor("sample/public-empty"), {
+      accessToken: TOKEN,
+    });
+
+    expect(await adapter.inspect()).toEqual({ kind: "empty", canWrite: true });
   });
 
   it("sample/newer is populated with a repo config at a newer format version", async () => {
@@ -303,8 +332,21 @@ describe("createFakeForge registry", () => {
       "https://github.com/sample/foreign",
       "https://github.com/sample/newer",
       "https://github.com/sample/trash",
+      "https://github.com/sample/almost-empty",
+      "https://github.com/sample/public-empty",
     ]);
     expect(repositories[0].coordinates).toEqual(coordinatesFor("sample/notes"));
+    expect(
+      repositories.filter((r) => !r.private).map((r) => r.coordinates.repo),
+    ).toEqual(["public-empty"]);
+  });
+
+  it("links the GitHub provider to creating a private repository", async () => {
+    const { registry } = await createFakeForge({ argon2id: argon2idDirect });
+
+    expect(registry.github.repositoryCreationUrl()).toBe(
+      "https://github.com/new?name=notes&visibility=private",
+    );
   });
 
   it("rejects the invalid token when listing", async () => {
@@ -313,6 +355,14 @@ describe("createFakeForge registry", () => {
     await expect(
       registry.github.listRepositories(FAKE_FORGE_INVALID_TOKEN),
     ).rejects.toMatchObject({ kind: "Unauthorized" });
+  });
+
+  it("lists no repositories for the no-repositories token", async () => {
+    const { registry } = await createFakeForge({ argon2id: argon2idDirect });
+
+    expect(
+      await registry.github.listRepositories(FAKE_FORGE_NO_REPOSITORIES_TOKEN),
+    ).toEqual([]);
   });
 
   it("creates fixture adapters through the registry", async () => {
@@ -339,6 +389,10 @@ describe("createFakeForge registry", () => {
       "https://fakelab.test/team/notes",
       "https://fakelab.test/team/empty",
     ]);
+    expect(repositories.every((r) => r.private)).toBe(true);
+    expect(second.repositoryCreationUrl()).toBe(
+      "https://fakelab.test/projects/new",
+    );
     expect(repositories.every((r) => r.coordinates.forge === second.id)).toBe(
       true,
     );
