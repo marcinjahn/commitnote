@@ -120,6 +120,17 @@
       };
     },
     onDrop: (path, target) => onPlace(path, target),
+    onMenu(row, x, y) {
+      const current = tree;
+      if (current === null) return;
+      const node = findWorkingNode(
+        current,
+        JSON.parse(row.dataset.treePath ?? "[]") as NotePath,
+      );
+      const trigger = row.querySelector<HTMLElement>('[aria-haspopup="menu"]');
+      if (node === undefined || trigger === null) return;
+      handleOpenMenu(node.path.join("/"), node, { kind: "point", x, y }, trigger);
+    },
   };
 
   function handleMenuAction(action: RowAction): void {

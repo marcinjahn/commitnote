@@ -27,6 +27,8 @@ export interface TreeDragOptions {
   ) => Pick<DropScene, "draggedKind" | "conflicted" | "childrenOf"> | null;
   /** Applies the drop; returns the item's new path, or null if refused. */
   readonly onDrop: (path: NotePath, target: DropTarget) => NotePath | null;
+  /** A touch long-press released without moving opens the row's menu. */
+  readonly onMenu: (row: HTMLElement, x: number, y: number) => void;
 }
 
 export interface DragSession {
@@ -36,6 +38,8 @@ export interface DragSession {
 }
 
 const MOUSE_DRAG_THRESHOLD = 4;
+const LONG_PRESS_MS = 400;
+const TOUCH_SLOP = 8;
 const SCROLL_EDGE = 40;
 const MAX_SCROLL_STEP = 14;
 const DEFAULT_INDENT_STEP = 24;
@@ -306,9 +310,10 @@ function suppressNextClick(): void {
 }
 
 /**
- * Drag-and-drop for the note tree. Only mouse input for now: pressing a
- * row and moving it past a small threshold starts a drag, so a plain click
- * still activates the row.
+ * Drag-and-drop for the note tree. A mouse drag starts once a pressed row
+ * moves past a small threshold, so a plain click still activates the row.
+ * On touch, a long-press lifts the row: moving then drags it, releasing
+ * without moving opens the row menu, and moving before the lift scrolls.
  */
 export function treeDrag(
   container: HTMLElement,
@@ -317,69 +322,162 @@ export function treeDrag(
   let options = initial;
   let pending: {
     readonly pointerId: number;
-    readonly x: number;
-    readonly y: number;
+    readonly touch: boolean;
+    readonly startX: number;
+    readonly startY: number;
+    x: number;
+    y: number;
     readonly row: HTMLElement;
+    readonly timer: ReturnType<typeof setTimeout> | undefined;
   } | null = null;
   let session: {
     readonly pointerId: number;
     readonly drag: DragSession;
+    readonly touch: {
+      readonly row: HTMLElement;
+      readonly x: number;
+      readonly y: number;
+      moved: boolean;
+    } | null;
   } | null = null;
   let busy = false;
+  let touchPressOnRow = false;
+  let liftedByTouch = false;
+
+  function clearPending(): void {
+    if (pending?.timer !== undefined) clearTimeout(pending.timer);
+    pending = null;
+  }
+
+  function begin(row: HTMLElement, x: number, y: number): DragSession | null {
+    const drag = startDrag(container, row, x, y, options, () => {
+      busy = false;
+    });
+    if (drag !== null) busy = true;
+    return drag;
+  }
+
+  function liftByTouch(): void {
+    if (pending === null) return;
+    const { pointerId, row, x, y } = pending;
+    pending = null;
+    const drag = begin(row, x, y);
+    if (drag === null) return;
+    liftedByTouch = true;
+    session = { pointerId, drag, touch: { row, x, y, moved: false } };
+  }
 
   function onPointerDown(event: PointerEvent): void {
-    if (event.pointerType !== "mouse" || event.button !== 0 || busy) return;
+    touchPressOnRow = false;
+    const touch = event.pointerType === "touch";
+    if (!touch && (event.pointerType !== "mouse" || event.button !== 0)) return;
+    if (busy || session !== null) return;
+    if (touch && (!event.isPrimary || pending !== null)) {
+      clearPending();
+      return;
+    }
     const handle = (event.target as Element).closest("[data-drag-handle]");
     const row = handle?.closest<HTMLElement>("[data-tree-row]");
     if (row == null || !container.contains(row)) return;
+    if (touch) {
+      touchPressOnRow = true;
+      liftedByTouch = false;
+    }
     pending = {
       pointerId: event.pointerId,
+      touch,
+      startX: event.clientX,
+      startY: event.clientY,
       x: event.clientX,
       y: event.clientY,
       row,
+      timer: touch ? setTimeout(liftByTouch, LONG_PRESS_MS) : undefined,
     };
   }
 
   function onPointerMove(event: PointerEvent): void {
     if (session !== null) {
-      if (event.pointerId === session.pointerId) {
-        session.drag.move(event.clientX, event.clientY);
+      if (event.pointerId !== session.pointerId) return;
+      const { touch } = session;
+      if (
+        touch !== null &&
+        Math.hypot(event.clientX - touch.x, event.clientY - touch.y) >
+          TOUCH_SLOP
+      ) {
+        touch.moved = true;
       }
+      session.drag.move(event.clientX, event.clientY);
       return;
     }
     if (pending === null || event.pointerId !== pending.pointerId) return;
     const distance = Math.hypot(
-      event.clientX - pending.x,
-      event.clientY - pending.y,
+      event.clientX - pending.startX,
+      event.clientY - pending.startY,
     );
+    if (pending.touch) {
+      if (distance > TOUCH_SLOP) clearPending();
+      else {
+        pending.x = event.clientX;
+        pending.y = event.clientY;
+      }
+      return;
+    }
     if (distance <= MOUSE_DRAG_THRESHOLD) return;
-    const { row, x, y } = pending;
+    const { row, startX, startY } = pending;
     pending = null;
-    const drag = startDrag(container, row, x, y, options, () => {
-      busy = false;
-    });
+    const drag = begin(row, startX, startY);
     if (drag === null) return;
-    busy = true;
-    session = { pointerId: event.pointerId, drag };
+    session = { pointerId: event.pointerId, drag, touch: null };
     container.setPointerCapture(event.pointerId);
     drag.move(event.clientX, event.clientY);
   }
 
   function onPointerUp(event: PointerEvent): void {
-    pending = null;
+    clearPending();
     if (session === null || event.pointerId !== session.pointerId) return;
-    const { drag } = session;
+    const { drag, touch } = session;
     session = null;
-    suppressNextClick();
-    drag.drop();
+    if (touch === null) {
+      suppressNextClick();
+      drag.drop();
+    } else if (touch.moved) {
+      drag.drop();
+    } else {
+      drag.cancel();
+      options.onMenu(touch.row, touch.x, touch.y);
+    }
   }
 
   function onPointerCancel(event: PointerEvent): void {
-    pending = null;
+    if (event.type === "lostpointercapture" && event.target !== container) {
+      return;
+    }
+    clearPending();
     if (session === null || event.pointerId !== session.pointerId) return;
     const { drag } = session;
     session = null;
     drag.cancel();
+  }
+
+  // Touch pointers stay implicitly captured by the pressed row, so page
+  // scrolling is held back by cancelling the touch events themselves.
+  function onTouchMove(event: TouchEvent): void {
+    if (session?.touch != null && event.cancelable) event.preventDefault();
+  }
+
+  // Cancelling touchend keeps the browser from turning a lifted press into
+  // a click that would open the note.
+  function onTouchEnd(event: TouchEvent): void {
+    if (!liftedByTouch) return;
+    liftedByTouch = false;
+    if (event.cancelable) event.preventDefault();
+  }
+
+  function onContextMenu(event: MouseEvent): void {
+    const pointerType = (event as Partial<PointerEvent>).pointerType;
+    if (!touchPressOnRow || pointerType === "mouse") return;
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   container.addEventListener("pointerdown", onPointerDown);
@@ -387,19 +485,27 @@ export function treeDrag(
   container.addEventListener("pointerup", onPointerUp);
   container.addEventListener("pointercancel", onPointerCancel);
   container.addEventListener("lostpointercapture", onPointerCancel);
+  container.addEventListener("touchmove", onTouchMove, { passive: false });
+  container.addEventListener("touchend", onTouchEnd, { passive: false });
+  container.addEventListener("contextmenu", onContextMenu, { capture: true });
 
   return {
     update(next) {
       options = next;
     },
     destroy() {
+      clearPending();
       session?.drag.cancel();
       container.removeEventListener("pointerdown", onPointerDown);
       container.removeEventListener("pointermove", onPointerMove);
       container.removeEventListener("pointerup", onPointerUp);
       container.removeEventListener("pointercancel", onPointerCancel);
       container.removeEventListener("lostpointercapture", onPointerCancel);
+      container.removeEventListener("touchmove", onTouchMove);
+      container.removeEventListener("touchend", onTouchEnd);
+      container.removeEventListener("contextmenu", onContextMenu, {
+        capture: true,
+      });
     },
   };
 }
-

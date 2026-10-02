@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { CDPSession, Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 
 export interface LogInOptions {
@@ -80,4 +80,60 @@ export function rowSyncState(
   return item
     .and(page.locator("[aria-describedby]"))
     .or(item.locator("xpath=following-sibling::span").getByRole("img"));
+}
+
+export interface TouchPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * One finger on a touch screen, driven through CDP so the browser's own
+ * gesture handling (scrolling, long-press, tap) applies.
+ */
+export class TouchFinger {
+  private at: TouchPoint = { x: 0, y: 0 };
+
+  private constructor(
+    private readonly page: Page,
+    private readonly cdp: CDPSession,
+  ) {}
+
+  static async on(page: Page): Promise<TouchFinger> {
+    return new TouchFinger(page, await page.context().newCDPSession(page));
+  }
+
+  async down(point: TouchPoint): Promise<void> {
+    this.at = point;
+    await this.cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [point],
+    });
+  }
+
+  async move(to: TouchPoint, steps = 10): Promise<void> {
+    const from = this.at;
+    for (let i = 1; i <= steps; i++) {
+      this.at = {
+        x: from.x + ((to.x - from.x) * i) / steps,
+        y: from.y + ((to.y - from.y) * i) / steps,
+      };
+      await this.cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [this.at],
+      });
+    }
+  }
+
+  async up(): Promise<void> {
+    await this.cdp.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await this.cdp.detach();
+  }
+
+  async hold(ms: number): Promise<void> {
+    await this.page.waitForTimeout(ms);
+  }
 }

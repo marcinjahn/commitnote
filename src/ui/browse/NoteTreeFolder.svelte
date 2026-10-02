@@ -225,6 +225,9 @@
   .tree-row-container {
     display: flex;
     align-items: center;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
     transition: background-color var(--motion-duration) var(--motion-easing);
   }
 

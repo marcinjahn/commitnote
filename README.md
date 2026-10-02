@@ -63,6 +63,13 @@ npm run test:e2e
 The suite runs the built app in test mode (fake forge, no network) at both a desktop and a mobile
 viewport.
 
+## Manual live check
+
+Real-GitHub behaviour is not covered by automation; check it by hand against a real notes repo:
+
+- Reorder notes by dragging (mouse on desktop, long-press then drag on a phone), move one into and
+  out of a folder, then log in on a second real device and check it shows the same order.
+
 ## Test mode
 
 `npm run dev:fake` (and `npm run build:fake` / `preview:fake`) run the app against in-memory
