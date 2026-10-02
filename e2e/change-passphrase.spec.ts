@@ -107,11 +107,25 @@ test("deletes the old history when asked, leaving one commit", async ({
   const removeHistory = dialog.getByRole("checkbox", {
     name: "Also delete the old history",
   });
+  const historyWarning = dialog.getByRole("note");
+  await expect(historyWarning).toHaveText(
+    "Earlier versions of your notes stay in the repository's history, so the current passphrase still decrypts them after the change.",
+  );
+  const warningBox = await historyWarning.boundingBox();
+  const checkboxBox = await removeHistory.boundingBox();
+  expect(warningBox!.y).toBeGreaterThanOrEqual(
+    checkboxBox!.y + checkboxBox!.height,
+  );
   await expect(removeHistory).not.toBeChecked();
   await expect(removeHistory).toHaveAccessibleDescription(
     /replaces the whole history with the one commit of re-encrypted notes/,
   );
   await removeHistory.check();
+  await expect(historyWarning).toHaveCount(0);
+  await removeHistory.uncheck();
+  await expect(historyWarning).toBeVisible();
+  await removeHistory.check();
+  await expect(historyWarning).toHaveCount(0);
 
   await fillPassphrases(page, OLD_PASSPHRASE, NEW_PASSPHRASE);
   const review = page.getByRole("dialog", {

@@ -12,6 +12,7 @@
   import Dialog from "../dialogs/Dialog.svelte";
   import { ENABLE_ATOMIC_LABEL } from "../import/import-messages";
   import PassphraseStrength from "./PassphraseStrength.svelte";
+  import { warningReveal } from "./warning-reveal";
   import {
     describeCarriedOver,
     describeChangeAtomicSetup,
@@ -302,18 +303,26 @@
                 />
                 {REMOVE_HISTORY_LABEL}
               </label>
-              <p id={removeHistoryHintId} class="field-hint">
-                {describeRemoveHistory(forgeName)}
-              </p>
+              <div>
+                <p id={removeHistoryHintId} class="field-hint">
+                  {describeRemoveHistory(forgeName)}
+                </p>
+                {#if !removeHistory}
+                  <p
+                    role="note"
+                    class="alert-warning history-warning"
+                    transition:warningReveal
+                  >
+                    {HISTORY_WARNING}
+                  </p>
+                {/if}
+              </div>
             </div>
+          {:else}
+            <p role="note" class="alert-warning">{HISTORY_WARNING}</p>
           {/if}
         </fieldset>
-        <div class="warnings">
-          {#if !removeHistory}
-            <p class="field-hint">{HISTORY_WARNING}</p>
-          {/if}
-          <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
-        </div>
+        <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
       </form>
     {/if}
     {#if stage.kind === "working"}
@@ -410,7 +419,7 @@
   }
 
   .review p,
-  .warnings p,
+  .passphrase-form > p,
   .remove-history p {
     margin: 0;
   }
@@ -420,9 +429,9 @@
     gap: var(--space-1);
   }
 
-  .warnings {
-    display: grid;
-    gap: var(--space-2);
+  /* A margin rather than a grid gap, so the reveal transition animates it. */
+  .remove-history .history-warning {
+    margin-top: var(--space-3);
   }
 
   .step-progress {

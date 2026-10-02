@@ -489,7 +489,7 @@
       </div>
     {:else if inspection !== null}
       {#if inspectedRepository !== null && !inspectedRepository.private}
-        <p role="note" class="callout">{PUBLIC_REPOSITORY_WARNING}</p>
+        <p role="note" class="alert-warning">{PUBLIC_REPOSITORY_WARNING}</p>
       {/if}
 
       {#if inspection.kind === "notesRepo"}
@@ -570,17 +570,6 @@
 
   .repository-problem p {
     margin: 0;
-  }
-
-  .callout {
-    margin: 0;
-    padding: var(--space-3);
-    color: var(--color-warning);
-    background: var(--color-warning-surface);
-    border: var(--hairline) solid
-      color-mix(in srgb, var(--color-warning) 30%, transparent);
-    border-radius: var(--radius);
-    font-size: var(--font-size-sm);
   }
 
   .step-progress {
