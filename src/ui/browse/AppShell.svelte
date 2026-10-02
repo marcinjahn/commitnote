@@ -7,7 +7,11 @@
   import type { RestorePlan } from "../../history/plan-restore";
   import { validateName } from "../../tree/note-names";
   import { describeNameError } from "../dialogs/name-messages";
-  import { describeRestored } from "../history/history-messages";
+  import {
+    describeRestoreBlock,
+    describeRestored,
+    UNSAVED_BEFORE_RESTORE_MESSAGE,
+  } from "../history/history-messages";
   import { findWorkingNode } from "../../sync/working-tree";
   import { findNode } from "../../tree/note-tree";
   import NoteHistoryDialog, {
@@ -196,6 +200,12 @@
     readonly phase: HistoryPhase;
   } | null>(null);
   let historyMessages = $state<readonly ToastMessage[]>([]);
+  interface UndoGuard {
+    readonly id: number;
+    readonly path: NotePath;
+    readonly content: string;
+  }
+  let undoGuard = $state<UndoGuard | null>(null);
   let sessionMessages = $state<readonly ToastMessage[]>(
     untrack(() =>
       initialMessage === null ? [] : [{ id: -1, text: initialMessage }],
@@ -341,9 +351,10 @@
     try {
       await engine.flush();
     } catch {
-      // Best effort: restoring still works, and the replaced text saves later.
+      // The note's sync state below tells whether its changes were saved.
     }
-    const open = engine.getState().openNote;
+    const state = engine.getState();
+    const open = state.openNote;
     if (
       historyDialog === null ||
       !notePathEquals(historyDialog.path, path) ||
@@ -352,20 +363,33 @@
     ) {
       return null;
     }
+    if (state.stopped !== null || state.suspended) {
+      return describeRestoreBlock("unavailable");
+    }
+    if (state.syncStates.stateOf(path).kind !== "synced") {
+      return UNSAVED_BEFORE_RESTORE_MESSAGE;
+    }
     const previous = { content: open.content, name: noteName(path) };
     const result = setNoteState(path, plan.content, plan.name);
     if (!result.ok) return result.message;
     historyDialog = null;
     const restoredPath = result.path;
+    const restored = engine.getState().openNote;
+    const id = ++nextMessageId;
+    undoGuard =
+      restored?.kind === "loaded"
+        ? { id, path: restored.path, content: restored.content }
+        : null;
     historyMessages = [
       {
-        id: ++nextMessageId,
+        id,
         text: describeRestored(version.committedAt, Date.now()),
         durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
           run: () =>
             handleUndoRestore(
+              id,
               restoredPath,
               plan.content === null ? null : previous.content,
               plan.name === null ? null : previous.name,
@@ -376,11 +400,45 @@
     return null;
   }
 
+  function undoApplies(
+    guard: UndoGuard,
+    open: SyncEngineState["openNote"],
+  ): boolean {
+    return (
+      open?.kind === "loaded" &&
+      notePathEquals(open.path, guard.path) &&
+      open.content === guard.content
+    );
+  }
+
+  function dismissUndo(id: number): void {
+    if (undoGuard?.id === id) undoGuard = null;
+    historyMessages = historyMessages.filter((message) => message.id !== id);
+  }
+
+  $effect(() => {
+    const guard = undoGuard;
+    if (guard !== null && !undoApplies(guard, engineState.openNote)) {
+      dismissUndo(guard.id);
+    }
+  });
+
   function handleUndoRestore(
+    id: number,
     path: NotePath,
     content: string | null,
     name: string | null,
   ): void {
+    const guard = undoGuard;
+    if (
+      guard === null ||
+      guard.id !== id ||
+      !undoApplies(guard, engine.getState().openNote)
+    ) {
+      dismissUndo(id);
+      return;
+    }
+    undoGuard = null;
     const result = setNoteState(path, content, name);
     historyMessages = result.ok
       ? []

@@ -180,12 +180,12 @@
     void readContent(selected);
   }
 
-  // On narrow screens the list comes first and nothing is selected for the user.
   function isNarrow(): boolean {
     return !window.matchMedia("(min-width: 768px)").matches;
   }
 
-  // The newest version that differs from the note as it is now.
+  // The newest version that differs from the note as it is now. On narrow
+  // screens the list comes first and nothing is selected for the user.
   $effect(() => {
     if (history === null || selectedSha !== null || preselecting) return;
     if (isNarrow()) return;

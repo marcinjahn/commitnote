@@ -37,6 +37,7 @@ import {
 const MINUTE = 60_000;
 const T0 = Date.UTC(2026, 8, 12, 12);
 const TRASH_ID = "20260912T120000Z-1-aaaaaaaa";
+const TRASH_ID_DEPTH_2 = "20260912T120000Z-2-aaaaaaaa";
 const NO_ORDER: OrderIndex = { writable: false, folders: new Map() };
 
 interface Repo {
@@ -236,6 +237,48 @@ describe("note history", () => {
     expect(end).toEqual({ kind: "created" });
     expect(await contents(history, versions)).toEqual(["c", "b", "b", "a"]);
   });
+
+  it.each<[string, Change, NotePath]>([
+    [
+      "note",
+      { kind: "trash-note", path: ["F", "N"], entryId: TRASH_ID_DEPTH_2 },
+      [],
+    ],
+    ["folder", { kind: "trash-folder", path: ["F"], entryId: TRASH_ID }, ["N"]],
+  ])(
+    "follows a note restored from a trashed %s and edited in the same commit",
+    async (_, trash, subPath) => {
+      const repo = await createRepo();
+      await repo.save(
+        { kind: "create-folder", path: ["F"] },
+        create(["F", "N"], "a"),
+        create(["F", "Other"], "a"),
+      );
+      await repo.save(trash);
+      await repo.save(
+        {
+          kind: "restore-trash",
+          entryId: (trash as { entryId: string }).entryId,
+          subPath,
+          target: "note",
+          to: ["N"],
+        },
+        update(["N"], "b"),
+      );
+      const history = createNoteHistory(repo);
+
+      const { versions, end } = (
+        await openFully(history, repo, ["N"])
+      ).getState();
+
+      expect(rows(versions)).toEqual([
+        ["N", ["restoredFromTrash"]],
+        ["N", ["created"]],
+      ]);
+      expect(end).toEqual({ kind: "created" });
+      expect(await contents(history, versions)).toEqual(["b", "a"]);
+    },
+  );
 
   it("follows a note whose whole folder was trashed and restored", async () => {
     const repo = await createRepo();

@@ -5,7 +5,7 @@ import { decryptName, encryptPath } from "../crypto/name-cipher";
 import { decryptNote, NoteDecryptionError } from "../crypto/note-cipher";
 import { isForgeError } from "../forge/errors";
 import type { CommitSummary, ForgeAdapter } from "../forge/forge-adapter";
-import { TRASH_DIR } from "../format/v1";
+import { FOLDER_MARKER, TRASH_DIR } from "../format/v1";
 import { mapForgeError, type SyncError } from "../sync/sync-engine";
 import { rewindPath, type RewindStep } from "./rewind-path";
 
@@ -72,8 +72,8 @@ export type VersionContent =
 export interface NoteHistory {
   /**
    * The history of the note at `notePath` on `head`, starting to load when
-   * nothing is loaded yet. The same cursor is returned for the same note
-   * and head for the rest of the session.
+   * nothing is loaded yet. Cursors of the most recently opened notes are
+   * kept, so reopening one of them continues where it left off.
    */
   open(notePath: NotePath, head: string): NoteHistoryCursor;
   readVersion(version: NoteVersion): Promise<VersionContent>;
@@ -120,6 +120,10 @@ function toSyncError(error: unknown): SyncError {
 
 function lastSegment(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
+}
+
+function onlyOne<T>(items: readonly T[]): T | undefined {
+  return items.length === 1 ? items[0] : undefined;
 }
 
 function eventsOf(step: RewindStep): VersionEvent[] {
@@ -186,17 +190,23 @@ export function createNoteHistory(deps: NoteHistoryDeps): NoteHistory {
     const rest =
       step.path === step.to ? "" : step.path.slice(step.to.length + 1);
     const entryPrefix = `${TRASH_DIR}/${step.entryId}/`;
-    const candidates = listing.filter(
+    const inPlace = listing.filter(
       (entry) =>
         entry.type === "blob" &&
-        entry.sha === file.blobSha &&
         entry.path.startsWith(entryPrefix) &&
+        lastSegment(entry.path) !== FOLDER_MARKER &&
         (rest === "" || entry.path.endsWith(`/${rest}`)),
     );
     const wanted = lastSegment(step.path);
+    const sameBlob = inPlace.filter((entry) => entry.sha === file.blobSha);
+    // The note may also have been edited in the restoring commit, so its
+    // content then no longer matches the trashed file's.
     const match =
-      candidates.find((entry) => lastSegment(entry.path) === wanted) ??
-      candidates[0];
+      sameBlob.length > 0
+        ? (sameBlob.find((entry) => lastSegment(entry.path) === wanted) ??
+          sameBlob[0])
+        : onlyOne(inPlace) ??
+          onlyOne(inPlace.filter((entry) => lastSegment(entry.path) === wanted));
     if (match === undefined) return null;
 
     const before = rewindPath(

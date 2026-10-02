@@ -165,11 +165,9 @@ function lastEditorLine(page: Page) {
 }
 
 function restoredToast(page: Page) {
-  return page
-    .getByRole("group")
-    .filter({
-      hasText: /Restored the version from today, \d\d:\d\d( [AP]M)?\./,
-    });
+  return page.getByRole("group").filter({
+    hasText: /Restored the version from today, \d\d:\d\d( [AP]M)?\./,
+  });
 }
 
 async function backToTreeIfMobile(page: Page, mobile: boolean): Promise<void> {
@@ -249,6 +247,22 @@ test("Undo puts back the content and title the restore replaced", async ({
   await expect(lastEditorLine(page)).toHaveText("one two three");
   await expect(noteNameField(page)).toHaveValue("Hello");
   await waitForSynced(page);
+});
+
+test("typing after a restore takes away its Undo", async ({ page }) => {
+  await noteWithHistory(page);
+  const dialog = await selectFirstSave(page);
+  await dialog.getByRole("button", { name: RESTORE }).click();
+  await expect(restoredToast(page)).toBeVisible();
+
+  await noteEditor(page).click();
+  await page.keyboard.press(`${MODIFIER}+End`);
+  await page.keyboard.type(" four");
+
+  await expect(restoredToast(page)).toHaveCount(0);
+  await expect(lastEditorLine(page)).toHaveText("one four");
+  await waitForSynced(page);
+  await expect(lastEditorLine(page)).toHaveText("one four");
 });
 
 test("restoring a title another note already has shows why and changes nothing", async ({

@@ -163,7 +163,7 @@
   bind:this={listEl}
   onkeydown={handleKeydown}
 >
-  {#each sections as section (section.day)}
+  {#each sections as section (newestOf(section.rows[0]!).sha)}
     <section class="day">
       <h3 class="day-header">{describeDay(section.day, now)}</h3>
       <ul class="rows">

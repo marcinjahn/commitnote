@@ -145,6 +145,9 @@ export function describeRestoreBlock(reason: RestoreBlock): string | null {
   }
 }
 
+export const UNSAVED_BEFORE_RESTORE_MESSAGE =
+  "Your latest changes couldn't be saved yet. Try again once they're saved.";
+
 export function describeRestored(
   committedAt: number,
   now: number,
