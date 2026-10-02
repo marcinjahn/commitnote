@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 
 export interface LogInOptions {
@@ -67,4 +67,17 @@ export async function expectTree(page: Page): Promise<void> {
   await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible({
     timeout: 15_000,
   });
+}
+
+// Matches while the row shows any sync state: a waiting or saving label
+// (described by its state) or a failed/conflict icon next to the row.
+export function rowSyncState(
+  page: Page,
+  name: string,
+  options: { readonly exact?: boolean } = {},
+): Locator {
+  const item = page.getByRole("treeitem", { name, exact: options.exact });
+  return item
+    .and(page.locator("[aria-describedby]"))
+    .or(item.locator("xpath=following-sibling::span").getByRole("img"));
 }

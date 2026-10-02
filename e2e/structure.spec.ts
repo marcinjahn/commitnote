@@ -1,6 +1,6 @@
 import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "@playwright/test";
-import { logIn, expectTree } from "./helpers";
+import { logIn, expectTree, rowSyncState } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";
 const NOTES_PASSPHRASE = "sample notes repo passphrase";
@@ -14,15 +14,6 @@ async function backToTreeIfMobile(
 ): Promise<void> {
   if (testInfo.project.name !== "mobile") return;
   await page.getByRole("button", { name: "Back to notes" }).click();
-}
-
-// The sync icon sits next to the treeitem button, not inside it, and a
-// folder's own icon must be told apart from its (possibly visible) children's.
-function syncIconFor(page: Page, name: string) {
-  return page
-    .getByRole("treeitem", { name })
-    .locator("xpath=following-sibling::span[1]")
-    .getByRole("img");
 }
 
 test("creating, renaming, moving and deleting through row menus", async ({
@@ -49,7 +40,7 @@ test("creating, renaming, moving and deleting through row menus", async ({
   ).toBeVisible();
   await backToTreeIfMobile(page, testInfo);
 
-  await expect(syncIconFor(page, "Recipes")).toHaveCount(0);
+  await expect(rowSyncState(page, "Recipes")).toHaveCount(0);
 
   // A second note in the same folder, so there is a sibling name to collide
   // with when renaming below.
@@ -94,14 +85,14 @@ test("creating, renaming, moving and deleting through row menus", async ({
   await expect(
     page.getByRole("treeitem", { name: "Grocery List" }),
   ).toBeVisible();
-  await expect(syncIconFor(page, "Grocery List")).toHaveCount(0);
+  await expect(rowSyncState(page, "Grocery List")).toHaveCount(0);
 
   // Move it to the top level.
   await page.getByRole("button", { name: "Actions for Grocery List" }).click();
   await page.getByRole("menuitem", { name: "Move to folder…" }).click();
   await page.getByRole("radio", { name: "Notes (top level)" }).check();
   await page.getByRole("button", { name: "Move" }).click();
-  await expect(syncIconFor(page, "Grocery List")).toHaveCount(0);
+  await expect(rowSyncState(page, "Grocery List")).toHaveCount(0);
 
   // Delete it after confirming.
   await page.getByRole("button", { name: "Actions for Grocery List" }).click();
@@ -120,7 +111,7 @@ test("creating, renaming, moving and deleting through row menus", async ({
   await expect(page.getByRole("treeitem", { name: "Recipes" })).toHaveCount(0);
 
   // Everything settles back to synced afterwards.
-  await expect(syncIconFor(page, "Welcome")).toHaveCount(0);
+  await expect(rowSyncState(page, "Welcome")).toHaveCount(0);
 });
 
 test("right-click on a row opens its menu", async ({ page }, testInfo) => {
