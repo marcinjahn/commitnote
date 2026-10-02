@@ -7,6 +7,8 @@ import {
   describeRekeySummary,
   HISTORY_NOT_REMOVED_MESSAGE,
   HISTORY_REMOVED_MESSAGE,
+  HISTORY_WARNING,
+  VERSION_HISTORY_NOTICE,
   PASSPHRASE_CHANGED_MESSAGE,
   PASSPHRASE_CHANGED_MISMATCH_MESSAGE,
 } from "./passphrase-messages";
@@ -97,5 +99,10 @@ describe("passphrase change messages", () => {
     expect(describePassphraseChanged("mismatch", "notRemoved")).toBe(
       `${PASSPHRASE_CHANGED_MISMATCH_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`,
     );
+  });
+
+  it("says version history can't reach back past the change", () => {
+    expect(VERSION_HISTORY_NOTICE).toMatch(/can't show or restore versions/);
+    expect(HISTORY_WARNING).toMatch(/no longer restore them/);
   });
 });

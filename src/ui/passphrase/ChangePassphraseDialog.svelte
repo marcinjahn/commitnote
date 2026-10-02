@@ -27,6 +27,7 @@
     PASSPHRASES_DIFFER,
     REMOVE_HISTORY_LABEL,
     REMOVE_HISTORY_REVIEW,
+    VERSION_HISTORY_NOTICE,
   } from "./passphrase-messages";
 
   interface Props {
@@ -243,6 +244,7 @@
     {#if stage.kind === "review"}
       <div class="review">
         <p>{describeRekeySummary(stage.prepared.summary)}</p>
+        <p>{VERSION_HISTORY_NOTICE}</p>
         {#if stage.prepared.removeHistory}
           <p>{REMOVE_HISTORY_REVIEW}</p>
         {/if}
@@ -293,6 +295,7 @@
               bind:value={repeatedPassphrase}
             />
           </div>
+          <p class="alert-warning">{VERSION_HISTORY_NOTICE}</p>
           {#if change.canRemoveHistory}
             <div class="remove-history">
               <label class="checkbox-field">

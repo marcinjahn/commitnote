@@ -37,8 +37,10 @@ export function describePassphraseChanged(
 export const PASSPHRASES_DIFFER = "The new passphrases do not match.";
 export const ENTER_CURRENT_PASSPHRASE = "Enter the current passphrase.";
 
+export const VERSION_HISTORY_NOTICE =
+  "Version history starts over: commitnote can't show or restore versions of your notes from before the change.";
 export const HISTORY_WARNING =
-  "Earlier versions of your notes stay in the repository's history, so the current passphrase still decrypts them after the change.";
+  "Earlier versions of your notes stay in the repository's history, so the current passphrase still decrypts them after the change, though commitnote can no longer restore them.";
 export const REMOVE_HISTORY_LABEL = "Also delete the old history";
 
 export function describeRemoveHistory(forgeName: string): string {
