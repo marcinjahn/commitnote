@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StructureError } from "../../sync/sync-engine";
-import { describeStructureError } from "./structure-messages";
+import { describeMovedTo, describeStructureError } from "./structure-messages";
 
 describe("describeStructureError", () => {
   it("describes an invalid name via the name error message", () => {
@@ -30,5 +30,17 @@ describe("describeStructureError", () => {
     expect(describeStructureError(error)).toBe(
       "A folder can't be moved into itself.",
     );
+  });
+});
+
+describe("describeMovedTo", () => {
+  it("names the folder an item was moved into", () => {
+    expect(describeMovedTo("Ideas", ["Projects", "commitnote"])).toBe(
+      "“Ideas” moved to “commitnote”",
+    );
+  });
+
+  it("names the top level", () => {
+    expect(describeMovedTo("Ideas", [])).toBe("“Ideas” moved to the top level");
   });
 });

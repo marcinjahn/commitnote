@@ -59,7 +59,8 @@
   import type { ReadableWorkingTrashEntry } from "../../sync/working-trash";
   import Wordmark from "../wordmark/Wordmark.svelte";
   import type { Command, RowAction } from "./row-menu-types";
-  import { describeStructureError } from "./structure-messages";
+  import { describeMovedTo, describeStructureError } from "./structure-messages";
+  import type { DropTarget } from "./tree-drop";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
@@ -162,6 +163,7 @@
   let exportMessages = $state<readonly ToastMessage[]>([]);
   const UNDO_TOAST_MS = 8_000;
   let trashMessages = $state<readonly ToastMessage[]>([]);
+  let placeMessages = $state<readonly ToastMessage[]>([]);
   let importInput: HTMLInputElement | undefined = $state();
   let reading = $state(false);
   let importDialog = $state<{
@@ -192,6 +194,7 @@
   const treeLoading = $derived(engineState.synced === null && engineState.refresh.inFlight);
   const trashEntries = $derived(engineState.visibleTrash ?? []);
   const selectedPath = $derived(engineState.openNote?.path ?? null);
+  const conflictPaths = $derived(engineState.conflicts.map((held) => held.path));
   const refreshing = $derived(engineState.refresh.inFlight);
 
   const importing = $derived(engineState.importing || importStarted !== null);
@@ -655,10 +658,51 @@
     closeDialog();
   }
 
+  function handlePlace(path: NotePath, target: DropTarget): NotePath | null {
+    const from = parentPath(path);
+    const name = noteName(path);
+    const folder = tree === null ? undefined : findWorkingNode(tree, from);
+    const siblings =
+      folder?.kind === "folder" ? folder.children.map((child) => child.name) : [];
+    const previousBefore = siblings[siblings.indexOf(name) + 1] ?? null;
+
+    const result = engine.place(path, target);
+    if (!result.ok) {
+      placeMessages = [
+        { id: ++nextMessageId, text: describeStructureError(result.error) },
+      ];
+      return null;
+    }
+    const placed = result.path;
+    placeMessages = notePathEquals(from, target.parent)
+      ? []
+      : [
+          {
+            id: ++nextMessageId,
+            text: describeMovedTo(name, target.parent),
+            durationMs: UNDO_TOAST_MS,
+            action: {
+              label: "Undo",
+              run: () =>
+                handleUndoPlace(placed, { parent: from, before: previousBefore }),
+            },
+          },
+        ];
+    return placed;
+  }
+
+  function handleUndoPlace(path: NotePath, target: DropTarget): void {
+    const result = engine.place(path, target);
+    placeMessages = result.ok
+      ? []
+      : [{ id: ++nextMessageId, text: describeStructureError(result.error) }];
+  }
+
   function dismissMessage(id: number): void {
     refreshMessages = refreshMessages.filter((message) => message.id !== id);
     exportMessages = exportMessages.filter((message) => message.id !== id);
     trashMessages = trashMessages.filter((message) => message.id !== id);
+    placeMessages = placeMessages.filter((message) => message.id !== id);
     importMessages = importMessages.filter((message) => message.id !== id);
     sessionMessages = sessionMessages.filter((message) => message.id !== id);
   }
@@ -797,7 +841,9 @@
       {selectedPath}
       syncStates={engineState.syncStates}
       {expandRequest}
+      conflicts={conflictPaths}
       onSelect={handleSelect}
+      onPlace={handlePlace}
       onAction={handleTreeAction}
       onNewNote={handleHeaderNewNote}
     />
@@ -892,6 +938,7 @@
     ...refreshMessages,
     ...exportMessages,
     ...trashMessages,
+    ...placeMessages,
     ...importMessages,
     ...sessionMessages,
   ]}

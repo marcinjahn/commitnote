@@ -103,7 +103,13 @@
 </script>
 
 <li role="none" oncontextmenu={handleContextMenu}>
-  <div class="tree-row-container" class:selected>
+  <div
+    class="tree-row-container"
+    class:selected
+    data-tree-row
+    data-tree-path={JSON.stringify(node.path)}
+    data-tree-kind={node.kind}
+  >
   <button
     type="button"
     role="treeitem"
@@ -113,6 +119,7 @@
     aria-selected={node.kind === "note" ? selected : undefined}
     title={node.name}
     aria-describedby={unsynced ? statusId : undefined}
+    data-drag-handle
     onclick={handleActivate}
   >
     {#if node.kind === "folder"}
@@ -149,6 +156,7 @@
       class:unsynced
       class:saving={syncState.kind === "syncing"}
       class:sweeping
+      data-drag-label
       data-name={node.name}>{node.name}</span
     >
   </button>
@@ -160,6 +168,7 @@
   {#if showsSyncIcon}
     <span
       class="sync-indicator"
+      data-drag-omit
       in:syncIndicatorFade={{ duration: 200 }}
       out:syncIndicatorFade={{ duration: 400 }}
     >
@@ -170,6 +179,7 @@
     type="button"
     class="row-actions"
     class:menu-open={menuOpen}
+    data-drag-omit
     bind:this={actionsButton}
     aria-label={`Actions for ${node.name}`}
     aria-haspopup="menu"

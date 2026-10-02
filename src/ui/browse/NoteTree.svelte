@@ -1,8 +1,12 @@
 <script lang="ts">
   import { SvelteMap } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
+  import { isWithinFolder, notePathEquals } from "../../changes/change";
   import type { SyncStates } from "../../sync/sync-state";
   import type { WorkingNode, WorkingTree } from "../../sync/working-tree";
+  import { findWorkingNode } from "../../sync/working-tree";
+  import type { DropTarget } from "./tree-drop";
+  import { treeDrag, type TreeDragOptions } from "./tree-drag";
   import NoteTreeFolder from "./NoteTreeFolder.svelte";
   import { countDescendants } from "../dialogs/folder-options";
   import RowMenu from "./RowMenu.svelte";
@@ -14,7 +18,9 @@
     selectedPath: NotePath | null;
     syncStates: SyncStates;
     expandRequest: { readonly path: NotePath } | null;
+    conflicts: readonly NotePath[];
     onSelect: (path: NotePath) => void;
+    onPlace: (path: NotePath, target: DropTarget) => NotePath | null;
     onAction: (action: RowAction, node: WorkingNode) => void;
     onNewNote: () => void;
   }
@@ -25,7 +31,9 @@
     selectedPath,
     syncStates,
     expandRequest,
+    conflicts,
     onSelect,
+    onPlace,
     onAction,
     onNewNote,
   }: Props = $props();
@@ -92,6 +100,28 @@
     trigger?.focus();
   }
 
+  const dragOptions: TreeDragOptions = {
+    scene(dragged) {
+      const current = tree;
+      if (current === null) return null;
+      const node = findWorkingNode(current, dragged);
+      if (node === undefined) return null;
+      return {
+        draggedKind: node.kind,
+        conflicted: conflicts.some(
+          (path) => notePathEquals(path, dragged) || isWithinFolder(path, dragged),
+        ),
+        childrenOf(folder) {
+          const found = findWorkingNode(current, folder);
+          return found?.kind === "folder"
+            ? found.children.map((child) => child.name)
+            : undefined;
+        },
+      };
+    },
+    onDrop: (path, target) => onPlace(path, target),
+  };
+
   function handleMenuAction(action: RowAction): void {
     const node = openMenu?.node;
     handleCloseMenu();
@@ -99,7 +129,7 @@
   }
 </script>
 
-<div class="tree-container">
+<div class="tree-container" use:treeDrag={dragOptions}>
   {#if tree === null}
     {#if loading}
       <p class="tree-message">Loading notes…</p>
@@ -143,8 +173,108 @@
 
 <style>
   .tree-container {
+    position: relative;
     flex: 1;
     overflow-y: auto;
+  }
+
+  .tree-container:global([data-drag-state]) {
+    user-select: none;
+  }
+
+  .tree-container:global([data-drag-state="dragging"]) {
+    cursor: grabbing;
+  }
+
+  .tree-container:global([data-drag-state="dragging"]) :global([data-tree-row]) {
+    transition:
+      transform 200ms var(--motion-easing),
+      opacity 200ms var(--motion-easing),
+      background-color var(--motion-duration) var(--motion-easing);
+  }
+
+  .tree-container :global([data-tree-row][data-drag-source]) {
+    opacity: 0.4;
+  }
+
+  .tree-container :global([data-tree-row][data-drop-into]) {
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    box-shadow: inset 0 0 0 1.5px
+      color-mix(in srgb, var(--color-accent) 70%, transparent);
+  }
+
+  .tree-container :global(.tree-drop-slot) {
+    position: absolute;
+    top: 0;
+    right: var(--space-2);
+    box-sizing: border-box;
+    border: 1.5px dashed color-mix(in srgb, var(--color-accent) 65%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    pointer-events: none;
+    transition:
+      translate 200ms var(--motion-easing),
+      left 200ms var(--motion-easing);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .tree-container :global([data-tree-row][data-drop-into]) {
+      background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    }
+
+    .tree-container :global(.tree-drop-slot) {
+      border-color: color-mix(in srgb, var(--color-accent) 80%, transparent);
+      background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    }
+  }
+
+  :global(.tree-drag-preview) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    overflow: hidden;
+    pointer-events: none;
+    background: var(--color-surface-raised);
+    color: var(--color-text);
+    border-radius: 0;
+    box-shadow: none;
+    scale: 1;
+    transition:
+      width 200ms var(--motion-easing),
+      margin-left 200ms var(--motion-easing),
+      border-radius 200ms var(--motion-easing),
+      box-shadow 200ms var(--motion-easing),
+      scale 200ms var(--motion-easing),
+      opacity 200ms var(--motion-easing);
+  }
+
+  :global(.tree-drag-preview.tree-drag-preview [data-drag-handle]) {
+    transition: padding-left 200ms var(--motion-easing);
+  }
+
+  :global(.tree-drag-preview.lifted) {
+    border-radius: 8px;
+    box-shadow: var(--shadow-2);
+    scale: 1.03;
+  }
+
+  :global(.tree-drag-preview.lifted [data-drag-handle]) {
+    padding-left: 12px;
+  }
+
+  :global(.tree-drag-preview.refused) {
+    opacity: 0.55;
+  }
+
+  :global(.tree-drag-preview.settling) {
+    transition-property:
+      translate, width, margin-left, border-radius, box-shadow, scale, opacity;
+  }
+
+  :global(.tree-drag-preview.fading) {
+    opacity: 0;
+    scale: 0.9;
   }
 
   .tree {

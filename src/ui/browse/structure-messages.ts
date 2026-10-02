@@ -1,3 +1,4 @@
+import type { NotePath } from "../../changes/change";
 import type { StructureError } from "../../sync/sync-engine";
 import { describeNameError } from "../dialogs/name-messages";
 
@@ -14,4 +15,10 @@ export function describeStructureError(error: StructureError): string {
     case "orderUnavailable":
       return "Items can't be reordered because the stored order couldn't be read.";
   }
+}
+
+export function describeMovedTo(name: string, folder: NotePath): string {
+  return folder.length === 0
+    ? `“${name}” moved to the top level`
+    : `“${name}” moved to “${folder[folder.length - 1]}”`;
 }
