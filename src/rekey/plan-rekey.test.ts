@@ -1,10 +1,15 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Keyring } from "../crypto/keyring";
 import { encryptPath } from "../crypto/name-cipher";
-import { encryptNote } from "../crypto/note-cipher";
+import { decryptNote, encryptNote } from "../crypto/note-cipher";
 import { commitFiles } from "../forge/fake/in-memory-git-repo";
 import type { CommitFileChange, TreeEntry } from "../forge/forge-adapter";
-import { MAIN_BRANCH, REPO_CONFIG_PATH, TRASH_DIR } from "../format/v1";
+import {
+  MAIN_BRANCH,
+  ORDER_PATH,
+  REPO_CONFIG_PATH,
+  TRASH_DIR,
+} from "../format/v1";
 import { planRekey, RekeyPlanError, type RekeyPlan } from "./plan-rekey";
 import {
   createRekeyFixture,
@@ -120,6 +125,31 @@ describe("planRekey", () => {
       carriedTrashEntries: 1,
       carriedFiles: 1,
     });
+  });
+
+  it("re-encrypts the note order file in place without counting it as a carried file", async () => {
+    const orderText = JSON.stringify({
+      version: 1,
+      folders: { [JSON.stringify([])]: { Projects: "V" } },
+    });
+    const loaded = await load(
+      await createRekeyFixture({
+        extraFiles: async (keyring) => ({
+          [ORDER_PATH]: await encryptNote(keyring, orderText),
+        }),
+      }),
+    );
+
+    const result = await plan(loaded);
+    const after = await applied(loaded, result.changes);
+
+    expect(result.files.find((file) => file.oldPath === ORDER_PATH)).toMatchObject({
+      kind: "order",
+      newPath: ORDER_PATH,
+    });
+    expect(result.summary.carriedFiles).toBe(1);
+    expect(await decryptNote(next.keyring, after.get(ORDER_PATH)!)).toBe(orderText);
+    expect((await verify(loaded, result.changes)).ok).toBe(true);
   });
 
   it("keeps an undecryptable trash entry byte for byte", async () => {

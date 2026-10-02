@@ -6,6 +6,7 @@ import type { CommitFileChange, TreeEntry } from "../forge/forge-adapter";
 import {
   FOLDER_MARKER,
   NOTE_PREFIX,
+  ORDER_PATH,
   REPO_CONFIG_DIR,
   REPO_CONFIG_PATH,
   TRASH_DIR,
@@ -19,7 +20,7 @@ import { parseTrashEntryId } from "../trash/trash-entry-id";
  * re-encrypted only if they decrypt under the old key. So nothing readable
  * with the old key is left behind.
  */
-export type RekeyFileKind = "config" | "note" | "folder" | "other";
+export type RekeyFileKind = "config" | "order" | "note" | "folder" | "other";
 
 export type RekeyFileContent =
   | { readonly kind: "text"; readonly text: string }
@@ -192,6 +193,20 @@ export async function planRekey(input: PlanRekeyInput): Promise<RekeyPlan> {
         kind: "config",
         trashEntryId: null,
         content: { kind: "text", text: input.newConfigText },
+      });
+      continue;
+    }
+
+    if (entry.path === ORDER_PATH) {
+      files.push({
+        oldPath: entry.path,
+        newPath: entry.path,
+        kind: "order",
+        trashEntryId: null,
+        content: (await reencryptIfOldKey(entry.sha)) ?? {
+          kind: "unchanged",
+          blobSha: entry.sha,
+        },
       });
       continue;
     }

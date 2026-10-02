@@ -14,6 +14,7 @@ import {
 } from "../testing/sample-notes-repo/sample-source";
 import { findNode, listNotes } from "../tree/note-tree";
 import { createTestClock } from "./testing/test-clock";
+import { findWorkingNode, type WorkingFolder } from "./working-tree";
 import {
   createSyncEngine,
   type OpenNoteState,
@@ -178,6 +179,37 @@ describe("createSyncEngine", () => {
     expect(listNotes(tree).some((note) => note.name === "stray.txt")).toBe(
       false,
     );
+  });
+
+  it("lists the working tree in the stored order and reads the order file once per version", async () => {
+    const { fake, counts, engine } = await setup();
+    await engine.refresh();
+
+    const commitnoteFolder = () =>
+      findWorkingNode(engine.getState().workingTree!, [
+        "Projects",
+        "commitnote",
+      ]) as WorkingFolder;
+    expect(commitnoteFolder().children.map((child) => child.name)).toEqual([
+      "Roadmap",
+      "Ideas",
+    ]);
+    const readsAfterFirstLoad = counts.readBlob;
+
+    await fake.pushFromAnotherDevice([
+      {
+        kind: "upsert-text",
+        path: await encryptPath(keyring, ["New note"]),
+        text: await encryptNote(keyring, "# New note\n"),
+      },
+    ]);
+    await engine.refresh();
+
+    expect(counts.readBlob).toBe(readsAfterFirstLoad);
+    expect(commitnoteFolder().children.map((child) => child.name)).toEqual([
+      "Roadmap",
+      "Ideas",
+    ]);
   });
 
   it("two concurrent refresh() calls cause exactly one getHead", async () => {

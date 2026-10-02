@@ -5,16 +5,31 @@ import {
 } from "../../changes/encode-change-set";
 import { argon2idDirect } from "../../crypto/argon2";
 import { createRepoConfig } from "../../crypto/keyring";
+import { encryptPath } from "../../crypto/name-cipher";
 import type { RandomSource } from "../../crypto/random";
 import { InMemoryGitRepo } from "../../forge/fake/in-memory-git-repo";
-import { REPO_CONFIG_PATH } from "../../format/v1";
+import {
+  FORMAT_VERSION,
+  ORDER_PATH,
+  REPO_CONFIG_PATH,
+  SAVE_SUBJECT,
+  TRAILER,
+} from "../../format/v1";
+import { keysBetween } from "../../order/fractional-key";
+import {
+  EMPTY_ORDER,
+  encryptOrderIndex,
+  withKeys,
+} from "../../order/order-index";
 import { createTrashEntryId } from "../../trash/trash-entry-id";
 import {
   SAMPLE_NOTES_REPO_PASSPHRASE,
+  sampleNotesRepoOrder,
   sampleNotesRepoSource,
   sampleTrashRepoSource,
   sampleTrashRepoTrashed,
   type SampleEntry,
+  type SampleFolderOrder,
   type SampleTrashEntry,
 } from "./sample-source";
 
@@ -97,17 +112,23 @@ async function snapshotFiles(
 }
 
 export function generateSampleNotesRepo(): Promise<SampleNotesRepo> {
-  return generateRepo(SEED, sampleNotesRepoSource, []);
+  return generateRepo(SEED, sampleNotesRepoSource, [], sampleNotesRepoOrder);
 }
 
 export function generateSampleTrashRepo(): Promise<SampleNotesRepo> {
-  return generateRepo(TRASH_SEED, sampleTrashRepoSource, sampleTrashRepoTrashed);
+  return generateRepo(
+    TRASH_SEED,
+    sampleTrashRepoSource,
+    sampleTrashRepoTrashed,
+    [],
+  );
 }
 
 async function generateRepo(
   seed: number,
   source: readonly SampleEntry[],
   trashed: readonly SampleTrashEntry[],
+  order: readonly SampleFolderOrder[],
 ): Promise<SampleNotesRepo> {
   const random = createSeededRandom(seed);
   const { configText, keyring } = await createRepoConfig(
@@ -152,6 +173,38 @@ async function generateRepo(
   ];
   let parentSha = commit2Sha;
   let parentTree = commit2Tree;
+
+  if (order.length > 0) {
+    let index = EMPTY_ORDER;
+    const trailers = [`${TRAILER.format}: ${FORMAT_VERSION}`];
+    for (const { parent, names } of order) {
+      const keys = keysBetween(null, null, names.length);
+      index = withKeys(
+        index,
+        parent,
+        names.map((name, i) => ({ name, key: keys[i] })),
+      );
+      for (const name of names) {
+        trailers.push(
+          `${TRAILER.order}: ${await encryptPath(keyring, [...parent, name])}`,
+        );
+      }
+    }
+    const orderMessage = `${SAVE_SUBJECT}\n\n${trailers.join("\n")}`;
+    parentTree = await repo.applyChanges(parentTree, [
+      {
+        kind: "upsert-text",
+        path: ORDER_PATH,
+        text: await encryptOrderIndex(keyring, index, random),
+      },
+    ]);
+    parentSha = await repo.putCommit({
+      tree: parentTree,
+      parent: parentSha,
+      message: orderMessage,
+    });
+    commits.push({ message: orderMessage, tree: parentTree });
+  }
 
   for (const entry of trashed) {
     const entryId = createTrashEntryId(

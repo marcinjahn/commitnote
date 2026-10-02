@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChangeSet, NotePath } from "../changes/change";
+import { parseOrderIndex, type OrderIndex } from "../order/order-index";
 import type { TrashEntry } from "../trash/trash-index";
 import type { FolderNode, NoteNode, NoteTree, TreeNode } from "../tree/note-tree";
 import {
@@ -242,6 +243,67 @@ describe("buildWorkingTree", () => {
         { kind: "create-note", path: ["Missing", "Note"], content: "x" },
       ]),
     ).toThrow(RangeError);
+  });
+});
+
+describe("buildWorkingTree order", () => {
+  function order(folders: Record<string, Record<string, string>>): OrderIndex {
+    return parseOrderIndex(JSON.stringify({ version: 1, folders }));
+  }
+
+  const ORDER = order({
+    [JSON.stringify([])]: { Welcome: "F", Empty: "V" },
+    [JSON.stringify(["Docs"])]: { Notes: "V", Guide: "k" },
+  });
+
+  function rootNames(changes: ChangeSet): string[] {
+    return childNames(buildWorkingTree(SAMPLE_TREE, changes, [], ORDER).root);
+  }
+
+  it("lists positioned children by their stored position, then the rest folders first", () => {
+    const working = buildWorkingTree(SAMPLE_TREE, [], [], ORDER);
+
+    expect(childNames(working.root)).toEqual(["Welcome", "Empty", "Docs"]);
+    expect(
+      childNames(findWorkingNode(working, ["Docs"]) as WorkingFolder),
+    ).toEqual(["Notes", "Guide"]);
+  });
+
+  it("places a new item after the positioned ones", () => {
+    expect(
+      rootNames([{ kind: "create-folder", path: ["Archive"] }]),
+    ).toEqual(["Welcome", "Empty", "Archive", "Docs"]);
+  });
+
+  it("keeps an item's position when it is renamed in place", () => {
+    expect(
+      rootNames([{ kind: "rename-note", from: ["Welcome"], to: ["Hello"] }]),
+    ).toEqual(["Hello", "Empty", "Docs"]);
+  });
+
+  it("keeps the positions inside a renamed folder", () => {
+    const working = buildWorkingTree(
+      SAMPLE_TREE,
+      [{ kind: "rename-folder", from: ["Docs"], to: ["Manuals"] }],
+      [],
+      ORDER,
+    );
+
+    expect(
+      childNames(findWorkingNode(working, ["Manuals"]) as WorkingFolder),
+    ).toEqual(["Notes", "Guide"]);
+  });
+
+  it("gives an item moved into another folder no position there", () => {
+    expect(
+      rootNames([{ kind: "rename-note", from: ["Docs", "Guide"], to: ["Guide"] }]),
+    ).toEqual(["Welcome", "Empty", "Docs", "Guide"]);
+  });
+
+  it("falls back to folders first and by name when the order can't be read", () => {
+    const working = buildWorkingTree(SAMPLE_TREE, [], [], parseOrderIndex("?"));
+
+    expect(childNames(working.root)).toEqual(["Docs", "Empty", "Welcome"]);
   });
 });
 

@@ -18,6 +18,12 @@ import {
   type NoteConflict,
 } from "../merge/merge-change-set";
 import { mergeText } from "../merge/merge-text";
+import {
+  decryptOrderIndex,
+  EMPTY_ORDER,
+  findOrderEntry,
+  type OrderIndex,
+} from "../order/order-index";
 import { isExpired, selectExpired, type PurgeCaps } from "../trash/expiry";
 import { createTrashEntryId } from "../trash/trash-entry-id";
 import { buildTrashIndex, type TrashEntry } from "../trash/trash-index";
@@ -83,6 +89,7 @@ export interface SyncedState {
   readonly listing: readonly TreeEntry[];
   readonly tree: NoteTree;
   readonly trash: readonly TrashEntry[];
+  readonly order: OrderIndex;
   /** Files left out of `tree` because their names don't decrypt. */
   readonly undecryptableFiles: number;
 }
@@ -450,6 +457,7 @@ export function createSyncEngine(options: {
               next.synced.tree,
               [...next.inFlight, ...next.pending],
               next.synced.trash,
+              next.synced.order,
             );
       result = {
         ...result,
@@ -552,8 +560,24 @@ export function createSyncEngine(options: {
     await verifyConfig(listing);
     const tree = await buildNoteTree(listing, keyring);
     const trash = await buildTrashIndex(listing, keyring);
+    const order = await loadOrder(listing);
     const undecryptableFiles = await countUndecryptableFiles(listing, keyring);
-    return { head, listing, tree, trash, undecryptableFiles };
+    return { head, listing, tree, trash, order, undecryptableFiles };
+  }
+
+  let loadedOrder: { readonly sha: string; readonly order: OrderIndex } | null =
+    null;
+
+  async function loadOrder(listing: readonly TreeEntry[]): Promise<OrderIndex> {
+    const entry = findOrderEntry(listing);
+    if (entry === undefined) return EMPTY_ORDER;
+    if (loadedOrder?.sha === entry.sha) return loadedOrder.order;
+    const order = await decryptOrderIndex(
+      keyring,
+      await adapter.readBlob(entry.sha),
+    );
+    loadedOrder = { sha: entry.sha, order };
+    return order;
   }
 
   // ---- Open note ----
@@ -1254,6 +1278,7 @@ export function createSyncEngine(options: {
       remote.tree,
       merged.changeSet,
       remote.trash,
+      remote.order,
     );
     const newConflicts = merged.conflicts.map((conflict) =>
       toHeldConflict(conflict, remote, mergedTree),
@@ -1907,7 +1932,12 @@ export function createSyncEngine(options: {
     if (changes.length === 0) return { ok: true };
     const synced = state.synced!;
     try {
-      buildWorkingState(synced.tree, [...state.inFlight, ...changes], synced.trash);
+      buildWorkingState(
+        synced.tree,
+        [...state.inFlight, ...changes],
+        synced.trash,
+        synced.order,
+      );
     } catch (error) {
       if (!(error instanceof RangeError)) throw error;
       return { ok: false, reason: "outdated" };

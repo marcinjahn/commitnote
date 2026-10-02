@@ -1,8 +1,13 @@
 import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
+import {
+  applyChangeToOrder,
+  EMPTY_ORDER,
+  siblingComparator,
+  type OrderIndex,
+} from "../order/order-index";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
 import type { TrashEntry } from "../trash/trash-index";
-import { compareNames } from "../tree/note-names";
 import type { NoteTree, TreeNode } from "../tree/note-tree";
 import type { WorkingTrashEntry } from "./working-trash";
 
@@ -70,6 +75,7 @@ type MutTrashEntry =
 interface MutState {
   readonly root: MutFolder;
   readonly trash: Map<string, MutTrashEntry>;
+  order: OrderIndex;
 }
 
 function cloneNode(node: TreeNode, fromTrash: boolean): MutTreeNode {
@@ -92,6 +98,7 @@ function cloneNode(node: TreeNode, fromTrash: boolean): MutTreeNode {
 function initialState(
   synced: NoteTree,
   syncedTrash: readonly TrashEntry[],
+  syncedOrder: OrderIndex = EMPTY_ORDER,
 ): MutState {
   const trash = new Map<string, MutTrashEntry>();
   for (const entry of syncedTrash) {
@@ -115,7 +122,11 @@ function initialState(
           },
     );
   }
-  return { root: cloneNode(synced.root, false) as MutFolder, trash };
+  return {
+    root: cloneNode(synced.root, false) as MutFolder,
+    trash,
+    order: syncedOrder,
+  };
 }
 
 function findMutNode(root: MutFolder, path: NotePath): MutTreeNode | undefined {
@@ -165,6 +176,11 @@ function findInTrashItem(
 }
 
 function applyChangeOrThrow(state: MutState, change: Change): void {
+  applyTreeChangeOrThrow(state, change);
+  state.order = applyChangeToOrder(state.order, change);
+}
+
+function applyTreeChangeOrThrow(state: MutState, change: Change): void {
   const root = state.root;
   switch (change.kind) {
     case "create-folder": {
@@ -327,17 +343,16 @@ function finalizeNote(note: MutNote): WorkingNote {
     : { ...base, trashBlobSha: note.trashBlobSha };
 }
 
-function finalize(folder: MutFolder): WorkingFolder {
-  const sorted = [...folder.children.values()].sort((a, b) => {
-    if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1;
-    return compareNames(a.name, b.name);
-  });
+function finalize(folder: MutFolder, order: OrderIndex): WorkingFolder {
+  const sorted = [...folder.children.values()].sort(
+    siblingComparator(order, folder.path),
+  );
   return {
     kind: "folder",
     name: folder.name,
     path: folder.path,
     children: sorted.map((child) =>
-      child.kind === "folder" ? finalize(child) : finalizeNote(child),
+      child.kind === "folder" ? finalize(child, order) : finalizeNote(child),
     ),
   };
 }
@@ -362,7 +377,7 @@ function finalizeTrash(
             originalPath: entry.originalPath,
             tree:
               entry.node.kind === "folder"
-                ? finalize(entry.node)
+                ? finalize(entry.node, EMPTY_ORDER)
                 : finalizeNote(entry.node),
           },
     );
@@ -372,13 +387,14 @@ export function buildWorkingState(
   synced: NoteTree,
   changes: ChangeSet,
   syncedTrash: readonly TrashEntry[] = [],
+  syncedOrder: OrderIndex = EMPTY_ORDER,
 ): WorkingState {
-  const state = initialState(synced, syncedTrash);
+  const state = initialState(synced, syncedTrash, syncedOrder);
   for (const change of changes) {
     applyChangeOrThrow(state, change);
   }
   return {
-    tree: { root: finalize(state.root) },
+    tree: { root: finalize(state.root, state.order) },
     trash: finalizeTrash(state.trash),
   };
 }
@@ -387,8 +403,9 @@ export function buildWorkingTree(
   synced: NoteTree,
   changes: ChangeSet,
   syncedTrash: readonly TrashEntry[] = [],
+  syncedOrder: OrderIndex = EMPTY_ORDER,
 ): WorkingTree {
-  return buildWorkingState(synced, changes, syncedTrash).tree;
+  return buildWorkingState(synced, changes, syncedTrash, syncedOrder).tree;
 }
 
 export function findWorkingNode(

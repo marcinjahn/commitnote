@@ -5,6 +5,7 @@ import {
   verifyKeyCheck,
   type Keyring,
 } from "../../crypto/keyring";
+import { encryptPath } from "../../crypto/name-cipher";
 import { decryptNote } from "../../crypto/note-cipher";
 import { parseRepoConfig } from "../../crypto/repo-config";
 import type { FakeForgeAdapter } from "../../forge/fake/fake-forge-adapter";
@@ -26,6 +27,7 @@ import {
   sampleTrashRepo,
 } from "./seed-sample-notes-repo";
 import {
+  sampleNotesRepoOrder,
   sampleNotesRepoSource,
   sampleTrashRepoSource,
   sampleTrashRepoTrashed,
@@ -34,6 +36,11 @@ import {
 } from "./sample-source";
 import { TRASH_DIR, TRASH_RETENTION_MS } from "../../format/v1";
 import { buildTrashIndex } from "../../trash/trash-index";
+import {
+  decryptOrderIndex,
+  findOrderEntry,
+  siblingComparator,
+} from "../../order/order-index";
 
 function flattenNames(entries: readonly SampleEntry[]): string[] {
   const names: string[] = [];
@@ -183,6 +190,57 @@ describe("sample notes repo fixture", () => {
     const notes = listNotes(tree);
     expect(notes).toHaveLength(5);
     expect(notes.some((note) => note.name === "README.md")).toBe(false);
+  });
+});
+
+describe("sample notes repo fixture order", () => {
+  async function openKeyring(adapter: FakeForgeAdapter): Promise<Keyring> {
+    const inspection = await adapter.inspect();
+    if (inspection.kind !== "populated" || inspection.main?.repoConfigText == null) {
+      throw new Error("expected a populated repo with a config");
+    }
+    const parsed = parseRepoConfig(inspection.main.repoConfigText);
+    if (parsed.kind !== "valid") throw new Error("invalid repo config");
+    return deriveKeyring(sampleNotesRepo.passphrase, parsed.config.kdf, argon2idDirect);
+  }
+
+  it("records the positions in a save commit naming each positioned item by stored path only", async () => {
+    const adapter = await createSampleNotesRepoAdapter();
+    const keyring = await openKeyring(adapter);
+    const message = sampleNotesRepo.commits[2].message;
+
+    const expected = [`commitnote: save`, "", `${TRAILER.format}: 1`];
+    for (const { parent, names } of sampleNotesRepoOrder) {
+      for (const name of names) {
+        expected.push(`${TRAILER.order}: ${await encryptPath(keyring, [...parent, name])}`);
+      }
+    }
+    expect(message).toBe(expected.join("\n"));
+  });
+
+  it("stores an order file that sorts the reordered folder as listed in the source", async () => {
+    const adapter = await createSampleNotesRepoAdapter();
+    const keyring = await openKeyring(adapter);
+    const listing = await adapter.listTree(await adapter.getHead());
+    const entry = findOrderEntry(listing);
+    if (entry === undefined) throw new Error("expected an order file");
+
+    const stored = await adapter.readBlob(entry.sha);
+    const order = await decryptOrderIndex(keyring, stored);
+
+    for (const name of flattenNames(sampleNotesRepoSource)) {
+      if (name === APP_ID) continue;
+      expect(stored).not.toContain(name);
+    }
+    expect(order.writable).toBe(true);
+    for (const { parent, names } of sampleNotesRepoOrder) {
+      const shuffled = [...names]
+        .reverse()
+        .map((name) => ({ kind: "note" as const, name }));
+      expect(
+        shuffled.sort(siblingComparator(order, parent)).map((item) => item.name),
+      ).toEqual(names);
+    }
   });
 });
 
