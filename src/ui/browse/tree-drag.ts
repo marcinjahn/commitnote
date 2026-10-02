@@ -10,6 +10,7 @@ import {
 } from "./drag-motion";
 import {
   hitTestDrop,
+  hitTestNoteArea,
   type DropHit,
   type DropRow,
   type DropScene,
@@ -29,6 +30,12 @@ export interface TreeDragOptions {
   readonly onDrop: (path: NotePath, target: DropTarget) => NotePath | null;
   /** A touch long-press released without moving opens the row's menu. */
   readonly onMenu: (row: HTMLElement, x: number, y: number) => void;
+  /**
+   * Where a dragged note can be dropped to open it, or null; it has
+   * `data-note-drop` while a note hovers over it.
+   */
+  readonly noteArea: () => HTMLElement | null;
+  readonly onOpen: (path: NotePath) => void;
 }
 
 export interface DragSession {
@@ -44,6 +51,7 @@ const SCROLL_EDGE = 40;
 const MAX_SCROLL_STEP = 14;
 const DEFAULT_INDENT_STEP = 24;
 const SLOT_INSET = 4;
+const VANISH_INSET = 12;
 
 function pathOf(row: HTMLElement): NotePath {
   return JSON.parse(row.dataset.treePath ?? "[]") as NotePath;
@@ -130,13 +138,32 @@ export function startDrag(
 
   let pointerX = x;
   let pointerY = y;
-  let hit: DropHit = { kind: "unchanged" };
+  const area = options.noteArea();
+  let hit: DropHit | { readonly kind: "open" } = { kind: "unchanged" };
+  let overArea = false;
   let intoRow: HTMLElement | null = null;
   let frame = 0;
   let ended = false;
 
+  function highlightArea(on: boolean): void {
+    if (area === null) return;
+    if (on) area.dataset.noteDrop = "";
+    else delete area.dataset.noteDrop;
+  }
+
   function render(): void {
-    hit = hitTestDrop(scene, pointerX, toContentY(pointerY));
+    const areaHit = hitTestNoteArea(
+      area?.getBoundingClientRect() ?? null,
+      scene.draggedKind,
+      pointerX,
+      pointerY,
+    );
+    overArea = areaHit !== "outside";
+    hit =
+      areaHit === "outside"
+        ? hitTestDrop(scene, pointerX, toContentY(pointerY))
+        : { kind: areaHit === "open" ? "open" : "unchanged" };
+    highlightArea(areaHit === "open");
     const gapIndex = hit.kind === "drop" ? hit.gapIndex : -1;
     elements.forEach((element, i) => {
       element.style.transform =
@@ -179,6 +206,8 @@ export function startDrag(
   }
 
   function scrollStep(): void {
+    frame = requestAnimationFrame(scrollStep);
+    if (overArea) return;
     const rect = container.getBoundingClientRect();
     let step = 0;
     if (pointerY < rect.top + SCROLL_EDGE) {
@@ -192,7 +221,6 @@ export function startDrag(
         Math.ceil(Math.abs(step) * MAX_SCROLL_STEP) * Math.sign(step);
       if (container.scrollTop !== before) render();
     }
-    frame = requestAnimationFrame(scrollStep);
   }
   frame = requestAnimationFrame(scrollStep);
 
@@ -206,6 +234,7 @@ export function startDrag(
       delete element.dataset.dragSource;
       delete element.dataset.dropInto;
     }
+    highlightArea(false);
     delete container.dataset.dragState;
     onEnd();
   }
@@ -225,7 +254,19 @@ export function startDrag(
     for (const element of elements) element.style.transform = "";
     slot.hidden = true;
     if (intoRow !== null) delete intoRow.dataset.dropInto;
+    highlightArea(false);
     await preview.settle(originRect(), { depth });
+    finish();
+  }
+
+  async function open(): Promise<void> {
+    container.dataset.dragState = "settling";
+    highlightArea(false);
+    const rect = area?.getBoundingClientRect();
+    options.onOpen(dragged);
+    if (rect !== undefined) {
+      await preview.vanish(rect.left + VANISH_INSET, rect.top + VANISH_INSET);
+    }
     finish();
   }
 
@@ -291,7 +332,10 @@ export function startDrag(
       render();
     },
     drop() {
-      end(() => (hit.kind === "drop" ? land(hit.target) : settleBack()));
+      end(() => {
+        if (hit.kind === "drop") return land(hit.target);
+        return hit.kind === "open" ? open() : settleBack();
+      });
     },
     cancel() {
       end(settleBack);

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
   import { isWithinFolder, notePathEquals, parentPath } from "../../changes/change";
   import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
@@ -61,6 +61,7 @@
   import type { Command, RowAction } from "./row-menu-types";
   import { describeMovedTo, describeStructureError } from "./structure-messages";
   import type { DropTarget } from "./tree-drop";
+  import { DRAG_EASING, DRAG_MOTION_MS, prefersReducedMotion } from "./drag-motion";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
@@ -157,6 +158,7 @@
   let pendingFieldText = $state<string | null>(null);
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
+  let notePaneEl: HTMLElement | undefined = $state();
   let refreshMessages = $state<readonly ToastMessage[]>([]);
   let nextMessageId = 0;
   let exporting = $state(false);
@@ -256,10 +258,44 @@
     return path[path.length - 1];
   }
 
-  function handleSelect(path: NotePath): void {
+  function handleSelect(path: NotePath): Promise<void> {
     leaveDraft();
     mobileView = "note";
-    void engine.openNote(path);
+    return engine.openNote(path);
+  }
+
+  // On narrow screens the tree and the note pane are never shown together.
+  function noteDropArea(): HTMLElement | null {
+    return window.matchMedia("(min-width: 768px)").matches
+      ? (notePaneEl ?? null)
+      : null;
+  }
+
+  function slideIn(element: Element): void {
+    element.animate(
+      [
+        { opacity: 0, translate: "0 6px" },
+        { opacity: 1, translate: "0 0" },
+      ],
+      { duration: DRAG_MOTION_MS, easing: DRAG_EASING },
+    );
+  }
+
+  // The header slides in at once; the note's text once it has loaded.
+  async function handleDropOpen(path: NotePath): Promise<void> {
+    const opening = handleSelect(path);
+    await tick();
+    const pane = notePaneEl;
+    if (pane === undefined || prefersReducedMotion()) return;
+    const content = pane.lastElementChild;
+    for (const child of pane.children) {
+      if (child !== content) slideIn(child);
+    }
+    await opening;
+    await tick();
+    if (content !== null && openPath !== null && notePathEquals(openPath, path)) {
+      slideIn(content);
+    }
   }
 
   function handleBack(): void {
@@ -844,6 +880,8 @@
       conflicts={conflictPaths}
       onSelect={handleSelect}
       onPlace={handlePlace}
+      {noteDropArea}
+      onDropOpen={handleDropOpen}
       onAction={handleTreeAction}
       onNewNote={handleHeaderNewNote}
     />
@@ -885,7 +923,11 @@
     </div>
   </aside>
 
-  <section class="note-pane" class:mobile-hidden={mobileView !== "note"}>
+  <section
+    class="note-pane"
+    class:mobile-hidden={mobileView !== "note"}
+    bind:this={notePaneEl}
+  >
     {#key draftSession}
       {#if draft !== null}
         <NoteHeader
@@ -1100,6 +1142,40 @@
 
   .mobile-hidden {
     display: none;
+  }
+
+  .note-pane {
+    position: relative;
+  }
+
+  .note-pane::after {
+    content: "";
+    position: absolute;
+    inset: var(--space-2);
+    z-index: 1;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+    box-shadow: inset 0 0 0 1.5px
+      color-mix(in srgb, var(--color-accent) 55%, transparent);
+    opacity: 0;
+    scale: 0.985;
+    pointer-events: none;
+    transition:
+      opacity 200ms var(--motion-easing),
+      scale 200ms var(--motion-easing);
+  }
+
+  .note-pane:global([data-note-drop])::after {
+    opacity: 1;
+    scale: 1;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .note-pane::after {
+      background: color-mix(in srgb, var(--color-accent) 9%, transparent);
+      box-shadow: inset 0 0 0 1.5px
+        color-mix(in srgb, var(--color-accent) 70%, transparent);
+    }
   }
 
   .sidebar,

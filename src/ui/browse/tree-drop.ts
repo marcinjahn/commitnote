@@ -154,3 +154,34 @@ function candidate(
     depth,
   };
 }
+
+export interface AreaRect {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+/**
+ * Whether a drag at (x, y) is over the note area and, if so, whether
+ * dropping there opens the dragged item. Only notes open; a folder over
+ * the area has no target.
+ */
+export function hitTestNoteArea(
+  area: AreaRect | null,
+  draggedKind: "note" | "folder",
+  x: number,
+  y: number,
+): "outside" | "open" | "none" {
+  if (
+    area === null ||
+    area.right <= area.left ||
+    x < area.left ||
+    x >= area.right ||
+    y < area.top ||
+    y >= area.bottom
+  ) {
+    return "outside";
+  }
+  return draggedKind === "note" ? "open" : "none";
+}

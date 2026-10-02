@@ -45,8 +45,8 @@ interface DropPoint {
 }
 
 // Presses the row, moves past the drag threshold and on to the drop point
-// on `target`, releases, and waits until the drop animation has settled.
-async function dragRow(
+// on `target`, holding the drag there.
+async function hoverDrag(
   page: Page,
   source: Locator,
   target: Locator,
@@ -65,8 +65,23 @@ async function dragRow(
     to.y + to.height * point.y,
     { steps: 10 },
   );
+}
+
+async function release(page: Page): Promise<void> {
   await page.mouse.up();
   await expect(page.locator("[data-drag-state]")).toHaveCount(0);
+}
+
+// Drags the row to the drop point on `target`, releases, and waits until
+// the drop animation has settled.
+async function dragRow(
+  page: Page,
+  source: Locator,
+  target: Locator,
+  point: DropPoint,
+): Promise<void> {
+  await hoverDrag(page, source, target, point);
+  await release(page);
 }
 
 async function moveZazolcBeforeWelcome(page: Page): Promise<void> {
@@ -283,4 +298,76 @@ test("a click still opens a note and a drag doesn't", async ({ page }) => {
     "aria-selected",
     "true",
   );
+});
+
+function noteEditor(page: Page): Locator {
+  return page.getByRole("textbox", { name: "Note editor" });
+}
+
+function noteDropHighlight(page: Page): Locator {
+  return page.locator("[data-note-drop]");
+}
+
+test("dropping a note on the open note opens it without reordering", async ({
+  page,
+}) => {
+  await treeItem(page, "Welcome").click();
+  await expect(noteEditor(page)).toBeVisible();
+  const commits = await commitCount(page);
+
+  await hoverDrag(
+    page,
+    treeItem(page, "Zażółć gęślą jaźń"),
+    noteEditor(page),
+    { y: 0.5 },
+  );
+  await expect(noteDropHighlight(page)).toHaveCount(1);
+  await release(page);
+
+  await expect(treeItem(page, "Zażółć gęślą jaźń")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(treeItem(page, "Welcome")).toHaveAttribute(
+    "aria-selected",
+    "false",
+  );
+  await expect(noteEditor(page)).toBeVisible();
+  await expect(noteDropHighlight(page)).toHaveCount(0);
+  await expect(treeRows(page)).toHaveText(ROOT_ORDER);
+  expect(await commitCount(page)).toBe(commits);
+});
+
+test("dropping a note on the empty note area opens it", async ({ page }) => {
+  await dragRow(
+    page,
+    treeItem(page, "Welcome"),
+    page.getByText("Select a note to read it"),
+    { y: 0.5 },
+  );
+
+  await expect(noteEditor(page)).toBeVisible();
+  await expect(treeItem(page, "Welcome")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(treeRows(page)).toHaveText(ROOT_ORDER);
+});
+
+test("dropping a folder on the note area does nothing", async ({ page }) => {
+  const commits = await commitCount(page);
+
+  await hoverDrag(
+    page,
+    treeItem(page, "Journal"),
+    page.getByText("Select a note to read it"),
+    { y: 0.5 },
+  );
+  await expect(noteDropHighlight(page)).toHaveCount(0);
+  await release(page);
+
+  await expect(noteEditor(page)).toHaveCount(0);
+  await expect(treeRows(page)).toHaveText(ROOT_ORDER);
+  await expect(movedToast(page)).toHaveCount(0);
+  expect(await commitCount(page)).toBe(commits);
 });

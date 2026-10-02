@@ -1,5 +1,5 @@
 export const DRAG_MOTION_MS = 200;
-const DRAG_EASING = "cubic-bezier(0.2, 0, 0, 1)";
+export const DRAG_EASING = "cubic-bezier(0.2, 0, 0, 1)";
 const PILL_INSET = 12;
 
 export function prefersReducedMotion(): boolean {
@@ -17,6 +17,8 @@ export interface DragPreview {
     rect: DOMRect,
     options: { readonly depth?: number; readonly fade?: boolean },
   ): Promise<void>;
+  /** Glides the pill's corner to (x, y) while it shrinks and fades out. */
+  vanish(x: number, y: number): Promise<void>;
   remove(): void;
 }
 
@@ -91,6 +93,13 @@ export function liftPreview(
       }
       preview.style.translate = `${target.left}px ${target.top}px`;
       preview.style.width = `${target.width}px`;
+      preview.style.marginLeft = "0px";
+      return whenMoved(preview);
+    },
+    vanish(x, y) {
+      preview.classList.remove("refused");
+      preview.classList.add("settling", "fading");
+      preview.style.translate = `${x}px ${y}px`;
       preview.style.marginLeft = "0px";
       return whenMoved(preview);
     },

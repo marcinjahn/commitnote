@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { NotePath } from "../../changes/change";
-import { hitTestDrop, type DropRow, type DropScene } from "./tree-drop";
+import {
+  hitTestDrop,
+  hitTestNoteArea,
+  type DropRow,
+  type DropScene,
+} from "./tree-drop";
 
 const ROW_HEIGHT = 40;
 const INDENT_START = 8;
@@ -281,5 +286,30 @@ describe("hitTestDrop for refused drops", () => {
         rowY(5, 0.7),
       ),
     ).toMatchObject({ kind: "drop", target: { parent: [], before: "E" } });
+  });
+});
+
+describe("hitTestNoteArea", () => {
+  const AREA = { left: 300, top: 0, right: 1000, bottom: 800 };
+
+  it("opens a note dropped inside the area", () => {
+    expect(hitTestNoteArea(AREA, "note", 600, 400)).toBe("open");
+  });
+
+  it("gives a folder over the area no target", () => {
+    expect(hitTestNoteArea(AREA, "folder", 600, 400)).toBe("none");
+  });
+
+  it("is outside left of the area, on its right edge, or below it", () => {
+    expect(hitTestNoteArea(AREA, "note", 299, 400)).toBe("outside");
+    expect(hitTestNoteArea(AREA, "note", 1000, 400)).toBe("outside");
+    expect(hitTestNoteArea(AREA, "note", 600, 800)).toBe("outside");
+  });
+
+  it("is outside when there is no area or it has no size", () => {
+    expect(hitTestNoteArea(null, "note", 600, 400)).toBe("outside");
+    expect(
+      hitTestNoteArea({ left: 0, top: 0, right: 0, bottom: 0 }, "note", 0, 0),
+    ).toBe("outside");
   });
 });

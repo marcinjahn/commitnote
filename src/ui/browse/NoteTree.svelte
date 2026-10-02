@@ -21,6 +21,8 @@
     conflicts: readonly NotePath[];
     onSelect: (path: NotePath) => void;
     onPlace: (path: NotePath, target: DropTarget) => NotePath | null;
+    noteDropArea: () => HTMLElement | null;
+    onDropOpen: (path: NotePath) => void;
     onAction: (action: RowAction, node: WorkingNode) => void;
     onNewNote: () => void;
   }
@@ -34,6 +36,8 @@
     conflicts,
     onSelect,
     onPlace,
+    noteDropArea,
+    onDropOpen,
     onAction,
     onNewNote,
   }: Props = $props();
@@ -120,6 +124,8 @@
       };
     },
     onDrop: (path, target) => onPlace(path, target),
+    noteArea: () => noteDropArea(),
+    onOpen: (path) => onDropOpen(path),
     onMenu(row, x, y) {
       const current = tree;
       if (current === null) return;
