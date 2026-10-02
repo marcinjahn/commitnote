@@ -38,6 +38,7 @@
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
   import { actionIcons, commandIcons } from "./action-icons";
   import CommandMenu from "./CommandMenu.svelte";
+  import CommitSha from "./CommitSha.svelte";
   import { countDescendants } from "../dialogs/folder-options";
   import MoveDialog from "../dialogs/MoveDialog.svelte";
   import ConfirmDialog from "../dialogs/ConfirmDialog.svelte";
@@ -92,7 +93,7 @@
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
   let mobileView = $state<"tree" | "note">("tree");
-  let repoLabelEl = $state<HTMLAnchorElement | null>(null);
+  let repoLabelEl = $state<HTMLSpanElement | null>(null);
   let repoLabelTruncated = $state(false);
 
   $effect(() => {
@@ -198,6 +199,7 @@
   const selectedPath = $derived(engineState.openNote?.path ?? null);
   const conflictPaths = $derived(engineState.conflicts.map((held) => held.path));
   const refreshing = $derived(engineState.refresh.inFlight);
+  const head = $derived(engineState.synced?.head ?? null);
 
   const importing = $derived(engineState.importing || importStarted !== null);
   const commands: readonly Command[] = $derived([
@@ -225,6 +227,12 @@
         leaveDraft();
         changePassphraseOpen = true;
       },
+    },
+    {
+      id: "log-out",
+      label: "Log out",
+      icon: commandIcons.logOut,
+      run: handleLogOut,
     },
   ]);
 
@@ -910,15 +918,29 @@
     {/if}
     <div class="sidebar-footer">
       <a
-        class="repo-label"
+        class="repo-link"
         href={repoUrl}
         target="_blank"
         rel="noopener noreferrer"
-        bind:this={repoLabelEl}
-        title={repoLabelTruncated ? repoLabel : undefined}>{repoLabel}</a
+        title={repoLabelTruncated ? repoLabel : undefined}
       >
-      <button type="button" class="button button-ghost" onclick={handleLogOut}>
-        Log out
+        <span class="repo-label" bind:this={repoLabelEl}>{repoLabel}</span>
+        {#if head !== null}
+          <CommitSha sha={head} />
+        {/if}
+      </a>
+      <button
+        type="button"
+        class="button button-icon button-ghost log-out"
+        aria-label="Log out"
+        title="Log out"
+        onclick={handleLogOut}
+      >
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          {#each commandIcons.logOut as d (d)}
+            <path {d} />
+          {/each}
+        </svg>
       </button>
     </div>
   </aside>
@@ -1201,7 +1223,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
     padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
     border-top: var(--hairline) solid var(--color-border);
     flex-shrink: 0;
@@ -1264,27 +1286,42 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .repo-label {
+  .repo-link {
+    display: flex;
     flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
     min-width: 0;
+    min-height: var(--touch-target);
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color var(--motion-duration) var(--motion-easing);
+  }
+
+  .repo-link:hover {
+    color: var(--color-text);
+  }
+
+  .repo-label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--color-text-muted);
     font-size: var(--font-size-xs);
     font-variant-numeric: tabular-nums;
-    text-decoration: none;
   }
 
-  .repo-label:hover {
-    color: var(--color-text);
+  .repo-link:hover .repo-label {
     text-decoration: underline;
   }
 
-  .sidebar-footer .button {
-    gap: var(--space-1);
+  .log-out {
     flex-shrink: 0;
-    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+  }
+
+  .log-out:hover:not(:disabled) {
+    color: var(--color-text);
   }
 
   .tree-header-actions {
@@ -1329,6 +1366,11 @@
     }
 
     .tree-header-actions :global(.button-icon) {
+      width: 36px;
+      min-width: 36px;
+    }
+
+    .log-out {
       width: 36px;
       min-width: 36px;
     }

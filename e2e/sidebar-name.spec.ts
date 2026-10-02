@@ -37,6 +37,12 @@ test("sidebar wordmark and repo label are not clipped", async ({ page }) => {
   );
   await expect(repo).not.toHaveAttribute("title");
 
+  const sha = page.locator(".sidebar-footer").getByTestId("commit-sha");
+  await expect(sha).toBeVisible();
+  expect(await sha.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
+
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
 
   const sidebar = page.locator(".sidebar");
@@ -57,7 +63,37 @@ test("the sidebar repo label links to the repository in a new tab", async ({
 
   const link = page
     .locator(".sidebar-footer")
-    .getByRole("link", { name: "sample/notes", exact: true });
+    .getByRole("link", { name: /^sample\/notes Commit [0-9a-f]{40}$/ });
   await expect(link).toHaveAttribute("href", "https://github.com/sample/notes");
   await expect(link).toHaveAttribute("target", "_blank");
+});
+
+test("the sidebar shows the current commit and follows each save", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await logIn(page, {
+    repo: "https://github.com/sample/notes",
+    passphrase: "sample notes repo passphrase",
+  });
+  await expectTree(page);
+
+  const sha = page.locator(".sidebar-footer").getByTestId("commit-sha");
+  await expect(sha).toHaveAttribute("data-sha", /^[0-9a-f]{40}$/);
+  const before = await sha.getAttribute("data-sha");
+  await expect(
+    page.locator(".sidebar-footer").getByRole("link"),
+  ).toContainText(`Commit ${before}`);
+
+  await page.getByRole("treeitem", { name: "Welcome" }).click();
+  const editor = page.getByRole("textbox", { name: "Note editor" });
+  await expect(editor).toContainText("Welcome");
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type(" and one more line");
+
+  await expect(sha).not.toHaveAttribute("data-sha", before!, {
+    timeout: 15_000,
+  });
+  await expect(sha).toHaveAttribute("data-sha", /^[0-9a-f]{40}$/);
 });
