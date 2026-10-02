@@ -447,3 +447,77 @@ describe("GitLabAdapter", () => {
     }
   });
 });
+
+describe("GitLabAdapter history", () => {
+  it("lists commits by ref_name and path, mapping ids, parents and dates", async () => {
+    const mock = useMock();
+    const first = await seed(mock, { "dir/a b.md": "one" });
+    mock.setCommitDate(first, new Date("2026-03-01T10:00:00.000Z"));
+    const second = await pushFromAnotherDevice(mock, "dir/a b.md", "two");
+    mock.setCommitDate(second, new Date("2026-03-01T10:05:00.000Z"));
+
+    const commits = await makeAdapter().listCommits({
+      from: second,
+      path: "dir/a b.md",
+      limit: 50,
+    });
+
+    expect(commits).toEqual([
+      {
+        sha: second,
+        parents: [first],
+        message: "elsewhere",
+        committedAt: Date.parse("2026-03-01T10:05:00.000Z"),
+      },
+      {
+        sha: first,
+        parents: [],
+        message: "init",
+        committedAt: Date.parse("2026-03-01T10:00:00.000Z"),
+      },
+    ]);
+    const listing = mock.requests.find((request) =>
+      request.path.includes("/repository/commits?"),
+    );
+    expect(
+      Object.fromEntries(new URL(listing?.path ?? "", "https://x").searchParams),
+    ).toEqual({
+      ref_name: second,
+      path: "dir/a b.md",
+      per_page: "50",
+      page: "1",
+    });
+  });
+
+  it("checks that `from` exists when the listing comes back empty", async () => {
+    const mock = useMock();
+    const head = await seed(mock);
+    const adapter = makeAdapter();
+
+    expect(
+      await adapter.listCommits({ from: head, path: "missing.md", limit: 5 }),
+    ).toEqual([]);
+    await expect(
+      adapter.listCommits({ from: "0".repeat(40), path: "a.md", limit: 5 }),
+    ).rejects.toMatchObject({ kind: "NotFound" });
+    expect(
+      mock.requests.filter((request) =>
+        /\/repository\/commits\/[^/?]+$/.test(request.path),
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("reads a file at a commit with its whole path encoded and caches its blob", async () => {
+    const mock = useMock();
+    const head = await seed(mock, { "dir/ü n.md": "héllo" });
+    const adapter = makeAdapter();
+
+    const file = await adapter.readFileAt(head, "dir/ü n.md");
+    expect(file?.text).toBe("héllo");
+    await adapter.readBlob(file?.blobSha ?? "");
+
+    expect(mock.requests.map((request) => request.path)).toEqual([
+      `/api/v4/projects/${encodeURIComponent(PROJECT)}/repository/files/dir%2F%C3%BC%20n.md?ref=${head}`,
+    ]);
+  });
+});

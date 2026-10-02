@@ -102,6 +102,8 @@ async function setup(options?: {
     initialize: (configText, message) => fake.initialize(configText, message),
     getHead: () => fake.getHead(),
     listTree: (sha) => fake.listTree(sha),
+    listCommits: (request) => fake.listCommits(request),
+    readFileAt: (sha, path) => fake.readFileAt(sha, path),
     readBlob: (sha) => fake.readBlob(sha),
     commit: async (request) => {
       commits.push(request);

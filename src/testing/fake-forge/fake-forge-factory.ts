@@ -90,7 +90,9 @@ export interface FakeForgeControls {
       | "listTree"
       | "readBlob"
       | "commit"
-      | "replaceHistory",
+      | "replaceHistory"
+      | "listCommits"
+      | "readFileAt",
     kind: ForgeErrorKind | "stale",
   ): void;
 }
@@ -104,6 +106,8 @@ function createRejectingAdapter(makeError: () => ForgeError): ForgeAdapter {
     initialize: reject,
     getHead: reject,
     listTree: reject,
+    listCommits: reject,
+    readFileAt: reject,
     readBlob: reject,
     commit: reject,
   };

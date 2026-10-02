@@ -46,6 +46,8 @@ const FAILURE_MATCH: Record<
   listTree: { method: "GET", pathPattern: /\/repository\/tree\?/ },
   readBlob: { method: "GET", pathPattern: /\/repository\/blobs\// },
   commit: { method: "POST", pathPattern: /\/repository\/commits$/ },
+  listCommits: { method: "GET", pathPattern: /\/repository\/commits\?/ },
+  readFileAt: { method: "GET", pathPattern: /\/repository\/files\/[^/]+\?/ },
 };
 
 // GitLab has no stale response code: the adapter detects staleness by
@@ -185,6 +187,7 @@ const harness: ForgeContractHarness = {
         parent,
         files: { ...commitSeed.files },
         message: commitSeed.message,
+        committedAt: commitSeed.committedAt,
         branch: isLastCommit ? branch : undefined,
       });
     }

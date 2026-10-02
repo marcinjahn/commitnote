@@ -616,4 +616,122 @@ describe("GitHubAdapter", () => {
     }
   });
 
+  describe("history", () => {
+    async function seedEdits(
+      mock: MockGitHubRepo,
+      path: string,
+      count: number,
+    ): Promise<string> {
+      let parent: string | null = null;
+      for (let i = 0; i < count; i++) {
+        parent = await commitFiles(mock.git, {
+          parent,
+          files: { [path]: `version ${i}` },
+          message: `edit ${i}`,
+          branch: MAIN_BRANCH,
+        });
+      }
+      return parent ?? "";
+    }
+
+    function commitListQueries(mock: MockGitHubRepo): URLSearchParams[] {
+      return mock.requests
+        .filter((request) => request.path.includes("/commits?"))
+        .map((request) => new URL(request.path, "https://x").searchParams);
+    }
+
+    it("lists commits by sha and path with per_page set to the limit", async () => {
+      const mock = useMock();
+      const head = await seedEdits(mock, "dir/a b.md", 3);
+      const { adapter } = makeAdapter();
+
+      const commits = await adapter.listCommits({
+        from: head,
+        path: "dir/a b.md",
+        limit: 50,
+      });
+
+      expect(commits).toHaveLength(3);
+      const queries = commitListQueries(mock);
+      expect(queries).toHaveLength(1);
+      expect(Object.fromEntries(queries[0])).toEqual({
+        sha: head,
+        path: "dir/a b.md",
+        per_page: "50",
+        page: "1",
+      });
+    });
+
+    it("pages by 100 when the limit is larger", async () => {
+      const mock = useMock();
+      const head = await seedEdits(mock, "a.md", 120);
+      const { adapter } = makeAdapter();
+
+      const commits = await adapter.listCommits({
+        from: head,
+        path: "a.md",
+        limit: 110,
+      });
+
+      expect(commits).toHaveLength(110);
+      expect(commits[0].message).toBe("edit 119");
+      expect(commits[109].message).toBe("edit 10");
+      expect(
+        commitListQueries(mock).map((query) => [
+          query.get("per_page"),
+          query.get("page"),
+        ]),
+      ).toEqual([
+        ["100", "1"],
+        ["100", "2"],
+      ]);
+    });
+
+    it("rejects listCommits on an empty repository with NotFound", async () => {
+      useMock();
+      const { adapter } = makeAdapter();
+
+      await expect(
+        adapter.listCommits({ from: "0".repeat(40), path: "a.md", limit: 1 }),
+      ).rejects.toMatchObject({ kind: "NotFound", status: 409 });
+    });
+
+    it("reads a file at a commit through the contents API and caches its blob", async () => {
+      const mock = useMock();
+      const head = await commitFiles(mock.git, {
+        parent: null,
+        files: { "dir/ü n#?.md": "hello" },
+        message: "init",
+        branch: MAIN_BRANCH,
+      });
+      const { adapter } = makeAdapter();
+
+      const file = await adapter.readFileAt(head, "dir/ü n#?.md");
+      expect(file?.text).toBe("hello");
+      await adapter.readBlob(file?.blobSha ?? "");
+
+      expect(mock.requests.map((request) => request.path)).toEqual([
+        `/repos/${OWNER}/${REPO}/contents/dir/%C3%BC%20n%23%3F.md?ref=${head}`,
+      ]);
+    });
+
+    it("falls back to the blob API for a file over 1 MB", async () => {
+      const mock = useMock();
+      const text = "x".repeat(1024 * 1024 + 1);
+      const head = await commitFiles(mock.git, {
+        parent: null,
+        files: { "big.md": text },
+        message: "init",
+        branch: MAIN_BRANCH,
+      });
+      const { adapter } = makeAdapter();
+
+      const file = await adapter.readFileAt(head, "big.md");
+
+      expect(file?.text).toBe(text);
+      expect(
+        mock.requests.filter((request) => request.path.includes("/git/blobs/")),
+      ).toHaveLength(1);
+    });
+  });
 });

@@ -61,6 +61,8 @@ function instrument(
     initialize: (configText, message) => fake.initialize(configText, message),
     getHead: () => run("getHead", () => fake.getHead()),
     listTree: (sha) => run("listTree", () => fake.listTree(sha)),
+    listCommits: (request) => fake.listCommits(request),
+    readFileAt: (sha, path) => fake.readFileAt(sha, path),
     readBlob: (sha) => run("readBlob", () => fake.readBlob(sha)),
     commit: (request) => run("commit", () => fake.commit(request)),
     ...(options?.support === undefined

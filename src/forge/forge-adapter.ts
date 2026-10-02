@@ -55,6 +55,25 @@ export const REPLACE_HISTORY_COST = 2;
 export type CommitResult =
   { readonly kind: "ok"; readonly head: string } | { readonly kind: "stale" };
 
+export interface CommitSummary {
+  readonly sha: string;
+  readonly parents: readonly string[];
+  readonly message: string;
+  /** Committer time, ms since epoch. */
+  readonly committedAt: number;
+}
+
+export interface ListCommitsRequest {
+  readonly from: string;
+  readonly path: string;
+  readonly limit: number;
+}
+
+export interface FileAtCommit {
+  readonly blobSha: string;
+  readonly text: string;
+}
+
 export interface RootEntry {
   readonly name: string;
   readonly type: "blob" | "tree";
@@ -124,6 +143,14 @@ export interface ForgeAdapter {
   listTree(commitSha: string): Promise<TreeEntry[]>;
   readBlob(sha: string): Promise<string>;
   commit(request: CommitRequest): Promise<CommitResult>;
+  /**
+   * Newest first: commits reachable from `from` (inclusive) that changed the
+   * file at `path`, at most `limit`. Fewer only when no older commit changed
+   * it. Rejects with NotFound when `from` is unknown.
+   */
+  listCommits(request: ListCommitsRequest): Promise<CommitSummary[]>;
+  /** Null when `path` is not a file in that commit. */
+  readFileAt(commitSha: string, path: string): Promise<FileAtCommit | null>;
   /**
    * Absent when atomic commits always work. An atomic commit rejects with a
    * Forbidden ForgeError while this reports `needsSetup`.

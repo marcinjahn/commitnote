@@ -11,6 +11,7 @@ export interface ContractSeed {
   readonly commits: readonly {
     readonly message: string;
     readonly files: Readonly<Record<string, string>>;
+    readonly committedAt?: number; // ms since epoch, whole seconds
   }[]; // full snapshots, oldest first, linear
   readonly branch?: string; // branch the last commit is on; default 'main'
 }
@@ -24,7 +25,14 @@ export type InjectedFailure =
   | { readonly kind: "stale" };
 
 export type ContractOperation =
-  "inspect" | "initialize" | "getHead" | "listTree" | "readBlob" | "commit";
+  | "inspect"
+  | "initialize"
+  | "getHead"
+  | "listTree"
+  | "readBlob"
+  | "commit"
+  | "listCommits"
+  | "readFileAt";
 
 export interface ContractSubject {
   readonly adapter: ForgeAdapter;
@@ -81,6 +89,37 @@ async function requireMainHead(subject: ContractSubject): Promise<string> {
     throw new Error("expected a main head after seeding");
   }
   return head;
+}
+
+const HISTORY_START = Date.UTC(2026, 0, 1, 12, 0, 0);
+const MINUTE = 60_000;
+
+// Note "n.md" is created, edited, left alone, edited and then deleted.
+const HISTORY_COMMITS: readonly ContractSeed["commits"][number][] = [
+  { message: "create", files: { "dir/n.md": "one", "o.md": "x" } },
+  { message: "edit", files: { "dir/n.md": "two", "o.md": "x" } },
+  { message: "other", files: { "dir/n.md": "two", "o.md": "y" } },
+  { message: "edit again", files: { "dir/n.md": "three", "o.md": "y" } },
+  { message: "delete", files: { "o.md": "y" } },
+];
+const HISTORY_SEED: ContractSeed = {
+  commits: HISTORY_COMMITS.map((commit, index) => ({
+    ...commit,
+    committedAt: HISTORY_START + index * MINUTE,
+  })),
+};
+
+/** Seeded commit SHAs, oldest first. */
+async function seededShas(subject: ContractSubject): Promise<string[]> {
+  const shas: string[] = [];
+  for (
+    let sha: string | null | undefined = await requireMainHead(subject);
+    typeof sha === "string";
+    sha = await subject.commitParent(sha)
+  ) {
+    shas.unshift(sha);
+  }
+  return shas;
 }
 
 export function describeForgeAdapterContract(
@@ -336,6 +375,138 @@ export function describeForgeAdapterContract(
       });
     });
 
+    describe("listCommits", () => {
+      it("lists the commits that changed the file, newest first, from `from` inclusive", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const [create, edit, , editAgain, remove] = await seededShas(subject);
+
+        const commits = await subject.adapter.listCommits({
+          from: remove,
+          path: "dir/n.md",
+          limit: 10,
+        });
+
+        expect(commits).toEqual([
+          {
+            sha: remove,
+            parents: [editAgain],
+            message: "delete",
+            committedAt: HISTORY_START + 4 * MINUTE,
+          },
+          {
+            sha: editAgain,
+            parents: [expect.any(String)],
+            message: "edit again",
+            committedAt: HISTORY_START + 3 * MINUTE,
+          },
+          {
+            sha: edit,
+            parents: [create],
+            message: "edit",
+            committedAt: HISTORY_START + MINUTE,
+          },
+          {
+            sha: create,
+            parents: [],
+            message: "create",
+            committedAt: HISTORY_START,
+          },
+        ]);
+      });
+
+      it("starts below a `from` that did not change the file", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const [create, edit, other] = await seededShas(subject);
+
+        const commits = await subject.adapter.listCommits({
+          from: other,
+          path: "dir/n.md",
+          limit: 10,
+        });
+
+        expect(commits.map((commit) => commit.sha)).toEqual([edit, create]);
+      });
+
+      it("returns at most `limit` and continues from the last commit's parent", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const [create, edit, , editAgain, remove] = await seededShas(subject);
+
+        const first = await subject.adapter.listCommits({
+          from: remove,
+          path: "dir/n.md",
+          limit: 2,
+        });
+        expect(first.map((commit) => commit.sha)).toEqual([remove, editAgain]);
+
+        const second = await subject.adapter.listCommits({
+          from: first[first.length - 1].parents[0],
+          path: "dir/n.md",
+          limit: 2,
+        });
+        expect(second.map((commit) => commit.sha)).toEqual([edit, create]);
+      });
+
+      it("returns no commits for a path that never existed", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const head = await requireMainHead(subject);
+
+        expect(
+          await subject.adapter.listCommits({
+            from: head,
+            path: "missing.md",
+            limit: 10,
+          }),
+        ).toEqual([]);
+      });
+
+      it("rejects with NotFound for an unknown `from`", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        await expect(
+          subject.adapter.listCommits({
+            from: "0".repeat(40),
+            path: "dir/n.md",
+            limit: 10,
+          }),
+        ).rejects.toMatchObject({ kind: "NotFound" });
+      });
+    });
+
+    describe("readFileAt", () => {
+      it("returns an earlier version of a file with its git blob SHA", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const [, edit] = await seededShas(subject);
+
+        expect(await subject.adapter.readFileAt(edit, "dir/n.md")).toEqual({
+          blobSha: await gitBlobSha("two"),
+          text: "two",
+        });
+      });
+
+      it("returns non-ASCII text", async () => {
+        const text = "héllo 世界 🎉";
+        const subject = await harness.createPopulated({
+          commits: [{ message: "init", files: { "ü dir/nöte.md": text } }],
+        });
+        const head = await requireMainHead(subject);
+
+        expect(await subject.adapter.readFileAt(head, "ü dir/nöte.md")).toEqual(
+          { blobSha: await gitBlobSha(text), text },
+        );
+      });
+
+      it("returns null for a deleted file, a missing path and a directory", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const head = await requireMainHead(subject);
+        const [create] = await seededShas(subject);
+
+        expect(await subject.adapter.readFileAt(head, "dir/n.md")).toBeNull();
+        expect(
+          await subject.adapter.readFileAt(create, "missing.md"),
+        ).toBeNull();
+        expect(await subject.adapter.readFileAt(create, "dir")).toBeNull();
+      });
+    });
+
     describe("commit", () => {
       it("applies upsert-text changes", async () => {
         const subject = await harness.createPopulated(configSeed());
@@ -369,7 +540,9 @@ export function describeForgeAdapterContract(
         const head = result.kind === "ok" ? result.head : "";
 
         const entries = await subject.adapter.listTree(head);
-        const entry = entries.find((candidate) => candidate.path === "dir/.keep");
+        const entry = entries.find(
+          (candidate) => candidate.path === "dir/.keep",
+        );
         expect(entry?.sha).toBe(await gitBlobSha(""));
         expect(await subject.adapter.readBlob(entry?.sha ?? "")).toBe("");
       });
@@ -679,6 +852,55 @@ export function describeForgeAdapterContract(
           );
         });
       }
+
+      for (const kind of errorKinds) {
+        it(`rejects listCommits with ${kind}`, async () => {
+          const subject = await harness.createPopulated(HISTORY_SEED);
+          const head = await requireMainHead(subject);
+          const request = { from: head, path: "dir/n.md", limit: 10 };
+
+          subject.failNext("listCommits", { kind });
+          await expect(
+            subject.adapter.listCommits(request),
+          ).rejects.toMatchObject({ kind });
+
+          expect(await subject.adapter.listCommits(request)).toHaveLength(4);
+        });
+      }
+
+      // A NotFound response means the file is absent, which reads as null.
+      for (const kind of errorKinds.filter((k) => k !== "NotFound")) {
+        it(`rejects readFileAt with ${kind}`, async () => {
+          const subject = await harness.createPopulated(HISTORY_SEED);
+          const [create] = await seededShas(subject);
+
+          subject.failNext("readFileAt", { kind });
+          await expect(
+            subject.adapter.readFileAt(create, "dir/n.md"),
+          ).rejects.toMatchObject({ kind });
+
+          expect(
+            (await subject.adapter.readFileAt(create, "dir/n.md"))?.text,
+          ).toBe("one");
+        });
+      }
+
+      it("rejects listCommits with RateLimited and converts retryAfterSeconds", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const head = await requireMainHead(subject);
+
+        subject.failNext("listCommits", {
+          kind: "RateLimited",
+          retryAfterSeconds: 30,
+        });
+        await expect(
+          subject.adapter.listCommits({
+            from: head,
+            path: "dir/n.md",
+            limit: 1,
+          }),
+        ).rejects.toMatchObject({ kind: "RateLimited", retryAfterMs: 30_000 });
+      });
 
       it("rejects commit with RateLimited and converts retryAfterSeconds to retryAfterMs", async () => {
         const subject = await harness.createPopulated(configSeed());

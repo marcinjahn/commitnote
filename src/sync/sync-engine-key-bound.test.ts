@@ -18,6 +18,8 @@ describe("sync engine commits", () => {
       initialize: (text, message) => fake.initialize(text, message),
       getHead: () => fake.getHead(),
       listTree: (sha) => fake.listTree(sha),
+      listCommits: (request) => fake.listCommits(request),
+      readFileAt: (sha, path) => fake.readFileAt(sha, path),
       readBlob: (sha) => fake.readBlob(sha),
       commit: (request) => {
         commits.push(request);

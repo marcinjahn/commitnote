@@ -4,9 +4,12 @@ import type {
   CommitFileChange,
   CommitRequest,
   CommitResult,
+  CommitSummary,
   ContentCreatingRequest,
+  FileAtCommit,
   ForgeAdapter,
   ForgeWriteLimits,
+  ListCommitsRequest,
   ReplaceHistoryRequest,
   RepoInspection,
   RootEntry,
@@ -26,7 +29,9 @@ type FailableOperation =
   | "listTree"
   | "readBlob"
   | "commit"
-  | "replaceHistory";
+  | "replaceHistory"
+  | "listCommits"
+  | "readFileAt";
 
 type StaleCapableOperation = "initialize" | "commit" | "replaceHistory";
 
@@ -266,6 +271,45 @@ export class FakeForgeAdapter implements ForgeAdapter {
     }
     this.blobCache.set(sha, text);
     return text;
+  }
+
+  async listCommits(request: ListCommitsRequest): Promise<CommitSummary[]> {
+    const failure = this.takeErrorFailure("listCommits");
+    if (failure !== undefined) {
+      throw failure;
+    }
+
+    const touching = this.repo.commitsTouching(request.from, request.path);
+    if (touching === undefined) {
+      throw new ForgeError("NotFound", {
+        message: `unknown commit ${request.from}`,
+      });
+    }
+    return touching.slice(0, Math.max(0, request.limit)).map(([sha, commit]) => ({
+      sha,
+      parents: commit.parent === null ? [] : [commit.parent],
+      message: commit.message,
+      committedAt: commit.committedAt,
+    }));
+  }
+
+  async readFileAt(
+    commitSha: string,
+    path: string,
+  ): Promise<FileAtCommit | null> {
+    const failure = this.takeErrorFailure("readFileAt");
+    if (failure !== undefined) {
+      throw failure;
+    }
+
+    const blobSha = this.repo.fileAt(commitSha, path);
+    const text =
+      blobSha === undefined ? undefined : this.repo.getBlob(blobSha);
+    if (blobSha === undefined || text === undefined) {
+      return null;
+    }
+    this.blobCache.set(blobSha, text);
+    return { blobSha, text };
   }
 
   async commit(request: CommitRequest): Promise<CommitResult> {

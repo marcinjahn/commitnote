@@ -8,6 +8,7 @@ import {
 } from "../../../crypto/base64";
 import type { CommitFileChange, TreeEntry } from "../../forge-adapter";
 import { InMemoryGitRepo } from "../../fake/in-memory-git-repo";
+import type { StoredCommit } from "../../fake/in-memory-git-repo";
 
 export interface MockGitHubRepoOptions {
   owner: string;
@@ -71,6 +72,16 @@ function encodeBlobContent(text: string): string {
 function decodeBase64Content(content: string): string {
   return utf8Decode(fromBase64(content.replace(/\s+/g, "")));
 }
+
+// GitHub reports commit dates to the second.
+function gitHubDate(ms: number): string {
+  return new Date(Math.floor(ms / 1000) * 1000)
+    .toISOString()
+    .replace(".000Z", "Z");
+}
+
+// GitHub's contents API leaves out the content of files over 1 MB.
+const CONTENTS_SIZE_LIMIT = 1024 * 1024;
 
 function branchFromRef(ref: string | undefined): string | undefined {
   if (ref === undefined || !ref.startsWith("refs/heads/")) {
@@ -220,6 +231,19 @@ export class MockGitHubRepo {
       cursor = this.git.getCommit(cursor)?.parent ?? undefined;
     }
     return false;
+  }
+
+  private firstParentChain(
+    from: string,
+  ): (readonly [string, StoredCommit])[] {
+    const chain: (readonly [string, StoredCommit])[] = [];
+    for (let sha: string | null = from; sha !== null; ) {
+      const commit = this.git.getCommit(sha);
+      if (commit === undefined) break;
+      chain.push([sha, commit]);
+      sha = commit.parent;
+    }
+    return chain;
   }
 
   private resolveRef(ref: string | undefined): string | undefined {
@@ -501,6 +525,44 @@ export class MockGitHubRepo {
       );
     }
 
+    if (method === "GET" && rest === "/commits") {
+      if (this.isEmpty()) {
+        return jsonResponse({ message: EMPTY_REPO_MESSAGE }, 409);
+      }
+      const sha = url.searchParams.get("sha") ?? undefined;
+      const from = this.resolveRef(sha);
+      if (from === undefined) {
+        return jsonResponse(
+          { message: `No commit found for SHA: ${sha ?? ""}` },
+          404,
+        );
+      }
+      const path = url.searchParams.get("path");
+      const commits =
+        path === null
+          ? this.firstParentChain(from)
+          : (this.git.commitsTouching(from, path) ?? []);
+      const perPage = Math.min(
+        Number(url.searchParams.get("per_page") ?? "30"),
+        100,
+      );
+      const page = Number(url.searchParams.get("page") ?? "1");
+      return jsonResponse(
+        commits
+          .slice((page - 1) * perPage, page * perPage)
+          .map(([commitSha, commit]) => ({
+            sha: commitSha,
+            commit: {
+              message: commit.message,
+              committer: { date: gitHubDate(commit.committedAt) },
+              tree: { sha: commit.tree },
+            },
+            parents: commit.parent === null ? [] : [{ sha: commit.parent }],
+          })),
+        200,
+      );
+    }
+
     if (method === "GET" && rest.startsWith("/contents/")) {
       const path = decodeURIComponent(rest.slice("/contents/".length));
       const ref = url.searchParams.get("ref") ?? undefined;
@@ -511,6 +573,19 @@ export class MockGitHubRepo {
         return jsonResponse({ message: "Not Found" }, 404);
       }
       const entries = await this.git.listTreeEntries(commit.tree);
+      if (entries.some((e) => e.path === path && e.type === "tree")) {
+        return jsonResponse(
+          entries
+            .filter((e) => e.path.startsWith(`${path}/`))
+            .filter((e) => !e.path.slice(path.length + 1).includes("/"))
+            .map((e) => ({
+              type: e.type === "tree" ? "dir" : "file",
+              sha: e.sha,
+              path: e.path,
+            })),
+          200,
+        );
+      }
       const entry = entries.find(
         (candidate) => candidate.path === path && candidate.type === "blob",
       );
@@ -519,11 +594,14 @@ export class MockGitHubRepo {
       if (entry === undefined || text === undefined) {
         return jsonResponse({ message: "Not Found" }, 404);
       }
+      const size = utf8Encode(text).length;
+      const tooLarge = size > CONTENTS_SIZE_LIMIT;
       return jsonResponse(
         {
           type: "file",
-          encoding: "base64",
-          content: encodeBlobContent(text),
+          encoding: tooLarge ? "none" : "base64",
+          content: tooLarge ? "" : encodeBlobContent(text),
+          size,
           sha: entry.sha,
           path,
         },

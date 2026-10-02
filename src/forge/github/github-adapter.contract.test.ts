@@ -51,6 +51,8 @@ const FIRST_REQUEST_MATCH: Record<ContractOperation, FailureMatch> = {
   listTree: { method: "GET", pathPattern: /\/git\/commits\// },
   readBlob: { method: "GET", pathPattern: /\/git\/blobs\// },
   commit: { method: "GET", pathPattern: /\/git\/commits\// },
+  listCommits: { method: "GET", pathPattern: /\/commits\?/ },
+  readFileAt: { method: "GET", pathPattern: /\/contents\// },
 };
 
 // 'stale' isn't an injectable MockGitHubRepo status (GitHub's real 422/409
@@ -204,6 +206,7 @@ const harness: ForgeContractHarness = {
         parent,
         files: { ...commitSeed.files },
         message: commitSeed.message,
+        committedAt: commitSeed.committedAt,
         branch: isLastCommit ? branch : undefined,
       });
     }
