@@ -29,3 +29,11 @@ export const commandIcons = {
     "M6.5 8h7M10.75 5.25 13.5 8l-2.75 2.75",
   ],
 } as const;
+
+export const noteIcons = {
+  history: [
+    "M2.75 8a5.25 5.25 0 1 0 1.54-3.71L2.5 6.1",
+    "M2.5 2.85V6.1h3.25",
+    "M8 5.25V8l1.9 1.4",
+  ],
+} as const;

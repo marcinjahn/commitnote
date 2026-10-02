@@ -8,6 +8,8 @@
     children: Snippet;
     actions?: Snippet;
     large?: boolean;
+    /** Full screen on mobile; a wide, fixed-height card on desktop whose content scrolls itself. */
+    wide?: boolean;
     closeButton?: boolean;
   }
 
@@ -17,10 +19,12 @@
     onClose,
     children,
     actions,
-    large = false,
+    large: largeProp = false,
+    wide = false,
     closeButton = false,
   }: Props = $props();
 
+  const large = $derived(largeProp || wide);
   const uid = $props.id();
   const titleId = `dialog-title-${uid}`;
 
@@ -69,11 +73,12 @@
   bind:this={dialogEl}
   class="dialog"
   class:large
+  class:wide
   aria-labelledby={titleId}
   oncancel={handleCancel}
   onclick={handleBackdropClick}
 >
-  <div class="dialog-card" class:large>
+  <div class="dialog-card" class:large class:wide>
     <div class="dialog-header">
       <h2 id={titleId} class="dialog-title">{title}</h2>
       {#if closeButton}
@@ -89,7 +94,7 @@
         </button>
       {/if}
     </div>
-    <div class="dialog-body">
+    <div class="dialog-body" class:wide>
       {@render children()}
     </div>
     {#if actions}
@@ -203,6 +208,29 @@
     padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0px));
   }
 
+  .dialog-card.wide {
+    gap: var(--space-2);
+    padding: calc(var(--space-3) + env(safe-area-inset-top, 0px)) 0 0;
+  }
+
+  .dialog-card.wide .dialog-header {
+    padding-inline: var(--space-3) var(--space-2);
+  }
+
+  .dialog-card.wide .dialog-actions {
+    padding: var(--space-2) var(--space-3)
+      calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+    border-top: var(--hairline) solid var(--color-border);
+  }
+
+  .dialog-body.wide {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+  }
+
   @media (min-width: 768px) {
     .dialog {
       position: fixed;
@@ -230,6 +258,26 @@
       border: var(--hairline) solid var(--color-border);
       border-radius: var(--radius);
       padding-top: var(--space-5);
+    }
+
+    .dialog.wide {
+      width: calc(100vw - var(--space-5) * 2);
+      max-width: var(--dialog-width-wide);
+    }
+
+    .dialog-card.wide {
+      gap: var(--space-4);
+      height: 80dvh;
+      padding: var(--space-5) var(--space-4);
+    }
+
+    .dialog-card.wide .dialog-header {
+      padding-inline: 0;
+    }
+
+    .dialog-card.wide .dialog-actions {
+      padding: 0;
+      border-top: none;
     }
   }
 </style>

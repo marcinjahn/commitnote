@@ -4,6 +4,8 @@
   import SyncStateIcon from "./SyncStateIcon.svelte";
   import { syncIndicatorFade } from "./sync-indicator-fade";
   import NameField from "../note/NameField.svelte";
+  import { noteIcons } from "./action-icons";
+  import { VERSION_HISTORY_LABEL } from "../history/history-messages";
 
   interface Props {
     name: string;
@@ -19,6 +21,9 @@
     onNameEnterDone: () => void;
     onNameInput?: (edited: string) => void;
     onBack: () => void;
+    /** Shows the version history button. */
+    onHistory?: () => void;
+    historyDisabled?: boolean;
   }
 
   const {
@@ -35,6 +40,8 @@
     onNameEnterDone,
     onNameInput,
     onBack,
+    onHistory,
+    historyDisabled = false,
   }: Props = $props();
 </script>
 
@@ -72,6 +79,22 @@
       <span class="sync-status-label">{describeSyncState(syncState)}</span>
     </span>
   {/if}
+  {#if !draft && onHistory !== undefined}
+    <button
+      type="button"
+      class="button button-ghost button-icon history-button"
+      aria-label={VERSION_HISTORY_LABEL}
+      title={VERSION_HISTORY_LABEL}
+      disabled={historyDisabled}
+      onclick={onHistory}
+    >
+      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        {#each noteIcons.history as d (d)}
+          <path {d} />
+        {/each}
+      </svg>
+    </button>
+  {/if}
 </header>
 
 <style>
@@ -97,6 +120,15 @@
 
   .note-header :global(.name-input) {
     font-size: 1.0625rem;
+  }
+
+  .history-button {
+    flex-shrink: 0;
+    color: var(--color-text-muted);
+  }
+
+  .history-button:hover:not(:disabled) {
+    color: var(--color-text);
   }
 
   .sync-status {

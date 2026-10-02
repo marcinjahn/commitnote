@@ -5,6 +5,10 @@
   import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
   import type { NoteHistory } from "../../history/note-history";
   import { findWorkingNode } from "../../sync/working-tree";
+  import { findNode } from "../../tree/note-tree";
+  import NoteHistoryDialog, {
+    type HistoryPhase,
+  } from "../history/NoteHistoryDialog.svelte";
   import type { WorkingNode } from "../../sync/working-tree";
   import { downloadNotesArchive } from "../../export/download-notes-archive";
   import {
@@ -88,6 +92,7 @@
     repoUrl,
     forgeName,
     passphraseChange,
+    noteHistory,
     initialMessage = null,
     onPassphraseChanged,
     onLogOut,
@@ -182,6 +187,10 @@
   let importMessages = $state<readonly ToastMessage[]>([]);
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
+  let historyDialog = $state<{
+    readonly path: NotePath;
+    readonly phase: HistoryPhase;
+  } | null>(null);
   let sessionMessages = $state<readonly ToastMessage[]>(
     untrack(() =>
       initialMessage === null ? [] : [{ id: -1, text: initialMessage }],
@@ -243,6 +252,44 @@
     openPath !== null &&
       engineState.conflicts.some((held) => notePathEquals(held.path, openPath)),
   );
+
+  const historyCurrent = $derived.by(() => {
+    const open = engineState.openNote;
+    if (historyDialog === null || open?.kind !== "loaded") return null;
+    return notePathEquals(open.path, historyDialog.path) ? open.content : null;
+  });
+
+  $effect(() => {
+    if (
+      historyDialog !== null &&
+      (openPath === null || !notePathEquals(openPath, historyDialog.path))
+    ) {
+      historyDialog = null;
+    }
+  });
+
+  async function openHistory(): Promise<void> {
+    const path = openPath;
+    if (path === null) return;
+    historyDialog = { path, phase: { kind: "saving" } };
+    try {
+      await engine.flush();
+    } catch {
+      // Best effort: the history of what is saved can still be shown.
+    }
+    if (historyDialog === null || !notePathEquals(historyDialog.path, path)) {
+      return;
+    }
+    const synced = engine.getState().synced;
+    const node = synced === null ? undefined : findNode(synced.tree, path);
+    historyDialog = {
+      path,
+      phase:
+        synced === null || node?.kind !== "note"
+          ? { kind: "unsaved" }
+          : { kind: "ready", cursor: noteHistory.open(path, synced.head) },
+    };
+  }
 
   $effect(() => {
     if (trashOpen && trashEntries.length === 0) {
@@ -981,6 +1028,9 @@
           onNameEscape={handleNameEscape}
           onNameEnterDone={handleNameEnterDone}
           onBack={handleBack}
+          onHistory={() => void openHistory()}
+          historyDisabled={engineState.openNote.kind === "missing" ||
+            engineState.openNote.kind === "failed"}
         />
       {/if}
     {/key}
@@ -1104,6 +1154,18 @@
     onChanged={onPassphraseChanged}
     onLogOut={handleLogOut}
     onClose={() => (changePassphraseOpen = false)}
+  />
+{/if}
+
+{#if historyDialog !== null}
+  <NoteHistoryDialog
+    phase={historyDialog.phase}
+    {noteHistory}
+    current={historyCurrent}
+    currentName={noteName(historyDialog.path)}
+    {forgeName}
+    onRetryPrepare={() => void openHistory()}
+    onClose={() => (historyDialog = null)}
   />
 {/if}
 
