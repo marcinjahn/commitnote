@@ -14,7 +14,7 @@ import {
   syntaxTree,
 } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
-import type { Tree } from "@lezer/common";
+import type { SyntaxNode, Tree } from "@lezer/common";
 
 const TASK_LINE_CLASS = "cm-task-line";
 const QUOTE_LINE_CLASS = "cm-quote-line";
@@ -235,6 +235,15 @@ function withTrailingSpace(
     : [from, to];
 }
 
+// GFM autolinks also parse a URL-shaped link label as a URL node.
+function isLinkDestination(state: EditorState, node: SyntaxNode): boolean {
+  const prev = node.prevSibling;
+  return (
+    prev?.name === "LinkMark" &&
+    state.doc.sliceString(prev.from, prev.to) === "("
+  );
+}
+
 function addLineDecorations(
   decorations: Range<Decoration>[],
   state: EditorState,
@@ -305,6 +314,7 @@ function collectLivePreviewDecorations(
         case "URL": {
           if (
             parent === "Link" &&
+            (name === "LinkMark" || isLinkDestination(state, node.node)) &&
             !lineHasSelection(state, node.from, node.to)
           ) {
             decorations.push(Decoration.replace({}).range(node.from, node.to));
