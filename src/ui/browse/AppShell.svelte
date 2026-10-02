@@ -3,6 +3,7 @@
   import type { NotePath } from "../../changes/change";
   import { isWithinFolder, notePathEquals, parentPath } from "../../changes/change";
   import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
+  import type { NoteHistory } from "../../history/note-history";
   import { findWorkingNode } from "../../sync/working-tree";
   import type { WorkingNode } from "../../sync/working-tree";
   import { downloadNotesArchive } from "../../export/download-notes-archive";
@@ -71,6 +72,7 @@
     repoUrl: string;
     forgeName: string;
     passphraseChange: PassphraseChange;
+    noteHistory: NoteHistory;
     initialMessage?: string | null;
     onPassphraseChanged: (
       keyring: Keyring,
