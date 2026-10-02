@@ -16,6 +16,7 @@ import { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
 import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
 import { FOLDER_MARKER, TRAILER } from "../format/v1";
+import { readOrderIndex } from "../order/order-index";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import { CONFLICT_MARKERS } from "../merge/merge-text";
@@ -168,7 +169,10 @@ async function pushRemote(
   changeSet: ChangeSet,
 ): Promise<string> {
   const listing = await fake.listTree(await fake.getHead());
-  const encoded = await encodeChangeSet({ listing, changeSet, keyring });
+  const order = await readOrderIndex(listing, keyring, (sha) =>
+    fake.readBlob(sha),
+  );
+  const encoded = await encodeChangeSet({ listing, changeSet, order, keyring });
   return fake.pushFromAnotherDevice(encoded.changes, encoded.message);
 }
 
@@ -264,7 +268,9 @@ describe("sync engine saves", () => {
       .split("\n")
       .filter(
         (line) =>
-          line.startsWith("Commitnote-") && !line.startsWith(TRAILER.format),
+          line.startsWith("Commitnote-") &&
+          !line.startsWith(TRAILER.format) &&
+          !line.startsWith(TRAILER.order),
       );
     expect(trailers).toHaveLength(3);
     for (const plaintext of [
@@ -397,6 +403,11 @@ describe("sync engine saves", () => {
     expect(h.commits).toHaveLength(1);
     expect(h.engine.getState().pending).toEqual([
       { kind: "create-folder", path: ["Second"] },
+      {
+        kind: "set-order",
+        parent: [],
+        positions: [{ name: "Second", key: expect.any(String) }],
+      },
     ]);
 
     release();

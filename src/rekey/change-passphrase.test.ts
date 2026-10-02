@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encryptPath } from "../crypto/name-cipher";
+import type { Keyring } from "../crypto/keyring";
 import { encryptNote } from "../crypto/note-cipher";
 import { ForgeError, type ForgeErrorKind } from "../forge/errors";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
@@ -515,6 +516,131 @@ describe("changing the passphrase", () => {
     expect(await keyStateOf(files, h.fixture.oldKeyring, result.keyring)).toBe(
       "new",
     );
+  });
+});
+
+describe("changing the passphrase and removing the history", () => {
+  const REMOVING = { ...INPUT, removeHistory: true };
+
+  async function changeAndRemove(h: Harness, onStep?: (step: PassphraseChangeStep) => void) {
+    const prepared = await preparePassphraseChange(h.deps, REMOVING, onStep);
+    if (!prepared.ok) throw new Error(prepared.failure.kind);
+    return commitPassphraseChange(h.deps, prepared.prepared, onStep);
+  }
+
+  async function expectOnNewKey(h: Harness, keyring: Keyring): Promise<void> {
+    const { files } = await readTree(h.fixture.adapter);
+    expect(await keyStateOf(files, h.fixture.oldKeyring, keyring)).toBe("new");
+    expect(await decryptTree(files, keyring)).toEqual(h.before);
+  }
+
+  it("leaves main as one parentless commit of the re-encrypted notes", async () => {
+    const h = await setup();
+    const steps: PassphraseChangeStep["kind"][] = [];
+
+    const result = await changeAndRemove(h, (step) => steps.push(step.kind));
+
+    if (!result.ok) throw new Error(result.failure.kind);
+    expect(result).toMatchObject({ history: "removed", check: "matched" });
+    const commit = h.fixture.adapter.repo.getCommit(
+      await h.fixture.adapter.getHead(),
+    )!;
+    expect(commit.parent).toBeNull();
+    expect(commit.message.split("\n")[0]).toBe(CHANGE_PASSPHRASE_SUBJECT);
+    await expectOnNewKey(h, result.keyring);
+    expect(steps).toContain("removingHistory");
+  });
+
+  it("stops an old-key device, which can't write onto the new history", async () => {
+    const h = await setup();
+    const stale = createSyncEngine({
+      adapter: h.fixture.adapter,
+      keyring: h.fixture.oldKeyring,
+      clock: h.clock,
+    });
+    await stale.refresh();
+    stale.editNote(["Welcome"], "typed on the stale device");
+
+    const result = await changeAndRemove(h);
+    if (!result.ok) throw new Error(result.failure.kind);
+    const replacedHead = await h.fixture.adapter.getHead();
+    await stale.flush();
+    await stale.refresh();
+
+    expect(stale.getState().stopped).toEqual({ kind: "keyChanged" });
+    expect(await h.fixture.adapter.getHead()).toBe(replacedHead);
+  });
+
+  it("keeps the history when not asked to remove it", async () => {
+    const h = await setup();
+
+    const result = await changePassphrase(h);
+
+    expect(result).toMatchObject({ ok: true, history: "kept" });
+    const head = await h.fixture.adapter.getHead();
+    expect(h.fixture.adapter.repo.getCommit(head)!.parent).toBe(h.fixture.head);
+  });
+
+  it("keeps the history when the forge can't replace it", async () => {
+    const h = await setup({ adapter: (fake) => instrument(fake) });
+
+    const prepared = await preparePassphraseChange(h.deps, REMOVING);
+    if (!prepared.ok) throw new Error(prepared.failure.kind);
+    expect(prepared.prepared.removeHistory).toBe(false);
+    const result = await commitPassphraseChange(h.deps, prepared.prepared);
+
+    expect(result).toMatchObject({ ok: true, history: "kept" });
+  });
+
+  for (const failure of [new ForgeError("Server"), "stale"] as const) {
+    const name = failure === "stale" ? "main moved on" : "the forge fails";
+    it(`reports the passphrase changed but the history kept when ${name}`, async () => {
+      const h = await setup();
+      h.fixture.adapter.failNext("replaceHistory", failure);
+
+      const result = await changeAndRemove(h);
+
+      if (!result.ok) throw new Error(result.failure.kind);
+      expect(result).toMatchObject({ history: "notRemoved", check: "matched" });
+      const head = await h.fixture.adapter.getHead();
+      expect(h.fixture.adapter.repo.getCommit(head)!.parent).toBe(
+        h.fixture.head,
+      );
+      await expectOnNewKey(h, result.keyring);
+    });
+  }
+
+  it("removes the history once an unsettled change turns out to have landed", async () => {
+    let lost = false;
+    let settling = false;
+    const h = await setup({
+      adapter: (fake) => ({
+        ...instrument(fake, {
+          inject: (operation) => {
+            if (operation === "commit" && !lost) {
+              lost = true;
+              return { when: "after", error: new ForgeError("Network") };
+            }
+            return operation === "getHead" && lost && !settling
+              ? { when: "before", error: new ForgeError("Network") }
+              : null;
+          },
+        }),
+        replaceHistory: (request) => fake.replaceHistory(request),
+      }),
+    });
+    const prepared = await preparePassphraseChange(h.deps, REMOVING);
+    if (!prepared.ok) throw new Error(prepared.failure.kind);
+
+    const first = await commitPassphraseChange(h.deps, prepared.prepared);
+    expect(first).toMatchObject({ ok: false, unsettled: true });
+    settling = true;
+    const settled = await settlePassphraseChange(h.deps, prepared.prepared);
+
+    if (!settled.ok) throw new Error(settled.failure.kind);
+    expect(settled.history).toBe("removed");
+    const head = await h.fixture.adapter.getHead();
+    expect(h.fixture.adapter.repo.getCommit(head)!.parent).toBeNull();
   });
 });
 

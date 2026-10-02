@@ -41,6 +41,7 @@ import {
   createSampleTrashRepoAdapter,
   sampleNotesRepo,
 } from "../sample-notes-repo/seed-sample-notes-repo";
+import { delay, type ForgeLatency, withLatency } from "./forge-latency";
 
 export const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
 export const FAKE_FORGE_INVALID_TOKEN = "invalid-token";
@@ -79,11 +80,17 @@ export interface FakeForgeControls {
   adoptRepo(repoKey: string, exported: string): void;
   /**
    * Make the next call of `operation` on that fixture fail with a
-   * ForgeError of `kind` (or "stale" for commit).
+   * ForgeError of `kind` (or "stale" for commit and replaceHistory).
    */
   failNext(
     repoKey: string,
-    operation: "inspect" | "getHead" | "listTree" | "readBlob" | "commit",
+    operation:
+      | "inspect"
+      | "getHead"
+      | "listTree"
+      | "readBlob"
+      | "commit"
+      | "replaceHistory",
     kind: ForgeErrorKind | "stale",
   ): void;
 }
@@ -162,12 +169,16 @@ async function createNewerRepoAdapter(): Promise<FakeForgeAdapter> {
 
 export async function createFakeForge(options?: {
   readonly argon2id?: Argon2idFunction;
+  readonly latency?: ForgeLatency;
 }): Promise<{
   factory: ForgeAdapterFactory;
   registry: ForgeRegistry;
   controls: FakeForgeControls;
 }> {
   const argon2id = options?.argon2id ?? argon2idInWorker;
+  const latency = options?.latency;
+  const slowed = (adapter: ForgeAdapter): ForgeAdapter =>
+    latency === undefined ? adapter : withLatency(adapter, latency);
 
   const fixtures = new Map<string, ForgeAdapter>([
     ["sample/notes", await createSampleNotesRepoAdapter()],
@@ -302,10 +313,10 @@ export async function createFakeForge(options?: {
 
   const factory: ForgeAdapterFactory = (coordinates, factoryOptions) => {
     if (factoryOptions.accessToken === FAKE_FORGE_INVALID_TOKEN) {
-      return unauthorizedAdapter();
+      return slowed(unauthorizedAdapter());
     }
     const key = `${coordinates.owner}/${coordinates.repo}`.toLowerCase();
-    return fixtures.get(key) ?? notFoundAdapter();
+    return slowed(fixtures.get(key) ?? notFoundAdapter());
   };
 
   function fakeProvider(options: {
@@ -329,6 +340,7 @@ export async function createFakeForge(options?: {
     return {
       ...options.base,
       listRepositories: async (accessToken) => {
+        if (latency !== undefined) await delay(latency.listRepositoriesMs);
         if (accessToken === FAKE_FORGE_INVALID_TOKEN) {
           throw new ForgeError("Unauthorized");
         }
@@ -346,10 +358,10 @@ export async function createFakeForge(options?: {
 
   const secondFactory: ForgeAdapterFactory = (coordinates, factoryOptions) => {
     if (factoryOptions.accessToken === FAKE_FORGE_INVALID_TOKEN) {
-      return unauthorizedAdapter();
+      return slowed(unauthorizedAdapter());
     }
     const key = `${coordinates.owner}/${coordinates.repo}`.toLowerCase();
-    return secondFixtures.get(key) ?? notFoundAdapter();
+    return slowed(secondFixtures.get(key) ?? notFoundAdapter());
   };
 
   const registry = {

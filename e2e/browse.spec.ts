@@ -19,6 +19,29 @@ test("root notes list in order", async ({ page }) => {
   ]);
 });
 
+test("a reordered folder lists its notes in the stored order", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  await page.getByRole("treeitem", { name: "Projects" }).click();
+  await page.getByRole("treeitem", { name: "commitnote" }).click();
+
+  const rows = page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
+  await expect(rows).toHaveText([
+    "Empty folder",
+    "Journal",
+    "Projects",
+    "commitnote",
+    "Roadmap",
+    "Ideas",
+    "Welcome",
+    "Zażółć gęślą jaźń",
+  ]);
+});
+
 test("expanding and collapsing folders", async ({ page }) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });

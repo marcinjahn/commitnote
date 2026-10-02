@@ -3,7 +3,12 @@ import {
   describeCarriedOver,
   describeChangeFailure,
   describeChangeStep,
+  describePassphraseChanged,
   describeRekeySummary,
+  HISTORY_NOT_REMOVED_MESSAGE,
+  HISTORY_REMOVED_MESSAGE,
+  PASSPHRASE_CHANGED_MESSAGE,
+  PASSPHRASE_CHANGED_MISMATCH_MESSAGE,
 } from "./passphrase-messages";
 
 const SUMMARY = {
@@ -74,5 +79,23 @@ describe("passphrase change messages", () => {
     expect(
       describeChangeFailure({ kind: "outcomeUnknown" }, "GitHub", 0),
     ).not.toContain("Nothing was changed");
+  });
+
+  it("tells whether the old history was deleted", () => {
+    expect(describePassphraseChanged("matched", "kept")).toBe(
+      PASSPHRASE_CHANGED_MESSAGE,
+    );
+    expect(describePassphraseChanged("matched", "removed")).toBe(
+      HISTORY_REMOVED_MESSAGE,
+    );
+    expect(describePassphraseChanged("unchecked", "notRemoved")).toBe(
+      `${PASSPHRASE_CHANGED_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`,
+    );
+    expect(describePassphraseChanged("mismatch", "removed")).toBe(
+      PASSPHRASE_CHANGED_MISMATCH_MESSAGE,
+    );
+    expect(describePassphraseChanged("mismatch", "notRemoved")).toBe(
+      `${PASSPHRASE_CHANGED_MISMATCH_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`,
+    );
   });
 });

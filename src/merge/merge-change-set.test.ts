@@ -8,6 +8,7 @@ import { encryptPath } from "../crypto/name-cipher";
 import { encryptNote } from "../crypto/note-cipher";
 import type { TreeEntry } from "../forge/forge-adapter";
 import { FOLDER_MARKER, TRASH_DIR } from "../format/v1";
+import { EMPTY_ORDER } from "../order/order-index";
 import { buildWorkingTree } from "../sync/working-tree";
 import { buildTrashIndex, type TrashEntry } from "../trash/trash-index";
 import { buildNoteTree, type NoteTree } from "../tree/note-tree";
@@ -169,6 +170,7 @@ async function runCase(mergeCase: MergeCase): Promise<MergeChangeSetResult> {
     encodeChangeSet({
       listing: remote.listing,
       changeSet: result.changeSet,
+      order: EMPTY_ORDER,
       keyring,
     }),
   ).resolves.toBeDefined();
@@ -233,6 +235,12 @@ const restoreTrash = (
 const purgeTrash = (...entryIds: string[]): Change => ({
   kind: "purge-trash",
   entryIds,
+});
+
+const setOrder = (parent: string, ...positions: [string, string][]): Change => ({
+  kind: "set-order",
+  parent: parent === "" ? [] : split(parent),
+  positions: positions.map(([name, key]) => ({ name, key })),
 });
 
 const entryId = (depth: number, suffix: string): string =>
@@ -860,6 +868,52 @@ const cases: MergeCase[] = [
     check(result) {
       expect(result.changeSet).toEqual([FILLER]);
       expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "keeps the positions of items that are still there",
+    base: { notes: { "a.md": "a", "f/b.md": "b" } },
+    remote: { notes: { "a.md": "a2", "f/b.md": "b" } },
+    changeSet: [setOrder("", ["f", "1"], ["a.md", "2"])],
+    check(result) {
+      expect(result.changeSet).toEqual(this.changeSet);
+    },
+  },
+  {
+    name: "drops the position of an item deleted remotely, without a notice",
+    base: { notes: { "a.md": "a", "b.md": "b" } },
+    remote: { notes: { "a.md": "a" } },
+    changeSet: [setOrder("", ["b.md", "1"], ["a.md", "2"])],
+    check(result) {
+      expect(result.changeSet).toEqual([setOrder("", ["a.md", "2"])]);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "drops the positions in a folder deleted remotely, without a notice",
+    base: { notes: { "f/x.md": "x" } },
+    remote: {},
+    changeSet: [FILLER, setOrder("f", ["x.md", "1"])],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "positions items in their parent's new place when the parent was relocated",
+    base: {},
+    remote: { notes: { g: "remote note" } },
+    changeSet: [
+      createFolder("g"),
+      createNote("g/a.md", "a"),
+      setOrder("g", ["a.md", "1"]),
+    ],
+    check(result) {
+      expect(result.changeSet).toEqual([
+        createFolder("g (conflict)"),
+        createNote("g (conflict)/a.md", "a"),
+        setOrder("g (conflict)", ["a.md", "1"]),
+      ]);
     },
   },
 ];

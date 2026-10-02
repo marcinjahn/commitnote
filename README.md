@@ -66,8 +66,9 @@ viewport.
 ## Test mode
 
 `npm run dev:fake` (and `npm run build:fake` / `preview:fake`) run the app against in-memory
-fixture repositories instead of GitHub, with no network access. Any access token lists all of
-these fixture repositories:
+fixture repositories instead of GitHub, with no network access. Every forge call is delayed by
+roughly what it takes on GitHub (a commit about 1.2 s), so saving and loading states are visible.
+Any access token lists all of these fixture repositories:
 
 - `https://github.com/sample/notes` — an initialized notes repo, passphrase
   `sample notes repo passphrase`

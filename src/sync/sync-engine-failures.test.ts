@@ -275,7 +275,7 @@ describe("sync engine failure handling", () => {
     expect(h.engine.createFolder([], "Later").ok).toBe(true);
     await advance(h, retryAt - h.clock.now() - 1);
     expect(h.commits).toHaveLength(1);
-    expect(h.engine.getState().pending).toHaveLength(3);
+    expect(h.engine.getState().pending).toHaveLength(4);
 
     await advance(h, 1);
     expect(h.commits).toHaveLength(2);

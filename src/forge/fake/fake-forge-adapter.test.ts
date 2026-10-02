@@ -154,6 +154,45 @@ describe("FakeForgeAdapter.commit", () => {
   });
 });
 
+describe("FakeForgeAdapter.replaceHistory", () => {
+  async function adapterWithTwoCommits(): Promise<{
+    adapter: FakeForgeAdapter;
+    head: string;
+  }> {
+    const adapter = new FakeForgeAdapter();
+    await adapter.initialize("{}", "init");
+    const head = await adapter.pushFromAnotherDevice([
+      { kind: "upsert-text", path: "note.md", text: "kept" },
+    ]);
+    return { adapter, head };
+  }
+
+  it("points main at a parentless commit with the head's tree", async () => {
+    const { adapter, head } = await adapterWithTwoCommits();
+
+    const result = await adapter.replaceHistory({ head, message: "replace" });
+
+    const newHead = await adapter.getHead();
+    expect(result).toEqual({ kind: "ok", head: newHead });
+    const commit = adapter.repo.getCommit(newHead)!;
+    expect(commit.parent).toBeNull();
+    expect(commit.message).toBe("replace");
+    expect(commit.tree).toBe(adapter.repo.getCommit(head)!.tree);
+  });
+
+  it("becomes stale when main moved past the head", async () => {
+    const { adapter, head } = await adapterWithTwoCommits();
+    const moved = await adapter.pushFromAnotherDevice([
+      { kind: "upsert-text", path: "other.md", text: "other device" },
+    ]);
+
+    const result = await adapter.replaceHistory({ head, message: "replace" });
+
+    expect(result).toEqual({ kind: "stale" });
+    expect(await adapter.getHead()).toBe(moved);
+  });
+});
+
 describe("FakeForgeAdapter read-only mode", () => {
   it("rejects writes with Forbidden before any effect, but allows reads", async () => {
     const writableAdapter = new FakeForgeAdapter();

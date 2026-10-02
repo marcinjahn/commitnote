@@ -41,7 +41,18 @@ export type Change =
       readonly target: "note" | "folder";
       readonly to: NotePath;
     }
-  | { readonly kind: "purge-trash"; readonly entryIds: readonly string[] };
+  | { readonly kind: "purge-trash"; readonly entryIds: readonly string[] }
+  | {
+      readonly kind: "set-order";
+      readonly parent: NotePath;
+      readonly positions: readonly OrderPosition[];
+    };
+
+/** The order key of the child `name` of a folder. */
+export interface OrderPosition {
+  readonly name: string;
+  readonly key: string;
+}
 
 export type ChangeSet = readonly Change[];
 

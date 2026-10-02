@@ -1,6 +1,6 @@
 import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "@playwright/test";
-import { logIn, expectTree } from "./helpers";
+import { logIn, expectTree, rowSyncState } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";
 const NOTES_PASSPHRASE = "sample notes repo passphrase";
@@ -70,13 +70,6 @@ async function backToTreeIfMobile(
 
 function headerIcon(page: Page) {
   return page.locator("header.note-header").getByRole("img");
-}
-
-function rowIcon(page: Page, name: string) {
-  return page
-    .getByRole("treeitem", { name, exact: true })
-    .locator("xpath=following-sibling::span[1]")
-    .getByRole("img");
 }
 
 async function openNote(page: Page, path: readonly string[]): Promise<void> {
@@ -235,7 +228,7 @@ test("creating a folder and a note walks through the sync states and survives lo
   expect(labels.at(-1)).toBe("(no status)");
 
   await backToTreeIfMobile(page, testInfo);
-  await expect(rowIcon(page, "Work")).toHaveCount(0);
+  await expect(rowSyncState(page, "Work", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Log out", exact: true }).click();
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
@@ -260,7 +253,7 @@ test("renaming, moving and deleting notes and folders", async ({
   await expect(
     page.getByRole("treeitem", { name: "Welcome", exact: true }),
   ).toHaveCount(0);
-  await expect(rowIcon(page, "Hello")).toHaveCount(0, {
+  await expect(rowSyncState(page, "Hello", { exact: true })).toHaveCount(0, {
     timeout: 10_000,
   });
 
@@ -277,7 +270,7 @@ test("renaming, moving and deleting notes and folders", async ({
     await page.getByRole("treeitem", { name: "Projects", exact: true }).click();
   }
   await expect(hello).toBeVisible();
-  await expect(rowIcon(page, "Hello")).toHaveCount(0, {
+  await expect(rowSyncState(page, "Hello", { exact: true })).toHaveCount(0, {
     timeout: 10_000,
   });
 
@@ -291,7 +284,7 @@ test("renaming, moving and deleting notes and folders", async ({
   await expect(
     page.getByRole("treeitem", { name: "Projects", exact: true }),
   ).toBeVisible();
-  await expect(rowIcon(page, "Projects")).toHaveCount(0, {
+  await expect(rowSyncState(page, "Projects", { exact: true })).toHaveCount(0, {
     timeout: 10_000,
   });
 
@@ -303,7 +296,7 @@ test("renaming, moving and deleting notes and folders", async ({
   await expect(
     page.getByRole("treeitem", { name: "Journal", exact: true }),
   ).toHaveCount(0);
-  await expect(rowIcon(page, "Empty folder")).toHaveCount(0, {
+  await expect(rowSyncState(page, "Empty folder", { exact: true })).toHaveCount(0, {
     timeout: 10_000,
   });
 });

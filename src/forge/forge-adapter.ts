@@ -43,6 +43,15 @@ export interface KeyBoundFile {
   readonly blobSha: string;
 }
 
+export interface ReplaceHistoryRequest {
+  /** Main must still be at this commit; its tree is kept. */
+  readonly head: string;
+  readonly message: string;
+}
+
+/** Content-creating requests `replaceHistory` sends. */
+export const REPLACE_HISTORY_COST = 2;
+
 export type CommitResult =
   { readonly kind: "ok"; readonly head: string } | { readonly kind: "stale" };
 
@@ -122,6 +131,12 @@ export interface ForgeAdapter {
   atomicCommitSupport?(): Promise<AtomicCommitSupport>;
   /** Changes repository settings so that atomic commits work. */
   enableAtomicCommits?(): Promise<AtomicCommitSupport>;
+  /**
+   * Points main at a new parentless commit holding `head`'s tree, so every
+   * earlier commit drops out of main's history. Resolves `stale` when main
+   * moved on. Absent when the forge can't create a parentless commit.
+   */
+  replaceHistory?(request: ReplaceHistoryRequest): Promise<CommitResult>;
   /** Removes leftovers of interrupted atomic commits. Best-effort. */
   sweepAbandoned?(): Promise<void>;
 }

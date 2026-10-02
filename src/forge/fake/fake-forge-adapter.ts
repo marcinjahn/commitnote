@@ -7,6 +7,7 @@ import type {
   ContentCreatingRequest,
   ForgeAdapter,
   ForgeWriteLimits,
+  ReplaceHistoryRequest,
   RepoInspection,
   RootEntry,
   TreeEntry,
@@ -19,14 +20,24 @@ import {
 import { InMemoryGitRepo } from "./in-memory-git-repo";
 
 type FailableOperation =
-  "inspect" | "initialize" | "getHead" | "listTree" | "readBlob" | "commit";
+  | "inspect"
+  | "initialize"
+  | "getHead"
+  | "listTree"
+  | "readBlob"
+  | "commit"
+  | "replaceHistory";
 
-type StaleCapableOperation = "initialize" | "commit";
+type StaleCapableOperation = "initialize" | "commit" | "replaceHistory";
 
 function isStaleCapable(
   operation: FailableOperation,
 ): operation is StaleCapableOperation {
-  return operation === "initialize" || operation === "commit";
+  return (
+    operation === "initialize" ||
+    operation === "commit" ||
+    operation === "replaceHistory"
+  );
 }
 
 /**
@@ -82,7 +93,7 @@ export class FakeForgeAdapter implements ForgeAdapter {
   failNext(operation: FailableOperation, failure: ForgeError | "stale"): void {
     if (failure === "stale" && !isStaleCapable(operation)) {
       throw new Error(
-        `'stale' is only valid for 'initialize' and 'commit', got '${operation}'`,
+        `'stale' is only valid for 'initialize', 'commit' and 'replaceHistory', got '${operation}'`,
       );
     }
     const queue = this.pendingFailures.get(operation) ?? [];
@@ -288,6 +299,40 @@ export class FakeForgeAdapter implements ForgeAdapter {
 
     this.report({ operation: "updateRef" });
     if (this.repo.getRef(MAIN_BRANCH) !== request.parent) {
+      return { kind: "stale" };
+    }
+    this.repo.setRef(MAIN_BRANCH, commitSha);
+    return { kind: "ok", head: commitSha };
+  }
+
+  async replaceHistory(request: ReplaceHistoryRequest): Promise<CommitResult> {
+    if (!this.canWrite) {
+      throw new ForgeError("Forbidden");
+    }
+
+    const failure = this.takeFailure("replaceHistory");
+    if (failure === "stale") {
+      return { kind: "stale" };
+    }
+    if (failure !== undefined) {
+      throw failure;
+    }
+
+    const head = this.repo.getCommit(request.head);
+    if (head === undefined) {
+      throw new ForgeError("NotFound", {
+        message: `unknown commit ${request.head}`,
+      });
+    }
+    this.report({ operation: "createCommit" });
+    const commitSha = await this.repo.putCommit({
+      tree: head.tree,
+      parent: null,
+      message: request.message,
+    });
+
+    this.report({ operation: "updateRef" });
+    if (this.repo.getRef(MAIN_BRANCH) !== request.head) {
       return { kind: "stale" };
     }
     this.repo.setRef(MAIN_BRANCH, commitSha);

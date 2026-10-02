@@ -94,6 +94,7 @@ test("hiding the tab flushes pending edits immediately", async ({
     document.dispatchEvent(new Event("visibilitychange"));
   });
 
-  // Flushed well within the 2 s autosave debounce.
-  await expect(syncIcon).toHaveCount(0, { timeout: 1_500 });
+  // Saving starts well within the 2 s autosave debounce.
+  await expect(syncIcon).toHaveAccessibleName("Saving", { timeout: 500 });
+  await expect(syncIcon).toHaveCount(0, { timeout: 5_000 });
 });

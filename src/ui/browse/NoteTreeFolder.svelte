@@ -7,6 +7,7 @@
   import type { MenuAnchor } from "./row-menu-types";
   import SyncStateIcon from "./SyncStateIcon.svelte";
   import { syncIndicatorFade } from "./sync-indicator-fade";
+  import { describeSyncState } from "./sync-messages";
 
   interface Props {
     node: WorkingNode;
@@ -45,7 +46,29 @@
       notePathEquals(node.path, selectedPath),
   );
   const syncState = $derived(syncStates.stateOf(node.path));
+  const unsynced = $derived(
+    syncState.kind === "syncing" ||
+      (syncState.kind === "out-of-sync" && syncState.reason === "pending"),
+  );
+  const showsSyncIcon = $derived(
+    syncState.kind === "out-of-sync" && syncState.reason !== "pending",
+  );
   const menuOpen = $derived(menuOpenKey === key);
+  const statusId = $props.id();
+
+  // The sweep outlives the saving state until its overlay has faded out
+  // (--sync-label-fade), so stopping it is invisible.
+  const SWEEP_SETTLE_MS = 500;
+  let sweeping = $state(false);
+  $effect(() => {
+    if (syncState.kind === "syncing") {
+      sweeping = true;
+      return;
+    }
+    if (!sweeping) return;
+    const timer = setTimeout(() => (sweeping = false), SWEEP_SETTLE_MS);
+    return () => clearTimeout(timer);
+  });
 
   let actionsButton: HTMLButtonElement | undefined = $state();
 
@@ -89,6 +112,7 @@
     aria-expanded={node.kind === "folder" ? expanded : undefined}
     aria-selected={node.kind === "note" ? selected : undefined}
     title={node.name}
+    aria-describedby={unsynced ? statusId : undefined}
     onclick={handleActivate}
   >
     {#if node.kind === "folder"}
@@ -120,9 +144,20 @@
         <path d="M9.5 1.5v3h3" />
       </svg>
     {/if}
-    <span class="tree-row-label">{node.name}</span>
+    <span
+      class="tree-row-label"
+      class:unsynced
+      class:saving={syncState.kind === "syncing"}
+      class:sweeping
+      data-name={node.name}>{node.name}</span
+    >
   </button>
-  {#if syncState.kind !== "synced"}
+  {#if unsynced}
+    <span id={statusId} class="visually-hidden"
+      >{describeSyncState(syncState)}</span
+    >
+  {/if}
+  {#if showsSyncIcon}
     <span
       class="sync-indicator"
       in:syncIndicatorFade={{ duration: 200 }}
@@ -238,14 +273,71 @@
     transform: rotate(90deg);
   }
 
+  /*
+   * The saving sweep is a masked copy of the name laid over it, because a
+   * gradient clipped to the text breaks the ellipsis. The permanent layer and
+   * zero skew keep the glyphs from shifting when the slant starts or ends.
+   */
   .tree-row-label {
-    flex: 1;
+    --sync-label-fade: 450ms;
+    position: relative;
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: var(--font-size-sm);
     color: var(--color-text);
+    transform: skewX(0deg);
+    transform-origin: left bottom;
+    will-change: transform;
+    transition:
+      color var(--sync-label-fade) ease,
+      transform var(--sync-label-fade) ease;
+  }
+
+  .tree-row-label::after {
+    content: attr(data-name) / "";
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text);
+    opacity: 0;
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0% 35%,
+      black 50%,
+      transparent 65% 100%
+    );
+    mask-size: 300% 100%;
+    mask-position: 100% 0;
+    pointer-events: none;
+    transition: opacity var(--sync-label-fade) ease;
+  }
+
+  /* A skew rather than font-style: italic, so the slant can transition. */
+  .tree-row-label.unsynced {
+    color: var(--color-text-muted);
+    transform: skewX(-10deg);
+  }
+
+  .tree-row-label.saving::after {
+    opacity: 1;
+  }
+
+  .tree-row-label.sweeping::after {
+    animation: tree-row-saving 1.6s linear infinite;
+  }
+
+  @keyframes tree-row-saving {
+    from {
+      mask-position: 100% 0;
+    }
+    to {
+      mask-position: 0% 0;
+    }
   }
 
   .row-actions {

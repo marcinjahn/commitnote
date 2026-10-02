@@ -15,6 +15,7 @@ import type {
   CommitResult,
   ForgeAdapter,
 } from "../forge/forge-adapter";
+import { REPLACE_HISTORY_COST } from "../forge/forge-adapter";
 import { REPO_CONFIG_PATH } from "../format/v1";
 import type { Clock } from "../sync/clock";
 import type { RateBudget } from "../sync/rate-budget";
@@ -57,7 +58,8 @@ export type PassphraseChangeStep =
   | { readonly kind: "verifying" }
   | { readonly kind: "waitingForBudget"; readonly until: number }
   | { readonly kind: "uploading" }
-  | { readonly kind: "confirming" };
+  | { readonly kind: "confirming" }
+  | { readonly kind: "removingHistory" };
 
 export type PassphraseChangeFailure =
   | {
@@ -87,6 +89,14 @@ export interface PreparedPassphraseChange {
   readonly keyring: Keyring;
   /** Blob SHA of every file main must hold once the change landed. */
   readonly expected: ReadonlyMap<string, string>;
+  /** Replace main's history with the change's commit once it landed. */
+  readonly removeHistory: boolean;
+}
+
+export interface PassphraseChangeInput {
+  readonly currentPassphrase: string;
+  readonly newPassphrase: string;
+  readonly removeHistory?: boolean;
 }
 
 export type PrepareResult =
@@ -100,11 +110,15 @@ export type PrepareResult =
  */
 export type LandedCheck = "matched" | "mismatch" | "unchecked";
 
+/** `kept`: removing the history was not asked for. */
+export type HistoryOutcome = "kept" | "removed" | "notRemoved";
+
 export type CommitPassphraseChangeResult =
   | {
       readonly ok: true;
       readonly keyring: Keyring;
       readonly check: LandedCheck;
+      readonly history: HistoryOutcome;
     }
   | {
       readonly ok: false;
@@ -187,7 +201,7 @@ async function suspendEngine(deps: PassphraseChangeDeps): Promise<void> {
  */
 export async function preparePassphraseChange(
   deps: PassphraseChangeDeps,
-  input: { readonly currentPassphrase: string; readonly newPassphrase: string },
+  input: PassphraseChangeInput,
   onStep: (step: PassphraseChangeStep) => void = () => {},
 ): Promise<PrepareResult> {
   if (input.newPassphrase.trim() === "") {
@@ -217,7 +231,7 @@ export async function preparePassphraseChange(
 
 async function buildChange(
   deps: PassphraseChangeDeps,
-  input: { readonly currentPassphrase: string; readonly newPassphrase: string },
+  input: PassphraseChangeInput,
   onStep: (step: PassphraseChangeStep) => void,
 ): Promise<PreparedPassphraseChange> {
   const { adapter, engine } = deps;
@@ -297,6 +311,8 @@ async function buildChange(
     changes: plan.changes,
     keyring: newKeyring,
     expected: await expectedTree(listing, plan.changes),
+    removeHistory:
+      input.removeHistory === true && adapter.replaceHistory !== undefined,
   };
 }
 
@@ -362,15 +378,44 @@ async function checkLanded(
   return "mismatch";
 }
 
+// Runs only once the change landed, so a failure here leaves the passphrase
+// changed with the old history in place.
+async function replaceHistory(
+  deps: PassphraseChangeDeps,
+  head: string,
+  onStep: (step: PassphraseChangeStep) => void,
+): Promise<{ readonly history: HistoryOutcome; readonly head: string }> {
+  const { adapter } = deps;
+  try {
+    if (adapter.replaceHistory === undefined) fail({ kind: "unavailable" });
+    await waitForBudget(deps, REPLACE_HISTORY_COST, onStep);
+    onStep({ kind: "removingHistory" });
+    const result = await adapter.replaceHistory({
+      head,
+      message: encodeChangePassphraseMessage(),
+    });
+    if (result.kind === "ok") return { history: "removed", head: result.head };
+    console.error("Removing the old history failed: main moved on");
+  } catch (error) {
+    console.error("Removing the old history failed", toFailure(error).kind);
+  }
+  return { history: "notRemoved", head };
+}
+
 async function landed(
   deps: PassphraseChangeDeps,
   prepared: PreparedPassphraseChange,
   head: string,
+  onStep: (step: PassphraseChangeStep) => void,
 ): Promise<CommitPassphraseChangeResult> {
+  const final = prepared.removeHistory
+    ? await replaceHistory(deps, head, onStep)
+    : { history: "kept" as const, head };
   return {
     ok: true,
     keyring: prepared.keyring,
-    check: await checkLanded(deps, prepared, head),
+    check: await checkLanded(deps, prepared, final.head),
+    history: final.history,
   };
 }
 
@@ -415,7 +460,9 @@ export async function commitPassphraseChange(
   } catch (caught) {
     error = caught;
   }
-  if (result?.kind === "ok") return landed(deps, prepared, result.head);
+  if (result?.kind === "ok") {
+    return landed(deps, prepared, result.head, onStep);
+  }
 
   const untouched = isForgeError(error) && error.mainUnchanged;
   if (!untouched) {
@@ -423,7 +470,9 @@ export async function commitPassphraseChange(
     // went through with an extra commit, or a lost response.
     onStep({ kind: "confirming" });
     const outcome = await readOutcome(deps, prepared);
-    if (outcome.kind === "landed") return landed(deps, prepared, outcome.head);
+    if (outcome.kind === "landed") {
+      return landed(deps, prepared, outcome.head, onStep);
+    }
     if (
       outcome.kind !== "notLanded" &&
       (isForgeError(error, "Network") || !isForgeError(error)) &&
@@ -456,9 +505,12 @@ export async function commitPassphraseChange(
 export async function settlePassphraseChange(
   deps: PassphraseChangeDeps,
   prepared: PreparedPassphraseChange,
+  onStep: (step: PassphraseChangeStep) => void = () => {},
 ): Promise<CommitPassphraseChangeResult> {
   const outcome = await readOutcome(deps, prepared);
-  if (outcome.kind === "landed") return landed(deps, prepared, outcome.head);
+  if (outcome.kind === "landed") {
+    return landed(deps, prepared, outcome.head, onStep);
+  }
   if (outcome.kind === "notLanded") {
     abort(deps);
     return { ok: false, failure: { kind: "changedElsewhere" } };
@@ -467,8 +519,10 @@ export async function settlePassphraseChange(
 }
 
 export interface PassphraseChange {
+  /** Whether the forge can replace main's history after the change. */
+  readonly canRemoveHistory: boolean;
   prepare(
-    input: { readonly currentPassphrase: string; readonly newPassphrase: string },
+    input: PassphraseChangeInput,
     onStep: (step: PassphraseChangeStep) => void,
   ): Promise<PrepareResult>;
   commit(
@@ -484,6 +538,7 @@ export function createPassphraseChange(
   deps: PassphraseChangeDeps,
 ): PassphraseChange {
   return {
+    canRemoveHistory: deps.adapter.replaceHistory !== undefined,
     prepare: (input, onStep) => preparePassphraseChange(deps, input, onStep),
     commit: (prepared, onStep) =>
       commitPassphraseChange(deps, prepared, onStep),

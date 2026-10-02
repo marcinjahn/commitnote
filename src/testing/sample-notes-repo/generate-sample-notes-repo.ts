@@ -8,13 +8,21 @@ import { createRepoConfig } from "../../crypto/keyring";
 import type { RandomSource } from "../../crypto/random";
 import { InMemoryGitRepo } from "../../forge/fake/in-memory-git-repo";
 import { REPO_CONFIG_PATH } from "../../format/v1";
+import { keysBetween } from "../../order/fractional-key";
+import {
+  applyChangeToOrder,
+  EMPTY_ORDER,
+  type OrderIndex,
+} from "../../order/order-index";
 import { createTrashEntryId } from "../../trash/trash-entry-id";
 import {
   SAMPLE_NOTES_REPO_PASSPHRASE,
+  sampleNotesRepoOrder,
   sampleNotesRepoSource,
   sampleTrashRepoSource,
   sampleTrashRepoTrashed,
   type SampleEntry,
+  type SampleFolderOrder,
   type SampleTrashEntry,
 } from "./sample-source";
 
@@ -97,17 +105,23 @@ async function snapshotFiles(
 }
 
 export function generateSampleNotesRepo(): Promise<SampleNotesRepo> {
-  return generateRepo(SEED, sampleNotesRepoSource, []);
+  return generateRepo(SEED, sampleNotesRepoSource, [], sampleNotesRepoOrder);
 }
 
 export function generateSampleTrashRepo(): Promise<SampleNotesRepo> {
-  return generateRepo(TRASH_SEED, sampleTrashRepoSource, sampleTrashRepoTrashed);
+  return generateRepo(
+    TRASH_SEED,
+    sampleTrashRepoSource,
+    sampleTrashRepoTrashed,
+    [],
+  );
 }
 
 async function generateRepo(
   seed: number,
   source: readonly SampleEntry[],
   trashed: readonly SampleTrashEntry[],
+  order: readonly SampleFolderOrder[],
 ): Promise<SampleNotesRepo> {
   const random = createSeededRandom(seed);
   const { configText, keyring } = await createRepoConfig(
@@ -136,6 +150,7 @@ async function generateRepo(
   const encoded = await encodeChangeSet({
     listing: commit1Entries,
     changeSet,
+    order: EMPTY_ORDER,
     keyring,
     random,
   });
@@ -153,32 +168,51 @@ async function generateRepo(
   let parentSha = commit2Sha;
   let parentTree = commit2Tree;
 
+  let orderIndex: OrderIndex = EMPTY_ORDER;
+  async function commitChanges(changeSet: ChangeSet): Promise<void> {
+    const encoded = await encodeChangeSet({
+      listing: await repo.listTreeEntries(parentTree),
+      changeSet,
+      order: orderIndex,
+      keyring,
+      random,
+    });
+    orderIndex = changeSet.reduce(applyChangeToOrder, orderIndex);
+    parentTree = await repo.applyChanges(parentTree, encoded.changes);
+    parentSha = await repo.putCommit({
+      tree: parentTree,
+      parent: parentSha,
+      message: encoded.message,
+    });
+    commits.push({ message: encoded.message, tree: parentTree });
+  }
+
+  if (order.length > 0) {
+    await commitChanges(
+      order.map(({ parent, names }) => {
+        const keys = keysBetween(null, null, names.length);
+        return {
+          kind: "set-order",
+          parent,
+          positions: names.map((name, i) => ({ name, key: keys[i] })),
+        };
+      }),
+    );
+  }
+
   for (const entry of trashed) {
     const entryId = createTrashEntryId(
       Date.parse(entry.deletedAt),
       entry.path.length,
       random,
     );
-    const listing = await repo.listTreeEntries(parentTree);
-    const trashEncoded = await encodeChangeSet({
-      listing,
-      changeSet: [
-        {
-          kind: entry.kind === "note" ? "trash-note" : "trash-folder",
-          path: entry.path,
-          entryId,
-        },
-      ],
-      keyring,
-      random,
-    });
-    parentTree = await repo.applyChanges(parentTree, trashEncoded.changes);
-    parentSha = await repo.putCommit({
-      tree: parentTree,
-      parent: parentSha,
-      message: trashEncoded.message,
-    });
-    commits.push({ message: trashEncoded.message, tree: parentTree });
+    await commitChanges([
+      {
+        kind: entry.kind === "note" ? "trash-note" : "trash-folder",
+        path: entry.path,
+        entryId,
+      },
+    ]);
   }
 
   const readmeMessage = "Add README";

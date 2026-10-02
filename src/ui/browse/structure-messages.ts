@@ -11,5 +11,7 @@ export function describeStructureError(error: StructureError): string {
       return "This item no longer exists.";
     case "invalidTarget":
       return "A folder can't be moved into itself.";
+    case "orderUnavailable":
+      return "Items can't be reordered because the stored order couldn't be read.";
   }
 }

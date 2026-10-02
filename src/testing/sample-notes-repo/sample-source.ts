@@ -164,3 +164,12 @@ export const sampleTrashRepoTrashed: readonly SampleTrashEntry[] = [
     deletedAt: "2026-09-27T08:15:00.000Z",
   },
 ];
+
+export interface SampleFolderOrder {
+  readonly parent: readonly string[];
+  readonly names: readonly string[];
+}
+
+export const sampleNotesRepoOrder: readonly SampleFolderOrder[] = [
+  { parent: ["Projects", "commitnote"], names: ["Roadmap", "Ideas"] },
+];
