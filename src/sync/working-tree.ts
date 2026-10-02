@@ -839,11 +839,16 @@ export function rebaseChanges(
           parent.children.has(name),
         );
         if (positions.length === 0) break;
-        kept.push(
-          positions.length === change.positions.length
-            ? change
-            : { ...change, positions },
-        );
+        if (positions.length === change.positions.length) {
+          kept.push(change);
+        } else {
+          const { moved, ...rest } = change;
+          kept.push(
+            moved !== undefined && parent.children.has(moved)
+              ? { ...change, positions }
+              : { ...rest, positions },
+          );
+        }
         break;
       }
     }

@@ -83,7 +83,7 @@ test("the Trash row sits below the tree and leaves the repo link visible", async
 
   const repo = page
     .locator(".sidebar-footer")
-    .getByRole("link", { name: "sample/notes", exact: true });
+    .getByRole("link", { name: /^sample\/notes / });
   await expect(repo).toBeVisible();
   expect(await repo.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
     true,

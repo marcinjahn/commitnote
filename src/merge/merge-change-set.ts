@@ -757,6 +757,7 @@ class ChangeSetMerger {
     const parent = this.resolve(change.parent);
     if (!this.working.isFolder(parent)) return;
     const positions: OrderPosition[] = [];
+    let moved: string | undefined;
     for (const { name, key } of change.positions) {
       const path = this.resolve([...change.parent, name]);
       if (
@@ -767,9 +768,15 @@ class ChangeSetMerger {
         continue;
       }
       positions.push({ name: path[path.length - 1], key });
+      if (name === change.moved) moved = path[path.length - 1];
     }
     if (positions.length > 0) {
-      this.emit({ kind: "set-order", parent, positions });
+      this.emit({
+        kind: "set-order",
+        parent,
+        positions,
+        ...(moved === undefined ? {} : { moved }),
+      });
     }
   }
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
   import { isWithinFolder, notePathEquals, parentPath } from "../../changes/change";
   import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
@@ -38,6 +38,7 @@
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
   import { actionIcons, commandIcons } from "./action-icons";
   import CommandMenu from "./CommandMenu.svelte";
+  import CommitSha from "./CommitSha.svelte";
   import { countDescendants } from "../dialogs/folder-options";
   import MoveDialog from "../dialogs/MoveDialog.svelte";
   import ConfirmDialog from "../dialogs/ConfirmDialog.svelte";
@@ -59,7 +60,9 @@
   import type { ReadableWorkingTrashEntry } from "../../sync/working-trash";
   import Wordmark from "../wordmark/Wordmark.svelte";
   import type { Command, RowAction } from "./row-menu-types";
-  import { describeStructureError } from "./structure-messages";
+  import { describeMovedTo, describeStructureError } from "./structure-messages";
+  import type { DropTarget } from "./tree-drop";
+  import { DRAG_EASING, DRAG_MOTION_MS, prefersReducedMotion } from "./drag-motion";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
@@ -90,7 +93,7 @@
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
   let mobileView = $state<"tree" | "note">("tree");
-  let repoLabelEl = $state<HTMLAnchorElement | null>(null);
+  let repoLabelEl = $state<HTMLSpanElement | null>(null);
   let repoLabelTruncated = $state(false);
 
   $effect(() => {
@@ -156,12 +159,14 @@
   let pendingFieldText = $state<string | null>(null);
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
+  let notePaneEl: HTMLElement | undefined = $state();
   let refreshMessages = $state<readonly ToastMessage[]>([]);
   let nextMessageId = 0;
   let exporting = $state(false);
   let exportMessages = $state<readonly ToastMessage[]>([]);
   const UNDO_TOAST_MS = 8_000;
   let trashMessages = $state<readonly ToastMessage[]>([]);
+  let placeMessages = $state<readonly ToastMessage[]>([]);
   let importInput: HTMLInputElement | undefined = $state();
   let reading = $state(false);
   let importDialog = $state<{
@@ -192,7 +197,9 @@
   const treeLoading = $derived(engineState.synced === null && engineState.refresh.inFlight);
   const trashEntries = $derived(engineState.visibleTrash ?? []);
   const selectedPath = $derived(engineState.openNote?.path ?? null);
+  const conflictPaths = $derived(engineState.conflicts.map((held) => held.path));
   const refreshing = $derived(engineState.refresh.inFlight);
+  const head = $derived(engineState.synced?.head ?? null);
 
   const importing = $derived(engineState.importing || importStarted !== null);
   const commands: readonly Command[] = $derived([
@@ -220,6 +227,12 @@
         leaveDraft();
         changePassphraseOpen = true;
       },
+    },
+    {
+      id: "log-out",
+      label: "Log out",
+      icon: commandIcons.logOut,
+      run: handleLogOut,
     },
   ]);
 
@@ -253,10 +266,44 @@
     return path[path.length - 1];
   }
 
-  function handleSelect(path: NotePath): void {
+  function handleSelect(path: NotePath): Promise<void> {
     leaveDraft();
     mobileView = "note";
-    void engine.openNote(path);
+    return engine.openNote(path);
+  }
+
+  // On narrow screens the tree and the note pane are never shown together.
+  function noteDropArea(): HTMLElement | null {
+    return window.matchMedia("(min-width: 768px)").matches
+      ? (notePaneEl ?? null)
+      : null;
+  }
+
+  function slideIn(element: Element): void {
+    element.animate(
+      [
+        { opacity: 0, translate: "0 6px" },
+        { opacity: 1, translate: "0 0" },
+      ],
+      { duration: DRAG_MOTION_MS, easing: DRAG_EASING },
+    );
+  }
+
+  // The header slides in at once; the note's text once it has loaded.
+  async function handleDropOpen(path: NotePath): Promise<void> {
+    const opening = handleSelect(path);
+    await tick();
+    const pane = notePaneEl;
+    if (pane === undefined || prefersReducedMotion()) return;
+    const content = pane.lastElementChild;
+    for (const child of pane.children) {
+      if (child !== content) slideIn(child);
+    }
+    await opening;
+    await tick();
+    if (content !== null && openPath !== null && notePathEquals(openPath, path)) {
+      slideIn(content);
+    }
   }
 
   function handleBack(): void {
@@ -655,10 +702,51 @@
     closeDialog();
   }
 
+  function handlePlace(path: NotePath, target: DropTarget): NotePath | null {
+    const from = parentPath(path);
+    const name = noteName(path);
+    const folder = tree === null ? undefined : findWorkingNode(tree, from);
+    const siblings =
+      folder?.kind === "folder" ? folder.children.map((child) => child.name) : [];
+    const previousBefore = siblings[siblings.indexOf(name) + 1] ?? null;
+
+    const result = engine.place(path, target);
+    if (!result.ok) {
+      placeMessages = [
+        { id: ++nextMessageId, text: describeStructureError(result.error) },
+      ];
+      return null;
+    }
+    const placed = result.path;
+    placeMessages = notePathEquals(from, target.parent)
+      ? []
+      : [
+          {
+            id: ++nextMessageId,
+            text: describeMovedTo(name, target.parent),
+            durationMs: UNDO_TOAST_MS,
+            action: {
+              label: "Undo",
+              run: () =>
+                handleUndoPlace(placed, { parent: from, before: previousBefore }),
+            },
+          },
+        ];
+    return placed;
+  }
+
+  function handleUndoPlace(path: NotePath, target: DropTarget): void {
+    const result = engine.place(path, target);
+    placeMessages = result.ok
+      ? []
+      : [{ id: ++nextMessageId, text: describeStructureError(result.error) }];
+  }
+
   function dismissMessage(id: number): void {
     refreshMessages = refreshMessages.filter((message) => message.id !== id);
     exportMessages = exportMessages.filter((message) => message.id !== id);
     trashMessages = trashMessages.filter((message) => message.id !== id);
+    placeMessages = placeMessages.filter((message) => message.id !== id);
     importMessages = importMessages.filter((message) => message.id !== id);
     sessionMessages = sessionMessages.filter((message) => message.id !== id);
   }
@@ -797,7 +885,11 @@
       {selectedPath}
       syncStates={engineState.syncStates}
       {expandRequest}
+      conflicts={conflictPaths}
       onSelect={handleSelect}
+      onPlace={handlePlace}
+      {noteDropArea}
+      onDropOpen={handleDropOpen}
       onAction={handleTreeAction}
       onNewNote={handleHeaderNewNote}
     />
@@ -826,20 +918,38 @@
     {/if}
     <div class="sidebar-footer">
       <a
-        class="repo-label"
+        class="repo-link"
         href={repoUrl}
         target="_blank"
         rel="noopener noreferrer"
-        bind:this={repoLabelEl}
-        title={repoLabelTruncated ? repoLabel : undefined}>{repoLabel}</a
+        title={repoLabelTruncated ? repoLabel : undefined}
       >
-      <button type="button" class="button button-ghost" onclick={handleLogOut}>
-        Log out
+        <span class="repo-label" bind:this={repoLabelEl}>{repoLabel}</span>
+        {#if head !== null}
+          <CommitSha sha={head} />
+        {/if}
+      </a>
+      <button
+        type="button"
+        class="button button-icon button-ghost log-out"
+        aria-label="Log out"
+        title="Log out"
+        onclick={handleLogOut}
+      >
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          {#each commandIcons.logOut as d (d)}
+            <path {d} />
+          {/each}
+        </svg>
       </button>
     </div>
   </aside>
 
-  <section class="note-pane" class:mobile-hidden={mobileView !== "note"}>
+  <section
+    class="note-pane"
+    class:mobile-hidden={mobileView !== "note"}
+    bind:this={notePaneEl}
+  >
     {#key draftSession}
       {#if draft !== null}
         <NoteHeader
@@ -892,6 +1002,7 @@
     ...refreshMessages,
     ...exportMessages,
     ...trashMessages,
+    ...placeMessages,
     ...importMessages,
     ...sessionMessages,
   ]}
@@ -1055,6 +1166,40 @@
     display: none;
   }
 
+  .note-pane {
+    position: relative;
+  }
+
+  .note-pane::after {
+    content: "";
+    position: absolute;
+    inset: var(--space-2);
+    z-index: 1;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+    box-shadow: inset 0 0 0 1.5px
+      color-mix(in srgb, var(--color-accent) 55%, transparent);
+    opacity: 0;
+    scale: 0.985;
+    pointer-events: none;
+    transition:
+      opacity 200ms var(--motion-easing),
+      scale 200ms var(--motion-easing);
+  }
+
+  .note-pane:global([data-note-drop])::after {
+    opacity: 1;
+    scale: 1;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .note-pane::after {
+      background: color-mix(in srgb, var(--color-accent) 9%, transparent);
+      box-shadow: inset 0 0 0 1.5px
+        color-mix(in srgb, var(--color-accent) 70%, transparent);
+    }
+  }
+
   .sidebar,
   .note-pane {
     overflow: hidden;
@@ -1078,7 +1223,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
     padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
     border-top: var(--hairline) solid var(--color-border);
     flex-shrink: 0;
@@ -1141,27 +1286,42 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .repo-label {
+  .repo-link {
+    display: flex;
     flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
     min-width: 0;
+    min-height: var(--touch-target);
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color var(--motion-duration) var(--motion-easing);
+  }
+
+  .repo-link:hover {
+    color: var(--color-text);
+  }
+
+  .repo-label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--color-text-muted);
     font-size: var(--font-size-xs);
     font-variant-numeric: tabular-nums;
-    text-decoration: none;
   }
 
-  .repo-label:hover {
-    color: var(--color-text);
+  .repo-link:hover .repo-label {
     text-decoration: underline;
   }
 
-  .sidebar-footer .button {
-    gap: var(--space-1);
+  .log-out {
     flex-shrink: 0;
-    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+  }
+
+  .log-out:hover:not(:disabled) {
+    color: var(--color-text);
   }
 
   .tree-header-actions {
@@ -1206,6 +1366,11 @@
     }
 
     .tree-header-actions :global(.button-icon) {
+      width: 36px;
+      min-width: 36px;
+    }
+
+    .log-out {
       width: 36px;
       min-width: 36px;
     }

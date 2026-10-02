@@ -107,6 +107,18 @@ describe("SyncEngine.place", () => {
     expect(messages[0]).not.toContain("Welcome");
   });
 
+  it("marks only the moved item as unsaved, though every sibling gets a position", async () => {
+    const fake = await createSampleNotesRepoAdapter();
+    const engine = await openEngine(fake);
+
+    engine.place(["Welcome"], { parent: [], before: "Empty folder" });
+
+    const { syncStates } = engine.getState();
+    expect(syncStates.stateOf(["Welcome"])).toEqual({ kind: "syncing" });
+    expect(syncStates.stateOf(["Journal"])).toEqual({ kind: "synced" });
+    expect(syncStates.unsavedCount).toBe(1);
+  });
+
   it("moves an item into another folder at the given position in one commit", async () => {
     const fake = await createSampleNotesRepoAdapter();
     const engine = await openEngine(fake);

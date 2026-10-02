@@ -61,7 +61,9 @@ function entryPathOf(change: Change): NotePath | null {
     case "restore-trash":
       return change.to;
     case "set-order":
-      return change.parent;
+      return change.moved === undefined
+        ? change.parent
+        : [...change.parent, change.moved];
     case "purge-trash":
       return null;
   }
@@ -96,7 +98,7 @@ export function computeSyncStates(input: {
     for (const change of changes) {
       const path = entryPathOf(change);
       if (path === null) continue;
-      if (change.kind === "set-order") {
+      if (change.kind === "set-order" && change.moved === undefined) {
         orderKeys.add(keyOf(path));
       } else {
         entryKeys.add(keyOf(path));
@@ -117,8 +119,8 @@ export function computeSyncStates(input: {
     raise(conflictPath, LEVEL_CONFLICT);
   }
 
-  // A new position counts on its own only when nothing else in its folder
-  // is unsaved, so placing a new or moved item adds nothing to the count.
+  // Positions with no moved item, like those of a new item, count on their
+  // own only when nothing else in their folder is unsaved.
   let unsavedCount = entryKeys.size;
   for (const key of orderKeys) {
     if (!entryKeys.has(key) && !entryParentKeys.has(key)) unsavedCount++;

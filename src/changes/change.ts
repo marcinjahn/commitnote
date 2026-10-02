@@ -46,6 +46,8 @@ export type Change =
       readonly kind: "set-order";
       readonly parent: NotePath;
       readonly positions: readonly OrderPosition[];
+      /** The child the user placed, to show its saving state; never committed. */
+      readonly moved?: string;
     };
 
 /** The order key of the child `name` of a folder. */

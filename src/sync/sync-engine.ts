@@ -1630,7 +1630,7 @@ export function createSyncEngine(options: {
     siblings: readonly string[],
     name: string,
     index: number,
-  ): Change | null {
+  ): Extract<Change, { kind: "set-order" }> | null {
     const synced = state.synced;
     if (synced === null || !synced.order.writable) return null;
     const order = buildWorkingState(
@@ -1781,7 +1781,10 @@ export function createSyncEngine(options: {
     if (index === -1) return failure({ kind: "notFound" });
     if (sameParent && index === currentIndex) return { ok: true, path: placed };
 
-    changes.push(positionChange(target.parent, siblings, node.name, index)!);
+    changes.push({
+      ...positionChange(target.parent, siblings, node.name, index)!,
+      moved: node.name,
+    });
     applyStructureChange(...changes);
     return { ok: true, path: placed };
   }
