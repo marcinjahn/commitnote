@@ -3,7 +3,11 @@
   import type { NotePath } from "../../changes/change";
   import { isWithinFolder, notePathEquals, parentPath } from "../../changes/change";
   import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
-  import type { NoteHistory } from "../../history/note-history";
+  import type { NoteHistory, NoteVersion } from "../../history/note-history";
+  import type { RestorePlan } from "../../history/plan-restore";
+  import { validateName } from "../../tree/note-names";
+  import { describeNameError } from "../dialogs/name-messages";
+  import { describeRestored } from "../history/history-messages";
   import { findWorkingNode } from "../../sync/working-tree";
   import { findNode } from "../../tree/note-tree";
   import NoteHistoryDialog, {
@@ -191,6 +195,7 @@
     readonly path: NotePath;
     readonly phase: HistoryPhase;
   } | null>(null);
+  let historyMessages = $state<readonly ToastMessage[]>([]);
   let sessionMessages = $state<readonly ToastMessage[]>(
     untrack(() =>
       initialMessage === null ? [] : [{ id: -1, text: initialMessage }],
@@ -289,6 +294,97 @@
           ? { kind: "unsaved" }
           : { kind: "ready", cursor: noteHistory.open(path, synced.head) },
     };
+  }
+
+  type NoteStateResult =
+    | { readonly ok: true; readonly path: NotePath }
+    | { readonly ok: false; readonly message: string };
+
+  // The name is checked up front so a failed rename leaves the content alone,
+  // and the edit goes first so the rename's save commits both together.
+  function setNoteState(
+    path: NotePath,
+    content: string | null,
+    name: string | null,
+  ): NoteStateResult {
+    if (
+      engineState.conflicts.some((held) => notePathEquals(held.path, path))
+    ) {
+      return {
+        ok: false,
+        message: describeStructureError({ kind: "conflicted" }),
+      };
+    }
+    if (name !== null) {
+      const validation = validateName(
+        name,
+        siblingNamesOf(parentPath(path), noteName(path)),
+      );
+      if (!validation.ok) {
+        return { ok: false, message: describeNameError(validation.error) };
+      }
+    }
+    if (content !== null) engine.editNote(path, content);
+    if (name === null) return { ok: true, path };
+    const result = engine.rename(path, name);
+    return result.ok
+      ? { ok: true, path: result.path }
+      : { ok: false, message: describeStructureError(result.error) };
+  }
+
+  async function handleHistoryRestore(
+    plan: Extract<RestorePlan, { kind: "ready" }>,
+    version: NoteVersion,
+  ): Promise<string | null> {
+    const path = historyDialog?.path;
+    if (path === undefined) return null;
+    try {
+      await engine.flush();
+    } catch {
+      // Best effort: restoring still works, and the replaced text saves later.
+    }
+    const open = engine.getState().openNote;
+    if (
+      historyDialog === null ||
+      !notePathEquals(historyDialog.path, path) ||
+      open?.kind !== "loaded" ||
+      !notePathEquals(open.path, path)
+    ) {
+      return null;
+    }
+    const previous = { content: open.content, name: noteName(path) };
+    const result = setNoteState(path, plan.content, plan.name);
+    if (!result.ok) return result.message;
+    historyDialog = null;
+    const restoredPath = result.path;
+    historyMessages = [
+      {
+        id: ++nextMessageId,
+        text: describeRestored(version.committedAt, Date.now()),
+        durationMs: UNDO_TOAST_MS,
+        action: {
+          label: "Undo",
+          run: () =>
+            handleUndoRestore(
+              restoredPath,
+              plan.content === null ? null : previous.content,
+              plan.name === null ? null : previous.name,
+            ),
+        },
+      },
+    ];
+    return null;
+  }
+
+  function handleUndoRestore(
+    path: NotePath,
+    content: string | null,
+    name: string | null,
+  ): void {
+    const result = setNoteState(path, content, name);
+    historyMessages = result.ok
+      ? []
+      : [{ id: ++nextMessageId, text: result.message }];
   }
 
   $effect(() => {
@@ -797,6 +893,7 @@
     trashMessages = trashMessages.filter((message) => message.id !== id);
     placeMessages = placeMessages.filter((message) => message.id !== id);
     importMessages = importMessages.filter((message) => message.id !== id);
+    historyMessages = historyMessages.filter((message) => message.id !== id);
     sessionMessages = sessionMessages.filter((message) => message.id !== id);
   }
 
@@ -1056,6 +1153,7 @@
     ...trashMessages,
     ...placeMessages,
     ...importMessages,
+    ...historyMessages,
     ...sessionMessages,
   ]}
   onDismiss={(id) => engine.dismissNotice(id)}
@@ -1164,6 +1262,9 @@
     current={historyCurrent}
     currentName={noteName(historyDialog.path)}
     {forgeName}
+    conflicted={openConflicted}
+    canSave={engineState.stopped === null && !engineState.suspended}
+    onRestore={handleHistoryRestore}
     onRetryPrepare={() => void openHistory()}
     onClose={() => (historyDialog = null)}
   />

@@ -1,4 +1,5 @@
 import type { HistoryEnd, VersionEvent } from "../../history/note-history";
+import type { RestoreBlock } from "../../history/plan-restore";
 
 export const VERSION_HISTORY_LABEL = "Version history";
 export const SAVING_CHANGES_MESSAGE = "Saving your changes…";
@@ -116,4 +117,40 @@ export function describeFinalNewline(change: "added" | "removed"): string {
   return change === "added"
     ? "Adds a line break at the end."
     : "Removes the line break at the end.";
+}
+
+export const RESTORE_LABEL = "Restore this version";
+export const RESTORING_LABEL = "Restoring…";
+
+export function describeRestoreTitle(name: string): string {
+  return `Also restore the title “${name}”`;
+}
+
+/** Why the version can't be restored; null when the version pane already says why. */
+export function describeRestoreBlock(reason: RestoreBlock): string | null {
+  switch (reason) {
+    case "gone":
+      return "This note no longer exists.";
+    case "conflicted":
+      return "Resolve the conflict first.";
+    case "unavailable":
+      return "Changes can't be saved right now, so this version can't be restored.";
+    case "undecryptable":
+      return UNDECRYPTABLE_VERSION_MESSAGE;
+    case "same":
+      return "This version is the same as the current one.";
+    case "loading":
+    case "unreadable":
+      return null;
+  }
+}
+
+export function describeRestored(
+  committedAt: number,
+  now: number,
+  locale?: string,
+): string {
+  const day = describeDay(committedAt, now, locale);
+  const relative = day === "Today" || day === "Yesterday";
+  return `Restored the version from ${relative ? day.toLowerCase() : day}, ${describeTime(committedAt, locale)}.`;
 }

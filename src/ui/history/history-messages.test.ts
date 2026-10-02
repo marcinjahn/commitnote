@@ -4,6 +4,7 @@ import {
   describeEvent,
   describeFold,
   describeHistoryEnd,
+  describeRestored,
   describeSession,
   describeTime,
 } from "./history-messages";
@@ -93,5 +94,19 @@ describe("line counts", () => {
   it("pluralizes", () => {
     expect(describeFold(1)).toBe("1 unchanged line");
     expect(describeFold(24)).toBe("24 unchanged lines");
+  });
+});
+
+describe("describeRestored", () => {
+  it("names the day and time of the restored version", () => {
+    expect(
+      describeRestored(new Date(2026, 8, 30, 8, 5).getTime(), NOW, "en-GB"),
+    ).toBe("Restored the version from today, 08:05.");
+    expect(
+      describeRestored(new Date(2026, 8, 29, 14, 32).getTime(), NOW, "en-GB"),
+    ).toBe("Restored the version from yesterday, 14:32.");
+    expect(
+      describeRestored(new Date(2026, 2, 9, 14, 32).getTime(), NOW, "en-GB"),
+    ).toBe("Restored the version from Mon 9 Mar, 14:32.");
   });
 });

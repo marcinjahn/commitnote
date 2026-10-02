@@ -16,13 +16,22 @@
     NoteVersion,
     VersionContent,
   } from "../../history/note-history";
+  import {
+    planRestore,
+    titleDiffers,
+    type RestorePlan,
+  } from "../../history/plan-restore";
   import Dialog from "../dialogs/Dialog.svelte";
   import { prefersReducedMotion } from "../browse/drag-motion";
   import VersionDiff from "./VersionDiff.svelte";
   import VersionList from "./VersionList.svelte";
   import {
     describeDay,
+    describeRestoreBlock,
+    describeRestoreTitle,
     describeTime,
+    RESTORE_LABEL,
+    RESTORING_LABEL,
     SAVE_FIRST_MESSAGE,
     SAVING_CHANGES_MESSAGE,
     VERSION_HISTORY_LABEL,
@@ -35,6 +44,14 @@
     current: string | null;
     currentName: string;
     forgeName: string;
+    conflicted: boolean;
+    /** False when syncing stopped or is suspended. */
+    canSave: boolean;
+    /** Resolves to an error to show, or null once restored. */
+    onRestore: (
+      plan: Extract<RestorePlan, { kind: "ready" }>,
+      version: NoteVersion,
+    ) => Promise<string | null>;
     onRetryPrepare: () => void;
     onClose: () => void;
   }
@@ -45,6 +62,9 @@
     current,
     currentName,
     forgeName,
+    conflicted,
+    canSave,
+    onRestore,
     onRetryPrepare,
     onClose,
   }: Props = $props();
@@ -58,7 +78,22 @@
   let preselecting = false;
   let readTimer: ReturnType<typeof setTimeout> | undefined;
   let backButton: HTMLButtonElement | undefined = $state();
+  let narrow = $state(isNarrow());
+  let restoreTitle = $state(false);
+  let restoring = $state(false);
+  let restoreError = $state<string | null>(null);
   const now = Date.now();
+  const uid = $props.id();
+  const restoreReasonId = `restore-reason-${uid}`;
+
+  $effect(() => {
+    const query = window.matchMedia("(min-width: 768px)");
+    const update = () => {
+      narrow = !query.matches;
+    };
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  });
 
   $effect(() => {
     if (phase.kind !== "ready") {
@@ -79,6 +114,46 @@
   const selectedContent = $derived(
     selected === null ? null : (contents.get(selected.sha) ?? null),
   );
+
+  const plan = $derived(
+    planRestore({
+      current: current === null ? null : { content: current, name: currentName },
+      version: selectedContent,
+      restoreTitle,
+      conflicted,
+      canSave,
+    }),
+  );
+  const showTitleOption = $derived(
+    selectedContent?.kind === "readable" &&
+      titleDiffers(selectedContent, currentName),
+  );
+  const restoreReason = $derived(
+    restoreError ??
+      (plan.kind === "blocked" ? describeRestoreBlock(plan.reason) : null),
+  );
+  const showFooter = $derived(
+    phase.kind === "ready" &&
+      selected !== null &&
+      (!narrow || mobileView === "detail"),
+  );
+
+  $effect(() => {
+    void selectedSha;
+    restoreTitle = false;
+    restoreError = null;
+  });
+
+  async function handleRestore(): Promise<void> {
+    if (plan.kind !== "ready" || selected === null || restoring) return;
+    restoring = true;
+    restoreError = null;
+    try {
+      restoreError = await onRestore(plan, selected);
+    } finally {
+      restoring = false;
+    }
+  }
 
   function storeContent(sha: string, content: VersionContent): void {
     contents = new Map([...contents, [sha, content]]);
@@ -170,7 +245,54 @@
   }
 </script>
 
-<Dialog open={true} title={VERSION_HISTORY_LABEL} wide closeButton {onClose}>
+{#snippet footer()}
+  <div class="restore-footer">
+    {#if showTitleOption && selectedContent?.kind === "readable"}
+      <label class="checkbox-field restore-title">
+        <input
+          type="checkbox"
+          bind:checked={restoreTitle}
+          disabled={restoring}
+          onchange={() => (restoreError = null)}
+        />
+        {describeRestoreTitle(selectedContent.name!)}
+      </label>
+    {/if}
+    {#if restoreReason !== null}
+      <p
+        id={restoreReasonId}
+        class="restore-reason"
+        class:error={restoreError !== null}
+        role={restoreError !== null ? "alert" : undefined}
+      >
+        {restoreReason}
+      </p>
+    {/if}
+    <div class="restore-buttons">
+      <button type="button" class="button button-ghost" onclick={onClose}>
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="button button-primary"
+        disabled={plan.kind !== "ready" || restoring}
+        aria-describedby={restoreReason !== null ? restoreReasonId : undefined}
+        onclick={() => void handleRestore()}
+      >
+        {restoring ? RESTORING_LABEL : RESTORE_LABEL}
+      </button>
+    </div>
+  </div>
+{/snippet}
+
+<Dialog
+  open={true}
+  title={VERSION_HISTORY_LABEL}
+  wide
+  closeButton
+  {onClose}
+  actions={showFooter ? footer : undefined}
+>
   {#snippet children()}
     {#if phase.kind === "saving"}
       <div class="phase-message" role="status">
@@ -236,6 +358,42 @@
 </Dialog>
 
 <style>
+  .restore-footer {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .restore-title {
+    font-size: var(--font-size-sm);
+  }
+
+  .restore-reason {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    animation: reason-in 160ms var(--motion-easing);
+  }
+
+  .restore-reason.error {
+    color: var(--color-danger);
+  }
+
+  .restore-buttons {
+    display: flex;
+    gap: var(--space-2);
+    margin-left: auto;
+  }
+
+  @keyframes reason-in {
+    from {
+      opacity: 0;
+      translate: 0 2px;
+    }
+  }
+
   .phase-message {
     display: grid;
     padding-inline: var(--space-3);
