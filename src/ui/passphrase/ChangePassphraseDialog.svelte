@@ -2,6 +2,7 @@
   import type { Keyring } from "../../crypto/keyring";
   import type {
     CommitPassphraseChangeResult,
+    HistoryOutcome,
     LandedCheck,
     PassphraseChange,
     PassphraseChangeFailure,
@@ -16,18 +17,25 @@
     describeChangeFailure,
     describeChangeStep,
     describeRekeySummary,
+    describeRemoveHistory,
     ENTER_CURRENT_PASSPHRASE,
     HISTORY_WARNING,
     NEW_PASSPHRASE_HINT,
     OTHER_DEVICES_WARNING,
     PASSPHRASES_DIFFER,
+    REMOVE_HISTORY_LABEL,
+    REMOVE_HISTORY_REVIEW,
   } from "./passphrase-messages";
 
   interface Props {
     open: boolean;
     forgeName: string;
     change: PassphraseChange;
-    onChanged: (keyring: Keyring, check: LandedCheck) => void;
+    onChanged: (
+      keyring: Keyring,
+      check: LandedCheck,
+      history: HistoryOutcome,
+    ) => void;
     onLogOut: () => void;
     onClose: () => void;
   }
@@ -41,6 +49,7 @@
   const newId = `change-passphrase-new-${uid}`;
   const repeatId = `change-passphrase-repeat-${uid}`;
   const hintId = `change-passphrase-hint-${uid}`;
+  const removeHistoryHintId = `change-passphrase-remove-history-hint-${uid}`;
 
   type Stage =
     | { readonly kind: "form" }
@@ -59,6 +68,7 @@
   let currentPassphrase = $state("");
   let newPassphrase = $state("");
   let repeatedPassphrase = $state("");
+  let removeHistory = $state(false);
   let error = $state<string | null>(null);
   let currentInput: HTMLInputElement | undefined = $state();
   let confirmButton: HTMLButtonElement | undefined = $state();
@@ -138,7 +148,7 @@
     error = null;
     stage = { kind: "working", step: null };
     const result = await change.prepare(
-      { currentPassphrase, newPassphrase },
+      { currentPassphrase, newPassphrase, removeHistory },
       onStep,
     );
     if (result.ok) {
@@ -156,7 +166,7 @@
       currentPassphrase = "";
       newPassphrase = "";
       repeatedPassphrase = "";
-      onChanged(result.keyring, result.check);
+      onChanged(result.keyring, result.check, result.history);
     } else if (result.unsettled === true) {
       stage = { kind: "unsettled", prepared, checking: false };
       error = describeChangeFailure(result.failure, forgeName, Date.now());
@@ -222,6 +232,9 @@
     {#if stage.kind === "review"}
       <div class="review">
         <p>{describeRekeySummary(stage.prepared.summary)}</p>
+        {#if stage.prepared.removeHistory}
+          <p>{REMOVE_HISTORY_REVIEW}</p>
+        {/if}
         {#each describeCarriedOver(stage.prepared.summary) as line (line)}
           <p class="field-hint">{line}</p>
         {/each}
@@ -264,9 +277,26 @@
               bind:value={repeatedPassphrase}
             />
           </div>
+          {#if change.canRemoveHistory}
+            <div class="remove-history">
+              <label class="checkbox-field">
+                <input
+                  type="checkbox"
+                  aria-describedby={removeHistoryHintId}
+                  bind:checked={removeHistory}
+                />
+                {REMOVE_HISTORY_LABEL}
+              </label>
+              <p id={removeHistoryHintId} class="field-hint">
+                {describeRemoveHistory(forgeName)}
+              </p>
+            </div>
+          {/if}
         </fieldset>
         <div class="warnings">
-          <p class="field-hint">{HISTORY_WARNING}</p>
+          {#if !removeHistory}
+            <p class="field-hint">{HISTORY_WARNING}</p>
+          {/if}
           <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
         </div>
       </form>
@@ -365,8 +395,14 @@
   }
 
   .review p,
-  .warnings p {
+  .warnings p,
+  .remove-history p {
     margin: 0;
+  }
+
+  .remove-history {
+    display: grid;
+    gap: var(--space-1);
   }
 
   .warnings {

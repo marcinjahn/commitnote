@@ -16,6 +16,7 @@ import type {
   ForgeAdapter,
   ForgeAdapterOptions,
   ForgeWriteLimits,
+  ReplaceHistoryRequest,
   RepoInspection,
   RootEntry,
   TreeEntry,
@@ -381,20 +382,69 @@ class GitHubAdapter implements ForgeAdapter {
     return { kind: "ok", head: commitSha };
   }
 
-  private async createCommitObject(request: CommitRequest): Promise<string> {
-    const parentResponse = await this.send(`/git/commits/${request.parent}`, {
+  // The REST API has no compare-and-swap for a forced ref update, so main is
+  // checked just before it. After a passphrase change only a device that
+  // already has the new passphrase could commit in between.
+  async replaceHistory(request: ReplaceHistoryRequest): Promise<CommitResult> {
+    let commitSha: string;
+    try {
+      commitSha = await this.createRootCommit(request);
+      if ((await this.getHead()) !== request.head) return { kind: "stale" };
+    } catch (error) {
+      throw isForgeError(error) ? withMainUnchanged(error) : error;
+    }
+
+    this.report("updateRef");
+    let updateRefResponse: Response;
+    try {
+      updateRefResponse = await this.send(`/git/refs/heads/${MAIN_BRANCH}`, {
+        method: "PATCH",
+        body: { sha: commitSha, force: true },
+      });
+    } catch (error) {
+      if (!isForgeError(error, "Network")) throw error;
+      return this.settleRefUpdate(request.head, commitSha, error);
+    }
+    if (!updateRefResponse.ok) {
+      const error = await this.errorFor(updateRefResponse);
+      if (updateRefResponse.status >= 500) {
+        return this.settleRefUpdate(request.head, commitSha, error);
+      }
+      throw withMainUnchanged(error);
+    }
+    return { kind: "ok", head: commitSha };
+  }
+
+  private async treeOf(commitSha: string): Promise<string> {
+    const response = await this.send(`/git/commits/${commitSha}`, {
       method: "GET",
     });
-    if (parentResponse.status === 404 || parentResponse.status === 409) {
-      throw new ForgeError("NotFound", { status: parentResponse.status });
+    if (response.status === 404 || response.status === 409) {
+      throw new ForgeError("NotFound", { status: response.status });
     }
-    if (!parentResponse.ok) {
-      throw await this.errorFor(parentResponse);
+    if (!response.ok) {
+      throw await this.errorFor(response);
     }
-    const parentBody = (await parentResponse.json()) as {
-      tree: { sha: string };
-    };
-    let tree = parentBody.tree.sha;
+    return ((await response.json()) as { tree: { sha: string } }).tree.sha;
+  }
+
+  private async createRootCommit(
+    request: ReplaceHistoryRequest,
+  ): Promise<string> {
+    const tree = await this.treeOf(request.head);
+    this.report("createCommit");
+    const response = await this.send("/git/commits", {
+      method: "POST",
+      body: { message: request.message, tree, parents: [] },
+    });
+    if (!response.ok) {
+      throw await this.errorFor(response);
+    }
+    return ((await response.json()) as { sha: string }).sha;
+  }
+
+  private async createCommitObject(request: CommitRequest): Promise<string> {
+    let tree = await this.treeOf(request.parent);
     for (const chunk of chunkTreeEntries(request.changes.map(treeEntryFor))) {
       this.report("createTree");
       const treeResponse = await this.send("/git/trees", {

@@ -1,4 +1,6 @@
 import type {
+  HistoryOutcome,
+  LandedCheck,
   PassphraseChangeFailure,
   PassphraseChangeStep,
 } from "../../rekey/change-passphrase";
@@ -9,11 +11,43 @@ import { KEY_CHANGED_MESSAGE } from "../browse/sync-messages";
 export const PASSPHRASE_CHANGED_MESSAGE = "Passphrase changed.";
 export const PASSPHRASE_CHANGED_MISMATCH_MESSAGE =
   "Passphrase changed, but the files saved differ from the ones checked before saving. Export your notes and look them over.";
+export const HISTORY_REMOVED_MESSAGE =
+  "Passphrase changed and the old history deleted.";
+export const HISTORY_NOT_REMOVED_MESSAGE =
+  "The old history couldn't be deleted, so it still holds earlier versions of your notes that the old passphrase decrypts. To delete it, change the passphrase again with that option selected.";
+
+export function describePassphraseChanged(
+  check: LandedCheck,
+  history: HistoryOutcome,
+): string {
+  if (check === "mismatch") {
+    return history === "notRemoved"
+      ? `${PASSPHRASE_CHANGED_MISMATCH_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`
+      : PASSPHRASE_CHANGED_MISMATCH_MESSAGE;
+  }
+  switch (history) {
+    case "kept":
+      return PASSPHRASE_CHANGED_MESSAGE;
+    case "removed":
+      return HISTORY_REMOVED_MESSAGE;
+    case "notRemoved":
+      return `${PASSPHRASE_CHANGED_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`;
+  }
+}
 export const PASSPHRASES_DIFFER = "The new passphrases do not match.";
 export const ENTER_CURRENT_PASSPHRASE = "Enter the current passphrase.";
 
 export const HISTORY_WARNING =
   "Earlier versions of your notes stay in the repository's history and can still be decrypted with the current passphrase.";
+export const REMOVE_HISTORY_LABEL = "Also delete the old history";
+
+export function describeRemoveHistory(forgeName: string): string {
+  return `Every earlier version of your notes stays in the repository's history, encrypted with the passphrase that was current back then. Selecting this replaces the whole history with the one commit of re-encrypted notes, so earlier versions and older passphrases no longer unlock anything in it. It can't be undone and the notes' change history is lost. Copies made before, such as clones or forks, keep the old history, and ${forgeName} may keep old commits reachable by their direct link for a while.`;
+}
+
+export const REMOVE_HISTORY_REVIEW =
+  "Afterwards, the repository's history is replaced with just that commit. All earlier versions of your notes are deleted for good.";
+
 export const OTHER_DEVICES_WARNING =
   "Other devices are signed out and must log in with the new passphrase. Reload commitnote in any other open tabs.";
 export const NEW_PASSPHRASE_HINT =
@@ -45,6 +79,8 @@ export function describeChangeStep(step: PassphraseChangeStep): string {
       return "Saving the re-encrypted notes…";
     case "confirming":
       return "Checking whether the change was saved…";
+    case "removingHistory":
+      return "Deleting the old history…";
   }
 }
 

@@ -80,11 +80,17 @@ export interface FakeForgeControls {
   adoptRepo(repoKey: string, exported: string): void;
   /**
    * Make the next call of `operation` on that fixture fail with a
-   * ForgeError of `kind` (or "stale" for commit).
+   * ForgeError of `kind` (or "stale" for commit and replaceHistory).
    */
   failNext(
     repoKey: string,
-    operation: "inspect" | "getHead" | "listTree" | "readBlob" | "commit",
+    operation:
+      | "inspect"
+      | "getHead"
+      | "listTree"
+      | "readBlob"
+      | "commit"
+      | "replaceHistory",
     kind: ForgeErrorKind | "stale",
   ): void;
 }

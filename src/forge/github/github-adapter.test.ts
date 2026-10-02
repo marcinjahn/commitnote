@@ -309,6 +309,92 @@ describe("GitHubAdapter", () => {
     });
   });
 
+  describe("replaceHistory", () => {
+    async function seedTwoCommits(mock: MockGitHubRepo) {
+      const first = await seedConfig(mock);
+      const head = await commitFiles(mock.git, {
+        parent: first,
+        files: { "note.md": "kept" },
+        message: "save",
+        branch: MAIN_BRANCH,
+      });
+      return head;
+    }
+
+    it("points main at a parentless commit with the head's tree", async () => {
+      const mock = useMock();
+      const head = await seedTwoCommits(mock);
+      const { adapter, reports } = makeAdapter();
+
+      const result = await adapter.replaceHistory!({
+        head,
+        message: "replace",
+      });
+
+      const newHead = mock.git.getRef(MAIN_BRANCH)!;
+      expect(result).toEqual({ kind: "ok", head: newHead });
+      const commit = mock.git.getCommit(newHead)!;
+      expect(commit.parent).toBeNull();
+      expect(commit.message).toBe("replace");
+      expect(commit.tree).toBe(mock.git.getCommit(head)!.tree);
+      expect(reports.map((report) => report.operation)).toEqual([
+        "createCommit",
+        "updateRef",
+      ]);
+    });
+
+    it("returns stale and leaves main alone when main moved on", async () => {
+      const mock = useMock();
+      const head = await seedTwoCommits(mock);
+      const moved = await commitFiles(mock.git, {
+        parent: head,
+        files: { "other.md": "other" },
+        message: "advance",
+        branch: MAIN_BRANCH,
+      });
+
+      const result = await makeAdapter().adapter.replaceHistory!({
+        head,
+        message: "replace",
+      });
+
+      expect(result).toEqual({ kind: "stale" });
+      expect(mock.git.getRef(MAIN_BRANCH)).toBe(moved);
+    });
+
+    it("reports a forced ref update whose response was lost but which applied", async () => {
+      const mock = useMock();
+      const head = await seedTwoCommits(mock);
+      mock.dropNextResponse({
+        method: "PATCH",
+        pathPattern: /\/git\/refs\/heads\/main$/,
+      });
+
+      const result = await makeAdapter().adapter.replaceHistory!({
+        head,
+        message: "replace",
+      });
+
+      const newHead = mock.git.getRef(MAIN_BRANCH)!;
+      expect(result).toEqual({ kind: "ok", head: newHead });
+      expect(mock.git.getCommit(newHead)!.parent).toBeNull();
+    });
+
+    it("marks a rejected ref update as leaving main unchanged", async () => {
+      const mock = useMock();
+      const head = await seedTwoCommits(mock);
+      mock.failNext(
+        { method: "PATCH", pathPattern: /\/git\/refs\/heads\/main$/ },
+        { status: 403 },
+      );
+
+      await expect(
+        makeAdapter().adapter.replaceHistory!({ head, message: "replace" }),
+      ).rejects.toMatchObject({ kind: "Forbidden", mainUnchanged: true });
+      expect(mock.git.getRef(MAIN_BRANCH)).toBe(head);
+    });
+  });
+
   it("maps a 403 with retry-after to RateLimited with that many ms", async () => {
     const mock = useMock();
     await seedConfig(mock);

@@ -28,13 +28,11 @@
   import type { Keyring } from "./crypto/keyring";
   import {
     createPassphraseChange,
+    type HistoryOutcome,
     type LandedCheck,
     type PassphraseChange,
   } from "./rekey/change-passphrase";
-  import {
-    PASSPHRASE_CHANGED_MESSAGE,
-    PASSPHRASE_CHANGED_MISMATCH_MESSAGE,
-  } from "./ui/passphrase/passphrase-messages";
+  import { describePassphraseChanged } from "./ui/passphrase/passphrase-messages";
   import KeyChangedScreen from "./ui/session/KeyChangedScreen.svelte";
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
@@ -208,6 +206,7 @@
   async function handlePassphraseChanged(
     keyring: Keyring,
     check: LandedCheck,
+    history: HistoryOutcome,
   ): Promise<void> {
     if (phase.kind !== "app") return;
     const { engine, session, adapter, rememberMe } = phase;
@@ -216,9 +215,7 @@
       { ...session, keyring },
       adapter,
       rememberMe,
-      check === "mismatch"
-        ? PASSPHRASE_CHANGED_MISMATCH_MESSAGE
-        : PASSPHRASE_CHANGED_MESSAGE,
+      describePassphraseChanged(check, history),
     );
   }
 
@@ -368,8 +365,8 @@
     forgeName={phase.forgeName}
     passphraseChange={phase.passphraseChange}
     initialMessage={phase.initialMessage}
-    onPassphraseChanged={(keyring, check) =>
-      void handlePassphraseChanged(keyring, check)}
+    onPassphraseChanged={(keyring, check, history) =>
+      void handlePassphraseChanged(keyring, check, history)}
     onLogOut={logOut}
   />
   <LogoutDialog

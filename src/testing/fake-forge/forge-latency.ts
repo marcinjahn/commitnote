@@ -34,6 +34,7 @@ export function withLatency(
   adapter: ForgeAdapter,
   latency: ForgeLatency,
 ): ForgeAdapter {
+  const replaceHistory = adapter.replaceHistory?.bind(adapter);
   return {
     limits: adapter.limits,
     commitCost: (...args) => adapter.commitCost(...args),
@@ -47,5 +48,11 @@ export function withLatency(
       delayed(latency.readBlobMs, () => adapter.readBlob(...args)),
     commit: (...args) =>
       delayed(latency.commitMs, () => adapter.commit(...args)),
+    ...(replaceHistory === undefined
+      ? {}
+      : {
+          replaceHistory: (...args) =>
+            delayed(latency.commitMs, () => replaceHistory(...args)),
+        }),
   };
 }

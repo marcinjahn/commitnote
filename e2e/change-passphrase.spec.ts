@@ -99,6 +99,42 @@ test("changes the passphrase in one commit; afterwards only the new one logs in"
   await expect(page.getByRole("treeitem", { name: "Welcome" })).toBeVisible();
 });
 
+test("deletes the old history when asked, leaving one commit", async ({
+  page,
+}) => {
+  await openChangeDialog(page);
+  const dialog = changeDialog(page);
+  const removeHistory = dialog.getByRole("checkbox", {
+    name: "Also delete the old history",
+  });
+  await expect(removeHistory).not.toBeChecked();
+  await expect(removeHistory).toHaveAccessibleDescription(
+    /replaces the whole history with the one commit of re-encrypted notes/,
+  );
+  await removeHistory.check();
+
+  await fillPassphrases(page, OLD_PASSPHRASE, NEW_PASSPHRASE);
+  const review = page.getByRole("dialog", {
+    name: "Ready to change passphrase",
+  });
+  await expect(
+    review.getByText(/history is replaced with just that commit/),
+  ).toBeVisible({ timeout: 15_000 });
+  await review.getByRole("button", { name: "Change passphrase" }).click();
+  await expect(
+    page.getByText("Passphrase changed and the old history deleted."),
+  ).toBeVisible({ timeout: 15_000 });
+  await expectTree(page);
+
+  const after = await commitMessages(page);
+  expect(after).toHaveLength(1);
+  expect(after[0].split("\n")[0]).toBe("commitnote: change passphrase");
+  await page.getByRole("treeitem", { name: "Welcome" }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Note editor" }),
+  ).toContainText("Welcome");
+});
+
 test("a wrong current passphrase changes nothing", async ({ page }) => {
   const before = await commitMessages(page);
   await openChangeDialog(page);

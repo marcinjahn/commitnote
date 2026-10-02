@@ -30,6 +30,7 @@
   import type { ImportOutcome } from "../import/import-outcome";
   import type { Keyring } from "../../crypto/keyring";
   import type {
+    HistoryOutcome,
     LandedCheck,
     PassphraseChange,
   } from "../../rekey/change-passphrase";
@@ -68,7 +69,11 @@
     forgeName: string;
     passphraseChange: PassphraseChange;
     initialMessage?: string | null;
-    onPassphraseChanged: (keyring: Keyring, check: LandedCheck) => void;
+    onPassphraseChanged: (
+      keyring: Keyring,
+      check: LandedCheck,
+      history: HistoryOutcome,
+    ) => void;
     onLogOut: () => void;
   }
 
