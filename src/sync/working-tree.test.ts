@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ChangeSet, NotePath } from "../changes/change";
+import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { parseOrderIndex, type OrderIndex } from "../order/order-index";
 import type { TrashEntry } from "../trash/trash-index";
 import type { FolderNode, NoteNode, NoteTree, TreeNode } from "../tree/note-tree";
@@ -736,6 +736,56 @@ describe("appendChange", () => {
     expect(result[0]).toEqual(changes[0]);
     expect(result).toHaveLength(2);
   });
+
+  it("replaces an earlier pending position of the same item", () => {
+    const changes: ChangeSet = [
+      {
+        kind: "set-order",
+        parent: [],
+        positions: [
+          { name: "Welcome", key: "1" },
+          { name: "Docs", key: "2" },
+        ],
+      },
+      { kind: "update-note", path: ["Welcome"], content: "edited" },
+      { kind: "set-order", parent: ["Docs"], positions: [{ name: "Guide", key: "1" }] },
+    ];
+    const result = appendChange(changes, {
+      kind: "set-order",
+      parent: [],
+      positions: [{ name: "Welcome", key: "3" }],
+    });
+    expect(result).toEqual([
+      { kind: "set-order", parent: [], positions: [{ name: "Docs", key: "2" }] },
+      changes[1],
+      changes[2],
+      { kind: "set-order", parent: [], positions: [{ name: "Welcome", key: "3" }] },
+    ]);
+  });
+
+  it("removes an earlier pending set-order once all its positions are replaced", () => {
+    const result = appendChange(
+      [{ kind: "set-order", parent: [], positions: [{ name: "Welcome", key: "1" }] }],
+      { kind: "set-order", parent: [], positions: [{ name: "Welcome", key: "2" }] },
+    );
+    expect(result).toEqual([
+      { kind: "set-order", parent: [], positions: [{ name: "Welcome", key: "2" }] },
+    ]);
+  });
+
+  it("keeps an earlier position when a structural change lies in between", () => {
+    const changes: ChangeSet = [
+      { kind: "set-order", parent: [], positions: [{ name: "Welcome", key: "1" }] },
+      { kind: "rename-note", from: ["Welcome"], to: ["Hello"] },
+      { kind: "create-note", path: ["Welcome"], content: "" },
+    ];
+    const next: Change = {
+      kind: "set-order",
+      parent: [],
+      positions: [{ name: "Welcome", key: "2" }],
+    };
+    expect(appendChange(changes, next)).toEqual([...changes, next]);
+  });
 });
 
 describe("localContentAt", () => {
@@ -1139,6 +1189,46 @@ describe("rebaseChanges", () => {
       [],
       [{ kind: "purge-trash", entryIds: [DOCS_ID] }],
       SYNCED_TRASH,
+    );
+    expect(result).toEqual({ changes: [], dropped: [] });
+  });
+});
+
+describe("rebaseChanges set-order", () => {
+  it("keeps only the positions of items that still exist, without reporting the rest", () => {
+    const result = rebaseChanges(
+      SAMPLE_TREE,
+      [{ kind: "delete-note", path: ["Welcome"] }],
+      [
+        {
+          kind: "set-order",
+          parent: [],
+          positions: [
+            { name: "Welcome", key: "1" },
+            { name: "Docs", key: "2" },
+          ],
+        },
+      ],
+    );
+    expect(result).toEqual({
+      changes: [
+        { kind: "set-order", parent: [], positions: [{ name: "Docs", key: "2" }] },
+      ],
+      dropped: [],
+    });
+  });
+
+  it("drops positions in a folder that no longer exists, without reporting them", () => {
+    const result = rebaseChanges(
+      SAMPLE_TREE,
+      [{ kind: "rename-folder", from: ["Docs"], to: ["Manuals"] }],
+      [
+        {
+          kind: "set-order",
+          parent: ["Docs"],
+          positions: [{ name: "Guide", key: "1" }],
+        },
+      ],
     );
     expect(result).toEqual({ changes: [], dropped: [] });
   });

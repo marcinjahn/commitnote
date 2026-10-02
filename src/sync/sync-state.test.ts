@@ -95,6 +95,15 @@ describe("computeSyncStates entry paths", () => {
       },
       expectedPath: pathOf("parent", "restored"),
     },
+    {
+      description: "set-order marks the folder whose children it positions",
+      change: {
+        kind: "set-order",
+        parent: pathOf("folder"),
+        positions: [{ name: "a.md", key: "V" }],
+      },
+      expectedPath: pathOf("folder"),
+    },
   ];
 
   it.each(cases)("$description", ({ change, expectedPath }) => {
@@ -110,6 +119,41 @@ describe("computeSyncStates entry paths", () => {
       reason: "pending",
     });
     expect(states.unsavedCount).toBe(1);
+  });
+});
+
+describe("computeSyncStates order", () => {
+  const position = (parent: NotePath): Change => ({
+    kind: "set-order",
+    parent,
+    positions: [{ name: "a.md", key: "V" }],
+  });
+
+  it("counts a new position in a folder with nothing else unsaved", () => {
+    const states = computeSyncStates({
+      pending: [position(pathOf("f")), position(pathOf("g"))],
+      inFlight: [],
+      failed: false,
+      conflicts: [],
+    });
+
+    expect(states.unsavedCount).toBe(2);
+  });
+
+  it("doesn't count the position of a new or moved item on top of the item itself", () => {
+    const states = computeSyncStates({
+      pending: [
+        { kind: "create-note", path: pathOf("f", "a.md"), content: "" },
+        position(pathOf("f")),
+        { kind: "rename-note", from: pathOf("b.md"), to: pathOf("g", "b.md") },
+        position(pathOf("g")),
+      ],
+      inFlight: [],
+      failed: false,
+      conflicts: [],
+    });
+
+    expect(states.unsavedCount).toBe(2);
   });
 });
 

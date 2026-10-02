@@ -5,21 +5,14 @@ import {
 } from "../../changes/encode-change-set";
 import { argon2idDirect } from "../../crypto/argon2";
 import { createRepoConfig } from "../../crypto/keyring";
-import { encryptPath } from "../../crypto/name-cipher";
 import type { RandomSource } from "../../crypto/random";
 import { InMemoryGitRepo } from "../../forge/fake/in-memory-git-repo";
-import {
-  FORMAT_VERSION,
-  ORDER_PATH,
-  REPO_CONFIG_PATH,
-  SAVE_SUBJECT,
-  TRAILER,
-} from "../../format/v1";
+import { REPO_CONFIG_PATH } from "../../format/v1";
 import { keysBetween } from "../../order/fractional-key";
 import {
+  applyChangeToOrder,
   EMPTY_ORDER,
-  encryptOrderIndex,
-  withKeys,
+  type OrderIndex,
 } from "../../order/order-index";
 import { createTrashEntryId } from "../../trash/trash-entry-id";
 import {
@@ -157,6 +150,7 @@ async function generateRepo(
   const encoded = await encodeChangeSet({
     listing: commit1Entries,
     changeSet,
+    order: EMPTY_ORDER,
     keyring,
     random,
   });
@@ -174,36 +168,36 @@ async function generateRepo(
   let parentSha = commit2Sha;
   let parentTree = commit2Tree;
 
-  if (order.length > 0) {
-    let index = EMPTY_ORDER;
-    const trailers = [`${TRAILER.format}: ${FORMAT_VERSION}`];
-    for (const { parent, names } of order) {
-      const keys = keysBetween(null, null, names.length);
-      index = withKeys(
-        index,
-        parent,
-        names.map((name, i) => ({ name, key: keys[i] })),
-      );
-      for (const name of names) {
-        trailers.push(
-          `${TRAILER.order}: ${await encryptPath(keyring, [...parent, name])}`,
-        );
-      }
-    }
-    const orderMessage = `${SAVE_SUBJECT}\n\n${trailers.join("\n")}`;
-    parentTree = await repo.applyChanges(parentTree, [
-      {
-        kind: "upsert-text",
-        path: ORDER_PATH,
-        text: await encryptOrderIndex(keyring, index, random),
-      },
-    ]);
+  let orderIndex: OrderIndex = EMPTY_ORDER;
+  async function commitChanges(changeSet: ChangeSet): Promise<void> {
+    const encoded = await encodeChangeSet({
+      listing: await repo.listTreeEntries(parentTree),
+      changeSet,
+      order: orderIndex,
+      keyring,
+      random,
+    });
+    orderIndex = changeSet.reduce(applyChangeToOrder, orderIndex);
+    parentTree = await repo.applyChanges(parentTree, encoded.changes);
     parentSha = await repo.putCommit({
       tree: parentTree,
       parent: parentSha,
-      message: orderMessage,
+      message: encoded.message,
     });
-    commits.push({ message: orderMessage, tree: parentTree });
+    commits.push({ message: encoded.message, tree: parentTree });
+  }
+
+  if (order.length > 0) {
+    await commitChanges(
+      order.map(({ parent, names }) => {
+        const keys = keysBetween(null, null, names.length);
+        return {
+          kind: "set-order",
+          parent,
+          positions: names.map((name, i) => ({ name, key: keys[i] })),
+        };
+      }),
+    );
   }
 
   for (const entry of trashed) {
@@ -212,26 +206,13 @@ async function generateRepo(
       entry.path.length,
       random,
     );
-    const listing = await repo.listTreeEntries(parentTree);
-    const trashEncoded = await encodeChangeSet({
-      listing,
-      changeSet: [
-        {
-          kind: entry.kind === "note" ? "trash-note" : "trash-folder",
-          path: entry.path,
-          entryId,
-        },
-      ],
-      keyring,
-      random,
-    });
-    parentTree = await repo.applyChanges(parentTree, trashEncoded.changes);
-    parentSha = await repo.putCommit({
-      tree: parentTree,
-      parent: parentSha,
-      message: trashEncoded.message,
-    });
-    commits.push({ message: trashEncoded.message, tree: parentTree });
+    await commitChanges([
+      {
+        kind: entry.kind === "note" ? "trash-note" : "trash-folder",
+        path: entry.path,
+        entryId,
+      },
+    ]);
   }
 
   const readmeMessage = "Add README";

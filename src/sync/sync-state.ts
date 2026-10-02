@@ -60,6 +60,8 @@ function entryPathOf(change: Change): NotePath | null {
       return parentPath(change.path);
     case "restore-trash":
       return change.to;
+    case "set-order":
+      return change.parent;
     case "purge-trash":
       return null;
   }
@@ -79,6 +81,8 @@ export function computeSyncStates(input: {
 
   const levelByKey = new Map<string, number>();
   const entryKeys = new Set<string>();
+  const entryParentKeys = new Set<string>();
+  const orderKeys = new Set<string>();
 
   function raise(path: NotePath, level: number): void {
     for (let depth = path.length; depth >= 0; depth--) {
@@ -92,7 +96,12 @@ export function computeSyncStates(input: {
     for (const change of changes) {
       const path = entryPathOf(change);
       if (path === null) continue;
-      entryKeys.add(keyOf(path));
+      if (change.kind === "set-order") {
+        orderKeys.add(keyOf(path));
+      } else {
+        entryKeys.add(keyOf(path));
+        if (path.length > 0) entryParentKeys.add(keyOf(parentPath(path)));
+      }
       raise(path, level);
     }
   }
@@ -102,7 +111,17 @@ export function computeSyncStates(input: {
 
   for (const conflictPath of conflicts) {
     entryKeys.add(keyOf(conflictPath));
+    if (conflictPath.length > 0) {
+      entryParentKeys.add(keyOf(parentPath(conflictPath)));
+    }
     raise(conflictPath, LEVEL_CONFLICT);
+  }
+
+  // A new position counts on its own only when nothing else in its folder
+  // is unsaved, so placing a new or moved item adds nothing to the count.
+  let unsavedCount = entryKeys.size;
+  for (const key of orderKeys) {
+    if (!entryKeys.has(key) && !entryParentKeys.has(key)) unsavedCount++;
   }
 
   function stateOf(path: NotePath): SyncState {
@@ -112,8 +131,8 @@ export function computeSyncStates(input: {
 
   return {
     stateOf,
-    unsavedCount: entryKeys.size,
-    hasUnsaved: entryKeys.size > 0,
+    unsavedCount,
+    hasUnsaved: unsavedCount > 0,
   };
 }
 

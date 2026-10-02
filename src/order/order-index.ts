@@ -1,4 +1,4 @@
-import type { Change, NotePath } from "../changes/change";
+import type { Change, NotePath, OrderPosition } from "../changes/change";
 import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
 import type { Keyring } from "../crypto/keyring";
 import { decryptNote, encryptNote } from "../crypto/note-cipher";
@@ -125,6 +125,16 @@ export function findOrderEntry(
   );
 }
 
+export async function readOrderIndex(
+  listing: readonly TreeEntry[],
+  keyring: Keyring,
+  readBlob: (sha: string) => Promise<string>,
+): Promise<OrderIndex> {
+  const entry = findOrderEntry(listing);
+  if (entry === undefined) return EMPTY_ORDER;
+  return decryptOrderIndex(keyring, await readBlob(entry.sha));
+}
+
 export function orderKeyOf(
   index: OrderIndex,
   path: NotePath,
@@ -165,7 +175,7 @@ export function siblingComparator(
 export function withKeys(
   index: OrderIndex,
   parent: NotePath,
-  positions: readonly { readonly name: string; readonly key: string }[],
+  positions: readonly OrderPosition[],
 ): OrderIndex {
   if (!index.writable || positions.length === 0) return index;
   const folders = new Map(index.folders);
@@ -278,6 +288,8 @@ export function applyChangeToOrder(
       editor.take(change.to);
       editor.dropFolder(change.to);
       break;
+    case "set-order":
+      return withKeys(index, change.parent, change.positions);
     case "update-note":
     case "purge-trash":
       return index;

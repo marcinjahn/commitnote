@@ -8,10 +8,17 @@ import {
   FOLDER_MARKER,
   FORMAT_VERSION,
   INITIALIZE_SUBJECT,
+  ORDER_PATH,
   SAVE_SUBJECT,
   TRASH_DIR,
   TRAILER,
 } from "../format/v1";
+import { isValidKey } from "../order/fractional-key";
+import {
+  applyChangeToOrder,
+  serializeOrderIndex,
+  type OrderIndex,
+} from "../order/order-index";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
 import type { Change, ChangeSet, NotePath } from "./change";
 
@@ -20,6 +27,8 @@ export class InvalidChangeSetError extends Error {}
 export interface EncodeChangeSetInput {
   readonly listing: readonly TreeEntry[];
   readonly changeSet: ChangeSet;
+  /** The order index stored in `listing`. */
+  readonly order: OrderIndex;
   readonly keyring: Keyring;
   readonly random?: RandomSource;
 }
@@ -132,6 +141,7 @@ async function applyChange(
   change: Change,
   index: number,
   trailers: string[],
+  orderWritable: boolean,
 ): Promise<void> {
   function fail(): never {
     throw new InvalidChangeSetError(
@@ -299,6 +309,21 @@ async function applyChange(
       }
       break;
     }
+    case "set-order": {
+      const parentStored = await storedPathOf(change.parent);
+      if (!folderExists(working, parentStored)) fail();
+      for (const { name, key } of change.positions) {
+        const stored = await storedPathOf([...change.parent, name]);
+        if (
+          !isValidKey(key) ||
+          (!working.has(stored) && !folderExists(working, stored))
+        ) {
+          fail();
+        }
+        if (orderWritable) trailers.push(`${TRAILER.order}: ${stored}`);
+      }
+      break;
+    }
   }
 }
 
@@ -319,6 +344,7 @@ export async function encodeChangeSet(
   input: EncodeChangeSetInput,
 ): Promise<EncodedChangeSet> {
   const { listing, changeSet, keyring, random } = input;
+  let order = input.order;
 
   if (changeSet.length === 0) {
     throw new InvalidChangeSetError("Change set must not be empty");
@@ -336,7 +362,27 @@ export async function encodeChangeSet(
   const trailers: string[] = [];
 
   for (let index = 0; index < changeSet.length; index++) {
-    await applyChange(working, storedPathOf, changeSet[index], index, trailers);
+    const change = changeSet[index];
+    await applyChange(
+      working,
+      storedPathOf,
+      change,
+      index,
+      trailers,
+      order.writable,
+    );
+    order = applyChangeToOrder(order, change);
+  }
+
+  if (
+    order.writable &&
+    serializeOrderIndex(order) !== serializeOrderIndex(input.order)
+  ) {
+    working.set(ORDER_PATH, {
+      kind: "text",
+      text: serializeOrderIndex(order),
+      encrypt: true,
+    });
   }
 
   const commitChanges: CommitFileChange[] = [];

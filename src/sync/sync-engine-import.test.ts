@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { ChangeSet, NotePath } from "../changes/change";
+import { readOrderIndex } from "../order/order-index";
 import { encodeChangeSet } from "../changes/encode-change-set";
 import { argon2idDirect } from "../crypto/argon2";
 import {
@@ -164,7 +165,10 @@ async function pushRemote(
   changeSet: ChangeSet,
 ): Promise<string> {
   const listing = await fake.listTree(await fake.getHead());
-  const encoded = await encodeChangeSet({ listing, changeSet, keyring });
+  const order = await readOrderIndex(listing, keyring, (sha) =>
+    fake.readBlob(sha),
+  );
+  const encoded = await encodeChangeSet({ listing, changeSet, order, keyring });
   return fake.pushFromAnotherDevice(encoded.changes, encoded.message);
 }
 

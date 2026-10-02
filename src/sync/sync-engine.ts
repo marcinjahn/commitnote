@@ -22,8 +22,10 @@ import {
   decryptOrderIndex,
   EMPTY_ORDER,
   findOrderEntry,
+  folderKey,
   type OrderIndex,
 } from "../order/order-index";
+import { placementPositions } from "../order/placement";
 import { isExpired, selectExpired, type PurgeCaps } from "../trash/expiry";
 import { createTrashEntryId } from "../trash/trash-entry-id";
 import { buildTrashIndex, type TrashEntry } from "../trash/trash-index";
@@ -67,6 +69,7 @@ import {
   localContentAt,
   rebaseChanges,
   type WorkingFolder,
+  type WorkingNode,
   type WorkingTree,
 } from "./working-tree";
 
@@ -187,7 +190,9 @@ export type StructureError =
   | { readonly kind: "invalidName"; readonly error: NameError }
   | { readonly kind: "notFound" }
   | { readonly kind: "conflicted" }
-  | { readonly kind: "invalidTarget" };
+  | { readonly kind: "invalidTarget" }
+  /** The stored order couldn't be read, so positions can't be changed. */
+  | { readonly kind: "orderUnavailable" };
 
 export type StructureResult =
   | {
@@ -230,6 +235,14 @@ export interface SyncEngine {
   createFolder(parent: NotePath, name: string): StructureResult;
   rename(path: NotePath, newName: string): StructureResult;
   move(path: NotePath, newParent: NotePath): StructureResult;
+  /**
+   * Puts the item into `parent` right before its child `before`, or last
+   * when `before` is null, moving it there first if it is elsewhere.
+   */
+  place(
+    path: NotePath,
+    target: { readonly parent: NotePath; readonly before: string | null },
+  ): StructureResult;
   delete(path: NotePath): StructureResult;
   moveFromTrash(
     entryId: string,
@@ -1073,6 +1086,7 @@ export function createSyncEngine(options: {
         const encoded = await encodeChangeSet({
           listing: attemptSynced.listing,
           changeSet: state.inFlight,
+          order: attemptSynced.order,
           keyring,
         });
         atomicAttempt = importInFlight && !importNonAtomic;
@@ -1246,6 +1260,7 @@ export function createSyncEngine(options: {
       case "restore-trash":
         return isAtOrWithin(path, change.to);
       case "purge-trash":
+      case "set-order":
         return false;
     }
   }
@@ -1543,28 +1558,31 @@ export function createSyncEngine(options: {
     autosave.noteEdited();
   }
 
-  function applyStructureChange(change: Change): void {
+  function applyStructureChange(...changes: Change[]): void {
     update((current) => ({
       ...current,
-      pending: appendChange(current.pending, change),
+      pending: appendAll(current.pending, changes),
     }));
-    switch (change.kind) {
-      case "rename-note":
-      case "rename-folder":
-        followRelocation(change.from, change.to);
-        break;
-      case "delete-note":
-      case "delete-folder":
-      case "trash-note":
-      case "trash-folder":
-        followDelete(change.path);
-        break;
-      case "create-note":
-      case "update-note":
-      case "create-folder":
-      case "restore-trash":
-      case "purge-trash":
-        break;
+    for (const change of changes) {
+      switch (change.kind) {
+        case "rename-note":
+        case "rename-folder":
+          followRelocation(change.from, change.to);
+          break;
+        case "delete-note":
+        case "delete-folder":
+        case "trash-note":
+        case "trash-folder":
+          followDelete(change.path);
+          break;
+        case "create-note":
+        case "update-note":
+        case "create-folder":
+        case "restore-trash":
+        case "purge-trash":
+        case "set-order":
+          break;
+      }
     }
     autosave.saveNow();
   }
@@ -1594,12 +1612,43 @@ export function createSyncEngine(options: {
       return failure({ kind: "invalidName", error: validation.error });
     }
     const path = [...parent, validation.name];
-    applyStructureChange(
+    const change: Change =
       kind === "create-note"
         ? { kind, path, content: "" }
-        : { kind: "create-folder", path },
+        : { kind: "create-folder", path };
+    const siblings = childNames(folder);
+    const positioned = positionChange(parent, siblings, validation.name, siblings.length);
+    applyStructureChange(
+      ...(positioned === null ? [change] : [change, positioned]),
     );
     return { ok: true, path };
+  }
+
+  // Null when the stored order can't be read, so positions can't be kept.
+  function positionChange(
+    parent: NotePath,
+    siblings: readonly string[],
+    name: string,
+    index: number,
+  ): Change | null {
+    const synced = state.synced;
+    if (synced === null || !synced.order.writable) return null;
+    const order = buildWorkingState(
+      synced.tree,
+      [...state.inFlight, ...state.pending],
+      synced.trash,
+      synced.order,
+    ).order;
+    return {
+      kind: "set-order",
+      parent,
+      positions: placementPositions(
+        order.folders.get(folderKey(parent)),
+        siblings,
+        name,
+        index,
+      ),
+    };
   }
 
   function rename(path: NotePath, newName: string): StructureResult {
@@ -1643,27 +1692,98 @@ export function createSyncEngine(options: {
     }
     const node = findWorkingNode(state.workingTree, path);
     if (node === undefined) return failure({ kind: "notFound" });
-    if (isConflictedWithin(path)) return failure({ kind: "conflicted" });
+    const planned = planMove(path, node, newParent);
+    if (!planned.ok) return planned;
+    applyStructureChange(planned.change);
+    return { ok: true, path: planned.change.to };
+  }
+
+  function planMove(
+    path: NotePath,
+    node: WorkingNode,
+    newParent: NotePath,
+  ):
+    | {
+        readonly ok: true;
+        readonly change: Extract<
+          Change,
+          { kind: "rename-note" | "rename-folder" }
+        >;
+      }
+    | { readonly ok: false; readonly error: StructureError } {
+    if (isConflictedWithin(path)) return { ok: false, error: { kind: "conflicted" } };
     if (
       notePathEquals(newParent, parentPath(path)) ||
       (node.kind === "folder" && isAtOrWithin(newParent, path))
     ) {
-      return failure({ kind: "invalidTarget" });
+      return { ok: false, error: { kind: "invalidTarget" } };
     }
-
     const target = workingFolderAt(newParent);
-    if (target === undefined) return failure({ kind: "notFound" });
+    if (target === undefined) {
+      return { ok: false, error: { kind: "notFound" } };
+    }
     const validation = validateName(node.name, childNames(target));
     if (!validation.ok) {
-      return failure({ kind: "invalidName", error: validation.error });
+      return {
+        ok: false,
+        error: { kind: "invalidName", error: validation.error },
+      };
     }
-    const to = [...newParent, node.name];
-    applyStructureChange({
-      kind: node.kind === "note" ? "rename-note" : "rename-folder",
-      from: path,
-      to,
-    });
-    return { ok: true, path: to };
+    return {
+      ok: true,
+      change: {
+        kind: node.kind === "note" ? "rename-note" : "rename-folder",
+        from: path,
+        to: [...newParent, node.name],
+      },
+    };
+  }
+
+  function place(
+    path: NotePath,
+    target: { readonly parent: NotePath; readonly before: string | null },
+  ): StructureResult {
+    const { synced, workingTree } = state;
+    if (
+      disposed ||
+      suspended ||
+      synced === null ||
+      workingTree === null ||
+      path.length === 0
+    ) {
+      return failure({ kind: "notFound" });
+    }
+    const node = findWorkingNode(workingTree, path);
+    if (node === undefined) return failure({ kind: "notFound" });
+    if (!synced.order.writable) return failure({ kind: "orderUnavailable" });
+    const folder = workingFolderAt(target.parent);
+    if (folder === undefined) return failure({ kind: "notFound" });
+
+    const sameParent = notePathEquals(target.parent, parentPath(path));
+    const changes: Change[] = [];
+    if (!sameParent) {
+      const planned = planMove(path, node, target.parent);
+      if (!planned.ok) return planned;
+      changes.push(planned.change);
+    }
+    const placed = [...target.parent, node.name];
+
+    const currentIndex = sameParent
+      ? folder.children.findIndex((child) => child.name === node.name)
+      : -1;
+    const siblings = childNames(folder, sameParent ? node.name : undefined);
+    const index =
+      target.before === null
+        ? siblings.length
+        : sameParent && target.before === node.name
+          ? currentIndex
+          : siblings.indexOf(target.before);
+    if (index === -1) return failure({ kind: "notFound" });
+    if (sameParent && index === currentIndex) return { ok: true, path: placed };
+
+    changes.push(positionChange(target.parent, siblings, node.name, index)!);
+    applyStructureChange(...changes);
+    return { ok: true, path: placed };
   }
 
   function deleteItem(path: NotePath): StructureResult {
@@ -2008,6 +2128,7 @@ export function createSyncEngine(options: {
     createFolder: (parent, name) => create("create-folder", parent, name),
     rename,
     move,
+    place,
     delete: deleteItem,
     moveFromTrash,
     undoTrash,

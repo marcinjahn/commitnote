@@ -5,7 +5,15 @@ import { decryptNote } from "../crypto/note-cipher";
 import { encryptPath } from "../crypto/name-cipher";
 import type { KdfParams } from "../crypto/repo-config";
 import type { TreeEntry } from "../forge/forge-adapter";
-import { FOLDER_MARKER } from "../format/v1";
+import { FOLDER_MARKER, ORDER_PATH } from "../format/v1";
+import {
+  decryptOrderIndex,
+  EMPTY_ORDER,
+  parseOrderIndex,
+  serializeOrderIndex,
+  type OrderIndex,
+} from "../order/order-index";
+import type { EncodedChangeSet } from "./encode-change-set";
 import type { ChangeSet } from "./change";
 import {
   encodeChangeSet,
@@ -53,7 +61,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       { kind: "create-note", path: ["Note"], content: "hello world" },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, keyring });
+    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, keyring });
 
     expect(result.changes).toHaveLength(1);
     expect(result.changes[0].kind).toBe("upsert-text");
@@ -71,7 +79,7 @@ describe("encodeChangeSet: one test per operation type", () => {
     const storedFolder = await encryptPath(keyring, ["Folder"]);
     const changeSet: ChangeSet = [{ kind: "create-folder", path: ["Folder"] }];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, keyring });
+    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, keyring });
 
     expect(result.changes).toEqual([
       {
@@ -93,7 +101,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       { kind: "update-note", path: ["Note"], content: "updated body" },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, keyring });
 
     expect(result.changes).toHaveLength(1);
     expect(result.changes[0]).toMatchObject({
@@ -114,7 +122,7 @@ describe("encodeChangeSet: one test per operation type", () => {
     const listing = [blob(storedNote, "some-sha")];
     const changeSet: ChangeSet = [{ kind: "delete-note", path: ["Note"] }];
 
-    const result = await encodeChangeSet({ listing, changeSet, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, keyring });
 
     expect(result.changes).toEqual([{ kind: "delete", path: storedNote }]);
     expect(result.message).toBe(
@@ -134,7 +142,7 @@ describe("encodeChangeSet: one test per operation type", () => {
     ];
     const changeSet: ChangeSet = [{ kind: "delete-folder", path: ["Folder"] }];
 
-    const result = await encodeChangeSet({ listing, changeSet, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, keyring });
 
     expect(result.changes).toHaveLength(3);
     expect(result.changes).toContainEqual({
@@ -168,7 +176,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, keyring });
 
     expect(result.changes).toHaveLength(2);
     expect(result.changes).toContainEqual({ kind: "delete", path: storedNote });
@@ -202,7 +210,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       { kind: "rename-folder", from: ["From"], to: ["To"] },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, keyring });
 
     const renamed = (originalPath: string): string =>
       `${storedTo}${originalPath.slice(storedFrom.length)}`;
@@ -241,7 +249,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       { kind: "create-note", path: ["Folder", "Note"], content: "nested body" },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, keyring });
+    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, keyring });
 
     expect(result.changes).toHaveLength(2);
     expect(result.changes).toContainEqual({
@@ -271,7 +279,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       { kind: "rename-note", from: ["Note"], to: ["Renamed"] },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, keyring });
+    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, keyring });
 
     expect(result.changes).toHaveLength(1);
     expect(result.changes[0].kind).toBe("upsert-text");
@@ -314,7 +322,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, keyring });
 
     expect(result.message).toBe(
       `commitnote: save\n\n` +
@@ -343,7 +351,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, keyring });
+    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, keyring });
 
     expect(result.message).not.toContain("PlaintextFolderName");
     expect(result.message).not.toContain("PlaintextNoteName");
@@ -360,7 +368,12 @@ describe("encodeChangeSet: invalid change sets", () => {
   it("rejects an empty change set", async () => {
     const keyring = await testKeyring();
     await expect(
-      encodeChangeSet({ listing: [], changeSet: [], keyring }),
+      encodeChangeSet({
+        listing: [],
+        changeSet: [],
+        order: EMPTY_ORDER,
+        keyring,
+      }),
     ).rejects.toThrow(InvalidChangeSetError);
   });
 
@@ -488,7 +501,7 @@ describe("encodeChangeSet: invalid change sets", () => {
       const keyring = await testKeyring();
       const { listing, changeSet } = await build(keyring);
       await expect(
-        encodeChangeSet({ listing, changeSet, keyring }),
+        encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, keyring }),
       ).rejects.toThrow(InvalidChangeSetError);
     },
   );
@@ -524,6 +537,7 @@ describe("encodeChangeSet: trash", () => {
     const result = await encodeChangeSet({
       listing: [blob(note, "sha-n")],
       changeSet: [{ kind: "trash-note", path: ["Secret folder", "Secret note"], entryId: ID2 }],
+      order: EMPTY_ORDER,
       keyring,
     });
 
@@ -554,6 +568,7 @@ describe("encodeChangeSet: trash", () => {
     const result = await encodeChangeSet({
       listing,
       changeSet: [{ kind: "trash-folder", path: ["F"], entryId: ID1 }],
+      order: EMPTY_ORDER,
       keyring,
     });
 
@@ -584,6 +599,7 @@ describe("encodeChangeSet: trash", () => {
       changeSet: [
         { kind: "restore-trash", entryId: ID1, subPath: [], target: "note", to: ["Target", "Renamed"] },
       ],
+      order: EMPTY_ORDER,
       keyring,
     });
 
@@ -602,6 +618,7 @@ describe("encodeChangeSet: trash", () => {
         changeSet: [
           { kind: "restore-trash", entryId: ID1, subPath: [], target: "note", to: ["Nope", "X"] },
         ],
+        order: EMPTY_ORDER,
         keyring,
       }),
     ).rejects.toThrow(InvalidChangeSetError);
@@ -622,6 +639,7 @@ describe("encodeChangeSet: trash", () => {
           to: ["Back"],
         },
       ],
+      order: EMPTY_ORDER,
       keyring,
     });
     const back = await encryptPath(keyring, ["Back"]);
@@ -651,6 +669,7 @@ describe("encodeChangeSet: trash", () => {
       changeSet: [
         { kind: "restore-trash", entryId: ID3, subPath: ["A"], target: "folder", to: ["A2"] },
       ],
+      order: EMPTY_ORDER,
       keyring,
     });
     expect(result.changes.filter((c) => c.kind === "upsert-blob")).toEqual([
@@ -674,6 +693,7 @@ describe("encodeChangeSet: trash", () => {
         blob(keep, "s4"),
       ],
       changeSet: [{ kind: "purge-trash", entryIds: [ID1, ID2, unknown] }],
+      order: EMPTY_ORDER,
       keyring,
     });
 
@@ -686,5 +706,199 @@ describe("encodeChangeSet: trash", () => {
     expect(result.message).toBe(
       `commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Purge: ${ID1}\nCommitnote-Purge: ${ID2}\nCommitnote-Purge: ${unknown}`,
     );
+  });
+});
+
+describe("encodeChangeSet: order", () => {
+  type Folders = Record<string, Record<string, string>>;
+
+  function orderOf(folders: Folders): OrderIndex {
+    return parseOrderIndex(JSON.stringify({ version: 1, folders }));
+  }
+
+  async function storedFolders(
+    keyring: Keyring,
+    result: EncodedChangeSet,
+  ): Promise<Folders | undefined> {
+    const change = result.changes.find((item) => item.path === ORDER_PATH);
+    if (change === undefined) return undefined;
+    if (change.kind !== "upsert-text") throw new Error("expected order text");
+    const index = await decryptOrderIndex(keyring, change.text);
+    return JSON.parse(serializeOrderIndex(index)).folders;
+  }
+
+  const ROOT = JSON.stringify([]);
+  const DOCS = JSON.stringify(["Docs"]);
+
+  async function sampleListing(keyring: Keyring): Promise<TreeEntry[]> {
+    return [
+      blob(await encryptPath(keyring, ["Alpha"]), "sha-alpha"),
+      blob(await encryptPath(keyring, ["Beta"]), "sha-beta"),
+      keepBlob(await encryptPath(keyring, ["Docs"]), "sha-docs"),
+      blob(await encryptPath(keyring, ["Docs", "Guide"]), "sha-guide"),
+      keepBlob(await encryptPath(keyring, ["Docs", "Sub"]), "sha-sub"),
+      blob(ORDER_PATH, "sha-order"),
+    ];
+  }
+
+  const SAMPLE_ORDER = orderOf({
+    [ROOT]: { Alpha: "V", Beta: "k", Docs: "F" },
+    [DOCS]: { Guide: "V" },
+    [JSON.stringify(["Docs", "Sub"])]: { Inner: "V" },
+  });
+
+  it("writes the positions of a set-order with one trailer per item, naming only stored paths", async () => {
+    const keyring = await testKeyring();
+    const result = await encodeChangeSet({
+      listing: await sampleListing(keyring),
+      changeSet: [
+        {
+          kind: "set-order",
+          parent: [],
+          positions: [
+            { name: "Beta", key: "1" },
+            { name: "Docs", key: "z" },
+          ],
+        },
+      ],
+      order: SAMPLE_ORDER,
+      keyring,
+    });
+
+    expect(await storedFolders(keyring, result)).toMatchObject({
+      [ROOT]: { Alpha: "V", Beta: "1", Docs: "z" },
+    });
+    expect(result.message).toBe(
+      [
+        "commitnote: save",
+        "",
+        "Commitnote-Format: 1",
+        `Commitnote-Order: ${await encryptPath(keyring, ["Beta"])}`,
+        `Commitnote-Order: ${await encryptPath(keyring, ["Docs"])}`,
+      ].join("\n"),
+    );
+  });
+
+  it("keeps an item's position when it is renamed in place", async () => {
+    const keyring = await testKeyring();
+    const result = await encodeChangeSet({
+      listing: await sampleListing(keyring),
+      changeSet: [{ kind: "rename-note", from: ["Beta"], to: ["Gamma"] }],
+      order: SAMPLE_ORDER,
+      keyring,
+    });
+
+    expect((await storedFolders(keyring, result))?.[ROOT]).toEqual({
+      Alpha: "V",
+      Docs: "F",
+      Gamma: "k",
+    });
+    expect(result.message).not.toContain("Commitnote-Order");
+  });
+
+  it("drops the position of an item moved to another folder", async () => {
+    const keyring = await testKeyring();
+    const result = await encodeChangeSet({
+      listing: await sampleListing(keyring),
+      changeSet: [{ kind: "rename-note", from: ["Beta"], to: ["Docs", "Beta"] }],
+      order: SAMPLE_ORDER,
+      keyring,
+    });
+
+    const folders = await storedFolders(keyring, result);
+    expect(folders?.[ROOT]).toEqual({ Alpha: "V", Docs: "F" });
+    expect(folders?.[DOCS]).toEqual({ Guide: "V" });
+  });
+
+  it("moves the positions inside a folder along with it", async () => {
+    const keyring = await testKeyring();
+    const result = await encodeChangeSet({
+      listing: await sampleListing(keyring),
+      changeSet: [
+        { kind: "create-folder", path: ["Archive"] },
+        { kind: "rename-folder", from: ["Docs"], to: ["Archive", "Docs"] },
+      ],
+      order: SAMPLE_ORDER,
+      keyring,
+    });
+
+    expect(await storedFolders(keyring, result)).toEqual({
+      [ROOT]: { Alpha: "V", Beta: "k" },
+      [JSON.stringify(["Archive", "Docs"])]: { Guide: "V" },
+      [JSON.stringify(["Archive", "Docs", "Sub"])]: { Inner: "V" },
+    });
+  });
+
+  it("drops the positions of a trashed folder and everything in it", async () => {
+    const keyring = await testKeyring();
+    const result = await encodeChangeSet({
+      listing: await sampleListing(keyring),
+      changeSet: [
+        {
+          kind: "trash-folder",
+          path: ["Docs"],
+          entryId: "20260101T000000Z-1-aaaaaaaa",
+        },
+      ],
+      order: SAMPLE_ORDER,
+      keyring,
+    });
+
+    expect(await storedFolders(keyring, result)).toEqual({
+      [ROOT]: { Alpha: "V", Beta: "k" },
+    });
+  });
+
+  it("leaves the order file alone when no position changes", async () => {
+    const keyring = await testKeyring();
+    const result = await encodeChangeSet({
+      listing: await sampleListing(keyring),
+      changeSet: [
+        { kind: "update-note", path: ["Alpha"], content: "edited" },
+        { kind: "create-note", path: ["Docs", "Sub", "New"], content: "" },
+      ],
+      order: SAMPLE_ORDER,
+      keyring,
+    });
+
+    expect(await storedFolders(keyring, result)).toBeUndefined();
+  });
+
+  it("writes nothing for positions when the stored order can't be read", async () => {
+    const keyring = await testKeyring();
+    const result = await encodeChangeSet({
+      listing: await sampleListing(keyring),
+      changeSet: [
+        {
+          kind: "set-order",
+          parent: [],
+          positions: [{ name: "Beta", key: "1" }],
+        },
+        { kind: "rename-note", from: ["Alpha"], to: ["Omega"] },
+      ],
+      order: parseOrderIndex("unreadable"),
+      keyring,
+    });
+
+    expect(await storedFolders(keyring, result)).toBeUndefined();
+    expect(result.message).not.toContain("Commitnote-Order");
+  });
+
+  it("rejects a position for an item that doesn't exist", async () => {
+    const keyring = await testKeyring();
+    await expect(
+      encodeChangeSet({
+        listing: await sampleListing(keyring),
+        changeSet: [
+          {
+            kind: "set-order",
+            parent: [],
+            positions: [{ name: "Missing", key: "1" }],
+          },
+        ],
+        order: SAMPLE_ORDER,
+        keyring,
+      }),
+    ).rejects.toThrow(InvalidChangeSetError);
   });
 });

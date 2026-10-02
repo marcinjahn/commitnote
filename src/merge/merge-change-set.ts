@@ -1,4 +1,9 @@
-import type { Change, ChangeSet, NotePath } from "../changes/change";
+import type {
+  Change,
+  ChangeSet,
+  NotePath,
+  OrderPosition,
+} from "../changes/change";
 import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
 import { utf8Encode } from "../crypto/base64";
 import { MAX_NAME_BYTES } from "../format/v1";
@@ -279,6 +284,8 @@ class ChangeSetMerger {
         return this.restoreTrash(change);
       case "purge-trash":
         return this.purgeTrash(change.entryIds);
+      case "set-order":
+        return this.setOrder(change);
     }
   }
 
@@ -742,6 +749,28 @@ class ChangeSetMerger {
       purged.push(this.emittedEntryIds.get(entryId) ?? entryId);
     }
     if (purged.length > 0) this.emit({ kind: "purge-trash", entryIds: purged });
+  }
+
+  // Positions follow their items through redirects; positions of items that
+  // are gone or now elsewhere are dropped.
+  private setOrder(change: Extract<Change, { kind: "set-order" }>): void {
+    const parent = this.resolve(change.parent);
+    if (!this.working.isFolder(parent)) return;
+    const positions: OrderPosition[] = [];
+    for (const { name, key } of change.positions) {
+      const path = this.resolve([...change.parent, name]);
+      if (
+        path.length !== parent.length + 1 ||
+        !isWithinFolder(path, parent) ||
+        this.working.get(path) === undefined
+      ) {
+        continue;
+      }
+      positions.push({ name: path[path.length - 1], key });
+    }
+    if (positions.length > 0) {
+      this.emit({ kind: "set-order", parent, positions });
+    }
   }
 
   private moveLocalState(
