@@ -31,6 +31,12 @@
   --color-conflict-mine: #fdecea;
   --color-conflict-theirs: #e6eefb;
   --color-conflict-marker: #f7d3cf;
+  --color-diff-added: #e7f5ea;
+  --color-diff-added-strong: #bfe5c8;
+  --color-diff-added-text: #1a6b32;
+  --color-diff-removed: #fdecea;
+  --color-diff-removed-strong: #f6c6c1;
+  --color-diff-removed-text: #a3241c;
   --color-focus: var(--color-accent);
   --color-selection: color-mix(in srgb, var(--color-accent) 22%, transparent);
 
@@ -74,6 +80,7 @@
   --login-card-width: 420px;
   --dialog-width: 28rem;
   --dialog-width-large: 40rem;
+  --dialog-width-wide: 64rem;
   --sidebar-width: 300px;
   --content-max-width: 760px;
   --breakpoint-desktop: 768px;
@@ -107,6 +114,12 @@
     --color-conflict-mine: #2e1513;
     --color-conflict-theirs: #142038;
     --color-conflict-marker: #43201c;
+    --color-diff-added: #11251a;
+    --color-diff-added-strong: #1d4a2c;
+    --color-diff-added-text: #7fd394;
+    --color-diff-removed: #2a1412;
+    --color-diff-removed-strong: #55211c;
+    --color-diff-removed-text: #ff8a80;
     --shadow-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.4);
     --shadow-2: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.5);
     --shadow-3: 0 2px 4px rgb(0 0 0 / 0.4), 0 16px 48px rgb(0 0 0 / 0.6);

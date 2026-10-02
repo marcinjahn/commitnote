@@ -1,6 +1,11 @@
 import { http, HttpResponse } from "msw";
 import type { HttpHandler, JsonBodyType } from "msw";
-import { fromBase64, utf8Decode } from "../../../crypto/base64";
+import {
+  fromBase64,
+  toBase64,
+  utf8Decode,
+  utf8Encode,
+} from "../../../crypto/base64";
 import type { CommitFileChange, TreeEntry } from "../../forge-adapter";
 import { InMemoryGitRepo } from "../../fake/in-memory-git-repo";
 
@@ -597,6 +602,80 @@ export class MockGitLabRepo {
         return jsonResponse({ message: "404 Blob Not Found" }, 404);
       }
       return rawResponse(text);
+    }
+
+    if (method === "GET" && rest === "/repository/commits") {
+      const from = this.resolveCommit(url.searchParams.get("ref_name"));
+      const path = url.searchParams.get("path");
+      const commits =
+        from === undefined || path === null
+          ? []
+          : (this.git.commitsTouching(from, path) ?? []);
+      const perPage = Math.min(
+        Number(url.searchParams.get("per_page") ?? "20"),
+        100,
+      );
+      const page = Number(url.searchParams.get("page") ?? "1");
+      return jsonResponse(
+        commits
+          .slice((page - 1) * perPage, page * perPage)
+          .map(([sha, commit]) => ({
+            id: sha,
+            parent_ids: commit.parent === null ? [] : [commit.parent],
+            message: commit.message,
+            committed_date:
+              this.commitDates.get(sha) ??
+              new Date(commit.committedAt).toISOString(),
+          })),
+        200,
+      );
+    }
+
+    const commitMatch = /^\/repository\/commits\/([^/]+)$/.exec(rest);
+    if (method === "GET" && commitMatch !== null) {
+      const sha = this.resolveCommit(decodeURIComponent(commitMatch[1]));
+      const commit = sha === undefined ? undefined : this.git.getCommit(sha);
+      if (sha === undefined || commit === undefined) {
+        return jsonResponse({ message: "404 Commit Not Found" }, 404);
+      }
+      return jsonResponse(
+        {
+          id: sha,
+          parent_ids: commit.parent === null ? [] : [commit.parent],
+          message: commit.message,
+          committed_date:
+            this.commitDates.get(sha) ??
+            new Date(commit.committedAt).toISOString(),
+        },
+        200,
+      );
+    }
+
+    const fileInfoMatch = /^\/repository\/files\/([^/]+)$/.exec(rest);
+    if (method === "GET" && fileInfoMatch !== null) {
+      const filePath = decodeURIComponent(fileInfoMatch[1]);
+      const ref = url.searchParams.get("ref");
+      const sha = this.resolveCommit(ref);
+      const blobSha =
+        sha === undefined ? undefined : this.git.fileAt(sha, filePath);
+      const text =
+        blobSha === undefined ? undefined : this.git.getBlob(blobSha);
+      if (blobSha === undefined || text === undefined) {
+        return jsonResponse({ message: "404 File Not Found" }, 404);
+      }
+      return jsonResponse(
+        {
+          file_name: filePath.slice(filePath.lastIndexOf("/") + 1),
+          file_path: filePath,
+          size: utf8Encode(text).length,
+          encoding: "base64",
+          content: toBase64(utf8Encode(text)),
+          ref,
+          blob_id: blobSha,
+          commit_id: sha,
+        },
+        200,
+      );
     }
 
     const fileMatch = /^\/repository\/files\/([^/]+)\/raw$/.exec(rest);

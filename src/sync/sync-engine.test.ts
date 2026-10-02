@@ -46,6 +46,8 @@ function wrapWithCounts(inner: ForgeAdapter): {
       counts.listTree++;
       return inner.listTree(commitSha);
     },
+    listCommits: (request) => inner.listCommits(request),
+    readFileAt: (sha, path) => inner.readFileAt(sha, path),
     readBlob: (sha) => {
       counts.readBlob++;
       return inner.readBlob(sha);

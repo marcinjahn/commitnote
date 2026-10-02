@@ -3,7 +3,20 @@
   import type { NotePath } from "../../changes/change";
   import { isWithinFolder, notePathEquals, parentPath } from "../../changes/change";
   import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
+  import type { NoteHistory, NoteVersion } from "../../history/note-history";
+  import type { RestorePlan } from "../../history/plan-restore";
+  import { validateName } from "../../tree/note-names";
+  import { describeNameError } from "../dialogs/name-messages";
+  import {
+    describeRestoreBlock,
+    describeRestored,
+    UNSAVED_BEFORE_RESTORE_MESSAGE,
+  } from "../history/history-messages";
   import { findWorkingNode } from "../../sync/working-tree";
+  import { findNode } from "../../tree/note-tree";
+  import NoteHistoryDialog, {
+    type HistoryPhase,
+  } from "../history/NoteHistoryDialog.svelte";
   import type { WorkingNode } from "../../sync/working-tree";
   import { downloadNotesArchive } from "../../export/download-notes-archive";
   import {
@@ -71,6 +84,7 @@
     repoUrl: string;
     forgeName: string;
     passphraseChange: PassphraseChange;
+    noteHistory: NoteHistory;
     initialMessage?: string | null;
     onPassphraseChanged: (
       keyring: Keyring,
@@ -86,6 +100,7 @@
     repoUrl,
     forgeName,
     passphraseChange,
+    noteHistory,
     initialMessage = null,
     onPassphraseChanged,
     onLogOut,
@@ -180,6 +195,17 @@
   let importMessages = $state<readonly ToastMessage[]>([]);
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
+  let historyDialog = $state<{
+    readonly path: NotePath;
+    readonly phase: HistoryPhase;
+  } | null>(null);
+  let historyMessages = $state<readonly ToastMessage[]>([]);
+  interface UndoGuard {
+    readonly id: number;
+    readonly path: NotePath;
+    readonly content: string;
+  }
+  let undoGuard = $state<UndoGuard | null>(null);
   let sessionMessages = $state<readonly ToastMessage[]>(
     untrack(() =>
       initialMessage === null ? [] : [{ id: -1, text: initialMessage }],
@@ -241,6 +267,183 @@
     openPath !== null &&
       engineState.conflicts.some((held) => notePathEquals(held.path, openPath)),
   );
+
+  const historyCurrent = $derived.by(() => {
+    const open = engineState.openNote;
+    if (historyDialog === null || open?.kind !== "loaded") return null;
+    return notePathEquals(open.path, historyDialog.path) ? open.content : null;
+  });
+
+  $effect(() => {
+    if (
+      historyDialog !== null &&
+      (openPath === null || !notePathEquals(openPath, historyDialog.path))
+    ) {
+      historyDialog = null;
+    }
+  });
+
+  async function openHistory(): Promise<void> {
+    const path = openPath;
+    if (path === null) return;
+    historyDialog = { path, phase: { kind: "saving" } };
+    try {
+      await engine.flush();
+    } catch {
+      // Best effort: the history of what is saved can still be shown.
+    }
+    if (historyDialog === null || !notePathEquals(historyDialog.path, path)) {
+      return;
+    }
+    const synced = engine.getState().synced;
+    const node = synced === null ? undefined : findNode(synced.tree, path);
+    historyDialog = {
+      path,
+      phase:
+        synced === null || node?.kind !== "note"
+          ? { kind: "unsaved" }
+          : { kind: "ready", cursor: noteHistory.open(path, synced.head) },
+    };
+  }
+
+  type NoteStateResult =
+    | { readonly ok: true; readonly path: NotePath }
+    | { readonly ok: false; readonly message: string };
+
+  // The name is checked up front so a failed rename leaves the content alone,
+  // and the edit goes first so the rename's save commits both together.
+  function setNoteState(
+    path: NotePath,
+    content: string | null,
+    name: string | null,
+  ): NoteStateResult {
+    if (
+      engineState.conflicts.some((held) => notePathEquals(held.path, path))
+    ) {
+      return {
+        ok: false,
+        message: describeStructureError({ kind: "conflicted" }),
+      };
+    }
+    if (name !== null) {
+      const validation = validateName(
+        name,
+        siblingNamesOf(parentPath(path), noteName(path)),
+      );
+      if (!validation.ok) {
+        return { ok: false, message: describeNameError(validation.error) };
+      }
+    }
+    if (content !== null) engine.editNote(path, content);
+    if (name === null) return { ok: true, path };
+    const result = engine.rename(path, name);
+    return result.ok
+      ? { ok: true, path: result.path }
+      : { ok: false, message: describeStructureError(result.error) };
+  }
+
+  async function handleHistoryRestore(
+    plan: Extract<RestorePlan, { kind: "ready" }>,
+    version: NoteVersion,
+  ): Promise<string | null> {
+    const path = historyDialog?.path;
+    if (path === undefined) return null;
+    try {
+      await engine.flush();
+    } catch {
+      // The note's sync state below tells whether its changes were saved.
+    }
+    const state = engine.getState();
+    const open = state.openNote;
+    if (
+      historyDialog === null ||
+      !notePathEquals(historyDialog.path, path) ||
+      open?.kind !== "loaded" ||
+      !notePathEquals(open.path, path)
+    ) {
+      return null;
+    }
+    if (state.stopped !== null || state.suspended) {
+      return describeRestoreBlock("unavailable");
+    }
+    if (state.syncStates.stateOf(path).kind !== "synced") {
+      return UNSAVED_BEFORE_RESTORE_MESSAGE;
+    }
+    const previous = { content: open.content, name: noteName(path) };
+    const result = setNoteState(path, plan.content, plan.name);
+    if (!result.ok) return result.message;
+    historyDialog = null;
+    const restoredPath = result.path;
+    const restored = engine.getState().openNote;
+    const id = ++nextMessageId;
+    undoGuard =
+      restored?.kind === "loaded"
+        ? { id, path: restored.path, content: restored.content }
+        : null;
+    historyMessages = [
+      {
+        id,
+        text: describeRestored(version.committedAt, Date.now()),
+        durationMs: UNDO_TOAST_MS,
+        action: {
+          label: "Undo",
+          run: () =>
+            handleUndoRestore(
+              id,
+              restoredPath,
+              plan.content === null ? null : previous.content,
+              plan.name === null ? null : previous.name,
+            ),
+        },
+      },
+    ];
+    return null;
+  }
+
+  function undoApplies(
+    guard: UndoGuard,
+    open: SyncEngineState["openNote"],
+  ): boolean {
+    return (
+      open?.kind === "loaded" &&
+      notePathEquals(open.path, guard.path) &&
+      open.content === guard.content
+    );
+  }
+
+  function dismissUndo(id: number): void {
+    if (undoGuard?.id === id) undoGuard = null;
+    historyMessages = historyMessages.filter((message) => message.id !== id);
+  }
+
+  $effect(() => {
+    const guard = undoGuard;
+    if (guard !== null && !undoApplies(guard, engineState.openNote)) {
+      dismissUndo(guard.id);
+    }
+  });
+
+  function handleUndoRestore(
+    id: number,
+    path: NotePath,
+    content: string | null,
+    name: string | null,
+  ): void {
+    const guard = undoGuard;
+    if (
+      guard === null ||
+      guard.id !== id ||
+      !undoApplies(guard, engine.getState().openNote)
+    ) {
+      dismissUndo(id);
+      return;
+    }
+    undoGuard = null;
+    const result = setNoteState(path, content, name);
+    historyMessages = result.ok
+      ? []
+      : [{ id: ++nextMessageId, text: result.message }];
+  }
 
   $effect(() => {
     if (trashOpen && trashEntries.length === 0) {
@@ -748,6 +951,7 @@
     trashMessages = trashMessages.filter((message) => message.id !== id);
     placeMessages = placeMessages.filter((message) => message.id !== id);
     importMessages = importMessages.filter((message) => message.id !== id);
+    historyMessages = historyMessages.filter((message) => message.id !== id);
     sessionMessages = sessionMessages.filter((message) => message.id !== id);
   }
 
@@ -979,6 +1183,9 @@
           onNameEscape={handleNameEscape}
           onNameEnterDone={handleNameEnterDone}
           onBack={handleBack}
+          onHistory={() => void openHistory()}
+          historyDisabled={engineState.openNote.kind === "missing" ||
+            engineState.openNote.kind === "failed"}
         />
       {/if}
     {/key}
@@ -1004,6 +1211,7 @@
     ...trashMessages,
     ...placeMessages,
     ...importMessages,
+    ...historyMessages,
     ...sessionMessages,
   ]}
   onDismiss={(id) => engine.dismissNotice(id)}
@@ -1102,6 +1310,21 @@
     onChanged={onPassphraseChanged}
     onLogOut={handleLogOut}
     onClose={() => (changePassphraseOpen = false)}
+  />
+{/if}
+
+{#if historyDialog !== null}
+  <NoteHistoryDialog
+    phase={historyDialog.phase}
+    {noteHistory}
+    current={historyCurrent}
+    currentName={noteName(historyDialog.path)}
+    {forgeName}
+    conflicted={openConflicted}
+    canSave={engineState.stopped === null && !engineState.suspended}
+    onRestore={handleHistoryRestore}
+    onRetryPrepare={() => void openHistory()}
+    onClose={() => (historyDialog = null)}
   />
 {/if}
 

@@ -87,6 +87,8 @@ describe("sync engine suspend", () => {
         initialize: () => Promise.reject(new Error()),
         getHead: () => Promise.reject(new Error()),
         listTree: () => Promise.reject(new Error()),
+        listCommits: () => Promise.reject(new Error()),
+        readFileAt: () => Promise.reject(new Error()),
         readBlob: () => Promise.reject(new Error()),
         commit: () => Promise.reject(new Error()),
       },

@@ -75,6 +75,7 @@ const harness: ForgeContractHarness = {
         parent,
         files: { ...commitSeed.files },
         message: commitSeed.message,
+        committedAt: commitSeed.committedAt,
         branch: isLastCommit ? branch : undefined,
       });
     }

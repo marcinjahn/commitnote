@@ -28,4 +28,24 @@ describe("withLatency", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(await inspection).toEqual({ kind: "empty", canWrite: true });
   });
+
+  it("delays history reads by their own latencies", async () => {
+    const adapter = withLatency(new FakeForgeAdapter(), {
+      ...GITHUB_LIKE_LATENCY,
+      listCommitsMs: 300,
+      readFileAtMs: 200,
+    });
+    const settled: string[] = [];
+    void adapter
+      .listCommits({ from: "unknown", path: "a.md", limit: 1 })
+      .catch(() => settled.push("listCommits"));
+    void adapter.readFileAt("unknown", "a.md").then(() => settled.push("readFileAt"));
+
+    await vi.advanceTimersByTimeAsync(199);
+    expect(settled).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toEqual(["readFileAt"]);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(settled).toEqual(["readFileAt", "listCommits"]);
+  });
 });

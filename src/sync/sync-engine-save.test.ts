@@ -68,6 +68,8 @@ function wrap(
     initialize: (configText, message) => inner.initialize(configText, message),
     getHead: () => inner.getHead(),
     listTree: (sha) => inner.listTree(sha),
+    listCommits: (request) => inner.listCommits(request),
+    readFileAt: (sha, path) => inner.readFileAt(sha, path),
     readBlob: async (sha) => {
       if (readGate.current !== null) await readGate.current;
       return inner.readBlob(sha);

@@ -5,7 +5,7 @@ import {
   TRAILER,
   UNDO_OUTDATED_SAVE_SUBJECT,
 } from "../../format/v1";
-import { toBase64 } from "../../crypto/base64";
+import { fromBase64, toBase64 } from "../../crypto/base64";
 import type { RepoCoordinates } from "../repo-coordinates";
 import {
   GITLAB_DEVELOPER_ACCESS_LEVEL,
@@ -20,10 +20,13 @@ import type {
   CommitFileChange,
   CommitRequest,
   CommitResult,
+  CommitSummary,
   ContentCreatingOperation,
+  FileAtCommit,
   ForgeAdapter,
   ForgeAdapterOptions,
   ForgeWriteLimits,
+  ListCommitsRequest,
   RepoInspection,
   RootEntry,
   TreeEntry,
@@ -129,6 +132,24 @@ interface MergeRequestBody {
 interface CommitBody {
   readonly id: string;
   readonly parent_ids?: readonly string[];
+}
+
+interface CommitListItem extends CommitBody {
+  readonly message: string;
+  readonly committed_date?: string;
+}
+
+interface FileBody {
+  readonly blob_id: string;
+  readonly encoding?: string;
+  readonly content?: string;
+}
+
+const MAX_COMMITS_PER_PAGE = 100;
+
+function parseCommittedAt(date: string | undefined): number {
+  const time = date === undefined ? NaN : Date.parse(date);
+  return Number.isFinite(time) ? time : 0;
 }
 
 function accessLevel(project: ProjectBody): number {
@@ -436,6 +457,78 @@ class GitLabAdapter implements ForgeAdapter {
     return text;
   }
 
+  async listCommits(request: ListCommitsRequest): Promise<CommitSummary[]> {
+    const limit = Math.max(0, request.limit);
+    const perPage = Math.min(limit, MAX_COMMITS_PER_PAGE);
+    const commits: CommitSummary[] = [];
+    for (let page = 1; commits.length < limit; page++) {
+      const query = new URLSearchParams({
+        ref_name: request.from,
+        path: request.path,
+        per_page: String(perPage),
+        page: String(page),
+      });
+      const response = await this.send(
+        `/repository/commits?${query.toString()}`,
+        { method: "GET" },
+      );
+      if (!response.ok) {
+        throw this.errorFor(response);
+      }
+      const body = (await response.json()) as readonly CommitListItem[];
+      for (const item of body) {
+        commits.push({
+          sha: item.id,
+          parents: item.parent_ids ?? [],
+          message: item.message,
+          committedAt: parseCommittedAt(item.committed_date),
+        });
+      }
+      if (body.length < perPage) break;
+    }
+    // An unknown ref_name can list as empty rather than fail.
+    if (commits.length === 0 && limit > 0) {
+      await this.requireCommit(request.from);
+    }
+    return commits.slice(0, limit);
+  }
+
+  private async requireCommit(sha: string): Promise<void> {
+    const response = await this.send(
+      `/repository/commits/${encodeURIComponent(sha)}`,
+      { method: "GET" },
+    );
+    if (!response.ok) {
+      throw this.errorFor(response);
+    }
+  }
+
+  async readFileAt(
+    commitSha: string,
+    path: string,
+  ): Promise<FileAtCommit | null> {
+    const response = await this.send(
+      `/repository/files/${encodeURIComponent(path)}?ref=${encodeURIComponent(commitSha)}`,
+      { method: "GET" },
+    );
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw this.errorFor(response);
+    }
+    const body = (await response.json()) as FileBody;
+    const blobSha = body.blob_id;
+    if (body.encoding !== "base64" || body.content === undefined) {
+      return { blobSha, text: await this.readBlob(blobSha) };
+    }
+    const text = new TextDecoder("utf-8").decode(
+      fromBase64(body.content.replace(/\s+/g, "")),
+    );
+    this.blobCache.set(blobSha, text);
+    return { blobSha, text };
+  }
+
   // GitLab's commits API has no expected-head parameter (`start_sha` is only
   // accepted for a branch that does not exist yet, or with `force`, which
   // overwrites). So the commit applies to whatever main is: the head is
@@ -541,7 +634,9 @@ class GitLabAdapter implements ForgeAdapter {
       guard.blobSha === EMPTY_BLOB_SHA
         ? ""
         : toBase64(
-            new Uint8Array(await (await this.fetchBlob(guard.blobSha)).arrayBuffer()),
+            new Uint8Array(
+              await (await this.fetchBlob(guard.blobSha)).arrayBuffer(),
+            ),
           );
     return [
       ...actions,
@@ -876,10 +971,12 @@ class GitLabAdapter implements ForgeAdapter {
     commitSha: string,
   ): Promise<CommitResult> {
     try {
-      if (await this.isOnMain(commitSha)) return { kind: "ok", head: commitSha };
+      if (await this.isOnMain(commitSha))
+        return { kind: "ok", head: commitSha };
       await this.closeMergeRequest(iid);
       await this.deleteBranch(branch);
-      if (await this.isOnMain(commitSha)) return { kind: "ok", head: commitSha };
+      if (await this.isOnMain(commitSha))
+        return { kind: "ok", head: commitSha };
     } catch (error) {
       throw new ForgeError("Network", {
         message: "Could not determine whether the atomic commit landed",
@@ -926,7 +1023,8 @@ class GitLabAdapter implements ForgeAdapter {
     if (created.length > 0) {
       this.atomicSupport = undefined;
       throw new ForgeError("Server", {
-        message: "GitLab merged with an extra commit instead of fast-forwarding",
+        message:
+          "GitLab merged with an extra commit instead of fast-forwarding",
       });
     }
     return { kind: "ok", head: sha };

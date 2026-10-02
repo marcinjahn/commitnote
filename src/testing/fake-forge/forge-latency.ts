@@ -8,6 +8,8 @@ export interface ForgeLatency {
   readonly listTreeMs: number;
   readonly readBlobMs: number;
   readonly commitMs: number;
+  readonly listCommitsMs: number;
+  readonly readFileAtMs: number;
 }
 
 // A GitHub commit through the Git Data API is several sequential requests
@@ -20,6 +22,8 @@ export const GITHUB_LIKE_LATENCY: ForgeLatency = {
   listTreeMs: 250,
   readBlobMs: 150,
   commitMs: 1200,
+  listCommitsMs: 300,
+  readFileAtMs: 200,
 };
 
 export function delay(ms: number): Promise<void> {
@@ -48,6 +52,10 @@ export function withLatency(
       delayed(latency.readBlobMs, () => adapter.readBlob(...args)),
     commit: (...args) =>
       delayed(latency.commitMs, () => adapter.commit(...args)),
+    listCommits: (...args) =>
+      delayed(latency.listCommitsMs, () => adapter.listCommits(...args)),
+    readFileAt: (...args) =>
+      delayed(latency.readFileAtMs, () => adapter.readFileAt(...args)),
     ...(replaceHistory === undefined
       ? {}
       : {

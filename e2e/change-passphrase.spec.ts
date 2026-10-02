@@ -109,7 +109,7 @@ test("deletes the old history when asked, leaving one commit", async ({
   });
   const historyWarning = dialog.getByRole("note");
   await expect(historyWarning).toHaveText(
-    "Earlier versions of your notes stay in the repository's history, so the current passphrase still decrypts them after the change.",
+    "Earlier versions of your notes stay in the repository's history, so the current passphrase still decrypts them after the change, though commitnote can no longer restore them.",
   );
   const warningBox = await historyWarning.boundingBox();
   const checkboxBox = await removeHistory.boundingBox();
@@ -288,4 +288,61 @@ test("another tab of the same browser picks up the new passphrase it remembered"
 
   await expectTree(other);
   await expect(other.getByLabel("Access token")).toHaveCount(0);
+});
+
+const VERSION_HISTORY_NOTICE =
+  "Version history starts over: commitnote can't show or restore versions of your notes from before the change.";
+
+async function expectNoteHistoryEnd(page: Page, text: string): Promise<void> {
+  await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
+  await page.getByRole("button", { name: "Version history" }).click();
+  const history = page.getByRole("dialog", { name: "Version history" });
+  await expect(history.getByTestId("history-end")).toHaveText(text);
+}
+
+test("explains that version history starts over, in the form and the review", async ({
+  page,
+}) => {
+  await openChangeDialog(page);
+  await expect(changeDialog(page).getByText(VERSION_HISTORY_NOTICE)).toBeVisible();
+  await fillPassphrases(page, OLD_PASSPHRASE, NEW_PASSPHRASE);
+  const review = page.getByRole("dialog", {
+    name: "Ready to change passphrase",
+  });
+  await expect(review.getByText(VERSION_HISTORY_NOTICE)).toBeVisible({
+    timeout: 15_000,
+  });
+});
+
+test("after a change, note history ends at the previous passphrase", async ({
+  page,
+}) => {
+  await changePassphrase(page);
+  await expectNoteHistoryEnd(
+    page,
+    "Earlier versions are encrypted with a previous passphrase and can't be shown.",
+  );
+});
+
+test("after deleting the old history, note history says it was deleted", async ({
+  page,
+}) => {
+  await openChangeDialog(page);
+  await changeDialog(page)
+    .getByRole("checkbox", { name: "Also delete the old history" })
+    .check();
+  await fillPassphrases(page, OLD_PASSPHRASE, NEW_PASSPHRASE);
+  const review = page.getByRole("dialog", {
+    name: "Ready to change passphrase",
+  });
+  await expect(review).toBeVisible({ timeout: 15_000 });
+  await review.getByRole("button", { name: "Change passphrase" }).click();
+  await expect(
+    page.getByText("Passphrase changed and the old history deleted."),
+  ).toBeVisible({ timeout: 15_000 });
+  await expectTree(page);
+  await expectNoteHistoryEnd(
+    page,
+    "Earlier history was deleted when the passphrase was changed.",
+  );
 });

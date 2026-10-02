@@ -5,14 +5,20 @@ import type { CommitFileChange, TreeEntry } from "../forge-adapter";
 export interface GitObjectsSnapshot {
   readonly blobs: readonly (readonly [string, string])[];
   readonly trees: readonly (readonly [string, readonly (readonly [string, string])[]])[];
-  readonly commits: readonly (readonly [string, StoredCommit])[];
+  readonly commits: readonly (readonly [string, SnapshotCommit])[];
 }
 
-interface StoredCommit {
+export interface StoredCommit {
   readonly tree: string;
   readonly parent: string | null;
   readonly message: string;
+  /** Ms since epoch. */
+  readonly committedAt: number;
 }
+
+type SnapshotCommit = Omit<StoredCommit, "committedAt"> & {
+  readonly committedAt?: number;
+};
 
 function toHex(digest: ArrayBuffer): string {
   return [...new Uint8Array(digest)]
@@ -47,6 +53,11 @@ export class InMemoryGitRepo {
   private readonly commits = new Map<string, StoredCommit>();
   private readonly refs = new Map<string, string>();
   private commitSeq = 0;
+  private readonly now: () => number;
+
+  constructor(options?: { readonly now?: () => number }) {
+    this.now = options?.now ?? Date.now;
+  }
 
   async putBlob(text: string): Promise<string> {
     const contentBytes = new TextEncoder().encode(text);
@@ -80,6 +91,7 @@ export class InMemoryGitRepo {
     tree: string;
     parent: string | null;
     message: string;
+    committedAt?: number;
   }): Promise<string> {
     const seq = this.commitSeq++;
     const content = `commit\ntree ${input.tree}\nparent ${input.parent ?? ""}\nseq ${seq}\n\n${input.message}\n`;
@@ -88,6 +100,7 @@ export class InMemoryGitRepo {
       tree: input.tree,
       parent: input.parent,
       message: input.message,
+      committedAt: input.committedAt ?? this.now(),
     });
     return sha;
   }
@@ -135,11 +148,45 @@ export class InMemoryGitRepo {
   importObjects(snapshot: GitObjectsSnapshot): void {
     for (const [sha, text] of snapshot.blobs) this.blobs.set(sha, text);
     for (const [sha, files] of snapshot.trees) this.trees.set(sha, new Map(files));
-    for (const [sha, commit] of snapshot.commits) this.commits.set(sha, commit);
+    for (const [sha, commit] of snapshot.commits) {
+      this.commits.set(sha, { ...commit, committedAt: commit.committedAt ?? 0 });
+    }
   }
 
   hasCommits(): boolean {
     return this.commits.size > 0;
+  }
+
+  /** Blob SHA of the file at `path` in a commit, if both exist. */
+  fileAt(commitSha: string, path: string): string | undefined {
+    const commit = this.commits.get(commitSha);
+    return commit === undefined
+      ? undefined
+      : this.trees.get(commit.tree)?.get(path);
+  }
+
+  /**
+   * Newest first: commits from `from` (inclusive) whose blob at `path`
+   * differs from their parent's. Undefined when `from` is unknown.
+   */
+  commitsTouching(
+    from: string,
+    path: string,
+  ): (readonly [string, StoredCommit])[] | undefined {
+    if (!this.commits.has(from)) return undefined;
+    const touching: (readonly [string, StoredCommit])[] = [];
+    for (
+      let sha: string | null = from;
+      sha !== null;
+      sha = this.commits.get(sha)?.parent ?? null
+    ) {
+      const commit = this.commits.get(sha);
+      if (commit === undefined) break;
+      const before =
+        commit.parent === null ? undefined : this.fileAt(commit.parent, path);
+      if (this.fileAt(sha, path) !== before) touching.push([sha, commit]);
+    }
+    return touching;
   }
 
   async listTreeEntries(treeSha: string): Promise<TreeEntry[]> {
@@ -219,6 +266,7 @@ export async function commitFiles(
     files: Record<string, string>;
     message: string;
     branch?: string;
+    committedAt?: number;
   },
 ): Promise<string> {
   const entries = await Promise.all(
@@ -234,6 +282,7 @@ export async function commitFiles(
     tree: treeSha,
     parent: input.parent,
     message: input.message,
+    committedAt: input.committedAt,
   });
   if (input.branch !== undefined) {
     repo.setRef(input.branch, commitSha);

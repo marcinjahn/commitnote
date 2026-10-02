@@ -32,6 +32,7 @@
     type LandedCheck,
     type PassphraseChange,
   } from "./rekey/change-passphrase";
+  import { createNoteHistory, type NoteHistory } from "./history/note-history";
   import { describePassphraseChanged } from "./ui/passphrase/passphrase-messages";
   import KeyChangedScreen from "./ui/session/KeyChangedScreen.svelte";
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
@@ -61,6 +62,7 @@
         readonly adapter: ForgeAdapter;
         readonly rememberMe: boolean;
         readonly passphraseChange: PassphraseChange;
+        readonly noteHistory: NoteHistory;
         readonly initialMessage: string | null;
         readonly repoLabel: string;
         readonly repoUrl: string;
@@ -169,6 +171,7 @@
         rateBudget,
         clock: systemClock,
       }),
+      noteHistory: createNoteHistory({ adapter, keyring: session.keyring }),
       initialMessage,
       repoLabel: repositoryLabel(session.coordinates),
       repoUrl: session.repoUrl,
@@ -364,6 +367,7 @@
     repoUrl={phase.repoUrl}
     forgeName={phase.forgeName}
     passphraseChange={phase.passphraseChange}
+    noteHistory={phase.noteHistory}
     initialMessage={phase.initialMessage}
     onPassphraseChanged={(keyring, check, history) =>
       void handlePassphraseChanged(keyring, check, history)}

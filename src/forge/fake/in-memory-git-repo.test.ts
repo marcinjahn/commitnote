@@ -24,7 +24,7 @@ describe("InMemoryGitRepo blobs", () => {
 
 describe("InMemoryGitRepo trees and commits", () => {
   it("round-trips trees and commits", async () => {
-    const repo = new InMemoryGitRepo();
+    const repo = new InMemoryGitRepo({ now: () => 1_000 });
     const blobSha = await repo.putBlob("content");
     const treeSha = await repo.putTree(new Map([["a.txt", blobSha]]));
     expect(repo.getTree(treeSha)).toEqual(new Map([["a.txt", blobSha]]));
@@ -38,7 +38,69 @@ describe("InMemoryGitRepo trees and commits", () => {
       tree: treeSha,
       parent: null,
       message: "first",
+      committedAt: 1_000,
     });
+  });
+
+  it("dates each commit with the injected clock unless given a time", async () => {
+    let now = 5_000;
+    const repo = new InMemoryGitRepo({ now: () => now });
+    const treeSha = await repo.putTree(new Map());
+
+    const first = await repo.putCommit({ tree: treeSha, parent: null, message: "a" });
+    now = 9_000;
+    const second = await repo.putCommit({ tree: treeSha, parent: first, message: "b" });
+    const third = await repo.putCommit({
+      tree: treeSha,
+      parent: second,
+      message: "c",
+      committedAt: 42,
+    });
+
+    expect(repo.getCommit(first)?.committedAt).toBe(5_000);
+    expect(repo.getCommit(second)?.committedAt).toBe(9_000);
+    expect(repo.getCommit(third)?.committedAt).toBe(42);
+  });
+
+  it("keeps commit times through export and import, and dates undated commits 0", async () => {
+    const source = new InMemoryGitRepo({ now: () => 7_000 });
+    const treeSha = await source.putTree(new Map());
+    const sha = await source.putCommit({ tree: treeSha, parent: null, message: "a" });
+    const snapshot = source.exportObjects();
+    const undated = { tree: treeSha, parent: null, message: "old" };
+
+    const target = new InMemoryGitRepo();
+    target.importObjects({
+      ...snapshot,
+      commits: [...snapshot.commits, ["undated", undated]],
+    });
+
+    expect(target.getCommit(sha)?.committedAt).toBe(7_000);
+    expect(target.getCommit("undated")?.committedAt).toBe(0);
+  });
+
+  it("lists the commits that changed a file, including its deletion", async () => {
+    const repo = new InMemoryGitRepo();
+    const create = await commitFiles(repo, {
+      parent: null,
+      files: { "n.md": "one" },
+      message: "create",
+    });
+    const unrelated = await commitFiles(repo, {
+      parent: create,
+      files: { "n.md": "one", "o.md": "x" },
+      message: "unrelated",
+    });
+    const remove = await commitFiles(repo, {
+      parent: unrelated,
+      files: { "o.md": "x" },
+      message: "delete",
+    });
+
+    expect(
+      repo.commitsTouching(remove, "n.md")?.map(([sha]) => sha),
+    ).toEqual([remove, create]);
+    expect(repo.commitsTouching("unknown", "n.md")).toBeUndefined();
   });
 
   it("gives identical commits distinct SHAs", async () => {

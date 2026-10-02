@@ -12,10 +12,13 @@ import type {
   CommitFileChange,
   CommitRequest,
   CommitResult,
+  CommitSummary,
   ContentCreatingOperation,
+  FileAtCommit,
   ForgeAdapter,
   ForgeAdapterOptions,
   ForgeWriteLimits,
+  ListCommitsRequest,
   ReplaceHistoryRequest,
   RepoInspection,
   RootEntry,
@@ -99,6 +102,33 @@ export function gitHubTreeRequestCount(
 
 export function gitHubCommitCost(changes: readonly CommitFileChange[]): number {
   return gitHubTreeRequestCount(changes) + 2;
+}
+
+const MAX_COMMITS_PER_PAGE = 100;
+
+interface GitHubCommitListItem {
+  readonly sha: string;
+  readonly parents: readonly { readonly sha: string }[];
+  readonly commit: {
+    readonly message: string;
+    readonly committer: { readonly date: string } | null;
+  };
+}
+
+interface GitHubContentsBody {
+  readonly type?: string;
+  readonly sha?: string;
+  readonly encoding?: string;
+  readonly content?: string;
+}
+
+function contentsPath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function parseCommittedAt(date: string | undefined): number {
+  const time = date === undefined ? NaN : Date.parse(date);
+  return Number.isFinite(time) ? time : 0;
 }
 
 // Decodes GitHub's whitespace-wrapped base64 blob/content payloads. readBlob
@@ -347,6 +377,70 @@ class GitHubAdapter implements ForgeAdapter {
     );
     this.blobCache.set(sha, text);
     return text;
+  }
+
+  async listCommits(request: ListCommitsRequest): Promise<CommitSummary[]> {
+    const limit = Math.max(0, request.limit);
+    const perPage = Math.min(limit, MAX_COMMITS_PER_PAGE);
+    const commits: CommitSummary[] = [];
+    for (let page = 1; commits.length < limit; page++) {
+      const query = new URLSearchParams({
+        sha: request.from,
+        path: request.path,
+        per_page: String(perPage),
+        page: String(page),
+      });
+      const response = await this.send(`/commits?${query.toString()}`, {
+        method: "GET",
+      });
+      if ([404, 409, 422].includes(response.status)) {
+        throw new ForgeError("NotFound", { status: response.status });
+      }
+      if (!response.ok) {
+        throw await this.errorFor(response);
+      }
+      const body = (await response.json()) as readonly GitHubCommitListItem[];
+      for (const item of body) {
+        commits.push({
+          sha: item.sha,
+          parents: item.parents.map((parent) => parent.sha),
+          message: item.commit.message,
+          committedAt: parseCommittedAt(item.commit.committer?.date),
+        });
+      }
+      if (body.length < perPage) break;
+    }
+    return commits.slice(0, limit);
+  }
+
+  async readFileAt(
+    commitSha: string,
+    path: string,
+  ): Promise<FileAtCommit | null> {
+    const response = await this.send(
+      `/contents/${contentsPath(path)}?ref=${encodeURIComponent(commitSha)}`,
+      { method: "GET" },
+    );
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw await this.errorFor(response);
+    }
+    const body = (await response.json()) as GitHubContentsBody | unknown[];
+    if (Array.isArray(body) || body.type !== "file" || body.sha === undefined) {
+      return null;
+    }
+    const blobSha = body.sha;
+    // Files over 1 MB come without their content.
+    if (body.encoding !== "base64" || body.content === undefined) {
+      return { blobSha, text: await this.readBlob(blobSha) };
+    }
+    const text = new TextDecoder("utf-8").decode(
+      decodeBase64Content(body.content),
+    );
+    this.blobCache.set(blobSha, text);
+    return { blobSha, text };
   }
 
   async commit(request: CommitRequest): Promise<CommitResult> {

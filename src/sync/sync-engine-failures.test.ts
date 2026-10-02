@@ -56,6 +56,8 @@ function wrap(inner: FakeForgeAdapter, commits: CommitRequest[]): ForgeAdapter {
     initialize: (configText, message) => inner.initialize(configText, message),
     getHead: () => inner.getHead(),
     listTree: (sha) => inner.listTree(sha),
+    listCommits: (request) => inner.listCommits(request),
+    readFileAt: (sha, path) => inner.readFileAt(sha, path),
     readBlob: (sha) => inner.readBlob(sha),
     commit: (request) => {
       commits.push(request);

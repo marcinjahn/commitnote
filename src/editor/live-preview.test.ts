@@ -89,6 +89,21 @@ describe("buildLivePreviewDecorations", () => {
     );
   });
 
+  it("keeps a URL used as the link text visible away from the cursor", () => {
+    const doc = "[https://x.com/](https://x.com/)\nsecond line";
+    const state = stateFor(doc, doc.length);
+
+    const hidden = hiddenRanges(state);
+    const label = "https://x.com/";
+    const closingChunk = "](https://x.com/)";
+    const closingStart = doc.indexOf(closingChunk);
+
+    expect(isFullyHidden(hidden, 1, 1 + label.length)).toBe(false);
+    expect(
+      isFullyHidden(hidden, closingStart, closingStart + closingChunk.length),
+    ).toBe(true);
+  });
+
   it("shows a checkbox widget over the task marker even when the cursor is on that line", () => {
     const doc = "- [ ] task";
     const state = stateFor(doc, doc.indexOf("task"));
