@@ -1097,6 +1097,7 @@
   <ChangePassphraseDialog
     open={true}
     {forgeName}
+    repositoryLabel={repoLabel}
     change={passphraseChange}
     onChanged={onPassphraseChanged}
     onLogOut={handleLogOut}

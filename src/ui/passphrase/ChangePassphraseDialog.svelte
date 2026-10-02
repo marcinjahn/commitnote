@@ -11,6 +11,7 @@
   } from "../../rekey/change-passphrase";
   import Dialog from "../dialogs/Dialog.svelte";
   import { ENABLE_ATOMIC_LABEL } from "../import/import-messages";
+  import PassphraseStrength from "./PassphraseStrength.svelte";
   import {
     describeCarriedOver,
     describeChangeAtomicSetup,
@@ -30,6 +31,7 @@
   interface Props {
     open: boolean;
     forgeName: string;
+    repositoryLabel: string;
     change: PassphraseChange;
     onChanged: (
       keyring: Keyring,
@@ -40,8 +42,15 @@
     onClose: () => void;
   }
 
-  const { open, forgeName, change, onChanged, onLogOut, onClose }: Props =
-    $props();
+  const {
+    open,
+    forgeName,
+    repositoryLabel,
+    change,
+    onChanged,
+    onLogOut,
+    onClose,
+  }: Props = $props();
 
   const uid = $props.id();
   const formId = `change-passphrase-form-${uid}`;
@@ -49,6 +58,7 @@
   const newId = `change-passphrase-new-${uid}`;
   const repeatId = `change-passphrase-repeat-${uid}`;
   const hintId = `change-passphrase-hint-${uid}`;
+  const strengthId = `change-passphrase-strength-${uid}`;
   const removeHistoryHintId = `change-passphrase-remove-history-hint-${uid}`;
 
   type Stage =
@@ -263,10 +273,15 @@
               id={newId}
               type="password"
               autocomplete="new-password"
-              aria-describedby={hintId}
+              aria-describedby="{hintId} {strengthId}"
               bind:value={newPassphrase}
             />
             <p id={hintId} class="field-hint">{NEW_PASSPHRASE_HINT}</p>
+            <PassphraseStrength
+              id={strengthId}
+              passphrase={newPassphrase}
+              {repositoryLabel}
+            />
           </div>
           <div class="field">
             <label for={repeatId}>Repeat new passphrase</label>

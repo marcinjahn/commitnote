@@ -135,6 +135,29 @@ test("deletes the old history when asked, leaving one commit", async ({
   ).toContainText("Welcome");
 });
 
+test("rates the strength of the new passphrase only", async ({ page }) => {
+  await openChangeDialog(page);
+  const dialog = changeDialog(page);
+  const currentField = dialog.getByLabel("Current passphrase");
+  const newField = dialog.getByLabel("New passphrase", { exact: true });
+  const repeatField = dialog.getByLabel("Repeat new passphrase");
+
+  await currentField.fill("password");
+  await repeatField.fill("password");
+  await expect(newField).not.toHaveAccessibleDescription(/strength/);
+
+  await newField.fill("password");
+  await expect(newField).toHaveAccessibleDescription(
+    /Passphrase strength: Weak\./,
+  );
+  await newField.fill("violet anchor pepper tundra kayak");
+  await expect(newField).toHaveAccessibleDescription(
+    /Passphrase strength: (Good|Strong)\./,
+  );
+  await expect(currentField).not.toHaveAccessibleDescription(/strength/);
+  await expect(repeatField).not.toHaveAccessibleDescription(/strength/);
+});
+
 test("a wrong current passphrase changes nothing", async ({ page }) => {
   const before = await commitMessages(page);
   await openChangeDialog(page);
@@ -244,7 +267,9 @@ test("another tab of the same browser picks up the new passphrase it remembered"
     [REPO_KEY, exported] as const,
   );
   await other.getByRole("button", { name: "Refresh" }).click();
-  await expect(other.getByRole("alert").getByText(KEY_CHANGED_TEXT)).toBeVisible();
+  await expect(
+    other.getByRole("alert").getByText(KEY_CHANGED_TEXT),
+  ).toBeVisible();
   await other.getByRole("button", { name: "Log in again" }).click();
 
   await expectTree(other);
