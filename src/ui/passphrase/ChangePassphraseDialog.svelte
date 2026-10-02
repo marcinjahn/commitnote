@@ -11,6 +11,8 @@
   } from "../../rekey/change-passphrase";
   import Dialog from "../dialogs/Dialog.svelte";
   import { ENABLE_ATOMIC_LABEL } from "../import/import-messages";
+  import PassphraseStrength from "./PassphraseStrength.svelte";
+  import { warningReveal } from "./warning-reveal";
   import {
     describeCarriedOver,
     describeChangeAtomicSetup,
@@ -30,6 +32,7 @@
   interface Props {
     open: boolean;
     forgeName: string;
+    repositoryLabel: string;
     change: PassphraseChange;
     onChanged: (
       keyring: Keyring,
@@ -40,8 +43,15 @@
     onClose: () => void;
   }
 
-  const { open, forgeName, change, onChanged, onLogOut, onClose }: Props =
-    $props();
+  const {
+    open,
+    forgeName,
+    repositoryLabel,
+    change,
+    onChanged,
+    onLogOut,
+    onClose,
+  }: Props = $props();
 
   const uid = $props.id();
   const formId = `change-passphrase-form-${uid}`;
@@ -49,6 +59,7 @@
   const newId = `change-passphrase-new-${uid}`;
   const repeatId = `change-passphrase-repeat-${uid}`;
   const hintId = `change-passphrase-hint-${uid}`;
+  const strengthId = `change-passphrase-strength-${uid}`;
   const removeHistoryHintId = `change-passphrase-remove-history-hint-${uid}`;
 
   type Stage =
@@ -263,10 +274,15 @@
               id={newId}
               type="password"
               autocomplete="new-password"
-              aria-describedby={hintId}
+              aria-describedby="{hintId} {strengthId}"
               bind:value={newPassphrase}
             />
             <p id={hintId} class="field-hint">{NEW_PASSPHRASE_HINT}</p>
+            <PassphraseStrength
+              id={strengthId}
+              passphrase={newPassphrase}
+              {repositoryLabel}
+            />
           </div>
           <div class="field">
             <label for={repeatId}>Repeat new passphrase</label>
@@ -287,18 +303,26 @@
                 />
                 {REMOVE_HISTORY_LABEL}
               </label>
-              <p id={removeHistoryHintId} class="field-hint">
-                {describeRemoveHistory(forgeName)}
-              </p>
+              <div>
+                <p id={removeHistoryHintId} class="field-hint">
+                  {describeRemoveHistory(forgeName)}
+                </p>
+                {#if !removeHistory}
+                  <p
+                    role="note"
+                    class="alert-warning history-warning"
+                    transition:warningReveal
+                  >
+                    {HISTORY_WARNING}
+                  </p>
+                {/if}
+              </div>
             </div>
+          {:else}
+            <p role="note" class="alert-warning">{HISTORY_WARNING}</p>
           {/if}
         </fieldset>
-        <div class="warnings">
-          {#if !removeHistory}
-            <p class="field-hint">{HISTORY_WARNING}</p>
-          {/if}
-          <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
-        </div>
+        <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
       </form>
     {/if}
     {#if stage.kind === "working"}
@@ -395,7 +419,7 @@
   }
 
   .review p,
-  .warnings p,
+  .passphrase-form > p,
   .remove-history p {
     margin: 0;
   }
@@ -405,9 +429,9 @@
     gap: var(--space-1);
   }
 
-  .warnings {
-    display: grid;
-    gap: var(--space-2);
+  /* A margin rather than a grid gap, so the reveal transition animates it. */
+  .remove-history .history-warning {
+    margin-top: var(--space-3);
   }
 
   .step-progress {

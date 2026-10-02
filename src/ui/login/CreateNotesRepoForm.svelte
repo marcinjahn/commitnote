@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import PasswordManagerUsername from "./PasswordManagerUsername.svelte";
-  import PassphraseStrength from "./PassphraseStrength.svelte";
+  import PassphraseStrength from "../passphrase/PassphraseStrength.svelte";
 
   interface Props {
     username: string;

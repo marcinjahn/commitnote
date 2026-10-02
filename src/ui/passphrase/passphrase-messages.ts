@@ -38,7 +38,7 @@ export const PASSPHRASES_DIFFER = "The new passphrases do not match.";
 export const ENTER_CURRENT_PASSPHRASE = "Enter the current passphrase.";
 
 export const HISTORY_WARNING =
-  "Earlier versions of your notes stay in the repository's history and can still be decrypted with the current passphrase.";
+  "Earlier versions of your notes stay in the repository's history, so the current passphrase still decrypts them after the change.";
 export const REMOVE_HISTORY_LABEL = "Also delete the old history";
 
 export function describeRemoveHistory(forgeName: string): string {
