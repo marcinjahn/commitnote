@@ -1,6 +1,6 @@
 import type { BrowserContextOptions, Locator, Page } from "@playwright/test";
 import { test, expect } from "@playwright/test";
-import { logIn, expectTree } from "./helpers";
+import { logIn, expectTree, rowSyncState } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";
 const NOTES_PASSPHRASE = "sample notes repo passphrase";
@@ -97,6 +97,35 @@ test("dragging a note within its folder reorders it", async ({ page }) => {
 
   await expect(treeRows(page)).toHaveText(REORDERED_ROOT);
   await expect(movedToast(page)).toHaveCount(0);
+});
+
+test("a reordered note shows its saving state until it is saved", async ({
+  page,
+}) => {
+  await page.evaluate(
+    (repoKey) =>
+      (window as any).__commitNoteFakeForge.failNext(
+        repoKey,
+        "commit",
+        "Network",
+      ),
+    REPO_KEY,
+  );
+
+  await dragRow(
+    page,
+    treeItem(page, "Zażółć gęślą jaźń"),
+    treeItem(page, "Welcome"),
+    { y: 0.25 },
+  );
+
+  await expect(rowSyncState(page, "Zażółć gęślą jaźń")).toHaveCount(1);
+  await expect(rowSyncState(page, "Welcome", { exact: true })).toHaveCount(0);
+  await expect(rowSyncState(page, "Journal", { exact: true })).toHaveCount(0);
+  await expect(rowSyncState(page, "Zażółć gęślą jaźń")).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await expect(treeRows(page)).toHaveText(REORDERED_ROOT);
 });
 
 test("the new order survives a reload", async ({ page }) => {

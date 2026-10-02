@@ -123,7 +123,7 @@ describe("computeSyncStates entry paths", () => {
 });
 
 describe("computeSyncStates order", () => {
-  const position = (parent: NotePath): Change => ({
+  const position = (parent: NotePath): Extract<Change, { kind: "set-order" }> => ({
     kind: "set-order",
     parent,
     positions: [{ name: "a.md", key: "V" }],
@@ -154,6 +154,74 @@ describe("computeSyncStates order", () => {
     });
 
     expect(states.unsavedCount).toBe(2);
+  });
+
+  it("marks only the moved item of a reorder, not the siblings positioned with it", () => {
+    const states = computeSyncStates({
+      pending: [],
+      inFlight: [
+        {
+          kind: "set-order",
+          parent: pathOf("f"),
+          positions: [
+            { name: "a.md", key: "F" },
+            { name: "b.md", key: "N" },
+            { name: "c.md", key: "V" },
+          ],
+          moved: "b.md",
+        },
+      ],
+      failed: false,
+      conflicts: [],
+    });
+
+    expect(states.stateOf(pathOf("f", "b.md"))).toEqual({ kind: "syncing" });
+    expect(states.stateOf(pathOf("f"))).toEqual({ kind: "syncing" });
+    expect(states.stateOf([])).toEqual({ kind: "syncing" });
+    expect(states.stateOf(pathOf("f", "a.md"))).toBe(SYNCED);
+    expect(states.stateOf(pathOf("f", "c.md"))).toBe(SYNCED);
+    expect(states.unsavedCount).toBe(1);
+  });
+
+  it("marks an item reordered at the top level", () => {
+    const states = computeSyncStates({
+      pending: [{ ...position([]), moved: "a.md" }],
+      inFlight: [],
+      failed: false,
+      conflicts: [],
+    });
+
+    expect(states.stateOf(pathOf("a.md"))).toEqual({
+      kind: "out-of-sync",
+      reason: "pending",
+    });
+    expect(states.unsavedCount).toBe(1);
+  });
+
+  it("counts an item moved into a folder and placed there once", () => {
+    const states = computeSyncStates({
+      pending: [
+        { kind: "rename-note", from: pathOf("b.md"), to: pathOf("g", "b.md") },
+        { ...position(pathOf("g")), moved: "b.md" },
+      ],
+      inFlight: [],
+      failed: false,
+      conflicts: [],
+    });
+
+    expect(states.unsavedCount).toBe(1);
+  });
+
+  it("counts a reordered item once while its earlier position is in flight", () => {
+    const reorder: Change = { ...position(pathOf("f")), moved: "a.md" };
+    const states = computeSyncStates({
+      pending: [reorder],
+      inFlight: [reorder],
+      failed: false,
+      conflicts: [],
+    });
+
+    expect(states.unsavedCount).toBe(1);
   });
 });
 

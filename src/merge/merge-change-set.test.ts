@@ -243,6 +243,17 @@ const setOrder = (parent: string, ...positions: [string, string][]): Change => (
   positions: positions.map(([name, key]) => ({ name, key })),
 });
 
+const reorder = (
+  moved: string,
+  parent: string,
+  ...positions: [string, string][]
+): Change => ({
+  kind: "set-order",
+  parent: parent === "" ? [] : split(parent),
+  positions: positions.map(([name, key]) => ({ name, key })),
+  moved,
+});
+
 const entryId = (depth: number, suffix: string): string =>
   `20260930T154358Z-${depth}-${suffix.padEnd(8, "a")}`;
 const E1 = entryId(1, "one");
@@ -887,6 +898,24 @@ const cases: MergeCase[] = [
     check(result) {
       expect(result.changeSet).toEqual([setOrder("", ["a.md", "2"])]);
       expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "keeps the moved item of a reorder that is still there",
+    base: { notes: { "a.md": "a", "b.md": "b" } },
+    remote: { notes: { "a.md": "a2", "b.md": "b" } },
+    changeSet: [reorder("a.md", "", ["b.md", "1"], ["a.md", "2"])],
+    check(result) {
+      expect(result.changeSet).toEqual(this.changeSet);
+    },
+  },
+  {
+    name: "forgets the moved item of a reorder once it is deleted remotely",
+    base: { notes: { "a.md": "a", "b.md": "b" } },
+    remote: { notes: { "a.md": "a" } },
+    changeSet: [reorder("b.md", "", ["b.md", "1"], ["a.md", "2"])],
+    check(result) {
+      expect(result.changeSet).toEqual([setOrder("", ["a.md", "2"])]);
     },
   },
   {
