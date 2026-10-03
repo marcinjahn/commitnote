@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chooseRepository, expectTree, logIn } from "./helpers";
 
@@ -55,6 +55,63 @@ async function expectSettingsCommits(page: Page, count: number) {
     .toBe(count);
 }
 
+const SEEDED_ROOT = [
+  "Empty folder",
+  "Journal",
+  "Projects",
+  "Welcome",
+  "Zażółć gęślą jaźń",
+];
+
+const NOTE_OPTIONS = ["At the beginning", "At the end"];
+const FOLDER_OPTIONS = ["At the beginning", "At the end", "After the last folder"];
+
+function rootRows(page: Page) {
+  return page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
+}
+
+async function chooseOption(
+  page: Page,
+  section: string,
+  name: string,
+): Promise<void> {
+  await settingsDialog(page)
+    .getByRole("radiogroup", { name: section })
+    .locator("label")
+    .filter({ has: page.getByRole("radio", { name, exact: true }) })
+    .click();
+}
+
+async function addedCommits(
+  page: Page,
+  before: string[],
+): Promise<string[]> {
+  return (await commitMessages(page)).filter((m) => !before.includes(m));
+}
+
+async function createHeaderNote(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+): Promise<void> {
+  await page.getByRole("button", { name: "New note", exact: true }).click();
+  const field = page.getByRole("textbox", { name: "Note name" });
+  await field.fill(name);
+  await field.press("Enter");
+  await expect(page.getByRole("textbox", { name: "Note editor" })).toBeVisible();
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: "Back to notes" }).click();
+  }
+  await expect(page.getByRole("treeitem", { name })).toBeVisible();
+}
+
+async function createHeaderFolder(page: Page, name: string): Promise<void> {
+  await page.getByRole("button", { name: "New folder" }).click();
+  await page.getByLabel("Folder name").fill(name);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByRole("treeitem", { name })).toBeVisible();
+}
+
 async function clickLogOut(page: Page): Promise<void> {
   const back = page.getByRole("button", { name: "Back to notes" });
   if (await back.isVisible()) {
@@ -90,10 +147,38 @@ test("Settings is the first command and opens a dialog with the accent color opt
   for (const [index, name] of PALETTE.entries()) {
     await expect(group.getByRole("radio").nth(index)).toHaveAccessibleName(name);
   }
-  await expect(group.getByRole("radio", { name: "System" })).toBeChecked();
-  expect(
-    await dialog.evaluate((el) => el.contains(document.activeElement)),
-  ).toBe(true);
+  const systemRadio = group.getByRole("radio", { name: "System" });
+  await expect(systemRadio).toBeChecked();
+  await expect(systemRadio).toBeFocused();
+  await expect(systemRadio).toHaveAccessibleDescription(
+    "Matches your operating system's accent color",
+  );
+  await expect(
+    group
+      .locator("label")
+      .filter({ has: page.getByRole("radio", { name: "System" }) })
+      .locator("svg"),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("System · matches your operating system's accent color"),
+  ).toBeVisible();
+
+  const sections = dialog.getByRole("radiogroup");
+  await expect(sections).toHaveCount(3);
+  await expect(sections.nth(1)).toHaveAccessibleName("New notes");
+  await expect(sections.nth(2)).toHaveAccessibleName("New folders");
+  const notes = dialog.getByRole("radiogroup", { name: "New notes" });
+  const folders = dialog.getByRole("radiogroup", { name: "New folders" });
+  await expect(notes.getByRole("radio")).toHaveCount(NOTE_OPTIONS.length);
+  for (const [index, name] of NOTE_OPTIONS.entries()) {
+    await expect(notes.getByRole("radio").nth(index)).toHaveAccessibleName(name);
+  }
+  await expect(notes.getByRole("radio", { name: "At the beginning" })).toBeChecked();
+  await expect(folders.getByRole("radio")).toHaveCount(FOLDER_OPTIONS.length);
+  for (const [index, name] of FOLDER_OPTIONS.entries()) {
+    await expect(folders.getByRole("radio").nth(index)).toHaveAccessibleName(name);
+  }
+  await expect(folders.getByRole("radio", { name: "At the end" })).toBeChecked();
 
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
@@ -127,6 +212,7 @@ test("choosing an accent color applies it and saves one commit without the value
   await chooseAccent(page, "Teal");
 
   await expect(dialog.getByRole("radio", { name: "Teal" })).toBeChecked();
+  await expect(dialog.locator(".accent-caption")).toHaveText("Teal");
   await expectRootAccent(page, TEAL);
   await expect
     .poll(() =>
@@ -229,4 +315,86 @@ test("a saved accent color applies on the passphrase step and after login, and l
   await page.getByRole("button", { name: "Log in" }).click();
   await expectTree(page);
   await expectRootAccent(page, TEAL);
+});
+
+test("a saved note placement is one commit naming only the key, and returning to it makes no commit", async ({
+  page,
+}) => {
+  const commitsBefore = await commitMessages(page);
+  await openSettings(page);
+
+  await chooseOption(page, "New notes", "At the end");
+  await expectSettingsCommits(page, commitsBefore.length + 1);
+  const added = await addedCommits(page, commitsBefore);
+  expect(added).toHaveLength(1);
+  expect(added[0].split("\n")).toContain("Commitnote-Settings: newNotePlacement");
+
+  await chooseOption(page, "New notes", "At the beginning");
+  await chooseOption(page, "New notes", "At the end");
+  await page.waitForTimeout(2500);
+  expect(await commitMessages(page)).toHaveLength(commitsBefore.length + 1);
+});
+
+test("a saved folder placement is one commit naming only the key", async ({
+  page,
+}) => {
+  const commitsBefore = await commitMessages(page);
+  await openSettings(page);
+
+  await chooseOption(page, "New folders", "After the last folder");
+  await expectSettingsCommits(page, commitsBefore.length + 1);
+  const added = await addedCommits(page, commitsBefore);
+  expect(added).toHaveLength(1);
+  expect(added[0].split("\n")).toContain(
+    "Commitnote-Settings: newFolderPlacement",
+  );
+  expect(added[0]).not.toContain("afterLastFolder");
+});
+
+test("by default a new note is first and a new folder is last at the root", async ({
+  page,
+}, testInfo) => {
+  await createHeaderNote(page, testInfo, "Fresh note");
+  await createHeaderFolder(page, "Fresh folder");
+
+  await expect(rootRows(page)).toHaveText([
+    "Fresh note",
+    ...SEEDED_ROOT,
+    "Fresh folder",
+  ]);
+});
+
+test("changed placements apply to items created right after closing Settings", async ({
+  page,
+}, testInfo) => {
+  await openSettings(page);
+  await chooseOption(page, "New notes", "At the end");
+  await chooseOption(page, "New folders", "After the last folder");
+  await page.keyboard.press("Escape");
+  await expect(settingsDialog(page)).toHaveCount(0);
+
+  await createHeaderNote(page, testInfo, "Fresh note");
+  await createHeaderFolder(page, "Fresh folder");
+
+  await expect(rootRows(page)).toHaveText([
+    "Empty folder",
+    "Journal",
+    "Projects",
+    "Fresh folder",
+    "Welcome",
+    "Zażółć gęślą jaźń",
+    "Fresh note",
+  ]);
+});
+
+test("arrow keys move the note placement selection", async ({ page }) => {
+  await openSettings(page);
+  const group = settingsDialog(page).getByRole("radiogroup", {
+    name: "New notes",
+  });
+  await group.getByRole("radio", { name: "At the beginning" }).focus();
+
+  await page.keyboard.press("ArrowDown");
+
+  await expect(group.getByRole("radio", { name: "At the end" })).toBeChecked();
 });

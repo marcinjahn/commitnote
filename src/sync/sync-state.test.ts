@@ -421,6 +421,46 @@ describe("computeSyncStates settings", () => {
     });
     expect(states.unsavedCount).toBe(2);
   });
+
+  it("reports settings as synced when no set-settings is unsaved", () => {
+    const states = computeSyncStates({
+      pending: [note],
+      inFlight: [],
+      failed: true,
+      conflicts: [],
+    });
+    expect(states.settings).toEqual({ kind: "synced" });
+  });
+
+  it("reports settings as syncing while a set-settings is in flight", () => {
+    const states = computeSyncStates({
+      pending: [],
+      inFlight: [settings],
+      failed: false,
+      conflicts: [],
+    });
+    expect(states.settings).toEqual({ kind: "syncing" });
+  });
+
+  it("reports settings as pending while a set-settings waits, even with another in flight", () => {
+    const states = computeSyncStates({
+      pending: [settings],
+      inFlight: [settings],
+      failed: false,
+      conflicts: [],
+    });
+    expect(states.settings).toEqual({ kind: "out-of-sync", reason: "pending" });
+  });
+
+  it("reports settings as failed when the save failed", () => {
+    const states = computeSyncStates({
+      pending: [],
+      inFlight: [settings],
+      failed: true,
+      conflicts: [],
+    });
+    expect(states.settings).toEqual({ kind: "out-of-sync", reason: "failed" });
+  });
 });
 
 describe("hasConflictMarkers", () => {

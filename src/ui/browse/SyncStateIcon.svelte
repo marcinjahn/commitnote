@@ -4,11 +4,12 @@
 
   interface Props {
     state: SyncState;
+    label?: string;
   }
 
-  const { state }: Props = $props();
+  const { state, label: labelProp }: Props = $props();
 
-  const label = $derived(describeSyncState(state));
+  const label = $derived(labelProp ?? describeSyncState(state));
 </script>
 
 <span class="sync-state-icon" role="img" aria-label={label} title={label}>

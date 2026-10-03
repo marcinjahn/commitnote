@@ -1,4 +1,10 @@
 import { parseAccentColor, type AccentColorId } from "./accent-palette";
+import {
+  parseNewFolderPlacement,
+  parseNewNotePlacement,
+  type NewFolderPlacement,
+  type NewNotePlacement,
+} from "./placement-options";
 
 export type RawSettings = Readonly<Record<string, unknown>>;
 export type SettingsEdits = Readonly<Record<string, unknown>>;
@@ -22,8 +28,20 @@ const accentColorSetting: SettingDefinition<AccentColorId> = {
   parse: parseAccentColor,
 };
 
+const newNotePlacementSetting: SettingDefinition<NewNotePlacement> = {
+  default: "beginning",
+  parse: parseNewNotePlacement,
+};
+
+const newFolderPlacementSetting: SettingDefinition<NewFolderPlacement> = {
+  default: "end",
+  parse: parseNewFolderPlacement,
+};
+
 export const SETTINGS_SCHEMA = {
   accentColor: accentColorSetting,
+  newNotePlacement: newNotePlacementSetting,
+  newFolderPlacement: newFolderPlacementSetting,
 } as const satisfies SettingsSchema;
 
 export type Settings = SettingsOf<typeof SETTINGS_SCHEMA>;

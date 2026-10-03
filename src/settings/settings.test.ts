@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { AccentColorId } from "./accent-palette";
+import type { NewFolderPlacement, NewNotePlacement } from "./placement-options";
 import {
   applySettingsEdits,
   changedSettingKeys,
@@ -69,9 +70,7 @@ describe("resolveSettings", () => {
   });
 
   it("resolves missing accent color to system", () => {
-    expect(resolveSettings(SETTINGS_SCHEMA, {})).toEqual({
-      accentColor: "system",
-    });
+    expect(resolveSettings(SETTINGS_SCHEMA, {}).accentColor).toBe("system");
   });
 
   it("resolves an unknown accent color to system", () => {
@@ -97,6 +96,58 @@ describe("resolveSettings", () => {
 
   it("types the accent color setting as the palette id", () => {
     expectTypeOf<Settings["accentColor"]>().toEqualTypeOf<AccentColorId>();
+  });
+});
+
+describe("placement settings", () => {
+  it("defaults new note placement to the beginning and new folder placement to the end", () => {
+    expect(resolveSettings(SETTINGS_SCHEMA, {})).toEqual({
+      accentColor: "system",
+      newNotePlacement: "beginning",
+      newFolderPlacement: "end",
+    });
+  });
+
+  it.each(["middle", "afterLastFolder", 3, null])(
+    "resolves unknown new note placement %j to the beginning",
+    (value) => {
+      expect(
+        resolveSettings(SETTINGS_SCHEMA, { newNotePlacement: value })
+          .newNotePlacement,
+      ).toBe("beginning");
+    },
+  );
+
+  it.each(["middle", 3, null])(
+    "resolves unknown new folder placement %j to the end",
+    (value) => {
+      expect(
+        resolveSettings(SETTINGS_SCHEMA, { newFolderPlacement: value })
+          .newFolderPlacement,
+      ).toBe("end");
+    },
+  );
+
+  it.each(["beginning", "end"])("resolves stored new note placement %s", (id) => {
+    expect(
+      resolveSettings(SETTINGS_SCHEMA, { newNotePlacement: id })
+        .newNotePlacement,
+    ).toBe(id);
+  });
+
+  it.each(["beginning", "end", "afterLastFolder"])(
+    "resolves stored new folder placement %s",
+    (id) => {
+      expect(
+        resolveSettings(SETTINGS_SCHEMA, { newFolderPlacement: id })
+          .newFolderPlacement,
+      ).toBe(id);
+    },
+  );
+
+  it("types placement settings as the option ids", () => {
+    expectTypeOf<Settings["newNotePlacement"]>().toEqualTypeOf<NewNotePlacement>();
+    expectTypeOf<Settings["newFolderPlacement"]>().toEqualTypeOf<NewFolderPlacement>();
   });
 });
 

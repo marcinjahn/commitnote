@@ -13,6 +13,7 @@ export interface SyncStates {
   stateOf(path: NotePath): SyncState;
   readonly unsavedCount: number;
   readonly hasUnsaved: boolean;
+  readonly settings: SyncState;
 }
 
 export const SYNCED: SyncState = { kind: "synced" };
@@ -128,7 +129,16 @@ export function computeSyncStates(input: {
   }
   const hasSettings = (changes: ChangeSet) =>
     changes.some((change) => change.kind === "set-settings");
-  if (hasSettings(inFlight) || hasSettings(pending)) unsavedCount++;
+  const settingsPending = hasSettings(pending);
+  const settingsInFlight = hasSettings(inFlight);
+  if (settingsInFlight || settingsPending) unsavedCount++;
+  const settingsLevel = !settingsPending && !settingsInFlight
+    ? LEVEL_SYNCED
+    : failed
+      ? LEVEL_FAILED
+      : settingsPending
+        ? LEVEL_PENDING
+        : LEVEL_SYNCING;
 
   function stateOf(path: NotePath): SyncState {
     const level = levelByKey.get(keyOf(path)) ?? LEVEL_SYNCED;
@@ -139,6 +149,7 @@ export function computeSyncStates(input: {
     stateOf,
     unsavedCount,
     hasUnsaved: unsavedCount > 0,
+    settings: STATE_BY_LEVEL[settingsLevel],
   };
 }
 

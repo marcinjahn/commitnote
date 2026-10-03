@@ -98,3 +98,36 @@ test("hiding the tab flushes pending edits immediately", async ({
   await expect(syncIcon).toHaveAccessibleName("Saving", { timeout: 500 });
   await expect(syncIcon).toHaveCount(0, { timeout: 5_000 });
 });
+
+test("closing the page before a settings change is saved shows the leave-site prompt", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "dialog handling is desktop-only here",
+  );
+
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await expectTree(page);
+
+  await page.getByRole("button", { name: "More commands" }).click();
+  await page
+    .getByRole("menu", { name: "Commands" })
+    .getByRole("menuitem", { name: "Settings" })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await dialog
+    .locator("label")
+    .filter({ has: page.getByRole("radio", { name: "Teal", exact: true }) })
+    .click();
+
+  let dialogType: string | null = null;
+  page.on("dialog", (prompt) => {
+    dialogType = prompt.type();
+    void prompt.dismiss();
+  });
+
+  await page.close({ runBeforeUnload: true });
+  await expect.poll(() => dialogType, { timeout: 3_000 }).toBe("beforeunload");
+});
