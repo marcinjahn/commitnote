@@ -36,7 +36,11 @@
   } from "./rekey/change-passphrase";
   import { createNoteHistory, type NoteHistory } from "./history/note-history";
   import { describePassphraseChanged } from "./ui/passphrase/passphrase-messages";
-  import { accentCustomProperties, type AccentColorId } from "./settings/accent-palette";
+  import {
+    accentCustomProperties,
+    type AccentColorId,
+    type AccentCustomProperties,
+  } from "./settings/accent-palette";
   import { systemAccent, watchSystemAccent } from "./ui/system-accent.svelte";
   import { noteFontFamily, type NoteFont } from "./settings/note-font";
   import KeyChangedScreen from "./ui/session/KeyChangedScreen.svelte";
@@ -112,14 +116,32 @@
 
   $effect(() => untrack(() => watchSystemAccent(window)));
 
-  $effect(() => {
+  function applyAccent(properties: AccentCustomProperties): void {
     const style = document.documentElement.style;
-    const id =
-      appliedAccentColor === "system" ? systemAccent().id : appliedAccentColor;
-    for (const [name, value] of Object.entries(accentCustomProperties(id))) {
+    for (const [name, value] of Object.entries(properties)) {
       if (value === null) style.removeProperty(name);
       else style.setProperty(name, value);
     }
+  }
+
+  let accentApplied = false;
+
+  $effect(() => {
+    const id =
+      appliedAccentColor === "system" ? systemAccent().id : appliedAccentColor;
+    const properties = accentCustomProperties(id);
+    if (!accentApplied) {
+      accentApplied = true;
+      applyAccent(properties);
+      return;
+    }
+    // The change often lands in the task that mounts a whole screen, and a
+    // transition started there is timed from the previous frame, so a slow mount
+    // eats most of it. Starting it after the new screen's first frame avoids that.
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => applyAccent(properties));
+    });
+    return () => cancelAnimationFrame(frame);
   });
 
   let reportedNoteFont = $state<NoteFont>("inter");

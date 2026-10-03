@@ -13,7 +13,7 @@
 }
 
 :root {
-  transition: --color-accent 300ms var(--motion-easing);
+  transition: --color-accent 300ms ease-in-out;
   --color-background: #fafafa;
   --color-surface: #f2f2f2;
   --color-surface-raised: #ffffff;
