@@ -7,6 +7,18 @@ function merge(notice: Extract<EngineNotice, { kind: "merge" }>["notice"]): Engi
 }
 
 describe("describeNotice", () => {
+  it("describes a dropped set-settings change", () => {
+    expect(
+      describeNotice({
+        id: 1,
+        kind: "dropped",
+        change: { kind: "set-settings", values: { theme: "dark" } },
+      } as EngineNotice),
+    ).toBe(
+      "Some settings couldn't be saved because they changed on another device.",
+    );
+  });
+
   it("describes an edited merge restored after the note disappeared", () => {
     expect(
       describeNotice({ id: 1, kind: "edited-merge-restored", path: ["a", "b"] }),

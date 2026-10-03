@@ -65,6 +65,7 @@ function entryPathOf(change: Change): NotePath | null {
         ? change.parent
         : [...change.parent, change.moved];
     case "purge-trash":
+    case "set-settings":
       return null;
   }
 }
@@ -125,6 +126,9 @@ export function computeSyncStates(input: {
   for (const key of orderKeys) {
     if (!entryKeys.has(key) && !entryParentKeys.has(key)) unsavedCount++;
   }
+  const hasSettings = (changes: ChangeSet) =>
+    changes.some((change) => change.kind === "set-settings");
+  if (hasSettings(inFlight) || hasSettings(pending)) unsavedCount++;
 
   function stateOf(path: NotePath): SyncState {
     const level = levelByKey.get(keyOf(path)) ?? LEVEL_SYNCED;

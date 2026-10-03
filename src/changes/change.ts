@@ -1,3 +1,5 @@
+import type { SettingsEdits } from "../settings/settings";
+
 export type NotePath = readonly string[];
 
 export type Change =
@@ -48,7 +50,8 @@ export type Change =
       readonly positions: readonly OrderPosition[];
       /** The child the user placed, to show its saving state; never committed. */
       readonly moved?: string;
-    };
+    }
+  | { readonly kind: "set-settings"; readonly values: SettingsEdits };
 
 /** The order key of the child `name` of a folder. */
 export interface OrderPosition {

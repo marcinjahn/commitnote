@@ -286,6 +286,8 @@ class ChangeSetMerger {
         return this.purgeTrash(change.entryIds);
       case "set-order":
         return this.setOrder(change);
+      case "set-settings":
+        return this.emit(change);
     }
   }
 

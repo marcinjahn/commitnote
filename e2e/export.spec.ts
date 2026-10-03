@@ -55,7 +55,7 @@ test("the commands menu opens from the keyboard and closes on Escape", async ({
   const menu = page.getByRole("menu", { name: "Commands" });
   await expect(menu).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
-  await expect(menu.getByRole("menuitem", { name: "Export notes" })).toBeFocused();
+  await expect(menu.getByRole("menuitem", { name: "Settings" })).toBeFocused();
   await expect(page.locator(".sidebar-footer").getByText("Export")).toHaveCount(0);
 
   await page.keyboard.press("Escape");

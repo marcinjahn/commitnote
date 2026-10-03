@@ -339,6 +339,8 @@ function applyTreeChangeOrThrow(state: MutState, change: Change): void {
       }
       return;
     }
+    case "set-settings":
+      return;
   }
 }
 
@@ -459,6 +461,7 @@ function touchesPath(change: Change, path: NotePath): boolean {
     case "create-folder":
     case "purge-trash":
     case "set-order":
+    case "set-settings":
       return false;
   }
 }
@@ -485,6 +488,18 @@ function appendSetOrder(
 
 export function appendChange(changes: ChangeSet, change: Change): ChangeSet {
   if (change.kind === "set-order") return appendSetOrder(changes, change);
+  if (change.kind === "set-settings") {
+    let values = change.values;
+    const others: Change[] = [];
+    for (const existing of changes) {
+      if (existing.kind === "set-settings") {
+        values = { ...existing.values, ...values };
+      } else {
+        others.push(existing);
+      }
+    }
+    return [...others, { kind: "set-settings", values }];
+  }
   if (change.kind === "update-note") {
     for (let i = changes.length - 1; i >= 0; i--) {
       const existing = changes[i];
@@ -560,6 +575,7 @@ export function localContentAt(
         break;
       case "create-folder":
       case "set-order":
+      case "set-settings":
         break;
       case "trash-note": {
         const key = JSON.stringify(change.path);
@@ -851,6 +867,9 @@ export function rebaseChanges(
         }
         break;
       }
+      case "set-settings":
+        kept.push(change);
+        break;
     }
   }
 

@@ -6,13 +6,21 @@
   font-display: swap;
 }
 
+@property --color-accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #3358d4;
+}
+
 :root {
+  transition: --color-accent 300ms var(--motion-easing);
   --color-background: #fafafa;
   --color-surface: #f2f2f2;
   --color-surface-raised: #ffffff;
   --color-text: #0a0a0a;
   --color-text-muted: #5c5c5c;
-  --color-accent: #3358d4;
+  --system-accent: #3358d4;
+  --color-accent: var(--accent-light, var(--system-accent));
   --color-link: #3358d4;
   --color-ink: #0a0a0a;
   --color-ink-hover: #2e2e2e;
@@ -95,7 +103,8 @@
     --color-surface-raised: #1a1a1a;
     --color-text: #ededed;
     --color-text-muted: #a0a0a0;
-    --color-accent: #86a4ff;
+    --system-accent: #86a4ff;
+    --color-accent: var(--accent-dark, var(--system-accent));
     --color-link: #86a4ff;
     --color-ink: #ededed;
     --color-ink-hover: #cfcfcf;
@@ -128,7 +137,7 @@
 
 @supports (color: AccentColor) {
   :root {
-    --color-accent: AccentColor;
+    --system-accent: AccentColor;
   }
 }
 

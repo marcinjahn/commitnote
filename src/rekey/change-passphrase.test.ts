@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
+import { parseRepoConfig, serializeRepoConfig } from "../crypto/repo-config";
 import { encryptPath } from "../crypto/name-cipher";
 import type { Keyring } from "../crypto/keyring";
 import { encryptNote } from "../crypto/note-cipher";
 import { ForgeError, type ForgeErrorKind } from "../forge/errors";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import type { AtomicCommitSupport, ForgeAdapter } from "../forge/forge-adapter";
-import { CHANGE_PASSPHRASE_SUBJECT, MAIN_BRANCH } from "../format/v1";
+import { FakeForgeAdapter as FakeAdapter } from "../forge/fake/fake-forge-adapter";
+import {
+  commitFiles,
+  InMemoryGitRepo,
+} from "../forge/fake/in-memory-git-repo";
+import {
+  CHANGE_PASSPHRASE_SUBJECT,
+  MAIN_BRANCH,
+  REPO_CONFIG_PATH,
+} from "../format/v1";
 import { createRateBudget } from "../sync/rate-budget";
 import { createSyncEngine, type SyncEngine } from "../sync/sync-engine";
 import { createTestClock } from "../sync/testing/test-clock";
@@ -19,9 +29,11 @@ import {
 } from "./change-passphrase";
 import {
   createRekeyFixture,
+  createRekeyFixtureFiles,
   decryptTree,
   fastArgon2id,
   FIXTURE_NOTES,
+  keyringFor,
   keyStateOf,
   NEW_PASSPHRASE,
   OLD_PASSPHRASE,
@@ -126,6 +138,69 @@ async function expectUnchanged(h: Harness): Promise<void> {
   expect(await decryptTree(files, h.fixture.oldKeyring)).toEqual(h.before);
   expect(h.engine.getState().suspended).toBe(false);
 }
+
+async function fixtureWithSettings(settings: unknown): Promise<RekeyFixture> {
+  const { files, keyring, configText } = await createRekeyFixtureFiles();
+  const parsed = parseRepoConfig(configText);
+  if (parsed.kind !== "valid") throw new Error("invalid config");
+  const withSettings = serializeRepoConfig({ ...parsed.config, settings });
+  const repo = new InMemoryGitRepo();
+  const head = await commitFiles(repo, {
+    parent: null,
+    files: { ...files, [REPO_CONFIG_PATH]: withSettings },
+    message: "seed",
+    branch: MAIN_BRANCH,
+  });
+  return {
+    adapter: new FakeAdapter({ repo }),
+    oldKeyring: keyring,
+    configText: withSettings,
+    head,
+  };
+}
+
+async function newConfigText(h: Harness): Promise<string> {
+  const result = await changePassphrase(h);
+  if (!result.ok) throw new Error(result.failure.kind);
+  const { files } = await readTree(h.fixture.adapter);
+  return files.get(REPO_CONFIG_PATH)!;
+}
+
+describe("changing the passphrase keeps settings", () => {
+  it("carries the settings object, unknown keys included, into the new config.json", async () => {
+    const settings = { theme: "dark", futureKey: { nested: [1, "two", null] } };
+    const h = await setup({ fixture: await fixtureWithSettings(settings) });
+
+    const text = await newConfigText(h);
+
+    const parsed = parseRepoConfig(text);
+    if (parsed.kind !== "valid") throw new Error("invalid config");
+    expect(parsed.config.settings).toEqual(settings);
+    await expect(keyringFor(NEW_PASSPHRASE, text)).resolves.toBeDefined();
+    const files = (await readTree(h.fixture.adapter)).files;
+    expect(
+      await keyStateOf(files, h.fixture.oldKeyring, await keyringFor(NEW_PASSPHRASE, text)),
+    ).toBe("new");
+  });
+
+  it("carries a settings value that is not an object unchanged", async () => {
+    const h = await setup({ fixture: await fixtureWithSettings("oops") });
+
+    const text = await newConfigText(h);
+
+    const parsed = parseRepoConfig(text);
+    if (parsed.kind !== "valid") throw new Error("invalid config");
+    expect(parsed.config.settings).toBe("oops");
+  });
+
+  it("writes no settings key when the repo has none", async () => {
+    const h = await setup();
+
+    const text = await newConfigText(h);
+
+    expect(text).not.toContain('"settings"');
+  });
+});
 
 describe("changing the passphrase", () => {
   it("re-encrypts everything in one commit on top of the head", async () => {

@@ -569,6 +569,34 @@ describe("buildWorkingState trash", () => {
 });
 
 describe("appendChange", () => {
+  it("merges set-settings changes into one at the end, later values winning", () => {
+    let changes: ChangeSet = [
+      { kind: "set-settings", values: { a: 1, b: 1 } },
+      { kind: "update-note", path: ["Welcome"], content: "v1" },
+    ];
+    changes = appendChange(changes, {
+      kind: "set-settings",
+      values: { b: 2, c: 3 },
+    });
+    expect(changes).toEqual([
+      { kind: "update-note", path: ["Welcome"], content: "v1" },
+      { kind: "set-settings", values: { a: 1, b: 2, c: 3 } },
+    ]);
+  });
+
+  it("keeps note changes in order around a single set-settings", () => {
+    let changes: ChangeSet = [];
+    changes = appendChange(changes, { kind: "create-folder", path: ["X"] });
+    changes = appendChange(changes, { kind: "set-settings", values: { a: 1 } });
+    changes = appendChange(changes, { kind: "delete-note", path: ["Welcome"] });
+    changes = appendChange(changes, { kind: "set-settings", values: { a: 2 } });
+    expect(changes).toEqual([
+      { kind: "create-folder", path: ["X"] },
+      { kind: "delete-note", path: ["Welcome"] },
+      { kind: "set-settings", values: { a: 2 } },
+    ]);
+  });
+
   it("coalesces repeated typing into one update-note", () => {
     let changes: ChangeSet = [
       { kind: "update-note", path: ["Welcome"], content: "v1" },
@@ -1191,6 +1219,19 @@ describe("rebaseChanges", () => {
       SYNCED_TRASH,
     );
     expect(result).toEqual({ changes: [], dropped: [] });
+  });
+});
+
+describe("rebaseChanges set-settings", () => {
+  it("keeps a set-settings change unchanged", () => {
+    const settings: Change = { kind: "set-settings", values: { a: 1 } };
+    expect(
+      rebaseChanges(
+        SAMPLE_TREE,
+        [{ kind: "delete-note", path: ["Welcome"] }],
+        [settings],
+      ),
+    ).toEqual({ changes: [settings], dropped: [] });
   });
 });
 

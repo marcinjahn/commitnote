@@ -120,6 +120,65 @@ describe("parseRepoConfig / serializeRepoConfig round trip", () => {
   });
 });
 
+describe("parseRepoConfig / serializeRepoConfig: settings", () => {
+  it("omits the settings key when the config has none", () => {
+    const text = serializeRepoConfig(validConfig());
+    expect(Object.keys(JSON.parse(text))).not.toContain("settings");
+    const result = parseRepoConfig(text);
+    expect(result.kind).toBe("valid");
+    if (result.kind === "valid") {
+      expect("settings" in result.config).toBe(false);
+    }
+  });
+
+  it("exposes an object settings value on a valid config", () => {
+    const settings = { theme: "dark" };
+    const result = parseRepoConfig(JSON.stringify(validJson({ settings })));
+    expect(result).toEqual({
+      kind: "valid",
+      config: validConfig({ settings }),
+    });
+  });
+
+  it("preserves unknown keys and nested values through parse and serialize", () => {
+    const settings = {
+      unknownKey: 1,
+      nested: { list: [1, { deep: null }], flag: true },
+    };
+    const first = parseRepoConfig(JSON.stringify(validJson({ settings })));
+    if (first.kind !== "valid") throw new Error("expected valid");
+    const second = parseRepoConfig(serializeRepoConfig(first.config));
+    expect(second).toEqual({ kind: "valid", config: first.config });
+    if (second.kind !== "valid") throw new Error("expected valid");
+    expect(second.config.settings).toEqual(settings);
+  });
+
+  it.each([["x"], [[1]], [null], [5], [true]])(
+    "accepts non-object settings %j and serializes it back",
+    (settings) => {
+      const result = parseRepoConfig(JSON.stringify(validJson({ settings })));
+      expect(result.kind).toBe("valid");
+      if (result.kind !== "valid") return;
+      expect(result.config.settings).toEqual(settings);
+      const reparsed = parseRepoConfig(serializeRepoConfig(result.config));
+      expect(reparsed).toEqual(result);
+    },
+  );
+
+  it("rejects another top-level key alongside settings", () => {
+    expectInvalid(
+      JSON.stringify(validJson({ settings: {}, extra: "field" })),
+    );
+  });
+
+  it("writes settings after createdAt", () => {
+    const text = serializeRepoConfig(validConfig({ settings: { a: 1 } }));
+    const keys = Object.keys(JSON.parse(text));
+    expect(keys[keys.length - 1]).toBe("settings");
+    expect(keys[keys.length - 2]).toBe("createdAt");
+  });
+});
+
 describe("parseRepoConfig: malformed input", () => {
   it("rejects text that is not JSON", () => {
     expectInvalid("not json");

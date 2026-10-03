@@ -25,6 +25,8 @@
     GENERIC_LOGIN_ERROR,
     PUBLIC_REPOSITORY_WARNING,
   } from "./login-messages";
+  import { resolveSettings, SETTINGS_SCHEMA } from "../../settings/settings";
+  import type { AccentColorId } from "../../settings/accent-palette";
   import UnlockForm from "./UnlockForm.svelte";
   import CreateNotesRepoForm from "./CreateNotesRepoForm.svelte";
   import Wordmark from "../wordmark/Wordmark.svelte";
@@ -53,6 +55,7 @@
       adapter: ForgeAdapter;
       rememberMe: boolean;
     }) => void;
+    onAccentColor: (id: AccentColorId) => void;
   }
 
   const {
@@ -64,6 +67,7 @@
     unlock,
     initialize,
     onLoggedIn,
+    onAccentColor,
   }: Props = $props();
 
   type TokenError =
@@ -101,6 +105,15 @@
   );
 
   let inspection = $state.raw<Inspection | null>(null);
+
+  $effect(() => {
+    onAccentColor(
+      inspection?.kind === "notesRepo"
+        ? resolveSettings(SETTINGS_SCHEMA, inspection.target.config.settings)
+            .accentColor
+        : "system",
+    );
+  });
   let inspectedRepository = $state.raw<RepositorySummary | null>(null);
   let inspectionRun = 0;
 

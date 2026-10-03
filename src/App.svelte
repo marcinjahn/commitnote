@@ -24,6 +24,8 @@
   import { systemClock } from "./sync/clock";
   import { createRateBudget, type RateBudget } from "./sync/rate-budget";
   import { createSyncEngine } from "./sync/sync-engine";
+  import { SETTINGS_SAVE_DEBOUNCE_MS, SETTINGS_SAVE_MAX_WAIT_MS } from "./sync/tuning";
+  import { createSettingsSaver, type SettingsSaver } from "./settings/settings-saver";
   import type { SyncEngine } from "./sync/sync-engine";
   import type { Keyring } from "./crypto/keyring";
   import {
@@ -34,6 +36,7 @@
   } from "./rekey/change-passphrase";
   import { createNoteHistory, type NoteHistory } from "./history/note-history";
   import { describePassphraseChanged } from "./ui/passphrase/passphrase-messages";
+  import { accentCustomProperties, type AccentColorId } from "./settings/accent-palette";
   import KeyChangedScreen from "./ui/session/KeyChangedScreen.svelte";
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
@@ -58,6 +61,7 @@
     | {
         readonly kind: "app";
         readonly engine: SyncEngine;
+        readonly settingsSaver: SettingsSaver;
         readonly session: Session;
         readonly adapter: ForgeAdapter;
         readonly rememberMe: boolean;
@@ -99,6 +103,21 @@
   let unsubscribeStopped: (() => void) | null = null;
   let keyChanged = $state<{ readonly unsavedCount: number } | null>(null);
 
+  let reportedAccentColor = $state<AccentColorId>("system");
+  const appliedAccentColor = $derived<AccentColorId>(
+    keyChanged !== null ? "system" : reportedAccentColor,
+  );
+
+  $effect(() => {
+    const style = document.documentElement.style;
+    for (const [name, value] of Object.entries(
+      accentCustomProperties(appliedAccentColor),
+    )) {
+      if (value === null) style.removeProperty(name);
+      else style.setProperty(name, value);
+    }
+  });
+
   let logout = $state<
     | null
     | { readonly kind: "saving" }
@@ -111,6 +130,7 @@
 
   function showLogin(initialError: LoginError | null): void {
     loginKey++;
+    reportedAccentColor = "system";
     phase = {
       kind: "login",
       initialRepoUrl: store.lastRepoUrl() ?? "",
@@ -135,18 +155,31 @@
       clock: systemClock,
       rateBudget,
     });
+    const settingsSaver = createSettingsSaver({
+      clock: systemClock,
+      debounceMs: SETTINGS_SAVE_DEBOUNCE_MS,
+      maxWaitMs: SETTINGS_SAVE_MAX_WAIT_MS,
+      stored: () => engine.getState().rawSettings,
+      save: (edits) => engine.changeSettings(edits),
+    });
     unsubscribeStopped = engine.subscribe((state) => {
-      keyChanged =
-        state.stopped?.kind === "keyChanged"
-          ? { unsavedCount: state.syncStates.unsavedCount }
-          : null;
+      if (state.stopped?.kind === "keyChanged") {
+        keyChanged = { unsavedCount: state.syncStates.unsavedCount };
+        reportedAccentColor = "system";
+      } else {
+        keyChanged = null;
+      }
     });
     uninstallLifecycleTriggers = installLifecycleTriggers(
       { window, document },
       {
-        flush: () => void engine.flush(),
+        flush: () => {
+          settingsSaver.flush();
+          void engine.flush();
+        },
         retryNow: () => engine.retryNow(),
-        hasUnsaved: () => engine.getState().syncStates.hasUnsaved,
+        hasUnsaved: () =>
+          settingsSaver.hasPending || engine.getState().syncStates.hasUnsaved,
       },
     );
 
@@ -162,6 +195,7 @@
     phase = {
       kind: "app",
       engine,
+      settingsSaver,
       session,
       adapter,
       rememberMe,
@@ -197,12 +231,13 @@
     await startApp(result.session, result.adapter, result.rememberMe);
   }
 
-  function stopApp(engine: SyncEngine): void {
+  function stopApp(engine: SyncEngine, settingsSaver: SettingsSaver): void {
     uninstallLifecycleTriggers?.();
     uninstallLifecycleTriggers = null;
     unsubscribeStopped?.();
     unsubscribeStopped = null;
     keyChanged = null;
+    settingsSaver.dispose();
     engine.dispose();
   }
 
@@ -212,8 +247,8 @@
     history: HistoryOutcome,
   ): Promise<void> {
     if (phase.kind !== "app") return;
-    const { engine, session, adapter, rememberMe } = phase;
-    stopApp(engine);
+    const { engine, settingsSaver, session, adapter, rememberMe } = phase;
+    stopApp(engine, settingsSaver);
     await startApp(
       { ...session, keyring },
       adapter,
@@ -224,7 +259,7 @@
 
   async function finishLogOut(clearStore = true): Promise<void> {
     if (phase.kind !== "app") return;
-    stopApp(phase.engine);
+    stopApp(phase.engine, phase.settingsSaver);
     if (clearStore) await store.clear();
     logout = null;
     showLogin(null);
@@ -234,7 +269,7 @@
   // remembered the new keys; those are used instead of asking to log in.
   async function logInAfterKeyChange(): Promise<void> {
     if (phase.kind !== "app") return;
-    const { engine, session } = phase;
+    const { engine, settingsSaver, session } = phase;
     let remembered: Session | null = null;
     try {
       remembered = await store.loadRememberedSession();
@@ -252,7 +287,7 @@
     }
     const result = await resumeSession(remembered, loginDeps());
     if (result.kind === "loggedIn") {
-      stopApp(engine);
+      stopApp(engine, settingsSaver);
       await startApp(result.session, result.adapter, true);
       return;
     }
@@ -266,6 +301,7 @@
   async function attemptLogOut(): Promise<void> {
     if (phase.kind !== "app") return;
     logout = { kind: "saving" };
+    phase.settingsSaver.flush();
     const result = await phase.engine.flush();
     if (result.kind === "saved") {
       await finishLogOut();
@@ -352,6 +388,7 @@
       unlock={boundUnlock}
       initialize={boundInitialize}
       onLoggedIn={handleLoggedIn}
+      onAccentColor={(id) => (reportedAccentColor = id)}
     />
   {/key}
 {:else if phase.kind === "app" && keyChanged !== null}
@@ -363,6 +400,7 @@
 {:else if phase.kind === "app"}
   <AppShell
     engine={phase.engine}
+    settingsSaver={phase.settingsSaver}
     repoLabel={phase.repoLabel}
     repoUrl={phase.repoUrl}
     forgeName={phase.forgeName}
@@ -372,6 +410,7 @@
     onPassphraseChanged={(keyring, check, history) =>
       void handlePassphraseChanged(keyring, check, history)}
     onLogOut={logOut}
+    onAccentColor={(id) => (reportedAccentColor = id)}
   />
   <LogoutDialog
     open={logout !== null}

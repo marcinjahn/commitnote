@@ -11,6 +11,7 @@
     /** Full screen on mobile; a wide, fixed-height card on desktop whose content scrolls itself. */
     wide?: boolean;
     closeButton?: boolean;
+    accentBorder?: boolean;
   }
 
   const {
@@ -22,6 +23,7 @@
     large: largeProp = false,
     wide = false,
     closeButton = false,
+    accentBorder = false,
   }: Props = $props();
 
   const large = $derived(largeProp || wide);
@@ -34,10 +36,17 @@
     const field = el.querySelector<HTMLElement>(
       "input:not(:disabled), textarea:not(:disabled), select:not(:disabled)",
     );
-    const target = field ?? el.querySelector<HTMLElement>("button:not(:disabled)");
+    let target: HTMLElement | null = field;
+    if (field instanceof HTMLInputElement && field.type === "radio" && field.name !== "") {
+      const checked = Array.from(
+        el.querySelectorAll<HTMLInputElement>('input[type="radio"]:checked:not(:disabled)'),
+      ).find((radio) => radio.name === field.name);
+      target = checked ?? field;
+    }
+    target ??= el.querySelector<HTMLElement>("button:not(:disabled)");
     target?.focus();
     if (
-      target instanceof HTMLInputElement ||
+      target instanceof HTMLInputElement && target.type !== "radio" ||
       target instanceof HTMLTextAreaElement
     ) {
       target.select();
@@ -78,7 +87,7 @@
   oncancel={handleCancel}
   onclick={handleBackdropClick}
 >
-  <div class="dialog-card" class:large class:wide>
+  <div class="dialog-card" class:large class:wide class:accent-border={accentBorder}>
     <div class="dialog-header">
       <h2 id={titleId} class="dialog-title">{title}</h2>
       {#if closeButton}
@@ -156,6 +165,10 @@
       opacity: 0;
       transform: translateY(var(--space-2));
     }
+  }
+
+  .dialog-card.accent-border {
+    border-color: var(--color-accent);
   }
 
   .dialog-header {
@@ -245,6 +258,10 @@
       border-bottom: var(--hairline) solid var(--color-border);
       border-radius: var(--radius);
       padding-bottom: var(--space-5);
+    }
+
+    .dialog-card.accent-border {
+      border-bottom-color: var(--color-accent);
     }
 
     .dialog.large {

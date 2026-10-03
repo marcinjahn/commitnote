@@ -6,8 +6,9 @@ import { utf8Encode } from "../crypto/base64";
 import { deriveKeyring, type Keyring } from "../crypto/keyring";
 import { encryptPath } from "../crypto/name-cipher";
 import { encryptNote } from "../crypto/note-cipher";
+import type { RepoConfig } from "../crypto/repo-config";
 import type { TreeEntry } from "../forge/forge-adapter";
-import { FOLDER_MARKER, TRASH_DIR } from "../format/v1";
+import { FOLDER_MARKER, REPO_CONFIG_PATH, TRASH_DIR } from "../format/v1";
 import { EMPTY_ORDER } from "../order/order-index";
 import { buildWorkingTree } from "../sync/working-tree";
 import { buildTrashIndex, type TrashEntry } from "../trash/trash-index";
@@ -143,6 +144,22 @@ async function build(snapshot: Snapshot): Promise<BuiltSnapshot> {
   return { listing, tree, trash, read };
 }
 
+const REPO_CONFIG: RepoConfig = {
+  formatVersion: 1,
+  app: "commitnote",
+  cipher: "AES-256-GCM",
+  nameScheme: "AES-256-GCM-SIV-HMAC-SHA256/base64url",
+  kdf: {
+    algorithm: "argon2id",
+    memoryKiB: 64,
+    iterations: 1,
+    parallelism: 1,
+    salt: Uint8Array.from({ length: 16 }, () => 7),
+  },
+  keyCheck: `${"A".repeat(43)}=`,
+  createdAt: "2026-01-02T03:04:05.000Z",
+};
+
 interface MergeCase {
   readonly name: string;
   readonly base: Snapshot;
@@ -168,10 +185,14 @@ async function runCase(mergeCase: MergeCase): Promise<MergeChangeSetResult> {
   ).not.toThrow();
   await expect(
     encodeChangeSet({
-      listing: remote.listing,
+      listing: [
+        ...remote.listing,
+        { path: REPO_CONFIG_PATH, type: "blob", sha: "sha-config" },
+      ],
       changeSet: result.changeSet,
       order: EMPTY_ORDER,
       keyring,
+      config: REPO_CONFIG,
     }),
   ).resolves.toBeDefined();
   return result;
@@ -943,6 +964,22 @@ const cases: MergeCase[] = [
         createNote("g (conflict)/a.md", "a"),
         setOrder("g (conflict)", ["a.md", "1"]),
       ]);
+    },
+  },
+  {
+    name: "passes a set-settings change through unchanged without a notice",
+    base: { notes: { "n.md": BASE_TEXT } },
+    remote: { notes: { "n.md": THEIRS_TEXT } },
+    changeSet: [
+      { kind: "set-settings", values: { theme: "dark", fontSize: 14 } },
+      updateNote("n.md", MINE_TEXT),
+    ],
+    check(result) {
+      expect(result.changeSet).toEqual([
+        { kind: "set-settings", values: { theme: "dark", fontSize: 14 } },
+        updateNote("n.md", MERGED_TEXT),
+      ]);
+      expect(result.notices).toEqual([]);
     },
   },
 ];

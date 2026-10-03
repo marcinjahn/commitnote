@@ -36,6 +36,8 @@ export function describeNotice(notice: EngineNotice): string {
           return "Some items couldn't be permanently deleted from the trash because it changed on another device.";
         case "set-order":
           return "Some items couldn't be moved to their new position because they changed on another device.";
+        case "set-settings":
+          return "Some settings couldn't be saved because they changed on another device.";
         default:
           return `A change to ${quoted(change.path)} couldn't be saved because it changed on another device.`;
       }
