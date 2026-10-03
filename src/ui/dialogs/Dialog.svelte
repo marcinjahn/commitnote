@@ -7,6 +7,7 @@
     onClose: () => void;
     children: Snippet;
     actions?: Snippet;
+    headerStatus?: Snippet;
     large?: boolean;
     /** Full screen on mobile; a wide, fixed-height card on desktop whose content scrolls itself. */
     wide?: boolean;
@@ -20,6 +21,7 @@
     onClose,
     children,
     actions,
+    headerStatus,
     large: largeProp = false,
     wide = false,
     closeButton = false,
@@ -90,6 +92,11 @@
   <div class="dialog-card" class:large class:wide class:accent-border={accentBorder}>
     <div class="dialog-header">
       <h2 id={titleId} class="dialog-title">{title}</h2>
+      {#if headerStatus}
+        <div class="dialog-header-status">
+          {@render headerStatus()}
+        </div>
+      {/if}
       {#if closeButton}
         <button
           type="button"
@@ -176,6 +183,13 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
+  }
+
+  .dialog-header-status {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    margin-inline-start: auto;
   }
 
   .dialog-close {

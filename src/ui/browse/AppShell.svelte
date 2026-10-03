@@ -73,6 +73,8 @@
   import NoteHeader from "./NoteHeader.svelte";
   import NoteTree from "./NoteTree.svelte";
   import RefreshButton from "./RefreshButton.svelte";
+  import SettingsSaveIndicator from "../settings/SettingsSaveIndicator.svelte";
+  import { settingsSaveState } from "../../settings/settings-save-state";
   import TrashDialog from "../trash/TrashDialog.svelte";
   import {
     describeEmptyTrash,
@@ -252,8 +254,21 @@
     onAccentColor(settings.accentColor);
   });
 
+  const settingsSave = $derived(
+    settingsSaveState({
+      engine: engineState.syncStates.settings,
+      stored: engineState.rawSettings,
+      heldEdits: pendingSettingsEdits,
+    }),
+  );
+
   function changeSettings(edits: Partial<Settings>): void {
     settingsSaver.change(edits);
+  }
+
+  function openSettings(): void {
+    leaveDraft();
+    settingsOpen = true;
   }
 
   const tree = $derived(engineState.workingTree);
@@ -270,10 +285,7 @@
       id: "settings",
       label: "Settings",
       icon: commandIcons.settings,
-      run: () => {
-        leaveDraft();
-        settingsOpen = true;
-      },
+      run: openSettings,
     },
     {
       id: "export",
@@ -1180,6 +1192,7 @@
           <CommitSha sha={head} />
         {/if}
       </a>
+      <SettingsSaveIndicator state={settingsSave} onOpen={openSettings} />
       <button
         type="button"
         class="button button-icon button-ghost log-out"
@@ -1353,6 +1366,8 @@
     open={true}
     {settings}
     {changeSettings}
+    saveState={settingsSave}
+    onRetry={() => engine.retryNow()}
     onClose={() => {
       settingsSaver.flush();
       settingsOpen = false;
@@ -1580,6 +1595,10 @@
     color: var(--color-text-muted);
     text-decoration: none;
     transition: color var(--motion-duration) var(--motion-easing);
+  }
+
+  .sidebar-footer:has(:global(.settings-save-indicator)) .repo-link :global(.commit-sha) {
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--space-4)), transparent);
   }
 
   .repo-link:hover {

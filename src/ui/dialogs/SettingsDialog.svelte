@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Settings } from "../../settings/settings";
+  import type { SyncState } from "../../sync/sync-state";
+  import SettingsSaveStatus from "../settings/SettingsSaveStatus.svelte";
   import {
     SETTINGS_SECTIONS,
     type SettingsSection,
@@ -10,6 +12,8 @@
     open: boolean;
     settings: Settings;
     changeSettings: (edits: Partial<Settings>) => void;
+    saveState: SyncState;
+    onRetry: () => void;
     onClose: () => void;
     sections?: readonly SettingsSection[];
   }
@@ -18,12 +22,17 @@
     open,
     settings,
     changeSettings,
+    saveState,
+    onRetry,
     onClose,
     sections = SETTINGS_SECTIONS,
   }: Props = $props();
 </script>
 
 <Dialog {open} title="Settings" {onClose} closeButton accentBorder>
+  {#snippet headerStatus()}
+    <SettingsSaveStatus {saveState} {onRetry} />
+  {/snippet}
   {#snippet children()}
     {#each sections as section (section.id)}
       <h3 class="settings-section-title">{section.title}</h3>
