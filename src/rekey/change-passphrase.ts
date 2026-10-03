@@ -270,6 +270,9 @@ async function buildChange(
   const newConfigText = serializeRepoConfig({
     ...created.config,
     createdAt: current.config.createdAt,
+    ...(current.config.settings !== undefined
+      ? { settings: current.config.settings }
+      : {}),
   });
   const newKeyring = created.keyring;
 

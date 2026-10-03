@@ -2,6 +2,7 @@ import type { Keyring } from "../crypto/keyring";
 import { encryptPath } from "../crypto/name-cipher";
 import { encryptNote } from "../crypto/note-cipher";
 import type { RandomSource } from "../crypto/random";
+import { serializeRepoConfig, type RepoConfig } from "../crypto/repo-config";
 import type { CommitFileChange, TreeEntry } from "../forge/forge-adapter";
 import {
   CHANGE_PASSPHRASE_SUBJECT,
@@ -9,6 +10,7 @@ import {
   FORMAT_VERSION,
   INITIALIZE_SUBJECT,
   ORDER_PATH,
+  REPO_CONFIG_PATH,
   SAVE_SUBJECT,
   TRASH_DIR,
   TRAILER,
@@ -19,6 +21,11 @@ import {
   serializeOrderIndex,
   type OrderIndex,
 } from "../order/order-index";
+import {
+  applySettingsEdits,
+  changedSettingKeys,
+  type SettingsEdits,
+} from "../settings/settings";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
 import type { Change, ChangeSet, NotePath } from "./change";
 
@@ -31,6 +38,8 @@ export interface EncodeChangeSetInput {
   readonly order: OrderIndex;
   readonly keyring: Keyring;
   readonly random?: RandomSource;
+  /** The parsed config at the head of `listing`; required for `set-settings`. */
+  readonly config?: RepoConfig;
 }
 
 export interface EncodedChangeSet {
@@ -324,6 +333,18 @@ async function applyChange(
       }
       break;
     }
+    case "set-settings": {
+      const values: unknown = change.values;
+      if (
+        typeof values !== "object" ||
+        values === null ||
+        Array.isArray(values) ||
+        Object.keys(values).length === 0
+      ) {
+        fail();
+      }
+      break;
+    }
   }
 }
 
@@ -343,7 +364,7 @@ export function encodeChangePassphraseMessage(): string {
 export async function encodeChangeSet(
   input: EncodeChangeSetInput,
 ): Promise<EncodedChangeSet> {
-  const { listing, changeSet, keyring, random } = input;
+  const { listing, changeSet, keyring, random, config } = input;
   let order = input.order;
 
   if (changeSet.length === 0) {
@@ -360,6 +381,7 @@ export async function encodeChangeSet(
 
   const storedPathOf = createStoredPathEncoder(keyring);
   const trailers: string[] = [];
+  let settingsEdits: SettingsEdits | undefined;
 
   for (let index = 0; index < changeSet.length; index++) {
     const change = changeSet[index];
@@ -371,7 +393,30 @@ export async function encodeChangeSet(
       trailers,
       order.writable,
     );
+    if (change.kind === "set-settings") {
+      if (config === undefined) {
+        throw new InvalidChangeSetError(
+          `Change ${index} (set-settings) needs the repository config`,
+        );
+      }
+      settingsEdits = { ...settingsEdits, ...change.values };
+    }
     order = applyChangeToOrder(order, change);
+  }
+
+  if (settingsEdits !== undefined && config !== undefined) {
+    const keys = changedSettingKeys(config.settings, settingsEdits);
+    if (keys.length > 0) {
+      working.set(REPO_CONFIG_PATH, {
+        kind: "text",
+        text: serializeRepoConfig({
+          ...config,
+          settings: applySettingsEdits(config.settings, settingsEdits),
+        }),
+        encrypt: false,
+      });
+      for (const key of keys) trailers.push(`${TRAILER.settings}: ${key}`);
+    }
   }
 
   if (

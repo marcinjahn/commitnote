@@ -3,8 +3,17 @@ import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
 import { encodeChangeSet } from "../changes/encode-change-set";
 import { verifyKeyCheck, type Keyring } from "../crypto/keyring";
 import { decryptNote, NoteDecryptionError } from "../crypto/note-cipher";
-import { parseRepoConfig } from "../crypto/repo-config";
+import { parseRepoConfig, type RepoConfig } from "../crypto/repo-config";
 import { FOLDER_MARKER, REPO_CONFIG_PATH } from "../format/v1";
+import {
+  applySettingsEdits,
+  rawSettingsOf,
+  resolveSettings,
+  SETTINGS_SCHEMA,
+  type RawSettings,
+  type Settings,
+  type SettingsEdits,
+} from "../settings/settings";
 import { isForgeError, type ForgeError } from "../forge/errors";
 import type {
   AtomicCommitSupport,
@@ -93,6 +102,8 @@ export interface SyncedState {
   readonly tree: NoteTree;
   readonly trash: readonly TrashEntry[];
   readonly order: OrderIndex;
+  readonly config: RepoConfig;
+  readonly settings: Settings;
   /** Files left out of `tree` because their names don't decrypt. */
   readonly undecryptableFiles: number;
 }
@@ -169,6 +180,9 @@ export interface SyncEngineState {
   readonly visibleTrash: readonly ReadableWorkingTrashEntry[] | null;
   readonly pending: ChangeSet;
   readonly inFlight: ChangeSet;
+  /** Stored settings with every unsaved settings edit applied. */
+  readonly rawSettings: RawSettings;
+  readonly settings: Settings;
   readonly save: SaveStatus;
   readonly conflicts: readonly HeldConflict[];
   readonly notices: readonly EngineNotice[];
@@ -256,6 +270,8 @@ export interface SyncEngine {
   flush(): Promise<FlushResult>;
   retryNow(): void;
   resolveConflict(path: NotePath, resolution: ConflictResolution): void;
+  /** Records settings edits and saves them like any other change. */
+  changeSettings(edits: SettingsEdits): void;
   dismissNotice(id: number): void;
   snapshotNotes(): NotesSnapshot | null;
   /**
@@ -367,6 +383,21 @@ function keyBoundFilesOf(synced: SyncedState): KeyBoundFile[] {
 }
 
 const EMPTY_CHANGES: ChangeSet = [];
+
+function workingRawSettings(
+  synced: SyncedState | null,
+  inFlight: ChangeSet,
+  pending: ChangeSet,
+): RawSettings {
+  if (synced === null) return {};
+  let raw = rawSettingsOf(synced.config.settings);
+  for (const change of [...inFlight, ...pending]) {
+    if (change.kind === "set-settings") {
+      raw = applySettingsEdits(raw, change.values);
+    }
+  }
+  return raw;
+}
 const EMPTY_CONFLICTS: readonly HeldConflict[] = [];
 
 const INITIAL_STATE: SyncEngineState = {
@@ -378,6 +409,8 @@ const INITIAL_STATE: SyncEngineState = {
   visibleTrash: null,
   pending: EMPTY_CHANGES,
   inFlight: EMPTY_CHANGES,
+  rawSettings: {},
+  settings: resolveSettings(SETTINGS_SCHEMA, undefined),
   save: { kind: "idle" },
   conflicts: EMPTY_CONFLICTS,
   notices: [],
@@ -419,7 +452,10 @@ export function createSyncEngine(options: {
   let suspended = false;
   // The config blob last verified against `keyring`; every loaded head is
   // checked against it so no commit is ever based on a re-keyed tree.
-  let verifiedConfigSha: string | null = null;
+  let verifiedConfig: {
+    readonly sha: string;
+    readonly config: RepoConfig;
+  } | null = null;
   let refreshInFlight: Promise<void> | null = null;
   // Bumped on every openNote() call (and whenever the open note is replaced
   // synchronously) so a result from an earlier load can be told apart from
@@ -472,8 +508,15 @@ export function createSyncEngine(options: {
               next.synced.trash,
               next.synced.order,
             );
+      const rawSettings = workingRawSettings(
+        next.synced,
+        next.inFlight,
+        next.pending,
+      );
       result = {
         ...result,
+        rawSettings,
+        settings: resolveSettings(SETTINGS_SCHEMA, rawSettings),
         workingTree: working?.tree ?? null,
         trash: working?.trash ?? null,
         visibleTrash:
@@ -552,12 +595,14 @@ export function createSyncEngine(options: {
     return decryptNote(keyring, await adapter.readBlob(node.blobSha));
   }
 
-  async function verifyConfig(listing: readonly TreeEntry[]): Promise<void> {
+  async function verifyConfig(
+    listing: readonly TreeEntry[],
+  ): Promise<RepoConfig> {
     const entry = listing.find(
       (item) => item.type === "blob" && item.path === REPO_CONFIG_PATH,
     );
     if (entry === undefined) throw new KeyChangedError();
-    if (entry.sha === verifiedConfigSha) return;
+    if (verifiedConfig?.sha === entry.sha) return verifiedConfig.config;
     const parsed = parseRepoConfig(await adapter.readBlob(entry.sha));
     if (
       parsed.kind !== "valid" ||
@@ -565,17 +610,27 @@ export function createSyncEngine(options: {
     ) {
       throw new KeyChangedError();
     }
-    verifiedConfigSha = entry.sha;
+    verifiedConfig = { sha: entry.sha, config: parsed.config };
+    return parsed.config;
   }
 
   async function loadSynced(head: string): Promise<SyncedState> {
     const listing = await adapter.listTree(head);
-    await verifyConfig(listing);
+    const config = await verifyConfig(listing);
     const tree = await buildNoteTree(listing, keyring);
     const trash = await buildTrashIndex(listing, keyring);
     const order = await loadOrder(listing);
     const undecryptableFiles = await countUndecryptableFiles(listing, keyring);
-    return { head, listing, tree, trash, order, undecryptableFiles };
+    return {
+      head,
+      listing,
+      tree,
+      trash,
+      order,
+      config,
+      settings: resolveSettings(SETTINGS_SCHEMA, config.settings),
+      undecryptableFiles,
+    };
   }
 
   let loadedOrder: { readonly sha: string; readonly order: OrderIndex } | null =
@@ -1087,8 +1142,16 @@ export function createSyncEngine(options: {
           listing: attemptSynced.listing,
           changeSet: state.inFlight,
           order: attemptSynced.order,
+          config: attemptSynced.config,
           keyring,
         });
+        if (encoded.changes.length === 0) {
+          if (importInFlight) importNonAtomic = false;
+          importInFlight = false;
+          update((current) => ({ ...current, inFlight: EMPTY_CHANGES }));
+          saveSucceeded();
+          return;
+        }
         atomicAttempt = importInFlight && !importNonAtomic;
         const availableAt = rateBudget.availableAt(
           atomicAttempt
@@ -1261,6 +1324,7 @@ export function createSyncEngine(options: {
         return isAtOrWithin(path, change.to);
       case "purge-trash":
       case "set-order":
+      case "set-settings":
         return false;
     }
   }
@@ -1581,9 +1645,22 @@ export function createSyncEngine(options: {
         case "restore-trash":
         case "purge-trash":
         case "set-order":
+        case "set-settings":
           break;
       }
     }
+    autosave.saveNow();
+  }
+
+  function changeSettings(edits: SettingsEdits): void {
+    if (disposed || suspended || Object.keys(edits).length === 0) return;
+    update((current) => ({
+      ...current,
+      pending: appendChange(current.pending, {
+        kind: "set-settings",
+        values: edits,
+      }),
+    }));
     autosave.saveNow();
   }
 
@@ -2141,6 +2218,7 @@ export function createSyncEngine(options: {
     flush,
     retryNow,
     resolveConflict,
+    changeSettings,
     dismissNotice,
     snapshotNotes,
     importChanges,

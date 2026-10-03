@@ -386,6 +386,43 @@ describe("computeSyncStates unsavedCount", () => {
   });
 });
 
+describe("computeSyncStates settings", () => {
+  const settings: Change = { kind: "set-settings", values: { theme: "dark" } };
+  const note: Change = { kind: "update-note", path: pathOf("a.md"), content: "x" };
+
+  it("counts a pending set-settings as unsaved", () => {
+    const states = computeSyncStates({
+      pending: [settings],
+      inFlight: [],
+      failed: false,
+      conflicts: [],
+    });
+    expect(states.unsavedCount).toBe(1);
+    expect(states.hasUnsaved).toBe(true);
+  });
+
+  it("counts an in-flight set-settings as unsaved", () => {
+    const states = computeSyncStates({
+      pending: [],
+      inFlight: [settings],
+      failed: false,
+      conflicts: [],
+    });
+    expect(states.unsavedCount).toBe(1);
+    expect(states.hasUnsaved).toBe(true);
+  });
+
+  it("counts settings once, in addition to note changes", () => {
+    const states = computeSyncStates({
+      pending: [settings, note],
+      inFlight: [settings],
+      failed: false,
+      conflicts: [],
+    });
+    expect(states.unsavedCount).toBe(2);
+  });
+});
+
 describe("hasConflictMarkers", () => {
   it("is true for the mine marker line", () => {
     expect(hasConflictMarkers("<<<<<<< mine")).toBe(true);

@@ -292,6 +292,7 @@ export function applyChangeToOrder(
       return withKeys(index, change.parent, change.positions);
     case "update-note":
     case "purge-trash":
+    case "set-settings":
       return index;
   }
   return editor.result();

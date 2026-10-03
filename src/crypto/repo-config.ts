@@ -24,6 +24,7 @@ export interface RepoConfig {
   readonly kdf: KdfParams;
   readonly keyCheck: string;
   readonly createdAt: string;
+  readonly settings?: unknown;
 }
 
 export type RepoConfigParseResult =
@@ -96,7 +97,13 @@ export function parseRepoConfig(text: string): RepoConfigParseResult {
     return { kind: "newerFormat", formatVersion: parsed.formatVersion };
   }
 
-  if (!hasExactKeys(parsed, TOP_LEVEL_KEYS)) {
+  const hasSettings = Object.prototype.hasOwnProperty.call(parsed, "settings");
+  if (
+    !hasExactKeys(
+      parsed,
+      hasSettings ? [...TOP_LEVEL_KEYS, "settings"] : TOP_LEVEL_KEYS,
+    )
+  ) {
     return invalid("unexpected or missing top-level keys");
   }
 
@@ -188,6 +195,7 @@ export function parseRepoConfig(text: string): RepoConfigParseResult {
     },
     keyCheck: parsed.keyCheck,
     createdAt: parsed.createdAt,
+    ...(hasSettings ? { settings: parsed.settings } : {}),
   };
   return { kind: "valid", config };
 }
@@ -207,6 +215,7 @@ export function serializeRepoConfig(config: RepoConfig): string {
     },
     keyCheck: config.keyCheck,
     createdAt: config.createdAt,
+    ...(config.settings !== undefined ? { settings: config.settings } : {}),
   };
   return JSON.stringify(ordered, null, 2) + "\n";
 }

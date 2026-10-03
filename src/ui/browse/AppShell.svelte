@@ -3,6 +3,13 @@
   import type { NotePath } from "../../changes/change";
   import { isWithinFolder, notePathEquals, parentPath } from "../../changes/change";
   import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
+  import type { SettingsSaver } from "../../settings/settings-saver";
+  import {
+    applySettingsEdits,
+    resolveSettings,
+    SETTINGS_SCHEMA,
+    type Settings,
+  } from "../../settings/settings";
   import type { NoteHistory, NoteVersion } from "../../history/note-history";
   import type { RestorePlan } from "../../history/plan-restore";
   import { validateName } from "../../tree/note-names";
@@ -56,6 +63,7 @@
   import MoveDialog from "../dialogs/MoveDialog.svelte";
   import ConfirmDialog from "../dialogs/ConfirmDialog.svelte";
   import NameDialog from "../dialogs/NameDialog.svelte";
+  import SettingsDialog from "../dialogs/SettingsDialog.svelte";
   import { decideNameCommit } from "../note/name-field-commit";
   import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
   import NotePane from "../note/NotePane.svelte";
@@ -80,6 +88,7 @@
 
   interface Props {
     engine: SyncEngine;
+    settingsSaver: SettingsSaver;
     repoLabel: string;
     repoUrl: string;
     forgeName: string;
@@ -96,6 +105,7 @@
 
   const {
     engine,
+    settingsSaver,
     repoLabel,
     repoUrl,
     forgeName,
@@ -107,6 +117,7 @@
   }: Props = $props();
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
+  let pendingSettingsEdits = $state(untrack(() => settingsSaver.pending));
   let mobileView = $state<"tree" | "note">("tree");
   let repoLabelEl = $state<HTMLSpanElement | null>(null);
   let repoLabelTruncated = $state(false);
@@ -195,6 +206,7 @@
   let importMessages = $state<readonly ToastMessage[]>([]);
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
+  let settingsOpen = $state(false);
   let historyDialog = $state<{
     readonly path: NotePath;
     readonly phase: HistoryPhase;
@@ -219,6 +231,24 @@
     });
   });
 
+  $effect(() => {
+    pendingSettingsEdits = settingsSaver.pending;
+    return settingsSaver.subscribe(() => {
+      pendingSettingsEdits = settingsSaver.pending;
+    });
+  });
+
+  const settings: Settings = $derived(
+    resolveSettings(
+      SETTINGS_SCHEMA,
+      applySettingsEdits(engineState.rawSettings, pendingSettingsEdits),
+    ),
+  );
+
+  function changeSettings(edits: Partial<Settings>): void {
+    settingsSaver.change(edits);
+  }
+
   const tree = $derived(engineState.workingTree);
   const treeLoading = $derived(engineState.synced === null && engineState.refresh.inFlight);
   const trashEntries = $derived(engineState.visibleTrash ?? []);
@@ -229,6 +259,15 @@
 
   const importing = $derived(engineState.importing || importStarted !== null);
   const commands: readonly Command[] = $derived([
+    {
+      id: "settings",
+      label: "Settings",
+      icon: commandIcons.settings,
+      run: () => {
+        leaveDraft();
+        settingsOpen = true;
+      },
+    },
     {
       id: "export",
       label: exporting ? "Exporting…" : "Export notes",
@@ -250,6 +289,7 @@
       icon: commandIcons.passphrase,
       disabled: tree === null || engineState.stopped !== null || importing,
       run: () => {
+        settingsSaver.flush();
         leaveDraft();
         changePassphraseOpen = true;
       },
@@ -1298,6 +1338,15 @@
     onEnable={handleEnableAtomic}
     onSaveWithoutAtomic={() => engine.saveImportWithoutAtomic()}
     onClose={() => (atomicBlockedOpen = false)}
+  />
+{/if}
+
+{#if settingsOpen}
+  <SettingsDialog
+    open={true}
+    {settings}
+    {changeSettings}
+    onClose={() => (settingsOpen = false)}
   />
 {/if}
 

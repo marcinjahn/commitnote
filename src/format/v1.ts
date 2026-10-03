@@ -57,4 +57,5 @@ export const TRAILER = {
   restore: "Commitnote-Restore",
   purge: "Commitnote-Purge",
   order: "Commitnote-Order",
+  settings: "Commitnote-Settings",
 } as const;

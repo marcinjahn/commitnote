@@ -3,9 +3,14 @@ import { argon2idDirect } from "../crypto/argon2";
 import { deriveKeyring, type Keyring } from "../crypto/keyring";
 import { decryptNote } from "../crypto/note-cipher";
 import { encryptPath } from "../crypto/name-cipher";
-import type { KdfParams } from "../crypto/repo-config";
+import {
+  parseRepoConfig,
+  serializeRepoConfig,
+  type KdfParams,
+  type RepoConfig,
+} from "../crypto/repo-config";
 import type { TreeEntry } from "../forge/forge-adapter";
-import { FOLDER_MARKER, ORDER_PATH } from "../format/v1";
+import { FOLDER_MARKER, ORDER_PATH, REPO_CONFIG_PATH } from "../format/v1";
 import {
   decryptOrderIndex,
   EMPTY_ORDER,
@@ -900,5 +905,147 @@ describe("encodeChangeSet: order", () => {
         keyring,
       }),
     ).rejects.toThrow(InvalidChangeSetError);
+  });
+});
+
+describe("encodeChangeSet: set-settings", () => {
+  function configWith(settings?: unknown): RepoConfig {
+    const base: RepoConfig = {
+      formatVersion: 1,
+      app: "commitnote",
+      cipher: "AES-256-GCM",
+      nameScheme: "AES-256-GCM-SIV-HMAC-SHA256/base64url",
+      kdf: { algorithm: "argon2id", memoryKiB: 65536, iterations: 3, parallelism: 1, salt: Uint8Array.from({ length: 16 }, () => 5) },
+      keyCheck: `${"A".repeat(43)}=`,
+      createdAt: "2026-01-02T03:04:05.000Z",
+    };
+    return settings === undefined ? base : { ...base, settings };
+  }
+
+  function writtenConfig(result: EncodedChangeSet): RepoConfig | undefined {
+    const change = result.changes.find((c) => c.path === REPO_CONFIG_PATH);
+    if (change === undefined) return undefined;
+    if (change.kind !== "upsert-text") throw new Error("expected plaintext");
+    const parsed = parseRepoConfig(change.text);
+    if (parsed.kind !== "valid") throw new Error(parsed.kind);
+    return parsed.config;
+  }
+
+  async function encode(
+    changeSet: ChangeSet,
+    config: RepoConfig | undefined,
+    listing: TreeEntry[] = [],
+  ): Promise<EncodedChangeSet> {
+    return encodeChangeSet({
+      listing,
+      changeSet,
+      order: EMPTY_ORDER,
+      keyring: await testKeyring(),
+      config,
+    });
+  }
+
+  it("writes the edit into plaintext config.json, keeps crypto fields and adds one trailer per key", async () => {
+    const config = configWith();
+    const result = await encode(
+      [{ kind: "set-settings", values: { theme: "dark" } }],
+      config,
+      [blob(REPO_CONFIG_PATH, "sha-config")],
+    );
+
+    expect(result.changes).toHaveLength(1);
+    expect(result.changes[0].kind).toBe("upsert-text");
+    const written = writtenConfig(result);
+    expect(written).toEqual({ ...config, settings: { theme: "dark" } });
+    expect(result.message).toContain("Commitnote-Settings: theme");
+  });
+
+  it("preserves existing unknown settings", async () => {
+    const result = await encode(
+      [{ kind: "set-settings", values: { theme: "dark" } }],
+      configWith({ future: { a: 1 }, theme: "light" }),
+    );
+
+    expect(writtenConfig(result)?.settings).toEqual({
+      future: { a: 1 },
+      theme: "dark",
+    });
+  });
+
+  it("merges several set-settings changes with the later value winning, in one write", async () => {
+    const result = await encode(
+      [
+        { kind: "set-settings", values: { theme: "dark", size: 1 } },
+        { kind: "set-settings", values: { theme: "light" } },
+      ],
+      configWith(),
+    );
+
+    expect(result.changes).toHaveLength(1);
+    expect(writtenConfig(result)?.settings).toEqual({ theme: "light", size: 1 });
+    expect(result.message).toContain("Commitnote-Settings: size\nCommitnote-Settings: theme");
+  });
+
+  it("writes nothing and adds no trailer when the edit equals the stored value", async () => {
+    const result = await encode(
+      [{ kind: "set-settings", values: { theme: "dark" } }],
+      configWith({ theme: "dark" }),
+    );
+
+    expect(result.changes).toEqual([]);
+    expect(result.message).not.toContain("Commitnote-Settings");
+  });
+
+  it("writes both a note change and the settings change from one change set", async () => {
+    const keyring = await testKeyring();
+    const storedNote = await encryptPath(keyring, ["Note"]);
+    const result = await encode(
+      [
+        { kind: "create-note", path: ["Note"], content: "hi" },
+        { kind: "set-settings", values: { theme: "dark" } },
+      ],
+      configWith(),
+    );
+
+    expect(result.changes.map((c) => c.path).sort()).toEqual(
+      [REPO_CONFIG_PATH, storedNote].sort(),
+    );
+    expect(result.message).toContain(`Commitnote-Create: ${storedNote}`);
+    expect(result.message).toContain("Commitnote-Settings: theme");
+  });
+
+  it("rejects a set-settings change when no config is given", async () => {
+    await expect(
+      encode([{ kind: "set-settings", values: { theme: "dark" } }], undefined),
+    ).rejects.toThrow(InvalidChangeSetError);
+  });
+
+  it("rejects a set-settings change without values", async () => {
+    await expect(
+      encode([{ kind: "set-settings", values: {} }], configWith()),
+    ).rejects.toThrow(InvalidChangeSetError);
+  });
+
+  it("never puts a setting value in the message", async () => {
+    const result = await encode(
+      [{ kind: "set-settings", values: { theme: "very-secret-value" } }],
+      configWith(),
+    );
+
+    expect(result.message).not.toContain("very-secret-value");
+  });
+
+  it("serializes the written config exactly as serializeRepoConfig does", async () => {
+    const config = configWith();
+    const result = await encode(
+      [{ kind: "set-settings", values: { theme: "dark" } }],
+      config,
+    );
+
+    expect(result.changes[0]).toEqual({
+      kind: "upsert-text",
+      path: REPO_CONFIG_PATH,
+      text: serializeRepoConfig({ ...config, settings: { theme: "dark" } }),
+    });
   });
 });
