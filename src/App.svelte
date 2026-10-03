@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
   import type {
     LoginError,
@@ -37,6 +37,7 @@
   import { createNoteHistory, type NoteHistory } from "./history/note-history";
   import { describePassphraseChanged } from "./ui/passphrase/passphrase-messages";
   import { accentCustomProperties, type AccentColorId } from "./settings/accent-palette";
+  import { systemAccent, watchSystemAccent } from "./ui/system-accent.svelte";
   import KeyChangedScreen from "./ui/session/KeyChangedScreen.svelte";
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
@@ -108,11 +109,13 @@
     keyChanged !== null ? "system" : reportedAccentColor,
   );
 
+  $effect(() => untrack(() => watchSystemAccent(window)));
+
   $effect(() => {
     const style = document.documentElement.style;
-    for (const [name, value] of Object.entries(
-      accentCustomProperties(appliedAccentColor),
-    )) {
+    const id =
+      appliedAccentColor === "system" ? systemAccent().id : appliedAccentColor;
+    for (const [name, value] of Object.entries(accentCustomProperties(id))) {
       if (value === null) style.removeProperty(name);
       else style.setProperty(name, value);
     }

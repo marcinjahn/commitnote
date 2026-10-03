@@ -19,9 +19,8 @@
   --color-surface-raised: #ffffff;
   --color-text: #0a0a0a;
   --color-text-muted: #5c5c5c;
-  --system-accent: #3358d4;
-  --system-accent-text: #ffffff;
-  --color-accent: var(--accent-light, var(--system-accent));
+  --color-accent: var(--accent-light, #3358d4);
+  --color-on-accent: #ffffff;
   --color-link: #3358d4;
   --color-ink: #0a0a0a;
   --color-ink-hover: #2e2e2e;
@@ -104,9 +103,8 @@
     --color-surface-raised: #1a1a1a;
     --color-text: #ededed;
     --color-text-muted: #a0a0a0;
-    --system-accent: #86a4ff;
-    --system-accent-text: #0b0b0b;
-    --color-accent: var(--accent-dark, var(--system-accent));
+    --color-accent: var(--accent-dark, #86a4ff);
+    --color-on-accent: #0b0b0b;
     --color-link: #86a4ff;
     --color-ink: #ededed;
     --color-ink-hover: #cfcfcf;
@@ -134,13 +132,6 @@
     --shadow-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.4);
     --shadow-2: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.5);
     --shadow-3: 0 2px 4px rgb(0 0 0 / 0.4), 0 16px 48px rgb(0 0 0 / 0.6);
-  }
-}
-
-@supports (color: AccentColor) {
-  :root {
-    --system-accent: AccentColor;
-    --system-accent-text: AccentColorText;
   }
 }
 

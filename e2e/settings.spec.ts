@@ -28,7 +28,20 @@ async function openSettings(page: Page): Promise<void> {
 }
 
 const TEAL = "rgb(0, 133, 115)";
-const PALETTE = ["System", "Blue", "Violet", "Pink", "Red", "Orange", "Green", "Teal"];
+const RED = "rgb(206, 44, 49)";
+const VIOLET = "rgb(138, 70, 184)";
+const PALETTE = [
+  "System",
+  "Blue",
+  "Violet",
+  "Pink",
+  "Red",
+  "Orange",
+  "Amber",
+  "Green",
+  "Teal",
+  "Slate",
+];
 
 function rootAccent(page: Page): Promise<string> {
   return page.evaluate(() =>
@@ -47,6 +60,22 @@ async function chooseAccent(page: Page, name: string): Promise<void> {
     .locator("label")
     .filter({ has: page.getByRole("radio", { name, exact: true }) })
     .click();
+}
+
+async function emulateOsAccent(page: Page, color: string): Promise<void> {
+  await page.evaluate((color) => {
+    const w = window as any;
+    if (w.__osAccent === undefined) {
+      const original = window.getComputedStyle.bind(window);
+      window.getComputedStyle = ((element: Element, pseudo?: string | null) =>
+        element instanceof HTMLElement &&
+        element.style.color.toLowerCase().includes("accentcolor")
+          ? ({ color: w.__osAccent } as CSSStyleDeclaration)
+          : original(element, pseudo)) as typeof window.getComputedStyle;
+    }
+    w.__osAccent = color;
+    window.dispatchEvent(new Event("focus"));
+  }, color);
 }
 
 async function expectSettingsCommits(page: Page, count: number) {
@@ -150,18 +179,16 @@ test("Settings is the first command and opens a dialog with the accent color opt
   const systemRadio = group.getByRole("radio", { name: "System" });
   await expect(systemRadio).toBeChecked();
   await expect(systemRadio).toBeFocused();
-  await expect(systemRadio).toHaveAccessibleDescription(
-    "Matches your operating system's accent color",
-  );
+  await expect(systemRadio).toHaveAccessibleDescription(/OS accent color/);
   await expect(
     group
       .locator("label")
       .filter({ has: page.getByRole("radio", { name: "System" }) })
       .locator("svg"),
   ).toBeVisible();
-  await expect(
-    dialog.getByText("System · matches your operating system's accent color"),
-  ).toBeVisible();
+  await expect(dialog.locator(".accent-caption")).toHaveText(
+    /^System · \w+, .*OS accent color$/,
+  );
 
   const sections = dialog.getByRole("radiogroup");
   await expect(sections).toHaveCount(3);
@@ -279,6 +306,29 @@ test("choosing System after another accent restores the system accent", async ({
   await expectRootAccent(page, system);
 });
 
+test("System uses the palette color closest to the OS accent and follows OS accent changes", async ({
+  page,
+}) => {
+  await emulateOsAccent(page, "rgb(230, 45, 66)");
+  await openSettings(page);
+  const dialog = settingsDialog(page);
+
+  await expect(dialog.locator(".accent-caption")).toHaveText(
+    "System · Red, closest to your OS accent color",
+  );
+  await expect(
+    dialog.getByRole("radio", { name: "System" }),
+  ).toHaveAccessibleDescription("Red, closest to your OS accent color");
+  await expectRootAccent(page, RED);
+
+  await emulateOsAccent(page, "rgb(145, 65, 172)");
+
+  await expect(dialog.locator(".accent-caption")).toHaveText(
+    "System · Violet, closest to your OS accent color",
+  );
+  await expectRootAccent(page, VIOLET);
+});
+
 test("arrow keys move the accent color selection", async ({ page }) => {
   const system = await rootAccent(page);
   await openSettings(page);
@@ -286,8 +336,9 @@ test("arrow keys move the accent color selection", async ({ page }) => {
   await expect(dialog.getByRole("radio", { name: "System" })).toBeFocused();
 
   await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
 
-  await expect(dialog.getByRole("radio", { name: "Blue" })).toBeChecked();
+  await expect(dialog.getByRole("radio", { name: "Violet" })).toBeChecked();
   await expect.poll(() => rootAccent(page)).not.toBe(system);
 });
 

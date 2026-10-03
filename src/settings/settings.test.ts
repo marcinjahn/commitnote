@@ -94,6 +94,12 @@ describe("resolveSettings", () => {
     ).toEqual({ accentColor: "red", futureKey: 1 });
   });
 
+  it("stores the system accent color as the system id", () => {
+    expect(
+      applySettingsEdits({ accentColor: "teal" }, { accentColor: "system" }),
+    ).toEqual({ accentColor: "system" });
+  });
+
   it("types the accent color setting as the palette id", () => {
     expectTypeOf<Settings["accentColor"]>().toEqualTypeOf<AccentColorId>();
   });
