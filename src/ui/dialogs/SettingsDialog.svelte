@@ -23,7 +23,7 @@
   }: Props = $props();
 </script>
 
-<Dialog {open} title="Settings" {onClose} closeButton>
+<Dialog {open} title="Settings" {onClose} closeButton accentBorder>
   {#snippet children()}
     {#each sections as section (section.id)}
       <h3 class="settings-section-title">{section.title}</h3>

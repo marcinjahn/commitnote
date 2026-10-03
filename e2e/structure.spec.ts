@@ -90,6 +90,7 @@ test("creating, renaming, moving and deleting through row menus", async ({
   // Move it to the top level.
   await page.getByRole("button", { name: "Actions for Grocery List" }).click();
   await page.getByRole("menuitem", { name: "Move to folder…" }).click();
+  await expect(page.getByRole("dialog").getByRole("radio").first()).toBeFocused();
   await page.getByRole("radio", { name: "Notes (top level)" }).check();
   await page.getByRole("button", { name: "Move" }).click();
   await expect(rowSyncState(page, "Grocery List")).toHaveCount(0);

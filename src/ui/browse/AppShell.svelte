@@ -10,6 +10,7 @@
     SETTINGS_SCHEMA,
     type Settings,
   } from "../../settings/settings";
+  import type { AccentColorId } from "../../settings/accent-palette";
   import type { NoteHistory, NoteVersion } from "../../history/note-history";
   import type { RestorePlan } from "../../history/plan-restore";
   import { validateName } from "../../tree/note-names";
@@ -101,6 +102,7 @@
       history: HistoryOutcome,
     ) => void;
     onLogOut: () => void;
+    onAccentColor: (id: AccentColorId) => void;
   }
 
   const {
@@ -114,6 +116,7 @@
     initialMessage = null,
     onPassphraseChanged,
     onLogOut,
+    onAccentColor,
   }: Props = $props();
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
@@ -244,6 +247,10 @@
       applySettingsEdits(engineState.rawSettings, pendingSettingsEdits),
     ),
   );
+
+  $effect(() => {
+    onAccentColor(settings.accentColor);
+  });
 
   function changeSettings(edits: Partial<Settings>): void {
     settingsSaver.change(edits);

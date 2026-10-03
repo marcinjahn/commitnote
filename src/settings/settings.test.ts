@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
+import type { AccentColorId } from "./accent-palette";
 import {
   applySettingsEdits,
   changedSettingKeys,
@@ -7,6 +8,7 @@ import {
   SETTINGS_SCHEMA,
   settingValuesEqual,
   type SettingDefinition,
+  type Settings,
 } from "./settings";
 
 const FLAVORS = ["sweet", "salty"] as const;
@@ -66,10 +68,35 @@ describe("resolveSettings", () => {
     expect(resolveSettings(TEST_SCHEMA, raw).flag).toBe(false);
   });
 
-  it("resolves the real schema to an empty object", () => {
-    expect(SETTINGS_SCHEMA).toEqual({});
-    expect(resolveSettings(SETTINGS_SCHEMA, { anything: 1 })).toEqual({});
-    expect(resolveSettings(SETTINGS_SCHEMA, undefined)).toEqual({});
+  it("resolves missing accent color to system", () => {
+    expect(resolveSettings(SETTINGS_SCHEMA, {})).toEqual({
+      accentColor: "system",
+    });
+  });
+
+  it("resolves an unknown accent color to system", () => {
+    expect(
+      resolveSettings(SETTINGS_SCHEMA, { accentColor: "nope" }).accentColor,
+    ).toBe("system");
+  });
+
+  it("resolves a stored accent color id", () => {
+    expect(
+      resolveSettings(SETTINGS_SCHEMA, { accentColor: "teal" }).accentColor,
+    ).toBe("teal");
+  });
+
+  it("keeps unknown sibling keys when editing the accent color", () => {
+    expect(
+      applySettingsEdits(
+        { accentColor: "teal", futureKey: 1 },
+        { accentColor: "red" },
+      ),
+    ).toEqual({ accentColor: "red", futureKey: 1 });
+  });
+
+  it("types the accent color setting as the palette id", () => {
+    expectTypeOf<Settings["accentColor"]>().toEqualTypeOf<AccentColorId>();
   });
 });
 

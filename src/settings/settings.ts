@@ -1,3 +1,5 @@
+import { parseAccentColor, type AccentColorId } from "./accent-palette";
+
 export type RawSettings = Readonly<Record<string, unknown>>;
 export type SettingsEdits = Readonly<Record<string, unknown>>;
 
@@ -15,7 +17,14 @@ export type SettingsOf<S extends SettingsSchema> = {
   readonly [K in keyof S]: S[K] extends SettingDefinition<infer T> ? T : never;
 };
 
-export const SETTINGS_SCHEMA = {} as const satisfies SettingsSchema;
+const accentColorSetting: SettingDefinition<AccentColorId> = {
+  default: "system",
+  parse: parseAccentColor,
+};
+
+export const SETTINGS_SCHEMA = {
+  accentColor: accentColorSetting,
+} as const satisfies SettingsSchema;
 
 export type Settings = SettingsOf<typeof SETTINGS_SCHEMA>;
 

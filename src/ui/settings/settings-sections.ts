@@ -1,5 +1,6 @@
 import type { Component } from "svelte";
 import type { Settings } from "../../settings/settings";
+import AccentColorSection from "./AccentColorSection.svelte";
 
 export interface SettingsSectionProps {
   readonly settings: Settings;
@@ -12,4 +13,6 @@ export interface SettingsSection {
   readonly component: Component<SettingsSectionProps>;
 }
 
-export const SETTINGS_SECTIONS: readonly SettingsSection[] = [];
+export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
+  { id: "accent-color", title: "Accent color", component: AccentColorSection },
+];

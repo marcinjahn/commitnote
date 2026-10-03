@@ -36,6 +36,7 @@
   } from "./rekey/change-passphrase";
   import { createNoteHistory, type NoteHistory } from "./history/note-history";
   import { describePassphraseChanged } from "./ui/passphrase/passphrase-messages";
+  import { accentCustomProperties, type AccentColorId } from "./settings/accent-palette";
   import KeyChangedScreen from "./ui/session/KeyChangedScreen.svelte";
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
@@ -102,6 +103,21 @@
   let unsubscribeStopped: (() => void) | null = null;
   let keyChanged = $state<{ readonly unsavedCount: number } | null>(null);
 
+  let reportedAccentColor = $state<AccentColorId>("system");
+  const appliedAccentColor = $derived<AccentColorId>(
+    keyChanged !== null ? "system" : reportedAccentColor,
+  );
+
+  $effect(() => {
+    const style = document.documentElement.style;
+    for (const [name, value] of Object.entries(
+      accentCustomProperties(appliedAccentColor),
+    )) {
+      if (value === null) style.removeProperty(name);
+      else style.setProperty(name, value);
+    }
+  });
+
   let logout = $state<
     | null
     | { readonly kind: "saving" }
@@ -114,6 +130,7 @@
 
   function showLogin(initialError: LoginError | null): void {
     loginKey++;
+    reportedAccentColor = "system";
     phase = {
       kind: "login",
       initialRepoUrl: store.lastRepoUrl() ?? "",
@@ -146,10 +163,12 @@
       save: (edits) => engine.changeSettings(edits),
     });
     unsubscribeStopped = engine.subscribe((state) => {
-      keyChanged =
-        state.stopped?.kind === "keyChanged"
-          ? { unsavedCount: state.syncStates.unsavedCount }
-          : null;
+      if (state.stopped?.kind === "keyChanged") {
+        keyChanged = { unsavedCount: state.syncStates.unsavedCount };
+        reportedAccentColor = "system";
+      } else {
+        keyChanged = null;
+      }
     });
     uninstallLifecycleTriggers = installLifecycleTriggers(
       { window, document },
@@ -369,6 +388,7 @@
       unlock={boundUnlock}
       initialize={boundInitialize}
       onLoggedIn={handleLoggedIn}
+      onAccentColor={(id) => (reportedAccentColor = id)}
     />
   {/key}
 {:else if phase.kind === "app" && keyChanged !== null}
@@ -390,6 +410,7 @@
     onPassphraseChanged={(keyring, check, history) =>
       void handlePassphraseChanged(keyring, check, history)}
     onLogOut={logOut}
+    onAccentColor={(id) => (reportedAccentColor = id)}
   />
   <LogoutDialog
     open={logout !== null}
