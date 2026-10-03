@@ -266,7 +266,7 @@ describe("sync engine settings", () => {
     const state = h.engine.getState();
     expect(state.stopped).toBeNull();
     expect(state.synced?.config.settings).toEqual({ accent: "red" });
-    expect(state.synced?.settings).toEqual({ accentColor: "system" });
+    expect(state.synced?.settings.accentColor).toBe("system");
     expect(state.rawSettings).toEqual({ accent: "red" });
 
     await pushSettings(h.fake, { accent: "blue" });

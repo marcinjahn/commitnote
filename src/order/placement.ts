@@ -48,3 +48,12 @@ export function placementPositions(
     return all.map((sibling, i) => ({ name: sibling, key: keys[i] }));
   }
 }
+
+export function insertionIndex(
+  children: readonly { readonly kind: "note" | "folder" }[],
+  placement: "beginning" | "end" | "afterLastFolder",
+): number {
+  if (placement === "beginning") return 0;
+  if (placement === "end") return children.length;
+  return children.findLastIndex((child) => child.kind === "folder") + 1;
+}

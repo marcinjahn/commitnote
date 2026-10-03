@@ -1353,7 +1353,10 @@
     open={true}
     {settings}
     {changeSettings}
-    onClose={() => (settingsOpen = false)}
+    onClose={() => {
+      settingsSaver.flush();
+      settingsOpen = false;
+    }}
   />
 {/if}
 

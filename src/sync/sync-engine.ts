@@ -34,7 +34,7 @@ import {
   folderKey,
   type OrderIndex,
 } from "../order/order-index";
-import { placementPositions } from "../order/placement";
+import { insertionIndex, placementPositions } from "../order/placement";
 import { isExpired, selectExpired, type PurgeCaps } from "../trash/expiry";
 import { createTrashEntryId } from "../trash/trash-entry-id";
 import { buildTrashIndex, type TrashEntry } from "../trash/trash-index";
@@ -1694,7 +1694,16 @@ export function createSyncEngine(options: {
         ? { kind, path, content: "" }
         : { kind: "create-folder", path };
     const siblings = childNames(folder);
-    const positioned = positionChange(parent, siblings, validation.name, siblings.length);
+    const placement =
+      kind === "create-note"
+        ? state.settings.newNotePlacement
+        : state.settings.newFolderPlacement;
+    const positioned = positionChange(
+      parent,
+      siblings,
+      validation.name,
+      insertionIndex(folder.children, placement),
+    );
     applyStructureChange(
       ...(positioned === null ? [change] : [change, positioned]),
     );

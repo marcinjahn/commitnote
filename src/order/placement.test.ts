@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compareKeys } from "./fractional-key";
-import { placementPositions } from "./placement";
+import { insertionIndex, placementPositions } from "./placement";
 
 function visibleOrder(
   existing: ReadonlyMap<string, string>,
@@ -49,5 +49,31 @@ describe("placementPositions", () => {
 
     expect(positions.map(({ name }) => name)).toEqual(["A", "X", "B"]);
     expect(visibleOrder(order, positions, ["A", "B", "X"])).toEqual(["A", "X", "B"]);
+  });
+});
+
+describe("insertionIndex", () => {
+  const folder = { kind: "folder" } as const;
+  const note = { kind: "note" } as const;
+  const placements = ["beginning", "end", "afterLastFolder"] as const;
+
+  it("maps each placement to an index when folders come before notes", () => {
+    const children = [folder, folder, note, note, note];
+
+    expect(insertionIndex(children, "beginning")).toBe(0);
+    expect(insertionIndex(children, "end")).toBe(5);
+    expect(insertionIndex(children, "afterLastFolder")).toBe(2);
+  });
+
+  it("goes after the last folder when folders and notes are interleaved", () => {
+    expect(insertionIndex([folder, note, folder, note], "afterLastFolder")).toBe(3);
+  });
+
+  it("goes to the beginning after the last folder when there are only notes", () => {
+    expect(insertionIndex([note, note], "afterLastFolder")).toBe(0);
+  });
+
+  it.each(placements)("returns 0 for %s in an empty parent", (placement) => {
+    expect(insertionIndex([], placement)).toBe(0);
   });
 });
