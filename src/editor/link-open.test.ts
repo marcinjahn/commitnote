@@ -8,9 +8,6 @@ import { linkOpen } from "./link-open";
 import { livePreview } from "./live-preview";
 
 const TEXT = "see [site](https://example.com/a) and [bad](javascript:alert(1)) end";
-const LINK_POS = TEXT.indexOf("site");
-const BAD_POS = TEXT.indexOf("bad");
-const PLAIN_POS = TEXT.length - 1;
 
 interface Setup {
   readonly editor: MarkdownEditor;
@@ -22,7 +19,7 @@ interface Setup {
 let current: Setup | null = null;
 
 function setup(
-  options: { readOnly?: boolean; defaultOpener?: boolean } = {},
+  options: { readOnly?: boolean; defaultOpener?: boolean; text?: string } = {},
 ): Setup {
   const changes: string[] = [];
   const parent = document.createElement("div");
@@ -30,7 +27,7 @@ function setup(
   const open = vi.fn<(url: string) => void>();
   const editor = createMarkdownEditor({
     parent,
-    text: TEXT,
+    text: options.text ?? TEXT,
     readOnly: options.readOnly ?? false,
     onChange: (next) => changes.push(next),
     extensions: [
@@ -62,8 +59,18 @@ function key(type: string, target: HTMLElement, init: KeyboardEventInit): void {
   );
 }
 
-function hitAt(s: Setup, pos: number | null): void {
-  vi.spyOn(s.editor.view, "posAtCoords").mockReturnValue(pos);
+function linkEl(s: Setup, text: string): HTMLElement {
+  const el = Array.from(
+    s.editor.view.contentDOM.querySelectorAll<HTMLElement>(".cm-link"),
+  ).find((e) => e.textContent?.includes(text));
+  if (!el) throw new Error(`no .cm-link containing ${text}`);
+  return el;
+}
+
+function lineEl(s: Setup): HTMLElement {
+  const el = s.editor.view.contentDOM.querySelector<HTMLElement>(".cm-line");
+  if (!el) throw new Error("no .cm-line");
+  return el;
 }
 
 afterEach(() => {
@@ -76,8 +83,7 @@ afterEach(() => {
 describe("linkOpen", () => {
   it("opens the URL on Ctrl+mousedown over a link", () => {
     const s = setup();
-    hitAt(s, LINK_POS);
-    const event = mouse("mousedown", s.editor.view.contentDOM, {
+    const event = mouse("mousedown", linkEl(s, "site"), {
       ctrlKey: true,
     });
     expect(s.open).toHaveBeenCalledTimes(1);
@@ -87,8 +93,7 @@ describe("linkOpen", () => {
 
   it("opens the URL on Meta+mousedown over a link", () => {
     const s = setup();
-    hitAt(s, LINK_POS);
-    const event = mouse("mousedown", s.editor.view.contentDOM, {
+    const event = mouse("mousedown", linkEl(s, "site"), {
       metaKey: true,
     });
     expect(s.open).toHaveBeenCalledWith("https://example.com/a");
@@ -97,44 +102,54 @@ describe("linkOpen", () => {
 
   it("ignores a plain mousedown on a link", () => {
     const s = setup();
-    hitAt(s, LINK_POS);
-    mouse("mousedown", s.editor.view.contentDOM);
+    mouse("mousedown", linkEl(s, "site"));
     expect(s.open).not.toHaveBeenCalled();
   });
 
   it("ignores Ctrl+mousedown with a non-primary button", () => {
     const s = setup();
-    hitAt(s, LINK_POS);
-    mouse("mousedown", s.editor.view.contentDOM, { ctrlKey: true, button: 1 });
+    mouse("mousedown", linkEl(s, "site"), { ctrlKey: true, button: 1 });
     expect(s.open).not.toHaveBeenCalled();
   });
 
   it("ignores Ctrl+mousedown outside any link", () => {
     const s = setup();
-    hitAt(s, PLAIN_POS);
-    mouse("mousedown", s.editor.view.contentDOM, { ctrlKey: true });
+    mouse("mousedown", lineEl(s), { ctrlKey: true });
     expect(s.open).not.toHaveBeenCalled();
   });
 
-  it("ignores Ctrl+mousedown when the pointer is not over the editor text", () => {
+  it("ignores Ctrl+mousedown on the line past a trailing link", () => {
+    const s = setup({ text: "[a](https://a.example)" });
+    mouse("mousedown", lineEl(s), { ctrlKey: true });
+    expect(s.open).not.toHaveBeenCalled();
+  });
+
+  it("opens each of two adjacent links with its own URL", () => {
+    const s = setup({ text: "[a](https://a.example)[b](https://b.example)" });
+    mouse("mousedown", linkEl(s, "a"), { ctrlKey: true });
+    mouse("mousedown", linkEl(s, "b"), { ctrlKey: true });
+    expect(s.open.mock.calls).toEqual([
+      ["https://a.example"],
+      ["https://b.example"],
+    ]);
+  });
+
+  it("ignores Ctrl+mousedown whose target is outside the editor content", () => {
     const s = setup();
-    hitAt(s, null);
-    mouse("mousedown", s.editor.view.contentDOM, { ctrlKey: true });
+    mouse("mousedown", document.body, { ctrlKey: true });
     expect(s.open).not.toHaveBeenCalled();
   });
 
   it("ignores Ctrl+mousedown on an unsafe link", () => {
     const s = setup();
-    hitAt(s, BAD_POS);
-    mouse("mousedown", s.editor.view.contentDOM, { ctrlKey: true });
+    mouse("mousedown", lineEl(s), { ctrlKey: true });
     expect(s.open).not.toHaveBeenCalled();
   });
 
   it("leaves the document and selection untouched", () => {
     const s = setup();
     const before = s.editor.view.state.selection;
-    hitAt(s, LINK_POS);
-    mouse("mousedown", s.editor.view.contentDOM, { ctrlKey: true });
+    mouse("mousedown", linkEl(s, "site"), { ctrlKey: true });
     const after = s.editor.view.state.selection;
     expect(s.editor.view.state.doc.toString()).toBe(TEXT);
     expect(after.ranges).toHaveLength(before.ranges.length);
@@ -145,28 +160,25 @@ describe("linkOpen", () => {
 
   it("prevents Ctrl+click on a link but not a plain click", () => {
     const s = setup();
-    hitAt(s, LINK_POS);
     expect(
-      mouse("click", s.editor.view.contentDOM, { ctrlKey: true })
+      mouse("click", linkEl(s, "site"), { ctrlKey: true })
         .defaultPrevented,
     ).toBe(true);
-    expect(mouse("click", s.editor.view.contentDOM).defaultPrevented).toBe(
+    expect(mouse("click", linkEl(s, "site")).defaultPrevented).toBe(
       false,
     );
   });
 
   it("opens links in a read-only editor", () => {
     const s = setup({ readOnly: true });
-    hitAt(s, LINK_POS);
-    mouse("mousedown", s.editor.view.contentDOM, { ctrlKey: true });
+    mouse("mousedown", linkEl(s, "site"), { ctrlKey: true });
     expect(s.open).toHaveBeenCalledWith("https://example.com/a");
   });
 
   it("falls back to window.open with noopener and noreferrer", () => {
     const spy = vi.spyOn(window, "open").mockReturnValue(null);
     const s = setup({ defaultOpener: true });
-    hitAt(s, LINK_POS);
-    mouse("mousedown", s.editor.view.contentDOM, { ctrlKey: true });
+    mouse("mousedown", linkEl(s, "site"), { ctrlKey: true });
     expect(spy).toHaveBeenCalledWith(
       "https://example.com/a",
       "_blank",

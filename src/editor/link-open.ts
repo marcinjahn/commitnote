@@ -129,9 +129,14 @@ function hasModifier(event: MouseEvent | KeyboardEvent): boolean {
 
 function linkUnderPointer(view: EditorView, event: MouseEvent): string | null {
   if (event.button !== 0 || !hasModifier(event)) return null;
-  const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
-  if (pos === null) return null;
-  return linkUrlAt(view.state, pos);
+  const target = event.target;
+  if (!(target instanceof Node) || !view.contentDOM.contains(target)) {
+    return null;
+  }
+  const element = target instanceof Element ? target : target.parentElement;
+  const linkElement = element?.closest(".cm-link");
+  if (!linkElement || !view.contentDOM.contains(linkElement)) return null;
+  return linkUrlAt(view.state, view.posAtDOM(linkElement));
 }
 
 function setArmed(view: EditorView, armed: boolean): boolean {

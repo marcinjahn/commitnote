@@ -57,3 +57,25 @@ test("plain click on a link does not open a new tab", async ({
 
   expect(context.pages().length).toBe(pageCount);
 });
+
+test("Ctrl+click in the blank space right of a link does not open a new tab", async ({
+  page,
+  context,
+}) => {
+  const { editor, link } = await openWelcomeLink(page);
+  const box = await link.boundingBox();
+  if (!box) throw new Error("link has no bounding box");
+  const editorBox = await editor.boundingBox();
+  if (!editorBox) throw new Error("editor has no bounding box");
+
+  const pageCount = context.pages().length;
+  await page.keyboard.down("Control");
+  await page.mouse.click(
+    editorBox.x + editorBox.width - 20,
+    box.y + box.height / 2,
+  );
+  await page.keyboard.up("Control");
+  await page.waitForTimeout(500);
+
+  expect(context.pages().length).toBe(pageCount);
+});
