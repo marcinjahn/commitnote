@@ -25,6 +25,7 @@ async function openSettings(page: Page): Promise<void> {
 
 async function chooseAccent(page: Page, name: string): Promise<void> {
   await settingsDialog(page)
+    .getByRole("radiogroup", { name: "Accent color" })
     .locator("label")
     .filter({ has: page.getByRole("radio", { name, exact: true }) })
     .click();

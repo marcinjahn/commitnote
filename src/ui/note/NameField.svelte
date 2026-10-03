@@ -115,6 +115,7 @@
     transition: border-color var(--motion-duration) var(--motion-easing);
     color: var(--color-text);
     font: inherit;
+    font-family: var(--font-note);
     font-size: var(--font-size-lg);
     line-height: normal;
     font-weight: var(--font-weight-semibold);

@@ -11,6 +11,7 @@
     type Settings,
   } from "../../settings/settings";
   import type { AccentColorId } from "../../settings/accent-palette";
+  import type { NoteFont } from "../../settings/note-font";
   import type { NoteHistory, NoteVersion } from "../../history/note-history";
   import type { RestorePlan } from "../../history/plan-restore";
   import { validateName } from "../../tree/note-names";
@@ -105,6 +106,7 @@
     ) => void;
     onLogOut: () => void;
     onAccentColor: (id: AccentColorId) => void;
+    onNoteFont: (id: NoteFont) => void;
   }
 
   const {
@@ -119,6 +121,7 @@
     onPassphraseChanged,
     onLogOut,
     onAccentColor,
+    onNoteFont,
   }: Props = $props();
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
@@ -252,6 +255,10 @@
 
   $effect(() => {
     onAccentColor(settings.accentColor);
+  });
+
+  $effect(() => {
+    onNoteFont(settings.noteFont);
   });
 
   const settingsSave = $derived(
@@ -1259,6 +1266,7 @@
       hasNotes={tree !== null && tree.root.children.length > 0}
       onDraftContent={handleDraftContent}
       onNewNote={handleHeaderNewNote}
+      noteFont={settings.noteFont}
     />
   </section>
 </div>

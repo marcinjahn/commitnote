@@ -1,6 +1,8 @@
-import type { Page, TestInfo } from "@playwright/test";
+import type { Locator, Page, TestInfo } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chooseRepository, expectTree, logIn } from "./helpers";
+
+const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 
 const NOTES_REPO = "https://github.com/sample/notes";
 const REPO_KEY = "sample/notes";
@@ -57,6 +59,7 @@ function expectRootAccent(page: Page, color: string) {
 
 async function chooseAccent(page: Page, name: string): Promise<void> {
   await settingsDialog(page)
+    .getByRole("radiogroup", { name: "Accent color" })
     .locator("label")
     .filter({ has: page.getByRole("radio", { name, exact: true }) })
     .click();
@@ -191,9 +194,10 @@ test("Settings is the first command and opens a dialog with the accent color opt
   );
 
   const sections = dialog.getByRole("radiogroup");
-  await expect(sections).toHaveCount(3);
-  await expect(sections.nth(1)).toHaveAccessibleName("New notes");
-  await expect(sections.nth(2)).toHaveAccessibleName("New folders");
+  await expect(sections).toHaveCount(4);
+  await expect(sections.nth(1)).toHaveAccessibleName("Note font");
+  await expect(sections.nth(2)).toHaveAccessibleName("New notes");
+  await expect(sections.nth(3)).toHaveAccessibleName("New folders");
   const notes = dialog.getByRole("radiogroup", { name: "New notes" });
   const folders = dialog.getByRole("radiogroup", { name: "New folders" });
   await expect(notes.getByRole("radio")).toHaveCount(NOTE_OPTIONS.length);
@@ -301,7 +305,9 @@ test("choosing System after another accent restores the system accent", async ({
 
   await chooseAccent(page, "System");
   await expect(
-    settingsDialog(page).getByRole("radio", { name: "System" }),
+    settingsDialog(page)
+      .getByRole("radiogroup", { name: "Accent color" })
+      .getByRole("radio", { name: "System" }),
   ).toBeChecked();
   await expectRootAccent(page, system);
 });
@@ -317,7 +323,9 @@ test("System uses the palette color closest to the OS accent and follows OS acce
     "System · Red, closest to your OS accent color",
   );
   await expect(
-    dialog.getByRole("radio", { name: "System" }),
+    dialog
+      .getByRole("radiogroup", { name: "Accent color" })
+      .getByRole("radio", { name: "System" }),
   ).toHaveAccessibleDescription("Red, closest to your OS accent color");
   await expectRootAccent(page, RED);
 
@@ -333,12 +341,13 @@ test("arrow keys move the accent color selection", async ({ page }) => {
   const system = await rootAccent(page);
   await openSettings(page);
   const dialog = settingsDialog(page);
-  await expect(dialog.getByRole("radio", { name: "System" })).toBeFocused();
+  const accent = dialog.getByRole("radiogroup", { name: "Accent color" });
+  await expect(accent.getByRole("radio", { name: "System" })).toBeFocused();
 
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowRight");
 
-  await expect(dialog.getByRole("radio", { name: "Violet" })).toBeChecked();
+  await expect(accent.getByRole("radio", { name: "Violet" })).toBeChecked();
   await expect.poll(() => rootAccent(page)).not.toBe(system);
 });
 
@@ -448,4 +457,251 @@ test("arrow keys move the note placement selection", async ({ page }) => {
   await page.keyboard.press("ArrowDown");
 
   await expect(group.getByRole("radio", { name: "At the end" })).toBeChecked();
+});
+
+const NOTE_FONT_STACKS: Record<string, string> = {
+  Inter: "var(--font-sans)",
+  System: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  Serif:
+    'ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", Georgia, Cambria, "Noto Serif", "Times New Roman", serif',
+  Monospace: "var(--font-mono)",
+};
+const MONO_STACK = "var(--font-mono)";
+const SANS_STACK = "var(--font-sans)";
+
+function noteFontGroup(page: Page) {
+  return settingsDialog(page).getByRole("radiogroup", { name: "Note font" });
+}
+
+function expectedFamily(page: Page, stack: string): Promise<string> {
+  return page.evaluate((value) => {
+    const probe = document.createElement("span");
+    probe.style.fontFamily = value;
+    document.body.appendChild(probe);
+    const family = getComputedStyle(probe).fontFamily;
+    probe.remove();
+    return family;
+  }, stack);
+}
+
+function computedFamily(locator: Locator): Promise<string> {
+  return locator.evaluate((el) => getComputedStyle(el).fontFamily);
+}
+
+async function expectFamily(page: Page, locator: Locator, stack: string) {
+  const expected = await expectedFamily(page, stack);
+  await expect.poll(() => computedFamily(locator)).toBe(expected);
+}
+
+function rootNoteFont(page: Page): Promise<{ inline: string; computed: string }> {
+  return page.evaluate(() => ({
+    inline: document.documentElement.style.getPropertyValue("--font-note"),
+    computed: getComputedStyle(document.documentElement)
+      .getPropertyValue("--font-note")
+      .trim(),
+  }));
+}
+
+async function closeSettings(page: Page): Promise<void> {
+  await page.keyboard.press("Escape");
+  await expect(settingsDialog(page)).toHaveCount(0);
+}
+
+async function openWelcome(page: Page): Promise<void> {
+  await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Note editor" })).toBeVisible();
+}
+
+async function showTreeIfMobile(page: Page, testInfo: TestInfo): Promise<void> {
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: "Back to notes" }).click();
+  }
+}
+
+async function returnToWelcomeIfMobile(
+  page: Page,
+  testInfo: TestInfo,
+): Promise<void> {
+  if (testInfo.project.name === "mobile") {
+    await openWelcome(page);
+  }
+}
+
+test("the Note font section lists four options with Inter checked, each label in its own font", async ({
+  page,
+}) => {
+  await openSettings(page);
+  const group = noteFontGroup(page);
+
+  await expect(group.getByRole("radio")).toHaveCount(4);
+  for (const [index, name] of Object.keys(NOTE_FONT_STACKS).entries()) {
+    await expect(group.getByRole("radio").nth(index)).toHaveAccessibleName(name);
+  }
+  await expect(group.getByRole("radio", { name: "Inter" })).toBeChecked();
+
+  for (const [name, stack] of Object.entries(NOTE_FONT_STACKS)) {
+    await expectFamily(
+      page,
+      group.locator("label").filter({ hasText: name }).locator("span").last(),
+      stack,
+    );
+  }
+});
+
+test("choosing Serif changes note text only, keeping code monospace and chrome in Inter", async ({
+  page,
+}, testInfo) => {
+  await openWelcome(page);
+  await showTreeIfMobile(page, testInfo);
+  await openSettings(page);
+  await chooseOption(page, "Note font", "Serif");
+  await expect(
+    noteFontGroup(page).getByRole("radio", { name: "Serif" }),
+  ).toBeChecked();
+  await closeSettings(page);
+
+  await expectFamily(
+    page,
+    page.getByRole("treeitem", { name: "Welcome", exact: true }),
+    SANS_STACK,
+  );
+
+  await returnToWelcomeIfMobile(page, testInfo);
+  const content = page.locator(".cm-content");
+  await expectFamily(page, content, NOTE_FONT_STACKS.Serif);
+  await expectFamily(
+    page,
+    page.getByRole("textbox", { name: "Note name" }),
+    NOTE_FONT_STACKS.Serif,
+  );
+  await expectFamily(
+    page,
+    content.locator("*", { hasText: /^inline code$/ }).last(),
+    MONO_STACK,
+  );
+  await expectFamily(page, page.locator(".cm-code-block-line").first(), MONO_STACK);
+});
+
+test("choosing Monospace applies the monospace stack to the editor", async ({
+  page,
+}) => {
+  await openSettings(page);
+  await chooseOption(page, "Note font", "Monospace");
+  await closeSettings(page);
+
+  await openWelcome(page);
+  await expectFamily(page, page.locator(".cm-content"), MONO_STACK);
+});
+
+test("choosing a note font saves one commit naming only the key", async ({
+  page,
+}) => {
+  const commitsBefore = await commitMessages(page);
+  await openSettings(page);
+
+  await chooseOption(page, "Note font", "Serif");
+
+  await expectSettingsCommits(page, commitsBefore.length + 1);
+  const added = await addedCommits(page, commitsBefore);
+  expect(added).toHaveLength(1);
+  expect(added[0].split("\n")).toContain("Commitnote-Settings: noteFont");
+  expect(added[0].toLowerCase()).not.toContain("serif");
+});
+
+test("rapid note font changes are saved as a single commit", async ({ page }) => {
+  const commitsBefore = await commitMessages(page);
+  await openSettings(page);
+
+  await chooseOption(page, "Note font", "System");
+  await chooseOption(page, "Note font", "Monospace");
+  await chooseOption(page, "Note font", "Serif");
+
+  await expectSettingsCommits(page, commitsBefore.length + 1);
+  await page.waitForTimeout(2500);
+  expect(await commitMessages(page)).toHaveLength(commitsBefore.length + 1);
+});
+
+test("re-picking the saved note font makes no commit", async ({ page }) => {
+  const commitsBefore = await commitMessages(page);
+  await openSettings(page);
+  await chooseOption(page, "Note font", "Serif");
+  await expectSettingsCommits(page, commitsBefore.length + 1);
+
+  await chooseOption(page, "Note font", "Serif");
+  await chooseOption(page, "Note font", "Monospace");
+  await chooseOption(page, "Note font", "Serif");
+  await page.waitForTimeout(2500);
+  expect(await commitMessages(page)).toHaveLength(commitsBefore.length + 1);
+});
+
+test("a saved note font is applied after login and reset on logout", async ({
+  page,
+}) => {
+  const commitsBefore = await commitMessages(page);
+  const initial = await rootNoteFont(page);
+  expect(initial.inline).toBe("");
+  await openSettings(page);
+  await chooseOption(page, "Note font", "Serif");
+  await expectSettingsCommits(page, commitsBefore.length + 1);
+  await expect.poll(async () => (await rootNoteFont(page)).inline).not.toBe("");
+  await closeSettings(page);
+
+  await clickLogOut(page);
+  await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
+  await expect.poll(() => rootNoteFont(page)).toEqual(initial);
+
+  await chooseRepository(page, { repo: NOTES_REPO });
+  await page.getByLabel("Passphrase", { exact: true }).fill(PASSPHRASE);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expectTree(page);
+  await expect.poll(async () => (await rootNoteFont(page)).inline).not.toBe("");
+
+  await openWelcome(page);
+  await expectFamily(page, page.locator(".cm-content"), NOTE_FONT_STACKS.Serif);
+});
+
+test("arrow keys move the note font selection", async ({ page }) => {
+  await openSettings(page);
+  const group = noteFontGroup(page);
+  await group.getByRole("radio", { name: "Inter" }).focus();
+
+  await page.keyboard.press("ArrowDown");
+
+  await expect(group.getByRole("radio", { name: "System" })).toBeChecked();
+  await page.keyboard.press("ArrowDown");
+  await expect(group.getByRole("radio", { name: "Serif" })).toBeChecked();
+});
+
+test("typing after switching the note font lands where the line was clicked", async ({
+  page,
+}, testInfo) => {
+  await openWelcome(page);
+  const content = page.locator(".cm-content");
+  await content.click();
+  await page.keyboard.press(`${MODIFIER}+End`);
+  await page.keyboard.type("MARKER");
+  await expect(content).toContainText("MARKER");
+
+  await showTreeIfMobile(page, testInfo);
+  await openSettings(page);
+  await chooseOption(page, "Note font", "Serif");
+  await closeSettings(page);
+  await returnToWelcomeIfMobile(page, testInfo);
+
+  await expect(content).toContainText("MARKER");
+  await expectFamily(page, content, NOTE_FONT_STACKS.Serif);
+
+  const line = page.locator(".cm-line", { hasText: /^- Second bullet$/ });
+  const box = await line.boundingBox();
+  if (!box) throw new Error("line not measurable");
+  await page.mouse.click(box.x + box.width - 2, box.y + box.height / 2);
+  await page.keyboard.type("XYZ");
+
+  await expect(page.locator(".cm-line", { hasText: /Second bulletXYZ$/ })).toHaveCount(1);
+
+  await page.keyboard.press(`${MODIFIER}+z`);
+
+  await expect(page.locator(".cm-line", { hasText: /^- Second bullet$/ })).toHaveCount(1);
+  await expect(content).not.toContainText("XYZ");
+  await expect(content).toContainText("MARKER");
 });

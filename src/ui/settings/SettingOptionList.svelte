@@ -1,15 +1,17 @@
-<script lang="ts">
-  import type { PlacementOption } from "../../settings/placement-options";
+<script lang="ts" generics="T extends SettingOption">
+  import type { Snippet } from "svelte";
+  import type { SettingOption } from "../../settings/setting-option";
 
   interface Props {
     readonly label: string;
     readonly name: string;
-    readonly options: readonly PlacementOption[];
-    readonly value: string;
-    readonly onSelect: (id: string) => void;
+    readonly options: readonly T[];
+    readonly value: T["id"];
+    readonly onSelect: (id: T["id"]) => void;
+    readonly optionLabel?: Snippet<[T]>;
   }
 
-  const { label, name, options, value, onSelect }: Props = $props();
+  const { label, name, options, value, onSelect, optionLabel }: Props = $props();
 </script>
 
 <div class="setting-options" role="radiogroup" aria-label={label}>
@@ -22,7 +24,11 @@
         checked={value === option.id}
         onchange={() => onSelect(option.id)}
       />
-      <span>{option.label}</span>
+      {#if optionLabel}
+        {@render optionLabel(option)}
+      {:else}
+        <span>{option.label}</span>
+      {/if}
     </label>
   {/each}
 </div>

@@ -38,6 +38,7 @@
   import { describePassphraseChanged } from "./ui/passphrase/passphrase-messages";
   import { accentCustomProperties, type AccentColorId } from "./settings/accent-palette";
   import { systemAccent, watchSystemAccent } from "./ui/system-accent.svelte";
+  import { noteFontFamily, type NoteFont } from "./settings/note-font";
   import KeyChangedScreen from "./ui/session/KeyChangedScreen.svelte";
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
@@ -121,6 +122,17 @@
     }
   });
 
+  let reportedNoteFont = $state<NoteFont>("inter");
+  const appliedNoteFont = $derived<NoteFont>(
+    keyChanged !== null ? "inter" : reportedNoteFont,
+  );
+
+  $effect(() => {
+    const style = document.documentElement.style;
+    if (appliedNoteFont === "inter") style.removeProperty("--font-note");
+    else style.setProperty("--font-note", noteFontFamily(appliedNoteFont));
+  });
+
   let logout = $state<
     | null
     | { readonly kind: "saving" }
@@ -134,6 +146,7 @@
   function showLogin(initialError: LoginError | null): void {
     loginKey++;
     reportedAccentColor = "system";
+    reportedNoteFont = "inter";
     phase = {
       kind: "login",
       initialRepoUrl: store.lastRepoUrl() ?? "",
@@ -169,6 +182,7 @@
       if (state.stopped?.kind === "keyChanged") {
         keyChanged = { unsavedCount: state.syncStates.unsavedCount };
         reportedAccentColor = "system";
+        reportedNoteFont = "inter";
       } else {
         keyChanged = null;
       }
@@ -414,6 +428,7 @@
       void handlePassphraseChanged(keyring, check, history)}
     onLogOut={logOut}
     onAccentColor={(id) => (reportedAccentColor = id)}
+    onNoteFont={(id) => (reportedNoteFont = id)}
   />
   <LogoutDialog
     open={logout !== null}

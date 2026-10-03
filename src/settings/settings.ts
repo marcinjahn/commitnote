@@ -1,4 +1,5 @@
 import { parseAccentColor, type AccentColorId } from "./accent-palette";
+import { parseNoteFont, type NoteFont } from "./note-font";
 import {
   parseNewFolderPlacement,
   parseNewNotePlacement,
@@ -38,10 +39,16 @@ const newFolderPlacementSetting: SettingDefinition<NewFolderPlacement> = {
   parse: parseNewFolderPlacement,
 };
 
+const noteFontSetting: SettingDefinition<NoteFont> = {
+  default: "inter",
+  parse: parseNoteFont,
+};
+
 export const SETTINGS_SCHEMA = {
   accentColor: accentColorSetting,
   newNotePlacement: newNotePlacementSetting,
   newFolderPlacement: newFolderPlacementSetting,
+  noteFont: noteFontSetting,
 } as const satisfies SettingsSchema;
 
 export type Settings = SettingsOf<typeof SETTINGS_SCHEMA>;

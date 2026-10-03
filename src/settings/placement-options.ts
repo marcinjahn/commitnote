@@ -1,7 +1,6 @@
-export interface PlacementOption {
-  readonly id: string;
-  readonly label: string;
-}
+import type { SettingOption } from "./setting-option";
+
+export type PlacementOption = SettingOption;
 
 export const NEW_NOTE_PLACEMENT_OPTIONS = [
   { id: "beginning", label: "At the beginning" },

@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { AccentColorId } from "./accent-palette";
+import type { NoteFont } from "./note-font";
 import type { NewFolderPlacement, NewNotePlacement } from "./placement-options";
 import {
   applySettingsEdits,
@@ -111,6 +112,7 @@ describe("placement settings", () => {
       accentColor: "system",
       newNotePlacement: "beginning",
       newFolderPlacement: "end",
+      noteFont: "inter",
     });
   });
 
@@ -243,5 +245,36 @@ describe("settingValuesEqual", () => {
     expect(settingValuesEqual({ a: 1 }, { a: 1, b: 2 })).toBe(false);
     expect(settingValuesEqual({ a: 1 }, { b: 1 })).toBe(false);
     expect(settingValuesEqual({ a: { b: 1 } }, { a: { b: 2 } })).toBe(false);
+  });
+});
+
+describe("note font setting", () => {
+  it("resolves a missing note font to inter", () => {
+    expect(resolveSettings(SETTINGS_SCHEMA, {}).noteFont).toBe("inter");
+  });
+
+  it("resolves an unknown note font to inter", () => {
+    expect(
+      resolveSettings(SETTINGS_SCHEMA, { noteFont: "comic" }).noteFont,
+    ).toBe("inter");
+  });
+
+  it("resolves a stored note font id", () => {
+    expect(
+      resolveSettings(SETTINGS_SCHEMA, { noteFont: "serif" }).noteFont,
+    ).toBe("serif");
+  });
+
+  it("keeps unknown sibling keys when editing the note font", () => {
+    expect(
+      applySettingsEdits(
+        { noteFont: "serif", futureKey: 1 },
+        { noteFont: "mono" },
+      ),
+    ).toEqual({ noteFont: "mono", futureKey: 1 });
+  });
+
+  it("types the note font setting as the option id", () => {
+    expectTypeOf<Settings["noteFont"]>().toEqualTypeOf<NoteFont>();
   });
 });
