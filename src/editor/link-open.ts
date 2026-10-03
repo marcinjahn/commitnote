@@ -14,13 +14,21 @@ import {
 import type { SyntaxNode } from "@lezer/common";
 
 const OPENABLE_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+const WWW_PREFIX = /^www\./i;
+const EMAIL = /^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/i;
 
-export function isOpenableUrl(url: string): boolean {
-  if (url === "") return false;
+function withScheme(url: string): string {
+  if (WWW_PREFIX.test(url)) return `https://${url}`;
+  if (EMAIL.test(url)) return `mailto:${url}`;
+  return url;
+}
+
+export function toOpenableUrl(text: string): string | null {
+  const url = withScheme(text);
   try {
-    return OPENABLE_PROTOCOLS.has(new URL(url).protocol.toLowerCase());
+    return OPENABLE_PROTOCOLS.has(new URL(url).protocol) ? url : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -61,8 +69,8 @@ export function linkUrlAt(state: EditorState, pos: number): string | null {
   for (const side of [1, -1] as const) {
     const urlNode = urlNodeFrom(state, tree.resolveInner(pos, side));
     if (!urlNode) continue;
-    const url = state.sliceDoc(urlNode.from, urlNode.to).trim();
-    if (isOpenableUrl(url)) return url;
+    const url = toOpenableUrl(state.sliceDoc(urlNode.from, urlNode.to).trim());
+    if (url !== null) return url;
   }
   return null;
 }
@@ -72,7 +80,9 @@ export interface LinkOpenOptions {
 }
 
 const ARMED_CLASS = "cm-link-open-armed";
+const BARE_CLASS = "cm-link-bare";
 const linkMark = Decoration.mark({ class: "cm-link" });
+const bareLinkMark = Decoration.mark({ class: `cm-link ${BARE_CLASS}` });
 
 function buildLinkMarks(view: EditorView): DecorationSet {
   const { state } = view;
@@ -86,14 +96,17 @@ function buildLinkMarks(view: EditorView): DecorationSet {
       to,
       enter: (node) => {
         const isLink = node.name === "Link" || node.name === "Autolink";
+        const parentName = node.node.parent?.name;
         const isBareUrl =
           node.name === "URL" &&
-          node.node.parent?.name !== "Link" &&
-          node.node.parent?.name !== "Autolink";
+          parentName !== "Link" &&
+          parentName !== "Autolink";
+        const isAutolinkLiteral =
+          isBareUrl && parentName !== "Image" && parentName !== "LinkReference";
         if (!isLink && !isBareUrl) return;
         if (node.from < lastTo) return false;
         if (linkUrlAt(state, node.from) === null) return false;
-        builder.add(node.from, node.to, linkMark);
+        builder.add(node.from, node.to, isAutolinkLiteral ? bareLinkMark : linkMark);
         lastTo = node.to;
         return false;
       },
@@ -174,6 +187,11 @@ export function linkOpen(options: LinkOpenOptions = {}): Extension {
     }),
     EditorView.baseTheme({
       [`&.${ARMED_CLASS} .cm-link`]: { cursor: "pointer" },
+      [`.${BARE_CLASS}, .${BARE_CLASS} *`]: {
+        color: "var(--color-link)",
+        textDecoration: "underline",
+        textUnderlineOffset: "0.15em",
+      },
     }),
   ];
 }

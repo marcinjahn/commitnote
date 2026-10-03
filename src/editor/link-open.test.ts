@@ -135,6 +135,31 @@ describe("linkOpen", () => {
     ]);
   });
 
+  it.each([
+    ["www URL", "go www.a.example/p now", "www.a.example/p", "https://www.a.example/p"],
+    ["email", "mail a@b.example now", "a@b.example", "mailto:a@b.example"],
+    ["www destination", "above\n[site](www.a.example)", "site", "https://www.a.example"],
+  ])("opens a scheme-less %s with its scheme added", (_, text, label, url) => {
+    const s = setup({ text });
+    mouse("mousedown", linkEl(s, label), { ctrlKey: true });
+    expect(s.open).toHaveBeenCalledWith(url);
+  });
+
+  it("marks bare URLs and emails as bare links and markdown links as plain links", () => {
+    const s = setup({
+      text: "[site](https://a.example) www.b.example c@d.example",
+    });
+    expect(linkEl(s, "www.b.example").classList).toContain("cm-link-bare");
+    expect(linkEl(s, "c@d.example").classList).toContain("cm-link-bare");
+    expect(linkEl(s, "site").classList).not.toContain("cm-link-bare");
+  });
+
+  it("does not mark an image source as a bare link", () => {
+    const s = setup({ text: "above\n![pic](https://a.example/p.png)" });
+    const bare = s.editor.view.contentDOM.querySelector(".cm-link-bare");
+    expect(bare).toBeNull();
+  });
+
   it("ignores Ctrl+mousedown whose target is outside the editor content", () => {
     const s = setup();
     mouse("mousedown", document.body, { ctrlKey: true });

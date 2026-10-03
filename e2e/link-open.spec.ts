@@ -7,7 +7,7 @@ const LINK_URL = "https://github.com/example/commitnote";
 
 test.beforeEach(async ({ context }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Ctrl+click is desktop-only");
-  await context.route("https://github.com/example/**", (route) =>
+  await context.route(/^https:\/\/(github\.com\/example|www\.example\.org)\//, (route) =>
     route.fulfill({
       status: 200,
       contentType: "text/html",
@@ -126,4 +126,60 @@ test("Ctrl+click in the blank space right of a line ending in a link does not op
   await page.waitForTimeout(500);
 
   expect(context.pages().length).toBe(pageCount);
+});
+
+async function typeLine(
+  page: import("@playwright/test").Page,
+  editor: import("@playwright/test").Locator,
+  text: string,
+) {
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type(`\n${text}`);
+  await page
+    .locator(".cm-content .cm-line", { hasText: "Notes stay private" })
+    .click();
+}
+
+function textColor(locator: import("@playwright/test").Locator) {
+  return locator.evaluate((el) => {
+    let inner: Element = el;
+    while (inner.firstElementChild) inner = inner.firstElementChild;
+    return getComputedStyle(inner).color;
+  });
+}
+
+test("Ctrl+click on a raw www link opens it over https", async ({
+  page,
+  context,
+}) => {
+  const { editor, link } = await openWelcomeLink(page);
+  await typeLine(page, editor, "Go to www.example.org/raw now.");
+  const raw = page.locator(".cm-content .cm-link", {
+    hasText: "www.example.org/raw",
+  });
+  await expect(raw).toHaveText("www.example.org/raw");
+  expect(await textColor(raw)).toBe(await textColor(link));
+
+  const pagePromise = context.waitForEvent("page");
+  await raw.click({ modifiers: ["Control"] });
+  const newPage = await pagePromise;
+  await newPage.waitForURL("https://www.example.org/raw");
+});
+
+test("Ctrl+click on a markdown link with a www destination opens it over https", async ({
+  page,
+  context,
+}) => {
+  const { editor } = await openWelcomeLink(page);
+  await typeLine(page, editor, "[scheme-less](www.example.org/md)");
+  const link = page.locator(".cm-content .cm-link", {
+    hasText: "scheme-less",
+  });
+  await expect(link).toHaveText("scheme-less");
+
+  const pagePromise = context.waitForEvent("page");
+  await link.click({ modifiers: ["Control"] });
+  const newPage = await pagePromise;
+  await newPage.waitForURL("https://www.example.org/md");
 });

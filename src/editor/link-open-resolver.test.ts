@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { markdownEditorExtensions } from "./create-markdown-editor";
-import { isOpenableUrl, linkUrlAt } from "./link-open";
+import { linkUrlAt, toOpenableUrl } from "./link-open";
 
 function stateFor(doc: string): EditorState {
   return EditorState.create({ doc, extensions: markdownEditorExtensions() });
@@ -78,15 +78,46 @@ describe("linkUrlAt", () => {
 
   it.each([
     ["relative", "[x](notes/a.md)"],
+    ["scheme-less non-www", "[x](a.example/p)"],
     ["javascript", "[x](javascript:alert(1))"],
     ["data", "[x](data:text/html,hi)"],
   ])("returns null for %s destination", (_, doc) => {
     expect(at(doc, "x")).toBeNull();
   });
 
-  it("returns null for bare www and email", () => {
-    expect(at("www.a.example", "www", 2)).toBeNull();
-    expect(at("a@b.example", "a@b", 2)).toBeNull();
+  it("resolves a bare www URL to https", () => {
+    expect(at("go www.a.example/p?q=1 now", "www", 2)).toBe(
+      "https://www.a.example/p?q=1",
+    );
+  });
+
+  it("excludes trailing punctuation from a bare www URL", () => {
+    expect(at("see www.a.example.", "www", 2)).toBe("https://www.a.example");
+    expect(at("(see www.a.example/x)", "www", 2)).toBe(
+      "https://www.a.example/x",
+    );
+  });
+
+  it("resolves a bare email to mailto", () => {
+    expect(at("mail a@b.example now", "a@b", 1)).toBe("mailto:a@b.example");
+  });
+
+  it("resolves a www destination to https", () => {
+    expect(at("[x](www.a.example/p)", "x")).toBe("https://www.a.example/p");
+  });
+
+  it("resolves an email destination to mailto", () => {
+    expect(at("[x](a@b.example)", "x")).toBe("mailto:a@b.example");
+  });
+
+  it.each([
+    ["file name", "see notes.md now", "notes"],
+    ["version number", "v1.2.3 is out", "1.2"],
+    ["domain without www", "visit a.example/p now", "a.example"],
+    ["subdomain without www", "visit sub.a.example now", "sub"],
+    ["at sign without domain", "ping foo@bar now", "foo@"],
+  ])("returns null for a bare %s", (_, doc, needle) => {
+    expect(at(doc, needle, 1)).toBeNull();
   });
 
   it("returns null outside any link", () => {
@@ -98,18 +129,29 @@ describe("linkUrlAt", () => {
   });
 });
 
-describe("isOpenableUrl", () => {
-  it.each(["http://a.example", "HTTPS://a.example", "mailto:a@b.example"])(
-    "accepts %s",
-    (url) => {
-      expect(isOpenableUrl(url)).toBe(true);
-    },
-  );
+describe("toOpenableUrl", () => {
+  it.each([
+    ["http://a.example", "http://a.example"],
+    ["HTTPS://a.example", "HTTPS://a.example"],
+    ["mailto:a@b.example", "mailto:a@b.example"],
+    ["www.a.example", "https://www.a.example"],
+    ["WWW.a.example:8080/p", "https://WWW.a.example:8080/p"],
+    ["a.b+c@d.example", "mailto:a.b+c@d.example"],
+    ["a@my_host.example", "mailto:a@my_host.example"],
+  ])("accepts %s as %s", (text, url) => {
+    expect(toOpenableUrl(text)).toBe(url);
+  });
 
-  it.each(["", "www.a.example", "a@b.example", "notes/a.md", "javascript:1"])(
-    "rejects %j",
-    (url) => {
-      expect(isOpenableUrl(url)).toBe(false);
-    },
-  );
+  it.each([
+    "",
+    "a.example",
+    "notes/a.md",
+    "//a.example",
+    "javascript:1",
+    "data:text/html,hi",
+    "ftp://a.example",
+    "a@b",
+  ])("rejects %j", (text) => {
+    expect(toOpenableUrl(text)).toBeNull();
+  });
 });
