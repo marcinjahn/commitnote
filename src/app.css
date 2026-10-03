@@ -20,6 +20,7 @@
   --color-text: #0a0a0a;
   --color-text-muted: #5c5c5c;
   --system-accent: #3358d4;
+  --system-accent-text: #ffffff;
   --color-accent: var(--accent-light, var(--system-accent));
   --color-link: #3358d4;
   --color-ink: #0a0a0a;
@@ -104,6 +105,7 @@
     --color-text: #ededed;
     --color-text-muted: #a0a0a0;
     --system-accent: #86a4ff;
+    --system-accent-text: #0b0b0b;
     --color-accent: var(--accent-dark, var(--system-accent));
     --color-link: #86a4ff;
     --color-ink: #ededed;
@@ -138,6 +140,7 @@
 @supports (color: AccentColor) {
   :root {
     --system-accent: AccentColor;
+    --system-accent-text: AccentColorText;
   }
 }
 

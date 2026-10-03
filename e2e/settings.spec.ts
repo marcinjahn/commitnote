@@ -147,8 +147,21 @@ test("Settings is the first command and opens a dialog with the accent color opt
   for (const [index, name] of PALETTE.entries()) {
     await expect(group.getByRole("radio").nth(index)).toHaveAccessibleName(name);
   }
-  await expect(group.getByRole("radio", { name: "System" })).toBeChecked();
-  await expect(group.getByRole("radio", { name: "System" })).toBeFocused();
+  const systemRadio = group.getByRole("radio", { name: "System" });
+  await expect(systemRadio).toBeChecked();
+  await expect(systemRadio).toBeFocused();
+  await expect(systemRadio).toHaveAccessibleDescription(
+    "Matches your operating system's accent color",
+  );
+  await expect(
+    group
+      .locator("label")
+      .filter({ has: page.getByRole("radio", { name: "System" }) })
+      .locator("svg"),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("System · matches your operating system's accent color"),
+  ).toBeVisible();
 
   const sections = dialog.getByRole("radiogroup");
   await expect(sections).toHaveCount(3);
@@ -199,6 +212,7 @@ test("choosing an accent color applies it and saves one commit without the value
   await chooseAccent(page, "Teal");
 
   await expect(dialog.getByRole("radio", { name: "Teal" })).toBeChecked();
+  await expect(dialog.locator(".accent-caption")).toHaveText("Teal");
   await expectRootAccent(page, TEAL);
   await expect
     .poll(() =>
