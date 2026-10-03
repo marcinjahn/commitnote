@@ -48,7 +48,7 @@ test("choosing the option that is already selected shows no save status", async 
   await expect(settingsDialog(page).getByRole("status")).toHaveText("");
 });
 
-test("the Settings dialog shows a change waiting, saving, then saved", async ({
+test("the Settings dialog shows a change waiting, saving, then briefly saved", async ({
   page,
 }) => {
   await openSettings(page);
@@ -61,6 +61,25 @@ test("the Settings dialog shows a change waiting, saving, then saved", async ({
   await expect(settingsDialog(page).getByRole("status")).toContainText(
     "Settings saved",
   );
+  await expect(settingsDialog(page).getByRole("status")).toHaveText("", {
+    timeout: 4_000,
+  });
+});
+
+test("a change while Saved is shown goes back to waiting and ends saved again", async ({
+  page,
+}) => {
+  await openSettings(page);
+  await chooseAccent(page, "Teal");
+  await expect(dialogStatus(page, "Saved")).toBeVisible({ timeout: 10_000 });
+
+  await chooseAccent(page, "Red");
+
+  await expect(dialogStatus(page, "Waiting to save")).toBeVisible();
+  await expect(dialogStatus(page, "Saved")).toBeVisible({ timeout: 10_000 });
+  await expect(settingsDialog(page).getByRole("status")).toHaveText("", {
+    timeout: 4_000,
+  });
 });
 
 test("after closing Settings mid-save, the sidebar shows the save until it lands and reopens Settings", async ({
