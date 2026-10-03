@@ -1,5 +1,16 @@
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import type { EditorState } from "@codemirror/state";
+import {
+  RangeSetBuilder,
+  type EditorState,
+  type Extension,
+} from "@codemirror/state";
+import {
+  Decoration,
+  type DecorationSet,
+  EditorView,
+  ViewPlugin,
+  type ViewUpdate,
+} from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 
 const OPENABLE_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
@@ -54,4 +65,110 @@ export function linkUrlAt(state: EditorState, pos: number): string | null {
     if (isOpenableUrl(url)) return url;
   }
   return null;
+}
+
+export interface LinkOpenOptions {
+  readonly open?: (url: string) => void;
+}
+
+const ARMED_CLASS = "cm-link-open-armed";
+const linkMark = Decoration.mark({ class: "cm-link" });
+
+function buildLinkMarks(view: EditorView): DecorationSet {
+  const { state } = view;
+  const tree =
+    ensureSyntaxTree(state, state.doc.length) ?? syntaxTree(state);
+  const builder = new RangeSetBuilder<Decoration>();
+  let lastTo = -1;
+  for (const { from, to } of view.visibleRanges) {
+    tree.iterate({
+      from,
+      to,
+      enter: (node) => {
+        const isLink = node.name === "Link" || node.name === "Autolink";
+        const isBareUrl =
+          node.name === "URL" &&
+          node.node.parent?.name !== "Link" &&
+          node.node.parent?.name !== "Autolink";
+        if (!isLink && !isBareUrl) return;
+        if (node.from < lastTo) return false;
+        if (linkUrlAt(state, node.from) === null) return false;
+        builder.add(node.from, node.to, linkMark);
+        lastTo = node.to;
+        return false;
+      },
+    });
+  }
+  return builder.finish();
+}
+
+const linkMarks = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = buildLinkMarks(view);
+    }
+
+    update(update: ViewUpdate): void {
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        syntaxTree(update.startState) !== syntaxTree(update.state)
+      ) {
+        this.decorations = buildLinkMarks(update.view);
+      }
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
+function hasModifier(event: MouseEvent | KeyboardEvent): boolean {
+  return event.ctrlKey || event.metaKey;
+}
+
+function linkUnderPointer(view: EditorView, event: MouseEvent): string | null {
+  if (event.button !== 0 || !hasModifier(event)) return null;
+  const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+  if (pos === null) return null;
+  return linkUrlAt(view.state, pos);
+}
+
+function setArmed(view: EditorView, armed: boolean): boolean {
+  view.dom.classList.toggle(ARMED_CLASS, armed);
+  return false;
+}
+
+export function linkOpen(options: LinkOpenOptions = {}): Extension {
+  const open =
+    options.open ??
+    ((url: string) => {
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
+
+  return [
+    linkMarks,
+    EditorView.domEventHandlers({
+      mousedown(event, view) {
+        const url = linkUnderPointer(view, event);
+        if (url === null) return false;
+        event.preventDefault();
+        open(url);
+        return true;
+      },
+      click(event, view) {
+        if (linkUnderPointer(view, event) === null) return false;
+        event.preventDefault();
+        return true;
+      },
+      keydown: (event, view) => setArmed(view, hasModifier(event)),
+      keyup: (event, view) => setArmed(view, hasModifier(event)),
+      mousemove: (event, view) => setArmed(view, hasModifier(event)),
+      mouseleave: (_event, view) => setArmed(view, false),
+      blur: (_event, view) => setArmed(view, false),
+    }),
+    EditorView.baseTheme({
+      [`&.${ARMED_CLASS} .cm-link`]: { cursor: "pointer" },
+    }),
+  ];
 }
