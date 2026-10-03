@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { notePathEquals } from "../../changes/change";
   import { livePreview } from "../../editor/live-preview";
+  import { linkOpen } from "../../editor/link-open";
   import type {
     HeldConflict,
     OpenNoteState,
@@ -25,7 +26,7 @@
 
   const { engine, forgeName, openNote, draft, treeLoaded, hasNotes, onDraftContent, onNewNote }: Props = $props();
 
-  const editorExtensions = [livePreview()];
+  const editorExtensions = [livePreview(), linkOpen()];
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
 
