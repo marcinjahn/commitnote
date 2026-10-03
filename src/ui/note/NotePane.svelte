@@ -13,6 +13,8 @@
   import { describeSyncError } from "../browse/sync-messages";
   import ConflictView from "./ConflictView.svelte";
 
+  import type { NoteFont } from "../../settings/note-font";
+
   interface Props {
     engine: SyncEngine;
     forgeName: string;
@@ -22,9 +24,10 @@
     hasNotes: boolean;
     onDraftContent: (content: string) => void;
     onNewNote: () => void;
+    noteFont: NoteFont;
   }
 
-  const { engine, forgeName, openNote, draft, treeLoaded, hasNotes, onDraftContent, onNewNote }: Props = $props();
+  const { engine, forgeName, openNote, draft, treeLoaded, hasNotes, onDraftContent, onNewNote, noteFont }: Props = $props();
 
   const editorExtensions = [livePreview(), linkOpen()];
 
@@ -68,6 +71,7 @@
       text={editorText}
       readOnly={false}
       extensions={editorExtensions}
+      {noteFont}
       onChange={handleEditorChange}
     />
   {:else if openNote === null}
@@ -84,7 +88,7 @@
   {:else if openNote.kind === "loading"}
     <p class="note-status">Loading…</p>
   {:else if openNote.kind === "loaded" && conflict !== undefined}
-    <ConflictView {engine} {conflict} />
+    <ConflictView {engine} {conflict} {noteFont} />
   {:else if openNote.kind === "missing"}
     <p class="note-status">This note no longer exists.</p>
   {:else if openNote.kind === "failed"}

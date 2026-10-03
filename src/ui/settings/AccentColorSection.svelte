@@ -1,11 +1,22 @@
 <script lang="ts">
-  import { ACCENT_PALETTE, type AccentOption } from "../../settings/accent-palette";
+  import {
+    ACCENT_PALETTE,
+    accentOption,
+    type AccentOption,
+  } from "../../settings/accent-palette";
+  import { systemAccent } from "../system-accent.svelte";
   import type { SettingsSectionProps } from "./settings-sections";
 
   const { settings, changeSettings }: SettingsSectionProps = $props();
 
-  const SYSTEM_DESCRIPTION = "Matches your operating system's accent color";
   const descriptionId = $props.id();
+
+  const systemOption = $derived(accentOption(systemAccent().id));
+  const systemDescription = $derived(
+    systemAccent().fromOs
+      ? `${systemOption.label}, closest to your OS accent color`
+      : `${systemOption.label}, because the browser doesn't share your OS accent color`,
+  );
 
   const selected = $derived(
     ACCENT_PALETTE.find((option) => option.id === settings.accentColor) ??
@@ -20,13 +31,18 @@
   }
 </script>
 
-<div class="accent-swatches" role="radiogroup" aria-label="Accent color">
+<div
+  class="accent-swatches"
+  role="radiogroup"
+  aria-label="Accent color"
+  style="--swatch-columns: {Math.ceil((ACCENT_PALETTE.length - 1) / 2)}"
+>
   {#each ACCENT_PALETTE as option (option.id)}
     {@const system = option.id === "system"}
     <label
       class="accent-swatch"
       class:system
-      title={system ? `${option.label}: ${SYSTEM_DESCRIPTION}` : option.label}
+      title={system ? `${option.label}: ${systemDescription}` : option.label}
     >
       <input
         type="radio"
@@ -38,7 +54,7 @@
         checked={settings.accentColor === option.id}
         onchange={() => changeSettings({ accentColor: option.id })}
       />
-      <span class="accent-circle" style={swatchStyle(option)}>
+      <span class="accent-circle" style={swatchStyle(system ? systemOption : option)}>
         {#if system}
           <svg
             class="system-icon"
@@ -58,10 +74,10 @@
     {/if}
   {/each}
 </div>
-<span id={descriptionId} class="visually-hidden">{SYSTEM_DESCRIPTION}</span>
+<span id={descriptionId} class="visually-hidden">{systemDescription}</span>
 <p class="field-hint accent-caption" aria-hidden="true">
   {#if selected.id === "system"}
-    <strong>{selected.label}</strong> · {SYSTEM_DESCRIPTION.toLowerCase()}
+    <strong>{selected.label}</strong> · {systemDescription}
   {:else}
     <strong>{selected.label}</strong>
   {/if}
@@ -69,10 +85,16 @@
 
 <style>
   .accent-swatches {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto auto repeat(var(--swatch-columns), auto);
+    justify-content: start;
     align-items: center;
-    gap: var(--space-1);
+    gap: 0 var(--space-1);
+  }
+
+  .system,
+  .accent-divider {
+    grid-row: span 2;
   }
 
   .accent-swatch {
@@ -87,18 +109,18 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: var(--swatch-light, var(--system-accent));
+    background: var(--swatch-light);
     transition: box-shadow var(--motion-duration) var(--motion-easing);
   }
 
   .system .accent-circle {
     box-shadow: inset 0 0 0 2px
-      color-mix(in srgb, var(--system-accent-text) 55%, transparent);
+      color-mix(in srgb, var(--color-on-accent) 55%, transparent);
   }
 
   .system-icon {
     fill: none;
-    stroke: var(--system-accent-text);
+    stroke: var(--color-on-accent);
     stroke-width: 1.5;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -120,7 +142,7 @@
   .system input:checked + .accent-circle {
     box-shadow:
       inset 0 0 0 2px
-        color-mix(in srgb, var(--system-accent-text) 55%, transparent),
+        color-mix(in srgb, var(--color-on-accent) 55%, transparent),
       0 0 0 2px var(--color-background),
       0 0 0 4px var(--color-text);
   }
@@ -141,7 +163,7 @@
 
   @media (prefers-color-scheme: dark) {
     .accent-circle {
-      background: var(--swatch-dark, var(--system-accent));
+      background: var(--swatch-dark);
     }
   }
 </style>

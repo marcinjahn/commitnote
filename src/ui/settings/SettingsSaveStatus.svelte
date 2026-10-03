@@ -14,30 +14,45 @@
 
   const { saveState, onRetry }: Props = $props();
 
-  let savedSinceOpen = $state(false);
+  const SAVED_VISIBLE_MS = 2000;
+
+  let showSaved = $state(false);
   let statusEl: HTMLDivElement | undefined = $state();
+  let previousKind: SyncState["kind"] | null = null;
+  let savedTimer: ReturnType<typeof setTimeout> | undefined;
 
   function retry(): void {
     statusEl?.focus();
     onRetry();
   }
-  let previousKind: SyncState["kind"] | null = null;
 
   $effect.pre(() => {
     const kind = saveState.kind;
-    if (kind === "synced" && previousKind !== null && previousKind !== "synced") {
-      savedSinceOpen = true;
+    if (kind === previousKind) return;
+    clearTimeout(savedTimer);
+    savedTimer = undefined;
+    if (kind !== "synced") {
+      showSaved = false;
+    } else if (previousKind !== null) {
+      showSaved = true;
+      savedTimer = setTimeout(() => (showSaved = false), SAVED_VISIBLE_MS);
     }
     previousKind = kind;
   });
 
-  const visible = $derived(saveState.kind !== "synced" || savedSinceOpen);
+  $effect(() => () => clearTimeout(savedTimer));
+
+  const visible = $derived(saveState.kind !== "synced" || showSaved);
   const failed = $derived(saveState.kind === "out-of-sync" && saveState.reason === "failed");
 </script>
 
 <div class="settings-save-status" role="status" tabindex="-1" bind:this={statusEl}>
   {#if visible}
-    <span class="status-content" in:syncIndicatorFade={{ duration: 200 }}>
+    <span
+      class="status-content"
+      in:syncIndicatorFade={{ duration: 200 }}
+      out:syncIndicatorFade={{ duration: 400 }}
+    >
       {#if saveState.kind === "synced"}
         <svg
           class="icon saved-check"

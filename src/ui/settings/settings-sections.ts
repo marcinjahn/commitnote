@@ -1,6 +1,7 @@
 import type { Component } from "svelte";
 import type { Settings } from "../../settings/settings";
 import AccentColorSection from "./AccentColorSection.svelte";
+import NoteFontSection from "./NoteFontSection.svelte";
 import NewFolderPlacementSection from "./NewFolderPlacementSection.svelte";
 import NewNotePlacementSection from "./NewNotePlacementSection.svelte";
 
@@ -17,6 +18,7 @@ export interface SettingsSection {
 
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: "accent-color", title: "Accent color", component: AccentColorSection },
+  { id: "note-font", title: "Note font", component: NoteFontSection },
   {
     id: "new-note-placement",
     title: "New notes",

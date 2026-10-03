@@ -6,15 +6,18 @@
     type MarkdownEditor,
   } from "../../editor/create-markdown-editor";
 
+  import type { NoteFont } from "../../settings/note-font";
+
   interface Props {
     text: string;
     readOnly: boolean;
     onChange: (text: string) => void;
     extensions?: Extension[];
     ariaLabel?: string;
+    noteFont: NoteFont;
   }
 
-  const { text, readOnly, onChange, extensions, ariaLabel }: Props = $props();
+  const { text, readOnly, onChange, extensions, ariaLabel, noteFont }: Props = $props();
 
   let container: HTMLDivElement;
   let editor: MarkdownEditor | undefined;
@@ -48,6 +51,11 @@
   $effect(() => {
     editor?.setReadOnly(readOnly);
   });
+
+  $effect(() => {
+    void noteFont;
+    editor?.view.requestMeasure();
+  });
 </script>
 
 <div class="markdown-editor" bind:this={container}></div>
@@ -63,7 +71,7 @@
   }
 
   .markdown-editor :global(.cm-editor) {
-    font-family: var(--font-sans);
+    font-family: var(--font-note);
     font-size: var(--font-size-base);
     line-height: var(--line-height);
     color: var(--color-text);
@@ -79,7 +87,7 @@
   }
 
   .markdown-editor :global(.cm-scroller) {
-    font-family: var(--font-sans);
+    font-family: var(--font-note);
   }
 
   .markdown-editor :global(.cm-editor.cm-focused) {

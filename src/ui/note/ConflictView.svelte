@@ -11,12 +11,15 @@
     CONFLICT_KEEP_THEIRS_LABEL,
   } from "./conflict-copy";
 
+  import type { NoteFont } from "../../settings/note-font";
+
   interface Props {
     engine: SyncEngine;
     conflict: HeldConflict;
+    noteFont: NoteFont;
   }
 
-  const { engine, conflict }: Props = $props();
+  const { engine, conflict, noteFont }: Props = $props();
 
   const highlightExtensions = [conflictMarkerHighlight()];
 
@@ -63,6 +66,7 @@
       readOnly={true}
       onChange={() => {}}
       extensions={highlightExtensions}
+      {noteFont}
       ariaLabel="Merged text"
     />
   {:else}
@@ -72,6 +76,7 @@
       readOnly={false}
       onChange={onMergedChange}
       extensions={highlightExtensions}
+      {noteFont}
       ariaLabel="Note editor"
     />
   {/if}

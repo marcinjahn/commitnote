@@ -27,10 +27,13 @@ describe("ACCENT_PALETTE", () => {
     expect(options[0].id).toBe("system");
   });
 
-  it("has unique ids and at most 8 entries", () => {
+  it("has unique ids", () => {
     const ids = options.map((option) => option.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids.length).toBeLessThanOrEqual(8);
+  });
+
+  it("has exactly one neutral color option", () => {
+    expect(colorOptions.filter((option) => option.neutral)).toHaveLength(1);
   });
 
   it("gives every color option both colors and the system option none", () => {

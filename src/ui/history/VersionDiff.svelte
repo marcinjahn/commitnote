@@ -218,6 +218,7 @@
 
   .text {
     flex: 1;
+    font-family: var(--font-note);
     min-width: 0;
     padding-right: var(--space-2);
     white-space: pre-wrap;
