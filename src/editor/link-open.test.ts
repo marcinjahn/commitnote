@@ -7,7 +7,8 @@ import {
 import { linkOpen } from "./link-open";
 import { livePreview } from "./live-preview";
 
-const TEXT = "see [site](https://example.com/a) and [bad](javascript:alert(1)) end";
+const TEXT =
+  "see [site](https://example.com/a) and [bad](javascript:alert(1)) end";
 
 interface Setup {
   readonly editor: MarkdownEditor;
@@ -140,11 +141,25 @@ describe("linkOpen", () => {
     expect(s.open).not.toHaveBeenCalled();
   });
 
-  it("ignores Ctrl+mousedown on an unsafe link", () => {
-    const s = setup();
-    mouse("mousedown", lineEl(s), { ctrlKey: true });
-    expect(s.open).not.toHaveBeenCalled();
-  });
+  it.each([
+    ["javascript:", "[x](javascript:alert(1))"],
+    ["data:", "[x](data:text/html,hi)"],
+    ["relative", "[x](notes/other.md)"],
+    ["empty", "[x]()"],
+  ])(
+    "does not open or claim a Ctrl+click on the text of a %s link",
+    (_scheme, text) => {
+      const s = setup({ text: `above\n${text}` });
+      const label = Array.from(
+        s.editor.view.contentDOM.querySelectorAll<HTMLElement>("span"),
+      ).find((e) => e.textContent === "x");
+      if (!label) throw new Error("no rendered link text");
+      mouse("mousedown", label, { ctrlKey: true });
+      const click = mouse("click", label, { ctrlKey: true });
+      expect(s.open).not.toHaveBeenCalled();
+      expect(click.defaultPrevented).toBe(false);
+    },
+  );
 
   it("leaves the document and selection untouched", () => {
     const s = setup();
@@ -161,12 +176,9 @@ describe("linkOpen", () => {
   it("prevents Ctrl+click on a link but not a plain click", () => {
     const s = setup();
     expect(
-      mouse("click", linkEl(s, "site"), { ctrlKey: true })
-        .defaultPrevented,
+      mouse("click", linkEl(s, "site"), { ctrlKey: true }).defaultPrevented,
     ).toBe(true);
-    expect(mouse("click", linkEl(s, "site")).defaultPrevented).toBe(
-      false,
-    );
+    expect(mouse("click", linkEl(s, "site")).defaultPrevented).toBe(false);
   });
 
   it("opens links in a read-only editor", () => {
