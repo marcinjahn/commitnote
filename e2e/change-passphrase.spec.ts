@@ -184,7 +184,8 @@ test("a wrong current passphrase changes nothing", async ({ page }) => {
     { timeout: 15_000 },
   );
   await expect(dialog.getByLabel("Current passphrase")).toBeFocused();
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toHaveCount(0);
   expect(await commitMessages(page)).toEqual(before);
 
@@ -213,7 +214,8 @@ test("backing out of the review keeps the old passphrase", async ({ page }) => {
   });
   await expect(review).toBeVisible({ timeout: 15_000 });
 
-  await review.getByRole("button", { name: "Cancel" }).click();
+  await expect(review.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+  await review.getByRole("button", { name: "Close" }).click();
 
   await expect(review).toHaveCount(0);
   expect(await commitMessages(page)).toEqual(before);

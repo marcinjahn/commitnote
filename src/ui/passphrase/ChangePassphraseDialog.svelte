@@ -236,7 +236,7 @@
   }
 </script>
 
-<Dialog {open} {title} onClose={handleClose} closeButton={!working}>
+<Dialog {open} {title} onClose={handleClose} closeButton={!working} swipeToClose={!working}>
   {#snippet children()}
     {#if error !== null}
       <p role="alert" class="alert-error">{error}</p>
@@ -390,16 +390,6 @@
         disabled={working}
       >
         {working ? "Changing…" : "Continue"}
-      </button>
-    {/if}
-    {#if stage.kind !== "unsettled"}
-      <button
-        type="button"
-        class="button button-ghost"
-        disabled={working}
-        onclick={handleClose}
-      >
-        Cancel
       </button>
     {/if}
   {/snippet}

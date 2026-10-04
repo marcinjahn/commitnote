@@ -269,9 +269,6 @@
       </p>
     {/if}
     <div class="restore-buttons">
-      <button type="button" class="button button-ghost" onclick={onClose}>
-        Cancel
-      </button>
       <button
         type="button"
         class="button button-primary"

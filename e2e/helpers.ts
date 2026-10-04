@@ -103,15 +103,20 @@ export class TouchFinger {
     return new TouchFinger(page, await page.context().newCDPSession(page));
   }
 
-  async down(point: TouchPoint): Promise<void> {
+  async down(point: TouchPoint, timestamp?: number): Promise<void> {
     this.at = point;
     await this.cdp.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [point],
+      ...(timestamp === undefined ? {} : { timestamp }),
     });
   }
 
-  async move(to: TouchPoint, steps = 10): Promise<void> {
+  async move(
+    to: TouchPoint,
+    steps = 10,
+    timestamp?: number,
+  ): Promise<void> {
     const from = this.at;
     for (let i = 1; i <= steps; i++) {
       this.at = {
@@ -121,14 +126,16 @@ export class TouchFinger {
       await this.cdp.send("Input.dispatchTouchEvent", {
         type: "touchMove",
         touchPoints: [this.at],
+        ...(timestamp === undefined ? {} : { timestamp }),
       });
     }
   }
 
-  async up(): Promise<void> {
+  async up(timestamp?: number): Promise<void> {
     await this.cdp.send("Input.dispatchTouchEvent", {
       type: "touchEnd",
       touchPoints: [],
+      ...(timestamp === undefined ? {} : { timestamp }),
     });
     await this.cdp.detach();
   }

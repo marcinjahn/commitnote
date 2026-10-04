@@ -44,7 +44,7 @@
   }
 </script>
 
-<Dialog {open} title="Import not saved" onClose={handleClose} closeButton={true}>
+<Dialog {open} title="Import not saved" onClose={handleClose} closeButton={true} swipeToClose={!busy}>
   {#snippet children()}
     {#if error !== null}
       <p role="alert" class="alert-error">{error}</p>
@@ -71,9 +71,6 @@
       onclick={onSaveWithoutAtomic}
     >
       Save without it
-    </button>
-    <button type="button" class="button button-ghost" disabled={busy} onclick={handleClose}>
-      Not now
     </button>
   {/snippet}
 </Dialog>
