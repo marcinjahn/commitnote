@@ -69,6 +69,7 @@ function wrap(
     getHead: () => inner.getHead(),
     listTree: (sha) => inner.listTree(sha),
     listCommits: (request) => inner.listCommits(request),
+    findOldestCommit: (request) => inner.findOldestCommit(request),
     readFileAt: (sha, path) => inner.readFileAt(sha, path),
     readBlob: async (sha) => {
       if (readGate.current !== null) await readGate.current;

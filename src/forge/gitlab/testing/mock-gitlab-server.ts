@@ -100,6 +100,7 @@ export class MockGitLabRepo {
   readonly requests: { method: string; path: string }[] = [];
   readonly mergeRequests = new Map<number, MockMergeRequest>();
   treePageSize = 100;
+  omitTotals = false;
   mergeMethod: "merge" | "rebase_merge" | "ff";
   squashOption = "default_off";
   onlyAllowMergeIfPipelineSucceeds = false;
@@ -616,6 +617,17 @@ export class MockGitLabRepo {
         100,
       );
       const page = Number(url.searchParams.get("page") ?? "1");
+      const totalPages = Math.ceil(commits.length / perPage);
+      const headers: Record<string, string> = {
+        "x-page": String(page),
+        "x-per-page": String(perPage),
+        "x-next-page": page < totalPages ? String(page + 1) : "",
+        "x-prev-page": page > 1 ? String(page - 1) : "",
+      };
+      if (!this.omitTotals) {
+        headers["x-total"] = String(commits.length);
+        headers["x-total-pages"] = String(totalPages);
+      }
       return jsonResponse(
         commits
           .slice((page - 1) * perPage, page * perPage)
@@ -628,6 +640,7 @@ export class MockGitLabRepo {
               new Date(commit.committedAt).toISOString(),
           })),
         200,
+        headers,
       );
     }
 

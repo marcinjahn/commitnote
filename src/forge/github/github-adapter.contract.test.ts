@@ -52,6 +52,7 @@ const FIRST_REQUEST_MATCH: Record<ContractOperation, FailureMatch> = {
   readBlob: { method: "GET", pathPattern: /\/git\/blobs\// },
   commit: { method: "GET", pathPattern: /\/git\/commits\// },
   listCommits: { method: "GET", pathPattern: /\/commits\?/ },
+  findOldestCommit: { method: "GET", pathPattern: /\/commits\?/ },
   readFileAt: { method: "GET", pathPattern: /\/contents\// },
 };
 

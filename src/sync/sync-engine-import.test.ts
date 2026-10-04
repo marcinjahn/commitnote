@@ -103,6 +103,7 @@ async function setup(options?: {
     getHead: () => fake.getHead(),
     listTree: (sha) => fake.listTree(sha),
     listCommits: (request) => fake.listCommits(request),
+    findOldestCommit: (request) => fake.findOldestCommit(request),
     readFileAt: (sha, path) => fake.readFileAt(sha, path),
     readBlob: (sha) => fake.readBlob(sha),
     commit: async (request) => {

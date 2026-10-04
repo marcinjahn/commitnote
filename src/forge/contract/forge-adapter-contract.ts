@@ -32,6 +32,7 @@ export type ContractOperation =
   | "readBlob"
   | "commit"
   | "listCommits"
+  | "findOldestCommit"
   | "readFileAt";
 
 export interface ContractSubject {
@@ -471,6 +472,131 @@ export function describeForgeAdapterContract(
       });
     });
 
+    describe("findOldestCommit", () => {
+      it("returns the only commit that touched the path", async () => {
+        const subject = await harness.createPopulated({
+          commits: [
+            {
+              message: "first",
+              files: { "a.md": "a" },
+              committedAt: HISTORY_START,
+            },
+            {
+              message: "second",
+              files: { "a.md": "a", "b.md": "b" },
+              committedAt: HISTORY_START + MINUTE,
+            },
+          ],
+        });
+        const [first, second] = await seededShas(subject);
+
+        expect(
+          await subject.adapter.findOldestCommit({
+            from: second,
+            path: "b.md",
+          }),
+        ).toEqual({
+          sha: second,
+          parents: [first],
+          message: "second",
+          committedAt: HISTORY_START + MINUTE,
+        });
+      });
+
+      it("returns the first of several commits that changed the path", async () => {
+        const subject = await harness.createPopulated({
+          commits: ["v1", "v2", "v3", "v4", "v5"].map((text, index) => ({
+            message: `edit ${index + 1}`,
+            files: { "p.md": text },
+            committedAt: HISTORY_START + index * MINUTE,
+          })),
+        });
+        const [first] = await seededShas(subject);
+        const head = await requireMainHead(subject);
+
+        expect(
+          await subject.adapter.findOldestCommit({ from: head, path: "p.md" }),
+        ).toEqual({
+          sha: first,
+          parents: [],
+          message: "edit 1",
+          committedAt: HISTORY_START,
+        });
+      });
+
+      it("returns null for a path that never existed", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const head = await requireMainHead(subject);
+
+        expect(
+          await subject.adapter.findOldestCommit({
+            from: head,
+            path: "missing.md",
+          }),
+        ).toBeNull();
+      });
+
+      it("finds the oldest commit of a path left untouched by later commits", async () => {
+        const subject = await harness.createPopulated({
+          commits: [
+            { message: "create", files: { "a.md": "1", "b.md": "1" } },
+            { message: "other", files: { "a.md": "1", "b.md": "2" } },
+            { message: "other again", files: { "a.md": "1", "b.md": "3" } },
+          ],
+        });
+        const [create] = await seededShas(subject);
+        const head = await requireMainHead(subject);
+
+        const oldest = await subject.adapter.findOldestCommit({
+          from: head,
+          path: "a.md",
+        });
+
+        expect(oldest?.sha).toBe(create);
+        expect(oldest?.message).toBe("create");
+      });
+
+      it("finds the oldest commit of a path that was later deleted", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const [create] = await seededShas(subject);
+        const head = await requireMainHead(subject);
+
+        const oldest = await subject.adapter.findOldestCommit({
+          from: head,
+          path: "dir/n.md",
+        });
+
+        expect(oldest?.sha).toBe(create);
+      });
+
+      it("ignores commits newer than `from`", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const [create, edit] = await seededShas(subject);
+
+        expect(
+          (
+            await subject.adapter.findOldestCommit({
+              from: edit,
+              path: "dir/n.md",
+            })
+          )?.sha,
+        ).toBe(create);
+        expect(
+          await subject.adapter.findOldestCommit({ from: create, path: "o.md" }),
+        ).toMatchObject({ sha: create });
+      });
+
+      it("rejects with NotFound for an unknown `from`", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        await expect(
+          subject.adapter.findOldestCommit({
+            from: "0".repeat(40),
+            path: "dir/n.md",
+          }),
+        ).rejects.toMatchObject({ kind: "NotFound" });
+      });
+    });
+
     describe("readFileAt", () => {
       it("returns an earlier version of a file with its git blob SHA", async () => {
         const subject = await harness.createPopulated(HISTORY_SEED);
@@ -868,6 +994,24 @@ export function describeForgeAdapterContract(
         });
       }
 
+      for (const kind of errorKinds) {
+        it(`rejects findOldestCommit with ${kind}`, async () => {
+          const subject = await harness.createPopulated(HISTORY_SEED);
+          const [create] = await seededShas(subject);
+          const head = await requireMainHead(subject);
+          const request = { from: head, path: "dir/n.md" };
+
+          subject.failNext("findOldestCommit", { kind });
+          await expect(
+            subject.adapter.findOldestCommit(request),
+          ).rejects.toMatchObject({ kind });
+
+          expect(
+            (await subject.adapter.findOldestCommit(request))?.sha,
+          ).toBe(create);
+        });
+      }
+
       // A NotFound response means the file is absent, which reads as null.
       for (const kind of errorKinds.filter((k) => k !== "NotFound")) {
         it(`rejects readFileAt with ${kind}`, async () => {
@@ -899,6 +1043,19 @@ export function describeForgeAdapterContract(
             path: "dir/n.md",
             limit: 1,
           }),
+        ).rejects.toMatchObject({ kind: "RateLimited", retryAfterMs: 30_000 });
+      });
+
+      it("rejects findOldestCommit with RateLimited and converts retryAfterSeconds", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const head = await requireMainHead(subject);
+
+        subject.failNext("findOldestCommit", {
+          kind: "RateLimited",
+          retryAfterSeconds: 30,
+        });
+        await expect(
+          subject.adapter.findOldestCommit({ from: head, path: "dir/n.md" }),
         ).rejects.toMatchObject({ kind: "RateLimited", retryAfterMs: 30_000 });
       });
 

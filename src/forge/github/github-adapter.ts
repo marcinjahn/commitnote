@@ -6,6 +6,7 @@ import {
   utf8Encode,
 } from "../../crypto/base64";
 import type { RepoCoordinates } from "../repo-coordinates";
+import { parseLinkHeader } from "./link-header";
 import { gitHubErrorFor, sendGitHubRequest } from "./github-api";
 import { ForgeError, isForgeError, withMainUnchanged } from "../errors";
 import type {
@@ -15,6 +16,7 @@ import type {
   CommitSummary,
   ContentCreatingOperation,
   FileAtCommit,
+  FindOldestCommitRequest,
   ForgeAdapter,
   ForgeAdapterOptions,
   ForgeWriteLimits,
@@ -180,7 +182,9 @@ class GitHubAdapter implements ForgeAdapter {
     return sendGitHubRequest(
       this.fetchImpl,
       this.accessToken,
-      `/repos/${this.ownerPath}/${this.repoPath}${path}`,
+      path.startsWith("https://")
+        ? path
+        : `/repos/${this.ownerPath}/${this.repoPath}${path}`,
       init,
     );
   }
@@ -379,6 +383,28 @@ class GitHubAdapter implements ForgeAdapter {
     return text;
   }
 
+  private async fetchCommitPage(
+    pathOrUrl: string,
+  ): Promise<{ items: CommitSummary[]; links: Map<string, string> }> {
+    const response = await this.send(pathOrUrl, { method: "GET" });
+    if ([404, 409, 422].includes(response.status)) {
+      throw new ForgeError("NotFound", { status: response.status });
+    }
+    if (!response.ok) {
+      throw await this.errorFor(response);
+    }
+    const body = (await response.json()) as readonly GitHubCommitListItem[];
+    return {
+      items: body.map((item) => ({
+        sha: item.sha,
+        parents: item.parents.map((parent) => parent.sha),
+        message: item.commit.message,
+        committedAt: parseCommittedAt(item.commit.committer?.date),
+      })),
+      links: parseLinkHeader(response.headers.get("link")),
+    };
+  }
+
   async listCommits(request: ListCommitsRequest): Promise<CommitSummary[]> {
     const limit = Math.max(0, request.limit);
     const perPage = Math.min(limit, MAX_COMMITS_PER_PAGE);
@@ -390,27 +416,48 @@ class GitHubAdapter implements ForgeAdapter {
         per_page: String(perPage),
         page: String(page),
       });
-      const response = await this.send(`/commits?${query.toString()}`, {
-        method: "GET",
-      });
-      if ([404, 409, 422].includes(response.status)) {
-        throw new ForgeError("NotFound", { status: response.status });
-      }
-      if (!response.ok) {
-        throw await this.errorFor(response);
-      }
-      const body = (await response.json()) as readonly GitHubCommitListItem[];
-      for (const item of body) {
-        commits.push({
-          sha: item.sha,
-          parents: item.parents.map((parent) => parent.sha),
-          message: item.commit.message,
-          committedAt: parseCommittedAt(item.commit.committer?.date),
-        });
-      }
-      if (body.length < perPage) break;
+      const { items } = await this.fetchCommitPage(
+        `/commits?${query.toString()}`,
+      );
+      commits.push(...items);
+      if (items.length < perPage) break;
     }
     return commits.slice(0, limit);
+  }
+
+  async findOldestCommit(
+    request: FindOldestCommitRequest,
+  ): Promise<CommitSummary | null> {
+    const first = await this.fetchCommitPage(
+      `/commits?${new URLSearchParams({
+        sha: request.from,
+        path: request.path,
+        per_page: "1",
+        page: "1",
+      }).toString()}`,
+    );
+    if (first.items.length === 0) return null;
+
+    const lastUrl = first.links.get("last");
+    if (lastUrl !== undefined) {
+      const last = await this.fetchCommitPage(lastUrl);
+      return last.items.at(-1) ?? first.items[0];
+    }
+    if (!first.links.has("next")) return first.items[0];
+
+    let oldest = first.items[0];
+    for (let page = 1; ; page++) {
+      const { items } = await this.fetchCommitPage(
+        `/commits?${new URLSearchParams({
+          sha: request.from,
+          path: request.path,
+          per_page: String(MAX_COMMITS_PER_PAGE),
+          page: String(page),
+        }).toString()}`,
+      );
+      oldest = items.at(-1) ?? oldest;
+      if (items.length < MAX_COMMITS_PER_PAGE) return oldest;
+    }
   }
 
   async readFileAt(

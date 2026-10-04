@@ -35,6 +35,7 @@
     type PassphraseChange,
   } from "./rekey/change-passphrase";
   import { createNoteHistory, type NoteHistory } from "./history/note-history";
+  import { createNoteDates, type NoteDatesResolver } from "./history/note-dates";
   import { describePassphraseChanged } from "./ui/passphrase/passphrase-messages";
   import {
     accentCustomProperties,
@@ -75,6 +76,7 @@
         readonly rememberMe: boolean;
         readonly passphraseChange: PassphraseChange;
         readonly noteHistory: NoteHistory;
+        readonly noteDatesResolver: NoteDatesResolver;
         readonly initialMessage: string | null;
         readonly repoLabel: string;
         readonly repoUrl: string;
@@ -250,6 +252,11 @@
         clock: systemClock,
       }),
       noteHistory: createNoteHistory({ adapter, keyring: session.keyring }),
+      noteDatesResolver: createNoteDates({
+        adapter,
+        keyring: session.keyring,
+        clock: systemClock,
+      }),
       initialMessage,
       repoLabel: repositoryLabel(session.coordinates),
       repoUrl: session.repoUrl,
@@ -450,6 +457,7 @@
     forgeName={phase.forgeName}
     passphraseChange={phase.passphraseChange}
     noteHistory={phase.noteHistory}
+    noteDatesResolver={phase.noteDatesResolver}
     initialMessage={phase.initialMessage}
     onPassphraseChanged={(keyring, check, history) =>
       void handlePassphraseChanged(keyring, check, history)}

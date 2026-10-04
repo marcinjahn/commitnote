@@ -507,6 +507,114 @@ describe("GitLabAdapter history", () => {
     ).toHaveLength(2);
   });
 
+  describe("findOldestCommit", () => {
+    async function pushMany(
+      mock: MockGitLabRepo,
+      path: string,
+      count: number,
+    ): Promise<string[]> {
+      const shas: string[] = [];
+      for (let index = 0; index < count; index++) {
+        shas.push(await pushFromAnotherDevice(mock, path, `text ${index}`));
+      }
+      return shas;
+    }
+
+    function listingRequests(mock: MockGitLabRepo) {
+      return mock.requests.filter((request) =>
+        request.path.includes("/repository/commits?"),
+      );
+    }
+
+    it("reads the last page of a one-per-page listing, in two requests", async () => {
+      const mock = useMock();
+      const first = await seed(mock, { "a.md": "seed" });
+      const shas = await pushMany(mock, "a.md", 5);
+
+      const oldest = await makeAdapter().findOldestCommit({
+        from: shas[4],
+        path: "a.md",
+      });
+
+      expect(oldest).toMatchObject({ sha: first, parents: [] });
+      const listings = listingRequests(mock);
+      expect(listings).toHaveLength(2);
+      expect(
+        listings.map((request) =>
+          Object.fromEntries(new URL(request.path, "https://x").searchParams),
+        ),
+      ).toEqual([
+        { ref_name: shas[4], path: "a.md", per_page: "1", page: "1" },
+        { ref_name: shas[4], path: "a.md", per_page: "1", page: "6" },
+      ]);
+    });
+
+    it("answers from the first response when there is a single commit", async () => {
+      const mock = useMock();
+      const head = await seed(mock, { "a.md": "one" });
+
+      const oldest = await makeAdapter().findOldestCommit({
+        from: head,
+        path: "a.md",
+      });
+
+      expect(oldest).toMatchObject({ sha: head, parents: [] });
+      expect(listingRequests(mock)).toHaveLength(1);
+    });
+
+    it("returns null when no commit touches the path", async () => {
+      const mock = useMock();
+      const head = await seed(mock);
+
+      expect(
+        await makeAdapter().findOldestCommit({ from: head, path: "none.md" }),
+      ).toBeNull();
+    });
+
+    it("rejects an unknown ref with NotFound", async () => {
+      const mock = useMock();
+      await seed(mock);
+
+      await expect(
+        makeAdapter().findOldestCommit({ from: "0".repeat(40), path: "a.md" }),
+      ).rejects.toMatchObject({ kind: "NotFound" });
+    });
+
+    it("pages forward at 100 per page when the server sends no totals", async () => {
+      const mock = useMock();
+      mock.omitTotals = true;
+      const first = await seed(mock, { "a.md": "seed" });
+      const shas = await pushMany(mock, "a.md", 149);
+
+      const oldest = await makeAdapter().findOldestCommit({
+        from: shas[148],
+        path: "a.md",
+      });
+
+      expect(oldest?.sha).toBe(first);
+      const pages = listingRequests(mock).map((request) =>
+        new URL(request.path, "https://x").searchParams.get("per_page"),
+      );
+      expect(pages).toEqual(["1", "100", "100"]);
+    });
+
+    it("maps a rate-limited listing to RateLimited", async () => {
+      const mock = useMock();
+      const head = await seed(mock, { "a.md": "one" });
+      mock.failNext(
+        { method: "GET", pathPattern: /\/repository\/commits\?/ },
+        {
+          status: 429,
+          headers: { "retry-after": "7" },
+        },
+      );
+
+      await expect(
+        makeAdapter().findOldestCommit({ from: head, path: "a.md" }),
+      ).rejects.toMatchObject({ kind: "RateLimited", retryAfterMs: 7000 });
+    });
+  });
+
   it("reads a file at a commit with its whole path encoded and caches its blob", async () => {
     const mock = useMock();
     const head = await seed(mock, { "dir/ü n.md": "héllo" });
