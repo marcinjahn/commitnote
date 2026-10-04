@@ -19,16 +19,44 @@ describe("NOTE_FONT_OPTIONS", () => {
     expect(options[0].id).toBe("inter");
   });
 
-  it("gives every option a non-empty family", () => {
+  it("has exactly the expected ids in order", () => {
+    expect(options.map((option) => option.id)).toEqual([
+      "inter",
+      "system",
+      "ibm-plex-sans",
+      "atkinson-hyperlegible",
+      "nunito",
+      "ia-writer-quattro",
+      "literata",
+      "source-serif",
+      "lora",
+      "jetbrains-mono",
+      "ibm-plex-mono",
+    ]);
+  });
+
+  it("gives every option a non-empty label, description and family", () => {
     for (const option of options) {
+      expect(option.label.trim()).not.toBe("");
+      expect(option.description.trim()).not.toBe("");
       expect(option.family.trim()).not.toBe("");
     }
   });
 
-  it("ends the system and serif stacks in a generic family", () => {
-    const family = (id: string) => options.find((o) => o.id === id)?.family;
-    expect(family("system")).toMatch(/, sans-serif$/);
-    expect(family("serif")).toMatch(/, serif$/);
+  it.each([
+    ["ibm-plex-sans", "sans-serif"],
+    ["atkinson-hyperlegible", "sans-serif"],
+    ["nunito", "sans-serif"],
+    ["ia-writer-quattro", "sans-serif"],
+    ["literata", "serif"],
+    ["source-serif", "serif"],
+    ["lora", "serif"],
+    ["jetbrains-mono", "var(--font-mono)"],
+    ["ibm-plex-mono", "var(--font-mono)"],
+  ])("gives bundled option %s a quoted family and a %s fallback", (id, ending) => {
+    const option = options.find((o) => o.id === id);
+    expect(option?.family).toMatch(/^"[^"]+"/);
+    expect(option?.family.endsWith(ending)).toBe(true);
   });
 });
 
@@ -37,9 +65,12 @@ describe("parseNoteFont", () => {
     expect(parseNoteFont(id)).toBe(id);
   });
 
-  it.each(["nope", "Inter", 3, null, undefined])("rejects %j", (value) => {
-    expect(parseNoteFont(value)).toBeUndefined();
-  });
+  it.each(["serif", "mono", "System", "", 42, undefined])(
+    "rejects %j",
+    (value) => {
+      expect(parseNoteFont(value)).toBeUndefined();
+    },
+  );
 });
 
 describe("noteFontFamily", () => {

@@ -459,13 +459,78 @@ test("arrow keys move the note placement selection", async ({ page }) => {
   await expect(group.getByRole("radio", { name: "At the end" })).toBeChecked();
 });
 
-const NOTE_FONT_STACKS: Record<string, string> = {
-  Inter: "var(--font-sans)",
-  System: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-  Serif:
-    'ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", Georgia, Cambria, "Noto Serif", "Times New Roman", serif',
-  Monospace: "var(--font-mono)",
+const SYSTEM_STACK =
+  'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+const SERIF_STACK =
+  'ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", Georgia, Cambria, "Noto Serif", "Times New Roman", serif';
+
+const NOTE_FONTS: Record<
+  string,
+  { stack: string; description: string; family?: string }
+> = {
+  Inter: { stack: "var(--font-sans)", description: "The app's font" },
+  "System UI": {
+    stack: SYSTEM_STACK,
+    description:
+      "Your device's interface font, like San Francisco, Segoe UI or Roboto",
+  },
+  "IBM Plex Sans": {
+    stack: `"IBM Plex Sans Variable", ${SYSTEM_STACK}`,
+    description: "Technical sans-serif",
+    family: "IBM Plex Sans Variable",
+  },
+  "Atkinson Hyperlegible Next": {
+    stack: `"Atkinson Hyperlegible Next Variable", ${SYSTEM_STACK}`,
+    description: "Sans-serif designed for legibility",
+    family: "Atkinson Hyperlegible Next Variable",
+  },
+  Nunito: {
+    stack: `"Nunito Variable", ${SYSTEM_STACK}`,
+    description: "Rounded sans-serif",
+    family: "Nunito Variable",
+  },
+  "iA Writer Quattro": {
+    stack: `"iA Writer Quattro", ${SYSTEM_STACK}`,
+    description: "Writing font, nearly monospaced",
+    family: "iA Writer Quattro",
+  },
+  Literata: {
+    stack: `"Literata Variable", ${SERIF_STACK}`,
+    description: "Serif made for long reading",
+    family: "Literata Variable",
+  },
+  "Source Serif 4": {
+    stack: `"Source Serif 4 Variable", ${SERIF_STACK}`,
+    description: "Classic text serif",
+    family: "Source Serif 4 Variable",
+  },
+  Lora: {
+    stack: `"Lora Variable", ${SERIF_STACK}`,
+    description: "Calligraphic serif",
+    family: "Lora Variable",
+  },
+  "JetBrains Mono": {
+    stack: '"JetBrains Mono Variable", var(--font-mono)',
+    description: "Monospace for code and plain text",
+    family: "JetBrains Mono Variable",
+  },
+  "IBM Plex Mono": {
+    stack: '"IBM Plex Mono", var(--font-mono)',
+    description: "Typewriter-like monospace",
+    family: "IBM Plex Mono",
+  },
 };
+const BUNDLED_FILE_PREFIXES = [
+  "ibm-plex-sans-",
+  "atkinson-hyperlegible-next-",
+  "nunito-",
+  "ia-writer-quattro-",
+  "literata-",
+  "source-serif-4-",
+  "lora-",
+  "jetbrains-mono-",
+  "ibm-plex-mono-",
+];
 const MONO_STACK = "var(--font-mono)";
 const SANS_STACK = "var(--font-sans)";
 
@@ -502,6 +567,54 @@ function rootNoteFont(page: Page): Promise<{ inline: string; computed: string }>
   }));
 }
 
+function noteFontRow(page: Page, name: string) {
+  return noteFontGroup(page)
+    .locator("label")
+    .filter({ has: page.getByRole("radio", { name, exact: true }) });
+}
+
+function labelPreviewFamily(radio: Locator): Promise<string> {
+  return radio.evaluate((el) => {
+    const id = el.getAttribute("aria-labelledby") ?? "";
+    const preview = document.getElementById(id);
+    if (!preview) throw new Error("label preview not found");
+    return getComputedStyle(preview.firstElementChild ?? preview).fontFamily;
+  });
+}
+
+async function expectFontLoaded(page: Page, family: string): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (family) => document.fonts.check(`16px "${family}"`),
+        family,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (family) =>
+          [...document.fonts].some(
+            (face) =>
+              face.status === "loaded" &&
+              face.family.replace(/^"|"$/g, "") === family,
+          ),
+        family,
+      ),
+    )
+    .toBe(true);
+}
+
+function collectFontFiles(page: Page): string[] {
+  const files: string[] = [];
+  page.on("response", (response) => {
+    const path = new URL(response.url()).pathname;
+    if (path.endsWith(".woff2")) files.push(path.split("/").pop()!);
+  });
+  return files;
+}
+
 async function closeSettings(page: Page): Promise<void> {
   await page.keyboard.press("Escape");
   await expect(settingsDialog(page)).toHaveCount(0);
@@ -527,71 +640,127 @@ async function returnToWelcomeIfMobile(
   }
 }
 
-test("the Note font section lists four options with Inter checked, each label in its own font", async ({
+test("the Note font section lists eleven options with Inter checked, each label in its own font", async ({
   page,
 }) => {
   await openSettings(page);
   const group = noteFontGroup(page);
+  const names = Object.keys(NOTE_FONTS);
 
-  await expect(group.getByRole("radio")).toHaveCount(4);
-  for (const [index, name] of Object.keys(NOTE_FONT_STACKS).entries()) {
+  await expect(group.getByRole("radio")).toHaveCount(11);
+  for (const [index, name] of names.entries()) {
     await expect(group.getByRole("radio").nth(index)).toHaveAccessibleName(name);
   }
-  await expect(group.getByRole("radio", { name: "Inter" })).toBeChecked();
+  await expect(group.getByRole("radio", { name: "Inter", exact: true })).toBeChecked();
 
-  for (const [name, stack] of Object.entries(NOTE_FONT_STACKS)) {
-    await expectFamily(
-      page,
-      group.locator("label").filter({ hasText: name }).locator("span").last(),
-      stack,
-    );
+  for (const [name, { stack, description }] of Object.entries(NOTE_FONTS)) {
+    const radio = group.getByRole("radio", { name, exact: true });
+    const expected = await expectedFamily(page, stack);
+    await expect.poll(() => labelPreviewFamily(radio)).toBe(expected);
+    await expect(radio).toHaveAccessibleDescription(description);
+  }
+  await expect(
+    noteFontRow(page, "System UI").getByText(NOTE_FONTS["System UI"].description),
+  ).toBeVisible();
+});
+
+test("the Note font options form two columns from desktop width and one on mobile", async ({
+  page,
+}, testInfo) => {
+  await openSettings(page);
+  const first = await noteFontRow(page, "Inter").boundingBox();
+  const second = await noteFontRow(page, "System UI").boundingBox();
+  if (!first || !second) throw new Error("rows not measurable");
+
+  if (testInfo.project.name === "mobile") {
+    expect(second.y).toBeGreaterThan(first.y);
+  } else {
+    expect(second.y).toBe(first.y);
+    expect(second.x).not.toBe(first.x);
   }
 });
 
-test("choosing Serif changes note text only, keeping code monospace and chrome in Inter", async ({
-  page,
-}, testInfo) => {
+test("only the Inter font file loads on app load", async ({ page }) => {
+  await page.goto("about:blank");
+  const files = collectFontFiles(page);
+  await page.goto("/");
+  await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
+  await expectTree(page);
   await openWelcome(page);
-  await showTreeIfMobile(page, testInfo);
-  await openSettings(page);
-  await chooseOption(page, "Note font", "Serif");
-  await expect(
-    noteFontGroup(page).getByRole("radio", { name: "Serif" }),
-  ).toBeChecked();
-  await closeSettings(page);
+  await expect.poll(() => files.length).toBeGreaterThan(0);
+  await page.waitForTimeout(1000);
 
-  await expectFamily(
-    page,
-    page.getByRole("treeitem", { name: "Welcome", exact: true }),
-    SANS_STACK,
-  );
-
-  await returnToWelcomeIfMobile(page, testInfo);
-  const content = page.locator(".cm-content");
-  await expectFamily(page, content, NOTE_FONT_STACKS.Serif);
-  await expectFamily(
-    page,
-    page.getByRole("textbox", { name: "Note name" }),
-    NOTE_FONT_STACKS.Serif,
-  );
-  await expectFamily(
-    page,
-    content.locator("*", { hasText: /^inline code$/ }).last(),
-    MONO_STACK,
-  );
-  await expectFamily(page, page.locator(".cm-code-block-line").first(), MONO_STACK);
+  expect(files.length).toBeGreaterThan(0);
+  for (const file of files) {
+    expect(file.startsWith("InterVariable")).toBe(true);
+  }
 });
 
-test("choosing Monospace applies the monospace stack to the editor", async ({
+test("opening Settings downloads only the regular latin file of each bundled font", async ({
   page,
 }) => {
+  const files = collectFontFiles(page);
   await openSettings(page);
-  await chooseOption(page, "Note font", "Monospace");
-  await closeSettings(page);
+  for (const { family } of Object.values(NOTE_FONTS)) {
+    if (family) await expectFontLoaded(page, family);
+  }
+  await page.waitForTimeout(500);
 
-  await openWelcome(page);
-  await expectFamily(page, page.locator(".cm-content"), MONO_STACK);
+  expect(files.length).toBeGreaterThan(0);
+  for (const file of files) {
+    expect(
+      file.startsWith("InterVariable") ||
+        BUNDLED_FILE_PREFIXES.some((prefix) => file.startsWith(prefix)),
+    ).toBe(true);
+    expect(file).not.toContain("italic");
+    if (!file.startsWith("InterVariable")) {
+      expect(file).toMatch(/-latin-(wght|400)-normal-/);
+    }
+  }
 });
+
+for (const font of ["Literata", "JetBrains Mono"]) {
+  test(`choosing ${font} changes note text and loads the font`, async ({
+    page,
+  }, testInfo) => {
+    const { stack, family } = NOTE_FONTS[font];
+    await openWelcome(page);
+    await showTreeIfMobile(page, testInfo);
+    await openSettings(page);
+    await chooseOption(page, "Note font", font);
+    await expect(
+      noteFontGroup(page).getByRole("radio", { name: font, exact: true }),
+    ).toBeChecked();
+    await closeSettings(page);
+
+    await expectFamily(
+      page,
+      page.getByRole("treeitem", { name: "Welcome", exact: true }),
+      SANS_STACK,
+    );
+
+    await returnToWelcomeIfMobile(page, testInfo);
+    const content = page.locator(".cm-content");
+    await expectFamily(page, content, stack);
+    await expectFamily(page, page.locator(".cm-scroller"), stack);
+    await expectFamily(
+      page,
+      page.getByRole("textbox", { name: "Note name" }),
+      stack,
+    );
+    await expectFamily(
+      page,
+      content.locator("*", { hasText: /^inline code$/ }).last(),
+      MONO_STACK,
+    );
+    await expectFamily(
+      page,
+      page.locator(".cm-code-block-line").first(),
+      MONO_STACK,
+    );
+    await expectFontLoaded(page, family!);
+  });
+}
 
 test("choosing a note font saves one commit naming only the key", async ({
   page,
@@ -599,22 +768,22 @@ test("choosing a note font saves one commit naming only the key", async ({
   const commitsBefore = await commitMessages(page);
   await openSettings(page);
 
-  await chooseOption(page, "Note font", "Serif");
+  await chooseOption(page, "Note font", "Literata");
 
   await expectSettingsCommits(page, commitsBefore.length + 1);
   const added = await addedCommits(page, commitsBefore);
   expect(added).toHaveLength(1);
   expect(added[0].split("\n")).toContain("Commitnote-Settings: noteFont");
-  expect(added[0].toLowerCase()).not.toContain("serif");
+  expect(added[0].toLowerCase()).not.toContain("literata");
 });
 
 test("rapid note font changes are saved as a single commit", async ({ page }) => {
   const commitsBefore = await commitMessages(page);
   await openSettings(page);
 
-  await chooseOption(page, "Note font", "System");
-  await chooseOption(page, "Note font", "Monospace");
-  await chooseOption(page, "Note font", "Serif");
+  await chooseOption(page, "Note font", "System UI");
+  await chooseOption(page, "Note font", "JetBrains Mono");
+  await chooseOption(page, "Note font", "Literata");
 
   await expectSettingsCommits(page, commitsBefore.length + 1);
   await page.waitForTimeout(2500);
@@ -624,12 +793,12 @@ test("rapid note font changes are saved as a single commit", async ({ page }) =>
 test("re-picking the saved note font makes no commit", async ({ page }) => {
   const commitsBefore = await commitMessages(page);
   await openSettings(page);
-  await chooseOption(page, "Note font", "Serif");
+  await chooseOption(page, "Note font", "Literata");
   await expectSettingsCommits(page, commitsBefore.length + 1);
 
-  await chooseOption(page, "Note font", "Serif");
-  await chooseOption(page, "Note font", "Monospace");
-  await chooseOption(page, "Note font", "Serif");
+  await chooseOption(page, "Note font", "Literata");
+  await chooseOption(page, "Note font", "JetBrains Mono");
+  await chooseOption(page, "Note font", "Literata");
   await page.waitForTimeout(2500);
   expect(await commitMessages(page)).toHaveLength(commitsBefore.length + 1);
 });
@@ -641,7 +810,7 @@ test("a saved note font is applied after login and reset on logout", async ({
   const initial = await rootNoteFont(page);
   expect(initial.inline).toBe("");
   await openSettings(page);
-  await chooseOption(page, "Note font", "Serif");
+  await chooseOption(page, "Note font", "Literata");
   await expectSettingsCommits(page, commitsBefore.length + 1);
   await expect.poll(async () => (await rootNoteFont(page)).inline).not.toBe("");
   await closeSettings(page);
@@ -657,19 +826,19 @@ test("a saved note font is applied after login and reset on logout", async ({
   await expect.poll(async () => (await rootNoteFont(page)).inline).not.toBe("");
 
   await openWelcome(page);
-  await expectFamily(page, page.locator(".cm-content"), NOTE_FONT_STACKS.Serif);
+  await expectFamily(page, page.locator(".cm-content"), NOTE_FONTS.Literata.stack);
 });
 
 test("arrow keys move the note font selection", async ({ page }) => {
   await openSettings(page);
   const group = noteFontGroup(page);
-  await group.getByRole("radio", { name: "Inter" }).focus();
+  await group.getByRole("radio", { name: "Inter", exact: true }).focus();
 
   await page.keyboard.press("ArrowDown");
 
-  await expect(group.getByRole("radio", { name: "System" })).toBeChecked();
+  await expect(group.getByRole("radio", { name: "System UI", exact: true })).toBeChecked();
   await page.keyboard.press("ArrowDown");
-  await expect(group.getByRole("radio", { name: "Serif" })).toBeChecked();
+  await expect(group.getByRole("radio", { name: "IBM Plex Sans", exact: true })).toBeChecked();
 });
 
 test("typing after switching the note font lands where the line was clicked", async ({
@@ -684,12 +853,13 @@ test("typing after switching the note font lands where the line was clicked", as
 
   await showTreeIfMobile(page, testInfo);
   await openSettings(page);
-  await chooseOption(page, "Note font", "Serif");
+  await chooseOption(page, "Note font", "Literata");
   await closeSettings(page);
   await returnToWelcomeIfMobile(page, testInfo);
 
   await expect(content).toContainText("MARKER");
-  await expectFamily(page, content, NOTE_FONT_STACKS.Serif);
+  await expectFamily(page, content, NOTE_FONTS.Literata.stack);
+  await expectFontLoaded(page, "Literata Variable");
 
   const line = page.locator(".cm-line", { hasText: /^- Second bullet$/ });
   const box = await line.boundingBox();
@@ -704,4 +874,138 @@ test("typing after switching the note font lands where the line was clicked", as
   await expect(page.locator(".cm-line", { hasText: /^- Second bullet$/ })).toHaveCount(1);
   await expect(content).not.toContainText("XYZ");
   await expect(content).toContainText("MARKER");
+});
+
+function fontPreview(page: Page) {
+  return settingsDialog(page).getByTestId("font-preview");
+}
+
+async function moveOffFontList(page: Page): Promise<void> {
+  const box = await settingsDialog(page)
+    .getByRole("heading", { name: "Settings" })
+    .boundingBox();
+  if (!box) throw new Error("dialog header not measurable");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+}
+
+test("the font preview follows the selected font and keeps code in the code font", async ({
+  page,
+}) => {
+  await openSettings(page);
+  const preview = fontPreview(page);
+
+  await expectFamily(page, preview, NOTE_FONTS.Inter.stack);
+  await expectFamily(page, preview.locator("code"), MONO_STACK);
+
+  await chooseOption(page, "Note font", "Literata");
+
+  await expectFamily(page, preview, NOTE_FONTS.Literata.stack);
+  await expectFamily(page, preview.locator("code"), MONO_STACK);
+});
+
+test("the font preview is hidden from assistive technology", async ({ page }) => {
+  await openSettings(page);
+
+  await expect(fontPreview(page)).toHaveAttribute("aria-hidden", "true");
+  await expect(settingsDialog(page).getByText("Weekly notes")).toHaveCount(1);
+  expect(await settingsDialog(page).ariaSnapshot()).not.toContain("Weekly notes");
+});
+
+test("hovering a font previews it without selecting it, and leaving the list restores the preview", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "touch has no hover");
+  const commitsBefore = await commitMessages(page);
+  await openSettings(page);
+  const preview = fontPreview(page);
+
+  await noteFontRow(page, "Lora").hover();
+
+  await expectFamily(page, preview, NOTE_FONTS.Lora.stack);
+  await expect(
+    noteFontGroup(page).getByRole("radio", { name: "Inter", exact: true }),
+  ).toBeChecked();
+  await page.waitForTimeout(2500);
+  expect(await addedCommits(page, commitsBefore)).toEqual([]);
+
+  await moveOffFontList(page);
+
+  await expectFamily(page, preview, NOTE_FONTS.Inter.stack);
+});
+
+test("hover takes precedence over focus, and focus over the selection", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "touch has no hover");
+  await openSettings(page);
+  const preview = fontPreview(page);
+  await chooseOption(page, "Note font", "Literata");
+
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    noteFontGroup(page).getByRole("radio", { name: "Source Serif 4", exact: true }),
+  ).toBeChecked();
+  await noteFontRow(page, "JetBrains Mono").hover();
+
+  await expectFamily(page, preview, NOTE_FONTS["JetBrains Mono"].stack);
+
+  await moveOffFontList(page);
+
+  await expectFamily(page, preview, NOTE_FONTS["Source Serif 4"].stack);
+});
+
+test("on mobile the font preview stays visible while the font list scrolls and does not cover the placement options", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(!isMobile, "the sticky preview matters only where the dialog scrolls");
+  const commitsBefore = await commitMessages(page);
+  await openSettings(page);
+  const preview = fontPreview(page);
+
+  await noteFontGroup(page)
+    .getByRole("radio", { name: "IBM Plex Mono", exact: true })
+    .scrollIntoViewIfNeeded();
+  await expect(preview).toBeInViewport();
+
+  await noteFontRow(page, "Nunito").tap();
+  await expectFamily(page, preview, NOTE_FONTS.Nunito.stack);
+  await expect(preview).toBeInViewport();
+
+  const placement = settingsDialog(page)
+    .getByRole("radiogroup", { name: "New notes" })
+    .getByRole("radio", { name: "At the end", exact: true });
+  await placement.scrollIntoViewIfNeeded();
+  await chooseOption(page, "New notes", "At the end");
+
+  await expect(placement).toBeChecked();
+  await expectSettingsCommits(page, commitsBefore.length + 1);
+});
+
+test("previewing a font downloads only that font's face", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "touch has no hover");
+  await openSettings(page);
+  for (const { family } of Object.values(NOTE_FONTS)) {
+    if (family) await expectFontLoaded(page, family);
+  }
+  await page.waitForTimeout(500);
+  const files = collectFontFiles(page);
+
+  await noteFontRow(page, "Lora").hover();
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.fonts.check('italic 16px "Lora Variable"')),
+    )
+    .toBe(true);
+  await page.waitForTimeout(500);
+
+  expect(files.length).toBeGreaterThan(0);
+  for (const file of files) {
+    expect(file.startsWith("lora-")).toBe(true);
+  }
 });

@@ -261,17 +261,30 @@ describe("note font setting", () => {
 
   it("resolves a stored note font id", () => {
     expect(
-      resolveSettings(SETTINGS_SCHEMA, { noteFont: "serif" }).noteFont,
-    ).toBe("serif");
+      resolveSettings(SETTINGS_SCHEMA, { noteFont: "literata" }).noteFont,
+    ).toBe("literata");
   });
+
+  it.each(["serif", "mono"])(
+    "resolves a stored removed note font %s to inter and keeps it stored",
+    (value) => {
+      const raw = { noteFont: value, futureKey: 1 };
+      expect(resolveSettings(SETTINGS_SCHEMA, raw).noteFont).toBe("inter");
+      expect(applySettingsEdits(raw, { accentColor: "red" })).toEqual({
+        noteFont: value,
+        futureKey: 1,
+        accentColor: "red",
+      });
+    },
+  );
 
   it("keeps unknown sibling keys when editing the note font", () => {
     expect(
       applySettingsEdits(
         { noteFont: "serif", futureKey: 1 },
-        { noteFont: "mono" },
+        { noteFont: "jetbrains-mono" },
       ),
-    ).toEqual({ noteFont: "mono", futureKey: 1 });
+    ).toEqual({ noteFont: "jetbrains-mono", futureKey: 1 });
   });
 
   it("types the note font setting as the option id", () => {

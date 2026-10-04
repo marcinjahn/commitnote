@@ -3,6 +3,7 @@ import App from "./App.svelte";
 import { forgeRegistry } from "./forge/registry";
 import type { ForgeRegistry } from "./forge/registry";
 import "./app.css";
+import "./note-fonts.css";
 
 const target = document.getElementById("app");
 if (!target) {
