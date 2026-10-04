@@ -284,14 +284,6 @@
         {busy ? "Importing…" : "Import"}
       </button>
     {/if}
-    <button
-      type="button"
-      class="button button-ghost"
-      disabled={busy}
-      onclick={handleClose}
-    >
-      Cancel
-    </button>
   {/snippet}
 </Dialog>
 

@@ -392,16 +392,6 @@
         {working ? "Changing…" : "Continue"}
       </button>
     {/if}
-    {#if stage.kind !== "unsettled"}
-      <button
-        type="button"
-        class="button button-ghost"
-        disabled={working}
-        onclick={handleClose}
-      >
-        Cancel
-      </button>
-    {/if}
   {/snippet}
 </Dialog>
 

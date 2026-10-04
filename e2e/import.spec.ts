@@ -100,7 +100,8 @@ test("stops on name conflicts, or renames the imported items when asked", async 
   await expect(
     conflicts.getByRole("button", { name: "Rename imported items" }),
   ).toBeFocused();
-  await conflicts.getByRole("button", { name: "Cancel" }).click();
+  await expect(conflicts.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+  await conflicts.getByRole("button", { name: "Close" }).click();
   await expect(conflicts).toHaveCount(0);
   await expect(page.getByRole("treeitem", { name: "Fresh" })).toHaveCount(0);
   expect(await commitCount(page)).toBe(before);

@@ -72,8 +72,5 @@
     >
       Save without it
     </button>
-    <button type="button" class="button button-ghost" disabled={busy} onclick={handleClose}>
-      Not now
-    </button>
   {/snippet}
 </Dialog>

@@ -288,7 +288,8 @@ test("restoring a title another note already has shows why and changes nothing",
   );
   await dialog.getByRole("checkbox", { name: RESTORE_TITLE }).uncheck();
   await expect(dialog.getByRole("alert")).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(lastEditorLine(page)).toHaveText("one two three");
   await expect(noteNameField(page)).toHaveValue("Hello");
