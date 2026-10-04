@@ -12,6 +12,8 @@
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
   import { describeSyncError } from "../browse/sync-messages";
   import ConflictView from "./ConflictView.svelte";
+  import NoteDetails from "./NoteDetails.svelte";
+  import type { NoteDates } from "../../history/note-dates";
 
   import type { NoteFont } from "../../settings/note-font";
 
@@ -20,6 +22,7 @@
     forgeName: string;
     openNote: OpenNoteState | null;
     draft: boolean;
+    noteDates: NoteDates | null;
     treeLoaded: boolean;
     hasNotes: boolean;
     onDraftContent: (content: string) => void;
@@ -27,7 +30,7 @@
     noteFont: NoteFont;
   }
 
-  const { engine, forgeName, openNote, draft, treeLoaded, hasNotes, onDraftContent, onNewNote, noteFont }: Props = $props();
+  const { engine, forgeName, openNote, draft, noteDates, treeLoaded, hasNotes, onDraftContent, onNewNote, noteFont }: Props = $props();
 
   const editorExtensions = [livePreview(), linkOpen()];
 
@@ -66,6 +69,13 @@
 
 <div class="note-content">
   {#if editorText !== null}
+    {#key draft ? "" : openNote?.path.join("/")}
+      <NoteDetails
+        text={editorText}
+        dates={draft ? null : noteDates}
+        notSaved={draft || (openNote?.kind === "loaded" && openNote.blobSha === null)}
+      />
+    {/key}
     <MarkdownEditor
       bind:this={editor}
       text={editorText}

@@ -13,6 +13,7 @@
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { NoteFont } from "../../settings/note-font";
   import type { NoteHistory, NoteVersion } from "../../history/note-history";
+  import type { NoteDates, NoteDatesResolver } from "../../history/note-dates";
   import type { RestorePlan } from "../../history/plan-restore";
   import { validateName } from "../../tree/note-names";
   import { describeNameError } from "../dialogs/name-messages";
@@ -99,6 +100,7 @@
     forgeName: string;
     passphraseChange: PassphraseChange;
     noteHistory: NoteHistory;
+    noteDatesResolver: NoteDatesResolver;
     initialMessage?: string | null;
     onPassphraseChanged: (
       keyring: Keyring,
@@ -119,6 +121,7 @@
     forgeName,
     passphraseChange,
     noteHistory,
+    noteDatesResolver,
     initialMessage = null,
     onPassphraseChanged,
     onLogOut,
@@ -344,6 +347,90 @@
     openPath !== null &&
       engineState.conflicts.some((held) => notePathEquals(held.path, openPath)),
   );
+
+  const NOTE_DATES_DEBOUNCE_MS = 3000;
+
+  let shownDates = $state<{ path: NotePath; dates: NoteDates } | null>(null);
+  // Any change of the loaded note's path starts a new opening: a different
+  // note, or the same note relocated. The dates cache for a path is trusted
+  // only when the note was opened from its committed blob and the entry was
+  // resolved for that blob; otherwise the entry may belong to an earlier note
+  // at that path.
+  let openingKey: string | null = null;
+  let opening = 0;
+  let openingHandled = false;
+  let openingTrustsCache = false;
+
+  const loadedKey = $derived(
+    engineState.openNote?.kind === "loaded" ? engineState.openNote.path.join("/") : null,
+  );
+  const loadedBlobSha = $derived(
+    engineState.openNote?.kind === "loaded" ? engineState.openNote.blobSha : null,
+  );
+  const headHasOpenNote = $derived.by(() => {
+    const open = engineState.openNote;
+    const synced = engineState.synced;
+    if (open?.kind !== "loaded" || open.blobSha === null || synced === null) return false;
+    const node = findNode(synced.tree, open.path);
+    return node?.kind === "note" && node.blobSha === open.blobSha;
+  });
+  const saveIdle = $derived(engineState.save.kind === "idle");
+
+  const noteDates = $derived.by(() => {
+    const open = engineState.openNote;
+    if (shownDates === null || open?.kind !== "loaded") return null;
+    return notePathEquals(shownDates.path, open.path) ? shownDates.dates : null;
+  });
+
+  $effect(() => {
+    const key = loadedKey;
+    const blobSha = loadedBlobSha;
+    const idle = saveIdle;
+    if (key !== openingKey) {
+      openingTrustsCache = openingKey === null && blobSha !== null;
+      openingKey = key;
+      opening += 1;
+      openingHandled = false;
+      shownDates = null;
+    }
+    if (key === null || blobSha === null || !headHasOpenNote) return;
+    const state = untrack(() => engine.getState());
+    const open = state.openNote;
+    const head = state.synced?.head;
+    if (open?.kind !== "loaded" || head === undefined) return;
+    const path = open.path;
+
+    const justOpened = !openingHandled;
+    openingHandled = true;
+    if (justOpened && noteDatesResolver.cached(path)?.blobSha !== blobSha) {
+      openingTrustsCache = false;
+    }
+    if (!openingTrustsCache) {
+      noteDatesResolver.forget(path);
+      openingTrustsCache = true;
+    }
+    const entry = noteDatesResolver.cached(path);
+    if (entry !== null) shownDates = { path, dates: entry.dates };
+    if (entry?.blobSha === blobSha) return;
+
+    const resolvingFor = opening;
+    const resolve = (): void => {
+      noteDatesResolver.resolve(path, head, blobSha).then(
+        (dates) => {
+          if (resolvingFor === opening) shownDates = { path, dates };
+        },
+        () => {},
+      );
+    };
+
+    if (justOpened || entry === null) {
+      resolve();
+      return;
+    }
+    if (!idle) return;
+    const timer = setTimeout(resolve, NOTE_DATES_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  });
 
   const historyCurrent = $derived.by(() => {
     const open = engineState.openNote;
@@ -1273,6 +1360,7 @@
       {forgeName}
       openNote={engineState.openNote}
       draft={draft !== null}
+      {noteDates}
       treeLoaded={tree !== null}
       hasNotes={tree !== null && tree.root.children.length > 0}
       onDraftContent={handleDraftContent}
