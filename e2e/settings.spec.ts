@@ -1009,3 +1009,163 @@ test("previewing a font downloads only that font's face", async ({
     expect(file.startsWith("lora-")).toBe(true);
   }
 });
+
+interface PickerLayout {
+  readonly preview: string;
+  readonly list: string;
+  readonly rows: string[];
+  readonly placement: string;
+}
+
+function pickerLayout(page: Page): Promise<PickerLayout> {
+  return settingsDialog(page).evaluate((dialog) => {
+    const box = (el: Element | null): string => {
+      if (!el) throw new Error("font picker element not found");
+      const { x, y, width, height } = el.getBoundingClientRect();
+      return [x, y, width, height].map((value) => value.toFixed(1)).join(" ");
+    };
+    const list = dialog.querySelector('[role="radiogroup"][aria-label="Note font"]');
+    return {
+      preview: box(dialog.querySelector('[data-testid="font-preview"]')),
+      list: box(list),
+      rows: [...(list?.querySelectorAll("label") ?? [])].map(box),
+      placement: box(dialog.querySelector('[role="radiogroup"][aria-label="New notes"]')),
+    };
+  });
+}
+
+async function openUnscrolledSettings(page: Page): Promise<void> {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("no viewport");
+  await page.setViewportSize({ width: viewport.width, height: 2000 });
+  await openSettings(page);
+  await expect
+    .poll(() =>
+      settingsDialog(page)
+        .locator(".dialog-body")
+        .evaluate((body) => body.scrollHeight <= body.clientHeight),
+    )
+    .toBe(true);
+}
+
+async function waitForAllNoteFonts(page: Page): Promise<void> {
+  for (const { family } of Object.values(NOTE_FONTS)) {
+    if (family) await expectFontLoaded(page, family);
+  }
+  await page.evaluate(() => document.fonts.ready);
+}
+
+test("hovering across the font options moves nothing around the font picker", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "touch has no hover");
+  await openUnscrolledSettings(page);
+  await waitForAllNoteFonts(page);
+  const preview = fontPreview(page);
+  const before = await pickerLayout(page);
+
+  for (const [name, { stack }] of Object.entries(NOTE_FONTS)) {
+    await noteFontRow(page, name).hover();
+    await expectFamily(page, preview, stack);
+    await page.evaluate(() => document.fonts.ready);
+
+    expect(await pickerLayout(page), name).toEqual(before);
+  }
+});
+
+test("moving keyboard focus across the font options moves nothing around the font picker", async ({
+  page,
+}) => {
+  await openUnscrolledSettings(page);
+  await waitForAllNoteFonts(page);
+  const preview = fontPreview(page);
+  const before = await pickerLayout(page);
+  await noteFontGroup(page).getByRole("radio", { name: "Inter", exact: true }).focus();
+
+  for (const [index, [name, { stack }]] of Object.entries(NOTE_FONTS).entries()) {
+    if (index > 0) await page.keyboard.press("ArrowDown");
+    await expect(
+      noteFontGroup(page).getByRole("radio", { name, exact: true }),
+    ).toBeFocused();
+    await expectFamily(page, preview, stack);
+    await page.evaluate(() => document.fonts.ready);
+
+    expect(await pickerLayout(page), name).toEqual(before);
+  }
+});
+
+test("hovering font rows under the stuck preview moves nothing and keeps the scroll position", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "touch has no hover");
+  await openSettings(page);
+  await waitForAllNoteFonts(page);
+  const body = settingsDialog(page).locator(".dialog-body");
+  const preview = fontPreview(page);
+  const scrollTop = await body.evaluate((el) => {
+    const previewEl = el.querySelector('[data-testid="font-preview"]')!;
+    el.scrollTop +=
+      previewEl.getBoundingClientRect().top - el.getBoundingClientRect().top + 40;
+    return el.scrollTop;
+  });
+  expect(scrollTop).toBeGreaterThan(0);
+  const before = await pickerLayout(page);
+  const previewBox = await preview.boundingBox();
+  const bodyBox = await body.boundingBox();
+  if (!previewBox || !bodyBox) throw new Error("dialog not measurable");
+  const top = previewBox.y + previewBox.height + 8;
+  const bottom = bodyBox.y + bodyBox.height - 8;
+
+  for (const x of [previewBox.x + previewBox.width / 4, previewBox.x + (previewBox.width * 3) / 4]) {
+    for (let y = top; y < bottom; y += 12) {
+      await page.mouse.move(x, y);
+      await page.evaluate(() => document.fonts.ready);
+
+      expect(await pickerLayout(page), `pointer at ${x},${y}`).toEqual(before);
+    }
+  }
+  expect(await body.evaluate((el) => el.scrollTop)).toBe(scrollTop);
+});
+
+test("the font picker keeps its layout while the fonts are still downloading", async ({
+  page,
+  isMobile,
+}) => {
+  let releaseFonts!: () => void;
+  const fontsReleased = new Promise<void>((resolve) => {
+    releaseFonts = resolve;
+  });
+  await page.route(
+    (url) =>
+      url.pathname.endsWith(".woff2") &&
+      BUNDLED_FILE_PREFIXES.some((prefix) =>
+        url.pathname.split("/").pop()!.startsWith(prefix),
+      ),
+    async (route) => {
+      await fontsReleased;
+      await route.continue();
+    },
+  );
+  await openUnscrolledSettings(page);
+  const before = await pickerLayout(page);
+
+  for (const [name, { family }] of Object.entries(NOTE_FONTS)) {
+    const radio = noteFontGroup(page).getByRole("radio", { name, exact: true });
+    if (isMobile) await radio.focus();
+    else await noteFontRow(page, name).hover();
+
+    expect(await pickerLayout(page), name).toEqual(before);
+    if (family) {
+      expect(
+        await page.evaluate((family) => document.fonts.check(`16px "${family}"`), family),
+        `${name} is still downloading`,
+      ).toBe(false);
+    }
+  }
+
+  releaseFonts();
+  await waitForAllNoteFonts(page);
+  expect(await pickerLayout(page)).toEqual(before);
+});

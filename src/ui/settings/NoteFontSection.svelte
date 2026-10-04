@@ -29,8 +29,8 @@
     style:font-family={previewedFamily}
   >
     <p class="font-preview-heading">Weekly notes</p>
-    <p>Plans change, but a <strong>clear</strong> list keeps the week <em>calm</em>.</p>
-    <p>Run <code>npm test</code> before you push.</p>
+    <p>A <strong>clear</strong> list keeps the week <em>calm</em>.</p>
+    <p>Run <code>cargo clippy</code> before you push.</p>
   </div>
   <SettingOptionList
     label="Note font"
@@ -61,13 +61,20 @@
 
   .font-preview p {
     margin: 0;
+    height: 1.5rem;
+    line-height: 1.5rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .font-preview p + p {
     margin-top: var(--space-1);
   }
 
-  .font-preview-heading {
+  .font-preview .font-preview-heading {
+    height: 1.875rem;
+    line-height: 1.875rem;
     font-weight: var(--font-weight-semibold);
     font-size: var(--font-size-lg);
   }

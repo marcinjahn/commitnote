@@ -61,7 +61,7 @@
         onfocus={() => onhighlight?.("focus", option.id)}
       />
       <span class="setting-option-text">
-        <span id="{name}-{option.id}-label">
+        <span class="setting-option-label" id="{name}-{option.id}-label" title={option.label}>
           {#if optionLabel}
             {@render optionLabel(option)}
           {:else}
@@ -114,6 +114,14 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+  }
+
+  .setting-option-label {
+    height: 1.25rem;
+    line-height: 1.25rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .setting-option-description {
