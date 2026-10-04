@@ -1,13 +1,12 @@
 import type { NotePath } from "../changes/change";
-import { parseCommitMessage } from "../changes/commit-message";
 import type { Keyring } from "../crypto/keyring";
 import { decryptName, encryptPath } from "../crypto/name-cipher";
 import { decryptNote, NoteDecryptionError } from "../crypto/note-cipher";
 import { isForgeError } from "../forge/errors";
 import type { CommitSummary, ForgeAdapter } from "../forge/forge-adapter";
-import { FOLDER_MARKER, TRASH_DIR } from "../format/v1";
 import { mapForgeError, type SyncError } from "../sync/sync-engine";
-import { rewindPath, type RewindStep } from "./rewind-path";
+import { createChainStep, type VersionEvent } from "./chain-step";
+import { Lru } from "./lru";
 
 export const HISTORY_PAGE_SIZE = 50;
 /** `loadMore` stops once it found this many versions. */
@@ -17,13 +16,7 @@ export const HISTORY_MAX_REQUESTS = 5;
 const CONTENT_CACHE_SIZE = 50;
 const CURSOR_CACHE_SIZE = 20;
 
-export type VersionEvent =
-  | "created"
-  | "renamed"
-  | "moved"
-  | "restoredFromTrash"
-  | "passphraseChanged"
-  | "external";
+export type { VersionEvent };
 
 /** The note as a commit left it. */
 export interface NoteVersion {
@@ -87,28 +80,6 @@ export interface NoteHistoryDeps {
   readonly keyring: Keyring;
 }
 
-class Lru<V> {
-  private readonly entries = new Map<string, V>();
-  constructor(private readonly capacity: number) {}
-
-  get(key: string): V | undefined {
-    const value = this.entries.get(key);
-    if (value !== undefined) {
-      this.entries.delete(key);
-      this.entries.set(key, value);
-    }
-    return value;
-  }
-
-  set(key: string, value: V): void {
-    this.entries.delete(key);
-    this.entries.set(key, value);
-    if (this.entries.size > this.capacity) {
-      this.entries.delete(this.entries.keys().next().value!);
-    }
-  }
-}
-
 function toSyncError(error: unknown): SyncError {
   if (isForgeError(error)) return mapForgeError(error);
   console.error(
@@ -120,32 +91,6 @@ function toSyncError(error: unknown): SyncError {
 
 function lastSegment(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
-}
-
-function onlyOne<T>(items: readonly T[]): T | undefined {
-  return items.length === 1 ? items[0] : undefined;
-}
-
-function eventsOf(step: RewindStep): VersionEvent[] {
-  switch (step.kind) {
-    case "same":
-      return step.external ? ["external"] : [];
-    case "moved": {
-      const events: VersionEvent[] = [];
-      if (step.renamed) events.push("renamed");
-      if (step.moved) events.push("moved");
-      return events;
-    }
-    case "created":
-      return ["created"];
-    case "restored":
-      return ["restoredFromTrash"];
-    case "passphraseChanged":
-      return ["passphraseChanged"];
-    case "trashed":
-    case "deleted":
-      return [];
-  }
 }
 
 export function createNoteHistory(deps: NoteHistoryDeps): NoteHistory {
@@ -176,53 +121,10 @@ export function createNoteHistory(deps: NoteHistoryDeps): NoteHistory {
     return file;
   }
 
-  /** Where the restored note was in the trash before `commit`, or null. */
-  async function traceRestore(
-    commit: CommitSummary,
-    pathAfter: string,
-    step: Extract<RewindStep, { kind: "restored" }>,
-  ): Promise<string | null> {
-    const parent = commit.parents[0];
-    if (parent === undefined) return null;
-    const file = await readFile(commit.sha, pathAfter);
-    if (file === null) return null;
-    const listing = await adapter.listTree(parent);
-    const rest =
-      step.path === step.to ? "" : step.path.slice(step.to.length + 1);
-    const entryPrefix = `${TRASH_DIR}/${step.entryId}/`;
-    const inPlace = listing.filter(
-      (entry) =>
-        entry.type === "blob" &&
-        entry.path.startsWith(entryPrefix) &&
-        lastSegment(entry.path) !== FOLDER_MARKER &&
-        (rest === "" || entry.path.endsWith(`/${rest}`)),
-    );
-    const wanted = lastSegment(step.path);
-    const sameBlob = inPlace.filter((entry) => entry.sha === file.blobSha);
-    // The note may also have been edited in the restoring commit, so its
-    // content then no longer matches the trashed file's.
-    const match =
-      sameBlob.length > 0
-        ? (sameBlob.find((entry) => lastSegment(entry.path) === wanted) ??
-          sameBlob[0])
-        : onlyOne(inPlace) ??
-          onlyOne(inPlace.filter((entry) => lastSegment(entry.path) === wanted));
-    if (match === undefined) return null;
-
-    const before = rewindPath(
-      { subject: "", formatVersion: null, trailers: step.earlier },
-      match.path,
-    );
-    switch (before.kind) {
-      case "same":
-        return match.path;
-      case "moved":
-      case "trashed":
-        return before.before;
-      default:
-        return null;
-    }
-  }
+  const chainStep = createChainStep({
+    readFileAt: readFile,
+    listTree: (sha) => adapter.listTree(sha),
+  });
 
   function createCursor(notePath: NotePath, head: string): NoteHistoryCursor {
     let state: NoteHistoryState = {
@@ -244,14 +146,14 @@ export function createNoteHistory(deps: NoteHistoryDeps): NoteHistory {
     async function versionFor(
       commit: CommitSummary,
       path: string,
-      step: RewindStep,
+      events: readonly VersionEvent[],
     ): Promise<NoteVersion> {
       return {
         sha: commit.sha,
         committedAt: commit.committedAt,
         storedPath: path,
         name: await nameOf(path),
-        events: eventsOf(step),
+        events,
       };
     }
 
@@ -261,7 +163,7 @@ export function createNoteHistory(deps: NoteHistoryDeps): NoteHistory {
       path: string,
       found: NoteVersion[],
     ): Promise<{ relocated: boolean; end: HistoryEnd | null }> {
-      const step = rewindPath(parseCommitMessage(commit.message), path);
+      const step = await chainStep(commit, path);
       const parent = commit.parents[0];
       const next = (nextPath: string, relocated: boolean) => {
         storedPath = nextPath;
@@ -271,23 +173,20 @@ export function createNoteHistory(deps: NoteHistoryDeps): NoteHistory {
         from = parent;
         return { relocated, end: null };
       };
+      if (step.events !== null) {
+        found.push(await versionFor(commit, path, step.events));
+      }
 
       switch (step.kind) {
         case "same":
-          found.push(await versionFor(commit, path, step));
           return next(path, false);
-        case "moved":
-          found.push(await versionFor(commit, path, step));
-          return next(step.before, true);
-        case "trashed":
-          return next(step.before, true);
+        case "relocated":
+          return next(step.previousPath, true);
         case "created":
-          found.push(await versionFor(commit, path, step));
           return { relocated: false, end: { kind: "created" } };
-        case "deleted":
+        case "untraceable":
           return { relocated: false, end: { kind: "untraceable" } };
         case "passphraseChanged":
-          found.push(await versionFor(commit, path, step));
           return {
             relocated: false,
             end: {
@@ -295,15 +194,6 @@ export function createNoteHistory(deps: NoteHistoryDeps): NoteHistory {
               historyDeleted: commit.parents.length === 0,
             },
           };
-        case "restored": {
-          const version = await versionFor(commit, path, step);
-          const source = await traceRestore(commit, path, step);
-          found.push(version);
-          if (source === null) {
-            return { relocated: false, end: { kind: "untraceable" } };
-          }
-          return next(source, true);
-        }
       }
     }
 
