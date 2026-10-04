@@ -69,6 +69,7 @@
   import { decideNameCommit } from "../note/name-field-commit";
   import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
   import NotePane from "../note/NotePane.svelte";
+  import { derivePrintNote, type PrintNote } from "../print/print-note";
   import type { ToastMessage } from "../notices/notice-messages";
   import NoticeToasts from "../notices/NoticeToasts.svelte";
   import NoteHeader from "./NoteHeader.svelte";
@@ -107,6 +108,7 @@
     onLogOut: () => void;
     onAccentColor: (id: AccentColorId) => void;
     onNoteFont: (id: NoteFont) => void;
+    onPrintNote: (note: PrintNote | null) => void;
   }
 
   const {
@@ -122,6 +124,7 @@
     onLogOut,
     onAccentColor,
     onNoteFont,
+    onPrintNote,
   }: Props = $props();
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
@@ -259,6 +262,14 @@
 
   $effect(() => {
     onNoteFont(settings.noteFont);
+  });
+
+  const printNote = $derived(
+    derivePrintNote(draft, engineState.openNote, engineState.conflicts),
+  );
+
+  $effect(() => {
+    onPrintNote(printNote);
   });
 
   const settingsSave = $derived(
