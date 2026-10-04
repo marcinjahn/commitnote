@@ -6,6 +6,8 @@ commitnote is a static, client-side web app for encrypted markdown notes. Notes 
 entirely in your browser and stored as files in a GitHub repository you own — there is no backend
 server.
 
+The app is available at [commitnote.eu](https://commitnote.eu).
+
 ## Prerequisites
 
 - Node 26
@@ -114,8 +116,8 @@ fixture state resets on reload. Test mode is never part of `npm run build`, whic
      a passphrase and repeat it, then sets it up as a notes repo, keeping those files;
    - any other repository says why it can't be used, and you can pick another one with the same
      token.
-   A repository that is not private shows a warning: notes stay encrypted, but when you save, how
-   many files there are and their sizes are visible to anyone who can see it.
+     A repository that is not private shows a warning: notes stay encrypted, but when you save, how
+     many files there are and their sizes are visible to anyone who can see it.
 
 Each git host is a forge provider in `src/forge/` (token link, repository listing, adapter): GitHub
 and GitLab (gitlab.com only, personal access token with the `api` scope; self-hosted instances are
