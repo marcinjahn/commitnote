@@ -36,7 +36,11 @@
       ariaLabel,
     });
 
+    const remeasure = () => editor?.view.requestMeasure();
+    document.fonts.addEventListener("loadingdone", remeasure);
+
     return () => {
+      document.fonts.removeEventListener("loadingdone", remeasure);
       editor?.destroy();
       editor = undefined;
     };
