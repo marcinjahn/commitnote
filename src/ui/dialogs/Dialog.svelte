@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { swipeToClose } from "./swipe-to-close";
 
   interface Props {
     open: boolean;
@@ -13,6 +14,7 @@
     wide?: boolean;
     closeButton?: boolean;
     accentBorder?: boolean;
+    swipeToClose?: boolean;
   }
 
   const {
@@ -26,6 +28,7 @@
     wide = false,
     closeButton = false,
     accentBorder = false,
+    swipeToClose: swipeEnabled = true,
   }: Props = $props();
 
   const large = $derived(largeProp || wide);
@@ -90,7 +93,14 @@
   onclick={handleBackdropClick}
 >
   <div class="dialog-card" class:large class:wide class:accent-border={accentBorder}>
-    <div class="dialog-header">
+    <div
+      class="dialog-header"
+      class:swipeable={swipeEnabled}
+      use:swipeToClose={{ enabled: swipeEnabled, onClose }}
+    >
+      {#if swipeEnabled}
+        <div class="dialog-grab-handle" data-testid="dialog-grab-handle" aria-hidden="true"></div>
+      {/if}
       <h2 id={titleId} class="dialog-title">{title}</h2>
       {#if headerStatus}
         <div class="dialog-header-status">
@@ -139,7 +149,21 @@
 
   .dialog::backdrop {
     background: var(--color-backdrop);
+    opacity: calc(1 - var(--swipe-progress, 0));
     transition: opacity var(--motion-duration) var(--motion-easing);
+  }
+
+  .dialog:global([data-swipe="dragging"])::backdrop,
+  .dialog:global([data-swipe="dragging"]) .dialog-card {
+    transition: none;
+  }
+
+  .dialog:global([data-swipe="settling"])::backdrop {
+    transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .dialog:global([data-swipe="settling"]) .dialog-card {
+    transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
   }
 
   @starting-style {
@@ -179,10 +203,25 @@
   }
 
   .dialog-header {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
+  }
+
+  .dialog-header.swipeable {
+    touch-action: none;
+  }
+
+  .dialog-grab-handle {
+    position: absolute;
+    top: calc(-1 * var(--space-4));
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    transform: translateX(-50%);
+    background: var(--color-border-strong);
   }
 
   .dialog-header-status {
@@ -244,6 +283,10 @@
     padding-inline: var(--space-3) var(--space-2);
   }
 
+  .dialog-card.wide .dialog-grab-handle {
+    top: -10px;
+  }
+
   .dialog-card.wide .dialog-actions {
     padding: var(--space-2) var(--space-3)
       calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
@@ -272,6 +315,14 @@
       border-bottom: var(--hairline) solid var(--color-border);
       border-radius: var(--radius);
       padding-bottom: var(--space-5);
+    }
+
+    .dialog-header.swipeable {
+      touch-action: auto;
+    }
+
+    .dialog-grab-handle {
+      display: none;
     }
 
     .dialog-card.accent-border {

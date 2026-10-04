@@ -21,6 +21,7 @@
   {open}
   title={saving ? "Logging out" : "Some changes are not saved"}
   onClose={() => {}}
+  swipeToClose={false}
 >
   {#snippet children()}
     {#if saving}

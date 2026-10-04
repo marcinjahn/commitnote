@@ -236,7 +236,7 @@
   }
 </script>
 
-<Dialog {open} {title} onClose={handleClose} closeButton={!working}>
+<Dialog {open} {title} onClose={handleClose} closeButton={!working} swipeToClose={!working}>
   {#snippet children()}
     {#if error !== null}
       <p role="alert" class="alert-error">{error}</p>

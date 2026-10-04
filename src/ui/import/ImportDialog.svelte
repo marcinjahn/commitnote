@@ -151,7 +151,7 @@
   }
 </script>
 
-<Dialog {open} {title} onClose={handleClose} closeButton={true}>
+<Dialog {open} {title} onClose={handleClose} closeButton={true} swipeToClose={!busy}>
   {#snippet children()}
     {#if error !== null}
       <p role="alert" class="alert-error">{error}</p>
