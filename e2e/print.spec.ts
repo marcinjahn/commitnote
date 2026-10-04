@@ -7,6 +7,7 @@ const PASSPHRASE = "sample notes repo passphrase";
 const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
 const SERIF_STACK =
   'ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", Georgia, Cambria, "Noto Serif", "Times New Roman", serif';
+const LITERATA_STACK = `"Literata Variable", ${SERIF_STACK}`;
 const MONO_STACK = "var(--font-mono)";
 
 function printView(page: Page): Locator {
@@ -238,13 +239,13 @@ test.describe("with a note", () => {
     page,
   }) => {
     await openSettings(page);
-    await chooseOption(page, "Note font", "Serif");
+    await chooseOption(page, "Note font", "Literata");
     await closeSettings(page);
     await openWelcome(page);
 
     await printPreview(page);
     const view = printView(page);
-    await expectFamily(page, view.locator("p").first(), SERIF_STACK);
+    await expectFamily(page, view.locator("p").first(), LITERATA_STACK);
     await expectFamily(page, view.locator("pre code"), MONO_STACK);
     await expectFamily(page, view.locator("p code").first(), MONO_STACK);
   });
