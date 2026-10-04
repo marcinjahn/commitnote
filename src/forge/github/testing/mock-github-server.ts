@@ -99,6 +99,7 @@ export class MockGitHubRepo {
   readonly git = new InMemoryGitRepo();
   readonly requests: { method: string; path: string }[] = [];
   truncateTrees = false;
+  commitListLinks: "full" | "withoutLast" = "full";
 
   private readonly owner: string;
   private readonly repoName: string;
@@ -131,6 +132,31 @@ export class MockGitHubRepo {
         this.handle(request),
       ),
     ];
+  }
+
+  private commitListLinkHeader(
+    url: URL,
+    page: number,
+    lastPage: number,
+  ): string | undefined {
+    if (lastPage <= 1) return undefined;
+    const pageUrl = (target: number): string => {
+      const params = new URLSearchParams(url.searchParams);
+      params.set("page", String(target));
+      return `https://api.github.com${url.pathname}?${params.toString()}`;
+    };
+    const entries: string[] = [];
+    if (page < lastPage) {
+      entries.push(`<${pageUrl(page + 1)}>; rel="next"`);
+      if (this.commitListLinks === "full") {
+        entries.push(`<${pageUrl(lastPage)}>; rel="last"`);
+      }
+    }
+    if (page > 1) {
+      entries.push(`<${pageUrl(page - 1)}>; rel="prev"`);
+      entries.push(`<${pageUrl(1)}>; rel="first"`);
+    }
+    return entries.join(", ");
   }
 
   private async handle(request: Request): Promise<Response> {
@@ -547,6 +573,11 @@ export class MockGitHubRepo {
         100,
       );
       const page = Number(url.searchParams.get("page") ?? "1");
+      const link = this.commitListLinkHeader(
+        url,
+        page,
+        Math.ceil(commits.length / perPage),
+      );
       return jsonResponse(
         commits
           .slice((page - 1) * perPage, page * perPage)
@@ -560,6 +591,7 @@ export class MockGitHubRepo {
             parents: commit.parent === null ? [] : [{ sha: commit.parent }],
           })),
         200,
+        link === undefined ? undefined : { link },
       );
     }
 

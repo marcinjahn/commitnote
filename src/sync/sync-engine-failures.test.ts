@@ -57,6 +57,7 @@ function wrap(inner: FakeForgeAdapter, commits: CommitRequest[]): ForgeAdapter {
     getHead: () => inner.getHead(),
     listTree: (sha) => inner.listTree(sha),
     listCommits: (request) => inner.listCommits(request),
+    findOldestCommit: (request) => inner.findOldestCommit(request),
     readFileAt: (sha, path) => inner.readFileAt(sha, path),
     readBlob: (sha) => inner.readBlob(sha),
     commit: (request) => {

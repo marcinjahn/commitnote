@@ -7,6 +7,7 @@ import type {
   CommitSummary,
   ContentCreatingRequest,
   FileAtCommit,
+  FindOldestCommitRequest,
   ForgeAdapter,
   ForgeWriteLimits,
   ListCommitsRequest,
@@ -20,7 +21,7 @@ import {
   gitHubCommitCost,
   gitHubTreeRequestCount,
 } from "../github/github-adapter";
-import { InMemoryGitRepo } from "./in-memory-git-repo";
+import { InMemoryGitRepo, type StoredCommit } from "./in-memory-git-repo";
 
 type FailableOperation =
   | "inspect"
@@ -31,7 +32,17 @@ type FailableOperation =
   | "commit"
   | "replaceHistory"
   | "listCommits"
+  | "findOldestCommit"
   | "readFileAt";
+
+function toCommitSummary(sha: string, commit: StoredCommit): CommitSummary {
+  return {
+    sha,
+    parents: commit.parent === null ? [] : [commit.parent],
+    message: commit.message,
+    committedAt: commit.committedAt,
+  };
+}
 
 type StaleCapableOperation = "initialize" | "commit" | "replaceHistory";
 
@@ -285,12 +296,27 @@ export class FakeForgeAdapter implements ForgeAdapter {
         message: `unknown commit ${request.from}`,
       });
     }
-    return touching.slice(0, Math.max(0, request.limit)).map(([sha, commit]) => ({
-      sha,
-      parents: commit.parent === null ? [] : [commit.parent],
-      message: commit.message,
-      committedAt: commit.committedAt,
-    }));
+    return touching
+      .slice(0, Math.max(0, request.limit))
+      .map(([sha, commit]) => toCommitSummary(sha, commit));
+  }
+
+  async findOldestCommit(
+    request: FindOldestCommitRequest,
+  ): Promise<CommitSummary | null> {
+    const failure = this.takeErrorFailure("findOldestCommit");
+    if (failure !== undefined) {
+      throw failure;
+    }
+
+    const touching = this.repo.commitsTouching(request.from, request.path);
+    if (touching === undefined) {
+      throw new ForgeError("NotFound", {
+        message: `unknown commit ${request.from}`,
+      });
+    }
+    const oldest = touching.at(-1);
+    return oldest === undefined ? null : toCommitSummary(...oldest);
   }
 
   async readFileAt(

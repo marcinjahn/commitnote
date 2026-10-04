@@ -69,6 +69,7 @@ async function setup(engineKeyring = keyring): Promise<Harness> {
     getHead: () => fake.getHead(),
     listTree: (sha) => fake.listTree(sha),
     listCommits: (request) => fake.listCommits(request),
+    findOldestCommit: (request) => fake.findOldestCommit(request),
     readFileAt: (sha, path) => fake.readFileAt(sha, path),
     readBlob: (sha) => {
       blobReads.push(sha);

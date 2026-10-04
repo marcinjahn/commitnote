@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { setupServer } from "msw/node";
 import type { SetupServer } from "msw/node";
+import { commitFiles } from "../../fake/in-memory-git-repo";
 import {
   MockGitHubRepo,
   type MockGitHubRepoOptions,
@@ -438,5 +439,70 @@ describe("MockGitHubRepo failure injection", () => {
     await expect(
       fetch(`${BASE}`, { headers: authHeaders() }),
     ).rejects.toThrow();
+  });
+});
+
+describe("MockGitHubRepo commit list links", () => {
+  async function seedCommits(mock: MockGitHubRepo, count: number) {
+    let parent: string | null = null;
+    for (let i = 0; i < count; i++) {
+      parent = await commitFiles(mock.git, {
+        parent,
+        files: { "a.md": `v${i}` },
+        message: `edit ${i}`,
+        branch: "main",
+      });
+    }
+    return parent ?? "";
+  }
+
+  it("sends next and last links on the first of several pages", async () => {
+    const mock = useMock();
+    const head = await seedCommits(mock, 5);
+
+    const res = await fetch(
+      `${BASE}/commits?sha=${head}&path=a.md&per_page=1&page=1`,
+      { headers: authHeaders() },
+    );
+
+    const link = res.headers.get("link") ?? "";
+    expect(link).toContain(
+      `<${BASE}/commits?sha=${head}&path=a.md&per_page=1&page=2>; rel="next"`,
+    );
+    expect(link).toContain(
+      `<${BASE}/commits?sha=${head}&path=a.md&per_page=1&page=5>; rel="last"`,
+    );
+    expect(link).not.toContain('rel="prev"');
+  });
+
+  it("sends prev and first links on a later page and omits last when withoutLast", async () => {
+    const mock = useMock();
+    const head = await seedCommits(mock, 5);
+
+    const middle = await fetch(
+      `${BASE}/commits?sha=${head}&path=a.md&per_page=1&page=3`,
+      { headers: authHeaders() },
+    );
+    expect(middle.headers.get("link")).toContain('rel="prev"');
+    expect(middle.headers.get("link")).toContain('rel="first"');
+
+    mock.commitListLinks = "withoutLast";
+    const res = await fetch(
+      `${BASE}/commits?sha=${head}&path=a.md&per_page=1&page=1`,
+      { headers: authHeaders() },
+    );
+    expect(res.headers.get("link")).toContain('rel="next"');
+    expect(res.headers.get("link")).not.toContain('rel="last"');
+  });
+
+  it("sends no link header when the listing fits one page", async () => {
+    const mock = useMock();
+    const head = await seedCommits(mock, 2);
+
+    const res = await fetch(`${BASE}/commits?sha=${head}&path=a.md`, {
+      headers: authHeaders(),
+    });
+
+    expect(res.headers.get("link")).toBeNull();
   });
 });

@@ -47,6 +47,7 @@ const FAILURE_MATCH: Record<
   readBlob: { method: "GET", pathPattern: /\/repository\/blobs\// },
   commit: { method: "POST", pathPattern: /\/repository\/commits$/ },
   listCommits: { method: "GET", pathPattern: /\/repository\/commits\?/ },
+  findOldestCommit: { method: "GET", pathPattern: /\/repository\/commits\?/ },
   readFileAt: { method: "GET", pathPattern: /\/repository\/files\/[^/]+\?/ },
 };
 

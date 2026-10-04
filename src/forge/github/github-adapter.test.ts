@@ -687,6 +687,103 @@ describe("GitHubAdapter", () => {
       ]);
     });
 
+    describe("findOldestCommit", () => {
+      it("finds the oldest of many commits in two requests via the last link", async () => {
+        const mock = useMock();
+        const head = await seedEdits(mock, "a.md", 5);
+        const { adapter } = makeAdapter();
+
+        const oldest = await adapter.findOldestCommit({
+          from: head,
+          path: "a.md",
+        });
+
+        expect(oldest?.message).toBe("edit 0");
+        expect(oldest?.parents).toEqual([]);
+        expect(
+          commitListQueries(mock).map((query) => [
+            query.get("per_page"),
+            query.get("page"),
+          ]),
+        ).toEqual([
+          ["1", "1"],
+          ["1", "5"],
+        ]);
+      });
+
+      it("uses one request for a single commit", async () => {
+        const mock = useMock();
+        const head = await seedEdits(mock, "a.md", 1);
+        const { adapter } = makeAdapter();
+
+        const oldest = await adapter.findOldestCommit({
+          from: head,
+          path: "a.md",
+        });
+
+        expect(oldest?.sha).toBe(head);
+        expect(commitListQueries(mock)).toHaveLength(1);
+      });
+
+      it("returns null when no commit touches the path", async () => {
+        const mock = useMock();
+        const head = await seedEdits(mock, "a.md", 2);
+        const { adapter } = makeAdapter();
+
+        expect(
+          await adapter.findOldestCommit({ from: head, path: "other.md" }),
+        ).toBeNull();
+      });
+
+      it("pages by 100 without a last link and returns the oldest commit", async () => {
+        const mock = useMock();
+        mock.commitListLinks = "withoutLast";
+        const head = await seedEdits(mock, "a.md", 150);
+        const { adapter } = makeAdapter();
+
+        const oldest = await adapter.findOldestCommit({
+          from: head,
+          path: "a.md",
+        });
+
+        expect(oldest?.message).toBe("edit 0");
+        expect(
+          commitListQueries(mock).map((query) => [
+            query.get("per_page"),
+            query.get("page"),
+          ]),
+        ).toEqual([
+          ["1", "1"],
+          ["100", "1"],
+          ["100", "2"],
+        ]);
+      });
+
+      it("rejects an unknown from with NotFound", async () => {
+        const mock = useMock();
+        await seedEdits(mock, "a.md", 2);
+        const { adapter } = makeAdapter();
+
+        await expect(
+          adapter.findOldestCommit({ from: "0".repeat(40), path: "a.md" }),
+        ).rejects.toMatchObject({ kind: "NotFound", status: 404 });
+      });
+
+      it("maps a 403 with retry-after to RateLimited", async () => {
+        const mock = useMock();
+        const head = await seedEdits(mock, "a.md", 2);
+        mock.failNext(
+          { method: "GET", pathPattern: /\/commits\?/ },
+          { status: 403, headers: { "retry-after": "30" } },
+        );
+        const { adapter } = makeAdapter();
+
+        await expect(
+          adapter.findOldestCommit({ from: head, path: "a.md" }),
+        ).rejects.toMatchObject({ kind: "RateLimited", retryAfterMs: 30_000 });
+      });
+    });
+
     it("rejects listCommits on an empty repository with NotFound", async () => {
       useMock();
       const { adapter } = makeAdapter();

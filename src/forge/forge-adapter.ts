@@ -63,6 +63,11 @@ export interface CommitSummary {
   readonly committedAt: number;
 }
 
+export interface FindOldestCommitRequest {
+  from: string;
+  path: string;
+}
+
 export interface ListCommitsRequest {
   readonly from: string;
   readonly path: string;
@@ -149,6 +154,12 @@ export interface ForgeAdapter {
    * it. Rejects with NotFound when `from` is unknown.
    */
   listCommits(request: ListCommitsRequest): Promise<CommitSummary[]>;
+  /**
+   * The oldest commit reachable from `from` (first-parent history, inclusive)
+   * that changed the file at `path`, or null when none did. Rejects with
+   * NotFound when `from` is unknown.
+   */
+  findOldestCommit(request: FindOldestCommitRequest): Promise<CommitSummary | null>;
   /** Null when `path` is not a file in that commit. */
   readFileAt(commitSha: string, path: string): Promise<FileAtCommit | null>;
   /**

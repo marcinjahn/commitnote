@@ -116,3 +116,58 @@ describe("MockGitLabRepo authentication and routing", () => {
     expect([wrongToken.status, otherProject.status]).toEqual([401, 404]);
   });
 });
+
+describe("MockGitLabRepo commit list pagination", () => {
+  async function listHeaders(head: string, page: number): Promise<Headers> {
+    const response = await fetch(
+      `${PROJECT_URL}/repository/commits?ref_name=${head}&path=a.md&per_page=1&page=${page}`,
+      { headers: { Authorization: `Bearer ${TOKEN}` } },
+    );
+    return response.headers;
+  }
+
+  async function seedThree(): Promise<{ mock: MockGitLabRepo; head: string }> {
+    const { mock, head } = await useSeededMock();
+    const second = await commitFiles(mock.git, {
+      parent: head,
+      files: { "a.md": "b" },
+      message: "second",
+      branch: "main",
+    });
+    const third = await commitFiles(mock.git, {
+      parent: second,
+      files: { "a.md": "c" },
+      message: "third",
+      branch: "main",
+    });
+    return { mock, head: third };
+  }
+
+  it("reports page counters and totals", async () => {
+    const { head } = await seedThree();
+
+    const middle = await listHeaders(head, 2);
+    const last = await listHeaders(head, 3);
+
+    expect(Object.fromEntries(middle)).toMatchObject({
+      "x-page": "2",
+      "x-per-page": "1",
+      "x-total": "3",
+      "x-total-pages": "3",
+      "x-next-page": "3",
+      "x-prev-page": "1",
+    });
+    expect(last.get("x-next-page")).toBe("");
+  });
+
+  it("omits the totals but keeps the page counters with omitTotals", async () => {
+    const { mock, head } = await seedThree();
+    mock.omitTotals = true;
+
+    const headers = await listHeaders(head, 1);
+
+    expect(headers.has("x-total")).toBe(false);
+    expect(headers.has("x-total-pages")).toBe(false);
+    expect(headers.get("x-next-page")).toBe("2");
+  });
+});

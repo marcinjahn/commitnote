@@ -54,6 +54,8 @@ export function withLatency(
       delayed(latency.commitMs, () => adapter.commit(...args)),
     listCommits: (...args) =>
       delayed(latency.listCommitsMs, () => adapter.listCommits(...args)),
+    findOldestCommit: (...args) =>
+      delayed(latency.listCommitsMs, () => adapter.findOldestCommit(...args)),
     readFileAt: (...args) =>
       delayed(latency.readFileAtMs, () => adapter.readFileAt(...args)),
     ...(replaceHistory === undefined

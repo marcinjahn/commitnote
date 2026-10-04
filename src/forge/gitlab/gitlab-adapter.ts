@@ -26,6 +26,7 @@ import type {
   ForgeAdapter,
   ForgeAdapterOptions,
   ForgeWriteLimits,
+  FindOldestCommitRequest,
   ListCommitsRequest,
   RepoInspection,
   RootEntry,
@@ -462,35 +463,87 @@ class GitLabAdapter implements ForgeAdapter {
     const perPage = Math.min(limit, MAX_COMMITS_PER_PAGE);
     const commits: CommitSummary[] = [];
     for (let page = 1; commits.length < limit; page++) {
-      const query = new URLSearchParams({
-        ref_name: request.from,
-        path: request.path,
-        per_page: String(perPage),
-        page: String(page),
-      });
-      const response = await this.send(
-        `/repository/commits?${query.toString()}`,
-        { method: "GET" },
+      const { items } = await this.fetchCommitPage(
+        request.from,
+        request.path,
+        perPage,
+        page,
       );
-      if (!response.ok) {
-        throw this.errorFor(response);
-      }
-      const body = (await response.json()) as readonly CommitListItem[];
-      for (const item of body) {
-        commits.push({
-          sha: item.id,
-          parents: item.parent_ids ?? [],
-          message: item.message,
-          committedAt: parseCommittedAt(item.committed_date),
-        });
-      }
-      if (body.length < perPage) break;
+      commits.push(...items);
+      if (items.length < perPage) break;
     }
     // An unknown ref_name can list as empty rather than fail.
     if (commits.length === 0 && limit > 0) {
       await this.requireCommit(request.from);
     }
     return commits.slice(0, limit);
+  }
+
+  async findOldestCommit(
+    request: FindOldestCommitRequest,
+  ): Promise<CommitSummary | null> {
+    const first = await this.fetchCommitPage(request.from, request.path, 1, 1);
+    if (first.items.length === 0) {
+      await this.requireCommit(request.from);
+      return null;
+    }
+    const totalPages = Number(first.response.headers.get("x-total-pages"));
+    if (Number.isInteger(totalPages) && totalPages > 0) {
+      if (totalPages === 1) {
+        return first.items[0];
+      }
+      const last = await this.fetchCommitPage(
+        request.from,
+        request.path,
+        1,
+        totalPages,
+      );
+      return last.items[0] ?? first.items[0];
+    }
+
+    let oldest = first.items[0];
+    for (let page = 1; ; page++) {
+      const { items } = await this.fetchCommitPage(
+        request.from,
+        request.path,
+        MAX_COMMITS_PER_PAGE,
+        page,
+      );
+      if (items.length > 0) {
+        oldest = items[items.length - 1];
+      }
+      if (items.length < MAX_COMMITS_PER_PAGE) {
+        return oldest;
+      }
+    }
+  }
+
+  private async fetchCommitPage(
+    from: string,
+    path: string,
+    perPage: number,
+    page: number,
+  ): Promise<{ response: Response; items: CommitSummary[] }> {
+    const query = new URLSearchParams({
+      ref_name: from,
+      path,
+      per_page: String(perPage),
+      page: String(page),
+    });
+    const response = await this.send(`/repository/commits?${query.toString()}`, {
+      method: "GET",
+    });
+    if (!response.ok) {
+      throw this.errorFor(response);
+    }
+    const body = (await response.json()) as readonly CommitListItem[];
+    const items = body.map((item) => ({
+      sha: item.id,
+      parents: item.parent_ids ?? [],
+      message: item.message,
+      committedAt: parseCommittedAt(item.committed_date),
+    }));
+    return { response, items };
   }
 
   private async requireCommit(sha: string): Promise<void> {
