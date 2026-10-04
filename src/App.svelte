@@ -47,6 +47,8 @@
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
   import AppShell from "./ui/browse/AppShell.svelte";
+  import PrintView from "./ui/print/PrintView.svelte";
+  import type { PrintNote } from "./ui/print/print-note";
   import Wordmark from "./ui/wordmark/Wordmark.svelte";
 
   interface Props {
@@ -145,6 +147,7 @@
   });
 
   let reportedNoteFont = $state<NoteFont>("inter");
+  let reportedPrintNote = $state.raw<PrintNote | null>(null);
   const appliedNoteFont = $derived<NoteFont>(
     keyChanged !== null ? "inter" : reportedNoteFont,
   );
@@ -169,6 +172,7 @@
     loginKey++;
     reportedAccentColor = "system";
     reportedNoteFont = "inter";
+    reportedPrintNote = null;
     phase = {
       kind: "login",
       initialRepoUrl: store.lastRepoUrl() ?? "",
@@ -205,6 +209,7 @@
         keyChanged = { unsavedCount: state.syncStates.unsavedCount };
         reportedAccentColor = "system";
         reportedNoteFont = "inter";
+        reportedPrintNote = null;
       } else {
         keyChanged = null;
       }
@@ -451,6 +456,7 @@
     onLogOut={logOut}
     onAccentColor={(id) => (reportedAccentColor = id)}
     onNoteFont={(id) => (reportedNoteFont = id)}
+    onPrintNote={(note) => (reportedPrintNote = note)}
   />
   <LogoutDialog
     open={logout !== null}
@@ -460,6 +466,8 @@
     onLogOutAnyway={finishLogOut}
   />
 {/if}
+
+<PrintView note={phase.kind === "app" && keyChanged === null ? reportedPrintNote : null} />
 
 <style>
   .test-mode-banner {
