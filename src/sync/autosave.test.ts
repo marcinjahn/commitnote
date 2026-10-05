@@ -93,26 +93,4 @@ describe("createAutosave", () => {
     autosave.saveNow();
     expect(saveTimes).toEqual([]);
   });
-
-  it("scheduled reflects whether a timer is pending", () => {
-    const { clock, autosave } = setUp();
-
-    expect(autosave.scheduled).toBe(false);
-
-    autosave.noteEdited();
-    expect(autosave.scheduled).toBe(true);
-
-    clock.advance(debounceMs);
-    expect(autosave.scheduled).toBe(false);
-
-    autosave.noteEdited();
-    expect(autosave.scheduled).toBe(true);
-    autosave.cancel();
-    expect(autosave.scheduled).toBe(false);
-
-    autosave.noteEdited();
-    expect(autosave.scheduled).toBe(true);
-    autosave.dispose();
-    expect(autosave.scheduled).toBe(false);
-  });
 });

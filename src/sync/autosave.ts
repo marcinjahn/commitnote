@@ -5,7 +5,6 @@ export interface Autosave {
   saveNow(): void;
   cancel(): void;
   dispose(): void;
-  readonly scheduled: boolean;
 }
 
 export function createAutosave(options: {
@@ -62,9 +61,6 @@ export function createAutosave(options: {
     dispose(): void {
       clearTimers();
       disposed = true;
-    },
-    get scheduled(): boolean {
-      return debounceHandle !== undefined;
     },
   };
 }
