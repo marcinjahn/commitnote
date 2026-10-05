@@ -1,6 +1,6 @@
 import type { NotePath } from "../../changes/change";
 import {
-  isWithinFolder,
+  isAtOrWithin,
   notePathEquals,
   parentPath,
 } from "../../changes/change";
@@ -132,7 +132,7 @@ function candidate(
   const name = nameOf(dragged);
   if (
     scene.draggedKind === "folder" &&
-    (notePathEquals(parent, dragged) || isWithinFolder(parent, dragged))
+    isAtOrWithin(parent, dragged)
   ) {
     return { kind: "refused" };
   }

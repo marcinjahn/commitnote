@@ -37,7 +37,7 @@
   }
 </script>
 
-<form class="passphrase-form" onsubmit={handleSubmit}>
+<form onsubmit={handleSubmit}>
   <p class="setup-description">{description}</p>
 
   <PasswordManagerUsername {username} />

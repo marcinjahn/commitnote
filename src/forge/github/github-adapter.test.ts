@@ -549,9 +549,14 @@ describe("GitHubAdapter", () => {
     expect(calls.length).toBeGreaterThan(0);
     for (const init of calls) {
       const headers = init.headers as Record<string, string>;
-      expect(headers.Authorization).toBe(`Bearer ${TOKEN}`);
-      expect(headers.Accept).toBe("application/vnd.github+json");
-      expect(headers["X-GitHub-Api-Version"]).toBe("2022-11-28");
+      expect(headers).toEqual({
+        Authorization: `Bearer ${TOKEN}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        ...(init.body === undefined
+          ? {}
+          : { "Content-Type": "application/json" }),
+      });
       expect(init.cache).toBe("no-store");
     }
   });

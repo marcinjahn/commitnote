@@ -6,7 +6,13 @@ import {
   utf8Encode,
 } from "../../crypto/base64";
 import type { RepoCoordinates } from "../repo-coordinates";
-import { parseLinkHeader } from "./link-header";
+import { parseLinkHeader } from "../link-header";
+import {
+  byPath,
+  decodeBase64Text,
+  defaultFetch,
+  parseCommittedAt,
+} from "../forge-http";
 import { gitHubErrorFor, sendGitHubRequest } from "./github-api";
 import { ForgeError, isForgeError, withMainUnchanged } from "../errors";
 import type {
@@ -128,14 +134,6 @@ function contentsPath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-function parseCommittedAt(date: string | undefined): number {
-  const time = date === undefined ? NaN : Date.parse(date);
-  return Number.isFinite(time) ? time : 0;
-}
-
-// Decodes GitHub's whitespace-wrapped base64 blob/content payloads. readBlob
-// uses a non-fatal TextDecoder, since arbitrary git blobs need not be valid
-// UTF-8.
 function decodeBase64Content(content: string): Uint8Array {
   return fromBase64(content.replace(/\s+/g, ""));
 }
@@ -159,11 +157,7 @@ class GitHubAdapter implements ForgeAdapter {
     this.repoPath = encodeURIComponent(coordinates.repo);
     this.accessToken = options.accessToken;
     this.onContentCreatingRequest = options.onContentCreatingRequest;
-    // Browsers reject `fetch` called with a non-Window receiver (Illegal
-    // invocation), so the default resolves and calls globalThis.fetch
-    // unbound, at call time.
-    this.fetchImpl =
-      options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+    this.fetchImpl = options.fetch ?? defaultFetch;
     this.now = options.now ?? Date.now;
   }
 
@@ -322,21 +316,10 @@ class GitHubAdapter implements ForgeAdapter {
   }
 
   async listTree(commitSha: string): Promise<TreeEntry[]> {
-    const commitResponse = await this.send(`/git/commits/${commitSha}`, {
-      method: "GET",
-    });
-    if (commitResponse.status === 404 || commitResponse.status === 409) {
-      throw new ForgeError("NotFound", { status: commitResponse.status });
-    }
-    if (!commitResponse.ok) {
-      throw await this.errorFor(commitResponse);
-    }
-    const commitBody = (await commitResponse.json()) as {
-      tree: { sha: string };
-    };
+    const treeSha = await this.treeOf(commitSha);
 
     const treeResponse = await this.send(
-      `/git/trees/${commitBody.tree.sha}?recursive=1`,
+      `/git/trees/${treeSha}?recursive=1`,
       { method: "GET" },
     );
     if (!treeResponse.ok) {
@@ -358,7 +341,7 @@ class GitHubAdapter implements ForgeAdapter {
           entry.type === "blob" || entry.type === "tree",
       )
       .map((entry) => ({ path: entry.path, type: entry.type, sha: entry.sha }));
-    entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    entries.sort(byPath);
     return entries;
   }
 
@@ -376,9 +359,11 @@ class GitHubAdapter implements ForgeAdapter {
       throw await this.errorFor(response);
     }
     const body = (await response.json()) as { content: string };
-    const text = new TextDecoder("utf-8").decode(
-      decodeBase64Content(body.content),
-    );
+    return this.cacheText(sha, body.content);
+  }
+
+  private cacheText(sha: string, base64: string): string {
+    const text = decodeBase64Text(base64);
     this.blobCache.set(sha, text);
     return text;
   }
@@ -405,19 +390,27 @@ class GitHubAdapter implements ForgeAdapter {
     };
   }
 
+  private commitsPath(
+    request: { readonly from: string; readonly path: string },
+    perPage: number,
+    page: number,
+  ): string {
+    const query = new URLSearchParams({
+      sha: request.from,
+      path: request.path,
+      per_page: String(perPage),
+      page: String(page),
+    });
+    return `/commits?${query.toString()}`;
+  }
+
   async listCommits(request: ListCommitsRequest): Promise<CommitSummary[]> {
     const limit = Math.max(0, request.limit);
     const perPage = Math.min(limit, MAX_COMMITS_PER_PAGE);
     const commits: CommitSummary[] = [];
     for (let page = 1; commits.length < limit; page++) {
-      const query = new URLSearchParams({
-        sha: request.from,
-        path: request.path,
-        per_page: String(perPage),
-        page: String(page),
-      });
       const { items } = await this.fetchCommitPage(
-        `/commits?${query.toString()}`,
+        this.commitsPath(request, perPage, page),
       );
       commits.push(...items);
       if (items.length < perPage) break;
@@ -428,14 +421,7 @@ class GitHubAdapter implements ForgeAdapter {
   async findOldestCommit(
     request: FindOldestCommitRequest,
   ): Promise<CommitSummary | null> {
-    const first = await this.fetchCommitPage(
-      `/commits?${new URLSearchParams({
-        sha: request.from,
-        path: request.path,
-        per_page: "1",
-        page: "1",
-      }).toString()}`,
-    );
+    const first = await this.fetchCommitPage(this.commitsPath(request, 1, 1));
     if (first.items.length === 0) return null;
 
     const lastUrl = first.links.get("last");
@@ -448,12 +434,7 @@ class GitHubAdapter implements ForgeAdapter {
     let oldest = first.items[0];
     for (let page = 1; ; page++) {
       const { items } = await this.fetchCommitPage(
-        `/commits?${new URLSearchParams({
-          sha: request.from,
-          path: request.path,
-          per_page: String(MAX_COMMITS_PER_PAGE),
-          page: String(page),
-        }).toString()}`,
+        this.commitsPath(request, MAX_COMMITS_PER_PAGE, page),
       );
       oldest = items.at(-1) ?? oldest;
       if (items.length < MAX_COMMITS_PER_PAGE) return oldest;
@@ -483,11 +464,7 @@ class GitHubAdapter implements ForgeAdapter {
     if (body.encoding !== "base64" || body.content === undefined) {
       return { blobSha, text: await this.readBlob(blobSha) };
     }
-    const text = new TextDecoder("utf-8").decode(
-      decodeBase64Content(body.content),
-    );
-    this.blobCache.set(blobSha, text);
-    return { blobSha, text };
+    return { blobSha, text: this.cacheText(blobSha, body.content) };
   }
 
   async commit(request: CommitRequest): Promise<CommitResult> {
@@ -499,28 +476,11 @@ class GitHubAdapter implements ForgeAdapter {
       throw isForgeError(error) ? withMainUnchanged(error) : error;
     }
 
-    this.report("updateRef");
-    let updateRefResponse: Response;
-    try {
-      updateRefResponse = await this.send(`/git/refs/heads/${MAIN_BRANCH}`, {
-        method: "PATCH",
-        body: { sha: commitSha, force: false },
-      });
-    } catch (error) {
-      if (!isForgeError(error, "Network")) throw error;
-      return this.settleRefUpdate(request.parent, commitSha, error);
-    }
-    if (updateRefResponse.status === 422) {
-      return { kind: "stale" };
-    }
-    if (!updateRefResponse.ok) {
-      const error = await this.errorFor(updateRefResponse);
-      if (updateRefResponse.status >= 500) {
-        return this.settleRefUpdate(request.parent, commitSha, error);
-      }
-      throw withMainUnchanged(error);
-    }
-    return { kind: "ok", head: commitSha };
+    return this.updateMain(commitSha, {
+      force: false,
+      expected: request.parent,
+      staleOn422: true,
+    });
   }
 
   // The REST API has no compare-and-swap for a forced ref update, so main is
@@ -535,25 +495,39 @@ class GitHubAdapter implements ForgeAdapter {
       throw isForgeError(error) ? withMainUnchanged(error) : error;
     }
 
+    return this.updateMain(commitSha, {
+      force: true,
+      expected: request.head,
+      staleOn422: false,
+    });
+  }
+
+  private async updateMain(
+    sha: string,
+    options: { force: boolean; expected: string; staleOn422: boolean },
+  ): Promise<CommitResult> {
     this.report("updateRef");
-    let updateRefResponse: Response;
+    let response: Response;
     try {
-      updateRefResponse = await this.send(`/git/refs/heads/${MAIN_BRANCH}`, {
+      response = await this.send(`/git/refs/heads/${MAIN_BRANCH}`, {
         method: "PATCH",
-        body: { sha: commitSha, force: true },
+        body: { sha, force: options.force },
       });
     } catch (error) {
       if (!isForgeError(error, "Network")) throw error;
-      return this.settleRefUpdate(request.head, commitSha, error);
+      return this.settleRefUpdate(options.expected, sha, error);
     }
-    if (!updateRefResponse.ok) {
-      const error = await this.errorFor(updateRefResponse);
-      if (updateRefResponse.status >= 500) {
-        return this.settleRefUpdate(request.head, commitSha, error);
+    if (options.staleOn422 && response.status === 422) {
+      return { kind: "stale" };
+    }
+    if (!response.ok) {
+      const error = await this.errorFor(response);
+      if (response.status >= 500) {
+        return this.settleRefUpdate(options.expected, sha, error);
       }
       throw withMainUnchanged(error);
     }
-    return { kind: "ok", head: commitSha };
+    return { kind: "ok", head: sha };
   }
 
   private async treeOf(commitSha: string): Promise<string> {

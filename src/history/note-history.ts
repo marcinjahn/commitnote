@@ -5,12 +5,12 @@ import { decryptNote, NoteDecryptionError } from "../crypto/note-cipher";
 import { isForgeError } from "../forge/errors";
 import type { CommitSummary, ForgeAdapter } from "../forge/forge-adapter";
 import { mapForgeError, type SyncError } from "../sync/sync-engine";
-import { createChainStep, type VersionEvent } from "./chain-step";
+import { createChainStep, lastSegment, type VersionEvent } from "./chain-step";
 import { Lru } from "./lru";
 
-export const HISTORY_PAGE_SIZE = 50;
+const HISTORY_PAGE_SIZE = 50;
 /** `loadMore` stops once it found this many versions. */
-export const HISTORY_MIN_NEW_VERSIONS = 30;
+const HISTORY_MIN_NEW_VERSIONS = 30;
 /** Forge requests one `loadMore` may send. */
 export const HISTORY_MAX_REQUESTS = 5;
 const CONTENT_CACHE_SIZE = 50;
@@ -87,10 +87,6 @@ function toSyncError(error: unknown): SyncError {
     error instanceof Error ? error.name : typeof error,
   );
   return { kind: "server" };
-}
-
-function lastSegment(path: string): string {
-  return path.slice(path.lastIndexOf("/") + 1);
 }
 
 export function createNoteHistory(deps: NoteHistoryDeps): NoteHistory {

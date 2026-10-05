@@ -1,11 +1,12 @@
+import { encodeUndoOutdatedSaveMessage } from "../../changes/encode-change-set";
+import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
+import { toBase64 } from "../../crypto/base64";
 import {
-  FORMAT_VERSION,
-  MAIN_BRANCH,
-  REPO_CONFIG_PATH,
-  TRAILER,
-  UNDO_OUTDATED_SAVE_SUBJECT,
-} from "../../format/v1";
-import { fromBase64, toBase64 } from "../../crypto/base64";
+  byPath,
+  decodeBase64Text,
+  defaultFetch,
+  parseCommittedAt,
+} from "../forge-http";
 import type { RepoCoordinates } from "../repo-coordinates";
 import {
   GITLAB_DEVELOPER_ACCESS_LEVEL,
@@ -32,7 +33,7 @@ import type {
   RootEntry,
   TreeEntry,
 } from "../forge-adapter";
-import { ROOT_LISTING_LIMIT } from "../forge-adapter";
+import { ROOT_LISTING_LIMIT, blobShasByPath } from "../forge-adapter";
 
 export interface GitLabAdapterOptions extends ForgeAdapterOptions {
   readonly fetch?: typeof fetch;
@@ -50,7 +51,7 @@ export function createGitLabAdapter(
 
 // Below GitLab.com's announced Free-tier limits for authenticated API
 // requests (100 per minute, 5000 per hour).
-export const GITLAB_WRITE_LIMITS: ForgeWriteLimits = {
+const GITLAB_WRITE_LIMITS: ForgeWriteLimits = {
   perMinute: 80,
   perHour: 4_000,
 };
@@ -60,10 +61,10 @@ const BLOB_FETCH_CONCURRENCY = 8;
 
 export const ATOMIC_BRANCH_PREFIX = "commitnote/tx-";
 const ATOMIC_MERGE_REQUEST_TITLE = "commitnote: atomic commit";
-export const UNDO_COMMIT_MESSAGE = `${UNDO_OUTDATED_SAVE_SUBJECT}\n\n${TRAILER.format}: ${FORMAT_VERSION}`;
+export const UNDO_COMMIT_MESSAGE = encodeUndoOutdatedSaveMessage();
 const EMPTY_BLOB_SHA = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391";
 // Create commit, open merge request, merge it.
-export const ATOMIC_COMMIT_COST = 3;
+const ATOMIC_COMMIT_COST = 3;
 export const MAX_MERGE_ATTEMPTS = 6;
 export const MERGE_STATUS_POLL_MS = 1_000;
 // Leaves an interrupted atomic commit of another device alone long enough
@@ -148,11 +149,6 @@ interface FileBody {
 
 const MAX_COMMITS_PER_PAGE = 100;
 
-function parseCommittedAt(date: string | undefined): number {
-  const time = date === undefined ? NaN : Date.parse(date);
-  return Number.isFinite(time) ? time : 0;
-}
-
 function accessLevel(project: ProjectBody): number {
   return Math.max(
     project.permissions?.project_access?.access_level ?? 0,
@@ -182,10 +178,6 @@ function atomicCommitSupportFor(project: ProjectBody): AtomicCommitSupport {
       !approvalsRequired &&
       accessLevel(project) >= GITLAB_MAINTAINER_ACCESS_LEVEL,
   };
-}
-
-function isNetworkError(error: unknown): boolean {
-  return error instanceof ForgeError && error.kind === "Network";
 }
 
 function isOlderThan(date: string | undefined, cutoff: number): boolean {
@@ -230,9 +222,7 @@ class GitLabAdapter implements ForgeAdapter {
     this.projectPath = projectApiPath(coordinates.owner, coordinates.repo);
     this.accessToken = options.accessToken;
     this.onContentCreatingRequest = options.onContentCreatingRequest;
-    // Browsers reject `fetch` called with a non-Window receiver.
-    this.fetchImpl =
-      options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+    this.fetchImpl = options.fetch ?? defaultFetch;
     this.now = options.now ?? Date.now;
     this.sleep =
       options.sleep ??
@@ -431,9 +421,14 @@ class GitLabAdapter implements ForgeAdapter {
       url = nextPageUrl(response, url);
     }
 
-    entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    entries.sort(byPath);
     this.treeCache.set(commitSha, entries);
     return [...entries];
+  }
+
+  private async blobBase64(sha: string): Promise<string> {
+    const response = await this.fetchBlob(sha);
+    return toBase64(new Uint8Array(await response.arrayBuffer()));
   }
 
   private async fetchBlob(sha: string): Promise<Response> {
@@ -509,9 +504,7 @@ class GitLabAdapter implements ForgeAdapter {
         MAX_COMMITS_PER_PAGE,
         page,
       );
-      if (items.length > 0) {
-        oldest = items[items.length - 1];
-      }
+      oldest = items.at(-1) ?? oldest;
       if (items.length < MAX_COMMITS_PER_PAGE) {
         return oldest;
       }
@@ -575,9 +568,7 @@ class GitLabAdapter implements ForgeAdapter {
     if (body.encoding !== "base64" || body.content === undefined) {
       return { blobSha, text: await this.readBlob(blobSha) };
     }
-    const text = new TextDecoder("utf-8").decode(
-      fromBase64(body.content.replace(/\s+/g, "")),
-    );
+    const text = decodeBase64Text(body.content);
     this.blobCache.set(blobSha, text);
     return { blobSha, text };
   }
@@ -663,10 +654,7 @@ class GitLabAdapter implements ForgeAdapter {
         return actions;
       }
     }
-    const parentBlobs = new Map<string, string>();
-    for (const entry of parentEntries) {
-      if (entry.type === "blob") parentBlobs.set(entry.path, entry.sha);
-    }
+    const parentBlobs = blobShasByPath(parentEntries);
     const usable = candidates.filter(
       (file) =>
         !touched.has(file.path) && parentBlobs.get(file.path) === file.blobSha,
@@ -686,11 +674,7 @@ class GitLabAdapter implements ForgeAdapter {
     const content =
       guard.blobSha === EMPTY_BLOB_SHA
         ? ""
-        : toBase64(
-            new Uint8Array(
-              await (await this.fetchBlob(guard.blobSha)).arrayBuffer(),
-            ),
-          );
+        : await this.blobBase64(guard.blobSha);
     return [
       ...actions,
       {
@@ -716,10 +700,7 @@ class GitLabAdapter implements ForgeAdapter {
     base: string,
     actions: readonly CommitAction[],
   ): Promise<void> {
-    const baseBlobs = new Map<string, string>();
-    for (const entry of await this.listTree(base)) {
-      if (entry.type === "blob") baseBlobs.set(entry.path, entry.sha);
-    }
+    const baseBlobs = blobShasByPath(await this.listTree(base));
     const restore = async (path: string, action: "create" | "update") => {
       const sha = baseBlobs.get(path);
       if (sha === undefined) {
@@ -728,9 +709,7 @@ class GitLabAdapter implements ForgeAdapter {
       return {
         action,
         file_path: path,
-        content: toBase64(
-          new Uint8Array(await (await this.fetchBlob(sha)).arrayBuffer()),
-        ),
+        content: await this.blobBase64(sha),
         encoding: "base64",
       } as const;
     };
@@ -851,7 +830,7 @@ class GitLabAdapter implements ForgeAdapter {
         },
       });
     } catch (error) {
-      if (isNetworkError(error)) {
+      if (isForgeError(error, "Network")) {
         const recovered = await this.findTransactionCommit(
           branch,
           request.parent,
@@ -911,7 +890,7 @@ class GitLabAdapter implements ForgeAdapter {
         },
       });
     } catch (error) {
-      if (isNetworkError(error)) {
+      if (isForgeError(error, "Network")) {
         const existing = await this.findOpenMergeRequest(branch);
         if (existing !== null) return existing;
       }
@@ -1051,7 +1030,7 @@ class GitLabAdapter implements ForgeAdapter {
         body: { sha, squash: false, should_remove_source_branch: true },
       });
     } catch (error) {
-      if (isNetworkError(error)) return "unknown";
+      if (isForgeError(error, "Network")) return "unknown";
       throw error;
     }
     if (response.ok) {
@@ -1186,10 +1165,7 @@ class GitLabAdapter implements ForgeAdapter {
     changes: readonly CommitFileChange[],
     parentEntries: readonly TreeEntry[],
   ): Promise<CommitAction[]> {
-    const parentBlobs = new Map<string, string>();
-    for (const entry of parentEntries) {
-      if (entry.type === "blob") parentBlobs.set(entry.path, entry.sha);
-    }
+    const parentBlobs = blobShasByPath(parentEntries);
     const existing = new Set(parentBlobs.keys());
 
     // A deleted file whose blob is re-added elsewhere becomes a `move`, which
@@ -1272,11 +1248,7 @@ class GitLabAdapter implements ForgeAdapter {
     for (let i = 0; i < shas.length; i += BLOB_FETCH_CONCURRENCY) {
       await Promise.all(
         shas.slice(i, i + BLOB_FETCH_CONCURRENCY).map(async (sha) => {
-          const response = await this.fetchBlob(sha);
-          contents.set(
-            sha,
-            toBase64(new Uint8Array(await response.arrayBuffer())),
-          );
+          contents.set(sha, await this.blobBase64(sha));
         }),
       );
     }

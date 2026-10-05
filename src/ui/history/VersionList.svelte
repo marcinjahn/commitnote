@@ -232,7 +232,7 @@
   {/each}
 
   {#if versions.length === 0 && loading}
-    <div class="skeleton" aria-hidden="true">
+    <div aria-hidden="true">
       {#each [0, 1, 2, 3, 4] as i (i)}
         <div class="skeleton-row" style="--i: {i}">
           <span class="skeleton-bar short"></span>
@@ -252,7 +252,7 @@
       <p class="end-marker" data-testid="history-end">{describeHistoryEnd(end)}</p>
     {:else if loading}
       {#if versions.length > 0}
-        <p class="end-marker loading-more">Loading…</p>
+        <p class="end-marker">Loading…</p>
       {/if}
     {:else}
       <button

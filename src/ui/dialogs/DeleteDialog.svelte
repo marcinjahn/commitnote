@@ -2,7 +2,6 @@
   import Dialog from "./Dialog.svelte";
 
   interface Props {
-    open: boolean;
     itemName: string;
     itemKind: "note" | "folder";
     itemCount: number;
@@ -12,7 +11,6 @@
   }
 
   const {
-    open,
     itemName,
     itemKind,
     itemCount,
@@ -44,7 +42,7 @@
   );
 </script>
 
-<Dialog {open} {title} {onClose}>
+<Dialog open={true} {title} {onClose}>
   {#snippet children()}
     <p>{body}</p>
     {#if toTrash}

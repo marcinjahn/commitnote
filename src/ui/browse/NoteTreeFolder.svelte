@@ -133,7 +133,7 @@
         <path d="M6 3.5L10.5 8 6 12.5" />
       </svg>
       <svg
-        class="icon row-icon folder-glyph"
+        class="icon row-icon"
         viewBox="0 0 16 16"
         aria-hidden="true"
         focusable="false"
@@ -142,7 +142,7 @@
       </svg>
     {:else}
       <svg
-        class="icon row-icon note-glyph"
+        class="icon row-icon"
         viewBox="0 0 16 16"
         aria-hidden="true"
         focusable="false"

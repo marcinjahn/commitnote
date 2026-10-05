@@ -15,7 +15,7 @@
 <span class="sync-state-icon" role="img" aria-label={label} title={label}>
   {#if state.kind === "synced"}
     <svg
-      class="icon glyph synced"
+      class="icon synced"
       viewBox="0 0 16 16"
       aria-hidden="true"
       focusable="false"
@@ -24,7 +24,7 @@
     </svg>
   {:else if state.kind === "syncing"}
     <svg
-      class="icon glyph syncing"
+      class="icon syncing"
       viewBox="0 0 16 16"
       aria-hidden="true"
       focusable="false"
@@ -35,7 +35,7 @@
     </svg>
   {:else if state.reason === "pending"}
     <svg
-      class="icon glyph pending"
+      class="icon pending"
       viewBox="0 0 16 16"
       aria-hidden="true"
       focusable="false"
@@ -44,7 +44,7 @@
     </svg>
   {:else if state.reason === "failed"}
     <svg
-      class="icon glyph failed"
+      class="icon failed"
       viewBox="0 0 16 16"
       aria-hidden="true"
       focusable="false"
@@ -55,7 +55,7 @@
     </svg>
   {:else}
     <svg
-      class="icon glyph conflict"
+      class="icon conflict"
       viewBox="0 0 16 16"
       aria-hidden="true"
       focusable="false"

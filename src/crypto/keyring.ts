@@ -10,7 +10,7 @@ import {
 } from "../format/v1";
 import type { Argon2idFunction } from "./argon2";
 import { argon2idInWorker } from "./argon2";
-import { fromBase64, toBase64, utf8Encode } from "./base64";
+import { asBufferSource, fromBase64, toBase64, utf8Encode } from "./base64";
 import type { RandomSource } from "./random";
 import { secureRandom } from "./random";
 import type { KdfParams, RepoConfig } from "./repo-config";
@@ -21,14 +21,6 @@ export interface Keyring {
   readonly nameKey: CryptoKey;
   readonly nameIvKey: CryptoKey;
   readonly keyCheckKey: CryptoKey;
-}
-
-// Our Uint8Arrays are always backed by a plain ArrayBuffer, never a
-// SharedArrayBuffer, but their declared type is the bare (ArrayBufferLike)
-// Uint8Array, which the DOM lib's BufferSource-typed WebCrypto parameters no
-// longer accept directly.
-function asBufferSource(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
-  return bytes as Uint8Array<ArrayBuffer>;
 }
 
 async function hkdfDeriveBytes(

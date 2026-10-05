@@ -1,4 +1,6 @@
+import { defaultFetch, localDateStamp } from "../forge-http";
 import type { ForgeProvider, RepositorySummary } from "../forge-provider";
+import { parseLinkHeader } from "../link-header";
 import { createGitHubAdapter } from "./github-adapter";
 import { gitHubErrorFor, sendGitHubRequest } from "./github-api";
 
@@ -20,15 +22,10 @@ interface GitHubRepositoryBody {
   readonly private: boolean;
 }
 
-function localDate(now: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
-
 // GitHub token names must be unique per account, hence the date.
 function accessTokenCreationUrl(now: Date): string {
   const params = new URLSearchParams({
-    name: `commitnote ${localDate(now)}`,
+    name: `commitnote ${localDateStamp(now)}`,
     description:
       "commitnote: reads and saves encrypted notes. Select only your notes repository.",
     expires_in: "365",
@@ -37,18 +34,10 @@ function accessTokenCreationUrl(now: Date): string {
   return `${TOKEN_CREATION_URL}?${params.toString()}`;
 }
 
-function nextPageUrl(response: Response): string | null {
-  const link = response.headers.get("link");
-  if (link === null) return null;
-  const match = /<([^>]+)>;\s*rel="next"/.exec(link);
-  return match ? match[1] : null;
-}
-
 export function createGitHubProvider(
   options: GitHubProviderOptions = {},
 ): ForgeProvider {
-  const fetchImpl: typeof fetch =
-    options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+  const fetchImpl = options.fetch ?? defaultFetch;
   const now = options.now ?? Date.now;
 
   return {
@@ -81,7 +70,7 @@ export function createGitHubProvider(
             private: repo.private,
           });
         }
-        url = nextPageUrl(response);
+        url = parseLinkHeader(response.headers.get("link")).get("next") ?? null;
       }
       return repositories;
     },

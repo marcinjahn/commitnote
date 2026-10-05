@@ -1,3 +1,4 @@
+import { createAutosave } from "../sync/autosave";
 import type { Clock } from "../sync/clock";
 import { changedSettingKeys } from "./settings";
 import type { RawSettings, SettingsEdits } from "./settings";
@@ -21,8 +22,6 @@ export function createSettingsSaver(options: {
   const { clock, debounceMs, maxWaitMs, stored, save } = options;
 
   let pending: SettingsEdits = {};
-  let debounceHandle: unknown = undefined;
-  let deadlineHandle: unknown = undefined;
   let disposed = false;
   const listeners = new Set<() => void>();
 
@@ -30,19 +29,7 @@ export function createSettingsSaver(options: {
     for (const listener of [...listeners]) listener();
   }
 
-  function clearTimers(): void {
-    if (debounceHandle !== undefined) {
-      clock.clearTimeout(debounceHandle);
-      debounceHandle = undefined;
-    }
-    if (deadlineHandle !== undefined) {
-      clock.clearTimeout(deadlineHandle);
-      deadlineHandle = undefined;
-    }
-  }
-
   function emit(): void {
-    clearTimers();
     const edits = pending;
     const keys = changedSettingKeys(stored(), edits);
     pending = {};
@@ -53,19 +40,20 @@ export function createSettingsSaver(options: {
     save(changed);
   }
 
+  const autosave = createAutosave({
+    clock,
+    debounceMs,
+    maxWaitMs,
+    save: emit,
+  });
+
   return {
     change(edits: SettingsEdits): void {
       if (disposed || Object.keys(edits).length === 0) return;
 
-      const startingNewWindow = debounceHandle === undefined;
       pending = { ...pending, ...edits };
       notify();
-
-      if (debounceHandle !== undefined) clock.clearTimeout(debounceHandle);
-      debounceHandle = clock.setTimeout(emit, debounceMs);
-      if (startingNewWindow) {
-        deadlineHandle = clock.setTimeout(emit, maxWaitMs);
-      }
+      autosave.noteEdited();
     },
     get pending(): SettingsEdits {
       return pending;
@@ -82,10 +70,10 @@ export function createSettingsSaver(options: {
     flush(): void {
       if (disposed) return;
       if (Object.keys(pending).length === 0) return;
-      emit();
+      autosave.saveNow();
     },
     dispose(): void {
-      clearTimers();
+      autosave.dispose();
       pending = {};
       listeners.clear();
       disposed = true;

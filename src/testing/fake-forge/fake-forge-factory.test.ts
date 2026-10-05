@@ -6,7 +6,6 @@ import { decryptNote } from "../../crypto/note-cipher";
 import { REPO_CONFIG_PATH } from "../../format/v1";
 import {
   createFakeForge,
-  createFakeForgeFactory,
   FAKE_FORGE_INVALID_TOKEN,
   FAKE_FORGE_NO_REPOSITORIES_TOKEN,
 } from "./fake-forge-factory";
@@ -31,9 +30,9 @@ async function parsedConfig(repoConfigText: string | null): Promise<{
   return JSON.parse(repoConfigText) as { formatVersion: number };
 }
 
-describe("createFakeForgeFactory", () => {
+describe("createFakeForge", () => {
   it("sample/notes is populated and holds a format-1 repo config", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const adapter = factory(coordinatesFor("sample/notes"), {
       accessToken: TOKEN,
     });
@@ -47,7 +46,7 @@ describe("createFakeForgeFactory", () => {
   });
 
   it("sample/empty is empty and writable, with initialization creating main", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const adapter = factory(coordinatesFor("sample/empty"), {
       accessToken: TOKEN,
     });
@@ -69,7 +68,7 @@ describe("createFakeForgeFactory", () => {
   });
 
   it("sample/empty-read-only is empty and not writable", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const adapter = factory(coordinatesFor("sample/empty-read-only"), {
       accessToken: TOKEN,
     });
@@ -81,7 +80,7 @@ describe("createFakeForgeFactory", () => {
   });
 
   it("sample/read-only is populated and not writable", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const adapter = factory(coordinatesFor("sample/read-only"), {
       accessToken: TOKEN,
     });
@@ -95,7 +94,7 @@ describe("createFakeForgeFactory", () => {
   });
 
   it("sample/foreign is populated with no repo config, a README and code", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const adapter = factory(coordinatesFor("sample/foreign"), {
       accessToken: TOKEN,
     });
@@ -112,7 +111,7 @@ describe("createFakeForgeFactory", () => {
   });
 
   it("sample/almost-empty has only a README, a licence and a .gitignore", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const adapter = factory(coordinatesFor("sample/almost-empty"), {
       accessToken: TOKEN,
     });
@@ -131,7 +130,7 @@ describe("createFakeForgeFactory", () => {
   });
 
   it("sample/public-empty is empty and writable", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const adapter = factory(coordinatesFor("sample/public-empty"), {
       accessToken: TOKEN,
     });
@@ -140,7 +139,7 @@ describe("createFakeForgeFactory", () => {
   });
 
   it("sample/newer is populated with a repo config at a newer format version", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const adapter = factory(coordinatesFor("sample/newer"), {
       accessToken: TOKEN,
     });
@@ -158,7 +157,7 @@ describe("createFakeForgeFactory", () => {
   });
 
   it("returns the same adapter instance for the same fixture across calls", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const first = factory(coordinatesFor("sample/notes"), {
       accessToken: TOKEN,
     });
@@ -170,7 +169,7 @@ describe("createFakeForgeFactory", () => {
   });
 
   it("looks fixtures up case-insensitively", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const lower = factory(coordinatesFor("sample/notes"), {
       accessToken: TOKEN,
     });
@@ -183,7 +182,7 @@ describe("createFakeForgeFactory", () => {
   });
 
   it("rejects every operation with Unauthorized when the token is the invalid-token sentinel", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const adapter = factory(coordinatesFor("sample/notes"), {
       accessToken: FAKE_FORGE_INVALID_TOKEN,
     });
@@ -197,7 +196,7 @@ describe("createFakeForgeFactory", () => {
   });
 
   it("rejects every operation with NotFound for an unknown fixture repository", async () => {
-    const factory = await createFakeForgeFactory();
+    const factory = (await createFakeForge()).factory;
     const adapter = factory(coordinatesFor("sample/unknown"), {
       accessToken: TOKEN,
     });

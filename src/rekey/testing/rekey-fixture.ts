@@ -24,7 +24,7 @@ import {
 
 export const OLD_PASSPHRASE = "old passphrase";
 export const NEW_PASSPHRASE = "new passphrase";
-export const FIXTURE_CREATED_AT = "2026-01-01T00:00:00.000Z";
+const FIXTURE_CREATED_AT = "2026-01-01T00:00:00.000Z";
 export const TRASH_ID = "20260901T000000Z-1-aaaaaaaa";
 export const FOREIGN_TRASH_ID = "20260902T000000Z-1-bbbbbbbb";
 export const README_TEXT = "# Plaintext readme\n";
@@ -35,7 +35,7 @@ export const FIXTURE_NOTES: Readonly<Record<string, string>> = {
   "Projects/Deep/Nested note": "nested",
   "Zażółć gęślą": "unicode ✓",
 };
-export const FIXTURE_EMPTY_FOLDERS = ["Projects/Empty", "Archive"];
+const FIXTURE_EMPTY_FOLDERS = ["Projects/Empty", "Archive"];
 export const TRASHED_NOTE = { name: "Old idea", content: "trashed body" };
 
 export async function keyringFor(
@@ -54,7 +54,7 @@ export async function newRepoConfig(passphrase: string) {
   });
 }
 
-export async function encryptFixtureFiles(
+async function encryptFixtureFiles(
   keyring: Keyring,
   notes: Readonly<Record<string, string>>,
   emptyFolders: readonly string[],

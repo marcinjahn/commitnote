@@ -14,7 +14,7 @@ export interface ReadableWorkingTrashEntry {
   readonly tree: WorkingNode;
 }
 
-export interface UndecryptableWorkingTrashEntry {
+interface UndecryptableWorkingTrashEntry {
   readonly id: string;
   readonly deletedAt: number;
   readonly undecryptable: true;

@@ -1,4 +1,4 @@
-import type { SettingOption } from "./setting-option";
+import { parseOptionId, type SettingOption } from "./setting-option";
 
 export interface NoteFontOption extends SettingOption {
   readonly description: string;
@@ -82,7 +82,7 @@ export const NOTE_FONT_OPTIONS = [
 export type NoteFont = (typeof NOTE_FONT_OPTIONS)[number]["id"];
 
 export function parseNoteFont(raw: unknown): NoteFont | undefined {
-  return NOTE_FONT_OPTIONS.find((option) => option.id === raw)?.id;
+  return parseOptionId(NOTE_FONT_OPTIONS, raw);
 }
 
 export function noteFontFamily(id: NoteFont): string {

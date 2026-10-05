@@ -2,7 +2,6 @@
   import Dialog from "./Dialog.svelte";
 
   interface Props {
-    open: boolean;
     title: string;
     body: string;
     confirmLabel: string;
@@ -10,10 +9,10 @@
     onClose: () => void;
   }
 
-  const { open, title, body, confirmLabel, onConfirm, onClose }: Props = $props();
+  const { title, body, confirmLabel, onConfirm, onClose }: Props = $props();
 </script>
 
-<Dialog {open} {title} {onClose}>
+<Dialog open={true} {title} {onClose}>
   {#snippet children()}
     <p>{body}</p>
   {/snippet}

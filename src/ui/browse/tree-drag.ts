@@ -1,7 +1,7 @@
 import { tick } from "svelte";
 import type { ActionReturn } from "svelte/action";
 import type { NotePath } from "../../changes/change";
-import { isWithinFolder, notePathEquals } from "../../changes/change";
+import { isAtOrWithin, notePathEquals } from "../../changes/change";
 import {
   liftPreview,
   measureTops,
@@ -38,7 +38,7 @@ export interface TreeDragOptions {
   readonly onOpen: (path: NotePath) => void;
 }
 
-export interface DragSession {
+interface DragSession {
   move(x: number, y: number): void;
   drop(): void;
   cancel(): void;
@@ -67,16 +67,12 @@ function rowElements(container: HTMLElement): Map<string, HTMLElement> {
   return rows;
 }
 
-function isAtOrWithin(path: NotePath, folder: NotePath): boolean {
-  return notePathEquals(path, folder) || isWithinFolder(path, folder);
-}
-
 /**
  * Lifts `row` and drags it until the returned session is dropped or
  * cancelled; `onEnd` runs once everything has settled. Input-agnostic, so
  * any way of starting a drag (mouse threshold, touch long-press) can use it.
  */
-export function startDrag(
+function startDrag(
   container: HTMLElement,
   row: HTMLElement,
   x: number,

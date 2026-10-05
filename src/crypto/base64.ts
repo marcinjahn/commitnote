@@ -72,3 +72,11 @@ export function utf8Encode(text: string): Uint8Array {
 export function utf8Decode(bytes: Uint8Array): string {
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
+
+// Our Uint8Arrays are always backed by a plain ArrayBuffer, never a
+// SharedArrayBuffer, but their declared type is the bare (ArrayBufferLike)
+// Uint8Array, which the DOM lib's BufferSource-typed WebCrypto parameters no
+// longer accept directly.
+export function asBufferSource(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  return bytes as Uint8Array<ArrayBuffer>;
+}

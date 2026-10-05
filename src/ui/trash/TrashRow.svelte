@@ -44,7 +44,7 @@
         </span>
       </button>
     {:else}
-      <div class="trash-row-main static" title={node.name}>
+      <div class="trash-row-main" title={node.name}>
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <path d="M3.5 1.5h6l3 3v10h-9z" />
           <path d="M9.5 1.5v3h3" />

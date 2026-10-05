@@ -1,7 +1,7 @@
-export const SWIPE_ARM_SLOP_PX = 8;
-export const SWIPE_CLOSE_FRACTION = 0.3;
-export const SWIPE_CLOSE_VELOCITY = 0.5;
-export const SWIPE_VELOCITY_WINDOW_MS = 100;
+const SWIPE_ARM_SLOP_PX = 8;
+const SWIPE_CLOSE_FRACTION = 0.3;
+const SWIPE_CLOSE_VELOCITY = 0.5;
+const SWIPE_VELOCITY_WINDOW_MS = 100;
 
 export type SwipeArming = "pending" | "armed" | "aborted";
 

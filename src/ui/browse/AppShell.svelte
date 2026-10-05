@@ -1,9 +1,10 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
-  import { isWithinFolder, notePathEquals, parentPath } from "../../changes/change";
-  import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
+  import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
+  import type { HeldConflict, SyncEngine, SyncEngineState } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
+  import { systemClock } from "../../sync/clock";
   import {
     applySettingsEdits,
     resolveSettings,
@@ -13,7 +14,7 @@
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { NoteFont } from "../../settings/note-font";
   import type { NoteHistory, NoteVersion } from "../../history/note-history";
-  import type { NoteDates, NoteDatesResolver } from "../../history/note-dates";
+  import type { NoteDatesResolver } from "../../history/note-dates";
   import type { RestorePlan } from "../../history/plan-restore";
   import { validateName } from "../../tree/note-names";
   import { describeNameError } from "../dialogs/name-messages";
@@ -70,6 +71,7 @@
   import { decideNameCommit } from "../note/name-field-commit";
   import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
   import NotePane from "../note/NotePane.svelte";
+  import { createNoteDatesView, type ShownNoteDates } from "../note/note-dates-view";
   import { derivePrintNote, type PrintNote } from "../print/print-note";
   import type { ToastMessage } from "../notices/notice-messages";
   import NoticeToasts from "../notices/NoticeToasts.svelte";
@@ -89,7 +91,12 @@
   import type { Command, RowAction } from "./row-menu-types";
   import { describeMovedTo, describeStructureError } from "./structure-messages";
   import type { DropTarget } from "./tree-drop";
-  import { DRAG_EASING, DRAG_MOTION_MS, prefersReducedMotion } from "./drag-motion";
+  import {
+    DESKTOP_MEDIA_QUERY,
+    DRAG_EASING,
+    DRAG_MOTION_MS,
+    prefersReducedMotion,
+  } from "./drag-motion";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
@@ -200,13 +207,33 @@
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
   let notePaneEl: HTMLElement | undefined = $state();
-  let refreshMessages = $state<readonly ToastMessage[]>([]);
+  type ToastChannel =
+    | "refresh"
+    | "export"
+    | "trash"
+    | "place"
+    | "import"
+    | "history"
+    | "session";
+  const TOAST_ORDER = [
+    "refresh",
+    "export",
+    "trash",
+    "place",
+    "import",
+    "history",
+    "session",
+  ] as const satisfies readonly ToastChannel[];
+  let toasts = $state<Partial<Record<ToastChannel, ToastMessage>>>(
+    untrack(() =>
+      initialMessage === null
+        ? {}
+        : { session: { id: -1, text: initialMessage } },
+    ),
+  );
   let nextMessageId = 0;
   let exporting = $state(false);
-  let exportMessages = $state<readonly ToastMessage[]>([]);
   const UNDO_TOAST_MS = 8_000;
-  let trashMessages = $state<readonly ToastMessage[]>([]);
-  let placeMessages = $state<readonly ToastMessage[]>([]);
   let importInput: HTMLInputElement | undefined = $state();
   let reading = $state(false);
   let importDialog = $state<{
@@ -217,7 +244,6 @@
     readonly summary: ImportSummary;
     retryingShown: boolean;
   } | null>(null);
-  let importMessages = $state<readonly ToastMessage[]>([]);
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
   let settingsOpen = $state(false);
@@ -225,18 +251,27 @@
     readonly path: NotePath;
     readonly phase: HistoryPhase;
   } | null>(null);
-  let historyMessages = $state<readonly ToastMessage[]>([]);
   interface UndoGuard {
     readonly id: number;
     readonly path: NotePath;
     readonly content: string;
   }
   let undoGuard = $state<UndoGuard | null>(null);
-  let sessionMessages = $state<readonly ToastMessage[]>(
-    untrack(() =>
-      initialMessage === null ? [] : [{ id: -1, text: initialMessage }],
-    ),
-  );
+
+  function showToast(
+    channel: ToastChannel,
+    text: string,
+    extra?: Omit<ToastMessage, "id" | "text">,
+  ): number {
+    const id = ++nextMessageId;
+    toasts[channel] = { id, text, ...extra };
+    return id;
+  }
+
+  function clearToast(channel: ToastChannel, id?: number): void {
+    if (id === undefined || toasts[channel]?.id === id) delete toasts[channel];
+  }
+
   let atomicBlockedSeen = false;
 
   $effect(() => {
@@ -267,8 +302,16 @@
     onNoteFont(settings.noteFont);
   });
 
+  const openPath = $derived(engineState.openNote?.path ?? null);
+  const openConflict = $derived<HeldConflict | undefined>(
+    openPath === null
+      ? undefined
+      : engineState.conflicts.find((held) => notePathEquals(held.path, openPath)),
+  );
+  const openConflicted = $derived(openConflict !== undefined);
+
   const printNote = $derived(
-    derivePrintNote(draft, engineState.openNote, engineState.conflicts),
+    derivePrintNote(draft, engineState.openNote, openConflict ? [openConflict] : []),
   );
 
   $effect(() => {
@@ -342,24 +385,24 @@
     },
   ]);
 
-  const openPath = $derived(engineState.openNote?.path ?? null);
-  const openConflicted = $derived(
-    openPath !== null &&
-      engineState.conflicts.some((held) => notePathEquals(held.path, openPath)),
-  );
 
   const NOTE_DATES_DEBOUNCE_MS = 3000;
 
-  let shownDates = $state<{ path: NotePath; dates: NoteDates } | null>(null);
-  // Any change of the loaded note's path starts a new opening: a different
-  // note, or the same note relocated. The dates cache for a path is trusted
-  // only when the note was opened from its committed blob and the entry was
-  // resolved for that blob; otherwise the entry may belong to an earlier note
-  // at that path.
-  let openingKey: string | null = null;
-  let opening = 0;
-  let openingHandled = false;
-  let openingTrustsCache = false;
+  let shownDates = $state<ShownNoteDates | null>(null);
+  const noteDatesView = createNoteDatesView({
+    // Reads the prop on every call: a passphrase change swaps the resolver
+    // without remounting the shell.
+    resolver: {
+      cached: (path) => noteDatesResolver.cached(path),
+      forget: (path) => noteDatesResolver.forget(path),
+      resolve: (path, head, blobSha) => noteDatesResolver.resolve(path, head, blobSha),
+    },
+    clock: systemClock,
+    debounceMs: NOTE_DATES_DEBOUNCE_MS,
+    onShow: (shown) => {
+      shownDates = shown;
+    },
+  });
 
   const loadedKey = $derived(
     engineState.openNote?.kind === "loaded" ? engineState.openNote.path.join("/") : null,
@@ -383,53 +426,15 @@
   });
 
   $effect(() => {
-    const key = loadedKey;
-    const blobSha = loadedBlobSha;
-    const idle = saveIdle;
-    if (key !== openingKey) {
-      openingTrustsCache = openingKey === null && blobSha !== null;
-      openingKey = key;
-      opening += 1;
-      openingHandled = false;
-      shownDates = null;
-    }
-    if (key === null || blobSha === null || !headHasOpenNote) return;
     const state = untrack(() => engine.getState());
-    const open = state.openNote;
-    const head = state.synced?.head;
-    if (open?.kind !== "loaded" || head === undefined) return;
-    const path = open.path;
-
-    const justOpened = !openingHandled;
-    openingHandled = true;
-    if (justOpened && noteDatesResolver.cached(path)?.blobSha !== blobSha) {
-      openingTrustsCache = false;
-    }
-    if (!openingTrustsCache) {
-      noteDatesResolver.forget(path);
-      openingTrustsCache = true;
-    }
-    const entry = noteDatesResolver.cached(path);
-    if (entry !== null) shownDates = { path, dates: entry.dates };
-    if (entry?.blobSha === blobSha) return;
-
-    const resolvingFor = opening;
-    const resolve = (): void => {
-      noteDatesResolver.resolve(path, head, blobSha).then(
-        (dates) => {
-          if (resolvingFor === opening) shownDates = { path, dates };
-        },
-        () => {},
-      );
-    };
-
-    if (justOpened || entry === null) {
-      resolve();
-      return;
-    }
-    if (!idle) return;
-    const timer = setTimeout(resolve, NOTE_DATES_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
+    return noteDatesView.update({
+      key: loadedKey,
+      blobSha: loadedBlobSha,
+      idle: saveIdle,
+      headHasOpenNote,
+      open: state.openNote,
+      head: state.synced?.head,
+    });
   });
 
   const historyCurrent = $derived.by(() => {
@@ -539,15 +544,10 @@
     historyDialog = null;
     const restoredPath = result.path;
     const restored = engine.getState().openNote;
-    const id = ++nextMessageId;
-    undoGuard =
-      restored?.kind === "loaded"
-        ? { id, path: restored.path, content: restored.content }
-        : null;
-    historyMessages = [
+    const id = showToast(
+      "history",
+      describeRestored(version.committedAt, Date.now()),
       {
-        id,
-        text: describeRestored(version.committedAt, Date.now()),
         durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
@@ -560,7 +560,11 @@
             ),
         },
       },
-    ];
+    );
+    undoGuard =
+      restored?.kind === "loaded"
+        ? { id, path: restored.path, content: restored.content }
+        : null;
     return null;
   }
 
@@ -577,7 +581,7 @@
 
   function dismissUndo(id: number): void {
     if (undoGuard?.id === id) undoGuard = null;
-    historyMessages = historyMessages.filter((message) => message.id !== id);
+    clearToast("history", id);
   }
 
   $effect(() => {
@@ -604,9 +608,8 @@
     }
     undoGuard = null;
     const result = setNoteState(path, content, name);
-    historyMessages = result.ok
-      ? []
-      : [{ id: ++nextMessageId, text: result.message }];
+    if (result.ok) clearToast("history");
+    else showToast("history", result.message);
   }
 
   $effect(() => {
@@ -641,7 +644,7 @@
 
   // On narrow screens the tree and the note pane are never shown together.
   function noteDropArea(): HTMLElement | null {
-    return window.matchMedia("(min-width: 768px)").matches
+    return window.matchMedia(DESKTOP_MEDIA_QUERY).matches
       ? (notePaneEl ?? null)
       : null;
   }
@@ -769,7 +772,7 @@
   function showRefreshError(text: string): void {
     // The inline alert explains an empty sidebar; a toast would repeat it.
     if (tree === null) return;
-    refreshMessages = [{ id: ++nextMessageId, text }];
+    showToast("refresh", text);
   }
 
   async function handleRefresh(): Promise<boolean> {
@@ -781,7 +784,7 @@
     }
     const error = engine.getState().refresh.lastError;
     if (error === null) {
-      refreshMessages = [];
+      clearToast("refresh");
       return true;
     }
     showRefreshError(describeSyncError(error, forgeName));
@@ -792,18 +795,18 @@
     const snapshot = engine.snapshotNotes();
     if (snapshot === null || exporting) return;
     exporting = true;
-    exportMessages = [];
+    clearToast("export");
     try {
       await downloadNotesArchive(snapshot);
     } catch {
-      exportMessages = [{ id: ++nextMessageId, text: "Export failed. Try again later." }];
+      showToast("export", "Export failed. Try again later.");
     } finally {
       exporting = false;
     }
   }
 
   function showImportMessage(text: string): void {
-    importMessages = [{ id: ++nextMessageId, text }];
+    showToast("import", text);
   }
 
   $effect(() => {
@@ -855,7 +858,7 @@
     const file = input.files?.[0];
     input.value = "";
     if (file === undefined || reading) return;
-    importMessages = [];
+    clearToast("import");
     if (file.size > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
       showImportMessage(describeArchiveError("tooLarge"));
       return;
@@ -1072,51 +1075,38 @@
   function handlePlace(path: NotePath, target: DropTarget): NotePath | null {
     const from = parentPath(path);
     const name = noteName(path);
-    const folder = tree === null ? undefined : findWorkingNode(tree, from);
-    const siblings =
-      folder?.kind === "folder" ? folder.children.map((child) => child.name) : [];
+    const siblings = siblingNamesOf(from);
     const previousBefore = siblings[siblings.indexOf(name) + 1] ?? null;
 
     const result = engine.place(path, target);
     if (!result.ok) {
-      placeMessages = [
-        { id: ++nextMessageId, text: describeStructureError(result.error) },
-      ];
+      showToast("place", describeStructureError(result.error));
       return null;
     }
     const placed = result.path;
-    placeMessages = notePathEquals(from, target.parent)
-      ? []
-      : [
-          {
-            id: ++nextMessageId,
-            text: describeMovedTo(name, target.parent),
-            durationMs: UNDO_TOAST_MS,
-            action: {
-              label: "Undo",
-              run: () =>
-                handleUndoPlace(placed, { parent: from, before: previousBefore }),
-            },
-          },
-        ];
+    if (notePathEquals(from, target.parent)) {
+      clearToast("place");
+    } else {
+      showToast("place", describeMovedTo(name, target.parent), {
+        durationMs: UNDO_TOAST_MS,
+        action: {
+          label: "Undo",
+          run: () =>
+            handleUndoPlace(placed, { parent: from, before: previousBefore }),
+        },
+      });
+    }
     return placed;
   }
 
   function handleUndoPlace(path: NotePath, target: DropTarget): void {
     const result = engine.place(path, target);
-    placeMessages = result.ok
-      ? []
-      : [{ id: ++nextMessageId, text: describeStructureError(result.error) }];
+    if (result.ok) clearToast("place");
+    else showToast("place", describeStructureError(result.error));
   }
 
   function dismissMessage(id: number): void {
-    refreshMessages = refreshMessages.filter((message) => message.id !== id);
-    exportMessages = exportMessages.filter((message) => message.id !== id);
-    trashMessages = trashMessages.filter((message) => message.id !== id);
-    placeMessages = placeMessages.filter((message) => message.id !== id);
-    importMessages = importMessages.filter((message) => message.id !== id);
-    historyMessages = historyMessages.filter((message) => message.id !== id);
-    sessionMessages = sessionMessages.filter((message) => message.id !== id);
+    for (const channel of TOAST_ORDER) clearToast(channel, id);
   }
 
   function openTrash(): void {
@@ -1155,9 +1145,7 @@
   function handleUndoTrash(entryId: string, reopen: NotePath | null): void {
     const result = engine.undoTrash(entryId);
     if (!result.ok) {
-      trashMessages = [
-        { id: ++nextMessageId, text: describeUndoError(result.error) },
-      ];
+      showToast("trash", describeUndoError(result.error));
       return;
     }
     const open = engine.getState().openNote;
@@ -1175,7 +1163,7 @@
     const path = dialog.node.path;
     const affectsOpenNote =
       openPath !== null &&
-      (notePathEquals(openPath, path) || isWithinFolder(openPath, path));
+      isAtOrWithin(openPath, path);
     const name = dialog.node.name;
     const result = engine.delete(path);
     if (!result.ok) {
@@ -1186,20 +1174,15 @@
     const { trashEntryId } = result;
     const reopen = affectsOpenNote ? openPath : null;
     if (trashEntryId !== undefined) {
-      trashMessages = [
-        {
-          id: ++nextMessageId,
-          text: describeMovedToTrash(name),
-          durationMs: UNDO_TOAST_MS,
-          action: {
-            label: "Undo",
-            run: () =>
-              handleUndoTrash(trashEntryId, reopen),
-          },
+      showToast("trash", describeMovedToTrash(name), {
+        durationMs: UNDO_TOAST_MS,
+        action: {
+          label: "Undo",
+          run: () => handleUndoTrash(trashEntryId, reopen),
         },
-      ];
+      });
     } else {
-      trashMessages = [];
+      clearToast("trash");
     }
     if (affectsOpenNote) {
       mobileView = "tree";
@@ -1359,6 +1342,7 @@
       {engine}
       {forgeName}
       openNote={engineState.openNote}
+      conflict={openConflict}
       draft={draft !== null}
       {noteDates}
       treeLoaded={tree !== null}
@@ -1372,15 +1356,7 @@
 
 <NoticeToasts
   notices={engineState.notices}
-  messages={[
-    ...refreshMessages,
-    ...exportMessages,
-    ...trashMessages,
-    ...placeMessages,
-    ...importMessages,
-    ...historyMessages,
-    ...sessionMessages,
-  ]}
+  messages={TOAST_ORDER.flatMap((channel) => toasts[channel] ?? [])}
   onDismiss={(id) => engine.dismissNotice(id)}
   onDismissMessage={dismissMessage}
   onOpen={handleSelect}
@@ -1388,7 +1364,6 @@
 
 {#if dialog.kind === "createFolder"}
   <NameDialog
-    open={true}
     title="New folder"
     label="Folder name"
     initialName=""
@@ -1400,7 +1375,6 @@
   />
 {:else if dialog.kind === "rename"}
   <NameDialog
-    open={true}
     title="Rename folder"
     label="Folder name"
     initialName={dialog.node.name}
@@ -1412,7 +1386,6 @@
   />
 {:else if dialog.kind === "move" && tree !== null}
   <MoveDialog
-    open={true}
     itemName={dialog.node.name}
     itemPath={dialog.node.path}
     itemKind={dialog.node.kind}
@@ -1423,7 +1396,6 @@
   />
 {:else if dialog.kind === "delete"}
   <DeleteDialog
-    open={true}
     itemName={dialog.node.name}
     itemKind={dialog.node.kind}
     itemCount={dialog.itemCount}
@@ -1446,7 +1418,6 @@
 
 {#if importDialog !== null && tree !== null}
   <ImportDialog
-    open={true}
     fileName={importDialog.fileName}
     contents={importDialog.contents}
     {tree}
@@ -1459,7 +1430,6 @@
 
 {#if atomicBlockedOpen && engineState.atomicBlocked !== null}
   <AtomicBlockedDialog
-    open={true}
     {forgeName}
     canConfigure={engineState.atomicBlocked.canConfigure}
     onEnable={handleEnableAtomic}
@@ -1470,7 +1440,6 @@
 
 {#if settingsOpen}
   <SettingsDialog
-    open={true}
     {settings}
     {changeSettings}
     saveState={settingsSave}
@@ -1484,7 +1453,6 @@
 
 {#if changePassphraseOpen}
   <ChangePassphraseDialog
-    open={true}
     {forgeName}
     repositoryLabel={repoLabel}
     change={passphraseChange}
@@ -1522,7 +1490,6 @@
 
 {#if trashDialog.kind === "restore" && tree !== null}
   <MoveDialog
-    open={true}
     restore={true}
     itemName={trashDialog.node.name}
     itemPath={null}
@@ -1534,7 +1501,6 @@
   />
 {:else if trashDialog.kind === "deleteEntry"}
   <ConfirmDialog
-    open={true}
     title="Delete permanently?"
     body="This can't be undone."
     confirmLabel="Delete permanently"
@@ -1543,7 +1509,6 @@
   />
 {:else if trashDialog.kind === "empty"}
   <ConfirmDialog
-    open={true}
     title="Empty trash?"
     body={describeEmptyTrash(trashEntries.length)}
     confirmLabel="Empty trash"

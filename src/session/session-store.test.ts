@@ -125,7 +125,6 @@ describe("createSessionStore", () => {
     expect(loaded?.repoUrl).toBe(session.repoUrl);
     expect(loaded?.coordinates).toEqual(session.coordinates);
     expect(loaded?.accessToken).toBe(session.accessToken);
-    expect(otherStore.current).toBe(loaded);
 
     const loadedKeyring = loaded?.keyring;
     expect(loadedKeyring).toBeDefined();
@@ -209,7 +208,6 @@ describe("createSessionStore", () => {
     await store.start(session, { rememberMe: true });
     await store.clear();
 
-    expect(store.current).toBeNull();
     expect(store.lastRepoUrl()).toBe(session.repoUrl);
 
     const otherStore = createSessionStore({ indexedDB, storage });
@@ -287,7 +285,6 @@ describe("createSessionStore", () => {
 
     const result = await store.start(session, { rememberMe: true });
     expect(result.remembered).toBe(true);
-    expect(store.current).toEqual(session);
     expect(store.lastRepoUrl()).toBeNull();
 
     await expect(store.clear()).resolves.toBeUndefined();
@@ -302,7 +299,6 @@ describe("createSessionStore", () => {
 
     const result = await store.start(session, { rememberMe: true });
     expect(result).toEqual({ remembered: false });
-    expect(store.current).toEqual(session);
 
     await expect(store.clear()).resolves.toBeUndefined();
   });

@@ -14,6 +14,7 @@ import {
   SAVE_SUBJECT,
   TRASH_DIR,
   TRAILER,
+  UNDO_OUTDATED_SAVE_SUBJECT,
 } from "../format/v1";
 import { isValidKey } from "../order/fractional-key";
 import {
@@ -66,11 +67,10 @@ function createStoredPathEncoder(
   };
 }
 
-function folderExists(
+function hasEntriesUnder(
   working: ReadonlyMap<string, WorkingEntry>,
   storedPath: string,
 ): boolean {
-  if (storedPath === "") return true;
   const prefix = `${storedPath}/`;
   for (const key of working.keys()) {
     if (key.startsWith(prefix)) return true;
@@ -78,16 +78,35 @@ function folderExists(
   return false;
 }
 
+function deleteUnder(
+  working: Map<string, WorkingEntry>,
+  prefix: string,
+): void {
+  for (const key of [...working.keys()]) {
+    if (key.startsWith(prefix)) working.delete(key);
+  }
+}
+
+function folderExists(
+  working: ReadonlyMap<string, WorkingEntry>,
+  storedPath: string,
+): boolean {
+  return storedPath === "" || hasEntriesUnder(working, storedPath);
+}
+
 function isFree(
   working: ReadonlyMap<string, WorkingEntry>,
   storedPath: string,
 ): boolean {
-  if (working.has(storedPath)) return false;
-  const prefix = `${storedPath}/`;
-  for (const key of working.keys()) {
-    if (key.startsWith(prefix)) return false;
-  }
-  return true;
+  return !working.has(storedPath) && !hasEntriesUnder(working, storedPath);
+}
+
+function canCreateAt(
+  working: ReadonlyMap<string, WorkingEntry>,
+  stored: string,
+  parentStored: string,
+): boolean {
+  return folderExists(working, parentStored) && isFree(working, stored);
 }
 
 function moveEntries(
@@ -162,9 +181,7 @@ async function applyChange(
     case "create-folder": {
       const stored = await storedPathOf(change.path);
       const parentStored = await storedPathOf(change.path.slice(0, -1));
-      if (!folderExists(working, parentStored) || !isFree(working, stored)) {
-        fail();
-      }
+      if (!canCreateAt(working, stored, parentStored)) fail();
       working.set(`${stored}/${FOLDER_MARKER}`, {
         kind: "text",
         text: "",
@@ -176,9 +193,7 @@ async function applyChange(
     case "create-note": {
       const stored = await storedPathOf(change.path);
       const parentStored = await storedPathOf(change.path.slice(0, -1));
-      if (!folderExists(working, parentStored) || !isFree(working, stored)) {
-        fail();
-      }
+      if (!canCreateAt(working, stored, parentStored)) fail();
       working.set(stored, {
         kind: "text",
         text: change.content,
@@ -208,12 +223,7 @@ async function applyChange(
     case "delete-folder": {
       const stored = await storedPathOf(change.path);
       if (!folderExists(working, stored)) fail();
-      const prefix = `${stored}/`;
-      const toDelete: string[] = [];
-      for (const key of working.keys()) {
-        if (key.startsWith(prefix)) toDelete.push(key);
-      }
-      for (const key of toDelete) working.delete(key);
+      deleteUnder(working, `${stored}/`);
       trailers.push(`${TRAILER.delete}: ${stored}`);
       break;
     }
@@ -221,16 +231,13 @@ async function applyChange(
       const fromStored = await storedPathOf(change.from);
       const toStored = await storedPathOf(change.to);
       const toParentStored = await storedPathOf(change.to.slice(0, -1));
-      const entry = working.get(fromStored);
       if (
-        entry === undefined ||
-        !isFree(working, toStored) ||
-        !folderExists(working, toParentStored)
+        !working.has(fromStored) ||
+        !canCreateAt(working, toStored, toParentStored)
       ) {
         fail();
       }
-      working.delete(fromStored);
-      working.set(toStored, entry);
+      moveEntries(working, fromStored, toStored, false);
       trailers.push(`${TRAILER.rename}: ${fromStored} -> ${toStored}`);
       break;
     }
@@ -248,19 +255,7 @@ async function applyChange(
       ) {
         fail();
       }
-      const fromPrefix = `${fromStored}/`;
-      const moves: [oldKey: string, newKey: string, value: WorkingEntry][] = [];
-      for (const [key, value] of working) {
-        if (key.startsWith(fromPrefix)) {
-          moves.push([
-            key,
-            `${toStored}/${key.slice(fromPrefix.length)}`,
-            value,
-          ]);
-        }
-      }
-      for (const [oldKey] of moves) working.delete(oldKey);
-      for (const [, newKey, value] of moves) working.set(newKey, value);
+      moveEntries(working, fromStored, toStored, true);
       trailers.push(`${TRAILER.rename}: ${fromStored} -> ${toStored}`);
       break;
     }
@@ -294,13 +289,7 @@ async function applyChange(
       const exists = isFolder
         ? folderExists(working, from)
         : working.has(from);
-      if (
-        !exists ||
-        !isFree(working, toStored) ||
-        !folderExists(working, toParentStored)
-      ) {
-        fail();
-      }
+      if (!exists || !canCreateAt(working, toStored, toParentStored)) fail();
       moveEntries(working, from, toStored, isFolder);
       if (change.subPath.length > 0) {
         ensureFolderKept(working, parentOfStored(from));
@@ -310,10 +299,7 @@ async function applyChange(
     }
     case "purge-trash": {
       for (const entryId of change.entryIds) {
-        const prefix = `${TRASH_DIR}/${entryId}/`;
-        for (const key of [...working.keys()]) {
-          if (key.startsWith(prefix)) working.delete(key);
-        }
+        deleteUnder(working, `${TRASH_DIR}/${entryId}/`);
         trailers.push(`${TRAILER.purge}: ${entryId}`);
       }
       break;
@@ -355,6 +341,10 @@ function buildMessage(subject: string, trailers: readonly string[]): string {
 
 export function encodeInitializeMessage(): string {
   return buildMessage(INITIALIZE_SUBJECT, []);
+}
+
+export function encodeUndoOutdatedSaveMessage(): string {
+  return buildMessage(UNDO_OUTDATED_SAVE_SUBJECT, []);
 }
 
 export function encodeChangePassphraseMessage(): string {

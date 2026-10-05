@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isWithinFolder, notePathEquals, parentPath } from "./change";
+import {
+  isAtOrWithin,
+  isWithinFolder,
+  notePathEquals,
+  parentPath,
+} from "./change";
 
 describe("notePathEquals", () => {
   it("is true for two empty paths", () => {
@@ -52,6 +57,21 @@ describe("isWithinFolder", () => {
 
   it("is false for the root path relative to itself", () => {
     expect(isWithinFolder([], [])).toBe(false);
+  });
+});
+
+describe("isAtOrWithin", () => {
+  it("is true for the folder itself", () => {
+    expect(isAtOrWithin(["Projects"], ["Projects"])).toBe(true);
+  });
+
+  it("is true for a descendant", () => {
+    expect(isAtOrWithin(["Projects", "Ideas"], ["Projects"])).toBe(true);
+  });
+
+  it("is false for a sibling or an ancestor", () => {
+    expect(isAtOrWithin(["Notes"], ["Projects"])).toBe(false);
+    expect(isAtOrWithin(["Projects"], ["Projects", "Ideas"])).toBe(false);
   });
 });
 

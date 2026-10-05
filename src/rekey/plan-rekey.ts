@@ -20,13 +20,13 @@ import { parseTrashEntryId } from "../trash/trash-entry-id";
  * re-encrypted only if they decrypt under the old key. So nothing readable
  * with the old key is left behind.
  */
-export type RekeyFileKind = "config" | "order" | "note" | "folder" | "other";
+type RekeyFileKind = "config" | "order" | "note" | "folder" | "other";
 
-export type RekeyFileContent =
+type RekeyFileContent =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "unchanged"; readonly blobSha: string };
 
-export interface RekeyFile {
+interface RekeyFile {
   readonly oldPath: string;
   readonly newPath: string;
   readonly kind: RekeyFileKind;
@@ -104,7 +104,7 @@ function comparePaths(a: { path: string }, b: { path: string }): number {
   return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
 }
 
-export function rekeyChanges(files: readonly RekeyFile[]): CommitFileChange[] {
+function rekeyChanges(files: readonly RekeyFile[]): CommitFileChange[] {
   const changes: CommitFileChange[] = [];
   for (const file of files) {
     const moved = file.newPath !== file.oldPath;

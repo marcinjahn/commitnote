@@ -2,7 +2,7 @@ import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { utf8Encode } from "../crypto/base64";
 import { MAX_NAME_BYTES } from "../format/v1";
 import {
-  findWorkingNode,
+  findWorkingFolder,
   type WorkingFolder,
   type WorkingTree,
 } from "../sync/working-tree";
@@ -108,14 +108,6 @@ function nextFreeName(name: string, taken: ReadonlySet<string>): string {
   }
 }
 
-function workingFolderAt(
-  tree: WorkingTree,
-  path: NotePath,
-): WorkingFolder | undefined {
-  const node = findWorkingNode(tree, path);
-  return node?.kind === "folder" ? node : undefined;
-}
-
 export function planImport(
   tree: WorkingTree,
   destination: ImportDestination,
@@ -172,7 +164,7 @@ export function planImport(
   }
 
   if (destination.kind === "new-folder") {
-    const parent = workingFolderAt(tree, destination.parent);
+    const parent = findWorkingFolder(tree, destination.parent);
     if (parent === undefined) {
       throw new RangeError("Import destination is not an existing folder");
     }
@@ -187,7 +179,7 @@ export function planImport(
     place(parent, parent.path, [wrapper], false);
   } else {
     const path = destination.kind === "root" ? [] : destination.path;
-    const target = workingFolderAt(tree, path);
+    const target = findWorkingFolder(tree, path);
     if (target === undefined) {
       throw new RangeError("Import destination is not an existing folder");
     }

@@ -1,3 +1,5 @@
+import { parseOptionId } from "./setting-option";
+
 export interface AccentOption {
   readonly id: string;
   readonly label: string;
@@ -36,7 +38,7 @@ export function accentOption(id: AccentColorId): AccentOption {
 }
 
 export function parseAccentColor(raw: unknown): AccentColorId | undefined {
-  return ACCENT_PALETTE.find((option) => option.id === raw)?.id;
+  return parseOptionId(ACCENT_PALETTE, raw);
 }
 
 export interface AccentCustomProperties {
@@ -47,11 +49,9 @@ export interface AccentCustomProperties {
 export function accentCustomProperties(
   id: AccentColorId,
 ): AccentCustomProperties {
-  const option: AccentOption | undefined = ACCENT_PALETTE.find(
-    (candidate) => candidate.id === id,
-  );
+  const option = accentOption(id);
   return {
-    "--accent-light": option?.light ?? null,
-    "--accent-dark": option?.dark ?? null,
+    "--accent-light": option.light ?? null,
+    "--accent-dark": option.dark ?? null,
   };
 }

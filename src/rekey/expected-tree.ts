@@ -1,27 +1,16 @@
-import { utf8Encode } from "../crypto/base64";
-import type { CommitFileChange, TreeEntry } from "../forge/forge-adapter";
-
-async function gitBlobSha(text: string): Promise<string> {
-  const content = utf8Encode(text);
-  const header = utf8Encode(`blob ${content.byteLength}\0`);
-  const bytes = new Uint8Array(header.byteLength + content.byteLength);
-  bytes.set(header, 0);
-  bytes.set(content, header.byteLength);
-  const digest = await crypto.subtle.digest("SHA-1", bytes);
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
+import {
+  blobShasByPath,
+  type CommitFileChange,
+  type TreeEntry,
+} from "../forge/forge-adapter";
+import { gitBlobSha } from "../forge/git-blob-sha";
 
 /** Blob SHA of every file that `changes` leave on top of `listing`. */
 export async function expectedTree(
   listing: readonly TreeEntry[],
   changes: readonly CommitFileChange[],
 ): Promise<Map<string, string>> {
-  const files = new Map<string, string>();
-  for (const entry of listing) {
-    if (entry.type === "blob") files.set(entry.path, entry.sha);
-  }
+  const files = blobShasByPath(listing);
   for (const change of changes) {
     switch (change.kind) {
       case "delete":

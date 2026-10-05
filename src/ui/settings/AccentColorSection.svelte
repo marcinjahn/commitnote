@@ -18,10 +18,7 @@
       : `${systemOption.label}, because the browser doesn't share your OS accent color`,
   );
 
-  const selected = $derived(
-    ACCENT_PALETTE.find((option) => option.id === settings.accentColor) ??
-      ACCENT_PALETTE[0],
-  );
+  const selected = $derived(accentOption(settings.accentColor));
 
   function swatchStyle(option: AccentOption): string | undefined {
     if (option.light === undefined || option.dark === undefined) {

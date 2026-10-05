@@ -8,7 +8,6 @@
   } from "./import-messages";
 
   interface Props {
-    open: boolean;
     forgeName: string;
     canConfigure: boolean;
     onEnable: () => Promise<string | null>;
@@ -17,7 +16,6 @@
   }
 
   const {
-    open,
     forgeName,
     canConfigure,
     onEnable,
@@ -44,7 +42,7 @@
   }
 </script>
 
-<Dialog {open} title="Import not saved" onClose={handleClose} closeButton={true} swipeToClose={!busy}>
+<Dialog open={true} title="Import not saved" onClose={handleClose} closeButton={true} swipeToClose={!busy}>
   {#snippet children()}
     {#if error !== null}
       <p role="alert" class="alert-error">{error}</p>

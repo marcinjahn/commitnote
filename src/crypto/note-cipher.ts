@@ -1,5 +1,5 @@
 import { NOTE_AAD, NOTE_PREFIX } from "../format/v1";
-import { fromBase64, toBase64, utf8Decode, utf8Encode } from "./base64";
+import { asBufferSource, fromBase64, toBase64, utf8Decode, utf8Encode } from "./base64";
 import type { Keyring } from "./keyring";
 import type { RandomSource } from "./random";
 import { secureRandom } from "./random";
@@ -8,14 +8,6 @@ const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
 export class NoteDecryptionError extends Error {}
-
-// Our Uint8Arrays are always backed by a plain ArrayBuffer, never a
-// SharedArrayBuffer, but their declared type is the bare (ArrayBufferLike)
-// Uint8Array, which the DOM lib's BufferSource-typed WebCrypto parameters no
-// longer accept directly.
-function asBufferSource(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
-  return bytes as Uint8Array<ArrayBuffer>;
-}
 
 export async function encryptNote(
   keyring: Keyring,

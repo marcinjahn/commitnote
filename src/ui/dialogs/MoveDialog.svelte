@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
   import type { WorkingTree } from "../../sync/working-tree";
   import Dialog from "./Dialog.svelte";
@@ -7,7 +6,6 @@
   import { listMoveTargets } from "./folder-options";
 
   interface Props {
-    open: boolean;
     itemName: string;
     itemPath: NotePath | null;
     itemKind: "note" | "folder";
@@ -19,7 +17,6 @@
   }
 
   const {
-    open,
     itemName,
     itemPath,
     itemKind,
@@ -40,14 +37,6 @@
   );
   const options = $derived(listMoveTargets(tree, itemPath, itemKind));
 
-  $effect(() => {
-    if (open) {
-      untrack(() => {
-        selected = null;
-      });
-    }
-  });
-
   function handleSubmit(event: SubmitEvent): void {
     event.preventDefault();
     if (selected === null) return;
@@ -55,7 +44,7 @@
   }
 </script>
 
-<Dialog {open} {title} {onClose}>
+<Dialog open={true} {title} {onClose}>
   {#snippet children()}
     {#if error !== null}
       <p role="alert" class="alert-error">{error}</p>

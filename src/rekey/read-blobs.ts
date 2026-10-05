@@ -1,8 +1,8 @@
 import { isForgeError } from "../forge/errors";
 import type { ForgeAdapter } from "../forge/forge-adapter";
 
-export const READ_CONCURRENCY = 4;
-export const MAX_READ_ATTEMPTS = 4;
+const READ_CONCURRENCY = 4;
+const MAX_READ_ATTEMPTS = 4;
 const RETRY_BASE_MS = 1_000;
 /** Longer rate-limit waits fail the read instead of stalling the change. */
 export const MAX_RATE_LIMIT_WAIT_MS = 120_000;

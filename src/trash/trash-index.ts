@@ -6,7 +6,7 @@ import { TRASH_DIR } from "../format/v1";
 import { buildNoteTree, findNode, type TreeNode } from "../tree/note-tree";
 import { parseTrashEntryId } from "./trash-entry-id";
 
-export interface TrashFile {
+interface TrashFile {
   /** Full repo path, including the `.commitnote/trash/<entryId>/` prefix. */
   readonly storedPath: string;
   readonly sha: string;
@@ -18,7 +18,7 @@ interface TrashEntryBase {
   readonly files: readonly TrashFile[];
 }
 
-export interface ReadableTrashEntry extends TrashEntryBase {
+interface ReadableTrashEntry extends TrashEntryBase {
   readonly undecryptable: false;
   readonly kind: "note" | "folder";
   readonly originalPath: NotePath;
@@ -31,7 +31,7 @@ export interface ReadableTrashEntry extends TrashEntryBase {
 /**
  * Kept so it can still be purged by id; it must not be shown or restored.
  */
-export interface UndecryptableTrashEntry extends TrashEntryBase {
+interface UndecryptableTrashEntry extends TrashEntryBase {
   readonly undecryptable: true;
 }
 

@@ -9,7 +9,11 @@
     RepositoryState,
     UnlockResult,
   } from "../../login/login";
-  import { listRepositories, repositoryLabel } from "../../login/login";
+  import {
+    isTransient,
+    listRepositories,
+    repositoryLabel,
+  } from "../../login/login";
   import type { Session } from "../../session/session";
   import type { ForgeAdapter } from "../../forge/forge-adapter";
   import type { ForgeId } from "../../forge/repo-coordinates";
@@ -279,23 +283,18 @@
       return;
     }
 
-    switch (result.error.kind) {
-      case "wrongPassphrase":
-        if (result.target !== undefined) {
-          inspection = { kind: "notesRepo", target: result.target };
-        }
-        formError = describeLoginError(result.error, provider.name);
-        passphrase = "";
-        await tick();
-        passphraseForm?.focus();
-        break;
-      case "network":
-      case "server":
-      case "rateLimited":
-        formError = describeLoginError(result.error, provider.name);
-        break;
-      default:
-        inspection = { kind: "unusable", error: result.error };
+    if (result.error.kind === "wrongPassphrase") {
+      if (result.target !== undefined) {
+        inspection = { kind: "notesRepo", target: result.target };
+      }
+      formError = describeLoginError(result.error, provider.name);
+      passphrase = "";
+      await tick();
+      passphraseForm?.focus();
+    } else if (isTransient(result.error)) {
+      formError = describeLoginError(result.error, provider.name);
+    } else {
+      inspection = { kind: "unusable", error: result.error };
     }
   }
 

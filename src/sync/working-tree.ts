@@ -1,5 +1,10 @@
 import type { Change, ChangeSet, NotePath } from "../changes/change";
-import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
+import {
+  isAtOrWithin,
+  isWithinFolder,
+  notePathEquals,
+  parentPath,
+} from "../changes/change";
 import {
   applyChangeToOrder,
   EMPTY_ORDER,
@@ -11,7 +16,7 @@ import type { TrashEntry } from "../trash/trash-index";
 import type { NoteTree, TreeNode } from "../tree/note-tree";
 import type { WorkingTrashEntry } from "./working-trash";
 
-export interface WorkingNote {
+interface WorkingNote {
   readonly kind: "note";
   readonly name: string;
   readonly path: NotePath;
@@ -130,20 +135,48 @@ function initialState(
   };
 }
 
-function findMutNode(root: MutFolder, path: NotePath): MutTreeNode | undefined {
-  let current: MutTreeNode = root;
+function findWithParent(
+  start: MutTreeNode,
+  path: NotePath,
+): { node: MutTreeNode; parent: MutFolder | undefined } | undefined {
+  let node = start;
+  let parent: MutFolder | undefined;
   for (const name of path) {
-    if (current.kind !== "folder") return undefined;
-    const next = current.children.get(name);
+    if (node.kind !== "folder") return undefined;
+    const next = node.children.get(name);
     if (next === undefined) return undefined;
-    current = next;
+    parent = node;
+    node = next;
   }
-  return current;
+  return { node, parent };
+}
+
+function findMutNode(root: MutFolder, path: NotePath): MutTreeNode | undefined {
+  return findWithParent(root, path)?.node;
 }
 
 function findMutFolder(root: MutFolder, path: NotePath): MutFolder | undefined {
   const node = findMutNode(root, path);
   return node?.kind === "folder" ? node : undefined;
+}
+
+function newMutNote(path: NotePath): MutNote {
+  return {
+    kind: "note",
+    name: path[path.length - 1],
+    path,
+    syncedPath: null,
+    trashBlobSha: null,
+  };
+}
+
+function newMutFolder(path: NotePath): MutFolder {
+  return {
+    kind: "folder",
+    name: path[path.length - 1],
+    path,
+    children: new Map(),
+  };
 }
 
 function relocate(node: MutTreeNode, newPath: NotePath): void {
@@ -160,22 +193,6 @@ function invalidChange(): never {
   throw new RangeError("Change is invalid for this working tree");
 }
 
-function findInTrashItem(
-  item: MutTreeNode,
-  subPath: NotePath,
-): { node: MutTreeNode; parent: MutFolder | undefined } | undefined {
-  let node = item;
-  let parent: MutFolder | undefined;
-  for (const name of subPath) {
-    if (node.kind !== "folder") return undefined;
-    const next = node.children.get(name);
-    if (next === undefined) return undefined;
-    parent = node;
-    node = next;
-  }
-  return { node, parent };
-}
-
 function applyChangeOrThrow(state: MutState, change: Change): void {
   applyTreeChangeOrThrow(state, change);
   state.order = applyChangeToOrder(state.order, change);
@@ -184,33 +201,19 @@ function applyChangeOrThrow(state: MutState, change: Change): void {
 function applyTreeChangeOrThrow(state: MutState, change: Change): void {
   const root = state.root;
   switch (change.kind) {
-    case "create-folder": {
-      const parent = findMutFolder(root, parentPath(change.path));
-      const name = change.path[change.path.length - 1];
-      if (parent === undefined || parent.children.has(name)) {
-        invalidChange();
-      }
-      parent.children.set(name, {
-        kind: "folder",
-        name,
-        path: change.path,
-        children: new Map(),
-      });
-      return;
-    }
+    case "create-folder":
     case "create-note": {
       const parent = findMutFolder(root, parentPath(change.path));
       const name = change.path[change.path.length - 1];
       if (parent === undefined || parent.children.has(name)) {
         invalidChange();
       }
-      parent.children.set(name, {
-        kind: "note",
+      parent.children.set(
         name,
-        path: change.path,
-        syncedPath: null,
-        trashBlobSha: null,
-      });
+        change.kind === "create-note"
+          ? newMutNote(change.path)
+          : newMutFolder(change.path),
+      );
       return;
     }
     case "update-note": {
@@ -218,51 +221,27 @@ function applyTreeChangeOrThrow(state: MutState, change: Change): void {
       if (node === undefined || node.kind !== "note") invalidChange();
       return;
     }
-    case "delete-note": {
-      const node = findMutNode(root, change.path);
-      if (node === undefined || node.kind !== "note") invalidChange();
-      const parent = findMutFolder(root, parentPath(change.path))!;
-      parent.children.delete(node.name);
-      return;
-    }
+    case "delete-note":
     case "delete-folder": {
+      const kind = change.kind === "delete-note" ? "note" : "folder";
       const node = findMutNode(root, change.path);
-      if (node === undefined || node.kind !== "folder") invalidChange();
+      if (node === undefined || node.kind !== kind) invalidChange();
       const parent = findMutFolder(root, parentPath(change.path))!;
       parent.children.delete(node.name);
       return;
     }
-    case "rename-note": {
-      const source = findMutNode(root, change.from);
-      const targetParent = findMutFolder(root, parentPath(change.to));
-      const targetName = change.to[change.to.length - 1];
-      if (
-        source === undefined ||
-        source.kind !== "note" ||
-        targetParent === undefined ||
-        targetParent.children.has(targetName)
-      ) {
-        invalidChange();
-      }
-      const sourceParent = findMutFolder(root, parentPath(change.from))!;
-      sourceParent.children.delete(source.name);
-      relocate(source, change.to);
-      targetParent.children.set(targetName, source);
-      return;
-    }
+    case "rename-note":
     case "rename-folder": {
+      const kind = change.kind === "rename-note" ? "note" : "folder";
       const source = findMutNode(root, change.from);
       const targetParent = findMutFolder(root, parentPath(change.to));
       const targetName = change.to[change.to.length - 1];
-      const insideSource =
-        notePathEquals(change.to, change.from) ||
-        isWithinFolder(change.to, change.from);
       if (
         source === undefined ||
-        source.kind !== "folder" ||
+        source.kind !== kind ||
         targetParent === undefined ||
         targetParent.children.has(targetName) ||
-        insideSource
+        (kind === "folder" && isAtOrWithin(change.to, change.from))
       ) {
         invalidChange();
       }
@@ -304,7 +283,7 @@ function applyTreeChangeOrThrow(state: MutState, change: Change): void {
       if (entry === undefined || entry.undecryptable || change.to.length === 0) {
         invalidChange();
       }
-      const found = findInTrashItem(entry.node, change.subPath);
+      const found = findWithParent(entry.node, change.subPath);
       const targetParent = findMutFolder(root, parentPath(change.to));
       const targetName = change.to[change.to.length - 1];
       if (
@@ -438,8 +417,12 @@ export function findWorkingNode(
   return current;
 }
 
-function isAtOrAncestorOf(candidate: NotePath, path: NotePath): boolean {
-  return notePathEquals(candidate, path) || isWithinFolder(path, candidate);
+export function findWorkingFolder(
+  tree: WorkingTree,
+  path: NotePath,
+): WorkingFolder | undefined {
+  const node = findWorkingNode(tree, path);
+  return node?.kind === "folder" ? node : undefined;
 }
 
 function touchesPath(change: Change, path: NotePath): boolean {
@@ -448,14 +431,14 @@ function touchesPath(change: Change, path: NotePath): boolean {
     case "delete-folder":
     case "trash-note":
     case "trash-folder":
-      return isAtOrAncestorOf(change.path, path);
+      return isAtOrWithin(path, change.path);
     case "rename-note":
     case "rename-folder":
       return (
-        isAtOrAncestorOf(change.from, path) || isAtOrAncestorOf(change.to, path)
+        isAtOrWithin(path, change.from) || isAtOrWithin(path, change.to)
       );
     case "restore-trash":
-      return isAtOrAncestorOf(change.to, path);
+      return isAtOrWithin(path, change.to);
     case "create-note":
     case "update-note":
     case "create-folder":
@@ -672,13 +655,10 @@ export function rebaseChanges(
       const folderPath = path.slice(0, length);
       if (findMutNode(root, folderPath) !== undefined) continue;
       const parent = parentFolderOf(folderPath)!;
-      const name = folderPath[folderPath.length - 1];
-      parent.children.set(name, {
-        kind: "folder",
-        name,
-        path: folderPath,
-        children: new Map(),
-      });
+      parent.children.set(
+        folderPath[folderPath.length - 1],
+        newMutFolder(folderPath),
+      );
       kept.push({ kind: "create-folder", path: folderPath });
     }
   }
@@ -697,14 +677,10 @@ export function rebaseChanges(
         }
         createMissingFolders(change.path);
         const parent = parentFolderOf(change.path)!;
-        const name = change.path[change.path.length - 1];
-        parent.children.set(name, {
-          kind: "note",
-          name,
-          path: change.path,
-          syncedPath: null,
-          trashBlobSha: null,
-        });
+        parent.children.set(
+          change.path[change.path.length - 1],
+          newMutNote(change.path),
+        );
         kept.push({
           kind: "create-note",
           path: change.path,
@@ -721,13 +697,7 @@ export function rebaseChanges(
         const name = change.path[change.path.length - 1];
         const existing = parent.children.get(name);
         if (existing === undefined) {
-          parent.children.set(name, {
-            kind: "note",
-            name,
-            path: change.path,
-            syncedPath: null,
-            trashBlobSha: null,
-          });
+          parent.children.set(name, newMutNote(change.path));
           kept.push(change);
         } else if (existing.kind === "note") {
           kept.push({
@@ -749,12 +719,7 @@ export function rebaseChanges(
         const name = change.path[change.path.length - 1];
         const existing = parent.children.get(name);
         if (existing === undefined) {
-          parent.children.set(name, {
-            kind: "folder",
-            name,
-            path: change.path,
-            children: new Map(),
-          });
+          parent.children.set(name, newMutFolder(change.path));
           kept.push(change);
         } else if (existing.kind !== "folder") {
           dropped.push(change);
@@ -762,79 +727,21 @@ export function rebaseChanges(
         // A folder that already exists is skipped silently.
         break;
       }
-      case "delete-note": {
-        const node = findMutNode(root, change.path);
-        if (node === undefined || node.kind !== "note") break;
-        const parent = parentFolderOf(change.path)!;
-        parent.children.delete(node.name);
-        kept.push(change);
-        break;
-      }
-      case "delete-folder": {
-        if (change.path.length === 0) break;
-        const node = findMutNode(root, change.path);
-        if (node === undefined || node.kind !== "folder") break;
-        const parent = parentFolderOf(change.path)!;
-        parent.children.delete(node.name);
-        kept.push(change);
-        break;
-      }
-      case "rename-note": {
-        const source = findMutNode(root, change.from);
-        const targetParent = parentFolderOf(change.to);
-        const targetName = change.to[change.to.length - 1];
-        if (
-          source === undefined ||
-          source.kind !== "note" ||
-          targetParent === undefined ||
-          targetParent.children.has(targetName)
-        ) {
-          dropped.push(change);
-          break;
-        }
-        const sourceParent = parentFolderOf(change.from)!;
-        sourceParent.children.delete(source.name);
-        relocate(source, change.to);
-        targetParent.children.set(targetName, source);
-        kept.push(change);
-        break;
-      }
-      case "rename-folder": {
-        if (change.from.length === 0) {
-          dropped.push(change);
-          break;
-        }
-        const source = findMutNode(root, change.from);
-        const targetParent = parentFolderOf(change.to);
-        const targetName = change.to[change.to.length - 1];
-        const insideSource =
-          notePathEquals(change.to, change.from) ||
-          isWithinFolder(change.to, change.from);
-        if (
-          source === undefined ||
-          source.kind !== "folder" ||
-          targetParent === undefined ||
-          targetParent.children.has(targetName) ||
-          insideSource
-        ) {
-          dropped.push(change);
-          break;
-        }
-        const sourceParent = parentFolderOf(change.from)!;
-        sourceParent.children.delete(source.name);
-        relocate(source, change.to);
-        targetParent.children.set(targetName, source);
-        kept.push(change);
-        break;
-      }
+      case "delete-note":
+      case "delete-folder":
       case "trash-note":
       case "trash-folder": {
-        const kind = change.kind === "trash-note" ? "note" : "folder";
+        const kind =
+          change.kind === "delete-note" || change.kind === "trash-note"
+            ? "note"
+            : "folder";
         if (change.path.length === 0) break;
         if (findMutNode(root, change.path)?.kind !== kind) break;
         keepIfValid(change);
         break;
       }
+      case "rename-note":
+      case "rename-folder":
       case "restore-trash":
         keepIfValid(change);
         break;
