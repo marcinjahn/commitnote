@@ -6,6 +6,10 @@
   import NameField from "../note/NameField.svelte";
   import { noteIcons } from "./action-icons";
   import { VERSION_HISTORY_LABEL } from "../history/history-messages";
+  import MenuPopup from "./MenuPopup.svelte";
+  import type { MenuAnchor } from "./row-menu-types";
+  import { colorTagStyle, type ColorTag } from "../../tags/color-tag";
+  import { describeColorTag } from "./tag-messages";
 
   interface Props {
     name: string;
@@ -24,6 +28,10 @@
     /** Shows the version history button. */
     onHistory?: () => void;
     historyDisabled?: boolean;
+    colorTag?: ColorTag | null;
+    colorTagDisabled?: boolean;
+    /** Shows the color tag button. */
+    onColorTag?: (color: ColorTag | null) => void;
   }
 
   const {
@@ -42,7 +50,32 @@
     onBack,
     onHistory,
     historyDisabled = false,
+    colorTag = null,
+    colorTagDisabled = false,
+    onColorTag,
   }: Props = $props();
+
+  const descId = $props.id();
+  let tagButton: HTMLButtonElement | undefined = $state();
+  let tagAnchor = $state<MenuAnchor | null>(null);
+
+  function toggleTagMenu(): void {
+    if (tagButton === undefined) return;
+    tagAnchor =
+      tagAnchor === null
+        ? { kind: "rect", rect: tagButton.getBoundingClientRect() }
+        : null;
+  }
+
+  function closeTagMenu(): void {
+    tagAnchor = null;
+    tagButton?.focus();
+  }
+
+  function pickColorTag(color: ColorTag | null): void {
+    closeTagMenu();
+    onColorTag?.(color);
+  }
 </script>
 
 <header class="note-header">
@@ -78,6 +111,47 @@
       <SyncStateIcon state={syncState} />
       <span class="sync-status-label">{describeSyncState(syncState)}</span>
     </span>
+  {/if}
+  {#if !draft && onColorTag !== undefined}
+    <button
+      type="button"
+      class="button button-ghost button-icon color-tag-button"
+      bind:this={tagButton}
+      aria-label="Color tag"
+      title="Color tag"
+      aria-haspopup="menu"
+      aria-expanded={tagAnchor !== null}
+      aria-describedby={descId}
+      disabled={colorTagDisabled}
+      onclick={toggleTagMenu}
+    >
+      <svg
+        class={["icon", colorTag !== null && "tag-colored"]}
+        class:tagged={colorTag !== null}
+        style={colorTag === null ? undefined : colorTagStyle(colorTag)}
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+        focusable="false"
+      >
+        {#each noteIcons.tag as d (d)}
+          <path {d} />
+        {/each}
+      </svg>
+    </button>
+    <span id={descId} class="visually-hidden">
+      {colorTag === null ? "No color" : describeColorTag(colorTag)}
+    </span>
+    {#if tagAnchor !== null && tagButton !== undefined}
+      <MenuPopup
+        label="Color tag"
+        items={[]}
+        anchor={tagAnchor}
+        trigger={tagButton}
+        swatches={{ selected: colorTag, disabled: false, onPick: pickColorTag }}
+        onSelect={() => {}}
+        onClose={closeTagMenu}
+      />
+    {/if}
   {/if}
   {#if !draft && onHistory !== undefined}
     <button
@@ -122,12 +196,28 @@
     font-size: 1.0625rem;
   }
 
-  .history-button {
+  .history-button,
+  .color-tag-button {
     flex-shrink: 0;
     color: var(--color-text-muted);
   }
 
-  .history-button:hover:not(:disabled) {
+  .color-tag-button .icon {
+    transition:
+      color var(--motion-duration) var(--motion-easing),
+      fill var(--motion-duration) var(--motion-easing);
+  }
+
+  .color-tag-button .icon.tagged {
+    stroke: var(--tag-color);
+  }
+
+  .color-tag-button .icon.tagged :global(path:first-child) {
+    fill: color-mix(in srgb, var(--tag-color) 20%, transparent);
+  }
+
+  .history-button:hover:not(:disabled),
+  .color-tag-button:hover:not(:disabled) {
     color: var(--color-text);
   }
 
