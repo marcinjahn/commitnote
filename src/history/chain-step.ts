@@ -28,7 +28,7 @@ export type ChainStep =
   | { kind: "passphraseChanged"; events: readonly VersionEvent[] }
   | { kind: "untraceable"; events: readonly VersionEvent[] | null };
 
-function lastSegment(path: string): string {
+export function lastSegment(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 

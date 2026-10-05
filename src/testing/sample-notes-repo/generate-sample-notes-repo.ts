@@ -145,28 +145,9 @@ async function generateRepo(
     message: commit1Message,
   });
 
-  const commit1Entries = await repo.listTreeEntries(commit1Tree);
-  const changeSet = buildChangeSet(source);
-  const encoded = await encodeChangeSet({
-    listing: commit1Entries,
-    changeSet,
-    order: EMPTY_ORDER,
-    keyring,
-    random,
-  });
-  const commit2Tree = await repo.applyChanges(commit1Tree, encoded.changes);
-  const commit2Sha = await repo.putCommit({
-    tree: commit2Tree,
-    parent: commit1Sha,
-    message: encoded.message,
-  });
-
-  const commits = [
-    { message: commit1Message, tree: commit1Tree },
-    { message: encoded.message, tree: commit2Tree },
-  ];
-  let parentSha = commit2Sha;
-  let parentTree = commit2Tree;
+  const commits = [{ message: commit1Message, tree: commit1Tree }];
+  let parentSha = commit1Sha;
+  let parentTree = commit1Tree;
 
   let orderIndex: OrderIndex = EMPTY_ORDER;
   async function commitChanges(changeSet: ChangeSet): Promise<void> {
@@ -186,6 +167,8 @@ async function generateRepo(
     });
     commits.push({ message: encoded.message, tree: parentTree });
   }
+
+  await commitChanges(buildChangeSet(source));
 
   if (order.length > 0) {
     await commitChanges(

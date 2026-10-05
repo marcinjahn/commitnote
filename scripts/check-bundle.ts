@@ -10,8 +10,7 @@ import {
   FAKE_FORGE_OPTIONS_KEY,
 } from "../src/testing/fake-forge/fake-forge-options";
 import { FAKE_FORGE_SESSION_PARAM } from "../src/testing/fake-forge/remembered-session";
-
-const SAMPLE_NOTES_REPO_PASSPHRASE = "sample notes repo passphrase";
+import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -46,20 +45,6 @@ async function findForbidden(
   return hits;
 }
 
-async function fileContainsAny(
-  dir: string,
-  needles: readonly string[],
-): Promise<boolean> {
-  const files = await collectFiles(dir);
-  for (const file of files) {
-    const text = await readFile(file, "utf8");
-    if (needles.some((needle) => text.includes(needle))) {
-      return true;
-    }
-  }
-  return false;
-}
-
 async function main(): Promise<void> {
   const distDir = join(rootDir, "dist");
   const fakeDistDir = join(rootDir, "dist-fake");
@@ -82,8 +67,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  const fakeHasBanner = await fileContainsAny(fakeDistDir, [FAKE_FORGE_BANNER]);
-  if (!fakeHasBanner) {
+  const fakeHits = await findForbidden(fakeDistDir, [
+    FAKE_FORGE_BANNER,
+    FAKE_FORGE_CONTROLS_KEY,
+  ]);
+  if (!fakeHits.some((hit) => hit.needle === FAKE_FORGE_BANNER)) {
     console.error(
       `dist-fake/ does not contain the test-mode banner ("${FAKE_FORGE_BANNER}"); the check cannot prove it can detect a leak`,
     );
@@ -91,10 +79,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const fakeHasControlsKey = await fileContainsAny(fakeDistDir, [
-    FAKE_FORGE_CONTROLS_KEY,
-  ]);
-  if (!fakeHasControlsKey) {
+  if (!fakeHits.some((hit) => hit.needle === FAKE_FORGE_CONTROLS_KEY)) {
     console.error(
       `dist-fake/ does not contain the test controls key ("${FAKE_FORGE_CONTROLS_KEY}"); the check cannot prove it can detect a leak`,
     );

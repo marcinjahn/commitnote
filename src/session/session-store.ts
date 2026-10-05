@@ -22,7 +22,6 @@ interface StoredRecord {
 }
 
 export interface SessionStore {
-  readonly current: Session | null;
   start(
     session: Session,
     options: { readonly rememberMe: boolean },
@@ -101,7 +100,6 @@ export function createSessionStore(options?: {
   readonly indexedDB?: IDBFactory;
   readonly storage?: StorageLike;
 }): SessionStore {
-  let current: Session | null = null;
   let dbPromise: Promise<IDBDatabase | null> | null = null;
 
   function getFactory(): IDBFactory | null {
@@ -190,12 +188,7 @@ export function createSessionStore(options?: {
   }
 
   return {
-    get current() {
-      return current;
-    },
-
     async start(session, { rememberMe }) {
-      current = session;
       writeLastLogin(session);
 
       if (!rememberMe) {
@@ -228,12 +221,10 @@ export function createSessionStore(options?: {
         accessToken: record.accessToken,
         keyring: record.keyring,
       };
-      current = session;
       return session;
     },
 
     async clear() {
-      current = null;
       await deleteRecord();
     },
 

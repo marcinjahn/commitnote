@@ -57,6 +57,14 @@ const exactAt = (commit: CommitSummary): Created => ({
   exact: true,
 });
 
+const resolutionFrom = (
+  newest: CommitSummary,
+  created: Created,
+): Resolution => ({
+  commitSha: newest.sha,
+  dates: { created, updated: newest.committedAt },
+});
+
 const before = (commit: CommitSummary): Created => ({
   at: commit.committedAt,
   exact: false,
@@ -137,10 +145,8 @@ export function createNoteDates(deps: NoteDatesDeps): NoteDatesResolver {
     const newest = page[0];
     if (newest === undefined) throw new Error("Note has no history");
     let lastSeen = newest;
-    const dates = (created: Created): Resolution => ({
-      commitSha: newest.sha,
-      dates: { created, updated: newest.committedAt },
-    });
+const dates = (created: Created): Resolution =>
+      resolutionFrom(newest, created);
 
     for (;;) {
       let relocated = false;
@@ -190,10 +196,8 @@ export function createNoteDates(deps: NoteDatesDeps): NoteDatesResolver {
     });
     const newest = page[0];
     if (newest === undefined) return fullResolution(storedPath, head);
-    const resolution = (created: Created): Resolution => ({
-      commitSha: newest.sha,
-      dates: { created, updated: newest.committedAt },
-    });
+const resolution = (created: Created): Resolution =>
+      resolutionFrom(newest, created);
     for (const commit of page) {
       if (commit.sha === previous.commitSha) {
         return resolution(previous.dates.created);
