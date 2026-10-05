@@ -2,7 +2,7 @@
   import { tick, untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
-  import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
+  import type { HeldConflict, SyncEngine, SyncEngineState } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
   import {
     applySettingsEdits,
@@ -295,8 +295,16 @@
     onNoteFont(settings.noteFont);
   });
 
+  const openPath = $derived(engineState.openNote?.path ?? null);
+  const openConflict = $derived<HeldConflict | undefined>(
+    openPath === null
+      ? undefined
+      : engineState.conflicts.find((held) => notePathEquals(held.path, openPath)),
+  );
+  const openConflicted = $derived(openConflict !== undefined);
+
   const printNote = $derived(
-    derivePrintNote(draft, engineState.openNote, engineState.conflicts),
+    derivePrintNote(draft, engineState.openNote, openConflict ? [openConflict] : []),
   );
 
   $effect(() => {
@@ -370,11 +378,6 @@
     },
   ]);
 
-  const openPath = $derived(engineState.openNote?.path ?? null);
-  const openConflicted = $derived(
-    openPath !== null &&
-      engineState.conflicts.some((held) => notePathEquals(held.path, openPath)),
-  );
 
   const NOTE_DATES_DEBOUNCE_MS = 3000;
 
@@ -1365,6 +1368,7 @@
       {engine}
       {forgeName}
       openNote={engineState.openNote}
+      conflict={openConflict}
       draft={draft !== null}
       {noteDates}
       treeLoaded={tree !== null}

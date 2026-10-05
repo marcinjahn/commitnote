@@ -1,14 +1,7 @@
 <script lang="ts">
-  import { untrack } from "svelte";
-  import { notePathEquals } from "../../changes/change";
   import { livePreview } from "../../editor/live-preview";
   import { linkOpen } from "../../editor/link-open";
-  import type {
-    HeldConflict,
-    OpenNoteState,
-    SyncEngine,
-    SyncEngineState,
-  } from "../../sync/sync-engine";
+  import type { HeldConflict, OpenNoteState, SyncEngine } from "../../sync/sync-engine";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
   import { describeSyncError } from "../browse/sync-messages";
   import ConflictView from "./ConflictView.svelte";
@@ -21,6 +14,7 @@
     engine: SyncEngine;
     forgeName: string;
     openNote: OpenNoteState | null;
+    conflict: HeldConflict | undefined;
     draft: boolean;
     noteDates: NoteDates | null;
     treeLoaded: boolean;
@@ -30,23 +24,9 @@
     noteFont: NoteFont;
   }
 
-  const { engine, forgeName, openNote, draft, noteDates, treeLoaded, hasNotes, onDraftContent, onNewNote, noteFont }: Props = $props();
+  const { engine, forgeName, openNote, conflict, draft, noteDates, treeLoaded, hasNotes, onDraftContent, onNewNote, noteFont }: Props = $props();
 
   const editorExtensions = [livePreview(), linkOpen()];
-
-  let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
-
-  $effect(() => {
-    return engine.subscribe((next) => {
-      engineState = next;
-    });
-  });
-
-  const conflict = $derived<HeldConflict | undefined>(
-    openNote?.kind === "loaded"
-      ? engineState.conflicts.find((held) => notePathEquals(held.path, openNote.path))
-      : undefined,
-  );
 
   const editorText = $derived<string | null>(
     draft ? "" : openNote?.kind === "loaded" && conflict === undefined ? openNote.content : null,
