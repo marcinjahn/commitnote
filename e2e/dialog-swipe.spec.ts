@@ -162,40 +162,47 @@ test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
 
   const handleDialogs: ReadonlyArray<{
     readonly kind: string;
+    readonly prepare?: (page: Page) => Promise<void>;
     readonly open: (page: Page) => Promise<Locator>;
   }> = [
     { kind: "sheet", open: openSettings },
     {
       kind: "fullscreen",
-      open: async (page) => {
-        await moveToTrash(page, "Welcome");
-        return openTrash(page);
-      },
+      prepare: (page) => moveToTrash(page, "Welcome"),
+      open: openTrash,
     },
-    { kind: "wide", open: openWelcomeHistory },
+    {
+      kind: "wide",
+      prepare: (page) =>
+        page.getByRole("treeitem", { name: "Welcome", exact: true }).click(),
+      open: openHistory,
+    },
   ];
 
-  for (const { kind, open } of handleDialogs) {
-    for (const start of topRegionStarts) {
-      test(`a ${kind} dialog closes by a touch swipe starting at ${start.name}`, async ({
-        page,
-      }) => {
-        const dialog = await open(page);
-        const card = await settledBox(dialog.locator(".dialog-card"));
-        const handle = (await dialog.getByTestId("dialog-grab-handle").boundingBox())!;
-        const title = (await dialog.locator(".dialog-title").boundingBox())!;
-        const at = start.at({ handle, card, title });
-        expect(
-          await page.evaluate(
-            ({ x, y }) =>
-              document.elementFromPoint(x, y)?.closest(".dialog-card") !== null,
-            at,
-          ),
-        ).toBe(true);
-        await swipeDownFrom(dialog, at, card.height);
-        await expect(dialog).toHaveCount(0);
-      });
-    }
+  for (const { kind, prepare, open } of handleDialogs) {
+    test(`a ${kind} dialog closes by a touch swipe from every start point in the top region`, async ({
+      page,
+    }) => {
+      await prepare?.(page);
+      for (const start of topRegionStarts) {
+        await test.step(`starting at ${start.name}`, async () => {
+          const dialog = await open(page);
+          const card = await settledBox(dialog.locator(".dialog-card"));
+          const handle = (await dialog.getByTestId("dialog-grab-handle").boundingBox())!;
+          const title = (await dialog.locator(".dialog-title").boundingBox())!;
+          const at = start.at({ handle, card, title });
+          expect(
+            await page.evaluate(
+              ({ x, y }) =>
+                document.elementFromPoint(x, y)?.closest(".dialog-card") !== null,
+              at,
+            ),
+          ).toBe(true);
+          await swipeDownFrom(dialog, at, card.height);
+          await expect(dialog).toHaveCount(0);
+        });
+      }
+    });
   }
 
   test("a short slow drag snaps back and leaves the dialog open and usable", async ({
@@ -260,13 +267,6 @@ test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
     await expect(dialog).not.toHaveAttribute("data-swipe", /.*/);
   });
 
-  test("a fullscreen dialog closes by swipe", async ({ page }) => {
-    await moveToTrash(page, "Welcome");
-    const dialog = await openTrash(page);
-    await swipeClose(dialog);
-    await expect(dialog).toHaveCount(0);
-  });
-
   test("a dialog without a header close button closes by swipe", async ({
     page,
   }) => {
@@ -317,24 +317,22 @@ test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    const dialog = await openSettings(page);
-    await swipeClose(dialog);
-    await expect(dialog).toHaveCount(0);
-  });
-
-  test("swiping from the grab handle closes the dialog when reduced motion is preferred", async ({
-    page,
-  }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    const dialog = await openSettings(page);
-    const card = await settledBox(dialog.locator(".dialog-card"));
-    const handle = (await dialog.getByTestId("dialog-grab-handle").boundingBox())!;
-    await swipeDownFrom(
-      dialog,
-      { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 },
-      card.height,
-    );
-    await expect(dialog).toHaveCount(0);
+    let dialog = await openSettings(page);
+    await test.step("swiping the header", async () => {
+      await swipeClose(dialog);
+      await expect(dialog).toHaveCount(0);
+    });
+    await test.step("swiping from the grab handle", async () => {
+      dialog = await openSettings(page);
+      const card = await settledBox(dialog.locator(".dialog-card"));
+      const handle = (await dialog.getByTestId("dialog-grab-handle").boundingBox())!;
+      await swipeDownFrom(
+        dialog,
+        { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 },
+        card.height,
+      );
+      await expect(dialog).toHaveCount(0);
+    });
   });
 });
 
