@@ -8,7 +8,10 @@ import {
 } from "../../../crypto/base64";
 import type { CommitFileChange, TreeEntry } from "../../forge-adapter";
 import { InMemoryGitRepo } from "../../fake/in-memory-git-repo";
-import type { StoredCommit } from "../../fake/in-memory-git-repo";
+import { MockFaults } from "../../fake/mock-faults";
+import type { FailureMatch, MockFailure } from "../../fake/mock-faults";
+
+export type { MockFailure };
 
 export interface MockGitHubRepoOptions {
   owner: string;
@@ -16,24 +19,6 @@ export interface MockGitHubRepoOptions {
   token: string;
   canWrite?: boolean;
   defaultBranch?: string;
-}
-
-export type MockFailure =
-  | {
-      status: 401 | 403 | 404 | 429 | 500 | 502;
-      body?: unknown;
-      headers?: Record<string, string>;
-    }
-  | { network: true };
-
-interface FailureMatch {
-  readonly method: string;
-  readonly pathPattern: RegExp;
-}
-
-interface QueuedFailure {
-  readonly match: FailureMatch;
-  readonly failure: MockFailure;
 }
 
 interface StoredCommitShape {
@@ -106,8 +91,7 @@ export class MockGitHubRepo {
   private readonly token: string;
   private readonly canWrite: boolean;
   private readonly defaultBranch: string;
-  private readonly failureQueue: QueuedFailure[] = [];
-  private readonly dropResponseQueue: FailureMatch[] = [];
+  private readonly faults = new MockFaults(jsonResponse);
 
   constructor(options: MockGitHubRepoOptions) {
     this.owner = options.owner;
@@ -118,12 +102,11 @@ export class MockGitHubRepo {
   }
 
   failNext(match: FailureMatch, failure: MockFailure): void {
-    this.failureQueue.push({ match, failure });
+    this.faults.failNext(match, failure);
   }
 
-  /** Applies the next matching request, then fails it as a network error. */
   dropNextResponse(match: FailureMatch): void {
-    this.dropResponseQueue.push(match);
+    this.faults.dropNextResponse(match);
   }
 
   handlers(): HttpHandler[] {
@@ -165,15 +148,8 @@ export class MockGitHubRepo {
     const path = `${url.pathname}${url.search}`;
     this.requests.push({ method, path });
 
-    const queuedIndex = this.failureQueue.findIndex(
-      (queued) =>
-        queued.match.method.toUpperCase() === method &&
-        queued.match.pathPattern.test(path),
-    );
-    if (queuedIndex !== -1) {
-      const [queued] = this.failureQueue.splice(queuedIndex, 1);
-      return this.respondFailure(queued.failure);
-    }
+    const injected = this.faults.takeFailure(method, path);
+    if (injected !== null) return injected;
 
     const expectedAuth = `Bearer ${this.token}`;
     if (request.headers.get("authorization") !== expectedAuth) {
@@ -190,26 +166,10 @@ export class MockGitHubRepo {
     }
 
     const response = await this.route(method, repoMatch[3] ?? "", url, request);
-    const dropIndex = this.dropResponseQueue.findIndex(
-      (match) =>
-        match.method.toUpperCase() === method && match.pathPattern.test(path),
-    );
-    if (dropIndex !== -1) {
-      this.dropResponseQueue.splice(dropIndex, 1);
+    if (this.faults.shouldDrop(method, path)) {
       return HttpResponse.error();
     }
     return response;
-  }
-
-  private respondFailure(failure: MockFailure): Response {
-    if ("network" in failure) {
-      return HttpResponse.error();
-    }
-    return jsonResponse(
-      (failure.body ?? { message: "Injected failure" }) as JsonBodyType,
-      failure.status,
-      failure.headers,
-    );
   }
 
   private isEmpty(): boolean {
@@ -246,30 +206,6 @@ export class MockGitHubRepo {
       }
     }
     return shape;
-  }
-
-  private isAncestor(oldSha: string, newSha: string): boolean {
-    let cursor: string | undefined = newSha;
-    while (cursor !== undefined) {
-      if (cursor === oldSha) {
-        return true;
-      }
-      cursor = this.git.getCommit(cursor)?.parent ?? undefined;
-    }
-    return false;
-  }
-
-  private firstParentChain(
-    from: string,
-  ): (readonly [string, StoredCommit])[] {
-    const chain: (readonly [string, StoredCommit])[] = [];
-    for (let sha: string | null = from; sha !== null; ) {
-      const commit = this.git.getCommit(sha);
-      if (commit === undefined) break;
-      chain.push([sha, commit]);
-      sha = commit.parent;
-    }
-    return chain;
   }
 
   private resolveRef(ref: string | undefined): string | undefined {
@@ -362,7 +298,7 @@ export class MockGitHubRepo {
       if (body.sha === undefined) {
         return jsonResponse({ message: "Validation Failed" }, 422);
       }
-      if (body.force !== true && !this.isAncestor(current, body.sha)) {
+      if (body.force !== true && !this.git.isAncestor(current, body.sha)) {
         return jsonResponse({ message: "Update is not a fast forward" }, 422);
       }
       this.git.setRef(branch, body.sha);
@@ -526,31 +462,6 @@ export class MockGitHubRepo {
       );
     }
 
-    if (method === "POST" && rest === "/git/blobs") {
-      if (!this.canWrite) {
-        return jsonResponse({ message: READ_ONLY_MESSAGE }, 403);
-      }
-      if (this.isEmpty()) {
-        return jsonResponse({ message: EMPTY_REPO_MESSAGE }, 409);
-      }
-      const body = (await request.json()) as {
-        content: string;
-        encoding?: "utf-8" | "base64";
-      };
-      const text =
-        body.encoding === "base64"
-          ? decodeBase64Content(body.content)
-          : body.content;
-      const sha = await this.git.putBlob(text);
-      return jsonResponse(
-        {
-          sha,
-          url: `https://api.github.com/repos/${this.owner}/${this.repoName}/git/blobs/${sha}`,
-        },
-        201,
-      );
-    }
-
     if (method === "GET" && rest === "/commits") {
       if (this.isEmpty()) {
         return jsonResponse({ message: EMPTY_REPO_MESSAGE }, 409);
@@ -565,9 +476,7 @@ export class MockGitHubRepo {
       }
       const path = url.searchParams.get("path");
       const commits =
-        path === null
-          ? this.firstParentChain(from)
-          : (this.git.commitsTouching(from, path) ?? []);
+        path === null ? [] : (this.git.commitsTouching(from, path) ?? []);
       const perPage = Math.min(
         Number(url.searchParams.get("per_page") ?? "30"),
         100,

@@ -1,27 +1,13 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
 import { adapterFactoryFor, forgeRegistry } from "../registry";
 import { createGitLabProvider } from "./gitlab-provider";
 import { MockGitLabRepo } from "./testing/mock-gitlab-server";
+import { useMswServer } from "../fake/msw-test-server";
 
 const TOKEN = "s3cr3t-token";
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 function projectBody(pathWithNamespace: string, visibility = "private") {
   return {
@@ -54,7 +40,7 @@ describe("GitLab provider", () => {
 
   it("lists member projects across Link and x-next-page pages, keeping nested groups in the owner", async () => {
     const requests: { authorization: string | null; search: string }[] = [];
-    server.use(
+    getServer().use(
       http.get("https://gitlab.com/api/v4/projects", ({ request }) => {
         const url = new URL(request.url);
         requests.push({
@@ -110,7 +96,7 @@ describe("GitLab provider", () => {
   });
 
   it("throws an Unauthorized ForgeError for a rejected token", async () => {
-    server.use(
+    getServer().use(
       http.get("https://gitlab.com/api/v4/projects", () =>
         HttpResponse.json({ message: "401 Unauthorized" }, { status: 401 }),
       ),
@@ -126,7 +112,7 @@ describe("GitLab provider", () => {
       projectPath: "acme/team/notes",
       token: TOKEN,
     });
-    server.use(...mock.handlers());
+    getServer().use(...mock.handlers());
 
     const adapter = adapterFactoryFor(forgeRegistry)(
       { forge: "gitlab", owner: "acme/team", repo: "notes" },

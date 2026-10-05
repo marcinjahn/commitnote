@@ -1,5 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { setupServer, type SetupServer } from "msw/node";
+import { describe, expect, it } from "vitest";
 import { commitFiles } from "../forge/fake/in-memory-git-repo";
 import type { ForgeAdapter } from "../forge/forge-adapter";
 import { createGitLabAdapter } from "../forge/gitlab/gitlab-adapter";
@@ -26,6 +25,7 @@ import {
   OLD_PASSPHRASE,
   readTree,
 } from "./testing/rekey-fixture";
+import { useMswServer } from "../forge/fake/msw-test-server";
 
 const PROJECT = "acme/notes";
 const TOKEN = "s3cr3t-token";
@@ -35,20 +35,7 @@ const INPUT = {
   newPassphrase: NEW_PASSPHRASE,
 };
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 async function setup(options?: Partial<MockGitLabRepoOptions>) {
   const mock = new MockGitLabRepo({
@@ -59,7 +46,7 @@ async function setup(options?: Partial<MockGitLabRepoOptions>) {
     now: () => NOW,
     ...options,
   });
-  server.use(...mock.handlers());
+  getServer().use(...mock.handlers());
   const { files, keyring } = await createRekeyFixtureFiles();
   const head = await commitFiles(mock.git, {
     parent: null,

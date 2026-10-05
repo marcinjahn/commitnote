@@ -1,6 +1,5 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { http } from "msw";
-import { setupServer, type SetupServer } from "msw/node";
 import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
 import { commitFiles } from "../fake/in-memory-git-repo";
 import type { CommitRequest, KeyBoundFile } from "../forge-adapter";
@@ -13,6 +12,7 @@ import {
   MockGitLabRepo,
   type MockGitLabRepoOptions,
 } from "./testing/mock-gitlab-server";
+import { useMswServer } from "../fake/msw-test-server";
 
 const PROJECT = "acme/notes";
 const TOKEN = "s3cr3t-token";
@@ -22,20 +22,7 @@ const NOTE = "folderA/noteB";
 const CREATE_MR = { method: "POST", pathPattern: /\/merge_requests$/ };
 const MERGE = { method: "PUT", pathPattern: /\/merge_requests\/\d+\/merge$/ };
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 function useMock(options?: Partial<MockGitLabRepoOptions>): MockGitLabRepo {
   const mock = new MockGitLabRepo({
@@ -45,7 +32,7 @@ function useMock(options?: Partial<MockGitLabRepoOptions>): MockGitLabRepo {
     now: () => NOW,
     ...options,
   });
-  server.use(...mock.handlers());
+  getServer().use(...mock.handlers());
   return mock;
 }
 
@@ -88,7 +75,7 @@ function captureCommitBodies(): {
   actions: { action: string; file_path: string; content?: string }[];
 }[] {
   const bodies: { actions: { action: string; file_path: string }[] }[] = [];
-  server.use(
+  getServer().use(
     http.post(/\/repository\/commits$/, async ({ request }) => {
       bodies.push(
         (await request.clone().json()) as {

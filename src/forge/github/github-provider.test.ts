@@ -1,28 +1,14 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
 import { ForgeError } from "../errors";
 import { adapterFactoryFor, forgeRegistry } from "../registry";
 import { createGitHubProvider } from "./github-provider";
 import { MockGitHubRepo } from "./testing/mock-github-server";
+import { useMswServer } from "../fake/msw-test-server";
 
 const TOKEN = "s3cr3t-token";
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 function repoBody(owner: string, name: string, isPrivate = true) {
   return {
@@ -60,7 +46,7 @@ describe("GitHub provider", () => {
 
   it("lists repositories across pages, authenticated with the token", async () => {
     const authorizations: (string | null)[] = [];
-    server.use(
+    getServer().use(
       http.get("https://api.github.com/user/repos", ({ request }) => {
         authorizations.push(request.headers.get("authorization"));
         const page = new URL(request.url).searchParams.get("page");
@@ -102,7 +88,7 @@ describe("GitHub provider", () => {
   });
 
   it("throws an Unauthorized ForgeError for a rejected token", async () => {
-    server.use(
+    getServer().use(
       http.get("https://api.github.com/user/repos", () =>
         HttpResponse.json({ message: "Bad credentials" }, { status: 401 }),
       ),
@@ -115,7 +101,7 @@ describe("GitHub provider", () => {
   });
 
   it("throws a Network ForgeError when the request fails", async () => {
-    server.use(
+    getServer().use(
       http.get("https://api.github.com/user/repos", () => HttpResponse.error()),
     );
 
@@ -130,7 +116,7 @@ describe("GitHub provider", () => {
       repo: "notes",
       token: TOKEN,
     });
-    server.use(...mock.handlers());
+    getServer().use(...mock.handlers());
 
     const adapter = adapterFactoryFor(forgeRegistry)(
       { forge: "github", owner: "acme", repo: "notes" },

@@ -1,6 +1,3 @@
-import { afterAll, afterEach, beforeAll } from "vitest";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
 import { MAIN_BRANCH, SAVE_SUBJECT } from "../../format/v1";
 import type {
@@ -16,25 +13,13 @@ import type { ContentCreatingRequest } from "../forge-adapter";
 import { createGitLabAdapter } from "./gitlab-adapter";
 import type { MockFailure } from "./testing/mock-gitlab-server";
 import { MockGitLabRepo } from "./testing/mock-gitlab-server";
+import { useMswServer } from "../fake/msw-test-server";
 
 const OWNER = "acme/personal";
 const REPO = "notes";
 const TOKEN = "s3cr3t-token";
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 const FAILURE_MATCH: Record<
   ContractOperation,
@@ -56,7 +41,7 @@ const FAILURE_MATCH: Record<
 // writing, so 'stale' is simulated by a one-shot override of that read.
 function forceStale(operation: ContractOperation): void {
   if (operation === "commit") {
-    server.use(
+    getServer().use(
       http.get(
         /\/repository\/branches\/main$/,
         () =>
@@ -71,7 +56,7 @@ function forceStale(operation: ContractOperation): void {
     return;
   }
   if (operation === "initialize") {
-    server.use(
+    getServer().use(
       http.get(
         /\/projects\/[^/]+$/,
         () => HttpResponse.json({ empty_repo: false }),
@@ -106,7 +91,7 @@ function toMockFailure(
 }
 
 function buildSubject(mock: MockGitLabRepo): ContractSubject {
-  server.use(...mock.handlers());
+  getServer().use(...mock.handlers());
 
   const contentCreatingRequests: ContentCreatingRequest[] = [];
   const adapter = createGitLabAdapter(

@@ -1,6 +1,3 @@
-import { afterAll, afterEach, beforeAll } from "vitest";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
 import { MAIN_BRANCH, SAVE_SUBJECT } from "../../format/v1";
 import type {
@@ -16,25 +13,13 @@ import type { ContentCreatingRequest } from "../forge-adapter";
 import { createGitHubAdapter } from "./github-adapter";
 import type { MockFailure } from "./testing/mock-github-server";
 import { MockGitHubRepo } from "./testing/mock-github-server";
+import { useMswServer } from "../fake/msw-test-server";
 
 const OWNER = "acme";
 const REPO = "notes";
 const TOKEN = "s3cr3t-token";
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 interface FailureMatch {
   readonly method: string;
@@ -84,7 +69,7 @@ function forceStale(operation: ContractOperation): void {
   const override = STALE_OVERRIDE[operation];
   const resolver = (): Response =>
     HttpResponse.json({ message: override.message }, { status: 422 });
-  server.use(
+  getServer().use(
     override.method === "put"
       ? http.put(override.urlPattern, resolver, { once: true })
       : http.patch(override.urlPattern, resolver, { once: true }),
@@ -127,7 +112,7 @@ function applyFailure(
 }
 
 function buildSubject(mock: MockGitHubRepo): ContractSubject {
-  server.use(...mock.handlers());
+  getServer().use(...mock.handlers());
 
   const contentCreatingRequests: ContentCreatingRequest[] = [];
   const adapter = createGitHubAdapter(

@@ -1,7 +1,5 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
 import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
 import { commitFiles } from "../fake/in-memory-git-repo";
 import { createGitLabAdapter, MAX_TREE_PAGES } from "./gitlab-adapter";
@@ -9,24 +7,12 @@ import type { GitLabAdapterOptions } from "./gitlab-adapter";
 import { MockGitLabRepo } from "./testing/mock-gitlab-server";
 import { argon2idDirect } from "../../crypto/argon2";
 import { initializeNotesRepo, inspectRepository } from "../../login/login";
+import { useMswServer } from "../fake/msw-test-server";
 
 const PROJECT = "acme/team/notes";
 const TOKEN = "s3cr3t-token";
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 function useMock(options?: { canWrite?: boolean }): MockGitLabRepo {
   const mock = new MockGitLabRepo({
@@ -34,7 +20,7 @@ function useMock(options?: { canWrite?: boolean }): MockGitLabRepo {
     token: TOKEN,
     ...options,
   });
-  server.use(...mock.handlers());
+  getServer().use(...mock.handlers());
   return mock;
 }
 
@@ -79,7 +65,7 @@ async function pushFromAnotherDevice(
 // Lets another device commit right before the adapter's commit request
 // reaches the mock, i.e. after the adapter's own head check.
 function raceNextCommit(action: () => Promise<unknown>): void {
-  server.use(
+  getServer().use(
     http.post(
       /\/repository\/commits$/,
       async () => {
@@ -93,7 +79,7 @@ function raceNextCommit(action: () => Promise<unknown>): void {
 
 function captureCommitBodies(): unknown[] {
   const bodies: unknown[] = [];
-  server.use(
+  getServer().use(
     http.post(/\/repository\/commits$/, async ({ request }) => {
       bodies.push(await request.clone().json());
       return undefined;
@@ -238,7 +224,7 @@ describe("GitLabAdapter", () => {
   it("reports canWrite false when main is protected against the user's pushes", async () => {
     const mock = useMock();
     const head = await seed(mock);
-    server.use(
+    getServer().use(
       http.get(/\/repository\/branches\/main$/, () =>
         HttpResponse.json({
           name: MAIN_BRANCH,
@@ -256,7 +242,7 @@ describe("GitLabAdapter", () => {
 
   it("grants write access through an inherited group membership", async () => {
     useMock();
-    server.use(
+    getServer().use(
       http.get(/\/projects\/[^/]+$/, () =>
         HttpResponse.json({
           empty_repo: true,

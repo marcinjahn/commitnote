@@ -1,7 +1,5 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { http } from "msw";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
 import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
 import { commitFiles } from "../fake/in-memory-git-repo";
 import type { CommitRequest, ContentCreatingRequest } from "../forge-adapter";
@@ -15,6 +13,7 @@ import {
 import type { GitLabAdapterOptions } from "./gitlab-adapter";
 import type { MockGitLabRepoOptions } from "./testing/mock-gitlab-server";
 import { MockGitLabRepo } from "./testing/mock-gitlab-server";
+import { useMswServer } from "../fake/msw-test-server";
 
 const PROJECT = "acme/notes";
 const TOKEN = "s3cr3t-token";
@@ -26,20 +25,7 @@ const MERGE = { method: "PUT", pathPattern: /\/merge_requests\/\d+\/merge$/ };
 const GET_MR = { method: "GET", pathPattern: /\/merge_requests\/\d+$/ };
 const MERGE_BASE = { method: "GET", pathPattern: /\/repository\/merge_base\?/ };
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 function useMock(options?: Partial<MockGitLabRepoOptions>): MockGitLabRepo {
   const mock = new MockGitLabRepo({
@@ -49,7 +35,7 @@ function useMock(options?: Partial<MockGitLabRepoOptions>): MockGitLabRepo {
     now: () => NOW,
     ...options,
   });
-  server.use(...mock.handlers());
+  getServer().use(...mock.handlers());
   return mock;
 }
 
@@ -126,7 +112,7 @@ function captureBodies(
   pattern: RegExp,
 ): unknown[] {
   const bodies: unknown[] = [];
-  server.use(
+  getServer().use(
     http[method](pattern, async ({ request }) => {
       bodies.push(await request.clone().json());
       return undefined;
@@ -267,7 +253,7 @@ describe("GitLabAdapter atomic commits", () => {
     const mock = useMock();
     const parent = await seed(mock);
     let theirs = "";
-    server.use(
+    getServer().use(
       http.post(
         /\/merge_requests$/,
         async () => {
