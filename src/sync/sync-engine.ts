@@ -78,6 +78,7 @@ import {
   appendChange,
   buildWorkingState,
   buildWorkingTree,
+  findWorkingFolder,
   findWorkingNode,
   localContentAt,
   rebaseChanges,
@@ -153,25 +154,13 @@ export interface HeldConflict {
   readonly editing: string | null;
 }
 
-export type EngineNotice =
-  | {
-      readonly id: number;
-      readonly kind: "merge";
-      readonly notice: MergeNotice;
-    }
-  | { readonly id: number; readonly kind: "conflict"; readonly path: NotePath }
-  | {
-      readonly id: number;
-      readonly kind: "edited-merge-restored";
-      readonly path: NotePath;
-    }
-  | { readonly id: number; readonly kind: "dropped"; readonly change: Change };
-
 type NoticeBody =
   | { readonly kind: "merge"; readonly notice: MergeNotice }
   | { readonly kind: "conflict"; readonly path: NotePath }
   | { readonly kind: "edited-merge-restored"; readonly path: NotePath }
   | { readonly kind: "dropped"; readonly change: Change };
+
+export type EngineNotice = NoticeBody & { readonly id: number };
 
 export interface SyncEngineState {
   readonly synced: SyncedState | null;
@@ -333,6 +322,18 @@ function childNames(folder: WorkingFolder, exclude?: string): string[] {
   return folder.children
     .map((child) => child.name)
     .filter((name) => name !== exclude);
+}
+
+function validateIn(
+  folder: WorkingFolder,
+  name: string,
+  exclude?: string,
+):
+  | { readonly ok: true; readonly name: string }
+  | { readonly ok: false; readonly error: StructureError } {
+  const validation = validateName(name, childNames(folder, exclude));
+  if (validation.ok) return validation;
+  return { ok: false, error: { kind: "invalidName", error: validation.error } };
 }
 
 function isFailedSave(save: SaveStatus): boolean {
@@ -565,9 +566,7 @@ export function createSyncEngine(options: {
     if (bodies.length === 0) return current;
     return [
       ...current,
-      ...bodies.map(
-        (body) => ({ ...body, id: nextNoticeId++ }) as EngineNotice,
-      ),
+      ...bodies.map((body) => ({ ...body, id: nextNoticeId++ })),
     ];
   }
 
@@ -592,7 +591,11 @@ export function createSyncEngine(options: {
     if (node?.kind !== "note") {
       throw new Error("No note at the requested path");
     }
-    return decryptNote(keyring, await adapter.readBlob(node.blobSha));
+    return readNoteBlob(node.blobSha);
+  }
+
+  async function readNoteBlob(blobSha: string): Promise<string> {
+    return decryptNote(keyring, await adapter.readBlob(blobSha));
   }
 
   async function verifyConfig(
@@ -646,8 +649,6 @@ export function createSyncEngine(options: {
     return order;
   }
 
-  // ---- Open note ----
-
   type NoteResolution =
     | { readonly kind: "local"; readonly content: string }
     | { readonly kind: "blob"; readonly blobSha: string }
@@ -676,6 +677,25 @@ export function createSyncEngine(options: {
       return { kind: "blob", blobSha: node.trashBlobSha };
     }
     return { kind: "missing" };
+  }
+
+  function openNoteFor(
+    path: NotePath,
+    resolution: NoteResolution,
+  ): OpenNoteState {
+    switch (resolution.kind) {
+      case "missing":
+        return { kind: "missing", path };
+      case "local":
+        return {
+          kind: "loaded",
+          path,
+          blobSha: null,
+          content: resolution.content,
+        };
+      case "blob":
+        return { kind: "loading", path };
+    }
   }
 
   function applyOpenNoteResult(epoch: number, next: OpenNoteState): void {
@@ -712,8 +732,7 @@ export function createSyncEngine(options: {
     epoch: number,
   ): Promise<void> {
     try {
-      const stored = await adapter.readBlob(blobSha);
-      const content = await decryptNote(keyring, stored);
+      const content = await readNoteBlob(blobSha);
       applyOpenNoteResult(epoch, { kind: "loaded", path, blobSha, content });
     } catch (error) {
       applyOpenNoteResult(epoch, {
@@ -734,7 +753,7 @@ export function createSyncEngine(options: {
     switch (resolution.kind) {
       case "missing":
         if (current.kind !== "missing") {
-          applyOpenNoteResult(epoch, { kind: "missing", path });
+          applyOpenNoteResult(epoch, openNoteFor(path, resolution));
         }
         return;
       case "local":
@@ -745,12 +764,7 @@ export function createSyncEngine(options: {
         ) {
           return;
         }
-        applyOpenNoteResult(epoch, {
-          kind: "loaded",
-          path,
-          blobSha: null,
-          content: resolution.content,
-        });
+        applyOpenNoteResult(epoch, openNoteFor(path, resolution));
         return;
       case "blob":
         if (
@@ -762,7 +776,7 @@ export function createSyncEngine(options: {
         // Keep showing the previously loaded content while the new blob
         // loads; any other prior state switches to loading.
         if (current.kind !== "loaded") {
-          applyOpenNoteResult(epoch, { kind: "loading", path });
+          applyOpenNoteResult(epoch, openNoteFor(path, resolution));
         }
         await fetchAndApplyNote(path, resolution.blobSha, epoch);
         return;
@@ -784,31 +798,10 @@ export function createSyncEngine(options: {
       update((current) => ({ ...current, openNote: null }));
     } else {
       const resolution = resolveWorkingNote(path);
-      switch (resolution.kind) {
-        case "missing":
-          update((current) => ({
-            ...current,
-            openNote: { kind: "missing", path },
-          }));
-          break;
-        case "local":
-          update((current) => ({
-            ...current,
-            openNote: {
-              kind: "loaded",
-              path,
-              blobSha: null,
-              content: resolution.content,
-            },
-          }));
-          break;
-        case "blob":
-          update((current) => ({
-            ...current,
-            openNote: { kind: "loading", path },
-          }));
-          loading = fetchAndApplyNote(path, resolution.blobSha, epoch);
-          break;
+      const next = openNoteFor(path, resolution);
+      update((current) => ({ ...current, openNote: next }));
+      if (resolution.kind === "blob") {
+        loading = fetchAndApplyNote(path, resolution.blobSha, epoch);
       }
     }
 
@@ -831,8 +824,6 @@ export function createSyncEngine(options: {
     if (current === null || !isAtOrWithin(current.path, deleted)) return;
     replaceOpenNote({ kind: "missing", path: current.path });
   }
-
-  // ---- Held conflicts ----
 
   function appendRebased(change: Change): void {
     update((current) => {
@@ -877,10 +868,7 @@ export function createSyncEngine(options: {
           theirs: null,
         });
       } else if (node.blobSha !== conflict.theirsBlobSha) {
-        const text = await decryptNote(
-          keyring,
-          await adapter.readBlob(node.blobSha),
-        );
+        const text = await readNoteBlob(node.blobSha);
         reads.push({
           path: conflict.path,
           seenBlobSha: conflict.theirsBlobSha,
@@ -986,8 +974,6 @@ export function createSyncEngine(options: {
     }
     if (needsSave) autosave.saveNow();
   }
-
-  // ---- Save loop ----
 
   function cancelRetry(): void {
     if (retryTimer !== undefined) {
@@ -1112,6 +1098,11 @@ export function createSyncEngine(options: {
     await reresolveOpenNote();
   }
 
+  function endImportAttempt(): void {
+    if (importInFlight) importNonAtomic = false;
+    importInFlight = false;
+  }
+
   async function runOneSave(): Promise<void> {
     update((current) => ({ ...current, save: { kind: "saving" } }));
     let atomicAttempt = false;
@@ -1144,8 +1135,7 @@ export function createSyncEngine(options: {
           keyring,
         });
         if (encoded.changes.length === 0) {
-          if (importInFlight) importNonAtomic = false;
-          importInFlight = false;
+          endImportAttempt();
           update((current) => ({ ...current, inFlight: EMPTY_CHANGES }));
           saveSucceeded();
           return;
@@ -1170,8 +1160,7 @@ export function createSyncEngine(options: {
 
         if (result.kind === "ok") {
           committedHead = result.head;
-          if (importInFlight) importNonAtomic = false;
-          importInFlight = false;
+          endImportAttempt();
           await adoptCommittedHead(result.head);
           saveSucceeded();
           return;
@@ -1185,8 +1174,7 @@ export function createSyncEngine(options: {
 
         const committed = await mergeWithRemote(attemptSynced);
         if (!committed) {
-          if (importInFlight) importNonAtomic = false;
-          importInFlight = false;
+          endImportAttempt();
           update((current) => ({ ...current, inFlight: EMPTY_CHANGES }));
           saveSucceeded();
           return;
@@ -1457,8 +1445,6 @@ export function createSyncEngine(options: {
     };
   }
 
-  // ---- Refresh ----
-
   function hasLocalWork(): boolean {
     return (
       state.pending.length > 0 ||
@@ -1571,18 +1557,13 @@ export function createSyncEngine(options: {
           case "local":
             return resolution.content;
           case "blob":
-            return decryptNote(
-              keyring,
-              await adapter.readBlob(resolution.blobSha),
-            );
+            return readNoteBlob(resolution.blobSha);
           default:
             throw new Error("No note at the requested path");
         }
       },
     };
   }
-
-  // ---- Commands ----
 
   function editNote(path: NotePath, content: string): void {
     if (disposed || suspended || state.workingTree === null) return;
@@ -1670,8 +1651,7 @@ export function createSyncEngine(options: {
 
   function workingFolderAt(path: NotePath): WorkingFolder | undefined {
     if (state.workingTree === null) return undefined;
-    const node = findWorkingNode(state.workingTree, path);
-    return node?.kind === "folder" ? node : undefined;
+    return findWorkingFolder(state.workingTree, path);
   }
 
   function create(
@@ -1682,10 +1662,8 @@ export function createSyncEngine(options: {
     if (disposed || suspended) return failure({ kind: "notFound" });
     const folder = workingFolderAt(parent);
     if (folder === undefined) return failure({ kind: "notFound" });
-    const validation = validateName(name, childNames(folder));
-    if (!validation.ok) {
-      return failure({ kind: "invalidName", error: validation.error });
-    }
+    const validation = validateIn(folder, name);
+    if (!validation.ok) return validation;
     const path = [...parent, validation.name];
     const change: Change =
       kind === "create-note"
@@ -1735,25 +1713,27 @@ export function createSyncEngine(options: {
     };
   }
 
-  function rename(path: NotePath, newName: string): StructureResult {
+  function commandTarget(path: NotePath): WorkingNode | undefined {
     if (
       disposed ||
       suspended ||
       state.workingTree === null ||
       path.length === 0
     ) {
-      return failure({ kind: "notFound" });
+      return undefined;
     }
-    const node = findWorkingNode(state.workingTree, path);
+    return findWorkingNode(state.workingTree, path);
+  }
+
+  function rename(path: NotePath, newName: string): StructureResult {
+    const node = commandTarget(path);
     if (node === undefined) return failure({ kind: "notFound" });
     if (isConflictedWithin(path)) return failure({ kind: "conflicted" });
 
     const parent = parentPath(path);
     const folder = workingFolderAt(parent)!;
-    const validation = validateName(newName, childNames(folder, node.name));
-    if (!validation.ok) {
-      return failure({ kind: "invalidName", error: validation.error });
-    }
+    const validation = validateIn(folder, newName, node.name);
+    if (!validation.ok) return validation;
     const to = [...parent, validation.name];
     if (validation.name === node.name) return { ok: true, path: to };
 
@@ -1766,15 +1746,7 @@ export function createSyncEngine(options: {
   }
 
   function move(path: NotePath, newParent: NotePath): StructureResult {
-    if (
-      disposed ||
-      suspended ||
-      state.workingTree === null ||
-      path.length === 0
-    ) {
-      return failure({ kind: "notFound" });
-    }
-    const node = findWorkingNode(state.workingTree, path);
+    const node = commandTarget(path);
     if (node === undefined) return failure({ kind: "notFound" });
     const planned = planMove(path, node, newParent);
     if (!planned.ok) return planned;
@@ -1806,13 +1778,8 @@ export function createSyncEngine(options: {
     if (target === undefined) {
       return { ok: false, error: { kind: "notFound" } };
     }
-    const validation = validateName(node.name, childNames(target));
-    if (!validation.ok) {
-      return {
-        ok: false,
-        error: { kind: "invalidName", error: validation.error },
-      };
-    }
+    const validation = validateIn(target, node.name);
+    if (!validation.ok) return validation;
     return {
       ok: true,
       change: {
@@ -1874,15 +1841,7 @@ export function createSyncEngine(options: {
   }
 
   function deleteItem(path: NotePath): StructureResult {
-    if (
-      disposed ||
-      suspended ||
-      state.workingTree === null ||
-      path.length === 0
-    ) {
-      return failure({ kind: "notFound" });
-    }
-    const node = findWorkingNode(state.workingTree, path);
+    const node = commandTarget(path);
     if (node === undefined) return failure({ kind: "notFound" });
     if (isConflictedWithin(path)) return failure({ kind: "conflicted" });
     if (node.kind === "folder" && node.children.length === 0) {
@@ -1898,20 +1857,26 @@ export function createSyncEngine(options: {
     return { ok: true, path, trashEntryId: entryId };
   }
 
-  // Puts a just-trashed item back where it was. A trash change that has not
-  // left the pending queue is dropped, leaving no trace in the history.
-  function undoTrash(entryId: string): StructureResult {
-    if (disposed || suspended || state.trash === null) {
-      return failure({ kind: "notFound" });
-    }
+  function readableTrashEntry(
+    entryId: string,
+  ): ReadableWorkingTrashEntry | undefined {
+    if (disposed || suspended || state.trash === null) return undefined;
     const entry = findWorkingTrashEntry(state.trash, entryId);
     if (
       entry === undefined ||
       entry.undecryptable ||
       isExpired(entry, clock.now())
     ) {
-      return failure({ kind: "notFound" });
+      return undefined;
     }
+    return entry;
+  }
+
+  // Puts a just-trashed item back where it was. A trash change that has not
+  // left the pending queue is dropped, leaving no trace in the history.
+  function undoTrash(entryId: string): StructureResult {
+    const entry = readableTrashEntry(entryId);
+    if (entry === undefined) return failure({ kind: "notFound" });
     const originalParent = parentPath(entry.originalPath);
 
     const index = state.pending.findIndex(
@@ -1928,10 +1893,8 @@ export function createSyncEngine(options: {
 
     const target = workingFolderAt(originalParent);
     if (target === undefined) return failure({ kind: "notFound" });
-    const validation = validateName(entry.tree.name, childNames(target));
-    if (!validation.ok) {
-      return failure({ kind: "invalidName", error: validation.error });
-    }
+    const validation = validateIn(target, entry.tree.name);
+    if (!validation.ok) return validation;
     update((current) => ({
       ...current,
       pending: current.pending.filter((_, i) => i !== index),
@@ -1983,25 +1946,14 @@ export function createSyncEngine(options: {
     subPath: NotePath,
     newParent: NotePath,
   ): StructureResult {
-    if (disposed || suspended || state.trash === null) {
-      return failure({ kind: "notFound" });
-    }
-    const entry = findWorkingTrashEntry(state.trash, entryId);
-    if (
-      entry === undefined ||
-      entry.undecryptable ||
-      isExpired(entry, clock.now())
-    ) {
-      return failure({ kind: "notFound" });
-    }
+    const entry = readableTrashEntry(entryId);
+    if (entry === undefined) return failure({ kind: "notFound" });
     const item = findTrashItem(entry, subPath);
     if (item === undefined) return failure({ kind: "notFound" });
     const target = workingFolderAt(newParent);
     if (target === undefined) return failure({ kind: "notFound" });
-    const validation = validateName(item.name, childNames(target));
-    if (!validation.ok) {
-      return failure({ kind: "invalidName", error: validation.error });
-    }
+    const validation = validateIn(target, item.name);
+    if (!validation.ok) return validation;
     const to = [...newParent, item.name];
     applyStructureChange({
       kind: "restore-trash",

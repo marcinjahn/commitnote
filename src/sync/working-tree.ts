@@ -417,6 +417,14 @@ export function findWorkingNode(
   return current;
 }
 
+export function findWorkingFolder(
+  tree: WorkingTree,
+  path: NotePath,
+): WorkingFolder | undefined {
+  const node = findWorkingNode(tree, path);
+  return node?.kind === "folder" ? node : undefined;
+}
+
 function touchesPath(change: Change, path: NotePath): boolean {
   switch (change.kind) {
     case "delete-note":
