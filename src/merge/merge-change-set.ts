@@ -4,7 +4,12 @@ import type {
   NotePath,
   OrderPosition,
 } from "../changes/change";
-import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
+import {
+  isAtOrWithin,
+  isWithinFolder,
+  notePathEquals,
+  parentPath,
+} from "../changes/change";
 import { utf8Encode } from "../crypto/base64";
 import { MAX_NAME_BYTES } from "../format/v1";
 import {
@@ -112,10 +117,6 @@ interface Redirect {
 
 function keyOf(path: NotePath): string {
   return JSON.stringify(path);
-}
-
-function isAtOrWithin(path: NotePath, folder: NotePath): boolean {
-  return notePathEquals(path, folder) || isWithinFolder(path, folder);
 }
 
 function rebase(path: NotePath, from: NotePath, to: NotePath): NotePath {

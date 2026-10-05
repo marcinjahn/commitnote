@@ -1,5 +1,10 @@
 import type { Change, ChangeSet, NotePath } from "../changes/change";
-import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
+import {
+  isAtOrWithin,
+  isWithinFolder,
+  notePathEquals,
+  parentPath,
+} from "../changes/change";
 import {
   applyChangeToOrder,
   EMPTY_ORDER,
@@ -255,8 +260,7 @@ function applyTreeChangeOrThrow(state: MutState, change: Change): void {
       const targetParent = findMutFolder(root, parentPath(change.to));
       const targetName = change.to[change.to.length - 1];
       const insideSource =
-        notePathEquals(change.to, change.from) ||
-        isWithinFolder(change.to, change.from);
+        isAtOrWithin(change.to, change.from);
       if (
         source === undefined ||
         source.kind !== "folder" ||
@@ -438,24 +442,20 @@ export function findWorkingNode(
   return current;
 }
 
-function isAtOrAncestorOf(candidate: NotePath, path: NotePath): boolean {
-  return notePathEquals(candidate, path) || isWithinFolder(path, candidate);
-}
-
 function touchesPath(change: Change, path: NotePath): boolean {
   switch (change.kind) {
     case "delete-note":
     case "delete-folder":
     case "trash-note":
     case "trash-folder":
-      return isAtOrAncestorOf(change.path, path);
+      return isAtOrWithin(path, change.path);
     case "rename-note":
     case "rename-folder":
       return (
-        isAtOrAncestorOf(change.from, path) || isAtOrAncestorOf(change.to, path)
+        isAtOrWithin(path, change.from) || isAtOrWithin(path, change.to)
       );
     case "restore-trash":
-      return isAtOrAncestorOf(change.to, path);
+      return isAtOrWithin(path, change.to);
     case "create-note":
     case "update-note":
     case "create-folder":
@@ -808,8 +808,7 @@ export function rebaseChanges(
         const targetParent = parentFolderOf(change.to);
         const targetName = change.to[change.to.length - 1];
         const insideSource =
-          notePathEquals(change.to, change.from) ||
-          isWithinFolder(change.to, change.from);
+          isAtOrWithin(change.to, change.from);
         if (
           source === undefined ||
           source.kind !== "folder" ||

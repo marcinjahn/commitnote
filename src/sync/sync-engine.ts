@@ -1,10 +1,14 @@
 import type { Change, ChangeSet, NotePath } from "../changes/change";
-import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
+import { isAtOrWithin, notePathEquals, parentPath } from "../changes/change";
 import { encodeChangeSet } from "../changes/encode-change-set";
 import { verifyKeyCheck, type Keyring } from "../crypto/keyring";
 import { decryptNote, NoteDecryptionError } from "../crypto/note-cipher";
-import { parseRepoConfig, type RepoConfig } from "../crypto/repo-config";
-import { FOLDER_MARKER, REPO_CONFIG_PATH } from "../format/v1";
+import {
+  findConfigEntry,
+  parseRepoConfig,
+  type RepoConfig,
+} from "../crypto/repo-config";
+import { FOLDER_MARKER } from "../format/v1";
 import {
   applySettingsEdits,
   rawSettingsOf,
@@ -313,10 +317,6 @@ export function mapForgeError(error: ForgeError): SyncError {
   }
 }
 
-function isAtOrWithin(path: NotePath, folder: NotePath): boolean {
-  return notePathEquals(path, folder) || isWithinFolder(path, folder);
-}
-
 function appendAll(changes: ChangeSet, more: ChangeSet): ChangeSet {
   let result = changes;
   for (const change of more) {
@@ -598,9 +598,7 @@ export function createSyncEngine(options: {
   async function verifyConfig(
     listing: readonly TreeEntry[],
   ): Promise<RepoConfig> {
-    const entry = listing.find(
-      (item) => item.type === "blob" && item.path === REPO_CONFIG_PATH,
-    );
+    const entry = findConfigEntry(listing);
     if (entry === undefined) throw new KeyChangedError();
     if (verifiedConfig?.sha === entry.sha) return verifiedConfig.config;
     const parsed = parseRepoConfig(await adapter.readBlob(entry.sha));

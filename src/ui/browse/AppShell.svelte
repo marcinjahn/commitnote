@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
-  import { isWithinFolder, notePathEquals, parentPath } from "../../changes/change";
+  import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
   import type { SyncEngine, SyncEngineState } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
   import {
@@ -1175,7 +1175,7 @@
     const path = dialog.node.path;
     const affectsOpenNote =
       openPath !== null &&
-      (notePathEquals(openPath, path) || isWithinFolder(openPath, path));
+      isAtOrWithin(openPath, path);
     const name = dialog.node.name;
     const result = engine.delete(path);
     if (!result.ok) {

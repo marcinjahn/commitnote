@@ -1,5 +1,5 @@
 import type { Change, NotePath, OrderPosition } from "../changes/change";
-import { isWithinFolder, notePathEquals, parentPath } from "../changes/change";
+import { isAtOrWithin, notePathEquals, parentPath } from "../changes/change";
 import type { Keyring } from "../crypto/keyring";
 import { decryptNote, encryptNote } from "../crypto/note-cipher";
 import type { RandomSource } from "../crypto/random";
@@ -135,16 +135,6 @@ export async function readOrderIndex(
   return decryptOrderIndex(keyring, await readBlob(entry.sha));
 }
 
-export function orderKeyOf(
-  index: OrderIndex,
-  path: NotePath,
-): string | undefined {
-  if (path.length === 0) return undefined;
-  return index.folders
-    .get(folderKey(parentPath(path)))
-    ?.get(path[path.length - 1]);
-}
-
 interface Sibling {
   readonly kind: "note" | "folder";
   readonly name: string;
@@ -215,7 +205,7 @@ class OrderEditor {
   dropFolder(folder: NotePath): void {
     for (const key of [...this.folders.keys()]) {
       const path = parseFolderKey(key)!;
-      if (notePathEquals(path, folder) || isWithinFolder(path, folder)) {
+      if (isAtOrWithin(path, folder)) {
         this.folders.delete(key);
       }
     }
@@ -225,7 +215,7 @@ class OrderEditor {
     const moved: [string, FolderOrder][] = [];
     for (const [key, order] of [...this.folders]) {
       const path = parseFolderKey(key)!;
-      if (!notePathEquals(path, from) && !isWithinFolder(path, from)) continue;
+      if (!isAtOrWithin(path, from)) continue;
       this.folders.delete(key);
       moved.push([folderKey([...to, ...path.slice(from.length)]), order]);
     }

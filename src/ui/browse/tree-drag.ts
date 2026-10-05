@@ -1,7 +1,7 @@
 import { tick } from "svelte";
 import type { ActionReturn } from "svelte/action";
 import type { NotePath } from "../../changes/change";
-import { isWithinFolder, notePathEquals } from "../../changes/change";
+import { isAtOrWithin, notePathEquals } from "../../changes/change";
 import {
   liftPreview,
   measureTops,
@@ -65,10 +65,6 @@ function rowElements(container: HTMLElement): Map<string, HTMLElement> {
     rows.set(row.dataset.treePath ?? "", row);
   }
   return rows;
-}
-
-function isAtOrWithin(path: NotePath, folder: NotePath): boolean {
-  return notePathEquals(path, folder) || isWithinFolder(path, folder);
 }
 
 /**

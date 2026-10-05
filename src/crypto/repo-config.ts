@@ -5,7 +5,9 @@ import {
   KDF_ALGORITHM,
   KDF_LIMITS,
   NAME_SCHEME_ID,
+  REPO_CONFIG_PATH,
 } from "../format/v1";
+import type { TreeEntry } from "../forge/forge-adapter";
 import { fromBase64, toBase64 } from "./base64";
 
 export interface KdfParams {
@@ -51,6 +53,14 @@ const KDF_KEYS = [
 ] as const;
 
 const KEY_CHECK_BYTES = 32;
+
+export function findConfigEntry(
+  listing: readonly TreeEntry[],
+): TreeEntry | undefined {
+  return listing.find(
+    (entry) => entry.type === "blob" && entry.path === REPO_CONFIG_PATH,
+  );
+}
 
 function invalid(reason: string): RepoConfigParseResult {
   return { kind: "invalid", reason };

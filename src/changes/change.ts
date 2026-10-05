@@ -77,6 +77,10 @@ export function isWithinFolder(path: NotePath, folder: NotePath): boolean {
   return true;
 }
 
+export function isAtOrWithin(path: NotePath, folder: NotePath): boolean {
+  return notePathEquals(path, folder) || isWithinFolder(path, folder);
+}
+
 export function parentPath(path: NotePath): NotePath {
   if (path.length === 0) {
     throw new RangeError("The root path has no parent");

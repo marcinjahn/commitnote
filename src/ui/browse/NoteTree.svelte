@@ -1,7 +1,7 @@
 <script lang="ts">
   import { SvelteMap } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
-  import { isWithinFolder, notePathEquals } from "../../changes/change";
+  import { isAtOrWithin } from "../../changes/change";
   import type { SyncStates } from "../../sync/sync-state";
   import type { WorkingNode, WorkingTree } from "../../sync/working-tree";
   import { findWorkingNode } from "../../sync/working-tree";
@@ -113,7 +113,7 @@
       return {
         draggedKind: node.kind,
         conflicted: conflicts.some(
-          (path) => notePathEquals(path, dragged) || isWithinFolder(path, dragged),
+          (path) => isAtOrWithin(path, dragged),
         ),
         childrenOf(folder) {
           const found = findWorkingNode(current, folder);

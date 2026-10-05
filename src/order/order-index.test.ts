@@ -8,7 +8,7 @@ import {
   decryptOrderIndex,
   EMPTY_ORDER,
   encryptOrderIndex,
-  orderKeyOf,
+  folderKey,
   parseOrderIndex,
   serializeOrderIndex,
   siblingComparator,
@@ -17,6 +17,12 @@ import {
 } from "./order-index";
 
 const keyringFor = testKeyring;
+
+function orderKeyOf(index: OrderIndex, path: NotePath): string | undefined {
+  return index.folders
+    .get(folderKey(path.slice(0, -1)))
+    ?.get(path[path.length - 1]);
+}
 
 function indexOf(
   folders: Record<string, Record<string, string>>,

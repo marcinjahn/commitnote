@@ -7,7 +7,11 @@ import {
   type Keyring,
 } from "../crypto/keyring";
 import type { RandomSource } from "../crypto/random";
-import { parseRepoConfig, serializeRepoConfig } from "../crypto/repo-config";
+import {
+  findConfigEntry,
+  parseRepoConfig,
+  serializeRepoConfig,
+} from "../crypto/repo-config";
 import { isForgeError } from "../forge/errors";
 import type {
   AtomicCommitSupport,
@@ -16,7 +20,6 @@ import type {
   ForgeAdapter,
 } from "../forge/forge-adapter";
 import { REPLACE_HISTORY_COST } from "../forge/forge-adapter";
-import { REPO_CONFIG_PATH } from "../format/v1";
 import type { Clock } from "../sync/clock";
 import type { RateBudget } from "../sync/rate-budget";
 import {
@@ -245,9 +248,7 @@ async function buildChange(
   if (head !== engine.getState().synced?.head)
     fail({ kind: "changedElsewhere" });
   const listing = await adapter.listTree(head);
-  const configEntry = listing.find(
-    (entry) => entry.type === "blob" && entry.path === REPO_CONFIG_PATH,
-  );
+  const configEntry = findConfigEntry(listing);
   if (configEntry === undefined) fail({ kind: "unavailable" });
   const current = parseRepoConfig(await adapter.readBlob(configEntry.sha));
   if (current.kind !== "valid") fail({ kind: "unavailable" });
@@ -351,9 +352,7 @@ async function readOutcome(
     const head = await deps.adapter.getHead();
     if (head === prepared.parent) return { kind: "unchanged" };
     const listing = await deps.adapter.listTree(head);
-    const entry = listing.find(
-      (item) => item.type === "blob" && item.path === REPO_CONFIG_PATH,
-    );
+    const entry = findConfigEntry(listing);
     if (entry === undefined) return { kind: "notLanded" };
     const parsed = parseRepoConfig(await deps.adapter.readBlob(entry.sha));
     return parsed.kind === "valid" &&

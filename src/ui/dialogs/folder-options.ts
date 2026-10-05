@@ -1,6 +1,6 @@
 import type { NotePath } from "../../changes/change";
 import {
-  isWithinFolder,
+  isAtOrWithin,
   notePathEquals,
   parentPath,
 } from "../../changes/change";
@@ -36,8 +36,7 @@ export function listMoveTargets(
       if (
         excludeSubtree &&
         itemPath !== null &&
-        (notePathEquals(child.path, itemPath) ||
-          isWithinFolder(child.path, itemPath))
+        isAtOrWithin(child.path, itemPath)
       ) {
         continue;
       }
