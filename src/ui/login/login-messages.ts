@@ -1,4 +1,5 @@
 import type { LoginError, LoginStep } from "../../login/login";
+import { describeMinutes } from "../plural";
 
 export const GENERIC_LOGIN_ERROR = "Something went wrong. Try again.";
 
@@ -12,8 +13,7 @@ export function describeLoginError(
     case "noAccess":
       return "The repository was not found, or the access token has no access to it.";
     case "rateLimited": {
-      const minutes = Math.max(1, Math.ceil(error.retryAfterMs / 60000));
-      return `${forgeName}'s rate limit was reached. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+      return `${forgeName}'s rate limit was reached. Try again in ${describeMinutes(error.retryAfterMs)}.`;
     }
     case "network":
       return `Could not reach ${forgeName}. Check your connection and try again.`;

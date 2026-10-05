@@ -4,6 +4,7 @@ import type {
   NotesArchiveErrorKind,
 } from "../../import/read-notes-archive";
 import { validateName } from "../../tree/note-names";
+import { plural } from "../plural";
 
 export const FALLBACK_IMPORT_FOLDER_NAME = "Imported notes";
 
@@ -11,10 +12,6 @@ export function defaultImportFolderName(fileName: string): string {
   const stem = fileName.replace(/\.zip$/i, "").trim();
   const validation = validateName(stem, []);
   return validation.ok ? validation.name : FALLBACK_IMPORT_FOLDER_NAME;
-}
-
-function plural(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`;
 }
 
 export function countSkipped(skipped: ArchiveSkipCounts): number {

@@ -1,5 +1,6 @@
 import type { SyncError } from "../../sync/sync-engine";
 import type { SyncState } from "../../sync/sync-state";
+import { describeMinutes } from "../plural";
 
 export const KEY_CHANGED_MESSAGE =
   "The passphrase was changed on another device. Log in again.";
@@ -33,8 +34,7 @@ export function describeSyncError(
     case "notFound":
       return "The notes repo is no longer accessible with this access token.";
     case "rateLimited": {
-      const minutes = Math.max(1, Math.ceil(error.retryAfterMs / 60000));
-      return `${forgeName}'s rate limit was reached. Refresh again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+      return `${forgeName}'s rate limit was reached. Refresh again in ${describeMinutes(error.retryAfterMs)}.`;
     }
     case "network":
       return `Could not reach ${forgeName}. Showing the last loaded notes.`;

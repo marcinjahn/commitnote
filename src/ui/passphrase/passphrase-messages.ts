@@ -7,6 +7,7 @@ import type {
 import type { RekeySummary } from "../../rekey/plan-rekey";
 import type { SyncError } from "../../sync/sync-engine";
 import { KEY_CHANGED_MESSAGE } from "../browse/sync-messages";
+import { describeMinutes, plural } from "../plural";
 
 export const PASSPHRASE_CHANGED_MESSAGE = "Passphrase changed.";
 export const PASSPHRASE_CHANGED_MISMATCH_MESSAGE =
@@ -56,10 +57,6 @@ export const NEW_PASSPHRASE_HINT =
   "Use a long passphrase, for example several random words. It cannot be recovered.";
 
 const NOTHING_CHANGED = "Nothing was changed.";
-
-function plural(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`;
-}
 
 export function describeChangeStep(step: PassphraseChangeStep): string {
   switch (step.kind) {
@@ -137,8 +134,7 @@ function describeForgeError(error: SyncError, forgeName: string): string {
     case "notFound":
       return "The notes repo is no longer accessible with this access token.";
     case "rateLimited": {
-      const minutes = Math.max(1, Math.ceil(error.retryAfterMs / 60_000));
-      return `${forgeName}'s rate limit was reached. Try again in ${plural(minutes, "minute", "minutes")}.`;
+      return `${forgeName}'s rate limit was reached. Try again in ${describeMinutes(error.retryAfterMs)}.`;
     }
     case "network":
       return `Could not reach ${forgeName}. Check your connection and try again.`;
@@ -186,8 +182,7 @@ export function describeChangeFailure(
     case "needsSetup":
       return describeChangeAtomicSetup(forgeName, failure.canConfigure);
     case "rateBudget": {
-      const minutes = Math.max(1, Math.ceil((failure.retryAt - now) / 60_000));
-      return `commitnote is pacing its requests to ${forgeName}. ${NOTHING_CHANGED} Try again in ${plural(minutes, "minute", "minutes")}.`;
+      return `commitnote is pacing its requests to ${forgeName}. ${NOTHING_CHANGED} Try again in ${describeMinutes(failure.retryAt - now)}.`;
     }
     case "forge":
       return `${describeForgeError(failure.error, forgeName)} ${NOTHING_CHANGED}`;
