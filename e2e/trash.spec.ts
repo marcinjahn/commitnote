@@ -1,17 +1,9 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { logIn, expectTree, SAMPLE, openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
 const TRASH_REPO = "https://github.com/sample/trash";
-const PASSPHRASE = "sample notes repo passphrase";
 const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
-
-async function startSession(page: Page, repo = NOTES_REPO): Promise<void> {
-  await page.goto("/");
-  await logIn(page, { repo, passphrase: PASSPHRASE });
-  await expectTree(page);
-}
 
 function treeItem(page: Page, name: string) {
   return page.getByRole("treeitem", { name, exact: true });
@@ -59,7 +51,7 @@ async function restoreTo(
 test("the Trash button is hidden while the trash is empty", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
 
   await expect(page.getByTestId("open-trash")).toHaveCount(0);
 });
@@ -67,7 +59,7 @@ test("the Trash button is hidden while the trash is empty", async ({
 test("the Trash row sits below the tree and leaves the repo link visible", { tag: "@mobile" }, async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
 
   await moveToTrash(page, "Welcome");
 
@@ -94,7 +86,7 @@ test("the Trash row sits below the tree and leaves the repo link visible", { tag
 test("a deleted note shows up in the trash and can be restored into a folder", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
 
   await moveToTrash(page, "Welcome", /will be moved to the trash/);
   await expect(treeItem(page, "Welcome")).toHaveCount(0);
@@ -119,7 +111,7 @@ test("a deleted note shows up in the trash and can be restored into a folder", a
 test("restoring into a folder that already has that name is refused", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
 
   await moveToTrash(page, "Welcome");
   await page.getByRole("button", { name: "New folder" }).click();
@@ -143,7 +135,7 @@ test("restoring into a folder that already has that name is refused", async ({
 test("a trashed folder expands and a sub-item can be restored on its own", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
 
   await moveToTrash(page, "Journal", /and everything in it/);
   await expect(treeItem(page, "Journal")).toHaveCount(0);
@@ -174,7 +166,7 @@ test("a trashed folder expands and a sub-item can be restored on its own", async
 test("permanently deleting a trashed item needs confirmation", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
   await moveToTrash(page, "Welcome");
 
   const trash = await openTrash(page);
@@ -201,7 +193,7 @@ test("permanently deleting a trashed item needs confirmation", async ({
 });
 
 test("emptying the trash needs confirmation", async ({ page }) => {
-  await startSession(page);
+  await openNotes(page);
   await moveToTrash(page, "Welcome");
   await moveToTrash(page, "Journal");
   await expect(page.getByTestId("open-trash")).toHaveText(/Trash \(2\)/);
@@ -226,7 +218,7 @@ test("emptying the trash needs confirmation", async ({ page }) => {
 test("deleting an empty folder is permanent and leaves no trash", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
 
   await page.getByRole("button", { name: "Actions for Empty folder" }).click();
   await page.getByRole("menuitem", { name: "Delete…" }).click();
@@ -244,7 +236,7 @@ test("startup purges expired trash and keeps fresh entries", async ({
   page,
 }) => {
   await page.clock.setFixedTime(SAMPLE_TRASH_NOW);
-  await startSession(page, TRASH_REPO);
+  await openNotes(page, { repo: TRASH_REPO });
 
   await expect(page.getByTestId("open-trash")).toHaveText(/Trash \(1\)/, {
     timeout: 15_000,
@@ -290,7 +282,7 @@ async function startTrashSessionWithFailingPurge(page: Page): Promise<void> {
       "Network",
     ),
   );
-  await logIn(page, { repo: TRASH_REPO, passphrase: PASSPHRASE });
+  await logIn(page, { repo: TRASH_REPO, passphrase: SAMPLE.passphrase });
   await expectTree(page);
   await purgeFailed;
 }
@@ -329,7 +321,7 @@ function moveToTrashToast(page: Page) {
 }
 
 test("Undo in the toast puts a deleted note back", async ({ page }) => {
-  await startSession(page);
+  await openNotes(page);
 
   await moveToTrash(page, "Welcome");
 
@@ -346,7 +338,7 @@ test("Undo in the toast puts a deleted note back", async ({ page }) => {
 test("Undo after the trash was saved restores the note to its folder", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
   await page.getByRole("treeitem", { name: "Journal", exact: true }).click();
   const before = await page.getByRole("treeitem").allInnerTexts();
 
@@ -359,7 +351,7 @@ test("Undo after the trash was saved restores the note to its folder", async ({
   await expect(page.getByTestId("open-trash")).toHaveCount(0);
   await page.waitForTimeout(1_000);
   await page.reload();
-  await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
+  await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(page);
   await expect(treeItem(page, "Projects")).toBeVisible();
   await expect(page.getByTestId("open-trash")).toHaveCount(0);
@@ -369,7 +361,7 @@ test("Undo after the trash was saved restores the note to its folder", async ({
 test("the trash toast disappears by itself after a few seconds", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
   await page.clock.install();
 
   await moveToTrash(page, "Welcome");
@@ -385,7 +377,7 @@ test("the trash toast disappears by itself after a few seconds", async ({
 });
 
 test("a newer trash toast replaces the previous one", async ({ page }) => {
-  await startSession(page);
+  await openNotes(page);
 
   await moveToTrash(page, "Welcome");
   await moveToTrash(page, "Zażółć gęślą jaźń");
@@ -398,7 +390,7 @@ test("the Trash dialog closes from its corner close button and from Escape", { t
   page,
 }) => {
   await page.clock.setFixedTime(SAMPLE_TRASH_NOW);
-  await startSession(page, TRASH_REPO);
+  await openNotes(page, { repo: TRASH_REPO });
 
   let dialog = await openTrash(page);
   const close = dialog.getByRole("button", { name: "Close" });

@@ -1,15 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import {
-  expectTree,
-  logIn,
-  TouchFinger,
-  type TouchPoint,
-} from "./helpers";
+import { expectTree, logIn, TouchFinger, type TouchPoint, SAMPLE, openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const REPO_KEY = "sample/notes";
 
 const REORDERED_ROOT = [
   "Empty folder",
@@ -20,9 +12,7 @@ const REORDERED_ROOT = [
 ];
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 });
 
 function treeItem(page: Page, name: string): Locator {
@@ -45,7 +35,7 @@ function commitCount(page: Page): Promise<number> {
   return page.evaluate(
     (repoKey) =>
       (window as any).__commitNoteFakeForge.commitMessages(repoKey).length,
-    REPO_KEY,
+    SAMPLE.key,
   );
 }
 
@@ -196,7 +186,7 @@ test("the order set by touch survives a reload", { tag: "@mobile-only" }, async 
   await moveZazolcBeforeWelcome(page);
   const exported = await page.evaluate(
     (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),
-    REPO_KEY,
+    SAMPLE.key,
   );
 
   await page.reload();
@@ -204,9 +194,9 @@ test("the order set by touch survives a reload", { tag: "@mobile-only" }, async 
   await page.evaluate(
     ([repoKey, state]) =>
       (window as any).__commitNoteFakeForge.adoptRepo(repoKey, state),
-    [REPO_KEY, exported] as const,
+    [SAMPLE.key, exported] as const,
   );
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(page);
 
   await expect(treeRows(page)).toHaveText(REORDERED_ROOT);

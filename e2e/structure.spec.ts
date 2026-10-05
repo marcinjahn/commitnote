@@ -1,27 +1,13 @@
-import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, rowSyncState } from "./helpers";
-
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
+import { rowSyncState, openNotes, showTree } from "./helpers";
 
 // Opening a note hides the tree entirely on phones (covered by its own test
 // elsewhere), so tests that keep acting on tree rows after opening a note
 // must return to the tree first.
-async function backToTreeIfMobile(
-  page: Page,
-  testInfo: TestInfo,
-): Promise<void> {
-  if (testInfo.project.name !== "mobile") return;
-  await page.getByRole("button", { name: "Back to notes" }).click();
-}
-
 test("creating, renaming, moving and deleting through row menus", async ({
   page,
-}, testInfo) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+}) => {
+  await openNotes(page);
 
   // Create a folder at the top level.
   await page.getByRole("button", { name: "New folder" }).click();
@@ -38,7 +24,7 @@ test("creating, renaming, moving and deleting through row menus", async ({
   await expect(
     page.getByRole("textbox", { name: "Note editor" }),
   ).toBeVisible();
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
 
   await expect(rowSyncState(page, "Recipes")).toHaveCount(0);
 
@@ -52,7 +38,7 @@ test("creating, renaming, moving and deleting through row menus", async ({
   await expect(
     page.getByRole("textbox", { name: "Note editor" }),
   ).toBeVisible();
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
 
   // A note has no rename item in its row menu, a folder does.
   await page.getByRole("button", { name: "Actions for Idea Two" }).click();
@@ -81,7 +67,7 @@ test("creating, renaming, moving and deleting through row menus", async ({
 
   await renameInput.fill("Grocery List");
   await renameInput.press("Enter");
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   await expect(
     page.getByRole("treeitem", { name: "Grocery List" }),
   ).toBeVisible();
@@ -116,9 +102,7 @@ test("creating, renaming, moving and deleting through row menus", async ({
 });
 
 test("right-click on a row opens its menu", async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page
     .getByRole("treeitem", { name: "Welcome" })
@@ -129,9 +113,7 @@ test("right-click on a row opens its menu", async ({ page }) => {
 });
 
 test("the row actions button toggles its menu", { tag: "@mobile" }, async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   const button = page.getByRole("button", { name: "Actions for Welcome" });
   await button.click();

@@ -1,12 +1,8 @@
-import type { Page, TestInfo } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, rowSyncState } from "./helpers";
+import { logIn, expectTree, rowSyncState, SAMPLE, openNotes, logOut, showTree } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const REPO_KEY = "sample/notes";
 
-const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 
 const WAITING = "Out of sync: waiting to save";
 const FAILED = "Out of sync: saving failed, will retry";
@@ -52,20 +48,6 @@ const WELCOME_TAIL = [
 
 function welcomeWithHeading(heading: string): string {
   return [heading, ...WELCOME_TAIL].join("\n");
-}
-
-async function startSession(page: Page): Promise<void> {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
-}
-
-async function backToTreeIfMobile(
-  page: Page,
-  testInfo: TestInfo,
-): Promise<void> {
-  if (testInfo.project.name !== "mobile") return;
-  await page.getByRole("button", { name: "Back to notes" }).click();
 }
 
 function headerIcon(page: Page) {
@@ -120,7 +102,7 @@ async function editRemotely(
   await page.evaluate(
     ([repoKey, path, text]) =>
       (window as any).__commitNoteFakeForge.editNote(repoKey, path, text),
-    [REPO_KEY, notePath, markdown] as const,
+    [SAMPLE.key, notePath, markdown] as const,
   );
 }
 
@@ -140,12 +122,12 @@ async function createNoteThroughRowMenu(
 }
 
 async function startConflictOnWelcome(page: Page): Promise<void> {
-  await startSession(page);
+  await openNotes(page);
   await openNote(page, ["Welcome"]);
 
   const editor = page.getByRole("textbox", { name: "Note editor" });
   await editor.click();
-  await page.keyboard.press(`${MODIFIER}+Home`);
+  await page.keyboard.press("ControlOrMeta+Home");
   await page.keyboard.press("Shift+End");
   await page.keyboard.type("# Welcome from here");
   await editRemotely(
@@ -177,8 +159,8 @@ test.describe("with GitHub-like forge latency", () => {
 
   test("creating a folder and a note walks through the sync states and survives logging out", async ({
     page,
-  }, testInfo) => {
-    await startSession(page);
+  }) => {
+    await openNotes(page);
 
     await page.getByRole("button", { name: "New folder" }).click();
     await page.getByLabel("Folder name").fill("Work");
@@ -197,7 +179,7 @@ test.describe("with GitHub-like forge latency", () => {
           "commit",
           "Network",
         ),
-      REPO_KEY,
+      SAMPLE.key,
     );
     await recordHeaderIconLabels(page);
 
@@ -222,11 +204,11 @@ test.describe("with GitHub-like forge latency", () => {
     expect(labels.lastIndexOf("Saving")).toBeGreaterThan(failedAt);
     expect(labels.at(-1)).toBe("(no status)");
 
-    await backToTreeIfMobile(page, testInfo);
+    await showTree(page);
     await expect(rowSyncState(page, "Work", { exact: true })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Log out", exact: true }).click();
-    await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+    await logOut(page);
+    await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
     await expectTree(page);
 
     await openNote(page, ["Work", "Plan"]);
@@ -238,14 +220,14 @@ test.describe("with GitHub-like forge latency", () => {
 
 test("renaming, moving and deleting notes and folders", async ({
   page,
-}, testInfo) => {
-  await startSession(page);
+}) => {
+  await openNotes(page);
 
   await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
   const nameField = page.getByRole("textbox", { name: "Note name" });
   await nameField.fill("Hello");
   await nameField.press("Enter");
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   await expect(
     page.getByRole("treeitem", { name: "Welcome", exact: true }),
   ).toHaveCount(0);
@@ -300,7 +282,7 @@ test("renaming, moving and deleting notes and folders", async ({
 test("a concurrent remote edit at the end of a note merges cleanly", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
   await openNote(page, ["Projects", "commitnote", "Ideas"]);
 
   await editRemotely(
@@ -311,7 +293,7 @@ test("a concurrent remote edit at the end of a note merges cleanly", async ({
 
   const editor = page.getByRole("textbox", { name: "Note editor" });
   await editor.click();
-  await page.keyboard.press(`${MODIFIER}+Home`);
+  await page.keyboard.press("ControlOrMeta+Home");
   await page.keyboard.type("Local line");
   await page.keyboard.press("Enter");
 
@@ -343,7 +325,7 @@ test("a conflict is resolved by editing the merged text", async ({ page }) => {
   ).toBeVisible();
 
   await editor.click();
-  await page.keyboard.press(`${MODIFIER}+Home`);
+  await page.keyboard.press("ControlOrMeta+Home");
   await page.keyboard.press("Shift+ArrowDown");
   await page.keyboard.press("Delete");
   await page.keyboard.press("ArrowDown");

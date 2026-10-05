@@ -1,10 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { chooseRepository, expectTree, logIn } from "./helpers";
+import { chooseRepository, expectTree, SAMPLE, openNotes, logOut } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const REPO_KEY = "sample/notes";
-const PASSPHRASE = "sample notes repo passphrase";
 const TEAL = "rgb(0, 133, 115)";
 
 interface Sample {
@@ -175,7 +172,7 @@ async function saveTeal(page: Page): Promise<void> {
             (window as any).__commitNoteFakeForge.commitMessages(
               repoKey,
             ) as string[],
-          REPO_KEY,
+          SAMPLE.key,
         ),
       { timeout: 10_000 },
     )
@@ -183,14 +180,6 @@ async function saveTeal(page: Page): Promise<void> {
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect.poll(() => rootAccent(page)).toBe(TEAL);
-}
-
-async function clickLogOut(page: Page): Promise<void> {
-  const back = page.getByRole("button", { name: "Back to notes" });
-  if (await back.isVisible()) {
-    await back.click();
-  }
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
 }
 
 async function settle(page: Page, accent: string): Promise<void> {
@@ -208,13 +197,11 @@ test.describe("with motion", () => {
   test("the saved accent fades in on the passphrase step and back to system on logout", async ({
     page,
   }) => {
-    await page.goto("/");
-    await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-    await expectTree(page);
+    await openNotes(page);
     const system = await rootAccent(page);
     await settle(page, system);
     await saveTeal(page);
-    await clickLogOut(page);
+    await logOut(page);
     await expect(page.getByLabel("Access token")).toBeVisible({
       timeout: 10_000,
     });
@@ -227,13 +214,13 @@ test.describe("with motion", () => {
     expectFade(await accentFade(page), system, TEAL, { element: true });
     await settle(page, TEAL);
 
-    await page.getByLabel("Passphrase", { exact: true }).fill(PASSPHRASE);
+    await page.getByLabel("Passphrase", { exact: true }).fill(SAMPLE.passphrase);
     await page.getByRole("button", { name: "Log in" }).click();
     await expectTree(page);
     await settle(page, TEAL);
 
     await page.evaluate(watchAccentFade, "#login-passphrase");
-    await clickLogOut(page);
+    await logOut(page);
     await expect(page.getByLabel("Access token")).toBeVisible({
       timeout: 10_000,
     });
@@ -244,20 +231,14 @@ test.describe("with motion", () => {
   test("a remembered session fades the saved accent in once the app has rendered", async ({
     page,
   }) => {
-    await page.goto("/");
-    await logIn(page, {
-      repo: NOTES_REPO,
-      passphrase: PASSPHRASE,
-      rememberMe: true,
-    });
-    await expectTree(page);
+    await openNotes(page, { rememberMe: true });
     const system = await rootAccent(page);
     await settle(page, system);
     await saveTeal(page);
     const exported = await page.evaluate(
       (repoKey) =>
         (window as any).__commitNoteFakeForge.exportRepo(repoKey) as string,
-      REPO_KEY,
+      SAMPLE.key,
     );
     await page.addInitScript(
       ([key, repoKey, state]) => {
@@ -271,7 +252,7 @@ test.describe("with motion", () => {
           },
         });
       },
-      ["__commitNoteFakeForge", REPO_KEY, exported],
+      ["__commitNoteFakeForge", SAMPLE.key, exported],
     );
     await page.addInitScript(watchAccentFade, "[role='tree']");
     await page.addInitScript(watchFirstTreeFrame);
@@ -296,21 +277,19 @@ test("with reduced motion the saved accent applies at once", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
   const system = await rootAccent(page);
   expect(system).not.toBe(TEAL);
   await settle(page, system);
   await saveTeal(page);
-  await clickLogOut(page);
+  await logOut(page);
   await expect(page.getByLabel("Access token")).toBeVisible({
     timeout: 10_000,
   });
   await settle(page, system);
 
   await page.evaluate(startSampling, "#login-passphrase");
-  await chooseRepository(page, { repo: NOTES_REPO });
+  await chooseRepository(page, { repo: SAMPLE.repo });
   await expect(page.getByLabel("Passphrase", { exact: true })).toBeVisible();
   await settle(page, TEAL);
   await expect

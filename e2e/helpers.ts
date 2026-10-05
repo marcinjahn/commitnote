@@ -1,7 +1,7 @@
 import type { CDPSession, Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 
-export interface LogInOptions {
+interface LogInOptions {
   readonly repo: string;
   readonly token?: string;
   readonly passphrase: string;
@@ -17,7 +17,7 @@ export async function continueWithToken(
   await page.getByRole("button", { name: "Continue" }).click();
 }
 
-export interface ChooseRepositoryOptions {
+interface ChooseRepositoryOptions {
   readonly repo: string;
   readonly token?: string;
   readonly provider?: string;
@@ -88,6 +88,45 @@ export async function expectLoginAlert(
   await expect(page.getByRole("alert")).toHaveText(text, {
     timeout: KEY_DERIVATION_TIMEOUT,
   });
+}
+
+export const SAMPLE = {
+  repo: "https://github.com/sample/notes",
+  key: "sample/notes",
+  passphrase: "sample notes repo passphrase",
+} as const;
+
+interface OpenNotesOptions {
+  readonly repo?: string;
+  readonly token?: string;
+  readonly passphrase?: string;
+  readonly rememberMe?: boolean;
+  readonly provider?: string;
+}
+
+export async function openNotes(
+  page: Page,
+  options: OpenNotesOptions = {},
+): Promise<void> {
+  await page.goto("/");
+  await logIn(page, {
+    ...options,
+    repo: options.repo ?? SAMPLE.repo,
+    passphrase: options.passphrase ?? SAMPLE.passphrase,
+  });
+  await expectTree(page);
+}
+
+export async function showTree(page: Page): Promise<void> {
+  const back = page.getByRole("button", { name: "Back to notes" });
+  if (await back.isVisible()) {
+    await back.click();
+  }
+}
+
+export async function logOut(page: Page): Promise<void> {
+  await showTree(page);
+  await page.getByRole("button", { name: "Log out", exact: true }).click();
 }
 
 // Matches while the row shows any sync state: a waiting or saving label

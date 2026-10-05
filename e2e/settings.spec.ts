@@ -1,18 +1,14 @@
 import type { Locator, Page, TestInfo } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { chooseRepository, expectTree, logIn } from "./helpers";
+import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, showTree } from "./helpers";
 
-const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const REPO_KEY = "sample/notes";
-const PASSPHRASE = "sample notes repo passphrase";
 
 function commitMessages(page: Page): Promise<string[]> {
   return page.evaluate(
     (repoKey) =>
       (window as any).__commitNoteFakeForge.commitMessages(repoKey) as string[],
-    REPO_KEY,
+    SAMPLE.key,
   );
 }
 
@@ -144,19 +140,9 @@ async function createHeaderFolder(page: Page, name: string): Promise<void> {
   await expect(page.getByRole("treeitem", { name })).toBeVisible();
 }
 
-async function clickLogOut(page: Page): Promise<void> {
-  const back = page.getByRole("button", { name: "Back to notes" });
-  if (await back.isVisible()) {
-    await back.click();
-  }
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
-}
-
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 });
 
 test("Settings is the first command and opens a dialog with the accent color options", async ({
@@ -361,15 +347,15 @@ test("a saved accent color applies on the passphrase step and after login, and l
   await page.keyboard.press("Escape");
   await expect(settingsDialog(page)).toHaveCount(0);
 
-  await clickLogOut(page);
+  await logOut(page);
   await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
   await expectRootAccent(page, system);
 
-  await chooseRepository(page, { repo: NOTES_REPO });
+  await chooseRepository(page, { repo: SAMPLE.repo });
   await expect(page.getByLabel("Passphrase", { exact: true })).toBeVisible();
   await expectRootAccent(page, TEAL);
 
-  await page.getByLabel("Passphrase", { exact: true }).fill(PASSPHRASE);
+  await page.getByLabel("Passphrase", { exact: true }).fill(SAMPLE.passphrase);
   await page.getByRole("button", { name: "Log in" }).click();
   await expectTree(page);
   await expectRootAccent(page, TEAL);
@@ -623,12 +609,6 @@ async function openWelcome(page: Page): Promise<void> {
   await expect(page.getByRole("textbox", { name: "Note editor" })).toBeVisible();
 }
 
-async function showTreeIfMobile(page: Page, testInfo: TestInfo): Promise<void> {
-  if (testInfo.project.name === "mobile") {
-    await page.getByRole("button", { name: "Back to notes" }).click();
-  }
-}
-
 async function returnToWelcomeIfMobile(
   page: Page,
   testInfo: TestInfo,
@@ -681,9 +661,7 @@ test("the Note font options form two columns from desktop width and one on mobil
 test("only the Inter font file loads on app load", async ({ page }) => {
   await page.goto("about:blank");
   const files = collectFontFiles(page);
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
   await openWelcome(page);
   await expect.poll(() => files.length).toBeGreaterThan(0);
   await page.waitForTimeout(1000);
@@ -723,7 +701,7 @@ for (const font of ["Literata", "JetBrains Mono"]) {
   }, testInfo) => {
     const { stack, family } = NOTE_FONTS[font];
     await openWelcome(page);
-    await showTreeIfMobile(page, testInfo);
+    await showTree(page);
     await openSettings(page);
     await chooseOption(page, "Note font", font);
     await expect(
@@ -813,12 +791,12 @@ test("a saved note font is applied after login and reset on logout", async ({
   await expect.poll(async () => (await rootNoteFont(page)).inline).not.toBe("");
   await closeSettings(page);
 
-  await clickLogOut(page);
+  await logOut(page);
   await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
   await expect.poll(() => rootNoteFont(page)).toEqual(initial);
 
-  await chooseRepository(page, { repo: NOTES_REPO });
-  await page.getByLabel("Passphrase", { exact: true }).fill(PASSPHRASE);
+  await chooseRepository(page, { repo: SAMPLE.repo });
+  await page.getByLabel("Passphrase", { exact: true }).fill(SAMPLE.passphrase);
   await page.getByRole("button", { name: "Log in" }).click();
   await expectTree(page);
   await expect.poll(async () => (await rootNoteFont(page)).inline).not.toBe("");
@@ -845,11 +823,11 @@ test("typing after switching the note font lands where the line was clicked", as
   await openWelcome(page);
   const content = page.locator(".cm-content");
   await content.click();
-  await page.keyboard.press(`${MODIFIER}+End`);
+  await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("MARKER");
   await expect(content).toContainText("MARKER");
 
-  await showTreeIfMobile(page, testInfo);
+  await showTree(page);
   await openSettings(page);
   await chooseOption(page, "Note font", "Literata");
   await closeSettings(page);
@@ -867,7 +845,7 @@ test("typing after switching the note font lands where the line was clicked", as
 
   await expect(page.locator(".cm-line", { hasText: /Second bulletXYZ$/ })).toHaveCount(1);
 
-  await page.keyboard.press(`${MODIFIER}+z`);
+  await page.keyboard.press("ControlOrMeta+z");
 
   await expect(page.locator(".cm-line", { hasText: /^- Second bullet$/ })).toHaveCount(1);
   await expect(content).not.toContainText("XYZ");

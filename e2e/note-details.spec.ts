@@ -1,9 +1,7 @@
-import type { BrowserContextOptions, Page, TestInfo } from "@playwright/test";
+import type { BrowserContextOptions, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { logIn, expectTree, SAMPLE, openNotes, showTree } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const PASSPHRASE = "sample notes repo passphrase";
 const T0 = new Date("2026-03-12T10:00:00+01:00");
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -11,9 +9,7 @@ test.use({ locale: "en-GB", timezoneId: "Europe/Warsaw" });
 
 async function startSession(page: Page): Promise<void> {
   await page.clock.install({ time: T0 });
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 }
 
 function details(page: Page) {
@@ -26,14 +22,6 @@ function editor(page: Page) {
 
 function treeItem(page: Page, name: string) {
   return page.getByRole("treeitem", { name, exact: true });
-}
-
-async function backToTreeIfMobile(
-  page: Page,
-  testInfo: TestInfo,
-): Promise<void> {
-  if (testInfo.project.name !== "mobile") return;
-  await page.getByRole("button", { name: "Back to notes" }).click();
 }
 
 async function waitForSynced(page: Page): Promise<void> {
@@ -221,15 +209,15 @@ test("no note details are shown when no note is open", async ({ page }) => {
 
 test("reopening a note shows its dates immediately", async ({
   page,
-}, testInfo) => {
+}) => {
   await startSession(page);
   await treeItem(page, "Welcome").click();
   await expect(details(page).locator("span.note-dates")).toBeVisible();
 
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   await treeItem(page, "Zażółć gęślą jaźń").click();
   await expect(details(page)).toBeVisible();
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   await treeItem(page, "Welcome").click();
 
   await expect(details(page).locator("span.note-dates")).toBeVisible({
@@ -249,13 +237,13 @@ async function moveToTrash(page: Page, name: string): Promise<void> {
 
 test("a note re-created under a trashed note's name shows its own dates", async ({
   page,
-}, testInfo) => {
+}) => {
   await startSession(page);
   await treeItem(page, "Welcome").click();
   await expect(details(page)).toContainText("Created 12 Mar 2026");
 
   await page.clock.fastForward(10 * DAY_MS);
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   await moveToTrash(page, "Welcome");
   await page.getByRole("button", { name: "New note", exact: true }).click();
   const field = page.getByRole("textbox", { name: "Note name" });
@@ -282,13 +270,13 @@ test("a note re-created under a trashed note's name shows its own dates", async 
 
 test("a note renamed onto a trashed note's name shows its own dates", async ({
   page,
-}, testInfo) => {
+}) => {
   await startSession(page);
   await treeItem(page, "Welcome").click();
   await expect(details(page)).toContainText("Created 12 Mar 2026");
 
   await page.clock.fastForward(10 * DAY_MS);
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   await moveToTrash(page, "Welcome");
   await page.getByRole("button", { name: "New note", exact: true }).click();
   const field = page.getByRole("textbox", { name: "Note name" });
@@ -319,13 +307,13 @@ test.describe("with GitHub-like forge latency", () => {
 
   test("a note renamed onto a trashed note's name while saving shows its own dates", async ({
     page,
-  }, testInfo) => {
+  }) => {
     await startSession(page);
     await treeItem(page, "Welcome").click();
     await expect(details(page)).toContainText("Created 12 Mar 2026");
 
     await page.clock.fastForward(10 * DAY_MS);
-    await backToTreeIfMobile(page, testInfo);
+    await showTree(page);
     await moveToTrash(page, "Welcome");
     await page.getByRole("button", { name: "New note", exact: true }).click();
     const field = page.getByRole("textbox", { name: "Note name" });
@@ -454,7 +442,7 @@ test("a note re-created under a reused name on another device shows its own date
   const other = await otherContext.newPage();
   await other.clock.install({ time: T0 });
   await other.goto(new URL("/", baseURL ?? page.url()).toString());
-  await logIn(other, { repo: NOTES_REPO, passphrase: PASSPHRASE });
+  await logIn(other, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(other);
   await other.clock.fastForward(10 * DAY_MS);
   await moveToTrash(other, "Welcome");
@@ -474,13 +462,14 @@ test("a note re-created under a reused name on another device shows its own date
     timeout: 15_000,
   });
 
-  const exported = await other.evaluate(() =>
-    (window as any).__commitNoteFakeForge.exportRepo("sample/notes"),
+  const exported = await other.evaluate(
+    (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),
+    SAMPLE.key,
   );
   await page.evaluate(
-    (state) =>
-      (window as any).__commitNoteFakeForge.adoptRepo("sample/notes", state),
-    exported,
+    ([repoKey, state]) =>
+      (window as any).__commitNoteFakeForge.adoptRepo(repoKey, state),
+    [SAMPLE.key, exported] as const,
   );
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByTestId("open-trash")).toBeVisible({ timeout: 15_000 });

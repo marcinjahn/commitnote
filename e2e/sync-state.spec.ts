@@ -1,15 +1,11 @@
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
 
 test("a synced note shows no sync state in its row or header", async ({
   page,
 }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   // Check the tree row before opening the note: on mobile, opening a note
   // hides the tree entirely.

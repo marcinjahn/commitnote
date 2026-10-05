@@ -1,17 +1,14 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { strToU8, zipSync } from "fflate";
-import { expectTree, logIn } from "./helpers";
+import { SAMPLE, openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const REPO_KEY = "sample/notes";
 
 function commitCount(page: Page): Promise<number> {
   return page.evaluate(
     (repoKey) =>
       (window as any).__commitNoteFakeForge.commitMessages(repoKey).length,
-    REPO_KEY,
+    SAMPLE.key,
   );
 }
 
@@ -41,9 +38,7 @@ function importDialog(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 });
 
 test("imports an archive into a new folder named after the file in one commit", async ({

@@ -1,9 +1,5 @@
-import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
-
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
+import { openNotes, showTree } from "./helpers";
 
 const ROOT_NAMES = [
   "Empty folder",
@@ -13,18 +9,8 @@ const ROOT_NAMES = [
   "Zażółć gęślą jaźń",
 ];
 
-async function backToTreeIfMobile(
-  page: Page,
-  testInfo: TestInfo,
-): Promise<void> {
-  if (testInfo.project.name !== "mobile") return;
-  await page.getByRole("button", { name: "Back to notes" }).click();
-}
-
 test("tree rows show titles and small icons", { tag: "@mobile" }, async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   for (const name of ROOT_NAMES) {
     const row = page.getByRole("treeitem", { name, exact: true });
@@ -51,10 +37,8 @@ test("tree rows show titles and small icons", { tag: "@mobile" }, async ({ page 
 
 test("a long title stays on one line and is truncated", { tag: "@mobile" }, async ({
   page,
-}, testInfo) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+}) => {
+  await openNotes(page);
 
   const longName =
     "A very long note title that cannot possibly fit into the sidebar width";
@@ -66,7 +50,7 @@ test("a long title stays on one line and is truncated", { tag: "@mobile" }, asyn
   const renameInput = page.getByRole("textbox", { name: "Note name" });
   await renameInput.fill(longName);
   await renameInput.press("Enter");
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
 
   const row = page.getByRole("treeitem", { name: longName, exact: true });
   await expect(row).toBeVisible();

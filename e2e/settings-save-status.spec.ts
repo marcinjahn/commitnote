@@ -1,10 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { expectTree, logIn } from "./helpers";
+import { SAMPLE, openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const REPO_KEY = "sample/notes";
-const PASSPHRASE = "sample notes repo passphrase";
 
 function settingsDialog(page: Page) {
   return page.getByRole("dialog", { name: "Settings" });
@@ -33,9 +30,7 @@ async function chooseAccent(page: Page, name: string): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 });
 
 test("choosing the option that is already selected shows no save status", async ({
@@ -69,7 +64,7 @@ async function failNextCommit(page: Page): Promise<void> {
   await page.evaluate(
     (repoKey) =>
       (window as any).__commitNoteFakeForge.failNext(repoKey, "commit", "Server"),
-    REPO_KEY,
+    SAMPLE.key,
   );
 }
 

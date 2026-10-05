@@ -9,10 +9,10 @@ import {
   expectTree,
   logIn,
   setUpNotesRepo,
+  SAMPLE,
+  openNotes,
 } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
 const EMPTY_REPO = "https://github.com/sample/empty";
 const ALMOST_EMPTY_REPO = "https://github.com/sample/almost-empty";
 
@@ -120,7 +120,7 @@ test("a weak passphrase shows a strength warning but does not block setup", asyn
 
 test("the log-in form has no strength meter", async ({ page }) => {
   await page.goto("/");
-  await chooseRepository(page, { repo: NOTES_REPO });
+  await chooseRepository(page, { repo: SAMPLE.repo });
   await expect(page.getByLabel("Passphrase", { exact: true })).toBeVisible();
   await page.getByLabel("Passphrase", { exact: true }).fill("password");
   await expect(page.getByText(/Passphrase strength:/)).toHaveCount(0);
@@ -196,7 +196,7 @@ test("a repository that could not be checked can be checked again", async ({
   await failNextOnLoad(page, "sample/notes", "inspect", "Network");
   await page.goto("/");
 
-  await chooseRepository(page, { repo: NOTES_REPO });
+  await chooseRepository(page, { repo: SAMPLE.repo });
   await expect(page.getByRole("alert")).toHaveText(
     "Could not reach GitHub. Check your connection and try again.",
   );
@@ -205,7 +205,7 @@ test("a repository that could not be checked can be checked again", async ({
   await page.getByRole("button", { name: "Check again" }).click();
   await page
     .getByLabel("Passphrase", { exact: true })
-    .fill(NOTES_PASSPHRASE);
+    .fill(SAMPLE.passphrase);
   await page.getByRole("button", { name: "Log in" }).click();
   await expectTree(page);
 });
@@ -232,7 +232,7 @@ test("passphrase forms name the repository for password managers", async ({
 }) => {
   await page.goto("/");
 
-  await chooseRepository(page, { repo: NOTES_REPO });
+  await chooseRepository(page, { repo: SAMPLE.repo });
   const passphrase = page.getByLabel("Passphrase", { exact: true });
   await expect(passphrase).toHaveAttribute("autocomplete", "current-password");
   const loginForm = page.locator("form", { has: passphrase });
@@ -264,7 +264,7 @@ test.describe("with GitHub-like forge latency", () => {
   test("progress is visible", async ({ page }) => {
     await page.goto("/");
 
-    await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+    await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
     await expect(page.getByRole("status")).toBeVisible();
     await expectTree(page);
   });
@@ -274,24 +274,17 @@ test("wrong passphrase", async ({ page }) => {
   await page.goto("/");
 
   await logIn(page, {
-    repo: NOTES_REPO,
+    repo: SAMPLE.repo,
     passphrase: "not the right passphrase",
   });
   await expectLoginAlert(page, "Wrong passphrase.");
 
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(page);
 });
 
 test("Remember me across reload", async ({ page }) => {
-  await page.goto("/");
-
-  await logIn(page, {
-    repo: NOTES_REPO,
-    passphrase: NOTES_PASSPHRASE,
-    rememberMe: true,
-  });
-  await expectTree(page);
+  await openNotes(page, { rememberMe: true });
 
   await page.reload();
   await expectTree(page);
@@ -305,18 +298,12 @@ test("Remember me across reload", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
   await continueWithToken(page);
   await expect(page.getByLabel("Repository", { exact: true })).toHaveValue(
-    NOTES_REPO,
+    SAMPLE.repo,
   );
 });
 
 async function rememberSession(page: Page): Promise<void> {
-  await page.goto("/");
-  await logIn(page, {
-    repo: NOTES_REPO,
-    passphrase: NOTES_PASSPHRASE,
-    rememberMe: true,
-  });
-  await expectTree(page);
+  await openNotes(page, { rememberMe: true });
 }
 
 test("a remembered session keeps the loading screen until the notes load", async ({
@@ -371,19 +358,19 @@ test("a remembered session whose notes fail to load shows the error", async ({
 test("no Remember me", async ({ page }) => {
   await page.goto("/");
 
-  await chooseRepository(page, { repo: NOTES_REPO });
+  await chooseRepository(page, { repo: SAMPLE.repo });
   await expect(
     page.getByRole("checkbox", { name: "Remember me" }),
   ).not.toBeChecked();
 
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(page);
 
   await page.reload();
   await expect(page.getByLabel("Access token")).toHaveValue("");
   await continueWithToken(page);
   await expect(page.getByLabel("Repository", { exact: true })).toHaveValue(
-    NOTES_REPO,
+    SAMPLE.repo,
   );
   await expect(page.getByLabel("Passphrase", { exact: true })).toHaveValue("");
   await expect(page.getByLabel("Passphrase", { exact: true })).toBeFocused();
@@ -549,7 +536,7 @@ test("after a refusal another repository can be chosen with the same token", asy
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page
     .getByLabel("Passphrase", { exact: true })
-    .fill(NOTES_PASSPHRASE);
+    .fill(SAMPLE.passphrase);
   await page.getByRole("button", { name: "Log in" }).click();
   await expectTree(page);
 });
@@ -633,14 +620,7 @@ test.describe("several providers", () => {
   });
 
   test("logging in with the second provider", async ({ page }) => {
-    await page.goto("/");
-
-    await logIn(page, {
-      provider: "Fakelab",
-      repo: SECOND_NOTES_REPO,
-      passphrase: NOTES_PASSPHRASE,
-    });
-    await expectTree(page);
+    await openNotes(page, { provider: "Fakelab", repo: SECOND_NOTES_REPO });
   });
 
   test("setting up a repository on the second provider", async ({ page }) => {
@@ -667,14 +647,7 @@ test.describe("several providers", () => {
   test("the last used provider is preselected after logging out", async ({
     page,
   }) => {
-    await page.goto("/");
-
-    await logIn(page, {
-      provider: "Fakelab",
-      repo: SECOND_NOTES_REPO,
-      passphrase: NOTES_PASSPHRASE,
-    });
-    await expectTree(page);
+    await openNotes(page, { provider: "Fakelab", repo: SECOND_NOTES_REPO });
 
     await page.getByRole("button", { name: "Log out" }).click();
     await expect(page.getByRole("radio", { name: "Fakelab" })).toBeChecked();

@@ -2,12 +2,8 @@ import { readFile } from "node:fs/promises";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { strFromU8, unzipSync } from "fflate";
-import { expectTree, logIn } from "./helpers";
+import { SAMPLE, openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const REPO_KEY = "sample/notes";
-const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const KEY_CHANGED_TEXT =
   "The passphrase was changed on another device. Log in again.";
 
@@ -15,7 +11,7 @@ async function changeRepoKey(page: Page): Promise<void> {
   await page.evaluate(
     (repoKey) =>
       (window as any).__commitNoteFakeForge.changeRepoKey(repoKey),
-    REPO_KEY,
+    SAMPLE.key,
   );
 }
 
@@ -23,14 +19,12 @@ function commitCount(page: Page): Promise<number> {
   return page.evaluate(
     (repoKey) =>
       (window as any).__commitNoteFakeForge.commitMessages(repoKey).length,
-    REPO_KEY,
+    SAMPLE.key,
   );
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 });
 
 test("an edit after a passphrase change elsewhere is kept for export and never saved", async ({
@@ -42,7 +36,7 @@ test("an edit after a passphrase change elsewhere is kept for export and never s
   await page.getByRole("treeitem", { name: "Welcome" }).click();
   const editor = page.getByRole("textbox", { name: "Note editor" });
   await editor.click();
-  await page.keyboard.press(`${MODIFIER}+End`);
+  await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type(" typed with the old key");
 
   await expect(page.getByRole("alert").getByText(KEY_CHANGED_TEXT)).toBeVisible(

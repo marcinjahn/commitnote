@@ -1,8 +1,6 @@
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
 const LINK_URL = "https://github.com/example/commitnote";
 
 test.beforeEach(async ({ context }) => {
@@ -16,9 +14,7 @@ test.beforeEach(async ({ context }) => {
 });
 
 async function openWelcomeLink(page: import("@playwright/test").Page) {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
   await page.getByRole("treeitem", { name: "Welcome" }).click();
   const editor = page.getByRole("textbox", { name: "Note editor" });
   await expect(editor).toBeVisible();

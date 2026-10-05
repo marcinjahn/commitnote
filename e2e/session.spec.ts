@@ -1,32 +1,21 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { logIn, expectTree, SAMPLE, openNotes, logOut } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 
 async function openWelcomeAndType(page: Page, text: string): Promise<void> {
   await page.getByRole("treeitem", { name: "Welcome" }).click();
   const editor = page.getByRole("textbox", { name: "Note editor" });
   await editor.click();
-  await page.keyboard.press(`${MODIFIER}+End`);
+  await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type(text);
-}
-
-async function clickLogOut(page: Page): Promise<void> {
-  const back = page.getByRole("button", { name: "Back to notes" });
-  if (await back.isVisible()) {
-    await back.click();
-  }
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
 }
 
 async function failNext(
   page: Page,
   kind: "Network" | "Unauthorized",
 ): Promise<void> {
-  await page.evaluate((failure) => {
+  await page.evaluate(([repoKey, failure]) => {
     const controls = (
       window as unknown as {
         __commitNoteFakeForge: {
@@ -34,24 +23,18 @@ async function failNext(
         };
       }
     ).__commitNoteFakeForge;
-    controls.failNext("sample/notes", "commit", failure);
-  }, kind);
-}
-
-async function loginAndOpen(page: Page): Promise<void> {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+    controls.failNext(repoKey, "commit", failure);
+  }, [SAMPLE.key, kind] as const);
 }
 
 test("logging out saves pending edits first", async ({ page }) => {
-  await loginAndOpen(page);
+  await openNotes(page);
   await openWelcomeAndType(page, " typed before logout");
-  await clickLogOut(page);
+  await logOut(page);
 
   await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
 
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(page);
   await page.getByRole("treeitem", { name: "Welcome" }).click();
   await expect(page.getByRole("textbox", { name: "Note editor" })).toContainText(
@@ -60,10 +43,10 @@ test("logging out saves pending edits first", async ({ page }) => {
 });
 
 test("keep trying retries the save and then logs out", async ({ page }) => {
-  await loginAndOpen(page);
+  await openNotes(page);
   await openWelcomeAndType(page, " unsaved");
   await failNext(page, "Network");
-  await clickLogOut(page);
+  await logOut(page);
 
   const dialog = page.getByRole("dialog", { name: "Some changes are not saved" });
   await expect(dialog).toBeVisible({ timeout: 10_000 });
@@ -74,11 +57,11 @@ test("keep trying retries the save and then logs out", async ({ page }) => {
 });
 
 test("log out anyway discards unsaved changes", async ({ page }) => {
-  await loginAndOpen(page);
+  await openNotes(page);
   await openWelcomeAndType(page, " unsaved");
   await failNext(page, "Network");
   await failNext(page, "Network");
-  await clickLogOut(page);
+  await logOut(page);
 
   const dialog = page.getByRole("dialog", { name: "Some changes are not saved" });
   await expect(dialog).toBeVisible({ timeout: 10_000 });

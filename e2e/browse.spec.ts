@@ -1,13 +1,9 @@
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
 
 test("root notes list in order", async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   const rows = page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
   await expect(rows).toHaveText([
@@ -22,9 +18,7 @@ test("root notes list in order", async ({ page }) => {
 test("a reordered folder lists its notes in the stored order", async ({
   page,
 }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page.getByRole("treeitem", { name: "Projects" }).click();
   await page.getByRole("treeitem", { name: "commitnote" }).click();
@@ -43,9 +37,7 @@ test("a reordered folder lists its notes in the stored order", async ({
 });
 
 test("expanding and collapsing folders", async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await expect(page.getByRole("treeitem", { name: "commitnote" })).toHaveCount(
     0,
@@ -64,9 +56,7 @@ test("expanding and collapsing folders", async ({ page }) => {
 });
 
 test("opening the Welcome note", async ({ page }, testInfo) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
 
@@ -86,9 +76,7 @@ test("opening the Welcome note", async ({ page }, testInfo) => {
 });
 
 test("tree and note are both visible on desktop", async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
 
@@ -99,9 +87,7 @@ test("tree and note are both visible on desktop", async ({ page }) => {
 });
 
 test("opening a note hides the tree on mobile", { tag: "@mobile-only" }, async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
   await expect(
@@ -126,9 +112,7 @@ test("opening a note hides the tree on mobile", { tag: "@mobile-only" }, async (
 });
 
 test("refresh keeps the tree visible", async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
@@ -140,9 +124,7 @@ test("only the page's own origin is contacted", async ({ page, baseURL }) => {
     origins.add(new URL(request.url()).origin);
   });
 
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page.getByRole("treeitem", { name: "Projects" }).click();
   await page.getByRole("treeitem", { name: "commitnote" }).click();

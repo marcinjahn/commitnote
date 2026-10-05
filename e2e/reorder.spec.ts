@@ -1,10 +1,7 @@
 import type { BrowserContextOptions, Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, rowSyncState } from "./helpers";
+import { logIn, expectTree, rowSyncState, SAMPLE, openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const REPO_KEY = "sample/notes";
 
 const ROOT_ORDER = [
   "Empty folder",
@@ -15,9 +12,7 @@ const ROOT_ORDER = [
 ];
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 });
 
 function treeItem(page: Page, name: string): Locator {
@@ -32,7 +27,7 @@ function commitCount(page: Page): Promise<number> {
   return page.evaluate(
     (repoKey) =>
       (window as any).__commitNoteFakeForge.commitMessages(repoKey).length,
-    REPO_KEY,
+    SAMPLE.key,
   );
 }
 
@@ -123,7 +118,7 @@ test("a reordered note shows its saving state until it is saved", async ({
         "commit",
         "Network",
       ),
-    REPO_KEY,
+    SAMPLE.key,
   );
 
   await dragRow(
@@ -146,7 +141,7 @@ test("the new order survives a reload", async ({ page }) => {
   await moveZazolcBeforeWelcome(page);
   const exported = await page.evaluate(
     (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),
-    REPO_KEY,
+    SAMPLE.key,
   );
 
   await page.reload();
@@ -154,9 +149,9 @@ test("the new order survives a reload", async ({ page }) => {
   await page.evaluate(
     ([repoKey, state]) =>
       (window as any).__commitNoteFakeForge.adoptRepo(repoKey, state),
-    [REPO_KEY, exported] as const,
+    [SAMPLE.key, exported] as const,
   );
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(page);
 
   await expect(treeRows(page)).toHaveText(REORDERED_ROOT);
@@ -170,7 +165,7 @@ test("another device shows the new order", async ({
   await moveZazolcBeforeWelcome(page);
   const exported = await page.evaluate(
     (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),
-    REPO_KEY,
+    SAMPLE.key,
   );
 
   const { baseURL, ...device } = testInfo.project.use as BrowserContextOptions;
@@ -182,9 +177,9 @@ test("another device shows the new order", async ({
   await other.evaluate(
     ([repoKey, state]) =>
       (window as any).__commitNoteFakeForge.adoptRepo(repoKey, state),
-    [REPO_KEY, exported] as const,
+    [SAMPLE.key, exported] as const,
   );
-  await logIn(other, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  await logIn(other, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(other);
 
   await expect(treeRows(other)).toHaveText(REORDERED_ROOT);

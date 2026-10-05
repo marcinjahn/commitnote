@@ -1,18 +1,9 @@
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { SAMPLE, openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const REPO_KEY = "sample/notes";
-
-async function startSession(page: import("@playwright/test").Page) {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
-}
 
 test("there is only one Refresh button", { tag: "@mobile" }, async ({ page }, testInfo) => {
-  await startSession(page);
+  await openNotes(page);
   const refresh = page.getByRole("button", { name: "Refresh" });
 
   if (testInfo.project.name === "desktop") {
@@ -27,7 +18,7 @@ test("there is only one Refresh button", { tag: "@mobile" }, async ({ page }, te
 test("focus and visibility do not refresh; clicking Refresh does", async ({
   page,
 }, testInfo) => {
-  await startSession(page);
+  await openNotes(page);
 
   const editRemotely = (path: readonly string[], markdown: string) =>
     page.evaluate(
@@ -37,7 +28,7 @@ test("focus and visibility do not refresh; clicking Refresh does", async ({
           notePath,
           text,
         ),
-      [REPO_KEY, path, markdown] as const,
+      [SAMPLE.key, path, markdown] as const,
     );
 
   await editRemotely(["Scratch"], "warm-up");
@@ -67,7 +58,7 @@ test("focus and visibility do not refresh; clicking Refresh does", async ({
 });
 
 test("clicking Refresh briefly shows a checkmark", async ({ page }) => {
-  await startSession(page);
+  await openNotes(page);
   const refresh = page.getByRole("button", { name: "Refresh" });
 
   await refresh.click();
@@ -79,7 +70,7 @@ test("clicking Refresh briefly shows a checkmark", async ({ page }) => {
 test("a failed Refresh shows the error in a toast and an x", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
   const refresh = page.getByRole("button", { name: "Refresh" });
 
   await page.evaluate(
@@ -89,7 +80,7 @@ test("a failed Refresh shows the error in a toast and an x", async ({
         "getHead",
         "Network",
       ),
-    REPO_KEY,
+    SAMPLE.key,
   );
   await refresh.click();
 

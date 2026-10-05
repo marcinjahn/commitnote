@@ -1,23 +1,14 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { expectTree, logIn, TouchFinger, type TouchPoint } from "./helpers";
+import { TouchFinger, type TouchPoint, SAMPLE, openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const REPO_KEY = "sample/notes";
 
 function commitMessages(page: Page): Promise<string[]> {
   return page.evaluate(
     (repoKey) =>
       (window as any).__commitNoteFakeForge.commitMessages(repoKey) as string[],
-    REPO_KEY,
+    SAMPLE.key,
   );
-}
-
-async function startSession(page: Page): Promise<void> {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
 }
 
 function settingsDialog(page: Page): Locator {
@@ -145,7 +136,7 @@ async function dragAndRelease(
 
 test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
   test.beforeEach(async ({ page }) => {
-    await startSession(page);
+    await openNotes(page);
   });
 
   test("swiping the header down past the threshold closes the dialog and saves a pending change", async ({
@@ -398,7 +389,7 @@ test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
 
 test.describe("dialog grab handle on desktop", () => {
   test.beforeEach(async ({ page }) => {
-    await startSession(page);
+    await openNotes(page);
   });
 
   test("no grab handle is shown", async ({ page }) => {

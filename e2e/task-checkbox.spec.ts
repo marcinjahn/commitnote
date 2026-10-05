@@ -1,9 +1,7 @@
 import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { expectTree, openNotes, showTree } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
 
 async function openWelcome(page: Page): Promise<void> {
   await page.getByRole("treeitem", { name: "Welcome" }).click();
@@ -26,9 +24,7 @@ async function press(
 test("toggling a task checkbox autosaves without focusing the editor", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
   await openWelcome(page);
 
   const syncIcon = page.locator("header.note-header").getByRole("img");
@@ -48,9 +44,7 @@ test("toggling a task checkbox autosaves without focusing the editor", { tag: "@
 
   // The fake forge lives in page memory, so a reload would reseed it; refresh
   // and reopen instead to prove the toggle reached the forge.
-  if (testInfo.project.name === "mobile") {
-    await page.getByRole("button", { name: "Back to notes" }).click();
-  }
+  await showTree(page);
   await page.getByRole("button", { name: "Refresh" }).click();
   await expectTree(page);
   await openWelcome(page);

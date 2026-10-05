@@ -1,8 +1,6 @@
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
 
 // page.close({ runBeforeUnload: true }) resolves without waiting for the
 // page to actually finish unloading, so the beforeunload dialog (or its
@@ -14,9 +12,7 @@ function wait(ms: number): Promise<void> {
 test("closing the page with nothing unsaved shows no leave-site prompt", async ({
   page,
 }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   let dialogFired = false;
   page.on("dialog", (dialog) => {
@@ -33,9 +29,7 @@ test("closing the page with nothing unsaved shows no leave-site prompt", async (
 test("closing the page before autosave completes shows the leave-site prompt", async ({
   page,
 }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
   const editor = page.getByRole("textbox", { name: "Note editor" });
@@ -60,9 +54,7 @@ test.describe("with GitHub-like forge latency", () => {
   test("hiding the tab flushes pending edits immediately", async ({
     page,
   }) => {
-    await page.goto("/");
-    await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-    await expectTree(page);
+    await openNotes(page);
 
     await page.getByRole("treeitem", { name: "Welcome" }).click();
     const editor = page.getByRole("textbox", { name: "Note editor" });
@@ -91,9 +83,7 @@ test.describe("with GitHub-like forge latency", () => {
 test("closing the page before a settings change is saved shows the leave-site prompt", async ({
   page,
 }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page.getByRole("button", { name: "More commands" }).click();
   await page

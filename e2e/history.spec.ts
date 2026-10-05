@@ -1,15 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { SAMPLE, openNotes, showTree } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const PASSPHRASE = "sample notes repo passphrase";
-
-async function startSession(page: Page): Promise<void> {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-  await expectTree(page);
-}
 
 async function waitForSynced(page: Page): Promise<void> {
   await expect(page.locator("header.note-header").getByRole("img")).toHaveCount(
@@ -41,7 +33,7 @@ async function renameOpenNote(page: Page, name: string): Promise<void> {
 
 /** "Welcome" with a last line typed in three saves, then renamed to "Hello". */
 async function noteWithHistory(page: Page): Promise<void> {
-  await startSession(page);
+  await openNotes(page);
   await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
   await appendText(page, "one");
   await appendText(page, " two");
@@ -138,7 +130,7 @@ test("shows what restoring a version would change", { tag: "@mobile" }, async ({
 test("the history button is hidden while naming a new note", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
 
   await page.getByRole("button", { name: "New note", exact: true }).click();
 
@@ -148,7 +140,6 @@ test("the history button is hidden while naming a new note", async ({
   ).toHaveCount(0);
 });
 
-const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const RESTORE = "Restore this version";
 const RESTORE_TITLE = "Also restore the title “Welcome”";
 
@@ -168,10 +159,6 @@ function restoredToast(page: Page) {
   return page.getByRole("group").filter({
     hasText: /Restored the version from today, \d\d:\d\d( [AP]M)?\./,
   });
-}
-
-async function backToTreeIfMobile(page: Page, mobile: boolean): Promise<void> {
-  if (mobile) await page.getByRole("button", { name: "Back to notes" }).click();
 }
 
 /** Opens the history and selects the save that left the last line as "one". */
@@ -211,8 +198,7 @@ test("restores a version's content and keeps the current title", async ({
 
 test("restores a version's content together with its title", async ({
   page,
-}, testInfo) => {
-  const mobile = testInfo.project.name === "mobile";
+}) => {
   await noteWithHistory(page);
   const dialog = await selectFirstSave(page);
 
@@ -223,7 +209,7 @@ test("restores a version's content together with its title", async ({
   await expect(noteNameField(page)).toHaveValue("Welcome");
   await expect(lastEditorLine(page)).toHaveText("one");
   await waitForSynced(page);
-  await backToTreeIfMobile(page, mobile);
+  await showTree(page);
   await expect(
     page.getByRole("treeitem", { name: "Welcome", exact: true }),
   ).toBeVisible();
@@ -256,7 +242,7 @@ test("typing after a restore takes away its Undo", async ({ page }) => {
   await expect(restoredToast(page)).toBeVisible();
 
   await noteEditor(page).click();
-  await page.keyboard.press(`${MODIFIER}+End`);
+  await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type(" four");
 
   await expect(restoredToast(page)).toHaveCount(0);
@@ -267,15 +253,14 @@ test("typing after a restore takes away its Undo", async ({ page }) => {
 
 test("restoring a title another note already has shows why and changes nothing", async ({
   page,
-}, testInfo) => {
-  const mobile = testInfo.project.name === "mobile";
+}) => {
   await noteWithHistory(page);
-  await backToTreeIfMobile(page, mobile);
+  await showTree(page);
   await page.getByRole("button", { name: "New note", exact: true }).click();
   await noteNameField(page).fill("Welcome");
   await noteNameField(page).press("Enter");
   await waitForSynced(page);
-  await backToTreeIfMobile(page, mobile);
+  await showTree(page);
   await page.getByRole("treeitem", { name: "Hello", exact: true }).click();
   await expect(lastEditorLine(page)).toHaveText("one two three");
 
@@ -298,7 +283,7 @@ test("restoring a title another note already has shows why and changes nothing",
 test("a note with a conflict can't be restored until the conflict is resolved", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
   const editRemotely = (path: readonly string[], text: string) =>
     page.evaluate(
       ([repoKey, notePath, markdown]) =>
@@ -307,11 +292,11 @@ test("a note with a conflict can't be restored until the conflict is resolved", 
           notePath,
           markdown,
         ),
-      ["sample/notes", path, text] as const,
+      [SAMPLE.key, path, text] as const,
     );
   await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
   await noteEditor(page).click();
-  await page.keyboard.press(`${MODIFIER}+Home`);
+  await page.keyboard.press("ControlOrMeta+Home");
   await page.keyboard.press("Shift+End");
   await page.keyboard.type("# Welcome from here");
   await editRemotely(["Welcome"], "# Welcome from elsewhere\n");

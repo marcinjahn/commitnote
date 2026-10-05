@@ -1,15 +1,11 @@
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
 
 test("opening a note shows the editor by default, unfocused", { tag: "@mobile" }, async ({
   page,
 }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
 
@@ -22,9 +18,7 @@ test("opening a note shows the editor by default, unfocused", { tag: "@mobile" }
 test("editing the note autosaves, and the edit is there after reopening it", async ({
   page,
 }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
 
@@ -48,9 +42,7 @@ test("editing the note autosaves, and the edit is there after reopening it", asy
 test("clicking the empty area below a short note puts the cursor at its end", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   await page.getByRole("treeitem", { name: "Zażółć gęślą jaźń" }).click();
   const editor = page.getByRole("textbox", { name: "Note editor" });

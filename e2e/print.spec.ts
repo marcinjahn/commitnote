@@ -1,9 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { expectTree, logIn } from "./helpers";
+import { openNotes, showTree } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const PASSPHRASE = "sample notes repo passphrase";
 const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
 const SERIF_STACK =
   'ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", Georgia, Cambria, "Noto Serif", "Times New Roman", serif';
@@ -105,9 +103,7 @@ async function paste(page: Page, text: string): Promise<void> {
 test.describe("with a note", () => {
   test.beforeEach(async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/");
-    await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-    await expectTree(page);
+    await openNotes(page);
   });
 
   test("hides the app and shows the rendered note under print media", { tag: "@mobile" }, async ({
@@ -208,11 +204,9 @@ test.describe("with a note", () => {
     await expect(page.getByRole("tree", { name: "Notes" })).toBeHidden();
   });
 
-  test("prints the note while a dialog is open", { tag: "@mobile" }, async ({ page }, testInfo) => {
+  test("prints the note while a dialog is open", { tag: "@mobile" }, async ({ page }) => {
     await openWelcome(page);
-    if (testInfo.project.name === "mobile") {
-      await page.getByRole("button", { name: "Back to notes" }).click();
-    }
+    await showTree(page);
     await openSettings(page);
 
     await printPreview(page);

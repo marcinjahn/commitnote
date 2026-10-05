@@ -1,15 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "./fixtures";
 import { strFromU8, unzipSync } from "fflate";
-import { expectTree, logIn } from "./helpers";
+import { openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
 
 test("exporting downloads a zip of all notes and folders", async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "More commands" }).click();
@@ -43,9 +39,7 @@ test("exporting downloads a zip of all notes and folders", async ({ page }) => {
 test("the commands menu opens from the keyboard and closes on Escape", async ({
   page,
 }) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
 
   const trigger = page.getByRole("button", { name: "More commands" });
   await expect(trigger).toHaveAttribute("aria-expanded", "false");

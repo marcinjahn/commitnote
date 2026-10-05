@@ -1,13 +1,8 @@
 import { test, expect } from "./fixtures";
-import { logIn, expectTree } from "./helpers";
+import { SAMPLE, openNotes } from "./helpers";
 
 test("sidebar wordmark and repo label are not clipped", { tag: "@mobile" }, async ({ page }) => {
-  await page.goto("/");
-  await logIn(page, {
-    repo: "https://github.com/sample/notes",
-    passphrase: "sample notes repo passphrase",
-  });
-  await expectTree(page);
+  await openNotes(page);
 
   const header = page.locator(".tree-header");
   const wordmark = header.getByText("commitnote", { exact: true });
@@ -30,7 +25,7 @@ test("sidebar wordmark and repo label are not clipped", { tag: "@mobile" }, asyn
 
   const repo = page
     .locator(".sidebar-footer")
-    .getByText("sample/notes", { exact: true });
+    .getByText(SAMPLE.key, { exact: true });
   await expect(repo).toBeVisible();
   expect(await repo.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
     true,
@@ -54,29 +49,19 @@ test("sidebar wordmark and repo label are not clipped", { tag: "@mobile" }, asyn
 test("the sidebar repo label links to the repository in a new tab", async ({
   page,
 }) => {
-  await page.goto("/");
-  await logIn(page, {
-    repo: "https://github.com/sample/notes",
-    passphrase: "sample notes repo passphrase",
-  });
-  await expectTree(page);
+  await openNotes(page);
 
   const link = page
     .locator(".sidebar-footer")
     .getByRole("link", { name: /^sample\/notes Commit [0-9a-f]{40}$/ });
-  await expect(link).toHaveAttribute("href", "https://github.com/sample/notes");
+  await expect(link).toHaveAttribute("href", SAMPLE.repo);
   await expect(link).toHaveAttribute("target", "_blank");
 });
 
 test("the sidebar shows the current commit and follows each save", async ({
   page,
 }) => {
-  await page.goto("/");
-  await logIn(page, {
-    repo: "https://github.com/sample/notes",
-    passphrase: "sample notes repo passphrase",
-  });
-  await expectTree(page);
+  await openNotes(page);
 
   const sha = page.locator(".sidebar-footer").getByTestId("commit-sha");
   await expect(sha).toHaveAttribute("data-sha", /^[0-9a-f]{40}$/);
