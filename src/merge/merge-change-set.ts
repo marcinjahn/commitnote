@@ -22,6 +22,7 @@ import type { FolderNode, NoteTree, TreeNode } from "../tree/note-tree";
 import { findNode, listNotes } from "../tree/note-tree";
 import type { ConflictHunk, TextMergeResult } from "./merge-text";
 import { mergeText } from "./merge-text";
+import { findRemoteRename } from "./remote-rename";
 
 export type MergeNotice =
   | { readonly kind: "edit-restored"; readonly path: NotePath }
@@ -289,6 +290,10 @@ class ChangeSetMerger {
         return this.setOrder(change);
       case "set-settings":
         return this.emit(change);
+      case "set-color-tag":
+        return this.setColorTag(change);
+      default:
+        change satisfies never;
     }
   }
 
@@ -752,6 +757,20 @@ class ChangeSetMerger {
       purged.push(this.emittedEntryIds.get(entryId) ?? entryId);
     }
     if (purged.length > 0) this.emit({ kind: "purge-trash", entryIds: purged });
+  }
+
+  private setColorTag(
+    change: Extract<Change, { kind: "set-color-tag" }>,
+  ): void {
+    const path = this.resolve(change.path);
+    if (this.working.get(path)?.kind === "note") {
+      this.emit({ ...change, path });
+      return;
+    }
+    const renamed = findRemoteRename(this.input.base, this.input.remote, path);
+    if (renamed !== null && this.working.get(renamed)?.kind === "note") {
+      this.emit({ ...change, path: renamed });
+    }
   }
 
   // Positions follow their items through redirects; positions of items that

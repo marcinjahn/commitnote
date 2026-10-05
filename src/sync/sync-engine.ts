@@ -38,6 +38,13 @@ import {
   folderKey,
   type OrderIndex,
 } from "../order/order-index";
+import {
+  decryptTagIndex,
+  EMPTY_TAGS,
+  findTagEntry,
+  type TagIndex,
+} from "../tags/tag-index";
+import type { ColorTag } from "../tags/color-tag";
 import { insertionIndex, placementPositions } from "../order/placement";
 import { isExpired, selectExpired, type PurgeCaps } from "../trash/expiry";
 import { createTrashEntryId } from "../trash/trash-entry-id";
@@ -107,6 +114,7 @@ interface SyncedState {
   readonly tree: NoteTree;
   readonly trash: readonly TrashEntry[];
   readonly order: OrderIndex;
+  readonly tags: TagIndex;
   readonly config: RepoConfig;
   readonly settings: Settings;
   /** Files left out of `tree` because their names don't decrypt. */
@@ -199,7 +207,9 @@ export type StructureError =
   | { readonly kind: "conflicted" }
   | { readonly kind: "invalidTarget" }
   /** The stored order couldn't be read, so positions can't be changed. */
-  | { readonly kind: "orderUnavailable" };
+  | { readonly kind: "orderUnavailable" }
+  /** The stored tags couldn't be read, so color tags can't be changed. */
+  | { readonly kind: "tagsUnavailable" };
 
 type StructureResult =
   | {
@@ -251,6 +261,8 @@ export interface SyncEngine {
     target: { readonly parent: NotePath; readonly before: string | null },
   ): StructureResult;
   delete(path: NotePath): StructureResult;
+  /** Sets the note's color tag, or clears it with null. Saved by autosave. */
+  setColorTag(path: NotePath, color: ColorTag | null): StructureResult;
   moveFromTrash(
     entryId: string,
     subPath: NotePath,
@@ -312,6 +324,10 @@ function appendAll(changes: ChangeSet, more: ChangeSet): ChangeSet {
     result = appendChange(result, change);
   }
   return result;
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled change kind: ${(value as Change).kind}`);
 }
 
 function failure(error: StructureError): StructureResult {
@@ -508,6 +524,7 @@ export function createSyncEngine(options: {
               [...next.inFlight, ...next.pending],
               next.synced.trash,
               next.synced.order,
+              next.synced.tags,
             );
       const rawSettings = workingRawSettings(
         next.synced,
@@ -621,6 +638,7 @@ export function createSyncEngine(options: {
     const tree = await buildNoteTree(listing, keyring);
     const trash = await buildTrashIndex(listing, keyring);
     const order = await loadOrder(listing);
+    const tags = await loadTags(listing);
     const undecryptableFiles = await countUndecryptableFiles(listing, keyring);
     return {
       head,
@@ -628,6 +646,7 @@ export function createSyncEngine(options: {
       tree,
       trash,
       order,
+      tags,
       config,
       settings: resolveSettings(SETTINGS_SCHEMA, config.settings),
       undecryptableFiles,
@@ -647,6 +666,21 @@ export function createSyncEngine(options: {
     );
     loadedOrder = { sha: entry.sha, order };
     return order;
+  }
+
+  let loadedTags: { readonly sha: string; readonly tags: TagIndex } | null =
+    null;
+
+  async function loadTags(listing: readonly TreeEntry[]): Promise<TagIndex> {
+    const entry = findTagEntry(listing);
+    if (entry === undefined) return EMPTY_TAGS;
+    if (loadedTags?.sha === entry.sha) return loadedTags.tags;
+    const tags = await decryptTagIndex(
+      keyring,
+      await adapter.readBlob(entry.sha),
+    );
+    loadedTags = { sha: entry.sha, tags };
+    return tags;
   }
 
   type NoteResolution =
@@ -1131,6 +1165,7 @@ export function createSyncEngine(options: {
           listing: attemptSynced.listing,
           changeSet: state.inFlight,
           order: attemptSynced.order,
+          tags: attemptSynced.tags,
           config: attemptSynced.config,
           keyring,
         });
@@ -1295,6 +1330,7 @@ export function createSyncEngine(options: {
     switch (change.kind) {
       case "create-note":
       case "update-note":
+      case "set-color-tag":
         return notePathEquals(change.path, path);
       case "create-folder":
         return false;
@@ -1344,6 +1380,7 @@ export function createSyncEngine(options: {
       merged.changeSet,
       remote.trash,
       remote.order,
+      remote.tags,
     );
     const newConflicts = merged.conflicts.map((conflict) =>
       toHeldConflict(conflict, remote, mergedTree),
@@ -1401,6 +1438,7 @@ export function createSyncEngine(options: {
         merged.changeSet,
         toRebase,
         remote.trash,
+        base.tree,
       );
       for (const dropped of rebased.dropped) {
         bodies.push({ kind: "dropped", change: dropped });
@@ -1625,7 +1663,10 @@ export function createSyncEngine(options: {
         case "purge-trash":
         case "set-order":
         case "set-settings":
+        case "set-color-tag":
           break;
+        default:
+          assertNever(change);
       }
     }
     autosave.saveNow();
@@ -1700,6 +1741,7 @@ export function createSyncEngine(options: {
       [...state.inFlight, ...state.pending],
       synced.trash,
       synced.order,
+      synced.tags,
     ).order;
     return {
       kind: "set-order",
@@ -1838,6 +1880,48 @@ export function createSyncEngine(options: {
     });
     applyStructureChange(...changes);
     return { ok: true, path: placed };
+  }
+
+  function setColorTag(
+    path: NotePath,
+    color: ColorTag | null,
+  ): StructureResult {
+    const { synced, workingTree } = state;
+    if (
+      disposed ||
+      suspended ||
+      synced === null ||
+      workingTree === null ||
+      path.length === 0
+    ) {
+      return failure({ kind: "notFound" });
+    }
+    const node = findWorkingNode(workingTree, path);
+    if (node?.kind !== "note") return failure({ kind: "notFound" });
+    if (!synced.tags.writable) return failure({ kind: "tagsUnavailable" });
+    if (node.colorTag === color) return { ok: true, path };
+
+    update((current) => {
+      const next = appendChange(current.pending, {
+        kind: "set-color-tag",
+        path,
+        color,
+      });
+      const withoutLast = next.slice(0, -1);
+      const before = buildWorkingState(
+        synced.tree,
+        [...current.inFlight, ...withoutLast],
+        synced.trash,
+        synced.order,
+        synced.tags,
+      ).tree;
+      const previous = findWorkingNode(before, path);
+      const returnsToSaved =
+        previous?.kind === "note" && previous.colorTag === color;
+      return { ...current, pending: returnsToSaved ? withoutLast : next };
+    });
+    autosave.noteEdited();
+    return { ok: true, path };
   }
 
   function deleteItem(path: NotePath): StructureResult {
@@ -2096,6 +2180,7 @@ export function createSyncEngine(options: {
         [...state.inFlight, ...changes],
         synced.trash,
         synced.order,
+        synced.tags,
       );
     } catch (error) {
       if (!(error instanceof RangeError)) throw error;
@@ -2169,6 +2254,7 @@ export function createSyncEngine(options: {
     move,
     place,
     delete: deleteItem,
+    setColorTag,
     moveFromTrash,
     undoTrash,
     deleteFromTrash: purge,

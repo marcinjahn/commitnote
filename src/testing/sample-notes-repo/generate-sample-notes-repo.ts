@@ -8,6 +8,7 @@ import { createRepoConfig } from "../../crypto/keyring";
 import type { RandomSource } from "../../crypto/random";
 import { InMemoryGitRepo } from "../../forge/fake/in-memory-git-repo";
 import { REPO_CONFIG_PATH } from "../../format/v1";
+import { EMPTY_TAGS } from "../../tags/tag-index";
 import { keysBetween } from "../../order/fractional-key";
 import {
   applyChangeToOrder,
@@ -155,6 +156,7 @@ async function generateRepo(
       listing: await repo.listTreeEntries(parentTree),
       changeSet,
       order: orderIndex,
+      tags: EMPTY_TAGS,
       keyring,
       random,
     });

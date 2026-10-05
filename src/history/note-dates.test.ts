@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { EMPTY_TAGS } from "../tags/tag-index";
 import type { Change, NotePath } from "../changes/change";
 import {
   encodeChangeSet,
@@ -58,7 +59,7 @@ function repoOver(adapter: FakeForgeAdapter, keyring: Keyring): Repo {
       const { changes, message } = await encodeChangeSet({
         listing: await adapter.listTree(parent),
         changeSet,
-        order: NO_ORDER,
+        order: NO_ORDER, tags: EMPTY_TAGS,
         keyring,
       });
       const result = await adapter.commit({ parent, changes, message });

@@ -7,6 +7,7 @@ export const REPO_CONFIG_PATH = ".commitnote/config.json";
 export const FOLDER_MARKER = ".keep";
 export const TRASH_DIR = ".commitnote/trash";
 export const ORDER_PATH = ".commitnote/order";
+export const TAGS_PATH = ".commitnote/tags";
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const CIPHER_ID = "AES-256-GCM";

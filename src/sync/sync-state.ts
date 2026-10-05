@@ -50,6 +50,7 @@ function entryPathOf(change: Change): NotePath | null {
     case "create-note":
     case "update-note":
     case "create-folder":
+    case "set-color-tag":
       return change.path;
     case "rename-note":
     case "rename-folder":

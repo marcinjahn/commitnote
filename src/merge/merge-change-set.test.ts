@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { EMPTY_TAGS } from "../tags/tag-index";
 import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { encodeChangeSet } from "../changes/encode-change-set";
 import { utf8Encode } from "../crypto/base64";
@@ -14,6 +15,7 @@ import {
 import type { TreeEntry } from "../forge/forge-adapter";
 import { FOLDER_MARKER, REPO_CONFIG_PATH, TRASH_DIR } from "../format/v1";
 import { EMPTY_ORDER } from "../order/order-index";
+import type { ColorTag } from "../tags/color-tag";
 import { buildWorkingTree } from "../sync/working-tree";
 import { buildTrashIndex, type TrashEntry } from "../trash/trash-index";
 import { buildNoteTree, type NoteTree } from "../tree/note-tree";
@@ -182,7 +184,7 @@ async function runCase(mergeCase: MergeCase): Promise<MergeChangeSetResult> {
         { path: REPO_CONFIG_PATH, type: "blob", sha: "sha-config" },
       ],
       changeSet: result.changeSet,
-      order: EMPTY_ORDER,
+      order: EMPTY_ORDER, tags: EMPTY_TAGS,
       keyring,
       config: REPO_CONFIG,
     }),
@@ -267,6 +269,12 @@ const reorder = (
   moved,
 });
 
+const setColorTag = (path: string, color: ColorTag | null = "red"): Change => ({
+  kind: "set-color-tag",
+  path: split(path),
+  color,
+});
+
 const entryId = (depth: number, suffix: string): string =>
   `20260930T154358Z-${depth}-${suffix.padEnd(8, "a")}`;
 const E1 = entryId(1, "one");
@@ -305,6 +313,100 @@ const cases: MergeCase[] = [
       expect(result.changeSet).toEqual(this.changeSet);
       expect(result.notices).toEqual([]);
       expect(result.conflicts).toEqual([]);
+    },
+  },
+  {
+    name: "keeps a color tag on a note unchanged remotely",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "n.md": "n" } },
+    changeSet: [setColorTag("n.md", "blue")],
+    check(result) {
+      expect(result.changeSet).toEqual([setColorTag("n.md", "blue")]);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "keeps a color tag on a note edited remotely",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "n.md": "n edited" } },
+    changeSet: [setColorTag("n.md", null)],
+    check(result) {
+      expect(result.changeSet).toEqual([setColorTag("n.md", null)]);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "moves a color tag to the remote rename of its note",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "renamed.md": "n" } },
+    changeSet: [setColorTag("n.md", "green")],
+    check(result) {
+      expect(result.changeSet).toEqual([setColorTag("renamed.md", "green")]);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "moves a color tag to the remote move of its note into a folder",
+    base: { notes: { "n.md": "n", "f/x.md": "x" } },
+    remote: { notes: { "f/n.md": "n", "f/x.md": "x" } },
+    changeSet: [setColorTag("n.md", "green")],
+    check(result) {
+      expect(result.changeSet).toEqual([setColorTag("f/n.md", "green")]);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "drops a color tag on a note deleted remotely silently",
+    base: { notes: { "n.md": "n", "m.md": "m" } },
+    remote: { notes: { "m.md": "m" } },
+    changeSet: [FILLER, setColorTag("n.md", "red")],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+      expect(result.notices).toEqual([]);
+      expect(result.conflicts).toEqual([]);
+    },
+  },
+  {
+    name: "drops a color tag on a note trashed remotely silently",
+    base: { notes: { "n.md": "n", "m.md": "m" } },
+    remote: {
+      notes: { "m.md": "m" },
+      trash: { [E1]: { notes: { "n.md": "n" } } },
+    },
+    changeSet: [FILLER, setColorTag("n.md", "red")],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+      expect(result.notices).toEqual([]);
+      expect(result.conflicts).toEqual([]);
+    },
+  },
+  {
+    name: "makes a color tag follow a local rename in the same change set",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "n.md": "n" } },
+    changeSet: [renameNote("n.md", "local.md"), setColorTag("local.md", "purple")],
+    check(result) {
+      expect(result.changeSet).toEqual(this.changeSet);
+      expect(result.notices).toEqual([]);
+    },
+  },
+  {
+    name: "makes a color tag follow a skipped local rename back to the source note",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "n.md": "n", "local.md": "other" } },
+    changeSet: [renameNote("n.md", "local.md"), setColorTag("local.md", "purple")],
+    check(result) {
+      expect(result.changeSet).toEqual([setColorTag("n.md", "purple")]);
+    },
+  },
+  {
+    name: "keeps color tags on two different notes",
+    base: { notes: { "a.md": "a", "b.md": "b" } },
+    remote: { notes: { "a.md": "a", "b.md": "b" } },
+    changeSet: [setColorTag("a.md", "red"), setColorTag("b.md", null)],
+    check(result) {
+      expect(result.changeSet).toEqual(this.changeSet);
+      expect(result.notices).toEqual([]);
     },
   },
   {

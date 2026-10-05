@@ -13,14 +13,23 @@ import {
 } from "../order/order-index";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
 import type { TrashEntry } from "../trash/trash-index";
+import { findRemoteRename } from "../merge/remote-rename";
+import type { ColorTag } from "../tags/color-tag";
+import {
+  applyChangeToTags,
+  colorTagOf,
+  EMPTY_TAGS,
+  type TagIndex,
+} from "../tags/tag-index";
 import type { NoteTree, TreeNode } from "../tree/note-tree";
 import type { WorkingTrashEntry } from "./working-trash";
 
-interface WorkingNote {
+export interface WorkingNote {
   readonly kind: "note";
   readonly name: string;
   readonly path: NotePath;
   readonly syncedPath: NotePath | null;
+  readonly colorTag: ColorTag | null;
   /** Set for a note restored from a committed trash entry: its content is this blob. */
   readonly trashBlobSha?: string;
 }
@@ -42,6 +51,7 @@ export interface WorkingState {
   readonly tree: WorkingTree;
   readonly trash: readonly WorkingTrashEntry[];
   readonly order: OrderIndex;
+  readonly tags: TagIndex;
 }
 
 interface MutNote {
@@ -82,6 +92,11 @@ interface MutState {
   readonly root: MutFolder;
   readonly trash: Map<string, MutTrashEntry>;
   order: OrderIndex;
+  tags: TagIndex;
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unexpected value: ${String(value)}`);
 }
 
 function cloneNode(node: TreeNode, fromTrash: boolean): MutTreeNode {
@@ -105,6 +120,7 @@ function initialState(
   synced: NoteTree,
   syncedTrash: readonly TrashEntry[],
   syncedOrder: OrderIndex = EMPTY_ORDER,
+  syncedTags: TagIndex = EMPTY_TAGS,
 ): MutState {
   const trash = new Map<string, MutTrashEntry>();
   for (const entry of syncedTrash) {
@@ -132,6 +148,7 @@ function initialState(
     root: cloneNode(synced.root, false) as MutFolder,
     trash,
     order: syncedOrder,
+    tags: syncedTags,
   };
 }
 
@@ -196,6 +213,7 @@ function invalidChange(): never {
 function applyChangeOrThrow(state: MutState, change: Change): void {
   applyTreeChangeOrThrow(state, change);
   state.order = applyChangeToOrder(state.order, change);
+  state.tags = applyChangeToTags(state.tags, change);
 }
 
 function applyTreeChangeOrThrow(state: MutState, change: Change): void {
@@ -320,22 +338,32 @@ function applyTreeChangeOrThrow(state: MutState, change: Change): void {
     }
     case "set-settings":
       return;
+    case "set-color-tag":
+      if (findMutNode(root, change.path)?.kind !== "note") invalidChange();
+      return;
+    default:
+      assertNever(change);
   }
 }
 
-function finalizeNote(note: MutNote): WorkingNote {
+function finalizeNote(note: MutNote, tags: TagIndex): WorkingNote {
   const base: WorkingNote = {
     kind: "note",
     name: note.name,
     path: note.path,
     syncedPath: note.syncedPath,
+    colorTag: colorTagOf(tags, note.path),
   };
   return note.trashBlobSha === null
     ? base
     : { ...base, trashBlobSha: note.trashBlobSha };
 }
 
-function finalize(folder: MutFolder, order: OrderIndex): WorkingFolder {
+function finalize(
+  folder: MutFolder,
+  order: OrderIndex,
+  tags: TagIndex,
+): WorkingFolder {
   const sorted = [...folder.children.values()].sort(
     siblingComparator(order, folder.path),
   );
@@ -344,7 +372,9 @@ function finalize(folder: MutFolder, order: OrderIndex): WorkingFolder {
     name: folder.name,
     path: folder.path,
     children: sorted.map((child) =>
-      child.kind === "folder" ? finalize(child, order) : finalizeNote(child),
+      child.kind === "folder"
+        ? finalize(child, order, tags)
+        : finalizeNote(child, tags),
     ),
   };
 }
@@ -369,8 +399,8 @@ function finalizeTrash(
             originalPath: entry.originalPath,
             tree:
               entry.node.kind === "folder"
-                ? finalize(entry.node, EMPTY_ORDER)
-                : finalizeNote(entry.node),
+                ? finalize(entry.node, EMPTY_ORDER, EMPTY_TAGS)
+                : finalizeNote(entry.node, EMPTY_TAGS),
           },
     );
 }
@@ -380,15 +410,17 @@ export function buildWorkingState(
   changes: ChangeSet,
   syncedTrash: readonly TrashEntry[] = [],
   syncedOrder: OrderIndex = EMPTY_ORDER,
+  syncedTags: TagIndex = EMPTY_TAGS,
 ): WorkingState {
-  const state = initialState(synced, syncedTrash, syncedOrder);
+  const state = initialState(synced, syncedTrash, syncedOrder, syncedTags);
   for (const change of changes) {
     applyChangeOrThrow(state, change);
   }
   return {
-    tree: { root: finalize(state.root, state.order) },
+    tree: { root: finalize(state.root, state.order, state.tags) },
     trash: finalizeTrash(state.trash),
     order: state.order,
+    tags: state.tags,
   };
 }
 
@@ -397,8 +429,15 @@ export function buildWorkingTree(
   changes: ChangeSet,
   syncedTrash: readonly TrashEntry[] = [],
   syncedOrder: OrderIndex = EMPTY_ORDER,
+  syncedTags: TagIndex = EMPTY_TAGS,
 ): WorkingTree {
-  return buildWorkingState(synced, changes, syncedTrash, syncedOrder).tree;
+  return buildWorkingState(
+    synced,
+    changes,
+    syncedTrash,
+    syncedOrder,
+    syncedTags,
+  ).tree;
 }
 
 export function findWorkingNode(
@@ -439,6 +478,8 @@ function touchesPath(change: Change, path: NotePath): boolean {
       );
     case "restore-trash":
       return isAtOrWithin(path, change.to);
+    case "set-color-tag":
+      return notePathEquals(change.path, path);
     case "create-note":
     case "update-note":
     case "create-folder":
@@ -469,8 +510,32 @@ function appendSetOrder(
   return [...updated, change];
 }
 
+function appendSetColorTag(
+  changes: ChangeSet,
+  change: Extract<Change, { kind: "set-color-tag" }>,
+): ChangeSet {
+  const updated = changes.slice();
+  for (let i = updated.length - 1; i >= 0; i--) {
+    const existing = updated[i];
+    if (
+      existing.kind === "update-note" ||
+      existing.kind === "set-order" ||
+      existing.kind === "set-settings"
+    ) {
+      continue;
+    }
+    if (existing.kind !== "set-color-tag") break;
+    if (notePathEquals(existing.path, change.path)) {
+      updated.splice(i, 1);
+      break;
+    }
+  }
+  return [...updated, change];
+}
+
 export function appendChange(changes: ChangeSet, change: Change): ChangeSet {
   if (change.kind === "set-order") return appendSetOrder(changes, change);
+  if (change.kind === "set-color-tag") return appendSetColorTag(changes, change);
   if (change.kind === "set-settings") {
     let values = change.values;
     const others: Change[] = [];
@@ -559,6 +624,7 @@ export function localContentAt(
       case "create-folder":
       case "set-order":
       case "set-settings":
+      case "set-color-tag":
         break;
       case "trash-note": {
         const key = JSON.stringify(change.path);
@@ -603,6 +669,8 @@ export function localContentAt(
       case "purge-trash":
         for (const entryId of change.entryIds) trashed.delete(entryId);
         break;
+      default:
+        assertNever(change);
     }
   }
 
@@ -614,6 +682,7 @@ export function rebaseChanges(
   prefix: ChangeSet,
   changes: ChangeSet,
   syncedTrash: readonly TrashEntry[] = [],
+  remoteBase?: NoteTree,
 ): { readonly changes: ChangeSet; readonly dropped: readonly Change[] } {
   const state = initialState(synced, syncedTrash);
   for (const change of prefix) {
@@ -777,6 +846,22 @@ export function rebaseChanges(
       case "set-settings":
         kept.push(change);
         break;
+      case "set-color-tag": {
+        if (findMutNode(root, change.path)?.kind === "note") {
+          kept.push(change);
+          break;
+        }
+        const renamed =
+          remoteBase === undefined
+            ? null
+            : findRemoteRename(remoteBase, synced, change.path);
+        if (renamed !== null && findMutNode(root, renamed)?.kind === "note") {
+          kept.push({ ...change, path: renamed });
+        }
+        break;
+      }
+      default:
+        assertNever(change);
     }
   }
 
