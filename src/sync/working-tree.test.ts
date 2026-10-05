@@ -12,7 +12,9 @@ import {
   localContentAt,
   rebaseChanges,
   type WorkingFolder,
+  type WorkingNode,
 } from "./working-tree";
+import type { WorkingTrashEntry } from "./working-trash";
 
 function note(name: string, path: NotePath, blobSha = `sha-${name}`): NoteNode {
   return {
@@ -1380,6 +1382,137 @@ describe("buildWorkingTree color tags", () => {
         { kind: "set-color-tag", path: ["Docs"], color: "red" },
       ]),
     ).toThrow(RangeError);
+  });
+});
+
+function trashedNoteColors(
+  trash: readonly WorkingTrashEntry[],
+): Record<string, unknown> {
+  const colors: Record<string, unknown> = {};
+  function visit(node: WorkingNode): void {
+    if (node.kind === "note") colors[node.path.join("/")] = node.colorTag;
+    else node.children.forEach(visit);
+  }
+  for (const entry of trash) if (!entry.undecryptable) visit(entry.tree);
+  return colors;
+}
+
+const TRASH_TAGGED = parseTagIndex(
+  JSON.stringify({
+    version: 1,
+    notes: {},
+    trash: {
+      [OLD_NOTE_ID]: { [tagKey([])]: { color: "green" } },
+      [OLD_FOLDER_ID]: { [tagKey(["Inner", "Deep"])]: { color: "purple" } },
+    },
+  }),
+);
+
+describe("buildWorkingState trash color tags", () => {
+  it("colors synced trashed notes, nested ones included, by their entry's records", () => {
+    const { trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [],
+      SYNCED_TRASH,
+      undefined,
+      TRASH_TAGGED,
+    );
+
+    expect(trashedNoteColors(trash)).toEqual({
+      "Archive/Old": "green",
+      "Trashed/Inner/Deep": "purple",
+      "Trashed/Top": null,
+    });
+  });
+
+  it("carries a pending trashed note's color into its entry and back on restore", () => {
+    const trashed: Change[] = [
+      { kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID },
+    ];
+    const afterTrash = buildWorkingState(
+      SAMPLE_TREE,
+      trashed,
+      [],
+      undefined,
+      TAGGED,
+    );
+    expect(trashedNoteColors(afterTrash.trash)).toEqual({ Welcome: "red" });
+
+    expect(
+      colorAt(
+        [
+          ...trashed,
+          {
+            kind: "restore-trash",
+            entryId: WELCOME_ID,
+            subPath: [],
+            target: "note",
+            to: ["Docs", "Welcome"],
+          },
+        ],
+        ["Docs", "Welcome"],
+      ),
+    ).toBe("red");
+  });
+
+  it("colors notes inside a pending trashed folder relative to the trashed folder", () => {
+    const { trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [{ kind: "trash-folder", path: ["Docs"], entryId: DOCS_ID }],
+      [],
+      undefined,
+      TAGGED,
+    );
+
+    expect(trashedNoteColors(trash)).toEqual({
+      "Docs/Guide": null,
+      "Docs/Notes/Todo": "blue",
+    });
+  });
+
+  it("keeps the colors of what is left in a folder entry after a partial restore", () => {
+    const { trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [
+        {
+          kind: "restore-trash",
+          entryId: OLD_FOLDER_ID,
+          subPath: ["Top"],
+          target: "note",
+          to: ["Top"],
+        },
+      ],
+      SYNCED_TRASH,
+      undefined,
+      TRASH_TAGGED,
+    );
+
+    expect(trashedNoteColors(trash)).toEqual({
+      "Archive/Old": "green",
+      "Trashed/Inner/Deep": "purple",
+    });
+  });
+
+  it("shows no trash colors when the tag index can't be read", () => {
+    const unreadable = parseTagIndex("not json");
+    expect(unreadable.writable).toBe(false);
+    const { trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [
+        { kind: "set-color-tag", path: ["Welcome"], color: "red" },
+        { kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID },
+      ],
+      SYNCED_TRASH,
+      undefined,
+      unreadable,
+    );
+
+    expect(trashedNoteColors(trash)).toEqual({
+      "Archive/Old": null,
+      "Trashed/Inner/Deep": null,
+      "Trashed/Top": null,
+      Welcome: null,
+    });
   });
 });
 

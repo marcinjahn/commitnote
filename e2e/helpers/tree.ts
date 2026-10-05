@@ -49,6 +49,24 @@ export async function openTrash(page: Page): Promise<Locator> {
   return dialog;
 }
 
+export function trashRow(page: Page, name: string): Locator {
+  return page.getByTestId("trash-row").filter({
+    has: page.getByRole("button", { name: `Restore ${name} to…`, exact: true }),
+  });
+}
+
+export async function restoreTo(
+  page: Page,
+  name: string,
+  folder: string,
+): Promise<void> {
+  await page.getByRole("button", { name: `Restore ${name} to…`, exact: true }).click();
+  const picker = page.getByRole("dialog", { name: /^Restore .* to folder$/ });
+  await expect(picker).toBeVisible();
+  await picker.getByRole("radio", { name: folder, exact: true }).check();
+  await picker.getByRole("button", { name: "Restore", exact: true }).click();
+}
+
 export async function openHistory(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "Version history" }).click();
   const dialog = page.getByRole("dialog", { name: "Version history" });

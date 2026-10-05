@@ -179,6 +179,15 @@ export function colorTagOf(index: TagIndex, path: NotePath): ColorTag | null {
   return index.notes.get(tagKey(path))?.color ?? null;
 }
 
+/** `subPath` is relative to the trash entry's trashed item; `[]` is the item itself. */
+export function trashedColorTagOf(
+  index: TagIndex,
+  entryId: string,
+  subPath: NotePath,
+): ColorTag | null {
+  return index.trash.get(entryId)?.get(tagKey(subPath))?.color ?? null;
+}
+
 class TagEditor {
   private readonly notes: Map<string, TagRecord>;
   private readonly trash: Map<string, Map<string, TagRecord>>;

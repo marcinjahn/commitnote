@@ -14,6 +14,8 @@ import {
   moveToTrash,
   openTrash,
   openWelcome,
+  restoreTo,
+  trashRow,
   treeItem,
   waitForSynced,
 } from "./helpers/tree";
@@ -45,7 +47,7 @@ function swatch(menu: Locator, label: string): Locator {
 }
 
 function rowIcon(page: Page, name: string): Locator {
-  return treeItem(page, name).locator("svg.row-icon");
+  return treeItem(page, name).locator("svg.note-icon");
 }
 
 async function tagFromRowMenu(
@@ -195,19 +197,67 @@ test("a tagged note keeps its tag when renamed", async ({ page }) => {
   await expectTagged(page, "Renamed tagged", "Purple");
 });
 
-test("a tagged note keeps its tag through trash and restore", async ({ page }) => {
+async function expectTrashTagged(
+  page: Page,
+  name: string,
+  label: keyof typeof COLORS,
+): Promise<void> {
+  await expect(
+    page.getByRole("button", { name: `Restore ${name} to…`, exact: true }),
+  ).toHaveAccessibleDescription(`${label} tag`);
+  const icon = trashRow(page, name).locator("svg.note-icon");
+  await expect(icon).toHaveClass(/tag-colored/);
+  await expect(icon).toHaveCSS("color", COLORS[label]);
+}
+
+test("a trashed tagged note shows its color in the trash and keeps it on restore", async ({
+  page,
+}) => {
+  await moveToTrash(page, "Welcome");
   await moveToTrash(page, PURPLE_NOTE);
   await expect(treeItem(page, PURPLE_NOTE)).toHaveCount(0);
 
-  const dialog = await openTrash(page);
-  await dialog
-    .getByRole("button", { name: `Restore ${PURPLE_NOTE} to…`, exact: true })
-    .click();
-  const picker = page.getByRole("dialog", { name: /^Restore .* to folder$/ });
-  await picker.getByRole("radio", { name: "Notes (top level)", exact: true }).check();
-  await picker.getByRole("button", { name: "Restore", exact: true }).click();
+  await openTrash(page);
+  await expectTrashTagged(page, PURPLE_NOTE, "Purple");
+  await expect(
+    page.getByRole("button", { name: "Restore Welcome to…", exact: true }),
+  ).not.toHaveAccessibleDescription(/tag/);
+  await expect(trashRow(page, "Welcome").locator("svg.note-icon")).not.toHaveClass(
+    /tag-colored/,
+  );
+
+  await restoreTo(page, PURPLE_NOTE, "Notes (top level)");
 
   await expectTagged(page, PURPLE_NOTE, "Purple");
+});
+
+test("notes inside a trashed folder show their colors in the trash", async ({
+  page,
+}) => {
+  await treeItem(page, "Projects").click();
+  await moveToTrash(page, "commitnote", /and everything in it/);
+  await openWelcome(page);
+  await waitForSynced(page);
+  const saved = await fakeForge(page).exportRepo();
+  await page.reload();
+  await expectTree(page);
+  await fakeForge(page).adoptRepo(saved);
+  await page.getByRole("button", { name: "Refresh" }).click();
+
+  const dialog = await openTrash(page);
+  await dialog.getByRole("button", { name: /^commitnote/ }).click();
+  await expectTrashTagged(page, "Roadmap", "Blue");
+  await expectTrashTagged(page, "Ideas", "Green");
+  await expect(
+    page.getByRole("button", { name: "Restore commitnote to…", exact: true }),
+  ).not.toHaveAccessibleDescription(/tag/);
+  await expect(trashRow(page, "commitnote").locator("svg.note-icon")).toHaveCount(0);
+
+  await restoreTo(page, "Roadmap", "Notes (top level)");
+  await expectTrashTagged(page, "Ideas", "Green");
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  await expectTagged(page, "Roadmap", "Blue");
 });
 
 test("the color picker is operable from the keyboard", async ({ page }) => {

@@ -18,6 +18,7 @@ import type { ColorTag } from "../tags/color-tag";
 import {
   applyChangeToTags,
   colorTagOf,
+  trashedColorTagOf,
   EMPTY_TAGS,
   type TagIndex,
 } from "../tags/tag-index";
@@ -346,13 +347,15 @@ function applyTreeChangeOrThrow(state: MutState, change: Change): void {
   }
 }
 
-function finalizeNote(note: MutNote, tags: TagIndex): WorkingNote {
+type ColorTagLookup = (path: NotePath) => ColorTag | null;
+
+function finalizeNote(note: MutNote, tagOf: ColorTagLookup): WorkingNote {
   const base: WorkingNote = {
     kind: "note",
     name: note.name,
     path: note.path,
     syncedPath: note.syncedPath,
-    colorTag: colorTagOf(tags, note.path),
+    colorTag: tagOf(note.path),
   };
   return note.trashBlobSha === null
     ? base
@@ -362,7 +365,7 @@ function finalizeNote(note: MutNote, tags: TagIndex): WorkingNote {
 function finalize(
   folder: MutFolder,
   order: OrderIndex,
-  tags: TagIndex,
+  tagOf: ColorTagLookup,
 ): WorkingFolder {
   const sorted = [...folder.children.values()].sort(
     siblingComparator(order, folder.path),
@@ -373,36 +376,42 @@ function finalize(
     path: folder.path,
     children: sorted.map((child) =>
       child.kind === "folder"
-        ? finalize(child, order, tags)
-        : finalizeNote(child, tags),
+        ? finalize(child, order, tagOf)
+        : finalizeNote(child, tagOf),
     ),
   };
 }
 
 function finalizeTrash(
   trash: ReadonlyMap<string, MutTrashEntry>,
+  tags: TagIndex,
 ): WorkingTrashEntry[] {
   return [...trash.values()]
     .sort(
       (a, b) =>
         a.deletedAt - b.deletedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     )
-    .map((entry) =>
-      entry.undecryptable
-        ? entry
-        : {
-            id: entry.id,
-            deletedAt: entry.deletedAt,
-            undecryptable: false,
-            synced: entry.synced,
-            kind: entry.kind,
-            originalPath: entry.originalPath,
-            tree:
-              entry.node.kind === "folder"
-                ? finalize(entry.node, EMPTY_ORDER, EMPTY_TAGS)
-                : finalizeNote(entry.node, EMPTY_TAGS),
-          },
-    );
+    .map((entry) => {
+      if (entry.undecryptable) return entry;
+      const tagOf: ColorTagLookup = (path) =>
+        trashedColorTagOf(
+          tags,
+          entry.id,
+          path.slice(entry.originalPath.length),
+        );
+      return {
+        id: entry.id,
+        deletedAt: entry.deletedAt,
+        undecryptable: false,
+        synced: entry.synced,
+        kind: entry.kind,
+        originalPath: entry.originalPath,
+        tree:
+          entry.node.kind === "folder"
+            ? finalize(entry.node, EMPTY_ORDER, tagOf)
+            : finalizeNote(entry.node, tagOf),
+      };
+    });
 }
 
 export function buildWorkingState(
@@ -417,8 +426,12 @@ export function buildWorkingState(
     applyChangeOrThrow(state, change);
   }
   return {
-    tree: { root: finalize(state.root, state.order, state.tags) },
-    trash: finalizeTrash(state.trash),
+    tree: {
+      root: finalize(state.root, state.order, (path) =>
+        colorTagOf(state.tags, path),
+      ),
+    },
+    trash: finalizeTrash(state.trash, state.tags),
     order: state.order,
     tags: state.tags,
   };

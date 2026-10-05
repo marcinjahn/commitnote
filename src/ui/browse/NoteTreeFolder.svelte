@@ -9,7 +9,7 @@
   import { syncIndicatorFade } from "./sync-indicator-fade";
   import { describeSyncState } from "./sync-messages";
   import { describeColorTag } from "./tag-messages";
-  import { colorTagStyle } from "../../tags/color-tag";
+  import NoteIcon from "./NoteIcon.svelte";
 
   interface Props {
     node: WorkingNode;
@@ -152,17 +152,7 @@
         <path d="M1.5 3.5h4L7 5h7.5v8.5h-13z" />
       </svg>
     {:else}
-      <svg
-        class="icon row-icon"
-        class:tag-colored={colorTag !== null}
-        style={colorTag !== null ? colorTagStyle(colorTag) : undefined}
-        viewBox="0 0 16 16"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <path class="row-icon-page" d="M3.5 1.5h6l3 3v10h-9z" />
-        <path d="M9.5 1.5v3h3" />
-      </svg>
+      <NoteIcon {colorTag} muted />
     {/if}
     <span
       class="tree-row-label"
@@ -293,20 +283,6 @@
     flex-shrink: 0;
     color: var(--color-text-muted);
     transition: color var(--motion-duration) var(--motion-easing);
-  }
-
-  .row-icon.tag-colored {
-    color: var(--tag-color);
-  }
-
-  .row-icon-page {
-    transition:
-      fill var(--motion-duration) var(--motion-easing),
-      stroke var(--motion-duration) var(--motion-easing);
-  }
-
-  .tag-colored .row-icon-page {
-    fill: color-mix(in srgb, var(--tag-color) 20%, transparent);
   }
 
   .chevron {
