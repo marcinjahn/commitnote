@@ -14,6 +14,7 @@ import { decryptNote } from "../crypto/note-cipher";
 import { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
 import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { FOLDER_MARKER, TRAILER } from "../format/v1";
 import { readOrderIndex } from "../order/order-index";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
@@ -46,16 +47,7 @@ function wrap(
   gate: { current: Promise<void> | null },
   readGate: { current: Promise<void> | null },
 ): ForgeAdapter {
-  return {
-    limits: inner.limits,
-    commitCost: (changes) => inner.commitCost(changes),
-    inspect: () => inner.inspect(),
-    initialize: (configText, message) => inner.initialize(configText, message),
-    getHead: () => inner.getHead(),
-    listTree: (sha) => inner.listTree(sha),
-    listCommits: (request) => inner.listCommits(request),
-    findOldestCommit: (request) => inner.findOldestCommit(request),
-    readFileAt: (sha, path) => inner.readFileAt(sha, path),
+  return delegateAdapter(inner, {
     readBlob: async (sha) => {
       if (readGate.current !== null) await readGate.current;
       return inner.readBlob(sha);
@@ -65,7 +57,7 @@ function wrap(
       if (gate.current !== null) await gate.current;
       return inner.commit(request);
     },
-  };
+  });
 }
 
 async function setup(

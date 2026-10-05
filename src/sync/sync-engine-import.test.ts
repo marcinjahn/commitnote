@@ -10,6 +10,7 @@ import {
 } from "../crypto/keyring";
 import { decryptNote } from "../crypto/note-cipher";
 import { ForgeError } from "../forge/errors";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import type {
   AtomicCommitSupport,
@@ -76,21 +77,12 @@ async function setup(options?: {
             return atomic.support;
           },
         };
-  const adapter: ForgeAdapter = {
+  const adapter = delegateAdapter(fake, {
     ...atomicMethods,
-    limits: fake.limits,
     commitCost: (changes, costOptions) => {
       costs.push({ atomic: costOptions?.atomic === true });
       return fake.commitCost(changes);
     },
-    inspect: () => fake.inspect(),
-    initialize: (configText, message) => fake.initialize(configText, message),
-    getHead: () => fake.getHead(),
-    listTree: (sha) => fake.listTree(sha),
-    listCommits: (request) => fake.listCommits(request),
-    findOldestCommit: (request) => fake.findOldestCommit(request),
-    readFileAt: (sha, path) => fake.readFileAt(sha, path),
-    readBlob: (sha) => fake.readBlob(sha),
     commit: async (request) => {
       commits.push(request);
       if (request.atomic === true && atomic?.support.kind === "needsSetup") {
@@ -98,7 +90,7 @@ async function setup(options?: {
       }
       return fake.commit(request);
     },
-  };
+  });
   const engine = createSyncEngine({
     adapter,
     keyring,

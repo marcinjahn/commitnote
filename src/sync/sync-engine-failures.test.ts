@@ -6,6 +6,7 @@ import { decryptNote } from "../crypto/note-cipher";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
 import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
 import { buildNoteTree, findNode } from "../tree/note-tree";
 import { GITHUB_WRITE_LIMITS } from "../forge/github/github-adapter";
@@ -34,22 +35,12 @@ interface Harness {
 }
 
 function wrap(inner: FakeForgeAdapter, commits: CommitRequest[]): ForgeAdapter {
-  return {
-    limits: inner.limits,
-    commitCost: (changes) => inner.commitCost(changes),
-    inspect: () => inner.inspect(),
-    initialize: (configText, message) => inner.initialize(configText, message),
-    getHead: () => inner.getHead(),
-    listTree: (sha) => inner.listTree(sha),
-    listCommits: (request) => inner.listCommits(request),
-    findOldestCommit: (request) => inner.findOldestCommit(request),
-    readFileAt: (sha, path) => inner.readFileAt(sha, path),
-    readBlob: (sha) => inner.readBlob(sha),
+  return delegateAdapter(inner, {
     commit: (request) => {
       commits.push(request);
       return inner.commit(request);
     },
-  };
+  });
 }
 
 async function setup(options?: {

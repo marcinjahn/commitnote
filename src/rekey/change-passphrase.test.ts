@@ -6,6 +6,7 @@ import { encryptNote } from "../crypto/note-cipher";
 import { ForgeError, type ForgeErrorKind } from "../forge/errors";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import type { AtomicCommitSupport, ForgeAdapter } from "../forge/forge-adapter";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { FakeForgeAdapter as FakeAdapter } from "../forge/fake/fake-forge-adapter";
 import {
   commitFiles,
@@ -67,22 +68,17 @@ function instrument(
   }
   return {
     calls: () => calls,
-    limits: fake.limits,
-    commitCost: (changes) => fake.commitCost(changes),
-    inspect: () => fake.inspect(),
-    initialize: (configText, message) => fake.initialize(configText, message),
-    getHead: () => run("getHead", () => fake.getHead()),
-    listTree: (sha) => run("listTree", () => fake.listTree(sha)),
-    listCommits: (request) => fake.listCommits(request),
-    findOldestCommit: (request) => fake.findOldestCommit(request),
-    readFileAt: (sha, path) => fake.readFileAt(sha, path),
-    readBlob: (sha) => run("readBlob", () => fake.readBlob(sha)),
-    commit: (request) => run("commit", () => fake.commit(request)),
-    ...(options?.support === undefined
-      ? {}
-      : {
-          atomicCommitSupport: async () => options.support!,
-        }),
+    ...delegateAdapter(fake, {
+      getHead: () => run("getHead", () => fake.getHead()),
+      listTree: (sha) => run("listTree", () => fake.listTree(sha)),
+      readBlob: (sha) => run("readBlob", () => fake.readBlob(sha)),
+      commit: (request) => run("commit", () => fake.commit(request)),
+      ...(options?.support === undefined
+        ? {}
+        : {
+            atomicCommitSupport: async () => options.support!,
+          }),
+    }),
   };
 }
 

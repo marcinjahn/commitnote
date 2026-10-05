@@ -6,6 +6,7 @@ import { encryptNote } from "../crypto/note-cipher";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
 import type { ForgeAdapter } from "../forge/forge-adapter";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
 import {
   sampleNotesRepoSource,
@@ -31,11 +32,7 @@ function wrapWithCounts(inner: ForgeAdapter): {
   readonly counts: CallCounts;
 } {
   const counts: CallCounts = { getHead: 0, listTree: 0, readBlob: 0 };
-  const adapter: ForgeAdapter = {
-    limits: inner.limits,
-    commitCost: (changes) => inner.commitCost(changes),
-    inspect: () => inner.inspect(),
-    initialize: (configText, message) => inner.initialize(configText, message),
+  const adapter = delegateAdapter(inner, {
     getHead: () => {
       counts.getHead++;
       return inner.getHead();
@@ -44,15 +41,11 @@ function wrapWithCounts(inner: ForgeAdapter): {
       counts.listTree++;
       return inner.listTree(commitSha);
     },
-    listCommits: (request) => inner.listCommits(request),
-    findOldestCommit: (request) => inner.findOldestCommit(request),
-    readFileAt: (sha, path) => inner.readFileAt(sha, path),
     readBlob: (sha) => {
       counts.readBlob++;
       return inner.readBlob(sha);
     },
-    commit: (request) => inner.commit(request),
-  };
+  });
   return { adapter, counts };
 }
 

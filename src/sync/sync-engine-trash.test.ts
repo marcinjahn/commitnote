@@ -7,7 +7,8 @@ import { type Keyring } from "../crypto/keyring";
 import { decryptNote } from "../crypto/note-cipher";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
-import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
+import type { CommitRequest } from "../forge/forge-adapter";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
 import type { PurgeCaps } from "../trash/expiry";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
@@ -94,23 +95,13 @@ async function setup(options?: {
 
   const commits: CommitRequest[] = [];
   const gate: { current: Promise<void> | null } = { current: null };
-  const adapter: ForgeAdapter = {
-    limits: fake.limits,
-    commitCost: (changes) => fake.commitCost(changes),
-    inspect: () => fake.inspect(),
-    initialize: (configText, message) => fake.initialize(configText, message),
-    getHead: () => fake.getHead(),
-    listTree: (sha) => fake.listTree(sha),
-    listCommits: (request) => fake.listCommits(request),
-    findOldestCommit: (request) => fake.findOldestCommit(request),
-    readFileAt: (sha, path) => fake.readFileAt(sha, path),
-    readBlob: (sha) => fake.readBlob(sha),
+  const adapter = delegateAdapter(fake, {
     commit: async (request) => {
       commits.push(request);
       if (gate.current !== null) await gate.current;
       return fake.commit(request);
     },
-  };
+  });
   const engine = createSyncEngine({
     adapter,
     keyring,

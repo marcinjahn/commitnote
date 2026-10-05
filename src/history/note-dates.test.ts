@@ -8,9 +8,10 @@ import type { Keyring } from "../crypto/keyring";
 import { encryptPath } from "../crypto/name-cipher";
 import { encryptNote } from "../crypto/note-cipher";
 import { ForgeError } from "../forge/errors";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { commitFiles, InMemoryGitRepo } from "../forge/fake/in-memory-git-repo";
-import type { ForgeAdapter, ListCommitsRequest } from "../forge/forge-adapter";
+import type { ListCommitsRequest } from "../forge/forge-adapter";
 import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../format/v1";
 import type { OrderIndex } from "../order/order-index";
 import {
@@ -97,10 +98,7 @@ function counting(adapter: FakeForgeAdapter) {
     readFileAt: 0,
     listTree: 0,
   };
-  const counted: Pick<
-    ForgeAdapter,
-    "listCommits" | "findOldestCommit" | "readFileAt" | "listTree"
-  > = {
+  const counted = delegateAdapter(adapter, {
     listCommits: (request) => {
       calls.listCommits.push(request);
       return adapter.listCommits(request);
@@ -117,7 +115,7 @@ function counting(adapter: FakeForgeAdapter) {
       calls.listTree++;
       return adapter.listTree(sha);
     },
-  };
+  });
   const requests = () =>
     calls.listCommits.length +
     calls.findOldestCommit +
@@ -279,16 +277,12 @@ describe("note dates", () => {
         const blob2 = await repo.blobOf(["N"]);
         const held: { request: ListCommitsRequest; release: () => void }[] = [];
         const dates = createNoteDates({
-          adapter: {
+          adapter: delegateAdapter(repo.adapter, {
             listCommits: async (request) => {
               await new Promise<void>((release) => held.push({ request, release }));
               return repo.adapter.listCommits(request);
             },
-            findOldestCommit: (request) =>
-              repo.adapter.findOldestCommit(request),
-            readFileAt: (sha, path) => repo.adapter.readFileAt(sha, path),
-            listTree: (sha) => repo.adapter.listTree(sha),
-          },
+          }),
           keyring: repo.keyring,
           clock: createTestClock(T0),
         });

@@ -11,7 +11,8 @@ import {
   type RepoConfig,
 } from "../crypto/repo-config";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
-import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
+import type { CommitRequest } from "../forge/forge-adapter";
 import { REPO_CONFIG_PATH } from "../format/v1";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
 import { buildNoteTree, findNode } from "../tree/note-tree";
@@ -47,16 +48,7 @@ async function setup(engineKeyring = keyring): Promise<Harness> {
   const fake = await createSampleNotesRepoAdapter();
   const commits: CommitRequest[] = [];
   const blobReads: string[] = [];
-  const adapter: ForgeAdapter = {
-    limits: fake.limits,
-    commitCost: (changes) => fake.commitCost(changes),
-    inspect: () => fake.inspect(),
-    initialize: (configText, message) => fake.initialize(configText, message),
-    getHead: () => fake.getHead(),
-    listTree: (sha) => fake.listTree(sha),
-    listCommits: (request) => fake.listCommits(request),
-    findOldestCommit: (request) => fake.findOldestCommit(request),
-    readFileAt: (sha, path) => fake.readFileAt(sha, path),
+  const adapter = delegateAdapter(fake, {
     readBlob: (sha) => {
       blobReads.push(sha);
       return fake.readBlob(sha);
@@ -65,7 +57,7 @@ async function setup(engineKeyring = keyring): Promise<Harness> {
       commits.push(request);
       return fake.commit(request);
     },
-  };
+  });
   const clock = createTestClock(1_000_000);
   const engine = createSyncEngine({ adapter, keyring: engineKeyring, clock });
   await engine.refresh();
