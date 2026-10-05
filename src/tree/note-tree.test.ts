@@ -1,30 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { argon2idDirect } from "../crypto/argon2";
-import { deriveKeyring, type Keyring } from "../crypto/keyring";
+import type { Keyring } from "../crypto/keyring";
 import { encryptName } from "../crypto/name-cipher";
-import type { KdfParams } from "../crypto/repo-config";
+import { testKeyring } from "../crypto/testing/test-keyring";
 import type { TreeEntry } from "../forge/forge-adapter";
 import { FOLDER_MARKER, REPO_CONFIG_PATH, TRASH_DIR } from "../format/v1";
 import { buildNoteTree, findNode, listNotes } from "./note-tree";
-
-const REDUCED_KDF: Pick<KdfParams, "memoryKiB" | "iterations" | "parallelism"> =
-  {
-    memoryKiB: 64,
-    iterations: 1,
-    parallelism: 1,
-  };
-
-async function testKeyring(): Promise<Keyring> {
-  return deriveKeyring(
-    "correct horse battery staple",
-    {
-      algorithm: "argon2id",
-      ...REDUCED_KDF,
-      salt: Uint8Array.from({ length: 16 }, () => 7),
-    },
-    argon2idDirect,
-  );
-}
 
 function directoryPrefixesOf(path: string): string[] {
   const segments = path.split("/");

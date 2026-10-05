@@ -27,11 +27,11 @@ import {
   type PassphraseChangeDeps,
   type PassphraseChangeStep,
 } from "./change-passphrase";
+import { fastArgon2id } from "../crypto/testing/test-keyring";
 import {
   createRekeyFixture,
   createRekeyFixtureFiles,
   decryptTree,
-  fastArgon2id,
   FIXTURE_NOTES,
   keyringFor,
   keyStateOf,

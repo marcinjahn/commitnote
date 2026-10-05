@@ -16,9 +16,9 @@ import {
   commitPassphraseChange,
   preparePassphraseChange,
 } from "../rekey/change-passphrase";
+import { fastArgon2id } from "../crypto/testing/test-keyring";
 import {
   createRekeyFixture,
-  fastArgon2id,
   NEW_PASSPHRASE,
   newRepoConfig,
   OLD_PASSPHRASE,

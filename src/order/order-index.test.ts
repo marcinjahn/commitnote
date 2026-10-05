@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Change, NotePath } from "../changes/change";
-import { argon2idDirect } from "../crypto/argon2";
-import { deriveKeyring, type Keyring } from "../crypto/keyring";
+import type { Keyring } from "../crypto/keyring";
 import { encryptNote } from "../crypto/note-cipher";
+import { testKeyring } from "../crypto/testing/test-keyring";
 import {
   applyChangeToOrder,
   decryptOrderIndex,
@@ -16,19 +16,7 @@ import {
   type OrderIndex,
 } from "./order-index";
 
-async function keyringFor(passphrase: string): Promise<Keyring> {
-  return deriveKeyring(
-    passphrase,
-    {
-      algorithm: "argon2id",
-      memoryKiB: 64,
-      iterations: 1,
-      parallelism: 1,
-      salt: Uint8Array.from({ length: 16 }, () => 7),
-    },
-    argon2idDirect,
-  );
-}
+const keyringFor = testKeyring;
 
 function indexOf(
   folders: Record<string, Record<string, string>>,

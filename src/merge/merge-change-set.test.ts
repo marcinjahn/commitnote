@@ -1,12 +1,16 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { encodeChangeSet } from "../changes/encode-change-set";
-import { argon2idDirect } from "../crypto/argon2";
 import { utf8Encode } from "../crypto/base64";
-import { deriveKeyring, type Keyring } from "../crypto/keyring";
+import type { Keyring } from "../crypto/keyring";
 import { encryptPath } from "../crypto/name-cipher";
 import { encryptNote } from "../crypto/note-cipher";
 import type { RepoConfig } from "../crypto/repo-config";
+import {
+  REDUCED_KDF,
+  testKeyring,
+  testSalt,
+} from "../crypto/testing/test-keyring";
 import type { TreeEntry } from "../forge/forge-adapter";
 import { FOLDER_MARKER, REPO_CONFIG_PATH, TRASH_DIR } from "../format/v1";
 import { EMPTY_ORDER } from "../order/order-index";
@@ -22,17 +26,7 @@ import {
 let keyring: Keyring;
 
 beforeAll(async () => {
-  keyring = await deriveKeyring(
-    "correct horse battery staple",
-    {
-      algorithm: "argon2id",
-      memoryKiB: 64,
-      iterations: 1,
-      parallelism: 1,
-      salt: Uint8Array.from({ length: 16 }, () => 7),
-    },
-    argon2idDirect,
-  );
+  keyring = await testKeyring();
 });
 
 interface TrashSnapshot {
@@ -151,10 +145,8 @@ const REPO_CONFIG: RepoConfig = {
   nameScheme: "AES-256-GCM-SIV-HMAC-SHA256/base64url",
   kdf: {
     algorithm: "argon2id",
-    memoryKiB: 64,
-    iterations: 1,
-    parallelism: 1,
-    salt: Uint8Array.from({ length: 16 }, () => 7),
+    ...REDUCED_KDF,
+    salt: testSalt(7),
   },
   keyCheck: `${"A".repeat(43)}=`,
   createdAt: "2026-01-02T03:04:05.000Z",

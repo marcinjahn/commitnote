@@ -1,24 +1,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { argon2idDirect } from "../crypto/argon2";
-import { deriveKeyring, type Keyring } from "../crypto/keyring";
+import type { Keyring } from "../crypto/keyring";
 import { encryptName, encryptPath } from "../crypto/name-cipher";
+import { testKeyring } from "../crypto/testing/test-keyring";
 import type { TreeEntry } from "../forge/forge-adapter";
 import { FOLDER_MARKER, REPO_CONFIG_PATH, TRASH_DIR } from "../format/v1";
 import { buildTrashIndex, type TrashEntry } from "./trash-index";
 
-async function keyringFor(passphrase: string): Promise<Keyring> {
-  return deriveKeyring(
-    passphrase,
-    {
-      algorithm: "argon2id",
-      memoryKiB: 64,
-      iterations: 1,
-      parallelism: 1,
-      salt: Uint8Array.from({ length: 16 }, () => 7),
-    },
-    argon2idDirect,
-  );
-}
+const keyringFor = testKeyring;
 
 function blob(path: string, sha: string): TreeEntry {
   return { path, type: "blob", sha };

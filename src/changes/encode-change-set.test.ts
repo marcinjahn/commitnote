@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { argon2idDirect } from "../crypto/argon2";
-import { deriveKeyring, type Keyring } from "../crypto/keyring";
+import type { Keyring } from "../crypto/keyring";
 import { decryptNote } from "../crypto/note-cipher";
 import { encryptPath } from "../crypto/name-cipher";
+import { testKeyring as sharedTestKeyring } from "../crypto/testing/test-keyring";
 import {
   parseRepoConfig,
   serializeRepoConfig,
-  type KdfParams,
   type RepoConfig,
 } from "../crypto/repo-config";
 import type { TreeEntry } from "../forge/forge-adapter";
@@ -27,23 +26,8 @@ import {
   InvalidChangeSetError,
 } from "./encode-change-set";
 
-const REDUCED_KDF: Pick<KdfParams, "memoryKiB" | "iterations" | "parallelism"> =
-  {
-    memoryKiB: 64,
-    iterations: 1,
-    parallelism: 1,
-  };
-
-async function testKeyring(): Promise<Keyring> {
-  return deriveKeyring(
-    "correct horse battery staple",
-    {
-      algorithm: "argon2id",
-      ...REDUCED_KDF,
-      salt: Uint8Array.from({ length: 16 }, () => 9),
-    },
-    argon2idDirect,
-  );
+function testKeyring(): Promise<Keyring> {
+  return sharedTestKeyring(undefined, 9);
 }
 
 function blob(path: string, sha: string): TreeEntry {

@@ -17,10 +17,10 @@ import {
   preparePassphraseChange,
   type PassphraseChangeDeps,
 } from "./change-passphrase";
+import { fastArgon2id } from "../crypto/testing/test-keyring";
 import {
   createRekeyFixtureFiles,
   decryptTree,
-  fastArgon2id,
   keyStateOf,
   NEW_PASSPHRASE,
   OLD_PASSPHRASE,
