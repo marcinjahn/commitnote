@@ -1,4 +1,3 @@
-import type { Argon2idFunction } from "../../crypto/argon2";
 import {
   createRepoConfig,
   deriveKeyring,
@@ -8,6 +7,7 @@ import {
 import { decryptName, encryptPath } from "../../crypto/name-cipher";
 import { decryptNote, encryptNote } from "../../crypto/note-cipher";
 import { parseRepoConfig } from "../../crypto/repo-config";
+import { fastArgon2id } from "../../crypto/testing/test-keyring";
 import { FakeForgeAdapter } from "../../forge/fake/fake-forge-adapter";
 import {
   commitFiles,
@@ -21,14 +21,6 @@ import {
   REPO_CONFIG_PATH,
   TRASH_DIR,
 } from "../../format/v1";
-
-/** Cheap stand-in for Argon2id; only the key schedule above it matters here. */
-export const fastArgon2id: Argon2idFunction = async ({ password, salt }) => {
-  const input = new Uint8Array(password.length + salt.length);
-  input.set(password, 0);
-  input.set(salt, password.length);
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", input));
-};
 
 export const OLD_PASSPHRASE = "old passphrase";
 export const NEW_PASSPHRASE = "new passphrase";

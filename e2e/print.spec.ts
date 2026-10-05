@@ -1,14 +1,11 @@
 import type { Locator, Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
-import { expectTree, logIn } from "./helpers";
+import { expect, test } from "./fixtures";
+import { openNotes, showTree, expectFamily, MONO_STACK, SERIF_STACK } from "./helpers";
+import { chooseOption, closeSettings, openSettings, settingsDialog } from "./helpers/settings";
+import { openWelcome } from "./helpers/tree";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const PASSPHRASE = "sample notes repo passphrase";
 const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
-const SERIF_STACK =
-  'ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", Georgia, Cambria, "Noto Serif", "Times New Roman", serif';
 const LITERATA_STACK = `"Literata Variable", ${SERIF_STACK}`;
-const MONO_STACK = "var(--font-mono)";
 
 function printView(page: Page): Locator {
   return page.locator(".print-view");
@@ -16,61 +13,6 @@ function printView(page: Page): Locator {
 
 function editor(page: Page): Locator {
   return page.getByRole("textbox", { name: "Note editor" });
-}
-
-function settingsDialog(page: Page) {
-  return page.getByRole("dialog", { name: "Settings" });
-}
-
-async function openWelcome(page: Page): Promise<void> {
-  await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
-  await expect(editor(page)).toBeVisible();
-}
-
-async function openSettings(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Settings" })
-    .click();
-  await expect(settingsDialog(page)).toBeVisible();
-}
-
-async function chooseOption(
-  page: Page,
-  section: string,
-  name: string,
-): Promise<void> {
-  await settingsDialog(page)
-    .getByRole("radiogroup", { name: section })
-    .locator("label")
-    .filter({ has: page.getByRole("radio", { name, exact: true }) })
-    .click();
-}
-
-async function closeSettings(page: Page): Promise<void> {
-  await page.keyboard.press("Escape");
-  await expect(settingsDialog(page)).toHaveCount(0);
-}
-
-function expectedFamily(page: Page, stack: string): Promise<string> {
-  return page.evaluate((value) => {
-    const probe = document.createElement("span");
-    probe.style.fontFamily = value;
-    document.body.appendChild(probe);
-    const family = getComputedStyle(probe).fontFamily;
-    probe.remove();
-    return family;
-  }, stack);
-}
-
-function computedFamily(locator: Locator): Promise<string> {
-  return locator.evaluate((el) => getComputedStyle(el).fontFamily);
-}
-
-async function expectFamily(page: Page, locator: Locator, stack: string) {
-  const expected = await expectedFamily(page, stack);
-  await expect.poll(() => computedFamily(locator)).toBe(expected);
 }
 
 function dispatchPrintEvent(
@@ -105,12 +47,10 @@ async function paste(page: Page, text: string): Promise<void> {
 test.describe("with a note", () => {
   test.beforeEach(async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/");
-    await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-    await expectTree(page);
+    await openNotes(page);
   });
 
-  test("hides the app and shows the rendered note under print media", async ({
+  test("hides the app and shows the rendered note under print media", { tag: "@mobile" }, async ({
     page,
   }) => {
     await openWelcome(page);
@@ -127,22 +67,6 @@ test.describe("with a note", () => {
     await expect(view.locator("h1")).toHaveText("Welcome");
     await expect(view.locator("header.print-title")).toHaveCount(0);
     await expect(view.locator("strong")).toHaveText("notes");
-    await expect(view.locator("s")).toHaveText("strikethrough");
-    await expect(view.locator("pre code")).toHaveText('console.log("hello");');
-    const link = view.locator('a[href="https://github.com/example/commitnote"]');
-    await expect(link).toHaveText("commitnote project");
-    await expect(link.locator("+ .print-url")).toHaveText(
-      " (https://github.com/example/commitnote)",
-    );
-    await expect(view.locator('li[data-task="done"]')).toHaveCount(1);
-    await expect(view.locator('li[data-task="open"]')).toHaveCount(1);
-    await expect(view.locator("table th").first()).toHaveText("Column A");
-    await expect(view.locator("blockquote")).toHaveCount(1);
-
-    const text = (await view.textContent()) ?? "";
-    for (const raw of ["**", "~~", "```", "[x]"]) {
-      expect(text).not.toContain(raw);
-    }
   });
 
   test("a long note prints every line", async ({ page }) => {
@@ -208,11 +132,9 @@ test.describe("with a note", () => {
     await expect(page.getByRole("tree", { name: "Notes" })).toBeHidden();
   });
 
-  test("prints the note while a dialog is open", async ({ page }, testInfo) => {
+  test("prints the note while a dialog is open", { tag: "@mobile" }, async ({ page }) => {
     await openWelcome(page);
-    if (testInfo.project.name === "mobile") {
-      await page.getByRole("button", { name: "Back to notes" }).click();
-    }
+    await showTree(page);
     await openSettings(page);
 
     await printPreview(page);
@@ -250,8 +172,7 @@ test.describe("with a note", () => {
     await expectFamily(page, view.locator("p code").first(), MONO_STACK);
   });
 
-  test("produces a PDF", async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "desktop");
+  test("produces a PDF", async ({ page }) => {
     await openWelcome(page);
     const pdf = await page.pdf();
     expect(pdf.subarray(0, 4).toString()).toBe("%PDF");

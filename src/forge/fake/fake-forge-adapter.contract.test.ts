@@ -1,4 +1,3 @@
-import { MAIN_BRANCH } from "../../format/v1";
 import type {
   ContractOperation,
   ContractSeed,
@@ -6,10 +5,13 @@ import type {
   ForgeContractHarness,
   InjectedFailure,
 } from "../contract/forge-adapter-contract";
-import { describeForgeAdapterContract } from "../contract/forge-adapter-contract";
+import {
+  describeForgeAdapterContract,
+  inMemorySubjectHooks,
+} from "../contract/forge-adapter-contract";
 import { ForgeError } from "../errors";
 import type { ContentCreatingRequest } from "../forge-adapter";
-import { commitFiles, InMemoryGitRepo } from "./in-memory-git-repo";
+import { InMemoryGitRepo, seedCommits } from "./in-memory-git-repo";
 import { FakeForgeAdapter } from "./fake-forge-adapter";
 
 function translateFailure(failure: InjectedFailure): ForgeError | "stale" {
@@ -40,23 +42,10 @@ function buildSubject(
   return {
     adapter,
     contentCreatingRequests,
+    ...inMemorySubjectHooks(repo),
     pushFromAnotherDevice: (changes) => adapter.pushFromAnotherDevice(changes),
     failNext: (operation: ContractOperation, failure: InjectedFailure) =>
       adapter.failNext(operation, translateFailure(failure)),
-    readFileAtMain: async (path) => {
-      const head = repo.getRef(MAIN_BRANCH);
-      if (head === undefined) {
-        return undefined;
-      }
-      const commit = repo.getCommit(head);
-      if (commit === undefined) {
-        return undefined;
-      }
-      const sha = repo.getTree(commit.tree)?.get(path);
-      return sha === undefined ? undefined : repo.getBlob(sha);
-    },
-    mainHead: async () => repo.getRef(MAIN_BRANCH),
-    commitParent: async (sha) => repo.getCommit(sha)?.parent,
   };
 }
 
@@ -67,18 +56,7 @@ const harness: ForgeContractHarness = {
 
   async createPopulated(seed: ContractSeed, options) {
     const repo = new InMemoryGitRepo();
-    const branch = seed.branch ?? MAIN_BRANCH;
-    let parent: string | null = null;
-    for (const [index, commitSeed] of seed.commits.entries()) {
-      const isLastCommit = index === seed.commits.length - 1;
-      parent = await commitFiles(repo, {
-        parent,
-        files: { ...commitSeed.files },
-        message: commitSeed.message,
-        committedAt: commitSeed.committedAt,
-        branch: isLastCommit ? branch : undefined,
-      });
-    }
+    await seedCommits(repo, seed.commits, seed.branch);
     return buildSubject(repo, options);
   },
 };

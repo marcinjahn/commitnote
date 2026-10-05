@@ -9,13 +9,7 @@ import {
 } from "./keyring";
 import type { KdfParams } from "./repo-config";
 import { parseRepoConfig } from "./repo-config";
-
-const REDUCED_KDF: Pick<KdfParams, "memoryKiB" | "iterations" | "parallelism"> =
-  {
-    memoryKiB: 64,
-    iterations: 1,
-    parallelism: 1,
-  };
+import { REDUCED_KDF } from "./testing/test-keyring";
 
 function salt(byte: number): Uint8Array {
   return Uint8Array.from({ length: 16 }, () => byte);

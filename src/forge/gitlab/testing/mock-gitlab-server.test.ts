@@ -1,26 +1,12 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
+import { describe, expect, it } from "vitest";
 import { commitFiles } from "../../fake/in-memory-git-repo";
 import { MockGitLabRepo } from "./mock-gitlab-server";
+import { useMswServer } from "../../fake/msw-test-server";
 
 const TOKEN = "s3cr3t-token";
 const PROJECT_URL = `https://gitlab.com/api/v4/projects/${encodeURIComponent("acme/team/notes")}`;
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 async function useSeededMock(): Promise<{
   mock: MockGitLabRepo;
@@ -30,7 +16,7 @@ async function useSeededMock(): Promise<{
     projectPath: "acme/team/notes",
     token: TOKEN,
   });
-  server.use(...mock.handlers());
+  getServer().use(...mock.handlers());
   const head = await commitFiles(mock.git, {
     parent: null,
     files: { "a.md": "a" },

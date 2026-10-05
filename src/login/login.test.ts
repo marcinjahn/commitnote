@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { encodeInitializeMessage } from "../changes/encode-change-set";
-import { argon2idDirect } from "../crypto/argon2";
+import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
 import {
   createRepoConfig,
   deriveKeyring,
@@ -51,7 +51,7 @@ function deps(
 ): LoginDependencies {
   return {
     createAdapter: () => adapter,
-    argon2id: argon2idDirect,
+    argon2id: sharedMemoizedArgon2id,
     ...overrides,
   };
 }
@@ -521,7 +521,7 @@ describe("unlockNotesRepo after the repository changed since it was inspected", 
     passphrase: string,
   ): Promise<void> {
     const { configText } = await createRepoConfig(passphrase, {
-      argon2id: argon2idDirect,
+      argon2id: sharedMemoizedArgon2id,
     });
     const head = adapter.repo.getRef(MAIN_BRANCH) as string;
     const result = await adapter.commit({
@@ -568,7 +568,7 @@ describe("unlockNotesRepo after the repository changed since it was inspected", 
   it("derives keys only once when the config is unchanged", async () => {
     const adapter = await createSampleNotesRepoAdapter();
     const target = await inspectedTarget(adapter);
-    const argon2id = vi.fn(argon2idDirect);
+    const argon2id = vi.fn(sharedMemoizedArgon2id);
     const steps: LoginStep[] = [];
 
     const result = await unlockNotesRepo(
@@ -748,7 +748,7 @@ describe("resumeSession", () => {
     const wrongKeyring = await deriveKeyring(
       "a different passphrase",
       config.kdf,
-      argon2idDirect,
+      sharedMemoizedArgon2id,
     );
     const staleSession: Session = { ...session, keyring: wrongKeyring };
 

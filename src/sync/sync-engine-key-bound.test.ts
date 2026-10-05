@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { encryptPath } from "../crypto/name-cipher";
-import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
+import type { CommitRequest } from "../forge/forge-adapter";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { FOLDER_MARKER } from "../format/v1";
 import { createRekeyFixture } from "../rekey/testing/rekey-fixture";
 import { createTestClock } from "./testing/test-clock";
@@ -11,22 +12,12 @@ describe("sync engine commits", () => {
     const fixture = await createRekeyFixture();
     const commits: CommitRequest[] = [];
     const fake = fixture.adapter;
-    const adapter: ForgeAdapter = {
-      limits: fake.limits,
-      commitCost: (changes) => fake.commitCost(changes),
-      inspect: () => fake.inspect(),
-      initialize: (text, message) => fake.initialize(text, message),
-      getHead: () => fake.getHead(),
-      listTree: (sha) => fake.listTree(sha),
-      listCommits: (request) => fake.listCommits(request),
-      findOldestCommit: (request) => fake.findOldestCommit(request),
-      readFileAt: (sha, path) => fake.readFileAt(sha, path),
-      readBlob: (sha) => fake.readBlob(sha),
+    const adapter = delegateAdapter(fake, {
       commit: (request) => {
         commits.push(request);
         return fake.commit(request);
       },
-    };
+    });
     const engine = createSyncEngine({
       adapter,
       keyring: fixture.oldKeyring,

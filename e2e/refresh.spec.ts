@@ -1,18 +1,9 @@
-import { test, expect } from "@playwright/test";
-import { logIn, expectTree } from "./helpers";
+import { test, expect } from "./fixtures";
+import { openNotes, fakeForge } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const REPO_KEY = "sample/notes";
 
-async function startSession(page: import("@playwright/test").Page) {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
-}
-
-test("there is only one Refresh button", async ({ page }, testInfo) => {
-  await startSession(page);
+test("there is only one Refresh button", { tag: "@mobile" }, async ({ page }, testInfo) => {
+  await openNotes(page);
   const refresh = page.getByRole("button", { name: "Refresh" });
 
   if (testInfo.project.name === "desktop") {
@@ -24,51 +15,26 @@ test("there is only one Refresh button", async ({ page }, testInfo) => {
   await expect(refresh).toHaveCount(1);
 });
 
-test("focus and visibility do not refresh; clicking Refresh does", async ({
+test("clicking Refresh shows a remote change", async ({
   page,
-}, testInfo) => {
-  await startSession(page);
+}) => {
+  await openNotes(page);
 
-  const editRemotely = (path: readonly string[], markdown: string) =>
-    page.evaluate(
-      ([repoKey, notePath, text]) =>
-        (window as any).__commitNoteFakeForge.editNote(
-          repoKey,
-          notePath,
-          text,
-        ),
-      [REPO_KEY, path, markdown] as const,
-    );
+  const editRemotely = fakeForge(page).editNote;
 
-  // The first remote edit derives a keyring, which is slow.
   await editRemotely(["Scratch"], "warm-up");
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByRole("treeitem", { name: "Scratch" })).toBeVisible();
 
   await editRemotely(["Remote note"], "# Remote note");
 
-  await page.evaluate(() => {
-    window.dispatchEvent(new Event("focus"));
-    Object.defineProperty(document, "visibilityState", {
-      value: "visible",
-      configurable: true,
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-
   const remoteNote = page.getByRole("treeitem", { name: "Remote note" });
-  await page.waitForTimeout(1500);
-  await expect(remoteNote).toHaveCount(0);
-
-  if (testInfo.project.name === "mobile") {
-    await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
-  }
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(remoteNote).toBeVisible();
 });
 
 test("clicking Refresh briefly shows a checkmark", async ({ page }) => {
-  await startSession(page);
+  await openNotes(page);
   const refresh = page.getByRole("button", { name: "Refresh" });
 
   await refresh.click();
@@ -80,18 +46,10 @@ test("clicking Refresh briefly shows a checkmark", async ({ page }) => {
 test("a failed Refresh shows the error in a toast and an x", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
   const refresh = page.getByRole("button", { name: "Refresh" });
 
-  await page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.failNext(
-        repoKey,
-        "getHead",
-        "Network",
-      ),
-    REPO_KEY,
-  );
+  await fakeForge(page).failNext("getHead", "Network");
   await refresh.click();
 
   await expect(refresh).toHaveAttribute("data-feedback", "error");

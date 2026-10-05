@@ -1,85 +1,35 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
 import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
-import { commitFiles } from "../fake/in-memory-git-repo";
-import { createGitLabAdapter, MAX_TREE_PAGES } from "./gitlab-adapter";
-import type { GitLabAdapterOptions } from "./gitlab-adapter";
-import { MockGitLabRepo } from "./testing/mock-gitlab-server";
+import { commitFiles, commitOnBranch } from "../fake/in-memory-git-repo";
+import { MAX_TREE_PAGES } from "./gitlab-adapter";
+import type { MockGitLabRepo } from "./testing/mock-gitlab-server";
 import { argon2idDirect } from "../../crypto/argon2";
 import { initializeNotesRepo, inspectRepository } from "../../login/login";
+import { useGitLabTestHarness } from "./testing/gitlab-test-harness";
 
 const PROJECT = "acme/team/notes";
 const TOKEN = "s3cr3t-token";
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
-
-function useMock(options?: { canWrite?: boolean }): MockGitLabRepo {
-  const mock = new MockGitLabRepo({
-    projectPath: PROJECT,
-    token: TOKEN,
-    ...options,
-  });
-  server.use(...mock.handlers());
-  return mock;
-}
-
-function makeAdapter(options?: Partial<GitLabAdapterOptions>) {
-  return createGitLabAdapter(
-    { owner: "acme/team", repo: "notes" },
-    { accessToken: TOKEN, ...options },
-  );
-}
-
-function seed(
-  mock: MockGitLabRepo,
-  files: Record<string, string> = {},
-): Promise<string> {
-  return commitFiles(mock.git, {
-    parent: null,
-    files: { [REPO_CONFIG_PATH]: "{}", ...files },
-    message: "init",
-    branch: MAIN_BRANCH,
-  });
-}
+const { getServer, useMock, makeAdapter, seed, captureCommitBodies } =
+  useGitLabTestHarness(PROJECT);
 
 async function pushFromAnotherDevice(
   mock: MockGitLabRepo,
   path: string,
   text: string,
 ): Promise<string> {
-  const parent = mock.git.getRef(MAIN_BRANCH) ?? null;
-  const tree =
-    parent === null ? null : (mock.git.getCommit(parent)?.tree ?? null);
-  const sha = await mock.git.putCommit({
-    tree: await mock.git.applyChanges(tree, [
-      { kind: "upsert-text", path, text },
-    ]),
-    parent,
-    message: "elsewhere",
-  });
-  mock.git.setRef(MAIN_BRANCH, sha);
-  return sha;
+  return commitOnBranch(
+    mock.git,
+    [{ kind: "upsert-text", path, text }],
+    "elsewhere",
+  );
 }
 
 // Lets another device commit right before the adapter's commit request
 // reaches the mock, i.e. after the adapter's own head check.
 function raceNextCommit(action: () => Promise<unknown>): void {
-  server.use(
+  getServer().use(
     http.post(
       /\/repository\/commits$/,
       async () => {
@@ -89,17 +39,6 @@ function raceNextCommit(action: () => Promise<unknown>): void {
       { once: true },
     ),
   );
-}
-
-function captureCommitBodies(): unknown[] {
-  const bodies: unknown[] = [];
-  server.use(
-    http.post(/\/repository\/commits$/, async ({ request }) => {
-      bodies.push(await request.clone().json());
-      return undefined;
-    }),
-  );
-  return bodies;
 }
 
 describe("GitLabAdapter", () => {
@@ -238,7 +177,7 @@ describe("GitLabAdapter", () => {
   it("reports canWrite false when main is protected against the user's pushes", async () => {
     const mock = useMock();
     const head = await seed(mock);
-    server.use(
+    getServer().use(
       http.get(/\/repository\/branches\/main$/, () =>
         HttpResponse.json({
           name: MAIN_BRANCH,
@@ -256,7 +195,7 @@ describe("GitLabAdapter", () => {
 
   it("grants write access through an inherited group membership", async () => {
     useMock();
-    server.use(
+    getServer().use(
       http.get(/\/projects\/[^/]+$/, () =>
         HttpResponse.json({
           empty_repo: true,

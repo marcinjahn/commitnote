@@ -1,30 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { NOTE_PREFIX } from "../format/v1";
-import { argon2idDirect } from "./argon2";
 import { fromBase64, toBase64 } from "./base64";
-import { deriveKeyring, type Keyring } from "./keyring";
+import type { Keyring } from "./keyring";
 import { decryptNote, encryptNote, NoteDecryptionError } from "./note-cipher";
-import type { KdfParams } from "./repo-config";
+import { testKeyring } from "./testing/test-keyring";
 
-const REDUCED_KDF: Pick<KdfParams, "memoryKiB" | "iterations" | "parallelism"> =
-  {
-    memoryKiB: 64,
-    iterations: 1,
-    parallelism: 1,
-  };
-
-function salt(byte: number): Uint8Array {
-  return Uint8Array.from({ length: 16 }, () => byte);
-}
-
-async function keyring(
-  passphrase = "correct horse battery staple",
-): Promise<Keyring> {
-  return deriveKeyring(
-    passphrase,
-    { algorithm: "argon2id", ...REDUCED_KDF, salt: salt(1) },
-    argon2idDirect,
-  );
+function keyring(passphrase?: string): Promise<Keyring> {
+  return testKeyring(passphrase, 1);
 }
 
 describe("encryptNote / decryptNote", () => {

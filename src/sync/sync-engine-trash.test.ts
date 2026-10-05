@@ -1,16 +1,13 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { ChangeSet, NotePath } from "../changes/change";
-import { readOrderIndex } from "../order/order-index";
-import { encodeChangeSet } from "../changes/encode-change-set";
-import { argon2idDirect } from "../crypto/argon2";
-import { deriveKeyring, type Keyring } from "../crypto/keyring";
+import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
+import { type Keyring } from "../crypto/keyring";
 import { decryptNote } from "../crypto/note-cipher";
-import { parseRepoConfig } from "../crypto/repo-config";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
-import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
+import type { CommitRequest } from "../forge/forge-adapter";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import type { PurgeCaps } from "../trash/expiry";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
 import { buildTrashIndex } from "../trash/trash-index";
@@ -22,31 +19,23 @@ import {
 import { createRateBudget } from "./rate-budget";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
 import { createTestClock } from "./testing/test-clock";
+import {
+  WELCOME,
+  ZAZOLC,
+  okCommitCount,
+  pushRemote,
+  settle,
+} from "./testing/engine-harness";
 import { TRASH_PURGE_HEADROOM } from "./tuning";
 import { findWorkingNode } from "./working-tree";
 
 let keyring: Keyring;
 
 beforeAll(async () => {
-  const probe = await createSampleNotesRepoAdapter();
-  const inspection = await probe.inspect();
-  if (inspection.kind !== "populated" || inspection.main === null) {
-    throw new Error("expected a populated sample notes repo");
-  }
-  const parsed = parseRepoConfig(inspection.main.repoConfigText ?? "");
-  if (parsed.kind !== "valid") {
-    throw new Error(`expected a valid repo config, got ${parsed.kind}`);
-  }
-  keyring = await deriveKeyring(
-    SAMPLE_NOTES_REPO_PASSPHRASE,
-    parsed.config.kdf,
-    argon2idDirect,
-  );
+  keyring = await sampleNotesRepoKeyring();
 });
 
 const START = Date.UTC(2026, 8, 30, 12, 0, 0);
-const WELCOME = ["Welcome"];
-const ZAZOLC = ["Zażółć gęślą jaźń"];
 const PROJECTS = ["Projects"];
 const JANUARY = ["Journal", "2026", "January"];
 
@@ -76,18 +65,6 @@ interface Harness {
   gateCommits(): () => void;
 }
 
-async function pushRemote(
-  fake: FakeForgeAdapter,
-  changeSet: ChangeSet,
-): Promise<string> {
-  const listing = await fake.listTree(await fake.getHead());
-  const order = await readOrderIndex(listing, keyring, (sha) =>
-    fake.readBlob(sha),
-  );
-  const encoded = await encodeChangeSet({ listing, changeSet, order, keyring });
-  return fake.pushFromAnotherDevice(encoded.changes, encoded.message);
-}
-
 async function setup(options?: {
   readonly seed?: ChangeSet;
   readonly usedRequests?: number;
@@ -109,23 +86,13 @@ async function setup(options?: {
 
   const commits: CommitRequest[] = [];
   const gate: { current: Promise<void> | null } = { current: null };
-  const adapter: ForgeAdapter = {
-    limits: fake.limits,
-    commitCost: (changes) => fake.commitCost(changes),
-    inspect: () => fake.inspect(),
-    initialize: (configText, message) => fake.initialize(configText, message),
-    getHead: () => fake.getHead(),
-    listTree: (sha) => fake.listTree(sha),
-    listCommits: (request) => fake.listCommits(request),
-    findOldestCommit: (request) => fake.findOldestCommit(request),
-    readFileAt: (sha, path) => fake.readFileAt(sha, path),
-    readBlob: (sha) => fake.readBlob(sha),
+  const adapter = delegateAdapter(fake, {
     commit: async (request) => {
       commits.push(request);
       if (gate.current !== null) await gate.current;
       return fake.commit(request);
     },
-  };
+  });
   const engine = createSyncEngine({
     adapter,
     keyring,
@@ -152,27 +119,6 @@ async function setup(options?: {
       return release;
     },
   };
-}
-
-async function settle(engine: SyncEngine): Promise<void> {
-  await vi.waitFor(
-    () => {
-      const state = engine.getState();
-      expect(state.save.kind).not.toBe("saving");
-      expect(state.refresh.inFlight).toBe(false);
-    },
-    { timeout: 5_000, interval: 2 },
-  );
-}
-
-function okCommitCount(fake: FakeForgeAdapter, since: string): number {
-  let count = 0;
-  let current: string | null | undefined = fake.repo.getRef("main");
-  while (current !== since && current != null) {
-    count++;
-    current = fake.repo.getCommit(current)?.parent;
-  }
-  return count;
 }
 
 async function remoteTrashIds(fake: FakeForgeAdapter): Promise<string[]> {

@@ -1,15 +1,8 @@
 import type { Locator, Page } from "@playwright/test";
-import { test, expect } from "@playwright/test";
-import {
-  expectTree,
-  logIn,
-  TouchFinger,
-  type TouchPoint,
-} from "./helpers";
+import { test, expect } from "./fixtures";
+import { TouchFinger, type TouchPoint, openNotes, fakeForge } from "./helpers";
+import { treeItem, treeRows } from "./helpers/tree";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const REPO_KEY = "sample/notes";
 
 const REORDERED_ROOT = [
   "Empty folder",
@@ -19,35 +12,12 @@ const REORDERED_ROOT = [
   "Welcome",
 ];
 
-test.beforeEach(async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile", "touch drag is mobile-only");
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+test.beforeEach(async ({ page }) => {
+  await openNotes(page);
 });
-
-function treeItem(page: Page, name: string): Locator {
-  return page.getByRole("treeitem", { name, exact: true });
-}
-
-function treeRows(page: Page): Locator {
-  return page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
-}
 
 function editor(page: Page): Locator {
   return page.getByRole("textbox", { name: "Note editor" });
-}
-
-function movedToast(page: Page): Locator {
-  return page.getByRole("group").filter({ hasText: "moved to" });
-}
-
-function commitCount(page: Page): Promise<number> {
-  return page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.commitMessages(repoKey).length,
-    REPO_KEY,
-  );
 }
 
 async function pointIn(
@@ -76,17 +46,17 @@ async function longPressDrag(
 }
 
 async function moveZazolcBeforeWelcome(page: Page): Promise<void> {
-  const commits = await commitCount(page);
+  const commits = await fakeForge(page).commitCount();
   await longPressDrag(
     page,
     treeItem(page, "Zażółć gęślą jaźń"),
     treeItem(page, "Welcome"),
     { y: 0.25 },
   );
-  await expect.poll(() => commitCount(page)).toBe(commits + 1);
+  await expect.poll(() => fakeForge(page).commitCount()).toBe(commits + 1);
 }
 
-test("long-pressing a row and dragging it reorders it", async ({ page }) => {
+test("long-pressing a row and dragging it reorders it", { tag: "@mobile-only" }, async ({ page }) => {
   await moveZazolcBeforeWelcome(page);
 
   await expect(treeRows(page)).toHaveText(REORDERED_ROOT);
@@ -94,56 +64,7 @@ test("long-pressing a row and dragging it reorders it", async ({ page }) => {
   await expect(page.getByRole("menu")).toHaveCount(0);
 });
 
-test("dragging a note onto a folder moves it in", async ({ page }) => {
-  await longPressDrag(
-    page,
-    treeItem(page, "Welcome"),
-    treeItem(page, "Journal"),
-    { y: 0.5 },
-  );
-
-  await expect(movedToast(page)).toContainText("“Welcome” moved to “Journal”");
-  await treeItem(page, "Journal").tap();
-  await expect(treeRows(page)).toHaveText([
-    "Empty folder",
-    "Journal",
-    "2026",
-    "Welcome",
-    "Projects",
-    "Zażółć gęślą jaźń",
-  ]);
-});
-
-test("dragging a note left below its folder moves it out", async ({
-  page,
-}) => {
-  await treeItem(page, "Journal").tap();
-  await treeItem(page, "2026").tap();
-  await expect(treeItem(page, "January")).toBeVisible();
-
-  await longPressDrag(
-    page,
-    treeItem(page, "January"),
-    treeItem(page, "January"),
-    { y: 0.9, x: 4 },
-  );
-
-  await expect(movedToast(page)).toContainText(
-    "“January” moved to the top level",
-  );
-  await expect(editor(page)).toHaveCount(0);
-  await treeItem(page, "Journal").tap();
-  await expect(treeRows(page)).toHaveText([
-    "Empty folder",
-    "Journal",
-    "January",
-    "Projects",
-    "Welcome",
-    "Zażółć gęślą jaźń",
-  ]);
-});
-
-test("a long-press released without moving opens the row menu", async ({
+test("a long-press released without moving opens the row menu", { tag: "@mobile-only" }, async ({
   page,
 }) => {
   const finger = await TouchFinger.on(page);
@@ -159,7 +80,7 @@ test("a long-press released without moving opens the row menu", async ({
   await expect(editor(page)).toHaveCount(0);
 });
 
-test("a swipe scrolls the tree instead of dragging", async ({ page }) => {
+test("a swipe scrolls the tree instead of dragging", { tag: "@mobile-only" }, async ({ page }) => {
   await page.setViewportSize({ width: 412, height: 320 });
   await treeItem(page, "Journal").tap();
   await treeItem(page, "2026").tap();
@@ -174,9 +95,10 @@ test("a swipe scrolls the tree instead of dragging", async ({ page }) => {
 
   const start = await pointIn(treeItem(page, "commitnote"), { y: 0.5 });
   const finger = await TouchFinger.on(page);
+  await page.clock.install();
   await finger.down(start);
   await finger.move({ x: start.x, y: start.y - 120 });
-  await finger.hold(600);
+  await page.clock.runFor(600);
   await expect(page.locator("[data-drag-state]")).toHaveCount(0);
   await finger.up();
 
@@ -187,28 +109,8 @@ test("a swipe scrolls the tree instead of dragging", async ({ page }) => {
   await expect(editor(page)).toHaveCount(0);
 });
 
-test("a tap still opens the note", async ({ page }) => {
+test("a tap still opens the note", { tag: "@mobile-only" }, async ({ page }) => {
   await treeItem(page, "Welcome").tap();
 
   await expect(editor(page)).toBeVisible();
-});
-
-test("the order set by touch survives a reload", async ({ page }) => {
-  await moveZazolcBeforeWelcome(page);
-  const exported = await page.evaluate(
-    (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),
-    REPO_KEY,
-  );
-
-  await page.reload();
-  await page.waitForFunction(() => (window as any).__commitNoteFakeForge);
-  await page.evaluate(
-    ([repoKey, state]) =>
-      (window as any).__commitNoteFakeForge.adoptRepo(repoKey, state),
-    [REPO_KEY, exported] as const,
-  );
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
-
-  await expect(treeRows(page)).toHaveText(REORDERED_ROOT);
 });

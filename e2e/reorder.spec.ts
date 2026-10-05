@@ -1,10 +1,8 @@
-import type { BrowserContextOptions, Locator, Page } from "@playwright/test";
-import { test, expect } from "@playwright/test";
-import { logIn, expectTree, rowSyncState } from "./helpers";
+import type { Locator, Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { logIn, expectTree, rowSyncState, SAMPLE, openNotes, fakeForge, handOverRepo } from "./helpers";
+import { movedToast, treeItem, treeRows } from "./helpers/tree";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const REPO_KEY = "sample/notes";
 
 const ROOT_ORDER = [
   "Empty folder",
@@ -14,28 +12,9 @@ const ROOT_ORDER = [
   "Zażółć gęślą jaźń",
 ];
 
-test.beforeEach(async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "mouse drag is desktop-only");
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+test.beforeEach(async ({ page }) => {
+  await openNotes(page);
 });
-
-function treeItem(page: Page, name: string): Locator {
-  return page.getByRole("treeitem", { name, exact: true });
-}
-
-function treeRows(page: Page): Locator {
-  return page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
-}
-
-function commitCount(page: Page): Promise<number> {
-  return page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.commitMessages(repoKey).length,
-    REPO_KEY,
-  );
-}
 
 interface DropPoint {
   /** Fraction of the target row's height. */
@@ -85,14 +64,14 @@ async function dragRow(
 }
 
 async function moveZazolcBeforeWelcome(page: Page): Promise<void> {
-  const commits = await commitCount(page);
+  const commits = await fakeForge(page).commitCount();
   await dragRow(
     page,
     treeItem(page, "Zażółć gęślą jaźń"),
     treeItem(page, "Welcome"),
     { y: 0.25 },
   );
-  await expect.poll(() => commitCount(page)).toBe(commits + 1);
+  await expect.poll(() => fakeForge(page).commitCount()).toBe(commits + 1);
 }
 
 const REORDERED_ROOT = [
@@ -102,10 +81,6 @@ const REORDERED_ROOT = [
   "Zażółć gęślą jaźń",
   "Welcome",
 ];
-
-function movedToast(page: Page): Locator {
-  return page.getByRole("group").filter({ hasText: "moved to" });
-}
 
 test("dragging a note within its folder reorders it", async ({ page }) => {
   await moveZazolcBeforeWelcome(page);
@@ -117,15 +92,7 @@ test("dragging a note within its folder reorders it", async ({ page }) => {
 test("a reordered note shows its saving state until it is saved", async ({
   page,
 }) => {
-  await page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.failNext(
-        repoKey,
-        "commit",
-        "Network",
-      ),
-    REPO_KEY,
-  );
+  await fakeForge(page).failNext("commit", "Network");
 
   await dragRow(
     page,
@@ -143,51 +110,17 @@ test("a reordered note shows its saving state until it is saved", async ({
   await expect(treeRows(page)).toHaveText(REORDERED_ROOT);
 });
 
-test("the new order survives a reload", async ({ page }) => {
-  await moveZazolcBeforeWelcome(page);
-  const exported = await page.evaluate(
-    (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),
-    REPO_KEY,
-  );
-
-  await page.reload();
-  await page.waitForFunction(() => (window as any).__commitNoteFakeForge);
-  await page.evaluate(
-    ([repoKey, state]) =>
-      (window as any).__commitNoteFakeForge.adoptRepo(repoKey, state),
-    [REPO_KEY, exported] as const,
-  );
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
-
-  await expect(treeRows(page)).toHaveText(REORDERED_ROOT);
-});
-
 test("another device shows the new order", async ({
   page,
-  browser,
-}, testInfo) => {
+  openSecondDevice,
+}) => {
   await moveZazolcBeforeWelcome(page);
-  const exported = await page.evaluate(
-    (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),
-    REPO_KEY,
-  );
-
-  const { baseURL, ...device } = testInfo.project.use as BrowserContextOptions;
-  const otherContext = await browser.newContext(device);
-  const other = await otherContext.newPage();
-  await other.goto(new URL("/", baseURL ?? page.url()).toString());
-  await other.waitForFunction(() => (window as any).__commitNoteFakeForge);
-  await other.evaluate(
-    ([repoKey, state]) =>
-      (window as any).__commitNoteFakeForge.adoptRepo(repoKey, state),
-    [REPO_KEY, exported] as const,
-  );
-  await logIn(other, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+  const { page: other } = await openSecondDevice();
+  await handOverRepo(page, other);
+  await logIn(other, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(other);
 
   await expect(treeRows(other)).toHaveText(REORDERED_ROOT);
-  await otherContext.close();
 });
 
 test("dropping a note onto a folder moves it into the folder", async ({
@@ -258,7 +191,7 @@ test("Undo in the toast moves the item back to its folder and place", async ({
 test("a folder can't be dropped into itself", async ({ page }) => {
   await treeItem(page, "Projects").click();
   await expect(treeItem(page, "commitnote")).toBeVisible();
-  const commits = await commitCount(page);
+  const commits = await fakeForge(page).commitCount();
 
   await dragRow(
     page,
@@ -278,7 +211,7 @@ test("a folder can't be dropped into itself", async ({ page }) => {
     "Zażółć gęślą jaźń",
   ]);
   await expect(movedToast(page)).toHaveCount(0);
-  expect(await commitCount(page)).toBe(commits);
+  expect(await fakeForge(page).commitCount()).toBe(commits);
 });
 
 test("a click still opens a note and a drag doesn't", async ({ page }) => {
@@ -313,7 +246,7 @@ test("dropping a note on the open note opens it without reordering", async ({
 }) => {
   await treeItem(page, "Welcome").click();
   await expect(noteEditor(page)).toBeVisible();
-  const commits = await commitCount(page);
+  const commits = await fakeForge(page).commitCount();
 
   await hoverDrag(
     page,
@@ -335,7 +268,7 @@ test("dropping a note on the open note opens it without reordering", async ({
   await expect(noteEditor(page)).toBeVisible();
   await expect(noteDropHighlight(page)).toHaveCount(0);
   await expect(treeRows(page)).toHaveText(ROOT_ORDER);
-  expect(await commitCount(page)).toBe(commits);
+  expect(await fakeForge(page).commitCount()).toBe(commits);
 });
 
 test("dropping a note on the empty note area opens it", async ({ page }) => {
@@ -355,7 +288,7 @@ test("dropping a note on the empty note area opens it", async ({ page }) => {
 });
 
 test("dropping a folder on the note area does nothing", async ({ page }) => {
-  const commits = await commitCount(page);
+  const commits = await fakeForge(page).commitCount();
 
   await hoverDrag(
     page,
@@ -369,5 +302,5 @@ test("dropping a folder on the note area does nothing", async ({ page }) => {
   await expect(noteEditor(page)).toHaveCount(0);
   await expect(treeRows(page)).toHaveText(ROOT_ORDER);
   await expect(movedToast(page)).toHaveCount(0);
-  expect(await commitCount(page)).toBe(commits);
+  expect(await fakeForge(page).commitCount()).toBe(commits);
 });

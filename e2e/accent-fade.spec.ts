@@ -1,15 +1,21 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
-import { chooseRepository, expectTree, logIn } from "./helpers";
+import { expect, test } from "./fixtures";
+import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, fakeForge, onFakeForgeReady } from "./helpers";
+import { chooseAccent, closeSettings, openSettings, rootAccent } from "./helpers/settings";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const REPO_KEY = "sample/notes";
-const PASSPHRASE = "sample notes repo passphrase";
 const TEAL = "rgb(0, 133, 115)";
 
 interface Sample {
   readonly root: string;
   readonly element: string | null;
+}
+
+interface AccentFade {
+  readonly duration: number | string | undefined;
+  readonly startTime: number | null;
+  readonly midRoot: string;
+  readonly midElement: string | null;
+  readonly endRoot: string;
 }
 
 function startSampling(selector: string) {
@@ -40,78 +46,123 @@ function stopSampling(page: Page): Promise<Sample[]> {
   });
 }
 
+/**
+ * Catches the next `--color-accent` transition on the root and samples it at
+ * its midpoint by seeking, so the check does not depend on how many frames a
+ * busy machine renders during the fade.
+ */
+function watchAccentFade(selector: string) {
+  const w = window as any;
+  w.__accentFade = null;
+  const accent = (element: Element) =>
+    getComputedStyle(element).getPropertyValue("--color-accent").trim();
+  const onRun = (event: TransitionEvent) => {
+    const root = document.documentElement;
+    if (event.target !== root || event.propertyName !== "--color-accent") {
+      return;
+    }
+    document.removeEventListener("transitionrun", onRun);
+    const transition = root
+      .getAnimations()
+      .find(
+        (a): a is CSSTransition =>
+          a instanceof CSSTransition &&
+          a.transitionProperty === "--color-accent",
+      );
+    if (!transition) {
+      w.__accentFade = { missing: true };
+      return;
+    }
+    const startTime = transition.startTime;
+    transition.pause();
+    transition.currentTime = 150;
+    const element = document.querySelector(selector);
+    const fade = {
+      duration: transition.effect?.getComputedTiming().duration,
+      startTime: startTime === null ? null : Number(startTime),
+      midRoot: accent(root),
+      midElement: element ? accent(element) : null,
+      endRoot: "",
+    };
+    transition.finish();
+    w.__accentFade = { ...fade, endRoot: accent(root) };
+  };
+  document.addEventListener("transitionrun", onRun);
+}
+
+function watchFirstTreeFrame() {
+  const w = window as any;
+  w.__firstTreeFrameTime = null;
+  const frame = (time: number) => {
+    if (document.querySelector("[role='tree']")) {
+      w.__firstTreeFrameTime = time;
+      return;
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
+async function accentFade(page: Page): Promise<AccentFade> {
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__accentFade))
+    .not.toBeNull();
+  const fade = await page.evaluate(() => (window as any).__accentFade);
+  expect(fade).not.toHaveProperty("missing");
+  return fade as AccentFade;
+}
+
 function channels(color: string): number[] {
   return (color.match(/[\d.]+/g) ?? []).map(Number);
 }
 
-function distance(a: string, b: string): number {
-  const [x, y] = [channels(a), channels(b)];
-  return Math.hypot(...x.map((value, i) => value - y[i]));
+function expectBetween(color: string | null, from: string, to: string) {
+  const [value, a, b] = [channels(color ?? ""), channels(from), channels(to)];
+  expect(value).toHaveLength(a.length);
+  expect(color).not.toBe(from);
+  expect(color).not.toBe(to);
+  for (const [i, channel] of value.entries()) {
+    if (a[i] === b[i]) {
+      expect(channel).toBe(a[i]);
+    } else {
+      expect(channel).toBeGreaterThan(Math.min(a[i], b[i]));
+      expect(channel).toBeLessThan(Math.max(a[i], b[i]));
+    }
+  }
 }
 
-/** Share of the way from `from` to `to` of each rendered change, in order. */
-function fadeSteps(colors: readonly string[], from: string, to: string) {
-  const changes = colors.filter((color, i) => i > 0 && color !== colors[i - 1]);
-  return changes.map((color) => distance(color, from) / distance(to, from));
-}
-
-function expectFade(colors: readonly string[], from: string, to: string) {
+function expectFade(
+  fade: AccentFade,
+  from: string,
+  to: string,
+  { element }: { readonly element: boolean },
+) {
   expect(from).not.toBe(to);
-  expect(colors[0]).toBe(from);
-  expect(colors.at(-1)).toBe(to);
-  const between = fadeSteps(colors, from, to).filter(
-    (step) => step > 0.02 && step < 0.98,
-  );
-  expect(between.length).toBeGreaterThanOrEqual(2);
-}
-
-function rootAccent(page: Page): Promise<string> {
-  return page.evaluate(() =>
-    getComputedStyle(document.documentElement)
-      .getPropertyValue("--color-accent")
-      .trim(),
-  );
+  expect(fade.duration).toBe(300);
+  expectBetween(fade.midRoot, from, to);
+  if (element) {
+    expect(fade.midElement).toBe(fade.midRoot);
+  }
+  expect(fade.endRoot).toBe(to);
 }
 
 async function saveTeal(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Settings" })
-    .click();
-  const dialog = page.getByRole("dialog", { name: "Settings" });
-  await dialog
-    .locator("label")
-    .filter({ has: page.getByRole("radio", { name: "Teal", exact: true }) })
-    .click();
+  await openSettings(page);
+  await chooseAccent(page, "Teal");
   await expect
-    .poll(
-      () =>
-        page.evaluate(
-          (repoKey) =>
-            (window as any).__commitNoteFakeForge.commitMessages(
-              repoKey,
-            ) as string[],
-          REPO_KEY,
-        ),
-      { timeout: 10_000 },
-    )
+    .poll(() => fakeForge(page).commitMessages(), { timeout: 10_000 })
     .toContainEqual(expect.stringContaining("accentColor"));
-  await page.keyboard.press("Escape");
-  await expect(dialog).toHaveCount(0);
+  await closeSettings(page);
   await expect.poll(() => rootAccent(page)).toBe(TEAL);
 }
 
-async function clickLogOut(page: Page): Promise<void> {
-  const back = page.getByRole("button", { name: "Back to notes" });
-  if (await back.isVisible()) {
-    await back.click();
-  }
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
-}
-
-async function settle(page: Page): Promise<void> {
-  await page.waitForTimeout(700);
+async function settle(page: Page, accent: string): Promise<void> {
+  await expect.poll(() => rootAccent(page)).toBe(accent);
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.getAnimations().length),
+    )
+    .toBe(0);
 }
 
 test.describe("with motion", () => {
@@ -120,106 +171,66 @@ test.describe("with motion", () => {
   test("the saved accent fades in on the passphrase step and back to system on logout", async ({
     page,
   }) => {
-    await page.goto("/");
-    await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-    await expectTree(page);
+    await openNotes(page);
+    const system = await rootAccent(page);
+    await settle(page, system);
     await saveTeal(page);
-    await clickLogOut(page);
+    await logOut(page);
     await expect(page.getByLabel("Access token")).toBeVisible({
       timeout: 10_000,
     });
-    await settle(page);
-    const system = await rootAccent(page);
+    await settle(page, system);
 
     await page.getByLabel("Access token").fill("test-token");
-    await page.evaluate(startSampling, "#login-passphrase");
+    await page.evaluate(watchAccentFade, "#login-passphrase");
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByLabel("Passphrase", { exact: true })).toBeVisible();
-    await settle(page);
-    const unlocking = await stopSampling(page);
-    expectFade(
-      unlocking.map((s) => s.root),
-      system,
-      TEAL,
-    );
-    expectFade(
-      unlocking.map((s) => s.element).filter((c) => c !== null),
-      system,
-      TEAL,
-    );
+    expectFade(await accentFade(page), system, TEAL, { element: true });
+    await settle(page, TEAL);
 
-    await page.getByLabel("Passphrase", { exact: true }).fill(PASSPHRASE);
+    await page.getByLabel("Passphrase", { exact: true }).fill(SAMPLE.passphrase);
     await page.getByRole("button", { name: "Log in" }).click();
     await expectTree(page);
-    await settle(page);
+    await settle(page, TEAL);
 
-    await page.evaluate(startSampling, "#login-passphrase");
-    await clickLogOut(page);
+    await page.evaluate(watchAccentFade, "#login-passphrase");
+    await logOut(page);
     await expect(page.getByLabel("Access token")).toBeVisible({
       timeout: 10_000,
     });
-    await settle(page);
-    const loggingOut = await stopSampling(page);
-    expectFade(
-      loggingOut.map((s) => s.root),
-      TEAL,
-      system,
-    );
+    expectFade(await accentFade(page), TEAL, system, { element: false });
+    await settle(page, system);
   });
 
   test("a remembered session fades the saved accent in once the app has rendered", async ({
     page,
   }) => {
-    await page.goto("/");
-    await logIn(page, {
-      repo: NOTES_REPO,
-      passphrase: PASSPHRASE,
-      rememberMe: true,
-    });
-    await expectTree(page);
+    await openNotes(page, { via: "login", rememberMe: true });
     const system = await rootAccent(page);
+    await settle(page, system);
     await saveTeal(page);
-    const exported = await page.evaluate(
-      (repoKey) =>
-        (window as any).__commitNoteFakeForge.exportRepo(repoKey) as string,
-      REPO_KEY,
+    const exported = await fakeForge(page).exportRepo();
+    await onFakeForgeReady(
+      page,
+      (controls, [repoKey, state]) => controls.adoptRepo(repoKey, state),
+      [SAMPLE.key, exported],
     );
-    await page.addInitScript(
-      ([key, repoKey, state]) => {
-        let controls: any;
-        Object.defineProperty(window, key, {
-          configurable: true,
-          get: () => controls,
-          set: (value) => {
-            controls = value;
-            controls.adoptRepo(repoKey, state);
-          },
-        });
-      },
-      ["__commitNoteFakeForge", REPO_KEY, exported],
-    );
-    await page.addInitScript(startSampling, "[role='tree']");
-    // A slower CPU makes mounting the app a long task, which is what used to
-    // swallow the fade.
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 });
+    await page.addInitScript(watchAccentFade, "[role='tree']");
+    await page.addInitScript(watchFirstTreeFrame);
 
     await page.reload();
     await expectTree(page);
-    await settle(page);
-    const samples = (await stopSampling(page)).filter(
-      (s) => s.element !== null,
+    const fade = await accentFade(page);
+    expectFade(fade, system, TEAL, { element: true });
+    // Applied in the task that mounts the app, the transition starts on the
+    // same frame that first renders the tree, so the mount swallows its start.
+    // Frames are always more than 1 ms apart; the margin absorbs float noise.
+    const firstTreeFrameTime = await page.evaluate(
+      () => (window as any).__firstTreeFrameTime as number | null,
     );
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
-
-    const roots = samples.map((s) => s.root);
-    expectFade(roots, system, TEAL);
-    expect(fadeSteps(roots, system, TEAL)[0]).toBeLessThan(0.2);
-    expectFade(
-      samples.map((s) => s.element as string),
-      system,
-      TEAL,
-    );
+    expect(firstTreeFrameTime).not.toBeNull();
+    expect(fade.startTime).toBeGreaterThan(firstTreeFrameTime! + 1);
+    await settle(page, TEAL);
   });
 });
 
@@ -227,24 +238,27 @@ test("with reduced motion the saved accent applies at once", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
+  const system = await rootAccent(page);
+  expect(system).not.toBe(TEAL);
+  await settle(page, system);
   await saveTeal(page);
-  await clickLogOut(page);
+  await logOut(page);
   await expect(page.getByLabel("Access token")).toBeVisible({
     timeout: 10_000,
   });
-  await settle(page);
-  const system = await rootAccent(page);
-  expect(system).not.toBe(TEAL);
+  await settle(page, system);
 
   await page.evaluate(startSampling, "#login-passphrase");
-  await chooseRepository(page, { repo: NOTES_REPO });
+  await chooseRepository(page, { repo: SAMPLE.repo });
   await expect(page.getByLabel("Passphrase", { exact: true })).toBeVisible();
-  await settle(page);
+  await settle(page, TEAL);
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).__accentSamples.at(-1)?.root),
+    )
+    .toBe(TEAL);
   const roots = (await stopSampling(page)).map((s) => s.root);
   expect(roots[0]).toBe(system);
-  expect(roots.at(-1)).toBe(TEAL);
   expect(new Set(roots)).toEqual(new Set([system, TEAL]));
 });

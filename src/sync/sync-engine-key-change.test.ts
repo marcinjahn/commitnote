@@ -1,21 +1,20 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { argon2idDirect } from "../crypto/argon2";
+import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
+import { sampleNotesRepoKeyring, sampleNotesRepoConfig } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
 import {
   createRepoConfig,
-  deriveKeyring,
   type Keyring,
 } from "../crypto/keyring";
 import { decryptNote } from "../crypto/note-cipher";
 import {
-  parseRepoConfig,
   serializeRepoConfig,
   type RepoConfig,
 } from "../crypto/repo-config";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
-import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
+import type { CommitRequest } from "../forge/forge-adapter";
 import { REPO_CONFIG_PATH } from "../format/v1";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import { buildNoteTree, findNode } from "../tree/note-tree";
 import { createTestClock } from "./testing/test-clock";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
@@ -27,26 +26,14 @@ let sampleConfig: RepoConfig;
 let rekeyedConfigText: string;
 
 beforeAll(async () => {
-  const probe = await createSampleNotesRepoAdapter();
-  const inspection = await probe.inspect();
-  if (inspection.kind !== "populated" || inspection.main === null) {
-    throw new Error("expected a populated sample notes repo");
-  }
-  const parsed = parseRepoConfig(inspection.main.repoConfigText ?? "");
-  if (parsed.kind !== "valid") {
-    throw new Error(`expected a valid repo config, got ${parsed.kind}`);
-  }
-  sampleConfig = parsed.config;
-  keyring = await deriveKeyring(
-    SAMPLE_NOTES_REPO_PASSPHRASE,
-    parsed.config.kdf,
-    argon2idDirect,
-  );
-  const rekeyed = await createRepoConfig("another passphrase", {
-    argon2id: argon2idDirect,
-    kdf: parsed.config.kdf,
-  });
-  rekeyedConfigText = rekeyed.configText;
+  sampleConfig = sampleNotesRepoConfig();
+  keyring = await sampleNotesRepoKeyring();
+  rekeyedConfigText = (
+    await createRepoConfig("another passphrase", {
+      argon2id: sharedMemoizedArgon2id,
+      kdf: sampleNotesRepoConfig().kdf,
+    })
+  ).configText;
 });
 
 interface Harness {
@@ -61,16 +48,7 @@ async function setup(engineKeyring = keyring): Promise<Harness> {
   const fake = await createSampleNotesRepoAdapter();
   const commits: CommitRequest[] = [];
   const blobReads: string[] = [];
-  const adapter: ForgeAdapter = {
-    limits: fake.limits,
-    commitCost: (changes) => fake.commitCost(changes),
-    inspect: () => fake.inspect(),
-    initialize: (configText, message) => fake.initialize(configText, message),
-    getHead: () => fake.getHead(),
-    listTree: (sha) => fake.listTree(sha),
-    listCommits: (request) => fake.listCommits(request),
-    findOldestCommit: (request) => fake.findOldestCommit(request),
-    readFileAt: (sha, path) => fake.readFileAt(sha, path),
+  const adapter = delegateAdapter(fake, {
     readBlob: (sha) => {
       blobReads.push(sha);
       return fake.readBlob(sha);
@@ -79,7 +57,7 @@ async function setup(engineKeyring = keyring): Promise<Harness> {
       commits.push(request);
       return fake.commit(request);
     },
-  };
+  });
   const clock = createTestClock(1_000_000);
   const engine = createSyncEngine({ adapter, keyring: engineKeyring, clock });
   await engine.refresh();
@@ -137,7 +115,7 @@ async function expectStaysStopped(h: Harness): Promise<void> {
 describe("sync engine key-change guard", () => {
   it("stops on the first load when the keyring does not match the repo config", async () => {
     const other = await createRepoConfig("unrelated", {
-      argon2id: argon2idDirect,
+      argon2id: sharedMemoizedArgon2id,
       kdf: sampleConfig.kdf,
     });
     const h = await setup(other.keyring);

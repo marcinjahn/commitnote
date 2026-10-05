@@ -1,14 +1,4 @@
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
+import { describe, expect, it, vi } from "vitest";
 import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
 import { isForgeError } from "../errors";
 import type {
@@ -23,25 +13,13 @@ import {
   type GitHubAdapterOptions,
 } from "./github-adapter";
 import { MockGitHubRepo } from "./testing/mock-github-server";
+import { useMswServer } from "../fake/msw-test-server";
 
 const OWNER = "acme";
 const REPO = "notes";
 const TOKEN = "s3cr3t-token";
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 function useMock(
   options?: Partial<{ canWrite: boolean; defaultBranch: string }>,
@@ -52,7 +30,7 @@ function useMock(
     token: TOKEN,
     ...options,
   });
-  server.use(...mock.handlers());
+  getServer().use(...mock.handlers());
   return mock;
 }
 

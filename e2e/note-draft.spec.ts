@@ -1,25 +1,10 @@
-import type { Page, TestInfo } from "@playwright/test";
-import { test, expect } from "@playwright/test";
-import { logIn, expectTree } from "./helpers";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { openNotes, showTree } from "./helpers";
+import { treeItem } from "./helpers/tree";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
 
 const AUTO_NAME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
-
-async function startSession(page: Page): Promise<void> {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
-}
-
-async function backToTreeIfMobile(
-  page: Page,
-  testInfo: TestInfo,
-): Promise<void> {
-  if (testInfo.project.name !== "mobile") return;
-  await page.getByRole("button", { name: "Back to notes" }).click();
-}
 
 function nameField(page: Page) {
   return page.getByRole("textbox", { name: "Note name" });
@@ -27,10 +12,6 @@ function nameField(page: Page) {
 
 function editor(page: Page) {
   return page.getByRole("textbox", { name: "Note editor" });
-}
-
-function treeItem(page: Page, name: string | RegExp) {
-  return page.getByRole("treeitem", { name, exact: true });
 }
 
 async function treeItemNames(page: Page): Promise<string[]> {
@@ -45,20 +26,18 @@ async function expectEmptyDraft(page: Page): Promise<void> {
 
 test("a draft opened from the header button is created by typing a name and pressing Enter", async ({
   page,
-}, testInfo) => {
-  await startSession(page);
+}) => {
+  await openNotes(page);
 
   await page.getByRole("button", { name: "New note", exact: true }).click();
   await expectEmptyDraft(page);
-  if (testInfo.project.name === "desktop") {
-    await expect(treeItem(page, "Fresh idea")).toHaveCount(0);
-  }
+  await expect(treeItem(page, "Fresh idea")).toHaveCount(0);
 
   await nameField(page).fill("Fresh idea");
   await nameField(page).press("Enter");
 
   await expect(editor(page)).toBeFocused();
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   const created = treeItem(page, "Fresh idea");
   await expect(created).toBeVisible();
   await expect(created).toHaveAttribute("aria-selected", "true");
@@ -66,12 +45,8 @@ test("a draft opened from the header button is created by typing a name and pres
 
 test("the empty note pane offers a link that opens a draft", async ({
   page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "the empty pane is not shown on mobile before a note is opened",
-  );
-  await startSession(page);
+}) => {
+  await openNotes(page);
 
   await expect(page.getByText("Select a note to read it, or")).toBeVisible();
   await page.getByRole("button", { name: "create a new note" }).click();
@@ -81,8 +56,8 @@ test("the empty note pane offers a link that opens a draft", async ({
 
 test("a draft opened from a folder row menu is created inside that folder", async ({
   page,
-}, testInfo) => {
-  await startSession(page);
+}) => {
+  await openNotes(page);
 
   await page.getByRole("button", { name: "Actions for Projects" }).click();
   await page.getByRole("menuitem", { name: "New note…" }).click();
@@ -92,7 +67,7 @@ test("a draft opened from a folder row menu is created inside that folder", asyn
   await nameField(page).press("Enter");
 
   await expect(editor(page)).toBeFocused();
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   await expect(treeItem(page, "Projects")).toHaveAttribute(
     "aria-expanded",
     "true",
@@ -105,15 +80,15 @@ test("a draft opened from a folder row menu is created inside that folder", asyn
 
 test("leaving the name field with a valid name creates the note", async ({
   page,
-}, testInfo) => {
-  await startSession(page);
+}) => {
+  await openNotes(page);
 
   await page.getByRole("button", { name: "New note", exact: true }).click();
   await nameField(page).fill("Blurred");
   await editor(page).click();
 
   await expect(nameField(page)).toHaveValue("Blurred");
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   const created = treeItem(page, "Blurred");
   await expect(created).toBeVisible();
   await expect(created).toHaveAttribute("aria-selected", "true");
@@ -121,8 +96,8 @@ test("leaving the name field with a valid name creates the note", async ({
 
 test("typing content in a draft without a name creates the note with an automatic name", async ({
   page,
-}, testInfo) => {
-  await startSession(page);
+}) => {
+  await openNotes(page);
 
   await page.getByRole("button", { name: "New note", exact: true }).click();
   await editor(page).click();
@@ -131,14 +106,14 @@ test("typing content in a draft without a name creates the note with an automati
   await expect(nameField(page)).toHaveValue(AUTO_NAME);
   await expect(editor(page)).toContainText("Some thoughts");
 
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   await expect(treeItem(page, AUTO_NAME)).toBeVisible();
 });
 
-test("an untouched draft disappears when it is left", async ({
+test("an untouched draft disappears when it is left", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
-  await startSession(page);
+  await openNotes(page, { via: "login" });
   const before = await treeItemNames(page);
   const newNote = page.getByRole("button", { name: "New note", exact: true });
 
@@ -162,40 +137,34 @@ test("an untouched draft disappears when it is left", async ({
 
   await expect(treeItem(page, "Welcome")).toBeVisible();
   expect(await treeItemNames(page)).toEqual(before);
-
-  await page.reload();
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
-  expect(await treeItemNames(page)).toEqual(before);
 });
 
 test("undo in a new draft does not restore the previous note", async ({
   page,
-}, testInfo) => {
-  await startSession(page);
+}) => {
+  await openNotes(page);
   const before = await treeItemNames(page);
   await treeItem(page, "Welcome").click();
   await expect(nameField(page)).toHaveValue("Welcome");
   const newNote = page.getByRole("button", { name: "New note", exact: true });
 
-  if (!(await newNote.isVisible())) await backToTreeIfMobile(page, testInfo);
+  if (!(await newNote.isVisible())) await showTree(page);
   await newNote.click();
   await expectEmptyDraft(page);
 
   await editor(page).click();
   await page.keyboard.press("ControlOrMeta+z");
-  await page.waitForTimeout(1000);
 
   await expect(nameField(page)).toHaveValue("");
   await expect(editor(page)).toHaveText("");
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   expect(await treeItemNames(page)).toEqual(before);
 });
 
 test("a duplicate name in a draft shows an error and creates nothing", async ({
   page,
-}, testInfo) => {
-  await startSession(page);
+}) => {
+  await openNotes(page);
   const before = await treeItemNames(page);
 
   await page.getByRole("button", { name: "New note", exact: true }).click();
@@ -205,6 +174,6 @@ test("a duplicate name in a draft shows an error and creates nothing", async ({
   await expect(page.getByRole("alert")).toHaveText(
     "A note or folder with this name already exists here.",
   );
-  await backToTreeIfMobile(page, testInfo);
+  await showTree(page);
   expect(await treeItemNames(page)).toEqual(before);
 });

@@ -8,6 +8,10 @@ import {
 } from "../../../crypto/base64";
 import type { CommitFileChange, TreeEntry } from "../../forge-adapter";
 import { InMemoryGitRepo } from "../../fake/in-memory-git-repo";
+import { MockFaults } from "../../fake/mock-faults";
+import type { FailureMatch, MockFailure } from "../../fake/mock-faults";
+
+export type { MockFailure };
 
 export interface MockGitLabRepoOptions {
   /** Full project path, e.g. "group/sub/notes". */
@@ -29,24 +33,6 @@ export interface MockMergeRequest {
   readonly createdAt: string;
   readonly removeSourceBranch: boolean;
   state: "opened" | "closed" | "merged" | "locked";
-}
-
-export type MockFailure =
-  | {
-      status: 401 | 403 | 404 | 429 | 500 | 502;
-      body?: unknown;
-      headers?: Record<string, string>;
-    }
-  | { network: true };
-
-interface FailureMatch {
-  readonly method: string;
-  readonly pathPattern: RegExp;
-}
-
-interface QueuedFailure {
-  readonly match: FailureMatch;
-  readonly failure: MockFailure;
 }
 
 interface CommitActionBody {
@@ -121,8 +107,7 @@ export class MockGitLabRepo {
   private readonly maintainer: boolean;
   private readonly defaultBranch: string;
   private readonly now: () => number;
-  private readonly failureQueue: QueuedFailure[] = [];
-  private readonly dropResponseQueue: FailureMatch[] = [];
+  private readonly faults = new MockFaults(jsonResponse);
   private readonly commitDates = new Map<string, string>();
   private readonly pendingChecks = new Map<number, number>();
   private readonly lockedMerges = new Map<
@@ -142,12 +127,11 @@ export class MockGitLabRepo {
   }
 
   failNext(match: FailureMatch, failure: MockFailure): void {
-    this.failureQueue.push({ match, failure });
+    this.faults.failNext(match, failure);
   }
 
-  /** Applies the next matching request, then fails it as a network error. */
   dropNextResponse(match: FailureMatch): void {
-    this.dropResponseQueue.push(match);
+    this.faults.dropNextResponse(match);
   }
 
   /** Dates a commit for the sweep's age check. */
@@ -169,15 +153,8 @@ export class MockGitLabRepo {
     const path = `${url.pathname}${url.search}`;
     this.requests.push({ method, path });
 
-    const queuedIndex = this.failureQueue.findIndex(
-      (queued) =>
-        queued.match.method.toUpperCase() === method &&
-        queued.match.pathPattern.test(path),
-    );
-    if (queuedIndex !== -1) {
-      const [queued] = this.failureQueue.splice(queuedIndex, 1);
-      return this.respondFailure(queued.failure);
-    }
+    const injected = this.faults.takeFailure(method, path);
+    if (injected !== null) return injected;
 
     if (request.headers.get("authorization") !== `Bearer ${this.token}`) {
       return jsonResponse({ message: "401 Unauthorized" }, 401);
@@ -199,12 +176,7 @@ export class MockGitLabRepo {
       url,
       request,
     );
-    const dropIndex = this.dropResponseQueue.findIndex(
-      (match) =>
-        match.method.toUpperCase() === method && match.pathPattern.test(path),
-    );
-    if (dropIndex !== -1) {
-      this.dropResponseQueue.splice(dropIndex, 1);
+    if (this.faults.shouldDrop(method, path)) {
       return HttpResponse.error();
     }
     return response;
@@ -436,17 +408,6 @@ export class MockGitLabRepo {
     this.git.setRef(mergeRequest.targetBranch, source);
     mergeRequest.state = "merged";
     if (removeSource) this.git.deleteRef(mergeRequest.sourceBranch);
-  }
-
-  private respondFailure(failure: MockFailure): Response {
-    if ("network" in failure) {
-      return HttpResponse.error();
-    }
-    return jsonResponse(
-      (failure.body ?? { message: "Injected failure" }) as JsonBodyType,
-      failure.status,
-      failure.headers,
-    );
   }
 
   private isEmpty(): boolean {

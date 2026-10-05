@@ -1,47 +1,38 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import type { ChangeSet, NotePath } from "../changes/change";
-import {
-  encodeChangeSet,
-  encodeInitializeMessage,
-} from "../changes/encode-change-set";
-import { argon2idDirect } from "../crypto/argon2";
+import { encodeInitializeMessage } from "../changes/encode-change-set";
+import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
+import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
 import {
   createRepoConfig,
-  deriveKeyring,
   type Keyring,
 } from "../crypto/keyring";
-import { decryptNote } from "../crypto/note-cipher";
-import { parseRepoConfig } from "../crypto/repo-config";
 import { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
 import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { FOLDER_MARKER, TRAILER } from "../format/v1";
-import { readOrderIndex } from "../order/order-index";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import { CONFLICT_MARKERS } from "../merge/merge-text";
-import { buildNoteTree, findNode, type NoteTree } from "../tree/note-tree";
+import { findNode, type NoteTree } from "../tree/note-tree";
 import { hasConflictMarkers } from "./sync-state";
 import { createTestClock } from "./testing/test-clock";
+import {
+  IDEAS,
+  WELCOME,
+  ZAZOLC,
+  drainAsync,
+  mainContent,
+  mainTree,
+  okCommitCount,
+  pushRemote,
+  waitIdle,
+} from "./testing/engine-harness";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
 
 let keyring: Keyring;
 
 beforeAll(async () => {
-  const probe = await createSampleNotesRepoAdapter();
-  const inspection = await probe.inspect();
-  if (inspection.kind !== "populated" || inspection.main === null) {
-    throw new Error("expected a populated sample notes repo");
-  }
-  const parsed = parseRepoConfig(inspection.main.repoConfigText ?? "");
-  if (parsed.kind !== "valid") {
-    throw new Error(`expected a valid repo config, got ${parsed.kind}`);
-  }
-  keyring = await deriveKeyring(
-    SAMPLE_NOTES_REPO_PASSPHRASE,
-    parsed.config.kdf,
-    argon2idDirect,
-  );
+  keyring = await sampleNotesRepoKeyring();
 });
 
 interface Harness {
@@ -61,16 +52,7 @@ function wrap(
   gate: { current: Promise<void> | null },
   readGate: { current: Promise<void> | null },
 ): ForgeAdapter {
-  return {
-    limits: inner.limits,
-    commitCost: (changes) => inner.commitCost(changes),
-    inspect: () => inner.inspect(),
-    initialize: (configText, message) => inner.initialize(configText, message),
-    getHead: () => inner.getHead(),
-    listTree: (sha) => inner.listTree(sha),
-    listCommits: (request) => inner.listCommits(request),
-    findOldestCommit: (request) => inner.findOldestCommit(request),
-    readFileAt: (sha, path) => inner.readFileAt(sha, path),
+  return delegateAdapter(inner, {
     readBlob: async (sha) => {
       if (readGate.current !== null) await readGate.current;
       return inner.readBlob(sha);
@@ -80,7 +62,7 @@ function wrap(
       if (gate.current !== null) await gate.current;
       return inner.commit(request);
     },
-  };
+  });
 }
 
 async function setup(
@@ -138,66 +120,12 @@ function withoutTheirsSide(text: string): string {
   return lines.join("\n");
 }
 
-async function waitIdle(engine: SyncEngine): Promise<void> {
-  await vi.waitFor(
-    () => {
-      expect(engine.getState().save.kind).not.toBe("saving");
-    },
-    { timeout: 5_000, interval: 2 },
-  );
-}
-
-async function mainTree(
-  fake: FakeForgeAdapter,
-  withKeyring = keyring,
-): Promise<{ head: string; tree: NoteTree }> {
-  const head = await fake.getHead();
-  const tree = await buildNoteTree(await fake.listTree(head), withKeyring);
-  return { head, tree };
-}
-
-async function mainContent(
-  fake: FakeForgeAdapter,
-  path: NotePath,
-  withKeyring = keyring,
-): Promise<string | undefined> {
-  const { tree } = await mainTree(fake, withKeyring);
-  const node = findNode(tree, path);
-  if (node?.kind !== "note") return undefined;
-  return decryptNote(withKeyring, await fake.readBlob(node.blobSha));
-}
-
-async function pushRemote(
-  fake: FakeForgeAdapter,
-  changeSet: ChangeSet,
-): Promise<string> {
-  const listing = await fake.listTree(await fake.getHead());
-  const order = await readOrderIndex(listing, keyring, (sha) =>
-    fake.readBlob(sha),
-  );
-  const encoded = await encodeChangeSet({ listing, changeSet, order, keyring });
-  return fake.pushFromAnotherDevice(encoded.changes, encoded.message);
-}
-
 function messageOf(fake: FakeForgeAdapter, head: string): string {
   const commit = fake.repo.getCommit(head);
   if (commit === undefined) throw new Error("unknown commit");
   return commit.message;
 }
 
-function okCommitCount(fake: FakeForgeAdapter, since: string): number {
-  let count = 0;
-  let current: string | null | undefined = fake.repo.getRef("main");
-  while (current !== since && current != null) {
-    count++;
-    current = fake.repo.getCommit(current)?.parent;
-  }
-  return count;
-}
-
-const WELCOME = ["Welcome"];
-const IDEAS = ["Projects", "commitnote", "Ideas"];
-const ZAZOLC = ["Zażółć gęślą jaźń"];
 
 async function welcomeText(fake: FakeForgeAdapter): Promise<string> {
   const text = await mainContent(fake, WELCOME);
@@ -300,7 +228,8 @@ describe("sync engine saves", () => {
       expect(h.engine.getState().save.kind).toBe("saving");
       await waitIdle(h.engine);
       expect(h.commits).toHaveLength(before + 1);
-      const { head, tree } = await mainTree(h.fake);
+      const tree = await mainTree(h.fake);
+      const head = await h.fake.getHead();
       expect(messageOf(h.fake, head)).toContain(`${trailer}: `);
       check(tree);
     }
@@ -318,7 +247,7 @@ describe("sync engine saves", () => {
       expect(findNode(tree, ["Box"])?.kind).toBe("folder"),
     );
     const listing = await h.fake.listTree(await h.fake.getHead());
-    const box = findNode((await mainTree(h.fake)).tree, ["Box"]);
+    const box = findNode(await mainTree(h.fake), ["Box"]);
     expect(
       listing.some(
         (entry) => entry.path === `${box?.storedPath}/${FOLDER_MARKER}`,
@@ -402,7 +331,7 @@ describe("sync engine saves", () => {
     h.engine.createNote([], "First");
     await vi.waitFor(() => expect(h.commits).toHaveLength(1));
     h.engine.createFolder([], "Second");
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await drainAsync();
     expect(h.commits).toHaveLength(1);
     expect(h.engine.getState().pending).toEqual([
       { kind: "create-folder", path: ["Second"] },
@@ -416,7 +345,7 @@ describe("sync engine saves", () => {
     release();
     await vi.waitFor(() => expect(h.commits).toHaveLength(2));
     await waitIdle(h.engine);
-    const { tree } = await mainTree(h.fake);
+    const tree = await mainTree(h.fake);
     expect(findNode(tree, ["First"])?.kind).toBe("note");
     expect(findNode(tree, ["Second"])?.kind).toBe("folder");
     expect(h.engine.getState().pending).toEqual([]);
@@ -643,7 +572,7 @@ describe("sync engine saves", () => {
 
       h.engine.editNote(WELCOME, `${merged}\nmore`);
       h.clock.advance(60_000);
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await drainAsync();
       expect(await h.fake.getHead()).toBe(remoteHead);
       expect(h.engine.getState().conflicts[0].editing).toBe(`${merged}\nmore`);
       expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
@@ -819,7 +748,7 @@ describe("sync engine saves", () => {
       await waitIdle(h.engine);
 
       const [conflict] = h.engine.getState().conflicts;
-      const { tree } = await mainTree(h.fake);
+      const tree = await mainTree(h.fake);
       const node = findNode(tree, WELCOME);
       if (node?.kind !== "note") throw new Error("expected Welcome");
       expect(conflict.theirsBlobSha).toBe(node.blobSha);
@@ -935,7 +864,7 @@ describe("sync engine saves", () => {
 
       expect(h.engine.getState().conflicts).toEqual([]);
       expect(await mainContent(h.fake, IDEAS)).toBe(mine);
-      const { tree } = await mainTree(h.fake);
+      const tree = await mainTree(h.fake);
       expect(findNode(tree, IDEAS.slice(0, 2))?.kind).toBe("folder");
       const kinds = h.engine.getState().notices;
       expect(kinds).toContainEqual(
@@ -972,7 +901,7 @@ describe("sync engine saves", () => {
       const text = (await mainContent(h.fake, IDEAS)) ?? "";
       expect(text).toContain("my typed line");
       expect(hasConflictMarkers(text)).toBe(false);
-      const { tree } = await mainTree(h.fake);
+      const tree = await mainTree(h.fake);
       expect(findNode(tree, IDEAS.slice(0, 2))?.kind).toBe("folder");
     });
 
@@ -1072,7 +1001,7 @@ describe("sync engine saves", () => {
       path: moved,
     });
     await waitIdle(h.engine);
-    const { tree } = await mainTree(h.fake);
+    const tree = await mainTree(h.fake);
     expect(findNode(tree, moved)).toBeUndefined();
     expect(findNode(tree, ["Work", "commitnote", "Roadmap"])?.kind).toBe(
       "note",
@@ -1197,7 +1126,7 @@ describe("sync engine saves", () => {
   it("works on a freshly initialized notes repo", async () => {
     const fake = new FakeForgeAdapter();
     const created = await createRepoConfig("fresh passphrase", {
-      argon2id: argon2idDirect,
+      argon2id: sharedMemoizedArgon2id,
     });
     await fake.initialize(created.configText, encodeInitializeMessage());
     const h = await setup(fake, created.keyring);
@@ -1210,7 +1139,7 @@ describe("sync engine saves", () => {
     h.engine.editNote(["Notes", "First"], "# First\n");
     expect(await h.engine.flush()).toEqual({ kind: "saved" });
 
-    const { tree } = await mainTree(fake, created.keyring);
+    const tree = await mainTree(fake, created.keyring);
     expect(findNode(tree, ["Notes"])?.kind).toBe("folder");
     expect(await mainContent(fake, ["Notes", "First"], created.keyring)).toBe(
       "# First\n",

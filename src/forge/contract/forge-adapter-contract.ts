@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { REPO_CONFIG_DIR, REPO_CONFIG_PATH } from "../../format/v1";
+import {
+  MAIN_BRANCH,
+  REPO_CONFIG_DIR,
+  REPO_CONFIG_PATH,
+  SAVE_SUBJECT,
+} from "../../format/v1";
 import type {
   CommitFileChange,
   ContentCreatingRequest,
   ForgeAdapter,
 } from "../forge-adapter";
+import { commitOnBranch } from "../fake/in-memory-git-repo";
+import type { InMemoryGitRepo } from "../fake/in-memory-git-repo";
+import type { MockFailure } from "../fake/mock-faults";
 import { ROOT_LISTING_LIMIT } from "../forge-adapter";
 
 export interface ContractSeed {
@@ -54,6 +62,47 @@ export interface ForgeContractHarness {
     seed: ContractSeed,
     options?: { canWrite?: boolean },
   ): Promise<ContractSubject>;
+}
+
+export function inMemorySubjectHooks(
+  repo: InMemoryGitRepo,
+): Pick<
+  ContractSubject,
+  "pushFromAnotherDevice" | "readFileAtMain" | "mainHead" | "commitParent"
+> {
+  return {
+    pushFromAnotherDevice: (changes) =>
+      commitOnBranch(repo, changes, SAVE_SUBJECT),
+    async readFileAtMain(path) {
+      const head = repo.getRef(MAIN_BRANCH);
+      const blobSha = head === undefined ? undefined : repo.fileAt(head, path);
+      return blobSha === undefined ? undefined : repo.getBlob(blobSha);
+    },
+    mainHead: async () => repo.getRef(MAIN_BRANCH),
+    commitParent: async (sha) => repo.getCommit(sha)?.parent,
+  };
+}
+
+export function toMockFailure(
+  failure: Exclude<InjectedFailure, { kind: "stale" }>,
+): MockFailure {
+  switch (failure.kind) {
+    case "Unauthorized":
+      return { status: 401 };
+    case "Forbidden":
+      return { status: 403 };
+    case "NotFound":
+      return { status: 404 };
+    case "Server":
+      return { status: 500 };
+    case "Network":
+      return { network: true };
+    case "RateLimited":
+      return {
+        status: 429,
+        headers: { "retry-after": String(failure.retryAfterSeconds) },
+      };
+  }
 }
 
 // Independently reproduces git's blob hashing so listTree/readBlob results can

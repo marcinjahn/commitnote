@@ -1,11 +1,10 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
+import { describe, expect, it } from "vitest";
 import { commitFiles } from "../../fake/in-memory-git-repo";
 import {
   MockGitHubRepo,
   type MockGitHubRepoOptions,
 } from "./mock-github-server";
+import { useMswServer } from "../../fake/msw-test-server";
 
 const OWNER = "acme";
 const REPO = "notes";
@@ -30,20 +29,7 @@ function decodeWrappedBase64(wrapped: string): string {
   return new TextDecoder("utf-8").decode(bytes);
 }
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 function useMock(
   options?: Partial<Omit<MockGitHubRepoOptions, "owner" | "repo" | "token">>,
@@ -54,7 +40,7 @@ function useMock(
     token: TOKEN,
     ...options,
   });
-  server.use(...mock.handlers());
+  getServer().use(...mock.handlers());
   return mock;
 }
 
@@ -160,18 +146,12 @@ describe("MockGitHubRepo empty repository", () => {
 });
 
 describe("MockGitHubRepo blobs", () => {
-  it("round-trips content through POST then GET with wrapped base64", async () => {
-    useMock();
+  it("serves stored content as wrapped base64", async () => {
+    const mock = useMock();
     await putFirstFile("notes/seed.md", "seed");
 
     const text = "a".repeat(80) + "\nécafé";
-    const postRes = await fetch(`${BASE}/git/blobs`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ content: text, encoding: "utf-8" }),
-    });
-    expect(postRes.status).toBe(201);
-    const { sha } = (await postRes.json()) as { sha: string };
+    const sha = await mock.git.putBlob(text);
 
     const getRes = await fetch(`${BASE}/git/blobs/${sha}`, {
       headers: authHeaders(),
@@ -379,20 +359,12 @@ describe("MockGitHubRepo read-only token", () => {
     });
     expect(postTrees.status).toBe(403);
 
-    const postBlobs = await fetch(`${BASE}/git/blobs`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ content: "hi", encoding: "utf-8" }),
-    });
-    expect(postBlobs.status).toBe(403);
-
     for (const res of [
       putContents,
       postRefs,
       patchRefs,
       postCommits,
       postTrees,
-      postBlobs,
     ]) {
       expect(await res.json()).toEqual({
         message: "Resource not accessible by personal access token",

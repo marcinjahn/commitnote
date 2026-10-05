@@ -1,61 +1,52 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
-import type { ChangeSet, NotePath } from "../changes/change";
-import { readOrderIndex } from "../order/order-index";
-import { encodeChangeSet } from "../changes/encode-change-set";
-import { argon2idDirect } from "../crypto/argon2";
+import { beforeAll, describe, expect, it } from "vitest";
+import type { ChangeSet } from "../changes/change";
+import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
+import { sampleNotesRepoKeyring, sampleNotesRepoConfig } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
 import {
   createRepoConfig,
-  deriveKeyring,
   type Keyring,
 } from "../crypto/keyring";
-import { decryptNote } from "../crypto/note-cipher";
-import { parseRepoConfig } from "../crypto/repo-config";
 import { ForgeError } from "../forge/errors";
+import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import type {
   AtomicCommitSupport,
   CommitRequest,
   ForgeAdapter,
 } from "../forge/forge-adapter";
-import { GITHUB_WRITE_LIMITS } from "../forge/github/github-adapter";
 import { REPO_CONFIG_PATH } from "../format/v1";
 import { planImport } from "../import/plan-import";
 import type { ArchiveImportEntry } from "../import/read-notes-archive";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
-import { buildNoteTree, findNode, type NoteTree } from "../tree/note-tree";
-import { createRateBudget, type RateBudget } from "./rate-budget";
+import { findNode } from "../tree/note-tree";
+import { type RateBudget } from "./rate-budget";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
 import { createTestClock } from "./testing/test-clock";
+import {
+  WELCOME,
+  advance,
+  fullBudget,
+  mainContent,
+  mainTree,
+  okCommitCount,
+  pushRemote,
+  settle,
+} from "./testing/engine-harness";
 
 let keyring: Keyring;
 let rekeyedConfigText: string;
 
 beforeAll(async () => {
-  const probe = await createSampleNotesRepoAdapter();
-  const inspection = await probe.inspect();
-  if (inspection.kind !== "populated" || inspection.main === null) {
-    throw new Error("expected a populated sample notes repo");
-  }
-  const parsed = parseRepoConfig(inspection.main.repoConfigText ?? "");
-  if (parsed.kind !== "valid") {
-    throw new Error(`expected a valid repo config, got ${parsed.kind}`);
-  }
-  keyring = await deriveKeyring(
-    SAMPLE_NOTES_REPO_PASSPHRASE,
-    parsed.config.kdf,
-    argon2idDirect,
-  );
+  keyring = await sampleNotesRepoKeyring();
   rekeyedConfigText = (
     await createRepoConfig("another passphrase", {
-      argon2id: argon2idDirect,
-      kdf: parsed.config.kdf,
+      argon2id: sharedMemoizedArgon2id,
+      kdf: sampleNotesRepoConfig().kdf,
     })
   ).configText;
 });
 
 const START = 1_000_000;
-const WELCOME = ["Welcome"];
 
 interface AtomicSetup {
   support: AtomicCommitSupport;
@@ -91,21 +82,12 @@ async function setup(options?: {
             return atomic.support;
           },
         };
-  const adapter: ForgeAdapter = {
+  const adapter = delegateAdapter(fake, {
     ...atomicMethods,
-    limits: fake.limits,
     commitCost: (changes, costOptions) => {
       costs.push({ atomic: costOptions?.atomic === true });
       return fake.commitCost(changes);
     },
-    inspect: () => fake.inspect(),
-    initialize: (configText, message) => fake.initialize(configText, message),
-    getHead: () => fake.getHead(),
-    listTree: (sha) => fake.listTree(sha),
-    listCommits: (request) => fake.listCommits(request),
-    findOldestCommit: (request) => fake.findOldestCommit(request),
-    readFileAt: (sha, path) => fake.readFileAt(sha, path),
-    readBlob: (sha) => fake.readBlob(sha),
     commit: async (request) => {
       commits.push(request);
       if (request.atomic === true && atomic?.support.kind === "needsSetup") {
@@ -113,7 +95,7 @@ async function setup(options?: {
       }
       return fake.commit(request);
     },
-  };
+  });
   const engine = createSyncEngine({
     adapter,
     keyring,
@@ -122,57 +104,6 @@ async function setup(options?: {
   });
   await engine.refresh();
   return { fake, costs, clock, engine, commits, start: await fake.getHead() };
-}
-
-async function settle(engine: SyncEngine): Promise<void> {
-  await vi.waitFor(
-    () => {
-      const state = engine.getState();
-      expect(state.save.kind).not.toBe("saving");
-      expect(state.refresh.inFlight).toBe(false);
-    },
-    { timeout: 5_000, interval: 2 },
-  );
-}
-
-async function advance(h: Harness, ms: number): Promise<void> {
-  h.clock.advance(ms);
-  await settle(h.engine);
-}
-
-function okCommitCount(fake: FakeForgeAdapter, since: string): number {
-  let count = 0;
-  let current: string | null | undefined = fake.repo.getRef("main");
-  while (current !== since && current != null) {
-    count++;
-    current = fake.repo.getCommit(current)?.parent;
-  }
-  return count;
-}
-
-async function mainTree(fake: FakeForgeAdapter): Promise<NoteTree> {
-  return buildNoteTree(await fake.listTree(await fake.getHead()), keyring);
-}
-
-async function mainContent(
-  fake: FakeForgeAdapter,
-  path: NotePath,
-): Promise<string | undefined> {
-  const node = findNode(await mainTree(fake), path);
-  if (node?.kind !== "note") return undefined;
-  return decryptNote(keyring, await fake.readBlob(node.blobSha));
-}
-
-async function pushRemote(
-  fake: FakeForgeAdapter,
-  changeSet: ChangeSet,
-): Promise<string> {
-  const listing = await fake.listTree(await fake.getHead());
-  const order = await readOrderIndex(listing, keyring, (sha) =>
-    fake.readBlob(sha),
-  );
-  const encoded = await encodeChangeSet({ listing, changeSet, order, keyring });
-  return fake.pushFromAnotherDevice(encoded.changes, encoded.message);
 }
 
 const ENTRIES: readonly ArchiveImportEntry[] = [
@@ -195,14 +126,6 @@ function rootImport(engine: SyncEngine): ChangeSet {
   );
   if (!plan.ok) throw new Error("expected a plan without conflicts");
   return plan.changes;
-}
-
-function fullBudget(clock: ReturnType<typeof createTestClock>): RateBudget {
-  const budget = createRateBudget(clock, GITHUB_WRITE_LIMITS);
-  for (let index = 0; index < GITHUB_WRITE_LIMITS.perMinute; index++) {
-    budget.record();
-  }
-  return budget;
 }
 
 describe("sync engine import", () => {

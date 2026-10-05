@@ -1,40 +1,27 @@
-import { afterAll, afterEach, beforeAll } from "vitest";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
-import { MAIN_BRANCH, SAVE_SUBJECT } from "../../format/v1";
+import { MAIN_BRANCH } from "../../format/v1";
 import type {
   ContractOperation,
   ContractSeed,
   ContractSubject,
   ForgeContractHarness,
-  InjectedFailure,
 } from "../contract/forge-adapter-contract";
-import { describeForgeAdapterContract } from "../contract/forge-adapter-contract";
-import { commitFiles } from "../fake/in-memory-git-repo";
+import {
+  describeForgeAdapterContract,
+  inMemorySubjectHooks,
+  toMockFailure,
+} from "../contract/forge-adapter-contract";
+import { seedCommits } from "../fake/in-memory-git-repo";
 import type { ContentCreatingRequest } from "../forge-adapter";
 import { createGitLabAdapter } from "./gitlab-adapter";
-import type { MockFailure } from "./testing/mock-gitlab-server";
 import { MockGitLabRepo } from "./testing/mock-gitlab-server";
+import { useMswServer } from "../fake/msw-test-server";
 
 const OWNER = "acme/personal";
 const REPO = "notes";
 const TOKEN = "s3cr3t-token";
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
+const getServer = useMswServer();
 
 const FAILURE_MATCH: Record<
   ContractOperation,
@@ -56,7 +43,7 @@ const FAILURE_MATCH: Record<
 // writing, so 'stale' is simulated by a one-shot override of that read.
 function forceStale(operation: ContractOperation): void {
   if (operation === "commit") {
-    server.use(
+    getServer().use(
       http.get(
         /\/repository\/branches\/main$/,
         () =>
@@ -71,7 +58,7 @@ function forceStale(operation: ContractOperation): void {
     return;
   }
   if (operation === "initialize") {
-    server.use(
+    getServer().use(
       http.get(
         /\/projects\/[^/]+$/,
         () => HttpResponse.json({ empty_repo: false }),
@@ -83,30 +70,8 @@ function forceStale(operation: ContractOperation): void {
   throw new Error(`'stale' is not supported for '${operation}'`);
 }
 
-function toMockFailure(
-  failure: Exclude<InjectedFailure, { kind: "stale" }>,
-): MockFailure {
-  switch (failure.kind) {
-    case "Unauthorized":
-      return { status: 401 };
-    case "Forbidden":
-      return { status: 403 };
-    case "NotFound":
-      return { status: 404 };
-    case "Server":
-      return { status: 500 };
-    case "Network":
-      return { network: true };
-    case "RateLimited":
-      return {
-        status: 429,
-        headers: { "retry-after": String(failure.retryAfterSeconds) },
-      };
-  }
-}
-
 function buildSubject(mock: MockGitLabRepo): ContractSubject {
-  server.use(...mock.handlers());
+  getServer().use(...mock.handlers());
 
   const contentCreatingRequests: ContentCreatingRequest[] = [];
   const adapter = createGitLabAdapter(
@@ -121,41 +86,13 @@ function buildSubject(mock: MockGitLabRepo): ContractSubject {
   return {
     adapter,
     contentCreatingRequests,
-    async pushFromAnotherDevice(changes) {
-      const parent = mock.git.getRef(MAIN_BRANCH) ?? null;
-      const parentCommit =
-        parent === null ? undefined : mock.git.getCommit(parent);
-      const treeSha = await mock.git.applyChanges(
-        parentCommit?.tree ?? null,
-        changes,
-      );
-      const commitSha = await mock.git.putCommit({
-        tree: treeSha,
-        parent,
-        message: SAVE_SUBJECT,
-      });
-      mock.git.setRef(MAIN_BRANCH, commitSha);
-      return commitSha;
-    },
+    ...inMemorySubjectHooks(mock.git),
     failNext(operation, failure) {
       if (failure.kind === "stale") {
         forceStale(operation);
         return;
       }
       mock.failNext(FAILURE_MATCH[operation], toMockFailure(failure));
-    },
-    async commitParent(sha) {
-      return mock.git.getCommit(sha)?.parent;
-    },
-    async readFileAtMain(path) {
-      const head = mock.git.getRef(MAIN_BRANCH);
-      const commit = head === undefined ? undefined : mock.git.getCommit(head);
-      const sha =
-        commit === undefined ? undefined : mock.git.getTree(commit.tree)?.get(path);
-      return sha === undefined ? undefined : mock.git.getBlob(sha);
-    },
-    async mainHead() {
-      return mock.git.getRef(MAIN_BRANCH);
     },
   };
 }
@@ -180,18 +117,7 @@ const harness: ForgeContractHarness = {
       mergeMethod: "ff",
       canWrite: options?.canWrite,
     });
-    const branch = seed.branch ?? MAIN_BRANCH;
-    let parent: string | null = null;
-    for (const [index, commitSeed] of seed.commits.entries()) {
-      const isLastCommit = index === seed.commits.length - 1;
-      parent = await commitFiles(mock.git, {
-        parent,
-        files: { ...commitSeed.files },
-        message: commitSeed.message,
-        committedAt: commitSeed.committedAt,
-        branch: isLastCommit ? branch : undefined,
-      });
-    }
+    await seedCommits(mock.git, seed.commits, seed.branch);
     return buildSubject(mock);
   },
 };

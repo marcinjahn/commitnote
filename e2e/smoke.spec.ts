@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 // Playwright's own module loader can't import this straight from
 // src/testing/fake-forge/fake-forge-factory.ts: that file pulls in
@@ -39,7 +39,7 @@ test("login screen renders under the production CSP", async ({ page }) => {
   expect(unexpectedConsoleErrors).toEqual([]);
 });
 
-test("self-hosted font loads under a dark colour scheme", async ({ page }) => {
+test("self-hosted font loads under a dark colour scheme", async ({ page, baseURL }) => {
   await page.emulateMedia({ colorScheme: "dark" });
 
   const consoleErrors: string[] = [];
@@ -62,7 +62,7 @@ test("self-hosted font loads under a dark colour scheme", async ({ page }) => {
 
   const response = await fontResponse;
   expect(response.status()).toBe(200);
-  expect(response.url().startsWith("http://localhost:4173/")).toBe(true);
+  expect(new URL(response.url()).origin).toBe(new URL(baseURL!).origin);
 
   await expect
     .poll(() =>

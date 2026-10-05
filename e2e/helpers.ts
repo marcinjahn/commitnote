@@ -1,7 +1,7 @@
 import type { CDPSession, Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 
-export interface LogInOptions {
+interface LogInOptions {
   readonly repo: string;
   readonly token?: string;
   readonly passphrase: string;
@@ -17,7 +17,7 @@ export async function continueWithToken(
   await page.getByRole("button", { name: "Continue" }).click();
 }
 
-export interface ChooseRepositoryOptions {
+interface ChooseRepositoryOptions {
   readonly repo: string;
   readonly token?: string;
   readonly provider?: string;
@@ -31,9 +31,12 @@ export async function chooseRepository(
     await page.getByRole("radio", { name: options.provider }).check();
   }
   await continueWithToken(page, options.token);
-  await page.getByLabel("Repository", { exact: true }).selectOption({
-    label: options.repo.replace(/^https:\/\/[^/]+\//, ""),
-  });
+  const select = page.getByLabel("Repository", { exact: true });
+  if ((await select.inputValue()) !== options.repo) {
+    await select.selectOption({
+      label: options.repo.replace(/^https:\/\/[^/]+\//, ""),
+    });
+  }
 }
 
 export async function logIn(page: Page, options: LogInOptions): Promise<void> {
@@ -60,13 +63,231 @@ export async function setUpNotesRepo(
   await page.getByRole("button", { name: "Set up notes repo" }).click();
 }
 
+// Real Argon2id key derivation runs on every set-up and on the first login with
+// a given passphrase and salt in a worker (~1s in Chromium, much more under CPU
+// load), so waits that follow one need more room than the default 5s expect
+// timeout.
+export const KEY_DERIVATION_TIMEOUT = 15_000;
+
 export async function expectTree(page: Page): Promise<void> {
-  // Real Argon2id key derivation runs on every login (~1s in Chromium, more
-  // under parallel test workers), so give it more room than the default
-  // 5s expect timeout.
   await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible({
-    timeout: 15_000,
+    timeout: KEY_DERIVATION_TIMEOUT,
   });
+}
+
+export async function expectEmptyNotesRepo(page: Page): Promise<void> {
+  await expect(page.getByText("No notes yet")).toBeVisible({
+    timeout: KEY_DERIVATION_TIMEOUT,
+  });
+}
+
+export async function expectLoginAlert(
+  page: Page,
+  text: string,
+): Promise<void> {
+  await expect(page.getByRole("alert")).toHaveText(text, {
+    timeout: KEY_DERIVATION_TIMEOUT,
+  });
+}
+
+export const SAMPLE = {
+  repo: "https://github.com/sample/notes",
+  key: "sample/notes",
+  passphrase: "sample notes repo passphrase",
+} as const;
+
+type OpenNotesOptions = { readonly repo?: string } & (
+  | { readonly via?: "restore" }
+  | {
+      readonly via: "login";
+      readonly token?: string;
+      readonly passphrase?: string;
+      readonly rememberMe?: boolean;
+      readonly provider?: string;
+    }
+);
+
+/**
+ * Opens the notes of `repo`: by default from a remembered session the fake
+ * forge stores before the app starts, or through the login screen with
+ * `via: "login"`.
+ */
+export async function openNotes(
+  page: Page,
+  options: OpenNotesOptions = {},
+): Promise<void> {
+  const repo = options.repo ?? SAMPLE.repo;
+  if (options.via === "login") {
+    await page.goto("/");
+    await logIn(page, {
+      ...options,
+      repo,
+      passphrase: options.passphrase ?? SAMPLE.passphrase,
+    });
+  } else {
+    await page.goto("/?fake-forge-session=" + encodeURIComponent(repo));
+  }
+  await expectTree(page);
+}
+
+interface FakeForgeControls {
+  commitMessages(repoKey: string): string[];
+  failNext(repoKey: string, operation: string, kind: string): void;
+  editNote(
+    repoKey: string,
+    notePath: readonly string[],
+    markdown: string,
+  ): Promise<void>;
+  exportRepo(repoKey: string): string;
+  adoptRepo(repoKey: string, exported: string): void;
+  changeRepoKey(repoKey: string): Promise<void>;
+}
+
+type FakeForgeWindow = { __commitNoteFakeForge: FakeForgeControls };
+
+async function controlsReady(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => (window as unknown as Partial<FakeForgeWindow>).__commitNoteFakeForge,
+  );
+}
+
+export function fakeForge(page: Page, repoKey: string = SAMPLE.key) {
+  return {
+    commitMessages: () =>
+      page.evaluate(
+        (key) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.commitMessages(
+            key,
+          ),
+        repoKey,
+      ),
+    commitCount: async () =>
+      (
+        await page.evaluate(
+          (key) =>
+            (
+              window as unknown as FakeForgeWindow
+            ).__commitNoteFakeForge.commitMessages(key),
+          repoKey,
+        )
+      ).length,
+    failNext: async (operation: string, kind: string) => {
+      await controlsReady(page);
+      await page.evaluate(
+        ([key, op, errorKind]) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.failNext(
+            key,
+            op,
+            errorKind,
+          ),
+        [repoKey, operation, kind] as const,
+      );
+    },
+    editNote: (notePath: readonly string[], markdown: string) =>
+      page.evaluate(
+        ([key, path, text]) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.editNote(
+            key,
+            path,
+            text,
+          ),
+        [repoKey, notePath, markdown] as const,
+      ),
+    exportRepo: () =>
+      page.evaluate(
+        (key) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.exportRepo(
+            key,
+          ),
+        repoKey,
+      ),
+    adoptRepo: async (state: string) => {
+      await controlsReady(page);
+      await page.evaluate(
+        ([key, exported]) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.adoptRepo(
+            key,
+            exported,
+          ),
+        [repoKey, state] as const,
+      );
+    },
+    changeRepoKey: () =>
+      page.evaluate(
+        (key) =>
+          (
+            window as unknown as FakeForgeWindow
+          ).__commitNoteFakeForge.changeRepoKey(key),
+        repoKey,
+      ),
+  };
+}
+
+export async function handOverRepo(
+  from: Page,
+  to: Page,
+  repoKey: string = SAMPLE.key,
+): Promise<void> {
+  await fakeForge(to, repoKey).adoptRepo(await fakeForge(from, repoKey).exportRepo());
+}
+
+/**
+ * Runs `callback` with the fake-forge controls in every document of `page`,
+ * as soon as the app publishes them. The callback is serialized, so it cannot
+ * use variables from the surrounding scope; pass them as `arg`.
+ */
+export async function onFakeForgeReady<Arg>(
+  page: Page,
+  callback: (controls: FakeForgeControls, arg: Arg) => void,
+  arg: Arg,
+): Promise<void> {
+  const hook = (
+    run: (controls: FakeForgeControls, arg: Arg) => void,
+    runArg: Arg,
+  ) => {
+    let controls: FakeForgeControls | undefined;
+    Object.defineProperty(window, "__commitNoteFakeForge", {
+      configurable: true,
+      get: () => controls,
+      set: (value: FakeForgeControls) => {
+        controls = value;
+        run(value, runArg);
+      },
+    });
+  };
+  await page.addInitScript({
+    content: `(${hook.toString()})(${callback.toString()}, ${JSON.stringify(arg)})`,
+  });
+}
+
+export async function flushPendingSaves(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    delete (document as { visibilityState?: unknown }).visibilityState;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+}
+
+export async function expectSettingsIdle(page: Page): Promise<void> {
+  await expect(
+    page.getByRole("dialog", { name: "Settings" }).getByRole("status"),
+  ).not.toContainText(/Waiting to save|Saving\b/);
+}
+
+export async function showTree(page: Page): Promise<void> {
+  const back = page.getByRole("button", { name: "Back to notes" });
+  if (await back.isVisible()) {
+    await back.click();
+  }
+}
+
+export async function logOut(page: Page): Promise<void> {
+  await showTree(page);
+  await page.getByRole("button", { name: "Log out", exact: true }).click();
 }
 
 // Matches while the row shows any sync state: a waiting or saving label
@@ -92,15 +313,15 @@ export interface TouchPoint {
  * gesture handling (scrolling, long-press, tap) applies.
  */
 export class TouchFinger {
-  private at: TouchPoint = { x: 0, y: 0 };
+  private static readonly EVENT_INTERVAL_S = 0.016;
 
-  private constructor(
-    private readonly page: Page,
-    private readonly cdp: CDPSession,
-  ) {}
+  private at: TouchPoint = { x: 0, y: 0 };
+  private clock = Date.now() / 1000;
+
+  private constructor(private readonly cdp: CDPSession) {}
 
   static async on(page: Page): Promise<TouchFinger> {
-    return new TouchFinger(page, await page.context().newCDPSession(page));
+    return new TouchFinger(await page.context().newCDPSession(page));
   }
 
   async down(point: TouchPoint, timestamp?: number): Promise<void> {
@@ -108,7 +329,7 @@ export class TouchFinger {
     await this.cdp.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [point],
-      ...(timestamp === undefined ? {} : { timestamp }),
+      timestamp: this.stamp(timestamp),
     });
   }
 
@@ -126,7 +347,7 @@ export class TouchFinger {
       await this.cdp.send("Input.dispatchTouchEvent", {
         type: "touchMove",
         touchPoints: [this.at],
-        ...(timestamp === undefined ? {} : { timestamp }),
+        timestamp: this.stamp(timestamp, TouchFinger.EVENT_INTERVAL_S),
       });
     }
   }
@@ -135,12 +356,43 @@ export class TouchFinger {
     await this.cdp.send("Input.dispatchTouchEvent", {
       type: "touchEnd",
       touchPoints: [],
-      ...(timestamp === undefined ? {} : { timestamp }),
+      timestamp: this.stamp(timestamp),
     });
     await this.cdp.detach();
   }
 
-  async hold(ms: number): Promise<void> {
-    await this.page.waitForTimeout(ms);
+  hold(ms: number): void {
+    this.clock += ms / 1000;
   }
+
+  private stamp(explicit?: number, advance = 0): number {
+    this.clock = explicit ?? this.clock + advance;
+    return this.clock;
+  }
+}
+
+export const SERIF_STACK =
+  'ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", Georgia, Cambria, "Noto Serif", "Times New Roman", serif';
+export const MONO_STACK = "var(--font-mono)";
+
+export function expectedFamily(page: Page, stack: string): Promise<string> {
+  return page.evaluate((value) => {
+    const probe = document.createElement("span");
+    probe.style.fontFamily = value;
+    document.body.appendChild(probe);
+    const family = getComputedStyle(probe).fontFamily;
+    probe.remove();
+    return family;
+  }, stack);
+}
+
+export async function expectFamily(
+  page: Page,
+  locator: Locator,
+  stack: string,
+): Promise<void> {
+  const expected = await expectedFamily(page, stack);
+  await expect
+    .poll(() => locator.evaluate((el) => getComputedStyle(el).fontFamily))
+    .toBe(expected);
 }

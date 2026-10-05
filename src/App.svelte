@@ -28,6 +28,7 @@
   import { createSettingsSaver, type SettingsSaver } from "./settings/settings-saver";
   import type { SyncEngine } from "./sync/sync-engine";
   import type { Keyring } from "./crypto/keyring";
+  import type { Argon2idFunction } from "./crypto/argon2";
   import {
     createPassphraseChange,
     type HistoryOutcome,
@@ -55,9 +56,10 @@
   interface Props {
     registry: ForgeRegistry;
     testModeBanner: string | null;
+    argon2id?: Argon2idFunction;
   }
 
-  const { registry, testModeBanner }: Props = $props();
+  const { registry, testModeBanner, argon2id }: Props = $props();
 
   type Phase =
     | { readonly kind: "restoring" }
@@ -167,7 +169,7 @@
   >(null);
 
   function loginDeps() {
-    return { createAdapter: budgetedCreateAdapter };
+    return { createAdapter: budgetedCreateAdapter, argon2id };
   }
 
   function showLogin(initialError: LoginError | null): void {
@@ -250,6 +252,7 @@
         engine,
         rateBudget,
         clock: systemClock,
+        argon2id,
       }),
       noteHistory: createNoteHistory({ adapter, keyring: session.keyring }),
       noteDatesResolver: createNoteDates({

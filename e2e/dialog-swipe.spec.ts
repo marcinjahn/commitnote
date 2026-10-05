@@ -1,71 +1,13 @@
 import type { Locator, Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
-import { expectTree, logIn, TouchFinger, type TouchPoint } from "./helpers";
+import { expect, test } from "./fixtures";
+import { TouchFinger, type TouchPoint, openNotes, fakeForge } from "./helpers";
+import { chooseAccent, openSettings } from "./helpers/settings";
+import { moveToTrash, openHistory, openTrash } from "./helpers/tree";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
-const REPO_KEY = "sample/notes";
 
-function commitMessages(page: Page): Promise<string[]> {
-  return page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.commitMessages(repoKey) as string[],
-    REPO_KEY,
-  );
-}
-
-async function startSession(page: Page): Promise<void> {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
-}
-
-function settingsDialog(page: Page): Locator {
-  return page.getByRole("dialog", { name: "Settings" });
-}
-
-async function openSettings(page: Page): Promise<Locator> {
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Settings" })
-    .click();
-  const dialog = settingsDialog(page);
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
-
-async function chooseAccent(page: Page, name: string): Promise<void> {
-  await settingsDialog(page)
-    .getByRole("radiogroup", { name: "Accent color" })
-    .locator("label")
-    .filter({ has: page.getByRole("radio", { name, exact: true }) })
-    .click();
-}
-
-async function moveToTrash(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: `Actions for ${name}` }).click();
-  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog
-    .getByRole("button", { name: "Move to trash", exact: true })
-    .click();
-  await expect(dialog).toHaveCount(0);
-}
-
-async function openTrash(page: Page): Promise<Locator> {
-  await page.getByTestId("open-trash").click();
-  const dialog = page.getByRole("dialog", { name: "Trash" });
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
-
-async function openHistory(page: Page): Promise<Locator> {
+async function openWelcomeHistory(page: Page): Promise<Locator> {
   await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
-  await page.getByRole("button", { name: "Version history" }).click();
-  const dialog = page.getByRole("dialog", { name: "Version history" });
-  await expect(dialog).toBeVisible();
-  return dialog;
+  return openHistory(page);
 }
 
 interface Box {
@@ -126,7 +68,7 @@ async function swipeDownFrom(
   const finger = await TouchFinger.on(dialog.page());
   await finger.down(grab);
   await finger.move({ x: grab.x, y: grab.y + cardHeight * 0.6 }, 20);
-  await finger.hold(150);
+  finger.hold(150);
   await finger.up();
 }
 
@@ -139,30 +81,29 @@ async function dragAndRelease(
   const finger = await TouchFinger.on(dialog.page());
   await finger.down(grab);
   await finger.move({ x: grab.x, y: grab.y + distance }, 10);
-  await finger.hold(holdMs);
+  finger.hold(holdMs);
   await finger.up();
 }
 
-test.describe("swipe to close on mobile", () => {
-  test.beforeEach(async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "mobile", "touch swipe is mobile-only");
-    await startSession(page);
+test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
+  test.beforeEach(async ({ page }) => {
+    await openNotes(page);
   });
 
   test("swiping the header down past the threshold closes the dialog and saves a pending change", async ({
     page,
   }) => {
-    const before = (await commitMessages(page)).length;
+    const before = await fakeForge(page).commitCount();
     const dialog = await openSettings(page);
     await chooseAccent(page, "Teal");
     await swipeClose(dialog);
     await expect(dialog).toHaveCount(0);
     await expect
-      .poll(async () => (await commitMessages(page)).length, {
+      .poll(async () => await fakeForge(page).commitCount(), {
         timeout: 10_000,
       })
       .toBe(before + 1);
-    expect((await commitMessages(page)).join("\n")).toContain(
+    expect((await fakeForge(page).commitMessages()).join("\n")).toContain(
       "Commitnote-Settings: accentColor",
     );
   });
@@ -221,40 +162,47 @@ test.describe("swipe to close on mobile", () => {
 
   const handleDialogs: ReadonlyArray<{
     readonly kind: string;
+    readonly prepare?: (page: Page) => Promise<void>;
     readonly open: (page: Page) => Promise<Locator>;
   }> = [
     { kind: "sheet", open: openSettings },
     {
       kind: "fullscreen",
-      open: async (page) => {
-        await moveToTrash(page, "Welcome");
-        return openTrash(page);
-      },
+      prepare: (page) => moveToTrash(page, "Welcome"),
+      open: openTrash,
     },
-    { kind: "wide", open: openHistory },
+    {
+      kind: "wide",
+      prepare: (page) =>
+        page.getByRole("treeitem", { name: "Welcome", exact: true }).click(),
+      open: openHistory,
+    },
   ];
 
-  for (const { kind, open } of handleDialogs) {
-    for (const start of topRegionStarts) {
-      test(`a ${kind} dialog closes by a touch swipe starting at ${start.name}`, async ({
-        page,
-      }) => {
-        const dialog = await open(page);
-        const card = await settledBox(dialog.locator(".dialog-card"));
-        const handle = (await dialog.getByTestId("dialog-grab-handle").boundingBox())!;
-        const title = (await dialog.locator(".dialog-title").boundingBox())!;
-        const at = start.at({ handle, card, title });
-        expect(
-          await page.evaluate(
-            ({ x, y }) =>
-              document.elementFromPoint(x, y)?.closest(".dialog-card") !== null,
-            at,
-          ),
-        ).toBe(true);
-        await swipeDownFrom(dialog, at, card.height);
-        await expect(dialog).toHaveCount(0);
-      });
-    }
+  for (const { kind, prepare, open } of handleDialogs) {
+    test(`a ${kind} dialog closes by a touch swipe from every start point in the top region`, async ({
+      page,
+    }) => {
+      await prepare?.(page);
+      for (const start of topRegionStarts) {
+        await test.step(`starting at ${start.name}`, async () => {
+          const dialog = await open(page);
+          const card = await settledBox(dialog.locator(".dialog-card"));
+          const handle = (await dialog.getByTestId("dialog-grab-handle").boundingBox())!;
+          const title = (await dialog.locator(".dialog-title").boundingBox())!;
+          const at = start.at({ handle, card, title });
+          expect(
+            await page.evaluate(
+              ({ x, y }) =>
+                document.elementFromPoint(x, y)?.closest(".dialog-card") !== null,
+              at,
+            ),
+          ).toBe(true);
+          await swipeDownFrom(dialog, at, card.height);
+          await expect(dialog).toHaveCount(0);
+        });
+      }
+    });
   }
 
   test("a short slow drag snaps back and leaves the dialog open and usable", async ({
@@ -293,7 +241,7 @@ test.describe("swipe to close on mobile", () => {
     const finger = await TouchFinger.on(page);
     await finger.down(grab);
     await finger.move({ x: grab.x, y: grab.y - 120 }, 12);
-    await finger.hold(100);
+    finger.hold(100);
     await finger.up();
     await expect(dialog).toBeVisible();
     await expect(dialog).not.toHaveAttribute("data-swipe", /.*/);
@@ -308,22 +256,15 @@ test.describe("swipe to close on mobile", () => {
     const down = await TouchFinger.on(page);
     await down.down(centre);
     await down.move({ x: centre.x, y: centre.y - 150 }, 12);
-    await down.hold(100);
+    down.hold(100);
     await down.up();
     const up = await TouchFinger.on(page);
     await up.down(centre);
     await up.move({ x: centre.x, y: centre.y + 250 }, 20);
-    await up.hold(100);
+    up.hold(100);
     await up.up();
     await expect(dialog).toBeVisible();
     await expect(dialog).not.toHaveAttribute("data-swipe", /.*/);
-  });
-
-  test("a fullscreen dialog closes by swipe", async ({ page }) => {
-    await moveToTrash(page, "Welcome");
-    const dialog = await openTrash(page);
-    await swipeClose(dialog);
-    await expect(dialog).toHaveCount(0);
   });
 
   test("a dialog without a header close button closes by swipe", async ({
@@ -376,31 +317,28 @@ test.describe("swipe to close on mobile", () => {
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    const dialog = await openSettings(page);
-    await swipeClose(dialog);
-    await expect(dialog).toHaveCount(0);
-  });
-
-  test("swiping from the grab handle closes the dialog when reduced motion is preferred", async ({
-    page,
-  }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    const dialog = await openSettings(page);
-    const card = await settledBox(dialog.locator(".dialog-card"));
-    const handle = (await dialog.getByTestId("dialog-grab-handle").boundingBox())!;
-    await swipeDownFrom(
-      dialog,
-      { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 },
-      card.height,
-    );
-    await expect(dialog).toHaveCount(0);
+    let dialog = await openSettings(page);
+    await test.step("swiping the header", async () => {
+      await swipeClose(dialog);
+      await expect(dialog).toHaveCount(0);
+    });
+    await test.step("swiping from the grab handle", async () => {
+      dialog = await openSettings(page);
+      const card = await settledBox(dialog.locator(".dialog-card"));
+      const handle = (await dialog.getByTestId("dialog-grab-handle").boundingBox())!;
+      await swipeDownFrom(
+        dialog,
+        { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 },
+        card.height,
+      );
+      await expect(dialog).toHaveCount(0);
+    });
   });
 });
 
 test.describe("dialog grab handle on desktop", () => {
-  test.beforeEach(async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "desktop", "desktop-only");
-    await startSession(page);
+  test.beforeEach(async ({ page }) => {
+    await openNotes(page);
   });
 
   test("no grab handle is shown", async ({ page }) => {
@@ -410,7 +348,7 @@ test.describe("dialog grab handle on desktop", () => {
 
   for (const { kind, open } of [
     { kind: "sheet", open: openSettings },
-    { kind: "wide", open: openHistory },
+    { kind: "wide", open: openWelcomeHistory },
   ]) {
     test(`the ${kind} dialog header sits inside the card padding`, async ({
       page,

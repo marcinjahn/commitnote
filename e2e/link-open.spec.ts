@@ -1,12 +1,27 @@
-import { test, expect } from "@playwright/test";
-import { logIn, expectTree } from "./helpers";
+import { test, expect } from "./fixtures";
+import { openNotes } from "./helpers";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const NOTES_PASSPHRASE = "sample notes repo passphrase";
 const LINK_URL = "https://github.com/example/commitnote";
 
-test.beforeEach(async ({ context }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Ctrl+click is desktop-only");
+declare global {
+  interface Window {
+    __opened: string[];
+  }
+}
+
+function openedUrls(page: import("@playwright/test").Page): Promise<string[]> {
+  return page.evaluate(() => window.__opened);
+}
+
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => {
+    window.__opened = [];
+    const open = window.open.bind(window);
+    window.open = (...args) => {
+      window.__opened.push(String(args[0]));
+      return open(...args);
+    };
+  });
   await context.route(/^https:\/\/(github\.com\/example|www\.example\.org)\//, (route) =>
     route.fulfill({
       status: 200,
@@ -17,9 +32,7 @@ test.beforeEach(async ({ context }, testInfo) => {
 });
 
 async function openWelcomeLink(page: import("@playwright/test").Page) {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+  await openNotes(page);
   await page.getByRole("treeitem", { name: "Welcome" }).click();
   const editor = page.getByRole("textbox", { name: "Note editor" });
   await expect(editor).toBeVisible();
@@ -53,9 +66,9 @@ test("plain click on a link does not open a new tab", async ({
 
   const pageCount = context.pages().length;
   await link.click();
-  await page.waitForTimeout(500);
 
   expect(context.pages().length).toBe(pageCount);
+  expect(await openedUrls(page)).toEqual([]);
 });
 
 test("Cmd+click on a link opens it in a new tab", async ({ page, context }) => {
@@ -89,9 +102,9 @@ test("Ctrl+click on text outside a link does not open a new tab", async ({
 
   const pageCount = context.pages().length;
   await text.click({ modifiers: ["Control"] });
-  await page.waitForTimeout(500);
 
   expect(context.pages().length).toBe(pageCount);
+  expect(await openedUrls(page)).toEqual([]);
 });
 
 test("Ctrl+click in the blank space right of a line ending in a link does not open a new tab", async ({
@@ -123,9 +136,9 @@ test("Ctrl+click in the blank space right of a line ending in a link does not op
     box.y + box.height / 2,
   );
   await page.keyboard.up("Control");
-  await page.waitForTimeout(500);
 
   expect(context.pages().length).toBe(pageCount);
+  expect(await openedUrls(page)).toEqual([]);
 });
 
 async function typeLine(

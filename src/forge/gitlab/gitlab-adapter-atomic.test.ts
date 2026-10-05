@@ -1,23 +1,19 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { http } from "msw";
-import { setupServer } from "msw/node";
-import type { SetupServer } from "msw/node";
-import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
-import { commitFiles } from "../fake/in-memory-git-repo";
+import { MAIN_BRANCH } from "../../format/v1";
+import { commitOnBranch } from "../fake/in-memory-git-repo";
 import type { CommitRequest, ContentCreatingRequest } from "../forge-adapter";
 import {
   ABANDONED_AFTER_MS,
   ATOMIC_BRANCH_PREFIX,
-  createGitLabAdapter,
   MAX_MERGE_ATTEMPTS,
   MERGE_STATUS_POLL_MS,
 } from "./gitlab-adapter";
 import type { GitLabAdapterOptions } from "./gitlab-adapter";
-import type { MockGitLabRepoOptions } from "./testing/mock-gitlab-server";
-import { MockGitLabRepo } from "./testing/mock-gitlab-server";
+import type { MockGitLabRepo } from "./testing/mock-gitlab-server";
+import { useGitLabTestHarness } from "./testing/gitlab-test-harness";
 
 const PROJECT = "acme/notes";
-const TOKEN = "s3cr3t-token";
 const NOW = Date.parse("2026-10-01T12:00:00Z");
 
 const COMMITS = { method: "POST", pathPattern: /\/repository\/commits$/ };
@@ -26,74 +22,33 @@ const MERGE = { method: "PUT", pathPattern: /\/merge_requests\/\d+\/merge$/ };
 const GET_MR = { method: "GET", pathPattern: /\/merge_requests\/\d+$/ };
 const MERGE_BASE = { method: "GET", pathPattern: /\/repository\/merge_base\?/ };
 
-let server: SetupServer;
-
-beforeAll(() => {
-  server = setupServer();
-  server.listen({ onUnhandledRequest: "error" });
+const harness = useGitLabTestHarness(PROJECT, {
+  mergeMethod: "ff",
+  now: () => NOW,
 });
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
-
-function useMock(options?: Partial<MockGitLabRepoOptions>): MockGitLabRepo {
-  const mock = new MockGitLabRepo({
-    projectPath: PROJECT,
-    token: TOKEN,
-    mergeMethod: "ff",
-    now: () => NOW,
-    ...options,
-  });
-  server.use(...mock.handlers());
-  return mock;
-}
+const { getServer, useMock, seed, captureBodies } = harness;
 
 function makeAdapter(options?: Partial<GitLabAdapterOptions>) {
   const reports: ContentCreatingRequest[] = [];
   const sleeps: number[] = [];
-  const adapter = createGitLabAdapter(
-    { owner: "acme", repo: "notes" },
-    {
-      accessToken: TOKEN,
-      now: () => NOW,
-      sleep: async (ms) => {
-        sleeps.push(ms);
-      },
-      randomId: () => "0000-1111",
-      onContentCreatingRequest: (request) => reports.push(request),
-      ...options,
+  const adapter = harness.makeAdapter({
+    now: () => NOW,
+    sleep: async (ms) => {
+      sleeps.push(ms);
     },
-  );
+    randomId: () => "0000-1111",
+    onContentCreatingRequest: (request) => reports.push(request),
+    ...options,
+  });
   return { adapter, reports, sleeps };
 }
 
-function seed(mock: MockGitLabRepo): Promise<string> {
-  return commitFiles(mock.git, {
-    parent: null,
-    files: { [REPO_CONFIG_PATH]: "{}" },
-    message: "init",
-    branch: MAIN_BRANCH,
-  });
-}
-
 async function pushToMain(mock: MockGitLabRepo, text: string): Promise<string> {
-  const parent = mock.git.getRef(MAIN_BRANCH) ?? null;
-  const tree =
-    parent === null ? null : (mock.git.getCommit(parent)?.tree ?? null);
-  const sha = await mock.git.putCommit({
-    tree: await mock.git.applyChanges(tree, [
-      { kind: "upsert-text", path: "theirs.md", text },
-    ]),
-    parent,
-    message: "elsewhere",
-  });
-  mock.git.setRef(MAIN_BRANCH, sha);
-  return sha;
+  return commitOnBranch(
+    mock.git,
+    [{ kind: "upsert-text", path: "theirs.md", text }],
+    "elsewhere",
+  );
 }
 
 function atomicRequest(parent: string): CommitRequest {
@@ -119,20 +74,6 @@ function countRequests(
     (request) =>
       request.method === match.method && match.pathPattern.test(request.path),
   ).length;
-}
-
-function captureBodies(
-  method: "post" | "put",
-  pattern: RegExp,
-): unknown[] {
-  const bodies: unknown[] = [];
-  server.use(
-    http[method](pattern, async ({ request }) => {
-      bodies.push(await request.clone().json());
-      return undefined;
-    }),
-  );
-  return bodies;
 }
 
 describe("GitLabAdapter atomic commits", () => {
@@ -267,7 +208,7 @@ describe("GitLabAdapter atomic commits", () => {
     const mock = useMock();
     const parent = await seed(mock);
     let theirs = "";
-    server.use(
+    getServer().use(
       http.post(
         /\/merge_requests$/,
         async () => {

@@ -1,22 +1,8 @@
 import type { Page } from "@playwright/test";
-import { test, expect } from "@playwright/test";
-import { logIn, expectTree } from "./helpers";
+import { test, expect } from "./fixtures";
+import { openNotes, showTree, fakeForge } from "./helpers";
+import { headerSyncIcon, openHistory, waitForSynced } from "./helpers/tree";
 
-const NOTES_REPO = "https://github.com/sample/notes";
-const PASSPHRASE = "sample notes repo passphrase";
-
-async function startSession(page: Page): Promise<void> {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: PASSPHRASE });
-  await expectTree(page);
-}
-
-async function waitForSynced(page: Page): Promise<void> {
-  await expect(page.locator("header.note-header").getByRole("img")).toHaveCount(
-    0,
-    { timeout: 15_000 },
-  );
-}
 
 async function appendText(page: Page, text: string): Promise<void> {
   const editor = page.getByRole("textbox", { name: "Note editor" });
@@ -24,7 +10,7 @@ async function appendText(page: Page, text: string): Promise<void> {
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type(text);
   await expect(
-    page.locator("header.note-header").getByRole("img"),
+    headerSyncIcon(page),
   ).toBeVisible();
   await waitForSynced(page);
 }
@@ -34,27 +20,19 @@ async function renameOpenNote(page: Page, name: string): Promise<void> {
   await field.fill(name);
   await field.press("Enter");
   await expect(
-    page.locator("header.note-header").getByRole("img"),
+    headerSyncIcon(page),
   ).toBeVisible();
   await waitForSynced(page);
 }
 
 /** "Welcome" with a last line typed in three saves, then renamed to "Hello". */
 async function noteWithHistory(page: Page): Promise<void> {
-  await startSession(page);
+  await openNotes(page);
   await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
   await appendText(page, "one");
   await appendText(page, " two");
   await appendText(page, " three");
   await renameOpenNote(page, "Hello");
-}
-
-async function openHistory(page: Page) {
-  await page.getByRole("button", { name: "Version history" }).click();
-  const dialog = page.getByRole("dialog", { name: "Version history" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByTestId("history-end")).toHaveText("Note created.");
-  return dialog;
 }
 
 test("lists the note's versions with an editing session and labels", async ({
@@ -77,7 +55,7 @@ test("lists the note's versions with an editing session and labels", async ({
   await expect(rows).toHaveCount(5);
 });
 
-test("shows what restoring a version would change", async ({
+test("shows what restoring a version would change", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
   const mobile = testInfo.project.name === "mobile";
@@ -138,7 +116,7 @@ test("shows what restoring a version would change", async ({
 test("the history button is hidden while naming a new note", async ({
   page,
 }) => {
-  await startSession(page);
+  await openNotes(page);
 
   await page.getByRole("button", { name: "New note", exact: true }).click();
 
@@ -148,7 +126,6 @@ test("the history button is hidden while naming a new note", async ({
   ).toHaveCount(0);
 });
 
-const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const RESTORE = "Restore this version";
 const RESTORE_TITLE = "Also restore the title “Welcome”";
 
@@ -170,10 +147,6 @@ function restoredToast(page: Page) {
   });
 }
 
-async function backToTreeIfMobile(page: Page, mobile: boolean): Promise<void> {
-  if (mobile) await page.getByRole("button", { name: "Back to notes" }).click();
-}
-
 /** Opens the history and selects the save that left the last line as "one". */
 async function selectFirstSave(page: Page) {
   const dialog = await openHistory(page);
@@ -185,7 +158,7 @@ async function selectFirstSave(page: Page) {
   return dialog;
 }
 
-test("restores a version's content and keeps the current title", async ({
+test("restores a version's content and keeps the current title; typing afterwards takes away its Undo", async ({
   page,
 }) => {
   await noteWithHistory(page);
@@ -194,88 +167,78 @@ test("restores a version's content and keeps the current title", async ({
     dialog.getByRole("checkbox", { name: RESTORE_TITLE }),
   ).not.toBeChecked();
 
-  await dialog.getByRole("button", { name: RESTORE }).click();
+  await test.step("restore", async () => {
+    await dialog.getByRole("button", { name: RESTORE }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(restoredToast(page)).toBeVisible();
-  await expect(lastEditorLine(page)).toHaveText("one");
-  await expect(noteNameField(page)).toHaveValue("Hello");
-  await expect(
-    page.locator("header.note-header").getByRole("img"),
-  ).toBeVisible();
-  await waitForSynced(page);
+    await expect(dialog).toHaveCount(0);
+    await expect(restoredToast(page)).toBeVisible();
+    await expect(lastEditorLine(page)).toHaveText("one");
+    await expect(noteNameField(page)).toHaveValue("Hello");
+    await expect(headerSyncIcon(page)).toBeVisible();
+    await waitForSynced(page);
 
-  const reopened = await openHistory(page);
-  await expect(reopened.getByTestId("version-row")).toHaveCount(4);
+    const reopened = await openHistory(page);
+    await expect(reopened.getByTestId("version-row")).toHaveCount(4);
+    await reopened.getByRole("button", { name: "Close" }).click();
+    await expect(reopened).toHaveCount(0);
+  });
+
+  await test.step("typing takes away the Undo", async () => {
+    await expect(restoredToast(page)).toBeVisible();
+    await noteEditor(page).click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.type(" four");
+
+    await expect(restoredToast(page)).toHaveCount(0);
+    await expect(lastEditorLine(page)).toHaveText("one four");
+    await waitForSynced(page);
+    await expect(lastEditorLine(page)).toHaveText("one four");
+  });
 });
 
-test("restores a version's content together with its title", async ({
-  page,
-}, testInfo) => {
-  const mobile = testInfo.project.name === "mobile";
-  await noteWithHistory(page);
-  const dialog = await selectFirstSave(page);
-
-  await dialog.getByRole("checkbox", { name: RESTORE_TITLE }).check();
-  await dialog.getByRole("button", { name: RESTORE }).click();
-
-  await expect(dialog).toHaveCount(0);
-  await expect(noteNameField(page)).toHaveValue("Welcome");
-  await expect(lastEditorLine(page)).toHaveText("one");
-  await waitForSynced(page);
-  await backToTreeIfMobile(page, mobile);
-  await expect(
-    page.getByRole("treeitem", { name: "Welcome", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("treeitem", { name: "Hello", exact: true }),
-  ).toHaveCount(0);
-});
-
-test("Undo puts back the content and title the restore replaced", async ({
+test("restores a version's content together with its title, and Undo puts both back", async ({
   page,
 }) => {
   await noteWithHistory(page);
   const dialog = await selectFirstSave(page);
-  await dialog.getByRole("checkbox", { name: RESTORE_TITLE }).check();
-  await dialog.getByRole("button", { name: RESTORE }).click();
-  await expect(lastEditorLine(page)).toHaveText("one");
 
-  await restoredToast(page).getByRole("button", { name: "Undo" }).click();
+  await test.step("restore", async () => {
+    await dialog.getByRole("checkbox", { name: RESTORE_TITLE }).check();
+    await dialog.getByRole("button", { name: RESTORE }).click();
 
-  await expect(restoredToast(page)).toHaveCount(0);
-  await expect(lastEditorLine(page)).toHaveText("one two three");
-  await expect(noteNameField(page)).toHaveValue("Hello");
-  await waitForSynced(page);
-});
+    await expect(dialog).toHaveCount(0);
+    await expect(noteNameField(page)).toHaveValue("Welcome");
+    await expect(lastEditorLine(page)).toHaveText("one");
+    await waitForSynced(page);
+    await showTree(page);
+    await expect(
+      page.getByRole("treeitem", { name: "Welcome", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("treeitem", { name: "Hello", exact: true }),
+    ).toHaveCount(0);
+  });
 
-test("typing after a restore takes away its Undo", async ({ page }) => {
-  await noteWithHistory(page);
-  const dialog = await selectFirstSave(page);
-  await dialog.getByRole("button", { name: RESTORE }).click();
-  await expect(restoredToast(page)).toBeVisible();
+  await test.step("Undo", async () => {
+    await restoredToast(page).getByRole("button", { name: "Undo" }).click();
 
-  await noteEditor(page).click();
-  await page.keyboard.press(`${MODIFIER}+End`);
-  await page.keyboard.type(" four");
-
-  await expect(restoredToast(page)).toHaveCount(0);
-  await expect(lastEditorLine(page)).toHaveText("one four");
-  await waitForSynced(page);
-  await expect(lastEditorLine(page)).toHaveText("one four");
+    await expect(restoredToast(page)).toHaveCount(0);
+    await expect(lastEditorLine(page)).toHaveText("one two three");
+    await expect(noteNameField(page)).toHaveValue("Hello");
+    await waitForSynced(page);
+  });
 });
 
 test("restoring a title another note already has shows why and changes nothing", async ({
   page,
-}, testInfo) => {
-  const mobile = testInfo.project.name === "mobile";
+}) => {
   await noteWithHistory(page);
-  await backToTreeIfMobile(page, mobile);
+  await showTree(page);
   await page.getByRole("button", { name: "New note", exact: true }).click();
   await noteNameField(page).fill("Welcome");
   await noteNameField(page).press("Enter");
   await waitForSynced(page);
-  await backToTreeIfMobile(page, mobile);
+  await showTree(page);
   await page.getByRole("treeitem", { name: "Hello", exact: true }).click();
   await expect(lastEditorLine(page)).toHaveText("one two three");
 
@@ -298,22 +261,11 @@ test("restoring a title another note already has shows why and changes nothing",
 test("a note with a conflict can't be restored until the conflict is resolved", async ({
   page,
 }) => {
-  await startSession(page);
-  const editRemotely = (path: readonly string[], text: string) =>
-    page.evaluate(
-      ([repoKey, notePath, markdown]) =>
-        (window as any).__commitNoteFakeForge.editNote(
-          repoKey,
-          notePath,
-          markdown,
-        ),
-      ["sample/notes", path, text] as const,
-    );
-  // The fake forge's first remote edit derives keys, which outlasts the autosave debounce.
-  await editRemotely(["Scratch"], "warm-up");
+  await openNotes(page);
+  const editRemotely = fakeForge(page).editNote;
   await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
   await noteEditor(page).click();
-  await page.keyboard.press(`${MODIFIER}+Home`);
+  await page.keyboard.press("ControlOrMeta+Home");
   await page.keyboard.press("Shift+End");
   await page.keyboard.type("# Welcome from here");
   await editRemotely(["Welcome"], "# Welcome from elsewhere\n");
