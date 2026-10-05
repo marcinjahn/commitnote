@@ -5,7 +5,6 @@
   import { describeNameError } from "./name-messages";
 
   interface Props {
-    open: boolean;
     title: string;
     label: string;
     initialName: string;
@@ -17,7 +16,6 @@
   }
 
   const {
-    open,
     title,
     label,
     initialName,
@@ -39,17 +37,6 @@
   const validation = $derived(validateName(name, siblingNames));
   const showError = $derived(attempted && !validation.ok);
 
-  // Runs before Dialog's own effect (which focuses and selects the field),
-  // so the field already holds initialName when that selection happens.
-  $effect.pre(() => {
-    if (open) {
-      untrack(() => {
-        name = initialName;
-        attempted = false;
-      });
-    }
-  });
-
   function handleInput(): void {
     attempted = true;
   }
@@ -62,7 +49,7 @@
   }
 </script>
 
-<Dialog {open} {title} {onClose}>
+<Dialog open={true} {title} {onClose}>
   {#snippet children()}
     <form id={formId} onsubmit={handleSubmit}>
       <div class="field">

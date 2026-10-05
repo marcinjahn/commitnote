@@ -31,7 +31,6 @@
   } from "./passphrase-messages";
 
   interface Props {
-    open: boolean;
     forgeName: string;
     repositoryLabel: string;
     change: PassphraseChange;
@@ -45,7 +44,6 @@
   }
 
   const {
-    open,
     forgeName,
     repositoryLabel,
     change,
@@ -236,7 +234,7 @@
   }
 </script>
 
-<Dialog {open} {title} onClose={handleClose} closeButton={!working} swipeToClose={!working}>
+<Dialog open={true} {title} onClose={handleClose} closeButton={!working} swipeToClose={!working}>
   {#snippet children()}
     {#if error !== null}
       <p role="alert" class="alert-error">{error}</p>

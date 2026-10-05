@@ -25,7 +25,6 @@
   import type { ImportOutcome } from "./import-outcome";
 
   interface Props {
-    open: boolean;
     fileName: string;
     contents: NotesArchiveContents;
     tree: WorkingTree;
@@ -39,7 +38,6 @@
   }
 
   const {
-    open,
     fileName,
     contents,
     tree,
@@ -151,7 +149,7 @@
   }
 </script>
 
-<Dialog {open} {title} onClose={handleClose} closeButton={true} swipeToClose={!busy}>
+<Dialog open={true} {title} onClose={handleClose} closeButton={true} swipeToClose={!busy}>
   {#snippet children()}
     {#if error !== null}
       <p role="alert" class="alert-error">{error}</p>

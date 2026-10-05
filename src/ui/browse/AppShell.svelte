@@ -1388,7 +1388,6 @@
 
 {#if dialog.kind === "createFolder"}
   <NameDialog
-    open={true}
     title="New folder"
     label="Folder name"
     initialName=""
@@ -1400,7 +1399,6 @@
   />
 {:else if dialog.kind === "rename"}
   <NameDialog
-    open={true}
     title="Rename folder"
     label="Folder name"
     initialName={dialog.node.name}
@@ -1412,7 +1410,6 @@
   />
 {:else if dialog.kind === "move" && tree !== null}
   <MoveDialog
-    open={true}
     itemName={dialog.node.name}
     itemPath={dialog.node.path}
     itemKind={dialog.node.kind}
@@ -1423,7 +1420,6 @@
   />
 {:else if dialog.kind === "delete"}
   <DeleteDialog
-    open={true}
     itemName={dialog.node.name}
     itemKind={dialog.node.kind}
     itemCount={dialog.itemCount}
@@ -1446,7 +1442,6 @@
 
 {#if importDialog !== null && tree !== null}
   <ImportDialog
-    open={true}
     fileName={importDialog.fileName}
     contents={importDialog.contents}
     {tree}
@@ -1459,7 +1454,6 @@
 
 {#if atomicBlockedOpen && engineState.atomicBlocked !== null}
   <AtomicBlockedDialog
-    open={true}
     {forgeName}
     canConfigure={engineState.atomicBlocked.canConfigure}
     onEnable={handleEnableAtomic}
@@ -1470,7 +1464,6 @@
 
 {#if settingsOpen}
   <SettingsDialog
-    open={true}
     {settings}
     {changeSettings}
     saveState={settingsSave}
@@ -1484,7 +1477,6 @@
 
 {#if changePassphraseOpen}
   <ChangePassphraseDialog
-    open={true}
     {forgeName}
     repositoryLabel={repoLabel}
     change={passphraseChange}
@@ -1522,7 +1514,6 @@
 
 {#if trashDialog.kind === "restore" && tree !== null}
   <MoveDialog
-    open={true}
     restore={true}
     itemName={trashDialog.node.name}
     itemPath={null}
@@ -1534,7 +1525,6 @@
   />
 {:else if trashDialog.kind === "deleteEntry"}
   <ConfirmDialog
-    open={true}
     title="Delete permanently?"
     body="This can't be undone."
     confirmLabel="Delete permanently"
@@ -1543,7 +1533,6 @@
   />
 {:else if trashDialog.kind === "empty"}
   <ConfirmDialog
-    open={true}
     title="Empty trash?"
     body={describeEmptyTrash(trashEntries.length)}
     confirmLabel="Empty trash"
