@@ -11,8 +11,14 @@ const ROOT_ORDER = [
   "Zażółć gęślą jaźń",
 ];
 
-test.beforeEach(async ({ page }) => {
-  await openNotes(page);
+const RELOAD_TEST = "the new order survives a reload";
+
+test.beforeEach(async ({ page }, testInfo) => {
+  // That test expects the login screen after its reload.
+  await openNotes(
+    page,
+    testInfo.title === RELOAD_TEST ? { via: "login" } : {},
+  );
 });
 
 function treeItem(page: Page, name: string): Locator {
@@ -121,7 +127,7 @@ test("a reordered note shows its saving state until it is saved", async ({
   await expect(treeRows(page)).toHaveText(REORDERED_ROOT);
 });
 
-test("the new order survives a reload", async ({ page }) => {
+test(RELOAD_TEST, async ({ page }) => {
   await moveZazolcBeforeWelcome(page);
   const exported = await fakeForge(page).exportRepo();
 

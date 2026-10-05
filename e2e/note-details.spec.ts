@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, SAMPLE, openNotes, showTree, handOverRepo } from "./helpers";
+import { openNotes, showTree, handOverRepo } from "./helpers";
 
 const T0 = new Date("2026-03-12T10:00:00+01:00");
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -436,8 +436,7 @@ test("a note re-created under a reused name on another device shows its own date
     timezoneId: "Europe/Warsaw",
   });
   await other.clock.install({ time: T0 });
-  await logIn(other, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
-  await expectTree(other);
+  await openNotes(other);
   await other.clock.fastForward(10 * DAY_MS);
   await moveToTrash(other, "Welcome");
   await other.getByRole("button", { name: "New note", exact: true }).click();

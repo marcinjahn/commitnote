@@ -96,24 +96,37 @@ export const SAMPLE = {
   passphrase: "sample notes repo passphrase",
 } as const;
 
-interface OpenNotesOptions {
-  readonly repo?: string;
-  readonly token?: string;
-  readonly passphrase?: string;
-  readonly rememberMe?: boolean;
-  readonly provider?: string;
-}
+type OpenNotesOptions = { readonly repo?: string } & (
+  | { readonly via?: "restore" }
+  | {
+      readonly via: "login";
+      readonly token?: string;
+      readonly passphrase?: string;
+      readonly rememberMe?: boolean;
+      readonly provider?: string;
+    }
+);
 
+/**
+ * Opens the notes of `repo`: by default from a remembered session the fake
+ * forge stores before the app starts, or through the login screen with
+ * `via: "login"`.
+ */
 export async function openNotes(
   page: Page,
   options: OpenNotesOptions = {},
 ): Promise<void> {
-  await page.goto("/");
-  await logIn(page, {
-    ...options,
-    repo: options.repo ?? SAMPLE.repo,
-    passphrase: options.passphrase ?? SAMPLE.passphrase,
-  });
+  const repo = options.repo ?? SAMPLE.repo;
+  if (options.via === "login") {
+    await page.goto("/");
+    await logIn(page, {
+      ...options,
+      repo,
+      passphrase: options.passphrase ?? SAMPLE.passphrase,
+    });
+  } else {
+    await page.goto("/?fake-forge-session=" + encodeURIComponent(repo));
+  }
   await expectTree(page);
 }
 

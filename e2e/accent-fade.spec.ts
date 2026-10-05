@@ -225,7 +225,7 @@ test.describe("with motion", () => {
   test("a remembered session fades the saved accent in once the app has rendered", async ({
     page,
   }) => {
-    await openNotes(page, { rememberMe: true });
+    await openNotes(page, { via: "login", rememberMe: true });
     const system = await rootAccent(page);
     await settle(page, system);
     await saveTeal(page);

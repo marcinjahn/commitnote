@@ -42,6 +42,25 @@ if (import.meta.env.MODE === "fake-forge") {
   registry = fakeForge.registry;
   testModeBanner = fake.FAKE_FORGE_BANNER;
   testWindow[fake.FAKE_FORGE_CONTROLS_KEY] = fakeForge.controls;
+
+  const { FAKE_FORGE_SESSION_PARAM, rememberFixtureSession } = await import(
+    "./testing/fake-forge/remembered-session"
+  );
+  const url = new URL(window.location.href);
+  const repoUrl = url.searchParams.get(FAKE_FORGE_SESSION_PARAM);
+  if (repoUrl !== null) {
+    url.searchParams.delete(FAKE_FORGE_SESSION_PARAM);
+    window.history.replaceState(window.history.state, "", url);
+    try {
+      await rememberFixtureSession({
+        registry: fakeForge.registry,
+        repoUrl,
+        argon2id,
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }
 }
 
 const app = mount(App, { target, props: { registry, testModeBanner, argon2id } });

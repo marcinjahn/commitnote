@@ -9,6 +9,7 @@ import {
   FAKE_FORGE_ARGON2_BINDING,
   FAKE_FORGE_OPTIONS_KEY,
 } from "../src/testing/fake-forge/fake-forge-options";
+import { FAKE_FORGE_SESSION_PARAM } from "../src/testing/fake-forge/remembered-session";
 
 const SAMPLE_NOTES_REPO_PASSPHRASE = "sample notes repo passphrase";
 
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
     FAKE_FORGE_CONTROLS_KEY,
     FAKE_FORGE_OPTIONS_KEY,
     FAKE_FORGE_ARGON2_BINDING,
+    FAKE_FORGE_SESSION_PARAM,
   ]);
   if (forbiddenInProd.length > 0) {
     for (const hit of forbiddenInProd) {

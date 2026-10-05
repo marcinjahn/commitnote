@@ -274,7 +274,7 @@ test("wrong passphrase", async ({ page }) => {
 });
 
 test("Remember me across reload", async ({ page }) => {
-  await openNotes(page, { rememberMe: true });
+  await openNotes(page, { via: "login", rememberMe: true });
 
   await page.reload();
   await expectTree(page);
@@ -293,7 +293,7 @@ test("Remember me across reload", async ({ page }) => {
 });
 
 async function rememberSession(page: Page): Promise<void> {
-  await openNotes(page, { rememberMe: true });
+  await openNotes(page, { via: "login", rememberMe: true });
 }
 
 test("a remembered session keeps the loading screen until the notes load", async ({
@@ -600,7 +600,7 @@ test.describe("several providers", () => {
   });
 
   test("logging in with the second provider", async ({ page }) => {
-    await openNotes(page, { provider: "Fakelab", repo: SECOND_NOTES_REPO });
+    await openNotes(page, { via: "login", provider: "Fakelab", repo: SECOND_NOTES_REPO });
   });
 
   test("setting up a repository on the second provider", async ({ page }) => {
@@ -627,7 +627,7 @@ test.describe("several providers", () => {
   test("the last used provider is preselected after logging out", async ({
     page,
   }) => {
-    await openNotes(page, { provider: "Fakelab", repo: SECOND_NOTES_REPO });
+    await openNotes(page, { via: "login", provider: "Fakelab", repo: SECOND_NOTES_REPO });
 
     await page.getByRole("button", { name: "Log out" }).click();
     await expect(page.getByRole("radio", { name: "Fakelab" })).toBeChecked();

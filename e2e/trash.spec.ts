@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, SAMPLE, openNotes, fakeForge } from "./helpers";
+import { logIn, expectTree, SAMPLE, openNotes, fakeForge, onFakeForgeReady } from "./helpers";
 
 const TRASH_REPO = "https://github.com/sample/trash";
 const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
@@ -269,10 +269,12 @@ async function startTrashSessionWithFailingPurge(page: Page): Promise<void> {
     predicate: (message) => message.text().includes("Trash purge failed"),
     timeout: 15_000,
   });
-  await page.goto("/");
-  await fakeForge(page, "sample/trash").failNext("commit", "Network");
-  await logIn(page, { repo: TRASH_REPO, passphrase: SAMPLE.passphrase });
-  await expectTree(page);
+  await onFakeForgeReady(
+    page,
+    (controls, repoKey) => controls.failNext(repoKey, "commit", "Network"),
+    "sample/trash",
+  );
+  await openNotes(page, { repo: TRASH_REPO });
   await purgeFailed;
 }
 
@@ -327,7 +329,7 @@ test("Undo in the toast puts a deleted note back", async ({ page }) => {
 test("Undo after the trash was saved restores the note to its folder", async ({
   page,
 }) => {
-  await openNotes(page);
+  await openNotes(page, { via: "login" });
   await page.getByRole("treeitem", { name: "Journal", exact: true }).click();
   const before = await page.getByRole("treeitem").allInnerTexts();
 

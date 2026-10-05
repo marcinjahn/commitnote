@@ -11,8 +11,14 @@ const REORDERED_ROOT = [
   "Welcome",
 ];
 
-test.beforeEach(async ({ page }) => {
-  await openNotes(page);
+const RELOAD_TEST = "the order set by touch survives a reload";
+
+test.beforeEach(async ({ page }, testInfo) => {
+  // That test expects the login screen after its reload.
+  await openNotes(
+    page,
+    testInfo.title === RELOAD_TEST ? { via: "login" } : {},
+  );
 });
 
 function treeItem(page: Page, name: string): Locator {
@@ -174,7 +180,7 @@ test("a tap still opens the note", { tag: "@mobile-only" }, async ({ page }) => 
   await expect(editor(page)).toBeVisible();
 });
 
-test("the order set by touch survives a reload", { tag: "@mobile-only" }, async ({ page }) => {
+test(RELOAD_TEST, { tag: "@mobile-only" }, async ({ page }) => {
   await moveZazolcBeforeWelcome(page);
   const exported = await fakeForge(page).exportRepo();
 

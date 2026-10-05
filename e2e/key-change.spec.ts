@@ -7,7 +7,7 @@ const KEY_CHANGED_TEXT =
   "The passphrase was changed on another device. Log in again.";
 
 test.beforeEach(async ({ page }) => {
-  await openNotes(page);
+  await openNotes(page, { via: "login" });
 });
 
 test("an edit after a passphrase change elsewhere is kept for export and never saved", async ({

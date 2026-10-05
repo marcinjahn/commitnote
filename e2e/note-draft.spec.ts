@@ -118,7 +118,7 @@ test("typing content in a draft without a name creates the note with an automati
 test("an untouched draft disappears when it is left", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
-  await openNotes(page);
+  await openNotes(page, { via: "login" });
   const before = await treeItemNames(page);
   const newNote = page.getByRole("button", { name: "New note", exact: true });
 

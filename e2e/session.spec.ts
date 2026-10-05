@@ -12,7 +12,7 @@ async function openWelcomeAndType(page: Page, text: string): Promise<void> {
 }
 
 test("logging out saves pending edits first", async ({ page }) => {
-  await openNotes(page);
+  await openNotes(page, { via: "login" });
   await openWelcomeAndType(page, " typed before logout");
   await logOut(page);
 
@@ -27,7 +27,7 @@ test("logging out saves pending edits first", async ({ page }) => {
 });
 
 test("keep trying retries the save and then logs out", async ({ page }) => {
-  await openNotes(page);
+  await openNotes(page, { via: "login" });
   await openWelcomeAndType(page, " unsaved");
   await fakeForge(page).failNext("commit", "Network");
   await logOut(page);
@@ -41,7 +41,7 @@ test("keep trying retries the save and then logs out", async ({ page }) => {
 });
 
 test("log out anyway discards unsaved changes", async ({ page }) => {
-  await openNotes(page);
+  await openNotes(page, { via: "login" });
   await openWelcomeAndType(page, " unsaved");
   await fakeForge(page).failNext("commit", "Network");
   await fakeForge(page).failNext("commit", "Network");

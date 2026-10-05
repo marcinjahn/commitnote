@@ -54,7 +54,7 @@ async function changePassphrase(page: Page): Promise<void> {
 }
 
 test.beforeEach(async ({ page }) => {
-  await openNotes(page, { passphrase: OLD_PASSPHRASE });
+  await openNotes(page, { via: "login", passphrase: OLD_PASSPHRASE });
 });
 
 test("changes the passphrase in one commit; afterwards only the new one logs in", async ({
