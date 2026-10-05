@@ -32,7 +32,8 @@ export function toOpenableUrl(text: string): string | null {
   }
 }
 
-function isLinkDestination(state: EditorState, node: SyntaxNode): boolean {
+// GFM autolinks also parse a URL-shaped link label as a URL node.
+export function isLinkDestination(state: EditorState, node: SyntaxNode): boolean {
   const prev = node.prevSibling;
   return (
     prev?.name === "LinkMark" && state.sliceDoc(prev.from, prev.to) === "("

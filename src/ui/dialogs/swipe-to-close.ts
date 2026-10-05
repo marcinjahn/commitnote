@@ -1,5 +1,9 @@
 import type { ActionReturn } from "svelte/action";
-import { DRAG_MOTION_MS, prefersReducedMotion } from "../browse/drag-motion";
+import {
+  DRAG_MOTION_MS,
+  isNarrowLayout,
+  prefersReducedMotion,
+} from "../browse/drag-motion";
 import {
   createVelocityTracker,
   swipeArming,
@@ -9,10 +13,6 @@ import {
 export type SwipeToCloseOptions = { enabled: boolean; onClose: () => void };
 
 const INTERACTIVE = "button, a, input, select, textarea, [role='button']";
-
-function isMobileLayout(): boolean {
-  return !window.matchMedia("(min-width: 768px)").matches;
-}
 
 export function swipeToClose(
   header: HTMLElement,
@@ -115,7 +115,7 @@ export function swipeToClose(
     if (
       !options.enabled ||
       (event.pointerType !== "touch" && event.pointerType !== "pen") ||
-      !isMobileLayout() ||
+      !isNarrowLayout() ||
       stopSettling !== null ||
       closeCheckTimer !== undefined ||
       gesture !== null ||

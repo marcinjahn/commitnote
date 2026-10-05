@@ -2,8 +2,14 @@ export const DRAG_MOTION_MS = 200;
 export const DRAG_EASING = "cubic-bezier(0.2, 0, 0, 1)";
 const PILL_INSET = 12;
 
+export const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
+
 export function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+export function isNarrowLayout(): boolean {
+  return !window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
 }
 
 export interface DragPreview {

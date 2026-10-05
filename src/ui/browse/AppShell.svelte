@@ -89,7 +89,12 @@
   import type { Command, RowAction } from "./row-menu-types";
   import { describeMovedTo, describeStructureError } from "./structure-messages";
   import type { DropTarget } from "./tree-drop";
-  import { DRAG_EASING, DRAG_MOTION_MS, prefersReducedMotion } from "./drag-motion";
+  import {
+    DESKTOP_MEDIA_QUERY,
+    DRAG_EASING,
+    DRAG_MOTION_MS,
+    prefersReducedMotion,
+  } from "./drag-motion";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
@@ -670,7 +675,7 @@
 
   // On narrow screens the tree and the note pane are never shown together.
   function noteDropArea(): HTMLElement | null {
-    return window.matchMedia("(min-width: 768px)").matches
+    return window.matchMedia(DESKTOP_MEDIA_QUERY).matches
       ? (notePaneEl ?? null)
       : null;
   }

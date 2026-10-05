@@ -22,7 +22,11 @@
     type RestorePlan,
   } from "../../history/plan-restore";
   import Dialog from "../dialogs/Dialog.svelte";
-  import { prefersReducedMotion } from "../browse/drag-motion";
+  import {
+    DESKTOP_MEDIA_QUERY,
+    isNarrowLayout,
+    prefersReducedMotion,
+  } from "../browse/drag-motion";
   import VersionDiff from "./VersionDiff.svelte";
   import VersionList from "./VersionList.svelte";
   import {
@@ -78,7 +82,7 @@
   let preselecting = false;
   let readTimer: ReturnType<typeof setTimeout> | undefined;
   let backButton: HTMLButtonElement | undefined = $state();
-  let narrow = $state(isNarrow());
+  let narrow = $state(isNarrowLayout());
   let restoreTitle = $state(false);
   let restoring = $state(false);
   let restoreError = $state<string | null>(null);
@@ -87,7 +91,7 @@
   const restoreReasonId = `restore-reason-${uid}`;
 
   $effect(() => {
-    const query = window.matchMedia("(min-width: 768px)");
+    const query = window.matchMedia(DESKTOP_MEDIA_QUERY);
     const update = () => {
       narrow = !query.matches;
     };
@@ -180,15 +184,11 @@
     void readContent(selected);
   }
 
-  function isNarrow(): boolean {
-    return !window.matchMedia("(min-width: 768px)").matches;
-  }
-
   // The newest version that differs from the note as it is now. On narrow
   // screens the list comes first and nothing is selected for the user.
   $effect(() => {
     if (history === null || selectedSha !== null || preselecting) return;
-    if (isNarrow()) return;
+    if (isNarrowLayout()) return;
     const [newest, older] = history.versions;
     if (newest === undefined || (older === undefined && history.loading)) {
       return;
@@ -222,7 +222,7 @@
     void readContent(version);
     if (mobileView !== "detail") {
       mobileView = "detail";
-      if (isNarrow()) {
+      if (isNarrowLayout()) {
         await tick();
         backButton?.focus();
       }
