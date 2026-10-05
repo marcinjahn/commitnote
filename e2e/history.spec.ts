@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { SAMPLE, openNotes, showTree } from "./helpers";
+import { openNotes, showTree, fakeForge } from "./helpers";
 
 
 async function waitForSynced(page: Page): Promise<void> {
@@ -284,16 +284,7 @@ test("a note with a conflict can't be restored until the conflict is resolved", 
   page,
 }) => {
   await openNotes(page);
-  const editRemotely = (path: readonly string[], text: string) =>
-    page.evaluate(
-      ([repoKey, notePath, markdown]) =>
-        (window as any).__commitNoteFakeForge.editNote(
-          repoKey,
-          notePath,
-          markdown,
-        ),
-      [SAMPLE.key, path, text] as const,
-    );
+  const editRemotely = fakeForge(page).editNote;
   await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
   await noteEditor(page).click();
   await page.keyboard.press("ControlOrMeta+Home");

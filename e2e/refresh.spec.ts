@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { SAMPLE, openNotes } from "./helpers";
+import { openNotes, fakeForge } from "./helpers";
 
 
 test("there is only one Refresh button", { tag: "@mobile" }, async ({ page }, testInfo) => {
@@ -20,16 +20,7 @@ test("focus and visibility do not refresh; clicking Refresh does", async ({
 }, testInfo) => {
   await openNotes(page);
 
-  const editRemotely = (path: readonly string[], markdown: string) =>
-    page.evaluate(
-      ([repoKey, notePath, text]) =>
-        (window as any).__commitNoteFakeForge.editNote(
-          repoKey,
-          notePath,
-          text,
-        ),
-      [SAMPLE.key, path, markdown] as const,
-    );
+  const editRemotely = fakeForge(page).editNote;
 
   await editRemotely(["Scratch"], "warm-up");
   await page.getByRole("button", { name: "Refresh" }).click();
@@ -73,15 +64,7 @@ test("a failed Refresh shows the error in a toast and an x", async ({
   await openNotes(page);
   const refresh = page.getByRole("button", { name: "Refresh" });
 
-  await page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.failNext(
-        repoKey,
-        "getHead",
-        "Network",
-      ),
-    SAMPLE.key,
-  );
+  await fakeForge(page).failNext("getHead", "Network");
   await refresh.click();
 
   await expect(refresh).toHaveAttribute("data-feedback", "error");

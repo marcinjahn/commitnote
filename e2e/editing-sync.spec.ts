@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, rowSyncState, SAMPLE, openNotes, logOut, showTree } from "./helpers";
+import { logIn, expectTree, rowSyncState, SAMPLE, openNotes, logOut, showTree, fakeForge } from "./helpers";
 
 
 
@@ -99,11 +99,7 @@ async function editRemotely(
   notePath: readonly string[],
   markdown: string,
 ): Promise<void> {
-  await page.evaluate(
-    ([repoKey, path, text]) =>
-      (window as any).__commitNoteFakeForge.editNote(repoKey, path, text),
-    [SAMPLE.key, notePath, markdown] as const,
-  );
+  await fakeForge(page).editNote(notePath, markdown);
 }
 
 async function createNoteThroughRowMenu(
@@ -172,15 +168,7 @@ test.describe("with GitHub-like forge latency", () => {
       timeout: 10_000,
     });
 
-    await page.evaluate(
-      (repoKey) =>
-        (window as any).__commitNoteFakeForge.failNext(
-          repoKey,
-          "commit",
-          "Network",
-        ),
-      SAMPLE.key,
-    );
+    await fakeForge(page).failNext("commit", "Network");
     await recordHeaderIconLabels(page);
 
     const editor = page.getByRole("textbox", { name: "Note editor" });

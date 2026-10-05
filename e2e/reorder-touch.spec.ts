@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { expectTree, logIn, TouchFinger, type TouchPoint, SAMPLE, openNotes } from "./helpers";
+import { expectTree, logIn, TouchFinger, type TouchPoint, SAMPLE, openNotes, fakeForge } from "./helpers";
 
 
 const REORDERED_ROOT = [
@@ -31,14 +31,6 @@ function movedToast(page: Page): Locator {
   return page.getByRole("group").filter({ hasText: "moved to" });
 }
 
-function commitCount(page: Page): Promise<number> {
-  return page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.commitMessages(repoKey).length,
-    SAMPLE.key,
-  );
-}
-
 async function pointIn(
   row: Locator,
   at: { readonly x?: number; readonly y: number },
@@ -65,14 +57,14 @@ async function longPressDrag(
 }
 
 async function moveZazolcBeforeWelcome(page: Page): Promise<void> {
-  const commits = await commitCount(page);
+  const commits = await fakeForge(page).commitCount();
   await longPressDrag(
     page,
     treeItem(page, "Zażółć gęślą jaźń"),
     treeItem(page, "Welcome"),
     { y: 0.25 },
   );
-  await expect.poll(() => commitCount(page)).toBe(commits + 1);
+  await expect.poll(() => fakeForge(page).commitCount()).toBe(commits + 1);
 }
 
 test("long-pressing a row and dragging it reorders it", { tag: "@mobile-only" }, async ({ page }) => {
@@ -184,18 +176,10 @@ test("a tap still opens the note", { tag: "@mobile-only" }, async ({ page }) => 
 
 test("the order set by touch survives a reload", { tag: "@mobile-only" }, async ({ page }) => {
   await moveZazolcBeforeWelcome(page);
-  const exported = await page.evaluate(
-    (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),
-    SAMPLE.key,
-  );
+  const exported = await fakeForge(page).exportRepo();
 
   await page.reload();
-  await page.waitForFunction(() => (window as any).__commitNoteFakeForge);
-  await page.evaluate(
-    ([repoKey, state]) =>
-      (window as any).__commitNoteFakeForge.adoptRepo(repoKey, state),
-    [SAMPLE.key, exported] as const,
-  );
+  await fakeForge(page).adoptRepo(exported);
   await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(page);
 

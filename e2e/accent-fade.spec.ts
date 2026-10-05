@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { chooseRepository, expectTree, SAMPLE, openNotes, logOut } from "./helpers";
+import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, fakeForge, onFakeForgeReady } from "./helpers";
 
 const TEAL = "rgb(0, 133, 115)";
 
@@ -167,13 +167,7 @@ async function saveTeal(page: Page): Promise<void> {
   await expect
     .poll(
       () =>
-        page.evaluate(
-          (repoKey) =>
-            (window as any).__commitNoteFakeForge.commitMessages(
-              repoKey,
-            ) as string[],
-          SAMPLE.key,
-        ),
+        fakeForge(page).commitMessages(),
       { timeout: 10_000 },
     )
     .toContainEqual(expect.stringContaining("accentColor"));
@@ -235,24 +229,11 @@ test.describe("with motion", () => {
     const system = await rootAccent(page);
     await settle(page, system);
     await saveTeal(page);
-    const exported = await page.evaluate(
-      (repoKey) =>
-        (window as any).__commitNoteFakeForge.exportRepo(repoKey) as string,
-      SAMPLE.key,
-    );
-    await page.addInitScript(
-      ([key, repoKey, state]) => {
-        let controls: any;
-        Object.defineProperty(window, key, {
-          configurable: true,
-          get: () => controls,
-          set: (value) => {
-            controls = value;
-            controls.adoptRepo(repoKey, state);
-          },
-        });
-      },
-      ["__commitNoteFakeForge", SAMPLE.key, exported],
+    const exported = await fakeForge(page).exportRepo();
+    await onFakeForgeReady(
+      page,
+      (controls, [repoKey, state]) => controls.adoptRepo(repoKey, state),
+      [SAMPLE.key, exported],
     );
     await page.addInitScript(watchAccentFade, "[role='tree']");
     await page.addInitScript(watchFirstTreeFrame);

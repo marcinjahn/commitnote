@@ -1,6 +1,6 @@
-import type { BrowserContextOptions, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, SAMPLE, openNotes, showTree } from "./helpers";
+import { logIn, expectTree, SAMPLE, openNotes, showTree, handOverRepo } from "./helpers";
 
 const T0 = new Date("2026-03-12T10:00:00+01:00");
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -422,9 +422,8 @@ test.describe("with GitHub-like forge latency", () => {
 
 test("a note re-created under a reused name on another device shows its own dates", async ({
   page,
-  browser,
-  prepareContext,
-}, testInfo) => {
+  openSecondDevice,
+}) => {
   await startSession(page);
   await treeItem(page, "Welcome").click();
   await expect(details(page)).toContainText("Created 12 Mar 2026");
@@ -432,16 +431,11 @@ test("a note re-created under a reused name on another device shows its own date
   await expect(details(page)).toBeVisible();
   await page.clock.fastForward(3 * DAY_MS);
 
-  const { baseURL, ...device } = testInfo.project.use as BrowserContextOptions;
-  const otherContext = await browser.newContext({
-    ...device,
+  const { page: other } = await openSecondDevice({
     locale: "en-GB",
     timezoneId: "Europe/Warsaw",
   });
-  await prepareContext(otherContext);
-  const other = await otherContext.newPage();
   await other.clock.install({ time: T0 });
-  await other.goto(new URL("/", baseURL ?? page.url()).toString());
   await logIn(other, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(other);
   await other.clock.fastForward(10 * DAY_MS);
@@ -462,15 +456,7 @@ test("a note re-created under a reused name on another device shows its own date
     timeout: 15_000,
   });
 
-  const exported = await other.evaluate(
-    (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),
-    SAMPLE.key,
-  );
-  await page.evaluate(
-    ([repoKey, state]) =>
-      (window as any).__commitNoteFakeForge.adoptRepo(repoKey, state),
-    [SAMPLE.key, exported] as const,
-  );
+  await handOverRepo(other, page);
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByTestId("open-trash")).toBeVisible({ timeout: 15_000 });
   await page.evaluate(() => {
@@ -505,7 +491,6 @@ test("a note re-created under a reused name on another device shows its own date
   expect(texts.filter((text) => text.includes("Created 12 Mar 2026"))).toEqual(
     [],
   );
-  await otherContext.close();
 });
 
 test("the left alignment of note details text matches the editor text", { tag: "@mobile" }, async ({

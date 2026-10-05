@@ -117,6 +117,136 @@ export async function openNotes(
   await expectTree(page);
 }
 
+interface FakeForgeControls {
+  commitMessages(repoKey: string): string[];
+  failNext(repoKey: string, operation: string, kind: string): void;
+  editNote(
+    repoKey: string,
+    notePath: readonly string[],
+    markdown: string,
+  ): Promise<void>;
+  exportRepo(repoKey: string): string;
+  adoptRepo(repoKey: string, exported: string): void;
+  changeRepoKey(repoKey: string): Promise<void>;
+}
+
+type FakeForgeWindow = { __commitNoteFakeForge: FakeForgeControls };
+
+async function controlsReady(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => (window as unknown as Partial<FakeForgeWindow>).__commitNoteFakeForge,
+  );
+}
+
+export function fakeForge(page: Page, repoKey: string = SAMPLE.key) {
+  return {
+    commitMessages: () =>
+      page.evaluate(
+        (key) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.commitMessages(
+            key,
+          ),
+        repoKey,
+      ),
+    commitCount: async () =>
+      (
+        await page.evaluate(
+          (key) =>
+            (
+              window as unknown as FakeForgeWindow
+            ).__commitNoteFakeForge.commitMessages(key),
+          repoKey,
+        )
+      ).length,
+    failNext: async (operation: string, kind: string) => {
+      await controlsReady(page);
+      await page.evaluate(
+        ([key, op, errorKind]) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.failNext(
+            key,
+            op,
+            errorKind,
+          ),
+        [repoKey, operation, kind] as const,
+      );
+    },
+    editNote: (notePath: readonly string[], markdown: string) =>
+      page.evaluate(
+        ([key, path, text]) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.editNote(
+            key,
+            path,
+            text,
+          ),
+        [repoKey, notePath, markdown] as const,
+      ),
+    exportRepo: () =>
+      page.evaluate(
+        (key) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.exportRepo(
+            key,
+          ),
+        repoKey,
+      ),
+    adoptRepo: async (state: string) => {
+      await controlsReady(page);
+      await page.evaluate(
+        ([key, exported]) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.adoptRepo(
+            key,
+            exported,
+          ),
+        [repoKey, state] as const,
+      );
+    },
+    changeRepoKey: () =>
+      page.evaluate(
+        (key) =>
+          (
+            window as unknown as FakeForgeWindow
+          ).__commitNoteFakeForge.changeRepoKey(key),
+        repoKey,
+      ),
+  };
+}
+
+export async function handOverRepo(
+  from: Page,
+  to: Page,
+  repoKey: string = SAMPLE.key,
+): Promise<void> {
+  await fakeForge(to, repoKey).adoptRepo(await fakeForge(from, repoKey).exportRepo());
+}
+
+/**
+ * Runs `callback` with the fake-forge controls in every document of `page`,
+ * as soon as the app publishes them. The callback is serialized, so it cannot
+ * use variables from the surrounding scope; pass them as `arg`.
+ */
+export async function onFakeForgeReady<Arg>(
+  page: Page,
+  callback: (controls: FakeForgeControls, arg: Arg) => void,
+  arg: Arg,
+): Promise<void> {
+  const hook = (
+    run: (controls: FakeForgeControls, arg: Arg) => void,
+    runArg: Arg,
+  ) => {
+    let controls: FakeForgeControls | undefined;
+    Object.defineProperty(window, "__commitNoteFakeForge", {
+      configurable: true,
+      get: () => controls,
+      set: (value: FakeForgeControls) => {
+        controls = value;
+        run(value, runArg);
+      },
+    });
+  };
+  await page.addInitScript({
+    content: `(${hook.toString()})(${callback.toString()}, ${JSON.stringify(arg)})`,
+  });
+}
+
 export async function showTree(page: Page): Promise<void> {
   const back = page.getByRole("button", { name: "Back to notes" });
   if (await back.isVisible()) {

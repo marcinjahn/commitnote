@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, SAMPLE, openNotes } from "./helpers";
+import { logIn, expectTree, SAMPLE, openNotes, fakeForge } from "./helpers";
 
 const TRASH_REPO = "https://github.com/sample/trash";
 const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
@@ -244,15 +244,13 @@ test("startup purges expired trash and keeps fresh entries", async ({
   await expect
     .poll(
       () =>
-        page.evaluate(
-          () =>
-            (
-              window as any
-            ).__commitNoteFakeForge
-              .commitMessages("sample/trash")
-              .filter((message: string) => message.includes("Commitnote-Purge"))
-              .length,
-        ),
+        fakeForge(page, "sample/trash")
+          .commitMessages()
+          .then(
+            (messages) =>
+              messages.filter((message) => message.includes("Commitnote-Purge"))
+                .length,
+          ),
       { timeout: 15_000 },
     )
     .toBe(1);
@@ -272,16 +270,7 @@ async function startTrashSessionWithFailingPurge(page: Page): Promise<void> {
     timeout: 15_000,
   });
   await page.goto("/");
-  await expect
-    .poll(() => page.evaluate(() => "__commitNoteFakeForge" in window))
-    .toBe(true);
-  await page.evaluate(() =>
-    (window as any).__commitNoteFakeForge.failNext(
-      "sample/trash",
-      "commit",
-      "Network",
-    ),
-  );
+  await fakeForge(page, "sample/trash").failNext("commit", "Network");
   await logIn(page, { repo: TRASH_REPO, passphrase: SAMPLE.passphrase });
   await expectTree(page);
   await purgeFailed;

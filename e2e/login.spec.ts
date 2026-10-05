@@ -11,12 +11,11 @@ import {
   setUpNotesRepo,
   SAMPLE,
   openNotes,
+  onFakeForgeReady,
 } from "./helpers";
 
 const EMPTY_REPO = "https://github.com/sample/empty";
 const ALMOST_EMPTY_REPO = "https://github.com/sample/almost-empty";
-
-const FIXTURE_CONTROLS = "__commitNoteFakeForge";
 
 async function failNextOnLoad(
   page: Page,
@@ -24,19 +23,10 @@ async function failNextOnLoad(
   operation: string,
   kind: string,
 ): Promise<void> {
-  await page.addInitScript(
-    ([key, repo, op, errorKind]) => {
-      let controls: any;
-      Object.defineProperty(window, key, {
-        configurable: true,
-        get: () => controls,
-        set: (value) => {
-          controls = value;
-          controls.failNext(repo, op, errorKind);
-        },
-      });
-    },
-    [FIXTURE_CONTROLS, repoKey, operation, kind],
+  await onFakeForgeReady(
+    page,
+    (controls, [repo, op, errorKind]) => controls.failNext(repo, op, errorKind),
+    [repoKey, operation, kind],
   );
 }
 
@@ -333,17 +323,7 @@ test("a remembered session whose notes fail to load shows the error", async ({
   page,
 }) => {
   await rememberSession(page);
-  await page.addInitScript(() => {
-    let controls: any;
-    Object.defineProperty(window, "__commitNoteFakeForge", {
-      configurable: true,
-      get: () => controls,
-      set: (value) => {
-        controls = value;
-        controls.failNext("sample/notes", "getHead", "Network");
-      },
-    });
-  });
+  await failNextOnLoad(page, "sample/notes", "getHead", "Network");
 
   await page.reload();
 

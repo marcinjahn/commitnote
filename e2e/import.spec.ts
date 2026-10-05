@@ -1,16 +1,8 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { strToU8, zipSync } from "fflate";
-import { SAMPLE, openNotes } from "./helpers";
+import { openNotes, fakeForge } from "./helpers";
 
-
-function commitCount(page: Page): Promise<number> {
-  return page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.commitMessages(repoKey).length,
-    SAMPLE.key,
-  );
-}
 
 function zipOf(files: Record<string, string>): Buffer {
   const entries: Record<string, Uint8Array> = {};
@@ -44,7 +36,7 @@ test.beforeEach(async ({ page }) => {
 test("imports an archive into a new folder named after the file in one commit", async ({
   page,
 }) => {
-  const before = await commitCount(page);
+  const before = await fakeForge(page).commitCount();
   await chooseArchive(
     page,
     "Trip notes.zip",
@@ -68,13 +60,13 @@ test("imports an archive into a new folder named after the file in one commit", 
   await expect(page.getByRole("treeitem", { name: "Trip notes" })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: "Packing" })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: "Days" })).toBeVisible();
-  await expect.poll(() => commitCount(page)).toBe(before + 1);
+  await expect.poll(() => fakeForge(page).commitCount()).toBe(before + 1);
 });
 
 test("stops on name conflicts, or renames the imported items when asked", async ({
   page,
 }) => {
-  const before = await commitCount(page);
+  const before = await fakeForge(page).commitCount();
   const archive = zipOf({ "Welcome.md": "# Imported welcome\n", "Fresh.md": "x" });
 
   await chooseArchive(page, "notes.zip", archive);
@@ -99,7 +91,7 @@ test("stops on name conflicts, or renames the imported items when asked", async 
   await conflicts.getByRole("button", { name: "Close" }).click();
   await expect(conflicts).toHaveCount(0);
   await expect(page.getByRole("treeitem", { name: "Fresh" })).toHaveCount(0);
-  expect(await commitCount(page)).toBe(before);
+  expect(await fakeForge(page).commitCount()).toBe(before);
 
   await chooseArchive(page, "notes.zip", archive);
   dialog = importDialog(page);
@@ -114,13 +106,13 @@ test("stops on name conflicts, or renames the imported items when asked", async 
   await expect(page.getByRole("treeitem", { name: "Welcome (2)" })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: "Welcome", exact: true })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: "Fresh" })).toBeVisible();
-  await expect.poll(() => commitCount(page)).toBe(before + 1);
+  await expect.poll(() => fakeForge(page).commitCount()).toBe(before + 1);
 });
 
 test("imports into an existing folder chosen with the keyboard", async ({
   page,
 }) => {
-  const before = await commitCount(page);
+  const before = await fakeForge(page).commitCount();
   await chooseArchive(page, "more.zip", zipOf({ "Later.md": "later" }));
 
   const dialog = importDialog(page);
@@ -135,15 +127,15 @@ test("imports into an existing folder chosen with the keyboard", async ({
 
   await expect(page.getByText("Imported 1 note and 0 folders.")).toBeVisible();
   await expect(page.getByRole("treeitem", { name: "Later" })).toBeVisible();
-  await expect.poll(() => commitCount(page)).toBe(before + 1);
+  await expect.poll(() => fakeForge(page).commitCount()).toBe(before + 1);
 });
 
 test("reports a file that isn't a zip archive", async ({ page }) => {
-  const before = await commitCount(page);
+  const before = await fakeForge(page).commitCount();
   await chooseArchive(page, "broken.zip", Buffer.from("not a zip at all"));
   await expect(
     page.getByText("Couldn't import: the file is not a valid zip archive."),
   ).toBeVisible();
   await expect(importDialog(page)).toHaveCount(0);
-  expect(await commitCount(page)).toBe(before);
+  expect(await fakeForge(page).commitCount()).toBe(before);
 });

@@ -1,15 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { TouchFinger, type TouchPoint, SAMPLE, openNotes } from "./helpers";
+import { TouchFinger, type TouchPoint, openNotes, fakeForge } from "./helpers";
 
-
-function commitMessages(page: Page): Promise<string[]> {
-  return page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.commitMessages(repoKey) as string[],
-    SAMPLE.key,
-  );
-}
 
 function settingsDialog(page: Page): Locator {
   return page.getByRole("dialog", { name: "Settings" });
@@ -142,17 +134,17 @@ test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
   test("swiping the header down past the threshold closes the dialog and saves a pending change", async ({
     page,
   }) => {
-    const before = (await commitMessages(page)).length;
+    const before = await fakeForge(page).commitCount();
     const dialog = await openSettings(page);
     await chooseAccent(page, "Teal");
     await swipeClose(dialog);
     await expect(dialog).toHaveCount(0);
     await expect
-      .poll(async () => (await commitMessages(page)).length, {
+      .poll(async () => await fakeForge(page).commitCount(), {
         timeout: 10_000,
       })
       .toBe(before + 1);
-    expect((await commitMessages(page)).join("\n")).toContain(
+    expect((await fakeForge(page).commitMessages()).join("\n")).toContain(
       "Commitnote-Settings: accentColor",
     );
   });

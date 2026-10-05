@@ -1,4 +1,9 @@
-import { test as base, type BrowserContext } from "@playwright/test";
+import {
+  test as base,
+  type BrowserContext,
+  type BrowserContextOptions,
+  type Page,
+} from "@playwright/test";
 
 export { expect } from "@playwright/test";
 
@@ -9,6 +14,9 @@ export const test = base.extend<
     forgeLatency: ForgeLatencyOption;
     argon2Cache: boolean;
     prepareContext: (context: BrowserContext) => Promise<void>;
+    openSecondDevice: (
+      options?: BrowserContextOptions,
+    ) => Promise<{ context: BrowserContext; page: Page }>;
   },
   { argon2Results: Map<string, string> }
 >({
@@ -46,6 +54,19 @@ export const test = base.extend<
           : { latency: forgeLatency },
       );
     });
+  },
+  openSecondDevice: async ({ browser, prepareContext }, use, testInfo) => {
+    const contexts: BrowserContext[] = [];
+    await use(async (options) => {
+      const device = testInfo.project.use as BrowserContextOptions;
+      const context = await browser.newContext({ ...device, ...options });
+      contexts.push(context);
+      await prepareContext(context);
+      const page = await context.newPage();
+      await page.goto("/");
+      return { context, page };
+    });
+    await Promise.all(contexts.map((context) => context.close()));
   },
   context: async ({ context, prepareContext }, use) => {
     await prepareContext(context);

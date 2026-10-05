@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { SAMPLE, openNotes } from "./helpers";
+import { openNotes, fakeForge } from "./helpers";
 
 
 function settingsDialog(page: Page) {
@@ -60,14 +60,6 @@ test("a change while Saved is shown goes back to waiting and ends saved again", 
   });
 });
 
-async function failNextCommit(page: Page): Promise<void> {
-  await page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.failNext(repoKey, "commit", "Server"),
-    SAMPLE.key,
-  );
-}
-
 test.describe("with GitHub-like forge latency", () => {
   test.use({ forgeLatency: "github" });
 
@@ -112,7 +104,7 @@ test.describe("with GitHub-like forge latency", () => {
   });
 
   test("Retry after a failed settings save saves it at once", async ({ page }) => {
-    await failNextCommit(page);
+    await fakeForge(page).failNext("commit", "Server");
     await openSettings(page);
     await chooseAccent(page, "Teal");
     await expect(dialogStatus(page, "Saving failed")).toBeVisible({
@@ -133,7 +125,7 @@ test.describe("with GitHub-like forge latency", () => {
 test("a failed settings save stays visible in the sidebar after closing Settings", async ({
   page,
 }) => {
-  await failNextCommit(page);
+  await fakeForge(page).failNext("commit", "Server");
   await openSettings(page);
   await chooseAccent(page, "Teal");
   await page.keyboard.press("Escape");

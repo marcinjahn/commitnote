@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, SAMPLE, openNotes, logOut } from "./helpers";
+import { logIn, expectTree, SAMPLE, openNotes, logOut, fakeForge } from "./helpers";
 
 
 async function openWelcomeAndType(page: Page, text: string): Promise<void> {
@@ -9,22 +9,6 @@ async function openWelcomeAndType(page: Page, text: string): Promise<void> {
   await editor.click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type(text);
-}
-
-async function failNext(
-  page: Page,
-  kind: "Network" | "Unauthorized",
-): Promise<void> {
-  await page.evaluate(([repoKey, failure]) => {
-    const controls = (
-      window as unknown as {
-        __commitNoteFakeForge: {
-          failNext(repoKey: string, operation: string, kind: string): void;
-        };
-      }
-    ).__commitNoteFakeForge;
-    controls.failNext(repoKey, "commit", failure);
-  }, [SAMPLE.key, kind] as const);
 }
 
 test("logging out saves pending edits first", async ({ page }) => {
@@ -45,7 +29,7 @@ test("logging out saves pending edits first", async ({ page }) => {
 test("keep trying retries the save and then logs out", async ({ page }) => {
   await openNotes(page);
   await openWelcomeAndType(page, " unsaved");
-  await failNext(page, "Network");
+  await fakeForge(page).failNext("commit", "Network");
   await logOut(page);
 
   const dialog = page.getByRole("dialog", { name: "Some changes are not saved" });
@@ -59,8 +43,8 @@ test("keep trying retries the save and then logs out", async ({ page }) => {
 test("log out anyway discards unsaved changes", async ({ page }) => {
   await openNotes(page);
   await openWelcomeAndType(page, " unsaved");
-  await failNext(page, "Network");
-  await failNext(page, "Network");
+  await fakeForge(page).failNext("commit", "Network");
+  await fakeForge(page).failNext("commit", "Network");
   await logOut(page);
 
   const dialog = page.getByRole("dialog", { name: "Some changes are not saved" });

@@ -1,16 +1,8 @@
 import type { Locator, Page, TestInfo } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, showTree } from "./helpers";
+import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, showTree, fakeForge } from "./helpers";
 
 
-
-function commitMessages(page: Page): Promise<string[]> {
-  return page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.commitMessages(repoKey) as string[],
-    SAMPLE.key,
-  );
-}
 
 function settingsDialog(page: Page) {
   return page.getByRole("dialog", { name: "Settings" });
@@ -79,7 +71,7 @@ async function emulateOsAccent(page: Page, color: string): Promise<void> {
 
 async function expectSettingsCommits(page: Page, count: number) {
   await expect
-    .poll(async () => (await commitMessages(page)).length, { timeout: 10_000 })
+    .poll(async () => await fakeForge(page).commitCount(), { timeout: 10_000 })
     .toBe(count);
 }
 
@@ -114,7 +106,7 @@ async function addedCommits(
   page: Page,
   before: string[],
 ): Promise<string[]> {
-  return (await commitMessages(page)).filter((m) => !before.includes(m));
+  return (await fakeForge(page).commitMessages()).filter((m) => !before.includes(m));
 }
 
 async function createHeaderNote(
@@ -148,7 +140,7 @@ test.beforeEach(async ({ page }) => {
 test("Settings is the first command and opens a dialog with the accent color options", async ({
   page,
 }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
 
   await page.getByRole("button", { name: "More commands" }).click();
   const items = page
@@ -205,7 +197,7 @@ test("Settings is the first command and opens a dialog with the accent color opt
   await settingsDialog(page).getByRole("button", { name: "Close" }).click();
   await expect(settingsDialog(page)).toHaveCount(0);
 
-  expect(await commitMessages(page)).toEqual(commitsBefore);
+  expect(await fakeForge(page).commitMessages()).toEqual(commitsBefore);
 });
 
 test("clicking the backdrop closes the Settings dialog", async ({
@@ -219,7 +211,7 @@ test("clicking the backdrop closes the Settings dialog", async ({
 test("choosing an accent color applies it and saves one commit without the value", async ({
   page,
 }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   const system = await rootAccent(page);
   await openSettings(page);
   const dialog = settingsDialog(page);
@@ -239,7 +231,7 @@ test("choosing an accent color applies it and saves one commit without the value
   expect(TEAL).not.toBe(system);
 
   await expectSettingsCommits(page, commitsBefore.length + 1);
-  const added = (await commitMessages(page)).filter(
+  const added = (await fakeForge(page).commitMessages()).filter(
     (m) => !commitsBefore.includes(m),
   );
   expect(added).toHaveLength(1);
@@ -248,7 +240,7 @@ test("choosing an accent color applies it and saves one commit without the value
 });
 
 test("rapid accent changes are saved as a single commit", async ({ page }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   await openSettings(page);
 
   await chooseAccent(page, "Blue");
@@ -257,13 +249,13 @@ test("rapid accent changes are saved as a single commit", async ({ page }) => {
 
   await expectSettingsCommits(page, commitsBefore.length + 1);
   await page.waitForTimeout(2500);
-  expect(await commitMessages(page)).toHaveLength(commitsBefore.length + 1);
+  expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 });
 
 test("returning to the saved accent color or re-clicking it makes no commit", async ({
   page,
 }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   await openSettings(page);
   await chooseAccent(page, "Teal");
   await expectSettingsCommits(page, commitsBefore.length + 1);
@@ -271,11 +263,11 @@ test("returning to the saved accent color or re-clicking it makes no commit", as
   await chooseAccent(page, "Red");
   await chooseAccent(page, "Teal");
   await page.waitForTimeout(2500);
-  expect(await commitMessages(page)).toHaveLength(commitsBefore.length + 1);
+  expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 
   await chooseAccent(page, "Teal");
   await page.waitForTimeout(2500);
-  expect(await commitMessages(page)).toHaveLength(commitsBefore.length + 1);
+  expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 });
 
 test("choosing System after another accent restores the system accent", async ({
@@ -338,7 +330,7 @@ test("arrow keys move the accent color selection", async ({ page }) => {
 test("a saved accent color applies on the passphrase step and after login, and logout returns to system", async ({
   page,
 }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   const system = await rootAccent(page);
   await openSettings(page);
   await chooseAccent(page, "Teal");
@@ -364,7 +356,7 @@ test("a saved accent color applies on the passphrase step and after login, and l
 test("a saved note placement is one commit naming only the key, and returning to it makes no commit", async ({
   page,
 }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   await openSettings(page);
 
   await chooseOption(page, "New notes", "At the end");
@@ -376,13 +368,13 @@ test("a saved note placement is one commit naming only the key, and returning to
   await chooseOption(page, "New notes", "At the beginning");
   await chooseOption(page, "New notes", "At the end");
   await page.waitForTimeout(2500);
-  expect(await commitMessages(page)).toHaveLength(commitsBefore.length + 1);
+  expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 });
 
 test("a saved folder placement is one commit naming only the key", async ({
   page,
 }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   await openSettings(page);
 
   await chooseOption(page, "New folders", "After the last folder");
@@ -741,7 +733,7 @@ for (const font of ["Literata", "JetBrains Mono"]) {
 test("choosing a note font saves one commit naming only the key", async ({
   page,
 }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   await openSettings(page);
 
   await chooseOption(page, "Note font", "Literata");
@@ -754,7 +746,7 @@ test("choosing a note font saves one commit naming only the key", async ({
 });
 
 test("rapid note font changes are saved as a single commit", async ({ page }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   await openSettings(page);
 
   await chooseOption(page, "Note font", "System UI");
@@ -763,11 +755,11 @@ test("rapid note font changes are saved as a single commit", async ({ page }) =>
 
   await expectSettingsCommits(page, commitsBefore.length + 1);
   await page.waitForTimeout(2500);
-  expect(await commitMessages(page)).toHaveLength(commitsBefore.length + 1);
+  expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 });
 
 test("re-picking the saved note font makes no commit", async ({ page }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   await openSettings(page);
   await chooseOption(page, "Note font", "Literata");
   await expectSettingsCommits(page, commitsBefore.length + 1);
@@ -776,13 +768,13 @@ test("re-picking the saved note font makes no commit", async ({ page }) => {
   await chooseOption(page, "Note font", "JetBrains Mono");
   await chooseOption(page, "Note font", "Literata");
   await page.waitForTimeout(2500);
-  expect(await commitMessages(page)).toHaveLength(commitsBefore.length + 1);
+  expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 });
 
 test("a saved note font is applied after login and reset on logout", async ({
   page,
 }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   const initial = await rootNoteFont(page);
   expect(initial.inline).toBe("");
   await openSettings(page);
@@ -890,7 +882,7 @@ test("the font preview is hidden from assistive technology", async ({ page }) =>
 test("hovering a font previews it without selecting it, and leaving the list restores the preview", async ({
   page,
 }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   await openSettings(page);
   const preview = fontPreview(page);
 
@@ -931,7 +923,7 @@ test("hover takes precedence over focus, and focus over the selection", async ({
 test("on mobile the font preview stays visible while the font list scrolls and does not cover the placement options", { tag: "@mobile-only" }, async ({
   page,
 }) => {
-  const commitsBefore = await commitMessages(page);
+  const commitsBefore = await fakeForge(page).commitMessages();
   await openSettings(page);
   const preview = fontPreview(page);
 

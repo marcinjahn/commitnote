@@ -1,19 +1,11 @@
-import type { BrowserContextOptions, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { expectTree, logIn, SAMPLE, openNotes, logOut } from "./helpers";
+import { expectTree, logIn, SAMPLE, openNotes, logOut, fakeForge, handOverRepo } from "./helpers";
 
 const OLD_PASSPHRASE = SAMPLE.passphrase;
 const NEW_PASSPHRASE = "a brand new passphrase";
 const KEY_CHANGED_TEXT =
   "The passphrase was changed on another device. Log in again.";
-
-function commitMessages(page: Page): Promise<string[]> {
-  return page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.commitMessages(repoKey) as string[],
-    SAMPLE.key,
-  );
-}
 
 function changeDialog(page: Page) {
   return page.getByRole("dialog", { name: "Change passphrase" });
@@ -68,11 +60,11 @@ test.beforeEach(async ({ page }) => {
 test("changes the passphrase in one commit; afterwards only the new one logs in", async ({
   page,
 }) => {
-  const before = await commitMessages(page);
+  const before = await fakeForge(page).commitMessages();
 
   await changePassphrase(page);
 
-  const after = await commitMessages(page);
+  const after = await fakeForge(page).commitMessages();
   expect(after).toHaveLength(before.length + 1);
   expect(after[0].split("\n")[0]).toBe("commitnote: change passphrase");
   await page.getByRole("treeitem", { name: "Welcome" }).click();
@@ -133,7 +125,7 @@ test("deletes the old history when asked, leaving one commit", async ({
   ).toBeVisible({ timeout: 15_000 });
   await expectTree(page);
 
-  const after = await commitMessages(page);
+  const after = await fakeForge(page).commitMessages();
   expect(after).toHaveLength(1);
   expect(after[0].split("\n")[0]).toBe("commitnote: change passphrase");
   await page.getByRole("treeitem", { name: "Welcome" }).click();
@@ -166,7 +158,7 @@ test("rates the strength of the new passphrase only", async ({ page }) => {
 });
 
 test("a wrong current passphrase changes nothing", async ({ page }) => {
-  const before = await commitMessages(page);
+  const before = await fakeForge(page).commitMessages();
   await openChangeDialog(page);
 
   await fillPassphrases(page, "not the passphrase", NEW_PASSPHRASE);
@@ -180,7 +172,7 @@ test("a wrong current passphrase changes nothing", async ({ page }) => {
   await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toHaveCount(0);
-  expect(await commitMessages(page)).toEqual(before);
+  expect(await fakeForge(page).commitMessages()).toEqual(before);
 
   await page.getByRole("treeitem", { name: "Welcome" }).click();
   await expect(
@@ -199,7 +191,7 @@ test("asks again when the new passphrases differ", async ({ page }) => {
 });
 
 test("backing out of the review keeps the old passphrase", async ({ page }) => {
-  const before = await commitMessages(page);
+  const before = await fakeForge(page).commitMessages();
   await openChangeDialog(page);
   await fillPassphrases(page, OLD_PASSPHRASE, NEW_PASSPHRASE);
   const review = page.getByRole("dialog", {
@@ -211,46 +203,32 @@ test("backing out of the review keeps the old passphrase", async ({ page }) => {
   await review.getByRole("button", { name: "Close" }).click();
 
   await expect(review).toHaveCount(0);
-  expect(await commitMessages(page)).toEqual(before);
+  expect(await fakeForge(page).commitMessages()).toEqual(before);
   await page.getByRole("button", { name: "New folder" }).click();
   await page.getByLabel("Folder name").fill("After cancel");
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect
-    .poll(() => commitMessages(page).then((m) => m.length))
+    .poll(() => fakeForge(page).commitMessages().then((m) => m.length))
     .toBe(before.length + 1);
 });
 
 test("another device still on the old passphrase is asked to log in again", async ({
   page,
-  browser,
-  prepareContext,
-}, testInfo) => {
-  const { baseURL, ...device } = testInfo.project.use as BrowserContextOptions;
-  const otherContext = await browser.newContext(device);
-  await prepareContext(otherContext);
-  const other = await otherContext.newPage();
-  await other.goto(new URL("/", baseURL ?? page.url()).toString());
+  openSecondDevice,
+}) => {
+  const { page: other } = await openSecondDevice();
   await logIn(other, { repo: SAMPLE.repo, passphrase: OLD_PASSPHRASE });
   await expectTree(other);
 
   await changePassphrase(page);
-  const exported = await page.evaluate(
-    (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),
-    SAMPLE.key,
-  );
-  await other.evaluate(
-    ([repoKey, state]) =>
-      (window as any).__commitNoteFakeForge.adoptRepo(repoKey, state),
-    [SAMPLE.key, exported] as const,
-  );
-  const changedHead = (await commitMessages(other))[0];
+  await handOverRepo(page, other);
+  const changedHead = (await fakeForge(other).commitMessages())[0];
   await other.getByRole("button", { name: "Refresh" }).click();
 
   await expect(
     other.getByRole("alert").getByText(KEY_CHANGED_TEXT),
   ).toBeVisible();
-  expect((await commitMessages(other))[0]).toBe(changedHead);
-  await otherContext.close();
+  expect((await fakeForge(other).commitMessages())[0]).toBe(changedHead);
 });
 
 test("another tab of the same browser picks up the new passphrase it remembered", async ({
@@ -268,15 +246,7 @@ test("another tab of the same browser picks up the new passphrase it remembered"
   await expectTree(other);
 
   await changePassphrase(page);
-  const exported = await page.evaluate(
-    (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),
-    SAMPLE.key,
-  );
-  await other.evaluate(
-    ([repoKey, state]) =>
-      (window as any).__commitNoteFakeForge.adoptRepo(repoKey, state),
-    [SAMPLE.key, exported] as const,
-  );
+  await handOverRepo(page, other);
   await other.getByRole("button", { name: "Refresh" }).click();
   await expect(
     other.getByRole("alert").getByText(KEY_CHANGED_TEXT),
