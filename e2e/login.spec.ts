@@ -354,6 +354,7 @@ test("the login screen links to creating a token and an empty private repository
     "https://github.com/settings/personal-access-tokens/new",
   );
   expect(url.searchParams.get("contents")).toBe("write");
+  expect(url.searchParams.get("gists")).toBe("write");
   await expect(tokenLink).toHaveAttribute("target", "_blank");
 
   const repoLink = page.getByRole("link", {

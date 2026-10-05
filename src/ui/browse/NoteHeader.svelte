@@ -30,6 +30,9 @@
     historyDisabled?: boolean;
     colorTag?: ColorTag | null;
     colorTagDisabled?: boolean;
+    shared?: boolean;
+    /** Shows the share button. */
+    onShare?: () => void;
     /** Shows the color tag button. */
     onColorTag?: (color: ColorTag | null) => void;
   }
@@ -52,10 +55,13 @@
     historyDisabled = false,
     colorTag = null,
     colorTagDisabled = false,
+    shared = false,
+    onShare,
     onColorTag,
   }: Props = $props();
 
   const descId = $props.id();
+  const sharedDescId = `${descId}-shared`;
   let tagButton: HTMLButtonElement | undefined = $state();
   let tagAnchor = $state<MenuAnchor | null>(null);
 
@@ -111,6 +117,25 @@
       <SyncStateIcon state={syncState} />
       <span class="sync-status-label">{describeSyncState(syncState)}</span>
     </span>
+  {/if}
+  {#if !draft && onShare !== undefined}
+    <button
+      type="button"
+      class={["button button-ghost button-icon share-button", shared && "is-shared"]}
+      aria-label="Share"
+      title="Share"
+      aria-describedby={shared ? sharedDescId : undefined}
+      onclick={onShare}
+    >
+      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        {#each noteIcons.share as d (d)}
+          <path {d} />
+        {/each}
+      </svg>
+    </button>
+    {#if shared}
+      <span id={sharedDescId} class="visually-hidden">Shared</span>
+    {/if}
   {/if}
   {#if !draft && onColorTag !== undefined}
     <button
@@ -197,6 +222,7 @@
   }
 
   .history-button,
+  .share-button,
   .color-tag-button {
     flex-shrink: 0;
     color: var(--color-text-muted);
@@ -216,7 +242,13 @@
     fill: color-mix(in srgb, var(--tag-color) 20%, transparent);
   }
 
+  .share-button.is-shared,
+  .share-button.is-shared:hover:not(:disabled) {
+    color: var(--color-accent);
+  }
+
   .history-button:hover:not(:disabled),
+  .share-button:hover:not(:disabled),
   .color-tag-button:hover:not(:disabled) {
     color: var(--color-text);
   }

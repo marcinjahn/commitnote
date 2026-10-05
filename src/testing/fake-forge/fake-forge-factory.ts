@@ -216,7 +216,8 @@ export async function createFakeForge(options?: {
   const keyrings = new Map<string, Promise<Keyring>>();
 
   function fixtureAdapter(repoKey: string): FakeForgeAdapter {
-    const adapter = fixtures.get(repoKey.toLowerCase());
+    const key = repoKey.toLowerCase();
+    const adapter = fixtures.get(key) ?? secondFixtures.get(key);
     if (!(adapter instanceof FakeForgeAdapter)) {
       throw new Error(`No fake forge fixture named '${repoKey}'`);
     }

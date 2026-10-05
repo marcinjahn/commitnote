@@ -77,7 +77,7 @@ test("shows created and updated dates and the word count above the editor", { ta
 
   const line = details(page);
   await expect(line).toHaveText(
-    /^Created 12 Mar 2026 · Updated just now · \d+ words$/,
+    /^Created 12 Mar 2026 · Updated just now · \d+ words\s*$/,
   );
 
   const lineBox = await line.boundingBox();

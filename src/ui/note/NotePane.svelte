@@ -22,9 +22,11 @@
     onDraftContent: (content: string) => void;
     onNewNote: () => void;
     noteFont: NoteFont;
+    shared?: boolean;
+    onShared?: () => void;
   }
 
-  const { engine, forgeName, openNote, conflict, draft, noteDates, treeLoaded, hasNotes, onDraftContent, onNewNote, noteFont }: Props = $props();
+  const { engine, forgeName, openNote, conflict, draft, noteDates, treeLoaded, hasNotes, onDraftContent, onNewNote, noteFont, shared = false, onShared }: Props = $props();
 
   const editorExtensions = [livePreview(), linkOpen()];
 
@@ -54,6 +56,8 @@
         text={editorText}
         dates={draft ? null : noteDates}
         notSaved={draft || (openNote?.kind === "loaded" && openNote.blobSha === null)}
+        {shared}
+        {onShared}
       />
     {/key}
     <MarkdownEditor

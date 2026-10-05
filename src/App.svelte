@@ -24,6 +24,9 @@
   import type { Session } from "./session/session";
   import { systemClock } from "./sync/clock";
   import { createRateBudget, type RateBudget } from "./sync/rate-budget";
+  import { createShareService, type ShareService } from "./share/share-service";
+  import { shareLinkBase } from "./share/share-link";
+  import { argon2idInWorker } from "./crypto/argon2";
   import { createSyncEngine } from "./sync/sync-engine";
   import { SETTINGS_SAVE_DEBOUNCE_MS, SETTINGS_SAVE_MAX_WAIT_MS } from "./sync/tuning";
   import { createSettingsSaver, type SettingsSaver } from "./settings/settings-saver";
@@ -79,6 +82,7 @@
         readonly rememberMe: boolean;
         readonly passphraseChange: PassphraseChange;
         readonly noteHistory: NoteHistory;
+        readonly shareService: ShareService;
         readonly noteDatesResolver: NoteDatesResolver;
         readonly initialMessage: string | null;
         readonly repoLabel: string;
@@ -200,6 +204,7 @@
     await store.start(session, { rememberMe });
 
     const rateBudget = rateBudgetFor(session.coordinates.forge, adapter);
+    const noteHistory = createNoteHistory({ adapter, keyring: session.keyring });
     const engine = createSyncEngine({
       adapter,
       keyring: session.keyring,
@@ -257,7 +262,16 @@
         clock: systemClock,
         argon2id,
       }),
-      noteHistory: createNoteHistory({ adapter, keyring: session.keyring }),
+      noteHistory,
+      shareService: createShareService({
+        engine,
+        shareHost: adapter.shareHost,
+        noteHistory,
+        rateBudget,
+        clock: systemClock,
+        argon2id: argon2id ?? argon2idInWorker,
+        linkBase: shareLinkBase(location),
+      }),
       noteDatesResolver: createNoteDates({
         adapter,
         keyring: session.keyring,
@@ -455,6 +469,8 @@
     forgeName={phase.forgeName}
     passphraseChange={phase.passphraseChange}
     noteHistory={phase.noteHistory}
+    shareService={phase.shareService}
+    forgeId={phase.session.coordinates.forge}
     noteDatesResolver={phase.noteDatesResolver}
     initialMessage={phase.initialMessage}
     onPassphraseChanged={(keyring, check, history) =>
