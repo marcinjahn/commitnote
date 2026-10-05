@@ -21,7 +21,7 @@
   }
 </script>
 
-<div class="note-font-picker">
+<div>
   <div
     class="font-preview"
     data-testid="font-preview"

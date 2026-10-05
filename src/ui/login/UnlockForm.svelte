@@ -30,7 +30,7 @@
   }
 </script>
 
-<form class="passphrase-form" onsubmit={handleSubmit}>
+<form onsubmit={handleSubmit}>
   <PasswordManagerUsername {username} />
 
   <div class="field">

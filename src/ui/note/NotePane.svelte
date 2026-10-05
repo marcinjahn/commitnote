@@ -108,22 +108,6 @@
     text-align: center;
   }
 
-  .link-button {
-    padding: 0;
-    border: 0;
-    background: none;
-    font: inherit;
-    color: var(--color-link);
-    text-decoration: underline;
-    cursor: pointer;
-  }
-
-  .link-button:focus-visible {
-    outline: 2px solid var(--color-focus);
-    outline-offset: 2px;
-    border-radius: 2px;
-  }
-
   .note-status {
     box-sizing: border-box;
     width: 100%;

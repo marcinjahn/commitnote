@@ -337,7 +337,7 @@
               </span>
             </div>
             {#key selected.sha}
-              <div class="detail-body" in:detailIn>
+              <div in:detailIn>
                 <VersionDiff
                   content={selectedContent}
                   {current}
