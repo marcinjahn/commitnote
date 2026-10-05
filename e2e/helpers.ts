@@ -272,6 +272,12 @@ export async function flushPendingSaves(page: Page): Promise<void> {
   });
 }
 
+export async function expectSettingsIdle(page: Page): Promise<void> {
+  await expect(
+    page.getByRole("dialog", { name: "Settings" }).getByRole("status"),
+  ).not.toContainText(/Waiting to save|Saving\b/);
+}
+
 export async function showTree(page: Page): Promise<void> {
   const back = page.getByRole("button", { name: "Back to notes" });
   if (await back.isVisible()) {

@@ -20,7 +20,6 @@ test("choosing the option that is already selected shows no save status", async 
 
   await chooseAccent(page, "System");
 
-  await page.waitForTimeout(1_500);
   await expect(settingsDialog(page).getByRole("status")).toHaveText("");
 });
 

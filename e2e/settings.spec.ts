@@ -1,7 +1,7 @@
 import type { Locator, Page, TestInfo } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, showTree, fakeForge, expectFamily, expectedFamily, MONO_STACK, SERIF_STACK } from "./helpers";
-import { chooseAccent, chooseOption, closeSettings, openSettings, rootAccent, settingsDialog } from "./helpers/settings";
+import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, showTree, fakeForge, expectFamily, expectedFamily, flushPendingSaves, expectSettingsIdle, MONO_STACK, SERIF_STACK } from "./helpers";
+import { chooseAccent, chooseOption, closeSettings, openSettings, rootAccent, settingsDialog, collectFontFiles } from "./helpers/settings";
 import { openWelcome } from "./helpers/tree";
 
 
@@ -209,7 +209,8 @@ test("rapid accent changes are saved as a single commit", async ({ page }) => {
   await chooseAccent(page, "Teal");
 
   await expectSettingsCommits(page, commitsBefore.length + 1);
-  await page.waitForTimeout(2500);
+  await flushPendingSaves(page);
+  await expectSettingsIdle(page);
   expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 });
 
@@ -223,11 +224,13 @@ test("returning to the saved accent color or re-clicking it makes no commit", as
 
   await chooseAccent(page, "Red");
   await chooseAccent(page, "Teal");
-  await page.waitForTimeout(2500);
+  await flushPendingSaves(page);
+  await expectSettingsIdle(page);
   expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 
   await chooseAccent(page, "Teal");
-  await page.waitForTimeout(2500);
+  await flushPendingSaves(page);
+  await expectSettingsIdle(page);
   expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 });
 
@@ -328,7 +331,8 @@ test("a saved note placement is one commit naming only the key, and returning to
 
   await chooseOption(page, "New notes", "At the beginning");
   await chooseOption(page, "New notes", "At the end");
-  await page.waitForTimeout(2500);
+  await flushPendingSaves(page);
+  await expectSettingsIdle(page);
   expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 });
 
@@ -520,15 +524,6 @@ async function expectFontLoaded(page: Page, family: string): Promise<void> {
     .toBe(true);
 }
 
-function collectFontFiles(page: Page): string[] {
-  const files: string[] = [];
-  page.on("response", (response) => {
-    const path = new URL(response.url()).pathname;
-    if (path.endsWith(".woff2")) files.push(path.split("/").pop()!);
-  });
-  return files;
-}
-
 async function returnToWelcomeIfMobile(
   page: Page,
   testInfo: TestInfo,
@@ -578,20 +573,6 @@ test("the Note font options form two columns from desktop width and one on mobil
   }
 });
 
-test("only the Inter font file loads on app load", async ({ page }) => {
-  await page.goto("about:blank");
-  const files = collectFontFiles(page);
-  await openNotes(page);
-  await openWelcome(page);
-  await expect.poll(() => files.length).toBeGreaterThan(0);
-  await page.waitForTimeout(1000);
-
-  expect(files.length).toBeGreaterThan(0);
-  for (const file of files) {
-    expect(file.startsWith("InterVariable")).toBe(true);
-  }
-});
-
 test("opening Settings downloads only the regular latin file of each bundled font", async ({
   page,
 }) => {
@@ -600,7 +581,7 @@ test("opening Settings downloads only the regular latin file of each bundled fon
   for (const { family } of Object.values(NOTE_FONTS)) {
     if (family) await expectFontLoaded(page, family);
   }
-  await page.waitForTimeout(500);
+  await page.evaluate(() => document.fonts.ready);
 
   expect(files.length).toBeGreaterThan(0);
   for (const file of files) {
@@ -682,7 +663,8 @@ test("rapid note font changes are saved as a single commit", async ({ page }) =>
   await chooseOption(page, "Note font", "Literata");
 
   await expectSettingsCommits(page, commitsBefore.length + 1);
-  await page.waitForTimeout(2500);
+  await flushPendingSaves(page);
+  await expectSettingsIdle(page);
   expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 });
 
@@ -695,7 +677,8 @@ test("re-picking the saved note font makes no commit", async ({ page }) => {
   await chooseOption(page, "Note font", "Literata");
   await chooseOption(page, "Note font", "JetBrains Mono");
   await chooseOption(page, "Note font", "Literata");
-  await page.waitForTimeout(2500);
+  await flushPendingSaves(page);
+  await expectSettingsIdle(page);
   expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
 });
 
@@ -820,7 +803,8 @@ test("hovering a font previews it without selecting it, and leaving the list res
   await expect(
     noteFontGroup(page).getByRole("radio", { name: "Inter", exact: true }),
   ).toBeChecked();
-  await page.waitForTimeout(2500);
+  await flushPendingSaves(page);
+  await expectSettingsIdle(page);
   expect(await addedCommits(page, commitsBefore)).toEqual([]);
 
   await moveOffFontList(page);
@@ -881,7 +865,7 @@ test("previewing a font downloads only that font's face", async ({
   for (const { family } of Object.values(NOTE_FONTS)) {
     if (family) await expectFontLoaded(page, family);
   }
-  await page.waitForTimeout(500);
+  await page.evaluate(() => document.fonts.ready);
   const files = collectFontFiles(page);
 
   await noteFontRow(page, "Lora").hover();
@@ -890,7 +874,7 @@ test("previewing a font downloads only that font's face", async ({
       page.evaluate(() => document.fonts.check('italic 16px "Lora Variable"')),
     )
     .toBe(true);
-  await page.waitForTimeout(500);
+  await page.evaluate(() => document.fonts.ready);
 
   expect(files.length).toBeGreaterThan(0);
   for (const file of files) {

@@ -44,3 +44,12 @@ export function rootAccent(page: Page): Promise<string> {
       .trim(),
   );
 }
+
+export function collectFontFiles(page: Page): string[] {
+  const files: string[] = [];
+  page.on("response", (response) => {
+    const path = new URL(response.url()).pathname;
+    if (path.endsWith(".woff2")) files.push(path.split("/").pop()!);
+  });
+  return files;
+}
