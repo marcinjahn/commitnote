@@ -224,9 +224,7 @@ test("Settings is the first command and opens a dialog with the accent color opt
 
 test("clicking the backdrop closes the Settings dialog", async ({
   page,
-  isMobile,
 }) => {
-  test.skip(isMobile, "the dialog is a bottom sheet with no clickable backdrop corner");
   await openSettings(page);
   await page.mouse.click(1, 1);
   await expect(settingsDialog(page)).toHaveCount(0);
@@ -664,7 +662,7 @@ test("the Note font section lists eleven options with Inter checked, each label 
   ).toBeVisible();
 });
 
-test("the Note font options form two columns from desktop width and one on mobile", async ({
+test("the Note font options form two columns from desktop width and one on mobile", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
   await openSettings(page);
@@ -913,9 +911,7 @@ test("the font preview is hidden from assistive technology", async ({ page }) =>
 
 test("hovering a font previews it without selecting it, and leaving the list restores the preview", async ({
   page,
-  isMobile,
 }) => {
-  test.skip(isMobile, "touch has no hover");
   const commitsBefore = await commitMessages(page);
   await openSettings(page);
   const preview = fontPreview(page);
@@ -936,9 +932,7 @@ test("hovering a font previews it without selecting it, and leaving the list res
 
 test("hover takes precedence over focus, and focus over the selection", async ({
   page,
-  isMobile,
 }) => {
-  test.skip(isMobile, "touch has no hover");
   await openSettings(page);
   const preview = fontPreview(page);
   await chooseOption(page, "Note font", "Literata");
@@ -956,11 +950,9 @@ test("hover takes precedence over focus, and focus over the selection", async ({
   await expectFamily(page, preview, NOTE_FONTS["Source Serif 4"].stack);
 });
 
-test("on mobile the font preview stays visible while the font list scrolls and does not cover the placement options", async ({
+test("on mobile the font preview stays visible while the font list scrolls and does not cover the placement options", { tag: "@mobile-only" }, async ({
   page,
-  isMobile,
 }) => {
-  test.skip(!isMobile, "the sticky preview matters only where the dialog scrolls");
   const commitsBefore = await commitMessages(page);
   await openSettings(page);
   const preview = fontPreview(page);
@@ -986,9 +978,7 @@ test("on mobile the font preview stays visible while the font list scrolls and d
 
 test("previewing a font downloads only that font's face", async ({
   page,
-  isMobile,
 }) => {
-  test.skip(isMobile, "touch has no hover");
   await openSettings(page);
   for (const { family } of Object.values(NOTE_FONTS)) {
     if (family) await expectFontLoaded(page, family);
@@ -1057,9 +1047,7 @@ async function waitForAllNoteFonts(page: Page): Promise<void> {
 
 test("hovering across the font options moves nothing around the font picker", async ({
   page,
-  isMobile,
 }) => {
-  test.skip(isMobile, "touch has no hover");
   await openUnscrolledSettings(page);
   await waitForAllNoteFonts(page);
   const preview = fontPreview(page);
@@ -1074,7 +1062,7 @@ test("hovering across the font options moves nothing around the font picker", as
   }
 });
 
-test("moving keyboard focus across the font options moves nothing around the font picker", async ({
+test("moving keyboard focus across the font options moves nothing around the font picker", { tag: "@mobile" }, async ({
   page,
 }) => {
   await openUnscrolledSettings(page);
@@ -1097,9 +1085,7 @@ test("moving keyboard focus across the font options moves nothing around the fon
 
 test("hovering font rows under the stuck preview moves nothing and keeps the scroll position", async ({
   page,
-  isMobile,
 }) => {
-  test.skip(isMobile, "touch has no hover");
   await openSettings(page);
   await waitForAllNoteFonts(page);
   const body = settingsDialog(page).locator(".dialog-body");
@@ -1129,7 +1115,7 @@ test("hovering font rows under the stuck preview moves nothing and keeps the scr
   expect(await body.evaluate((el) => el.scrollTop)).toBe(scrollTop);
 });
 
-test("the font picker keeps its layout while the fonts are still downloading", async ({
+test("the font picker keeps its layout while the fonts are still downloading", { tag: "@mobile" }, async ({
   page,
   isMobile,
 }) => {

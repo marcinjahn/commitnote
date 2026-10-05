@@ -5,8 +5,7 @@ const NOTES_REPO = "https://github.com/sample/notes";
 const NOTES_PASSPHRASE = "sample notes repo passphrase";
 const LINK_URL = "https://github.com/example/commitnote";
 
-test.beforeEach(async ({ context }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Ctrl+click is desktop-only");
+test.beforeEach(async ({ context }) => {
   await context.route(/^https:\/\/(github\.com\/example|www\.example\.org)\//, (route) =>
     route.fulfill({
       status: 200,

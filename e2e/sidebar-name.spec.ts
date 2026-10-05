@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { logIn, expectTree } from "./helpers";
 
-test("sidebar wordmark and repo label are not clipped", async ({ page }) => {
+test("sidebar wordmark and repo label are not clipped", { tag: "@mobile" }, async ({ page }) => {
   await page.goto("/");
   await logIn(page, {
     repo: "https://github.com/sample/notes",

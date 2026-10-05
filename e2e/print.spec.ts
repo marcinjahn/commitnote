@@ -110,7 +110,7 @@ test.describe("with a note", () => {
     await expectTree(page);
   });
 
-  test("hides the app and shows the rendered note under print media", async ({
+  test("hides the app and shows the rendered note under print media", { tag: "@mobile" }, async ({
     page,
   }) => {
     await openWelcome(page);
@@ -208,7 +208,7 @@ test.describe("with a note", () => {
     await expect(page.getByRole("tree", { name: "Notes" })).toBeHidden();
   });
 
-  test("prints the note while a dialog is open", async ({ page }, testInfo) => {
+  test("prints the note while a dialog is open", { tag: "@mobile" }, async ({ page }, testInfo) => {
     await openWelcome(page);
     if (testInfo.project.name === "mobile") {
       await page.getByRole("button", { name: "Back to notes" }).click();
@@ -250,8 +250,7 @@ test.describe("with a note", () => {
     await expectFamily(page, view.locator("p code").first(), MONO_STACK);
   });
 
-  test("produces a PDF", async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "desktop");
+  test("produces a PDF", async ({ page }) => {
     await openWelcome(page);
     const pdf = await page.pdf();
     expect(pdf.subarray(0, 4).toString()).toBe("%PDF");

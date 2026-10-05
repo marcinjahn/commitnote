@@ -550,7 +550,7 @@ test("after a refusal another repository can be chosen with the same token", asy
   await expectTree(page);
 });
 
-test("a long repository name keeps the form inside the login card", async ({
+test("a long repository name keeps the form inside the login card", { tag: "@mobile" }, async ({
   page,
 }) => {
   await page.goto("/");
@@ -679,7 +679,7 @@ test.describe("several providers", () => {
     await expect(page.getByRole("radio", { name: "Fakelab" })).toBeChecked();
   });
 
-  test("the provider picker stays inside the login card", async ({ page }) => {
+  test("the provider picker stays inside the login card", { tag: "@mobile" }, async ({ page }) => {
     await page.goto("/");
 
     const card = (await page.locator(".login-card").boundingBox())!;

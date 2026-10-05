@@ -143,9 +143,8 @@ async function dragAndRelease(
   await finger.up();
 }
 
-test.describe("swipe to close on mobile", () => {
-  test.beforeEach(async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "mobile", "touch swipe is mobile-only");
+test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
+  test.beforeEach(async ({ page }) => {
     await startSession(page);
   });
 
@@ -398,8 +397,7 @@ test.describe("swipe to close on mobile", () => {
 });
 
 test.describe("dialog grab handle on desktop", () => {
-  test.beforeEach(async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "desktop", "desktop-only");
+  test.beforeEach(async ({ page }) => {
     await startSession(page);
   });
 

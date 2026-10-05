@@ -115,9 +115,7 @@ test("creating, renaming, moving and deleting through row menus", async ({
   await expect(rowSyncState(page, "Welcome")).toHaveCount(0);
 });
 
-test("right-click on a row opens its menu", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "desktop-only context menu");
-
+test("right-click on a row opens its menu", async ({ page }) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);
@@ -130,7 +128,7 @@ test("right-click on a row opens its menu", async ({ page }, testInfo) => {
   ).toBeVisible();
 });
 
-test("the row actions button toggles its menu", async ({ page }) => {
+test("the row actions button toggles its menu", { tag: "@mobile" }, async ({ page }) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);

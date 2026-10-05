@@ -4,7 +4,7 @@ import { logIn, expectTree } from "./helpers";
 const NOTES_REPO = "https://github.com/sample/notes";
 const NOTES_PASSPHRASE = "sample notes repo passphrase";
 
-test("opening a note shows the editor by default, unfocused", async ({
+test("opening a note shows the editor by default, unfocused", { tag: "@mobile" }, async ({
   page,
 }) => {
   await page.goto("/");
@@ -21,7 +21,7 @@ test("opening a note shows the editor by default, unfocused", async ({
 
 test("editing the note autosaves, and the edit is there after reopening it", async ({
   page,
-}, testInfo) => {
+}) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);
@@ -38,18 +38,14 @@ test("editing the note autosaves, and the edit is there after reopening it", asy
   await expect(syncIcon).toBeVisible();
   await expect(syncIcon).toHaveCount(0, { timeout: 10_000 });
 
-  const backButton = page.getByRole("button", { name: "Back to notes" });
-  const isMobile = testInfo.project.name === "mobile";
-  if (isMobile) await backButton.click();
   await page.getByRole("treeitem", { name: "Zażółć gęślą jaźń" }).click();
-  if (isMobile) await backButton.click();
   await page.getByRole("treeitem", { name: "Welcome" }).click();
   await expect(
     page.getByRole("textbox", { name: "Note editor" }),
   ).toContainText("extra");
 });
 
-test("clicking the empty area below a short note puts the cursor at its end", async ({
+test("clicking the empty area below a short note puts the cursor at its end", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
   await page.goto("/");

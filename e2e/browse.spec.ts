@@ -85,11 +85,7 @@ test("opening the Welcome note", async ({ page }, testInfo) => {
   }
 });
 
-test("tree and note are both visible on desktop", async ({
-  page,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "desktop-only layout");
-
+test("tree and note are both visible on desktop", async ({ page }) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);
@@ -102,9 +98,7 @@ test("tree and note are both visible on desktop", async ({
   ).toBeVisible();
 });
 
-test("opening a note hides the tree on mobile", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile", "mobile-only layout");
-
+test("opening a note hides the tree on mobile", { tag: "@mobile-only" }, async ({ page }) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);

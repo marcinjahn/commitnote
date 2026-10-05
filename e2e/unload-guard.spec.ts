@@ -13,12 +13,7 @@ function wait(ms: number): Promise<void> {
 
 test("closing the page with nothing unsaved shows no leave-site prompt", async ({
   page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "dialog handling is desktop-only here",
-  );
-
+}) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);
@@ -37,12 +32,7 @@ test("closing the page with nothing unsaved shows no leave-site prompt", async (
 
 test("closing the page before autosave completes shows the leave-site prompt", async ({
   page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "dialog handling is desktop-only here",
-  );
-
+}) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);
@@ -66,12 +56,7 @@ test("closing the page before autosave completes shows the leave-site prompt", a
 
 test("hiding the tab flushes pending edits immediately", async ({
   page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "dialog handling is desktop-only here",
-  );
-
+}) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);
@@ -101,12 +86,7 @@ test("hiding the tab flushes pending edits immediately", async ({
 
 test("closing the page before a settings change is saved shows the leave-site prompt", async ({
   page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "dialog handling is desktop-only here",
-  );
-
+}) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);

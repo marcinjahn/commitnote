@@ -14,8 +14,7 @@ const ROOT_ORDER = [
   "Zażółć gęślą jaźń",
 ];
 
-test.beforeEach(async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "mouse drag is desktop-only");
+test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);

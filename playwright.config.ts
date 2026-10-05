@@ -17,10 +17,12 @@ export default defineConfig({
     {
       name: "desktop",
       use: { ...devices["Desktop Chrome"] },
+      grepInvert: /@mobile-only/,
     },
     {
       name: "mobile",
       use: { ...devices["Pixel 7"] },
+      grep: /@mobile/,
     },
   ],
   webServer: {

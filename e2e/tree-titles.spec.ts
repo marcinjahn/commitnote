@@ -21,7 +21,7 @@ async function backToTreeIfMobile(
   await page.getByRole("button", { name: "Back to notes" }).click();
 }
 
-test("tree rows show titles and small icons", async ({ page }) => {
+test("tree rows show titles and small icons", { tag: "@mobile" }, async ({ page }) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);
@@ -49,7 +49,7 @@ test("tree rows show titles and small icons", async ({ page }) => {
   }
 });
 
-test("a long title stays on one line and is truncated", async ({
+test("a long title stays on one line and is truncated", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
   await page.goto("/");

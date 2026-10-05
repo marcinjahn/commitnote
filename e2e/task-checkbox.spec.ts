@@ -23,7 +23,7 @@ async function press(
   }
 }
 
-test("toggling a task checkbox autosaves without focusing the editor", async ({
+test("toggling a task checkbox autosaves without focusing the editor", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
   await page.goto("/");

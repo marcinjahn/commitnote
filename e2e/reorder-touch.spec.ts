@@ -19,8 +19,7 @@ const REORDERED_ROOT = [
   "Welcome",
 ];
 
-test.beforeEach(async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile", "touch drag is mobile-only");
+test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);
@@ -86,7 +85,7 @@ async function moveZazolcBeforeWelcome(page: Page): Promise<void> {
   await expect.poll(() => commitCount(page)).toBe(commits + 1);
 }
 
-test("long-pressing a row and dragging it reorders it", async ({ page }) => {
+test("long-pressing a row and dragging it reorders it", { tag: "@mobile-only" }, async ({ page }) => {
   await moveZazolcBeforeWelcome(page);
 
   await expect(treeRows(page)).toHaveText(REORDERED_ROOT);
@@ -94,7 +93,7 @@ test("long-pressing a row and dragging it reorders it", async ({ page }) => {
   await expect(page.getByRole("menu")).toHaveCount(0);
 });
 
-test("dragging a note onto a folder moves it in", async ({ page }) => {
+test("dragging a note onto a folder moves it in", { tag: "@mobile-only" }, async ({ page }) => {
   await longPressDrag(
     page,
     treeItem(page, "Welcome"),
@@ -114,7 +113,7 @@ test("dragging a note onto a folder moves it in", async ({ page }) => {
   ]);
 });
 
-test("dragging a note left below its folder moves it out", async ({
+test("dragging a note left below its folder moves it out", { tag: "@mobile-only" }, async ({
   page,
 }) => {
   await treeItem(page, "Journal").tap();
@@ -143,7 +142,7 @@ test("dragging a note left below its folder moves it out", async ({
   ]);
 });
 
-test("a long-press released without moving opens the row menu", async ({
+test("a long-press released without moving opens the row menu", { tag: "@mobile-only" }, async ({
   page,
 }) => {
   const finger = await TouchFinger.on(page);
@@ -159,7 +158,7 @@ test("a long-press released without moving opens the row menu", async ({
   await expect(editor(page)).toHaveCount(0);
 });
 
-test("a swipe scrolls the tree instead of dragging", async ({ page }) => {
+test("a swipe scrolls the tree instead of dragging", { tag: "@mobile-only" }, async ({ page }) => {
   await page.setViewportSize({ width: 412, height: 320 });
   await treeItem(page, "Journal").tap();
   await treeItem(page, "2026").tap();
@@ -187,13 +186,13 @@ test("a swipe scrolls the tree instead of dragging", async ({ page }) => {
   await expect(editor(page)).toHaveCount(0);
 });
 
-test("a tap still opens the note", async ({ page }) => {
+test("a tap still opens the note", { tag: "@mobile-only" }, async ({ page }) => {
   await treeItem(page, "Welcome").tap();
 
   await expect(editor(page)).toBeVisible();
 });
 
-test("the order set by touch survives a reload", async ({ page }) => {
+test("the order set by touch survives a reload", { tag: "@mobile-only" }, async ({ page }) => {
   await moveZazolcBeforeWelcome(page);
   const exported = await page.evaluate(
     (repoKey) => (window as any).__commitNoteFakeForge.exportRepo(repoKey),

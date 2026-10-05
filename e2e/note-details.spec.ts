@@ -64,7 +64,7 @@ async function wordCount(page: Page): Promise<number> {
   return Number(match![1]);
 }
 
-test("shows created and updated dates and the word count above the editor", async ({
+test("shows created and updated dates and the word count above the editor", { tag: "@mobile" }, async ({
   page,
 }) => {
   await startSession(page);
@@ -371,8 +371,7 @@ test("a note renamed onto a trashed note's name while saving shows its own dates
 
 test("an unsaved note renamed onto a trashed note's name never shows that note's dates", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name === "mobile");
+}) => {
   await startSession(page);
   await treeItem(page, "Welcome").click();
   await expect(details(page)).toContainText("Created 12 Mar 2026");
@@ -433,7 +432,6 @@ test("a note re-created under a reused name on another device shows its own date
   page,
   browser,
 }, testInfo) => {
-  test.skip(testInfo.project.name === "mobile");
   await startSession(page);
   await treeItem(page, "Welcome").click();
   await expect(details(page)).toContainText("Created 12 Mar 2026");
@@ -515,7 +513,7 @@ test("a note re-created under a reused name on another device shows its own date
   await otherContext.close();
 });
 
-test("the left alignment of note details text matches the editor text", async ({
+test("the left alignment of note details text matches the editor text", { tag: "@mobile" }, async ({
   page,
 }) => {
   await startSession(page);

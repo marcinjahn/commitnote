@@ -66,11 +66,7 @@ test("a draft opened from the header button is created by typing a name and pres
 
 test("the empty note pane offers a link that opens a draft", async ({
   page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "the empty pane is not shown on mobile before a note is opened",
-  );
+}) => {
   await startSession(page);
 
   await expect(page.getByText("Select a note to read it, or")).toBeVisible();
@@ -135,7 +131,7 @@ test("typing content in a draft without a name creates the note with an automati
   await expect(treeItem(page, AUTO_NAME)).toBeVisible();
 });
 
-test("an untouched draft disappears when it is left", async ({
+test("an untouched draft disappears when it is left", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
   await startSession(page);

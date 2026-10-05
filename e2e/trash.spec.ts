@@ -64,7 +64,7 @@ test("the Trash button is hidden while the trash is empty", async ({
   await expect(page.getByTestId("open-trash")).toHaveCount(0);
 });
 
-test("the Trash row sits below the tree and leaves the repo link visible", async ({
+test("the Trash row sits below the tree and leaves the repo link visible", { tag: "@mobile" }, async ({
   page,
 }) => {
   await startSession(page);
@@ -394,7 +394,7 @@ test("a newer trash toast replaces the previous one", async ({ page }) => {
   await expect(moveToTrashToast(page)).toContainText("Zażółć gęślą jaźń");
 });
 
-test("the Trash dialog closes from its corner close button and from Escape", async ({
+test("the Trash dialog closes from its corner close button and from Escape", { tag: "@mobile" }, async ({
   page,
 }) => {
   await page.clock.setFixedTime(SAMPLE_TRASH_NOW);

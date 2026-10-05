@@ -11,7 +11,7 @@ async function startSession(page: import("@playwright/test").Page) {
   await expectTree(page);
 }
 
-test("there is only one Refresh button", async ({ page }, testInfo) => {
+test("there is only one Refresh button", { tag: "@mobile" }, async ({ page }, testInfo) => {
   await startSession(page);
   const refresh = page.getByRole("button", { name: "Refresh" });
 

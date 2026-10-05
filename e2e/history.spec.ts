@@ -77,7 +77,7 @@ test("lists the note's versions with an editing session and labels", async ({
   await expect(rows).toHaveCount(5);
 });
 
-test("shows what restoring a version would change", async ({
+test("shows what restoring a version would change", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
   const mobile = testInfo.project.name === "mobile";
