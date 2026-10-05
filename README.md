@@ -3,7 +3,7 @@
 <h1 align="center">commitnote</h1>
 
 commitnote is a static, client-side web app for encrypted markdown notes. Notes are encrypted
-entirely in your browser and stored as files in a GitHub repository you own — there is no backend
+entirely in your browser and stored as files in a GitHub or GitLab repository you own — there is no backend
 server.
 
 The app is available at [commitnote.eu](https://commitnote.eu).
@@ -41,6 +41,7 @@ through a LAN IP address over plain HTTP does not work.
 - `check` — type-check the app and the Node-side config/scripts
 - `check:bundle` — build both `dist/` and `dist-fake/` and verify the production build never
   ships test-mode fixture data
+- `fixture:sample-notes-repo` — regenerate the sample notes repo fixture
 
 ## Deployment
 
@@ -63,7 +64,8 @@ npm run test:e2e
 ```
 
 The suite runs the built app in test mode (fake forge, no network) at both a desktop and a mobile
-viewport. On a 6-CPU machine the e2e suite ran fastest with `npm run test:e2e -- --workers=4`.
+viewport. `E2E_PORT` overrides the port it is served on (default 4173). On a 6-CPU machine the
+e2e suite ran fastest with `npm run test:e2e -- --workers=4`.
 
 ## Manual live check
 
@@ -94,6 +96,11 @@ Any access token lists all of these fixture repositories:
   variants
 - `https://github.com/sample/foreign` (a README and code), `https://github.com/sample/newer` —
   repositories commitnote refuses to open
+
+A second fake provider, "Fakelab", stands in for GitLab and lists its own fixtures:
+
+- `https://fakelab.test/team/notes` — an initialized notes repo, same passphrase as `sample/notes`
+- `https://fakelab.test/team/empty` — empty and writable
 
 The access token `invalid-token` is always rejected and `no-repositories-token` lists no
 repositories; any other non-empty token is accepted. All
