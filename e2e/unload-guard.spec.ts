@@ -4,28 +4,22 @@ import { chooseAccent, openSettings } from "./helpers/settings";
 import { headerSyncIcon } from "./helpers/tree";
 
 
-// page.close({ runBeforeUnload: true }) resolves without waiting for the
-// page to actually finish unloading, so the beforeunload dialog (or its
-// absence) is only observable a moment later.
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 test("closing the page with nothing unsaved shows no leave-site prompt", async ({
   page,
 }) => {
   await openNotes(page);
 
-  let dialogFired = false;
-  page.on("dialog", (dialog) => {
-    dialogFired = true;
-    void dialog.dismiss();
-  });
-
+  const outcome = Promise.race([
+    page.waitForEvent("close").then(() => "closed"),
+    page.waitForEvent("dialog").then((dialog) => {
+      void dialog.dismiss();
+      return "dialog";
+    }),
+  ]);
   await page.close({ runBeforeUnload: true });
-  await wait(500);
 
-  expect(dialogFired).toBe(false);
+  expect(await outcome).toBe("closed");
 });
 
 test("closing the page before autosave completes shows the leave-site prompt", async ({

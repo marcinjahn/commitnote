@@ -150,9 +150,10 @@ test("a swipe scrolls the tree instead of dragging", { tag: "@mobile-only" }, as
 
   const start = await pointIn(treeItem(page, "commitnote"), { y: 0.5 });
   const finger = await TouchFinger.on(page);
+  await page.clock.install();
   await finger.down(start);
   await finger.move({ x: start.x, y: start.y - 120 });
-  await finger.hold(600);
+  await page.clock.runFor(600);
   await expect(page.locator("[data-drag-state]")).toHaveCount(0);
   await finger.up();
 

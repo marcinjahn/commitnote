@@ -68,7 +68,7 @@ async function swipeDownFrom(
   const finger = await TouchFinger.on(dialog.page());
   await finger.down(grab);
   await finger.move({ x: grab.x, y: grab.y + cardHeight * 0.6 }, 20);
-  await finger.hold(150);
+  finger.hold(150);
   await finger.up();
 }
 
@@ -81,7 +81,7 @@ async function dragAndRelease(
   const finger = await TouchFinger.on(dialog.page());
   await finger.down(grab);
   await finger.move({ x: grab.x, y: grab.y + distance }, 10);
-  await finger.hold(holdMs);
+  finger.hold(holdMs);
   await finger.up();
 }
 
@@ -234,7 +234,7 @@ test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
     const finger = await TouchFinger.on(page);
     await finger.down(grab);
     await finger.move({ x: grab.x, y: grab.y - 120 }, 12);
-    await finger.hold(100);
+    finger.hold(100);
     await finger.up();
     await expect(dialog).toBeVisible();
     await expect(dialog).not.toHaveAttribute("data-swipe", /.*/);
@@ -249,12 +249,12 @@ test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
     const down = await TouchFinger.on(page);
     await down.down(centre);
     await down.move({ x: centre.x, y: centre.y - 150 }, 12);
-    await down.hold(100);
+    down.hold(100);
     await down.up();
     const up = await TouchFinger.on(page);
     await up.down(centre);
     await up.move({ x: centre.x, y: centre.y + 250 }, 20);
-    await up.hold(100);
+    up.hold(100);
     await up.up();
     await expect(dialog).toBeVisible();
     await expect(dialog).not.toHaveAttribute("data-swipe", /.*/);

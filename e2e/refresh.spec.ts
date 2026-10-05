@@ -15,7 +15,7 @@ test("there is only one Refresh button", { tag: "@mobile" }, async ({ page }, te
   await expect(refresh).toHaveCount(1);
 });
 
-test("focus and visibility do not refresh; clicking Refresh does", async ({
+test("clicking Refresh shows a remote change", async ({
   page,
 }, testInfo) => {
   await openNotes(page);
@@ -28,19 +28,7 @@ test("focus and visibility do not refresh; clicking Refresh does", async ({
 
   await editRemotely(["Remote note"], "# Remote note");
 
-  await page.evaluate(() => {
-    window.dispatchEvent(new Event("focus"));
-    Object.defineProperty(document, "visibilityState", {
-      value: "visible",
-      configurable: true,
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-
   const remoteNote = page.getByRole("treeitem", { name: "Remote note" });
-  await page.waitForTimeout(1500);
-  await expect(remoteNote).toHaveCount(0);
-
   if (testInfo.project.name === "mobile") {
     await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
   }

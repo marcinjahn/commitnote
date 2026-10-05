@@ -313,15 +313,15 @@ export interface TouchPoint {
  * gesture handling (scrolling, long-press, tap) applies.
  */
 export class TouchFinger {
-  private at: TouchPoint = { x: 0, y: 0 };
+  private static readonly EVENT_INTERVAL_S = 0.016;
 
-  private constructor(
-    private readonly page: Page,
-    private readonly cdp: CDPSession,
-  ) {}
+  private at: TouchPoint = { x: 0, y: 0 };
+  private clock = Date.now() / 1000;
+
+  private constructor(private readonly cdp: CDPSession) {}
 
   static async on(page: Page): Promise<TouchFinger> {
-    return new TouchFinger(page, await page.context().newCDPSession(page));
+    return new TouchFinger(await page.context().newCDPSession(page));
   }
 
   async down(point: TouchPoint, timestamp?: number): Promise<void> {
@@ -329,7 +329,7 @@ export class TouchFinger {
     await this.cdp.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [point],
-      ...(timestamp === undefined ? {} : { timestamp }),
+      timestamp: this.stamp(timestamp),
     });
   }
 
@@ -347,7 +347,7 @@ export class TouchFinger {
       await this.cdp.send("Input.dispatchTouchEvent", {
         type: "touchMove",
         touchPoints: [this.at],
-        ...(timestamp === undefined ? {} : { timestamp }),
+        timestamp: this.stamp(timestamp, TouchFinger.EVENT_INTERVAL_S),
       });
     }
   }
@@ -356,13 +356,18 @@ export class TouchFinger {
     await this.cdp.send("Input.dispatchTouchEvent", {
       type: "touchEnd",
       touchPoints: [],
-      ...(timestamp === undefined ? {} : { timestamp }),
+      timestamp: this.stamp(timestamp),
     });
     await this.cdp.detach();
   }
 
-  async hold(ms: number): Promise<void> {
-    await this.page.waitForTimeout(ms);
+  hold(ms: number): void {
+    this.clock += ms / 1000;
+  }
+
+  private stamp(explicit?: number, advance = 0): number {
+    this.clock = explicit ?? this.clock + advance;
+    return this.clock;
   }
 }
 

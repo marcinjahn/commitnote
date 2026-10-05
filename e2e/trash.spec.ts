@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, SAMPLE, openNotes, fakeForge, onFakeForgeReady } from "./helpers";
+import { expectTree, openNotes, fakeForge, onFakeForgeReady } from "./helpers";
 import { moveToTrash, openTrash, treeItem } from "./helpers/tree";
 
 const TRASH_REPO = "https://github.com/sample/trash";
@@ -302,17 +302,21 @@ test("Undo after the trash was saved restores the note to its folder", async ({
   await openNotes(page, { via: "login" });
   await page.getByRole("treeitem", { name: "Journal", exact: true }).click();
   const before = await page.getByRole("treeitem").allInnerTexts();
+  const commitsBefore = await fakeForge(page).commitCount();
 
   await moveToTrash(page, "Projects");
-  await page.waitForTimeout(1_000);
+  await expect
+    .poll(() => fakeForge(page).commitCount())
+    .toBe(commitsBefore + 1);
   await expect(page.getByTestId("open-trash")).toHaveText(/Trash \(1\)/);
   await moveToTrashToast(page).getByRole("button", { name: "Undo" }).click();
 
   await expect(treeItem(page, "Projects")).toBeVisible();
   await expect(page.getByTestId("open-trash")).toHaveCount(0);
-  await page.waitForTimeout(1_000);
-  await page.reload();
-  await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
+  await expect
+    .poll(() => fakeForge(page).commitCount())
+    .toBe(commitsBefore + 2);
+  await page.getByRole("button", { name: "Refresh" }).click();
   await expectTree(page);
   await expect(treeItem(page, "Projects")).toBeVisible();
   await expect(page.getByTestId("open-trash")).toHaveCount(0);

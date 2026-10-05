@@ -3,7 +3,25 @@ import { openNotes } from "./helpers";
 
 const LINK_URL = "https://github.com/example/commitnote";
 
+declare global {
+  interface Window {
+    __opened: string[];
+  }
+}
+
+function openedUrls(page: import("@playwright/test").Page): Promise<string[]> {
+  return page.evaluate(() => window.__opened);
+}
+
 test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => {
+    window.__opened = [];
+    const open = window.open.bind(window);
+    window.open = (...args) => {
+      window.__opened.push(String(args[0]));
+      return open(...args);
+    };
+  });
   await context.route(/^https:\/\/(github\.com\/example|www\.example\.org)\//, (route) =>
     route.fulfill({
       status: 200,
@@ -48,9 +66,9 @@ test("plain click on a link does not open a new tab", async ({
 
   const pageCount = context.pages().length;
   await link.click();
-  await page.waitForTimeout(500);
 
   expect(context.pages().length).toBe(pageCount);
+  expect(await openedUrls(page)).toEqual([]);
 });
 
 test("Cmd+click on a link opens it in a new tab", async ({ page, context }) => {
@@ -84,9 +102,9 @@ test("Ctrl+click on text outside a link does not open a new tab", async ({
 
   const pageCount = context.pages().length;
   await text.click({ modifiers: ["Control"] });
-  await page.waitForTimeout(500);
 
   expect(context.pages().length).toBe(pageCount);
+  expect(await openedUrls(page)).toEqual([]);
 });
 
 test("Ctrl+click in the blank space right of a line ending in a link does not open a new tab", async ({
@@ -118,9 +136,9 @@ test("Ctrl+click in the blank space right of a line ending in a link does not op
     box.y + box.height / 2,
   );
   await page.keyboard.up("Control");
-  await page.waitForTimeout(500);
 
   expect(context.pages().length).toBe(pageCount);
+  expect(await openedUrls(page)).toEqual([]);
 });
 
 async function typeLine(

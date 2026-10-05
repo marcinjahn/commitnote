@@ -161,7 +161,6 @@ test("undo in a new draft does not restore the previous note", async ({
 
   await editor(page).click();
   await page.keyboard.press("ControlOrMeta+z");
-  await page.waitForTimeout(1000);
 
   await expect(nameField(page)).toHaveValue("");
   await expect(editor(page)).toHaveText("");
