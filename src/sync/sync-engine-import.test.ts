@@ -2,14 +2,13 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { ChangeSet, NotePath } from "../changes/change";
 import { readOrderIndex } from "../order/order-index";
 import { encodeChangeSet } from "../changes/encode-change-set";
-import { argon2idDirect } from "../crypto/argon2";
+import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
+import { sampleNotesRepoKeyring, sampleNotesRepoConfig } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
 import {
   createRepoConfig,
-  deriveKeyring,
   type Keyring,
 } from "../crypto/keyring";
 import { decryptNote } from "../crypto/note-cipher";
-import { parseRepoConfig } from "../crypto/repo-config";
 import { ForgeError } from "../forge/errors";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import type {
@@ -22,7 +21,6 @@ import { REPO_CONFIG_PATH } from "../format/v1";
 import { planImport } from "../import/plan-import";
 import type { ArchiveImportEntry } from "../import/read-notes-archive";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import { buildNoteTree, findNode, type NoteTree } from "../tree/note-tree";
 import { createRateBudget, type RateBudget } from "./rate-budget";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
@@ -32,24 +30,11 @@ let keyring: Keyring;
 let rekeyedConfigText: string;
 
 beforeAll(async () => {
-  const probe = await createSampleNotesRepoAdapter();
-  const inspection = await probe.inspect();
-  if (inspection.kind !== "populated" || inspection.main === null) {
-    throw new Error("expected a populated sample notes repo");
-  }
-  const parsed = parseRepoConfig(inspection.main.repoConfigText ?? "");
-  if (parsed.kind !== "valid") {
-    throw new Error(`expected a valid repo config, got ${parsed.kind}`);
-  }
-  keyring = await deriveKeyring(
-    SAMPLE_NOTES_REPO_PASSPHRASE,
-    parsed.config.kdf,
-    argon2idDirect,
-  );
+  keyring = await sampleNotesRepoKeyring();
   rekeyedConfigText = (
     await createRepoConfig("another passphrase", {
-      argon2id: argon2idDirect,
-      kdf: parsed.config.kdf,
+      argon2id: sharedMemoizedArgon2id,
+      kdf: sampleNotesRepoConfig().kdf,
     })
   ).configText;
 });

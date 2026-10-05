@@ -2,15 +2,13 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { ChangeSet, NotePath } from "../changes/change";
 import { readOrderIndex } from "../order/order-index";
 import { encodeChangeSet } from "../changes/encode-change-set";
-import { argon2idDirect } from "../crypto/argon2";
-import { deriveKeyring, type Keyring } from "../crypto/keyring";
+import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
+import { type Keyring } from "../crypto/keyring";
 import { decryptNote } from "../crypto/note-cipher";
-import { parseRepoConfig } from "../crypto/repo-config";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
 import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import type { PurgeCaps } from "../trash/expiry";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
 import { buildTrashIndex } from "../trash/trash-index";
@@ -28,20 +26,7 @@ import { findWorkingNode } from "./working-tree";
 let keyring: Keyring;
 
 beforeAll(async () => {
-  const probe = await createSampleNotesRepoAdapter();
-  const inspection = await probe.inspect();
-  if (inspection.kind !== "populated" || inspection.main === null) {
-    throw new Error("expected a populated sample notes repo");
-  }
-  const parsed = parseRepoConfig(inspection.main.repoConfigText ?? "");
-  if (parsed.kind !== "valid") {
-    throw new Error(`expected a valid repo config, got ${parsed.kind}`);
-  }
-  keyring = await deriveKeyring(
-    SAMPLE_NOTES_REPO_PASSPHRASE,
-    parsed.config.kdf,
-    argon2idDirect,
-  );
+  keyring = await sampleNotesRepoKeyring();
 });
 
 const START = Date.UTC(2026, 8, 30, 12, 0, 0);

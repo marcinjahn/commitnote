@@ -1,15 +1,13 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { argon2idDirect } from "../crypto/argon2";
-import { deriveKeyring, type Keyring } from "../crypto/keyring";
+import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
+import { type Keyring } from "../crypto/keyring";
 import { encryptPath } from "../crypto/name-cipher";
 import { encryptNote } from "../crypto/note-cipher";
-import { parseRepoConfig } from "../crypto/repo-config";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
 import type { ForgeAdapter } from "../forge/forge-adapter";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
 import {
-  SAMPLE_NOTES_REPO_PASSPHRASE,
   sampleNotesRepoSource,
 } from "../testing/sample-notes-repo/sample-source";
 import { findNode, listNotes } from "../tree/note-tree";
@@ -61,24 +59,7 @@ function wrapWithCounts(inner: ForgeAdapter): {
 let keyring: Keyring;
 
 beforeAll(async () => {
-  const probe = await createSampleNotesRepoAdapter();
-  const inspection = await probe.inspect();
-  if (inspection.kind !== "populated" || inspection.main === null) {
-    throw new Error("expected a populated sample notes repo");
-  }
-  const repoConfigText = inspection.main.repoConfigText;
-  if (repoConfigText === null) {
-    throw new Error("expected a repo config");
-  }
-  const parsed = parseRepoConfig(repoConfigText);
-  if (parsed.kind !== "valid") {
-    throw new Error(`expected a valid repo config, got ${parsed.kind}`);
-  }
-  keyring = await deriveKeyring(
-    SAMPLE_NOTES_REPO_PASSPHRASE,
-    parsed.config.kdf,
-    argon2idDirect,
-  );
+  keyring = await sampleNotesRepoKeyring();
 });
 
 async function setup(): Promise<{

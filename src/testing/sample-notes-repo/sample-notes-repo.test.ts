@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { argon2idDirect } from "../../crypto/argon2";
+import { sharedMemoizedArgon2id } from "../../crypto/testing/shared-argon2id";
+import { sampleNotesRepoKeyring } from "./sample-notes-repo-keyring";
 import {
   deriveKeyring,
   verifyKeyCheck,
@@ -176,6 +178,12 @@ describe("sample notes repo fixture", () => {
     );
     expect(await verifyKeyCheck(keyring, parsed.config)).toBe(true);
 
+    const memoizedKeyring = await sampleNotesRepoKeyring();
+    expect(await verifyKeyCheck(memoizedKeyring, parsed.config)).toBe(true);
+    expect(await encryptPath(memoizedKeyring, ["Welcome"])).toBe(
+      await encryptPath(keyring, ["Welcome"]),
+    );
+
     const head = await adapter.getHead();
     const entries = await adapter.listTree(head);
     const tree = await buildNoteTree(entries, keyring);
@@ -194,19 +202,8 @@ describe("sample notes repo fixture", () => {
 });
 
 describe("sample notes repo fixture order", () => {
-  async function openKeyring(adapter: FakeForgeAdapter): Promise<Keyring> {
-    const inspection = await adapter.inspect();
-    if (inspection.kind !== "populated" || inspection.main?.repoConfigText == null) {
-      throw new Error("expected a populated repo with a config");
-    }
-    const parsed = parseRepoConfig(inspection.main.repoConfigText);
-    if (parsed.kind !== "valid") throw new Error("invalid repo config");
-    return deriveKeyring(sampleNotesRepo.passphrase, parsed.config.kdf, argon2idDirect);
-  }
-
   it("records the positions in a save commit naming each positioned item by stored path only", async () => {
-    const adapter = await createSampleNotesRepoAdapter();
-    const keyring = await openKeyring(adapter);
+    const keyring = await sampleNotesRepoKeyring();
     const message = sampleNotesRepo.commits[2].message;
 
     const expected = [`commitnote: save`, "", `${TRAILER.format}: 1`];
@@ -220,7 +217,7 @@ describe("sample notes repo fixture order", () => {
 
   it("stores an order file that sorts the reordered folder as listed in the source", async () => {
     const adapter = await createSampleNotesRepoAdapter();
-    const keyring = await openKeyring(adapter);
+    const keyring = await sampleNotesRepoKeyring();
     const listing = await adapter.listTree(await adapter.getHead());
     const entry = findOrderEntry(listing);
     if (entry === undefined) throw new Error("expected an order file");
@@ -262,7 +259,7 @@ describe("sample trash repo fixture", () => {
     const keyring = await deriveKeyring(
       sampleTrashRepo.passphrase,
       parsed.config.kdf,
-      argon2idDirect,
+      sharedMemoizedArgon2id,
     );
     return { adapter, keyring };
   }

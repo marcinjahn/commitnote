@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { argon2idDirect } from "../../crypto/argon2";
-import { deriveKeyring } from "../../crypto/keyring";
+import { sharedMemoizedArgon2id } from "../../crypto/testing/shared-argon2id";
+import { sampleNotesRepoKeyring } from "../sample-notes-repo/sample-notes-repo-keyring";
 import { encryptPath } from "../../crypto/name-cipher";
 import { decryptNote } from "../../crypto/note-cipher";
-import { parseRepoConfig } from "../../crypto/repo-config";
 import { REPO_CONFIG_PATH } from "../../format/v1";
-import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../sample-notes-repo/sample-source";
 import {
   createFakeForge,
   createFakeForgeFactory,
@@ -216,7 +214,7 @@ describe("createFakeForgeFactory", () => {
 describe("createFakeForge controls", () => {
   it("editNote moves main and the change is visible through the factory", async () => {
     const { factory, controls } = await createFakeForge({
-      argon2id: argon2idDirect,
+      argon2id: sharedMemoizedArgon2id,
     });
     const adapter = factory(coordinatesFor("sample/notes"), {
       accessToken: TOKEN,
@@ -239,15 +237,7 @@ describe("createFakeForge controls", () => {
     }
     expect(after.main.head).not.toBe(before.main.head);
 
-    const parsed = parseRepoConfig(after.main.repoConfigText);
-    if (parsed.kind !== "valid") {
-      throw new Error("expected a valid repo config");
-    }
-    const keyring = await deriveKeyring(
-      SAMPLE_NOTES_REPO_PASSPHRASE,
-      parsed.config.kdf,
-      argon2idDirect,
-    );
+    const keyring = await sampleNotesRepoKeyring();
     const storedWelcomePath = await encryptPath(keyring, ["Welcome"]);
 
     const entries = await adapter.listTree(after.main.head);
@@ -320,7 +310,7 @@ describe("createFakeForge controls", () => {
 
 describe("createFakeForge registry", () => {
   it("lists every fixture repository as a GitHub repository", async () => {
-    const { registry } = await createFakeForge({ argon2id: argon2idDirect });
+    const { registry } = await createFakeForge({ argon2id: sharedMemoizedArgon2id });
 
     const repositories = await registry.github.listRepositories(TOKEN);
 
@@ -342,7 +332,7 @@ describe("createFakeForge registry", () => {
   });
 
   it("links the GitHub provider to creating a private repository", async () => {
-    const { registry } = await createFakeForge({ argon2id: argon2idDirect });
+    const { registry } = await createFakeForge({ argon2id: sharedMemoizedArgon2id });
 
     expect(registry.github.repositoryCreationUrl()).toBe(
       "https://github.com/new?name=notes&visibility=private",
@@ -350,7 +340,7 @@ describe("createFakeForge registry", () => {
   });
 
   it("rejects the invalid token when listing", async () => {
-    const { registry } = await createFakeForge({ argon2id: argon2idDirect });
+    const { registry } = await createFakeForge({ argon2id: sharedMemoizedArgon2id });
 
     await expect(
       registry.github.listRepositories(FAKE_FORGE_INVALID_TOKEN),
@@ -358,7 +348,7 @@ describe("createFakeForge registry", () => {
   });
 
   it("lists no repositories for the no-repositories token", async () => {
-    const { registry } = await createFakeForge({ argon2id: argon2idDirect });
+    const { registry } = await createFakeForge({ argon2id: sharedMemoizedArgon2id });
 
     expect(
       await registry.github.listRepositories(FAKE_FORGE_NO_REPOSITORIES_TOKEN),
@@ -366,7 +356,7 @@ describe("createFakeForge registry", () => {
   });
 
   it("creates fixture adapters through the registry", async () => {
-    const { registry } = await createFakeForge({ argon2id: argon2idDirect });
+    const { registry } = await createFakeForge({ argon2id: sharedMemoizedArgon2id });
 
     const adapter = registry.github.createAdapter(
       coordinatesFor("sample/empty"),

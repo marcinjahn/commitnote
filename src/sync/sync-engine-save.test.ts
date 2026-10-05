@@ -4,21 +4,19 @@ import {
   encodeChangeSet,
   encodeInitializeMessage,
 } from "../changes/encode-change-set";
-import { argon2idDirect } from "../crypto/argon2";
+import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
+import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
 import {
   createRepoConfig,
-  deriveKeyring,
   type Keyring,
 } from "../crypto/keyring";
 import { decryptNote } from "../crypto/note-cipher";
-import { parseRepoConfig } from "../crypto/repo-config";
 import { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
 import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
 import { FOLDER_MARKER, TRAILER } from "../format/v1";
 import { readOrderIndex } from "../order/order-index";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import { CONFLICT_MARKERS } from "../merge/merge-text";
 import { buildNoteTree, findNode, type NoteTree } from "../tree/note-tree";
 import { hasConflictMarkers } from "./sync-state";
@@ -28,20 +26,7 @@ import { createSyncEngine, type SyncEngine } from "./sync-engine";
 let keyring: Keyring;
 
 beforeAll(async () => {
-  const probe = await createSampleNotesRepoAdapter();
-  const inspection = await probe.inspect();
-  if (inspection.kind !== "populated" || inspection.main === null) {
-    throw new Error("expected a populated sample notes repo");
-  }
-  const parsed = parseRepoConfig(inspection.main.repoConfigText ?? "");
-  if (parsed.kind !== "valid") {
-    throw new Error(`expected a valid repo config, got ${parsed.kind}`);
-  }
-  keyring = await deriveKeyring(
-    SAMPLE_NOTES_REPO_PASSPHRASE,
-    parsed.config.kdf,
-    argon2idDirect,
-  );
+  keyring = await sampleNotesRepoKeyring();
 });
 
 interface Harness {
@@ -1197,7 +1182,7 @@ describe("sync engine saves", () => {
   it("works on a freshly initialized notes repo", async () => {
     const fake = new FakeForgeAdapter();
     const created = await createRepoConfig("fresh passphrase", {
-      argon2id: argon2idDirect,
+      argon2id: sharedMemoizedArgon2id,
     });
     await fake.initialize(created.configText, encodeInitializeMessage());
     const h = await setup(fake, created.keyring);

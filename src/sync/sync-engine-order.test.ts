@@ -1,16 +1,14 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { NotePath } from "../changes/change";
-import { argon2idDirect } from "../crypto/argon2";
-import { deriveKeyring, type Keyring } from "../crypto/keyring";
+import { sampleNotesRepoKeyring, sampleNotesRepoConfig } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
+import { type Keyring } from "../crypto/keyring";
 import {
-  parseRepoConfig,
   serializeRepoConfig,
   type RepoConfig,
 } from "../crypto/repo-config";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ORDER_PATH, REPO_CONFIG_PATH, TRAILER } from "../format/v1";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../testing/sample-notes-repo/sample-source";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
 import { createTestClock } from "./testing/test-clock";
 import { findWorkingNode, type WorkingFolder } from "./working-tree";
@@ -19,21 +17,8 @@ let keyring: Keyring;
 let sampleConfig: RepoConfig;
 
 beforeAll(async () => {
-  const probe = await createSampleNotesRepoAdapter();
-  const inspection = await probe.inspect();
-  if (inspection.kind !== "populated" || inspection.main === null) {
-    throw new Error("expected a populated sample notes repo");
-  }
-  const parsed = parseRepoConfig(inspection.main.repoConfigText ?? "");
-  if (parsed.kind !== "valid") {
-    throw new Error(`expected a valid repo config, got ${parsed.kind}`);
-  }
-  sampleConfig = parsed.config;
-  keyring = await deriveKeyring(
-    SAMPLE_NOTES_REPO_PASSPHRASE,
-    parsed.config.kdf,
-    argon2idDirect,
-  );
+  sampleConfig = sampleNotesRepoConfig();
+  keyring = await sampleNotesRepoKeyring();
 });
 
 const COMMITNOTE = ["Projects", "commitnote"];
