@@ -16,6 +16,8 @@ export function describeStructureError(error: StructureError): string {
       return "Items can't be reordered because the stored order couldn't be read.";
     case "tagsUnavailable":
       return "Color tags can't be changed because the stored tags can't be read.";
+    case "sharesUnavailable":
+      return "Shared links can't be changed because the stored list of shared links can't be read.";
   }
 }
 

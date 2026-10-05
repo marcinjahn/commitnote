@@ -1,4 +1,5 @@
 import type { Change, ChangeSet } from "../../changes/change";
+import { EMPTY_SHARES } from "../../share/share-index";
 import {
   encodeChangeSet,
   encodeInitializeMessage,
@@ -172,6 +173,7 @@ async function generateRepo(
       changeSet,
       order: orderIndex,
       tags: tagIndex,
+      shares: EMPTY_SHARES,
       keyring,
       random,
     });

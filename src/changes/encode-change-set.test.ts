@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  decryptShareIndex,
+  EMPTY_SHARES,
+  parseShareIndex,
+  type ShareEntry,
+  type ShareIndex,
+  type ShareNoteLocation,
+} from "../share/share-index";
+import {
   EMPTY_TAGS,
   parseTagIndex,
   tagKey,
@@ -15,7 +23,7 @@ import {
   type RepoConfig,
 } from "../crypto/repo-config";
 import type { TreeEntry } from "../forge/forge-adapter";
-import { FOLDER_MARKER, ORDER_PATH, REPO_CONFIG_PATH, TAGS_PATH } from "../format/v1";
+import { FOLDER_MARKER, ORDER_PATH, REPO_CONFIG_PATH, SHARES_PATH, TAGS_PATH } from "../format/v1";
 import {
   decryptOrderIndex,
   EMPTY_ORDER,
@@ -57,7 +65,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       { kind: "create-note", path: ["Note"], content: "hello world" },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring });
+    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(1);
     expect(result.changes[0].kind).toBe("upsert-text");
@@ -75,7 +83,7 @@ describe("encodeChangeSet: one test per operation type", () => {
     const storedFolder = await encryptPath(keyring, ["Folder"]);
     const changeSet: ChangeSet = [{ kind: "create-folder", path: ["Folder"] }];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring });
+    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toEqual([
       {
@@ -97,7 +105,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       { kind: "update-note", path: ["Note"], content: "updated body" },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(1);
     expect(result.changes[0]).toMatchObject({
@@ -118,7 +126,7 @@ describe("encodeChangeSet: one test per operation type", () => {
     const listing = [blob(storedNote, "some-sha")];
     const changeSet: ChangeSet = [{ kind: "delete-note", path: ["Note"] }];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toEqual([{ kind: "delete", path: storedNote }]);
     expect(result.message).toBe(
@@ -138,7 +146,7 @@ describe("encodeChangeSet: one test per operation type", () => {
     ];
     const changeSet: ChangeSet = [{ kind: "delete-folder", path: ["Folder"] }];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(3);
     expect(result.changes).toContainEqual({
@@ -172,7 +180,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(2);
     expect(result.changes).toContainEqual({ kind: "delete", path: storedNote });
@@ -206,7 +214,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       { kind: "rename-folder", from: ["From"], to: ["To"] },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     const renamed = (originalPath: string): string =>
       `${storedTo}${originalPath.slice(storedFrom.length)}`;
@@ -245,7 +253,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       { kind: "create-note", path: ["Folder", "Note"], content: "nested body" },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring });
+    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(2);
     expect(result.changes).toContainEqual({
@@ -275,7 +283,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       { kind: "rename-note", from: ["Note"], to: ["Renamed"] },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring });
+    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(1);
     expect(result.changes[0].kind).toBe("upsert-text");
@@ -318,7 +326,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring });
+    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.message).toBe(
       `commitnote: save\n\n` +
@@ -346,7 +354,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring });
+    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.message).not.toContain("PlaintextFolderName");
     expect(result.message).not.toContain("PlaintextNoteName");
@@ -366,7 +374,7 @@ describe("encodeChangeSet: invalid change sets", () => {
       encodeChangeSet({
         listing: [],
         changeSet: [],
-        order: EMPTY_ORDER, tags: EMPTY_TAGS,
+        order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
         keyring,
       }),
     ).rejects.toThrow(InvalidChangeSetError);
@@ -496,7 +504,7 @@ describe("encodeChangeSet: invalid change sets", () => {
       const keyring = await testKeyring();
       const { listing, changeSet } = await build(keyring);
       await expect(
-        encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, keyring }),
+        encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring }),
       ).rejects.toThrow(InvalidChangeSetError);
     },
   );
@@ -540,7 +548,7 @@ describe("encodeChangeSet: trash", () => {
     const result = await encodeChangeSet({
       listing: [blob(note, "sha-n")],
       changeSet: [{ kind: "trash-note", path: ["Secret folder", "Secret note"], entryId: ID2 }],
-      order: EMPTY_ORDER, tags: EMPTY_TAGS,
+      order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -571,7 +579,7 @@ describe("encodeChangeSet: trash", () => {
     const result = await encodeChangeSet({
       listing,
       changeSet: [{ kind: "trash-folder", path: ["F"], entryId: ID1 }],
-      order: EMPTY_ORDER, tags: EMPTY_TAGS,
+      order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -602,7 +610,7 @@ describe("encodeChangeSet: trash", () => {
       changeSet: [
         { kind: "restore-trash", entryId: ID1, subPath: [], target: "note", to: ["Target", "Renamed"] },
       ],
-      order: EMPTY_ORDER, tags: EMPTY_TAGS,
+      order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -621,7 +629,7 @@ describe("encodeChangeSet: trash", () => {
         changeSet: [
           { kind: "restore-trash", entryId: ID1, subPath: [], target: "note", to: ["Nope", "X"] },
         ],
-        order: EMPTY_ORDER, tags: EMPTY_TAGS,
+        order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
         keyring,
       }),
     ).rejects.toThrow(InvalidChangeSetError);
@@ -642,7 +650,7 @@ describe("encodeChangeSet: trash", () => {
           to: ["Back"],
         },
       ],
-      order: EMPTY_ORDER, tags: EMPTY_TAGS,
+      order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
     const back = await encryptPath(keyring, ["Back"]);
@@ -672,7 +680,7 @@ describe("encodeChangeSet: trash", () => {
       changeSet: [
         { kind: "restore-trash", entryId: ID3, subPath: ["A"], target: "folder", to: ["A2"] },
       ],
-      order: EMPTY_ORDER, tags: EMPTY_TAGS,
+      order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
     expect(result.changes.filter((c) => c.kind === "upsert-blob")).toEqual([
@@ -696,7 +704,7 @@ describe("encodeChangeSet: trash", () => {
         blob(keep, "s4"),
       ],
       changeSet: [{ kind: "purge-trash", entryIds: [ID1, ID2, unknown] }],
-      order: EMPTY_ORDER, tags: EMPTY_TAGS,
+      order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -765,7 +773,7 @@ describe("encodeChangeSet: order", () => {
         },
       ],
       order: SAMPLE_ORDER,
-      tags: EMPTY_TAGS,
+      tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -789,7 +797,7 @@ describe("encodeChangeSet: order", () => {
       listing: await sampleListing(keyring),
       changeSet: [{ kind: "rename-note", from: ["Beta"], to: ["Gamma"] }],
       order: SAMPLE_ORDER,
-      tags: EMPTY_TAGS,
+      tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -807,7 +815,7 @@ describe("encodeChangeSet: order", () => {
       listing: await sampleListing(keyring),
       changeSet: [{ kind: "rename-note", from: ["Beta"], to: ["Docs", "Beta"] }],
       order: SAMPLE_ORDER,
-      tags: EMPTY_TAGS,
+      tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -825,7 +833,7 @@ describe("encodeChangeSet: order", () => {
         { kind: "rename-folder", from: ["Docs"], to: ["Archive", "Docs"] },
       ],
       order: SAMPLE_ORDER,
-      tags: EMPTY_TAGS,
+      tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -848,7 +856,7 @@ describe("encodeChangeSet: order", () => {
         },
       ],
       order: SAMPLE_ORDER,
-      tags: EMPTY_TAGS,
+      tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -866,7 +874,7 @@ describe("encodeChangeSet: order", () => {
         { kind: "create-note", path: ["Docs", "Sub", "New"], content: "" },
       ],
       order: SAMPLE_ORDER,
-      tags: EMPTY_TAGS,
+      tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -886,7 +894,7 @@ describe("encodeChangeSet: order", () => {
         { kind: "rename-note", from: ["Alpha"], to: ["Omega"] },
       ],
       order: parseOrderIndex("unreadable"),
-      tags: EMPTY_TAGS,
+      tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -907,7 +915,7 @@ describe("encodeChangeSet: order", () => {
           },
         ],
         order: SAMPLE_ORDER,
-        tags: EMPTY_TAGS,
+        tags: EMPTY_TAGS, shares: EMPTY_SHARES,
         keyring,
       }),
     ).rejects.toThrow(InvalidChangeSetError);
@@ -945,7 +953,7 @@ describe("encodeChangeSet: set-settings", () => {
     return encodeChangeSet({
       listing,
       changeSet,
-      order: EMPTY_ORDER, tags: EMPTY_TAGS,
+      order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring: await testKeyring(),
       config,
     });
@@ -1090,6 +1098,7 @@ describe("encodeChangeSet: color tags", () => {
       changeSet: [{ kind: "set-color-tag", path: ["Beta"], color: "blue" }],
       order: EMPTY_ORDER,
       tags: TAGGED,
+      shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -1106,6 +1115,7 @@ describe("encodeChangeSet: color tags", () => {
       changeSet: [{ kind: "rename-note", from: ["Alpha"], to: ["Gamma"] }],
       order: EMPTY_ORDER,
       tags: TAGGED,
+      shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -1122,6 +1132,7 @@ describe("encodeChangeSet: color tags", () => {
       changeSet: [{ kind: "rename-note", from: ["Beta"], to: ["Gamma"] }],
       order: EMPTY_ORDER,
       tags: TAGGED,
+      shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -1138,6 +1149,7 @@ describe("encodeChangeSet: color tags", () => {
       ],
       order: EMPTY_ORDER,
       tags: TAGGED,
+      shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -1154,6 +1166,7 @@ describe("encodeChangeSet: color tags", () => {
       ],
       order: EMPTY_ORDER,
       tags: TAGGED,
+      shares: EMPTY_SHARES,
       keyring,
     });
     const without = await encodeChangeSet({
@@ -1161,6 +1174,7 @@ describe("encodeChangeSet: color tags", () => {
       changeSet: [{ kind: "update-note", path: ["Beta"], content: "x" }],
       order: EMPTY_ORDER,
       tags: TAGGED,
+      shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -1180,6 +1194,7 @@ describe("encodeChangeSet: color tags", () => {
       ],
       order: EMPTY_ORDER,
       tags: unreadable,
+      shares: EMPTY_SHARES,
       keyring,
     });
 
@@ -1193,9 +1208,183 @@ describe("encodeChangeSet: color tags", () => {
         listing,
         changeSet: [{ kind: "set-color-tag", path: ["Missing"], color: "red" }],
         order: EMPTY_ORDER,
-        tags: EMPTY_TAGS,
+        tags: EMPTY_TAGS, shares: EMPTY_SHARES,
         keyring,
       }),
     ).rejects.toThrow(InvalidChangeSetError);
+  });
+});
+
+describe("encodeChangeSet: shares", () => {
+  const NAME = "Quarterly secret plans";
+  const ID = "share-id-0123456789";
+  const GIST = "gist-abcdef123456";
+  const SECRET = "link-secret-xyz";
+  const PASSWORD = "hunter2-password";
+
+  function entry(
+    id: string,
+    note: ShareNoteLocation,
+    overrides: Partial<ShareEntry> = {},
+  ): ShareEntry {
+    return {
+      id,
+      locator: { provider: "github", gistId: GIST, revision: "rev" },
+      linkSecret: SECRET,
+      password: PASSWORD,
+      name: NAME,
+      sharedAt: "2026-01-01T00:00:00.000Z",
+      note,
+      source: null,
+      ...overrides,
+    };
+  }
+
+  const activeAlpha: ShareNoteLocation = { state: "active", path: ["Alpha"] };
+
+  function indexOf(...entries: ShareEntry[]): ShareIndex {
+    return { writable: true, entries: new Map(entries.map((e) => [e.id, e])) };
+  }
+
+  async function setup() {
+    const keyring = await testKeyring();
+    const alpha = await encryptPath(keyring, ["Alpha"]);
+    const listing = [blob(alpha, "sha-a")];
+    return { keyring, listing };
+  }
+
+  async function encode(
+    changeSet: ChangeSet,
+    shares: ShareIndex = EMPTY_SHARES,
+  ) {
+    const { keyring, listing } = await setup();
+    const result = await encodeChangeSet({
+      listing,
+      changeSet,
+      order: EMPTY_ORDER,
+      tags: EMPTY_TAGS,
+      shares,
+      keyring,
+    });
+    return { keyring, result };
+  }
+
+  async function writtenShares(
+    keyring: Keyring,
+    result: EncodedChangeSet,
+  ): Promise<ShareIndex | undefined> {
+    const change = result.changes.find((c) => c.path === SHARES_PATH);
+    if (change === undefined) return undefined;
+    if (change.kind !== "upsert-text") throw new Error("expected text");
+    expect(change.text).not.toContain(GIST);
+    return decryptShareIndex(keyring, change.text);
+  }
+
+  it("writes an encrypted share index for an add-share", async () => {
+    const added = entry(ID, activeAlpha);
+    const { keyring, result } = await encode([
+      { kind: "add-share", entry: added },
+    ]);
+
+    expect(result.changes.map((c) => c.path)).toEqual([SHARES_PATH]);
+    const written = await writtenShares(keyring, result);
+    expect(written?.entries.get(ID)).toEqual(added);
+  });
+
+  it("does not write the share index when it is unchanged", async () => {
+    const { result } = await encode(
+      [{ kind: "rename-note", from: ["Alpha"], to: ["Beta"] }],
+      indexOf(entry(ID, { state: "active", path: ["Other"] })),
+    );
+
+    expect(result.changes.some((c) => c.path === SHARES_PATH)).toBe(false);
+  });
+
+  it("rewrites the share index with the new path when a shared note is renamed", async () => {
+    const { keyring, result } = await encode(
+      [{ kind: "rename-note", from: ["Alpha"], to: ["Beta"] }],
+      indexOf(entry(ID, activeAlpha)),
+    );
+
+    const written = await writtenShares(keyring, result);
+    expect(written?.entries.get(ID)?.note).toEqual({
+      state: "active",
+      path: ["Beta"],
+    });
+  });
+
+  it("never writes an unreadable share index", async () => {
+    const unreadable = parseShareIndex("unreadable");
+    expect(unreadable.writable).toBe(false);
+    const { result } = await encode(
+      [
+        { kind: "add-share", entry: entry(ID, activeAlpha) },
+        { kind: "remove-share", id: "other" },
+        { kind: "rename-note", from: ["Alpha"], to: ["Gamma"] },
+      ],
+      unreadable,
+    );
+
+    expect(result.changes.some((c) => c.path === SHARES_PATH)).toBe(false);
+    expect(result.changes.some((c) => c.kind === "upsert-text")).toBe(false);
+  });
+
+  it("adds data-free Share trailers to the message", async () => {
+    const { result: added } = await encode([
+      { kind: "add-share", entry: entry(ID, activeAlpha) },
+    ]);
+    const { result: removed } = await encode(
+      [{ kind: "remove-share", id: ID }],
+      indexOf(entry(ID, activeAlpha)),
+    );
+
+    expect(added.message).toContain("Commitnote-Share: add");
+    expect(removed.message).toContain("Commitnote-Share: remove");
+    for (const message of [added.message, removed.message]) {
+      for (const secret of [NAME, ID, GIST, SECRET, PASSWORD, "Alpha"]) {
+        expect(message).not.toContain(secret);
+      }
+    }
+  });
+
+  it("rejects an add-share whose active note is missing", async () => {
+    await expect(
+      encode([
+        {
+          kind: "add-share",
+          entry: entry(ID, { state: "active", path: ["Missing"] }),
+        },
+      ]),
+    ).rejects.toThrow(InvalidChangeSetError);
+  });
+
+  it("accepts an add-share for a deleted or trashed note", async () => {
+    const { keyring, result } = await encode([
+      { kind: "add-share", entry: entry("a", { state: "deleted" }) },
+      {
+        kind: "add-share",
+        entry: entry("b", { state: "trashed", entryId: "t1", path: [] }),
+      },
+    ]);
+
+    const written = await writtenShares(keyring, result);
+    expect([...written!.entries.keys()].sort()).toEqual(["a", "b"]);
+  });
+
+  it("accepts a remove-share of an absent id", async () => {
+    const { result } = await encode([{ kind: "remove-share", id: "absent" }]);
+
+    expect(result.message).toContain("Commitnote-Share: remove");
+    expect(result.changes.some((c) => c.path === SHARES_PATH)).toBe(false);
+  });
+
+  it("keeps both entries of two add-shares with different ids", async () => {
+    const { keyring, result } = await encode([
+      { kind: "add-share", entry: entry("a", activeAlpha) },
+      { kind: "add-share", entry: entry("b", activeAlpha) },
+    ]);
+
+    const written = await writtenShares(keyring, result);
+    expect([...written!.entries.keys()].sort()).toEqual(["a", "b"]);
   });
 });

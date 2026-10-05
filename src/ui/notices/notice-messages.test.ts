@@ -19,6 +19,17 @@ describe("describeNotice", () => {
     );
   });
 
+  it("describes a dropped share change", () => {
+    for (const change of [
+      { kind: "remove-share", id: "a" },
+      { kind: "add-share", entry: {} },
+    ]) {
+      expect(
+        describeNotice({ id: 1, kind: "dropped", change } as EngineNotice),
+      ).toBe("A change to your shared links couldn't be saved.");
+    }
+  });
+
   it("describes an edited merge restored after the note disappeared", () => {
     expect(
       describeNotice({ id: 1, kind: "edited-merge-restored", path: ["a", "b"] }),

@@ -6,7 +6,7 @@ import { buildNotesArchive } from "./notes-archive";
 
 function note(parent: NotePath, name: string): WorkingNode {
   const path = [...parent, name];
-  return { kind: "note", name, path, syncedPath: path, colorTag: null };
+  return { kind: "note", name, path, syncedPath: path, colorTag: null, shared: false };
 }
 
 function folder(

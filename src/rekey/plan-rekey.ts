@@ -9,9 +9,11 @@ import {
   ORDER_PATH,
   REPO_CONFIG_DIR,
   REPO_CONFIG_PATH,
+  SHARES_PATH,
   TAGS_PATH,
   TRASH_DIR,
 } from "../format/v1";
+import { decryptShareIndex, encryptShareIndex } from "../share/share-index";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
 
 /**
@@ -21,7 +23,7 @@ import { parseTrashEntryId } from "../trash/trash-entry-id";
  * re-encrypted only if they decrypt under the old key. So nothing readable
  * with the old key is left behind.
  */
-type RekeyFileKind = "config" | "order" | "tags" | "note" | "folder" | "other";
+type RekeyFileKind = "config" | "order" | "tags" | "shares" | "note" | "folder" | "other";
 
 type RekeyFileContent =
   | { readonly kind: "text"; readonly text: string }
@@ -208,6 +210,35 @@ export async function planRekey(input: PlanRekeyInput): Promise<RekeyPlan> {
           kind: "unchanged",
           blobSha: entry.sha,
         },
+      });
+      continue;
+    }
+
+    if (entry.path === SHARES_PATH) {
+      const shares = await decryptShareIndex(oldKeyring, textOf(entry.sha));
+      files.push({
+        oldPath: entry.path,
+        newPath: entry.path,
+        kind: "shares",
+        trashEntryId: null,
+        content: shares.writable
+          ? {
+              kind: "text",
+              text: await encryptShareIndex(
+                newKeyring,
+                {
+                  writable: true,
+                  entries: new Map(
+                    [...shares.entries].map(([id, share]) => [
+                      id,
+                      { ...share, source: null },
+                    ]),
+                  ),
+                },
+                random,
+              ),
+            }
+          : { kind: "unchanged", blobSha: entry.sha },
       });
       continue;
     }

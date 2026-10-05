@@ -1,3 +1,4 @@
+import type { ShareEntry } from "../share/share-index";
 import type { SettingsEdits } from "../settings/settings";
 import type { ColorTag } from "../tags/color-tag";
 
@@ -57,7 +58,9 @@ export type Change =
       readonly kind: "set-color-tag";
       readonly path: NotePath;
       readonly color: ColorTag | null;
-    };
+    }
+  | { readonly kind: "add-share"; readonly entry: ShareEntry }
+  | { readonly kind: "remove-share"; readonly id: string };
 
 /** The order key of the child `name` of a folder. */
 export interface OrderPosition {

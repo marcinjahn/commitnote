@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { parseOrderIndex, type OrderIndex } from "../order/order-index";
 import { parseTagIndex, tagKey, type TagIndex } from "../tags/tag-index";
+import type { ShareEntry, ShareNoteLocation } from "../share/share-index";
 import type { TrashEntry } from "../trash/trash-index";
 import type { FolderNode, NoteNode, NoteTree, TreeNode } from "../tree/note-tree";
 import {
@@ -129,6 +130,7 @@ describe("buildWorkingTree", () => {
       path: ["New"],
       syncedPath: null,
       colorTag: null,
+      shared: false,
     });
   });
 
@@ -143,6 +145,7 @@ describe("buildWorkingTree", () => {
       path: ["Welcome"],
       syncedPath: ["Welcome"],
       colorTag: null,
+      shared: false,
     });
   });
 
@@ -185,6 +188,7 @@ describe("buildWorkingTree", () => {
       path: ["Hello"],
       syncedPath: ["Welcome"],
       colorTag: null,
+      shared: false,
     });
   });
 
@@ -205,6 +209,7 @@ describe("buildWorkingTree", () => {
       path: ["Documents", "Guide"],
       syncedPath: ["Docs", "Guide"],
       colorTag: null,
+      shared: false,
     });
 
     const movedTodo = findWorkingNode(working, ["Documents", "Notes", "Todo"]);
@@ -214,6 +219,7 @@ describe("buildWorkingTree", () => {
       path: ["Documents", "Notes", "Todo"],
       syncedPath: ["Docs", "Notes", "Todo"],
       colorTag: null,
+      shared: false,
     });
   });
 
@@ -336,6 +342,7 @@ describe("buildWorkingState trash", () => {
           path: ["Welcome"],
           syncedPath: ["Welcome"],
           colorTag: null,
+          shared: false,
         },
       },
     ]);
@@ -368,6 +375,7 @@ describe("buildWorkingState trash", () => {
               path: ["Docs", "Notes", "Todo"],
               syncedPath: ["Docs", "Notes", "Todo"],
               colorTag: null,
+              shared: false,
             },
           ],
         },
@@ -377,6 +385,7 @@ describe("buildWorkingState trash", () => {
           path: ["Docs", "Manual"],
           syncedPath: ["Docs", "Guide"],
           colorTag: null,
+          shared: false,
         },
       ],
     });
@@ -409,6 +418,7 @@ describe("buildWorkingState trash", () => {
       path: ["Archive", "Old"],
       syncedPath: null,
       colorTag: null,
+      shared: false,
       trashBlobSha: "sha-trashed-old",
     });
   });
@@ -434,6 +444,7 @@ describe("buildWorkingState trash", () => {
       path: ["Docs", "Old"],
       syncedPath: null,
       colorTag: null,
+      shared: false,
       trashBlobSha: "sha-trashed-old",
     });
     expect(trash.map((entry) => entry.id)).not.toContain(OLD_NOTE_ID);
@@ -460,6 +471,7 @@ describe("buildWorkingState trash", () => {
       path: ["Recovered", "Deep"],
       syncedPath: null,
       colorTag: null,
+      shared: false,
       trashBlobSha: "sha-trashed-deep",
     });
     const entry = trash.find((candidate) => candidate.id === OLD_FOLDER_ID);
@@ -487,6 +499,7 @@ describe("buildWorkingState trash", () => {
       path: ["Empty", "Welcome"],
       syncedPath: ["Welcome"],
       colorTag: null,
+      shared: false,
     });
     expect(trash).toEqual([]);
   });
@@ -1247,6 +1260,99 @@ describe("rebaseChanges set-settings", () => {
         [settings],
       ),
     ).toEqual({ changes: [settings], dropped: [] });
+  });
+});
+
+describe("rebaseChanges shares", () => {
+  const share = (note: ShareNoteLocation): Change => ({
+    kind: "add-share",
+    entry: {
+      id: "share-1",
+      locator: { provider: "github", gistId: "gist", revision: "rev" },
+      linkSecret: "secret",
+      password: null,
+      name: "Todo",
+      sharedAt: "2026-01-01T00:00:00.000Z",
+      note,
+      source: null,
+    } satisfies ShareEntry,
+  });
+  const welcome = folder("", [], [note("Welcome", ["Welcome"])]);
+  const docs = SAMPLE_TREE.root.children[1] as FolderNode;
+
+  it("keeps the path of a note that is still there", () => {
+    const change = share({ state: "active", path: ["Docs", "Guide"] });
+    expect(
+      rebaseChanges(SAMPLE_TREE, [], [change], [], SAMPLE_TREE),
+    ).toEqual({ changes: [change], dropped: [] });
+  });
+
+  it("follows a remote rename of the note", () => {
+    const synced = tree(
+      folder("", [], [note("Hello", ["Hello"], "sha-Welcome")]),
+    );
+    expect(
+      rebaseChanges(
+        synced,
+        [],
+        [share({ state: "active", path: ["Welcome"] })],
+        [],
+        tree(welcome),
+      ),
+    ).toEqual({
+      changes: [share({ state: "active", path: ["Hello"] })],
+      dropped: [],
+    });
+  });
+
+  it("marks the share trashed when the note was trashed remotely", () => {
+    expect(
+      rebaseChanges(
+        tree(folder("", [], [])),
+        [],
+        [share({ state: "active", path: ["Welcome"] })],
+        [trashEntry(WELCOME_ID, note("Welcome", ["Welcome"]))],
+        tree(welcome),
+      ),
+    ).toEqual({
+      changes: [share({ state: "trashed", entryId: WELCOME_ID, path: [] })],
+      dropped: [],
+    });
+  });
+
+  it("marks the share trashed with its relative path when its folder was trashed remotely", () => {
+    expect(
+      rebaseChanges(
+        tree(folder("", [], [note("Welcome", ["Welcome"])])),
+        [],
+        [share({ state: "active", path: ["Docs", "Notes", "Todo"] })],
+        [trashEntry(DOCS_ID, docs)],
+        SAMPLE_TREE,
+      ),
+    ).toEqual({
+      changes: [
+        share({ state: "trashed", entryId: DOCS_ID, path: ["Notes", "Todo"] }),
+      ],
+      dropped: [],
+    });
+  });
+
+  it("marks the share deleted when the note is gone, without dropping it", () => {
+    expect(
+      rebaseChanges(
+        SAMPLE_TREE,
+        [{ kind: "delete-note", path: ["Welcome"] }],
+        [share({ state: "active", path: ["Welcome"] })],
+      ),
+    ).toEqual({ changes: [share({ state: "deleted" })], dropped: [] });
+  });
+
+  it("keeps a remove-share unchanged", () => {
+    const change: Change = { kind: "remove-share", id: "share-1" };
+    expect(rebaseChanges(SAMPLE_TREE, [], [change])).toEqual({
+      changes: [change],
+      dropped: [],
+    });
   });
 });
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EMPTY_SHARES } from "../share/share-index";
 import { EMPTY_TAGS } from "../tags/tag-index";
 import type { Change, NotePath } from "../changes/change";
 import {
@@ -56,7 +57,7 @@ function saver(
     const { changes, message } = await encodeChangeSet({
       listing: await adapter.listTree(parent),
       changeSet,
-      order: NO_ORDER, tags: EMPTY_TAGS,
+      order: NO_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring: repo.keyring,
     });
     const result = await adapter.commit({ parent, changes, message });

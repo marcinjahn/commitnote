@@ -22,7 +22,7 @@ import type { FolderNode, NoteTree, TreeNode } from "../tree/note-tree";
 import { findNode, listNotes } from "../tree/note-tree";
 import type { ConflictHunk, TextMergeResult } from "./merge-text";
 import { mergeText } from "./merge-text";
-import { findRemoteRename } from "./remote-rename";
+import { findRemoteRename, relocateShareEntry } from "./remote-rename";
 
 export type MergeNotice =
   | { readonly kind: "edit-restored"; readonly path: NotePath }
@@ -289,7 +289,10 @@ class ChangeSetMerger {
       case "set-order":
         return this.setOrder(change);
       case "set-settings":
+      case "remove-share":
         return this.emit(change);
+      case "add-share":
+        return this.addShare(change);
       case "set-color-tag":
         return this.setColorTag(change);
       default:
@@ -771,6 +774,25 @@ class ChangeSetMerger {
     if (renamed !== null && this.working.get(renamed)?.kind === "note") {
       this.emit({ ...change, path: renamed });
     }
+  }
+
+  private addShare(change: Extract<Change, { kind: "add-share" }>): void {
+    const isNote = (path: NotePath) => this.working.get(path)?.kind === "note";
+    const entry = relocateShareEntry(
+      change.entry,
+      (localPath) => {
+        const path = this.resolve(localPath);
+        if (isNote(path)) return path;
+        const renamed = findRemoteRename(
+          this.input.base,
+          this.input.remote,
+          path,
+        );
+        return renamed !== null && isNote(renamed) ? renamed : null;
+      },
+      this.input.remoteTrash,
+    );
+    this.emit({ ...change, entry });
   }
 
   // Positions follow their items through redirects; positions of items that

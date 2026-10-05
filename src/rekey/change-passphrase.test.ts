@@ -16,7 +16,9 @@ import {
   CHANGE_PASSPHRASE_SUBJECT,
   MAIN_BRANCH,
   REPO_CONFIG_PATH,
+  SHARES_PATH,
 } from "../format/v1";
+import { decryptShareIndex, encryptShareIndex } from "../share/share-index";
 import { createRateBudget } from "../sync/rate-budget";
 import { createSyncEngine, type SyncEngine } from "../sync/sync-engine";
 import { createTestClock } from "../sync/testing/test-clock";
@@ -234,6 +236,42 @@ describe("changing the passphrase", () => {
         "uploading",
       ]),
     );
+  });
+
+  it("clears the shared versions of the share index and keeps it readable with the new key", async () => {
+    const fixture = await createRekeyFixture({
+      extraFiles: async (keyring) => ({
+        [SHARES_PATH]: await encryptShareIndex(keyring, {
+          writable: true,
+          entries: new Map([
+            [
+              "a",
+              {
+                id: "a",
+                locator: { provider: "gitlab", snippetId: "1" },
+                linkSecret: "secret",
+                password: null,
+                name: "Welcome",
+                sharedAt: "2026-02-01T00:00:00.000Z",
+                note: { state: "active", path: ["Welcome"] },
+                source: { commit: "c", storedPath: "p", blobSha: "b" },
+              },
+            ],
+          ]),
+        }),
+      }),
+    });
+    const h = await setup({ fixture });
+
+    const result = await changePassphrase(h);
+    if (!result.ok) throw new Error(result.failure.kind);
+
+    const { files } = await readTree(h.fixture.adapter);
+    const shares = await decryptShareIndex(result.keyring, files.get(SHARES_PATH)!);
+    expect(shares.writable).toBe(true);
+    expect([...shares.entries.values()]).toMatchObject([
+      { id: "a", name: "Welcome", source: null },
+    ]);
   });
 
   it("keeps the engine suspended between preparing and committing", async () => {

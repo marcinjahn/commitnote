@@ -44,6 +44,13 @@ import {
   findTagEntry,
   type TagIndex,
 } from "../tags/tag-index";
+import {
+  decryptShareIndex,
+  EMPTY_SHARES,
+  findSharesFile,
+  type ShareEntry,
+  type ShareIndex,
+} from "../share/share-index";
 import type { ColorTag } from "../tags/color-tag";
 import { insertionIndex, placementPositions } from "../order/placement";
 import { isExpired, selectExpired, type PurgeCaps } from "../trash/expiry";
@@ -115,6 +122,7 @@ interface SyncedState {
   readonly trash: readonly TrashEntry[];
   readonly order: OrderIndex;
   readonly tags: TagIndex;
+  readonly shares: ShareIndex;
   readonly config: RepoConfig;
   readonly settings: Settings;
   /** Files left out of `tree` because their names don't decrypt. */
@@ -179,6 +187,8 @@ export interface SyncEngineState {
   readonly trash: readonly WorkingTrashEntry[] | null;
   /** What the user sees: readable entries not yet past retention. */
   readonly visibleTrash: readonly ReadableWorkingTrashEntry[] | null;
+  /** The share index with every unsaved share change applied. */
+  readonly shares: ShareIndex | null;
   readonly pending: ChangeSet;
   readonly inFlight: ChangeSet;
   /** Stored settings with every unsaved settings edit applied. */
@@ -209,7 +219,9 @@ export type StructureError =
   /** The stored order couldn't be read, so positions can't be changed. */
   | { readonly kind: "orderUnavailable" }
   /** The stored tags couldn't be read, so color tags can't be changed. */
-  | { readonly kind: "tagsUnavailable" };
+  | { readonly kind: "tagsUnavailable" }
+  /** The stored share index couldn't be read, so shares can't be changed. */
+  | { readonly kind: "sharesUnavailable" };
 
 type StructureResult =
   | {
@@ -218,6 +230,10 @@ type StructureResult =
       /** Set by `delete` when the item went to the trash. */
       readonly trashEntryId?: string;
     }
+  | { readonly ok: false; readonly error: StructureError };
+
+export type ShareChangeResult =
+  | { readonly ok: true }
   | { readonly ok: false; readonly error: StructureError };
 
 type ConflictResolution = "keepMine" | "keepTheirs" | "editMerged";
@@ -263,6 +279,10 @@ export interface SyncEngine {
   delete(path: NotePath): StructureResult;
   /** Sets the note's color tag, or clears it with null. Saved by autosave. */
   setColorTag(path: NotePath, color: ColorTag | null): StructureResult;
+  /** Records a published share of an active note. Saved immediately. */
+  addShare(entry: ShareEntry): ShareChangeResult;
+  /** Forgets a revoked share. Saved immediately. */
+  removeShare(id: string): ShareChangeResult;
   moveFromTrash(
     entryId: string,
     subPath: NotePath,
@@ -424,6 +444,7 @@ const INITIAL_STATE: SyncEngineState = {
   workingTree: null,
   trash: null,
   visibleTrash: null,
+  shares: null,
   pending: EMPTY_CHANGES,
   inFlight: EMPTY_CHANGES,
   rawSettings: {},
@@ -525,6 +546,7 @@ export function createSyncEngine(options: {
               next.synced.trash,
               next.synced.order,
               next.synced.tags,
+              next.synced.shares,
             );
       const rawSettings = workingRawSettings(
         next.synced,
@@ -541,6 +563,7 @@ export function createSyncEngine(options: {
           working === null
             ? null
             : visibleTrashEntries(working.trash, clock.now()),
+        shares: working?.shares ?? null,
       };
     }
     if (
@@ -639,6 +662,7 @@ export function createSyncEngine(options: {
     const trash = await buildTrashIndex(listing, keyring);
     const order = await loadOrder(listing);
     const tags = await loadTags(listing);
+    const shares = await loadShares(listing);
     const undecryptableFiles = await countUndecryptableFiles(listing, keyring);
     return {
       head,
@@ -647,6 +671,7 @@ export function createSyncEngine(options: {
       trash,
       order,
       tags,
+      shares,
       config,
       settings: resolveSettings(SETTINGS_SCHEMA, config.settings),
       undecryptableFiles,
@@ -681,6 +706,25 @@ export function createSyncEngine(options: {
     );
     loadedTags = { sha: entry.sha, tags };
     return tags;
+  }
+
+  let loadedShares: {
+    readonly sha: string;
+    readonly shares: ShareIndex;
+  } | null = null;
+
+  async function loadShares(
+    listing: readonly TreeEntry[],
+  ): Promise<ShareIndex> {
+    const entry = findSharesFile(listing);
+    if (entry === undefined) return EMPTY_SHARES;
+    if (loadedShares?.sha === entry.sha) return loadedShares.shares;
+    const shares = await decryptShareIndex(
+      keyring,
+      await adapter.readBlob(entry.sha),
+    );
+    loadedShares = { sha: entry.sha, shares };
+    return shares;
   }
 
   type NoteResolution =
@@ -1166,6 +1210,7 @@ export function createSyncEngine(options: {
           changeSet: state.inFlight,
           order: attemptSynced.order,
           tags: attemptSynced.tags,
+          shares: attemptSynced.shares,
           config: attemptSynced.config,
           keyring,
         });
@@ -1347,6 +1392,8 @@ export function createSyncEngine(options: {
       case "purge-trash":
       case "set-order":
       case "set-settings":
+      case "add-share":
+      case "remove-share":
         return false;
     }
   }
@@ -1381,6 +1428,7 @@ export function createSyncEngine(options: {
       remote.trash,
       remote.order,
       remote.tags,
+      remote.shares,
     );
     const newConflicts = merged.conflicts.map((conflict) =>
       toHeldConflict(conflict, remote, mergedTree),
@@ -1664,6 +1712,8 @@ export function createSyncEngine(options: {
         case "set-order":
         case "set-settings":
         case "set-color-tag":
+        case "add-share":
+        case "remove-share":
           break;
         default:
           assertNever(change);
@@ -1742,6 +1792,7 @@ export function createSyncEngine(options: {
       synced.trash,
       synced.order,
       synced.tags,
+      synced.shares,
     ).order;
     return {
       kind: "set-order",
@@ -1914,6 +1965,7 @@ export function createSyncEngine(options: {
         synced.trash,
         synced.order,
         synced.tags,
+        synced.shares,
       ).tree;
       const previous = findWorkingNode(before, path);
       const returnsToSaved =
@@ -1922,6 +1974,44 @@ export function createSyncEngine(options: {
     });
     autosave.noteEdited();
     return { ok: true, path };
+  }
+
+  function addShare(entry: ShareEntry): ShareChangeResult {
+    const { synced, workingTree } = state;
+    if (
+      disposed ||
+      suspended ||
+      synced === null ||
+      workingTree === null ||
+      entry.note.state !== "active" ||
+      findWorkingNode(workingTree, entry.note.path)?.kind !== "note"
+    ) {
+      return { ok: false, error: { kind: "notFound" } };
+    }
+    if (!synced.shares.writable) {
+      return { ok: false, error: { kind: "sharesUnavailable" } };
+    }
+    applyStructureChange({ kind: "add-share", entry });
+    return { ok: true };
+  }
+
+  function removeShare(id: string): ShareChangeResult {
+    const { synced, workingTree, shares } = state;
+    if (
+      disposed ||
+      suspended ||
+      synced === null ||
+      workingTree === null ||
+      shares === null
+    ) {
+      return { ok: false, error: { kind: "notFound" } };
+    }
+    if (!synced.shares.writable) {
+      return { ok: false, error: { kind: "sharesUnavailable" } };
+    }
+    if (!shares.entries.has(id)) return { ok: true };
+    applyStructureChange({ kind: "remove-share", id });
+    return { ok: true };
   }
 
   function deleteItem(path: NotePath): StructureResult {
@@ -2181,6 +2271,7 @@ export function createSyncEngine(options: {
         synced.trash,
         synced.order,
         synced.tags,
+        synced.shares,
       );
     } catch (error) {
       if (!(error instanceof RangeError)) throw error;
@@ -2255,6 +2346,8 @@ export function createSyncEngine(options: {
     place,
     delete: deleteItem,
     setColorTag,
+    addShare,
+    removeShare,
     moveFromTrash,
     undoTrash,
     deleteFromTrash: purge,

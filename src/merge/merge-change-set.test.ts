@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { EMPTY_SHARES } from "../share/share-index";
 import { EMPTY_TAGS } from "../tags/tag-index";
 import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { encodeChangeSet } from "../changes/encode-change-set";
@@ -15,6 +16,12 @@ import {
 import type { TreeEntry } from "../forge/forge-adapter";
 import { FOLDER_MARKER, REPO_CONFIG_PATH, TRASH_DIR } from "../format/v1";
 import { EMPTY_ORDER } from "../order/order-index";
+import {
+  applyChangeToShares,
+  type ShareEntry,
+  type ShareIndex,
+  type ShareNoteLocation,
+} from "../share/share-index";
 import type { ColorTag } from "../tags/color-tag";
 import { buildWorkingTree } from "../sync/working-tree";
 import { buildTrashIndex, type TrashEntry } from "../trash/trash-index";
@@ -184,7 +191,7 @@ async function runCase(mergeCase: MergeCase): Promise<MergeChangeSetResult> {
         { path: REPO_CONFIG_PATH, type: "blob", sha: "sha-config" },
       ],
       changeSet: result.changeSet,
-      order: EMPTY_ORDER, tags: EMPTY_TAGS,
+      order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
       keyring,
       config: REPO_CONFIG,
     }),
@@ -273,6 +280,25 @@ const setColorTag = (path: string, color: ColorTag | null = "red"): Change => ({
   kind: "set-color-tag",
   path: split(path),
   color,
+});
+
+const shareEntry = (id: string, note: ShareNoteLocation): ShareEntry => ({
+  id,
+  locator: { provider: "github", gistId: `gist-${id}`, revision: "rev" },
+  linkSecret: "secret",
+  password: null,
+  name: "n",
+  sharedAt: "2026-01-01T00:00:00.000Z",
+  note,
+  source: { commit: "c", storedPath: "s", blobSha: "b" },
+});
+const addShare = (path: string, id = "share-1"): Change => ({
+  kind: "add-share",
+  entry: shareEntry(id, { state: "active", path: split(path) }),
+});
+const sharedAt = (note: ShareNoteLocation, id = "share-1"): Change => ({
+  kind: "add-share",
+  entry: shareEntry(id, note),
 });
 
 const entryId = (depth: number, suffix: string): string =>
@@ -1061,6 +1087,90 @@ const cases: MergeCase[] = [
     },
   },
   {
+    name: "keeps the path of a share added to a note unchanged remotely",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "n.md": "n" } },
+    changeSet: [FILLER, addShare("n.md")],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER, addShare("n.md")]);
+    },
+  },
+  {
+    name: "moves a share to the remote rename of its note",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "renamed.md": "n" } },
+    changeSet: [FILLER, addShare("n.md")],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER, addShare("renamed.md")]);
+    },
+  },
+  {
+    name: "moves a share to the remote move of its note into a folder",
+    base: { notes: { "n.md": "n", "f/x.md": "x" } },
+    remote: { notes: { "f/n.md": "n", "f/x.md": "x" } },
+    changeSet: [FILLER, addShare("n.md")],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER, addShare("f/n.md")]);
+    },
+  },
+  {
+    name: "makes a share follow a local rename in the same change set",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "n.md": "n" } },
+    changeSet: [renameNote("n.md", "m.md"), addShare("m.md")],
+    check(result) {
+      expect(result.changeSet).toEqual(this.changeSet);
+    },
+  },
+  {
+    name: "marks a share trashed when its note was trashed remotely",
+    base: { notes: { "n.md": "n", "m.md": "m" } },
+    remote: {
+      notes: { "m.md": "m" },
+      trash: { [E1]: { notes: { "n.md": "n" } } },
+    },
+    changeSet: [FILLER, addShare("n.md")],
+    check(result) {
+      expect(result.changeSet).toEqual([
+        FILLER,
+        sharedAt({ state: "trashed", entryId: E1, path: [] }),
+      ]);
+    },
+  },
+  {
+    name: "marks a share trashed inside a folder trashed remotely",
+    base: { notes: { "f/g/n.md": "n", "m.md": "m" } },
+    remote: {
+      notes: { "m.md": "m" },
+      trash: { [E1]: { notes: { "f/g/n.md": "n" } } },
+    },
+    changeSet: [FILLER, addShare("f/g/n.md")],
+    check(result) {
+      expect(result.changeSet).toEqual([
+        FILLER,
+        sharedAt({ state: "trashed", entryId: E1, path: ["g", "n.md"] }),
+      ]);
+    },
+  },
+  {
+    name: "marks a share deleted when its note was deleted remotely",
+    base: { notes: { "n.md": "n", "m.md": "m" } },
+    remote: { notes: { "m.md": "m" } },
+    changeSet: [FILLER, addShare("n.md")],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER, sharedAt({ state: "deleted" })]);
+    },
+  },
+  {
+    name: "passes a remove-share through unchanged",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "m.md": "m" } },
+    changeSet: [FILLER, { kind: "remove-share", id: "share-1" }],
+    check(result) {
+      expect(result.changeSet).toEqual(this.changeSet);
+    },
+  },
+  {
     name: "passes a set-settings change through unchanged without a notice",
     base: { notes: { "n.md": BASE_TEXT } },
     remote: { notes: { "n.md": THEIRS_TEXT } },
@@ -1119,6 +1229,35 @@ describe("mergeChangeSet", () => {
         expect(preserved, `${mergeCase.name}: ${content}`).toBe(true);
       }
     }
+  });
+
+  it("produces no notices or conflicts for shares", async () => {
+    for (const mergeCase of cases) {
+      if (!mergeCase.changeSet.some((change) => change.kind.endsWith("-share"))) {
+        continue;
+      }
+      const result = await runCase(mergeCase);
+      expect(result.notices, mergeCase.name).toEqual([]);
+      expect(result.conflicts, mergeCase.name).toEqual([]);
+    }
+  });
+
+  it("keeps a local share alongside a share added concurrently remotely", async () => {
+    const result = await runCase({
+      name: "concurrent shares",
+      base: { notes: { "n.md": "n" } },
+      remote: { notes: { "n.md": "n" } },
+      changeSet: [FILLER, addShare("n.md", "local")],
+      check() {},
+    });
+    const remoteShares: ShareIndex = {
+      writable: true,
+      entries: new Map([
+        ["remote", shareEntry("remote", { state: "active", path: ["n.md"] })],
+      ]),
+    };
+    const merged = result.changeSet.reduce(applyChangeToShares, remoteShares);
+    expect([...merged.entries.keys()].sort()).toEqual(["local", "remote"]);
   });
 
   it("reports notices only as information alongside the output", async () => {

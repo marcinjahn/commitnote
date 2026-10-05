@@ -38,6 +38,13 @@ describe("describeStructureError", () => {
       "Color tags can't be changed because the stored tags can't be read.",
     );
   });
+
+  it("describes an unreadable stored share index", () => {
+    const error: StructureError = { kind: "sharesUnavailable" };
+    expect(describeStructureError(error)).toBe(
+      "Shared links can't be changed because the stored list of shared links can't be read.",
+    );
+  });
 });
 
 describe("describeMovedTo", () => {
