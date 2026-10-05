@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openNotes, showTree } from "./helpers";
+import { openNotes, showTree, flushPendingSaves } from "./helpers";
 
 
 function nameField(page: Page) {
@@ -30,6 +30,7 @@ test("renaming a note with Enter updates the tree and syncs", async ({
   await nameField(page).press("Enter");
 
   await expect(nameField(page)).toHaveValue("Greetings");
+  await flushPendingSaves(page);
   await expect(headerIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });

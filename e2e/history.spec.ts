@@ -1,9 +1,10 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openNotes, showTree, fakeForge } from "./helpers";
+import { openNotes, showTree, fakeForge, flushPendingSaves } from "./helpers";
 
 
 async function waitForSynced(page: Page): Promise<void> {
+  await flushPendingSaves(page);
   await expect(page.locator("header.note-header").getByRole("img")).toHaveCount(
     0,
     { timeout: 15_000 },

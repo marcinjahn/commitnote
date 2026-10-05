@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openNotes, showTree, handOverRepo } from "./helpers";
+import { openNotes, showTree, handOverRepo, flushPendingSaves } from "./helpers";
 
 const T0 = new Date("2026-03-12T10:00:00+01:00");
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -25,6 +25,7 @@ function treeItem(page: Page, name: string) {
 }
 
 async function waitForSynced(page: Page): Promise<void> {
+  await flushPendingSaves(page);
   await expect(page.locator("header.note-header").getByRole("img")).toHaveCount(
     0,
     { timeout: 15_000 },
@@ -383,7 +384,7 @@ test.describe("with GitHub-like forge latency", () => {
     await treeItem(page, "Welcome").click();
     await expect(details(page)).toContainText("Created 12 Mar 2026");
     const now = await page.evaluate(() => Date.now());
-    await page.clock.pauseAt(now + 5);
+    await page.clock.pauseAt(now + 250);
     await treeItem(page, "Fresh").click();
     await expect(details(page)).toContainText("Not saved yet");
 

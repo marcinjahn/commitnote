@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { openNotes } from "./helpers";
+import { openNotes, flushPendingSaves } from "./helpers";
 
 
 test("opening a note shows the editor by default, unfocused", { tag: "@mobile" }, async ({
@@ -30,6 +30,7 @@ test("editing the note autosaves, and the edit is there after reopening it", asy
   const header = page.locator("header.note-header");
   const syncIcon = header.getByRole("img");
   await expect(syncIcon).toBeVisible();
+  await flushPendingSaves(page);
   await expect(syncIcon).toHaveCount(0, { timeout: 10_000 });
 
   await page.getByRole("treeitem", { name: "Zażółć gęślą jaźń" }).click();

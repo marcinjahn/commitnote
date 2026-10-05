@@ -1,6 +1,6 @@
 import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { expectTree, openNotes, showTree } from "./helpers";
+import { expectTree, openNotes, showTree, flushPendingSaves } from "./helpers";
 
 
 async function openWelcome(page: Page): Promise<void> {
@@ -40,6 +40,7 @@ test("toggling a task checkbox autosaves without focusing the editor", { tag: "@
     await page.evaluate(() => !!document.activeElement?.closest(".cm-content")),
   ).toBe(false);
   await expect(syncIcon).toBeVisible();
+  await flushPendingSaves(page);
   await expect(syncIcon).toHaveCount(0, { timeout: 10_000 });
 
   // The fake forge lives in page memory, so a reload would reseed it; refresh
@@ -55,5 +56,6 @@ test("toggling a task checkbox autosaves without focusing the editor", { tag: "@
   await expect(reopenedTask).toBeChecked();
   await press(reopenedTask, testInfo);
   await expect(reopenedTask).not.toBeChecked();
+  await flushPendingSaves(page);
   await expect(syncIcon).toHaveCount(0, { timeout: 10_000 });
 });

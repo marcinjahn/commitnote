@@ -260,6 +260,18 @@ export async function onFakeForgeReady<Arg>(
   });
 }
 
+export async function flushPendingSaves(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    delete (document as { visibilityState?: unknown }).visibilityState;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+}
+
 export async function showTree(page: Page): Promise<void> {
   const back = page.getByRole("button", { name: "Back to notes" });
   if (await back.isVisible()) {

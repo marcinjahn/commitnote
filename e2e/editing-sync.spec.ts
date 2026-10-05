@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, rowSyncState, SAMPLE, openNotes, logOut, showTree, fakeForge } from "./helpers";
+import { logIn, expectTree, rowSyncState, SAMPLE, openNotes, logOut, showTree, fakeForge, flushPendingSaves } from "./helpers";
 
 
 
@@ -286,6 +286,7 @@ test("a concurrent remote edit at the end of a note merges cleanly", async ({
   await page.keyboard.press("Enter");
 
   await expect(headerIcon(page)).toBeVisible();
+  await flushPendingSaves(page);
   await expect(headerIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });
@@ -324,6 +325,7 @@ test("a conflict is resolved by editing the merged text", async ({ page }) => {
   await page.keyboard.press("Delete");
 
   await expect(headerIcon(page)).toHaveAccessibleName(WAITING);
+  await flushPendingSaves(page);
   await expect(headerIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });

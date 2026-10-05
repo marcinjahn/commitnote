@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { SAMPLE, openNotes } from "./helpers";
+import { SAMPLE, openNotes, flushPendingSaves } from "./helpers";
 
 test("sidebar wordmark and repo label are not clipped", { tag: "@mobile" }, async ({ page }) => {
   await openNotes(page);
@@ -76,6 +76,7 @@ test("the sidebar shows the current commit and follows each save", async ({
   await editor.click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type(" and one more line");
+  await flushPendingSaves(page);
 
   await expect(sha).not.toHaveAttribute("data-sha", before!, {
     timeout: 15_000,
