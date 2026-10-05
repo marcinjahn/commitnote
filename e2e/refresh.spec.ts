@@ -17,7 +17,7 @@ test("there is only one Refresh button", { tag: "@mobile" }, async ({ page }, te
 
 test("clicking Refresh shows a remote change", async ({
   page,
-}, testInfo) => {
+}) => {
   await openNotes(page);
 
   const editRemotely = fakeForge(page).editNote;
@@ -29,9 +29,6 @@ test("clicking Refresh shows a remote change", async ({
   await editRemotely(["Remote note"], "# Remote note");
 
   const remoteNote = page.getByRole("treeitem", { name: "Remote note" });
-  if (testInfo.project.name === "mobile") {
-    await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
-  }
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(remoteNote).toBeVisible();
 });

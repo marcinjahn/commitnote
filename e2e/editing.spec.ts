@@ -5,15 +5,34 @@ import { headerSyncIcon } from "./helpers/tree";
 
 test("opening a note shows the editor by default, unfocused", { tag: "@mobile" }, async ({
   page,
-}) => {
+}, testInfo) => {
   await openNotes(page);
 
-  await page.getByRole("treeitem", { name: "Welcome" }).click();
+  const welcomeItem = page.getByRole("treeitem", { name: "Welcome" });
+  const welcomeRow = welcomeItem.locator("xpath=ancestor::li[1]");
+  await expect(welcomeRow.getByRole("img")).toHaveCount(0);
+
+  await welcomeItem.click();
 
   const editor = page.getByRole("textbox", { name: "Note editor" });
   await expect(editor).toBeVisible();
   await expect(editor).toContainText("Welcome");
+  await expect(editor).toContainText("commitnote project");
+  await expect(editor).toContainText("Column A");
   await expect(editor).not.toBeFocused();
+
+  const header = page.locator("header.note-header");
+  await expect(header.getByRole("textbox", { name: "Note name" })).toHaveValue(
+    "Welcome",
+  );
+  await expect(header.getByRole("img")).toHaveCount(0);
+  await expect(header).not.toContainText("Synced");
+
+  // On mobile, opening a note hides the tree entirely, so the selected row
+  // can only be inspected on desktop.
+  if (testInfo.project.name === "desktop") {
+    await expect(welcomeItem).toHaveAttribute("aria-selected", "true");
+  }
 });
 
 test("editing the note autosaves, and the edit is there after reopening it", async ({

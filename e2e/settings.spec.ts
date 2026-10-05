@@ -1,4 +1,4 @@
-import type { Locator, Page, TestInfo } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, showTree, fakeForge, expectFamily, expectedFamily, flushPendingSaves, expectSettingsIdle, MONO_STACK, SERIF_STACK } from "./helpers";
 import { chooseAccent, chooseOption, closeSettings, openSettings, rootAccent, settingsDialog, collectFontFiles } from "./helpers/settings";
@@ -72,7 +72,6 @@ async function addedCommits(
 
 async function createHeaderNote(
   page: Page,
-  testInfo: TestInfo,
   name: string,
 ): Promise<void> {
   await page.getByRole("button", { name: "New note", exact: true }).click();
@@ -80,9 +79,6 @@ async function createHeaderNote(
   await field.fill(name);
   await field.press("Enter");
   await expect(page.getByRole("textbox", { name: "Note editor" })).toBeVisible();
-  if (testInfo.project.name === "mobile") {
-    await page.getByRole("button", { name: "Back to notes" }).click();
-  }
   await expect(page.getByRole("treeitem", { name })).toBeVisible();
 }
 
@@ -328,8 +324,8 @@ test("a saved accent color applies on the passphrase step and after login, and l
 
 test("by default a new note is first and a new folder is last at the root", async ({
   page,
-}, testInfo) => {
-  await createHeaderNote(page, testInfo, "Fresh note");
+}) => {
+  await createHeaderNote(page, "Fresh note");
   await createHeaderFolder(page, "Fresh folder");
 
   await expect(rootRows(page)).toHaveText([
@@ -341,14 +337,14 @@ test("by default a new note is first and a new folder is last at the root", asyn
 
 test("changed placements apply to items created right after closing Settings", async ({
   page,
-}, testInfo) => {
+}) => {
   await openSettings(page);
   await chooseOption(page, "New notes", "At the end");
   await chooseOption(page, "New folders", "After the last folder");
   await page.keyboard.press("Escape");
   await expect(settingsDialog(page)).toHaveCount(0);
 
-  await createHeaderNote(page, testInfo, "Fresh note");
+  await createHeaderNote(page, "Fresh note");
   await createHeaderFolder(page, "Fresh folder");
 
   await expect(rootRows(page)).toHaveText([
@@ -498,15 +494,6 @@ async function expectFontLoaded(page: Page, family: string): Promise<void> {
     .toBe(true);
 }
 
-async function returnToWelcomeIfMobile(
-  page: Page,
-  testInfo: TestInfo,
-): Promise<void> {
-  if (testInfo.project.name === "mobile") {
-    await openWelcome(page);
-  }
-}
-
 test("the Note font section lists eleven options with Inter checked, each label in its own font", async ({
   page,
 }) => {
@@ -572,7 +559,7 @@ test("opening Settings downloads only the regular latin file of each bundled fon
 for (const font of ["Literata", "JetBrains Mono"]) {
   test(`choosing ${font} changes note text and loads the font`, async ({
     page,
-  }, testInfo) => {
+  }) => {
     const { stack, family } = NOTE_FONTS[font];
     await openWelcome(page);
     await showTree(page);
@@ -589,7 +576,6 @@ for (const font of ["Literata", "JetBrains Mono"]) {
       SANS_STACK,
     );
 
-    await returnToWelcomeIfMobile(page, testInfo);
     const content = page.locator(".cm-content");
     await expectFamily(page, content, stack);
     await expectFamily(page, page.locator(".cm-scroller"), stack);
@@ -652,7 +638,7 @@ test("arrow keys move the note font selection", async ({ page }) => {
 
 test("typing after switching the note font lands where the line was clicked", async ({
   page,
-}, testInfo) => {
+}) => {
   await openWelcome(page);
   const content = page.locator(".cm-content");
   await content.click();
@@ -664,7 +650,6 @@ test("typing after switching the note font lands where the line was clicked", as
   await openSettings(page);
   await chooseOption(page, "Note font", "Literata");
   await closeSettings(page);
-  await returnToWelcomeIfMobile(page, testInfo);
 
   await expect(content).toContainText("MARKER");
   await expectFamily(page, content, NOTE_FONTS.Literata.stack);

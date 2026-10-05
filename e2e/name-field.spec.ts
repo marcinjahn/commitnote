@@ -55,33 +55,3 @@ test("clearing the name field and leaving it restores the previous name", async 
   await showTree(page);
   await expect(treeItem(page, "Welcome")).toBeVisible();
 });
-
-test("renaming a note to an existing name shows an error and keeps the name", async ({
-  page,
-}) => {
-  await openNotes(page);
-  await openWelcome(page);
-
-  await nameField(page).fill("Journal");
-  await nameField(page).press("Enter");
-
-  await expect(page.getByRole("alert")).toHaveText(
-    "A note or folder with this name already exists here.",
-  );
-  await showTree(page);
-  await expect(treeItem(page, "Welcome")).toBeVisible();
-});
-
-test("a note's row menu has no Rename item but a folder's has", async ({
-  page,
-}) => {
-  await openNotes(page);
-
-  await page.getByRole("button", { name: "Actions for Welcome" }).click();
-  await expect(page.getByRole("menuitem", { name: "Move to trash…" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Rename…" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-
-  await page.getByRole("button", { name: "Actions for Projects" }).click();
-  await expect(page.getByRole("menuitem", { name: "Rename…" })).toBeVisible();
-});

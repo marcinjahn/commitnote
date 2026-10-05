@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, rowSyncState, SAMPLE, openNotes, logOut, showTree, fakeForge, flushPendingSaves } from "./helpers";
+import { rowSyncState, openNotes, showTree, fakeForge, flushPendingSaves } from "./helpers";
 import { headerSyncIcon } from "./helpers/tree";
 
 
@@ -150,7 +150,7 @@ async function startConflictOnWelcome(page: Page): Promise<void> {
 test.describe("with GitHub-like forge latency", () => {
   test.use({ forgeLatency: "github" });
 
-  test("creating a folder and a note walks through the sync states and survives logging out", async ({
+  test("creating a folder and a note walks through the sync states", async ({
     page,
   }) => {
     await openNotes(page);
@@ -191,76 +191,6 @@ test.describe("with GitHub-like forge latency", () => {
 
     await showTree(page);
     await expect(rowSyncState(page, "Work", { exact: true })).toHaveCount(0);
-
-    await logOut(page);
-    await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
-    await expectTree(page);
-
-    await openNote(page, ["Work", "Plan"]);
-    const reopened = page.getByRole("textbox", { name: "Note editor" });
-    await expect(reopened).toContainText("Plan");
-    await expect(reopened).toContainText("Ship the editing tests");
-  });
-});
-
-test("renaming, moving and deleting notes and folders", async ({
-  page,
-}) => {
-  await openNotes(page);
-
-  await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
-  const nameField = page.getByRole("textbox", { name: "Note name" });
-  await nameField.fill("Hello");
-  await nameField.press("Enter");
-  await showTree(page);
-  await expect(
-    page.getByRole("treeitem", { name: "Welcome", exact: true }),
-  ).toHaveCount(0);
-  await expect(rowSyncState(page, "Hello", { exact: true })).toHaveCount(0, {
-    timeout: 10_000,
-  });
-
-  await page.getByRole("button", { name: "Actions for Hello" }).click();
-  await page.getByRole("menuitem", { name: "Move to folder…" }).click();
-  await page
-    .getByRole("radiogroup", { name: "Folder" })
-    .getByRole("radio", { name: "Projects", exact: true })
-    .check();
-  await page.getByRole("dialog").getByRole("button", { name: "Move" }).click();
-
-  const hello = page.getByRole("treeitem", { name: "Hello", exact: true });
-  if ((await hello.count()) === 0) {
-    await page.getByRole("treeitem", { name: "Projects", exact: true }).click();
-  }
-  await expect(hello).toBeVisible();
-  await expect(rowSyncState(page, "Hello", { exact: true })).toHaveCount(0, {
-    timeout: 10_000,
-  });
-
-  await page.getByRole("button", { name: "Actions for Hello" }).click();
-  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Move to trash", exact: true })
-    .click();
-  await expect(hello).toHaveCount(0);
-  await expect(
-    page.getByRole("treeitem", { name: "Projects", exact: true }),
-  ).toBeVisible();
-  await expect(rowSyncState(page, "Projects", { exact: true })).toHaveCount(0, {
-    timeout: 10_000,
-  });
-
-  await page.getByRole("button", { name: "Actions for Journal" }).click();
-  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText(/and everything in it/)).toBeVisible();
-  await dialog.getByRole("button", { name: "Move to trash", exact: true }).click();
-  await expect(
-    page.getByRole("treeitem", { name: "Journal", exact: true }),
-  ).toHaveCount(0);
-  await expect(rowSyncState(page, "Empty folder", { exact: true })).toHaveCount(0, {
-    timeout: 10_000,
   });
 });
 

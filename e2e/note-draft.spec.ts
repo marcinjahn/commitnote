@@ -26,14 +26,12 @@ async function expectEmptyDraft(page: Page): Promise<void> {
 
 test("a draft opened from the header button is created by typing a name and pressing Enter", async ({
   page,
-}, testInfo) => {
+}) => {
   await openNotes(page);
 
   await page.getByRole("button", { name: "New note", exact: true }).click();
   await expectEmptyDraft(page);
-  if (testInfo.project.name === "desktop") {
-    await expect(treeItem(page, "Fresh idea")).toHaveCount(0);
-  }
+  await expect(treeItem(page, "Fresh idea")).toHaveCount(0);
 
   await nameField(page).fill("Fresh idea");
   await nameField(page).press("Enter");

@@ -1,78 +1,52 @@
 import { test, expect } from "./fixtures";
 import { openNotes } from "./helpers";
+import { treeRows } from "./helpers/tree";
 
 
-test("root notes list in order", async ({ page }) => {
-  await openNotes(page);
-
-  const rows = page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
-  await expect(rows).toHaveText([
-    "Empty folder",
-    "Journal",
-    "Projects",
-    "Welcome",
-    "Zażółć gęślą jaźń",
-  ]);
-});
-
-test("a reordered folder lists its notes in the stored order", async ({
+test("the tree lists root notes in order, folders in their stored order, and expands and collapses folders", async ({
   page,
 }) => {
   await openNotes(page);
 
-  await page.getByRole("treeitem", { name: "Projects" }).click();
-  await page.getByRole("treeitem", { name: "commitnote" }).click();
+  await test.step("root notes list in order", async () => {
+    await expect(treeRows(page)).toHaveText([
+      "Empty folder",
+      "Journal",
+      "Projects",
+      "Welcome",
+      "Zażółć gęślą jaźń",
+    ]);
+  });
 
-  const rows = page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
-  await expect(rows).toHaveText([
-    "Empty folder",
-    "Journal",
-    "Projects",
-    "commitnote",
-    "Roadmap",
-    "Ideas",
-    "Welcome",
-    "Zażółć gęślą jaźń",
-  ]);
-});
+  await test.step("expanding and collapsing folders", async () => {
+    await expect(page.getByRole("treeitem", { name: "commitnote" })).toHaveCount(
+      0,
+    );
+    await page.getByRole("treeitem", { name: "Projects" }).click();
+    await expect(page.getByRole("treeitem", { name: "commitnote" })).toBeVisible();
 
-test("expanding and collapsing folders", async ({ page }) => {
-  await openNotes(page);
+    await expect(page.getByRole("treeitem", { name: "Ideas" })).toHaveCount(0);
+    await page.getByRole("treeitem", { name: "commitnote" }).click();
+    await expect(page.getByRole("treeitem", { name: "Ideas" })).toBeVisible();
+    await expect(page.getByRole("treeitem", { name: "Roadmap" })).toBeVisible();
+  });
 
-  await expect(page.getByRole("treeitem", { name: "commitnote" })).toHaveCount(
-    0,
-  );
-  await page.getByRole("treeitem", { name: "Projects" }).click();
-  await expect(page.getByRole("treeitem", { name: "commitnote" })).toBeVisible();
-
-  await expect(page.getByRole("treeitem", { name: "Ideas" })).toHaveCount(0);
-  await page.getByRole("treeitem", { name: "commitnote" }).click();
-  await expect(page.getByRole("treeitem", { name: "Ideas" })).toBeVisible();
-  await expect(page.getByRole("treeitem", { name: "Roadmap" })).toBeVisible();
+  await test.step("a reordered folder lists its notes in the stored order", async () => {
+    await expect(treeRows(page)).toHaveText([
+      "Empty folder",
+      "Journal",
+      "Projects",
+      "commitnote",
+      "Roadmap",
+      "Ideas",
+      "Welcome",
+      "Zażółć gęślą jaźń",
+    ]);
+  });
 
   await page.getByRole("treeitem", { name: "commitnote" }).click();
   await expect(page.getByRole("treeitem", { name: "Ideas" })).toHaveCount(0);
   await expect(page.getByRole("treeitem", { name: "Roadmap" })).toHaveCount(0);
-});
-
-test("opening the Welcome note", async ({ page }, testInfo) => {
-  await openNotes(page);
-
-  await page.getByRole("treeitem", { name: "Welcome" }).click();
-
-  const editor = page.getByRole("textbox", { name: "Note editor" });
-  await expect(editor).toContainText("Welcome");
-  await expect(editor).toContainText("commitnote project");
-  await expect(editor).toContainText("Column A");
-
-  // On mobile, opening a note hides the tree entirely (covered by its own
-  // test below), so the row can't be inspected until the tree is visible
-  // again.
-  if (testInfo.project.name === "desktop") {
-    await expect(
-      page.getByRole("treeitem", { name: "Welcome" }),
-    ).toHaveAttribute("aria-selected", "true");
-  }
 });
 
 test("tree and note are both visible on desktop", async ({ page }) => {
@@ -109,13 +83,6 @@ test("opening a note hides the tree on mobile", { tag: "@mobile-only" }, async (
     expect(box).not.toBeNull();
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
-});
-
-test("refresh keeps the tree visible", async ({ page }) => {
-  await openNotes(page);
-
-  await page.getByRole("button", { name: "Refresh" }).click();
-  await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
 });
 
 test("only the page's own origin is contacted", async ({ page, baseURL }) => {

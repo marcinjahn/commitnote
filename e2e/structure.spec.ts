@@ -9,13 +9,11 @@ test("creating, renaming, moving and deleting through row menus", async ({
 }) => {
   await openNotes(page);
 
-  // Create a folder at the top level.
   await page.getByRole("button", { name: "New folder" }).click();
   await page.getByLabel("Folder name").fill("Recipes");
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: "Recipes" })).toBeVisible();
 
-  // Create a note inside it through its row menu; it opens in the editor.
   await page.getByRole("button", { name: "Actions for Recipes" }).click();
   await page.getByRole("menuitem", { name: "New note…" }).click();
   const firstName = page.getByRole("textbox", { name: "Note name" });
@@ -73,7 +71,22 @@ test("creating, renaming, moving and deleting through row menus", async ({
   ).toBeVisible();
   await expect(rowSyncState(page, "Grocery List")).toHaveCount(0);
 
-  // Move it to the top level.
+  await page.getByRole("button", { name: "Actions for Grocery List" }).click();
+  await page.getByRole("menuitem", { name: "Move to folder…" }).click();
+  await page
+    .getByRole("radiogroup", { name: "Folder" })
+    .getByRole("radio", { name: "Projects", exact: true })
+    .check();
+  await page.getByRole("dialog").getByRole("button", { name: "Move" }).click();
+  const grocery = page.getByRole("treeitem", { name: "Grocery List", exact: true });
+  if ((await grocery.count()) === 0) {
+    await page.getByRole("treeitem", { name: "Projects", exact: true }).click();
+  }
+  await expect(grocery).toBeVisible();
+  await expect(rowSyncState(page, "Grocery List", { exact: true })).toHaveCount(0, {
+    timeout: 10_000,
+  });
+
   await page.getByRole("button", { name: "Actions for Grocery List" }).click();
   await page.getByRole("menuitem", { name: "Move to folder…" }).click();
   await expect(page.getByRole("dialog").getByRole("radio").first()).toBeFocused();
@@ -81,7 +94,6 @@ test("creating, renaming, moving and deleting through row menus", async ({
   await page.getByRole("button", { name: "Move" }).click();
   await expect(rowSyncState(page, "Grocery List")).toHaveCount(0);
 
-  // Delete it after confirming.
   await page.getByRole("button", { name: "Actions for Grocery List" }).click();
   await page.getByRole("menuitem", { name: "Move to trash…" }).click();
   await expect(page.getByRole("heading", { name: "Move to trash?" })).toBeVisible();
@@ -97,8 +109,10 @@ test("creating, renaming, moving and deleting through row menus", async ({
   await page.getByRole("button", { name: "Move to trash", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: "Recipes" })).toHaveCount(0);
 
-  // Everything settles back to synced afterwards.
   await expect(rowSyncState(page, "Welcome")).toHaveCount(0);
+  await expect(rowSyncState(page, "Projects", { exact: true })).toHaveCount(0, {
+    timeout: 10_000,
+  });
 });
 
 test("right-click on a row opens its menu", async ({ page }) => {
