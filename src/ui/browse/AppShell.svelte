@@ -200,13 +200,33 @@
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
   let notePaneEl: HTMLElement | undefined = $state();
-  let refreshMessages = $state<readonly ToastMessage[]>([]);
+  type ToastChannel =
+    | "refresh"
+    | "export"
+    | "trash"
+    | "place"
+    | "import"
+    | "history"
+    | "session";
+  const TOAST_ORDER = [
+    "refresh",
+    "export",
+    "trash",
+    "place",
+    "import",
+    "history",
+    "session",
+  ] as const satisfies readonly ToastChannel[];
+  let toasts = $state<Partial<Record<ToastChannel, ToastMessage>>>(
+    untrack(() =>
+      initialMessage === null
+        ? {}
+        : { session: { id: -1, text: initialMessage } },
+    ),
+  );
   let nextMessageId = 0;
   let exporting = $state(false);
-  let exportMessages = $state<readonly ToastMessage[]>([]);
   const UNDO_TOAST_MS = 8_000;
-  let trashMessages = $state<readonly ToastMessage[]>([]);
-  let placeMessages = $state<readonly ToastMessage[]>([]);
   let importInput: HTMLInputElement | undefined = $state();
   let reading = $state(false);
   let importDialog = $state<{
@@ -217,7 +237,6 @@
     readonly summary: ImportSummary;
     retryingShown: boolean;
   } | null>(null);
-  let importMessages = $state<readonly ToastMessage[]>([]);
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
   let settingsOpen = $state(false);
@@ -225,18 +244,27 @@
     readonly path: NotePath;
     readonly phase: HistoryPhase;
   } | null>(null);
-  let historyMessages = $state<readonly ToastMessage[]>([]);
   interface UndoGuard {
     readonly id: number;
     readonly path: NotePath;
     readonly content: string;
   }
   let undoGuard = $state<UndoGuard | null>(null);
-  let sessionMessages = $state<readonly ToastMessage[]>(
-    untrack(() =>
-      initialMessage === null ? [] : [{ id: -1, text: initialMessage }],
-    ),
-  );
+
+  function showToast(
+    channel: ToastChannel,
+    text: string,
+    extra?: Omit<ToastMessage, "id" | "text">,
+  ): number {
+    const id = ++nextMessageId;
+    toasts[channel] = { id, text, ...extra };
+    return id;
+  }
+
+  function clearToast(channel: ToastChannel, id?: number): void {
+    if (id === undefined || toasts[channel]?.id === id) delete toasts[channel];
+  }
+
   let atomicBlockedSeen = false;
 
   $effect(() => {
@@ -539,15 +567,10 @@
     historyDialog = null;
     const restoredPath = result.path;
     const restored = engine.getState().openNote;
-    const id = ++nextMessageId;
-    undoGuard =
-      restored?.kind === "loaded"
-        ? { id, path: restored.path, content: restored.content }
-        : null;
-    historyMessages = [
+    const id = showToast(
+      "history",
+      describeRestored(version.committedAt, Date.now()),
       {
-        id,
-        text: describeRestored(version.committedAt, Date.now()),
         durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
@@ -560,7 +583,11 @@
             ),
         },
       },
-    ];
+    );
+    undoGuard =
+      restored?.kind === "loaded"
+        ? { id, path: restored.path, content: restored.content }
+        : null;
     return null;
   }
 
@@ -577,7 +604,7 @@
 
   function dismissUndo(id: number): void {
     if (undoGuard?.id === id) undoGuard = null;
-    historyMessages = historyMessages.filter((message) => message.id !== id);
+    clearToast("history", id);
   }
 
   $effect(() => {
@@ -604,9 +631,8 @@
     }
     undoGuard = null;
     const result = setNoteState(path, content, name);
-    historyMessages = result.ok
-      ? []
-      : [{ id: ++nextMessageId, text: result.message }];
+    if (result.ok) clearToast("history");
+    else showToast("history", result.message);
   }
 
   $effect(() => {
@@ -769,7 +795,7 @@
   function showRefreshError(text: string): void {
     // The inline alert explains an empty sidebar; a toast would repeat it.
     if (tree === null) return;
-    refreshMessages = [{ id: ++nextMessageId, text }];
+    showToast("refresh", text);
   }
 
   async function handleRefresh(): Promise<boolean> {
@@ -781,7 +807,7 @@
     }
     const error = engine.getState().refresh.lastError;
     if (error === null) {
-      refreshMessages = [];
+      clearToast("refresh");
       return true;
     }
     showRefreshError(describeSyncError(error, forgeName));
@@ -792,18 +818,18 @@
     const snapshot = engine.snapshotNotes();
     if (snapshot === null || exporting) return;
     exporting = true;
-    exportMessages = [];
+    clearToast("export");
     try {
       await downloadNotesArchive(snapshot);
     } catch {
-      exportMessages = [{ id: ++nextMessageId, text: "Export failed. Try again later." }];
+      showToast("export", "Export failed. Try again later.");
     } finally {
       exporting = false;
     }
   }
 
   function showImportMessage(text: string): void {
-    importMessages = [{ id: ++nextMessageId, text }];
+    showToast("import", text);
   }
 
   $effect(() => {
@@ -855,7 +881,7 @@
     const file = input.files?.[0];
     input.value = "";
     if (file === undefined || reading) return;
-    importMessages = [];
+    clearToast("import");
     if (file.size > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
       showImportMessage(describeArchiveError("tooLarge"));
       return;
@@ -1072,51 +1098,38 @@
   function handlePlace(path: NotePath, target: DropTarget): NotePath | null {
     const from = parentPath(path);
     const name = noteName(path);
-    const folder = tree === null ? undefined : findWorkingNode(tree, from);
-    const siblings =
-      folder?.kind === "folder" ? folder.children.map((child) => child.name) : [];
+    const siblings = siblingNamesOf(from);
     const previousBefore = siblings[siblings.indexOf(name) + 1] ?? null;
 
     const result = engine.place(path, target);
     if (!result.ok) {
-      placeMessages = [
-        { id: ++nextMessageId, text: describeStructureError(result.error) },
-      ];
+      showToast("place", describeStructureError(result.error));
       return null;
     }
     const placed = result.path;
-    placeMessages = notePathEquals(from, target.parent)
-      ? []
-      : [
-          {
-            id: ++nextMessageId,
-            text: describeMovedTo(name, target.parent),
-            durationMs: UNDO_TOAST_MS,
-            action: {
-              label: "Undo",
-              run: () =>
-                handleUndoPlace(placed, { parent: from, before: previousBefore }),
-            },
-          },
-        ];
+    if (notePathEquals(from, target.parent)) {
+      clearToast("place");
+    } else {
+      showToast("place", describeMovedTo(name, target.parent), {
+        durationMs: UNDO_TOAST_MS,
+        action: {
+          label: "Undo",
+          run: () =>
+            handleUndoPlace(placed, { parent: from, before: previousBefore }),
+        },
+      });
+    }
     return placed;
   }
 
   function handleUndoPlace(path: NotePath, target: DropTarget): void {
     const result = engine.place(path, target);
-    placeMessages = result.ok
-      ? []
-      : [{ id: ++nextMessageId, text: describeStructureError(result.error) }];
+    if (result.ok) clearToast("place");
+    else showToast("place", describeStructureError(result.error));
   }
 
   function dismissMessage(id: number): void {
-    refreshMessages = refreshMessages.filter((message) => message.id !== id);
-    exportMessages = exportMessages.filter((message) => message.id !== id);
-    trashMessages = trashMessages.filter((message) => message.id !== id);
-    placeMessages = placeMessages.filter((message) => message.id !== id);
-    importMessages = importMessages.filter((message) => message.id !== id);
-    historyMessages = historyMessages.filter((message) => message.id !== id);
-    sessionMessages = sessionMessages.filter((message) => message.id !== id);
+    for (const channel of TOAST_ORDER) clearToast(channel, id);
   }
 
   function openTrash(): void {
@@ -1155,9 +1168,7 @@
   function handleUndoTrash(entryId: string, reopen: NotePath | null): void {
     const result = engine.undoTrash(entryId);
     if (!result.ok) {
-      trashMessages = [
-        { id: ++nextMessageId, text: describeUndoError(result.error) },
-      ];
+      showToast("trash", describeUndoError(result.error));
       return;
     }
     const open = engine.getState().openNote;
@@ -1186,20 +1197,15 @@
     const { trashEntryId } = result;
     const reopen = affectsOpenNote ? openPath : null;
     if (trashEntryId !== undefined) {
-      trashMessages = [
-        {
-          id: ++nextMessageId,
-          text: describeMovedToTrash(name),
-          durationMs: UNDO_TOAST_MS,
-          action: {
-            label: "Undo",
-            run: () =>
-              handleUndoTrash(trashEntryId, reopen),
-          },
+      showToast("trash", describeMovedToTrash(name), {
+        durationMs: UNDO_TOAST_MS,
+        action: {
+          label: "Undo",
+          run: () => handleUndoTrash(trashEntryId, reopen),
         },
-      ];
+      });
     } else {
-      trashMessages = [];
+      clearToast("trash");
     }
     if (affectsOpenNote) {
       mobileView = "tree";
@@ -1372,15 +1378,7 @@
 
 <NoticeToasts
   notices={engineState.notices}
-  messages={[
-    ...refreshMessages,
-    ...exportMessages,
-    ...trashMessages,
-    ...placeMessages,
-    ...importMessages,
-    ...historyMessages,
-    ...sessionMessages,
-  ]}
+  messages={TOAST_ORDER.flatMap((channel) => toasts[channel] ?? [])}
   onDismiss={(id) => engine.dismissNotice(id)}
   onDismissMessage={dismissMessage}
   onOpen={handleSelect}
