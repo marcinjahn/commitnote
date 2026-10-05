@@ -4,6 +4,7 @@
   import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
   import type { HeldConflict, SyncEngine, SyncEngineState } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
+  import { systemClock } from "../../sync/clock";
   import {
     applySettingsEdits,
     resolveSettings,
@@ -13,7 +14,7 @@
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { NoteFont } from "../../settings/note-font";
   import type { NoteHistory, NoteVersion } from "../../history/note-history";
-  import type { NoteDates, NoteDatesResolver } from "../../history/note-dates";
+  import type { NoteDatesResolver } from "../../history/note-dates";
   import type { RestorePlan } from "../../history/plan-restore";
   import { validateName } from "../../tree/note-names";
   import { describeNameError } from "../dialogs/name-messages";
@@ -70,6 +71,7 @@
   import { decideNameCommit } from "../note/name-field-commit";
   import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
   import NotePane from "../note/NotePane.svelte";
+  import { createNoteDatesView, type ShownNoteDates } from "../note/note-dates-view";
   import { derivePrintNote, type PrintNote } from "../print/print-note";
   import type { ToastMessage } from "../notices/notice-messages";
   import NoticeToasts from "../notices/NoticeToasts.svelte";
@@ -386,16 +388,21 @@
 
   const NOTE_DATES_DEBOUNCE_MS = 3000;
 
-  let shownDates = $state<{ path: NotePath; dates: NoteDates } | null>(null);
-  // Any change of the loaded note's path starts a new opening: a different
-  // note, or the same note relocated. The dates cache for a path is trusted
-  // only when the note was opened from its committed blob and the entry was
-  // resolved for that blob; otherwise the entry may belong to an earlier note
-  // at that path.
-  let openingKey: string | null = null;
-  let opening = 0;
-  let openingHandled = false;
-  let openingTrustsCache = false;
+  let shownDates = $state<ShownNoteDates | null>(null);
+  const noteDatesView = createNoteDatesView({
+    // Reads the prop on every call: a passphrase change swaps the resolver
+    // without remounting the shell.
+    resolver: {
+      cached: (path) => noteDatesResolver.cached(path),
+      forget: (path) => noteDatesResolver.forget(path),
+      resolve: (path, head, blobSha) => noteDatesResolver.resolve(path, head, blobSha),
+    },
+    clock: systemClock,
+    debounceMs: NOTE_DATES_DEBOUNCE_MS,
+    onShow: (shown) => {
+      shownDates = shown;
+    },
+  });
 
   const loadedKey = $derived(
     engineState.openNote?.kind === "loaded" ? engineState.openNote.path.join("/") : null,
@@ -419,53 +426,15 @@
   });
 
   $effect(() => {
-    const key = loadedKey;
-    const blobSha = loadedBlobSha;
-    const idle = saveIdle;
-    if (key !== openingKey) {
-      openingTrustsCache = openingKey === null && blobSha !== null;
-      openingKey = key;
-      opening += 1;
-      openingHandled = false;
-      shownDates = null;
-    }
-    if (key === null || blobSha === null || !headHasOpenNote) return;
     const state = untrack(() => engine.getState());
-    const open = state.openNote;
-    const head = state.synced?.head;
-    if (open?.kind !== "loaded" || head === undefined) return;
-    const path = open.path;
-
-    const justOpened = !openingHandled;
-    openingHandled = true;
-    if (justOpened && noteDatesResolver.cached(path)?.blobSha !== blobSha) {
-      openingTrustsCache = false;
-    }
-    if (!openingTrustsCache) {
-      noteDatesResolver.forget(path);
-      openingTrustsCache = true;
-    }
-    const entry = noteDatesResolver.cached(path);
-    if (entry !== null) shownDates = { path, dates: entry.dates };
-    if (entry?.blobSha === blobSha) return;
-
-    const resolvingFor = opening;
-    const resolve = (): void => {
-      noteDatesResolver.resolve(path, head, blobSha).then(
-        (dates) => {
-          if (resolvingFor === opening) shownDates = { path, dates };
-        },
-        () => {},
-      );
-    };
-
-    if (justOpened || entry === null) {
-      resolve();
-      return;
-    }
-    if (!idle) return;
-    const timer = setTimeout(resolve, NOTE_DATES_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
+    return noteDatesView.update({
+      key: loadedKey,
+      blobSha: loadedBlobSha,
+      idle: saveIdle,
+      headHasOpenNote,
+      open: state.openNote,
+      head: state.synced?.head,
+    });
   });
 
   const historyCurrent = $derived.by(() => {
