@@ -1,6 +1,7 @@
 import { MAIN_BRANCH } from "../../format/v1";
 import { ForgeError } from "../errors";
 import { byPath } from "../forge-http";
+import { gitBlobSha } from "../git-blob-sha";
 import type { CommitFileChange, TreeEntry } from "../forge-adapter";
 
 /** Every object of a repo, in a JSON-serializable form. */
@@ -62,15 +63,7 @@ export class InMemoryGitRepo {
   }
 
   async putBlob(text: string): Promise<string> {
-    const contentBytes = new TextEncoder().encode(text);
-    const header = new TextEncoder().encode(
-      `blob ${contentBytes.byteLength}\0`,
-    );
-    const full = new Uint8Array(header.byteLength + contentBytes.byteLength);
-    full.set(header, 0);
-    full.set(contentBytes, header.byteLength);
-    const digest = await crypto.subtle.digest("SHA-1", full);
-    const sha = toHex(digest);
+    const sha = await gitBlobSha(text);
     this.blobs.set(sha, text);
     return sha;
   }

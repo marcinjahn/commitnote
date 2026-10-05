@@ -23,6 +23,7 @@ import {
   encodeChangeSet,
   encodeChangePassphraseMessage,
   encodeInitializeMessage,
+  encodeUndoOutdatedSaveMessage,
   InvalidChangeSetError,
 } from "./encode-change-set";
 
@@ -500,6 +501,14 @@ describe("encodeInitializeMessage", () => {
   it("equals the pinned literal", () => {
     expect(encodeInitializeMessage()).toBe(
       "commitnote: initialize\n\nCommitnote-Format: 1",
+    );
+  });
+});
+
+describe("encodeUndoOutdatedSaveMessage", () => {
+  it("equals the pinned literal", () => {
+    expect(encodeUndoOutdatedSaveMessage()).toBe(
+      "commitnote: undo save with outdated passphrase\n\nCommitnote-Format: 1",
     );
   });
 });

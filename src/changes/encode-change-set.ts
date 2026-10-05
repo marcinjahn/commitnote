@@ -14,6 +14,7 @@ import {
   SAVE_SUBJECT,
   TRASH_DIR,
   TRAILER,
+  UNDO_OUTDATED_SAVE_SUBJECT,
 } from "../format/v1";
 import { isValidKey } from "../order/fractional-key";
 import {
@@ -355,6 +356,10 @@ function buildMessage(subject: string, trailers: readonly string[]): string {
 
 export function encodeInitializeMessage(): string {
   return buildMessage(INITIALIZE_SUBJECT, []);
+}
+
+export function encodeUndoOutdatedSaveMessage(): string {
+  return buildMessage(UNDO_OUTDATED_SAVE_SUBJECT, []);
 }
 
 export function encodeChangePassphraseMessage(): string {

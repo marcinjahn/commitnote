@@ -84,6 +84,16 @@ export interface RootEntry {
   readonly type: "blob" | "tree";
 }
 
+export function blobShasByPath(
+  entries: readonly TreeEntry[],
+): Map<string, string> {
+  const shas = new Map<string, string>();
+  for (const entry of entries) {
+    if (entry.type === "blob") shas.set(entry.path, entry.sha);
+  }
+  return shas;
+}
+
 /** Adapters may list only this many root entries when a root has more. */
 export const ROOT_LISTING_LIMIT = 20;
 

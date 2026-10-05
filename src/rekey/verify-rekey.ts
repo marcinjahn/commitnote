@@ -2,7 +2,11 @@ import { verifyKeyCheck, type Keyring } from "../crypto/keyring";
 import { decryptName, encryptName } from "../crypto/name-cipher";
 import { decryptNote } from "../crypto/note-cipher";
 import { parseRepoConfig } from "../crypto/repo-config";
-import type { CommitFileChange, TreeEntry } from "../forge/forge-adapter";
+import {
+  blobShasByPath,
+  type CommitFileChange,
+  type TreeEntry,
+} from "../forge/forge-adapter";
 import { NOTE_PREFIX, REPO_CONFIG_PATH } from "../format/v1";
 
 export type RekeyVerificationFailure =
@@ -85,10 +89,7 @@ async function runChecks(input: VerifyRekeyInput): Promise<void> {
   check(await verifyKeyCheck(newKeyring, parsed.config), "keyCheck");
   check(!(await verifyKeyCheck(oldKeyring, parsed.config)), "keyCheck");
 
-  const original = new Map<string, string>();
-  for (const entry of input.listing) {
-    if (entry.type === "blob") original.set(entry.path, entry.sha);
-  }
+  const original = blobShasByPath(input.listing);
 
   const result = new Map<string, ResultContent>();
   for (const [path, sha] of original) result.set(path, { kind: "blob", sha });
