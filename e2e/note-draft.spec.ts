@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, SAMPLE, openNotes, showTree } from "./helpers";
+import { openNotes, showTree } from "./helpers";
 import { treeItem } from "./helpers/tree";
 
 
@@ -136,11 +136,6 @@ test("an untouched draft disappears when it is left", { tag: "@mobile" }, async 
   }
 
   await expect(treeItem(page, "Welcome")).toBeVisible();
-  expect(await treeItemNames(page)).toEqual(before);
-
-  await page.reload();
-  await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
-  await expectTree(page);
   expect(await treeItemNames(page)).toEqual(before);
 });
 

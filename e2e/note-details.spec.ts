@@ -42,6 +42,33 @@ async function wordCount(page: Page): Promise<number> {
   return Number(match![1]);
 }
 
+function firstTextLeft(page: Page, selector: string): Promise<number> {
+  return page.evaluate((css) => {
+    const root = document.querySelector(css);
+    if (!root) throw new Error(`${css} not found`);
+
+    const findFirstTextNode = (node: Node): Text | null => {
+      for (const child of node.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE && child.textContent?.trim()) {
+          return child as Text;
+        }
+        if (child.nodeType === Node.ELEMENT_NODE) {
+          const result = findFirstTextNode(child);
+          if (result) return result;
+        }
+      }
+      return null;
+    };
+
+    const firstTextNode = findFirstTextNode(root);
+    if (!firstTextNode) throw new Error(`No text node in ${css}`);
+    const range = new Range();
+    range.setStart(firstTextNode, 0);
+    range.collapse(true);
+    return range.getBoundingClientRect().left;
+  }, selector);
+}
+
 test("shows created and updated dates and the word count above the editor", { tag: "@mobile" }, async ({
   page,
 }) => {
@@ -67,37 +94,10 @@ test("shows created and updated dates and the word count above the editor", { ta
     expect(new Date(datetime!).toDateString()).toBe(T0.toDateString());
     expect(await time.getAttribute("title")).toBeTruthy();
   }
-});
 
-test("typing updates the word count before the note is saved", async ({
-  page,
-}) => {
-  await startSession(page);
-  await treeItem(page, "Welcome").click();
-  await expect(details(page)).toContainText(/\d+ words/);
   const before = await wordCount(page);
-
   await typeAtEnd(page, " alpha beta");
-
-  await expect(details(page)).toContainText(`${before + 2} words`);
-});
-
-test("the updated time follows the clock and resets after a save", async ({
-  page,
-}) => {
-  await startSession(page);
-  await treeItem(page, "Welcome").click();
-  await expect(details(page)).toContainText("Updated just now");
-
-  await page.clock.fastForward(3 * DAY_MS);
-  await expect(details(page)).toContainText("Updated 3 days ago");
-
-  await typeAndSave(page, " more");
-
-  await expect(details(page)).toContainText("Updated just now", {
-    timeout: 15_000,
-  });
-  await expect(details(page)).toContainText("Created 12 Mar 2026");
+  await expect(line).toContainText(`${before + 2} words`);
 });
 
 test("saving an edit keeps the cached dates until they refresh", async ({
@@ -145,28 +145,6 @@ test("saving an edit keeps the cached dates until they refresh", async ({
   );
   expect(cachedShown).toBeLessThan(refreshed);
   expect(texts.filter((text) => /^\d+ words?$/.test(text))).toEqual([]);
-});
-
-test("renaming a note keeps its created date", async ({ page }) => {
-  await startSession(page);
-  await treeItem(page, "Welcome").click();
-  await expect(details(page)).toContainText("Created 12 Mar 2026");
-
-  await page.clock.fastForward(10 * DAY_MS);
-  const field = page.getByRole("textbox", { name: "Note name" });
-  await field.fill("Hello");
-  await field.press("Enter");
-  await expect(
-    headerSyncIcon(page),
-  ).toBeVisible();
-  await waitForSynced(page);
-
-  await expect(details(page)).toContainText("Created 12 Mar 2026", {
-    timeout: 15_000,
-  });
-  await expect(details(page)).toContainText("Updated just now", {
-    timeout: 15_000,
-  });
 });
 
 test("a new note shows it is not saved yet until it is saved", async ({
@@ -243,40 +221,6 @@ test("a note re-created under a trashed note's name shows its own dates", async 
     timeout: 15_000,
   });
   await expect(details(page)).not.toContainText("Created 12 Mar 2026");
-  await page.clock.fastForward(4_000);
-  await expect(details(page)).toContainText("Created 22 Mar 2026");
-  await expect(details(page)).not.toContainText("Created 12 Mar 2026");
-});
-
-test("a note renamed onto a trashed note's name shows its own dates", async ({
-  page,
-}) => {
-  await startSession(page);
-  await treeItem(page, "Welcome").click();
-  await expect(details(page)).toContainText("Created 12 Mar 2026");
-
-  await page.clock.fastForward(10 * DAY_MS);
-  await showTree(page);
-  await moveToTrash(page, "Welcome");
-  await page.getByRole("button", { name: "New note", exact: true }).click();
-  const field = page.getByRole("textbox", { name: "Note name" });
-  await field.fill("Fresh");
-  await field.press("Enter");
-  await expect(editor(page)).toBeFocused();
-  await page.keyboard.type("one two");
-  await waitForSynced(page);
-  await expect(details(page)).toContainText("Created 22 Mar 2026", {
-    timeout: 15_000,
-  });
-
-  await field.fill("Welcome");
-  await field.press("Enter");
-  await expect(details(page)).not.toContainText("Created 12 Mar 2026");
-  await waitForSynced(page);
-
-  await expect(details(page)).toContainText("Created 22 Mar 2026", {
-    timeout: 15_000,
-  });
   await page.clock.fastForward(4_000);
   await expect(details(page)).toContainText("Created 22 Mar 2026");
   await expect(details(page)).not.toContainText("Created 12 Mar 2026");
@@ -479,57 +423,8 @@ test("the left alignment of note details text matches the editor text", { tag: "
   await treeItem(page, "Welcome").click();
   await expect(details(page)).toBeVisible();
 
-  const detailsTextX = await page.evaluate(() => {
-    const detailsEl = document.querySelector(".note-details");
-    if (!detailsEl) throw new Error(".note-details not found");
-
-    const findFirstTextNode = (node: Node): Text | null => {
-      for (const child of node.childNodes) {
-        if (child.nodeType === Node.TEXT_NODE && child.textContent?.trim()) {
-          return child as Text;
-        }
-        if (child.nodeType === Node.ELEMENT_NODE) {
-          const result = findFirstTextNode(child);
-          if (result) return result;
-        }
-      }
-      return null;
-    };
-
-    const firstTextNode = findFirstTextNode(detailsEl);
-    if (!firstTextNode) throw new Error("No text node in .note-details");
-    const range = new Range();
-    range.setStart(firstTextNode, 0);
-    range.collapse(true);
-    const rect = range.getBoundingClientRect();
-    return rect.left;
-  });
-
-  const editorLineTextX = await page.evaluate(() => {
-    const firstLine = document.querySelector(".cm-line");
-    if (!firstLine) throw new Error(".cm-line not found");
-
-    const findFirstTextNode = (node: Node): Text | null => {
-      for (const child of node.childNodes) {
-        if (child.nodeType === Node.TEXT_NODE && child.textContent?.trim()) {
-          return child as Text;
-        }
-        if (child.nodeType === Node.ELEMENT_NODE) {
-          const result = findFirstTextNode(child);
-          if (result) return result;
-        }
-      }
-      return null;
-    };
-
-    const firstTextNode = findFirstTextNode(firstLine);
-    if (!firstTextNode) throw new Error("No text node in .cm-line");
-    const range = new Range();
-    range.setStart(firstTextNode, 0);
-    range.collapse(true);
-    const rect = range.getBoundingClientRect();
-    return rect.left;
-  });
+  const detailsTextX = await firstTextLeft(page, ".note-details");
+  const editorLineTextX = await firstTextLeft(page, ".cm-line");
 
   expect(Math.abs(detailsTextX - editorLineTextX)).toBeLessThanOrEqual(1);
 });

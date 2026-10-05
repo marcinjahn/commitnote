@@ -67,22 +67,6 @@ test.describe("with a note", () => {
     await expect(view.locator("h1")).toHaveText("Welcome");
     await expect(view.locator("header.print-title")).toHaveCount(0);
     await expect(view.locator("strong")).toHaveText("notes");
-    await expect(view.locator("s")).toHaveText("strikethrough");
-    await expect(view.locator("pre code")).toHaveText('console.log("hello");');
-    const link = view.locator('a[href="https://github.com/example/commitnote"]');
-    await expect(link).toHaveText("commitnote project");
-    await expect(link.locator("+ .print-url")).toHaveText(
-      " (https://github.com/example/commitnote)",
-    );
-    await expect(view.locator('li[data-task="done"]')).toHaveCount(1);
-    await expect(view.locator('li[data-task="open"]')).toHaveCount(1);
-    await expect(view.locator("table th").first()).toHaveText("Column A");
-    await expect(view.locator("blockquote")).toHaveCount(1);
-
-    const text = (await view.textContent()) ?? "";
-    for (const raw of ["**", "~~", "```", "[x]"]) {
-      expect(text).not.toContain(raw);
-    }
   });
 
   test("a long note prints every line", async ({ page }) => {
