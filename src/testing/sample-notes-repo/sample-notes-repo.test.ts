@@ -11,7 +11,13 @@ import { encryptPath } from "../../crypto/name-cipher";
 import { decryptNote } from "../../crypto/note-cipher";
 import { parseRepoConfig } from "../../crypto/repo-config";
 import type { FakeForgeAdapter } from "../../forge/fake/fake-forge-adapter";
-import { APP_ID, FOLDER_MARKER, KDF_DEFAULTS, TRAILER } from "../../format/v1";
+import {
+  APP_ID,
+  FOLDER_MARKER,
+  KDF_DEFAULTS,
+  TAGS_PATH,
+  TRAILER,
+} from "../../format/v1";
 import {
   buildNoteTree,
   listNotes,
@@ -31,6 +37,7 @@ import {
 import {
   sampleNotesRepoOrder,
   sampleNotesRepoSource,
+  sampleNotesRepoTags,
   sampleTrashRepoSource,
   sampleTrashRepoTrashed,
   SAMPLE_TRASH_NOW,
@@ -43,6 +50,12 @@ import {
   findOrderEntry,
   siblingComparator,
 } from "../../order/order-index";
+import {
+  colorTagOf,
+  decryptTagIndex,
+  findTagEntry,
+  tagKey,
+} from "../../tags/tag-index";
 
 function flattenNames(entries: readonly SampleEntry[]): string[] {
   const names: string[] = [];
@@ -238,6 +251,45 @@ describe("sample notes repo fixture order", () => {
         shuffled.sort(siblingComparator(order, parent)).map((item) => item.name),
       ).toEqual(names);
     }
+  });
+});
+
+describe("sample notes repo fixture tags", () => {
+  async function readStoredTags() {
+    const adapter = await createSampleNotesRepoAdapter();
+    const keyring = await sampleNotesRepoKeyring();
+    const listing = await adapter.listTree(await adapter.getHead());
+    const entry = findTagEntry(listing);
+    if (entry === undefined) throw new Error("expected a tag file");
+    const stored = await adapter.readBlob(entry.sha);
+    return { stored, index: await decryptTagIndex(keyring, stored) };
+  }
+
+  it("stores a tag index with exactly the listed records", async () => {
+    const { index } = await readStoredTags();
+
+    expect(index.writable).toBe(true);
+    expect(index.notes.size).toBe(sampleNotesRepoTags.length);
+    expect(index.trash.size).toBe(0);
+    for (const { path, color } of sampleNotesRepoTags) {
+      expect(index.notes.get(tagKey(path))).toEqual({ color });
+    }
+    expect(colorTagOf(index, ["Welcome"])).toBeNull();
+  });
+
+  it("leaks no note names into the tag file", async () => {
+    const { stored } = await readStoredTags();
+
+    for (const name of flattenNames(sampleNotesRepoSource)) {
+      if (name === APP_ID) continue;
+      expect(stored).not.toContain(name);
+    }
+  });
+
+  it("adds the tag file in the save commit without adding a commit", () => {
+    const save = sampleNotesRepo.commits[2];
+    expect(Object.keys(save.files)).toContain(TAGS_PATH);
+    expect(sampleNotesRepo.commits).toHaveLength(4);
   });
 });
 

@@ -348,7 +348,7 @@ describe("SyncEngine.setColorTag across devices", () => {
     await autosave(h);
 
     expect(await h.fake.getHead()).toBe(remoteHead);
-    expect((await remoteTags(h.fake)).notes.size).toBe(0);
+    expect(await remoteColor(h.fake, WELCOME)).toBeNull();
     expect(h.engine.getState().pending).toEqual([]);
     expect(h.engine.getState().inFlight).toEqual([]);
     expect(h.engine.getState().notices).toEqual([]);

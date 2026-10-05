@@ -8,7 +8,11 @@ import { createRepoConfig } from "../../crypto/keyring";
 import type { RandomSource } from "../../crypto/random";
 import { InMemoryGitRepo } from "../../forge/fake/in-memory-git-repo";
 import { REPO_CONFIG_PATH } from "../../format/v1";
-import { EMPTY_TAGS } from "../../tags/tag-index";
+import {
+  applyChangeToTags,
+  EMPTY_TAGS,
+  type TagIndex,
+} from "../../tags/tag-index";
 import { keysBetween } from "../../order/fractional-key";
 import {
   applyChangeToOrder,
@@ -20,10 +24,12 @@ import {
   SAMPLE_NOTES_REPO_PASSPHRASE,
   sampleNotesRepoOrder,
   sampleNotesRepoSource,
+  sampleNotesRepoTags,
   sampleTrashRepoSource,
   sampleTrashRepoTrashed,
   type SampleEntry,
   type SampleFolderOrder,
+  type SampleTag,
   type SampleTrashEntry,
 } from "./sample-source";
 
@@ -106,7 +112,13 @@ async function snapshotFiles(
 }
 
 export function generateSampleNotesRepo(): Promise<SampleNotesRepo> {
-  return generateRepo(SEED, sampleNotesRepoSource, [], sampleNotesRepoOrder);
+  return generateRepo(
+    SEED,
+    sampleNotesRepoSource,
+    [],
+    sampleNotesRepoOrder,
+    sampleNotesRepoTags,
+  );
 }
 
 export function generateSampleTrashRepo(): Promise<SampleNotesRepo> {
@@ -114,6 +126,7 @@ export function generateSampleTrashRepo(): Promise<SampleNotesRepo> {
     TRASH_SEED,
     sampleTrashRepoSource,
     sampleTrashRepoTrashed,
+    [],
     [],
   );
 }
@@ -123,6 +136,7 @@ async function generateRepo(
   source: readonly SampleEntry[],
   trashed: readonly SampleTrashEntry[],
   order: readonly SampleFolderOrder[],
+  tags: readonly SampleTag[],
 ): Promise<SampleNotesRepo> {
   const random = createSeededRandom(seed);
   const { configText, keyring } = await createRepoConfig(
@@ -151,16 +165,18 @@ async function generateRepo(
   let parentTree = commit1Tree;
 
   let orderIndex: OrderIndex = EMPTY_ORDER;
+  let tagIndex: TagIndex = EMPTY_TAGS;
   async function commitChanges(changeSet: ChangeSet): Promise<void> {
     const encoded = await encodeChangeSet({
       listing: await repo.listTreeEntries(parentTree),
       changeSet,
       order: orderIndex,
-      tags: EMPTY_TAGS,
+      tags: tagIndex,
       keyring,
       random,
     });
     orderIndex = changeSet.reduce(applyChangeToOrder, orderIndex);
+    tagIndex = changeSet.reduce(applyChangeToTags, tagIndex);
     parentTree = await repo.applyChanges(parentTree, encoded.changes);
     parentSha = await repo.putCommit({
       tree: parentTree,
@@ -172,9 +188,9 @@ async function generateRepo(
 
   await commitChanges(buildChangeSet(source));
 
-  if (order.length > 0) {
-    await commitChanges(
-      order.map(({ parent, names }) => {
+  if (order.length > 0 || tags.length > 0) {
+    await commitChanges([
+      ...order.map(({ parent, names }): Change => {
         const keys = keysBetween(null, null, names.length);
         return {
           kind: "set-order",
@@ -182,7 +198,10 @@ async function generateRepo(
           positions: names.map((name, i) => ({ name, key: keys[i] })),
         };
       }),
-    );
+      ...tags.map(
+        ({ path, color }): Change => ({ kind: "set-color-tag", path, color }),
+      ),
+    ]);
   }
 
   for (const entry of trashed) {
