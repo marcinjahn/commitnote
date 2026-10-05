@@ -5,7 +5,13 @@ import {
   TRAILER,
   UNDO_OUTDATED_SAVE_SUBJECT,
 } from "../../format/v1";
-import { fromBase64, toBase64 } from "../../crypto/base64";
+import { toBase64 } from "../../crypto/base64";
+import {
+  byPath,
+  decodeBase64Text,
+  defaultFetch,
+  parseCommittedAt,
+} from "../forge-http";
 import type { RepoCoordinates } from "../repo-coordinates";
 import {
   GITLAB_DEVELOPER_ACCESS_LEVEL,
@@ -148,11 +154,6 @@ interface FileBody {
 
 const MAX_COMMITS_PER_PAGE = 100;
 
-function parseCommittedAt(date: string | undefined): number {
-  const time = date === undefined ? NaN : Date.parse(date);
-  return Number.isFinite(time) ? time : 0;
-}
-
 function accessLevel(project: ProjectBody): number {
   return Math.max(
     project.permissions?.project_access?.access_level ?? 0,
@@ -230,9 +231,7 @@ class GitLabAdapter implements ForgeAdapter {
     this.projectPath = projectApiPath(coordinates.owner, coordinates.repo);
     this.accessToken = options.accessToken;
     this.onContentCreatingRequest = options.onContentCreatingRequest;
-    // Browsers reject `fetch` called with a non-Window receiver.
-    this.fetchImpl =
-      options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+    this.fetchImpl = options.fetch ?? defaultFetch;
     this.now = options.now ?? Date.now;
     this.sleep =
       options.sleep ??
@@ -431,7 +430,7 @@ class GitLabAdapter implements ForgeAdapter {
       url = nextPageUrl(response, url);
     }
 
-    entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    entries.sort(byPath);
     this.treeCache.set(commitSha, entries);
     return [...entries];
   }
@@ -575,9 +574,7 @@ class GitLabAdapter implements ForgeAdapter {
     if (body.encoding !== "base64" || body.content === undefined) {
       return { blobSha, text: await this.readBlob(blobSha) };
     }
-    const text = new TextDecoder("utf-8").decode(
-      fromBase64(body.content.replace(/\s+/g, "")),
-    );
+    const text = decodeBase64Text(body.content);
     this.blobCache.set(blobSha, text);
     return { blobSha, text };
   }

@@ -1,5 +1,6 @@
 import { MAIN_BRANCH } from "../../format/v1";
 import { ForgeError } from "../errors";
+import { byPath } from "../forge-http";
 import type { CommitFileChange, TreeEntry } from "../forge-adapter";
 
 /** Every object of a repo, in a JSON-serializable form. */
@@ -226,7 +227,7 @@ export class InMemoryGitRepo {
       entries.push({ path: dirPath, type: "tree", sha });
     }
 
-    entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    entries.sort(byPath);
     return entries;
   }
 

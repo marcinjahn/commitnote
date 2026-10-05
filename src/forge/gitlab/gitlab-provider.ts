@@ -1,3 +1,4 @@
+import { defaultFetch, localDateStamp } from "../forge-http";
 import type { ForgeProvider, RepositorySummary } from "../forge-provider";
 import { createGitLabAdapter } from "./gitlab-adapter";
 import { gitLabErrorFor, nextPageUrl, sendGitLabRequest } from "./gitlab-api";
@@ -18,17 +19,12 @@ interface GitLabProjectBody {
   readonly visibility: string;
 }
 
-function localDate(now: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
-
 // The `api` scope is the narrowest one that allows creating commits through
 // the REST API. GitLab has no URL parameter for the expiry; its form
 // defaults to a year.
 function accessTokenCreationUrl(now: Date): string {
   const params = new URLSearchParams({
-    name: `commitnote ${localDate(now)}`,
+    name: `commitnote ${localDateStamp(now)}`,
     description: "commitnote: reads and saves encrypted notes.",
     scopes: "api",
   });
@@ -51,8 +47,7 @@ function splitProjectPath(pathWithNamespace: string): {
 export function createGitLabProvider(
   options: GitLabProviderOptions = {},
 ): ForgeProvider {
-  const fetchImpl: typeof fetch =
-    options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+  const fetchImpl = options.fetch ?? defaultFetch;
   const now = options.now ?? Date.now;
 
   return {

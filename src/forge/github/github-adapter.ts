@@ -6,7 +6,13 @@ import {
   utf8Encode,
 } from "../../crypto/base64";
 import type { RepoCoordinates } from "../repo-coordinates";
-import { parseLinkHeader } from "./link-header";
+import { parseLinkHeader } from "../link-header";
+import {
+  byPath,
+  decodeBase64Text,
+  defaultFetch,
+  parseCommittedAt,
+} from "../forge-http";
 import { gitHubErrorFor, sendGitHubRequest } from "./github-api";
 import { ForgeError, isForgeError, withMainUnchanged } from "../errors";
 import type {
@@ -128,14 +134,6 @@ function contentsPath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-function parseCommittedAt(date: string | undefined): number {
-  const time = date === undefined ? NaN : Date.parse(date);
-  return Number.isFinite(time) ? time : 0;
-}
-
-// Decodes GitHub's whitespace-wrapped base64 blob/content payloads. readBlob
-// uses a non-fatal TextDecoder, since arbitrary git blobs need not be valid
-// UTF-8.
 function decodeBase64Content(content: string): Uint8Array {
   return fromBase64(content.replace(/\s+/g, ""));
 }
@@ -159,11 +157,7 @@ class GitHubAdapter implements ForgeAdapter {
     this.repoPath = encodeURIComponent(coordinates.repo);
     this.accessToken = options.accessToken;
     this.onContentCreatingRequest = options.onContentCreatingRequest;
-    // Browsers reject `fetch` called with a non-Window receiver (Illegal
-    // invocation), so the default resolves and calls globalThis.fetch
-    // unbound, at call time.
-    this.fetchImpl =
-      options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+    this.fetchImpl = options.fetch ?? defaultFetch;
     this.now = options.now ?? Date.now;
   }
 
@@ -358,7 +352,7 @@ class GitHubAdapter implements ForgeAdapter {
           entry.type === "blob" || entry.type === "tree",
       )
       .map((entry) => ({ path: entry.path, type: entry.type, sha: entry.sha }));
-    entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    entries.sort(byPath);
     return entries;
   }
 
@@ -376,9 +370,7 @@ class GitHubAdapter implements ForgeAdapter {
       throw await this.errorFor(response);
     }
     const body = (await response.json()) as { content: string };
-    const text = new TextDecoder("utf-8").decode(
-      decodeBase64Content(body.content),
-    );
+    const text = decodeBase64Text(body.content);
     this.blobCache.set(sha, text);
     return text;
   }
@@ -483,9 +475,7 @@ class GitHubAdapter implements ForgeAdapter {
     if (body.encoding !== "base64" || body.content === undefined) {
       return { blobSha, text: await this.readBlob(blobSha) };
     }
-    const text = new TextDecoder("utf-8").decode(
-      decodeBase64Content(body.content),
-    );
+    const text = decodeBase64Text(body.content);
     this.blobCache.set(blobSha, text);
     return { blobSha, text };
   }
