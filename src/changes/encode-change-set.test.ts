@@ -323,7 +323,6 @@ describe("encodeChangeSet: multi-change scenarios", () => {
         `Commitnote-Create: ${storedNewFolder}\n` +
         `Commitnote-Rename: ${storedFrom} -> ${storedTo}`,
     );
-    // The untouched note is neither modified nor listed among the changes.
     expect(result.changes.some((c) => c.path === storedKeep)).toBe(false);
   });
 

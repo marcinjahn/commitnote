@@ -1,17 +1,9 @@
 import { MAX_NAME_BYTES, NAME_AAD } from "../format/v1";
-import { fromBase64Url, toBase64Url, utf8Decode, utf8Encode } from "./base64";
+import { asBufferSource, fromBase64Url, toBase64Url, utf8Decode, utf8Encode } from "./base64";
 import type { Keyring } from "./keyring";
 
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
-
-// Our Uint8Arrays are always backed by a plain ArrayBuffer, never a
-// SharedArrayBuffer, but their declared type is the bare (ArrayBufferLike)
-// Uint8Array, which the DOM lib's BufferSource-typed WebCrypto parameters no
-// longer accept directly.
-function asBufferSource(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
-  return bytes as Uint8Array<ArrayBuffer>;
-}
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;

@@ -61,9 +61,9 @@ function isStaleCapable(
 }
 
 /**
- * In-memory ForgeAdapter for tests: no network, no GitHub. Supports a
- * simulated push from another device and one-shot error injection so the
- * layers above the forge can be exercised without a real backend.
+ * In-memory ForgeAdapter used by tests and the fake-forge mode: no network.
+ * Supports a simulated push from another device and one-shot error injection
+ * so the layers above the forge can be exercised without a real backend.
  */
 export class FakeForgeAdapter implements ForgeAdapter {
   readonly repo: InMemoryGitRepo;

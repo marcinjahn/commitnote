@@ -47,8 +47,7 @@ function canonicalTree(files: ReadonlyMap<string, string>): string {
 
 /**
  * Pure in-memory git object store: blobs, flat-map trees, commits and
- * branch refs. Reused by the fake forge adapter and, later, the mock
- * GitHub server.
+ * branch refs. Also backs the mock GitHub and GitLab servers.
  */
 export class InMemoryGitRepo {
   private readonly blobs = new Map<string, string>();
