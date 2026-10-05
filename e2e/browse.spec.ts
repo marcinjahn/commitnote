@@ -140,7 +140,7 @@ test("refresh keeps the tree visible", async ({ page }) => {
   await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
 });
 
-test("only the page's own origin is contacted", async ({ page }) => {
+test("only the page's own origin is contacted", async ({ page, baseURL }) => {
   const origins = new Set<string>();
   page.on("request", (request) => {
     origins.add(new URL(request.url()).origin);
@@ -157,5 +157,5 @@ test("only the page's own origin is contacted", async ({ page }) => {
     page.getByRole("textbox", { name: "Note editor" }),
   ).toContainText("Ideas");
 
-  expect([...origins]).toEqual(["http://localhost:4173"]);
+  expect([...origins]).toEqual([new URL(baseURL!).origin]);
 });

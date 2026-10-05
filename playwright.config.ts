@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const PORT = Number(process.env.E2E_PORT ?? 4173);
+const BASE_URL = `http://localhost:${PORT}`;
+
 export default defineConfig({
   testDir: "e2e",
   fullyParallel: true,
@@ -8,7 +11,7 @@ export default defineConfig({
   reporter: "list",
   timeout: 60_000,
   use: {
-    baseURL: "http://localhost:4173",
+    baseURL: BASE_URL,
   },
   projects: [
     {
@@ -21,9 +24,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command:
-      "npm run build:fake && npm run preview:fake -- --port 4173 --strictPort",
-    url: "http://localhost:4173",
+    command: `npm run build:fake && npm run preview:fake -- --port ${PORT} --strictPort`,
+    url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
