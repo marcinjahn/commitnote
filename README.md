@@ -63,7 +63,7 @@ npm run test:e2e
 ```
 
 The suite runs the built app in test mode (fake forge, no network) at both a desktop and a mobile
-viewport.
+viewport. On a 6-CPU machine the e2e suite ran fastest with `npm run test:e2e -- --workers=4`.
 
 ## Manual live check
 
