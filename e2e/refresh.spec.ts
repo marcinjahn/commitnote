@@ -15,7 +15,7 @@ test("there is only one Refresh button", { tag: "@mobile" }, async ({ page }, te
   await expect(refresh).toHaveCount(1);
 });
 
-test("clicking Refresh shows a remote change", async ({
+test("focus and visibility do not refresh; clicking Refresh does", async ({
   page,
 }) => {
   await openNotes(page);
@@ -29,7 +29,26 @@ test("clicking Refresh shows a remote change", async ({
   await editRemotely(["Remote note"], "# Remote note");
 
   const remoteNote = page.getByRole("treeitem", { name: "Remote note" });
-  await page.getByRole("button", { name: "Refresh" }).click();
+  const refresh = page.getByRole("button", { name: "Refresh" });
+
+  // The armed failure is consumed by the first getHead call, so seeing it on
+  // the click proves the events below did not start a refresh.
+  await fakeForge(page).failNext("getHead", "Network");
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("focus"));
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+
+  await refresh.click();
+  await expect(refresh).toHaveAttribute("data-feedback", "error");
+  await expect(remoteNote).toHaveCount(0);
+
+  await refresh.click();
+  await expect(refresh).toHaveAttribute("data-feedback", "success");
   await expect(remoteNote).toBeVisible();
 });
 
