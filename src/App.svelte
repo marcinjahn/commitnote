@@ -10,6 +10,7 @@
   import {
     initializeNotesRepo,
     inspectRepository,
+    isTransient,
     repositoryLabel,
     resumeSession,
     unlockNotesRepo,
@@ -172,11 +173,15 @@
     return { createAdapter: budgetedCreateAdapter, argon2id };
   }
 
-  function showLogin(initialError: LoginError | null): void {
-    loginKey++;
+  function resetReported(): void {
     reportedAccentColor = "system";
     reportedNoteFont = "inter";
     reportedPrintNote = null;
+  }
+
+  function showLogin(initialError: LoginError | null): void {
+    loginKey++;
+    resetReported();
     phase = {
       kind: "login",
       initialRepoUrl: store.lastRepoUrl() ?? "",
@@ -211,9 +216,7 @@
     unsubscribeStopped = engine.subscribe((state) => {
       if (state.stopped?.kind === "keyChanged") {
         keyChanged = { unsavedCount: state.syncStates.unsavedCount };
-        reportedAccentColor = "system";
-        reportedNoteFont = "inter";
-        reportedPrintNote = null;
+        resetReported();
       } else {
         keyChanged = null;
       }
@@ -345,11 +348,7 @@
       await startApp(result.session, result.adapter, true);
       return;
     }
-    const transient =
-      result.error.kind === "network" ||
-      result.error.kind === "server" ||
-      result.error.kind === "rateLimited";
-    await finishLogOut(!transient);
+    await finishLogOut(!isTransient(result.error));
   }
 
   async function attemptLogOut(): Promise<void> {
@@ -404,11 +403,7 @@
             await startApp(result.session, result.adapter, true);
             return;
           case "failed": {
-            const keepStoredRecord =
-              result.error.kind === "network" ||
-              result.error.kind === "server" ||
-              result.error.kind === "rateLimited";
-            if (!keepStoredRecord) {
+            if (!isTransient(result.error)) {
               await store.clear();
             }
             showLogin(result.error);

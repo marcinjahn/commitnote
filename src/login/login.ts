@@ -129,7 +129,7 @@ function mapInitializeError(error: unknown): LoginError {
   return mapInspectError(error);
 }
 
-function isTransient(error: LoginError): boolean {
+export function isTransient(error: LoginError): boolean {
   return (
     error.kind === "network" ||
     error.kind === "server" ||
