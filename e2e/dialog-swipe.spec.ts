@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { expectTree, logIn, TouchFinger, type TouchPoint } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";

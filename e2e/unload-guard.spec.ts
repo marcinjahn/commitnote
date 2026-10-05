@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { logIn, expectTree } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";
@@ -54,34 +54,38 @@ test("closing the page before autosave completes shows the leave-site prompt", a
   await expect.poll(() => dialogType, { timeout: 3_000 }).toBe("beforeunload");
 });
 
-test("hiding the tab flushes pending edits immediately", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
+test.describe("with GitHub-like forge latency", () => {
+  test.use({ forgeLatency: "github" });
 
-  await page.getByRole("treeitem", { name: "Welcome" }).click();
-  const editor = page.getByRole("textbox", { name: "Note editor" });
-  await editor.click();
-  await page.keyboard.press("Control+End");
-  await page.keyboard.type(" extra");
+  test("hiding the tab flushes pending edits immediately", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+    await expectTree(page);
 
-  const header = page.locator("header.note-header");
-  const syncIcon = header.getByRole("img");
-  await expect(syncIcon).toBeVisible();
+    await page.getByRole("treeitem", { name: "Welcome" }).click();
+    const editor = page.getByRole("textbox", { name: "Note editor" });
+    await editor.click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type(" extra");
 
-  await page.evaluate(() => {
-    Object.defineProperty(document, "visibilityState", {
-      value: "hidden",
-      configurable: true,
+    const header = page.locator("header.note-header");
+    const syncIcon = header.getByRole("img");
+    await expect(syncIcon).toBeVisible();
+
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", {
+        value: "hidden",
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
     });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
 
-  // Saving starts well within the 2 s autosave debounce.
-  await expect(syncIcon).toHaveAccessibleName("Saving", { timeout: 500 });
-  await expect(syncIcon).toHaveCount(0, { timeout: 5_000 });
+    // Saving starts well within the 2 s autosave debounce.
+    await expect(syncIcon).toHaveAccessibleName("Saving", { timeout: 500 });
+    await expect(syncIcon).toHaveCount(0, { timeout: 5_000 });
+  });
 });
 
 test("closing the page before a settings change is saved shows the leave-site prompt", async ({

@@ -26,6 +26,18 @@ export const GITHUB_LIKE_LATENCY: ForgeLatency = {
   readFileAtMs: 200,
 };
 
+export const NO_LATENCY: ForgeLatency = {
+  listRepositoriesMs: 0,
+  inspectMs: 0,
+  initializeMs: 0,
+  getHeadMs: 0,
+  listTreeMs: 0,
+  readBlobMs: 0,
+  commitMs: 0,
+  listCommitsMs: 0,
+  readFileAtMs: 0,
+};
+
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

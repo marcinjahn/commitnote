@@ -1,5 +1,5 @@
 import type { BrowserContextOptions, Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { expectTree, logIn } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";
@@ -230,9 +230,11 @@ test("backing out of the review keeps the old passphrase", async ({ page }) => {
 test("another device still on the old passphrase is asked to log in again", async ({
   page,
   browser,
+  prepareContext,
 }, testInfo) => {
   const { baseURL, ...device } = testInfo.project.use as BrowserContextOptions;
   const otherContext = await browser.newContext(device);
+  await prepareContext(otherContext);
   const other = await otherContext.newPage();
   await other.goto(new URL("/", baseURL ?? page.url()).toString());
   await logIn(other, { repo: NOTES_REPO, passphrase: OLD_PASSPHRASE });

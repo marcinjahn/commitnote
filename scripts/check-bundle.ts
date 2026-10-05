@@ -5,6 +5,7 @@ import {
   FAKE_FORGE_BANNER,
   FAKE_FORGE_CONTROLS_KEY,
 } from "../src/testing/fake-forge/fake-forge-factory";
+import { FAKE_FORGE_OPTIONS_KEY } from "../src/testing/fake-forge/fake-forge-options";
 
 const SAMPLE_NOTES_REPO_PASSPHRASE = "sample notes repo passphrase";
 
@@ -63,6 +64,7 @@ async function main(): Promise<void> {
     FAKE_FORGE_BANNER,
     SAMPLE_NOTES_REPO_PASSPHRASE,
     FAKE_FORGE_CONTROLS_KEY,
+    FAKE_FORGE_OPTIONS_KEY,
   ]);
   if (forbiddenInProd.length > 0) {
     for (const hit of forbiddenInProd) {

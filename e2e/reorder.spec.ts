@@ -1,5 +1,5 @@
 import type { BrowserContextOptions, Locator, Page } from "@playwright/test";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { logIn, expectTree, rowSyncState } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";
@@ -165,6 +165,7 @@ test("the new order survives a reload", async ({ page }) => {
 test("another device shows the new order", async ({
   page,
   browser,
+  prepareContext,
 }, testInfo) => {
   await moveZazolcBeforeWelcome(page);
   const exported = await page.evaluate(
@@ -174,6 +175,7 @@ test("another device shows the new order", async ({
 
   const { baseURL, ...device } = testInfo.project.use as BrowserContextOptions;
   const otherContext = await browser.newContext(device);
+  await prepareContext(otherContext);
   const other = await otherContext.newPage();
   await other.goto(new URL("/", baseURL ?? page.url()).toString());
   await other.waitForFunction(() => (window as any).__commitNoteFakeForge);

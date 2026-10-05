@@ -1,5 +1,5 @@
 import type { Page, TestInfo } from "@playwright/test";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { logIn, expectTree, rowSyncState } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";
@@ -180,64 +180,68 @@ async function startConflictOnWelcome(page: Page): Promise<void> {
   ).toContainText("<<<<<<< mine");
 }
 
-test("creating a folder and a note walks through the sync states and survives logging out", async ({
-  page,
-}, testInfo) => {
-  await startSession(page);
+test.describe("with GitHub-like forge latency", () => {
+  test.use({ forgeLatency: "github" });
 
-  await page.getByRole("button", { name: "New folder" }).click();
-  await page.getByLabel("Folder name").fill("Work");
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-  await expect(page.getByRole("treeitem", { name: "Work" })).toBeVisible();
+  test("creating a folder and a note walks through the sync states and survives logging out", async ({
+    page,
+  }, testInfo) => {
+    await startSession(page);
 
-  await createNoteThroughRowMenu(page, "Work", "Plan");
-  await expect(headerIcon(page)).toHaveCount(0, {
-    timeout: 10_000,
+    await page.getByRole("button", { name: "New folder" }).click();
+    await page.getByLabel("Folder name").fill("Work");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await expect(page.getByRole("treeitem", { name: "Work" })).toBeVisible();
+
+    await createNoteThroughRowMenu(page, "Work", "Plan");
+    await expect(headerIcon(page)).toHaveCount(0, {
+      timeout: 10_000,
+    });
+
+    await page.evaluate(
+      (repoKey) =>
+        (window as any).__commitNoteFakeForge.failNext(
+          repoKey,
+          "commit",
+          "Network",
+        ),
+      REPO_KEY,
+    );
+    await recordHeaderIconLabels(page);
+
+    const editor = page.getByRole("textbox", { name: "Note editor" });
+    await editor.click();
+    await page.keyboard.type("# Plan");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("Ship the editing tests");
+
+    await expect(headerIcon(page)).toHaveAccessibleName(WAITING);
+    await expect(headerIcon(page)).toHaveAccessibleName(FAILED, {
+      timeout: 10_000,
+    });
+    await expect(headerIcon(page)).toHaveCount(0, {
+      timeout: 15_000,
+    });
+
+    const labels = await recordedHeaderIconLabels(page);
+    const failedAt = labels.indexOf(FAILED);
+    expect(labels.indexOf(WAITING)).toBeGreaterThanOrEqual(0);
+    expect(failedAt).toBeGreaterThan(labels.indexOf(WAITING));
+    expect(labels.lastIndexOf("Saving")).toBeGreaterThan(failedAt);
+    expect(labels.at(-1)).toBe("(no status)");
+
+    await backToTreeIfMobile(page, testInfo);
+    await expect(rowSyncState(page, "Work", { exact: true })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Log out", exact: true }).click();
+    await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+    await expectTree(page);
+
+    await openNote(page, ["Work", "Plan"]);
+    const reopened = page.getByRole("textbox", { name: "Note editor" });
+    await expect(reopened).toContainText("Plan");
+    await expect(reopened).toContainText("Ship the editing tests");
   });
-
-  await page.evaluate(
-    (repoKey) =>
-      (window as any).__commitNoteFakeForge.failNext(
-        repoKey,
-        "commit",
-        "Network",
-      ),
-    REPO_KEY,
-  );
-  await recordHeaderIconLabels(page);
-
-  const editor = page.getByRole("textbox", { name: "Note editor" });
-  await editor.click();
-  await page.keyboard.type("# Plan");
-  await page.keyboard.press("Enter");
-  await page.keyboard.type("Ship the editing tests");
-
-  await expect(headerIcon(page)).toHaveAccessibleName(WAITING);
-  await expect(headerIcon(page)).toHaveAccessibleName(FAILED, {
-    timeout: 10_000,
-  });
-  await expect(headerIcon(page)).toHaveCount(0, {
-    timeout: 15_000,
-  });
-
-  const labels = await recordedHeaderIconLabels(page);
-  const failedAt = labels.indexOf(FAILED);
-  expect(labels.indexOf(WAITING)).toBeGreaterThanOrEqual(0);
-  expect(failedAt).toBeGreaterThan(labels.indexOf(WAITING));
-  expect(labels.lastIndexOf("Saving")).toBeGreaterThan(failedAt);
-  expect(labels.at(-1)).toBe("(no status)");
-
-  await backToTreeIfMobile(page, testInfo);
-  await expect(rowSyncState(page, "Work", { exact: true })).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expectTree(page);
-
-  await openNote(page, ["Work", "Plan"]);
-  const reopened = page.getByRole("textbox", { name: "Note editor" });
-  await expect(reopened).toContainText("Plan");
-  await expect(reopened).toContainText("Ship the editing tests");
 });
 
 test("renaming, moving and deleting notes and folders", async ({

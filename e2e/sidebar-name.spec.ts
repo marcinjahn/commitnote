@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { logIn, expectTree } from "./helpers";
 
 test("sidebar wordmark and repo label are not clipped", { tag: "@mobile" }, async ({ page }) => {

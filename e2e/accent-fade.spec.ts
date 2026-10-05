@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { chooseRepository, expectTree, logIn } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";

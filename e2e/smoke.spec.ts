@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 // Playwright's own module loader can't import this straight from
 // src/testing/fake-forge/fake-forge-factory.ts: that file pulls in

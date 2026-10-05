@@ -14,12 +14,13 @@ let registry: ForgeRegistry = forgeRegistry;
 let testModeBanner: string | null = null;
 if (import.meta.env.MODE === "fake-forge") {
   const fake = await import("./testing/fake-forge/fake-forge-factory");
-  const { GITHUB_LIKE_LATENCY } = await import(
-    "./testing/fake-forge/forge-latency"
+  const { FAKE_FORGE_OPTIONS_KEY, readFakeForgeOptions } = await import(
+    "./testing/fake-forge/fake-forge-options"
   );
-  const fakeForge = await fake.createFakeForge({
-    latency: GITHUB_LIKE_LATENCY,
-  });
+  const options = readFakeForgeOptions(
+    (window as unknown as Record<string, unknown>)[FAKE_FORGE_OPTIONS_KEY],
+  );
+  const fakeForge = await fake.createFakeForge({ latency: options.latency });
   registry = fakeForge.registry;
   testModeBanner = fake.FAKE_FORGE_BANNER;
   (window as unknown as Record<string, unknown>)[fake.FAKE_FORGE_CONTROLS_KEY] =

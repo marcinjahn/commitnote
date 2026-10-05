@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { strToU8, zipSync } from "fflate";
 import { expectTree, logIn } from "./helpers";
 

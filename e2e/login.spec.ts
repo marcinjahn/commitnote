@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import {
   KEY_DERIVATION_TIMEOUT,
@@ -258,12 +258,16 @@ test("passphrase forms name the repository for password managers", async ({
   ).toHaveValue("sample/empty");
 });
 
-test("progress is visible", async ({ page }) => {
-  await page.goto("/");
+test.describe("with GitHub-like forge latency", () => {
+  test.use({ forgeLatency: "github" });
 
-  await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
-  await expect(page.getByRole("status")).toBeVisible();
-  await expectTree(page);
+  test("progress is visible", async ({ page }) => {
+    await page.goto("/");
+
+    await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
+    await expect(page.getByRole("status")).toBeVisible();
+    await expectTree(page);
+  });
 });
 
 test("wrong passphrase", async ({ page }) => {

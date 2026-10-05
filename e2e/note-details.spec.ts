@@ -1,5 +1,5 @@
 import type { BrowserContextOptions, Page, TestInfo } from "@playwright/test";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { logIn, expectTree } from "./helpers";
 
 const NOTES_REPO = "https://github.com/sample/notes";
@@ -314,123 +314,128 @@ test("a note renamed onto a trashed note's name shows its own dates", async ({
   await expect(details(page)).not.toContainText("Created 12 Mar 2026");
 });
 
-test("a note renamed onto a trashed note's name while saving shows its own dates", async ({
-  page,
-}, testInfo) => {
-  await startSession(page);
-  await treeItem(page, "Welcome").click();
-  await expect(details(page)).toContainText("Created 12 Mar 2026");
+test.describe("with GitHub-like forge latency", () => {
+  test.use({ forgeLatency: "github" });
 
-  await page.clock.fastForward(10 * DAY_MS);
-  await backToTreeIfMobile(page, testInfo);
-  await moveToTrash(page, "Welcome");
-  await page.getByRole("button", { name: "New note", exact: true }).click();
-  const field = page.getByRole("textbox", { name: "Note name" });
-  await field.fill("Fresh");
-  await field.press("Enter");
-  await expect(editor(page)).toBeFocused();
-  await page.keyboard.type("one two");
-  await waitForSynced(page);
-  await expect(details(page)).toContainText("Created 22 Mar 2026", {
-    timeout: 15_000,
-  });
+  test("a note renamed onto a trashed note's name while saving shows its own dates", async ({
+    page,
+  }, testInfo) => {
+    await startSession(page);
+    await treeItem(page, "Welcome").click();
+    await expect(details(page)).toContainText("Created 12 Mar 2026");
 
-  await page.evaluate(() => {
-    const seen = window as unknown as { staleCreatedSeen: boolean };
-    seen.staleCreatedSeen = false;
-    new MutationObserver(() => {
-      const text = document.querySelector(".note-details")?.textContent ?? "";
-      if (text.includes("Created 12 Mar 2026")) seen.staleCreatedSeen = true;
-    }).observe(document.body, {
-      subtree: true,
-      childList: true,
-      characterData: true,
+    await page.clock.fastForward(10 * DAY_MS);
+    await backToTreeIfMobile(page, testInfo);
+    await moveToTrash(page, "Welcome");
+    await page.getByRole("button", { name: "New note", exact: true }).click();
+    const field = page.getByRole("textbox", { name: "Note name" });
+    await field.fill("Fresh");
+    await field.press("Enter");
+    await expect(editor(page)).toBeFocused();
+    await page.keyboard.type("one two");
+    await waitForSynced(page);
+    await expect(details(page)).toContainText("Created 22 Mar 2026", {
+      timeout: 15_000,
     });
-  });
 
-  await typeAtEnd(page, " three");
-  await expect(
-    page.locator("header.note-header").getByRole("img", { name: "Saving" }),
-  ).toBeVisible();
-  await field.fill("Welcome");
-  await field.press("Enter");
-  await waitForSynced(page);
-
-  await expect(details(page)).toContainText("Created 22 Mar 2026", {
-    timeout: 15_000,
-  });
-  await page.clock.fastForward(4_000);
-  await expect(details(page)).toContainText("Created 22 Mar 2026");
-  await expect(details(page)).not.toContainText("Created 12 Mar 2026");
-  expect(
-    await page.evaluate(
-      () => (window as unknown as { staleCreatedSeen: boolean }).staleCreatedSeen,
-    ),
-  ).toBe(false);
-});
-
-test("an unsaved note renamed onto a trashed note's name never shows that note's dates", async ({
-  page,
-}) => {
-  await startSession(page);
-  await treeItem(page, "Welcome").click();
-  await expect(details(page)).toContainText("Created 12 Mar 2026");
-
-  await page.clock.fastForward(10 * DAY_MS);
-  await page.getByRole("button", { name: "New note", exact: true }).click();
-  const field = page.getByRole("textbox", { name: "Note name" });
-  await field.fill("Fresh");
-  await field.press("Enter");
-  await expect(editor(page)).toBeFocused();
-  await page.keyboard.type("one two");
-  await waitForSynced(page);
-  await expect(details(page)).toContainText("Created 22 Mar 2026", {
-    timeout: 15_000,
-  });
-
-  await typeAtEnd(page, " three");
-  await treeItem(page, "Welcome").click();
-  await expect(details(page)).toContainText("Created 12 Mar 2026");
-  const now = await page.evaluate(() => Date.now());
-  await page.clock.pauseAt(now + 5);
-  await treeItem(page, "Fresh").click();
-  await expect(details(page)).toContainText("Not saved yet");
-
-  await moveToTrash(page, "Welcome");
-  await field.fill("Welcome");
-  await field.press("Enter");
-  await page.evaluate(() => {
-    const record = window as unknown as { detailTexts: string[] };
-    record.detailTexts = [];
-    new MutationObserver(() => {
-      const text = document.querySelector(".note-details")?.textContent ?? "";
-      if (record.detailTexts.at(-1) !== text) record.detailTexts.push(text);
-    }).observe(document.body, {
-      subtree: true,
-      childList: true,
-      characterData: true,
+    await page.evaluate(() => {
+      const seen = window as unknown as { staleCreatedSeen: boolean };
+      seen.staleCreatedSeen = false;
+      new MutationObserver(() => {
+        const text = document.querySelector(".note-details")?.textContent ?? "";
+        if (text.includes("Created 12 Mar 2026")) seen.staleCreatedSeen = true;
+      }).observe(document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
     });
+
+    await typeAtEnd(page, " three");
+    await expect(
+      page.locator("header.note-header").getByRole("img", { name: "Saving" }),
+    ).toBeVisible();
+    await field.fill("Welcome");
+    await field.press("Enter");
+    await waitForSynced(page);
+
+    await expect(details(page)).toContainText("Created 22 Mar 2026", {
+      timeout: 15_000,
+    });
+    await page.clock.fastForward(4_000);
+    await expect(details(page)).toContainText("Created 22 Mar 2026");
+    await expect(details(page)).not.toContainText("Created 12 Mar 2026");
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { staleCreatedSeen: boolean }).staleCreatedSeen,
+      ),
+    ).toBe(false);
   });
 
-  await page.clock.resume();
-  await waitForSynced(page);
-  await expect(details(page)).toContainText("Created 22 Mar 2026", {
-    timeout: 15_000,
-  });
-  await page.clock.fastForward(4_000);
-  await expect(details(page)).toContainText("Created 22 Mar 2026");
+  test("an unsaved note renamed onto a trashed note's name never shows that note's dates", async ({
+    page,
+  }) => {
+    await startSession(page);
+    await treeItem(page, "Welcome").click();
+    await expect(details(page)).toContainText("Created 12 Mar 2026");
 
-  const texts = await page.evaluate(
-    () => (window as unknown as { detailTexts: string[] }).detailTexts,
-  );
-  expect(texts.filter((text) => text.includes("Created 12 Mar 2026"))).toEqual(
-    [],
-  );
+    await page.clock.fastForward(10 * DAY_MS);
+    await page.getByRole("button", { name: "New note", exact: true }).click();
+    const field = page.getByRole("textbox", { name: "Note name" });
+    await field.fill("Fresh");
+    await field.press("Enter");
+    await expect(editor(page)).toBeFocused();
+    await page.keyboard.type("one two");
+    await waitForSynced(page);
+    await expect(details(page)).toContainText("Created 22 Mar 2026", {
+      timeout: 15_000,
+    });
+
+    await typeAtEnd(page, " three");
+    await treeItem(page, "Welcome").click();
+    await expect(details(page)).toContainText("Created 12 Mar 2026");
+    const now = await page.evaluate(() => Date.now());
+    await page.clock.pauseAt(now + 5);
+    await treeItem(page, "Fresh").click();
+    await expect(details(page)).toContainText("Not saved yet");
+
+    await moveToTrash(page, "Welcome");
+    await field.fill("Welcome");
+    await field.press("Enter");
+    await page.evaluate(() => {
+      const record = window as unknown as { detailTexts: string[] };
+      record.detailTexts = [];
+      new MutationObserver(() => {
+        const text = document.querySelector(".note-details")?.textContent ?? "";
+        if (record.detailTexts.at(-1) !== text) record.detailTexts.push(text);
+      }).observe(document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
+    });
+
+    await page.clock.resume();
+    await waitForSynced(page);
+    await expect(details(page)).toContainText("Created 22 Mar 2026", {
+      timeout: 15_000,
+    });
+    await page.clock.fastForward(4_000);
+    await expect(details(page)).toContainText("Created 22 Mar 2026");
+
+    const texts = await page.evaluate(
+      () => (window as unknown as { detailTexts: string[] }).detailTexts,
+    );
+    expect(texts.filter((text) => text.includes("Created 12 Mar 2026"))).toEqual(
+      [],
+    );
+  });
 });
 
 test("a note re-created under a reused name on another device shows its own dates", async ({
   page,
   browser,
+  prepareContext,
 }, testInfo) => {
   await startSession(page);
   await treeItem(page, "Welcome").click();
@@ -445,6 +450,7 @@ test("a note re-created under a reused name on another device shows its own date
     locale: "en-GB",
     timezoneId: "Europe/Warsaw",
   });
+  await prepareContext(otherContext);
   const other = await otherContext.newPage();
   await other.clock.install({ time: T0 });
   await other.goto(new URL("/", baseURL ?? page.url()).toString());

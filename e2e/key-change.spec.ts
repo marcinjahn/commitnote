@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import type { Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { strFromU8, unzipSync } from "fflate";
 import { expectTree, logIn } from "./helpers";
 

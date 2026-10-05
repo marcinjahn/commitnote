@@ -1,5 +1,5 @@
 import type { Locator, Page, TestInfo } from "@playwright/test";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { chooseRepository, expectTree, logIn } from "./helpers";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
