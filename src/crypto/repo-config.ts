@@ -83,6 +83,36 @@ function isPositiveSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
+export function kdfCostOutOfBounds(kdf: {
+  readonly memoryKiB?: unknown;
+  readonly iterations?: unknown;
+  readonly parallelism?: unknown;
+}): "memoryKiB" | "iterations" | "parallelism" | null {
+  const { memoryKiB, iterations, parallelism } = kdf;
+  if (
+    !Number.isInteger(memoryKiB) ||
+    (memoryKiB as number) < KDF_LIMITS.minMemoryKiB ||
+    (memoryKiB as number) > KDF_LIMITS.maxMemoryKiB
+  ) {
+    return "memoryKiB";
+  }
+  if (
+    !Number.isInteger(iterations) ||
+    (iterations as number) < KDF_LIMITS.minIterations ||
+    (iterations as number) > KDF_LIMITS.maxIterations
+  ) {
+    return "iterations";
+  }
+  if (
+    !Number.isInteger(parallelism) ||
+    (parallelism as number) < KDF_LIMITS.minParallelism ||
+    (parallelism as number) > Math.floor((memoryKiB as number) / 8)
+  ) {
+    return "parallelism";
+  }
+  return null;
+}
+
 export function parseRepoConfig(text: string): RepoConfigParseResult {
   let parsed: unknown;
   try {
@@ -135,29 +165,11 @@ export function parseRepoConfig(text: string): RepoConfigParseResult {
   if (kdf.algorithm !== KDF_ALGORITHM) {
     return invalid("kdf.algorithm is not the recognized identifier");
   }
-  if (
-    !Number.isInteger(kdf.memoryKiB) ||
-    (kdf.memoryKiB as number) < KDF_LIMITS.minMemoryKiB ||
-    (kdf.memoryKiB as number) > KDF_LIMITS.maxMemoryKiB
-  ) {
-    return invalid("kdf.memoryKiB is out of bounds");
+  const outOfBounds = kdfCostOutOfBounds(kdf);
+  if (outOfBounds !== null) {
+    return invalid(`kdf.${outOfBounds} is out of bounds`);
   }
   const memoryKiB = kdf.memoryKiB as number;
-  if (
-    !Number.isInteger(kdf.iterations) ||
-    (kdf.iterations as number) < KDF_LIMITS.minIterations ||
-    (kdf.iterations as number) > KDF_LIMITS.maxIterations
-  ) {
-    return invalid("kdf.iterations is out of bounds");
-  }
-  const maxParallelism = Math.floor(memoryKiB / 8);
-  if (
-    !Number.isInteger(kdf.parallelism) ||
-    (kdf.parallelism as number) < KDF_LIMITS.minParallelism ||
-    (kdf.parallelism as number) > maxParallelism
-  ) {
-    return invalid("kdf.parallelism is out of bounds");
-  }
   if (typeof kdf.salt !== "string") {
     return invalid("kdf.salt is not a string");
   }
