@@ -27,7 +27,7 @@ import {
   type StoredCommit,
 } from "./in-memory-git-repo";
 
-type FailableOperation =
+export type FailableOperation =
   | "inspect"
   | "initialize"
   | "getHead"
@@ -128,6 +128,26 @@ export class FakeForgeAdapter implements ForgeAdapter {
     return failure;
   }
 
+  private throwIfFailing(
+    operation: Exclude<FailableOperation, StaleCapableOperation>,
+  ): void {
+    const failure = this.takeErrorFailure(operation);
+    if (failure !== undefined) {
+      throw failure;
+    }
+  }
+
+  private takeStaleOrThrow(operation: StaleCapableOperation): boolean {
+    const failure = this.takeFailure(operation);
+    if (failure === "stale") {
+      return true;
+    }
+    if (failure !== undefined) {
+      throw failure;
+    }
+    return false;
+  }
+
   commitCost(changes: readonly CommitFileChange[]): number {
     return gitHubCommitCost(changes);
   }
@@ -150,10 +170,7 @@ export class FakeForgeAdapter implements ForgeAdapter {
   }
 
   async inspect(): Promise<RepoInspection> {
-    const failure = this.takeErrorFailure("inspect");
-    if (failure !== undefined) {
-      throw failure;
-    }
+    this.throwIfFailing("inspect");
 
     if (!this.repo.hasCommits()) {
       return { kind: "empty", canWrite: this.canWrite };
@@ -195,12 +212,8 @@ export class FakeForgeAdapter implements ForgeAdapter {
       throw new ForgeError("Forbidden");
     }
 
-    const failure = this.takeFailure("initialize");
-    if (failure === "stale") {
+    if (this.takeStaleOrThrow("initialize")) {
       return { kind: "stale" };
-    }
-    if (failure !== undefined) {
-      throw failure;
     }
 
     if (this.repo.hasCommits() || this.repo.getRef(MAIN_BRANCH) !== undefined) {
@@ -227,10 +240,7 @@ export class FakeForgeAdapter implements ForgeAdapter {
   }
 
   async getHead(): Promise<string> {
-    const failure = this.takeErrorFailure("getHead");
-    if (failure !== undefined) {
-      throw failure;
-    }
+    this.throwIfFailing("getHead");
 
     const head = this.repo.getRef(MAIN_BRANCH);
     if (head === undefined) {
@@ -242,10 +252,7 @@ export class FakeForgeAdapter implements ForgeAdapter {
   }
 
   async listTree(commitSha: string): Promise<TreeEntry[]> {
-    const failure = this.takeErrorFailure("listTree");
-    if (failure !== undefined) {
-      throw failure;
-    }
+    this.throwIfFailing("listTree");
 
     const commit = this.repo.getCommit(commitSha);
     if (commit === undefined) {
@@ -262,10 +269,7 @@ export class FakeForgeAdapter implements ForgeAdapter {
       return cached;
     }
 
-    const failure = this.takeErrorFailure("readBlob");
-    if (failure !== undefined) {
-      throw failure;
-    }
+    this.throwIfFailing("readBlob");
 
     const text = this.repo.getBlob(sha);
     if (text === undefined) {
@@ -276,10 +280,7 @@ export class FakeForgeAdapter implements ForgeAdapter {
   }
 
   async listCommits(request: ListCommitsRequest): Promise<CommitSummary[]> {
-    const failure = this.takeErrorFailure("listCommits");
-    if (failure !== undefined) {
-      throw failure;
-    }
+    this.throwIfFailing("listCommits");
 
     const touching = this.repo.commitsTouching(request.from, request.path);
     if (touching === undefined) {
@@ -295,10 +296,7 @@ export class FakeForgeAdapter implements ForgeAdapter {
   async findOldestCommit(
     request: FindOldestCommitRequest,
   ): Promise<CommitSummary | null> {
-    const failure = this.takeErrorFailure("findOldestCommit");
-    if (failure !== undefined) {
-      throw failure;
-    }
+    this.throwIfFailing("findOldestCommit");
 
     const touching = this.repo.commitsTouching(request.from, request.path);
     if (touching === undefined) {
@@ -314,10 +312,7 @@ export class FakeForgeAdapter implements ForgeAdapter {
     commitSha: string,
     path: string,
   ): Promise<FileAtCommit | null> {
-    const failure = this.takeErrorFailure("readFileAt");
-    if (failure !== undefined) {
-      throw failure;
-    }
+    this.throwIfFailing("readFileAt");
 
     const blobSha = this.repo.fileAt(commitSha, path);
     const text =
@@ -334,12 +329,8 @@ export class FakeForgeAdapter implements ForgeAdapter {
       throw new ForgeError("Forbidden");
     }
 
-    const failure = this.takeFailure("commit");
-    if (failure === "stale") {
+    if (this.takeStaleOrThrow("commit")) {
       return { kind: "stale" };
-    }
-    if (failure !== undefined) {
-      throw failure;
     }
 
     for (let i = gitHubTreeRequestCount(request.changes); i > 0; i--) {
@@ -371,12 +362,8 @@ export class FakeForgeAdapter implements ForgeAdapter {
       throw new ForgeError("Forbidden");
     }
 
-    const failure = this.takeFailure("replaceHistory");
-    if (failure === "stale") {
+    if (this.takeStaleOrThrow("replaceHistory")) {
       return { kind: "stale" };
-    }
-    if (failure !== undefined) {
-      throw failure;
     }
 
     const head = this.repo.getCommit(request.head);

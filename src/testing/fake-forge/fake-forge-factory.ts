@@ -8,7 +8,10 @@ import { encryptNote } from "../../crypto/note-cipher";
 import { parseRepoConfig } from "../../crypto/repo-config";
 import type { ForgeErrorKind } from "../../forge/errors";
 import { ForgeError } from "../../forge/errors";
-import { FakeForgeAdapter } from "../../forge/fake/fake-forge-adapter";
+import {
+  type FailableOperation,
+  FakeForgeAdapter,
+} from "../../forge/fake/fake-forge-adapter";
 import {
   commitFiles,
   InMemoryGitRepo,
@@ -84,15 +87,7 @@ export interface FakeForgeControls {
    */
   failNext(
     repoKey: string,
-    operation:
-      | "inspect"
-      | "getHead"
-      | "listTree"
-      | "readBlob"
-      | "commit"
-      | "replaceHistory"
-      | "listCommits"
-      | "readFileAt",
+    operation: Exclude<FailableOperation, "initialize" | "findOldestCommit">,
     kind: ForgeErrorKind | "stale",
   ): void;
 }
@@ -211,6 +206,21 @@ export async function createFakeForge(options?: {
     return adapter;
   }
 
+  async function fixtureConfigText(
+    repoKey: string,
+    adapter: FakeForgeAdapter,
+  ): Promise<string> {
+    const inspection = await adapter.inspect();
+    const repoConfigText =
+      inspection.kind === "populated"
+        ? (inspection.main?.repoConfigText ?? null)
+        : null;
+    if (repoConfigText === null) {
+      throw new Error(`Fake forge fixture '${repoKey}' has no repo config`);
+    }
+    return repoConfigText;
+  }
+
   async function keyringFor(
     repoKey: string,
     adapter: FakeForgeAdapter,
@@ -220,14 +230,7 @@ export async function createFakeForge(options?: {
     let cached = keyrings.get(cacheKey);
     if (cached === undefined) {
       cached = (async () => {
-        const inspection = await adapter.inspect();
-        const repoConfigText =
-          inspection.kind === "populated"
-            ? (inspection.main?.repoConfigText ?? null)
-            : null;
-        if (repoConfigText === null) {
-          throw new Error(`Fake forge fixture '${repoKey}' has no repo config`);
-        }
+        const repoConfigText = await fixtureConfigText(repoKey, adapter);
         const parsed = parseRepoConfig(repoConfigText);
         if (parsed.kind !== "valid") {
           throw new Error(
@@ -270,14 +273,7 @@ export async function createFakeForge(options?: {
     },
     async changeRepoKey(repoKey) {
       const adapter = fixtureAdapter(repoKey);
-      const inspection = await adapter.inspect();
-      const configText =
-        inspection.kind === "populated"
-          ? (inspection.main?.repoConfigText ?? null)
-          : null;
-      if (configText === null) {
-        throw new Error(`Fake forge fixture '${repoKey}' has no repo config`);
-      }
+      const configText = await fixtureConfigText(repoKey, adapter);
       const config = JSON.parse(configText) as Record<string, unknown>;
       config.keyCheck = toBase64(new Uint8Array(32).fill(7));
       await adapter.pushFromAnotherDevice(
@@ -316,13 +312,16 @@ export async function createFakeForge(options?: {
     },
   };
 
-  const factory: ForgeAdapterFactory = (coordinates, factoryOptions) => {
-    if (factoryOptions.accessToken === FAKE_FORGE_INVALID_TOKEN) {
-      return slowed(unauthorizedAdapter());
-    }
-    const key = `${coordinates.owner}/${coordinates.repo}`.toLowerCase();
-    return slowed(fixtures.get(key) ?? notFoundAdapter());
-  };
+  const fixtureFactory =
+    (fixtureMap: ReadonlyMap<string, ForgeAdapter>): ForgeAdapterFactory =>
+    (coordinates, factoryOptions) => {
+      if (factoryOptions.accessToken === FAKE_FORGE_INVALID_TOKEN) {
+        return slowed(unauthorizedAdapter());
+      }
+      const key = `${coordinates.owner}/${coordinates.repo}`.toLowerCase();
+      return slowed(fixtureMap.get(key) ?? notFoundAdapter());
+    };
+  const factory = fixtureFactory(fixtures);
 
   function fakeProvider(options: {
     readonly base: ForgeProvider;
@@ -361,13 +360,7 @@ export async function createFakeForge(options?: {
     ["team/empty", new FakeForgeAdapter()],
   ]);
 
-  const secondFactory: ForgeAdapterFactory = (coordinates, factoryOptions) => {
-    if (factoryOptions.accessToken === FAKE_FORGE_INVALID_TOKEN) {
-      return slowed(unauthorizedAdapter());
-    }
-    const key = `${coordinates.owner}/${coordinates.repo}`.toLowerCase();
-    return slowed(secondFixtures.get(key) ?? notFoundAdapter());
-  };
+  const secondFactory = fixtureFactory(secondFixtures);
 
   const registry = {
     github: fakeProvider({
@@ -394,8 +387,4 @@ export async function createFakeForge(options?: {
   };
 
   return { factory, registry, controls };
-}
-
-export async function createFakeForgeFactory(): Promise<ForgeAdapterFactory> {
-  return (await createFakeForge()).factory;
 }
