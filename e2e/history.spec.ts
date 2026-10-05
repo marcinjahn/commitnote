@@ -309,8 +309,6 @@ test("a note with a conflict can't be restored until the conflict is resolved", 
         ),
       ["sample/notes", path, text] as const,
     );
-  // The fake forge's first remote edit derives keys, which outlasts the autosave debounce.
-  await editRemotely(["Scratch"], "warm-up");
   await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
   await noteEditor(page).click();
   await page.keyboard.press(`${MODIFIER}+Home`);

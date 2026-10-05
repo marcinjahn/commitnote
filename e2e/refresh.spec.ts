@@ -40,7 +40,6 @@ test("focus and visibility do not refresh; clicking Refresh does", async ({
       [REPO_KEY, path, markdown] as const,
     );
 
-  // The first remote edit derives a keyring, which is slow.
   await editRemotely(["Scratch"], "warm-up");
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByRole("treeitem", { name: "Scratch" })).toBeVisible();

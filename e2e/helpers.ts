@@ -63,9 +63,10 @@ export async function setUpNotesRepo(
   await page.getByRole("button", { name: "Set up notes repo" }).click();
 }
 
-// Real Argon2id key derivation runs on every login and set-up (~1s in
-// Chromium, much more under CPU load), so waits that follow one need more room
-// than the default 5s expect timeout.
+// Real Argon2id key derivation runs on every set-up and on the first login with
+// a given passphrase and salt in a worker (~1s in Chromium, much more under CPU
+// load), so waits that follow one need more room than the default 5s expect
+// timeout.
 export const KEY_DERIVATION_TIMEOUT = 15_000;
 
 export async function expectTree(page: Page): Promise<void> {

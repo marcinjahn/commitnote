@@ -124,13 +124,6 @@ async function editRemotely(
   );
 }
 
-// The fake forge derives its keyring on the first remote edit, which takes
-// longer than the autosave debounce; do it up front so a later remote edit
-// lands while the local edit is still pending.
-async function warmUpRemoteEdits(page: Page): Promise<void> {
-  await editRemotely(page, ["Scratch"], "warm-up");
-}
-
 async function createNoteThroughRowMenu(
   page: Page,
   folderName: string,
@@ -148,7 +141,6 @@ async function createNoteThroughRowMenu(
 
 async function startConflictOnWelcome(page: Page): Promise<void> {
   await startSession(page);
-  await warmUpRemoteEdits(page);
   await openNote(page, ["Welcome"]);
 
   const editor = page.getByRole("textbox", { name: "Note editor" });
@@ -309,7 +301,6 @@ test("a concurrent remote edit at the end of a note merges cleanly", async ({
   page,
 }) => {
   await startSession(page);
-  await warmUpRemoteEdits(page);
   await openNote(page, ["Projects", "commitnote", "Ideas"]);
 
   await editRemotely(

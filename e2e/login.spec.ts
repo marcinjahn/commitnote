@@ -259,7 +259,7 @@ test("passphrase forms name the repository for password managers", async ({
 });
 
 test.describe("with GitHub-like forge latency", () => {
-  test.use({ forgeLatency: "github" });
+  test.use({ forgeLatency: "github", argon2Cache: false });
 
   test("progress is visible", async ({ page }) => {
     await page.goto("/");
