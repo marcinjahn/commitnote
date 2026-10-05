@@ -1,64 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { http } from "msw";
 import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
-import { commitFiles } from "../fake/in-memory-git-repo";
 import type { CommitRequest, KeyBoundFile } from "../forge-adapter";
 import {
   ATOMIC_BRANCH_PREFIX,
-  createGitLabAdapter,
   UNDO_COMMIT_MESSAGE,
 } from "./gitlab-adapter";
-import {
-  MockGitLabRepo,
-  type MockGitLabRepoOptions,
-} from "./testing/mock-gitlab-server";
-import { useMswServer } from "../fake/msw-test-server";
+import type { MockGitLabRepo } from "./testing/mock-gitlab-server";
+import { useGitLabTestHarness } from "./testing/gitlab-test-harness";
 
 const PROJECT = "acme/notes";
-const TOKEN = "s3cr3t-token";
 const NOW = Date.parse("2026-10-01T12:00:00Z");
 const KEEP = "folderA/.keep";
 const NOTE = "folderA/noteB";
 const CREATE_MR = { method: "POST", pathPattern: /\/merge_requests$/ };
 const MERGE = { method: "PUT", pathPattern: /\/merge_requests\/\d+\/merge$/ };
 
-const getServer = useMswServer();
-
-function useMock(options?: Partial<MockGitLabRepoOptions>): MockGitLabRepo {
-  const mock = new MockGitLabRepo({
-    projectPath: PROJECT,
-    token: TOKEN,
-    mergeMethod: "ff",
-    now: () => NOW,
-    ...options,
-  });
-  getServer().use(...mock.handlers());
-  return mock;
-}
+const harness = useGitLabTestHarness(PROJECT, {
+  mergeMethod: "ff",
+  now: () => NOW,
+});
+const { useMock, captureCommitBodies } = harness;
 
 function makeAdapter() {
-  return createGitLabAdapter(
-    { owner: "acme", repo: "notes" },
-    {
-      accessToken: TOKEN,
-      now: () => NOW,
-      sleep: async () => {},
-      randomId: () => "0000-1111",
-    },
-  );
+  return harness.makeAdapter({
+    now: () => NOW,
+    sleep: async () => {},
+    randomId: () => "0000-1111",
+  });
 }
 
 function seed(mock: MockGitLabRepo): Promise<string> {
-  return commitFiles(mock.git, {
-    parent: null,
-    files: {
-      [REPO_CONFIG_PATH]: "config v1",
-      [KEEP]: "",
-      [NOTE]: "v1:note",
-      "README.md": "readme",
-    },
-    message: "init",
-    branch: MAIN_BRANCH,
+  return harness.seed(mock, {
+    [REPO_CONFIG_PATH]: "config v1",
+    [KEEP]: "",
+    [NOTE]: "v1:note",
+    "README.md": "readme",
   });
 }
 
@@ -71,22 +47,9 @@ async function keyBound(
   return paths.map((path) => ({ path, blobSha: files.get(path)! }));
 }
 
-function captureCommitBodies(): {
+type CommitBody = {
   actions: { action: string; file_path: string; content?: string }[];
-}[] {
-  const bodies: { actions: { action: string; file_path: string }[] }[] = [];
-  getServer().use(
-    http.post(/\/repository\/commits$/, async ({ request }) => {
-      bodies.push(
-        (await request.clone().json()) as {
-          actions: { action: string; file_path: string }[];
-        },
-      );
-      return undefined;
-    }),
-  );
-  return bodies;
-}
+};
 
 function createRequest(parent: string, files: KeyBoundFile[]): CommitRequest {
   return {
@@ -125,7 +88,7 @@ describe("GitLabAdapter key guard", () => {
   it("adds an unchanged update of a folder marker to a create-only commit", async () => {
     const mock = useMock();
     const parent = await seed(mock);
-    const bodies = captureCommitBodies();
+    const bodies = captureCommitBodies<CommitBody>();
 
     const result = await makeAdapter().commit(
       createRequest(parent, await keyBound(mock, parent, [NOTE, KEEP])),
@@ -159,7 +122,7 @@ describe("GitLabAdapter key guard", () => {
   it("adds no guard when the commit already updates a key-bound file", async () => {
     const mock = useMock();
     const parent = await seed(mock);
-    const bodies = captureCommitBodies();
+    const bodies = captureCommitBodies<CommitBody>();
 
     await makeAdapter().commit({
       parent,

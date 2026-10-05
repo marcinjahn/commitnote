@@ -1,10 +1,9 @@
 import { FakeForgeAdapter } from "../../forge/fake/fake-forge-adapter";
 import {
-  commitFiles,
   InMemoryGitRepo,
+  seedCommits,
 } from "../../forge/fake/in-memory-git-repo";
 import type { ForgeAdapterOptions } from "../../forge/forge-adapter";
-import { MAIN_BRANCH } from "../../format/v1";
 import type { SampleNotesRepo } from "./generate-sample-notes-repo";
 import sampleNotesRepoJson from "./sample-notes-repo.json";
 import sampleTrashRepoJson from "./sample-trash-repo.json";
@@ -37,18 +36,7 @@ async function createAdapterFor(
   options?: SampleRepoAdapterOptions,
 ): Promise<FakeForgeAdapter> {
   const repo = new InMemoryGitRepo();
-  const commits = fixture.commits;
-
-  let parent: string | null = null;
-  for (let i = 0; i < commits.length; i++) {
-    const commit = commits[i];
-    parent = await commitFiles(repo, {
-      parent,
-      files: { ...commit.files },
-      message: commit.message,
-      branch: i === commits.length - 1 ? MAIN_BRANCH : undefined,
-    });
-  }
+  await seedCommits(repo, fixture.commits);
 
   return new FakeForgeAdapter({
     repo,

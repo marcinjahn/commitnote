@@ -21,7 +21,11 @@ import {
   gitHubCommitCost,
   gitHubTreeRequestCount,
 } from "../github/github-adapter";
-import { InMemoryGitRepo, type StoredCommit } from "./in-memory-git-repo";
+import {
+  commitOnBranch,
+  InMemoryGitRepo,
+  type StoredCommit,
+} from "./in-memory-git-repo";
 
 type FailableOperation =
   | "inspect"
@@ -90,20 +94,7 @@ export class FakeForgeAdapter implements ForgeAdapter {
     changes: readonly CommitFileChange[],
     message = SAVE_SUBJECT,
   ): Promise<string> {
-    const parent = this.repo.getRef(MAIN_BRANCH) ?? null;
-    const parentCommit =
-      parent === null ? undefined : this.repo.getCommit(parent);
-    const treeSha = await this.repo.applyChanges(
-      parentCommit?.tree ?? null,
-      changes,
-    );
-    const commitSha = await this.repo.putCommit({
-      tree: treeSha,
-      parent,
-      message,
-    });
-    this.repo.setRef(MAIN_BRANCH, commitSha);
-    return commitSha;
+    return commitOnBranch(this.repo, changes, message);
   }
 
   failNext(operation: FailableOperation, failure: ForgeError | "stale"): void {

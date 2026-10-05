@@ -1,3 +1,4 @@
+import { MAIN_BRANCH } from "../../format/v1";
 import { ForgeError } from "../errors";
 import type { CommitFileChange, TreeEntry } from "../forge-adapter";
 
@@ -288,4 +289,41 @@ export async function commitFiles(
     repo.setRef(input.branch, commitSha);
   }
   return commitSha;
+}
+
+/** Commits `changes` on top of the branch's tip and moves the branch to it. */
+export async function commitOnBranch(
+  repo: InMemoryGitRepo,
+  changes: readonly CommitFileChange[],
+  message: string,
+  branch: string = MAIN_BRANCH,
+): Promise<string> {
+  const parent = repo.getRef(branch) ?? null;
+  const parentCommit = parent === null ? undefined : repo.getCommit(parent);
+  const tree = await repo.applyChanges(parentCommit?.tree ?? null, changes);
+  const sha = await repo.putCommit({ tree, parent, message });
+  repo.setRef(branch, sha);
+  return sha;
+}
+
+/** Replays full-snapshot commits, oldest first; only the last one gets `branch`. */
+export async function seedCommits(
+  repo: InMemoryGitRepo,
+  commits: readonly {
+    readonly message: string;
+    readonly files: Readonly<Record<string, string>>;
+    readonly committedAt?: number;
+  }[],
+  branch: string = MAIN_BRANCH,
+): Promise<void> {
+  let parent: string | null = null;
+  for (const [index, commit] of commits.entries()) {
+    parent = await commitFiles(repo, {
+      parent,
+      files: { ...commit.files },
+      message: commit.message,
+      committedAt: commit.committedAt,
+      branch: index === commits.length - 1 ? branch : undefined,
+    });
+  }
 }
