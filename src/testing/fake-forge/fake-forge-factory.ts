@@ -11,12 +11,17 @@ import { ForgeError } from "../../forge/errors";
 import {
   type FailableOperation,
   FakeForgeAdapter,
+  type FakeForgeAdapterShares,
 } from "../../forge/fake/fake-forge-adapter";
 import {
   commitFiles,
   InMemoryGitRepo,
   type GitObjectsSnapshot,
 } from "../../forge/fake/in-memory-git-repo";
+import {
+  createFakeShareStore,
+  type FakeShareStore,
+} from "../../forge/fake/fake-share-store";
 import type { ForgeAdapter } from "../../forge/forge-adapter";
 import type {
   ForgeProvider,
@@ -106,6 +111,7 @@ function createRejectingAdapter(makeError: () => ForgeError): ForgeAdapter {
     readFileAt: reject,
     readBlob: reject,
     commit: reject,
+    shareHost: { create: reject, delete: reject },
   };
 }
 
@@ -122,7 +128,9 @@ function notFoundAdapter(): ForgeAdapter {
   );
 }
 
-async function createForeignRepoAdapter(): Promise<FakeForgeAdapter> {
+async function createForeignRepoAdapter(
+  shares: FakeForgeAdapterShares,
+): Promise<FakeForgeAdapter> {
   const repo = new InMemoryGitRepo();
   await commitFiles(repo, {
     parent: null,
@@ -133,10 +141,12 @@ async function createForeignRepoAdapter(): Promise<FakeForgeAdapter> {
     message: INITIALIZE_SUBJECT,
     branch: MAIN_BRANCH,
   });
-  return new FakeForgeAdapter({ repo });
+  return new FakeForgeAdapter({ repo, shares });
 }
 
-async function createAlmostEmptyRepoAdapter(): Promise<FakeForgeAdapter> {
+async function createAlmostEmptyRepoAdapter(
+  shares: FakeForgeAdapterShares,
+): Promise<FakeForgeAdapter> {
   const repo = new InMemoryGitRepo();
   await commitFiles(repo, {
     parent: null,
@@ -148,10 +158,12 @@ async function createAlmostEmptyRepoAdapter(): Promise<FakeForgeAdapter> {
     message: "Initial commit",
     branch: MAIN_BRANCH,
   });
-  return new FakeForgeAdapter({ repo });
+  return new FakeForgeAdapter({ repo, shares });
 }
 
-async function createNewerRepoAdapter(): Promise<FakeForgeAdapter> {
+async function createNewerRepoAdapter(
+  shares: FakeForgeAdapterShares,
+): Promise<FakeForgeAdapter> {
   const sampleConfigText = sampleNotesRepo.commits[0].files[REPO_CONFIG_PATH];
   const newerConfig = JSON.parse(sampleConfigText) as Record<string, unknown>;
   newerConfig.formatVersion = 2;
@@ -164,35 +176,40 @@ async function createNewerRepoAdapter(): Promise<FakeForgeAdapter> {
     message: INITIALIZE_SUBJECT,
     branch: MAIN_BRANCH,
   });
-  return new FakeForgeAdapter({ repo });
+  return new FakeForgeAdapter({ repo, shares });
 }
 
 export async function createFakeForge(options?: {
   readonly argon2id?: Argon2idFunction;
   readonly latency?: ForgeLatency;
+  readonly shareStorage?: Pick<Storage, "getItem" | "setItem">;
 }): Promise<{
   factory: ForgeAdapterFactory;
   registry: ForgeRegistry;
   controls: FakeForgeControls;
+  shareStore: FakeShareStore;
 }> {
   const argon2id = options?.argon2id ?? argon2idInWorker;
   const latency = options?.latency;
+  const shareStore = createFakeShareStore(options?.shareStorage);
+  const githubShares = { store: shareStore, provider: "github" } as const;
+  const gitlabShares = { store: shareStore, provider: "gitlab" } as const;
   const slowed = (adapter: ForgeAdapter): ForgeAdapter =>
     latency === undefined ? adapter : withLatency(adapter, latency);
 
   const fixtures = new Map<string, ForgeAdapter>([
-    ["sample/notes", await createSampleNotesRepoAdapter()],
-    ["sample/empty", new FakeForgeAdapter({ defaultBranch: "master" })],
-    ["sample/empty-read-only", new FakeForgeAdapter({ canWrite: false })],
+    ["sample/notes", await createSampleNotesRepoAdapter({ shares: githubShares })],
+    ["sample/empty", new FakeForgeAdapter({ defaultBranch: "master", shares: githubShares })],
+    ["sample/empty-read-only", new FakeForgeAdapter({ canWrite: false, shares: githubShares })],
     [
       "sample/read-only",
-      await createSampleNotesRepoAdapter({ canWrite: false }),
+      await createSampleNotesRepoAdapter({ canWrite: false, shares: githubShares }),
     ],
-    ["sample/foreign", await createForeignRepoAdapter()],
-    ["sample/newer", await createNewerRepoAdapter()],
-    ["sample/trash", await createSampleTrashRepoAdapter()],
-    ["sample/almost-empty", await createAlmostEmptyRepoAdapter()],
-    ["sample/public-empty", new FakeForgeAdapter()],
+    ["sample/foreign", await createForeignRepoAdapter(githubShares)],
+    ["sample/newer", await createNewerRepoAdapter(githubShares)],
+    ["sample/trash", await createSampleTrashRepoAdapter({ shares: githubShares })],
+    ["sample/almost-empty", await createAlmostEmptyRepoAdapter(githubShares)],
+    ["sample/public-empty", new FakeForgeAdapter({ shares: githubShares })],
   ]);
   const publicFixtures: ReadonlySet<string> = new Set(["sample/public-empty"]);
 
@@ -356,8 +373,8 @@ export async function createFakeForge(options?: {
   }
 
   const secondFixtures = new Map<string, ForgeAdapter>([
-    ["team/notes", await createSampleNotesRepoAdapter()],
-    ["team/empty", new FakeForgeAdapter()],
+    ["team/notes", await createSampleNotesRepoAdapter({ shares: gitlabShares })],
+    ["team/empty", new FakeForgeAdapter({ shares: gitlabShares })],
   ]);
 
   const secondFactory = fixtureFactory(secondFixtures);
@@ -386,5 +403,5 @@ export async function createFakeForge(options?: {
     }),
   };
 
-  return { factory, registry, controls };
+  return { factory, registry, controls, shareStore };
 }

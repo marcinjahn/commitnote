@@ -5,6 +5,7 @@ import {
   FAKE_FORGE_BANNER,
   FAKE_FORGE_CONTROLS_KEY,
 } from "../src/testing/fake-forge/fake-forge-factory";
+import { FAKE_SHARE_STORE_KEY } from "../src/forge/fake/fake-share-store";
 import {
   FAKE_FORGE_ARGON2_BINDING,
   FAKE_FORGE_OPTIONS_KEY,
@@ -56,6 +57,7 @@ async function main(): Promise<void> {
     FAKE_FORGE_OPTIONS_KEY,
     FAKE_FORGE_ARGON2_BINDING,
     FAKE_FORGE_SESSION_PARAM,
+    FAKE_SHARE_STORE_KEY,
   ]);
   if (forbiddenInProd.length > 0) {
     for (const hit of forbiddenInProd) {

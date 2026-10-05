@@ -10,6 +10,7 @@ export function delegateAdapter(
 ): ForgeAdapter {
   return {
     limits: inner.limits,
+    shareHost: inner.shareHost,
     commitCost: (changes, options) => inner.commitCost(changes, options),
     inspect: () => inner.inspect(),
     initialize: (configText, message) => inner.initialize(configText, message),

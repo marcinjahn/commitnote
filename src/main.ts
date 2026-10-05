@@ -38,6 +38,7 @@ if (import.meta.env.MODE === "fake-forge") {
   const fakeForge = await fake.createFakeForge({
     latency: options.latency,
     argon2id,
+    shareStorage: localStorage,
   });
   registry = fakeForge.registry;
   testModeBanner = fake.FAKE_FORGE_BANNER;

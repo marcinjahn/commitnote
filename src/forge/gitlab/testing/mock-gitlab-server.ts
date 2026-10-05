@@ -115,6 +115,8 @@ export class MockGitLabRepo {
     { reads: number; source: string; removeSource: boolean }
   >();
   private nextIid = 1;
+  private readonly snippets = new Map<number, string>();
+  private nextSnippetId = 1;
 
   constructor(options: MockGitLabRepoOptions) {
     this.projectPath = options.projectPath;
@@ -139,8 +141,16 @@ export class MockGitLabRepo {
     this.commitDates.set(sha, date.toISOString());
   }
 
+  /** The envelope stored in a snippet, or null when it does not exist. */
+  snippetContent(snippetId: string): string | null {
+    return this.snippets.get(Number(snippetId)) ?? null;
+  }
+
   handlers(): HttpHandler[] {
     return [
+      http.all("https://gitlab.com/api/v4/snippets*", ({ request }) =>
+        this.handleSnippets(request),
+      ),
       http.all("https://gitlab.com/api/v4/projects/*", ({ request }) =>
         this.handle(request),
       ),
@@ -180,6 +190,42 @@ export class MockGitLabRepo {
       return HttpResponse.error();
     }
     return response;
+  }
+
+  private async handleSnippets(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const method = request.method.toUpperCase();
+    const path = `${url.pathname}${url.search}`;
+    this.requests.push({ method, path });
+
+    const injected = this.faults.takeFailure(method, path);
+    if (injected !== null) return injected;
+
+    if (request.headers.get("authorization") !== `Bearer ${this.token}`) {
+      return jsonResponse({ message: "401 Unauthorized" }, 401);
+    }
+
+    if (method === "POST" && url.pathname === `${API_PREFIX}/snippets`) {
+      const body = (await request.json()) as {
+        files?: readonly { content?: string }[];
+      };
+      const content = body.files?.[0]?.content;
+      if (typeof content !== "string") {
+        return jsonResponse({ message: "400 Bad request" }, 400);
+      }
+      const id = this.nextSnippetId++;
+      this.snippets.set(id, content);
+      return jsonResponse({ id }, 201);
+    }
+    const idMatch = new RegExp(`^${API_PREFIX}/snippets/(\\d+)$`).exec(
+      url.pathname,
+    );
+    if (method === "DELETE" && idMatch !== null) {
+      return this.snippets.delete(Number(idMatch[1]))
+        ? new HttpResponse(null, { status: 204 })
+        : jsonResponse({ message: "404 Snippet Not Found" }, 404);
+    }
+    return jsonResponse({ message: "404 Not Found" }, 404);
   }
 
   private accessLevel(): number {

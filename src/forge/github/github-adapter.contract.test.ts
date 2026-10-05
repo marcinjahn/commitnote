@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import type {
   ContractOperation,
   ContractSeed,
+  ContractShareOperation,
   ContractSubject,
   ForgeContractHarness,
   InjectedFailure,
@@ -91,6 +92,13 @@ function applyFailure(
   mock.failNext(FIRST_REQUEST_MATCH[operation], toMockFailure(failure));
 }
 
+const SHARE_FAILURE_MATCH: Record<ContractShareOperation, FailureMatch> = {
+  createShare: { method: "POST", pathPattern: /\/gists$/ },
+  deleteShare: { method: "DELETE", pathPattern: /\/gists\// },
+};
+
+const mocks = new WeakMap<ContractSubject, MockGitHubRepo>();
+
 function buildSubject(mock: MockGitHubRepo): ContractSubject {
   getServer().use(...mock.handlers());
 
@@ -104,15 +112,28 @@ function buildSubject(mock: MockGitHubRepo): ContractSubject {
     },
   );
 
-  return {
+  const subject: ContractSubject = {
     adapter,
     contentCreatingRequests,
     ...inMemorySubjectHooks(mock.git),
     failNext: (operation, failure) => applyFailure(mock, operation, failure),
+    failNextShare(operation, failure) {
+      if (failure.kind === "stale") {
+        throw new Error("'stale' is not supported for shares");
+      }
+      mock.failNext(SHARE_FAILURE_MATCH[operation], toMockFailure(failure));
+    },
   };
+  mocks.set(subject, mock);
+  return subject;
 }
 
 const harness: ForgeContractHarness = {
+  async readShare(subject, locator) {
+    if (locator.provider !== "github") throw new Error("unexpected provider");
+    return mocks.get(subject)?.gistContent(locator.gistId) ?? null;
+  },
+
   async createEmpty(options) {
     const mock = new MockGitHubRepo({
       owner: OWNER,

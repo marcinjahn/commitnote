@@ -92,6 +92,10 @@ describe("sync engine suspend", () => {
         readFileAt: () => Promise.reject(new Error()),
         readBlob: () => Promise.reject(new Error()),
         commit: () => Promise.reject(new Error()),
+        shareHost: {
+          create: () => Promise.reject(new Error()),
+          delete: () => Promise.reject(new Error()),
+        },
       },
       keyring: undefined as never,
       clock: createTestClock(0),

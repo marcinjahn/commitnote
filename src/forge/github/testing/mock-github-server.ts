@@ -92,6 +92,8 @@ export class MockGitHubRepo {
   private readonly canWrite: boolean;
   private readonly defaultBranch: string;
   private readonly faults = new MockFaults(jsonResponse);
+  private readonly gists = new Map<string, string>();
+  private nextGist = 1;
 
   constructor(options: MockGitHubRepoOptions) {
     this.owner = options.owner;
@@ -107,6 +109,11 @@ export class MockGitHubRepo {
 
   dropNextResponse(match: FailureMatch): void {
     this.faults.dropNextResponse(match);
+  }
+
+  /** The envelope stored in a gist, or null when it does not exist. */
+  gistContent(gistId: string): string | null {
+    return this.gists.get(gistId) ?? null;
   }
 
   handlers(): HttpHandler[] {
@@ -156,6 +163,10 @@ export class MockGitHubRepo {
       return jsonResponse({ message: "Bad credentials" }, 401);
     }
 
+    if (url.pathname === "/gists" || url.pathname.startsWith("/gists/")) {
+      return this.routeGists(method, url.pathname, request);
+    }
+
     const repoMatch = /^\/repos\/([^/]+)\/([^/]+)(\/.*)?$/.exec(url.pathname);
     if (
       repoMatch === null ||
@@ -170,6 +181,32 @@ export class MockGitHubRepo {
       return HttpResponse.error();
     }
     return response;
+  }
+
+  private async routeGists(
+    method: string,
+    pathname: string,
+    request: Request,
+  ): Promise<Response> {
+    if (method === "POST" && pathname === "/gists") {
+      const body = (await request.json()) as {
+        files?: Record<string, { content?: string }>;
+      };
+      const content = Object.values(body.files ?? {})[0]?.content;
+      if (typeof content !== "string") {
+        return jsonResponse({ message: "Validation Failed" }, 422);
+      }
+      const id = `gist${this.nextGist++}`;
+      this.gists.set(id, content);
+      return jsonResponse({ id, history: [{ version: `${id}-v1` }] }, 201);
+    }
+    const idMatch = /^\/gists\/([^/]+)$/.exec(pathname);
+    if (method === "DELETE" && idMatch !== null) {
+      return this.gists.delete(idMatch[1])
+        ? new HttpResponse(null, { status: 204 })
+        : jsonResponse({ message: "Not Found" }, 404);
+    }
+    return jsonResponse({ message: "Not Found" }, 404);
   }
 
   private isEmpty(): boolean {

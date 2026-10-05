@@ -1,5 +1,6 @@
 import type {
   ContractOperation,
+  ContractShareOperation,
   ContractSeed,
   ContractSubject,
   ForgeContractHarness,
@@ -11,6 +12,7 @@ import {
 } from "../contract/forge-adapter-contract";
 import { ForgeError } from "../errors";
 import type { ContentCreatingRequest } from "../forge-adapter";
+import { createFakeShareStore, type FakeShareStore } from "./fake-share-store";
 import { InMemoryGitRepo, seedCommits } from "./in-memory-git-repo";
 import { FakeForgeAdapter } from "./fake-forge-adapter";
 
@@ -26,12 +28,16 @@ function translateFailure(failure: InjectedFailure): ForgeError | "stale" {
   return new ForgeError(failure.kind);
 }
 
+const stores = new WeakMap<ContractSubject, FakeShareStore>();
+
 function buildSubject(
   repo: InMemoryGitRepo,
   options?: { canWrite?: boolean; defaultBranch?: string },
 ): ContractSubject {
   const contentCreatingRequests: ContentCreatingRequest[] = [];
+  const shareStore = createFakeShareStore();
   const adapter = new FakeForgeAdapter({
+    shares: { store: shareStore, provider: "github" },
     repo,
     canWrite: options?.canWrite,
     defaultBranch: options?.defaultBranch,
@@ -39,17 +45,27 @@ function buildSubject(
       contentCreatingRequests.push(request),
   });
 
-  return {
+  const subject: ContractSubject = {
     adapter,
     contentCreatingRequests,
     ...inMemorySubjectHooks(repo),
     pushFromAnotherDevice: (changes) => adapter.pushFromAnotherDevice(changes),
     failNext: (operation: ContractOperation, failure: InjectedFailure) =>
       adapter.failNext(operation, translateFailure(failure)),
+    failNextShare: (
+      operation: ContractShareOperation,
+      failure: InjectedFailure,
+    ) => adapter.failNext(operation, translateFailure(failure)),
   };
+  stores.set(subject, shareStore);
+  return subject;
 }
 
 const harness: ForgeContractHarness = {
+  async readShare(subject, locator) {
+    return stores.get(subject)?.read(locator) ?? null;
+  },
+
   async createEmpty(options) {
     return buildSubject(new InMemoryGitRepo(), options);
   },

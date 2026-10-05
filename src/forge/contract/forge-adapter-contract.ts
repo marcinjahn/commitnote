@@ -14,6 +14,7 @@ import { commitOnBranch } from "../fake/in-memory-git-repo";
 import type { InMemoryGitRepo } from "../fake/in-memory-git-repo";
 import type { MockFailure } from "../fake/mock-faults";
 import { ROOT_LISTING_LIMIT } from "../forge-adapter";
+import type { ShareHost, ShareLocator } from "../share-host";
 
 export interface ContractSeed {
   readonly commits: readonly {
@@ -43,17 +44,28 @@ export type ContractOperation =
   | "findOldestCommit"
   | "readFileAt";
 
+export type ContractShareOperation = "createShare" | "deleteShare";
+
 export interface ContractSubject {
   readonly adapter: ForgeAdapter;
   readonly contentCreatingRequests: readonly ContentCreatingRequest[]; // live list captured from onContentCreatingRequest
   pushFromAnotherDevice(changes: readonly CommitFileChange[]): Promise<string>;
   failNext(operation: ContractOperation, failure: InjectedFailure): void;
+  failNextShare?(
+    operation: ContractShareOperation,
+    failure: InjectedFailure,
+  ): void;
   readFileAtMain(path: string): Promise<string | undefined>; // inspects backing state directly
   mainHead(): Promise<string | undefined>;
   commitParent(sha: string): Promise<string | null | undefined>;
 }
 
 export interface ForgeContractHarness {
+  /** Reads the hosted envelope back through the test backend; the shareHost block is skipped when absent. */
+  readShare?(
+    subject: ContractSubject,
+    locator: ShareLocator,
+  ): Promise<string | null>;
   createEmpty(options?: {
     canWrite?: boolean;
     defaultBranch?: string;
@@ -1002,6 +1014,121 @@ export function describeForgeAdapterContract(
         expect(subject.contentCreatingRequests[0]?.operation).toBe(
           "initialize",
         );
+      });
+    });
+
+    const readShare = harness.readShare;
+    describe.skipIf(readShare === undefined)("shareHost", () => {
+      async function createSubject(): Promise<{
+        subject: ContractSubject;
+        host: ShareHost;
+      }> {
+        const subject = await harness.createPopulated(configSeed());
+        const host = subject.adapter.shareHost;
+        if (host === undefined) {
+          throw new Error("expected the adapter to have a shareHost");
+        }
+        return { subject, host };
+      }
+
+      function read(
+        subject: ContractSubject,
+        locator: ShareLocator,
+      ): Promise<string | null> {
+        if (readShare === undefined) {
+          throw new Error("unreachable: readShare is absent");
+        }
+        return readShare(subject, locator);
+      }
+
+      function failNextShare(
+        subject: ContractSubject,
+        operation: ContractShareOperation,
+        failure: InjectedFailure,
+      ): void {
+        if (subject.failNextShare === undefined) {
+          throw new Error("expected the subject to support failNextShare");
+        }
+        subject.failNextShare(operation, failure);
+      }
+
+      it("creates a share whose hosted content equals the envelope", async () => {
+        const { subject, host } = await createSubject();
+        const locator = await host.create("envelope-text");
+        expect(["github", "gitlab"]).toContain(locator.provider);
+        expect(await read(subject, locator)).toBe("envelope-text");
+      });
+
+      it("gives distinct locators to two creates", async () => {
+        const { subject, host } = await createSubject();
+        const first = await host.create("one");
+        const second = await host.create("two");
+        expect(second).not.toEqual(first);
+        expect(await read(subject, first)).toBe("one");
+        expect(await read(subject, second)).toBe("two");
+      });
+
+      it("deletes a share", async () => {
+        const { subject, host } = await createSubject();
+        const locator = await host.create("gone soon");
+        await host.delete(locator);
+        expect(await read(subject, locator)).toBeNull();
+      });
+
+      it("resolves when deleting an already-deleted share", async () => {
+        const { host } = await createSubject();
+        const locator = await host.create("gone soon");
+        await host.delete(locator);
+        await expect(host.delete(locator)).resolves.toBeUndefined();
+      });
+
+      it("reports one content-creating request per create and per delete", async () => {
+        const { subject, host } = await createSubject();
+        const locator = await host.create("x");
+        expect(subject.contentCreatingRequests).toEqual([
+          { operation: "createShare" },
+        ]);
+        await host.delete(locator);
+        expect(subject.contentCreatingRequests).toEqual([
+          { operation: "createShare" },
+          { operation: "deleteShare" },
+        ]);
+      });
+
+      for (const kind of ["Forbidden", "Network"] as const) {
+        it(`rejects create with ${kind}`, async () => {
+          const { subject, host } = await createSubject();
+          failNextShare(subject, "createShare", { kind });
+          await expect(host.create("x")).rejects.toMatchObject({ kind });
+        });
+
+        it(`rejects delete with ${kind}`, async () => {
+          const { subject, host } = await createSubject();
+          const locator = await host.create("x");
+          failNextShare(subject, "deleteShare", { kind });
+          await expect(host.delete(locator)).rejects.toMatchObject({ kind });
+          expect(await read(subject, locator)).toBe("x");
+        });
+      }
+
+      it("rejects create and delete with RateLimited", async () => {
+        const { subject, host } = await createSubject();
+        failNextShare(subject, "createShare", {
+          kind: "RateLimited",
+          retryAfterSeconds: 30,
+        });
+        await expect(host.create("x")).rejects.toMatchObject({
+          kind: "RateLimited",
+          retryAfterMs: 30_000,
+        });
+        const locator = await host.create("x");
+        failNextShare(subject, "deleteShare", {
+          kind: "RateLimited",
+          retryAfterSeconds: 30,
+        });
+        await expect(host.delete(locator)).rejects.toMatchObject({
+          kind: "RateLimited",
+        });
       });
     });
 

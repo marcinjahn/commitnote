@@ -1,4 +1,7 @@
-import { FakeForgeAdapter } from "../../forge/fake/fake-forge-adapter";
+import {
+  FakeForgeAdapter,
+  type FakeForgeAdapterShares,
+} from "../../forge/fake/fake-forge-adapter";
 import {
   InMemoryGitRepo,
   seedCommits,
@@ -29,6 +32,7 @@ export function createSampleTrashRepoAdapter(options?: SampleRepoAdapterOptions)
 interface SampleRepoAdapterOptions {
   readonly canWrite?: boolean;
   readonly onContentCreatingRequest?: ForgeAdapterOptions["onContentCreatingRequest"];
+  readonly shares?: FakeForgeAdapterShares;
 }
 
 async function createAdapterFor(
@@ -42,5 +46,6 @@ async function createAdapterFor(
     repo,
     canWrite: options?.canWrite,
     onContentCreatingRequest: options?.onContentCreatingRequest,
+    shares: options?.shares,
   });
 }
