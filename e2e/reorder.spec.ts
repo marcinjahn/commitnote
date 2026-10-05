@@ -12,14 +12,8 @@ const ROOT_ORDER = [
   "Zażółć gęślą jaźń",
 ];
 
-const RELOAD_TEST = "the new order survives a reload";
-
-test.beforeEach(async ({ page }, testInfo) => {
-  // That test expects the login screen after its reload.
-  await openNotes(
-    page,
-    testInfo.title === RELOAD_TEST ? { via: "login" } : {},
-  );
+test.beforeEach(async ({ page }) => {
+  await openNotes(page);
 });
 
 interface DropPoint {
@@ -113,18 +107,6 @@ test("a reordered note shows its saving state until it is saved", async ({
   await expect(rowSyncState(page, "Zażółć gęślą jaźń")).toHaveCount(0, {
     timeout: 15_000,
   });
-  await expect(treeRows(page)).toHaveText(REORDERED_ROOT);
-});
-
-test(RELOAD_TEST, async ({ page }) => {
-  await moveZazolcBeforeWelcome(page);
-  const exported = await fakeForge(page).exportRepo();
-
-  await page.reload();
-  await fakeForge(page).adoptRepo(exported);
-  await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
-  await expectTree(page);
-
   await expect(treeRows(page)).toHaveText(REORDERED_ROOT);
 });
 

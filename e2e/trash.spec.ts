@@ -18,14 +18,6 @@ async function restoreTo(
   await picker.getByRole("button", { name: "Restore", exact: true }).click();
 }
 
-test("the Trash button is hidden while the trash is empty", async ({
-  page,
-}) => {
-  await openNotes(page);
-
-  await expect(page.getByTestId("open-trash")).toHaveCount(0);
-});
-
 test("the Trash row sits below the tree and leaves the repo link visible", { tag: "@mobile" }, async ({
   page,
 }) => {
@@ -57,6 +49,7 @@ test("a deleted note shows up in the trash and can be restored into a folder", a
   page,
 }) => {
   await openNotes(page);
+  await expect(page.getByTestId("open-trash")).toHaveCount(0);
 
   await moveToTrash(page, "Welcome", /will be moved to the trash/);
   await expect(treeItem(page, "Welcome")).toHaveCount(0);

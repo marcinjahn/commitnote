@@ -46,7 +46,7 @@ test("sidebar wordmark and repo label are not clipped", { tag: "@mobile" }, asyn
   ).toBe(true);
 });
 
-test("the sidebar repo label links to the repository in a new tab", async ({
+test("the sidebar links to the repository, shows the current commit and follows each save", async ({
   page,
 }) => {
   await openNotes(page);
@@ -56,12 +56,6 @@ test("the sidebar repo label links to the repository in a new tab", async ({
     .getByRole("link", { name: /^sample\/notes Commit [0-9a-f]{40}$/ });
   await expect(link).toHaveAttribute("href", SAMPLE.repo);
   await expect(link).toHaveAttribute("target", "_blank");
-});
-
-test("the sidebar shows the current commit and follows each save", async ({
-  page,
-}) => {
-  await openNotes(page);
 
   const sha = page.locator(".sidebar-footer").getByTestId("commit-sha");
   await expect(sha).toHaveAttribute("data-sha", /^[0-9a-f]{40}$/);
