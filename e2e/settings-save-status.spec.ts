@@ -23,26 +23,10 @@ test("choosing the option that is already selected shows no save status", async 
   await expect(settingsDialog(page).getByRole("status")).toHaveText("");
 });
 
-test("a change while Saved is shown goes back to waiting and ends saved again", async ({
-  page,
-}) => {
-  await openSettings(page);
-  await chooseAccent(page, "Teal");
-  await expect(dialogStatus(page, "Saved")).toBeVisible({ timeout: 10_000 });
-
-  await chooseAccent(page, "Red");
-
-  await expect(dialogStatus(page, "Waiting to save")).toBeVisible();
-  await expect(dialogStatus(page, "Saved")).toBeVisible({ timeout: 10_000 });
-  await expect(settingsDialog(page).getByRole("status")).toHaveText("", {
-    timeout: 4_000,
-  });
-});
-
 test.describe("with GitHub-like forge latency", () => {
   test.use({ forgeLatency: "github" });
 
-  test("the Settings dialog shows a change waiting, saving, then briefly saved", async ({
+  test("the Settings dialog shows a change waiting, saving, then briefly saved, and a change while Saved ends saved again", async ({
     page,
   }) => {
     await openSettings(page);
@@ -55,6 +39,11 @@ test.describe("with GitHub-like forge latency", () => {
     await expect(settingsDialog(page).getByRole("status")).toContainText(
       "Settings saved",
     );
+
+    await chooseAccent(page, "Red");
+
+    await expect(dialogStatus(page, "Waiting to save")).toBeVisible();
+    await expect(dialogStatus(page, "Saved")).toBeVisible({ timeout: 10_000 });
     await expect(settingsDialog(page).getByRole("status")).toHaveText("", {
       timeout: 4_000,
     });

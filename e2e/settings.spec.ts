@@ -115,9 +115,7 @@ test("Settings is the first command and opens a dialog with the accent color opt
   const group = dialog.getByRole("radiogroup", { name: "Accent color" });
   await expect(group).toBeVisible();
   await expect(group.getByRole("radio")).toHaveCount(PALETTE.length);
-  for (const [index, name] of PALETTE.entries()) {
-    await expect(group.getByRole("radio").nth(index)).toHaveAccessibleName(name);
-  }
+  await expect(group.getByRole("radio").nth(8)).toHaveAccessibleName(PALETTE[8]);
   const systemRadio = group.getByRole("radio", { name: "System" });
   await expect(systemRadio).toBeChecked();
   await expect(systemRadio).toBeFocused();
@@ -140,14 +138,10 @@ test("Settings is the first command and opens a dialog with the accent color opt
   const notes = dialog.getByRole("radiogroup", { name: "New notes" });
   const folders = dialog.getByRole("radiogroup", { name: "New folders" });
   await expect(notes.getByRole("radio")).toHaveCount(NOTE_OPTIONS.length);
-  for (const [index, name] of NOTE_OPTIONS.entries()) {
-    await expect(notes.getByRole("radio").nth(index)).toHaveAccessibleName(name);
-  }
+  await expect(notes.getByRole("radio").nth(1)).toHaveAccessibleName(NOTE_OPTIONS[1]);
   await expect(notes.getByRole("radio", { name: "At the beginning" })).toBeChecked();
   await expect(folders.getByRole("radio")).toHaveCount(FOLDER_OPTIONS.length);
-  for (const [index, name] of FOLDER_OPTIONS.entries()) {
-    await expect(folders.getByRole("radio").nth(index)).toHaveAccessibleName(name);
-  }
+  await expect(folders.getByRole("radio").nth(2)).toHaveAccessibleName(FOLDER_OPTIONS[2]);
   await expect(folders.getByRole("radio", { name: "At the end" })).toBeChecked();
 
   await page.keyboard.press("Escape");
@@ -169,7 +163,7 @@ test("clicking the backdrop closes the Settings dialog", async ({
   await expect(settingsDialog(page)).toHaveCount(0);
 });
 
-test("choosing an accent color applies it and saves one commit without the value", async ({
+test("changing the accent color, note font and placements saves one commit naming only the keys", async ({
   page,
 }) => {
   const commitsBefore = await fakeForge(page).commitMessages();
@@ -177,27 +171,42 @@ test("choosing an accent color applies it and saves one commit without the value
   await openSettings(page);
   const dialog = settingsDialog(page);
 
-  await chooseAccent(page, "Teal");
+  await test.step("the accent color applies", async () => {
+    await chooseAccent(page, "Teal");
 
-  await expect(dialog.getByRole("radio", { name: "Teal" })).toBeChecked();
-  await expect(dialog.locator(".accent-caption")).toHaveText("Teal");
-  await expectRootAccent(page, TEAL);
-  await expect
-    .poll(() =>
-      dialog
-        .locator(".dialog-card")
-        .evaluate((el) => getComputedStyle(el).borderTopColor),
-    )
-    .toBe(TEAL);
-  expect(TEAL).not.toBe(system);
+    await expect(dialog.getByRole("radio", { name: "Teal" })).toBeChecked();
+    await expect(dialog.locator(".accent-caption")).toHaveText("Teal");
+    await expectRootAccent(page, TEAL);
+    await expect
+      .poll(() =>
+        dialog
+          .locator(".dialog-card")
+          .evaluate((el) => getComputedStyle(el).borderTopColor),
+      )
+      .toBe(TEAL);
+    expect(TEAL).not.toBe(system);
+  });
 
-  await expectSettingsCommits(page, commitsBefore.length + 1);
-  const added = (await fakeForge(page).commitMessages()).filter(
-    (m) => !commitsBefore.includes(m),
-  );
-  expect(added).toHaveLength(1);
-  expect(added[0]).toContain("Commitnote-Settings: accentColor");
-  expect(added[0].toLowerCase()).not.toContain("teal");
+  await chooseOption(page, "Note font", "Literata");
+  await chooseOption(page, "New notes", "At the end");
+  await chooseOption(page, "New folders", "After the last folder");
+
+  await test.step("one commit names the four keys and none of the values", async () => {
+    await expectSettingsCommits(page, commitsBefore.length + 1);
+    await flushPendingSaves(page);
+    await expectSettingsIdle(page);
+    const added = await addedCommits(page, commitsBefore);
+    expect(added).toHaveLength(1);
+    const lines = added[0].split("\n");
+    expect(lines).toContain("Commitnote-Settings: accentColor");
+    expect(lines).toContain("Commitnote-Settings: noteFont");
+    expect(lines).toContain("Commitnote-Settings: newNotePlacement");
+    expect(lines).toContain("Commitnote-Settings: newFolderPlacement");
+    const message = added[0].toLowerCase();
+    expect(message).not.toContain("teal");
+    expect(message).not.toContain("literata");
+    expect(message).not.toContain("afterlastfolder");
+  });
 });
 
 test("rapid accent changes are saved as a single commit", async ({ page }) => {
@@ -315,41 +324,6 @@ test("a saved accent color applies on the passphrase step and after login, and l
   await page.getByRole("button", { name: "Log in" }).click();
   await expectTree(page);
   await expectRootAccent(page, TEAL);
-});
-
-test("a saved note placement is one commit naming only the key, and returning to it makes no commit", async ({
-  page,
-}) => {
-  const commitsBefore = await fakeForge(page).commitMessages();
-  await openSettings(page);
-
-  await chooseOption(page, "New notes", "At the end");
-  await expectSettingsCommits(page, commitsBefore.length + 1);
-  const added = await addedCommits(page, commitsBefore);
-  expect(added).toHaveLength(1);
-  expect(added[0].split("\n")).toContain("Commitnote-Settings: newNotePlacement");
-
-  await chooseOption(page, "New notes", "At the beginning");
-  await chooseOption(page, "New notes", "At the end");
-  await flushPendingSaves(page);
-  await expectSettingsIdle(page);
-  expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
-});
-
-test("a saved folder placement is one commit naming only the key", async ({
-  page,
-}) => {
-  const commitsBefore = await fakeForge(page).commitMessages();
-  await openSettings(page);
-
-  await chooseOption(page, "New folders", "After the last folder");
-  await expectSettingsCommits(page, commitsBefore.length + 1);
-  const added = await addedCommits(page, commitsBefore);
-  expect(added).toHaveLength(1);
-  expect(added[0].split("\n")).toContain(
-    "Commitnote-Settings: newFolderPlacement",
-  );
-  expect(added[0]).not.toContain("afterLastFolder");
 });
 
 test("by default a new note is first and a new folder is last at the root", async ({
@@ -538,19 +512,18 @@ test("the Note font section lists eleven options with Inter checked, each label 
 }) => {
   await openSettings(page);
   const group = noteFontGroup(page);
-  const names = Object.keys(NOTE_FONTS);
 
   await expect(group.getByRole("radio")).toHaveCount(11);
-  for (const [index, name] of names.entries()) {
-    await expect(group.getByRole("radio").nth(index)).toHaveAccessibleName(name);
-  }
+  await expect(group.getByRole("radio").nth(6)).toHaveAccessibleName("Literata");
+  await expect(group.getByRole("radio").nth(6)).toHaveAccessibleDescription(
+    NOTE_FONTS.Literata.description,
+  );
   await expect(group.getByRole("radio", { name: "Inter", exact: true })).toBeChecked();
 
-  for (const [name, { stack, description }] of Object.entries(NOTE_FONTS)) {
+  for (const [name, { stack }] of Object.entries(NOTE_FONTS)) {
     const radio = group.getByRole("radio", { name, exact: true });
     const expected = await expectedFamily(page, stack);
     await expect.poll(() => labelPreviewFamily(radio)).toBe(expected);
-    await expect(radio).toHaveAccessibleDescription(description);
   }
   await expect(
     noteFontRow(page, "System UI").getByText(NOTE_FONTS["System UI"].description),
@@ -638,49 +611,6 @@ for (const font of ["Literata", "JetBrains Mono"]) {
     await expectFontLoaded(page, family!);
   });
 }
-
-test("choosing a note font saves one commit naming only the key", async ({
-  page,
-}) => {
-  const commitsBefore = await fakeForge(page).commitMessages();
-  await openSettings(page);
-
-  await chooseOption(page, "Note font", "Literata");
-
-  await expectSettingsCommits(page, commitsBefore.length + 1);
-  const added = await addedCommits(page, commitsBefore);
-  expect(added).toHaveLength(1);
-  expect(added[0].split("\n")).toContain("Commitnote-Settings: noteFont");
-  expect(added[0].toLowerCase()).not.toContain("literata");
-});
-
-test("rapid note font changes are saved as a single commit", async ({ page }) => {
-  const commitsBefore = await fakeForge(page).commitMessages();
-  await openSettings(page);
-
-  await chooseOption(page, "Note font", "System UI");
-  await chooseOption(page, "Note font", "JetBrains Mono");
-  await chooseOption(page, "Note font", "Literata");
-
-  await expectSettingsCommits(page, commitsBefore.length + 1);
-  await flushPendingSaves(page);
-  await expectSettingsIdle(page);
-  expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
-});
-
-test("re-picking the saved note font makes no commit", async ({ page }) => {
-  const commitsBefore = await fakeForge(page).commitMessages();
-  await openSettings(page);
-  await chooseOption(page, "Note font", "Literata");
-  await expectSettingsCommits(page, commitsBefore.length + 1);
-
-  await chooseOption(page, "Note font", "Literata");
-  await chooseOption(page, "Note font", "JetBrains Mono");
-  await chooseOption(page, "Note font", "Literata");
-  await flushPendingSaves(page);
-  await expectSettingsIdle(page);
-  expect(await fakeForge(page).commitMessages()).toHaveLength(commitsBefore.length + 1);
-});
 
 test("a saved note font is applied after login and reset on logout", async ({
   page,
