@@ -38,7 +38,7 @@ export interface TreeDragOptions {
   readonly onOpen: (path: NotePath) => void;
 }
 
-export interface DragSession {
+interface DragSession {
   move(x: number, y: number): void;
   drop(): void;
   cancel(): void;
@@ -72,7 +72,7 @@ function rowElements(container: HTMLElement): Map<string, HTMLElement> {
  * cancelled; `onEnd` runs once everything has settled. Input-agnostic, so
  * any way of starting a drag (mouse threshold, touch long-press) can use it.
  */
-export function startDrag(
+function startDrag(
   container: HTMLElement,
   row: HTMLElement,
   x: number,

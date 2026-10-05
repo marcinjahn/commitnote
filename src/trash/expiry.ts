@@ -10,7 +10,7 @@ export interface PurgeCaps {
   readonly maxFilesPerCommit: number;
 }
 
-export const DEFAULT_PURGE_CAPS: PurgeCaps = {
+const DEFAULT_PURGE_CAPS: PurgeCaps = {
   maxEntries: MAX_PURGE_ENTRIES_PER_STARTUP,
   maxFilesPerCommit: MAX_PURGE_FILES_PER_COMMIT,
 };

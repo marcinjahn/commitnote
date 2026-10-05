@@ -101,7 +101,7 @@ export type SyncError =
     }
   | { readonly kind: "rateLimited"; readonly retryAfterMs: number };
 
-export interface SyncedState {
+interface SyncedState {
   readonly head: string;
   readonly listing: readonly TreeEntry[];
   readonly tree: NoteTree;
@@ -128,13 +128,13 @@ export type OpenNoteState =
       readonly error: SyncError;
     };
 
-export interface RefreshState {
+interface RefreshState {
   readonly inFlight: boolean;
   readonly lastError: SyncError | null;
   readonly lastCompletedAt: number | null;
 }
 
-export type SaveStatus =
+type SaveStatus =
   | { readonly kind: "idle" }
   | { readonly kind: "saving" }
   | {
@@ -201,7 +201,7 @@ export type StructureError =
   /** The stored order couldn't be read, so positions can't be changed. */
   | { readonly kind: "orderUnavailable" };
 
-export type StructureResult =
+type StructureResult =
   | {
       readonly ok: true;
       readonly path: NotePath;
@@ -210,9 +210,9 @@ export type StructureResult =
     }
   | { readonly ok: false; readonly error: StructureError };
 
-export type ConflictResolution = "keepMine" | "keepTheirs" | "editMerged";
+type ConflictResolution = "keepMine" | "keepTheirs" | "editMerged";
 
-export type FlushResult =
+type FlushResult =
   | { readonly kind: "saved" }
   | { readonly kind: "unsaved"; readonly count: number };
 

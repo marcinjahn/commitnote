@@ -9,7 +9,7 @@ import {
 } from "../forge/forge-adapter";
 import { NOTE_PREFIX, REPO_CONFIG_PATH } from "../format/v1";
 
-export type RekeyVerificationFailure =
+type RekeyVerificationFailure =
   | "config"
   | "keyCheck"
   | "collision"

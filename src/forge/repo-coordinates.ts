@@ -1,4 +1,4 @@
-export const FORGE_IDS = ["github", "gitlab"] as const;
+const FORGE_IDS = ["github", "gitlab"] as const;
 
 export type ForgeId = (typeof FORGE_IDS)[number];
 

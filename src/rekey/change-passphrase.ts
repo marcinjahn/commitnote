@@ -173,7 +173,7 @@ function abort(deps: PassphraseChangeDeps): void {
 }
 
 /** Leaves the engine running again after a prepared change is not committed. */
-export function cancelPassphraseChange(deps: PassphraseChangeDeps): void {
+function cancelPassphraseChange(deps: PassphraseChangeDeps): void {
   abort(deps);
 }
 

@@ -51,7 +51,7 @@ export function createGitLabAdapter(
 
 // Below GitLab.com's announced Free-tier limits for authenticated API
 // requests (100 per minute, 5000 per hour).
-export const GITLAB_WRITE_LIMITS: ForgeWriteLimits = {
+const GITLAB_WRITE_LIMITS: ForgeWriteLimits = {
   perMinute: 80,
   perHour: 4_000,
 };
@@ -64,7 +64,7 @@ const ATOMIC_MERGE_REQUEST_TITLE = "commitnote: atomic commit";
 export const UNDO_COMMIT_MESSAGE = encodeUndoOutdatedSaveMessage();
 const EMPTY_BLOB_SHA = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391";
 // Create commit, open merge request, merge it.
-export const ATOMIC_COMMIT_COST = 3;
+const ATOMIC_COMMIT_COST = 3;
 export const MAX_MERGE_ATTEMPTS = 6;
 export const MERGE_STATUS_POLL_MS = 1_000;
 // Leaves an interrupted atomic commit of another device alone long enough

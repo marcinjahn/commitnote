@@ -2,7 +2,7 @@ import { ForgeError } from "../errors";
 import { retryAfterMs, sendForgeRequest } from "../forge-http";
 import { parseLinkHeader } from "../link-header";
 
-export const GITLAB_API_BASE = "https://gitlab.com/api/v4";
+const GITLAB_API_BASE = "https://gitlab.com/api/v4";
 
 export const GITLAB_DEVELOPER_ACCESS_LEVEL = 30;
 

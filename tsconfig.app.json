@@ -13,12 +13,10 @@
     "noFallthroughCasesInSwitch": true,
 
     "noEmit": true,
-    "allowJs": true,
-    "checkJs": true,
     "isolatedModules": true,
     "moduleResolution": "bundler",
 
     "types": ["svelte", "vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte", "src/**/*.json"]
+  "include": ["src/**/*.ts", "src/**/*.svelte", "src/**/*.json"]
 }

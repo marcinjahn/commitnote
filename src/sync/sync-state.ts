@@ -2,7 +2,7 @@ import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { parentPath } from "../changes/change";
 import { CONFLICT_MARKERS } from "../merge/merge-text";
 
-export type OutOfSyncReason = "pending" | "failed" | "conflict";
+type OutOfSyncReason = "pending" | "failed" | "conflict";
 
 export type SyncState =
   | { readonly kind: "synced" }

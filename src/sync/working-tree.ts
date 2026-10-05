@@ -16,7 +16,7 @@ import type { TrashEntry } from "../trash/trash-index";
 import type { NoteTree, TreeNode } from "../tree/note-tree";
 import type { WorkingTrashEntry } from "./working-trash";
 
-export interface WorkingNote {
+interface WorkingNote {
   readonly kind: "note";
   readonly name: string;
   readonly path: NotePath;

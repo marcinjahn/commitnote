@@ -8,7 +8,7 @@ import { ORDER_PATH } from "../format/v1";
 import { compareNames } from "../tree/note-names";
 import { compareKeys, isValidKey } from "./fractional-key";
 
-export const ORDER_FORMAT_VERSION = 1;
+const ORDER_FORMAT_VERSION = 1;
 
 /** Child name to order key, for the children of one folder. */
 export type FolderOrder = ReadonlyMap<string, string>;

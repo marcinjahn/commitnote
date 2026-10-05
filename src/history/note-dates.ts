@@ -46,7 +46,7 @@ export interface NoteDatesResolver {
 export const NOTE_DATES_CACHE_SIZE = 50;
 export const NOTE_DATES_PAGE_SIZE = 100;
 export const NOTE_DATES_MAX_LIST_REQUESTS = 3;
-export const NOTE_DATES_MAX_OLDEST_HOPS = 10;
+const NOTE_DATES_MAX_OLDEST_HOPS = 10;
 
 const DEFAULT_RETRY_AFTER_MS = 60_000;
 

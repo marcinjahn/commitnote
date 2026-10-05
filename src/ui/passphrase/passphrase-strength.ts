@@ -1,4 +1,4 @@
-export interface PassphraseStrength {
+interface PassphraseStrength {
   score: 0 | 1 | 2 | 3 | 4;
   warning: string;
 }

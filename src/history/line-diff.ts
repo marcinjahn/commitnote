@@ -1,6 +1,6 @@
 import { diffComm as untypedDiffComm } from "node-diff3";
 
-export const DIFF_CONTEXT_LINES = 3;
+const DIFF_CONTEXT_LINES = 3;
 export const DIFF_MAX_LINES = 20_000;
 const WORD_DIFF_MAX_LINE_LENGTH = 10_000;
 
@@ -14,12 +14,12 @@ const diffComm = untypedDiffComm as unknown as (
 ) => CommChunk[];
 
 /** A piece of a changed line; `changed` marks the words that differ. */
-export interface DiffSegment {
+interface DiffSegment {
   readonly text: string;
   readonly changed: boolean;
 }
 
-export type DiffLine =
+type DiffLine =
   | { readonly kind: "same"; readonly text: string }
   | {
       /** `added` comes back on restore; `removed` would be gone. */
