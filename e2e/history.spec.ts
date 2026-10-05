@@ -158,7 +158,7 @@ async function selectFirstSave(page: Page) {
   return dialog;
 }
 
-test("restores a version's content and keeps the current title", async ({
+test("restores a version's content and keeps the current title; typing afterwards takes away its Undo", async ({
   page,
 }) => {
   await noteWithHistory(page);
@@ -167,74 +167,66 @@ test("restores a version's content and keeps the current title", async ({
     dialog.getByRole("checkbox", { name: RESTORE_TITLE }),
   ).not.toBeChecked();
 
-  await dialog.getByRole("button", { name: RESTORE }).click();
+  await test.step("restore", async () => {
+    await dialog.getByRole("button", { name: RESTORE }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(restoredToast(page)).toBeVisible();
-  await expect(lastEditorLine(page)).toHaveText("one");
-  await expect(noteNameField(page)).toHaveValue("Hello");
-  await expect(
-    headerSyncIcon(page),
-  ).toBeVisible();
-  await waitForSynced(page);
+    await expect(dialog).toHaveCount(0);
+    await expect(restoredToast(page)).toBeVisible();
+    await expect(lastEditorLine(page)).toHaveText("one");
+    await expect(noteNameField(page)).toHaveValue("Hello");
+    await expect(headerSyncIcon(page)).toBeVisible();
+    await waitForSynced(page);
 
-  const reopened = await openHistory(page);
-  await expect(reopened.getByTestId("version-row")).toHaveCount(4);
+    const reopened = await openHistory(page);
+    await expect(reopened.getByTestId("version-row")).toHaveCount(4);
+    await reopened.getByRole("button", { name: "Close" }).click();
+    await expect(reopened).toHaveCount(0);
+  });
+
+  await test.step("typing takes away the Undo", async () => {
+    await expect(restoredToast(page)).toBeVisible();
+    await noteEditor(page).click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.type(" four");
+
+    await expect(restoredToast(page)).toHaveCount(0);
+    await expect(lastEditorLine(page)).toHaveText("one four");
+    await waitForSynced(page);
+    await expect(lastEditorLine(page)).toHaveText("one four");
+  });
 });
 
-test("restores a version's content together with its title", async ({
+test("restores a version's content together with its title, and Undo puts both back", async ({
   page,
 }) => {
   await noteWithHistory(page);
   const dialog = await selectFirstSave(page);
 
-  await dialog.getByRole("checkbox", { name: RESTORE_TITLE }).check();
-  await dialog.getByRole("button", { name: RESTORE }).click();
+  await test.step("restore", async () => {
+    await dialog.getByRole("checkbox", { name: RESTORE_TITLE }).check();
+    await dialog.getByRole("button", { name: RESTORE }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(noteNameField(page)).toHaveValue("Welcome");
-  await expect(lastEditorLine(page)).toHaveText("one");
-  await waitForSynced(page);
-  await showTree(page);
-  await expect(
-    page.getByRole("treeitem", { name: "Welcome", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("treeitem", { name: "Hello", exact: true }),
-  ).toHaveCount(0);
-});
+    await expect(dialog).toHaveCount(0);
+    await expect(noteNameField(page)).toHaveValue("Welcome");
+    await expect(lastEditorLine(page)).toHaveText("one");
+    await waitForSynced(page);
+    await showTree(page);
+    await expect(
+      page.getByRole("treeitem", { name: "Welcome", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("treeitem", { name: "Hello", exact: true }),
+    ).toHaveCount(0);
+  });
 
-test("Undo puts back the content and title the restore replaced", async ({
-  page,
-}) => {
-  await noteWithHistory(page);
-  const dialog = await selectFirstSave(page);
-  await dialog.getByRole("checkbox", { name: RESTORE_TITLE }).check();
-  await dialog.getByRole("button", { name: RESTORE }).click();
-  await expect(lastEditorLine(page)).toHaveText("one");
+  await test.step("Undo", async () => {
+    await restoredToast(page).getByRole("button", { name: "Undo" }).click();
 
-  await restoredToast(page).getByRole("button", { name: "Undo" }).click();
-
-  await expect(restoredToast(page)).toHaveCount(0);
-  await expect(lastEditorLine(page)).toHaveText("one two three");
-  await expect(noteNameField(page)).toHaveValue("Hello");
-  await waitForSynced(page);
-});
-
-test("typing after a restore takes away its Undo", async ({ page }) => {
-  await noteWithHistory(page);
-  const dialog = await selectFirstSave(page);
-  await dialog.getByRole("button", { name: RESTORE }).click();
-  await expect(restoredToast(page)).toBeVisible();
-
-  await noteEditor(page).click();
-  await page.keyboard.press("ControlOrMeta+End");
-  await page.keyboard.type(" four");
-
-  await expect(restoredToast(page)).toHaveCount(0);
-  await expect(lastEditorLine(page)).toHaveText("one four");
-  await waitForSynced(page);
-  await expect(lastEditorLine(page)).toHaveText("one four");
+    await expect(restoredToast(page)).toHaveCount(0);
+    await expect(lastEditorLine(page)).toHaveText("one two three");
+    await expect(noteNameField(page)).toHaveValue("Hello");
+    await waitForSynced(page);
+  });
 });
 
 test("restoring a title another note already has shows why and changes nothing", async ({

@@ -2,7 +2,6 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { expectTree, logIn, SAMPLE, openNotes, logOut, fakeForge, handOverRepo } from "./helpers";
 
-const OLD_PASSPHRASE = SAMPLE.passphrase;
 const NEW_PASSPHRASE = "a brand new passphrase";
 const KEY_CHANGED_TEXT =
   "The passphrase was changed on another device. Log in again.";
@@ -35,7 +34,7 @@ async function fillPassphrases(
 
 async function changePassphrase(page: Page): Promise<void> {
   await openChangeDialog(page);
-  await fillPassphrases(page, OLD_PASSPHRASE, NEW_PASSPHRASE);
+  await fillPassphrases(page, SAMPLE.passphrase, NEW_PASSPHRASE);
   const review = page.getByRole("dialog", {
     name: "Ready to change passphrase",
   });
@@ -53,212 +52,14 @@ async function changePassphrase(page: Page): Promise<void> {
   await expectTree(page);
 }
 
-test.beforeEach(async ({ page }) => {
-  await openNotes(page, { via: "login", passphrase: OLD_PASSPHRASE });
-});
-
-test("changes the passphrase in one commit; afterwards only the new one logs in", async ({
-  page,
-}) => {
-  const before = await fakeForge(page).commitMessages();
-
-  await changePassphrase(page);
-
-  const after = await fakeForge(page).commitMessages();
-  expect(after).toHaveLength(before.length + 1);
-  expect(after[0].split("\n")[0]).toBe("commitnote: change passphrase");
-  await page.getByRole("treeitem", { name: "Welcome" }).click();
-  await expect(
-    page.getByRole("textbox", { name: "Note editor" }),
-  ).toContainText("Welcome");
-
-  await logOut(page);
-  await logIn(page, { repo: SAMPLE.repo, passphrase: OLD_PASSPHRASE });
-  await expect(page.getByRole("alert")).toHaveText("Wrong passphrase.", {
-    timeout: 15_000,
-  });
-
-  await page.getByLabel("Passphrase", { exact: true }).fill(NEW_PASSPHRASE);
-  await page.getByRole("button", { name: "Log in" }).click();
-  await expectTree(page);
-  await expect(page.getByRole("treeitem", { name: "Welcome" })).toBeVisible();
-});
-
-test("deletes the old history when asked, leaving one commit", async ({
-  page,
-}) => {
-  await openChangeDialog(page);
-  const dialog = changeDialog(page);
-  const removeHistory = dialog.getByRole("checkbox", {
-    name: "Also delete the old history",
-  });
-  const historyWarning = dialog.getByRole("note");
-  await expect(historyWarning).toHaveText(
-    "Earlier versions of your notes stay in the repository's history, so the current passphrase still decrypts them after the change, though commitnote can no longer restore them.",
-  );
-  const warningBox = await historyWarning.boundingBox();
-  const checkboxBox = await removeHistory.boundingBox();
-  expect(warningBox!.y).toBeGreaterThanOrEqual(
-    checkboxBox!.y + checkboxBox!.height,
-  );
-  await expect(removeHistory).not.toBeChecked();
-  await expect(removeHistory).toHaveAccessibleDescription(
-    /replaces the whole history with the one commit of re-encrypted notes/,
-  );
-  await removeHistory.check();
-  await expect(historyWarning).toHaveCount(0);
-  await removeHistory.uncheck();
-  await expect(historyWarning).toBeVisible();
-  await removeHistory.check();
-  await expect(historyWarning).toHaveCount(0);
-
-  await fillPassphrases(page, OLD_PASSPHRASE, NEW_PASSPHRASE);
-  const review = page.getByRole("dialog", {
-    name: "Ready to change passphrase",
-  });
-  await expect(
-    review.getByText(/history is replaced with just that commit/),
-  ).toBeVisible({ timeout: 15_000 });
-  await review.getByRole("button", { name: "Change passphrase" }).click();
-  await expect(
-    page.getByText("Passphrase changed and the old history deleted."),
-  ).toBeVisible({ timeout: 15_000 });
-  await expectTree(page);
-
-  const after = await fakeForge(page).commitMessages();
-  expect(after).toHaveLength(1);
-  expect(after[0].split("\n")[0]).toBe("commitnote: change passphrase");
-  await page.getByRole("treeitem", { name: "Welcome" }).click();
-  await expect(
-    page.getByRole("textbox", { name: "Note editor" }),
-  ).toContainText("Welcome");
-});
-
-test("rates the strength of the new passphrase only", async ({ page }) => {
-  await openChangeDialog(page);
-  const dialog = changeDialog(page);
-  const currentField = dialog.getByLabel("Current passphrase");
-  const newField = dialog.getByLabel("New passphrase", { exact: true });
-  const repeatField = dialog.getByLabel("Repeat new passphrase");
-
-  await currentField.fill("password");
-  await repeatField.fill("password");
-  await expect(newField).not.toHaveAccessibleDescription(/strength/);
-
-  await newField.fill("password");
-  await expect(newField).toHaveAccessibleDescription(
-    /Passphrase strength: Weak\./,
-  );
-  await newField.fill("violet anchor pepper tundra kayak");
-  await expect(newField).toHaveAccessibleDescription(
-    /Passphrase strength: (Good|Strong)\./,
-  );
-  await expect(currentField).not.toHaveAccessibleDescription(/strength/);
-  await expect(repeatField).not.toHaveAccessibleDescription(/strength/);
-});
-
-test("a wrong current passphrase changes nothing", async ({ page }) => {
-  const before = await fakeForge(page).commitMessages();
-  await openChangeDialog(page);
-
-  await fillPassphrases(page, "not the passphrase", NEW_PASSPHRASE);
-
-  const dialog = changeDialog(page);
-  await expect(dialog.getByRole("alert")).toHaveText(
-    "The current passphrase is wrong.",
-    { timeout: 15_000 },
-  );
-  await expect(dialog.getByLabel("Current passphrase")).toBeFocused();
-  await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Close" }).click();
-  await expect(dialog).toHaveCount(0);
-  expect(await fakeForge(page).commitMessages()).toEqual(before);
-
-  await page.getByRole("treeitem", { name: "Welcome" }).click();
-  await expect(
-    page.getByRole("textbox", { name: "Note editor" }),
-  ).toBeVisible();
-});
-
-test("asks again when the new passphrases differ", async ({ page }) => {
-  await openChangeDialog(page);
-
-  await fillPassphrases(page, OLD_PASSPHRASE, NEW_PASSPHRASE, "something else");
-
-  await expect(changeDialog(page).getByRole("alert")).toHaveText(
-    "The new passphrases do not match.",
-  );
-});
-
-test("backing out of the review keeps the old passphrase", async ({ page }) => {
-  const before = await fakeForge(page).commitMessages();
-  await openChangeDialog(page);
-  await fillPassphrases(page, OLD_PASSPHRASE, NEW_PASSPHRASE);
-  const review = page.getByRole("dialog", {
-    name: "Ready to change passphrase",
-  });
-  await expect(review).toBeVisible({ timeout: 15_000 });
-
-  await expect(review.getByRole("button", { name: "Cancel" })).toHaveCount(0);
-  await review.getByRole("button", { name: "Close" }).click();
-
-  await expect(review).toHaveCount(0);
-  expect(await fakeForge(page).commitMessages()).toEqual(before);
-  await page.getByRole("button", { name: "New folder" }).click();
-  await page.getByLabel("Folder name").fill("After cancel");
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-  await expect
-    .poll(() => fakeForge(page).commitMessages().then((m) => m.length))
-    .toBe(before.length + 1);
-});
-
-test("another device still on the old passphrase is asked to log in again", async ({
-  page,
-  openSecondDevice,
-}) => {
-  const { page: other } = await openSecondDevice();
-  await logIn(other, { repo: SAMPLE.repo, passphrase: OLD_PASSPHRASE });
-  await expectTree(other);
-
-  await changePassphrase(page);
-  await handOverRepo(page, other);
-  const changedHead = (await fakeForge(other).commitMessages())[0];
-  await other.getByRole("button", { name: "Refresh" }).click();
-
-  await expect(
-    other.getByRole("alert").getByText(KEY_CHANGED_TEXT),
-  ).toBeVisible();
-  expect((await fakeForge(other).commitMessages())[0]).toBe(changedHead);
-});
-
-test("another tab of the same browser picks up the new passphrase it remembered", async ({
-  page,
-}) => {
-  await page.getByRole("button", { name: "Log out" }).click();
-  await logIn(page, {
-    repo: SAMPLE.repo,
-    passphrase: OLD_PASSPHRASE,
-    rememberMe: true,
-  });
-  await expectTree(page);
-  const other = await page.context().newPage();
-  await other.goto(page.url());
-  await expectTree(other);
-
-  await changePassphrase(page);
-  await handOverRepo(page, other);
-  await other.getByRole("button", { name: "Refresh" }).click();
-  await expect(
-    other.getByRole("alert").getByText(KEY_CHANGED_TEXT),
-  ).toBeVisible();
-  await other.getByRole("button", { name: "Log in again" }).click();
-
-  await expectTree(other);
-  await expect(other.getByLabel("Access token")).toHaveCount(0);
-});
-
 const VERSION_HISTORY_NOTICE =
   "Version history starts over: commitnote can't show or restore versions of your notes from before the change.";
+
+async function closeNoteHistory(page: Page): Promise<void> {
+  const history = page.getByRole("dialog", { name: "Version history" });
+  await history.getByRole("button", { name: "Close" }).click();
+  await expect(history).toHaveCount(0);
+}
 
 async function expectNoteHistoryEnd(page: Page, text: string): Promise<void> {
   await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
@@ -267,49 +68,224 @@ async function expectNoteHistoryEnd(page: Page, text: string): Promise<void> {
   await expect(history.getByTestId("history-end")).toHaveText(text);
 }
 
-test("explains that version history starts over, in the form and the review", async ({
-  page,
-}) => {
-  await openChangeDialog(page);
-  await expect(changeDialog(page).getByText(VERSION_HISTORY_NOTICE)).toBeVisible();
-  await fillPassphrases(page, OLD_PASSPHRASE, NEW_PASSPHRASE);
-  const review = page.getByRole("dialog", {
-    name: "Ready to change passphrase",
+test.describe("with a login that is not remembered", () => {
+  test.beforeEach(async ({ page }) => {
+    await openNotes(page, { via: "login", passphrase: SAMPLE.passphrase });
   });
-  await expect(review.getByText(VERSION_HISTORY_NOTICE)).toBeVisible({
-    timeout: 15_000,
+
+  test("changes the passphrase in one commit; afterwards only the new one logs in", async ({
+    page,
+  }) => {
+    const before = await fakeForge(page).commitMessages();
+
+    await changePassphrase(page);
+
+    const after = await fakeForge(page).commitMessages();
+    expect(after).toHaveLength(before.length + 1);
+    expect(after[0].split("\n")[0]).toBe("commitnote: change passphrase");
+    await page.getByRole("treeitem", { name: "Welcome" }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Note editor" }),
+    ).toContainText("Welcome");
+    await expectNoteHistoryEnd(
+      page,
+      "Earlier versions are encrypted with a previous passphrase and can't be shown.",
+    );
+    await closeNoteHistory(page);
+
+    await logOut(page);
+    await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
+    await expect(page.getByRole("alert")).toHaveText("Wrong passphrase.", {
+      timeout: 15_000,
+    });
+
+    await page.getByLabel("Passphrase", { exact: true }).fill(NEW_PASSPHRASE);
+    await page.getByRole("button", { name: "Log in" }).click();
+    await expectTree(page);
+    await expect(page.getByRole("treeitem", { name: "Welcome" })).toBeVisible();
+  });
+
+  test("deletes the old history when asked, leaving one commit", async ({
+    page,
+  }) => {
+    await openChangeDialog(page);
+    const dialog = changeDialog(page);
+    const removeHistory = dialog.getByRole("checkbox", {
+      name: "Also delete the old history",
+    });
+    const historyWarning = dialog.getByRole("note");
+    await expect(historyWarning).toHaveText(
+      "Earlier versions of your notes stay in the repository's history, so the current passphrase still decrypts them after the change, though commitnote can no longer restore them.",
+    );
+    const warningBox = await historyWarning.boundingBox();
+    const checkboxBox = await removeHistory.boundingBox();
+    expect(warningBox!.y).toBeGreaterThanOrEqual(
+      checkboxBox!.y + checkboxBox!.height,
+    );
+    await expect(removeHistory).not.toBeChecked();
+    await expect(removeHistory).toHaveAccessibleDescription(
+      /replaces the whole history with the one commit of re-encrypted notes/,
+    );
+    await removeHistory.check();
+    await expect(historyWarning).toHaveCount(0);
+    await removeHistory.uncheck();
+    await expect(historyWarning).toBeVisible();
+    await removeHistory.check();
+    await expect(historyWarning).toHaveCount(0);
+
+    await fillPassphrases(page, SAMPLE.passphrase, NEW_PASSPHRASE);
+    const review = page.getByRole("dialog", {
+      name: "Ready to change passphrase",
+    });
+    await expect(
+      review.getByText(/history is replaced with just that commit/),
+    ).toBeVisible({ timeout: 15_000 });
+    await review.getByRole("button", { name: "Change passphrase" }).click();
+    await expect(
+      page.getByText("Passphrase changed and the old history deleted."),
+    ).toBeVisible({ timeout: 15_000 });
+    await expectTree(page);
+
+    const after = await fakeForge(page).commitMessages();
+    expect(after).toHaveLength(1);
+    expect(after[0].split("\n")[0]).toBe("commitnote: change passphrase");
+    await page.getByRole("treeitem", { name: "Welcome" }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Note editor" }),
+    ).toContainText("Welcome");
+    await expectNoteHistoryEnd(
+      page,
+      "Earlier history was deleted when the passphrase was changed.",
+    );
+  });
+
+  test("rates the strength of the new passphrase only", async ({ page }) => {
+    await openChangeDialog(page);
+    const dialog = changeDialog(page);
+    const currentField = dialog.getByLabel("Current passphrase");
+    const newField = dialog.getByLabel("New passphrase", { exact: true });
+    const repeatField = dialog.getByLabel("Repeat new passphrase");
+
+    await currentField.fill("password");
+    await repeatField.fill("password");
+    await expect(newField).not.toHaveAccessibleDescription(/strength/);
+
+    await newField.fill("password");
+    await expect(newField).toHaveAccessibleDescription(
+      /Passphrase strength: Weak\./,
+    );
+    await newField.fill("violet anchor pepper tundra kayak");
+    await expect(newField).toHaveAccessibleDescription(
+      /Passphrase strength: (Good|Strong)\./,
+    );
+    await expect(currentField).not.toHaveAccessibleDescription(/strength/);
+    await expect(repeatField).not.toHaveAccessibleDescription(/strength/);
+  });
+
+  test("a wrong current passphrase changes nothing", async ({ page }) => {
+    const before = await fakeForge(page).commitMessages();
+    await openChangeDialog(page);
+
+    await fillPassphrases(page, "not the passphrase", NEW_PASSPHRASE);
+
+    const dialog = changeDialog(page);
+    await expect(dialog.getByRole("alert")).toHaveText(
+      "The current passphrase is wrong.",
+      { timeout: 15_000 },
+    );
+    await expect(dialog.getByLabel("Current passphrase")).toBeFocused();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(await fakeForge(page).commitMessages()).toEqual(before);
+
+    await page.getByRole("treeitem", { name: "Welcome" }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Note editor" }),
+    ).toBeVisible();
+  });
+
+  test("asks again when the new passphrases differ", async ({ page }) => {
+    await openChangeDialog(page);
+
+    await fillPassphrases(page, SAMPLE.passphrase, NEW_PASSPHRASE, "something else");
+
+    await expect(changeDialog(page).getByRole("alert")).toHaveText(
+      "The new passphrases do not match.",
+    );
+  });
+
+  test("backing out of the review keeps the old passphrase and explains that version history starts over", async ({ page }) => {
+    const before = await fakeForge(page).commitMessages();
+    await openChangeDialog(page);
+    await expect(
+      changeDialog(page).getByText(VERSION_HISTORY_NOTICE),
+    ).toBeVisible();
+    await fillPassphrases(page, SAMPLE.passphrase, NEW_PASSPHRASE);
+    const review = page.getByRole("dialog", {
+      name: "Ready to change passphrase",
+    });
+    await expect(review).toBeVisible({ timeout: 15_000 });
+    await expect(review.getByText(VERSION_HISTORY_NOTICE)).toBeVisible();
+
+    await expect(review.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+    await review.getByRole("button", { name: "Close" }).click();
+
+    await expect(review).toHaveCount(0);
+    expect(await fakeForge(page).commitMessages()).toEqual(before);
+    await page.getByRole("button", { name: "New folder" }).click();
+    await page.getByLabel("Folder name").fill("After cancel");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await expect
+      .poll(() => fakeForge(page).commitMessages().then((m) => m.length))
+      .toBe(before.length + 1);
+  });
+
+  test("another device still on the old passphrase is asked to log in again", async ({
+    page,
+    openSecondDevice,
+  }) => {
+    const { page: other } = await openSecondDevice();
+    await logIn(other, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
+    await expectTree(other);
+
+    await changePassphrase(page);
+    await handOverRepo(page, other);
+    const changedHead = (await fakeForge(other).commitMessages())[0];
+    await other.getByRole("button", { name: "Refresh" }).click();
+
+    await expect(
+      other.getByRole("alert").getByText(KEY_CHANGED_TEXT),
+    ).toBeVisible();
+    expect((await fakeForge(other).commitMessages())[0]).toBe(changedHead);
   });
 });
 
-test("after a change, note history ends at the previous passphrase", async ({
-  page,
-}) => {
-  await changePassphrase(page);
-  await expectNoteHistoryEnd(
-    page,
-    "Earlier versions are encrypted with a previous passphrase and can't be shown.",
-  );
-});
-
-test("after deleting the old history, note history says it was deleted", async ({
-  page,
-}) => {
-  await openChangeDialog(page);
-  await changeDialog(page)
-    .getByRole("checkbox", { name: "Also delete the old history" })
-    .check();
-  await fillPassphrases(page, OLD_PASSPHRASE, NEW_PASSPHRASE);
-  const review = page.getByRole("dialog", {
-    name: "Ready to change passphrase",
+test.describe("with a remembered login", () => {
+  test.beforeEach(async ({ page }) => {
+    await openNotes(page, {
+      via: "login",
+      passphrase: SAMPLE.passphrase,
+      rememberMe: true,
+    });
   });
-  await expect(review).toBeVisible({ timeout: 15_000 });
-  await review.getByRole("button", { name: "Change passphrase" }).click();
-  await expect(
-    page.getByText("Passphrase changed and the old history deleted."),
-  ).toBeVisible({ timeout: 15_000 });
-  await expectTree(page);
-  await expectNoteHistoryEnd(
+
+  test("another tab of the same browser picks up the new passphrase it remembered", async ({
     page,
-    "Earlier history was deleted when the passphrase was changed.",
-  );
+  }) => {
+    const other = await page.context().newPage();
+    await other.goto(page.url());
+    await expectTree(other);
+
+    await changePassphrase(page);
+    await handOverRepo(page, other);
+    await other.getByRole("button", { name: "Refresh" }).click();
+    await expect(
+      other.getByRole("alert").getByText(KEY_CHANGED_TEXT),
+    ).toBeVisible();
+    await other.getByRole("button", { name: "Log in again" }).click();
+
+    await expectTree(other);
+    await expect(other.getByLabel("Access token")).toHaveCount(0);
+  });
 });
