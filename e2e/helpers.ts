@@ -31,9 +31,12 @@ export async function chooseRepository(
     await page.getByRole("radio", { name: options.provider }).check();
   }
   await continueWithToken(page, options.token);
-  await page.getByLabel("Repository", { exact: true }).selectOption({
-    label: options.repo.replace(/^https:\/\/[^/]+\//, ""),
-  });
+  const select = page.getByLabel("Repository", { exact: true });
+  if ((await select.inputValue()) !== options.repo) {
+    await select.selectOption({
+      label: options.repo.replace(/^https:\/\/[^/]+\//, ""),
+    });
+  }
 }
 
 export async function logIn(page: Page, options: LogInOptions): Promise<void> {
@@ -60,12 +63,29 @@ export async function setUpNotesRepo(
   await page.getByRole("button", { name: "Set up notes repo" }).click();
 }
 
+// Real Argon2id key derivation runs on every login and set-up (~1s in
+// Chromium, much more under CPU load), so waits that follow one need more room
+// than the default 5s expect timeout.
+export const KEY_DERIVATION_TIMEOUT = 15_000;
+
 export async function expectTree(page: Page): Promise<void> {
-  // Real Argon2id key derivation runs on every login (~1s in Chromium, more
-  // under parallel test workers), so give it more room than the default
-  // 5s expect timeout.
   await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible({
-    timeout: 15_000,
+    timeout: KEY_DERIVATION_TIMEOUT,
+  });
+}
+
+export async function expectEmptyNotesRepo(page: Page): Promise<void> {
+  await expect(page.getByText("No notes yet")).toBeVisible({
+    timeout: KEY_DERIVATION_TIMEOUT,
+  });
+}
+
+export async function expectLoginAlert(
+  page: Page,
+  text: string,
+): Promise<void> {
+  await expect(page.getByRole("alert")).toHaveText(text, {
+    timeout: KEY_DERIVATION_TIMEOUT,
   });
 }
 

@@ -1,8 +1,11 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import {
+  KEY_DERIVATION_TIMEOUT,
   chooseRepository,
   continueWithToken,
+  expectEmptyNotesRepo,
+  expectLoginAlert,
   expectTree,
   logIn,
   setUpNotesRepo,
@@ -47,6 +50,9 @@ test("setting up an empty repo, then logging in to it", async ({ page }) => {
     ),
   ).toBeVisible();
   await expect(page.getByLabel("Passphrase", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Create passphrase")).toBeVisible({
+    timeout: KEY_DERIVATION_TIMEOUT,
+  });
   await expect(page.getByLabel("Create passphrase")).toBeFocused();
 
   await page.getByLabel("Create passphrase").fill("first passphrase");
@@ -64,22 +70,23 @@ test("setting up an empty repo, then logging in to it", async ({ page }) => {
   await page.getByLabel("Repeat passphrase").fill("first passphrase");
   await page.getByRole("button", { name: "Set up notes repo" }).click();
   // An empty notes repo has no tree, just the empty-state message.
-  await expect(page.getByText("No notes yet")).toBeVisible({ timeout: 15_000 });
+  await expectEmptyNotesRepo(page);
 
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page.getByLabel("Access token")).toHaveValue("");
 
   await logIn(page, { repo: EMPTY_REPO, passphrase: "first passphrase" });
-  await expect(page.getByText("No notes yet")).toBeVisible();
+  await expectEmptyNotesRepo(page);
 
   await page.getByRole("button", { name: "Log out" }).click();
   await chooseRepository(page, { repo: EMPTY_REPO });
+  await expect(page.getByLabel("Passphrase", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Create passphrase")).toHaveCount(0);
   await page
     .getByLabel("Passphrase", { exact: true })
     .fill("wrong passphrase");
   await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Wrong passphrase.");
+  await expectLoginAlert(page, "Wrong passphrase.");
   await expect(page.getByLabel("Passphrase", { exact: true })).toHaveValue("");
 });
 
@@ -108,7 +115,7 @@ test("a weak passphrase shows a strength warning but does not block setup", asyn
   await page.getByLabel("Create passphrase").fill("password");
   await page.getByLabel("Repeat passphrase").fill("password");
   await page.getByRole("button", { name: "Set up notes repo" }).click();
-  await expect(page.getByText("No notes yet")).toBeVisible({ timeout: 15_000 });
+  await expectEmptyNotesRepo(page);
 });
 
 test("the log-in form has no strength meter", async ({ page }) => {
@@ -124,7 +131,7 @@ test("an empty repo offers creating a note from the sidebar", async ({
 }) => {
   await page.goto("/");
   await setUpNotesRepo(page, { repo: EMPTY_REPO, passphrase: "first passphrase" });
-  await expect(page.getByText("No notes yet")).toBeVisible({ timeout: 15_000 });
+  await expectEmptyNotesRepo(page);
 
   await page.getByRole("button", { name: "create one" }).click();
   await expect(page.getByRole("textbox", { name: "Note name" })).toBeFocused();
@@ -145,7 +152,7 @@ test("setting up a repo holding only a README, LICENSE and .gitignore keeps them
   await page.getByLabel("Repeat passphrase").fill("almost empty passphrase");
   await page.getByRole("button", { name: "Set up notes repo" }).click();
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible({
-    timeout: 15_000,
+    timeout: KEY_DERIVATION_TIMEOUT,
   });
 
   await page.getByRole("button", { name: "Log out" }).click();
@@ -154,7 +161,7 @@ test("setting up a repo holding only a README, LICENSE and .gitignore keeps them
     passphrase: "almost empty passphrase",
   });
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible({
-    timeout: 15_000,
+    timeout: KEY_DERIVATION_TIMEOUT,
   });
 });
 
@@ -168,9 +175,9 @@ test("a repo changed during setup can be checked again and set up", async ({
     repo: ALMOST_EMPTY_REPO,
     passphrase: "almost empty passphrase",
   });
-  await expect(page.getByRole("alert")).toHaveText(
+  await expectLoginAlert(
+    page,
     "The repository changed while it was being set up. Check it again.",
-    { timeout: 15_000 },
   );
   await expect(page.getByLabel("Create passphrase")).toHaveCount(0);
 
@@ -179,7 +186,7 @@ test("a repo changed during setup can be checked again and set up", async ({
   await page.getByLabel("Repeat passphrase").fill("almost empty passphrase");
   await page.getByRole("button", { name: "Set up notes repo" }).click();
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible({
-    timeout: 15_000,
+    timeout: KEY_DERIVATION_TIMEOUT,
   });
 });
 
@@ -266,7 +273,7 @@ test("wrong passphrase", async ({ page }) => {
     repo: NOTES_REPO,
     passphrase: "not the right passphrase",
   });
-  await expect(page.getByRole("alert")).toHaveText("Wrong passphrase.");
+  await expectLoginAlert(page, "Wrong passphrase.");
 
   await logIn(page, { repo: NOTES_REPO, passphrase: NOTES_PASSPHRASE });
   await expectTree(page);
@@ -640,9 +647,7 @@ test.describe("several providers", () => {
       repo: SECOND_EMPTY_REPO,
       passphrase: "first passphrase",
     });
-    await expect(page.getByText("No notes yet")).toBeVisible({
-      timeout: 15_000,
-    });
+    await expectEmptyNotesRepo(page);
   });
 
   test("errors name the selected provider", async ({ page }) => {
