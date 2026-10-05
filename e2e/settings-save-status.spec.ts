@@ -1,31 +1,11 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { openNotes, fakeForge } from "./helpers";
+import { chooseAccent, openSettings, settingsDialog } from "./helpers/settings";
 
-
-function settingsDialog(page: Page) {
-  return page.getByRole("dialog", { name: "Settings" });
-}
 
 function dialogStatus(page: Page, text: string) {
   return settingsDialog(page).getByText(text, { exact: true });
-}
-
-async function openSettings(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Settings" })
-    .click();
-  await expect(settingsDialog(page)).toBeVisible();
-}
-
-async function chooseAccent(page: Page, name: string): Promise<void> {
-  await settingsDialog(page)
-    .getByRole("radiogroup", { name: "Accent color" })
-    .locator("label")
-    .filter({ has: page.getByRole("radio", { name, exact: true }) })
-    .click();
 }
 
 test.beforeEach(async ({ page }) => {

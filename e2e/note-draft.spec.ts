@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { logIn, expectTree, SAMPLE, openNotes, showTree } from "./helpers";
+import { treeItem } from "./helpers/tree";
 
 
 const AUTO_NAME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -11,10 +12,6 @@ function nameField(page: Page) {
 
 function editor(page: Page) {
   return page.getByRole("textbox", { name: "Note editor" });
-}
-
-function treeItem(page: Page, name: string | RegExp) {
-  return page.getByRole("treeitem", { name, exact: true });
 }
 
 async function treeItemNames(page: Page): Promise<string[]> {

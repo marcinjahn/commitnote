@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, fakeForge, onFakeForgeReady } from "./helpers";
+import { chooseAccent, closeSettings, openSettings, rootAccent } from "./helpers/settings";
 
 const TEAL = "rgb(0, 133, 115)";
 
@@ -145,34 +146,13 @@ function expectFade(
   expect(fade.endRoot).toBe(to);
 }
 
-function rootAccent(page: Page): Promise<string> {
-  return page.evaluate(() =>
-    getComputedStyle(document.documentElement)
-      .getPropertyValue("--color-accent")
-      .trim(),
-  );
-}
-
 async function saveTeal(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Settings" })
-    .click();
-  const dialog = page.getByRole("dialog", { name: "Settings" });
-  await dialog
-    .locator("label")
-    .filter({ has: page.getByRole("radio", { name: "Teal", exact: true }) })
-    .click();
+  await openSettings(page);
+  await chooseAccent(page, "Teal");
   await expect
-    .poll(
-      () =>
-        fakeForge(page).commitMessages(),
-      { timeout: 10_000 },
-    )
+    .poll(() => fakeForge(page).commitMessages(), { timeout: 10_000 })
     .toContainEqual(expect.stringContaining("accentColor"));
-  await page.keyboard.press("Escape");
-  await expect(dialog).toHaveCount(0);
+  await closeSettings(page);
   await expect.poll(() => rootAccent(page)).toBe(TEAL);
 }
 

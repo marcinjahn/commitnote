@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { openNotes, flushPendingSaves } from "./helpers";
+import { headerSyncIcon } from "./helpers/tree";
 
 
 test("opening a note shows the editor by default, unfocused", { tag: "@mobile" }, async ({
@@ -27,8 +28,7 @@ test("editing the note autosaves, and the edit is there after reopening it", asy
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type(" extra");
 
-  const header = page.locator("header.note-header");
-  const syncIcon = header.getByRole("img");
+  const syncIcon = headerSyncIcon(page);
   await expect(syncIcon).toBeVisible();
   await flushPendingSaves(page);
   await expect(syncIcon).toHaveCount(0, { timeout: 10_000 });

@@ -1,14 +1,8 @@
 import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { expectTree, openNotes, showTree, flushPendingSaves } from "./helpers";
+import { headerSyncIcon, openWelcome } from "./helpers/tree";
 
-
-async function openWelcome(page: Page): Promise<void> {
-  await page.getByRole("treeitem", { name: "Welcome" }).click();
-  await expect(
-    page.getByRole("textbox", { name: "Note editor" }),
-  ).toBeVisible();
-}
 
 async function press(
   locator: ReturnType<Page["locator"]>,
@@ -27,7 +21,7 @@ test("toggling a task checkbox autosaves without focusing the editor", { tag: "@
   await openNotes(page);
   await openWelcome(page);
 
-  const syncIcon = page.locator("header.note-header").getByRole("img");
+  const syncIcon = headerSyncIcon(page);
   const openTask = page
     .locator(".cm-line", { hasText: "Open task" })
     .getByRole("checkbox", { name: "Toggle task" });

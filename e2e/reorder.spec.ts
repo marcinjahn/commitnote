@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { logIn, expectTree, rowSyncState, SAMPLE, openNotes, fakeForge, handOverRepo } from "./helpers";
+import { movedToast, treeItem, treeRows } from "./helpers/tree";
 
 
 const ROOT_ORDER = [
@@ -20,14 +21,6 @@ test.beforeEach(async ({ page }, testInfo) => {
     testInfo.title === RELOAD_TEST ? { via: "login" } : {},
   );
 });
-
-function treeItem(page: Page, name: string): Locator {
-  return page.getByRole("treeitem", { name, exact: true });
-}
-
-function treeRows(page: Page): Locator {
-  return page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
-}
 
 interface DropPoint {
   /** Fraction of the target row's height. */
@@ -94,10 +87,6 @@ const REORDERED_ROOT = [
   "Zażółć gęślą jaźń",
   "Welcome",
 ];
-
-function movedToast(page: Page): Locator {
-  return page.getByRole("group").filter({ hasText: "moved to" });
-}
 
 test("dragging a note within its folder reorders it", async ({ page }) => {
   await moveZazolcBeforeWelcome(page);

@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures";
 import { openNotes } from "./helpers";
+import { chooseAccent, openSettings } from "./helpers/settings";
+import { headerSyncIcon } from "./helpers/tree";
 
 
 // page.close({ runBeforeUnload: true }) resolves without waiting for the
@@ -62,8 +64,7 @@ test.describe("with GitHub-like forge latency", () => {
     await page.keyboard.press("Control+End");
     await page.keyboard.type(" extra");
 
-    const header = page.locator("header.note-header");
-    const syncIcon = header.getByRole("img");
+    const syncIcon = headerSyncIcon(page);
     await expect(syncIcon).toBeVisible();
 
     await page.evaluate(() => {
@@ -85,16 +86,8 @@ test("closing the page before a settings change is saved shows the leave-site pr
 }) => {
   await openNotes(page);
 
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Settings" })
-    .click();
-  const dialog = page.getByRole("dialog", { name: "Settings" });
-  await dialog
-    .locator("label")
-    .filter({ has: page.getByRole("radio", { name: "Teal", exact: true }) })
-    .click();
+  await openSettings(page);
+  await chooseAccent(page, "Teal");
 
   let dialogType: string | null = null;
   page.on("dialog", (prompt) => {

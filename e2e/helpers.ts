@@ -359,3 +359,29 @@ export class TouchFinger {
     await this.page.waitForTimeout(ms);
   }
 }
+
+export const SERIF_STACK =
+  'ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", Georgia, Cambria, "Noto Serif", "Times New Roman", serif';
+export const MONO_STACK = "var(--font-mono)";
+
+export function expectedFamily(page: Page, stack: string): Promise<string> {
+  return page.evaluate((value) => {
+    const probe = document.createElement("span");
+    probe.style.fontFamily = value;
+    document.body.appendChild(probe);
+    const family = getComputedStyle(probe).fontFamily;
+    probe.remove();
+    return family;
+  }, stack);
+}
+
+export async function expectFamily(
+  page: Page,
+  locator: Locator,
+  stack: string,
+): Promise<void> {
+  const expected = await expectedFamily(page, stack);
+  await expect
+    .poll(() => locator.evaluate((el) => getComputedStyle(el).fontFamily))
+    .toBe(expected);
+}

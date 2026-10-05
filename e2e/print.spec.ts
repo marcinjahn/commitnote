@@ -1,12 +1,11 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { openNotes, showTree } from "./helpers";
+import { openNotes, showTree, expectFamily, MONO_STACK, SERIF_STACK } from "./helpers";
+import { chooseOption, closeSettings, openSettings, settingsDialog } from "./helpers/settings";
+import { openWelcome } from "./helpers/tree";
 
 const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
-const SERIF_STACK =
-  'ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", Georgia, Cambria, "Noto Serif", "Times New Roman", serif';
 const LITERATA_STACK = `"Literata Variable", ${SERIF_STACK}`;
-const MONO_STACK = "var(--font-mono)";
 
 function printView(page: Page): Locator {
   return page.locator(".print-view");
@@ -14,61 +13,6 @@ function printView(page: Page): Locator {
 
 function editor(page: Page): Locator {
   return page.getByRole("textbox", { name: "Note editor" });
-}
-
-function settingsDialog(page: Page) {
-  return page.getByRole("dialog", { name: "Settings" });
-}
-
-async function openWelcome(page: Page): Promise<void> {
-  await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
-  await expect(editor(page)).toBeVisible();
-}
-
-async function openSettings(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Settings" })
-    .click();
-  await expect(settingsDialog(page)).toBeVisible();
-}
-
-async function chooseOption(
-  page: Page,
-  section: string,
-  name: string,
-): Promise<void> {
-  await settingsDialog(page)
-    .getByRole("radiogroup", { name: section })
-    .locator("label")
-    .filter({ has: page.getByRole("radio", { name, exact: true }) })
-    .click();
-}
-
-async function closeSettings(page: Page): Promise<void> {
-  await page.keyboard.press("Escape");
-  await expect(settingsDialog(page)).toHaveCount(0);
-}
-
-function expectedFamily(page: Page, stack: string): Promise<string> {
-  return page.evaluate((value) => {
-    const probe = document.createElement("span");
-    probe.style.fontFamily = value;
-    document.body.appendChild(probe);
-    const family = getComputedStyle(probe).fontFamily;
-    probe.remove();
-    return family;
-  }, stack);
-}
-
-function computedFamily(locator: Locator): Promise<string> {
-  return locator.evaluate((el) => getComputedStyle(el).fontFamily);
-}
-
-async function expectFamily(page: Page, locator: Locator, stack: string) {
-  const expected = await expectedFamily(page, stack);
-  await expect.poll(() => computedFamily(locator)).toBe(expected);
 }
 
 function dispatchPrintEvent(

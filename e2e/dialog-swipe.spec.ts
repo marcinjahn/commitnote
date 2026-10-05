@@ -1,54 +1,13 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { TouchFinger, type TouchPoint, openNotes, fakeForge } from "./helpers";
+import { chooseAccent, openSettings } from "./helpers/settings";
+import { moveToTrash, openHistory, openTrash } from "./helpers/tree";
 
 
-function settingsDialog(page: Page): Locator {
-  return page.getByRole("dialog", { name: "Settings" });
-}
-
-async function openSettings(page: Page): Promise<Locator> {
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Settings" })
-    .click();
-  const dialog = settingsDialog(page);
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
-
-async function chooseAccent(page: Page, name: string): Promise<void> {
-  await settingsDialog(page)
-    .getByRole("radiogroup", { name: "Accent color" })
-    .locator("label")
-    .filter({ has: page.getByRole("radio", { name, exact: true }) })
-    .click();
-}
-
-async function moveToTrash(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: `Actions for ${name}` }).click();
-  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog
-    .getByRole("button", { name: "Move to trash", exact: true })
-    .click();
-  await expect(dialog).toHaveCount(0);
-}
-
-async function openTrash(page: Page): Promise<Locator> {
-  await page.getByTestId("open-trash").click();
-  const dialog = page.getByRole("dialog", { name: "Trash" });
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
-
-async function openHistory(page: Page): Promise<Locator> {
+async function openWelcomeHistory(page: Page): Promise<Locator> {
   await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
-  await page.getByRole("button", { name: "Version history" }).click();
-  const dialog = page.getByRole("dialog", { name: "Version history" });
-  await expect(dialog).toBeVisible();
-  return dialog;
+  return openHistory(page);
 }
 
 interface Box {
@@ -213,7 +172,7 @@ test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
         return openTrash(page);
       },
     },
-    { kind: "wide", open: openHistory },
+    { kind: "wide", open: openWelcomeHistory },
   ];
 
   for (const { kind, open } of handleDialogs) {
@@ -391,7 +350,7 @@ test.describe("dialog grab handle on desktop", () => {
 
   for (const { kind, open } of [
     { kind: "sheet", open: openSettings },
-    { kind: "wide", open: openHistory },
+    { kind: "wide", open: openWelcomeHistory },
   ]) {
     test(`the ${kind} dialog header sits inside the card padding`, async ({
       page,

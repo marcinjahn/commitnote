@@ -1,15 +1,8 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openNotes, showTree, fakeForge, flushPendingSaves } from "./helpers";
+import { openNotes, showTree, fakeForge } from "./helpers";
+import { headerSyncIcon, openHistory, waitForSynced } from "./helpers/tree";
 
-
-async function waitForSynced(page: Page): Promise<void> {
-  await flushPendingSaves(page);
-  await expect(page.locator("header.note-header").getByRole("img")).toHaveCount(
-    0,
-    { timeout: 15_000 },
-  );
-}
 
 async function appendText(page: Page, text: string): Promise<void> {
   const editor = page.getByRole("textbox", { name: "Note editor" });
@@ -17,7 +10,7 @@ async function appendText(page: Page, text: string): Promise<void> {
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type(text);
   await expect(
-    page.locator("header.note-header").getByRole("img"),
+    headerSyncIcon(page),
   ).toBeVisible();
   await waitForSynced(page);
 }
@@ -27,7 +20,7 @@ async function renameOpenNote(page: Page, name: string): Promise<void> {
   await field.fill(name);
   await field.press("Enter");
   await expect(
-    page.locator("header.note-header").getByRole("img"),
+    headerSyncIcon(page),
   ).toBeVisible();
   await waitForSynced(page);
 }
@@ -40,14 +33,6 @@ async function noteWithHistory(page: Page): Promise<void> {
   await appendText(page, " two");
   await appendText(page, " three");
   await renameOpenNote(page, "Hello");
-}
-
-async function openHistory(page: Page) {
-  await page.getByRole("button", { name: "Version history" }).click();
-  const dialog = page.getByRole("dialog", { name: "Version history" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByTestId("history-end")).toHaveText("Note created.");
-  return dialog;
 }
 
 test("lists the note's versions with an editing session and labels", async ({
@@ -189,7 +174,7 @@ test("restores a version's content and keeps the current title", async ({
   await expect(lastEditorLine(page)).toHaveText("one");
   await expect(noteNameField(page)).toHaveValue("Hello");
   await expect(
-    page.locator("header.note-header").getByRole("img"),
+    headerSyncIcon(page),
   ).toBeVisible();
   await waitForSynced(page);
 

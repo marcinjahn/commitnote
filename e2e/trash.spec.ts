@@ -1,40 +1,10 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { logIn, expectTree, SAMPLE, openNotes, fakeForge, onFakeForgeReady } from "./helpers";
+import { moveToTrash, openTrash, treeItem } from "./helpers/tree";
 
 const TRASH_REPO = "https://github.com/sample/trash";
 const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
-
-function treeItem(page: Page, name: string) {
-  return page.getByRole("treeitem", { name, exact: true });
-}
-
-async function moveToTrash(
-  page: Page,
-  name: string,
-  dialogText?: RegExp,
-): Promise<void> {
-  await page.getByRole("button", { name: `Actions for ${name}` }).click();
-  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByRole("heading", { name: "Move to trash?" }),
-  ).toBeVisible();
-  if (dialogText !== undefined) {
-    await expect(dialog.getByText(dialogText)).toBeVisible();
-  }
-  await dialog
-    .getByRole("button", { name: "Move to trash", exact: true })
-    .click();
-  await expect(dialog).toHaveCount(0);
-}
-
-async function openTrash(page: Page) {
-  await page.getByTestId("open-trash").click();
-  const dialog = page.getByRole("dialog", { name: "Trash" });
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
 
 async function restoreTo(
   page: Page,

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openNotes, showTree, handOverRepo, flushPendingSaves } from "./helpers";
+import { openNotes, showTree, handOverRepo } from "./helpers";
+import { headerSyncIcon, moveToTrash, treeItem, waitForSynced } from "./helpers/tree";
 
 const T0 = new Date("2026-03-12T10:00:00+01:00");
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -20,18 +21,6 @@ function editor(page: Page) {
   return page.getByRole("textbox", { name: "Note editor" });
 }
 
-function treeItem(page: Page, name: string) {
-  return page.getByRole("treeitem", { name, exact: true });
-}
-
-async function waitForSynced(page: Page): Promise<void> {
-  await flushPendingSaves(page);
-  await expect(page.locator("header.note-header").getByRole("img")).toHaveCount(
-    0,
-    { timeout: 15_000 },
-  );
-}
-
 async function typeAtEnd(page: Page, text: string): Promise<void> {
   await editor(page).click();
   await page.keyboard.press("ControlOrMeta+End");
@@ -41,7 +30,7 @@ async function typeAtEnd(page: Page, text: string): Promise<void> {
 async function typeAndSave(page: Page, text: string): Promise<void> {
   await typeAtEnd(page, text);
   await expect(
-    page.locator("header.note-header").getByRole("img"),
+    headerSyncIcon(page),
   ).toBeVisible();
   await waitForSynced(page);
 }
@@ -168,7 +157,7 @@ test("renaming a note keeps its created date", async ({ page }) => {
   await field.fill("Hello");
   await field.press("Enter");
   await expect(
-    page.locator("header.note-header").getByRole("img"),
+    headerSyncIcon(page),
   ).toBeVisible();
   await waitForSynced(page);
 
@@ -226,16 +215,6 @@ test("reopening a note shows its dates immediately", async ({
   });
 });
 
-async function moveToTrash(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: `Actions for ${name}` }).click();
-  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog
-    .getByRole("button", { name: "Move to trash", exact: true })
-    .click();
-  await expect(dialog).toHaveCount(0);
-}
-
 test("a note re-created under a trashed note's name shows its own dates", async ({
   page,
 }) => {
@@ -254,7 +233,7 @@ test("a note re-created under a trashed note's name shows its own dates", async 
 
   await page.keyboard.type("one");
   await expect(
-    page.locator("header.note-header").getByRole("img"),
+    headerSyncIcon(page),
   ).toBeVisible();
   await typeAndSave(page, " two");
   await typeAndSave(page, " three");
@@ -447,7 +426,7 @@ test("a note re-created under a reused name on another device shows its own date
   await expect(editor(other)).toBeFocused();
   await other.keyboard.type("one");
   await expect(
-    other.locator("header.note-header").getByRole("img"),
+    headerSyncIcon(other),
   ).toBeVisible();
   await typeAndSave(other, " two");
   await typeAndSave(other, " three");

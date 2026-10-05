@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { expectTree, logIn, TouchFinger, type TouchPoint, SAMPLE, openNotes, fakeForge } from "./helpers";
+import { movedToast, treeItem, treeRows } from "./helpers/tree";
 
 
 const REORDERED_ROOT = [
@@ -21,20 +22,8 @@ test.beforeEach(async ({ page }, testInfo) => {
   );
 });
 
-function treeItem(page: Page, name: string): Locator {
-  return page.getByRole("treeitem", { name, exact: true });
-}
-
-function treeRows(page: Page): Locator {
-  return page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
-}
-
 function editor(page: Page): Locator {
   return page.getByRole("textbox", { name: "Note editor" });
-}
-
-function movedToast(page: Page): Locator {
-  return page.getByRole("group").filter({ hasText: "moved to" });
 }
 
 async function pointIn(

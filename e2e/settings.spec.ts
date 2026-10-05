@@ -1,21 +1,10 @@
 import type { Locator, Page, TestInfo } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, showTree, fakeForge } from "./helpers";
+import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, showTree, fakeForge, expectFamily, expectedFamily, MONO_STACK, SERIF_STACK } from "./helpers";
+import { chooseAccent, chooseOption, closeSettings, openSettings, rootAccent, settingsDialog } from "./helpers/settings";
+import { openWelcome } from "./helpers/tree";
 
 
-
-function settingsDialog(page: Page) {
-  return page.getByRole("dialog", { name: "Settings" });
-}
-
-async function openSettings(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Settings" })
-    .click();
-  await expect(settingsDialog(page)).toBeVisible();
-}
 
 const TEAL = "rgb(0, 133, 115)";
 const RED = "rgb(206, 44, 49)";
@@ -33,24 +22,8 @@ const PALETTE = [
   "Slate",
 ];
 
-function rootAccent(page: Page): Promise<string> {
-  return page.evaluate(() =>
-    getComputedStyle(document.documentElement)
-      .getPropertyValue("--color-accent")
-      .trim(),
-  );
-}
-
 function expectRootAccent(page: Page, color: string) {
   return expect.poll(() => rootAccent(page)).toBe(color);
-}
-
-async function chooseAccent(page: Page, name: string): Promise<void> {
-  await settingsDialog(page)
-    .getByRole("radiogroup", { name: "Accent color" })
-    .locator("label")
-    .filter({ has: page.getByRole("radio", { name, exact: true }) })
-    .click();
 }
 
 async function emulateOsAccent(page: Page, color: string): Promise<void> {
@@ -88,18 +61,6 @@ const FOLDER_OPTIONS = ["At the beginning", "At the end", "After the last folder
 
 function rootRows(page: Page) {
   return page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
-}
-
-async function chooseOption(
-  page: Page,
-  section: string,
-  name: string,
-): Promise<void> {
-  await settingsDialog(page)
-    .getByRole("radiogroup", { name: section })
-    .locator("label")
-    .filter({ has: page.getByRole("radio", { name, exact: true }) })
-    .click();
 }
 
 async function addedCommits(
@@ -437,8 +398,6 @@ test("arrow keys move the note placement selection", async ({ page }) => {
 
 const SYSTEM_STACK =
   'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-const SERIF_STACK =
-  'ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", Georgia, Cambria, "Noto Serif", "Times New Roman", serif';
 
 const NOTE_FONTS: Record<
   string,
@@ -507,31 +466,10 @@ const BUNDLED_FILE_PREFIXES = [
   "jetbrains-mono-",
   "ibm-plex-mono-",
 ];
-const MONO_STACK = "var(--font-mono)";
 const SANS_STACK = "var(--font-sans)";
 
 function noteFontGroup(page: Page) {
   return settingsDialog(page).getByRole("radiogroup", { name: "Note font" });
-}
-
-function expectedFamily(page: Page, stack: string): Promise<string> {
-  return page.evaluate((value) => {
-    const probe = document.createElement("span");
-    probe.style.fontFamily = value;
-    document.body.appendChild(probe);
-    const family = getComputedStyle(probe).fontFamily;
-    probe.remove();
-    return family;
-  }, stack);
-}
-
-function computedFamily(locator: Locator): Promise<string> {
-  return locator.evaluate((el) => getComputedStyle(el).fontFamily);
-}
-
-async function expectFamily(page: Page, locator: Locator, stack: string) {
-  const expected = await expectedFamily(page, stack);
-  await expect.poll(() => computedFamily(locator)).toBe(expected);
 }
 
 function rootNoteFont(page: Page): Promise<{ inline: string; computed: string }> {
@@ -589,16 +527,6 @@ function collectFontFiles(page: Page): string[] {
     if (path.endsWith(".woff2")) files.push(path.split("/").pop()!);
   });
   return files;
-}
-
-async function closeSettings(page: Page): Promise<void> {
-  await page.keyboard.press("Escape");
-  await expect(settingsDialog(page)).toHaveCount(0);
-}
-
-async function openWelcome(page: Page): Promise<void> {
-  await page.getByRole("treeitem", { name: "Welcome", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "Note editor" })).toBeVisible();
 }
 
 async function returnToWelcomeIfMobile(

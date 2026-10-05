@@ -1,23 +1,11 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openNotes, showTree, flushPendingSaves } from "./helpers";
+import { headerSyncIcon, openWelcome, treeItem } from "./helpers/tree";
 
 
 function nameField(page: Page) {
   return page.getByRole("textbox", { name: "Note name" });
-}
-
-function treeItem(page: Page, name: string) {
-  return page.getByRole("treeitem", { name, exact: true });
-}
-
-function headerIcon(page: Page) {
-  return page.locator("header.note-header").getByRole("img");
-}
-
-async function openWelcome(page: Page): Promise<void> {
-  await treeItem(page, "Welcome").click();
-  await expect(nameField(page)).toHaveValue("Welcome");
 }
 
 test("renaming a note with Enter updates the tree and syncs", async ({
@@ -31,7 +19,7 @@ test("renaming a note with Enter updates the tree and syncs", async ({
 
   await expect(nameField(page)).toHaveValue("Greetings");
   await flushPendingSaves(page);
-  await expect(headerIcon(page)).toHaveCount(0, {
+  await expect(headerSyncIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });
   await showTree(page);

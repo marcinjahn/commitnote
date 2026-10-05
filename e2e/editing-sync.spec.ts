@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { logIn, expectTree, rowSyncState, SAMPLE, openNotes, logOut, showTree, fakeForge, flushPendingSaves } from "./helpers";
+import { headerSyncIcon } from "./helpers/tree";
 
 
 
@@ -48,10 +49,6 @@ const WELCOME_TAIL = [
 
 function welcomeWithHeading(heading: string): string {
   return [heading, ...WELCOME_TAIL].join("\n");
-}
-
-function headerIcon(page: Page) {
-  return page.locator("header.note-header").getByRole("img");
 }
 
 async function openNote(page: Page, path: readonly string[]): Promise<void> {
@@ -132,7 +129,7 @@ async function startConflictOnWelcome(page: Page): Promise<void> {
     welcomeWithHeading("# Welcome from elsewhere"),
   );
 
-  await expect(headerIcon(page)).toHaveAccessibleName(CONFLICT, {
+  await expect(headerSyncIcon(page)).toHaveAccessibleName(CONFLICT, {
     timeout: 10_000,
   });
   await expect(
@@ -164,7 +161,7 @@ test.describe("with GitHub-like forge latency", () => {
     await expect(page.getByRole("treeitem", { name: "Work" })).toBeVisible();
 
     await createNoteThroughRowMenu(page, "Work", "Plan");
-    await expect(headerIcon(page)).toHaveCount(0, {
+    await expect(headerSyncIcon(page)).toHaveCount(0, {
       timeout: 10_000,
     });
 
@@ -177,11 +174,11 @@ test.describe("with GitHub-like forge latency", () => {
     await page.keyboard.press("Enter");
     await page.keyboard.type("Ship the editing tests");
 
-    await expect(headerIcon(page)).toHaveAccessibleName(WAITING);
-    await expect(headerIcon(page)).toHaveAccessibleName(FAILED, {
+    await expect(headerSyncIcon(page)).toHaveAccessibleName(WAITING);
+    await expect(headerSyncIcon(page)).toHaveAccessibleName(FAILED, {
       timeout: 10_000,
     });
-    await expect(headerIcon(page)).toHaveCount(0, {
+    await expect(headerSyncIcon(page)).toHaveCount(0, {
       timeout: 15_000,
     });
 
@@ -285,9 +282,9 @@ test("a concurrent remote edit at the end of a note merges cleanly", async ({
   await page.keyboard.type("Local line");
   await page.keyboard.press("Enter");
 
-  await expect(headerIcon(page)).toBeVisible();
+  await expect(headerSyncIcon(page)).toBeVisible();
   await flushPendingSaves(page);
-  await expect(headerIcon(page)).toHaveCount(0, {
+  await expect(headerSyncIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });
 
@@ -324,9 +321,9 @@ test("a conflict is resolved by editing the merged text", async ({ page }) => {
   }
   await page.keyboard.press("Delete");
 
-  await expect(headerIcon(page)).toHaveAccessibleName(WAITING);
+  await expect(headerSyncIcon(page)).toHaveAccessibleName(WAITING);
   await flushPendingSaves(page);
-  await expect(headerIcon(page)).toHaveCount(0, {
+  await expect(headerSyncIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });
 
@@ -344,7 +341,7 @@ test("a conflict is resolved by keeping theirs", async ({ page }) => {
     .getByRole("button", { name: CONFLICT_KEEP_THEIRS_LABEL })
     .click();
 
-  await expect(headerIcon(page)).toHaveCount(0, {
+  await expect(headerSyncIcon(page)).toHaveCount(0, {
     timeout: 10_000,
   });
   const note = page.getByRole("textbox", { name: "Note editor" });
