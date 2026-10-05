@@ -1,8 +1,7 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { NotePath } from "../changes/change";
 import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
 import { type Keyring } from "../crypto/keyring";
-import { decryptNote } from "../crypto/note-cipher";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { ForgeError } from "../forge/errors";
 import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
@@ -12,6 +11,16 @@ import { buildNoteTree, findNode } from "../tree/note-tree";
 import { GITHUB_WRITE_LIMITS } from "../forge/github/github-adapter";
 import { createRateBudget, type RateBudget } from "./rate-budget";
 import { createTestClock } from "./testing/test-clock";
+import {
+  IDEAS,
+  WELCOME,
+  advance,
+  drainAsync,
+  fullBudget,
+  mainContent,
+  okCommitCount,
+  settle,
+} from "./testing/engine-harness";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
 
 let keyring: Keyring;
@@ -21,8 +30,6 @@ beforeAll(async () => {
 });
 
 const START = 1_000_000;
-const WELCOME = ["Welcome"];
-const IDEAS = ["Projects", "commitnote", "Ideas"];
 
 interface Harness {
   readonly fake: FakeForgeAdapter;
@@ -71,45 +78,6 @@ async function setup(options?: {
   };
 }
 
-async function settle(engine: SyncEngine): Promise<void> {
-  await vi.waitFor(
-    () => {
-      const state = engine.getState();
-      expect(state.save.kind).not.toBe("saving");
-      expect(state.refresh.inFlight).toBe(false);
-    },
-    { timeout: 5_000, interval: 2 },
-  );
-}
-
-async function advance(h: Harness, ms: number): Promise<void> {
-  h.clock.advance(ms);
-  await settle(h.engine);
-}
-
-function okCommitCount(fake: FakeForgeAdapter, since: string): number {
-  let count = 0;
-  let current: string | null | undefined = fake.repo.getRef("main");
-  while (current !== since && current != null) {
-    count++;
-    current = fake.repo.getCommit(current)?.parent;
-  }
-  return count;
-}
-
-async function mainContent(
-  fake: FakeForgeAdapter,
-  path: NotePath,
-): Promise<string | undefined> {
-  const tree = await buildNoteTree(
-    await fake.listTree(await fake.getHead()),
-    keyring,
-  );
-  const node = findNode(tree, path);
-  if (node?.kind !== "note") return undefined;
-  return decryptNote(keyring, await fake.readBlob(node.blobSha));
-}
-
 async function mainHasFolder(
   fake: FakeForgeAdapter,
   path: NotePath,
@@ -126,14 +94,6 @@ function retryAtOf(engine: SyncEngine): number | null {
   if (save.kind !== "waiting")
     throw new Error(`expected waiting, got ${save.kind}`);
   return save.retryAt;
-}
-
-function fullBudget(clock: ReturnType<typeof createTestClock>): RateBudget {
-  const budget = createRateBudget(clock, GITHUB_WRITE_LIMITS);
-  for (let index = 0; index < GITHUB_WRITE_LIMITS.perMinute; index++) {
-    budget.record();
-  }
-  return budget;
 }
 
 describe("sync engine failure handling", () => {
@@ -429,7 +389,7 @@ describe("sync engine failure handling", () => {
 
     h.engine.dispose();
     h.clock.advance(600_000);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await drainAsync();
     expect(h.commits).toHaveLength(1);
     expect(okCommitCount(h.fake, h.start)).toBe(0);
   });

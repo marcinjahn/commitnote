@@ -1,7 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { ChangeSet, NotePath } from "../changes/change";
-import { readOrderIndex } from "../order/order-index";
-import { encodeChangeSet } from "../changes/encode-change-set";
 import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
 import { type Keyring } from "../crypto/keyring";
 import { decryptNote } from "../crypto/note-cipher";
@@ -21,6 +19,13 @@ import {
 import { createRateBudget } from "./rate-budget";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
 import { createTestClock } from "./testing/test-clock";
+import {
+  WELCOME,
+  ZAZOLC,
+  okCommitCount,
+  pushRemote,
+  settle,
+} from "./testing/engine-harness";
 import { TRASH_PURGE_HEADROOM } from "./tuning";
 import { findWorkingNode } from "./working-tree";
 
@@ -31,8 +36,6 @@ beforeAll(async () => {
 });
 
 const START = Date.UTC(2026, 8, 30, 12, 0, 0);
-const WELCOME = ["Welcome"];
-const ZAZOLC = ["Zażółć gęślą jaźń"];
 const PROJECTS = ["Projects"];
 const JANUARY = ["Journal", "2026", "January"];
 
@@ -60,18 +63,6 @@ interface Harness {
   readonly start: string;
   // Makes every following commit wait until the returned release is called.
   gateCommits(): () => void;
-}
-
-async function pushRemote(
-  fake: FakeForgeAdapter,
-  changeSet: ChangeSet,
-): Promise<string> {
-  const listing = await fake.listTree(await fake.getHead());
-  const order = await readOrderIndex(listing, keyring, (sha) =>
-    fake.readBlob(sha),
-  );
-  const encoded = await encodeChangeSet({ listing, changeSet, order, keyring });
-  return fake.pushFromAnotherDevice(encoded.changes, encoded.message);
 }
 
 async function setup(options?: {
@@ -128,27 +119,6 @@ async function setup(options?: {
       return release;
     },
   };
-}
-
-async function settle(engine: SyncEngine): Promise<void> {
-  await vi.waitFor(
-    () => {
-      const state = engine.getState();
-      expect(state.save.kind).not.toBe("saving");
-      expect(state.refresh.inFlight).toBe(false);
-    },
-    { timeout: 5_000, interval: 2 },
-  );
-}
-
-function okCommitCount(fake: FakeForgeAdapter, since: string): number {
-  let count = 0;
-  let current: string | null | undefined = fake.repo.getRef("main");
-  while (current !== since && current != null) {
-    count++;
-    current = fake.repo.getCommit(current)?.parent;
-  }
-  return count;
 }
 
 async function remoteTrashIds(fake: FakeForgeAdapter): Promise<string[]> {
