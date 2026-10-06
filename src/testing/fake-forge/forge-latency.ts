@@ -74,6 +74,8 @@ export function withLatency(
     shareHost: {
       create: (...args) =>
         delayed(latency.commitMs, () => shareHost.create(...args)),
+      update: (...args) =>
+        delayed(latency.commitMs, () => shareHost.update(...args)),
       delete: (...args) =>
         delayed(latency.commitMs, () => shareHost.delete(...args)),
     },

@@ -44,7 +44,7 @@ export type ContractOperation =
   | "findOldestCommit"
   | "readFileAt";
 
-export type ContractShareOperation = "createShare" | "deleteShare";
+export type ContractShareOperation = "createShare" | "updateShare" | "deleteShare";
 
 export interface ContractSubject {
   readonly adapter: ForgeAdapter;
@@ -1068,6 +1068,32 @@ export function describeForgeAdapterContract(
         expect(await read(subject, second)).toBe("two");
       });
 
+      it("update replaces the hosted content", async () => {
+        const { subject, host } = await createSubject();
+        const locator = await host.create("before");
+        await host.update(locator, "after");
+        expect(await read(subject, locator)).toBe("after");
+      });
+
+      it("update of a missing share fails with NotFound", async () => {
+        const { host } = await createSubject();
+        const locator = await host.create("before");
+        await host.delete(locator);
+        await expect(host.update(locator, "after")).rejects.toMatchObject({
+          kind: "NotFound",
+        });
+      });
+
+      it("reports updateShare", async () => {
+        const { subject, host } = await createSubject();
+        const locator = await host.create("before");
+        await host.update(locator, "after");
+        expect(subject.contentCreatingRequests).toEqual([
+          { operation: "createShare" },
+          { operation: "updateShare" },
+        ]);
+      });
+
       it("deletes a share", async () => {
         const { subject, host } = await createSubject();
         const locator = await host.create("gone soon");
@@ -1102,6 +1128,16 @@ export function describeForgeAdapterContract(
           await expect(host.create("x")).rejects.toMatchObject({ kind });
         });
 
+        it(`rejects update with ${kind}`, async () => {
+          const { subject, host } = await createSubject();
+          const locator = await host.create("x");
+          failNextShare(subject, "updateShare", { kind });
+          await expect(host.update(locator, "y")).rejects.toMatchObject({
+            kind,
+          });
+          expect(await read(subject, locator)).toBe("x");
+        });
+
         it(`rejects delete with ${kind}`, async () => {
           const { subject, host } = await createSubject();
           const locator = await host.create("x");
@@ -1122,6 +1158,13 @@ export function describeForgeAdapterContract(
           retryAfterMs: 30_000,
         });
         const locator = await host.create("x");
+        failNextShare(subject, "updateShare", {
+          kind: "RateLimited",
+          retryAfterSeconds: 30,
+        });
+        await expect(host.update(locator, "y")).rejects.toMatchObject({
+          kind: "RateLimited",
+        });
         failNextShare(subject, "deleteShare", {
           kind: "RateLimited",
           retryAfterSeconds: 30,

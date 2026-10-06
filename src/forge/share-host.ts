@@ -4,6 +4,7 @@ export type ShareLocator =
 
 export interface ShareHost {
   create(envelope: string): Promise<ShareLocator>;
+  update(locator: ShareLocator, envelope: string): Promise<void>;
   delete(locator: ShareLocator): Promise<void>;
 }
 

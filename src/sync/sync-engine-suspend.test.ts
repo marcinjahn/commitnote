@@ -94,6 +94,7 @@ describe("sync engine suspend", () => {
         commit: () => Promise.reject(new Error()),
         shareHost: {
           create: () => Promise.reject(new Error()),
+          update: () => Promise.reject(new Error()),
           delete: () => Promise.reject(new Error()),
         },
       },

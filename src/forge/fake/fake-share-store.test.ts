@@ -42,6 +42,20 @@ describe("fake share store", () => {
     });
   });
 
+  it("replaces the stored envelope on update", () => {
+    const store = createFakeShareStore();
+    const locator = store.create("github", "before");
+    expect(store.update(locator, "after")).toBe(true);
+    expect(store.read(locator)).toBe("after");
+  });
+
+  it("reports false when updating a missing share", () => {
+    const store = createFakeShareStore();
+    const locator = { provider: "gitlab", snippetId: "5" } as const;
+    expect(store.update(locator, "x")).toBe(false);
+    expect(store.read(locator)).toBeNull();
+  });
+
   it("reports false when deleting a missing share", () => {
     const store = createFakeShareStore();
     expect(store.delete({ provider: "gitlab", snippetId: "5" })).toBe(false);

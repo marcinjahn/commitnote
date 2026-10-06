@@ -94,6 +94,7 @@ function applyFailure(
 
 const SHARE_FAILURE_MATCH: Record<ContractShareOperation, FailureMatch> = {
   createShare: { method: "POST", pathPattern: /\/gists$/ },
+  updateShare: { method: "PATCH", pathPattern: /\/gists\// },
   deleteShare: { method: "DELETE", pathPattern: /\/gists\// },
 };
 
