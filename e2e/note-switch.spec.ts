@@ -93,3 +93,44 @@ test.describe("search result focus", () => {
     await expect(name).toHaveValue("Zażółć gęślą jaźń");
   });
 });
+
+test.describe("cached note switch", () => {
+  test.use({ forgeLatency: "github" });
+
+  test("returning to a viewed note never shows the loading state", async ({
+    page,
+  }) => {
+    await openNotes(page, { repo: SEARCH_REPO });
+    const name = page.getByRole("textbox", { name: "Note name" });
+    await treeItem(page, "Welcome").click();
+    await expect(name).toHaveValue("Welcome");
+    await treeItem(page, "Zażółć gęślą jaźń").click();
+    await expect(name).toHaveValue("Zażółć gęślą jaźń");
+    await expect(page.getByRole("textbox", { name: "Note editor" })).toBeVisible();
+
+    await page.evaluate(() => {
+      const record = window as unknown as { contentTexts: string[] };
+      record.contentTexts = [];
+      new MutationObserver(() => {
+        const text = document.querySelector(".note-content")?.textContent ?? "";
+        if (record.contentTexts.at(-1) !== text) record.contentTexts.push(text);
+      }).observe(document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
+    });
+
+    await treeItem(page, "Welcome").click();
+    await expect(name).toHaveValue("Welcome");
+    await expect(page.getByRole("textbox", { name: "Note editor" })).toContainText(
+      "Welcome",
+    );
+
+    const texts = await page.evaluate(
+      () => (window as unknown as { contentTexts: string[] }).contentTexts,
+    );
+    expect(texts.length).toBeGreaterThan(0);
+    expect(texts.filter((text) => text.includes("Loading…"))).toEqual([]);
+  });
+});

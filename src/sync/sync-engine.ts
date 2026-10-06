@@ -69,6 +69,10 @@ import { createAutosave } from "./autosave";
 import { retryDelayMs } from "./backoff";
 import type { Clock } from "./clock";
 import { createRateBudget, type RateBudget } from "./rate-budget";
+import {
+  createNoteContentCache,
+  type NoteContentCache,
+} from "./note-content-cache";
 import type { SearchSource } from "./search-source";
 import {
   computeSyncStates,
@@ -493,10 +497,13 @@ export function createSyncEngine(options: {
   readonly rateBudget?: RateBudget;
   readonly purgeCaps?: PurgeCaps;
   readonly blobCache?: CachedBlobReader;
+  readonly noteContentCache?: NoteContentCache;
 }): SyncEngine {
   const { keyring, clock } = options;
   const adapter = options.adapter;
   const rateBudget = options.rateBudget ?? createRateBudget(clock, adapter.limits);
+  const noteContentCache =
+    options.noteContentCache ?? createNoteContentCache();
 
   let state: SyncEngineState = INITIAL_STATE;
   const subscribers = new Set<(state: SyncEngineState) => void>();
@@ -650,6 +657,8 @@ export function createSyncEngine(options: {
   }
 
   async function readNoteBlob(blobSha: string): Promise<string> {
+    const cached = noteContentCache.get(blobSha);
+    if (cached !== undefined) return cached;
     return decryptNote(keyring, await adapter.readBlob(blobSha));
   }
 
@@ -842,6 +851,7 @@ export function createSyncEngine(options: {
   ): Promise<void> {
     try {
       const content = await readNoteBlob(blobSha);
+      noteContentCache.set(blobSha, content);
       applyOpenNoteResult(epoch, { kind: "loaded", path, blobSha, content });
     } catch (error) {
       applyOpenNoteResult(epoch, {
@@ -884,6 +894,18 @@ export function createSyncEngine(options: {
         }
         // Keep showing the previously loaded content while the new blob
         // loads; any other prior state switches to loading.
+        {
+          const cached = noteContentCache.get(resolution.blobSha);
+          if (cached !== undefined) {
+            applyOpenNoteResult(epoch, {
+              kind: "loaded",
+              path,
+              blobSha: resolution.blobSha,
+              content: cached,
+            });
+            return;
+          }
+        }
         if (current.kind !== "loaded") {
           applyOpenNoteResult(epoch, openNoteFor(path, resolution));
         }
@@ -907,9 +929,16 @@ export function createSyncEngine(options: {
       update((current) => ({ ...current, openNote: null }));
     } else {
       const resolution = resolveWorkingNote(path);
-      const next = openNoteFor(path, resolution);
+      const cached =
+        resolution.kind === "blob"
+          ? noteContentCache.get(resolution.blobSha)
+          : undefined;
+      const next: OpenNoteState =
+        resolution.kind === "blob" && cached !== undefined
+          ? { kind: "loaded", path, blobSha: resolution.blobSha, content: cached }
+          : openNoteFor(path, resolution);
       update((current) => ({ ...current, openNote: next }));
-      if (resolution.kind === "blob") {
+      if (resolution.kind === "blob" && cached === undefined) {
         loading = fetchAndApplyNote(path, resolution.blobSha, epoch);
       }
     }
@@ -1199,9 +1228,27 @@ export function createSyncEngine(options: {
     }
   }
 
+  function fillCacheFromCommit(synced: SyncedState, inFlight: ChangeSet): void {
+    for (const change of inFlight) {
+      if (change.kind !== "create-note" && change.kind !== "update-note") {
+        continue;
+      }
+      const content = localContentAt(inFlight, change.path);
+      if (content === undefined) continue;
+      const node = findNode(synced.tree, change.path);
+      if (node?.kind !== "note") continue;
+      const previous = state.synced && findNode(state.synced.tree, change.path);
+      if (previous?.kind === "note" && previous.blobSha !== node.blobSha) {
+        noteContentCache.delete(previous.blobSha);
+      }
+      noteContentCache.set(node.blobSha, content);
+    }
+  }
+
   async function adoptCommittedHead(head: string): Promise<void> {
     const synced = await loadSynced(head);
     committedHead = null;
+    fillCacheFromCommit(synced, state.inFlight);
     update((current) => ({ ...current, synced, inFlight: EMPTY_CHANGES }));
     await recheckConflicts();
     await reresolveOpenNote();
@@ -1372,6 +1419,7 @@ export function createSyncEngine(options: {
 
   function stopForKeyChange(): void {
     stopped = true;
+    noteContentCache.clear();
     autosave.cancel();
     cancelRetry();
     returnUncommitted();
@@ -2406,6 +2454,7 @@ export function createSyncEngine(options: {
 
   function dispose(): void {
     disposed = true;
+    noteContentCache.clear();
     autosave.dispose();
     cancelRetry();
     subscribers.clear();

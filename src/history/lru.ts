@@ -11,6 +11,10 @@ export class Lru<V> {
     return value;
   }
 
+  clear(): void {
+    this.entries.clear();
+  }
+
   delete(key: string): void {
     this.entries.delete(key);
   }
