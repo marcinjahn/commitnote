@@ -287,6 +287,27 @@ export function sharesOfNote(
     .sort(newestFirst);
 }
 
+export type ShareScope =
+  | { readonly kind: "within"; readonly path: NotePath }
+  | {
+      readonly kind: "trashed";
+      readonly entryIds: readonly string[] | "all";
+    };
+
+export function sharesIn(
+  index: ShareIndex,
+  scope: ShareScope,
+): readonly ShareEntry[] {
+  return [...index.entries.values()]
+    .filter(({ note }) =>
+      scope.kind === "within"
+        ? note.state === "active" && isAtOrWithin(note.path, scope.path)
+        : note.state === "trashed" &&
+          (scope.entryIds === "all" || scope.entryIds.includes(note.entryId)),
+    )
+    .sort(newestFirst);
+}
+
 export function sortedShares(index: ShareIndex): readonly ShareEntry[] {
   return [...index.entries.values()].sort(newestFirst);
 }

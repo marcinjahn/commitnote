@@ -94,8 +94,10 @@
   } from "../share/share-messages";
   import type { ShareService } from "../../share/share-service";
   import {
+    sharesIn,
     sharesOfNote,
     type ShareEntry,
+    type ShareScope,
   } from "../../share/share-index";
   import { sharedVersionShas } from "../../history/shared-versions";
   import { formatShareLink, shareLinkBase } from "../../share/share-link";
@@ -104,6 +106,8 @@
   import {
     describeEmptyTrash,
     describeMovedToTrash,
+    describeRevokeFailed,
+    describeSharesRevokedOnDelete,
     describeUndoError,
   } from "../trash/trash-messages";
   import type { ReadableWorkingTrashEntry } from "../../sync/working-trash";
@@ -206,6 +210,8 @@
         readonly kind: "delete";
         readonly node: WorkingNode;
         readonly itemCount: number;
+        readonly shareCount: number;
+        readonly revoking: boolean;
         readonly error: string | null;
       };
 
@@ -217,8 +223,12 @@
         readonly node: WorkingNode;
         readonly error: string | null;
       }
-    | { readonly kind: "deleteEntry"; readonly entry: ReadableWorkingTrashEntry }
-    | { readonly kind: "empty" };
+    | {
+        readonly kind: "deleteEntry";
+        readonly entry: ReadableWorkingTrashEntry;
+        readonly revoking: boolean;
+      }
+    | { readonly kind: "empty"; readonly revoking: boolean };
 
   const linkBase = shareLinkBase(location);
   let sharedLinksOpen = $state(false);
@@ -1112,6 +1122,8 @@
           kind: "delete",
           node,
           itemCount: node.kind === "folder" ? countDescendants(node) : 0,
+          shareCount: shareCountIn({ kind: "within", path: node.path }),
+          revoking: false,
           error: null,
         };
         break;
@@ -1296,10 +1308,55 @@
     closeTrashDialog();
   }
 
-  function handleTrashDeleteConfirm(): void {
-    if (trashDialog.kind === "deleteEntry") {
-      engine.deleteFromTrash([trashDialog.entry.id]);
-    } else if (trashDialog.kind === "empty") {
+  function shareCountIn(scope: ShareScope): number {
+    const shares = engine.getState().shares;
+    return shares === null ? 0 : sharesIn(shares, scope).length;
+  }
+
+  function withShareRevocation(body: string, state: TrashDialogState): string {
+    const scope = trashDeleteScope(state);
+    if (scope === null || engineState.shares === null) return body;
+    const count = sharesIn(engineState.shares, scope).length;
+    return count === 0 ? body : `${body} ${describeSharesRevokedOnDelete(count)}`;
+  }
+
+  function trashDeleteScope(state: TrashDialogState): ShareScope | null {
+    if (state.kind === "deleteEntry") {
+      return { kind: "trashed", entryIds: [state.entry.id] };
+    }
+    return state.kind === "empty" ? { kind: "trashed", entryIds: "all" } : null;
+  }
+
+  async function handleTrashDeleteConfirm(): Promise<void> {
+    const current = trashDialog;
+    const scope = trashDeleteScope(current);
+    if (scope === null || current.kind === "none" || current.kind === "restore") {
+      return;
+    }
+    if (current.revoking) return;
+    if (shareCountIn(scope) > 0) {
+      trashDialog = { ...current, revoking: true };
+      const result = await shareService.revokeShares(scope);
+      if (trashDialog.kind === current.kind) {
+        trashDialog = { ...trashDialog, revoking: false };
+      }
+      if (!result.ok) {
+        closeTrashDialog();
+        showToast(
+          "share",
+          describeRevokeFailed(
+            messageText(describeShareError(result.error, forgeId)),
+            result.revoked,
+            "delete",
+          ),
+        );
+        return;
+      }
+      if (shareCountIn(scope) > 0) return;
+    }
+    if (current.kind === "deleteEntry") {
+      engine.deleteFromTrash([current.entry.id]);
+    } else {
       engine.emptyTrash();
     }
     closeTrashDialog();
@@ -1321,13 +1378,65 @@
     }
   }
 
-  function handleDeleteConfirm(): void {
+  function isConflictedWithin(path: NotePath): boolean {
+    return engine
+      .getState()
+      .conflicts.some((held) => isAtOrWithin(held.path, path));
+  }
+
+  // Shares are revoked before the item is trashed, so a failure leaves the
+  // item in place and no trashed note keeps a live link.
+  async function handleDeleteConfirm(): Promise<void> {
+    if (dialog.kind !== "delete" || dialog.revoking) return;
+    const current = dialog;
+    const path = current.node.path;
+    const scope: ShareScope = { kind: "within", path };
+    const shareCount = shareCountIn(scope);
+    if (shareCount > 0) {
+      if (current.shareCount === 0) {
+        dialog = { ...current, shareCount };
+        return;
+      }
+      if (isConflictedWithin(path)) {
+        dialog = {
+          ...current,
+          shareCount,
+          error: describeStructureError({ kind: "conflicted" }),
+        };
+        return;
+      }
+      dialog = { ...current, shareCount, revoking: true, error: null };
+      const result = await shareService.revokeShares(scope);
+      if (dialog.kind !== "delete" || !notePathEquals(dialog.node.path, path)) {
+        return;
+      }
+      const remaining = shareCountIn(scope);
+      if (!result.ok) {
+        dialog = {
+          ...dialog,
+          shareCount: remaining,
+          revoking: false,
+          error: describeRevokeFailed(
+            messageText(describeShareError(result.error, forgeId)),
+            result.revoked,
+            "trash",
+          ),
+        };
+        return;
+      }
+      if (remaining > 0) {
+        dialog = { ...dialog, shareCount: remaining, revoking: false };
+        return;
+      }
+    }
+    trashItem(path, current.node.name);
+  }
+
+  function trashItem(path: NotePath, name: string): void {
     if (dialog.kind !== "delete") return;
-    const path = dialog.node.path;
     const affectsOpenNote =
       openPath !== null &&
       isAtOrWithin(openPath, path);
-    const name = dialog.node.name;
     const result = engine.delete(path);
     if (!result.ok) {
       dialog = { ...dialog, error: describeStructureError(result.error) };
@@ -1579,8 +1688,10 @@
     itemName={dialog.node.name}
     itemKind={dialog.node.kind}
     itemCount={dialog.itemCount}
+    shareCount={dialog.shareCount}
+    revoking={dialog.revoking}
     error={dialog.error}
-    onConfirm={handleDeleteConfirm}
+    onConfirm={() => void handleDeleteConfirm()}
     onClose={closeDialog}
   />
 {/if}
@@ -1730,8 +1841,12 @@
   now={trashNow}
   onRestore={(entry, node) =>
     (trashDialog = { kind: "restore", entry, node, error: null })}
-  onDelete={(entry) => (trashDialog = { kind: "deleteEntry", entry })}
-  onEmpty={() => (trashDialog = { kind: "empty" })}
+  trashedShareCount={engineState.shares === null
+    ? 0
+    : sharesIn(engineState.shares, { kind: "trashed", entryIds: "all" }).length}
+  onDelete={(entry) =>
+    (trashDialog = { kind: "deleteEntry", entry, revoking: false })}
+  onEmpty={() => (trashDialog = { kind: "empty", revoking: false })}
   onClose={() => (trashOpen = false)}
 />
 
@@ -1749,17 +1864,19 @@
 {:else if trashDialog.kind === "deleteEntry"}
   <ConfirmDialog
     title="Delete permanently?"
-    body="This can't be undone."
+    body={withShareRevocation("This can't be undone.", trashDialog)}
     confirmLabel="Delete permanently"
-    onConfirm={handleTrashDeleteConfirm}
+    busyLabel={trashDialog.revoking ? "Revoking links…" : null}
+    onConfirm={() => void handleTrashDeleteConfirm()}
     onClose={closeTrashDialog}
   />
 {:else if trashDialog.kind === "empty"}
   <ConfirmDialog
     title="Empty trash?"
-    body={describeEmptyTrash(trashEntries.length)}
+    body={withShareRevocation(describeEmptyTrash(trashEntries.length), trashDialog)}
     confirmLabel="Empty trash"
-    onConfirm={handleTrashDeleteConfirm}
+    busyLabel={trashDialog.revoking ? "Revoking links…" : null}
+    onConfirm={() => void handleTrashDeleteConfirm()}
     onClose={closeTrashDialog}
   />
 {/if}
