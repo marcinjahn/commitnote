@@ -5,6 +5,7 @@ import { encryptNote } from "../crypto/note-cipher";
 import { ForgeError } from "../forge/errors";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import {
+  createFakeShareReaders,
   createFakeShareStore,
   type FakeShareStore,
 } from "../forge/fake/fake-share-store";
@@ -257,6 +258,238 @@ describe("createShare", () => {
   });
 });
 
+describe("updateShare", () => {
+  async function shared(password = "") {
+    const h = await setup();
+    const created = await h.service.createShare({ path: WELCOME, password });
+    if (!created.ok) throw new Error("failed");
+    await settle(h.engine);
+    return { h, created, hash: hashOf(created.link) };
+  }
+
+  async function openHosted(
+    h: Harness,
+    hash: string,
+    password?: string,
+  ) {
+    const parsed = parseShareLink(hash);
+    if (parsed.kind !== "valid") throw new Error("invalid link");
+    const readers = createFakeShareReaders(h.store);
+    const envelope = await readers[parsed.locator.provider].read(
+      parsed.locator,
+    );
+    return openShare(envelope, parsed.linkSecret, password, argon2idDirect);
+  }
+
+  it("flushes pending edits and hosts them under the same link", async () => {
+    const { h, created, hash } = await shared();
+    h.engine.editNote(WELCOME, "# Fresh\n\nnew text");
+
+    const result = await h.service.updateShare(created.entry.id);
+
+    if (!result.ok) throw new Error(`failed: ${result.error.kind}`);
+    expect(result.unchanged).toBe(false);
+    expect((await openHosted(h, hash)).markdown).toBe("# Fresh\n\nnew text");
+  });
+
+  it("needs the same password to open the updated link", async () => {
+    const { h, created, hash } = await shared("hunter2");
+    h.engine.editNote(WELCOME, "# Fresh\n\nnew text");
+
+    const result = await h.service.updateShare(created.entry.id);
+
+    expect(result.ok).toBe(true);
+    await expect(openHosted(h, hash)).rejects.toBeInstanceOf(ShareOpenError);
+    expect((await openHosted(h, hash, "hunter2")).markdown).toBe(
+      "# Fresh\n\nnew text",
+    );
+  });
+
+  it("records the update on the entry", async () => {
+    const { h, created } = await shared();
+    h.engine.editNote(WELCOME, "# Fresh\n\nnew text");
+    h.engine.rename(WELCOME, "Renamed");
+    h.clock.advance(60_000);
+
+    const result = await h.service.updateShare(created.entry.id);
+    if (!result.ok) throw new Error(`failed: ${result.error.kind}`);
+    await settle(h.engine);
+
+    const head = await h.fake.getHead();
+    const newest = await createNoteHistory({
+      adapter: h.fake,
+      keyring,
+    }).newestVersion(["Renamed"], head);
+    if (newest.kind !== "found") throw new Error("no version");
+    expect(result.entry.sharedAt).toBe(created.entry.sharedAt);
+    expect(result.entry.updatedAt).toBe(new Date(h.clock.now()).toISOString());
+    expect(result.entry.name).toBe("Renamed");
+    expect(result.entry.source?.commit).toBe(newest.version.sha);
+    expect(h.engine.getState().shares?.entries.get(created.entry.id)).toEqual(
+      result.entry,
+    );
+    const hosted = await openHosted(h, hashOf(created.link));
+    expect(hosted.name).toBe("Renamed");
+    expect(hosted.sharedAt).toBe(created.entry.sharedAt);
+  });
+
+  it("reports unchanged without a host request on a second update", async () => {
+    const { h, created } = await shared();
+    h.engine.editNote(WELCOME, "# Fresh\n\nnew text");
+    const first = await h.service.updateShare(created.entry.id);
+    if (!first.ok) throw new Error("failed");
+    let calls = 0;
+    const update = h.fake.shareHost.update;
+    h.fake.shareHost.update = async (locator, envelope) => {
+      calls++;
+      return update(locator, envelope);
+    };
+
+    const second = await h.service.updateShare(created.entry.id);
+
+    expect(second).toEqual({ ok: true, entry: first.entry, unchanged: true });
+    expect(calls).toBe(0);
+  });
+
+  it("reports unchanged right after the share was created", async () => {
+    const { h, created } = await shared();
+    const result = await h.service.updateShare(created.entry.id);
+    expect(result).toEqual({
+      ok: true,
+      entry: created.entry,
+      unchanged: true,
+    });
+  });
+
+  it("refuses a note with a conflict", async () => {
+    const { h, created } = await shared();
+    const original = (await mainContent(h.fake, WELCOME)) ?? "";
+    await pushRemote(h.fake, [
+      {
+        kind: "update-note",
+        path: WELCOME,
+        content: original.replace("# Welcome", "# Welcome (theirs)"),
+      },
+    ]);
+    h.engine.editNote(WELCOME, original.replace("# Welcome", "# Welcome (mine)"));
+    await h.engine.flush();
+    expect(h.engine.getState().conflicts).toHaveLength(1);
+
+    expect(await h.service.updateShare(created.entry.id)).toEqual({
+      ok: false,
+      error: { kind: "notSaved" },
+    });
+  });
+
+  it("refuses a draft note", async () => {
+    const { h, created } = await shared();
+    h.engine.createNote([], "Draft");
+    const added = h.engine.addShare({
+      ...created.entry,
+      id: "draft-share",
+      note: { state: "active", path: ["Draft"] },
+    });
+    if (!added.ok) throw new Error("could not add");
+
+    expect(await h.service.updateShare("draft-share")).toEqual({
+      ok: false,
+      error: { kind: "notSaved" },
+    });
+  });
+
+  it("refuses an unknown share", async () => {
+    const h = await setup();
+    expect(await h.service.updateShare("missing")).toEqual({
+      ok: false,
+      error: { kind: "notSaved" },
+    });
+  });
+
+  it("reports sharesUnavailable for an unreadable share index", async () => {
+    const fake = await createSampleNotesRepoAdapter();
+    await fake.pushFromAnotherDevice([
+      {
+        kind: "upsert-text",
+        path: SHARES_PATH,
+        text: await encryptNote(
+          keyring,
+          JSON.stringify({ shares: {}, version: 2 }),
+        ),
+      },
+    ]);
+    const h = await setup(fake);
+
+    expect(await h.service.updateShare("any")).toEqual({
+      ok: false,
+      error: { kind: "sharesUnavailable" },
+    });
+  });
+
+  it("refuses without hosting when the rate budget is exhausted", async () => {
+    const { h, created, hash } = await shared();
+    const before = hostedEnvelope(h, hash);
+    h.engine.editNote(WELCOME, "# Fresh\n\nnew text");
+    await h.engine.flush();
+    for (let i = 0; i < h.fake.limits.perMinute; i++) h.budget.record();
+
+    const result = await h.service.updateShare(created.entry.id);
+
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: "rateLimited", retryAfterMs: expect.any(Number) },
+    });
+    expect(hostedEnvelope(h, hash)).toBe(before);
+  });
+
+  it("maps a missing hosted share to shareMissing", async () => {
+    const { h, created } = await shared();
+    h.engine.editNote(WELCOME, "# Fresh\n\nnew text");
+    h.store.delete(created.entry.locator);
+
+    expect(await h.service.updateShare(created.entry.id)).toEqual({
+      ok: false,
+      error: { kind: "shareMissing" },
+    });
+  });
+
+  it("keeps the entry unchanged when the host fails", async () => {
+    const { h, created } = await shared();
+    h.engine.editNote(WELCOME, "# Fresh\n\nnew text");
+    h.fake.failNext("updateShare", new ForgeError("Network"));
+
+    expect(await h.service.updateShare(created.entry.id)).toEqual({
+      ok: false,
+      error: { kind: "network" },
+    });
+    expect(h.engine.getState().shares?.entries.get(created.entry.id)).toEqual(
+      created.entry,
+    );
+  });
+
+  it("reports notSaved when the index write fails after hosting", async () => {
+    const { h, created, hash } = await shared();
+    h.engine.editNote(WELCOME, "# Fresh\n\nnew text");
+    const service = createShareService({
+      engine: {
+        ...h.engine,
+        updateShare: () => ({ ok: false, error: { kind: "notFound" } }),
+      },
+      shareHost: h.fake.shareHost,
+      noteHistory: createNoteHistory({ adapter: h.fake, keyring }),
+      rateBudget: h.budget,
+      clock: h.clock,
+      argon2id: argon2idDirect,
+      linkBase: LINK_BASE,
+    });
+
+    expect(await service.updateShare(created.entry.id)).toEqual({
+      ok: false,
+      error: { kind: "notSaved" },
+    });
+    expect((await openHosted(h, hash)).markdown).toBe("# Fresh\n\nnew text");
+  });
+});
+
 describe("revokeShare", () => {
   async function shared() {
     const h = await setup();
@@ -306,6 +539,10 @@ describe("shareErrorOf", () => {
   it.each([
     [new ForgeError("Forbidden"), "create", { kind: "permissionMissing" }],
     [new ForgeError("NotFound"), "create", { kind: "permissionMissing" }],
+    [new ForgeError("NotFound"), "update", { kind: "shareMissing" }],
+    [new ForgeError("NotFound"), "delete", { kind: "server" }],
+    [new ForgeError("Forbidden"), "update", { kind: "permissionMissing" }],
+    [new ForgeError("Network"), "update", { kind: "network" }],
     [new ForgeError("Network"), "delete", { kind: "network" }],
     [new ForgeError("Unauthorized"), "delete", { kind: "unauthorized" }],
     [new ForgeError("Server"), "create", { kind: "server" }],

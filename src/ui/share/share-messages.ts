@@ -12,6 +12,9 @@ const FORGE_NAMES: Readonly<Record<ForgeId, string>> = {
   gitlab: "GitLab",
 };
 
+export const SHARE_UPDATED_TEXT = "Link updated";
+export const SHARE_UNCHANGED_TEXT = "Link already shows the current version";
+
 const text = (value: string): MessagePart => ({ kind: "text", text: value });
 const link = (label: string, href: string): MessagePart => ({
   kind: "link",
@@ -83,6 +86,12 @@ export function describeShareError(
       ];
     case "tooLarge":
       return [text("This note is too large to share.")];
+    case "shareMissing":
+      return [
+        text(
+          `This link no longer exists on ${forge}. Revoke it to remove it from the list.`,
+        ),
+      ];
     case "sharesUnavailable":
       return [
         text(

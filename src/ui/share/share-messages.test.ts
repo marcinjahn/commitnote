@@ -4,6 +4,8 @@ import {
   describeShareDate,
   describeShareError,
   messageText,
+  SHARE_UNCHANGED_TEXT,
+  SHARE_UPDATED_TEXT,
 } from "./share-messages";
 
 const SIMPLE: readonly [ShareError["kind"], string, string][] = [
@@ -31,6 +33,11 @@ const SIMPLE: readonly [ShareError["kind"], string, string][] = [
     "tooLarge",
     "This note is too large to share.",
     "This note is too large to share.",
+  ],
+  [
+    "shareMissing",
+    "This link no longer exists on GitHub. Revoke it to remove it from the list.",
+    "This link no longer exists on GitLab. Revoke it to remove it from the list.",
   ],
   [
     "sharesUnavailable",
@@ -99,6 +106,13 @@ describe("describeShareError", () => {
     expect(messageText(parts)).toBe(
       `Too many requests to GitLab right now. Try again in ${wait}.`,
     );
+  });
+});
+
+describe("update texts", () => {
+  it("has the toast texts", () => {
+    expect(SHARE_UPDATED_TEXT).toBe("Link updated");
+    expect(SHARE_UNCHANGED_TEXT).toBe("Link already shows the current version");
   });
 });
 
