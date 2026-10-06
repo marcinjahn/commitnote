@@ -69,6 +69,7 @@ import { createAutosave } from "./autosave";
 import { retryDelayMs } from "./backoff";
 import type { Clock } from "./clock";
 import { createRateBudget, type RateBudget } from "./rate-budget";
+import type { SearchSource } from "./search-source";
 import {
   computeSyncStates,
   hasConflictMarkers,
@@ -300,6 +301,10 @@ export interface SyncEngine {
   changeSettings(edits: SettingsEdits): void;
   dismissNotice(id: number): void;
   snapshotNotes(): NotesSnapshot | null;
+  /** One source per live note in sidebar order. Reads current state only. */
+  searchSources(): readonly SearchSource[];
+  /** Reads and decrypts a note blob without touching engine state. */
+  readNoteText(blobSha: string): Promise<string>;
   /**
    * Saves earlier changes first, then queues `changes` to be committed on
    * their own as one atomic commit.
@@ -1654,6 +1659,34 @@ export function createSyncEngine(options: {
     };
   }
 
+  function searchSources(): readonly SearchSource[] {
+    const tree = state.workingTree;
+    if (tree === null) return [];
+
+    const sources: SearchSource[] = [];
+    function collect(folder: WorkingFolder): void {
+      for (const child of folder.children) {
+        if (child.kind === "folder") {
+          collect(child);
+          continue;
+        }
+        const resolution = resolveWorkingNote(child.path);
+        if (resolution.kind === "missing") continue;
+        sources.push({
+          path: child.path,
+          name: child.name,
+          colorTag: child.colorTag,
+          content:
+            resolution.kind === "local"
+              ? { kind: "local", text: resolution.content }
+              : { kind: "blob", blobSha: resolution.blobSha },
+        });
+      }
+    }
+    collect(tree.root);
+    return sources;
+  }
+
   function editNote(path: NotePath, content: string): void {
     if (disposed || suspended || state.workingTree === null) return;
     const node = findWorkingNode(state.workingTree, path);
@@ -2389,6 +2422,8 @@ export function createSyncEngine(options: {
     changeSettings,
     dismissNotice,
     snapshotNotes,
+    searchSources,
+    readNoteText: readNoteBlob,
     importChanges,
     atomicCommitSupport,
     enableAtomicCommits,
