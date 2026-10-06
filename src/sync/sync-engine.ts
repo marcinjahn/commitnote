@@ -283,6 +283,7 @@ export interface SyncEngine {
   addShare(entry: ShareEntry): ShareChangeResult;
   /** Forgets a revoked share. Saved immediately. */
   removeShare(id: string): ShareChangeResult;
+  updateShare(entry: ShareEntry): ShareChangeResult;
   moveFromTrash(
     entryId: string,
     subPath: NotePath,
@@ -2017,6 +2018,31 @@ export function createSyncEngine(options: {
     return { ok: true };
   }
 
+  function updateShare(entry: ShareEntry): ShareChangeResult {
+    const { synced, workingTree, shares } = state;
+    if (
+      disposed ||
+      suspended ||
+      synced === null ||
+      workingTree === null ||
+      shares === null
+    ) {
+      return { ok: false, error: { kind: "notFound" } };
+    }
+    if (!synced.shares.writable) {
+      return { ok: false, error: { kind: "sharesUnavailable" } };
+    }
+    if (
+      !shares.entries.has(entry.id) ||
+      entry.note.state !== "active" ||
+      findWorkingNode(workingTree, entry.note.path)?.kind !== "note"
+    ) {
+      return { ok: false, error: { kind: "notFound" } };
+    }
+    applyStructureChange({ kind: "update-share", entry });
+    return { ok: true };
+  }
+
   function deleteItem(path: NotePath): StructureResult {
     const node = commandTarget(path);
     if (node === undefined) return failure({ kind: "notFound" });
@@ -2351,6 +2377,7 @@ export function createSyncEngine(options: {
     setColorTag,
     addShare,
     removeShare,
+    updateShare,
     moveFromTrash,
     undoTrash,
     deleteFromTrash: purge,

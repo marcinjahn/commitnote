@@ -197,6 +197,76 @@ describe("SyncEngine.removeShare", () => {
   });
 });
 
+describe("SyncEngine.updateShare", () => {
+  const UPDATED: ShareEntry = {
+    ...ENTRY,
+    name: "Welcome v2",
+    source: { commit: "c1", storedPath: "Welcome", blobSha: "b1" },
+    updatedAt: "2026-02-02T00:00:00.000Z",
+  };
+
+  async function withShare(): Promise<Harness> {
+    const h = await setup();
+    h.engine.addShare(ENTRY);
+    await waitIdle(h.engine);
+    return h;
+  }
+
+  it("commits at once and replaces the entry in the share index", async () => {
+    const h = await withShare();
+    const start = await h.fake.getHead();
+
+    expect(h.engine.updateShare(UPDATED)).toEqual({ ok: true });
+    expect(h.engine.getState().shares?.entries.get(ENTRY.id)).toEqual(UPDATED);
+    await waitIdle(h.engine);
+
+    expect(okCommitCount(h.fake, start)).toBe(1);
+    expect(headMessage(h.fake)).toContain(`${TRAILER.share}: update`);
+    expect((await remoteShares(h.fake)).entries.get(ENTRY.id)).toEqual(UPDATED);
+  });
+
+  it("refuses an unknown id as not found without committing", async () => {
+    const h = await withShare();
+
+    expect(h.engine.updateShare({ ...UPDATED, id: "unknown" })).toEqual({
+      ok: false,
+      error: { kind: "notFound" },
+    });
+    expect(h.engine.getState().pending).toEqual([]);
+  });
+
+  it("refuses a note that isn't active or isn't a note as not found", async () => {
+    const h = await withShare();
+
+    for (const note of [
+      { state: "deleted" },
+      { state: "active", path: ["Projects"] },
+      { state: "active", path: ["Missing"] },
+    ] as const) {
+      expect(h.engine.updateShare({ ...UPDATED, note })).toEqual({
+        ok: false,
+        error: { kind: "notFound" },
+      });
+    }
+    expect(h.engine.getState().pending).toEqual([]);
+  });
+
+  it("does not bring back a share the remote revoked", async () => {
+    const h = await withShare();
+    h.fake.failNext("commit", new ForgeError("Network"));
+    h.engine.updateShare(UPDATED);
+    await waitIdle(h.engine);
+    await pushRemote(h.fake, [{ kind: "remove-share", id: ENTRY.id }]);
+
+    await advance(h, 5_000);
+
+    expect(h.engine.getState().pending).toEqual([]);
+    expect((await remoteShares(h.fake)).entries.size).toBe(0);
+    expect(h.engine.getState().shares?.entries.size).toBe(0);
+    expect(isShared(h.engine, WELCOME)).toBe(false);
+  });
+});
+
 describe("SyncEngine shares with an unreadable share index", () => {
   it.each([
     [
@@ -226,6 +296,10 @@ describe("SyncEngine shares with an unreadable share index", () => {
       error: { kind: "sharesUnavailable" },
     });
     expect(h.engine.removeShare(ENTRY.id)).toEqual({
+      ok: false,
+      error: { kind: "sharesUnavailable" },
+    });
+    expect(h.engine.updateShare(ENTRY)).toEqual({
       ok: false,
       error: { kind: "sharesUnavailable" },
     });
