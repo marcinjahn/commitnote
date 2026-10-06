@@ -96,6 +96,19 @@ export function messageText(parts: readonly MessagePart[]): string {
   return parts.map((part) => part.text).join("");
 }
 
+export function describeShareDate(dates: {
+  readonly sharedAt: string;
+  readonly updatedAt: string | null;
+}): string {
+  const format = (iso: string) =>
+    new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+      new Date(iso),
+    );
+  return dates.updatedAt === null
+    ? `Shared ${format(dates.sharedAt)}`
+    : `Updated ${format(dates.updatedAt)}`;
+}
+
 export function describeSharedAt(iso: string): string {
   const date = new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",

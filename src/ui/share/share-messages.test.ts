@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ShareError } from "../../share/share-service";
 import {
+  describeShareDate,
   describeShareError,
   describeSharedAt,
   messageText,
@@ -120,5 +121,21 @@ describe("describeSharedAt", () => {
     expect(describeSharedAt(iso)).toBe(
       `Shared ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(iso))}`,
     );
+  });
+});
+
+describe("describeShareDate", () => {
+  const format = (iso: string) =>
+    new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(iso));
+
+  it("shows the share date when the share was never updated", () => {
+    const sharedAt = "2026-03-04T12:00:00.000Z";
+    expect(describeShareDate({ sharedAt, updatedAt: null })).toBe(`Shared ${format(sharedAt)}`);
+  });
+
+  it("shows the update date when the share was updated", () => {
+    const sharedAt = "2026-03-04T12:00:00.000Z";
+    const updatedAt = "2026-05-06T12:00:00.000Z";
+    expect(describeShareDate({ sharedAt, updatedAt })).toBe(`Updated ${format(updatedAt)}`);
   });
 });

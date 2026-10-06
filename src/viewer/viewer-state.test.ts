@@ -10,7 +10,7 @@ import { sealShare } from "../share/share-envelope";
 import { formatShareLink } from "../share/share-link";
 import { createViewerController, type ViewerState } from "./viewer-state";
 
-const NOTE = { name: "Plan", markdown: "# Plan\n", sharedAt: "2026-01-01T00:00:00.000Z" };
+const NOTE = { name: "Plan", markdown: "# Plan\n", sharedAt: "2026-01-01T00:00:00.000Z", updatedAt: null };
 const LOCATORS: Record<"github" | "gitlab", ShareLocator> = {
   github: { provider: "github", gistId: "a".repeat(32) },
   gitlab: { provider: "gitlab", snippetId: "123" },

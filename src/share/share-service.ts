@@ -164,6 +164,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       name: working.name,
       markdown: version.content,
       sharedAt,
+      updatedAt: null,
       password: password || undefined,
       random,
       argon2id,

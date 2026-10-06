@@ -22,6 +22,7 @@ export interface SharedNote {
   readonly name: string;
   readonly markdown: string;
   readonly sharedAt: string;
+  readonly updatedAt: string | null;
 }
 
 export type SealShareResult =
@@ -143,12 +144,16 @@ async function deriveShareKey(
 export async function sealShare(
   input: SharedNote & {
     readonly password?: string;
+    readonly linkSecret?: string;
     readonly random?: RandomSource;
     readonly argon2id: Argon2idFunction;
   },
 ): Promise<SealShareResult> {
   const random = input.random ?? secureRandom;
-  const linkSecret = random(LINK_SECRET_BYTES);
+  const linkSecret =
+    input.linkSecret === undefined
+      ? random(LINK_SECRET_BYTES)
+      : decodeExact(input.linkSecret, LINK_SECRET_BYTES);
   const salt = random(KDF_LIMITS.saltBytes);
   const iv = random(IV_BYTES);
 
@@ -167,6 +172,7 @@ export async function sealShare(
       name: input.name,
       markdown: input.markdown,
       sharedAt: input.sharedAt,
+      updatedAt: input.updatedAt,
     }),
   );
 
@@ -304,6 +310,7 @@ function parseSharedNote(plaintext: Uint8Array): SharedNote {
     name: record.name,
     markdown: record.markdown,
     sharedAt: record.sharedAt,
+    updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : null,
   };
 }
 

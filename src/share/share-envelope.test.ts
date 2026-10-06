@@ -15,6 +15,7 @@ const NOTE = {
   name: "Known answer",
   markdown: "# Hello\n",
   sharedAt: "2026-01-02T03:04:05.000Z",
+  updatedAt: null,
 };
 
 function sequentialRandom() {
@@ -98,9 +99,22 @@ describe("share envelope", () => {
   describe("known-answer vectors", () => {
     // Literals computed independently with node:crypto (argon2Sync, hkdfSync, aes-256-gcm).
     const PLAIN =
-      '{"commitnote":"share","v":1,"kdf":null,"salt":"ICEiIyQlJicoKSorLC0uLw","iv":"MDEyMzQ1Njc4OTo7","ct":"6BopCch0QkJDICxWa-R3vSsh-19Z5mc2YDyDjspgHDn2MEFq1Ni99gKNY42LDteKxfNTsuWoPIGovnkITSDKT74trQnlXvzbpgAC9Jev6uNU5_7A9-zCT-6zkyLHz0yF8Yn1tNNtKfSg4w"}';
+      '{"commitnote":"share","v":1,"kdf":null,"salt":"ICEiIyQlJicoKSorLC0uLw","iv":"MDEyMzQ1Njc4OTo7","ct":"6BopCch0QkJDICxWa-R3vSsh-19Z5mc2YDyDjspgHDn2MEFq1Ni99gKNY42LDteKxfNTsuWoPIGovnkITSDKT74trQnlXvzbpgAC9Jev6uNU5_7A9-zCT-7iXJEkwWeag1GO8JUNXtopCs6xpfZqFE1lR1gW4KnqG5lS"}';
     const WITH_PASSWORD =
+      '{"commitnote":"share","v":1,"kdf":{"alg":"argon2id","memoryKiB":65536,"iterations":3,"parallelism":1},"salt":"ICEiIyQlJicoKSorLC0uLw","iv":"MDEyMzQ1Njc4OTo7","ct":"q8MOF7ZY9FxVXf4C3ej5ZXlnvw1dNQVHenAGVesFJY9soNaqc-uzS9JLCVGH3IKOFRI1oLQ43asT_EkOL7mCbHBIa0PCjxo7eKmJFsKN69I7Nmv5YDwHycTxaPgDfFncF3y32Qckq03rmDcIGPoNAbIVzCVxXU4o7Vhq"}';
+
+    const LEGACY_PLAIN =
+      '{"commitnote":"share","v":1,"kdf":null,"salt":"ICEiIyQlJicoKSorLC0uLw","iv":"MDEyMzQ1Njc4OTo7","ct":"6BopCch0QkJDICxWa-R3vSsh-19Z5mc2YDyDjspgHDn2MEFq1Ni99gKNY42LDteKxfNTsuWoPIGovnkITSDKT74trQnlXvzbpgAC9Jev6uNU5_7A9-zCT-6zkyLHz0yF8Yn1tNNtKfSg4w"}';
+    const LEGACY_WITH_PASSWORD =
       '{"commitnote":"share","v":1,"kdf":{"alg":"argon2id","memoryKiB":65536,"iterations":3,"parallelism":1},"salt":"ICEiIyQlJicoKSorLC0uLw","iv":"MDEyMzQ1Njc4OTo7","ct":"q8MOF7ZY9FxVXf4C3ej5ZXlnvw1dNQVHenAGVesFJY9soNaqc-uzS9JLCVGH3IKOFRI1oLQ43asT_EkOL7mCbHBIa0PCjxo7eKmJFsKN69I7Nmv5YDwHycSgXXVx3C-tAcH90TRFi-8DCQ"}';
+
+    it("opens envelopes sealed before updatedAt existed with updatedAt null", async () => {
+      const secret = toBase64Url(Uint8Array.from({ length: 32 }, (_, i) => i));
+      await expect(openShare(LEGACY_PLAIN, secret, undefined, argon2.fn)).resolves.toEqual(NOTE);
+      await expect(
+        openShare(LEGACY_WITH_PASSWORD, secret, "correct horse", argon2.fn),
+      ).resolves.toEqual(NOTE);
+    });
 
     it("seals and opens a share without a password", async () => {
       const sealed = await seal();
@@ -120,6 +134,55 @@ describe("share envelope", () => {
   });
 
   describe("round trips", () => {
+    it("round-trips updatedAt as a string and as null", async () => {
+      const updatedAt = "2026-02-03T04:05:06.000Z";
+      const result = await sealShare({ ...NOTE, updatedAt, random: sequentialRandom(), argon2id: argon2.fn });
+      if (result.kind !== "sealed") {
+        throw new Error("expected sealed");
+      }
+      await expect(openShare(result.envelope, result.linkSecret, undefined, argon2.fn)).resolves.toEqual({
+        ...NOTE,
+        updatedAt,
+      });
+      const first = await seal();
+      await expect(openShare(first.envelope, first.linkSecret, undefined, argon2.fn)).resolves.toMatchObject({
+        updatedAt: null,
+      });
+    });
+
+    it("re-seals with an existing link secret and password using fresh salt and iv", async () => {
+      const first = await seal("correct horse");
+      const updated = { ...NOTE, markdown: "# Changed\n", updatedAt: "2026-02-03T04:05:06.000Z" };
+      const second = await sealShare({
+        ...updated,
+        password: "correct horse",
+        linkSecret: first.linkSecret,
+        argon2id: argon2.fn,
+      });
+      if (second.kind !== "sealed") {
+        throw new Error("expected sealed");
+      }
+      expect(second.linkSecret).toBe(first.linkSecret);
+      await expect(
+        openShare(second.envelope, first.linkSecret, "correct horse", argon2.fn),
+      ).resolves.toEqual(updated);
+      const a = JSON.parse(first.envelope) as { salt: string; iv: string };
+      const b = JSON.parse(second.envelope) as { salt: string; iv: string };
+      expect(b.salt).not.toBe(a.salt);
+      expect(b.iv).not.toBe(a.iv);
+    });
+
+    it("re-seals without a password using an existing link secret", async () => {
+      const first = await seal();
+      const second = await sealShare({ ...NOTE, linkSecret: first.linkSecret, argon2id: argon2.fn });
+      if (second.kind !== "sealed") {
+        throw new Error("expected sealed");
+      }
+      expect(second.linkSecret).toBe(first.linkSecret);
+      expect(envelopeNeedsPassword(second.envelope)).toBe(false);
+      await expect(openShare(second.envelope, first.linkSecret, undefined, argon2.fn)).resolves.toEqual(NOTE);
+    });
+
     it("treats an empty password as no password", async () => {
       const sealed = await seal("");
       expect(envelopeNeedsPassword(sealed.envelope)).toBe(false);
@@ -139,7 +202,7 @@ describe("share envelope", () => {
     });
 
     it("preserves non-ASCII note content", async () => {
-      const note = { name: "ä中😀", markdown: "a\r\nb\u0000c", sharedAt: "x" };
+      const note = { name: "ä中😀", markdown: "a\r\nb\u0000c", sharedAt: "x", updatedAt: null };
       const sealed = await sealShare({ ...note, argon2id: argon2.fn });
       if (sealed.kind !== "sealed") throw new Error("expected sealed");
       await expect(openShare(sealed.envelope, sealed.linkSecret, undefined, argon2.fn)).resolves.toEqual(note);
