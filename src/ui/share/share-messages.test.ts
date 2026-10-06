@@ -6,6 +6,7 @@ import {
   messageText,
   SHARE_UNCHANGED_TEXT,
   SHARE_UPDATED_TEXT,
+  compactShareDate,
 } from "./share-messages";
 
 const SIMPLE: readonly [ShareError["kind"], string, string][] = [
@@ -141,5 +142,28 @@ describe("describeShareDate", () => {
     const sharedAt = "2026-03-04T12:00:00.000Z";
     const updatedAt = "2026-05-06T12:00:00.000Z";
     expect(describeShareDate({ sharedAt, updatedAt })).toBe(`Updated ${format(updatedAt)}`);
+  });
+});
+
+describe("compactShareDate", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  it("omits the year for dates in the current year", () => {
+    const iso = "2026-03-04T12:00:00.000Z";
+    const expected = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(
+      new Date(iso),
+    );
+    expect(compactShareDate(iso, now)).toBe(expected);
+  });
+
+  it("includes the year for dates in another year", () => {
+    const iso = "2025-12-20T12:00:00.000Z";
+    const expected = new Intl.DateTimeFormat(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(new Date(iso));
+    expect(compactShareDate(iso, now)).toBe(expected);
+    expect(compactShareDate(iso, now)).toContain("2025");
   });
 });

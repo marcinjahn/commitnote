@@ -117,3 +117,13 @@ export function describeShareDate(dates: {
     ? `Shared ${format(dates.sharedAt)}`
     : `Updated ${format(dates.updatedAt)}`;
 }
+
+export function compactShareDate(iso: string, now: Date): string {
+  const date = new Date(iso);
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    ...(sameYear ? {} : { year: "numeric" }),
+  }).format(date);
+}

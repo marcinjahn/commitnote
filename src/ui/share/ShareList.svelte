@@ -2,15 +2,20 @@
   import type { ShareEntry } from "../../share/share-index";
   import { findWorkingNode, type WorkingTree } from "../../sync/working-tree";
   import { noteIcons } from "../browse/action-icons";
-  import { describeShareDate } from "./share-messages";
+  import MenuPopup from "../browse/MenuPopup.svelte";
+  import type { MenuAnchor } from "../browse/row-menu-types";
+  import { compactShareDate, describeShareDate } from "./share-messages";
+  import { shareMenuItems, type ShareMenuId } from "./share-menu";
 
   interface Props {
     entries: readonly ShareEntry[];
     linkBase: string;
     tree: WorkingTree | null;
     writable: boolean;
+    updatingId: string | null;
     onCopyLink: (entry: ShareEntry) => void;
     onCopyPassword: (entry: ShareEntry) => void;
+    onUpdate: (entry: ShareEntry) => void;
     onViewVersion: (entry: ShareEntry) => void;
     onOpenNote: ((entry: ShareEntry) => void) | undefined;
     onRevoke: (entry: ShareEntry) => void;
@@ -20,18 +25,33 @@
     entries,
     tree,
     writable,
+    updatingId,
     onCopyLink,
     onCopyPassword,
+    onUpdate,
     onViewVersion,
     onOpenNote,
     onRevoke,
   }: Props = $props();
+
+  interface OpenMenu {
+    entry: ShareEntry;
+    anchor: MenuAnchor;
+    trigger: HTMLElement;
+  }
+
+  let openMenu = $state<OpenMenu | null>(null);
+  const triggers = new Map<string, HTMLButtonElement>();
 
   function titleOf(entry: ShareEntry): string {
     const { note } = entry;
     if (note.state === "active") return note.path[note.path.length - 1];
     if (note.state === "trashed") return entry.name;
     return "Deleted note";
+  }
+
+  function menuLabelOf(entry: ShareEntry): string {
+    return `Share actions for ${entry.note.state === "deleted" ? entry.name : titleOf(entry)}`;
   }
 
   function canOpen(entry: ShareEntry): boolean {
@@ -41,71 +61,146 @@
       (tree === null || findWorkingNode(tree, entry.note.path) !== undefined)
     );
   }
+
+  function latestDate(entry: ShareEntry): string {
+    return entry.updatedAt !== null && entry.updatedAt > entry.sharedAt
+      ? entry.updatedAt
+      : entry.sharedAt;
+  }
+
+  function trackTrigger(node: HTMLButtonElement, id: string) {
+    triggers.set(id, node);
+    return {
+      destroy() {
+        if (triggers.get(id) === node) triggers.delete(id);
+      },
+    };
+  }
+
+  function open(entry: ShareEntry, anchor: MenuAnchor): void {
+    const trigger = triggers.get(entry.id);
+    if (trigger === undefined) return;
+    if (openMenu?.entry.id === entry.id && anchor.kind === "rect") {
+      handleClose();
+      return;
+    }
+    openMenu = { entry, anchor, trigger };
+  }
+
+  function handleTriggerClick(entry: ShareEntry): void {
+    const trigger = triggers.get(entry.id);
+    if (trigger === undefined) return;
+    open(entry, { kind: "rect", rect: trigger.getBoundingClientRect() });
+  }
+
+  function handleContextMenu(event: MouseEvent, entry: ShareEntry): void {
+    event.preventDefault();
+    event.stopPropagation();
+    open(entry, { kind: "point", x: event.clientX, y: event.clientY });
+  }
+
+  function handleClose(): void {
+    const trigger = openMenu?.trigger ?? null;
+    openMenu = null;
+    trigger?.focus();
+  }
+
+  function handleSelect(id: ShareMenuId): void {
+    const entry = openMenu?.entry;
+    handleClose();
+    if (entry === undefined) return;
+    switch (id) {
+      case "copy-link":
+        onCopyLink(entry);
+        break;
+      case "copy-password":
+        onCopyPassword(entry);
+        break;
+      case "update":
+        onUpdate(entry);
+        break;
+      case "view":
+        onViewVersion(entry);
+        break;
+      case "open":
+        onOpenNote?.(entry);
+        break;
+      case "revoke":
+        onRevoke(entry);
+        break;
+    }
+  }
 </script>
 
 <ul class="share-list" data-testid="share-list">
   {#each entries as entry (entry.id)}
     {@const title = titleOf(entry)}
-    <li class="share-item" data-testid="share-item">
-      <div class="share-title">
+    {@const updating = updatingId === entry.id}
+    {@const menuOpen = openMenu?.entry.id === entry.id}
+    <li
+      class="share-item"
+      data-testid="share-item"
+      oncontextmenu={(event) => handleContextMenu(event, entry)}
+    >
+      <span class="share-title">
         <span class="share-name">{title}</span>
         {#if entry.note.state === "trashed"}
           <span class="muted"> · In trash</span>
         {:else if entry.note.state === "deleted"}
           <span class="muted"> · {entry.name}</span>
         {/if}
-      </div>
-      <div class="share-detail">
-        <span>{describeShareDate(entry)}</span>
-        {#if entry.password !== null}
-          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            {#each noteIcons.lock as d (d)}
-              <path {d} />
-            {/each}
-          </svg>
-          <span class="visually-hidden">Password protected</span>
-        {/if}
-      </div>
-      <div class="share-actions">
-        <button
-          type="button"
-          class="button button-ghost"
-          aria-label={`Copy link for ${title}`}
-          onclick={() => onCopyLink(entry)}>Copy link</button
-        >
-        {#if entry.password !== null}
-          <button
-            type="button"
-            class="button button-ghost"
-            aria-label={`Copy password for ${title}`}
-            onclick={() => onCopyPassword(entry)}>Copy password</button
-          >
-        {/if}
-        <button
-          type="button"
-          class="button button-ghost"
-          aria-label={`View shared version of ${title}`}
-          onclick={() => onViewVersion(entry)}>View shared version</button
-        >
-        {#if canOpen(entry)}
-          <button
-            type="button"
-            class="button button-ghost"
-            aria-label={`Open note ${title}`}
-            onclick={() => onOpenNote?.(entry)}>Open note</button
-          >
-        {/if}
-        <button
-          type="button"
-          class="button button-ghost"
-          aria-label={`Revoke link for ${title}`}
-          disabled={!writable}
-          onclick={() => onRevoke(entry)}>Revoke</button
-        >
-      </div>
+      </span>
+      {#if entry.password !== null}
+        <svg class="icon share-lock" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          {#each noteIcons.lock as d (d)}
+            <path {d} />
+          {/each}
+        </svg>
+        <span class="visually-hidden">Password protected</span>
+      {/if}
+      {#if updating}
+        <span class="share-date" role="status">Updating…</span>
+      {:else}
+        <time class="share-date" datetime={latestDate(entry)} title={describeShareDate(entry)}>
+          <span aria-hidden="true">{compactShareDate(latestDate(entry), new Date())}</span>
+          <span class="visually-hidden">{describeShareDate(entry)}</span>
+        </time>
+      {/if}
+      <button
+        type="button"
+        class="share-row-actions"
+        class:menu-open={menuOpen}
+        use:trackTrigger={entry.id}
+        aria-label={menuLabelOf(entry)}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        disabled={updating}
+        onclick={() => handleTriggerClick(entry)}
+      >
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <circle cx="3.5" cy="8" r="1.25" fill="currentColor" stroke="none" />
+          <circle cx="8" cy="8" r="1.25" fill="currentColor" stroke="none" />
+          <circle cx="12.5" cy="8" r="1.25" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
     </li>
   {/each}
 </ul>
+
+{#if openMenu !== null}
+  <MenuPopup
+    label={menuLabelOf(openMenu.entry)}
+    items={shareMenuItems(openMenu.entry, {
+      canOpen: canOpen(openMenu.entry),
+      writable,
+      updating: updatingId !== null,
+    })}
+    anchor={openMenu.anchor}
+    trigger={openMenu.trigger}
+    onSelect={handleSelect}
+    onClose={handleClose}
+  />
+{/if}
 
 <style>
   .share-list {
@@ -115,33 +210,78 @@
   }
 
   .share-item {
-    display: grid;
-    gap: var(--space-1);
-    padding: var(--space-3);
-    border-bottom: var(--hairline) solid var(--color-border);
-  }
-
-  .share-name {
-    overflow-wrap: anywhere;
-  }
-
-  .muted,
-  .share-detail {
-    color: var(--color-text-muted);
-  }
-
-  .share-detail {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    font-size: var(--font-size-sm);
+    padding: 0 var(--space-1) 0 var(--space-3);
+    border-bottom: var(--hairline) solid var(--color-border);
   }
 
-  .share-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-    margin-left: calc(-1 * var(--space-2));
+  .share-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .muted,
+  .share-date,
+  .share-lock {
+    color: var(--color-text-muted);
+  }
+
+  .share-lock {
+    flex-shrink: 0;
+  }
+
+  .share-date {
+    flex-shrink: 0;
     font-size: var(--font-size-sm);
+    white-space: nowrap;
+  }
+
+  .share-row-actions {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--touch-target);
+    height: var(--touch-target);
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    line-height: 1;
+    transition:
+      background-color var(--motion-duration) var(--motion-easing),
+      opacity var(--motion-duration) var(--motion-easing);
+  }
+
+  .share-row-actions:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  }
+
+  .share-row-actions:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+
+  @media (pointer: fine) and (min-width: 768px) {
+    .share-row-actions {
+      opacity: 0;
+    }
+
+    .share-item:hover .share-row-actions,
+    .share-item:focus-within .share-row-actions,
+    .share-row-actions.menu-open {
+      opacity: 1;
+    }
+
+    .share-item:hover .share-row-actions:disabled,
+    .share-item:focus-within .share-row-actions:disabled {
+      opacity: 0.5;
+    }
   }
 </style>

@@ -86,7 +86,12 @@
   import SharedLinksDialog from "../share/SharedLinksDialog.svelte";
   import SharedVersionDialog from "../share/SharedVersionDialog.svelte";
   import { copyText } from "../share/copy-text";
-  import { describeShareError, messageText } from "../share/share-messages";
+  import {
+    describeShareError,
+    messageText,
+    SHARE_UNCHANGED_TEXT,
+    SHARE_UPDATED_TEXT,
+  } from "../share/share-messages";
   import type { ShareService } from "../../share/share-service";
   import {
     sharesOfNote,
@@ -1241,6 +1246,23 @@
     void handleSelect(entry.note.path);
   }
 
+  let updatingShareId = $state<string | null>(null);
+
+  async function handleUpdateShare(entry: ShareEntry): Promise<void> {
+    if (updatingShareId !== null) return;
+    updatingShareId = entry.id;
+    try {
+      const result = await shareService.updateShare(entry.id);
+      if (!result.ok) {
+        showToast("share", messageText(describeShareError(result.error, forgeId)));
+      } else {
+        showToast("share", result.unchanged ? SHARE_UNCHANGED_TEXT : SHARE_UPDATED_TEXT);
+      }
+    } finally {
+      updatingShareId = null;
+    }
+  }
+
   async function handleRevokeConfirm(): Promise<void> {
     if (revokeEntry === null) return;
     const { id } = revokeEntry;
@@ -1655,6 +1677,8 @@
       void copyShareText(entry.password ?? "", "Password copied")}
     onCopyText={copyShareText}
     onViewVersion={(entry) => (sharedVersionEntry = entry)}
+    updatingId={updatingShareId}
+    onUpdate={(entry) => void handleUpdateShare(entry)}
     onRevoke={(entry) => (revokeEntry = entry)}
     onClose={() => (sharePath = null)}
   />
@@ -1673,6 +1697,8 @@
   onCopyPassword={(entry) =>
     void copyShareText(entry.password ?? "", "Password copied")}
   onViewVersion={(entry) => (sharedVersionEntry = entry)}
+  updatingId={updatingShareId}
+  onUpdate={(entry) => void handleUpdateShare(entry)}
   onOpenNote={handleOpenSharedNote}
   onRevoke={(entry) => (revokeEntry = entry)}
   onClose={() => (sharedLinksOpen = false)}
