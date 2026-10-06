@@ -415,6 +415,12 @@
     background: color-mix(in srgb, var(--color-text) 8%, transparent);
   }
 
+  @media (pointer: fine) {
+    .tree-row-container.selected .tree-row {
+      cursor: default;
+    }
+  }
+
   @media (pointer: fine) and (min-width: 768px) {
     .row-actions {
       opacity: 0;

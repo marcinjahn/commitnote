@@ -727,6 +727,16 @@
   }
 
   function handleSelect(path: NotePath): Promise<void> {
+    const open = engineState.openNote;
+    if (
+      draft === null &&
+      selectedPath !== null &&
+      notePathEquals(path, selectedPath) &&
+      (open?.kind === "loaded" || open?.kind === "loading")
+    ) {
+      mobileView = "note";
+      return Promise.resolve();
+    }
     leaveDraft();
     mobileView = "note";
     return engine.openNote(path);
