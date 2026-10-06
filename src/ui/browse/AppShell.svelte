@@ -12,6 +12,7 @@
     type Settings,
   } from "../../settings/settings";
   import type { AccentColorId } from "../../settings/accent-palette";
+  import type { ColorModeId } from "../../settings/color-mode";
   import type { NoteFont } from "../../settings/note-font";
   import type { NoteHistory, NoteVersion } from "../../history/note-history";
   import type { NoteDatesResolver } from "../../history/note-dates";
@@ -128,6 +129,7 @@
     ) => void;
     onLogOut: () => void;
     onAccentColor: (id: AccentColorId) => void;
+    onColorMode: (id: ColorModeId) => void;
     onNoteFont: (id: NoteFont) => void;
     onPrintNote: (note: PrintNote | null) => void;
   }
@@ -147,6 +149,7 @@
     onPassphraseChanged,
     onLogOut,
     onAccentColor,
+    onColorMode,
     onNoteFont,
     onPrintNote,
   }: Props = $props();
@@ -319,6 +322,11 @@
 
   $effect(() => {
     onAccentColor(settings.accentColor);
+  });
+
+  $effect(() => {
+    if (engineState.synced !== null || pendingSettingsEdits.colorMode !== undefined)
+      onColorMode(settings.colorMode);
   });
 
   $effect(() => {
