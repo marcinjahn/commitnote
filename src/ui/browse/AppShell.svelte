@@ -62,6 +62,15 @@
   import ChangePassphraseDialog from "../passphrase/ChangePassphraseDialog.svelte";
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
   import { actionIcons, commandIcons } from "./action-icons";
+  import type { ContentIndexer } from "../../search/content-indexer";
+  import SearchPalette from "../search/SearchPalette.svelte";
+  import SearchTrigger from "../search/SearchTrigger.svelte";
+  import {
+    classifySearchShortcut,
+    isApplePlatform,
+    isEditableTarget,
+  } from "../search/search-shortcuts";
+  import { dialogStack } from "../dialogs/dialog-stack";
   import CommandMenu from "./CommandMenu.svelte";
   import CommitSha from "./CommitSha.svelte";
   import { countDescendants } from "../dialogs/folder-options";
@@ -118,6 +127,7 @@
     DESKTOP_MEDIA_QUERY,
     DRAG_EASING,
     DRAG_MOTION_MS,
+    isNarrowLayout,
     prefersReducedMotion,
   } from "./drag-motion";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
@@ -125,6 +135,7 @@
   interface Props {
     engine: SyncEngine;
     settingsSaver: SettingsSaver;
+    contentIndexer: ContentIndexer;
     repoLabel: string;
     repoUrl: string;
     forgeName: string;
@@ -149,6 +160,7 @@
   const {
     engine,
     settingsSaver,
+    contentIndexer,
     repoLabel,
     repoUrl,
     forgeName,
@@ -287,6 +299,42 @@
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
   let settingsOpen = $state(false);
+  let searchOpen = $state(false);
+  let searchReturnFocus: HTMLElement | null = null;
+  const applePlatform = isApplePlatform(navigator.userAgent);
+
+  function openSearch(): void {
+    searchReturnFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    searchOpen = true;
+  }
+
+  async function closeSearch(): Promise<void> {
+    searchOpen = false;
+    await tick();
+    if (searchReturnFocus?.isConnected) searchReturnFocus.focus();
+  }
+
+  async function openSearchResult(path: NotePath): Promise<void> {
+    searchOpen = false;
+    if (path.length > 1) expandFolder(parentPath(path));
+    await handleSelect(path);
+    await tick();
+    if (!isNarrowLayout()) notePane?.focusEditor();
+  }
+
+  function handleSearchShortcut(event: KeyboardEvent): void {
+    const action = classifySearchShortcut(event, {
+      apple: applePlatform,
+      paletteOpen: searchOpen,
+      otherDialogOpen: !searchOpen && dialogStack.top() !== null,
+      editableTarget: isEditableTarget(event.target),
+    });
+    if (action === null) return;
+    event.preventDefault();
+    if (action === "open") openSearch();
+    else void closeSearch();
+  }
   let historyDialog = $state<{
     readonly path: NotePath;
     readonly phase: HistoryPhase;
@@ -1422,6 +1470,8 @@
   }
 </script>
 
+<svelte:window onkeydowncapture={handleSearchShortcut} />
+
 <div class="shell">
   <aside class="sidebar" class:mobile-hidden={mobileView !== "tree"}>
     <div class="tree-header">
@@ -1457,6 +1507,7 @@
         <CommandMenu {commands} />
       </div>
     </div>
+    <SearchTrigger onOpen={openSearch} />
     {#if tree === null && engineState.refresh.lastError !== null}
       <p role="alert" class="alert-error">
         {describeSyncError(engineState.refresh.lastError, forgeName)}
@@ -1686,6 +1737,15 @@
     onEnable={handleEnableAtomic}
     onSaveWithoutAtomic={() => engine.saveImportWithoutAtomic()}
     onClose={() => (atomicBlockedOpen = false)}
+  />
+{/if}
+
+{#if searchOpen}
+  <SearchPalette
+    indexer={contentIndexer}
+    {forgeName}
+    onOpen={openSearchResult}
+    onClose={closeSearch}
   />
 {/if}
 

@@ -28,6 +28,8 @@
   import { shareLinkBase } from "./share/share-link";
   import { argon2idInWorker } from "./crypto/argon2";
   import { createSyncEngine } from "./sync/sync-engine";
+  import { createContentIndexer, type ContentIndexer } from "./search/content-indexer";
+  import { createBrowserIndexerEnvironment } from "./search/indexer-environment";
   import { SETTINGS_SAVE_DEBOUNCE_MS, SETTINGS_SAVE_MAX_WAIT_MS } from "./sync/tuning";
   import { createSettingsSaver, type SettingsSaver } from "./settings/settings-saver";
   import type { SyncEngine } from "./sync/sync-engine";
@@ -88,6 +90,7 @@
         readonly kind: "app";
         readonly engine: SyncEngine;
         readonly settingsSaver: SettingsSaver;
+        readonly contentIndexer: ContentIndexer;
         readonly session: Session;
         readonly adapter: ForgeAdapter;
         readonly rememberMe: boolean;
@@ -241,6 +244,11 @@
       clock: systemClock,
       rateBudget,
     });
+    const contentIndexer = createContentIndexer({
+      engine,
+      clock: systemClock,
+      environment: createBrowserIndexerEnvironment(),
+    });
     const settingsSaver = createSettingsSaver({
       clock: systemClock,
       debounceMs: SETTINGS_SAVE_DEBOUNCE_MS,
@@ -282,6 +290,7 @@
       kind: "app",
       engine,
       settingsSaver,
+      contentIndexer,
       session,
       adapter,
       rememberMe,
@@ -332,13 +341,18 @@
     await startApp(result.session, result.adapter, result.rememberMe);
   }
 
-  function stopApp(engine: SyncEngine, settingsSaver: SettingsSaver): void {
+  function stopApp(
+    engine: SyncEngine,
+    settingsSaver: SettingsSaver,
+    contentIndexer: ContentIndexer,
+  ): void {
     uninstallLifecycleTriggers?.();
     uninstallLifecycleTriggers = null;
     unsubscribeStopped?.();
     unsubscribeStopped = null;
     keyChanged = null;
     settingsSaver.dispose();
+    contentIndexer.dispose();
     engine.dispose();
   }
 
@@ -348,8 +362,8 @@
     history: HistoryOutcome,
   ): Promise<void> {
     if (phase.kind !== "app") return;
-    const { engine, settingsSaver, session, adapter, rememberMe } = phase;
-    stopApp(engine, settingsSaver);
+    const { engine, settingsSaver, contentIndexer, session, adapter, rememberMe } = phase;
+    stopApp(engine, settingsSaver, contentIndexer);
     await startApp(
       { ...session, keyring },
       adapter,
@@ -360,7 +374,7 @@
 
   async function finishLogOut(clearStore = true): Promise<void> {
     if (phase.kind !== "app") return;
-    stopApp(phase.engine, phase.settingsSaver);
+    stopApp(phase.engine, phase.settingsSaver, phase.contentIndexer);
     if (clearStore) await store.clear();
     logout = null;
     showLogin(null);
@@ -370,7 +384,7 @@
   // remembered the new keys; those are used instead of asking to log in.
   async function logInAfterKeyChange(): Promise<void> {
     if (phase.kind !== "app") return;
-    const { engine, settingsSaver, session } = phase;
+    const { engine, settingsSaver, contentIndexer, session } = phase;
     let remembered: Session | null = null;
     try {
       remembered = await store.loadRememberedSession();
@@ -388,7 +402,7 @@
     }
     const result = await resumeSession(remembered, loginDeps());
     if (result.kind === "loggedIn") {
-      stopApp(engine, settingsSaver);
+      stopApp(engine, settingsSaver, contentIndexer);
       await startApp(result.session, result.adapter, true);
       return;
     }
@@ -495,6 +509,7 @@
   <AppShell
     engine={phase.engine}
     settingsSaver={phase.settingsSaver}
+    contentIndexer={phase.contentIndexer}
     repoLabel={phase.repoLabel}
     repoUrl={phase.repoUrl}
     forgeName={phase.forgeName}
