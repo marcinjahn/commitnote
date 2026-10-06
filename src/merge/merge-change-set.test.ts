@@ -166,6 +166,7 @@ interface MergeCase {
   readonly base: Snapshot;
   readonly remote: Snapshot;
   readonly changeSet: ChangeSet;
+  readonly remoteShares?: ShareIndex;
   readonly check: (result: MergeChangeSetResult) => void;
 }
 
@@ -178,6 +179,7 @@ async function runCase(mergeCase: MergeCase): Promise<MergeChangeSetResult> {
     changeSet: mergeCase.changeSet,
     baseTrash: base.trash,
     remoteTrash: remote.trash,
+    remoteShares: mergeCase.remoteShares ?? EMPTY_SHARES,
     readBaseContent: base.read,
     readRemoteContent: remote.read,
   });
@@ -291,10 +293,25 @@ const shareEntry = (id: string, note: ShareNoteLocation): ShareEntry => ({
   sharedAt: "2026-01-01T00:00:00.000Z",
   note,
   source: { commit: "c", storedPath: "s", blobSha: "b" },
+  updatedAt: null,
 });
 const addShare = (path: string, id = "share-1"): Change => ({
   kind: "add-share",
   entry: shareEntry(id, { state: "active", path: split(path) }),
+});
+const updateShare = (path: string, id = "share-1"): Change => ({
+  kind: "update-share",
+  entry: {
+    ...shareEntry(id, { state: "active", path: split(path) }),
+    linkSecret: "new-secret",
+    updatedAt: "2026-02-01T00:00:00.000Z",
+  },
+});
+const sharesWith = (...ids: string[]): ShareIndex => ({
+  writable: true,
+  entries: new Map(
+    ids.map((id) => [id, shareEntry(id, { state: "active", path: ["n.md"] })]),
+  ),
 });
 const sharedAt = (note: ShareNoteLocation, id = "share-1"): Change => ({
   kind: "add-share",
@@ -1159,6 +1176,36 @@ const cases: MergeCase[] = [
     changeSet: [FILLER, addShare("n.md")],
     check(result) {
       expect(result.changeSet).toEqual([FILLER, sharedAt({ state: "deleted" })]);
+    },
+  },
+  {
+    name: "keeps an update-share of a share still present remotely",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "n.md": "n" } },
+    remoteShares: sharesWith("share-1"),
+    changeSet: [FILLER, updateShare("n.md")],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER, updateShare("n.md")]);
+    },
+  },
+  {
+    name: "drops an update-share of a share revoked remotely",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "n.md": "n" } },
+    remoteShares: sharesWith("other"),
+    changeSet: [FILLER, updateShare("n.md")],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+    },
+  },
+  {
+    name: "moves an update-share to the remote rename of its note",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "renamed.md": "n" } },
+    remoteShares: sharesWith("share-1"),
+    changeSet: [FILLER, updateShare("n.md")],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER, updateShare("renamed.md")]);
     },
   },
   {

@@ -40,6 +40,7 @@ const ENTRY: ShareEntry = {
   sharedAt: "2026-01-01T00:00:00.000Z",
   note: { state: "active", path: WELCOME },
   source: null,
+  updatedAt: null,
 };
 
 const REMOTE_TRASH_ID = "20260920T100000Z-1-eeeeeeee";

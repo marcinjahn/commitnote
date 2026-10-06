@@ -108,10 +108,3 @@ export function describeShareDate(dates: {
     ? `Shared ${format(dates.sharedAt)}`
     : `Updated ${format(dates.updatedAt)}`;
 }
-
-export function describeSharedAt(iso: string): string {
-  const date = new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-  }).format(new Date(iso));
-  return `Shared ${date}`;
-}

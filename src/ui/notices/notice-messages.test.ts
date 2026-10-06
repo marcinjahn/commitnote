@@ -23,6 +23,7 @@ describe("describeNotice", () => {
     for (const change of [
       { kind: "remove-share", id: "a" },
       { kind: "add-share", entry: {} },
+      { kind: "update-share", entry: {} },
     ]) {
       expect(
         describeNotice({ id: 1, kind: "dropped", change } as EngineNotice),

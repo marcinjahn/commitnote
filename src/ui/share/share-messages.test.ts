@@ -3,7 +3,6 @@ import type { ShareError } from "../../share/share-service";
 import {
   describeShareDate,
   describeShareError,
-  describeSharedAt,
   messageText,
 } from "./share-messages";
 
@@ -112,15 +111,6 @@ describe("messageText", () => {
         { kind: "text", text: "." },
       ]),
     ).toBe("Open example.com.");
-  });
-});
-
-describe("describeSharedAt", () => {
-  it("prefixes a medium date", () => {
-    const iso = "2026-03-04T12:00:00.000Z";
-    expect(describeSharedAt(iso)).toBe(
-      `Shared ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(iso))}`,
-    );
   });
 });
 

@@ -351,6 +351,7 @@ function applyTreeChangeOrThrow(state: MutState, change: Change): void {
     }
     case "set-settings":
     case "add-share":
+    case "update-share":
     case "remove-share":
       return;
     case "set-color-tag":
@@ -532,6 +533,7 @@ function touchesPath(change: Change, path: NotePath): boolean {
     case "set-order":
     case "set-settings":
     case "add-share":
+    case "update-share":
     case "remove-share":
       return false;
   }
@@ -673,6 +675,7 @@ export function localContentAt(
       case "set-settings":
       case "set-color-tag":
       case "add-share":
+      case "update-share":
       case "remove-share":
         break;
       case "trash-note": {
@@ -896,7 +899,8 @@ export function rebaseChanges(
       case "remove-share":
         kept.push(change);
         break;
-      case "add-share": {
+      case "add-share":
+      case "update-share": {
         const isNote = (path: NotePath) =>
           findMutNode(root, path)?.kind === "note";
         const entry = relocateShareEntry(

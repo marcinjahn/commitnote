@@ -109,6 +109,7 @@ function shareEntry(id: string, source: ShareEntry["source"]): ShareEntry {
     sharedAt: "2026-02-01T00:00:00.000Z",
     note: { state: "active", path: ["Welcome"] },
     source,
+    updatedAt: id === "b" ? "2026-03-01T00:00:00.000Z" : null,
   };
 }
 
@@ -254,6 +255,7 @@ describe("planRekey", () => {
     expect([...restored.entries.values()]).toEqual(
       [...index.entries.values()].map((entry) => ({ ...entry, source: null })),
     );
+    expect(restored.entries.get("b")?.updatedAt).toBe("2026-03-01T00:00:00.000Z");
     expect((await verify(loaded, result.changes)).ok).toBe(true);
   });
 

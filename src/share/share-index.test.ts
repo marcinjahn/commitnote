@@ -36,6 +36,7 @@ function entry(
     sharedAt: "2026-01-01T00:00:00.000Z",
     note,
     source: { commit: "c", storedPath: "s", blobSha: "b" },
+    updatedAt: null,
     ...overrides,
   };
 }
@@ -84,6 +85,30 @@ describe("parseShareIndex", () => {
     expect(parseShareIndex(first).entries.get("b")).toEqual(b);
     const keys = Object.keys(JSON.parse(first).shares.a);
     expect(keys).toEqual([...keys].sort());
+  });
+
+  it("round-trips the update time as the last key", () => {
+    const a = entry("a", active("x"), { updatedAt: "2026-02-01T00:00:00.000Z" });
+
+    const text = serializeShareIndex(indexOf(a));
+    const stored = JSON.parse(text).shares.a;
+
+    expect(stored.updatedAt).toBe("2026-02-01T00:00:00.000Z");
+    expect(Object.keys(stored).at(-1)).toBe("updatedAt");
+    expect(parseShareIndex(text).entries.get("a")).toEqual(a);
+  });
+
+  it("reads a missing or mistyped update time as never updated", () => {
+    const stored = JSON.parse(
+      serializeShareIndex(indexOf(entry("a", active("x")), entry("b", active("y")))),
+    );
+    delete stored.shares.a.updatedAt;
+    stored.shares.b.updatedAt = 5;
+
+    const index = parseShareIndex(JSON.stringify(stored));
+
+    expect(index.entries.get("a")?.updatedAt).toBeNull();
+    expect(index.entries.get("b")?.updatedAt).toBeNull();
   });
 
   it("ignores a leftover revision on a GitHub locator and drops it on write", () => {
@@ -206,6 +231,7 @@ describe("encrypted share index", () => {
 
     for (const change of [
       { kind: "add-share", entry: entry("a", active("a")) },
+      { kind: "update-share", entry: entry("a", active("a")) },
       { kind: "remove-share", id: "a" },
       { kind: "delete-note", path: ["a"] },
     ] satisfies Change[]) {
@@ -263,6 +289,22 @@ describe("applyChangeToShares", () => {
     expect(added.entries.get("a")).toBe(a);
     expect(replaced.entries.size).toBe(1);
     expect(replaced.entries.get("a")?.source).toBeNull();
+  });
+
+  it("replaces an entry on update, and ignores an unknown one", () => {
+    const index = indexOf(entry("a", active("x")), entry("b", active("y")));
+    const updated = entry("a", active("x"), {
+      linkSecret: "new",
+      updatedAt: "2026-02-01T00:00:00.000Z",
+    });
+
+    const result = applyChangeToShares(index, { kind: "update-share", entry: updated });
+
+    expect(result.entries.get("a")).toBe(updated);
+    expect(result.entries.get("b")).toBe(index.entries.get("b"));
+    expect(
+      applyChangeToShares(index, { kind: "update-share", entry: entry("zzz", active("x")) }),
+    ).toBe(index);
   });
 
   it("removes an entry, and ignores an absent one", () => {

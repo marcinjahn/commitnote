@@ -195,6 +195,7 @@ describe("relocateShareEntry", () => {
     sharedAt: "2026-01-01T00:00:00.000Z",
     note,
     source: null,
+    updatedAt: null,
   });
   const trash = [trashEntry("e1", 1, "f", { "f/a.md": "s1" })];
 

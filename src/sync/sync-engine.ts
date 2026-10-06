@@ -1393,6 +1393,7 @@ export function createSyncEngine(options: {
       case "set-order":
       case "set-settings":
       case "add-share":
+      case "update-share":
       case "remove-share":
         return false;
     }
@@ -1418,6 +1419,7 @@ export function createSyncEngine(options: {
       changeSet: state.inFlight,
       baseTrash: base.trash,
       remoteTrash: remote.trash,
+      remoteShares: remote.shares,
       readBaseContent: (path) => readNoteText(base.tree, path),
       readRemoteContent: (path) => readNoteText(remote.tree, path),
     });
@@ -1713,6 +1715,7 @@ export function createSyncEngine(options: {
         case "set-settings":
         case "set-color-tag":
         case "add-share":
+        case "update-share":
         case "remove-share":
           break;
         default:

@@ -1236,6 +1236,7 @@ describe("encodeChangeSet: shares", () => {
       sharedAt: "2026-01-01T00:00:00.000Z",
       note,
       source: null,
+      updatedAt: null,
       ...overrides,
     };
   }
@@ -1345,6 +1346,34 @@ describe("encodeChangeSet: shares", () => {
         expect(message).not.toContain(secret);
       }
     }
+  });
+
+  it("writes the updated entry and a data-free trailer for an update-share", async () => {
+    const updated = entry(ID, activeAlpha, {
+      linkSecret: "new-link-secret",
+      updatedAt: "2026-02-01T00:00:00.000Z",
+    });
+    const { keyring, result } = await encode(
+      [{ kind: "update-share", entry: updated }],
+      indexOf(entry(ID, activeAlpha)),
+    );
+
+    expect(result.message).toContain("Commitnote-Share: update");
+    for (const secret of [NAME, ID, GIST, SECRET, "new-link-secret", PASSWORD, "Alpha"]) {
+      expect(result.message).not.toContain(secret);
+    }
+    const written = await writtenShares(keyring, result);
+    expect(written?.entries.get(ID)).toEqual(updated);
+  });
+
+  it.each<ShareNoteLocation>([
+    { state: "active", path: ["Missing"] },
+    { state: "trashed", entryId: "t1", path: [] },
+    { state: "deleted" },
+  ])("rejects an update-share whose note is missing or not active: %j", async (note) => {
+    await expect(
+      encode([{ kind: "update-share", entry: entry(ID, note) }], indexOf(entry(ID, note))),
+    ).rejects.toThrow(InvalidChangeSetError);
   });
 
   it("rejects an add-share whose active note is missing", async () => {

@@ -190,6 +190,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       sharedAt,
       note: { state: "active", path },
       source: { commit: head, storedPath, blobSha },
+      updatedAt: null,
     };
     const added = engine.addShare(entry);
     if (!added.ok) {

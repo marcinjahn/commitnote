@@ -16,6 +16,7 @@ import {
   parseTrashEntryId,
   withTrashEntryDepth,
 } from "../trash/trash-entry-id";
+import type { ShareIndex } from "../share/share-index";
 import type { TrashEntry } from "../trash/trash-index";
 import { validateName } from "../tree/note-names";
 import type { FolderNode, NoteTree, TreeNode } from "../tree/note-tree";
@@ -65,6 +66,7 @@ export interface MergeChangeSetInput {
   readonly changeSet: ChangeSet;
   readonly baseTrash: readonly TrashEntry[];
   readonly remoteTrash: readonly TrashEntry[];
+  readonly remoteShares: ShareIndex;
   readonly readBaseContent: (path: NotePath) => Promise<string>;
   readonly readRemoteContent: (path: NotePath) => Promise<string>;
 }
@@ -292,6 +294,9 @@ class ChangeSetMerger {
       case "remove-share":
         return this.emit(change);
       case "add-share":
+        return this.addShare(change);
+      case "update-share":
+        if (!this.input.remoteShares.entries.has(change.entry.id)) return;
         return this.addShare(change);
       case "set-color-tag":
         return this.setColorTag(change);
@@ -776,7 +781,9 @@ class ChangeSetMerger {
     }
   }
 
-  private addShare(change: Extract<Change, { kind: "add-share" }>): void {
+  private addShare(
+    change: Extract<Change, { kind: "add-share" | "update-share" }>,
+  ): void {
     const isNote = (path: NotePath) => this.working.get(path)?.kind === "note";
     const entry = relocateShareEntry(
       change.entry,

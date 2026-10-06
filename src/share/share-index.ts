@@ -34,6 +34,7 @@ export interface ShareEntry {
   readonly sharedAt: string;
   readonly note: ShareNoteLocation;
   readonly source: ShareSource | null;
+  readonly updatedAt: string | null;
 }
 
 export interface ShareIndex {
@@ -147,6 +148,7 @@ function parseEntry(id: string, value: unknown): ShareEntry | null {
     sharedAt: value.sharedAt,
     note,
     source,
+    updatedAt: isString(value.updatedAt) ? value.updatedAt : null,
   };
 }
 
@@ -214,6 +216,7 @@ function entryJson(entry: ShareEntry): Record<string, unknown> {
             commit: entry.source.commit,
             storedPath: entry.source.storedPath,
           },
+    updatedAt: entry.updatedAt,
   };
 }
 
@@ -307,6 +310,12 @@ export function applyChangeToShares(
       if (!index.entries.has(change.id)) return index;
       const entries = new Map(index.entries);
       entries.delete(change.id);
+      return { writable: true, entries };
+    }
+    case "update-share": {
+      if (!index.entries.has(change.entry.id)) return index;
+      const entries = new Map(index.entries);
+      entries.set(change.entry.id, change.entry);
       return { writable: true, entries };
     }
     case "rename-note":

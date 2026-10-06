@@ -2,7 +2,7 @@
   import type { ShareEntry } from "../../share/share-index";
   import { findWorkingNode, type WorkingTree } from "../../sync/working-tree";
   import { noteIcons } from "../browse/action-icons";
-  import { describeSharedAt } from "./share-messages";
+  import { describeShareDate } from "./share-messages";
 
   interface Props {
     entries: readonly ShareEntry[];
@@ -56,7 +56,7 @@
         {/if}
       </div>
       <div class="share-detail">
-        <span>{describeSharedAt(entry.sharedAt)}</span>
+        <span>{describeShareDate(entry)}</span>
         {#if entry.password !== null}
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
             {#each noteIcons.lock as d (d)}

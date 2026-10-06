@@ -1263,9 +1263,9 @@ describe("rebaseChanges set-settings", () => {
   });
 });
 
-describe("rebaseChanges shares", () => {
+describe.each(["add-share", "update-share"] as const)("rebaseChanges %s", (kind) => {
   const share = (note: ShareNoteLocation): Change => ({
-    kind: "add-share",
+    kind,
     entry: {
       id: "share-1",
       locator: { provider: "github", gistId: "gist" },
@@ -1275,6 +1275,7 @@ describe("rebaseChanges shares", () => {
       sharedAt: "2026-01-01T00:00:00.000Z",
       note,
       source: null,
+      updatedAt: null,
     } satisfies ShareEntry,
   });
   const welcome = folder("", [], [note("Welcome", ["Welcome"])]);
