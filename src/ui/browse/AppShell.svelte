@@ -1163,14 +1163,7 @@
         dialog = { kind: "move", node, error: null };
         break;
       case "delete":
-        dialog = {
-          kind: "delete",
-          node,
-          itemCount: node.kind === "folder" ? countDescendants(node) : 0,
-          shareCount: shareCountWithin(node.path),
-          revoking: false,
-          error: null,
-        };
+        requestTrash(node);
         break;
     }
   }
@@ -1392,6 +1385,17 @@
     return engine
       .getState()
       .conflicts.some((held) => isAtOrWithin(held.path, path));
+  }
+
+  function requestTrash(node: WorkingNode): void {
+    dialog = {
+      kind: "delete",
+      node,
+      itemCount: node.kind === "folder" ? countDescendants(node) : 0,
+      shareCount: shareCountWithin(node.path),
+      revoking: false,
+      error: null,
+    };
   }
 
   // Shares are revoked before the item is trashed, so a failure leaves the
