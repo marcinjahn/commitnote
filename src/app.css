@@ -19,7 +19,10 @@
   --color-surface-raised: light-dark(#ffffff, #1a1a1a);
   --color-text: light-dark(#0a0a0a, #ededed);
   --color-text-muted: light-dark(#5c5c5c, #a0a0a0);
-  --color-accent: light-dark(var(--accent-light, #3358d4), var(--accent-dark, #86a4ff));
+  --color-accent: light-dark(
+    var(--accent-light, #3358d4),
+    var(--accent-dark, #86a4ff)
+  );
   --color-on-accent: light-dark(#ffffff, #0b0b0b);
   --color-link: light-dark(#3358d4, #86a4ff);
   --color-ink: light-dark(#0a0a0a, #ededed);
@@ -33,6 +36,10 @@
   --color-danger-surface: light-dark(#fdecea, #2a1412);
   --color-warning: light-dark(#8a4b00, #ffb74d);
   --color-warning-surface: light-dark(#fff4e0, #2a1d0a);
+  --color-tone-success: var(--color-accent);
+  --color-tone-info: var(--color-border-strong);
+  --color-tone-warning: var(--color-warning);
+  --color-tone-error: var(--color-danger);
   --color-notice-surface: light-dark(#f2f2f2, #161616);
   --color-code-surface: light-dark(#f2f2f2, #161616);
   --color-backdrop: light-dark(rgb(10 10 10 / 0.24), rgb(0 0 0 / 0.6));
@@ -53,9 +60,15 @@
   --color-selection: color-mix(in srgb, var(--color-accent) 22%, transparent);
 
   --radius: 0;
-  --shadow-1: 0 1px 2px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.3)), 0 4px 12px light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.4));
-  --shadow-2: 0 1px 2px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.3)), 0 8px 24px light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.5));
-  --shadow-3: 0 2px 4px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.4)), 0 16px 48px light-dark(rgb(0 0 0 / 0.14), rgb(0 0 0 / 0.6));
+  --shadow-1:
+    0 1px 2px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.3)),
+    0 4px 12px light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.4));
+  --shadow-2:
+    0 1px 2px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.3)),
+    0 8px 24px light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.5));
+  --shadow-3:
+    0 2px 4px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.4)),
+    0 16px 48px light-dark(rgb(0 0 0 / 0.14), rgb(0 0 0 / 0.6));
 
   --space-1: 4px;
   --space-2: 8px;
@@ -360,8 +373,7 @@ textarea {
   background: var(--color-danger-surface);
   padding: var(--space-3);
   border-radius: var(--radius);
-  border: var(--hairline) solid
-    color-mix(in srgb, var(--color-danger) 30%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-tone-error);
 }
 
 .alert-warning {
@@ -370,8 +382,7 @@ textarea {
   background: var(--color-warning-surface);
   padding: var(--space-3);
   border-radius: var(--radius);
-  border: var(--hairline) solid
-    color-mix(in srgb, var(--color-warning) 30%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-tone-warning);
   font-size: var(--font-size-sm);
 }
 
