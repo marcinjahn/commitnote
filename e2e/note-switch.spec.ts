@@ -471,3 +471,122 @@ test.describe("note details during a switch", () => {
     await expect(page.locator(".note-content .details-form")).toHaveCount(1);
   });
 });
+
+interface SlideRecord {
+  target: string;
+  x: number;
+}
+
+interface SlideWindow {
+  __slides: SlideRecord[];
+  __slideKinds: string[];
+}
+
+async function recordSlides(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const record = window as unknown as SlideWindow;
+    record.__slides = [];
+    record.__slideKinds = [];
+    const seen = new Set<Animation>();
+    const sample = () => {
+      for (const animation of document.getAnimations()) {
+        if (seen.has(animation)) continue;
+        seen.add(animation);
+        const target = (animation.effect as KeyframeEffect | null)?.target;
+        if (!(target instanceof Element)) continue;
+        const first = (animation.effect as KeyframeEffect).getKeyframes()[0] as
+          | { translate?: string }
+          | undefined;
+        if (target.matches(".note-pane, .sidebar")) {
+          record.__slides.push({
+            target: target.matches(".note-pane") ? "note-pane" : "sidebar",
+            x: Number.parseFloat(first?.translate ?? "0"),
+          });
+        } else if (target.parentElement?.matches(".note-content")) {
+          record.__slideKinds.push("content");
+        }
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+}
+
+function recordedSlides(page: Page): Promise<SlideRecord[]> {
+  return page.evaluate(() => (window as unknown as SlideWindow).__slides);
+}
+
+function recordedContentMotion(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as SlideWindow).__slideKinds);
+}
+
+test.describe("mobile view slide", () => {
+  test.use({ reducedMotion: "no-preference" });
+
+  test(
+    "slides the incoming view in from the matching side",
+    { tag: "@mobile-only" },
+    async ({ page }) => {
+      await openNotes(page);
+      await recordSlides(page);
+
+      await openWelcome(page);
+      await expect
+        .poll(async () => (await recordedSlides(page)).map((s) => s.target))
+        .toEqual(["note-pane"]);
+      expect((await recordedSlides(page))[0].x).toBeGreaterThan(0);
+
+      await page.getByRole("button", { name: "Back to notes" }).click();
+      await expect
+        .poll(async () => (await recordedSlides(page)).map((s) => s.target))
+        .toEqual(["note-pane", "sidebar"]);
+      expect((await recordedSlides(page))[1].x).toBeLessThan(0);
+    },
+  );
+
+  test(
+    "reopening the selected note slides without a switch motion",
+    { tag: "@mobile-only" },
+    async ({ page }) => {
+      await openNotes(page);
+      await openWelcome(page);
+      await page.getByRole("button", { name: "Back to notes" }).click();
+      await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              document
+                .getAnimations()
+                .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+                .length,
+          ),
+        )
+        .toBe(0);
+      await recordSlides(page);
+
+      await treeItem(page, "Welcome").click();
+      await expect
+        .poll(async () => (await recordedSlides(page)).map((s) => s.target))
+        .toEqual(["note-pane"]);
+      await nextFrames(page);
+      expect(await recordedContentMotion(page)).toEqual([]);
+    },
+  );
+});
+
+test.describe("mobile view slide with reduced motion", () => {
+  test.use({ reducedMotion: "reduce" });
+
+  test("starts no animation", { tag: "@mobile-only" }, async ({ page }) => {
+    await openNotes(page);
+    await recordSlides(page);
+
+    await openWelcome(page);
+    await page.getByRole("button", { name: "Back to notes" }).click();
+    await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
+    await nextFrames(page);
+
+    expect(await recordedSlides(page)).toEqual([]);
+  });
+});

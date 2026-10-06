@@ -435,6 +435,13 @@ test("the left alignment of note details text matches the editor text", { tag: "
   await startSession(page);
   await treeItem(page, "Welcome").click();
   await expect(details(page)).toBeVisible();
+  await expect
+    .poll(() =>
+      page
+        .locator(".note-pane")
+        .evaluate((pane) => pane.getAnimations().length),
+    )
+    .toBe(0);
 
   const detailsTextX = await firstTextLeft(page, ".note-details");
   const editorLineTextX = await firstTextLeft(page, ".cm-line");

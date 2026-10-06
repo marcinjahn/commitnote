@@ -127,6 +127,7 @@
     DESKTOP_MEDIA_QUERY,
     isNarrowLayout,
   } from "./drag-motion";
+  import { playViewSlide } from "../note/switch-motion-driver";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
@@ -253,6 +254,19 @@
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
   let notePaneEl: HTMLElement | undefined = $state();
+  let sidebarEl: HTMLElement | undefined = $state();
+  let shownMobileView = untrack(() => mobileView);
+
+  $effect(() => {
+    const view = mobileView;
+    if (view === shownMobileView) return;
+    shownMobileView = view;
+    if (!isNarrowLayout()) return;
+    const incoming = view === "note" ? notePaneEl : sidebarEl;
+    if (incoming !== undefined) {
+      playViewSlide(incoming, view === "note" ? "forward" : "back");
+    }
+  });
   type ToastChannel =
     | "refresh"
     | "export"
@@ -1457,7 +1471,11 @@
 <svelte:window onkeydowncapture={handleSearchShortcut} />
 
 <div class="shell">
-  <aside class="sidebar" class:mobile-hidden={mobileView !== "tree"}>
+  <aside
+    class="sidebar"
+    class:mobile-hidden={mobileView !== "tree"}
+    bind:this={sidebarEl}
+  >
     <div class="tree-header">
       <Wordmark />
       <div class="tree-header-actions">

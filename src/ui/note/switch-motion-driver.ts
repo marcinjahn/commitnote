@@ -3,6 +3,7 @@ import { prefersReducedMotion } from "../browse/drag-motion";
 export const MOTION_EASING = "cubic-bezier(0.2, 0, 0, 1)";
 export const SWITCH_ENTER_MS = 160;
 export const LEAVE_FADE_MS = 90;
+export const VIEW_SLIDE_MS = 180;
 
 const running = new WeakMap<Element, Animation>();
 
@@ -57,4 +58,21 @@ export function playLeaveFade(elements: Iterable<Element>): void {
     const { opacity } = interrupt(element);
     play(element, [{ opacity }, { opacity: 0 }], LEAVE_FADE_MS);
   }
+}
+
+export function playViewSlide(
+  element: Element,
+  direction: "forward" | "back",
+): void {
+  if (prefersReducedMotion()) return;
+  interrupt(element);
+  const offset = direction === "forward" ? "12px 0" : "-12px 0";
+  play(
+    element,
+    [
+      { opacity: 0, translate: offset },
+      { opacity: 1, translate: "0 0" },
+    ],
+    VIEW_SLIDE_MS,
+  );
 }
