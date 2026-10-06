@@ -33,7 +33,7 @@ function randomHex(length: number): string {
 
 function shareKey(locator: ShareLocator): string {
   return locator.provider === "github"
-    ? `gh:${locator.gistId}:${locator.revision}`
+    ? `gh:${locator.gistId}`
     : `gl:${locator.snippetId}`;
 }
 
@@ -57,11 +57,7 @@ export function createFakeShareStore(
       const state = load();
       let locator: ShareLocator;
       if (provider === "github") {
-        locator = {
-          provider,
-          gistId: randomHex(32),
-          revision: randomHex(40),
-        };
+        locator = { provider, gistId: randomHex(32) };
       } else {
         locator = { provider, snippetId: String(state.nextSnippetId) };
         state.nextSnippetId += 1;

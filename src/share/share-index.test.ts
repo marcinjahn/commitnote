@@ -29,7 +29,7 @@ function entry(
 ): ShareEntry {
   return {
     id,
-    locator: { provider: "github", gistId: `gist-${id}`, revision: "rev" },
+    locator: { provider: "github", gistId: `gist-${id}` },
     linkSecret: "secret",
     password: null,
     name: "Note",
@@ -86,6 +86,27 @@ describe("parseShareIndex", () => {
     expect(keys).toEqual([...keys].sort());
   });
 
+  it("ignores a leftover revision on a GitHub locator and drops it on write", () => {
+    const good = entry("a", active("x"));
+    const stored = JSON.parse(serializeShareIndex(indexOf(good)));
+    stored.shares.a.locator = {
+      gistId: "gist-a",
+      provider: "github",
+      revision: "old",
+    };
+
+    const index = parseShareIndex(JSON.stringify(stored));
+
+    expect(index.entries.get("a")?.locator).toEqual({
+      provider: "github",
+      gistId: "gist-a",
+    });
+    expect(JSON.parse(serializeShareIndex(index)).shares.a.locator).toEqual({
+      gistId: "gist-a",
+      provider: "github",
+    });
+  });
+
   it("drops malformed entries", () => {
     const good = entry("good", active("x"));
     const text = JSON.stringify({
@@ -93,7 +114,7 @@ describe("parseShareIndex", () => {
       shares: {
         good: JSON.parse(serializeShareIndex(indexOf(good))).shares.good,
         notObject: "x",
-        badLocator: { ...good, locator: { provider: "github", gistId: "g" } },
+        badLocator: { ...good, locator: { provider: "github", gistId: 1 } },
         badGitlab: { ...good, locator: { provider: "gitlab", snippetId: 1 } },
         unknownProvider: { ...good, locator: { provider: "x" } },
         badSecret: { ...good, linkSecret: 1 },

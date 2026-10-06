@@ -43,16 +43,12 @@ describe("GitHub share host", () => {
   describe("create", () => {
     it("posts a secret gist and returns its locator", async () => {
       const { host, calls, reports } = setup(() =>
-        json({ id: "abc123", history: [{ version: "rev1" }] }, 201),
+        json({ id: "abc123" }, 201),
       );
 
       const locator = await host.create("envelope-text");
 
-      expect(locator).toEqual({
-        provider: "github",
-        gistId: "abc123",
-        revision: "rev1",
-      });
+      expect(locator).toEqual({ provider: "github", gistId: "abc123" });
       expect(calls).toEqual([
         {
           url: "https://api.github.com/gists",
@@ -98,8 +94,8 @@ describe("GitHub share host", () => {
       });
     });
 
-    it("rejects a response without a gist id or revision with Server", async () => {
-      for (const body of [{}, { id: "a", history: [] }, { id: 5 }]) {
+    it("rejects a response without a gist id with Server", async () => {
+      for (const body of [{}, { id: 5 }]) {
         const { host } = setup(() => json(body, 201));
         await expect(host.create("x")).rejects.toMatchObject({
           kind: "Server",
@@ -115,11 +111,7 @@ describe("GitHub share host", () => {
   });
 
   describe("delete", () => {
-    const locator = {
-      provider: "github",
-      gistId: "abc123",
-      revision: "rev1",
-    } as const;
+    const locator = { provider: "github", gistId: "abc123" } as const;
 
     it("deletes the gist", async () => {
       const { host, calls, reports } = setup(

@@ -1229,7 +1229,7 @@ describe("encodeChangeSet: shares", () => {
   ): ShareEntry {
     return {
       id,
-      locator: { provider: "github", gistId: GIST, revision: "rev" },
+      locator: { provider: "github", gistId: GIST },
       linkSecret: SECRET,
       password: PASSWORD,
       name: NAME,

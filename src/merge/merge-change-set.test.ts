@@ -284,7 +284,7 @@ const setColorTag = (path: string, color: ColorTag | null = "red"): Change => ({
 
 const shareEntry = (id: string, note: ShareNoteLocation): ShareEntry => ({
   id,
-  locator: { provider: "github", gistId: `gist-${id}`, revision: "rev" },
+  locator: { provider: "github", gistId: `gist-${id}` },
   linkSecret: "secret",
   password: null,
   name: "n",

@@ -12,7 +12,7 @@ import { createViewerController, type ViewerState } from "./viewer-state";
 
 const NOTE = { name: "Plan", markdown: "# Plan\n", sharedAt: "2026-01-01T00:00:00.000Z" };
 const LOCATORS: Record<"github" | "gitlab", ShareLocator> = {
-  github: { provider: "github", gistId: "a".repeat(32), revision: "b".repeat(40) },
+  github: { provider: "github", gistId: "a".repeat(32) },
   gitlab: { provider: "gitlab", snippetId: "123" },
 };
 

@@ -211,19 +211,12 @@ class GitHubAdapter implements ForgeAdapter {
     }
     const body = (await response.json().catch(() => null)) as {
       id?: unknown;
-      history?: readonly { version?: unknown }[];
     } | null;
     const gistId = body?.id;
-    const revision = body?.history?.[0]?.version;
-    if (
-      typeof gistId !== "string" ||
-      gistId === "" ||
-      typeof revision !== "string" ||
-      revision === ""
-    ) {
+    if (typeof gistId !== "string" || gistId === "") {
       throw new ForgeError("Server", { status: response.status });
     }
-    return { provider: "github", gistId, revision };
+    return { provider: "github", gistId };
   }
 
   private async deleteShare(locator: ShareLocator): Promise<void> {

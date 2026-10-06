@@ -198,7 +198,7 @@ export class MockGitHubRepo {
       }
       const id = `gist${this.nextGist++}`;
       this.gists.set(id, content);
-      return jsonResponse({ id, history: [{ version: `${id}-v1` }] }, 201);
+      return jsonResponse({ id }, 201);
     }
     const idMatch = /^\/gists\/([^/]+)$/.exec(pathname);
     if (method === "DELETE" && idMatch !== null) {

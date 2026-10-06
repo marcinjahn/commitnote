@@ -5,7 +5,6 @@ export const SHARE_HASH_PREFIX = "#share=";
 
 const LINK_VERSION = "1";
 const GIST_ID_RE = /^[0-9a-f]{20,64}$/;
-const REVISION_RE = /^[0-9a-f]{40}$/;
 const SNIPPET_ID_RE = /^[1-9][0-9]{0,18}$/;
 const LINK_SECRET_RE = /^[A-Za-z0-9_-]{43}$/;
 const LINK_SECRET_BYTES = 32;
@@ -27,7 +26,7 @@ export function formatShareLink(
 ): string {
   const parts =
     locator.provider === "github"
-      ? [LINK_VERSION, "gh", locator.gistId, locator.revision, linkSecret]
+      ? [LINK_VERSION, "gh", locator.gistId, linkSecret]
       : [LINK_VERSION, "gl", locator.snippetId, linkSecret];
   return `${base}${SHARE_HASH_PREFIX}${parts.join(".")}`;
 }
@@ -61,16 +60,12 @@ export function parseShareLink(hash: string): ParsedShareLink {
   if (parts[0] !== LINK_VERSION) {
     return INVALID;
   }
-  if (parts[1] === "gh" && parts.length === 5) {
-    const [, , gistId, revision, linkSecret] = parts;
-    if (
-      GIST_ID_RE.test(gistId) &&
-      REVISION_RE.test(revision) &&
-      isValidLinkSecret(linkSecret)
-    ) {
+  if (parts[1] === "gh" && parts.length === 4) {
+    const [, , gistId, linkSecret] = parts;
+    if (GIST_ID_RE.test(gistId) && isValidLinkSecret(linkSecret)) {
       return {
         kind: "valid",
-        locator: { provider: "github", gistId, revision },
+        locator: { provider: "github", gistId },
         linkSecret,
       };
     }

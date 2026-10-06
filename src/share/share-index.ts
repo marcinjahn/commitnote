@@ -70,16 +70,8 @@ function isString(value: unknown): value is string {
 
 function parseLocator(value: unknown): ShareLocator | null {
   if (!isRecord(value)) return null;
-  if (
-    value.provider === "github" &&
-    isString(value.gistId) &&
-    isString(value.revision)
-  ) {
-    return {
-      provider: "github",
-      gistId: value.gistId,
-      revision: value.revision,
-    };
+  if (value.provider === "github" && isString(value.gistId)) {
+    return { provider: "github", gistId: value.gistId };
   }
   if (value.provider === "gitlab" && isString(value.snippetId)) {
     return { provider: "gitlab", snippetId: value.snippetId };
@@ -187,11 +179,7 @@ function byCodeUnits(a: string, b: string): number {
 
 function locatorJson(locator: ShareLocator): Record<string, unknown> {
   return locator.provider === "github"
-    ? {
-        gistId: locator.gistId,
-        provider: locator.provider,
-        revision: locator.revision,
-      }
+    ? { gistId: locator.gistId, provider: locator.provider }
     : { provider: locator.provider, snippetId: locator.snippetId };
 }
 

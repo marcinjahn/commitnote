@@ -1,9 +1,5 @@
 export type ShareLocator =
-  | {
-      readonly provider: "github";
-      readonly gistId: string;
-      readonly revision: string;
-    }
+  | { readonly provider: "github"; readonly gistId: string }
   | { readonly provider: "gitlab"; readonly snippetId: string };
 
 export interface ShareHost {

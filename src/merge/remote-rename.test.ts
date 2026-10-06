@@ -188,7 +188,7 @@ describe("findTrashedLocation", () => {
 describe("relocateShareEntry", () => {
   const share = (note: ShareEntry["note"]): ShareEntry => ({
     id: "share-1",
-    locator: { provider: "github", gistId: "gist", revision: "rev" },
+    locator: { provider: "github", gistId: "gist" },
     linkSecret: "secret",
     password: null,
     name: "a",

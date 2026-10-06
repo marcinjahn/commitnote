@@ -6,13 +6,8 @@ import { ShareReadError } from "../share-host";
 import { createGitHubShareReader } from "./github-share-reader";
 
 const GIST_ID = "abc123gist";
-const REVISION = "rev456";
-const URL = `https://api.github.com/gists/${GIST_ID}/${REVISION}`;
-const locator: ShareLocator = {
-  provider: "github",
-  gistId: GIST_ID,
-  revision: REVISION,
-};
+const URL = `https://api.github.com/gists/${GIST_ID}`;
+const locator: ShareLocator = { provider: "github", gistId: GIST_ID };
 
 const getServer = useMswServer();
 const reader = createGitHubShareReader();
@@ -24,7 +19,6 @@ async function kindOf(promise: Promise<unknown>): Promise<ShareReadErrorKind> {
   );
   expect(error).toBeInstanceOf(ShareReadError);
   expect((error as Error).message).not.toContain(GIST_ID);
-  expect((error as Error).message).not.toContain(REVISION);
   return (error as ShareReadError).kind;
 }
 
@@ -33,7 +27,7 @@ function respondWith(init: () => Response) {
 }
 
 describe("createGitHubShareReader", () => {
-  it("requests the gist revision anonymously and returns the envelope", async () => {
+  it("requests the latest gist anonymously and returns the envelope", async () => {
     let authorization: string | null = "unset";
     let accept: string | null = null;
     getServer().use(

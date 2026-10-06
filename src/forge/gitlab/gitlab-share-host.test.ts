@@ -147,7 +147,7 @@ describe("GitLab share host", () => {
     it("rejects a github locator without sending a request", async () => {
       const { host, calls, reports } = setup(() => json({}, 204));
       await expect(
-        host.delete({ provider: "github", gistId: "a", revision: "b" }),
+        host.delete({ provider: "github", gistId: "a" }),
       ).rejects.toMatchObject({ kind: "Server" });
       expect(calls).toEqual([]);
       expect(reports).toEqual([]);

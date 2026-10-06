@@ -1268,7 +1268,7 @@ describe("rebaseChanges shares", () => {
     kind: "add-share",
     entry: {
       id: "share-1",
-      locator: { provider: "github", gistId: "gist", revision: "rev" },
+      locator: { provider: "github", gistId: "gist" },
       linkSecret: "secret",
       password: null,
       name: "Todo",

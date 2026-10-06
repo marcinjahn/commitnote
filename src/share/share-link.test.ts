@@ -14,11 +14,11 @@ const base = shareLinkBase({
 });
 const secret = toBase64Url(Uint8Array.from({ length: 32 }, (_, i) => i * 7));
 const gistId = "0123456789abcdef0123456789abcdef";
-const revision = "a".repeat(40);
-const github: ShareLocator = { provider: "github", gistId, revision };
+const oldRevision = "a".repeat(40);
+const github: ShareLocator = { provider: "github", gistId };
 const gitlab: ShareLocator = { provider: "gitlab", snippetId: "4815162342" };
 
-const validGithub = `#share=1.gh.${gistId}.${revision}.${secret}`;
+const validGithub = `#share=1.gh.${gistId}.${secret}`;
 const validGitlab = `#share=1.gl.4815162342.${secret}`;
 
 describe("shareLinkBase", () => {
@@ -69,25 +69,21 @@ describe("parseShareLink", () => {
     ["wrong prefix", validGitlab.replace("#share=", "#shared=")],
     ["wrong version", validGitlab.replace("=1.", "=2.")],
     ["unknown provider", validGitlab.replace(".gl.", ".bb.")],
-    ["github missing part", `#share=1.gh.${gistId}.${secret}`],
+    ["github missing part", `#share=1.gh.${secret}`],
+    ["github with revision part", `#share=1.gh.${gistId}.${oldRevision}.${secret}`],
     ["github extra part", `${validGithub}.x`],
     ["gitlab missing part", `#share=1.gl.${secret}`],
     ["gitlab extra part", `${validGitlab}.4`],
-    ["gitlab link with github shape", `#share=1.gl.${gistId}.${revision}.${secret}`],
+    ["gitlab link with github shape", `#share=1.gl.${gistId}.${oldRevision}.${secret}`],
     [
       "non-hex gist id",
-      `#share=1.gh.${"g".repeat(32)}.${revision}.${secret}`,
+      `#share=1.gh.${"g".repeat(32)}.${secret}`,
     ],
     [
       "uppercase gist id",
-      `#share=1.gh.${gistId.toUpperCase()}.${revision}.${secret}`,
+      `#share=1.gh.${gistId.toUpperCase()}.${secret}`,
     ],
-    ["short gist id", `#share=1.gh.${"a".repeat(19)}.${revision}.${secret}`],
-    ["short revision", `#share=1.gh.${gistId}.${"a".repeat(39)}.${secret}`],
-    [
-      "uppercase revision",
-      `#share=1.gh.${gistId}.${"A".repeat(40)}.${secret}`,
-    ],
+    ["short gist id", `#share=1.gh.${"a".repeat(19)}.${secret}`],
     ["snippet id with leading zero", `#share=1.gl.0123.${secret}`],
     ["snippet id with letters", `#share=1.gl.12ab.${secret}`],
     ["42-character secret", `#share=1.gl.1.${secret.slice(0, 42)}`],
