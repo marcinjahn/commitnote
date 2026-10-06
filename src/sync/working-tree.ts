@@ -915,6 +915,9 @@ export function rebaseChanges(
           },
           syncedTrash,
         );
+        if (change.kind === "update-share" && entry.note.state !== "active") {
+          break;
+        }
         kept.push({ ...change, entry });
         break;
       }

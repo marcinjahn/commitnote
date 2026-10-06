@@ -1306,7 +1306,7 @@ describe.each(["add-share", "update-share"] as const)("rebaseChanges %s", (kind)
     });
   });
 
-  it("marks the share trashed when the note was trashed remotely", () => {
+  it.runIf(kind === "add-share")("marks the share trashed when the note was trashed remotely", () => {
     expect(
       rebaseChanges(
         tree(folder("", [], [])),
@@ -1321,7 +1321,7 @@ describe.each(["add-share", "update-share"] as const)("rebaseChanges %s", (kind)
     });
   });
 
-  it("marks the share trashed with its relative path when its folder was trashed remotely", () => {
+  it.runIf(kind === "add-share")("marks the share trashed with its relative path when its folder was trashed remotely", () => {
     expect(
       rebaseChanges(
         tree(folder("", [], [note("Welcome", ["Welcome"])])),
@@ -1338,7 +1338,7 @@ describe.each(["add-share", "update-share"] as const)("rebaseChanges %s", (kind)
     });
   });
 
-  it("marks the share deleted when the note is gone, without dropping it", () => {
+  it.runIf(kind === "add-share")("marks the share deleted when the note is gone, without dropping it", () => {
     expect(
       rebaseChanges(
         SAMPLE_TREE,
@@ -1346,6 +1346,40 @@ describe.each(["add-share", "update-share"] as const)("rebaseChanges %s", (kind)
         [share({ state: "active", path: ["Welcome"] })],
       ),
     ).toEqual({ changes: [share({ state: "deleted" })], dropped: [] });
+  });
+
+  it.runIf(kind === "update-share")("drops the change when the note was trashed remotely", () => {
+    expect(
+      rebaseChanges(
+        tree(folder("", [], [])),
+        [],
+        [share({ state: "active", path: ["Welcome"] })],
+        [trashEntry(WELCOME_ID, note("Welcome", ["Welcome"]))],
+        tree(welcome),
+      ),
+    ).toEqual({ changes: [], dropped: [] });
+  });
+
+  it.runIf(kind === "update-share")("drops the change when its folder was trashed remotely", () => {
+    expect(
+      rebaseChanges(
+        tree(folder("", [], [note("Welcome", ["Welcome"])])),
+        [],
+        [share({ state: "active", path: ["Docs", "Notes", "Todo"] })],
+        [trashEntry(DOCS_ID, docs)],
+        SAMPLE_TREE,
+      ),
+    ).toEqual({ changes: [], dropped: [] });
+  });
+
+  it.runIf(kind === "update-share")("drops the change when the note is gone", () => {
+    expect(
+      rebaseChanges(
+        SAMPLE_TREE,
+        [{ kind: "delete-note", path: ["Welcome"] }],
+        [share({ state: "active", path: ["Welcome"] })],
+      ),
+    ).toEqual({ changes: [], dropped: [] });
   });
 
   it("keeps a remove-share unchanged", () => {

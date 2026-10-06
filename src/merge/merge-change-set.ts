@@ -297,7 +297,7 @@ class ChangeSetMerger {
         return this.addShare(change);
       case "update-share":
         if (!this.input.remoteShares.entries.has(change.entry.id)) return;
-        return this.addShare(change);
+        return this.addShare(change, true);
       case "set-color-tag":
         return this.setColorTag(change);
       default:
@@ -783,6 +783,7 @@ class ChangeSetMerger {
 
   private addShare(
     change: Extract<Change, { kind: "add-share" | "update-share" }>,
+    requireActive = false,
   ): void {
     const isNote = (path: NotePath) => this.working.get(path)?.kind === "note";
     const entry = relocateShareEntry(
@@ -799,6 +800,7 @@ class ChangeSetMerger {
       },
       this.input.remoteTrash,
     );
+    if (requireActive && entry.note.state !== "active") return;
     this.emit({ ...change, entry });
   }
 

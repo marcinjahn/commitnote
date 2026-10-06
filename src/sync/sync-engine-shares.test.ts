@@ -265,6 +265,42 @@ describe("SyncEngine.updateShare", () => {
     expect(h.engine.getState().shares?.entries.size).toBe(0);
     expect(isShared(h.engine, WELCOME)).toBe(false);
   });
+
+  it.each([
+    [
+      "trashed",
+      { kind: "trash-note", path: WELCOME, entryId: REMOTE_TRASH_ID } as const,
+      { state: "trashed", entryId: REMOTE_TRASH_ID, path: [] } as const,
+    ],
+    [
+      "deleted",
+      { kind: "delete-note", path: WELCOME } as const,
+      { state: "deleted" } as const,
+    ],
+  ])(
+    "drops the update when the remote %s the note, and keeps saving",
+    async (_, remoteChange, location) => {
+      const h = await withShare();
+      h.fake.failNext("commit", new ForgeError("Network"));
+      h.engine.updateShare(UPDATED);
+      await waitIdle(h.engine);
+      await pushRemote(h.fake, [remoteChange]);
+
+      await advance(h, 5_000);
+
+      expect(h.engine.getState().save).toEqual({ kind: "idle" });
+      expect(h.engine.getState().pending).toEqual([]);
+      const entry = (await remoteShares(h.fake)).entries.get(ENTRY.id);
+      expect(entry?.note).toEqual(location);
+      expect(entry?.updatedAt).toBeNull();
+
+      h.engine.editNote(IDEAS, "later edit");
+      await advance(h, 5_000);
+
+      expect(h.engine.getState().save).toEqual({ kind: "idle" });
+      expect(h.engine.getState().pending).toEqual([]);
+    },
+  );
 });
 
 describe("SyncEngine shares with an unreadable share index", () => {

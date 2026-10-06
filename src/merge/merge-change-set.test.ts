@@ -1199,6 +1199,29 @@ const cases: MergeCase[] = [
     },
   },
   {
+    name: "drops an update-share whose note was trashed remotely",
+    base: { notes: { "n.md": "n", "m.md": "m" } },
+    remote: {
+      notes: { "m.md": "m" },
+      trash: { [E1]: { notes: { "n.md": "n" } } },
+    },
+    remoteShares: sharesWith("share-1"),
+    changeSet: [FILLER, updateShare("n.md")],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+    },
+  },
+  {
+    name: "drops an update-share whose note was deleted remotely",
+    base: { notes: { "n.md": "n", "m.md": "m" } },
+    remote: { notes: { "m.md": "m" } },
+    remoteShares: sharesWith("share-1"),
+    changeSet: [FILLER, updateShare("n.md")],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+    },
+  },
+  {
     name: "moves an update-share to the remote rename of its note",
     base: { notes: { "n.md": "n" } },
     remote: { notes: { "renamed.md": "n" } },
