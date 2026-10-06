@@ -420,7 +420,7 @@ test.describe("slow note load", () => {
 
 interface DetailsSample {
   height: number;
-  editorTop: number;
+  editorOffset: number;
   text: string;
   fading: boolean;
 }
@@ -463,8 +463,10 @@ test.describe("note details during a switch", () => {
           ) {
             const text = details.textContent ?? "";
             record.__detailsSamples.push({
-              height: details.offsetHeight,
-              editorTop: editorRoot.offsetTop,
+              height: details.getBoundingClientRect().height,
+              editorOffset:
+                editorRoot.getBoundingClientRect().top -
+                details.getBoundingClientRect().top,
               text,
               fading: [...details.querySelectorAll(".details-form")].some(
                 (form) => form.getAnimations().length > 0,
@@ -496,8 +498,10 @@ test.describe("note details during a switch", () => {
       () => (window as unknown as DetailsSamplerWindow).__detailsSamples,
     );
     expect(samples.length).toBeGreaterThan(1);
-    expect(new Set(samples.map((s) => s.height)).size).toBe(1);
-    expect(new Set(samples.map((s) => s.editorTop)).size).toBe(1);
+    for (const s of samples) {
+      expect(Math.abs(s.height - samples[0].height) <= 0.01).toBe(true);
+      expect(Math.abs(s.editorOffset - samples[0].editorOffset) <= 0.01).toBe(true);
+    }
     expect(samples.some((s) => /^\d+ words?$/.test(s.text))).toBe(true);
     expect(samples.at(-1)!.fading).toBe(true);
     await expect(page.locator(".note-content .details-form")).toHaveCount(1);

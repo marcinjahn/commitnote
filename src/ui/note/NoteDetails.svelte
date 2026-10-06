@@ -54,7 +54,8 @@
   let fullDates = $state<NoteDates | null>(untrack(() => dates));
   let sharedShown = $state(false);
   let reserving = $state(false);
-  let measuredHeight = $state(0);
+  let borderBoxSize = $state<ReadonlyArray<ResizeObserverSize>>();
+  const measuredHeight = $derived(borderBoxSize?.[0]?.blockSize ?? 0);
   let fullHeight = $state(0);
 
   // Form changes that arrive with a note switch are part of the content's
@@ -114,7 +115,7 @@
 <p
   class="note-details"
   style:min-height={reserving && fullHeight > 0 ? `${fullHeight}px` : null}
-  bind:offsetHeight={measuredHeight}
+  bind:borderBoxSize
 >
   {#if form === "not-saved"}
     <span class="details-form" in:formFade out:formFade
