@@ -375,9 +375,6 @@
   }
 
   .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
     padding: 0 var(--space-1);
     border: var(--hairline) solid var(--color-border-strong);
     color: var(--color-text-muted);
@@ -388,6 +385,7 @@
   .shared-badge .icon {
     width: 0.85em;
     height: 0.85em;
+    vertical-align: -0.1em;
     color: var(--color-accent);
   }
 
