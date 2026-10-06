@@ -10,6 +10,7 @@ import {
   FORMAT_VERSION,
   INITIALIZE_SUBJECT,
   ORDER_PATH,
+  TAGS_PATH,
   REPO_CONFIG_PATH,
   SAVE_SUBJECT,
   TRASH_DIR,
@@ -22,6 +23,11 @@ import {
   serializeOrderIndex,
   type OrderIndex,
 } from "../order/order-index";
+import {
+  applyChangeToTags,
+  serializeTagIndex,
+  type TagIndex,
+} from "../tags/tag-index";
 import {
   applySettingsEdits,
   changedSettingKeys,
@@ -37,6 +43,8 @@ export interface EncodeChangeSetInput {
   readonly changeSet: ChangeSet;
   /** The order index stored in `listing`. */
   readonly order: OrderIndex;
+  /** The tag index stored in `listing`. */
+  readonly tags: TagIndex;
   readonly keyring: Keyring;
   readonly random?: RandomSource;
   /** The parsed config at the head of `listing`; required for `set-settings`. */
@@ -319,6 +327,11 @@ async function applyChange(
       }
       break;
     }
+    case "set-color-tag": {
+      const stored = await storedPathOf(change.path);
+      if (!working.has(stored)) fail();
+      break;
+    }
     case "set-settings": {
       const values: unknown = change.values;
       if (
@@ -331,7 +344,13 @@ async function applyChange(
       }
       break;
     }
+    default:
+      return assertNever(change);
   }
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled change kind: ${(value as Change).kind}`);
 }
 
 function buildMessage(subject: string, trailers: readonly string[]): string {
@@ -356,6 +375,7 @@ export async function encodeChangeSet(
 ): Promise<EncodedChangeSet> {
   const { listing, changeSet, keyring, random, config } = input;
   let order = input.order;
+  let tags = input.tags;
 
   if (changeSet.length === 0) {
     throw new InvalidChangeSetError("Change set must not be empty");
@@ -392,6 +412,7 @@ export async function encodeChangeSet(
       settingsEdits = { ...settingsEdits, ...change.values };
     }
     order = applyChangeToOrder(order, change);
+    tags = applyChangeToTags(tags, change);
   }
 
   if (settingsEdits !== undefined && config !== undefined) {
@@ -416,6 +437,14 @@ export async function encodeChangeSet(
     working.set(ORDER_PATH, {
       kind: "text",
       text: serializeOrderIndex(order),
+      encrypt: true,
+    });
+  }
+
+  if (tags.writable && serializeTagIndex(tags) !== serializeTagIndex(input.tags)) {
+    working.set(TAGS_PATH, {
+      kind: "text",
+      text: serializeTagIndex(tags),
       encrypt: true,
     });
   }

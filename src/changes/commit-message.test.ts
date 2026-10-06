@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EMPTY_TAGS } from "../tags/tag-index";
 import { encryptPath } from "../crypto/name-cipher";
 import { CHANGE_PASSPHRASE_SUBJECT, SAVE_SUBJECT, TRAILER } from "../format/v1";
 import { EMPTY_ORDER } from "../order/order-index";
@@ -22,7 +23,7 @@ describe("parseCommitMessage", () => {
         { kind: "rename-note", from: ["A"], to: ["B"] },
         { kind: "update-note", path: ["B"], content: "y" },
       ],
-      order: EMPTY_ORDER,
+      order: EMPTY_ORDER, tags: EMPTY_TAGS,
       keyring,
     });
 

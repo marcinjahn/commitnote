@@ -8,8 +8,10 @@ import {
   MAIN_BRANCH,
   ORDER_PATH,
   REPO_CONFIG_PATH,
+  TAGS_PATH,
   TRASH_DIR,
 } from "../format/v1";
+import { colorTagOf, decryptTagIndex, encryptTagIndex, EMPTY_TAGS } from "../tags/tag-index";
 import { planRekey, RekeyPlanError, type RekeyPlan } from "./plan-rekey";
 import {
   createRekeyFixture,
@@ -150,6 +152,53 @@ describe("planRekey", () => {
     expect(result.summary.carriedFiles).toBe(1);
     expect(await decryptNote(next.keyring, after.get(ORDER_PATH)!)).toBe(orderText);
     expect((await verify(loaded, result.changes)).ok).toBe(true);
+  });
+
+  it("re-encrypts the tag index in place without counting it as a carried file", async () => {
+    const index = {
+      ...EMPTY_TAGS,
+      notes: new Map([[JSON.stringify(["Welcome"]), { color: "red" as const }]]),
+    };
+    const loaded = await load(
+      await createRekeyFixture({
+        extraFiles: async (keyring) => ({
+          [TAGS_PATH]: await encryptTagIndex(keyring, index),
+        }),
+      }),
+    );
+
+    const result = await plan(loaded);
+    const after = await applied(loaded, result.changes);
+
+    expect(result.files.find((file) => file.oldPath === TAGS_PATH)).toMatchObject({
+      kind: "tags",
+      newPath: TAGS_PATH,
+    });
+    expect(result.summary.carriedFiles).toBe(1);
+    const restored = await decryptTagIndex(next.keyring, after.get(TAGS_PATH)!);
+    expect(restored.writable).toBe(true);
+    expect(colorTagOf(restored, ["Welcome"])).toBe("red");
+    expect((await verify(loaded, result.changes)).ok).toBe(true);
+  });
+
+  it("carries over a tag index that does not decrypt under the old key", async () => {
+    const foreign = (await newRepoConfig("someone else")).keyring;
+    const stored = await encryptTagIndex(foreign, EMPTY_TAGS);
+    const loaded = await load(
+      await createRekeyFixture({
+        extraFiles: async () => ({ [TAGS_PATH]: stored }),
+      }),
+    );
+
+    const result = await plan(loaded);
+    const after = await applied(loaded, result.changes);
+
+    expect(result.files.find((file) => file.oldPath === TAGS_PATH)).toMatchObject({
+      kind: "tags",
+      content: { kind: "unchanged" },
+    });
+    expect(result.summary.carriedFiles).toBe(1);
+    expect(after.get(TAGS_PATH)).toBe(stored);
   });
 
   it("keeps an undecryptable trash entry byte for byte", async () => {

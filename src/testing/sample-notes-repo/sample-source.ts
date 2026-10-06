@@ -1,3 +1,5 @@
+import type { ColorTag } from "../../tags/color-tag";
+
 export const SAMPLE_NOTES_REPO_PASSPHRASE = "sample notes repo passphrase";
 
 export type SampleEntry =
@@ -172,4 +174,16 @@ export interface SampleFolderOrder {
 
 export const sampleNotesRepoOrder: readonly SampleFolderOrder[] = [
   { parent: ["Projects", "commitnote"], names: ["Roadmap", "Ideas"] },
+];
+
+export interface SampleTag {
+  readonly path: readonly string[];
+  readonly color: ColorTag;
+}
+
+export const sampleNotesRepoTags: readonly SampleTag[] = [
+  { path: ["Projects", "commitnote", "Ideas"], color: "green" },
+  { path: ["Projects", "commitnote", "Roadmap"], color: "blue" },
+  { path: ["Journal", "2026", "January"], color: "orange" },
+  { path: ["Zażółć gęślą jaźń"], color: "purple" },
 ];

@@ -1,4 +1,5 @@
 <script lang="ts" generics="Id extends string">
+  import { COLOR_TAG_PALETTE, colorTagStyle, type ColorTag } from "../../tags/color-tag";
   import type { MenuAnchor, MenuItem } from "./row-menu-types";
 
   interface Props {
@@ -6,11 +7,16 @@
     items: readonly MenuItem<Id>[];
     anchor: MenuAnchor;
     trigger: HTMLElement;
+    swatches?: {
+      selected: ColorTag | null;
+      disabled: boolean;
+      onPick: (color: ColorTag | null) => void;
+    };
     onSelect: (id: Id) => void;
     onClose: () => void;
   }
 
-  const { label, items, anchor, trigger, onSelect, onClose }: Props = $props();
+  const { label, items, anchor, trigger, swatches, onSelect, onClose }: Props = $props();
 
   let menuEl: HTMLDivElement | undefined = $state();
   let position = $state({ top: -9999, left: -9999 });
@@ -19,7 +25,7 @@
     const el = menuEl;
     if (el === undefined) return [];
     return Array.from(
-      el.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'),
+      el.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled), [role="menuitemradio"]:not(:disabled)'),
     );
   }
 
@@ -51,7 +57,9 @@
   });
 
   $effect(() => {
-    itemButtons()[0]?.focus();
+    const buttons = itemButtons();
+    const checked = buttons.find((button) => button.getAttribute("aria-checked") === "true");
+    (checked ?? buttons[0])?.focus();
   });
 
   $effect(() => {
@@ -77,6 +85,19 @@
       buttons[event.key === "Home" ? 0 : buttons.length - 1]?.focus();
       return;
     }
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      const row = Array.from(
+        menuEl?.querySelectorAll<HTMLButtonElement>(
+          '.menu-swatches [role="menuitemradio"]:not(:disabled)',
+        ) ?? [],
+      );
+      const index = row.findIndex((button) => button === document.activeElement);
+      if (index === -1) return;
+      event.preventDefault();
+      const delta = event.key === "ArrowRight" ? 1 : -1;
+      row[(index + delta + row.length) % row.length]?.focus();
+      return;
+    }
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
     const current = buttons.findIndex((button) => button === document.activeElement);
@@ -96,6 +117,38 @@
   style="top: {position.top}px; left: {position.left}px;"
   onkeydown={handleKeydown}
 >
+  {#if swatches !== undefined}
+    <div role="group" aria-label="Color tag" class="menu-swatches">
+      {#each COLOR_TAG_PALETTE as option (option.id)}
+        <button
+          type="button"
+          role="menuitemradio"
+          class="menu-swatch"
+          aria-checked={swatches.selected === option.id}
+          aria-label={option.label}
+          disabled={swatches.disabled}
+          onclick={() => swatches.onPick(option.id)}
+        >
+          <span class="swatch-circle tag-colored" style={colorTagStyle(option.id)}></span>
+        </button>
+      {/each}
+      <button
+        type="button"
+        role="menuitemradio"
+        class="menu-swatch"
+        aria-checked={swatches.selected === null}
+        aria-label="No color"
+        disabled={swatches.disabled}
+        onclick={() => swatches.onPick(null)}
+      >
+        <span class="swatch-circle swatch-none">
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path d="M5 15 15 5" />
+          </svg>
+        </span>
+      </button>
+    </div>
+  {/if}
   {#each items as item (item.id)}
     <button
       type="button"
@@ -133,6 +186,83 @@
     .menu-popup {
       opacity: 0;
     }
+  }
+
+  .menu-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .menu-swatch {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  @media (pointer: coarse) {
+    .menu-swatch {
+      width: var(--touch-target);
+      height: var(--touch-target);
+    }
+  }
+
+  .menu-swatch:disabled {
+    cursor: default;
+    opacity: 0.4;
+  }
+
+  .menu-swatch:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 0;
+  }
+
+  .swatch-circle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--tag-color);
+    transition:
+      background-color var(--motion-duration) var(--motion-easing),
+      box-shadow var(--motion-duration) var(--motion-easing);
+  }
+
+  .swatch-none {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--color-text-muted);
+  }
+
+  .swatch-none svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: var(--color-text-muted);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+
+  .menu-swatch[aria-checked="true"] .swatch-circle {
+    box-shadow:
+      0 0 0 2px var(--color-surface-raised),
+      0 0 0 4px var(--color-text);
+  }
+
+  .menu-swatch[aria-checked="true"] .swatch-none {
+    box-shadow:
+      inset 0 0 0 1.5px var(--color-text-muted),
+      0 0 0 2px var(--color-surface-raised),
+      0 0 0 4px var(--color-text);
   }
 
   .menu-popup-item {

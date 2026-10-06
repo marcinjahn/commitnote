@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { WorkingNode } from "../../sync/working-tree";
   import { actionIcons } from "../browse/action-icons";
+  import NoteIcon from "../browse/NoteIcon.svelte";
+  import { describeColorTag } from "../browse/tag-messages";
   import TrashRow from "./TrashRow.svelte";
 
   interface Props {
@@ -14,6 +16,8 @@
   const { node, depth, meta, onRestore, onDelete }: Props = $props();
 
   let expanded = $state(false);
+  const tagId = $props.id();
+  const colorTag = $derived(node.kind === "note" ? node.colorTag : null);
 </script>
 
 <li role="none">
@@ -45,12 +49,12 @@
       </button>
     {:else}
       <div class="trash-row-main" title={node.name}>
-        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-          <path d="M3.5 1.5h6l3 3v10h-9z" />
-          <path d="M9.5 1.5v3h3" />
-        </svg>
+        <NoteIcon {colorTag} />
         <span class="trash-row-text">
           <span class="trash-row-name">{node.name}</span>
+          {#if colorTag !== null}
+            <span id={tagId} class="visually-hidden">{describeColorTag(colorTag)}</span>
+          {/if}
           {#if meta !== undefined}<span class="trash-row-meta">{meta}</span>{/if}
         </span>
       </div>
@@ -59,6 +63,7 @@
       type="button"
       class="button button-ghost trash-action"
       aria-label={`Restore ${node.name} to…`}
+      aria-describedby={colorTag !== null ? tagId : undefined}
       title="Restore to…"
       onclick={() => onRestore(node)}
     >
@@ -74,6 +79,7 @@
         type="button"
         class="button button-ghost button-icon trash-action"
         aria-label={`Delete ${node.name} permanently`}
+        aria-describedby={colorTag !== null ? tagId : undefined}
         title="Delete permanently"
         onclick={onDelete}
       >

@@ -14,6 +14,8 @@ export function describeStructureError(error: StructureError): string {
       return "A folder can't be moved into itself.";
     case "orderUnavailable":
       return "Items can't be reordered because the stored order couldn't be read.";
+    case "tagsUnavailable":
+      return "Color tags can't be changed because the stored tags can't be read.";
   }
 }
 

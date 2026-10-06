@@ -31,6 +31,13 @@ describe("describeStructureError", () => {
       "A folder can't be moved into itself.",
     );
   });
+
+  it("describes unreadable stored tags", () => {
+    const error: StructureError = { kind: "tagsUnavailable" };
+    expect(describeStructureError(error)).toBe(
+      "Color tags can't be changed because the stored tags can't be read.",
+    );
+  });
 });
 
 describe("describeMovedTo", () => {

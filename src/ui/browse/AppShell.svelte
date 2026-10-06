@@ -89,6 +89,7 @@
   import type { ReadableWorkingTrashEntry } from "../../sync/working-trash";
   import Wordmark from "../wordmark/Wordmark.svelte";
   import type { Command, RowAction } from "./row-menu-types";
+  import type { ColorTag } from "../../tags/color-tag";
   import { describeMovedTo, describeStructureError } from "./structure-messages";
   import type { DropTarget } from "./tree-drop";
   import {
@@ -212,6 +213,7 @@
     | "export"
     | "trash"
     | "place"
+    | "tag"
     | "import"
     | "history"
     | "session";
@@ -220,6 +222,7 @@
     "export",
     "trash",
     "place",
+    "tag",
     "import",
     "history",
     "session",
@@ -336,6 +339,11 @@
   }
 
   const tree = $derived(engineState.workingTree);
+  const openTreeNote = $derived.by(() => {
+    if (openPath === null || tree === null) return undefined;
+    const node = findWorkingNode(tree, openPath);
+    return node?.kind === "note" ? node : undefined;
+  });
   const treeLoading = $derived(engineState.synced === null && engineState.refresh.inFlight);
   const trashEntries = $derived(engineState.visibleTrash ?? []);
   const selectedPath = $derived(engineState.openNote?.path ?? null);
@@ -1099,6 +1107,11 @@
     return placed;
   }
 
+  function handleColorTag(path: NotePath, color: ColorTag | null): void {
+    const result = engine.setColorTag(path, color);
+    if (!result.ok) showToast("tag", describeStructureError(result.error));
+  }
+
   function handleUndoPlace(path: NotePath, target: DropTarget): void {
     const result = engine.place(path, target);
     if (result.ok) clearToast("place");
@@ -1242,6 +1255,8 @@
       {noteDropArea}
       onDropOpen={handleDropOpen}
       onAction={handleTreeAction}
+      tagsWritable={engineState.synced?.tags.writable ?? false}
+      onColorTag={handleColorTag}
       onNewNote={handleHeaderNewNote}
     />
     {#if (engineState.synced?.undecryptableFiles ?? 0) > 0}
@@ -1334,6 +1349,11 @@
           onHistory={() => void openHistory()}
           historyDisabled={engineState.openNote.kind === "missing" ||
             engineState.openNote.kind === "failed"}
+          colorTag={openTreeNote?.colorTag ?? null}
+          colorTagDisabled={!(engineState.synced?.tags.writable ?? false)}
+          onColorTag={openTreeNote !== undefined && !openConflicted
+            ? (color) => handleColorTag(openTreeNote.path, color)
+            : undefined}
         />
       {/if}
     {/key}

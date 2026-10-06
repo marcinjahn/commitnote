@@ -1,22 +1,10 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { expectTree, openNotes, fakeForge, onFakeForgeReady } from "./helpers";
-import { moveToTrash, openTrash, treeItem } from "./helpers/tree";
+import { moveToTrash, openTrash, restoreTo, treeItem } from "./helpers/tree";
 
 const TRASH_REPO = "https://github.com/sample/trash";
 const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
-
-async function restoreTo(
-  page: Page,
-  name: string,
-  folder: string,
-): Promise<void> {
-  await page.getByRole("button", { name: `Restore ${name} to…`, exact: true }).click();
-  const picker = page.getByRole("dialog", { name: /^Restore .* to folder$/ });
-  await expect(picker).toBeVisible();
-  await picker.getByRole("radio", { name: folder, exact: true }).check();
-  await picker.getByRole("button", { name: "Restore", exact: true }).click();
-}
 
 test("the Trash row sits below the tree and leaves the repo link visible", { tag: "@mobile" }, async ({
   page,

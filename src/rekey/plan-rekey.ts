@@ -9,6 +9,7 @@ import {
   ORDER_PATH,
   REPO_CONFIG_DIR,
   REPO_CONFIG_PATH,
+  TAGS_PATH,
   TRASH_DIR,
 } from "../format/v1";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
@@ -20,7 +21,7 @@ import { parseTrashEntryId } from "../trash/trash-entry-id";
  * re-encrypted only if they decrypt under the old key. So nothing readable
  * with the old key is left behind.
  */
-type RekeyFileKind = "config" | "order" | "note" | "folder" | "other";
+type RekeyFileKind = "config" | "order" | "tags" | "note" | "folder" | "other";
 
 type RekeyFileContent =
   | { readonly kind: "text"; readonly text: string }
@@ -197,11 +198,11 @@ export async function planRekey(input: PlanRekeyInput): Promise<RekeyPlan> {
       continue;
     }
 
-    if (entry.path === ORDER_PATH) {
+    if (entry.path === ORDER_PATH || entry.path === TAGS_PATH) {
       files.push({
         oldPath: entry.path,
         newPath: entry.path,
-        kind: "order",
+        kind: entry.path === ORDER_PATH ? "order" : "tags",
         trashEntryId: null,
         content: (await reencryptIfOldKey(entry.sha)) ?? {
           kind: "unchanged",

@@ -9,6 +9,7 @@
   import { treeDrag, type TreeDragOptions } from "./tree-drag";
   import NoteTreeFolder from "./NoteTreeFolder.svelte";
   import { countDescendants } from "../dialogs/folder-options";
+  import type { ColorTag } from "../../tags/color-tag";
   import RowMenu from "./RowMenu.svelte";
   import type { MenuAnchor, RowAction } from "./row-menu-types";
 
@@ -24,6 +25,8 @@
     noteDropArea: () => HTMLElement | null;
     onDropOpen: (path: NotePath) => void;
     onAction: (action: RowAction, node: WorkingNode) => void;
+    tagsWritable: boolean;
+    onColorTag: (path: NotePath, color: ColorTag | null) => void;
     onNewNote: () => void;
   }
 
@@ -39,6 +42,8 @@
     noteDropArea,
     onDropOpen,
     onAction,
+    tagsWritable,
+    onColorTag,
     onNewNote,
   }: Props = $props();
 
@@ -144,6 +149,18 @@
     handleCloseMenu();
     if (node !== undefined) onAction(action, node);
   }
+
+  const openMenuColorTag = $derived.by(() => {
+    if (openMenu === null || tree === null) return null;
+    const current = findWorkingNode(tree, openMenu.node.path);
+    return current?.kind === "note" ? current.colorTag : null;
+  });
+
+  function handleColorTag(color: ColorTag | null): void {
+    const node = openMenu?.node;
+    handleCloseMenu();
+    if (node !== undefined) onColorTag(node.path, color);
+  }
 </script>
 
 <div class="tree-container" use:treeDrag={dragOptions}>
@@ -183,6 +200,9 @@
     trashes={openMenu.node.kind === "note" || countDescendants(openMenu.node) > 0}
     trigger={openMenu.trigger}
     anchor={openMenu.anchor}
+    colorTag={openMenuColorTag}
+    {tagsWritable}
+    onColorTag={handleColorTag}
     onAction={handleMenuAction}
     onClose={handleCloseMenu}
   />

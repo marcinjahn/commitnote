@@ -8,6 +8,8 @@
   import SyncStateIcon from "./SyncStateIcon.svelte";
   import { syncIndicatorFade } from "./sync-indicator-fade";
   import { describeSyncState } from "./sync-messages";
+  import { describeColorTag } from "./tag-messages";
+  import NoteIcon from "./NoteIcon.svelte";
 
   interface Props {
     node: WorkingNode;
@@ -55,6 +57,13 @@
   );
   const menuOpen = $derived(menuOpenKey === key);
   const statusId = $props.id();
+  const tagId = `${statusId}-tag`;
+  const colorTag = $derived(node.kind === "note" ? node.colorTag : null);
+  const describedBy = $derived(
+    [colorTag !== null ? tagId : null, unsynced ? statusId : null]
+      .filter((id) => id !== null)
+      .join(" ") || undefined,
+  );
 
   // The sweep outlives the saving state until its overlay has faded out
   // (--sync-label-fade), so stopping it is invisible.
@@ -92,6 +101,7 @@
 
   function handleContextMenu(event: MouseEvent): void {
     event.preventDefault();
+    event.stopPropagation();
     if (actionsButton === undefined) return;
     onOpenMenu(
       key,
@@ -118,7 +128,8 @@
     aria-expanded={node.kind === "folder" ? expanded : undefined}
     aria-selected={node.kind === "note" ? selected : undefined}
     title={node.name}
-    aria-describedby={unsynced ? statusId : undefined}
+    aria-describedby={describedBy}
+    data-unsynced={unsynced ? "" : undefined}
     data-drag-handle
     onclick={handleActivate}
   >
@@ -141,15 +152,7 @@
         <path d="M1.5 3.5h4L7 5h7.5v8.5h-13z" />
       </svg>
     {:else}
-      <svg
-        class="icon row-icon"
-        viewBox="0 0 16 16"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <path d="M3.5 1.5h6l3 3v10h-9z" />
-        <path d="M9.5 1.5v3h3" />
-      </svg>
+      <NoteIcon {colorTag} muted />
     {/if}
     <span
       class="tree-row-label"
@@ -160,6 +163,9 @@
       data-name={node.name}>{node.name}</span
     >
   </button>
+  {#if colorTag !== null}
+    <span id={tagId} class="visually-hidden">{describeColorTag(colorTag)}</span>
+  {/if}
   {#if unsynced}
     <span id={statusId} class="visually-hidden"
       >{describeSyncState(syncState)}</span
@@ -276,6 +282,7 @@
   .row-icon {
     flex-shrink: 0;
     color: var(--color-text-muted);
+    transition: color var(--motion-duration) var(--motion-easing);
   }
 
   .chevron {

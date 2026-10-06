@@ -147,6 +147,7 @@ describe("findTrashItem", () => {
       name: "Leaf",
       path: ["Old", "Sub", "Leaf"],
       syncedPath: null,
+      colorTag: null,
       trashBlobSha: "sha-leaf",
     });
   });

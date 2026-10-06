@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { parseOrderIndex, type OrderIndex } from "../order/order-index";
+import { parseTagIndex, tagKey, type TagIndex } from "../tags/tag-index";
 import type { TrashEntry } from "../trash/trash-index";
 import type { FolderNode, NoteNode, NoteTree, TreeNode } from "../tree/note-tree";
 import {
@@ -11,7 +12,9 @@ import {
   localContentAt,
   rebaseChanges,
   type WorkingFolder,
+  type WorkingNode,
 } from "./working-tree";
+import type { WorkingTrashEntry } from "./working-trash";
 
 function note(name: string, path: NotePath, blobSha = `sha-${name}`): NoteNode {
   return {
@@ -125,6 +128,7 @@ describe("buildWorkingTree", () => {
       name: "New",
       path: ["New"],
       syncedPath: null,
+      colorTag: null,
     });
   });
 
@@ -138,6 +142,7 @@ describe("buildWorkingTree", () => {
       name: "Welcome",
       path: ["Welcome"],
       syncedPath: ["Welcome"],
+      colorTag: null,
     });
   });
 
@@ -179,6 +184,7 @@ describe("buildWorkingTree", () => {
       name: "Hello",
       path: ["Hello"],
       syncedPath: ["Welcome"],
+      colorTag: null,
     });
   });
 
@@ -198,6 +204,7 @@ describe("buildWorkingTree", () => {
       name: "Guide",
       path: ["Documents", "Guide"],
       syncedPath: ["Docs", "Guide"],
+      colorTag: null,
     });
 
     const movedTodo = findWorkingNode(working, ["Documents", "Notes", "Todo"]);
@@ -206,6 +213,7 @@ describe("buildWorkingTree", () => {
       name: "Todo",
       path: ["Documents", "Notes", "Todo"],
       syncedPath: ["Docs", "Notes", "Todo"],
+      colorTag: null,
     });
   });
 
@@ -327,6 +335,7 @@ describe("buildWorkingState trash", () => {
           name: "Welcome",
           path: ["Welcome"],
           syncedPath: ["Welcome"],
+          colorTag: null,
         },
       },
     ]);
@@ -358,6 +367,7 @@ describe("buildWorkingState trash", () => {
               name: "Todo",
               path: ["Docs", "Notes", "Todo"],
               syncedPath: ["Docs", "Notes", "Todo"],
+              colorTag: null,
             },
           ],
         },
@@ -366,6 +376,7 @@ describe("buildWorkingState trash", () => {
           name: "Manual",
           path: ["Docs", "Manual"],
           syncedPath: ["Docs", "Guide"],
+          colorTag: null,
         },
       ],
     });
@@ -397,6 +408,7 @@ describe("buildWorkingState trash", () => {
       name: "Old",
       path: ["Archive", "Old"],
       syncedPath: null,
+      colorTag: null,
       trashBlobSha: "sha-trashed-old",
     });
   });
@@ -421,6 +433,7 @@ describe("buildWorkingState trash", () => {
       name: "Old",
       path: ["Docs", "Old"],
       syncedPath: null,
+      colorTag: null,
       trashBlobSha: "sha-trashed-old",
     });
     expect(trash.map((entry) => entry.id)).not.toContain(OLD_NOTE_ID);
@@ -446,6 +459,7 @@ describe("buildWorkingState trash", () => {
       name: "Deep",
       path: ["Recovered", "Deep"],
       syncedPath: null,
+      colorTag: null,
       trashBlobSha: "sha-trashed-deep",
     });
     const entry = trash.find((candidate) => candidate.id === OLD_FOLDER_ID);
@@ -472,6 +486,7 @@ describe("buildWorkingState trash", () => {
       name: "Welcome",
       path: ["Empty", "Welcome"],
       syncedPath: ["Welcome"],
+      colorTag: null,
     });
     expect(trash).toEqual([]);
   });
@@ -1270,6 +1285,338 @@ describe("rebaseChanges set-order", () => {
           positions: [{ name: "Guide", key: "1" }],
         },
       ],
+    );
+    expect(result).toEqual({ changes: [], dropped: [] });
+  });
+});
+
+function tagsOf(notes: Record<string, string>): TagIndex {
+  return parseTagIndex(
+    JSON.stringify({
+      version: 1,
+      notes: Object.fromEntries(
+        Object.entries(notes).map(([key, color]) => [key, { color }]),
+      ),
+      trash: {},
+    }),
+  );
+}
+
+const TAGGED = tagsOf({
+  [tagKey(["Welcome"])]: "red",
+  [tagKey(["Docs", "Notes", "Todo"])]: "blue",
+});
+
+function colorAt(
+  changes: ChangeSet,
+  path: NotePath,
+  tags: TagIndex = TAGGED,
+): unknown {
+  const node = findWorkingNode(
+    buildWorkingTree(SAMPLE_TREE, changes, [], undefined, tags),
+    path,
+  );
+  return node?.kind === "note" ? node.colorTag : undefined;
+}
+
+describe("buildWorkingTree color tags", () => {
+  it("takes note colors from the synced tag index", () => {
+    expect(colorAt([], ["Welcome"])).toBe("red");
+    expect(colorAt([], ["Docs", "Guide"])).toBeNull();
+  });
+
+  it("shows a pending set-color-tag optimistically", () => {
+    expect(
+      colorAt(
+        [{ kind: "set-color-tag", path: ["Docs", "Guide"], color: "green" }],
+        ["Docs", "Guide"],
+      ),
+    ).toBe("green");
+    expect(
+      colorAt(
+        [{ kind: "set-color-tag", path: ["Welcome"], color: null }],
+        ["Welcome"],
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps the color of a renamed note at its new path", () => {
+    expect(
+      colorAt(
+        [{ kind: "rename-note", from: ["Welcome"], to: ["Docs", "Hello"] }],
+        ["Docs", "Hello"],
+      ),
+    ).toBe("red");
+  });
+
+  it("keeps nested colors when a folder moves", () => {
+    expect(
+      colorAt(
+        [{ kind: "rename-folder", from: ["Docs"], to: ["Empty", "Manuals"] }],
+        ["Empty", "Manuals", "Notes", "Todo"],
+      ),
+    ).toBe("blue");
+  });
+
+  it("exposes the resulting tag index on the working state", () => {
+    const state = buildWorkingState(
+      SAMPLE_TREE,
+      [{ kind: "set-color-tag", path: ["Docs", "Guide"], color: "green" }],
+      [],
+      undefined,
+      TAGGED,
+    );
+    expect(state.tags.notes.get(tagKey(["Docs", "Guide"]))).toEqual({
+      color: "green",
+    });
+  });
+
+  it("rejects a set-color-tag for a path that is not a note", () => {
+    expect(() =>
+      buildWorkingTree(SAMPLE_TREE, [
+        { kind: "set-color-tag", path: ["Missing"], color: "red" },
+      ]),
+    ).toThrow(RangeError);
+    expect(() =>
+      buildWorkingTree(SAMPLE_TREE, [
+        { kind: "set-color-tag", path: ["Docs"], color: "red" },
+      ]),
+    ).toThrow(RangeError);
+  });
+});
+
+function trashedNoteColors(
+  trash: readonly WorkingTrashEntry[],
+): Record<string, unknown> {
+  const colors: Record<string, unknown> = {};
+  function visit(node: WorkingNode): void {
+    if (node.kind === "note") colors[node.path.join("/")] = node.colorTag;
+    else node.children.forEach(visit);
+  }
+  for (const entry of trash) if (!entry.undecryptable) visit(entry.tree);
+  return colors;
+}
+
+const TRASH_TAGGED = parseTagIndex(
+  JSON.stringify({
+    version: 1,
+    notes: {},
+    trash: {
+      [OLD_NOTE_ID]: { [tagKey([])]: { color: "green" } },
+      [OLD_FOLDER_ID]: { [tagKey(["Inner", "Deep"])]: { color: "purple" } },
+    },
+  }),
+);
+
+describe("buildWorkingState trash color tags", () => {
+  it("colors synced trashed notes, nested ones included, by their entry's records", () => {
+    const { trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [],
+      SYNCED_TRASH,
+      undefined,
+      TRASH_TAGGED,
+    );
+
+    expect(trashedNoteColors(trash)).toEqual({
+      "Archive/Old": "green",
+      "Trashed/Inner/Deep": "purple",
+      "Trashed/Top": null,
+    });
+  });
+
+  it("carries a pending trashed note's color into its entry and back on restore", () => {
+    const trashed: Change[] = [
+      { kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID },
+    ];
+    const afterTrash = buildWorkingState(
+      SAMPLE_TREE,
+      trashed,
+      [],
+      undefined,
+      TAGGED,
+    );
+    expect(trashedNoteColors(afterTrash.trash)).toEqual({ Welcome: "red" });
+
+    expect(
+      colorAt(
+        [
+          ...trashed,
+          {
+            kind: "restore-trash",
+            entryId: WELCOME_ID,
+            subPath: [],
+            target: "note",
+            to: ["Docs", "Welcome"],
+          },
+        ],
+        ["Docs", "Welcome"],
+      ),
+    ).toBe("red");
+  });
+
+  it("colors notes inside a pending trashed folder relative to the trashed folder", () => {
+    const { trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [{ kind: "trash-folder", path: ["Docs"], entryId: DOCS_ID }],
+      [],
+      undefined,
+      TAGGED,
+    );
+
+    expect(trashedNoteColors(trash)).toEqual({
+      "Docs/Guide": null,
+      "Docs/Notes/Todo": "blue",
+    });
+  });
+
+  it("keeps the colors of what is left in a folder entry after a partial restore", () => {
+    const { trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [
+        {
+          kind: "restore-trash",
+          entryId: OLD_FOLDER_ID,
+          subPath: ["Top"],
+          target: "note",
+          to: ["Top"],
+        },
+      ],
+      SYNCED_TRASH,
+      undefined,
+      TRASH_TAGGED,
+    );
+
+    expect(trashedNoteColors(trash)).toEqual({
+      "Archive/Old": "green",
+      "Trashed/Inner/Deep": "purple",
+    });
+  });
+
+  it("shows no trash colors when the tag index can't be read", () => {
+    const unreadable = parseTagIndex("not json");
+    expect(unreadable.writable).toBe(false);
+    const { trash } = buildWorkingState(
+      SAMPLE_TREE,
+      [
+        { kind: "set-color-tag", path: ["Welcome"], color: "red" },
+        { kind: "trash-note", path: ["Welcome"], entryId: WELCOME_ID },
+      ],
+      SYNCED_TRASH,
+      undefined,
+      unreadable,
+    );
+
+    expect(trashedNoteColors(trash)).toEqual({
+      "Archive/Old": null,
+      "Trashed/Inner/Deep": null,
+      "Trashed/Top": null,
+      Welcome: null,
+    });
+  });
+});
+
+describe("appendChange set-color-tag", () => {
+  it("replaces an earlier tag of the same note across interleaved edits", () => {
+    let changes: ChangeSet = [];
+    changes = appendChange(changes, {
+      kind: "set-color-tag",
+      path: ["Welcome"],
+      color: "red",
+    });
+    changes = appendChange(changes, {
+      kind: "update-note",
+      path: ["Docs", "Guide"],
+      content: "v2",
+    });
+    changes = appendChange(changes, {
+      kind: "set-color-tag",
+      path: ["Welcome"],
+      color: "blue",
+    });
+    expect(changes).toEqual([
+      { kind: "update-note", path: ["Docs", "Guide"], content: "v2" },
+      { kind: "set-color-tag", path: ["Welcome"], color: "blue" },
+    ]);
+  });
+
+  it("keeps tags of different notes", () => {
+    const changes = appendChange(
+      [{ kind: "set-color-tag", path: ["Welcome"], color: "red" }],
+      { kind: "set-color-tag", path: ["Docs", "Guide"], color: "green" },
+    );
+    expect(changes).toEqual([
+      { kind: "set-color-tag", path: ["Welcome"], color: "red" },
+      { kind: "set-color-tag", path: ["Docs", "Guide"], color: "green" },
+    ]);
+  });
+
+  it("does not collapse across a rename of the note", () => {
+    const changes: ChangeSet = [
+      { kind: "set-color-tag", path: ["Welcome"], color: "red" },
+      { kind: "rename-note", from: ["Welcome"], to: ["Hello"] },
+      { kind: "rename-note", from: ["Hello"], to: ["Welcome"] },
+    ];
+    expect(
+      appendChange(changes, {
+        kind: "set-color-tag",
+        path: ["Welcome"],
+        color: "blue",
+      }),
+    ).toEqual([
+      ...changes,
+      { kind: "set-color-tag", path: ["Welcome"], color: "blue" },
+    ]);
+  });
+});
+
+describe("rebaseChanges set-color-tag", () => {
+  it("keeps a tag of a note that still exists", () => {
+    const change: Change = {
+      kind: "set-color-tag",
+      path: ["Welcome"],
+      color: "red",
+    };
+    expect(rebaseChanges(SAMPLE_TREE, [], [change])).toEqual({
+      changes: [change],
+      dropped: [],
+    });
+  });
+
+  it("follows a remote rename when the remote base is given", () => {
+    const base = tree(
+      folder("", [], [note("Welcome", ["Welcome"], "sha-1"), note("Other", ["Other"])]),
+    );
+    const remote = tree(
+      folder(
+        "",
+        [],
+        [
+          folder("Docs", ["Docs"], [note("Hello", ["Docs", "Hello"], "sha-1")]),
+          note("Other", ["Other"]),
+        ],
+      ),
+    );
+    const result = rebaseChanges(
+      remote,
+      [],
+      [{ kind: "set-color-tag", path: ["Welcome"], color: "red" }],
+      [],
+      base,
+    );
+    expect(result).toEqual({
+      changes: [{ kind: "set-color-tag", path: ["Docs", "Hello"], color: "red" }],
+      dropped: [],
+    });
+  });
+
+  it("silently drops a tag of a note that is gone", () => {
+    const result = rebaseChanges(
+      SAMPLE_TREE,
+      [{ kind: "delete-note", path: ["Welcome"] }],
+      [{ kind: "set-color-tag", path: ["Welcome"], color: "red" }],
+      [],
+      SAMPLE_TREE,
     );
     expect(result).toEqual({ changes: [], dropped: [] });
   });

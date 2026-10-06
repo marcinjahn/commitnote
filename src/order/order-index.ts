@@ -283,7 +283,14 @@ export function applyChangeToOrder(
     case "update-note":
     case "purge-trash":
     case "set-settings":
+    case "set-color-tag":
       return index;
+    default:
+      return assertNever(change);
   }
   return editor.result();
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled change kind: ${(value as Change).kind}`);
 }

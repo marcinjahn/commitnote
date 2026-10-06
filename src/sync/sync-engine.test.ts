@@ -1,4 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { TAGS_PATH } from "../format/v1";
+import {
+  colorTagOf,
+  encryptTagIndex,
+  parseTagIndex,
+  tagKey,
+} from "../tags/tag-index";
 import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
 import { type Keyring } from "../crypto/keyring";
 import { encryptPath } from "../crypto/name-cipher";
@@ -187,6 +194,41 @@ describe("createSyncEngine", () => {
       "Roadmap",
       "Ideas",
     ]);
+  });
+
+  it("loads the tag index and reads the tags file once per version", async () => {
+    const { fake, counts, engine } = await setup();
+    await fake.pushFromAnotherDevice([
+      {
+        kind: "upsert-text",
+        path: TAGS_PATH,
+        text: await encryptTagIndex(
+          keyring,
+          parseTagIndex(
+            JSON.stringify({
+              version: 1,
+              notes: { [tagKey(["Welcome"])]: { color: "red" } },
+              trash: {},
+            }),
+          ),
+        ),
+      },
+    ]);
+    await engine.refresh();
+    expect(colorTagOf(engine.getState().synced!.tags, ["Welcome"])).toBe("red");
+    const readsAfterFirstLoad = counts.readBlob;
+
+    await fake.pushFromAnotherDevice([
+      {
+        kind: "upsert-text",
+        path: await encryptPath(keyring, ["New note"]),
+        text: await encryptNote(keyring, "# New note\n"),
+      },
+    ]);
+    await engine.refresh();
+
+    expect(counts.readBlob).toBe(readsAfterFirstLoad);
+    expect(colorTagOf(engine.getState().synced!.tags, ["Welcome"])).toBe("red");
   });
 
   it("two concurrent refresh() calls cause exactly one getHead", async () => {

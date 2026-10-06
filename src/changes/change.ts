@@ -1,4 +1,5 @@
 import type { SettingsEdits } from "../settings/settings";
+import type { ColorTag } from "../tags/color-tag";
 
 export type NotePath = readonly string[];
 
@@ -51,7 +52,12 @@ export type Change =
       /** The child the user placed, to show its saving state; never committed. */
       readonly moved?: string;
     }
-  | { readonly kind: "set-settings"; readonly values: SettingsEdits };
+  | { readonly kind: "set-settings"; readonly values: SettingsEdits }
+  | {
+      readonly kind: "set-color-tag";
+      readonly path: NotePath;
+      readonly color: ColorTag | null;
+    };
 
 /** The order key of the child `name` of a folder. */
 export interface OrderPosition {

@@ -8,6 +8,7 @@ import { decryptNote } from "../../crypto/note-cipher";
 import type { FakeForgeAdapter } from "../../forge/fake/fake-forge-adapter";
 import { GITHUB_WRITE_LIMITS } from "../../forge/github/github-adapter";
 import { readOrderIndex } from "../../order/order-index";
+import { readTagIndex } from "../../tags/tag-index";
 import { sampleNotesRepoKeyring } from "../../testing/sample-notes-repo/sample-notes-repo-keyring";
 import { buildNoteTree, findNode, type NoteTree } from "../../tree/note-tree";
 import { createRateBudget, type RateBudget } from "../rate-budget";
@@ -94,7 +95,16 @@ export async function pushRemote(
   const order = await readOrderIndex(listing, keyring, (sha) =>
     fake.readBlob(sha),
   );
-  const encoded = await encodeChangeSet({ listing, changeSet, order, keyring });
+  const tags = await readTagIndex(listing, keyring, (sha) =>
+    fake.readBlob(sha),
+  );
+  const encoded = await encodeChangeSet({
+    listing,
+    changeSet,
+    order,
+    tags,
+    keyring,
+  });
   return fake.pushFromAnotherDevice(encoded.changes, encoded.message);
 }
 

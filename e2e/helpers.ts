@@ -299,7 +299,7 @@ export function rowSyncState(
 ): Locator {
   const item = page.getByRole("treeitem", { name, exact: options.exact });
   return item
-    .and(page.locator("[aria-describedby]"))
+    .and(page.locator("[data-unsynced]"))
     .or(item.locator("xpath=following-sibling::span").getByRole("img"));
 }
 

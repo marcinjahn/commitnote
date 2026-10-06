@@ -445,6 +445,16 @@ textarea:focus-visible,
   border: 0;
 }
 
+.tag-colored {
+  --tag-color: var(--tag-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  .tag-colored {
+    --tag-color: var(--tag-dark);
+  }
+}
+
 .print-view {
   display: none;
 }
