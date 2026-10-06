@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { AccentColorId } from "./accent-palette";
+import type { ColorModeId } from "./color-mode";
 import type { NoteFont } from "./note-font";
 import type { NewFolderPlacement, NewNotePlacement } from "./placement-options";
 import {
@@ -109,6 +110,7 @@ describe("resolveSettings", () => {
 describe("placement settings", () => {
   it("defaults new note placement to the beginning and new folder placement to the end", () => {
     expect(resolveSettings(SETTINGS_SCHEMA, {})).toEqual({
+      colorMode: "system",
       accentColor: "system",
       newNotePlacement: "beginning",
       newFolderPlacement: "end",
@@ -289,5 +291,31 @@ describe("note font setting", () => {
 
   it("types the note font setting as the option id", () => {
     expectTypeOf<Settings["noteFont"]>().toEqualTypeOf<NoteFont>();
+  });
+});
+
+describe("color mode setting", () => {
+  it("resolves a missing color mode to system", () => {
+    expect(resolveSettings(SETTINGS_SCHEMA, {}).colorMode).toBe("system");
+  });
+
+  it("resolves an unknown color mode to system and keeps it stored", () => {
+    const raw = { colorMode: "sepia", futureKey: 1 };
+    expect(resolveSettings(SETTINGS_SCHEMA, raw).colorMode).toBe("system");
+    expect(applySettingsEdits(raw, { accentColor: "red" })).toEqual({
+      colorMode: "sepia",
+      futureKey: 1,
+      accentColor: "red",
+    });
+  });
+
+  it("resolves a stored color mode id", () => {
+    expect(
+      resolveSettings(SETTINGS_SCHEMA, { colorMode: "dark" }).colorMode,
+    ).toBe("dark");
+  });
+
+  it("types the color mode setting as the option id", () => {
+    expectTypeOf<Settings["colorMode"]>().toEqualTypeOf<ColorModeId>();
   });
 });

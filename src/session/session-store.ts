@@ -11,7 +11,7 @@ const RECORD_VERSION = 1;
 const REPO_URL_STORAGE_KEY = "commitnote.repoUrl";
 const FORGE_ID_STORAGE_KEY = "commitnote.forge";
 
-type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 interface StoredRecord {
   readonly version: number;
