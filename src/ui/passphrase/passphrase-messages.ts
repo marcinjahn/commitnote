@@ -38,6 +38,8 @@ export function describePassphraseChanged(
 export const PASSPHRASES_DIFFER = "The new passphrases do not match.";
 export const ENTER_CURRENT_PASSPHRASE = "Enter the current passphrase.";
 
+export const CHANGE_PASSPHRASE_INTRO =
+  "Change your passphrase if someone else may know it, or to switch to a stronger one. Your notes are re-encrypted so only the new passphrase opens them from now on.";
 export const VERSION_HISTORY_NOTICE =
   "Version history starts over: commitnote can't show or restore versions of your notes from before the change.";
 export const HISTORY_WARNING =
