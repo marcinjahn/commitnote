@@ -15,6 +15,8 @@
     wide?: boolean;
     /** Large width on desktop only; mobile keeps the bottom sheet. Ignored with `large` or `wide`. */
     desktopLarge?: boolean;
+    /** Full screen sheet on mobile; a top-anchored card with a visually hidden header on desktop. */
+    top?: boolean;
     closeButton?: boolean;
     accentBorder?: boolean;
     swipeToClose?: boolean;
@@ -30,12 +32,13 @@
     large: largeProp = false,
     wide = false,
     desktopLarge: desktopLargeProp = false,
+    top = false,
     closeButton = false,
     accentBorder = false,
     swipeToClose: swipeEnabled = true,
   }: Props = $props();
 
-  const large = $derived(largeProp || wide);
+  const large = $derived(largeProp || wide || top);
   const desktopLarge = $derived(desktopLargeProp && !large);
   const uid = $props.id();
   const titleId = `dialog-title-${uid}`;
@@ -106,6 +109,7 @@
   class="dialog"
   class:large
   class:wide
+  class:top
   class:desktop-large={desktopLarge}
   aria-labelledby={titleId}
   oncancel={handleCancel}
@@ -117,6 +121,7 @@
     class="dialog-card"
     class:large
     class:wide
+    class:top
     class:desktop-large={desktopLarge}
     class:accent-border={accentBorder}>
     <div
@@ -146,7 +151,7 @@
         </button>
       {/if}
     </div>
-    <div class="dialog-body" class:wide>
+    <div class="dialog-body" class:wide class:top>
       {@render children()}
     </div>
     {#if actions}
@@ -306,28 +311,33 @@
     --dialog-card-padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0px));
   }
 
-  .dialog-card.wide {
+  .dialog-card.wide,
+  .dialog-card.top {
     --dialog-card-padding-top: calc(var(--space-3) + env(safe-area-inset-top, 0px));
     --dialog-card-padding-inline: 0px;
     gap: var(--space-2);
     padding-bottom: 0;
   }
 
-  .dialog-card.wide .dialog-header {
+  .dialog-card.wide .dialog-header,
+  .dialog-card.top .dialog-header {
     padding-inline: var(--space-3) var(--space-2);
   }
 
-  .dialog-card.wide .dialog-grab-handle {
+  .dialog-card.wide .dialog-grab-handle,
+  .dialog-card.top .dialog-grab-handle {
     top: calc(var(--dialog-card-padding-top) - 10px);
   }
 
-  .dialog-card.wide .dialog-actions {
+  .dialog-card.wide .dialog-actions,
+  .dialog-card.top .dialog-actions {
     padding: var(--space-2) var(--space-3)
       calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
     border-top: var(--hairline) solid var(--color-border);
   }
 
-  .dialog-body.wide {
+  .dialog-body.wide,
+  .dialog-body.top {
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -405,6 +415,44 @@
     .dialog-card.wide .dialog-actions {
       padding: 0;
       border-top: none;
+    }
+
+    .dialog.top {
+      inset: 12vh 0 auto 0;
+      margin: 0 auto;
+      height: fit-content;
+      width: min(var(--dialog-width-large), calc(100vw - 32px));
+      max-width: none;
+    }
+
+    .dialog-card.top {
+      gap: 0;
+      height: auto;
+      max-height: min(36rem, 76dvh);
+      padding: 0;
+    }
+
+    .dialog-card.top .dialog-header {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .dialog-card.top .dialog-actions {
+      padding: 0;
+      border-top: none;
+    }
+
+    @starting-style {
+      .dialog.top[open] .dialog-card {
+        transform: translateY(-6px);
+      }
     }
   }
 </style>
