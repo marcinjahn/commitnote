@@ -284,6 +284,39 @@ test.describe("switch motion", () => {
     expect(await recordedMotion(page)).toEqual([]);
   });
 
+  test("selecting a note while a draft is open animates the title", async ({
+    page,
+  }) => {
+    await openNotes(page);
+    await page.getByRole("button", { name: "New note", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Note name" })).toBeFocused();
+    await recordMotion(page);
+
+    await treeItem(page, "Welcome").click();
+    await expectNoteShown(page, "Welcome", "");
+
+    await expect
+      .poll(async () => (await recordedMotion(page)).join())
+      .toContain("title:opacity");
+  });
+
+  test("naming a draft does not animate the title", async ({ page }) => {
+    await openNotes(page);
+    await page.getByRole("button", { name: "New note", exact: true }).click();
+    const name = page.getByRole("textbox", { name: "Note name" });
+    await expect(name).toBeFocused();
+    await recordMotion(page);
+
+    await name.fill("Fresh draft name");
+    await name.press("Enter");
+    await expect(treeItem(page, "Fresh draft name")).toBeVisible();
+    await nextFrames(page);
+
+    expect(
+      (await recordedMotion(page)).filter((entry) => entry.startsWith("title:")),
+    ).toEqual([]);
+  });
+
   test("rapid clicks settle on the last clicked note", async ({ page }) => {
     await openNotes(page);
     await openWelcome(page);

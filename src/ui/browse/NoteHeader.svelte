@@ -28,6 +28,7 @@
     onNameInput?: (edited: string) => void;
     onBack: () => void;
     noteSwitch: number;
+    seenSwitch: { seen: number };
     /** Shows the version history button. */
     onHistory?: () => void;
     historyDisabled?: boolean;
@@ -55,6 +56,7 @@
     onNameInput,
     onBack,
     noteSwitch,
+    seenSwitch,
     onHistory,
     historyDisabled = false,
     colorTag = null,
@@ -69,11 +71,10 @@
   let tagButton: HTMLButtonElement | undefined = $state();
   let tagAnchor = $state<MenuAnchor | null>(null);
   let headerEl: HTMLElement | undefined = $state();
-  let seenSwitch = untrack(() => noteSwitch);
 
   $effect(() => {
-    if (noteSwitch === seenSwitch) return;
-    seenSwitch = noteSwitch;
+    if (noteSwitch === seenSwitch.seen) return;
+    seenSwitch.seen = noteSwitch;
     const title = untrack(() => headerEl?.querySelector(".name-field"));
     if (title != null) playSwitchEnter([title], { translate: false });
   });

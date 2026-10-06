@@ -250,6 +250,7 @@
   let draftError = $state<string | null>(null);
   let draftSession = $state(0);
   let noteSwitch = $state(0);
+  const headerSwitch = { seen: untrack(() => noteSwitch) };
   let pendingFieldText = $state<string | null>(null);
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
@@ -1600,6 +1601,7 @@
           nameReadOnly={false}
           {nameResetKey}
           {noteSwitch}
+          seenSwitch={headerSwitch}
           onNameCommit={handleNameCommit}
           onNameEscape={handleNameEscape}
           onNameEnterDone={handleNameEnterDone}
@@ -1615,6 +1617,7 @@
           nameReadOnly={openConflicted}
           {nameResetKey}
           {noteSwitch}
+          seenSwitch={headerSwitch}
           namePendingText={pendingFieldText}
           onNamePendingConsumed={() => (pendingFieldText = null)}
           onNameCommit={handleNameCommit}
