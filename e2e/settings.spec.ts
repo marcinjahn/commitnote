@@ -108,13 +108,20 @@ test("Settings is the first command and opens a dialog with the accent color opt
 
   const dialog = settingsDialog(page);
   await expect(dialog).toBeVisible();
+  const colorModes = dialog.getByRole("radiogroup", { name: "Color mode" });
+  await expect(colorModes.getByRole("radio")).toHaveCount(3);
+  const systemMode = colorModes.getByRole("radio", { name: "System" });
+  await expect(systemMode).toBeChecked();
+  await expect(systemMode).toBeFocused();
+  await expect(systemMode).toHaveAccessibleDescription(
+    /^(Light|Dark), matches your OS$/,
+  );
   const group = dialog.getByRole("radiogroup", { name: "Accent color" });
   await expect(group).toBeVisible();
   await expect(group.getByRole("radio")).toHaveCount(PALETTE.length);
   await expect(group.getByRole("radio").nth(8)).toHaveAccessibleName(PALETTE[8]);
   const systemRadio = group.getByRole("radio", { name: "System" });
   await expect(systemRadio).toBeChecked();
-  await expect(systemRadio).toBeFocused();
   await expect(systemRadio).toHaveAccessibleDescription(/OS accent color/);
   await expect(
     group
@@ -127,10 +134,12 @@ test("Settings is the first command and opens a dialog with the accent color opt
   );
 
   const sections = dialog.getByRole("radiogroup");
-  await expect(sections).toHaveCount(4);
-  await expect(sections.nth(1)).toHaveAccessibleName("Note font");
-  await expect(sections.nth(2)).toHaveAccessibleName("New notes");
-  await expect(sections.nth(3)).toHaveAccessibleName("New folders");
+  await expect(sections).toHaveCount(5);
+  await expect(sections.nth(0)).toHaveAccessibleName("Color mode");
+  await expect(sections.nth(1)).toHaveAccessibleName("Accent color");
+  await expect(sections.nth(2)).toHaveAccessibleName("Note font");
+  await expect(sections.nth(3)).toHaveAccessibleName("New notes");
+  await expect(sections.nth(4)).toHaveAccessibleName("New folders");
   const notes = dialog.getByRole("radiogroup", { name: "New notes" });
   const folders = dialog.getByRole("radiogroup", { name: "New folders" });
   await expect(notes.getByRole("radio")).toHaveCount(NOTE_OPTIONS.length);
@@ -203,6 +212,24 @@ test("changing the accent color, note font and placements saves one commit namin
     expect(message).not.toContain("literata");
     expect(message).not.toContain("afterlastfolder");
   });
+});
+
+test("picking Dark under a light OS darkens the page and saves a colorMode commit", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  const commitsBefore = await fakeForge(page).commitMessages();
+  await openSettings(page);
+  const dialog = settingsDialog(page);
+  await expect(dialog.getByRole("radiogroup", { name: "Color mode" }).getByRole("radio", { name: "System" })).toHaveAccessibleDescription("Light, matches your OS");
+
+  await chooseOption(page, "Color mode", "Dark");
+
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(11, 11, 11)");
+  await flushPendingSaves(page);
+  await expectSettingsCommits(page, commitsBefore.length + 1);
+  const lines = (await addedCommits(page, commitsBefore)).join("\n");
+  expect(lines).toContain("Commitnote-Settings: colorMode");
 });
 
 test("rapid accent changes are saved as a single commit", async ({ page }) => {
@@ -287,7 +314,7 @@ test("arrow keys move the accent color selection", async ({ page }) => {
   await openSettings(page);
   const dialog = settingsDialog(page);
   const accent = dialog.getByRole("radiogroup", { name: "Accent color" });
-  await expect(accent.getByRole("radio", { name: "System" })).toBeFocused();
+  await accent.getByRole("radio", { name: "System" }).focus();
 
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowRight");

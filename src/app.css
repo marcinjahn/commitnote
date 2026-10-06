@@ -12,8 +12,8 @@
   initial-value: #3358d4;
 }
 
-:root {
-  transition: --color-accent 300ms ease-in-out;
+:root,
+.color-scheme-scope {
   --color-background: light-dark(#fafafa, #0b0b0b);
   --color-surface: light-dark(#f2f2f2, #141414);
   --color-surface-raised: light-dark(#ffffff, #1a1a1a);
@@ -45,6 +45,10 @@
   --color-diff-removed: light-dark(#fdecea, #2a1412);
   --color-diff-removed-strong: light-dark(#f6c6c1, #55211c);
   --color-diff-removed-text: light-dark(#a3241c, #ff8a80);
+}
+
+:root {
+  transition: --color-accent 300ms ease-in-out;
   --color-focus: var(--color-accent);
   --color-selection: color-mix(in srgb, var(--color-accent) 22%, transparent);
 

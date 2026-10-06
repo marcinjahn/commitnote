@@ -157,6 +157,23 @@ test.describe("with a note", () => {
     await expect(view.locator("a").first()).toHaveCSS("color", "rgb(0, 0, 0)");
   });
 
+  test("prints black on white under a forced Dark color mode", async ({ page }) => {
+    await openSettings(page);
+    await chooseOption(page, "Color mode", "Dark");
+    await closeSettings(page);
+    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(11, 11, 11)");
+    await openWelcome(page);
+
+    await printPreview(page);
+    const view = printView(page);
+    await expect(view).toHaveCSS("color", "rgb(0, 0, 0)");
+    await expect(page.locator("body")).toHaveCSS(
+      "background-color",
+      "rgb(255, 255, 255)",
+    );
+    await expect(view.locator("a").first()).toHaveCSS("color", "rgb(0, 0, 0)");
+  });
+
   test("uses the chosen note font for text and monospace for code", async ({
     page,
   }) => {
