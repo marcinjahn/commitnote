@@ -125,10 +125,7 @@
   import type { DropTarget } from "./tree-drop";
   import {
     DESKTOP_MEDIA_QUERY,
-    DRAG_EASING,
-    DRAG_MOTION_MS,
     isNarrowLayout,
-    prefersReducedMotion,
   } from "./drag-motion";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
@@ -827,31 +824,8 @@
       : null;
   }
 
-  function slideIn(element: Element): void {
-    element.animate(
-      [
-        { opacity: 0, translate: "0 6px" },
-        { opacity: 1, translate: "0 0" },
-      ],
-      { duration: DRAG_MOTION_MS, easing: DRAG_EASING },
-    );
-  }
-
-  // The header slides in at once; the note's text once it has loaded.
-  async function handleDropOpen(path: NotePath): Promise<void> {
-    const opening = handleSelect(path);
-    await tick();
-    const pane = notePaneEl;
-    if (pane === undefined || prefersReducedMotion()) return;
-    const content = pane.lastElementChild;
-    for (const child of pane.children) {
-      if (child !== content) slideIn(child);
-    }
-    await opening;
-    await tick();
-    if (content !== null && openPath !== null && notePathEquals(openPath, path)) {
-      slideIn(content);
-    }
+  function handleDropOpen(path: NotePath): void {
+    void handleSelect(path);
   }
 
   function handleBack(): void {

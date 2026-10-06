@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { SyncState } from "../../sync/sync-state";
   import { describeSyncState } from "./sync-messages";
   import SyncStateIcon from "./SyncStateIcon.svelte";
   import { syncIndicatorFade } from "./sync-indicator-fade";
   import NameField from "../note/NameField.svelte";
+  import { playSwitchEnter } from "../note/switch-motion-driver";
   import { noteIcons } from "./action-icons";
   import { VERSION_HISTORY_LABEL } from "../history/history-messages";
   import MenuPopup from "./MenuPopup.svelte";
@@ -52,6 +54,7 @@
     onNameEnterDone,
     onNameInput,
     onBack,
+    noteSwitch,
     onHistory,
     historyDisabled = false,
     colorTag = null,
@@ -65,6 +68,15 @@
   const sharedDescId = `${descId}-shared`;
   let tagButton: HTMLButtonElement | undefined = $state();
   let tagAnchor = $state<MenuAnchor | null>(null);
+  let headerEl: HTMLElement | undefined = $state();
+  let seenSwitch = untrack(() => noteSwitch);
+
+  $effect(() => {
+    if (noteSwitch === seenSwitch) return;
+    seenSwitch = noteSwitch;
+    const title = untrack(() => headerEl?.querySelector(".name-field"));
+    if (title != null) playSwitchEnter([title], { translate: false });
+  });
 
   function toggleTagMenu(): void {
     if (tagButton === undefined) return;
@@ -85,7 +97,7 @@
   }
 </script>
 
-<header class="note-header">
+<header class="note-header" bind:this={headerEl}>
   <button
     type="button"
     class="button button-ghost button-icon back-button"
