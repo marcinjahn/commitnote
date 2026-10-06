@@ -8,6 +8,7 @@
     type ToastMessage,
     type ToastTone,
   } from "./notice-messages";
+  import { toastOut, toastReflow } from "./toast-motion";
   import { dismissIcon, toneIcons } from "./tone-icons";
 
   interface Props {
@@ -90,7 +91,7 @@
   });
 
   function pause(key: string): void {
-    if (pausedKeys.has(key)) return;
+    if (pausedKeys.has(key) || !visible.some((toast) => toast.key === key)) return;
     pausedKeys = new Set(pausedKeys).add(key);
   }
 
@@ -127,6 +128,8 @@
       role="group"
       data-tone={toast.tone}
       aria-label={toneLabel(toast.tone)}
+      out:toastOut
+      animate:toastReflow
       onmouseenter={() => pause(toast.key)}
       onmouseleave={() => resume(toast.key)}
       onfocusin={() => pause(toast.key)}
@@ -218,6 +221,10 @@
     transition:
       opacity var(--motion-duration) var(--motion-easing),
       transform var(--motion-duration) var(--motion-easing);
+  }
+
+  .toast:global([inert]) {
+    transition: none;
   }
 
   @starting-style {
