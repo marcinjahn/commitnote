@@ -8,9 +8,16 @@ import {
   MAIN_BRANCH,
   ORDER_PATH,
   REPO_CONFIG_PATH,
+  SHARES_PATH,
   TAGS_PATH,
   TRASH_DIR,
 } from "../format/v1";
+import {
+  decryptShareIndex,
+  encryptShareIndex,
+  type ShareEntry,
+  type ShareIndex,
+} from "../share/share-index";
 import { colorTagOf, decryptTagIndex, encryptTagIndex, EMPTY_TAGS } from "../tags/tag-index";
 import { planRekey, RekeyPlanError, type RekeyPlan } from "./plan-rekey";
 import {
@@ -90,6 +97,26 @@ async function applied(
     }
   }
   return files;
+}
+
+function shareEntry(id: string, source: ShareEntry["source"]): ShareEntry {
+  return {
+    id,
+    locator: { provider: "gitlab", snippetId: `snippet-${id}` },
+    linkSecret: `secret-${id}`,
+    password: id === "a" ? "pw" : null,
+    name: `Note ${id}`,
+    sharedAt: "2026-02-01T00:00:00.000Z",
+    note: { state: "active", path: ["Welcome"] },
+    source,
+  };
+}
+
+function shareIndexOf(...entries: ShareEntry[]): ShareIndex {
+  return {
+    writable: true,
+    entries: new Map(entries.map((entry) => [entry.id, entry])),
+  };
 }
 
 describe("planRekey", () => {
@@ -199,6 +226,58 @@ describe("planRekey", () => {
     });
     expect(result.summary.carriedFiles).toBe(1);
     expect(after.get(TAGS_PATH)).toBe(stored);
+  });
+
+  it("re-encrypts the share index under the new key and clears every shared version", async () => {
+    const index = shareIndexOf(
+      shareEntry("a", { commit: "c1", storedPath: "p1", blobSha: "b1" }),
+      shareEntry("b", { commit: "c2", storedPath: "p2", blobSha: "b2" }),
+    );
+    const loaded = await load(
+      await createRekeyFixture({
+        extraFiles: async (keyring) => ({
+          [SHARES_PATH]: await encryptShareIndex(keyring, index),
+        }),
+      }),
+    );
+
+    const result = await plan(loaded);
+    const after = await applied(loaded, result.changes);
+
+    expect(result.files.find((file) => file.oldPath === SHARES_PATH)).toMatchObject({
+      kind: "shares",
+      newPath: SHARES_PATH,
+      content: { kind: "text" },
+    });
+    const restored = await decryptShareIndex(next.keyring, after.get(SHARES_PATH)!);
+    expect(restored.writable).toBe(true);
+    expect([...restored.entries.values()]).toEqual(
+      [...index.entries.values()].map((entry) => ({ ...entry, source: null })),
+    );
+    expect((await verify(loaded, result.changes)).ok).toBe(true);
+  });
+
+  it("carries over a share index that does not decrypt under the old key", async () => {
+    const foreign = (await newRepoConfig("someone else")).keyring;
+    const stored = await encryptShareIndex(
+      foreign,
+      shareIndexOf(shareEntry("a", { commit: "c1", storedPath: "p1", blobSha: "b1" })),
+    );
+    const loaded = await load(
+      await createRekeyFixture({
+        extraFiles: async () => ({ [SHARES_PATH]: stored }),
+      }),
+    );
+
+    const result = await plan(loaded);
+    const after = await applied(loaded, result.changes);
+
+    expect(result.files.find((file) => file.oldPath === SHARES_PATH)).toMatchObject({
+      kind: "shares",
+      content: { kind: "unchanged" },
+    });
+    expect(after.get(SHARES_PATH)).toBe(stored);
+    expect((await verify(loaded, result.changes)).ok).toBe(true);
   });
 
   it("keeps an undecryptable trash entry byte for byte", async () => {

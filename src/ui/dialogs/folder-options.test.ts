@@ -21,6 +21,7 @@ function tree(): WorkingTree {
         path: ["Alpha", "note1"],
         syncedPath: null,
         colorTag: null,
+        shared: false,
       },
     ],
   };
@@ -43,6 +44,7 @@ function tree(): WorkingTree {
         path: ["root-note"],
         syncedPath: null,
         colorTag: null,
+        shared: false,
       },
     ],
   };

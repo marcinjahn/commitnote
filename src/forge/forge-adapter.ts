@@ -1,3 +1,5 @@
+import type { ShareHost } from "./share-host";
+
 export interface TreeEntry {
   readonly path: string;
   readonly type: "blob" | "tree";
@@ -120,7 +122,9 @@ export type ContentCreatingOperation =
   | "createMergeRequest"
   | "mergeMergeRequest"
   | "closeMergeRequest"
-  | "updateProject";
+  | "updateProject"
+  | "createShare"
+  | "deleteShare";
 
 export type AtomicCommitSupport =
   | { readonly kind: "available" }
@@ -147,6 +151,7 @@ export interface ForgeWriteLimits {
 
 export interface ForgeAdapter {
   readonly limits: ForgeWriteLimits;
+  readonly shareHost: ShareHost;
   /** Number of content-creating requests `commit` sends for these changes. */
   commitCost(
     changes: readonly CommitFileChange[],

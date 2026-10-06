@@ -66,8 +66,11 @@ function entryPathOf(change: Change): NotePath | null {
       return change.moved === undefined
         ? change.parent
         : [...change.parent, change.moved];
+    case "add-share":
+      return change.entry.note.state === "active" ? change.entry.note.path : null;
     case "purge-trash":
     case "set-settings":
+    case "remove-share":
       return null;
   }
 }

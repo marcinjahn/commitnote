@@ -9,6 +9,7 @@ import {
 } from "../forge-http";
 import type { RepoCoordinates } from "../repo-coordinates";
 import {
+  GITLAB_API_BASE,
   GITLAB_DEVELOPER_ACCESS_LEVEL,
   gitLabErrorFor,
   nextPageUrl,
@@ -33,6 +34,7 @@ import type {
   RootEntry,
   TreeEntry,
 } from "../forge-adapter";
+import type { ShareHost, ShareLocator } from "../share-host";
 import { ROOT_LISTING_LIMIT, blobShasByPath } from "../forge-adapter";
 
 export interface GitLabAdapterOptions extends ForgeAdapterOptions {
@@ -203,6 +205,10 @@ function isRejectedCommit(status: number): boolean {
 
 class GitLabAdapter implements ForgeAdapter {
   readonly limits = GITLAB_WRITE_LIMITS;
+  readonly shareHost: ShareHost = {
+    create: (envelope) => this.createShare(envelope),
+    delete: (locator) => this.deleteShare(locator),
+  };
   private readonly projectPath: string;
   private readonly accessToken: string;
   private readonly onContentCreatingRequest:
@@ -257,6 +263,44 @@ class GitLabAdapter implements ForgeAdapter {
 
   private errorFor(response: Response): ForgeError {
     return gitLabErrorFor(response, this.now);
+  }
+
+  private async createShare(envelope: string): Promise<ShareLocator> {
+    this.report("createShare");
+    const response = await this.send(`${GITLAB_API_BASE}/snippets`, {
+      method: "POST",
+      body: {
+        title: "Encrypted commitnote share",
+        visibility: "public",
+        files: [{ file_path: "commitnote-share.json", content: envelope }],
+      },
+    });
+    if (!response.ok) {
+      const error = this.errorFor(response);
+      throw isForgeError(error, "NotFound")
+        ? new ForgeError("Forbidden", { status: error.status })
+        : error;
+    }
+    const body = (await response.json().catch(() => null)) as {
+      id?: unknown;
+    } | null;
+    if (typeof body?.id !== "number" || !Number.isSafeInteger(body.id)) {
+      throw new ForgeError("Server", { status: response.status });
+    }
+    return { provider: "gitlab", snippetId: String(body.id) };
+  }
+
+  private async deleteShare(locator: ShareLocator): Promise<void> {
+    if (locator.provider !== "gitlab") {
+      throw new ForgeError("Server");
+    }
+    this.report("deleteShare");
+    const response = await this.send(
+      `${GITLAB_API_BASE}/snippets/${encodeURIComponent(locator.snippetId)}`,
+      { method: "DELETE" },
+    );
+    if (response.status === 404) return;
+    if (!response.ok) throw this.errorFor(response);
   }
 
   private async getProject(): Promise<ProjectBody> {

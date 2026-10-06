@@ -10,6 +10,7 @@
   import { describeSyncState } from "./sync-messages";
   import { describeColorTag } from "./tag-messages";
   import NoteIcon from "./NoteIcon.svelte";
+  import { noteIcons } from "./action-icons";
 
   interface Props {
     node: WorkingNode;
@@ -59,8 +60,14 @@
   const statusId = $props.id();
   const tagId = `${statusId}-tag`;
   const colorTag = $derived(node.kind === "note" ? node.colorTag : null);
+  const shareId = `${statusId}-share`;
+  const shared = $derived(node.kind === "note" && node.shared);
   const describedBy = $derived(
-    [colorTag !== null ? tagId : null, unsynced ? statusId : null]
+    [
+      colorTag !== null ? tagId : null,
+      shared ? shareId : null,
+      unsynced ? statusId : null,
+    ]
       .filter((id) => id !== null)
       .join(" ") || undefined,
   );
@@ -162,9 +169,24 @@
       data-drag-label
       data-name={node.name}>{node.name}</span
     >
+    {#if shared}
+      <svg
+        class="share-glyph"
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+        focusable="false"
+      >
+        {#each noteIcons.share as d (d)}
+          <path {d} />
+        {/each}
+      </svg>
+    {/if}
   </button>
   {#if colorTag !== null}
     <span id={tagId} class="visually-hidden">{describeColorTag(colorTag)}</span>
+  {/if}
+  {#if shared}
+    <span id={shareId} class="visually-hidden">Shared</span>
   {/if}
   {#if unsynced}
     <span id={statusId} class="visually-hidden"
@@ -283,6 +305,16 @@
     flex-shrink: 0;
     color: var(--color-text-muted);
     transition: color var(--motion-duration) var(--motion-easing);
+  }
+
+  .share-glyph {
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+    margin-left: auto;
+    fill: none;
+    stroke: currentColor;
+    color: var(--color-text-muted);
   }
 
   .chevron {

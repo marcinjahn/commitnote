@@ -1106,6 +1106,7 @@ describe("sync engine saves", () => {
           path: WELCOME,
           syncedPath: null,
           colorTag: null,
+          shared: false,
           trashBlobSha:
             syncedEntry.tree.kind === "note" ? syncedEntry.tree.blobSha : "",
         },

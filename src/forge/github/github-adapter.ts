@@ -13,7 +13,7 @@ import {
   defaultFetch,
   parseCommittedAt,
 } from "../forge-http";
-import { gitHubErrorFor, sendGitHubRequest } from "./github-api";
+import { API_BASE, gitHubErrorFor, sendGitHubRequest } from "./github-api";
 import { ForgeError, isForgeError, withMainUnchanged } from "../errors";
 import type {
   CommitFileChange,
@@ -32,6 +32,7 @@ import type {
   RootEntry,
   TreeEntry,
 } from "../forge-adapter";
+import type { ShareHost, ShareLocator } from "../share-host";
 
 export interface GitHubAdapterOptions extends ForgeAdapterOptions {
   readonly fetch?: typeof fetch;
@@ -140,6 +141,10 @@ function decodeBase64Content(content: string): Uint8Array {
 
 class GitHubAdapter implements ForgeAdapter {
   readonly limits = GITHUB_WRITE_LIMITS;
+  readonly shareHost: ShareHost = {
+    create: (envelope) => this.createShare(envelope),
+    delete: (locator) => this.deleteShare(locator),
+  };
   private readonly ownerPath: string;
   private readonly repoPath: string;
   private readonly accessToken: string;
@@ -185,6 +190,53 @@ class GitHubAdapter implements ForgeAdapter {
 
   private errorFor(response: Response): Promise<ForgeError> {
     return gitHubErrorFor(response, this.now);
+  }
+
+  private async createShare(envelope: string): Promise<ShareLocator> {
+    this.report("createShare");
+    const response = await this.send(`${API_BASE}/gists`, {
+      method: "POST",
+      body: {
+        public: false,
+        description: "Encrypted commitnote share",
+        files: { "commitnote-share.json": { content: envelope } },
+      },
+    });
+    if (!response.ok) {
+      const error = await this.errorFor(response);
+      // Without the gist permission GitHub answers 403 or 404.
+      throw isForgeError(error, "NotFound")
+        ? new ForgeError("Forbidden", { status: error.status })
+        : error;
+    }
+    const body = (await response.json().catch(() => null)) as {
+      id?: unknown;
+      history?: readonly { version?: unknown }[];
+    } | null;
+    const gistId = body?.id;
+    const revision = body?.history?.[0]?.version;
+    if (
+      typeof gistId !== "string" ||
+      gistId === "" ||
+      typeof revision !== "string" ||
+      revision === ""
+    ) {
+      throw new ForgeError("Server", { status: response.status });
+    }
+    return { provider: "github", gistId, revision };
+  }
+
+  private async deleteShare(locator: ShareLocator): Promise<void> {
+    if (locator.provider !== "github") {
+      throw new ForgeError("Server");
+    }
+    this.report("deleteShare");
+    const response = await this.send(
+      `${API_BASE}/gists/${encodeURIComponent(locator.gistId)}`,
+      { method: "DELETE" },
+    );
+    if (response.status === 404) return;
+    if (!response.ok) throw await this.errorFor(response);
   }
 
   async inspect(): Promise<RepoInspection> {

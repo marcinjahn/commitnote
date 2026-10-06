@@ -47,7 +47,11 @@
           item("move", "Move to folder…"),
           item("delete", deleteLabel),
         ]
-      : [item("move", "Move to folder…"), item("delete", deleteLabel)],
+      : [
+          item("share", "Share…"),
+          item("move", "Move to folder…"),
+          item("delete", deleteLabel),
+        ],
   );
 
   const items = $derived(

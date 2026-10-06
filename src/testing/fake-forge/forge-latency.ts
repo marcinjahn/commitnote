@@ -51,6 +51,7 @@ export function withLatency(
   latency: ForgeLatency,
 ): ForgeAdapter {
   const replaceHistory = adapter.replaceHistory?.bind(adapter);
+  const shareHost = adapter.shareHost;
   return {
     limits: adapter.limits,
     commitCost: (...args) => adapter.commitCost(...args),
@@ -70,6 +71,12 @@ export function withLatency(
       delayed(latency.listCommitsMs, () => adapter.findOldestCommit(...args)),
     readFileAt: (...args) =>
       delayed(latency.readFileAtMs, () => adapter.readFileAt(...args)),
+    shareHost: {
+      create: (...args) =>
+        delayed(latency.commitMs, () => shareHost.create(...args)),
+      delete: (...args) =>
+        delayed(latency.commitMs, () => shareHost.delete(...args)),
+    },
     ...(replaceHistory === undefined
       ? {}
       : {

@@ -16,6 +16,8 @@ import type {
   RootEntry,
   TreeEntry,
 } from "../forge-adapter";
+import type { ShareHost, ShareLocator } from "../share-host";
+import { createFakeShareStore, type FakeShareStore } from "./fake-share-store";
 import {
   GITHUB_WRITE_LIMITS,
   gitHubCommitCost,
@@ -27,6 +29,11 @@ import {
   type StoredCommit,
 } from "./in-memory-git-repo";
 
+export interface FakeForgeAdapterShares {
+  readonly store: FakeShareStore;
+  readonly provider: ShareLocator["provider"];
+}
+
 export type FailableOperation =
   | "inspect"
   | "initialize"
@@ -37,7 +44,9 @@ export type FailableOperation =
   | "replaceHistory"
   | "listCommits"
   | "findOldestCommit"
-  | "readFileAt";
+  | "readFileAt"
+  | "createShare"
+  | "deleteShare";
 
 function toCommitSummary(sha: string, commit: StoredCommit): CommitSummary {
   return {
@@ -68,6 +77,7 @@ function isStaleCapable(
 export class FakeForgeAdapter implements ForgeAdapter {
   readonly repo: InMemoryGitRepo;
   readonly limits: ForgeWriteLimits = GITHUB_WRITE_LIMITS;
+  readonly shareHost: ShareHost;
   private readonly canWrite: boolean;
   private readonly defaultBranch: string;
   private readonly onContentCreatingRequest:
@@ -83,11 +93,29 @@ export class FakeForgeAdapter implements ForgeAdapter {
     canWrite?: boolean;
     defaultBranch?: string;
     onContentCreatingRequest?: (request: ContentCreatingRequest) => void;
+    shares?: FakeForgeAdapterShares;
   }) {
     this.repo = options?.repo ?? new InMemoryGitRepo();
     this.canWrite = options?.canWrite ?? true;
     this.defaultBranch = options?.defaultBranch ?? MAIN_BRANCH;
     this.onContentCreatingRequest = options?.onContentCreatingRequest;
+    const store = options?.shares?.store ?? createFakeShareStore();
+    const provider = options?.shares?.provider ?? "github";
+    this.shareHost = {
+      create: async (envelope) => {
+        if (!this.canWrite) {
+          throw new ForgeError("Forbidden");
+        }
+        this.throwIfFailing("createShare");
+        this.report({ operation: "createShare" });
+        return store.create(provider, envelope);
+      },
+      delete: async (locator) => {
+        this.throwIfFailing("deleteShare");
+        this.report({ operation: "deleteShare" });
+        store.delete(locator);
+      },
+    };
   }
 
   async pushFromAnotherDevice(

@@ -322,6 +322,8 @@ export function applyChangeToTags(index: TagIndex, change: Change): TagIndex {
     case "create-folder":
     case "set-order":
     case "set-settings":
+    case "add-share":
+    case "remove-share":
       return index;
     default: {
       const unreachable: never = change;

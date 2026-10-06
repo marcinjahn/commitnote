@@ -14,9 +14,11 @@
     text: string;
     dates: NoteDates | null;
     notSaved: boolean;
+    shared?: boolean;
+    onShared?: () => void;
   }
 
-  const { text, dates, notSaved }: Props = $props();
+  const { text, dates, notSaved, shared = false, onShared }: Props = $props();
 
   const WORD_COUNT_DEBOUNCE_MS = 300;
   const NOW_REFRESH_MS = 60_000;
@@ -55,6 +57,13 @@
   {:else}
     {describeWordCount(wordCount)}
   {/if}
+  {#if shared && onShared}
+    <span aria-hidden="true">{" · "}</span><button
+      type="button"
+      class="details-shared"
+      onclick={onShared}>Shared</button
+    >
+  {/if}
 </p>
 
 <style>
@@ -69,6 +78,28 @@
     line-height: var(--line-height);
     color: var(--color-text-muted);
     font-variant-numeric: tabular-nums;
+  }
+
+  .details-shared {
+    display: inline;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .details-shared:hover {
+    text-decoration: underline;
+  }
+
+  @media (pointer: coarse) {
+    .details-shared {
+      padding-block: var(--space-2);
+      margin-block: calc(var(--space-2) * -1);
+    }
   }
 
   .note-dates {

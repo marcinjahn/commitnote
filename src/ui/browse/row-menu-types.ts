@@ -1,5 +1,5 @@
 export type RowAction =
-  "new-note" | "new-folder" | "rename" | "move" | "delete" | "delete-permanently";
+  "new-note" | "new-folder" | "rename" | "move" | "delete" | "delete-permanently" | "share";
 
 export type MenuAnchor =
   | { readonly kind: "rect"; readonly rect: DOMRect }

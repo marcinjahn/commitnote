@@ -23,7 +23,7 @@
     describeRestored,
     UNSAVED_BEFORE_RESTORE_MESSAGE,
   } from "../history/history-messages";
-  import { findWorkingNode } from "../../sync/working-tree";
+  import { findWorkingNode, type WorkingFolder } from "../../sync/working-tree";
   import { findNode } from "../../tree/note-tree";
   import NoteHistoryDialog, {
     type HistoryPhase,
@@ -80,6 +80,15 @@
   import RefreshButton from "./RefreshButton.svelte";
   import SettingsSaveIndicator from "../settings/SettingsSaveIndicator.svelte";
   import { settingsSaveState } from "../../settings/settings-save-state";
+  import ShareDialog from "../share/ShareDialog.svelte";
+  import SharedLinksDialog from "../share/SharedLinksDialog.svelte";
+  import SharedVersionDialog from "../share/SharedVersionDialog.svelte";
+  import { copyText } from "../share/copy-text";
+  import { describeShareError, messageText } from "../share/share-messages";
+  import type { ShareService } from "../../share/share-service";
+  import type { ShareEntry } from "../../share/share-index";
+  import { formatShareLink, shareLinkBase } from "../../share/share-link";
+  import type { ForgeId } from "../../forge/repo-coordinates";
   import TrashDialog from "../trash/TrashDialog.svelte";
   import {
     describeEmptyTrash,
@@ -108,6 +117,8 @@
     forgeName: string;
     passphraseChange: PassphraseChange;
     noteHistory: NoteHistory;
+    shareService: ShareService;
+    forgeId: ForgeId;
     noteDatesResolver: NoteDatesResolver;
     initialMessage?: string | null;
     onPassphraseChanged: (
@@ -129,6 +140,8 @@
     forgeName,
     passphraseChange,
     noteHistory,
+    shareService,
+    forgeId,
     noteDatesResolver,
     initialMessage = null,
     onPassphraseChanged,
@@ -194,6 +207,11 @@
     | { readonly kind: "deleteEntry"; readonly entry: ReadableWorkingTrashEntry }
     | { readonly kind: "empty" };
 
+  const linkBase = shareLinkBase(location);
+  let sharedLinksOpen = $state(false);
+  let sharePath = $state<NotePath | null>(null);
+  let sharedVersionEntry = $state<ShareEntry | null>(null);
+  let revokeEntry = $state<ShareEntry | null>(null);
   let trashOpen = $state(false);
   let trashNow = $state(Date.now());
   let trashDialog = $state<TrashDialogState>({ kind: "none" });
@@ -214,6 +232,7 @@
     | "trash"
     | "place"
     | "tag"
+    | "share"
     | "import"
     | "history"
     | "session";
@@ -223,6 +242,7 @@
     "trash",
     "place",
     "tag",
+    "share",
     "import",
     "history",
     "session",
@@ -373,6 +393,17 @@
       disabled:
         tree === null || engineState.stopped !== null || importing || reading,
       run: () => importInput?.click(),
+    },
+    {
+      id: "shared-links",
+      label: "Shared links",
+      icon: commandIcons.sharedLinks,
+      disabled: tree === null || engineState.stopped !== null || importing,
+      run: () => {
+        settingsSaver.flush();
+        leaveDraft();
+        sharedLinksOpen = true;
+      },
     },
     {
       id: "change-passphrase",
@@ -638,6 +669,49 @@
       nameError = null;
     }
     previousOpenPath = path;
+  });
+
+  let shareSyncedPath: NotePath | null = null;
+
+  function openShareDialog(path: NotePath, syncedPath: NotePath | null): void {
+    sharePath = path;
+    shareSyncedPath = syncedPath;
+  }
+
+  function findBySyncedPath(
+    folder: WorkingFolder,
+    syncedPath: NotePath,
+  ): WorkingNode | undefined {
+    for (const child of folder.children) {
+      if (child.kind === "folder") {
+        const found = findBySyncedPath(child, syncedPath);
+        if (found !== undefined) return found;
+      } else if (
+        child.syncedPath !== null &&
+        notePathEquals(child.syncedPath, syncedPath)
+      ) {
+        return child;
+      }
+    }
+    return undefined;
+  }
+
+  $effect(() => {
+    const path = sharePath;
+    if (path === null || tree === null) return;
+    const current = findWorkingNode(tree, path);
+    const note =
+      current?.kind === "note"
+        ? current
+        : shareSyncedPath === null
+          ? undefined
+          : findBySyncedPath(tree.root, shareSyncedPath);
+    if (note?.kind !== "note") {
+      sharePath = null;
+      return;
+    }
+    shareSyncedPath = note.syncedPath;
+    if (!notePathEquals(note.path, path)) sharePath = note.path;
   });
 
   function noteName(path: NotePath): string {
@@ -993,6 +1067,9 @@
           error: null,
         };
         break;
+      case "share":
+        if (node.kind === "note") openShareDialog(node.path, node.syncedPath);
+        break;
       case "move":
         dialog = { kind: "move", node, error: null };
         break;
@@ -1120,6 +1197,28 @@
 
   function dismissMessage(id: number): void {
     for (const channel of TOAST_ORDER) clearToast(channel, id);
+  }
+
+  async function copyShareText(text: string, copied: string): Promise<boolean> {
+    const ok = await copyText(text);
+    if (ok) showToast("share", copied);
+    else showToast("share", "Couldn't copy. Select the text and copy it.");
+    return ok;
+  }
+
+  function handleOpenSharedNote(entry: ShareEntry): void {
+    if (entry.note.state !== "active") return;
+    sharedLinksOpen = false;
+    void handleSelect(entry.note.path);
+  }
+
+  async function handleRevokeConfirm(): Promise<void> {
+    if (revokeEntry === null) return;
+    const { id } = revokeEntry;
+    revokeEntry = null;
+    const result = await shareService.revokeShare(id);
+    if (result.ok) showToast("share", "Link revoked");
+    else showToast("share", messageText(describeShareError(result.error, forgeId)));
   }
 
   function openTrash(): void {
@@ -1350,7 +1449,11 @@
           historyDisabled={engineState.openNote.kind === "missing" ||
             engineState.openNote.kind === "failed"}
           colorTag={openTreeNote?.colorTag ?? null}
+          shared={openTreeNote?.shared ?? false}
           colorTagDisabled={!(engineState.synced?.tags.writable ?? false)}
+          onShare={openTreeNote !== undefined && !openConflicted
+            ? () => openShareDialog(openTreeNote.path, openTreeNote.syncedPath)
+            : undefined}
           onColorTag={openTreeNote !== undefined && !openConflicted
             ? (color) => handleColorTag(openTreeNote.path, color)
             : undefined}
@@ -1370,6 +1473,10 @@
       onDraftContent={handleDraftContent}
       onNewNote={handleHeaderNewNote}
       noteFont={settings.noteFont}
+      shared={openTreeNote?.shared ?? false}
+      onShared={draft === null && openTreeNote !== undefined && !openConflicted
+        ? () => openShareDialog(openTreeNote.path, openTreeNote.syncedPath)
+        : undefined}
     />
   </section>
 </div>
@@ -1494,6 +1601,68 @@
     onRestore={handleHistoryRestore}
     onRetryPrepare={() => void openHistory()}
     onClose={() => (historyDialog = null)}
+  />
+{/if}
+
+{#if sharePath !== null}
+  <ShareDialog
+    open={true}
+    noteName={noteName(sharePath)}
+    path={sharePath}
+    shares={engineState.shares}
+    {tree}
+    {linkBase}
+    {forgeId}
+    {shareService}
+    onCopyLink={(entry) =>
+      void copyShareText(
+        formatShareLink(linkBase, entry.locator, entry.linkSecret),
+        "Link copied",
+      )}
+    onCopyPassword={(entry) =>
+      void copyShareText(entry.password ?? "", "Password copied")}
+    onCopyText={copyShareText}
+    onViewVersion={(entry) => (sharedVersionEntry = entry)}
+    onRevoke={(entry) => (revokeEntry = entry)}
+    onClose={() => (sharePath = null)}
+  />
+{/if}
+
+<SharedLinksDialog
+  open={sharedLinksOpen}
+  shares={engineState.shares}
+  {tree}
+  {linkBase}
+  onCopyLink={(entry) =>
+    void copyShareText(
+      formatShareLink(linkBase, entry.locator, entry.linkSecret),
+      "Link copied",
+    )}
+  onCopyPassword={(entry) =>
+    void copyShareText(entry.password ?? "", "Password copied")}
+  onViewVersion={(entry) => (sharedVersionEntry = entry)}
+  onOpenNote={handleOpenSharedNote}
+  onRevoke={(entry) => (revokeEntry = entry)}
+  onClose={() => (sharedLinksOpen = false)}
+/>
+
+{#if sharedVersionEntry !== null}
+  <SharedVersionDialog
+    entry={sharedVersionEntry}
+    {noteHistory}
+    {forgeName}
+    noteFont={settings.noteFont}
+    onClose={() => (sharedVersionEntry = null)}
+  />
+{/if}
+
+{#if revokeEntry !== null}
+  <ConfirmDialog
+    title="Revoke link?"
+    body="The link will stop working. People who already opened it may have kept a copy."
+    confirmLabel="Revoke"
+    onConfirm={() => void handleRevokeConfirm()}
+    onClose={() => (revokeEntry = null)}
   />
 {/if}
 

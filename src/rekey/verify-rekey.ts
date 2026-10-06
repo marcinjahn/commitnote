@@ -7,7 +7,12 @@ import {
   type CommitFileChange,
   type TreeEntry,
 } from "../forge/forge-adapter";
-import { NOTE_PREFIX, REPO_CONFIG_PATH } from "../format/v1";
+import { NOTE_PREFIX, REPO_CONFIG_PATH, SHARES_PATH } from "../format/v1";
+import {
+  decryptShareIndex,
+  serializeShareIndex,
+  type ShareIndex,
+} from "../share/share-index";
 
 type RekeyVerificationFailure =
   | "config"
@@ -174,6 +179,28 @@ async function runChecks(input: VerifyRekeyInput): Promise<void> {
       continue;
     }
 
+    if (path === SHARES_PATH) {
+      const oldShares = await decryptShareIndex(oldKeyring, oldText);
+      if (!oldShares.writable) {
+        check(
+          content.kind === "blob"
+            ? content.sha === sourceSha
+            : newText === oldText,
+          "content",
+        );
+        continue;
+      }
+      check(!(await decryptShareIndex(oldKeyring, newText)).writable, "content");
+      const newShares = await decryptShareIndex(newKeyring, newText);
+      check(newShares.writable, "content");
+      check(
+        serializeShareIndex(newShares) ===
+          serializeShareIndex(withoutSources(oldShares)),
+        "content",
+      );
+      continue;
+    }
+
     const plaintext = await tryDecryptNote(oldKeyring, oldText);
     if (plaintext === null) {
       check(!isNotePath, "content");
@@ -191,4 +218,13 @@ async function runChecks(input: VerifyRekeyInput): Promise<void> {
       );
     }
   }
+}
+
+function withoutSources(index: ShareIndex): ShareIndex {
+  return {
+    writable: true,
+    entries: new Map(
+      [...index.entries].map(([id, entry]) => [id, { ...entry, source: null }]),
+    ),
+  };
 }

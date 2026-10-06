@@ -284,6 +284,8 @@ export function applyChangeToOrder(
     case "purge-trash":
     case "set-settings":
     case "set-color-tag":
+    case "add-share":
+    case "remove-share":
       return index;
     default:
       return assertNever(change);

@@ -30,6 +30,7 @@ function accessTokenCreationUrl(now: Date): string {
       "commitnote: reads and saves encrypted notes. Select only your notes repository.",
     expires_in: "365",
     contents: "write",
+    gists: "write",
   });
   return `${TOKEN_CREATION_URL}?${params.toString()}`;
 }
@@ -44,7 +45,7 @@ export function createGitHubProvider(
     id: "github",
     name: "GitHub",
     accessTokenHint:
-      'A fine-grained token for your notes repository only, with "Contents: read and write".',
+      'A fine-grained token for your notes repository only, with "Contents: read and write", and "Gists: read and write" for sharing notes.',
     accessTokenCreationUrl,
     repositoryCreationUrl: () => REPOSITORY_CREATION_URL,
 

@@ -33,6 +33,7 @@ describe("GitHub provider", () => {
     );
     expect(url.searchParams.get("name")).toBe("commitnote 2026-09-30");
     expect(url.searchParams.get("contents")).toBe("write");
+    expect(url.searchParams.get("gists")).toBe("write");
     expect(url.searchParams.get("expires_in")).toBe("365");
   });
 

@@ -1,7 +1,7 @@
 import { ForgeError } from "../errors";
 import { retryAfterMs, sendForgeRequest } from "../forge-http";
 
-const API_BASE = "https://api.github.com";
+export const API_BASE = "https://api.github.com";
 const API_VERSION = "2022-11-28";
 
 export function sendGitHubRequest(

@@ -13,7 +13,7 @@ import {
 } from "../order/order-index";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
 import type { TrashEntry } from "../trash/trash-index";
-import { findRemoteRename } from "../merge/remote-rename";
+import { findRemoteRename, relocateShareEntry } from "../merge/remote-rename";
 import type { ColorTag } from "../tags/color-tag";
 import {
   applyChangeToTags,
@@ -23,6 +23,12 @@ import {
   type TagIndex,
 } from "../tags/tag-index";
 import type { NoteTree, TreeNode } from "../tree/note-tree";
+import {
+  applyChangeToShares,
+  EMPTY_SHARES,
+  isNoteShared,
+  type ShareIndex,
+} from "../share/share-index";
 import type { WorkingTrashEntry } from "./working-trash";
 
 export interface WorkingNote {
@@ -31,6 +37,7 @@ export interface WorkingNote {
   readonly path: NotePath;
   readonly syncedPath: NotePath | null;
   readonly colorTag: ColorTag | null;
+  readonly shared: boolean;
   /** Set for a note restored from a committed trash entry: its content is this blob. */
   readonly trashBlobSha?: string;
 }
@@ -53,6 +60,7 @@ export interface WorkingState {
   readonly trash: readonly WorkingTrashEntry[];
   readonly order: OrderIndex;
   readonly tags: TagIndex;
+  readonly shares: ShareIndex;
 }
 
 interface MutNote {
@@ -94,6 +102,7 @@ interface MutState {
   readonly trash: Map<string, MutTrashEntry>;
   order: OrderIndex;
   tags: TagIndex;
+  shares: ShareIndex;
 }
 
 function assertNever(value: never): never {
@@ -122,6 +131,7 @@ function initialState(
   syncedTrash: readonly TrashEntry[],
   syncedOrder: OrderIndex = EMPTY_ORDER,
   syncedTags: TagIndex = EMPTY_TAGS,
+  syncedShares: ShareIndex = EMPTY_SHARES,
 ): MutState {
   const trash = new Map<string, MutTrashEntry>();
   for (const entry of syncedTrash) {
@@ -150,6 +160,7 @@ function initialState(
     trash,
     order: syncedOrder,
     tags: syncedTags,
+    shares: syncedShares,
   };
 }
 
@@ -215,6 +226,7 @@ function applyChangeOrThrow(state: MutState, change: Change): void {
   applyTreeChangeOrThrow(state, change);
   state.order = applyChangeToOrder(state.order, change);
   state.tags = applyChangeToTags(state.tags, change);
+  state.shares = applyChangeToShares(state.shares, change);
 }
 
 function applyTreeChangeOrThrow(state: MutState, change: Change): void {
@@ -338,6 +350,8 @@ function applyTreeChangeOrThrow(state: MutState, change: Change): void {
       return;
     }
     case "set-settings":
+    case "add-share":
+    case "remove-share":
       return;
     case "set-color-tag":
       if (findMutNode(root, change.path)?.kind !== "note") invalidChange();
@@ -347,15 +361,19 @@ function applyTreeChangeOrThrow(state: MutState, change: Change): void {
   }
 }
 
-type ColorTagLookup = (path: NotePath) => ColorTag | null;
+interface NoteLookups {
+  readonly tagOf: (path: NotePath) => ColorTag | null;
+  readonly sharedOf: (path: NotePath) => boolean;
+}
 
-function finalizeNote(note: MutNote, tagOf: ColorTagLookup): WorkingNote {
+function finalizeNote(note: MutNote, lookups: NoteLookups): WorkingNote {
   const base: WorkingNote = {
     kind: "note",
     name: note.name,
     path: note.path,
     syncedPath: note.syncedPath,
-    colorTag: tagOf(note.path),
+    colorTag: lookups.tagOf(note.path),
+    shared: lookups.sharedOf(note.path),
   };
   return note.trashBlobSha === null
     ? base
@@ -365,7 +383,7 @@ function finalizeNote(note: MutNote, tagOf: ColorTagLookup): WorkingNote {
 function finalize(
   folder: MutFolder,
   order: OrderIndex,
-  tagOf: ColorTagLookup,
+  lookups: NoteLookups,
 ): WorkingFolder {
   const sorted = [...folder.children.values()].sort(
     siblingComparator(order, folder.path),
@@ -376,8 +394,8 @@ function finalize(
     path: folder.path,
     children: sorted.map((child) =>
       child.kind === "folder"
-        ? finalize(child, order, tagOf)
-        : finalizeNote(child, tagOf),
+        ? finalize(child, order, lookups)
+        : finalizeNote(child, lookups),
     ),
   };
 }
@@ -393,12 +411,15 @@ function finalizeTrash(
     )
     .map((entry) => {
       if (entry.undecryptable) return entry;
-      const tagOf: ColorTagLookup = (path) =>
-        trashedColorTagOf(
-          tags,
-          entry.id,
-          path.slice(entry.originalPath.length),
-        );
+      const lookups: NoteLookups = {
+        tagOf: (path) =>
+          trashedColorTagOf(
+            tags,
+            entry.id,
+            path.slice(entry.originalPath.length),
+          ),
+        sharedOf: () => false,
+      };
       return {
         id: entry.id,
         deletedAt: entry.deletedAt,
@@ -408,8 +429,8 @@ function finalizeTrash(
         originalPath: entry.originalPath,
         tree:
           entry.node.kind === "folder"
-            ? finalize(entry.node, EMPTY_ORDER, tagOf)
-            : finalizeNote(entry.node, tagOf),
+            ? finalize(entry.node, EMPTY_ORDER, lookups)
+            : finalizeNote(entry.node, lookups),
       };
     });
 }
@@ -420,20 +441,29 @@ export function buildWorkingState(
   syncedTrash: readonly TrashEntry[] = [],
   syncedOrder: OrderIndex = EMPTY_ORDER,
   syncedTags: TagIndex = EMPTY_TAGS,
+  syncedShares: ShareIndex = EMPTY_SHARES,
 ): WorkingState {
-  const state = initialState(synced, syncedTrash, syncedOrder, syncedTags);
+  const state = initialState(
+    synced,
+    syncedTrash,
+    syncedOrder,
+    syncedTags,
+    syncedShares,
+  );
   for (const change of changes) {
     applyChangeOrThrow(state, change);
   }
   return {
     tree: {
-      root: finalize(state.root, state.order, (path) =>
-        colorTagOf(state.tags, path),
-      ),
+      root: finalize(state.root, state.order, {
+        tagOf: (path) => colorTagOf(state.tags, path),
+        sharedOf: (path) => isNoteShared(state.shares, path),
+      }),
     },
     trash: finalizeTrash(state.trash, state.tags),
     order: state.order,
     tags: state.tags,
+    shares: state.shares,
   };
 }
 
@@ -443,6 +473,7 @@ export function buildWorkingTree(
   syncedTrash: readonly TrashEntry[] = [],
   syncedOrder: OrderIndex = EMPTY_ORDER,
   syncedTags: TagIndex = EMPTY_TAGS,
+  syncedShares: ShareIndex = EMPTY_SHARES,
 ): WorkingTree {
   return buildWorkingState(
     synced,
@@ -450,6 +481,7 @@ export function buildWorkingTree(
     syncedTrash,
     syncedOrder,
     syncedTags,
+    syncedShares,
   ).tree;
 }
 
@@ -499,6 +531,8 @@ function touchesPath(change: Change, path: NotePath): boolean {
     case "purge-trash":
     case "set-order":
     case "set-settings":
+    case "add-share":
+    case "remove-share":
       return false;
   }
 }
@@ -638,6 +672,8 @@ export function localContentAt(
       case "set-order":
       case "set-settings":
       case "set-color-tag":
+      case "add-share":
+      case "remove-share":
         break;
       case "trash-note": {
         const key = JSON.stringify(change.path);
@@ -857,8 +893,27 @@ export function rebaseChanges(
         break;
       }
       case "set-settings":
+      case "remove-share":
         kept.push(change);
         break;
+      case "add-share": {
+        const isNote = (path: NotePath) =>
+          findMutNode(root, path)?.kind === "note";
+        const entry = relocateShareEntry(
+          change.entry,
+          (path) => {
+            if (isNote(path)) return path;
+            const renamed =
+              remoteBase === undefined
+                ? null
+                : findRemoteRename(remoteBase, synced, path);
+            return renamed !== null && isNote(renamed) ? renamed : null;
+          },
+          syncedTrash,
+        );
+        kept.push({ ...change, entry });
+        break;
+      }
       case "set-color-tag": {
         if (findMutNode(root, change.path)?.kind === "note") {
           kept.push(change);

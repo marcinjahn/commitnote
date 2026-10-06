@@ -10,6 +10,7 @@ import {
   FORMAT_VERSION,
   INITIALIZE_SUBJECT,
   ORDER_PATH,
+  SHARES_PATH,
   TAGS_PATH,
   REPO_CONFIG_PATH,
   SAVE_SUBJECT,
@@ -29,6 +30,11 @@ import {
   type TagIndex,
 } from "../tags/tag-index";
 import {
+  applyChangeToShares,
+  serializeShareIndex,
+  type ShareIndex,
+} from "../share/share-index";
+import {
   applySettingsEdits,
   changedSettingKeys,
   type SettingsEdits,
@@ -45,6 +51,8 @@ export interface EncodeChangeSetInput {
   readonly order: OrderIndex;
   /** The tag index stored in `listing`. */
   readonly tags: TagIndex;
+  /** The share index stored in `listing`. */
+  readonly shares: ShareIndex;
   readonly keyring: Keyring;
   readonly random?: RandomSource;
   /** The parsed config at the head of `listing`; required for `set-settings`. */
@@ -332,6 +340,17 @@ async function applyChange(
       if (!working.has(stored)) fail();
       break;
     }
+    case "add-share": {
+      if (change.entry.note.state === "active") {
+        const stored = await storedPathOf(change.entry.note.path);
+        if (!working.has(stored)) fail();
+      }
+      trailers.push(`${TRAILER.share}: add`);
+      break;
+    }
+    case "remove-share":
+      trailers.push(`${TRAILER.share}: remove`);
+      break;
     case "set-settings": {
       const values: unknown = change.values;
       if (
@@ -376,6 +395,7 @@ export async function encodeChangeSet(
   const { listing, changeSet, keyring, random, config } = input;
   let order = input.order;
   let tags = input.tags;
+  let shares = input.shares;
 
   if (changeSet.length === 0) {
     throw new InvalidChangeSetError("Change set must not be empty");
@@ -413,6 +433,7 @@ export async function encodeChangeSet(
     }
     order = applyChangeToOrder(order, change);
     tags = applyChangeToTags(tags, change);
+    shares = applyChangeToShares(shares, change);
   }
 
   if (settingsEdits !== undefined && config !== undefined) {
@@ -445,6 +466,17 @@ export async function encodeChangeSet(
     working.set(TAGS_PATH, {
       kind: "text",
       text: serializeTagIndex(tags),
+      encrypt: true,
+    });
+  }
+
+  if (
+    shares.writable &&
+    serializeShareIndex(shares) !== serializeShareIndex(input.shares)
+  ) {
+    working.set(SHARES_PATH, {
+      kind: "text",
+      text: serializeShareIndex(shares),
       encrypt: true,
     });
   }

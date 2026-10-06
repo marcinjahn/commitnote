@@ -5,6 +5,11 @@ const FOLDER_OUTLINE =
 
 const TRASH_CAN = "M2.5 4.5h11M6.5 2.25h3M4 4.5l.75 9.25h6.5L12 4.5";
 
+const LINK = [
+  "M6.75 9.25a2.5 2.5 0 0 0 3.54 0l2.5-2.5a2.5 2.5 0 0 0-3.54-3.54l-.75.75",
+  "M9.25 6.75a2.5 2.5 0 0 0-3.54 0l-2.5 2.5a2.5 2.5 0 0 0 3.54 3.54l.75-.75",
+] as const;
+
 export const actionIcons = {
   "new-note": [
     "M4.5 1.75h7a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5h-7a1.5 1.5 0 0 1-1.5-1.5v-9.5a1.5 1.5 0 0 1 1.5-1.5z",
@@ -15,6 +20,7 @@ export const actionIcons = {
   move: [FOLDER_OUTLINE, "M5.5 8.75h5M8.5 6.75l2 2-2 2"],
   delete: [TRASH_CAN],
   "delete-permanently": [TRASH_CAN],
+  share: LINK,
 } as const satisfies Record<RowAction, readonly string[]>;
 
 export const commandIcons = {
@@ -28,6 +34,7 @@ export const commandIcons = {
     "M3.75 7.25h8.5a.75.75 0 0 1 .75.75v5a.75.75 0 0 1-.75.75h-8.5a.75.75 0 0 1-.75-.75V8a.75.75 0 0 1 .75-.75z",
     "M5.25 7.25V5a2.75 2.75 0 0 1 5.5 0v2.25",
   ],
+  sharedLinks: LINK,
   logOut: [
     "M6.25 2.5H3.25a.75.75 0 0 0-.75.75v9.5c0 .41.34.75.75.75h3",
     "M6.5 8h7M10.75 5.25 13.5 8l-2.75 2.75",
@@ -39,6 +46,11 @@ export const noteIcons = {
     "M2.75 8a5.25 5.25 0 1 0 1.54-3.71L2.5 6.1",
     "M2.5 2.85V6.1h3.25",
     "M8 5.25V8l1.9 1.4",
+  ],
+  share: LINK,
+  lock: [
+    "M3.75 7.25h8.5a.75.75 0 0 1 .75.75v5a.75.75 0 0 1-.75.75h-8.5a.75.75 0 0 1-.75-.75V8a.75.75 0 0 1 .75-.75z",
+    "M5.25 7.25V5a2.75 2.75 0 0 1 5.5 0v2.25",
   ],
   tag: ["M2.5 2.5h5.3l6.2 6.2-5.3 5.3-6.2-6.2z", "M5.25 5.25h.01"],
 } as const;

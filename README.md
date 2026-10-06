@@ -110,8 +110,11 @@ fixture state resets on reload. Test mode is never part of `npm run build`, whic
 ## Logging in
 
 1. Paste a fine-grained access token. "Create a token on GitHub" opens GitHub's token form with the
-   name, a one-year expiry and the "Contents: read and write" permission already filled in; you
-   only choose the notes repository there.
+   name, a one-year expiry and the "Contents: read and write" and "Gists: read and write"
+   permissions already filled in; you only choose the notes repository there. Sharing needs the
+   account permission "Gists: read and write" (classic tokens: the `gist` scope); an existing token
+   can be edited to add it without logging in again. GitLab tokens need the `api` scope, which
+   already covers sharing.
    No notes repo yet? The link under the token field opens the host's form for a new private
    repository; create it empty (or with only a README, LICENSE or .gitignore) and give the token
    access to it.
@@ -163,6 +166,22 @@ next time.
 - A conflicting change opens the conflict view, where you choose Keep mine, Keep theirs, or Edit
   merged.
 - Notices report failures, retries, and other sync events as they happen.
+
+## Sharing notes
+
+A share is an encrypted, fixed copy of a saved note, uploaded as a secret gist (GitHub) or public
+snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu, or the Share button in its header, to create a share link
+(`<app URL>#share=...`).
+
+- The link's secret stays in the URL fragment, so it never reaches a server. An optional share
+  password is then needed in addition to the link.
+- "Shared links" in the command menu lists your shares. The list is stored encrypted in
+  `.commitnote/shares`, so it is the same on every device.
+- Revoking a share deletes its gist or snippet, and the link stops working. Shares never expire.
+- After a passphrase change, existing links keep working, but "View shared version" can no longer
+  show the old version.
+- GitLab sharing is blocked by the production Content Security Policy like the rest of GitLab
+  (known issue).
 
 ## Production build
 

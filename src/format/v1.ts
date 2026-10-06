@@ -8,6 +8,7 @@ export const FOLDER_MARKER = ".keep";
 export const TRASH_DIR = ".commitnote/trash";
 export const ORDER_PATH = ".commitnote/order";
 export const TAGS_PATH = ".commitnote/tags";
+export const SHARES_PATH = ".commitnote/shares";
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const CIPHER_ID = "AES-256-GCM";
@@ -59,4 +60,5 @@ export const TRAILER = {
   purge: "Commitnote-Purge",
   order: "Commitnote-Order",
   settings: "Commitnote-Settings",
+  share: "Commitnote-Share",
 } as const;

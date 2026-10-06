@@ -3,6 +3,7 @@ import { MAIN_BRANCH } from "../../format/v1";
 import type {
   ContractOperation,
   ContractSeed,
+  ContractShareOperation,
   ContractSubject,
   ForgeContractHarness,
 } from "../contract/forge-adapter-contract";
@@ -70,6 +71,16 @@ function forceStale(operation: ContractOperation): void {
   throw new Error(`'stale' is not supported for '${operation}'`);
 }
 
+const SHARE_FAILURE_MATCH: Record<
+  ContractShareOperation,
+  { method: string; pathPattern: RegExp }
+> = {
+  createShare: { method: "POST", pathPattern: /\/snippets$/ },
+  deleteShare: { method: "DELETE", pathPattern: /\/snippets\// },
+};
+
+const mocks = new WeakMap<ContractSubject, MockGitLabRepo>();
+
 function buildSubject(mock: MockGitLabRepo): ContractSubject {
   getServer().use(...mock.handlers());
 
@@ -83,7 +94,7 @@ function buildSubject(mock: MockGitLabRepo): ContractSubject {
     },
   );
 
-  return {
+  const subject: ContractSubject = {
     adapter,
     contentCreatingRequests,
     ...inMemorySubjectHooks(mock.git),
@@ -94,10 +105,23 @@ function buildSubject(mock: MockGitLabRepo): ContractSubject {
       }
       mock.failNext(FAILURE_MATCH[operation], toMockFailure(failure));
     },
+    failNextShare(operation, failure) {
+      if (failure.kind === "stale") {
+        throw new Error("'stale' is not supported for shares");
+      }
+      mock.failNext(SHARE_FAILURE_MATCH[operation], toMockFailure(failure));
+    },
   };
+  mocks.set(subject, mock);
+  return subject;
 }
 
 const harness: ForgeContractHarness = {
+  async readShare(subject, locator) {
+    if (locator.provider !== "gitlab") throw new Error("unexpected provider");
+    return mocks.get(subject)?.snippetContent(locator.snippetId) ?? null;
+  },
+
   async createEmpty(options) {
     return buildSubject(
       new MockGitLabRepo({
