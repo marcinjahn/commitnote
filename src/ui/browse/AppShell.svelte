@@ -1895,7 +1895,8 @@
     display: contents;
   }
 
-  .toast-host:global([data-moving]) :global(.toast) {
+  .toast-host:global([data-moving]) :global(.toast),
+  .toast-host:global([data-moving]) :global(.toast *) {
     transition: none;
   }
 

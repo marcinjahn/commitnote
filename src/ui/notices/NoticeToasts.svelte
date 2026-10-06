@@ -8,6 +8,7 @@
     type ToastMessage,
     type ToastTone,
   } from "./notice-messages";
+  import { dismissIcon, toneIcons } from "./tone-icons";
 
   interface Props {
     notices: readonly EngineNotice[];
@@ -131,32 +132,49 @@
       onfocusin={() => pause(toast.key)}
       onfocusout={(event) => handleFocusOut(event, toast.key)}
     >
+      <svg
+        class="icon tone-icon"
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+        focusable="false"
+      >
+        {#each toneIcons[toast.tone] as d (d)}<path {d} />{/each}
+      </svg>
       <p class="text">{toast.text}</p>
-      <div class="actions">
-        {#if toast.action}
-          <button
-            type="button"
-            class="button"
-            data-testid="toast-action"
-            onclick={() => handleAction(toast)}
-          >
-            {toast.action.label}
-          </button>
-        {/if}
-        {#if toast.conflict !== null && onOpen}
-          <button type="button" class="button" onclick={() => handleOpen(toast)}>
-            Open note
-          </button>
-        {/if}
-        <button
-          type="button"
-          class="button button-ghost"
-          aria-label="Dismiss notice"
-          onclick={toast.dismiss}
+      <button
+        type="button"
+        class="button button-ghost dismiss"
+        aria-label="Dismiss notice"
+        onclick={toast.dismiss}
+      >
+        <svg
+          class="icon"
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+          focusable="false"
         >
-          Dismiss
-        </button>
-      </div>
+          {#each dismissIcon as d (d)}<path {d} />{/each}
+        </svg>
+      </button>
+      {#if toast.action || (toast.conflict !== null && onOpen)}
+        <div class="actions">
+          {#if toast.action}
+            <button
+              type="button"
+              class="button"
+              data-testid="toast-action"
+              onclick={() => handleAction(toast)}
+            >
+              {toast.action.label}
+            </button>
+          {/if}
+          {#if toast.conflict !== null && onOpen}
+            <button type="button" class="button" onclick={() => handleOpen(toast)}>
+              Open note
+            </button>
+          {/if}
+        </div>
+      {/if}
     </div>
   {/each}
 </div>
@@ -181,15 +199,22 @@
   }
 
   .toast {
+    --toast-tone: var(--color-text-muted);
     pointer-events: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    column-gap: var(--space-2);
+    align-items: start;
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height);
+    padding: var(--space-3);
+    padding-left: calc(var(--space-3) + 2px);
     background: var(--color-surface-raised);
     border: var(--hairline) solid var(--color-border);
     border-radius: var(--radius);
-    box-shadow: var(--shadow-2);
+    box-shadow:
+      inset 2px 0 0 var(--toast-tone),
+      var(--shadow-1);
     transition:
       opacity var(--motion-duration) var(--motion-easing),
       transform var(--motion-duration) var(--motion-easing);
@@ -202,16 +227,82 @@
     }
   }
 
+  .toast[data-tone="success"] {
+    --toast-tone: var(--color-tone-success);
+  }
+
+  .toast[data-tone="info"] {
+    --toast-tone: var(--color-tone-info);
+  }
+
+  .toast[data-tone="warning"] {
+    --toast-tone: var(--color-tone-warning);
+    background: color-mix(in srgb, var(--toast-tone) 5%, var(--color-surface-raised));
+  }
+
+  .toast[data-tone="error"] {
+    --toast-tone: var(--color-tone-error);
+    background: color-mix(in srgb, var(--toast-tone) 5%, var(--color-surface-raised));
+  }
+
+  .tone-icon {
+    color: var(--toast-tone);
+    margin-block: calc((1lh - var(--icon-size)) / 2);
+  }
+
+  .toast[data-tone="info"] .tone-icon {
+    color: var(--color-text-muted);
+  }
+
   .text {
     margin: 0;
     font-size: var(--font-size-sm);
+    color: var(--color-text);
     overflow-wrap: anywhere;
   }
 
+  .dismiss {
+    --toast-dismiss-size: 32px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--toast-dismiss-size);
+    height: var(--toast-dismiss-size);
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    margin-block: calc((1lh - var(--toast-dismiss-size)) / 2);
+    margin-inline-end: calc(var(--space-2) * -1);
+    color: var(--color-text-muted);
+  }
+
+  @media (pointer: coarse) {
+    .dismiss {
+      --toast-dismiss-size: var(--touch-target);
+    }
+  }
+
+  .dismiss:hover {
+    color: var(--color-text);
+    background: color-mix(
+      in srgb,
+      var(--color-text) 14%,
+      var(--color-surface-raised)
+    );
+  }
+
+  .dismiss .icon {
+    width: 12px;
+    height: 12px;
+  }
+
   .actions {
+    grid-column: 2 / -1;
     display: flex;
     justify-content: flex-end;
     gap: var(--space-2);
+    margin-top: var(--space-2);
   }
 
   .actions .button {
