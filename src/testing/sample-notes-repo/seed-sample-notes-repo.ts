@@ -9,6 +9,7 @@ import {
 import type { ForgeAdapterOptions } from "../../forge/forge-adapter";
 import type { SampleNotesRepo } from "./generate-sample-notes-repo";
 import sampleNotesRepoJson from "./sample-notes-repo.json";
+import sampleSearchRepoJson from "./sample-search-repo.json";
 import sampleTrashRepoJson from "./sample-trash-repo.json";
 
 // Each commit's `files` has a different literal key set, so TS infers a
@@ -21,12 +22,19 @@ export const sampleNotesRepo: SampleNotesRepo =
 export const sampleTrashRepo: SampleNotesRepo =
   sampleTrashRepoJson as unknown as SampleNotesRepo;
 
+export const sampleSearchRepo: SampleNotesRepo =
+  sampleSearchRepoJson as unknown as SampleNotesRepo;
+
 export function createSampleNotesRepoAdapter(options?: SampleRepoAdapterOptions) {
   return createAdapterFor(sampleNotesRepo, options);
 }
 
 export function createSampleTrashRepoAdapter(options?: SampleRepoAdapterOptions) {
   return createAdapterFor(sampleTrashRepo, options);
+}
+
+export function createSampleSearchRepoAdapter(options?: SampleRepoAdapterOptions) {
+  return createAdapterFor(sampleSearchRepo, options);
 }
 
 interface SampleRepoAdapterOptions {

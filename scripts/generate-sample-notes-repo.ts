@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   generateSampleNotesRepo,
+  generateSampleSearchRepo,
   generateSampleTrashRepo,
 } from "../src/testing/sample-notes-repo/generate-sample-notes-repo";
 
@@ -14,6 +15,7 @@ async function main(): Promise<void> {
   const outputs = [
     ["sample-notes-repo.json", await generateSampleNotesRepo()],
     ["sample-trash-repo.json", await generateSampleTrashRepo()],
+    ["sample-search-repo.json", await generateSampleSearchRepo()],
   ] as const;
   for (const [file, repo] of outputs) {
     await writeFile(

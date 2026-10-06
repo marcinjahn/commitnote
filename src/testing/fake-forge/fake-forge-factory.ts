@@ -46,6 +46,7 @@ import {
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../sample-notes-repo/sample-source";
 import {
   createSampleNotesRepoAdapter,
+  createSampleSearchRepoAdapter,
   createSampleTrashRepoAdapter,
   sampleNotesRepo,
 } from "../sample-notes-repo/seed-sample-notes-repo";
@@ -207,6 +208,7 @@ export async function createFakeForge(options?: {
     ],
     ["sample/foreign", await createForeignRepoAdapter(githubShares)],
     ["sample/newer", await createNewerRepoAdapter(githubShares)],
+    ["sample/search", await createSampleSearchRepoAdapter({ shares: githubShares })],
     ["sample/trash", await createSampleTrashRepoAdapter({ shares: githubShares })],
     ["sample/almost-empty", await createAlmostEmptyRepoAdapter(githubShares)],
     ["sample/public-empty", new FakeForgeAdapter({ shares: githubShares })],

@@ -26,6 +26,9 @@ import {
   sampleNotesRepoOrder,
   sampleNotesRepoSource,
   sampleNotesRepoTags,
+  sampleSearchRepoSource,
+  sampleSearchRepoTags,
+  sampleSearchRepoTrashed,
   sampleTrashRepoSource,
   sampleTrashRepoTrashed,
   type SampleEntry,
@@ -44,6 +47,7 @@ export interface SampleNotesRepo {
 
 const SEED = 0x676e6f74;
 const TRASH_SEED = 0x74726173;
+const SEARCH_SEED = 0x73656172;
 const README_TEXT = "# Notes\n\nThis repository is managed by commitnote.\n";
 
 /** mulberry32: a small, deterministic 32-bit PRNG, used only to make the fixture reproducible. */
@@ -129,6 +133,16 @@ export function generateSampleTrashRepo(): Promise<SampleNotesRepo> {
     sampleTrashRepoTrashed,
     [],
     [],
+  );
+}
+
+export function generateSampleSearchRepo(): Promise<SampleNotesRepo> {
+  return generateRepo(
+    SEARCH_SEED,
+    sampleSearchRepoSource,
+    sampleSearchRepoTrashed,
+    [],
+    sampleSearchRepoTags,
   );
 }
 
