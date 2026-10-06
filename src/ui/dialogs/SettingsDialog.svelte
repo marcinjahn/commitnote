@@ -22,7 +22,7 @@
   }: Props = $props();
 </script>
 
-<Dialog open={true} title="Settings" {onClose} closeButton accentBorder>
+<Dialog open={true} title="Settings" {onClose} closeButton accentBorder desktopLarge>
   {#snippet headerStatus()}
     <SettingsSaveStatus {saveState} {onRetry} />
   {/snippet}
@@ -38,5 +38,11 @@
   .settings-section-title {
     margin: var(--space-3) 0 var(--space-2);
     font-size: var(--font-size-base);
+  }
+
+  @media (min-width: 768px) {
+    .settings-section-title {
+      margin-top: var(--space-4);
+    }
   }
 </style>

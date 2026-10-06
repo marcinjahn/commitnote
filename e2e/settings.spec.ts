@@ -774,6 +774,26 @@ test("hover takes precedence over focus, and focus over the selection", async ({
   await expectFamily(page, preview, NOTE_FONTS["Source Serif 4"].stack);
 });
 
+test("on desktop the Settings dialog uses the large width", async ({ page }) => {
+  const dialog = await openSettings(page);
+  const box = await dialog.locator(".dialog-card").boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(600);
+});
+
+test("on mobile the Settings dialog stays a bottom sheet spanning the viewport width", { tag: "@mobile-only" }, async ({
+  page,
+}) => {
+  const dialog = await openSettings(page);
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("no viewport");
+  await expect
+    .poll(async () => {
+      const box = await dialog.boundingBox();
+      return box && [Math.round(box.x), Math.round(box.width), Math.round(box.y + box.height)];
+    })
+    .toEqual([0, viewport.width, viewport.height]);
+});
+
 test("on mobile the font preview stays visible while the font list scrolls and does not cover the placement options", { tag: "@mobile-only" }, async ({
   page,
 }) => {

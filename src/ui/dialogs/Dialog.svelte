@@ -12,6 +12,8 @@
     large?: boolean;
     /** Full screen on mobile; a wide, fixed-height card on desktop whose content scrolls itself. */
     wide?: boolean;
+    /** Large width on desktop only; mobile keeps the bottom sheet. Ignored with `large` or `wide`. */
+    desktopLarge?: boolean;
     closeButton?: boolean;
     accentBorder?: boolean;
     swipeToClose?: boolean;
@@ -26,12 +28,14 @@
     headerStatus,
     large: largeProp = false,
     wide = false,
+    desktopLarge: desktopLargeProp = false,
     closeButton = false,
     accentBorder = false,
     swipeToClose: swipeEnabled = true,
   }: Props = $props();
 
   const large = $derived(largeProp || wide);
+  const desktopLarge = $derived(desktopLargeProp && !large);
   const uid = $props.id();
   const titleId = `dialog-title-${uid}`;
 
@@ -88,11 +92,17 @@
   class="dialog"
   class:large
   class:wide
+  class:desktop-large={desktopLarge}
   aria-labelledby={titleId}
   oncancel={handleCancel}
   onclick={handleBackdropClick}
 >
-  <div class="dialog-card" class:large class:wide class:accent-border={accentBorder}>
+  <div
+    class="dialog-card"
+    class:large
+    class:wide
+    class:desktop-large={desktopLarge}
+    class:accent-border={accentBorder}>
     <div
       class="dialog-header"
       class:swipeable={swipeEnabled}
@@ -338,6 +348,14 @@
 
     .dialog-card.accent-border {
       border-bottom-color: var(--color-accent);
+    }
+
+    .dialog.desktop-large {
+      max-width: var(--dialog-width-large);
+    }
+
+    .dialog-card.desktop-large {
+      --dialog-card-padding-inline: var(--space-5);
     }
 
     .dialog.large {
