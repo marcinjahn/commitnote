@@ -183,7 +183,7 @@
     background: var(--color-surface-raised);
     color: var(--color-text);
     box-shadow: var(--shadow-3);
-    border: var(--hairline) solid var(--color-border);
+    border: var(--hairline) solid light-dark(var(--color-border), var(--color-border-strong));
     border-bottom: none;
     border-radius: var(--radius) var(--radius) 0 0;
     padding: var(--dialog-card-padding-top) var(--dialog-card-padding-inline);
@@ -348,7 +348,7 @@
     .dialog-card.large {
       height: auto;
       max-height: 80dvh;
-      border: var(--hairline) solid var(--color-border);
+      border: var(--hairline) solid light-dark(var(--color-border), var(--color-border-strong));
       border-radius: var(--radius);
       padding-top: var(--space-5);
     }

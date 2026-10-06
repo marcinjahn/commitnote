@@ -176,7 +176,7 @@
     min-width: var(--menu-min-width);
     padding: var(--space-1) 0;
     border-radius: var(--radius);
-    border: var(--hairline) solid var(--color-border);
+    border: var(--hairline) solid light-dark(var(--color-border), var(--color-border-strong));
     background: var(--color-surface-raised);
     box-shadow: var(--shadow-1);
     transition: opacity var(--motion-duration) var(--motion-easing);

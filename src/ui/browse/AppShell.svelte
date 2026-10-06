@@ -1735,9 +1735,15 @@
     inset: var(--space-2);
     z-index: 1;
     border-radius: 12px;
-    background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+    background: light-dark(
+      color-mix(in srgb, var(--color-accent) 5%, transparent),
+      color-mix(in srgb, var(--color-accent) 9%, transparent)
+    );
     box-shadow: inset 0 0 0 1.5px
-      color-mix(in srgb, var(--color-accent) 55%, transparent);
+      light-dark(
+        color-mix(in srgb, var(--color-accent) 55%, transparent),
+        color-mix(in srgb, var(--color-accent) 70%, transparent)
+      );
     opacity: 0;
     scale: 0.985;
     pointer-events: none;
@@ -1749,14 +1755,6 @@
   .note-pane:global([data-note-drop])::after {
     opacity: 1;
     scale: 1;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .note-pane::after {
-      background: color-mix(in srgb, var(--color-accent) 9%, transparent);
-      box-shadow: inset 0 0 0 1.5px
-        color-mix(in srgb, var(--color-accent) 70%, transparent);
-    }
   }
 
   .sidebar,

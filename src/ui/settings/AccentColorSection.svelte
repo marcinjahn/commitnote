@@ -106,7 +106,7 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: var(--swatch-light);
+    background: light-dark(var(--swatch-light), var(--swatch-dark));
     transition: box-shadow var(--motion-duration) var(--motion-easing);
   }
 
@@ -156,11 +156,5 @@
   .accent-caption strong {
     color: var(--color-text);
     font-weight: 500;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .accent-circle {
-      background: var(--swatch-dark);
-    }
   }
 </style>
