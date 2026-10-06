@@ -3,6 +3,7 @@ import type { NotePath } from "../../changes/change";
 import {
   hitTestDrop,
   hitTestNoteArea,
+  hitTestTrashArea,
   type DropRow,
   type DropScene,
 } from "./tree-drop";
@@ -311,5 +312,39 @@ describe("hitTestNoteArea", () => {
     expect(
       hitTestNoteArea({ left: 0, top: 0, right: 0, bottom: 0 }, "note", 0, 0),
     ).toBe("outside");
+  });
+});
+
+describe("hitTestTrashArea", () => {
+  const AREA = { left: 10, top: 20, right: 110, bottom: 60 };
+
+  it("hits a point inside the area", () => {
+    expect(hitTestTrashArea(AREA, 50, 40)).toBe(true);
+  });
+
+  it("misses points left of, above, right of and below the area", () => {
+    expect(hitTestTrashArea(AREA, 9, 40)).toBe(false);
+    expect(hitTestTrashArea(AREA, 50, 19)).toBe(false);
+    expect(hitTestTrashArea(AREA, 111, 40)).toBe(false);
+    expect(hitTestTrashArea(AREA, 50, 61)).toBe(false);
+  });
+
+  it("includes the left and top edges and excludes the right and bottom edges", () => {
+    expect(hitTestTrashArea(AREA, 10, 20)).toBe(true);
+    expect(hitTestTrashArea(AREA, 110, 40)).toBe(false);
+    expect(hitTestTrashArea(AREA, 50, 60)).toBe(false);
+  });
+
+  it("misses when there is no area", () => {
+    expect(hitTestTrashArea(null, 50, 40)).toBe(false);
+  });
+
+  it("misses when the area has no width or no height", () => {
+    expect(
+      hitTestTrashArea({ left: 10, top: 20, right: 10, bottom: 60 }, 10, 40),
+    ).toBe(false);
+    expect(
+      hitTestTrashArea({ left: 10, top: 20, right: 110, bottom: 20 }, 50, 20),
+    ).toBe(false);
   });
 });

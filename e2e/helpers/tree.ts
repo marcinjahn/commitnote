@@ -83,3 +83,56 @@ export async function waitForSynced(page: Page): Promise<void> {
   await flushPendingSaves(page);
   await expect(headerSyncIcon(page)).toHaveCount(0, { timeout: 15_000 });
 }
+
+export interface DropPoint {
+  /** Fraction of the target row's height. */
+  readonly y: number;
+  /** Pointer x from the row's left edge; defaults to the middle. */
+  readonly x?: number;
+}
+
+// Presses the row, moves past the drag threshold and on to the drop point
+// on `target`, holding the drag there.
+export async function hoverDrag(
+  page: Page,
+  source: Locator,
+  target: Locator,
+  point: DropPoint,
+): Promise<void> {
+  const from = (await source.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  const startX = from.x + 40;
+  const startY = from.y + from.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 8, startY + 8, { steps: 2 });
+  await expect(page.locator("[data-drag-state='dragging']")).toHaveCount(1);
+  await page.mouse.move(
+    to.x + (point.x ?? to.width / 2),
+    to.y + to.height * point.y,
+    { steps: 10 },
+  );
+}
+
+export async function release(page: Page): Promise<void> {
+  await page.mouse.up();
+  await expect(page.locator("[data-drag-state]")).toHaveCount(0);
+}
+
+export async function liftRow(page: Page, source: Locator): Promise<void> {
+  const from = (await source.boundingBox())!;
+  const startX = from.x + 40;
+  const startY = from.y + from.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 8, startY + 8, { steps: 2 });
+  await expect(page.locator("[data-drag-state='dragging']")).toHaveCount(1);
+}
+
+export async function hoverOnto(page: Page, target: Locator): Promise<void> {
+  await expect(target).toBeVisible();
+  const to = (await target.boundingBox())!;
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, {
+    steps: 10,
+  });
+}

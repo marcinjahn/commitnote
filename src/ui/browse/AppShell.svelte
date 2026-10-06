@@ -128,6 +128,7 @@
     isNarrowLayout,
   } from "./drag-motion";
   import { playViewSlide } from "../note/switch-motion-driver";
+  import { trashReveal } from "./trash-reveal";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
@@ -844,6 +845,22 @@
     void handleSelect(path);
   }
 
+  let trashButtonEl = $state<HTMLButtonElement | null>(null);
+  let treeDragActive = $state(false);
+
+  function trashDropArea(): HTMLElement | null {
+    return trashButtonEl;
+  }
+
+  function handleDropTrash(path: NotePath): void {
+    const node = tree === null ? undefined : findWorkingNode(tree, path);
+    if (node) requestTrash(node);
+  }
+
+  function handleTreeDragState(active: boolean): void {
+    treeDragActive = active;
+  }
+
   function handleBack(): void {
     leaveDraft();
     mobileView = "tree";
@@ -1532,6 +1549,9 @@
       onPlace={handlePlace}
       {noteDropArea}
       onDropOpen={handleDropOpen}
+      {trashDropArea}
+      onTrash={handleDropTrash}
+      onDragStateChange={handleTreeDragState}
       onAction={handleTreeAction}
       tagsWritable={engineState.synced?.tags.writable ?? false}
       onColorTag={handleColorTag}
@@ -1542,9 +1562,10 @@
         {describeUndecryptableFiles(engineState.synced?.undecryptableFiles ?? 0)}
       </p>
     {/if}
-    {#if trashEntries.length > 0}
-      <div class="trash-slot">
+    {#if trashEntries.length > 0 || treeDragActive}
+      <div class="trash-slot" transition:trashReveal>
         <button
+          bind:this={trashButtonEl}
           type="button"
           class="trash-row"
           data-testid="open-trash"
@@ -1556,7 +1577,9 @@
             {/each}
           </svg>
           <span class="trash-label">Trash</span>
-          <span class="trash-count">({trashEntries.length})</span>
+          {#if trashEntries.length > 0}
+            <span class="trash-count">({trashEntries.length})</span>
+          {/if}
         </button>
       </div>
     {/if}
@@ -2025,13 +2048,24 @@
     text-align: left;
     cursor: pointer;
     transition:
-      background-color var(--motion-duration) var(--motion-easing),
-      color var(--motion-duration) var(--motion-easing);
+      background-color 200ms var(--motion-easing),
+      color 200ms var(--motion-easing),
+      box-shadow 200ms var(--motion-easing);
   }
 
   .trash-row:hover {
     background: var(--color-hover);
     color: var(--color-text);
+  }
+
+  .trash-row:global([data-trash-drop]) {
+    background: light-dark(
+      color-mix(in srgb, var(--color-accent) 16%, transparent),
+      color-mix(in srgb, var(--color-accent) 22%, transparent)
+    );
+    color: var(--color-text);
+    box-shadow: inset 0 0 0 1.5px
+      color-mix(in srgb, var(--color-accent) 70%, transparent);
   }
 
   .trash-row:focus-visible {

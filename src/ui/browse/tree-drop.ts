@@ -185,3 +185,19 @@ export function hitTestNoteArea(
   }
   return draggedKind === "note" ? "open" : "none";
 }
+
+export function hitTestTrashArea(
+  area: AreaRect | null,
+  x: number,
+  y: number,
+): boolean {
+  return (
+    area !== null &&
+    area.right > area.left &&
+    area.bottom > area.top &&
+    x >= area.left &&
+    x < area.right &&
+    y >= area.top &&
+    y < area.bottom
+  );
+}

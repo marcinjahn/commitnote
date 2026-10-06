@@ -24,6 +24,9 @@
     onPlace: (path: NotePath, target: DropTarget) => NotePath | null;
     noteDropArea: () => HTMLElement | null;
     onDropOpen: (path: NotePath) => void;
+    trashDropArea: () => HTMLElement | null;
+    onTrash: (path: NotePath) => void;
+    onDragStateChange: (active: boolean) => void;
     onAction: (action: RowAction, node: WorkingNode) => void;
     tagsWritable: boolean;
     onColorTag: (path: NotePath, color: ColorTag | null) => void;
@@ -41,6 +44,9 @@
     onPlace,
     noteDropArea,
     onDropOpen,
+    trashDropArea,
+    onTrash,
+    onDragStateChange,
     onAction,
     tagsWritable,
     onColorTag,
@@ -131,6 +137,9 @@
     onDrop: (path, target) => onPlace(path, target),
     noteArea: () => noteDropArea(),
     onOpen: (path) => onDropOpen(path),
+    trashArea: () => trashDropArea(),
+    onTrash: (path) => onTrash(path),
+    onDragStateChange: (active) => onDragStateChange(active),
     onMenu(row, x, y) {
       const current = tree;
       if (current === null) return;

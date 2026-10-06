@@ -114,3 +114,27 @@ test("a tap still opens the note", { tag: "@mobile-only" }, async ({ page }) => 
 
   await expect(editor(page)).toBeVisible();
 });
+
+test("long-pressing a row and dropping it on the trash button deletes it", { tag: "@mobile-only" }, async ({ page }) => {
+  const trash = page.getByTestId("open-trash");
+  const finger = await TouchFinger.on(page);
+  await finger.down(await pointIn(treeItem(page, "Welcome"), { y: 0.5 }));
+  await expect(page.locator("[data-drag-state='dragging']")).toHaveCount(1);
+  await expect(trash).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.getAnimations().length))
+    .toBe(0);
+  const box = (await trash.boundingBox())!;
+  await finger.move({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  await expect(trash).toHaveAttribute("data-trash-drop", /.*/);
+  await finger.up();
+  await expect(page.locator("[data-drag-state]")).toHaveCount(0);
+
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("heading", { name: "Move to trash?" }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Move to trash", exact: true }).click();
+  await expect(treeItem(page, "Welcome")).toHaveCount(0);
+  await expect(trash).toHaveText(/Trash \(1\)/);
+});

@@ -11,6 +11,7 @@ import {
 import {
   hitTestDrop,
   hitTestNoteArea,
+  hitTestTrashArea,
   type DropHit,
   type DropRow,
   type DropScene,
@@ -36,6 +37,13 @@ export interface TreeDragOptions {
    */
   readonly noteArea: () => HTMLElement | null;
   readonly onOpen: (path: NotePath) => void;
+  /**
+   * The Trash button, or null; it has `data-trash-drop` while an item
+   * hovers over it.
+   */
+  readonly trashArea: () => HTMLElement | null;
+  readonly onTrash: (path: NotePath) => void;
+  readonly onDragStateChange: (active: boolean) => void;
 }
 
 interface DragSession {
@@ -135,8 +143,12 @@ function startDrag(
   let pointerX = x;
   let pointerY = y;
   const area = options.noteArea();
-  let hit: DropHit | { readonly kind: "open" } = { kind: "unchanged" };
+  let hit: DropHit | { readonly kind: "open" } | { readonly kind: "trash" } = {
+    kind: "unchanged",
+  };
   let overArea = false;
+  let trashEl: HTMLElement | null = null;
+  let trashHighlighted: HTMLElement | null = null;
   let intoRow: HTMLElement | null = null;
   let frame = 0;
   let ended = false;
@@ -147,18 +159,36 @@ function startDrag(
     else delete area.dataset.noteDrop;
   }
 
+  function highlightTrash(el: HTMLElement | null): void {
+    if (el === trashHighlighted) return;
+    if (trashHighlighted !== null) delete trashHighlighted.dataset.trashDrop;
+    if (el !== null) el.dataset.trashDrop = "";
+    trashHighlighted = el;
+  }
+
   function render(): void {
-    const areaHit = hitTestNoteArea(
-      area?.getBoundingClientRect() ?? null,
-      scene.draggedKind,
+    // Resolved on every render: an empty trash only mounts its button once a
+    // drag has started.
+    trashEl = options.trashArea();
+    const overTrash = hitTestTrashArea(
+      trashEl?.getBoundingClientRect() ?? null,
       pointerX,
       pointerY,
     );
-    overArea = areaHit !== "outside";
-    hit =
-      areaHit === "outside"
-        ? hitTestDrop(scene, pointerX, toContentY(pointerY))
-        : { kind: areaHit === "open" ? "open" : "unchanged" };
+    const areaHit = overTrash
+      ? "outside"
+      : hitTestNoteArea(
+          area?.getBoundingClientRect() ?? null,
+          scene.draggedKind,
+          pointerX,
+          pointerY,
+        );
+    overArea = overTrash || areaHit !== "outside";
+    if (overTrash) hit = { kind: "trash" };
+    else if (areaHit === "outside") {
+      hit = hitTestDrop(scene, pointerX, toContentY(pointerY));
+    } else hit = { kind: areaHit === "open" ? "open" : "unchanged" };
+    highlightTrash(overTrash ? trashEl : null);
     highlightArea(areaHit === "open");
     const gapIndex = hit.kind === "drop" ? hit.gapIndex : -1;
     elements.forEach((element, i) => {
@@ -231,6 +261,7 @@ function startDrag(
       delete element.dataset.dropInto;
     }
     highlightArea(false);
+    highlightTrash(null);
     delete container.dataset.dragState;
     onEnd();
   }
@@ -251,6 +282,7 @@ function startDrag(
     slot.hidden = true;
     if (intoRow !== null) delete intoRow.dataset.dropInto;
     highlightArea(false);
+    highlightTrash(null);
     await preview.settle(originRect(), { depth });
     finish();
   }
@@ -258,12 +290,24 @@ function startDrag(
   async function open(): Promise<void> {
     container.dataset.dragState = "settling";
     highlightArea(false);
+    highlightTrash(null);
     const rect = area?.getBoundingClientRect();
     options.onOpen(dragged);
     if (rect !== undefined) {
       await preview.vanish(rect.left + VANISH_INSET, rect.top + VANISH_INSET);
     }
     finish();
+  }
+
+  async function trash(): Promise<void> {
+    container.dataset.dragState = "settling";
+    highlightTrash(null);
+    const rect = trashEl?.isConnected ? trashEl.getBoundingClientRect() : null;
+    if (rect !== null) {
+      await preview.vanish(rect.left + VANISH_INSET, rect.top);
+    }
+    finish();
+    options.onTrash(dragged);
   }
 
   async function land(target: DropTarget): Promise<void> {
@@ -330,6 +374,7 @@ function startDrag(
     drop() {
       end(() => {
         if (hit.kind === "drop") return land(hit.target);
+        if (hit.kind === "trash") return trash();
         return hit.kind === "open" ? open() : settleBack();
       });
     },
@@ -390,10 +435,15 @@ export function treeDrag(
   }
 
   function begin(row: HTMLElement, x: number, y: number): DragSession | null {
-    const drag = startDrag(container, row, x, y, options, () => {
+    const started = options;
+    const drag = startDrag(container, row, x, y, started, () => {
       busy = false;
+      started.onDragStateChange(false);
     });
-    if (drag !== null) busy = true;
+    if (drag !== null) {
+      busy = true;
+      started.onDragStateChange(true);
+    }
     return drag;
   }
 
