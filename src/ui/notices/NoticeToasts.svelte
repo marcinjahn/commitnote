@@ -1,7 +1,13 @@
 <script lang="ts">
   import type { NotePath } from "../../changes/change";
   import type { EngineNotice } from "../../sync/sync-engine";
-  import { describeNotice, type ToastMessage } from "./notice-messages";
+  import {
+    describeNotice,
+    noticeTone,
+    toneLabel,
+    type ToastMessage,
+    type ToastTone,
+  } from "./notice-messages";
 
   interface Props {
     notices: readonly EngineNotice[];
@@ -19,6 +25,7 @@
 
   interface Toast {
     readonly key: string;
+    readonly tone: ToastTone;
     readonly text: string;
     readonly conflict: Extract<EngineNotice, { kind: "conflict" }> | null;
     readonly action: ToastMessage["action"] | undefined;
@@ -30,6 +37,7 @@
     [
       ...notices.map((notice) => ({
         key: `notice-${notice.id}`,
+        tone: noticeTone(notice),
         text: describeNotice(notice),
         conflict: notice.kind === "conflict" ? notice : null,
         action: undefined,
@@ -38,6 +46,7 @@
       })),
       ...messages.map((message) => ({
         key: `message-${message.id}`,
+        tone: message.tone,
         text: message.text,
         conflict: null,
         action: message.action,
@@ -115,6 +124,8 @@
     <div
       class="toast"
       role="group"
+      data-tone={toast.tone}
+      aria-label={toneLabel(toast.tone)}
       onmouseenter={() => pause(toast.key)}
       onmouseleave={() => resume(toast.key)}
       onfocusin={() => pause(toast.key)}

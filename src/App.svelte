@@ -41,6 +41,7 @@
   } from "./rekey/change-passphrase";
   import { createNoteHistory, type NoteHistory } from "./history/note-history";
   import { createNoteDates, type NoteDatesResolver } from "./history/note-dates";
+  import type { ToastMessage } from "./ui/notices/notice-messages";
   import { describePassphraseChanged } from "./ui/passphrase/passphrase-messages";
   import {
     accentCustomProperties,
@@ -94,7 +95,7 @@
         readonly noteHistory: NoteHistory;
         readonly shareService: ShareService;
         readonly noteDatesResolver: NoteDatesResolver;
-        readonly initialMessage: string | null;
+        readonly initialMessage: Pick<ToastMessage, "tone" | "text"> | null;
         readonly repoLabel: string;
         readonly repoUrl: string;
         readonly forgeName: string;
@@ -227,7 +228,7 @@
     session: Session,
     adapter: ForgeAdapter,
     rememberMe: boolean,
-    initialMessage: string | null = null,
+    initialMessage: Pick<ToastMessage, "tone" | "text"> | null = null,
   ): Promise<void> {
     phase = { kind: "restoring" };
     await store.start(session, { rememberMe });
