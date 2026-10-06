@@ -5,9 +5,7 @@ import {
   describeEmptyTrash,
   describeOriginalFolder,
   describeRevokeFailed,
-  describeSharesRevokedOnDelete,
   describeSharesRevokedOnTrash,
-  describeTrashedShares,
 } from "./trash-messages";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -51,31 +49,17 @@ describe("share warnings", () => {
       "Notes in this folder have 2 active share links. Moving it to the trash revokes them permanently. Restoring it won't bring them back.",
     );
   });
-
-  it("warns that deleting from the trash revokes leftover links", () => {
-    expect(describeSharesRevokedOnDelete(1)).toBe(
-      "1 active share link to a note in the trash will be revoked too.",
-    );
-    expect(describeSharesRevokedOnDelete(3)).toBe(
-      "3 active share links to notes in the trash will be revoked too.",
-    );
-  });
-
-  it("points leftover links in the trash to where they can be revoked", () => {
-    expect(describeTrashedShares(1)).toMatch(/^1 active share link still points to a note/);
-    expect(describeTrashedShares(2)).toMatch(/^2 active share links still point to notes/);
-  });
 });
 
 describe("describeRevokeFailed", () => {
-  it("says nothing was trashed or deleted and how many links went", () => {
-    expect(describeRevokeFailed("Offline.", 0, "trash")).toBe(
+  it("says nothing was trashed and how many links went", () => {
+    expect(describeRevokeFailed("Offline.", 0)).toBe(
       "Offline. Nothing was moved to the trash.",
     );
-    expect(describeRevokeFailed("Offline.", 1, "delete")).toBe(
-      "Offline. Nothing was deleted. 1 link was already revoked.",
+    expect(describeRevokeFailed("Offline.", 1)).toBe(
+      "Offline. Nothing was moved to the trash. 1 link was already revoked.",
     );
-    expect(describeRevokeFailed("Offline.", 2, "trash")).toBe(
+    expect(describeRevokeFailed("Offline.", 2)).toBe(
       "Offline. Nothing was moved to the trash. 2 links were already revoked.",
     );
   });

@@ -15,7 +15,7 @@ import {
   parseShareIndex,
   readShareIndex,
   serializeShareIndex,
-  sharesIn,
+  sharesWithin,
   sharesOfNote,
   sortedShares,
   type ShareEntry,
@@ -540,7 +540,6 @@ describe("share queries", () => {
     entry("e", trashed("t1")),
     entry("f", { state: "deleted" }),
     entry("g", active("Docsy")),
-    entry("h", trashed("t2", "x")),
   );
 
   it("tells whether a note is shared by an active entry", () => {
@@ -565,25 +564,14 @@ describe("share queries", () => {
       "e",
       "f",
       "g",
-      "h",
     ]);
   });
 
   it("lists the active shares at or within a path", () => {
-    const ids = (path: NotePath) =>
-      sharesIn(index, { kind: "within", path }).map((e) => e.id);
+    const ids = (path: NotePath) => sharesWithin(index, path).map((e) => e.id);
 
     expect(ids(["Docs"])).toEqual(["c", "a", "b", "d"]);
     expect(ids(["Docs", "other"])).toEqual(["d"]);
     expect(ids(["Missing"])).toEqual([]);
-  });
-
-  it("lists the shares of trashed notes in the given trash entries", () => {
-    const ids = (entryIds: readonly string[] | "all") =>
-      sharesIn(index, { kind: "trashed", entryIds }).map((e) => e.id);
-
-    expect(ids(["t2"])).toEqual(["h"]);
-    expect(ids(["t3"])).toEqual([]);
-    expect(ids("all")).toEqual(["e", "h"]);
   });
 });

@@ -48,30 +48,10 @@ export function describeSharesRevokedOnTrash(
   return `${owner} Moving it to the trash revokes ${pronoun} permanently. Restoring it won't bring ${pronoun} back.`;
 }
 
-export function describeSharesRevokedOnDelete(count: number): string {
-  return count === 1
-    ? "1 active share link to a note in the trash will be revoked too."
-    : `${shareLinks(count)} to notes in the trash will be revoked too.`;
-}
-
-export function describeTrashedShares(count: number): string {
-  return count === 1
-    ? "1 active share link still points to a note in the trash. Revoke it in Shared links, or delete the note permanently."
-    : `${shareLinks(count)} still point to notes in the trash. Revoke them in Shared links, or delete the notes permanently.`;
-}
-
-export function describeRevokeFailed(
-  reason: string,
-  revoked: number,
-  action: "trash" | "delete",
-): string {
-  const kept =
-    action === "trash"
-      ? "Nothing was moved to the trash."
-      : "Nothing was deleted.";
+export function describeRevokeFailed(reason: string, revoked: number): string {
   const done =
     revoked === 0
       ? ""
       : ` ${plural(revoked, "link was", "links were")} already revoked.`;
-  return `${reason} ${kept}${done}`;
+  return `${reason} Nothing was moved to the trash.${done}`;
 }

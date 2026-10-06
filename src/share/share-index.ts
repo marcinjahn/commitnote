@@ -287,23 +287,13 @@ export function sharesOfNote(
     .sort(newestFirst);
 }
 
-export type ShareScope =
-  | { readonly kind: "within"; readonly path: NotePath }
-  | {
-      readonly kind: "trashed";
-      readonly entryIds: readonly string[] | "all";
-    };
-
-export function sharesIn(
+export function sharesWithin(
   index: ShareIndex,
-  scope: ShareScope,
+  path: NotePath,
 ): readonly ShareEntry[] {
   return [...index.entries.values()]
-    .filter(({ note }) =>
-      scope.kind === "within"
-        ? note.state === "active" && isAtOrWithin(note.path, scope.path)
-        : note.state === "trashed" &&
-          (scope.entryIds === "all" || scope.entryIds.includes(note.entryId)),
+    .filter(
+      ({ note }) => note.state === "active" && isAtOrWithin(note.path, path),
     )
     .sort(newestFirst);
 }

@@ -45,13 +45,11 @@
 
   function titleOf(entry: ShareEntry): string {
     const { note } = entry;
-    if (note.state === "active") return note.path[note.path.length - 1];
-    if (note.state === "trashed") return entry.name;
-    return "Deleted note";
+    return note.state === "active" ? note.path[note.path.length - 1] : entry.name;
   }
 
   function menuLabelOf(entry: ShareEntry): string {
-    return `Share actions for ${entry.note.state === "deleted" ? entry.name : titleOf(entry)}`;
+    return `Share actions for ${titleOf(entry)}`;
   }
 
   function canOpen(entry: ShareEntry): boolean {
@@ -143,14 +141,7 @@
       data-testid="share-item"
       oncontextmenu={(event) => handleContextMenu(event, entry)}
     >
-      <span class="share-title">
-        <span class="share-name">{title}</span>
-        {#if entry.note.state === "trashed"}
-          <span class="muted"> · In trash</span>
-        {:else if entry.note.state === "deleted"}
-          <span class="muted"> · {entry.name}</span>
-        {/if}
-      </span>
+      <span class="share-title">{title}</span>
       {#if entry.password !== null}
         <svg class="icon share-lock" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           {#each noteIcons.lock as d (d)}
@@ -226,7 +217,6 @@
     white-space: nowrap;
   }
 
-  .muted,
   .share-date,
   .share-lock {
     color: var(--color-text-muted);

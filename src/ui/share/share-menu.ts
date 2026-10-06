@@ -22,13 +22,11 @@ export function shareMenuItems(
 
   const items: MenuItem<ShareMenuId>[] = [item("copy-link", "Copy link")];
   if (entry.password !== null) items.push(item("copy-password", "Copy password"));
-  if (entry.note.state === "active") {
-    items.push(
-      item("update", "Update to current version", {
-        disabled: !context.writable || context.updating,
-      }),
-    );
-  }
+  items.push(
+    item("update", "Update to current version", {
+      disabled: !context.writable || context.updating,
+    }),
+  );
   items.push(item("view", "View shared version"));
   if (context.canOpen) items.push(item("open", "Open note"));
   items.push(item("revoke", "Revoke…", { destructive: true, disabled: !context.writable }));

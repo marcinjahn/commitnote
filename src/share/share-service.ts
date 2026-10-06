@@ -17,9 +17,8 @@ import { sealShare, ShareOpenError } from "./share-envelope";
 import { formatShareLink } from "./share-link";
 import {
   newShareId,
-  sharesIn,
+  sharesWithin,
   type ShareEntry,
-  type ShareScope,
 } from "./share-index";
 
 export type ShareError =
@@ -74,10 +73,11 @@ export interface ShareService {
   updateShare(id: string): Promise<UpdateShareResult>;
   revokeShare(id: string): Promise<RevokeShareResult>;
   /**
-   * Revokes every share in the scope, one by one, stopping at the first
-   * failure. Shares revoked before a failure stay revoked.
+   * Revokes every share of the notes at or within `path`, one by one,
+   * stopping at the first failure. Shares revoked before a failure stay
+   * revoked.
    */
-  revokeShares(scope: ShareScope): Promise<RevokeSharesResult>;
+  revokeShares(path: NotePath): Promise<RevokeSharesResult>;
 }
 
 export interface ShareServiceDeps {
@@ -375,12 +375,12 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     return { ok: true };
   }
 
-  async function revokeShares(scope: ShareScope): Promise<RevokeSharesResult> {
+  async function revokeShares(path: NotePath): Promise<RevokeSharesResult> {
     const attempted = new Set<string>();
     let revoked = 0;
     for (;;) {
       const { shares } = engine.getState();
-      const next = shares === null ? undefined : sharesIn(shares, scope)[0];
+      const next = shares === null ? undefined : sharesWithin(shares, path)[0];
       if (next === undefined) return { ok: true, revoked };
       if (attempted.has(next.id)) {
         return { ok: false, error: { kind: "server" }, revoked };

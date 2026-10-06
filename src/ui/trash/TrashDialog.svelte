@@ -6,30 +6,20 @@
   import {
     describeDaysLeft,
     describeOriginalFolder,
-    describeTrashedShares,
   } from "./trash-messages";
 
   interface Props {
     open: boolean;
     entries: readonly ReadableWorkingTrashEntry[];
     now: number;
-    trashedShareCount: number;
     onRestore: (entry: ReadableWorkingTrashEntry, node: WorkingNode) => void;
     onDelete: (entry: ReadableWorkingTrashEntry) => void;
     onEmpty: () => void;
     onClose: () => void;
   }
 
-  const {
-    open,
-    entries,
-    now,
-    trashedShareCount,
-    onRestore,
-    onDelete,
-    onEmpty,
-    onClose,
-  }: Props = $props();
+  const { open, entries, now, onRestore, onDelete, onEmpty, onClose }: Props =
+    $props();
 
   const sorted = $derived(
     [...entries].sort((a, b) => b.deletedAt - a.deletedAt),
@@ -38,11 +28,6 @@
 
 <Dialog {open} title="Trash" large closeButton {onClose}>
   {#snippet children()}
-    {#if trashedShareCount > 0}
-      <p class="shared-notice" data-testid="trash-shared-notice">
-        {describeTrashedShares(trashedShareCount)}
-      </p>
-    {/if}
     <ul class="trash-list" data-testid="trash-list">
       {#each sorted as entry (entry.id)}
         <TrashRow
@@ -68,12 +53,6 @@
 </Dialog>
 
 <style>
-  .shared-notice {
-    border-left: 2px solid var(--color-danger);
-    padding-left: var(--space-2);
-    font-size: var(--font-size-sm);
-  }
-
   .trash-list {
     margin: 0;
     padding: 0;

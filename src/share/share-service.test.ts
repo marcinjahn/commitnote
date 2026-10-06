@@ -550,7 +550,7 @@ describe("revokeShares", () => {
     const [welcome, ideas] = entries;
 
     expect(
-      await h.service.revokeShares({ kind: "within", path: ["Projects"] }),
+      await h.service.revokeShares(["Projects"]),
     ).toEqual({ ok: true, revoked: 1 });
 
     expect(h.store.read(ideas.locator)).toBeNull();
@@ -577,7 +577,7 @@ describe("revokeShares", () => {
     if (!first.ok || !second.ok) throw new Error("failed");
     await settle(h.engine);
 
-    const result = await h.service.revokeShares({ kind: "within", path: [] });
+    const result = await h.service.revokeShares([]);
 
     expect(result).toEqual({ ok: false, error: { kind: "network" }, revoked: 1 });
     const left = [...(h.engine.getState().shares?.entries.values() ?? [])];
@@ -592,7 +592,7 @@ describe("revokeShares", () => {
     h.store.delete(entries[0].locator);
 
     expect(
-      await h.service.revokeShares({ kind: "within", path: WELCOME }),
+      await h.service.revokeShares(WELCOME),
     ).toEqual({ ok: true, revoked: 1 });
     expect(h.engine.getState().shares?.entries.has(entries[0].id)).toBe(false);
   });
