@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { livePreview } from "../../editor/live-preview";
   import { linkOpen } from "../../editor/link-open";
   import type { HeldConflict, OpenNoteState, SyncEngine } from "../../sync/sync-engine";
@@ -14,6 +15,7 @@
     engine: SyncEngine;
     forgeName: string;
     openNote: OpenNoteState | null;
+    noteSwitch: number;
     conflict: HeldConflict | undefined;
     draft: boolean;
     noteDates: NoteDates | null;
@@ -26,7 +28,7 @@
     onShared?: () => void;
   }
 
-  const { engine, forgeName, openNote, conflict, draft, noteDates, treeLoaded, hasNotes, onDraftContent, onNewNote, noteFont, shared = false, onShared }: Props = $props();
+  const { engine, forgeName, openNote, noteSwitch, conflict, draft, noteDates, treeLoaded, hasNotes, onDraftContent, onNewNote, noteFont, shared = false, onShared }: Props = $props();
 
   const editorExtensions = [livePreview(), linkOpen()];
 
@@ -35,6 +37,21 @@
   );
 
   let editor: ReturnType<typeof MarkdownEditor> | undefined = $state();
+
+  let contentEl: HTMLDivElement | undefined = $state();
+  let seenSwitch = untrack(() => noteSwitch);
+  let scrollPending = false;
+
+  $effect(() => {
+    if (noteSwitch !== seenSwitch) {
+      seenSwitch = noteSwitch;
+      scrollPending = true;
+    }
+    if (scrollPending && contentEl !== undefined && openNote?.kind !== "loading") {
+      contentEl.scrollTop = 0;
+      scrollPending = false;
+    }
+  });
 
   export function focusEditor(): void {
     editor?.focus();
@@ -49,7 +66,7 @@
   }
 </script>
 
-<div class="note-content">
+<div class="note-content" bind:this={contentEl}>
   {#if editorText !== null}
     {#key draft ? "" : openNote?.path.join("/")}
       <NoteDetails

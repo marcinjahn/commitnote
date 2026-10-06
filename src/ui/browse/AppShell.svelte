@@ -251,6 +251,7 @@
   let draft = $state<NoteDraft | null>(null);
   let draftError = $state<string | null>(null);
   let draftSession = $state(0);
+  let noteSwitch = $state(0);
   let pendingFieldText = $state<string | null>(null);
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
@@ -320,7 +321,13 @@
     if (path.length > 1) expandFolder(parentPath(path));
     await handleSelect(path);
     await tick();
-    if (!isNarrowLayout()) notePane?.focusEditor();
+    if (
+      !isNarrowLayout() &&
+      selectedPath !== null &&
+      notePathEquals(selectedPath, path)
+    ) {
+      notePane?.focusEditor();
+    }
   }
 
   function handleSearchShortcut(event: KeyboardEvent): void {
@@ -809,6 +816,7 @@
     }
     leaveDraft();
     mobileView = "note";
+    noteSwitch += 1;
     return engine.openNote(path);
   }
 
@@ -867,6 +875,7 @@
 
   function startDraft(parent: NotePath): void {
     leaveDraft();
+    noteSwitch += 1;
     void engine.openNote(null);
     draft = { parent, name: "" };
     draftError = null;
@@ -1384,6 +1393,7 @@
       open?.kind === "missing" &&
       notePathEquals(open.path, reopen)
     ) {
+      noteSwitch += 1;
       void engine.openNote(reopen);
     }
   }
@@ -1596,6 +1606,7 @@
           nameError={draftError}
           nameReadOnly={false}
           {nameResetKey}
+          {noteSwitch}
           onNameCommit={handleNameCommit}
           onNameEscape={handleNameEscape}
           onNameEnterDone={handleNameEnterDone}
@@ -1610,6 +1621,7 @@
           {nameError}
           nameReadOnly={openConflicted}
           {nameResetKey}
+          {noteSwitch}
           namePendingText={pendingFieldText}
           onNamePendingConsumed={() => (pendingFieldText = null)}
           onNameCommit={handleNameCommit}
@@ -1636,6 +1648,7 @@
       {engine}
       {forgeName}
       openNote={engineState.openNote}
+      {noteSwitch}
       conflict={openConflict}
       draft={draft !== null}
       {noteDates}

@@ -25,6 +25,7 @@
     onNameEnterDone: () => void;
     onNameInput?: (edited: string) => void;
     onBack: () => void;
+    noteSwitch: number;
     /** Shows the version history button. */
     onHistory?: () => void;
     historyDisabled?: boolean;
