@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { dialogStack } from "./dialog-stack";
   import { swipeToClose } from "./swipe-to-close";
 
   interface Props {
@@ -40,8 +41,9 @@
   const titleId = `dialog-title-${uid}`;
 
   let dialogEl: HTMLDialogElement | undefined = $state();
+  let cardEl: HTMLDivElement | undefined = $state();
 
-  function focusInitialElement(el: HTMLDialogElement): void {
+  function focusInitialElement(el: HTMLElement): void {
     const field = el.querySelector<HTMLElement>(
       "input:not(:disabled), textarea:not(:disabled), select:not(:disabled)",
     );
@@ -68,12 +70,24 @@
     if (open) {
       if (!el.open) {
         el.showModal();
+        dialogStack.register(el);
       }
-      focusInitialElement(el);
+      if (cardEl !== undefined) focusInitialElement(cardEl);
     } else if (el.open) {
       el.close();
+      dialogStack.unregister(el);
     }
   });
+
+  $effect(() => {
+    const el = dialogEl;
+    if (el === undefined) return;
+    return () => dialogStack.unregister(el);
+  });
+
+  function handleClose(): void {
+    if (dialogEl !== undefined) dialogStack.unregister(dialogEl);
+  }
 
   function handleCancel(event: Event): void {
     event.preventDefault();
@@ -95,9 +109,11 @@
   class:desktop-large={desktopLarge}
   aria-labelledby={titleId}
   oncancel={handleCancel}
+  onclose={handleClose}
   onclick={handleBackdropClick}
 >
   <div
+    bind:this={cardEl}
     class="dialog-card"
     class:large
     class:wide

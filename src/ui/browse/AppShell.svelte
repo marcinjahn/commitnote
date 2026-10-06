@@ -76,6 +76,7 @@
   import { derivePrintNote, type PrintNote } from "../print/print-note";
   import type { ToastMessage } from "../notices/notice-messages";
   import NoticeToasts from "../notices/NoticeToasts.svelte";
+  import { toastHost } from "../notices/toast-host";
   import NoteHeader from "./NoteHeader.svelte";
   import NoteTree from "./NoteTree.svelte";
   import RefreshButton from "./RefreshButton.svelte";
@@ -1499,13 +1500,15 @@
   </section>
 </div>
 
-<NoticeToasts
-  notices={engineState.notices}
-  messages={TOAST_ORDER.flatMap((channel) => toasts[channel] ?? [])}
-  onDismiss={(id) => engine.dismissNotice(id)}
-  onDismissMessage={dismissMessage}
-  onOpen={handleSelect}
-/>
+<div class="toast-host" use:toastHost>
+  <NoticeToasts
+    notices={engineState.notices}
+    messages={TOAST_ORDER.flatMap((channel) => toasts[channel] ?? [])}
+    onDismiss={(id) => engine.dismissNotice(id)}
+    onDismissMessage={dismissMessage}
+    onOpen={handleSelect}
+  />
+</div>
 
 {#if dialog.kind === "createFolder"}
   <NameDialog
@@ -1725,6 +1728,10 @@
 {/if}
 
 <style>
+  .toast-host {
+    display: contents;
+  }
+
   .shell {
     display: flex;
     flex-direction: column;

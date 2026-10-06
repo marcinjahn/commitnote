@@ -20,7 +20,7 @@ test("choosing the option that is already selected shows no save status", async 
 
   await chooseAccent(page, "System");
 
-  await expect(settingsDialog(page).getByRole("status")).toHaveText("");
+  await expect(settingsDialog(page).locator(".settings-save-status")).toHaveText("");
 });
 
 test.describe("with GitHub-like forge latency", () => {
@@ -36,7 +36,7 @@ test.describe("with GitHub-like forge latency", () => {
     await expect(dialogStatus(page, "Waiting to save")).toBeVisible();
     await expect(dialogStatus(page, "Saving")).toBeVisible({ timeout: 3_000 });
     await expect(dialogStatus(page, "Saved")).toBeVisible({ timeout: 10_000 });
-    await expect(settingsDialog(page).getByRole("status")).toContainText(
+    await expect(settingsDialog(page).locator(".settings-save-status")).toContainText(
       "Settings saved",
     );
 
@@ -44,7 +44,7 @@ test.describe("with GitHub-like forge latency", () => {
 
     await expect(dialogStatus(page, "Waiting to save")).toBeVisible();
     await expect(dialogStatus(page, "Saved")).toBeVisible({ timeout: 10_000 });
-    await expect(settingsDialog(page).getByRole("status")).toHaveText("", {
+    await expect(settingsDialog(page).locator(".settings-save-status")).toHaveText("", {
       timeout: 4_000,
     });
   });
