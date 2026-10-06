@@ -70,3 +70,35 @@ test("a toast stays clickable after its dialog closes", async ({ page }) => {
   await toast(page, "Link copied").getByRole("button", { name: "Dismiss notice" }).click();
   await expect(toast(page, "Link copied")).toHaveCount(0);
 });
+
+test("a toast stays still while a dialog opens or closes over it", async ({ page }) => {
+  const dialog = await shareWelcome(page);
+  await dialog.getByRole("button", { name: "Copy link", exact: true }).click();
+  const copied = toast(page, "Link copied");
+  await expect(copied).toBeVisible();
+  await expect.poll(() => copied.evaluate((el) => el.getAnimations().length)).toBe(0);
+  const settled = await copied.boundingBox();
+  await page.evaluate(() => {
+    const w = window as unknown as { toastTransitions: string[] };
+    w.toastTransitions = [];
+    document.addEventListener("transitionrun", (event) => {
+      if (event.target instanceof Element && event.target.closest(".toast") !== null) {
+        w.toastTransitions.push(event.propertyName);
+      }
+    });
+  });
+  const startedTransitions = () =>
+    page.evaluate(() => (window as unknown as { toastTransitions: string[] }).toastTransitions);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  expect(await copied.evaluate((el) => el.getAnimations().length)).toBe(0);
+  expect(await copied.boundingBox()).toEqual(settled);
+
+  await page.getByRole("button", { name: "Actions for Welcome" }).click();
+  await page.getByRole("menuitem", { name: "Share…" }).click();
+  await expect(shareDialog(page)).toBeVisible();
+  expect(await copied.evaluate((el) => el.getAnimations().length)).toBe(0);
+  expect(await copied.boundingBox()).toEqual(settled);
+  expect(await startedTransitions()).toEqual([]);
+});

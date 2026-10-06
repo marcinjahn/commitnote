@@ -1732,6 +1732,10 @@
     display: contents;
   }
 
+  .toast-host:global([data-moving]) :global(.toast) {
+    transition: none;
+  }
+
   .shell {
     display: flex;
     flex-direction: column;
