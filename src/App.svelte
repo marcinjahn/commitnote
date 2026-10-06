@@ -1,6 +1,14 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
+  import {
+    openSessionBlobCache,
+    purgeBlobCacheNow,
+    purgeBlobCacheWhenIndexed,
+  } from "./app/blob-cache-lifecycle";
+  import type { BlobCache } from "./blob-cache/blob-cache";
+  import { deleteBlobCacheDatabase } from "./blob-cache/blob-store";
+  import { withBlobCache } from "./blob-cache/caching-adapter";
   import type {
     LoginError,
     LoginStep,
@@ -93,6 +101,7 @@
         readonly contentIndexer: ContentIndexer;
         readonly session: Session;
         readonly adapter: ForgeAdapter;
+        readonly blobCache: BlobCache | null;
         readonly rememberMe: boolean;
         readonly passphraseChange: PassphraseChange;
         readonly noteHistory: NoteHistory;
@@ -131,6 +140,7 @@
   let phase = $state.raw<Phase>({ kind: "restoring" });
   let loginKey = $state(0);
   let uninstallLifecycleTriggers: (() => void) | null = null;
+  let uninstallBlobCachePurge: (() => void) | null = null;
   let unsubscribeStopped: (() => void) | null = null;
   let keyChanged = $state<{ readonly unsavedCount: number } | null>(null);
 
@@ -232,23 +242,43 @@
     adapter: ForgeAdapter,
     rememberMe: boolean,
     initialMessage: Pick<ToastMessage, "tone" | "text"> | null = null,
+    purgeBlobCache = false,
   ): Promise<void> {
     phase = { kind: "restoring" };
-    await store.start(session, { rememberMe });
+    const { remembered } = await store.start(session, { rememberMe });
+    const blobCache = await openSessionBlobCache({
+      remembered,
+      coordinates: session.coordinates,
+      clock: systemClock,
+    });
+    const cachedAdapter =
+      blobCache === null ? adapter : withBlobCache(adapter, blobCache);
 
-    const rateBudget = rateBudgetFor(session.coordinates.forge, adapter);
-    const noteHistory = createNoteHistory({ adapter, keyring: session.keyring });
+    const rateBudget = rateBudgetFor(session.coordinates.forge, cachedAdapter);
+    const noteHistory = createNoteHistory({
+      adapter: cachedAdapter,
+      keyring: session.keyring,
+    });
     const engine = createSyncEngine({
-      adapter,
+      adapter: cachedAdapter,
       keyring: session.keyring,
       clock: systemClock,
       rateBudget,
+      ...(blobCache === null ? {} : { blobCache }),
     });
     const contentIndexer = createContentIndexer({
       engine,
       clock: systemClock,
       environment: createBrowserIndexerEnvironment(),
     });
+    if (blobCache !== null) {
+      uninstallBlobCachePurge = purgeBlobCacheWhenIndexed({
+        indexer: contentIndexer,
+        engine,
+        cache: blobCache,
+        clock: systemClock,
+      });
+    }
     const settingsSaver = createSettingsSaver({
       clock: systemClock,
       debounceMs: SETTINGS_SAVE_DEBOUNCE_MS,
@@ -293,9 +323,10 @@
       contentIndexer,
       session,
       adapter,
+      blobCache,
       rememberMe,
       passphraseChange: createPassphraseChange({
-        adapter,
+        adapter: cachedAdapter,
         engine,
         rateBudget,
         clock: systemClock,
@@ -312,7 +343,7 @@
         linkBase: shareLinkBase(location),
       }),
       noteDatesResolver: createNoteDates({
-        adapter,
+        adapter: cachedAdapter,
         keyring: session.keyring,
         clock: systemClock,
       }),
@@ -327,9 +358,12 @@
       } catch {
         console.error("Trash purge failed");
       }
-      adapter.sweepAbandoned?.().catch(() => {
+      cachedAdapter.sweepAbandoned?.().catch(() => {
         console.error("Sweeping abandoned atomic commits failed");
       });
+      if (purgeBlobCache && blobCache !== null) {
+        purgeBlobCacheNow({ engine, cache: blobCache, clock: systemClock });
+      }
     }
   }
 
@@ -345,15 +379,21 @@
     engine: SyncEngine,
     settingsSaver: SettingsSaver,
     contentIndexer: ContentIndexer,
-  ): void {
+    blobCache: BlobCache | null,
+    clearBlobCache: boolean,
+  ): Promise<void> {
     uninstallLifecycleTriggers?.();
     uninstallLifecycleTriggers = null;
+    uninstallBlobCachePurge?.();
+    uninstallBlobCachePurge = null;
     unsubscribeStopped?.();
     unsubscribeStopped = null;
     keyChanged = null;
     settingsSaver.dispose();
     contentIndexer.dispose();
     engine.dispose();
+    if (blobCache === null) return Promise.resolve();
+    return clearBlobCache ? blobCache.clear() : blobCache.dispose();
   }
 
   async function handlePassphraseChanged(
@@ -362,19 +402,29 @@
     history: HistoryOutcome,
   ): Promise<void> {
     if (phase.kind !== "app") return;
-    const { engine, settingsSaver, contentIndexer, session, adapter, rememberMe } = phase;
-    stopApp(engine, settingsSaver, contentIndexer);
+    const {
+      engine,
+      settingsSaver,
+      contentIndexer,
+      blobCache,
+      session,
+      adapter,
+      rememberMe,
+    } = phase;
+    await stopApp(engine, settingsSaver, contentIndexer, blobCache, false);
     await startApp(
       { ...session, keyring },
       adapter,
       rememberMe,
       describePassphraseChanged(check, history),
+      true,
     );
   }
 
   async function finishLogOut(clearStore = true): Promise<void> {
     if (phase.kind !== "app") return;
-    stopApp(phase.engine, phase.settingsSaver, phase.contentIndexer);
+    const { engine, settingsSaver, contentIndexer, blobCache } = phase;
+    await stopApp(engine, settingsSaver, contentIndexer, blobCache, true);
     if (clearStore) await store.clear();
     logout = null;
     showLogin(null);
@@ -384,7 +434,7 @@
   // remembered the new keys; those are used instead of asking to log in.
   async function logInAfterKeyChange(): Promise<void> {
     if (phase.kind !== "app") return;
-    const { engine, settingsSaver, contentIndexer, session } = phase;
+    const { engine, settingsSaver, contentIndexer, blobCache, session } = phase;
     let remembered: Session | null = null;
     try {
       remembered = await store.loadRememberedSession();
@@ -402,7 +452,7 @@
     }
     const result = await resumeSession(remembered, loginDeps());
     if (result.kind === "loggedIn") {
-      stopApp(engine, settingsSaver, contentIndexer);
+      await stopApp(engine, settingsSaver, contentIndexer, blobCache, true);
       await startApp(result.session, result.adapter, true);
       return;
     }
@@ -451,6 +501,7 @@
       try {
         const session = await store.loadRememberedSession();
         if (session === null) {
+          await deleteBlobCacheDatabase();
           showLogin(null);
           return;
         }
@@ -463,6 +514,7 @@
           case "failed": {
             if (!isTransient(result.error)) {
               await store.clear();
+              await deleteBlobCacheDatabase();
             }
             showLogin(result.error);
           }
