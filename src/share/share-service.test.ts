@@ -13,6 +13,7 @@ import { createNoteHistory } from "../history/note-history";
 import { createRateBudget } from "../sync/rate-budget";
 import { createSyncEngine, type SyncEngine } from "../sync/sync-engine";
 import {
+  IDEAS,
   WELCOME,
   mainContent,
   pushRemote,
@@ -118,9 +119,13 @@ describe("createShare", () => {
 
     const head = await h.fake.getHead();
     const listing = await h.fake.listTree(head);
+    const newest = await createNoteHistory({
+      adapter: h.fake,
+      keyring,
+    }).newestVersion(WELCOME, head);
     const file = listing.find((e) => e.sha === result.entry.source?.blobSha);
     expect(result.entry.source).toEqual({
-      commit: expect.any(String),
+      commit: newest.kind === "found" ? newest.version.sha : null,
       storedPath: file?.path,
       blobSha: file?.sha,
     });
@@ -128,6 +133,26 @@ describe("createShare", () => {
       result.entry,
     );
     expect(result.entry.note).toEqual({ state: "active", path: WELCOME });
+  });
+
+  it("records the note's newest version when another note changed after it", async () => {
+    const h = await setup();
+    const otherHead = await pushRemote(h.fake, [
+      { kind: "update-note", path: IDEAS, content: "# Ideas\n\nnewer" },
+    ]);
+    await h.engine.refresh();
+    expect(h.engine.getState().synced?.head).toBe(otherHead);
+
+    const result = await h.service.createShare({ path: WELCOME, password: "" });
+
+    if (!result.ok) throw new Error("failed");
+    const newest = await createNoteHistory({
+      adapter: h.fake,
+      keyring,
+    }).newestVersion(WELCOME, otherHead);
+    if (newest.kind !== "found") throw new Error("no version");
+    expect(newest.version.sha).not.toBe(otherHead);
+    expect(result.entry.source?.commit).toBe(newest.version.sha);
   });
 
   it("stores the password and needs it to open", async () => {

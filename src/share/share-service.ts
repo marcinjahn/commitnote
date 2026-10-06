@@ -6,7 +6,11 @@ import type { ShareHost } from "../forge/share-host";
 import type { NoteHistory } from "../history/note-history";
 import type { Clock } from "../sync/clock";
 import type { RateBudget } from "../sync/rate-budget";
-import type { SyncEngine, SyncEngineState } from "../sync/sync-engine";
+import type {
+  SyncEngine,
+  SyncEngineState,
+  SyncError,
+} from "../sync/sync-engine";
 import { findWorkingNode } from "../sync/working-tree";
 import { findNode } from "../tree/note-tree";
 import { sealShare } from "./share-envelope";
@@ -139,17 +143,8 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     const node = findNode(synced.tree, working.syncedPath ?? path);
     if (node?.kind !== "note") return fail(NOT_SAVED);
 
-    const head = synced.head;
     const { storedPath, blobSha } = node;
-    const version = await noteHistory.readVersion({
-      sha: head,
-      storedPath,
-      committedAt: 0,
-      name: null,
-      events: [],
-    });
-    if (version.kind !== "readable") {
-      const error = version.kind === "failed" ? version.error : null;
+    const failure = (error: SyncError | null): CreateShareResult => {
       if (error?.kind === "rateLimited") {
         return fail({ kind: "rateLimited", retryAfterMs: error.retryAfterMs });
       }
@@ -157,6 +152,16 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
         return fail({ kind: error.kind });
       }
       return fail({ kind: "server" });
+    };
+    const newest = await noteHistory.newestVersion(
+      working.syncedPath ?? path,
+      synced.head,
+    );
+    if (newest.kind === "none") return fail(NOT_SAVED);
+    if (newest.kind === "failed") return failure(newest.error);
+    const version = await noteHistory.readVersion(newest.version);
+    if (version.kind !== "readable") {
+      return failure(version.kind === "failed" ? version.error : null);
     }
 
     const sharedAt = new Date(clock.now()).toISOString();
@@ -189,7 +194,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       name: working.name,
       sharedAt,
       note: { state: "active", path },
-      source: { commit: head, storedPath, blobSha },
+      source: { commit: newest.version.sha, storedPath, blobSha },
       updatedAt: null,
     };
     const added = engine.addShare(entry);
