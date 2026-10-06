@@ -133,6 +133,38 @@ test.describe("cached note switch", () => {
     expect(texts.length).toBeGreaterThan(0);
     expect(texts.filter((text) => text.includes("Loading…"))).toEqual([]);
   });
+
+  test("returning to a viewed note shows its dates at once", async ({ page }) => {
+    await openNotes(page, { repo: SEARCH_REPO });
+    const details = page.locator(".note-content:not(.held) .note-details");
+    await treeItem(page, "Welcome").click();
+    await expect(details).toContainText("Created");
+    await treeItem(page, "Zażółć gęślą jaźń").click();
+    await expect(details).toContainText("Created");
+
+    await page.evaluate(() => {
+      const record = window as unknown as { detailTexts: string[] };
+      record.detailTexts = [];
+      new MutationObserver(() => {
+        const text =
+          document.querySelector(".note-content:not(.held) .note-details")
+            ?.textContent ?? "";
+        if (record.detailTexts.at(-1) !== text) record.detailTexts.push(text);
+      }).observe(document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
+    });
+
+    await treeItem(page, "Welcome").click();
+    await expect(details).toContainText("Created");
+
+    const texts = await page.evaluate(
+      () => (window as unknown as { detailTexts: string[] }).detailTexts,
+    );
+    expect(texts.filter((text) => /^\d+ words?$/.test(text.trim()))).toEqual([]);
+  });
 });
 
 interface MotionWindow {

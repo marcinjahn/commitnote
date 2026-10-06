@@ -17,6 +17,7 @@ export interface NoteDatesViewDeps {
 
 export interface NoteDatesViewInput {
   key: string | null;
+  noteSwitch: number;
   blobSha: string | null;
   idle: boolean;
   headHasOpenNote: boolean;
@@ -31,19 +32,23 @@ export interface NoteDatesView {
 export function createNoteDatesView(deps: NoteDatesViewDeps): NoteDatesView {
   const { resolver, clock, debounceMs, onShow } = deps;
   // Any change of the loaded note's path starts a new opening: a different
-  // note, or the same note relocated. The dates cache for a path is trusted
-  // only when the note was opened from its committed blob and the entry was
-  // resolved for that blob; otherwise the entry may belong to an earlier note
-  // at that path.
+  // note reached by a note switch, or the same note relocated without one.
+  // The dates cache for a path is trusted only when the note was opened from
+  // its committed blob and the entry was resolved for that blob; otherwise the
+  // entry may belong to an earlier note at that path.
   let openingKey: string | null = null;
+  let openingNoteSwitch = 0;
   let opening = 0;
   let openingHandled = false;
   let openingTrustsCache = false;
 
   function update(input: NoteDatesViewInput): (() => void) | undefined {
-    const { key, blobSha, idle, headHasOpenNote, open, head } = input;
+    const { key, noteSwitch, blobSha, idle, headHasOpenNote, open, head } = input;
     if (key !== openingKey) {
-      openingTrustsCache = openingKey === null && blobSha !== null;
+      openingTrustsCache =
+        (openingKey === null || noteSwitch !== openingNoteSwitch) &&
+        blobSha !== null;
+      openingNoteSwitch = noteSwitch;
       openingKey = key;
       opening += 1;
       openingHandled = false;

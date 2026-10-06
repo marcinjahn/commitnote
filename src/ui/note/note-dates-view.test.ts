@@ -79,6 +79,7 @@ function loaded(
 ): NoteDatesViewInput {
   return {
     key: path.join("/"),
+    noteSwitch: 0,
     blobSha,
     idle: true,
     headHasOpenNote: true,
@@ -138,13 +139,38 @@ describe("createNoteDatesView", () => {
     expect(pending).toHaveLength(1);
   });
 
-  it("trusts the cache only for the first note opened", () => {
+  it("distrusts the cache when the loaded path changes without a note switch", () => {
     const { view, seed, pending, forgotten } = setup();
     seed(PATH, "blob-1", datesAt(100));
     seed(OTHER_PATH, "blob-2", datesAt(200));
     view.update(loaded(PATH, "blob-1"));
 
     view.update(loaded(OTHER_PATH, "blob-2"));
+
+    expect(forgotten).toEqual([OTHER_PATH.join("/")]);
+    expect(pending.map((p) => p.blobSha)).toEqual(["blob-2"]);
+  });
+
+  it("trusts the cache when a note switch lands directly on another note", () => {
+    const { view, seed, pending, forgotten, last } = setup();
+    seed(PATH, "blob-1", datesAt(100));
+    seed(OTHER_PATH, "blob-2", datesAt(200));
+    view.update(loaded(PATH, "blob-1"));
+
+    view.update(loaded(OTHER_PATH, "blob-2", { noteSwitch: 1 }));
+
+    expect(last()).toEqual({ path: OTHER_PATH, dates: datesAt(200) });
+    expect(forgotten).toEqual([]);
+    expect(pending).toHaveLength(0);
+  });
+
+  it("still resolves after a note switch when the cached entry is for another blob", () => {
+    const { view, seed, pending, forgotten } = setup();
+    seed(PATH, "blob-1", datesAt(100));
+    seed(OTHER_PATH, "blob-old", datesAt(200));
+    view.update(loaded(PATH, "blob-1"));
+
+    view.update(loaded(OTHER_PATH, "blob-2", { noteSwitch: 1 }));
 
     expect(forgotten).toEqual([OTHER_PATH.join("/")]);
     expect(pending.map((p) => p.blobSha)).toEqual(["blob-2"]);
@@ -234,6 +260,7 @@ describe("createNoteDatesView", () => {
 
     view.update({
       key: null,
+      noteSwitch: 0,
       blobSha: null,
       idle: true,
       headHasOpenNote: false,

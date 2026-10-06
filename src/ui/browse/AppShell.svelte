@@ -557,6 +557,7 @@
     const state = untrack(() => engine.getState());
     return noteDatesView.update({
       key: loadedKey,
+      noteSwitch: untrack(() => noteSwitch),
       blobSha: loadedBlobSha,
       idle: saveIdle,
       headHasOpenNote,
