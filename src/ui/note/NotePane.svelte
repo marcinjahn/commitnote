@@ -36,6 +36,7 @@
   const editorExtensions = [livePreview(), linkOpen()];
 
   interface Presented {
+    noteSwitch: number;
     openNote: OpenNoteState | null;
     conflict: HeldConflict | undefined;
     draft: boolean;
@@ -46,7 +47,7 @@
     onShared: (() => void) | undefined;
   }
 
-  const live = $derived<Presented>({ openNote, conflict, draft, noteDates, treeLoaded, hasNotes, shared, onShared });
+  const live = $derived<Presented>({ noteSwitch, openNote, conflict, draft, noteDates, treeLoaded, hasNotes, shared, onShared });
 
   let lastPresented: Presented = untrack(() => live);
   let heldContent = $state<Presented | null>(null);
@@ -134,15 +135,14 @@
 
 <div class="note-content" class:held={heldContent !== null} bind:this={contentEl}>
   {#if editorText !== null}
-    {#key shown.draft ? "" : shown.openNote?.path.join("/")}
-      <NoteDetails
-        text={editorText}
-        dates={shown.draft ? null : shown.noteDates}
-        notSaved={shown.draft || (shown.openNote?.kind === "loaded" && shown.openNote.blobSha === null)}
-        shared={shown.shared}
-        onShared={shown.onShared}
-      />
-    {/key}
+    <NoteDetails
+      text={editorText}
+      dates={shown.draft ? null : shown.noteDates}
+      notSaved={shown.draft || (shown.openNote?.kind === "loaded" && shown.openNote.blobSha === null)}
+      noteSwitch={shown.noteSwitch}
+      shared={shown.shared}
+      onShared={shown.onShared}
+    />
     <MarkdownEditor
       bind:this={editor}
       text={editorText}

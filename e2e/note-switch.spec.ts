@@ -385,3 +385,89 @@ test.describe("slow note load", () => {
     expect(await editor.innerText()).toBe(welcomeText);
   });
 });
+
+interface DetailsSample {
+  height: number;
+  editorTop: number;
+  text: string;
+  fading: boolean;
+}
+
+interface DetailsSamplerWindow {
+  __detailsSamples: DetailsSample[];
+  __detailsSampling: boolean;
+}
+
+test.describe("note details during a switch", () => {
+  test.use({ reducedMotion: "no-preference", forgeLatency: "github" });
+
+  test("the details line keeps its size until late dates cross-fade in", async ({
+    page,
+  }) => {
+    await openNotes(page);
+    await openWelcome(page);
+    await expect(page.locator(".note-details")).toContainText("Created");
+    const welcomeText = await page.locator(".cm-content").innerText();
+
+    await page.evaluate(
+      ({ name, previous }) => {
+        const record = window as unknown as DetailsSamplerWindow;
+        record.__detailsSamples = [];
+        record.__detailsSampling = true;
+        const sample = () => {
+          const content = document.querySelector(".note-pane .note-content:not(.held)");
+          const nameField = document.querySelector<HTMLInputElement>(
+            ".note-header input[aria-label='Note name']",
+          );
+          const editorText =
+            content?.querySelector<HTMLElement>(".cm-content")?.innerText ?? "";
+          const details = content?.querySelector<HTMLElement>(".note-details");
+          const editorRoot = content?.querySelector<HTMLElement>(".markdown-editor");
+          if (
+            nameField?.value === name &&
+            editorText !== previous &&
+            details != null &&
+            editorRoot != null
+          ) {
+            const text = details.textContent ?? "";
+            record.__detailsSamples.push({
+              height: details.offsetHeight,
+              editorTop: editorRoot.offsetTop,
+              text,
+              fading: [...details.querySelectorAll(".details-form")].some(
+                (form) => form.getAnimations().length > 0,
+              ),
+            });
+            if (text.includes("Created")) record.__detailsSampling = false;
+          }
+          if (record.__detailsSampling) requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      },
+      { name: "Zażółć gęślą jaźń", previous: welcomeText },
+    );
+
+    await treeItem(page, "Zażółć gęślą jaźń").click();
+    await expect(page.locator(".note-content:not(.held) .note-details")).toContainText(
+      "Created",
+      { timeout: 15_000 },
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as unknown as DetailsSamplerWindow).__detailsSampling,
+        ),
+      )
+      .toBe(false);
+
+    const samples = await page.evaluate(
+      () => (window as unknown as DetailsSamplerWindow).__detailsSamples,
+    );
+    expect(samples.length).toBeGreaterThan(1);
+    expect(new Set(samples.map((s) => s.height)).size).toBe(1);
+    expect(new Set(samples.map((s) => s.editorTop)).size).toBe(1);
+    expect(samples.some((s) => /^\d+ words?$/.test(s.text))).toBe(true);
+    expect(samples.at(-1)!.fading).toBe(true);
+    await expect(page.locator(".note-content .details-form")).toHaveCount(1);
+  });
+});
