@@ -88,7 +88,11 @@
   import { copyText } from "../share/copy-text";
   import { describeShareError, messageText } from "../share/share-messages";
   import type { ShareService } from "../../share/share-service";
-  import type { ShareEntry } from "../../share/share-index";
+  import {
+    sharesOfNote,
+    type ShareEntry,
+  } from "../../share/share-index";
+  import { sharedVersionShas } from "../../history/shared-versions";
   import { formatShareLink, shareLinkBase } from "../../share/share-link";
   import type { ForgeId } from "../../forge/repo-coordinates";
   import TrashDialog from "../trash/TrashDialog.svelte";
@@ -484,6 +488,12 @@
       head: state.synced?.head,
     });
   });
+
+  const historySharedShas = $derived(
+    historyDialog === null || engineState.shares === null
+      ? new Set<string>()
+      : sharedVersionShas(sharesOfNote(engineState.shares, historyDialog.path)),
+  );
 
   const historyCurrent = $derived.by(() => {
     const open = engineState.openNote;
@@ -1616,6 +1626,7 @@
     {noteHistory}
     current={historyCurrent}
     currentName={noteName(historyDialog.path)}
+    sharedShas={historySharedShas}
     {forgeName}
     conflicted={openConflicted}
     canSave={engineState.stopped === null && !engineState.suspended}

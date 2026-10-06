@@ -1,5 +1,7 @@
 <script lang="ts">
   import { groupVersions } from "../../history/group-versions";
+  import { isGroupShared } from "../../history/shared-versions";
+  import { noteIcons } from "../browse/action-icons";
   import type {
     HistoryEnd,
     NoteVersion,
@@ -24,6 +26,7 @@
     error: SyncError | null;
     forgeName: string;
     currentName: string;
+    sharedShas: ReadonlySet<string>;
     selectedSha: string | null;
     now: number;
     onSelect: (version: NoteVersion, via: "pointer" | "keyboard") => void;
@@ -38,6 +41,7 @@
     error,
     forgeName,
     currentName,
+    sharedShas,
     selectedSha,
     now,
     onSelect,
@@ -126,7 +130,7 @@
   }
 </script>
 
-{#snippet versionButton(version: NoteVersion, text: string, current: boolean, sub: boolean)}
+{#snippet versionButton(version: NoteVersion, text: string, current: boolean, shared: boolean, sub: boolean)}
   {@const labels = labelsOf(version)}
   <button
     type="button"
@@ -143,7 +147,17 @@
         datetime={new Date(version.committedAt).toISOString()}
         title={describeDateTime(version.committedAt)}
       >{text}</time>
-      {#if current}<span class="current-badge">Current</span>{/if}
+      {#if current}<span class="badge">Current</span>{/if}
+      {#if shared}
+        <span class="badge shared-badge">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            {#each noteIcons.share as d (d)}
+              <path {d} />
+            {/each}
+          </svg>
+          Shared
+        </span>
+      {/if}
     </span>
     {#if labels.length > 0 || (version.name !== null && version.name !== currentName)}
       <span class="version-meta">
@@ -174,6 +188,7 @@
                 row.version,
                 describeTime(row.version.committedAt),
                 row.current,
+                sharedShas.has(row.version.sha),
                 false,
               )}
             {:else}
@@ -190,6 +205,7 @@
                         row.versions.length,
                       ),
                   false,
+                  isGroupShared(row.versions, sharedShas),
                   false,
                 )}
                 <button
@@ -218,6 +234,7 @@
                         version,
                         describeTime(version.committedAt),
                         false,
+                        sharedShas.has(version.sha),
                         true,
                       )}
                     </li>
@@ -357,12 +374,21 @@
     font-weight: var(--font-weight-medium);
   }
 
-  .current-badge {
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
     padding: 0 var(--space-1);
     border: var(--hairline) solid var(--color-border-strong);
     color: var(--color-text-muted);
     font-size: var(--font-size-xs);
     line-height: 1.4;
+  }
+
+  .shared-badge .icon {
+    width: 0.85em;
+    height: 0.85em;
+    color: var(--color-accent);
   }
 
   .version-meta {
