@@ -10,6 +10,7 @@ export interface MenuItem<Id extends string> {
   readonly label: string;
   readonly icon: readonly string[];
   readonly disabled?: boolean;
+  readonly destructive?: boolean;
 }
 
 export interface Command extends MenuItem<string> {
