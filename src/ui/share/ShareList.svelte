@@ -88,6 +88,7 @@
   }
 
   function handleTriggerClick(entry: ShareEntry): void {
+    if (updatingId === entry.id) return;
     const trigger = triggers.get(entry.id);
     if (trigger === undefined) return;
     open(entry, { kind: "rect", rect: trigger.getBoundingClientRect() });
@@ -174,7 +175,7 @@
         aria-label={menuLabelOf(entry)}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        disabled={updating}
+        aria-disabled={updating}
         onclick={() => handleTriggerClick(entry)}
       >
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -259,11 +260,11 @@
       opacity var(--motion-duration) var(--motion-easing);
   }
 
-  .share-row-actions:hover:not(:disabled) {
+  .share-row-actions:hover:not([aria-disabled="true"]) {
     background: color-mix(in srgb, var(--color-text) 8%, transparent);
   }
 
-  .share-row-actions:disabled {
+  .share-row-actions[aria-disabled="true"] {
     cursor: default;
     opacity: 0.5;
   }
@@ -279,8 +280,8 @@
       opacity: 1;
     }
 
-    .share-item:hover .share-row-actions:disabled,
-    .share-item:focus-within .share-row-actions:disabled {
+    .share-item:hover .share-row-actions[aria-disabled="true"],
+    .share-item:focus-within .share-row-actions[aria-disabled="true"] {
       opacity: 0.5;
     }
   }
