@@ -6,6 +6,7 @@ import type { IndexerEnvironment } from "./indexer-environment";
 import { createReadPacer } from "./read-pacer";
 import { indexContent, type IndexedContent } from "./search-text";
 import {
+  CACHE_LOOKUP_CONCURRENCY,
   INDEX_BYTES_PER_CHAR,
   INDEX_MEMORY_CAP_BYTES,
   INDEXER_CONCURRENCY,
@@ -87,7 +88,11 @@ function sameStatus(a: IndexStatus, b: IndexStatus): boolean {
 export function createContentIndexer(deps: {
   readonly engine: Pick<
     SyncEngine,
-    "getState" | "subscribe" | "searchSources" | "readNoteText"
+    "getState"
+    | "subscribe"
+    | "searchSources"
+    | "readNoteText"
+    | "readCachedNoteText"
   >;
   readonly clock: Clock;
   readonly environment: IndexerEnvironment;
@@ -102,6 +107,10 @@ export function createContentIndexer(deps: {
   let currentSources: readonly SearchSource[] = [];
   let currentShas = new Set<string>();
   let queue: string[] = [];
+  let lookupQueue: string[] = [];
+  const looking = new Set<string>();
+  const lookedUp = new Set<string>();
+  const fromCache = new Set<string>();
   const reading = new Set<string>();
   const retrying = new Set<string>();
   const attempts = new Map<string, number>();
@@ -160,20 +169,25 @@ export function createContentIndexer(deps: {
     const total = currentSources.length;
     let covered = 0;
     let done = 0;
+    let downloadDone = 0;
+    let downloadTotal = 0;
     for (const source of currentSources) {
       const key = sourceKey(source);
+      const counted = !fromCache.has(key);
+      if (counted) downloadTotal++;
       if (index.has(key)) {
         covered++;
-        done++;
-      } else if (unreadable.has(key) || skipped.has(key)) {
-        done++;
+      } else if (!unreadable.has(key) && !skipped.has(key)) {
+        continue;
       }
+      done++;
+      if (counted) downloadDone++;
     }
     if (limitedBy !== null) return { kind: "limited", covered, total };
     if (done === total) return { kind: "complete" };
     if (pausedUntil !== null) return { kind: "paused", resumeAt: pausedUntil };
     if (!environment.isOnline()) return { kind: "offline" };
-    return { kind: "indexing", done, total };
+    return { kind: "indexing", done: downloadDone, total: downloadTotal };
   }
 
   function countUnreadable(): number {
@@ -198,14 +212,20 @@ export function createContentIndexer(deps: {
     for (const listener of [...listeners]) listener();
   }
 
-  function canStartRead(): boolean {
+  function canLookUp(): boolean {
     return (
       !disposed &&
       everOpened &&
       !stopped &&
       limitedBy === null &&
+      (isOpen || !firstRunDone)
+    );
+  }
+
+  function canStartRead(): boolean {
+    return (
+      canLookUp() &&
       pausedUntil === null &&
-      (isOpen || !firstRunDone) &&
       !environment.isHidden() &&
       environment.isOnline()
     );
@@ -221,6 +241,58 @@ export function createContentIndexer(deps: {
   }
 
   function pump(): void {
+    pumpLookups();
+    pumpReads();
+  }
+
+  function pumpLookups(): void {
+    while (looking.size < CACHE_LOOKUP_CONCURRENCY && canLookUp()) {
+      const sha = lookupQueue.shift();
+      if (sha === undefined) return;
+      if (!wanted(sha) || looking.has(sha) || reading.has(sha)) continue;
+      looking.add(sha);
+      void runLookup(sha, generation).catch(() => undefined);
+    }
+  }
+
+  async function runLookup(
+    sha: string,
+    lookupGeneration: number,
+  ): Promise<void> {
+    let text: string | null;
+    try {
+      text = await engine.readCachedNoteText(sha);
+    } catch (error) {
+      if (lookupGeneration !== generation) return;
+      looking.delete(sha);
+      if (wanted(sha)) {
+        if (isForgeError(error)) {
+          handToNetwork(sha);
+        } else {
+          unreadable.add(sha);
+          fromCache.add(sha);
+        }
+      }
+      changed();
+      pump();
+      return;
+    }
+    if (lookupGeneration !== generation) return;
+    looking.delete(sha);
+    if (wanted(sha)) {
+      if (text === null) handToNetwork(sha);
+      else if (store(sha, text)) fromCache.add(sha);
+    }
+    changed();
+    pump();
+  }
+
+  function handToNetwork(sha: string): void {
+    lookedUp.add(sha);
+    if (!queue.includes(sha)) queue.push(sha);
+  }
+
+  function pumpReads(): void {
     while (reading.size < INDEXER_CONCURRENCY && canStartRead()) {
       const sha = queue.shift();
       if (sha === undefined) return;
@@ -262,19 +334,19 @@ export function createContentIndexer(deps: {
     if (readGeneration !== generation) return;
     reading.delete(sha);
     attempts.delete(sha);
-    if (wanted(sha)) store(sha, text);
+    if (wanted(sha) && !store(sha, text)) requeueFront(sha);
     changed();
     pump();
   }
 
-  function store(sha: string, text: string): void {
+  function store(sha: string, text: string): boolean {
     const bytes = text.length * INDEX_BYTES_PER_CHAR;
     if (indexBytes + bytes > INDEX_MEMORY_CAP_BYTES) {
       limitedBy = { sha, bytes };
-      requeueFront(sha);
-      return;
+      return false;
     }
     setEntry(sha, indexContent(text));
+    return true;
   }
 
   function handleReadError(sha: string, error: unknown): void {
@@ -373,9 +445,21 @@ export function createContentIndexer(deps: {
       if (!keys.has(key)) deleteEntry(key);
     }
     currentShas = shas;
-    queue = missing.filter(
-      (sha) => wanted(sha) && !reading.has(sha) && !retrying.has(sha),
-    );
+    for (const sha of lookedUp) if (!shas.has(sha)) lookedUp.delete(sha);
+    for (const sha of fromCache) if (!shas.has(sha)) fromCache.delete(sha);
+    queue = [];
+    lookupQueue = [];
+    for (const sha of missing) {
+      if (
+        !wanted(sha) ||
+        looking.has(sha) ||
+        reading.has(sha) ||
+        retrying.has(sha)
+      ) {
+        continue;
+      }
+      (lookedUp.has(sha) ? queue : lookupQueue).push(sha);
+    }
 
     if (
       limitedBy !== null &&
@@ -434,6 +518,8 @@ export function createContentIndexer(deps: {
       stopped = false;
       unreadable.clear();
       skipped.clear();
+      lookedUp.clear();
+      for (const sha of fromCache) if (!index.has(sha)) fromCache.delete(sha);
       stopThrottle();
       recompute();
     },
@@ -469,6 +555,10 @@ export function createContentIndexer(deps: {
       index.clear();
       indexBytes = 0;
       queue = [];
+      lookupQueue = [];
+      looking.clear();
+      lookedUp.clear();
+      fromCache.clear();
       reading.clear();
       retrying.clear();
       attempts.clear();
