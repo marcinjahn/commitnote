@@ -48,6 +48,22 @@ async function openSharedLinks(page: Page): Promise<Locator> {
   return dialog;
 }
 
+async function shareAction(list: Locator, title: string, item: string): Promise<void> {
+  await list.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
+  );
+  await list.getByRole("button", { name: `Share actions for ${title}` }).click();
+  await list.page().getByRole("menu", { name: `Share actions for ${title}` }).getByRole("menuitem", { name: item }).click();
+}
+
+async function editWelcome(page: Page, text: string): Promise<void> {
+  await openWelcome(page);
+  await page.getByRole("textbox", { name: "Note editor" }).click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type(text);
+  await waitForSynced(page);
+}
+
 async function openViewer(page: Page, link: string): Promise<Page> {
   const viewer = await page.context().newPage();
   await viewer.goto(link);
@@ -104,11 +120,7 @@ test("a share keeps the text from when it was created", async ({ page }) => {
   const viewer = await openViewer(page, link);
   await expect(viewer.getByText(NOTE_TEXT)).toBeVisible();
 
-  await openWelcome(page);
-  await page.getByRole("textbox", { name: "Note editor" }).click();
-  await page.keyboard.press("Control+End");
-  await page.keyboard.type("Edited after sharing");
-  await waitForSynced(page);
+  await editWelcome(page, "Edited after sharing");
 
   await viewer.reload();
   await expect(viewer.getByText(NOTE_TEXT)).toBeVisible();
@@ -123,7 +135,7 @@ test("revoking a share removes the link and the markers", async ({ page }) => {
   await expect(treeItem(page, "Welcome")).toHaveAccessibleDescription(/Shared/);
 
   const list = await openSharedLinks(page);
-  await list.getByRole("button", { name: "Revoke link for Welcome" }).click();
+  await shareAction(list, "Welcome", "Revoke…");
   await page
     .getByRole("dialog", { name: "Revoke link?" })
     .getByRole("button", { name: "Revoke", exact: true })
@@ -166,7 +178,7 @@ test("a shared note is marked in the tree, header and details, also after renami
   const dialog = shareDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Shared links")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Copy link for Welcome" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Share actions for Welcome" })).toBeVisible();
   await closeDialog(dialog);
 
   const name = page.getByRole("textbox", { name: "Note name" });
@@ -174,6 +186,100 @@ test("a shared note is marked in the tree, header and details, also after renami
   await name.press("Enter");
   await expect(treeItem(page, "Greeting")).toHaveAccessibleDescription(/Shared/);
   await expect(treeItem(page, "Greeting").locator(".share-glyph")).toBeVisible();
+});
+
+test("updating a share keeps the same link and shows the new content", async ({ page }) => {
+  await openNotes(page);
+  const link = await shareFromRowMenu(page);
+  await closeDialog(shareDialog(page));
+  await editWelcome(page, "Edited after sharing");
+
+  const list = await openSharedLinks(page);
+  await shareAction(list, "Welcome", "Update to current version");
+  await expect(page.getByText("Link updated")).toBeVisible();
+
+  const viewer = await openViewer(page, link);
+  await expect(viewer.getByText("Edited after sharing")).toBeVisible();
+  await expect(viewer.getByText(/^Updated /)).toBeVisible();
+
+  await shareAction(list, "Welcome", "Update to current version");
+  await expect(page.getByText("Link already shows the current version")).toBeVisible();
+});
+
+test("a password share keeps its password after an update", async ({ page }) => {
+  await openNotes(page);
+  const link = await shareFromRowMenu(page, { password: PASSWORD });
+  await closeDialog(shareDialog(page));
+  await editWelcome(page, "Edited after sharing");
+
+  const list = await openSharedLinks(page);
+  await shareAction(list, "Welcome", "Update to current version");
+  await expect(page.getByText("Link updated")).toBeVisible();
+
+  const viewer = await openViewer(page, link);
+  await viewer.getByRole("textbox", { name: "Password" }).fill(PASSWORD);
+  await viewer.getByRole("button", { name: "Unlock" }).click();
+  await expect(viewer.getByText("Edited after sharing")).toBeVisible({
+    timeout: KEY_DERIVATION_TIMEOUT,
+  });
+  await expect(viewer.getByText(/^Updated /)).toBeVisible();
+});
+
+test("an update of a link that vanished from the forge explains what to do", async ({ page }) => {
+  await openNotes(page);
+  await shareFromRowMenu(page);
+  await closeDialog(shareDialog(page));
+  await editWelcome(page, "Edited after sharing");
+
+  const list = await openSharedLinks(page);
+  await fakeForge(page).failNext("updateShare", "NotFound");
+  await shareAction(list, "Welcome", "Update to current version");
+  await expect(
+    page.getByText("This link no longer exists on GitHub. Revoke it to remove it from the list."),
+  ).toBeVisible();
+});
+
+test("share rows are one line and the menu works with mouse, right-click and keyboard", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await shareFromRowMenu(page);
+  await closeDialog(shareDialog(page));
+  const list = await openSharedLinks(page);
+  await list.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
+  );
+  const row = list.getByTestId("share-item");
+  const trigger = row.getByRole("button", { name: "Share actions for Welcome" });
+  const menu = page.getByRole("menu", { name: "Share actions for Welcome" });
+
+  const rowBox = (await row.boundingBox())!;
+  const triggerBox = (await trigger.boundingBox())!;
+  expect(rowBox.height).toBeLessThanOrEqual(triggerBox.height + 2);
+
+  await trigger.click();
+  await expect(menu.getByRole("menuitem", { name: "Update to current version" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+
+  await row.click({ button: "right" });
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await page.keyboard.press("Tab");
+  await expect(trigger).not.toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem").nth(1)).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(list).toBeVisible();
 });
 
 test("copy buttons put the link and the password on the clipboard", async ({ page, context }) => {
@@ -188,7 +294,7 @@ test("copy buttons put the link and the password on the clipboard", async ({ pag
   await closeDialog(dialog);
 
   const list = await openSharedLinks(page);
-  await list.getByRole("button", { name: "Copy password for Welcome" }).click();
+  await shareAction(list, "Welcome", "Copy password");
   await expect(page.getByText("Password copied")).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(PASSWORD);
 });
@@ -200,7 +306,7 @@ test("commit messages for sharing and revoking reveal nothing", async ({ page })
   await closeDialog(shareDialog(page));
 
   const list = await openSharedLinks(page);
-  await list.getByRole("button", { name: "Revoke link for Welcome" }).click();
+  await shareAction(list, "Welcome", "Revoke…");
   await page
     .getByRole("dialog", { name: "Revoke link?" })
     .getByRole("button", { name: "Revoke", exact: true })
@@ -290,4 +396,33 @@ test("the shared note viewer fits the screen", { tag: "@mobile" }, async ({ page
     () => document.documentElement.scrollWidth <= window.innerWidth,
   );
   expect(fits).toBe(true);
+});
+
+test("the share actions trigger is visible and works with a tap", { tag: "@mobile" }, async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(!isMobile, "taps are mobile only");
+  await openNotes(page);
+  await page.getByRole("button", { name: "Actions for Welcome" }).click();
+  await page.getByRole("menuitem", { name: "Share…" }).click();
+  await createLink(page);
+  await closeDialog(shareDialog(page));
+
+  const list = await openSharedLinks(page);
+  await list.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
+  );
+  const trigger = list.getByRole("button", { name: "Share actions for Welcome" });
+  await expect(trigger).toBeVisible();
+  await trigger.tap();
+  await page
+    .getByRole("menu", { name: "Share actions for Welcome" })
+    .getByRole("menuitem", { name: "Revoke…" })
+    .tap();
+  await page
+    .getByRole("dialog", { name: "Revoke link?" })
+    .getByRole("button", { name: "Revoke", exact: true })
+    .tap();
+  await expect(page.getByText("Link revoked")).toBeVisible();
 });

@@ -39,6 +39,14 @@ test("a toast over the Share dialog can be dismissed without closing it", { tag:
   await expect(dialog).toBeVisible();
 });
 
+async function shareAction(list: Locator, title: string, item: string): Promise<void> {
+  await list.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
+  );
+  await list.getByRole("button", { name: `Share actions for ${title}` }).click();
+  await list.page().getByRole("menu", { name: `Share actions for ${title}` }).getByRole("menuitem", { name: item }).click();
+}
+
 test("a toast stays clickable while a confirm is stacked over Shared links", async ({ page }) => {
   const share = await shareWelcome(page);
   await page.keyboard.press("Escape");
@@ -47,9 +55,9 @@ test("a toast stays clickable while a confirm is stacked over Shared links", asy
   await page.getByRole("menu", { name: "Commands" }).getByRole("menuitem", { name: "Shared links" }).click();
   const list = page.getByRole("dialog", { name: "Shared links" });
 
-  await list.getByRole("button", { name: "Copy link for Welcome" }).click();
+  await shareAction(list, "Welcome", "Copy link");
   await expect(toast(page, "Link copied")).toBeVisible();
-  await list.getByRole("button", { name: "Revoke link for Welcome" }).click();
+  await shareAction(list, "Welcome", "Revoke…");
   const confirm = page.getByRole("dialog", { name: "Revoke link?" });
   await expect(confirm).toBeVisible();
   await toast(page, "Link copied").getByRole("button", { name: "Dismiss notice" }).click();
