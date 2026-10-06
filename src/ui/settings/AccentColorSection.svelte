@@ -28,48 +28,50 @@
   }
 </script>
 
-<div
-  class="accent-swatches"
-  role="radiogroup"
-  aria-label="Accent color"
-  style="--swatch-columns: {Math.ceil((ACCENT_PALETTE.length - 1) / 2)}"
->
-  {#each ACCENT_PALETTE as option (option.id)}
-    {@const system = option.id === "system"}
-    <label
-      class="accent-swatch"
-      class:system
-      title={system ? `${option.label}: ${systemDescription}` : option.label}
-    >
-      <input
-        type="radio"
-        class="visually-hidden"
-        name="accent-color"
-        value={option.id}
-        aria-label={option.label}
-        aria-describedby={system ? descriptionId : undefined}
-        checked={settings.accentColor === option.id}
-        onchange={() => changeSettings({ accentColor: option.id })}
-      />
-      <span class="accent-circle" style={swatchStyle(system ? systemOption : option)}>
-        {#if system}
-          <svg
-            class="system-icon"
-            viewBox="0 0 16 16"
-            width="18"
-            height="18"
-            aria-hidden="true"
-          >
-            <path d="M2.75 3h10.5c.41 0 .75.34.75.75v6.5c0 .41-.34.75-.75.75H2.75a.75.75 0 0 1-.75-.75v-6.5c0-.41.34-.75.75-.75z" />
-            <path d="M5.5 13.5h5M8 11v2.5" />
-          </svg>
-        {/if}
-      </span>
-    </label>
-    {#if system}
-      <span class="accent-divider" aria-hidden="true"></span>
-    {/if}
-  {/each}
+<div class="accent-picker">
+  <div
+    class="accent-swatches"
+    role="radiogroup"
+    aria-label="Accent color"
+    style="--swatch-count: {ACCENT_PALETTE.length - 1}; --swatch-columns: {Math.ceil((ACCENT_PALETTE.length - 1) / 2)}"
+  >
+    {#each ACCENT_PALETTE as option (option.id)}
+      {@const system = option.id === "system"}
+      <label
+        class="accent-swatch"
+        class:system
+        title={system ? `${option.label}: ${systemDescription}` : option.label}
+      >
+        <input
+          type="radio"
+          class="visually-hidden"
+          name="accent-color"
+          value={option.id}
+          aria-label={option.label}
+          aria-describedby={system ? descriptionId : undefined}
+          checked={settings.accentColor === option.id}
+          onchange={() => changeSettings({ accentColor: option.id })}
+        />
+        <span class="accent-circle" style={swatchStyle(system ? systemOption : option)}>
+          {#if system}
+            <svg
+              class="system-icon"
+              viewBox="0 0 16 16"
+              width="18"
+              height="18"
+              aria-hidden="true"
+            >
+              <path d="M2.75 3h10.5c.41 0 .75.34.75.75v6.5c0 .41-.34.75-.75.75H2.75a.75.75 0 0 1-.75-.75v-6.5c0-.41.34-.75.75-.75z" />
+              <path d="M5.5 13.5h5M8 11v2.5" />
+            </svg>
+          {/if}
+        </span>
+      </label>
+      {#if system}
+        <span class="accent-divider" aria-hidden="true"></span>
+      {/if}
+    {/each}
+  </div>
 </div>
 <span id={descriptionId} class="visually-hidden">{systemDescription}</span>
 <p class="field-hint accent-caption" aria-hidden="true">
@@ -92,6 +94,22 @@
   .system,
   .accent-divider {
     grid-row: span 2;
+  }
+
+  .accent-picker {
+    container-type: inline-size;
+  }
+
+  @container (min-width: 34rem) {
+    .accent-swatches {
+      grid-template-columns: auto auto repeat(var(--swatch-count), auto);
+      justify-content: space-between;
+    }
+
+    .system,
+    .accent-divider {
+      grid-row: auto;
+    }
   }
 
   .accent-swatch {
