@@ -89,6 +89,26 @@ describe("createMarkdownEditor", () => {
     editor.destroy();
   });
 
+  it("setSelection sets the main selection, clamped to the document", () => {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const editor = createMarkdownEditor({
+      parent,
+      text: "hello",
+      readOnly: false,
+      onChange: () => {},
+    });
+
+    editor.setSelection(1, 3);
+    expect(editor.getSelection()).toEqual({ anchor: 1, head: 3 });
+
+    editor.setSelection(-4, 40);
+    expect(editor.getSelection()).toEqual({ anchor: 0, head: 5 });
+    expect(editor.view.hasFocus).toBe(false);
+    editor.destroy();
+    parent.remove();
+  });
+
   it("destroy removes the editor from the DOM", () => {
     const parent = document.createElement("div");
     const editor = createMarkdownEditor({

@@ -11,6 +11,8 @@
   import type { NoteDates } from "../../history/note-dates";
   import { createNoteSwitchMotion } from "./note-switch-motion";
   import { playLeaveFade, playSwitchEnter } from "./switch-motion-driver";
+  import { clampNotePosition, createNotePositions, type NotePosition } from "./note-position";
+  import type { NotePath } from "../../changes/change";
 
   import type { NoteFont } from "../../settings/note-font";
 
@@ -67,6 +69,11 @@
   let contentEl: HTMLDivElement | undefined = $state();
   let seenSwitch = untrack(() => noteSwitch);
   let scrollPending = false;
+  let trackedScrollTop = 0;
+
+  const positions = createNotePositions();
+  let savedSwitch = untrack(() => noteSwitch);
+  let presentedPath: NotePath | null = null;
 
   function motionTargets(): Element[] {
     if (contentEl === undefined) return [];
@@ -86,6 +93,20 @@
   });
 
   onDestroy(() => motion.dispose());
+
+  $effect.pre(() => {
+    if (noteSwitch === savedSwitch) return;
+    savedSwitch = noteSwitch;
+    untrack(() => {
+      const selection = editor?.getSelection();
+      if (presentedPath === null || selection === undefined || contentEl === undefined) return;
+      positions.save(presentedPath, { ...selection, scrollTop: trackedScrollTop });
+    });
+  });
+
+  $effect(() => {
+    presentedPath = editorText !== null && !shown.draft && shown.openNote?.kind === "loaded" ? shown.openNote.path : null;
+  });
 
   $effect.pre(() => {
     const current = live;
@@ -113,11 +134,32 @@
     if (!scrollPending || contentEl === undefined) return;
     if (openNote?.kind !== "loading") {
       contentEl.scrollTop = 0;
+      trackedScrollTop = 0;
       scrollPending = false;
+      const saved = !draft && openNote?.kind === "loaded" ? positions.get(openNote.path) : undefined;
+      if (saved !== undefined) restorePosition(saved, noteSwitch);
     } else if (loadingRevealed) {
       contentEl.scrollTop = 0;
+      trackedScrollTop = 0;
     }
   });
+
+  // Deferred past the flush so the editor already holds the incoming text;
+  // still a microtask, so it lands before the next paint.
+  function restorePosition(saved: NotePosition, forSwitch: number): void {
+    void tick().then(() => {
+      if (forSwitch !== seenSwitch || editor === undefined || contentEl === undefined || editorText === null) return;
+      const position = clampNotePosition(saved, editorText.length);
+      editor.setSelection(position.anchor, position.head);
+      contentEl.scrollTop = position.scrollTop;
+      trackedScrollTop = contentEl.scrollTop;
+    });
+  }
+
+  function handleScroll(): void {
+    if (contentEl === undefined || contentEl.clientHeight === 0) return;
+    trackedScrollTop = contentEl.scrollTop;
+  }
 
   export function focusEditor(): void {
     editor?.focus();
@@ -133,7 +175,7 @@
   }
 </script>
 
-<div class="note-content" class:held={heldContent !== null} bind:this={contentEl}>
+<div class="note-content" class:held={heldContent !== null} bind:this={contentEl} onscroll={handleScroll}>
   {#if editorText !== null}
     <NoteDetails
       text={editorText}

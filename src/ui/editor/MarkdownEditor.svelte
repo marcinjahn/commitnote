@@ -26,6 +26,14 @@
     editor?.focus();
   }
 
+  export function getSelection(): { anchor: number; head: number } | undefined {
+    return editor?.getSelection();
+  }
+
+  export function setSelection(anchor: number, head: number): void {
+    editor?.setSelection(anchor, head);
+  }
+
   onMount(() => {
     editor = createMarkdownEditor({
       parent: container,
