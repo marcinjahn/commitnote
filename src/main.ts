@@ -4,6 +4,7 @@ import { forgeRegistry } from "./forge/registry";
 import type { ForgeRegistry } from "./forge/registry";
 import { type Argon2idFunction, argon2idInWorker } from "./crypto/argon2";
 import "./app.css";
+import "./ui/floating-surface.css";
 import { createShareReaders } from "./forge/share-readers";
 import type { ShareReaders } from "./forge/share-host";
 import { isShareHash } from "./share/share-link";
