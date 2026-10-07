@@ -13,10 +13,15 @@ function shareDialog(page: Page, name = "Welcome"): Locator {
 
 async function createLink(
   page: Page,
-  options: { password?: string } = {},
+  options: { password?: string; name?: string } = {},
 ): Promise<string> {
   const dialog = shareDialog(page);
   await expect(dialog).toBeVisible();
+  if (options.name !== undefined) {
+    await dialog
+      .getByRole("textbox", { name: "Name (optional)" })
+      .fill(options.name);
+  }
   if (options.password !== undefined) {
     await dialog
       .getByRole("textbox", { name: "Password (optional)" })
@@ -412,6 +417,57 @@ test("commit messages for sharing and revoking reveal nothing", async ({
   expect(joined).not.toContain("Welcome");
   expect(joined).not.toContain(secret);
   expect(joined).not.toContain(PASSWORD);
+});
+
+test("names, renames and clears a share link without revealing it", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await openWelcome(page);
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  const link = await createLink(page, { name: "For Anna" });
+
+  const dialog = shareDialog(page);
+  const dialogRow = dialog.getByTestId("share-item");
+  await expect(dialogRow.locator(".share-title")).toHaveText("For Anna");
+  await expect(dialogRow.locator(".share-note-name")).toHaveText("Welcome");
+  await expect(
+    dialog.getByRole("button", { name: "Share actions for For Anna" }),
+  ).toBeVisible();
+  await closeDialog(dialog);
+
+  const list = await openSharedLinks(page);
+  const row = list.getByTestId("share-item");
+  await shareAction(list, "For Anna", "Rename…");
+  const rename = page.getByRole("dialog", { name: "Rename link" });
+  await expect(rename.getByRole("textbox", { name: "Name" })).toHaveValue(
+    "For Anna",
+  );
+  await rename.getByRole("textbox", { name: "Name" }).fill("Team review");
+  await rename.getByRole("button", { name: "Rename" }).click();
+  await expect(rename).toHaveCount(0);
+  await expect(row.locator(".share-title")).toHaveText("Team review");
+
+  await shareAction(list, "Team review", "Rename…");
+  await rename.getByRole("textbox", { name: "Name" }).fill("");
+  await rename.getByRole("button", { name: "Rename" }).click();
+  await expect(rename).toHaveCount(0);
+  await expect(row.locator(".share-title")).toHaveText("Welcome");
+  await expect(row.locator(".share-note-name")).toHaveCount(0);
+
+  const viewer = await openViewer(page, link);
+  await expect(
+    viewer.getByRole("heading", { name: "Welcome", level: 1 }).first(),
+  ).toBeVisible();
+  await expect(viewer.getByText("For Anna")).toHaveCount(0);
+  await expect(viewer.getByText("Team review")).toHaveCount(0);
+
+  await waitForSynced(page);
+  const joined = (await fakeForge(page).commitMessages()).join("\n");
+  expect(joined).toContain("Commitnote-Share: label");
+  expect(joined).not.toContain("For Anna");
+  expect(joined).not.toContain("Team review");
+  expect(joined).not.toContain("Welcome");
 });
 
 test("a GitHub token without gist permission gets a helpful error", async ({
