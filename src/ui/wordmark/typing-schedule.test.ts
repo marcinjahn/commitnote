@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CARET_BLINK_MS,
+  CARET_HOLD_MS,
   CARET_SOFT_EDGE_MS,
   TYPING_LEAD_IN_MS,
   createTypingSchedule,
@@ -116,19 +117,21 @@ describe("createTypingSchedule", () => {
     );
   });
 
-  it("blinks the caret twice at the native cadence, hides it and then ends", () => {
+  it("holds the caret solid, blinks it twice in slow phases, hides it and then ends", () => {
     const schedule = createTypingSchedule(TEXT, BEAT_INDEX, mulberry32(4));
     const last = schedule.keystrokes[schedule.keystrokes.length - 1];
 
-    expect(CARET_BLINK_MS).toBe(530);
+    expect(CARET_HOLD_MS).toBe(650);
+    expect(CARET_BLINK_MS).toBe(800);
+    expect(CARET_SOFT_EDGE_MS).toBe(160);
     expect(schedule.caretToggles).toEqual([
-      last + 530,
-      last + 1060,
-      last + 1590,
-      last + 2120,
-      last + 2650,
+      last + 650,
+      last + 1450,
+      last + 2250,
+      last + 3050,
+      last + 3850,
     ]);
-    expect(schedule.end).toBe(last + 2650 + CARET_SOFT_EDGE_MS);
+    expect(schedule.end).toBe(last + 4010);
   });
 
   it("is deterministic for the same random source", () => {

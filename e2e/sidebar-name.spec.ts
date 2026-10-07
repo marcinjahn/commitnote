@@ -7,7 +7,7 @@ test("sidebar wordmark and repo label are not clipped", { tag: "@mobile" }, asyn
   const header = page.locator(".tree-header");
   const wordmark = header.locator(".wordmark");
   await expect(wordmark).toHaveAttribute("data-typing", "done", {
-    timeout: 10_000,
+    timeout: 15_000,
   });
   await expect(wordmark).toBeVisible();
   await expect(wordmark.locator(".visually-hidden")).toHaveText("commitnote");

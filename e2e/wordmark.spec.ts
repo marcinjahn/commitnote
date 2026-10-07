@@ -133,7 +133,7 @@ test.describe("static wordmark", () => {
   test("sidebar header once typed", async ({ page }) => {
     await openNotes(page);
     await expect(sidebarWordmark(page)).toHaveAttribute("data-typing", "done", {
-      timeout: 10_000,
+      timeout: 15_000,
     });
     await expectStaticWordmark(sidebarWordmark(page), { typed: true });
   });
@@ -213,11 +213,27 @@ test.describe("typed wordmark", () => {
     for (const s of seen.filter((s) => s.phase === "typing")) {
       expect(s.caret).toBe("on");
     }
-    const blinkRuns = seen
-      .filter((s) => s.phase === "blinking")
-      .map((s) => s.caret)
-      .filter((caret, i, all) => caret !== all[i - 1]);
-    expect(blinkRuns).toEqual(["on", "off", "on", "off", "on", "off"]);
+    const blinkRuns: { caret: string | null; samples: number }[] = [];
+    for (const s of seen.filter((s) => s.phase === "blinking")) {
+      const run = blinkRuns.at(-1);
+      if (run?.caret === s.caret) run.samples++;
+      else blinkRuns.push({ caret: s.caret, samples: 1 });
+    }
+    expect(blinkRuns.map((run) => run.caret)).toEqual([
+      "on",
+      "off",
+      "on",
+      "off",
+      "on",
+      "off",
+    ]);
+    const [hold, ...phases] = blinkRuns.map((run) => run.samples);
+    expect(hold).toBeGreaterThanOrEqual(6);
+    expect(hold).toBeLessThanOrEqual(7);
+    for (const samples of phases.slice(0, -1)) {
+      expect(samples).toBeGreaterThanOrEqual(7);
+      expect(samples).toBeLessThanOrEqual(9);
+    }
 
     const settled = seen[seen.length - 1];
     expect(settled.caret).toBeNull();
