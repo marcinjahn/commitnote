@@ -255,3 +255,16 @@ test("pasting a URL with no selection inserts it as plain text", async ({
   await expect(editor).toContainText("see https://www.example.org/plain");
   await expect(editor).not.toContainText("](");
 });
+
+test("Mod+Enter with the caret in a link opens it without editing the note", async ({
+  page,
+}) => {
+  const { editor, link } = await openWelcomeLink(page);
+
+  await link.click();
+  const before = (await editor.textContent()) ?? "";
+  await page.keyboard.press("ControlOrMeta+Enter");
+
+  await expect.poll(() => openedUrls(page)).toEqual([LINK_URL]);
+  await expect(editor).toHaveText(before);
+});

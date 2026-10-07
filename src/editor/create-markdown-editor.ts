@@ -28,6 +28,7 @@ export interface MarkdownEditorOptions {
   readonly onChange: (text: string) => void;
   readonly extensions?: readonly Extension[];
   readonly ariaLabel?: string;
+  readonly describedBy?: string;
 }
 
 export interface MarkdownEditor {
@@ -54,8 +55,17 @@ export function markdownEditorExtensions(): Extension[] {
   return [...baseExtensions(), history()];
 }
 
-function readOnlyExtensions(readOnly: boolean): Extension[] {
-  return [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)];
+function readOnlyExtensions(
+  readOnly: boolean,
+  describedBy: string | undefined,
+): Extension[] {
+  return [
+    EditorState.readOnly.of(readOnly),
+    EditorView.editable.of(!readOnly),
+    !readOnly && describedBy
+      ? EditorView.contentAttributes.of({ "aria-describedby": describedBy })
+      : [],
+  ];
 }
 
 export function createMarkdownEditor(
@@ -68,6 +78,7 @@ export function createMarkdownEditor(
     onChange,
     extensions = [],
     ariaLabel = DEFAULT_ARIA_LABEL,
+    describedBy,
   } = options;
 
   const readOnlyCompartment = new Compartment();
@@ -87,7 +98,7 @@ export function createMarkdownEditor(
     extensions: [
       baseExtensions(),
       historyCompartment.of(history()),
-      readOnlyCompartment.of(readOnlyExtensions(readOnly)),
+      readOnlyCompartment.of(readOnlyExtensions(readOnly, describedBy)),
       EditorView.contentAttributes.of({ "aria-label": ariaLabel }),
       updateListener,
       ...extensions,
@@ -109,7 +120,7 @@ export function createMarkdownEditor(
     setReadOnly(nextReadOnly: boolean): void {
       view.dispatch({
         effects: readOnlyCompartment.reconfigure(
-          readOnlyExtensions(nextReadOnly),
+          readOnlyExtensions(nextReadOnly, describedBy),
         ),
       });
     },

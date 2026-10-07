@@ -1,5 +1,6 @@
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import {
+  Prec,
   RangeSetBuilder,
   type EditorState,
   type Extension,
@@ -8,6 +9,7 @@ import {
   Decoration,
   type DecorationSet,
   EditorView,
+  keymap,
   ViewPlugin,
   type ViewUpdate,
 } from "@codemirror/view";
@@ -165,8 +167,18 @@ export function linkOpen(options: LinkOpenOptions = {}): Extension {
       window.open(url, "_blank", "noopener,noreferrer");
     });
 
+  const openLinkAtCaret = (view: EditorView): boolean => {
+    const { main } = view.state.selection;
+    if (!main.empty) return false;
+    const url = linkUrlAt(view.state, main.head);
+    if (url === null) return false;
+    open(url);
+    return true;
+  };
+
   return [
     linkMarks,
+    Prec.highest(keymap.of([{ key: "Mod-Enter", run: openLinkAtCaret }])),
     EditorView.domEventHandlers({
       mousedown(event, view) {
         const url = linkUnderPointer(view, event);

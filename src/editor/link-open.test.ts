@@ -257,4 +257,42 @@ describe("linkOpen", () => {
       expect(dom.classList.contains(ARMED)).toBe(false);
     });
   });
+
+  describe("Mod-Enter", () => {
+    function modEnter(s: Setup): void {
+      key("keydown", s.editor.view.contentDOM, { key: "Enter", ctrlKey: true });
+    }
+
+    it("opens the link under the caret and leaves the document unchanged", () => {
+      const s = setup();
+      s.editor.setSelection(TEXT.indexOf("site"), TEXT.indexOf("site"));
+      modEnter(s);
+      expect(s.open).toHaveBeenCalledWith("https://example.com/a");
+      expect(s.editor.view.state.doc.toString()).toBe(TEXT);
+      expect(s.changes).toEqual([]);
+    });
+
+    it("opens the link in a read-only editor", () => {
+      const s = setup({ readOnly: true });
+      s.editor.setSelection(TEXT.indexOf("site"), TEXT.indexOf("site"));
+      modEnter(s);
+      expect(s.open).toHaveBeenCalledWith("https://example.com/a");
+    });
+
+    it("falls through to the task toggle outside a link", () => {
+      const s = setup();
+      s.editor.setSelection(1, 1);
+      modEnter(s);
+      expect(s.open).not.toHaveBeenCalled();
+      expect(s.editor.view.state.doc.toString()).toBe(`- [ ] ${TEXT}`);
+    });
+
+    it("does not handle a non-empty selection", () => {
+      const s = setup();
+      const from = TEXT.indexOf("site");
+      s.editor.setSelection(from, from + 2);
+      modEnter(s);
+      expect(s.open).not.toHaveBeenCalled();
+    });
+  });
 });

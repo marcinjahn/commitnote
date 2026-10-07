@@ -19,6 +19,8 @@
 
   const { text, readOnly, onChange, extensions, ariaLabel, noteFont }: Props = $props();
 
+  const hintId = $props.id();
+
   let container: HTMLDivElement;
   let editor: MarkdownEditor | undefined;
 
@@ -56,6 +58,7 @@
       onChange,
       extensions,
       ariaLabel,
+      describedBy: hintId,
     });
 
     const remeasure = () => editor?.view.requestMeasure();
@@ -85,6 +88,7 @@
 </script>
 
 <div class="markdown-editor" bind:this={container}></div>
+<p id={hintId} hidden>Press Escape, then Tab, to leave the editor.</p>
 
 <style>
   .markdown-editor {
