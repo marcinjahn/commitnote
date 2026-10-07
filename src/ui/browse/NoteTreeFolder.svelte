@@ -4,6 +4,7 @@
   import type { SyncStates } from "../../sync/sync-state";
   import type { WorkingNode } from "../../sync/working-tree";
   import NoteTreeFolder from "./NoteTreeFolder.svelte";
+  import { countFolderNotes } from "./folder-note-count";
   import type { MenuAnchor } from "./row-menu-types";
   import SyncStateIcon from "./SyncStateIcon.svelte";
   import { syncIndicatorFade } from "./sync-indicator-fade";
@@ -43,6 +44,9 @@
 
   const key = $derived(node.path.join("/"));
   const expanded = $derived(node.kind === "folder" && isExpanded(key));
+  const noteCount = $derived(
+    node.kind === "folder" && !expanded ? countFolderNotes(node) : null,
+  );
   const selected = $derived(
     node.kind === "note" &&
       selectedPath !== null &&
@@ -169,6 +173,10 @@
       data-drag-label
       data-name={node.name}>{node.name}</span
     >
+    {#if noteCount !== null}
+      <span class="tree-row-count" aria-hidden="true" data-count={noteCount}
+      ></span>
+    {/if}
     {#if shared}
       <svg
         class="share-glyph"
@@ -346,6 +354,16 @@
     transition:
       color var(--sync-label-fade) ease,
       transform var(--sync-label-fade) ease;
+  }
+
+  .tree-row-count {
+    flex: none;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+  }
+
+  .tree-row-count::before {
+    content: attr(data-count) / "";
   }
 
   .tree-row-label::after {
