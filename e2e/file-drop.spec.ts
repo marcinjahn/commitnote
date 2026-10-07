@@ -242,12 +242,12 @@ test("a drag without files is ignored", async ({ page }) => {
 });
 
 test("a successful drop clears the tag filter", async ({ page }) => {
-  const purple = page.getByRole("button", {
-    name: "Filter by Purple tag",
-    exact: true,
-  });
-  await purple.click();
-  await expect(purple).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /^Filter by color/ }).click();
+  await page
+    .getByRole("menu", { name: "Filter by color" })
+    .getByRole("menuitemradio", { name: "Purple", exact: true })
+    .click();
+  await expect(page.getByText("Showing: Purple", { exact: true })).toBeVisible();
   await expect(treeItem(page, "Welcome")).toHaveCount(0);
 
   await dragFiles(
@@ -258,7 +258,7 @@ test("a successful drop clears the tag filter", async ({ page }) => {
     },
   );
   await expect(page.getByText("Imported 1 note.")).toBeVisible();
-  await expect(purple).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("Showing: Purple", { exact: true })).toHaveCount(0);
   await expect(treeItem(page, "Welcome")).toBeVisible();
   await expect(treeItem(page, "Fresh")).toBeVisible();
 });

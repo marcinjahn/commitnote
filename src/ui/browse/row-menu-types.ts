@@ -1,3 +1,5 @@
+import type { ColorTag } from "../../tags/color-tag";
+
 export type RowAction =
   "new-note" | "new-folder" | "rename" | "move" | "delete" | "delete-permanently" | "share";
 
@@ -15,4 +17,17 @@ export interface MenuItem<Id extends string> {
 
 export interface Command extends MenuItem<string> {
   readonly run: () => void;
+}
+
+export interface MenuRadioOption {
+  readonly id: string;
+  readonly label: string;
+  readonly swatch: ColorTag | null;
+}
+
+export interface MenuRadioGroup {
+  readonly label: string;
+  readonly options: readonly MenuRadioOption[];
+  readonly selected: string;
+  readonly onPick: (id: string) => void;
 }

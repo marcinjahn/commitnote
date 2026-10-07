@@ -156,7 +156,8 @@
   import type { Command, RowAction } from "./row-menu-types";
   import type { ColorTag } from "../../tags/color-tag";
   import { buildTagFilter } from "./tag-filter";
-  import TagFilterDots from "./TagFilterDots.svelte";
+  import TagFilterButton from "./TagFilterButton.svelte";
+  import TagFilterChip from "./TagFilterChip.svelte";
   import { describeMovedTo, describeStructureError } from "./structure-messages";
   import type { DropTarget } from "./tree-drop";
   import {
@@ -615,9 +616,18 @@
     }
   });
 
-  function toggleTagFilter(tag: ColorTag): void {
-    tagFilter = tagFilter === tag ? null : tag;
+  let tagFilterButton: TagFilterButton | undefined = $state();
+
+  function setTagFilter(tag: ColorTag | null): void {
+    tagFilter = tag;
   }
+
+  async function clearTagFilter(): Promise<void> {
+    setTagFilter(null);
+    await tick();
+    tagFilterButton?.focus();
+  }
+
   const openTreeNote = $derived.by(() => {
     if (openPath === null || tree === null) return undefined;
     const node = findWorkingNode(tree, openPath);
@@ -1999,9 +2009,20 @@
         <CommandMenu {commands} />
       </div>
     </div>
-    <SearchTrigger onOpen={openSearch} />
-    {#if tagsWritable && usedTags.length > 0}
-      <TagFilterDots tags={usedTags} active={tagFilter} onToggle={toggleTagFilter} />
+    <SearchTrigger onOpen={openSearch}>
+      {#snippet trailing()}
+        {#if tagsWritable && usedTags.length > 0}
+          <TagFilterButton
+            bind:this={tagFilterButton}
+            tags={usedTags}
+            active={tagFilter}
+            onChange={setTagFilter}
+          />
+        {/if}
+      {/snippet}
+    </SearchTrigger>
+    {#if tagFilter !== null}
+      <TagFilterChip tag={tagFilter} onClear={() => void clearTagFilter()} />
     {/if}
     {#if tree === null && engineState.refresh.lastError !== null}
       <p role="alert" class="alert-error">
