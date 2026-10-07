@@ -1,3 +1,9 @@
+import {
+  CARET_BLINK_MS,
+  CARET_HOLD_MS,
+  CARET_SOFT_EDGE_MS,
+} from "../../editor/caret-style";
+
 export interface TypingSchedule {
   keystrokes: number[];
   blinkStart: number;
@@ -6,9 +12,6 @@ export interface TypingSchedule {
 }
 
 export const TYPING_LEAD_IN_MS = 120;
-export const CARET_HOLD_MS = 650;
-export const CARET_BLINK_MS = 800;
-export const CARET_SOFT_EDGE_MS = 160;
 
 const BASE_INTERVAL_MS = 95;
 const INTERVAL_JITTER = 0.35;

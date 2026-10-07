@@ -5,7 +5,12 @@
     initialTypingPhase,
     type TypingPhase,
   } from "./typed-wordmark";
-  import { CARET_SOFT_EDGE_MS } from "./typing-schedule";
+  import {
+    CARET_SOFT_EDGE,
+    CARET_TAIL_LENGTH,
+    CARET_WIDTH_PX,
+    caretTailStops,
+  } from "../../editor/caret-style";
 
   interface Props {
     element?: "h1" | "span";
@@ -17,7 +22,6 @@
   const TEXT = "commitnote";
   const LETTERS = [...TEXT];
   const BEAT_BEFORE_INDEX = 6;
-  const TAIL_LENGTH = 3;
   const CARET_HEIGHT_EM = 1.1;
 
   let root = $state<HTMLElement>();
@@ -29,8 +33,9 @@
   let caret = $state<{ left: number; top: number; height: number }>();
 
   const animating = $derived(phase === "typing" || phase === "blinking");
-  const softEdge = `${CARET_SOFT_EDGE_MS}ms ease-in-out`;
-  const tailStart = $derived(typedCount - Math.min(TAIL_LENGTH, typedCount));
+  const tailStart = $derived(
+    typedCount - Math.min(CARET_TAIL_LENGTH, typedCount),
+  );
 
   function accentMix(fraction: number): string {
     const percent = Math.round(fraction * 100_000) / 1000;
@@ -39,9 +44,9 @@
 
   function tailStyle(index: number): string | undefined {
     if (!animating || index < tailStart || index >= typedCount) return;
-    const length = typedCount - tailStart;
+    const stops = caretTailStops(typedCount - tailStart);
     const position = index - tailStart;
-    return `background-image: linear-gradient(90deg, ${accentMix(position / length)}, ${accentMix((position + 1) / length)})`;
+    return `background-image: linear-gradient(90deg, ${accentMix(stops[position])}, ${accentMix(stops[position + 1])})`;
   }
 
   function measureCaret(): void {
@@ -93,11 +98,11 @@
   data-typing={phase}
   data-caret={animating ? (lit ? "on" : "off") : undefined}
   style={animating
-    ? `--wordmark-tail: ${lit ? 1 : 0}; transition: --wordmark-tail ${softEdge}`
+    ? `--wordmark-tail: ${lit ? 1 : 0}; transition: --wordmark-tail ${CARET_SOFT_EDGE}`
     : undefined}
 >
   <span class="visually-hidden">commitnote</span>
-  <span class="wordmark-glyphs" aria-hidden="true">{#each LETTERS as letter, index (index)}<span class="wordmark-letter" class:wordmark-regular={index >= 6} class:wordmark-untyped={phase === "typing" && index >= typedCount} class:wordmark-tail={tailStyle(index) !== undefined} style={tailStyle(index)}>{letter}</span>{/each}</span>{#if animating && caret}<span class="wordmark-caret" aria-hidden="true" style="left: {caret.left}px; top: {caret.top}px; height: {caret.height}px; opacity: {lit ? 1 : 0}; transition: opacity {softEdge};"></span>{/if}
+  <span class="wordmark-glyphs" aria-hidden="true">{#each LETTERS as letter, index (index)}<span class="wordmark-letter" class:wordmark-regular={index >= 6} class:wordmark-untyped={phase === "typing" && index >= typedCount} class:wordmark-tail={tailStyle(index) !== undefined} style={tailStyle(index)}>{letter}</span>{/each}</span>{#if animating && caret}<span class="wordmark-caret" aria-hidden="true" style="left: {caret.left}px; top: {caret.top}px; height: {caret.height}px; width: {CARET_WIDTH_PX}px; opacity: {lit ? 1 : 0}; transition: opacity {CARET_SOFT_EDGE};"></span>{/if}
 </svelte:element>
 
 <style>
@@ -129,7 +134,6 @@
 
   .wordmark-caret {
     position: absolute;
-    width: 2px;
     background: var(--color-accent);
     pointer-events: none;
   }
