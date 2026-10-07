@@ -5,6 +5,7 @@
   import MenuPopup from "../browse/MenuPopup.svelte";
   import type { MenuAnchor } from "../browse/row-menu-types";
   import { compactShareDate, describeShareDate } from "./share-messages";
+  import { shareRowTitle } from "./share-row-title";
   import { shareMenuItems, type ShareMenuId } from "./share-menu";
 
   interface Props {
@@ -43,13 +44,8 @@
   let openMenu = $state<OpenMenu | null>(null);
   const triggers = new Map<string, HTMLButtonElement>();
 
-  function titleOf(entry: ShareEntry): string {
-    const { note } = entry;
-    return note.state === "active" ? note.path[note.path.length - 1] : entry.name;
-  }
-
   function menuLabelOf(entry: ShareEntry): string {
-    return `Share actions for ${titleOf(entry)}`;
+    return `Share actions for ${shareRowTitle(entry).title}`;
   }
 
   function canOpen(entry: ShareEntry): boolean {
@@ -133,7 +129,7 @@
 
 <ul class="share-list" data-testid="share-list">
   {#each entries as entry (entry.id)}
-    {@const title = titleOf(entry)}
+    {@const { title, noteName } = shareRowTitle(entry)}
     {@const updating = updatingId === entry.id}
     {@const menuOpen = openMenu?.entry.id === entry.id}
     <li
@@ -142,6 +138,9 @@
       oncontextmenu={(event) => handleContextMenu(event, entry)}
     >
       <span class="share-title">{title}</span>
+      {#if noteName !== null}
+        <span class="share-note-name">{noteName}</span>
+      {/if}
       {#if entry.password !== null}
         <svg class="icon share-lock" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           {#each noteIcons.lock as d (d)}
@@ -209,14 +208,30 @@
     border-bottom: var(--hairline) solid var(--color-border);
   }
 
-  .share-title {
-    flex: 1 1 auto;
+  .share-title,
+  .share-note-name {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  .share-title {
+    flex: 1 1 auto;
+  }
+
+  .share-title:has(+ .share-note-name) {
+    flex: 0 1 auto;
+  }
+
+  .share-note-name {
+    flex: 0 0 auto;
+    max-width: 40%;
+    margin-inline-end: auto;
+    font-size: var(--font-size-sm);
+  }
+
+  .share-note-name,
   .share-date,
   .share-lock {
     color: var(--color-text-muted);
