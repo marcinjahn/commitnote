@@ -20,6 +20,9 @@ import type { Tree } from "@lezer/common";
 const TASK_LINE_CLASS = "cm-task-line";
 const QUOTE_LINE_CLASS = "cm-quote-line";
 const CODE_BLOCK_LINE_CLASS = "cm-code-block-line";
+const LIST_MARK_CLASS = "cm-list-mark";
+
+const listMarkDecoration = Decoration.mark({ class: LIST_MARK_CLASS });
 
 const livePreviewHighlightStyle = HighlightStyle.define([
   {
@@ -72,6 +75,9 @@ const livePreviewHighlightStyle = HighlightStyle.define([
 ]);
 
 const livePreviewBaseTheme = EditorView.baseTheme({
+  [`.${LIST_MARK_CLASS}, .${LIST_MARK_CLASS} *`]: {
+    color: "color-mix(in srgb, var(--color-accent) 50%, var(--color-text-muted))",
+  },
   [`.${QUOTE_LINE_CLASS}`]: {
     borderLeft: "var(--hairline) solid var(--color-accent-rule)",
     paddingLeft: "var(--space-3)",
@@ -265,6 +271,10 @@ function collectLivePreviewDecorations(
       ancestors.push(name);
 
       switch (name) {
+        case "ListMark": {
+          decorations.push(listMarkDecoration.range(node.from, node.to));
+          break;
+        }
         case "HeaderMark": {
           if (
             parent?.startsWith("ATXHeading") &&
