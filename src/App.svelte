@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
+  import { removeLastView } from "./app/last-view";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
   import {
     openSessionBlobCache,
@@ -8,6 +9,7 @@
   } from "./app/blob-cache-lifecycle";
   import type { BlobCache } from "./blob-cache/blob-cache";
   import { deleteBlobCacheDatabase } from "./blob-cache/blob-store";
+  import { repoKeyOf } from "./blob-cache/blob-cache";
   import { withBlobCache } from "./blob-cache/caching-adapter";
   import type {
     LoginError,
@@ -103,6 +105,7 @@
         readonly adapter: ForgeAdapter;
         readonly blobCache: BlobCache | null;
         readonly rememberMe: boolean;
+        readonly remembered: boolean;
         readonly passphraseChange: PassphraseChange;
         readonly noteHistory: NoteHistory;
         readonly shareService: ShareService;
@@ -327,6 +330,7 @@
       adapter,
       blobCache,
       rememberMe,
+      remembered,
       passphraseChange: createPassphraseChange({
         adapter: cachedAdapter,
         engine,
@@ -425,9 +429,10 @@
 
   async function finishLogOut(clearStore = true): Promise<void> {
     if (phase.kind !== "app") return;
-    const { engine, settingsSaver, contentIndexer, blobCache } = phase;
+    const { engine, settingsSaver, contentIndexer, blobCache, session } = phase;
     await stopApp(engine, settingsSaver, contentIndexer, blobCache, true);
     if (clearStore) await store.clear();
+    removeLastView(repoKeyOf(session.coordinates));
     logout = null;
     showLogin(null);
   }
@@ -516,6 +521,7 @@
           case "failed": {
             if (!isTransient(result.error)) {
               await store.clear();
+              removeLastView(repoKeyOf(session.coordinates));
               await deleteBlobCacheDatabase();
             }
             showLogin(result.error);
@@ -572,6 +578,9 @@
     shareService={phase.shareService}
     forgeId={phase.session.coordinates.forge}
     noteDatesResolver={phase.noteDatesResolver}
+    keyring={phase.session.keyring}
+    repoKey={repoKeyOf(phase.session.coordinates)}
+    sessionRemembered={phase.remembered}
     initialMessage={phase.initialMessage}
     onPassphraseChanged={(keyring, check, history) =>
       void handlePassphraseChanged(keyring, check, history)}

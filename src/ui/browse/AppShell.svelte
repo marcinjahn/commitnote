@@ -1,11 +1,16 @@
 <script lang="ts">
-  import { tick, untrack } from "svelte";
+  import { onDestroy, tick, untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
   import type { HeldConflict, SyncEngine, SyncEngineState } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
+  import {
+    createLastViewStore,
+    removeLastView,
+    type LastView,
+  } from "../../app/last-view";
   import {
     applySettingsEdits,
     resolveSettings,
@@ -25,7 +30,11 @@
     describeRestored,
     UNSAVED_BEFORE_RESTORE_MESSAGE,
   } from "../history/history-messages";
-  import { findWorkingNode, type WorkingFolder } from "../../sync/working-tree";
+  import {
+    findWorkingFolder,
+    findWorkingNode,
+    type WorkingFolder,
+  } from "../../sync/working-tree";
   import { findNode } from "../../tree/note-tree";
   import NoteHistoryDialog, {
     type HistoryPhase,
@@ -159,6 +168,9 @@
     shareService: ShareService;
     forgeId: ForgeId;
     noteDatesResolver: NoteDatesResolver;
+    keyring: Keyring;
+    repoKey: string;
+    sessionRemembered: boolean;
     initialMessage?: Pick<ToastMessage, "tone" | "text"> | null;
     onPassphraseChanged: (
       keyring: Keyring,
@@ -184,6 +196,9 @@
     shareService,
     forgeId,
     noteDatesResolver,
+    keyring,
+    repoKey,
+    sessionRemembered,
     initialMessage = null,
     onPassphraseChanged,
     onLogOut,
@@ -284,6 +299,14 @@
   let nameError = $state<string | null>(null);
   let nameResetKey = $state(0);
   const treeExpansion = createTreeExpansion();
+  const lastViewStore = untrack(() => {
+    if (!sessionRemembered) removeLastView(repoKey);
+    return createLastViewStore({ repoKey, keyring });
+  });
+  onDestroy(() => lastViewStore.dispose());
+  let reopenLastView = $state(
+    untrack(() => sessionRemembered && lastViewStore.isEnabled()),
+  );
   let expandRequest = $state<{ readonly path: NotePath } | null>(null);
   let draft = $state<NoteDraft | null>(null);
   let draftError = $state<string | null>(null);
@@ -514,6 +537,24 @@
   const treeLoading = $derived(engineState.synced === null && engineState.refresh.inFlight);
   const trashEntries = $derived(engineState.visibleTrash ?? []);
   const selectedPath = $derived(engineState.openNote?.path ?? null);
+
+  function currentLastView(): LastView {
+    const kind = engineState.openNote?.kind;
+    const note = kind === "loaded" || kind === "loading" ? openPath : null;
+    const folders =
+      tree === null
+        ? []
+        : treeExpansion
+            .expandedPaths()
+            .filter((path) => findWorkingFolder(tree, path) !== undefined);
+    return { note, folders };
+  }
+
+  function handleReopenLastViewChange(on: boolean): void {
+    if (!sessionRemembered) return;
+    lastViewStore.setEnabled(on, currentLastView());
+    reopenLastView = on;
+  }
   const conflictPaths = $derived(engineState.conflicts.map((held) => held.path));
   const refreshing = $derived(engineState.refresh.inFlight);
   const head = $derived(engineState.synced?.head ?? null);
@@ -2012,6 +2053,11 @@
     {settings}
     {changeSettings}
     saveState={settingsSave}
+    device={{
+      reopenLastView,
+      remembered: sessionRemembered,
+      onReopenLastViewChange: handleReopenLastViewChange,
+    }}
     onRetry={() => engine.retryNow()}
     onClose={() => {
       settingsSaver.flush();
