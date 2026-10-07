@@ -19,6 +19,7 @@
     onUpdate: (entry: ShareEntry) => void;
     onViewVersion: (entry: ShareEntry) => void;
     onOpenNote: ((entry: ShareEntry) => void) | undefined;
+    onRename: (entry: ShareEntry) => void;
     onRevoke: (entry: ShareEntry) => void;
   }
 
@@ -32,6 +33,7 @@
     onUpdate,
     onViewVersion,
     onOpenNote,
+    onRename,
     onRevoke,
   }: Props = $props();
 
@@ -119,6 +121,9 @@
         break;
       case "open":
         onOpenNote?.(entry);
+        break;
+      case "rename":
+        onRename(entry);
         break;
       case "revoke":
         onRevoke(entry);

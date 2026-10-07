@@ -16,6 +16,7 @@
     updatingId: string | null;
     onUpdate: (entry: ShareEntry) => void;
     onOpenNote: (entry: ShareEntry) => void;
+    onRename: (entry: ShareEntry) => void;
     onRevoke: (entry: ShareEntry) => void;
     onClose: () => void;
   }
@@ -31,6 +32,7 @@
     updatingId,
     onUpdate,
     onOpenNote,
+    onRename,
     onRevoke,
     onClose,
   }: Props = $props();
@@ -61,6 +63,7 @@
         {updatingId}
         {onUpdate}
         {onOpenNote}
+        {onRename}
         {onRevoke}
       />
     {/if}

@@ -2,7 +2,7 @@ import type { ShareEntry } from "../../share/share-index";
 import { shareMenuIcons } from "../browse/action-icons";
 import type { MenuItem } from "../browse/row-menu-types";
 
-export type ShareMenuId = "copy-link" | "copy-password" | "update" | "view" | "open" | "revoke";
+export type ShareMenuId = "copy-link" | "copy-password" | "update" | "view" | "open" | "rename" | "revoke";
 
 export interface ShareMenuContext {
   readonly canOpen: boolean;
@@ -29,6 +29,7 @@ export function shareMenuItems(
   );
   items.push(item("view", "View shared version"));
   if (context.canOpen) items.push(item("open", "Open note"));
+  items.push(item("rename", "Rename…", { disabled: !context.writable }));
   items.push(item("revoke", "Revoke…", { destructive: true, disabled: !context.writable }));
   return items;
 }

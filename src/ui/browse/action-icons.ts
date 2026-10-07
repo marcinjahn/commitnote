@@ -43,6 +43,7 @@ export const shareMenuIcons = {
     "M6.5 3h-3a.75.75 0 0 0-.75.75v8.5c0 .41.34.75.75.75h8.5a.75.75 0 0 0 .75-.75v-3",
     "M9.5 2.5h4v4M13.5 2.5 7.5 8.5",
   ],
+  rename: actionIcons.rename,
   revoke: [TRASH_CAN],
 } as const satisfies Record<ShareMenuId, readonly string[]>;
 

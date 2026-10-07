@@ -35,6 +35,7 @@ describe("shareMenuItems", () => {
       ["update", "Update to current version"],
       ["view", "View shared version"],
       ["open", "Open note"],
+      ["rename", "Rename…"],
       ["revoke", "Revoke…"],
     ]);
     for (const item of items) expect(item.icon).toBe(shareMenuIcons[item.id]);
@@ -66,6 +67,23 @@ describe("shareMenuItems", () => {
     const items = shareMenuItems(entry(), { ...CONTEXT, canOpen: false });
 
     expect(find(items, "open")).toBeUndefined();
+  });
+
+  it("enables Rename when writable and disables it otherwise", () => {
+    expect(find(shareMenuItems(entry(), CONTEXT), "rename")?.disabled).toBeFalsy();
+    const items = shareMenuItems(entry(), { ...CONTEXT, writable: false });
+
+    expect(find(items, "rename")?.disabled).toBe(true);
+  });
+
+  it("offers Rename for trashed and deleted notes", () => {
+    const notes: ShareEntry["note"][] = [
+      { state: "trashed", entryId: "e1", path: ["Alpha"] },
+      { state: "deleted" },
+    ];
+    for (const note of notes) {
+      expect(find(shareMenuItems(entry({ note }), CONTEXT), "rename")?.disabled).toBeFalsy();
+    }
   });
 
   it("ends with a destructive Revoke", () => {

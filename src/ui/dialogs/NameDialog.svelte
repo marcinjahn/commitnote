@@ -8,7 +8,10 @@
     title: string;
     label: string;
     initialName: string;
-    siblingNames: readonly string[];
+    siblingNames?: readonly string[];
+    placeholder?: string;
+    maxLength?: number;
+    validate?: (input: string) => string | null;
     submitLabel: string;
     error: string | null;
     onSubmit: (name: string) => void;
@@ -19,7 +22,10 @@
     title,
     label,
     initialName,
-    siblingNames,
+    siblingNames = [],
+    placeholder,
+    maxLength,
+    validate,
     submitLabel,
     error,
     onSubmit,
@@ -34,8 +40,13 @@
   let name = $state(untrack(() => initialName));
   let attempted = $state(false);
 
-  const validation = $derived(validateName(name, siblingNames));
-  const showError = $derived(attempted && !validation.ok);
+  const validationMessage = $derived.by(() => {
+    if (validate !== undefined) return validate(name);
+    const result = validateName(name, siblingNames);
+    return result.ok ? null : describeNameError(result.error);
+  });
+  const valid = $derived(validationMessage === null);
+  const showError = $derived(attempted && validationMessage !== null);
 
   function handleInput(): void {
     attempted = true;
@@ -44,7 +55,7 @@
   function handleSubmit(event: SubmitEvent): void {
     event.preventDefault();
     attempted = true;
-    if (!validation.ok) return;
+    if (!valid) return;
     onSubmit(name);
   }
 </script>
@@ -58,13 +69,15 @@
           id={inputId}
           type="text"
           bind:value={name}
+          {placeholder}
+          maxlength={maxLength}
           oninput={handleInput}
           aria-describedby={errorId}
           aria-invalid={showError}
         />
-        {#if showError && !validation.ok}
+        {#if showError}
           <p id={errorId} role="alert" class="alert-error">
-            {describeNameError(validation.error)}
+            {validationMessage}
           </p>
         {:else if error !== null}
           <p id={errorId} role="alert" class="alert-error">
@@ -79,7 +92,7 @@
       type="submit"
       form={formId}
       class="button button-primary"
-      disabled={!validation.ok}
+      disabled={!valid}
     >
       {submitLabel}
     </button>

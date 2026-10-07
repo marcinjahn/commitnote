@@ -27,6 +27,7 @@
     onViewVersion: (entry: ShareEntry) => void;
     updatingId: string | null;
     onUpdate: (entry: ShareEntry) => void;
+    onRename: (entry: ShareEntry) => void;
     onRevoke: (entry: ShareEntry) => void;
     onCopyText: (text: string, copied: string) => Promise<boolean>;
     onClose: () => void;
@@ -46,6 +47,7 @@
     onViewVersion,
     updatingId,
     onUpdate,
+    onRename,
     onRevoke,
     onCopyText,
     onClose,
@@ -130,6 +132,7 @@
             {updatingId}
             {onUpdate}
             onOpenNote={undefined}
+            {onRename}
             {onRevoke}
           />
         </section>
