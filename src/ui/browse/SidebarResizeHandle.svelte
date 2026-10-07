@@ -48,6 +48,9 @@
       case "End":
         step(max);
         break;
+      case "Enter":
+        onReset();
+        break;
       default:
         return;
     }

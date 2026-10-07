@@ -82,6 +82,23 @@ test.describe("on desktop", () => {
     await expectSidebarWidth(page, 300);
   });
 
+  test("Enter on the focused handle restores the default width", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await handle(page).focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+    await expectSidebarWidth(page, 332);
+
+    await page.keyboard.press("Enter");
+
+    await expectSidebarWidth(page, 300);
+    await expect(handle(page)).toHaveAttribute("aria-valuenow", "300");
+    await expect(handle(page)).toBeFocused();
+    expect(await storedWidth(page)).toBeNull();
+  });
+
   test("arrow, Home and End keys resize the focused handle", async ({
     page,
   }) => {

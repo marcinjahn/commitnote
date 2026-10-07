@@ -106,18 +106,26 @@
   }
 
   function handleKeydown(event: KeyboardEvent): void {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    const rows = [
-      ...(listEl?.querySelectorAll<HTMLButtonElement>("[data-version-sha]") ??
+    const key = event.key;
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(key)) return;
+    const items = [
+      ...(listEl?.querySelectorAll<HTMLButtonElement>("[data-version-nav]") ??
         []),
     ];
-    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
-    const next = rows[at + (event.key === "ArrowDown" ? 1 : -1)];
-    if (next === undefined) return;
+    if (items.length === 0) return;
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next: HTMLButtonElement | undefined;
+    if (key === "Home") next = items[0];
+    else if (key === "End") next = items[items.length - 1];
+    else if (key === "ArrowDown") next = at === -1 ? items[0] : items[at + 1];
+    else next = at === -1 ? items[items.length - 1] : items[at - 1];
     event.preventDefault();
+    if (next === undefined) return;
     next.focus();
     next.scrollIntoView({ block: "nearest" });
-    const version = versions[indexBySha.get(next.dataset.versionSha!) ?? -1];
+    const sha = next.dataset.versionSha;
+    if (sha === undefined) return;
+    const version = versions[indexBySha.get(sha) ?? -1];
     if (version !== undefined) onSelect(version, "keyboard");
   }
 
@@ -139,6 +147,7 @@
     class:sub
     aria-current={selectedSha === version.sha ? "true" : undefined}
     data-version-sha={version.sha}
+    data-version-nav
     data-testid="version-row"
     onclick={() => onSelect(version, "pointer")}
   >
@@ -211,6 +220,7 @@
                 <button
                   type="button"
                   class="button button-ghost button-icon session-toggle"
+                  data-version-nav
                   aria-expanded={open}
                   aria-label={open ? "Hide saves" : `Show ${row.versions.length} saves`}
                   onclick={() => toggle(newest.sha)}
