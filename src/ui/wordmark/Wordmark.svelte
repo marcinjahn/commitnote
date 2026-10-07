@@ -95,7 +95,7 @@
     : undefined}
 >
   <span class="visually-hidden">commitnote</span>
-  <span class="wordmark-glyphs" aria-hidden="true">{#each LETTERS as letter, index (index)}<span class="wordmark-letter" class:wordmark-light={index >= 6} class:wordmark-untyped={phase === "typing" && index >= typedCount} class:wordmark-tail={tailStyle(index) !== undefined} style={tailStyle(index)}>{letter}</span>{/each}</span>{#if animating && caret}<span class="wordmark-caret" aria-hidden="true" style="left: {caret.left}px; top: {caret.top}px; height: {caret.height}px;{caretVisible ? '' : ' visibility: hidden;'}"></span>{/if}
+  <span class="wordmark-glyphs" aria-hidden="true">{#each LETTERS as letter, index (index)}<span class="wordmark-letter" class:wordmark-regular={index >= 6} class:wordmark-untyped={phase === "typing" && index >= typedCount} class:wordmark-tail={tailStyle(index) !== undefined} style={tailStyle(index)}>{letter}</span>{/each}</span>{#if animating && caret}<span class="wordmark-caret" aria-hidden="true" style="left: {caret.left}px; top: {caret.top}px; height: {caret.height}px;{caretVisible ? '' : ' visibility: hidden;'}"></span>{/if}
 </svelte:element>
 
 <style>
@@ -111,7 +111,7 @@
     color: var(--color-text);
   }
 
-  .wordmark-light {
+  .wordmark-regular {
     font-weight: 400;
   }
 
