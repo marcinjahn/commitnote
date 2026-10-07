@@ -5,13 +5,22 @@ import { dialogStack } from "../dialogs/dialog-stack";
 export function toastHost(node: HTMLElement): ActionReturn {
   let home: { parent: Node; next: Node | null } | null = null;
 
+  // Re-inserted toasts would replay their @starting-style entry; computing their style while
+  // `data-moving` disables transitions makes the move invisible.
+  function move(insert: () => void): void {
+    node.setAttribute("data-moving", "");
+    insert();
+    node.getBoundingClientRect();
+    node.removeAttribute("data-moving");
+  }
+
   function goHome(): void {
     if (home === null) return;
     const { parent, next } = home;
     home = null;
     // A missing anchor means the home itself was unmounted; re-inserting would leak a stray node.
-    if (next !== null && next.parentNode === parent) parent.insertBefore(node, next);
-    else if (next === null && parent.isConnected) parent.appendChild(node);
+    if (next !== null && next.parentNode === parent) move(() => parent.insertBefore(node, next));
+    else if (next === null && parent.isConnected) move(() => parent.appendChild(node));
   }
 
   const unsubscribe = dialogStack.subscribe((top) => {
@@ -23,7 +32,7 @@ export function toastHost(node: HTMLElement): ActionReturn {
     if (home === null && node.parentNode !== null) {
       home = { parent: node.parentNode, next: node.nextSibling };
     }
-    top.appendChild(node);
+    move(() => top.appendChild(node));
   });
 
   return {

@@ -778,6 +778,13 @@ test("on desktop the Settings dialog uses the large width", async ({ page }) => 
   const dialog = await openSettings(page);
   const box = await dialog.locator(".dialog-card").boundingBox();
   expect(box?.width).toBeGreaterThanOrEqual(600);
+
+  const swatchTops = await dialog
+    .getByRole("radiogroup", { name: "Accent color" })
+    .locator("label")
+    .evaluateAll((labels) => labels.map((label) => Math.round(label.getBoundingClientRect().top)));
+  expect(swatchTops).toHaveLength(PALETTE.length);
+  expect(new Set(swatchTops).size).toBe(1);
 });
 
 test("on mobile the Settings dialog stays a bottom sheet spanning the viewport width", { tag: "@mobile-only" }, async ({

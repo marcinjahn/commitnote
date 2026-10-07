@@ -86,9 +86,18 @@
   import SharedLinksDialog from "../share/SharedLinksDialog.svelte";
   import SharedVersionDialog from "../share/SharedVersionDialog.svelte";
   import { copyText } from "../share/copy-text";
-  import { describeShareError, messageText } from "../share/share-messages";
+  import {
+    describeShareError,
+    messageText,
+    SHARE_UNCHANGED_TEXT,
+    SHARE_UPDATED_TEXT,
+  } from "../share/share-messages";
   import type { ShareService } from "../../share/share-service";
-  import type { ShareEntry } from "../../share/share-index";
+  import {
+    sharesOfNote,
+    type ShareEntry,
+  } from "../../share/share-index";
+  import { sharedVersionShas } from "../../history/shared-versions";
   import { formatShareLink, shareLinkBase } from "../../share/share-link";
   import type { ForgeId } from "../../forge/repo-coordinates";
   import TrashDialog from "../trash/TrashDialog.svelte";
@@ -484,6 +493,12 @@
       head: state.synced?.head,
     });
   });
+
+  const historySharedShas = $derived(
+    historyDialog === null || engineState.shares === null
+      ? new Set<string>()
+      : sharedVersionShas(sharesOfNote(engineState.shares, historyDialog.path)),
+  );
 
   const historyCurrent = $derived.by(() => {
     const open = engineState.openNote;
@@ -1231,6 +1246,23 @@
     void handleSelect(entry.note.path);
   }
 
+  let updatingShareId = $state<string | null>(null);
+
+  async function handleUpdateShare(entry: ShareEntry): Promise<void> {
+    if (updatingShareId !== null) return;
+    updatingShareId = entry.id;
+    try {
+      const result = await shareService.updateShare(entry.id);
+      if (!result.ok) {
+        showToast("share", messageText(describeShareError(result.error, forgeId)));
+      } else {
+        showToast("share", result.unchanged ? SHARE_UNCHANGED_TEXT : SHARE_UPDATED_TEXT);
+      }
+    } finally {
+      updatingShareId = null;
+    }
+  }
+
   async function handleRevokeConfirm(): Promise<void> {
     if (revokeEntry === null) return;
     const { id } = revokeEntry;
@@ -1616,6 +1648,7 @@
     {noteHistory}
     current={historyCurrent}
     currentName={noteName(historyDialog.path)}
+    sharedShas={historySharedShas}
     {forgeName}
     conflicted={openConflicted}
     canSave={engineState.stopped === null && !engineState.suspended}
@@ -1644,6 +1677,8 @@
       void copyShareText(entry.password ?? "", "Password copied")}
     onCopyText={copyShareText}
     onViewVersion={(entry) => (sharedVersionEntry = entry)}
+    updatingId={updatingShareId}
+    onUpdate={(entry) => void handleUpdateShare(entry)}
     onRevoke={(entry) => (revokeEntry = entry)}
     onClose={() => (sharePath = null)}
   />
@@ -1662,6 +1697,8 @@
   onCopyPassword={(entry) =>
     void copyShareText(entry.password ?? "", "Password copied")}
   onViewVersion={(entry) => (sharedVersionEntry = entry)}
+  updatingId={updatingShareId}
+  onUpdate={(entry) => void handleUpdateShare(entry)}
   onOpenNote={handleOpenSharedNote}
   onRevoke={(entry) => (revokeEntry = entry)}
   onClose={() => (sharedLinksOpen = false)}
@@ -1730,6 +1767,10 @@
 <style>
   .toast-host {
     display: contents;
+  }
+
+  .toast-host:global([data-moving]) :global(.toast) {
+    transition: none;
   }
 
   .shell {

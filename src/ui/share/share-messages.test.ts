@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ShareError } from "../../share/share-service";
 import {
+  describeShareDate,
   describeShareError,
-  describeSharedAt,
   messageText,
+  SHARE_UNCHANGED_TEXT,
+  SHARE_UPDATED_TEXT,
+  compactShareDate,
 } from "./share-messages";
 
 const SIMPLE: readonly [ShareError["kind"], string, string][] = [
@@ -31,6 +34,11 @@ const SIMPLE: readonly [ShareError["kind"], string, string][] = [
     "tooLarge",
     "This note is too large to share.",
     "This note is too large to share.",
+  ],
+  [
+    "shareMissing",
+    "This link no longer exists on GitHub. Revoke it to remove it from the list.",
+    "This link no longer exists on GitLab. Revoke it to remove it from the list.",
   ],
   [
     "sharesUnavailable",
@@ -102,6 +110,13 @@ describe("describeShareError", () => {
   });
 });
 
+describe("update texts", () => {
+  it("has the toast texts", () => {
+    expect(SHARE_UPDATED_TEXT).toBe("Link updated");
+    expect(SHARE_UNCHANGED_TEXT).toBe("Link already shows the current version");
+  });
+});
+
 describe("messageText", () => {
   it("concatenates text and link parts", () => {
     expect(
@@ -114,11 +129,41 @@ describe("messageText", () => {
   });
 });
 
-describe("describeSharedAt", () => {
-  it("prefixes a medium date", () => {
+describe("describeShareDate", () => {
+  const format = (iso: string) =>
+    new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(iso));
+
+  it("shows the share date when the share was never updated", () => {
+    const sharedAt = "2026-03-04T12:00:00.000Z";
+    expect(describeShareDate({ sharedAt, updatedAt: null })).toBe(`Shared ${format(sharedAt)}`);
+  });
+
+  it("shows the update date when the share was updated", () => {
+    const sharedAt = "2026-03-04T12:00:00.000Z";
+    const updatedAt = "2026-05-06T12:00:00.000Z";
+    expect(describeShareDate({ sharedAt, updatedAt })).toBe(`Updated ${format(updatedAt)}`);
+  });
+});
+
+describe("compactShareDate", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  it("omits the year for dates in the current year", () => {
     const iso = "2026-03-04T12:00:00.000Z";
-    expect(describeSharedAt(iso)).toBe(
-      `Shared ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(iso))}`,
+    const expected = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(
+      new Date(iso),
     );
+    expect(compactShareDate(iso, now)).toBe(expected);
+  });
+
+  it("includes the year for dates in another year", () => {
+    const iso = "2025-12-20T12:00:00.000Z";
+    const expected = new Intl.DateTimeFormat(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(new Date(iso));
+    expect(compactShareDate(iso, now)).toBe(expected);
+    expect(compactShareDate(iso, now)).toContain("2025");
   });
 });

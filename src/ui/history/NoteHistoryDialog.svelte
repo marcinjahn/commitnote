@@ -47,6 +47,7 @@
     /** The open note's text, unsaved edits included; null when it isn't open. */
     current: string | null;
     currentName: string;
+    sharedShas: ReadonlySet<string>;
     forgeName: string;
     conflicted: boolean;
     /** False when syncing stopped or is suspended. */
@@ -65,6 +66,7 @@
     noteHistory,
     current,
     currentName,
+    sharedShas,
     forgeName,
     conflicted,
     canSave,
@@ -311,6 +313,7 @@
             error={history.error}
             {forgeName}
             {currentName}
+            {sharedShas}
             {selectedSha}
             {now}
             onSelect={(version, via) => void handleSelect(version, via)}

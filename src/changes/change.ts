@@ -60,6 +60,7 @@ export type Change =
       readonly color: ColorTag | null;
     }
   | { readonly kind: "add-share"; readonly entry: ShareEntry }
+  | { readonly kind: "update-share"; readonly entry: ShareEntry }
   | { readonly kind: "remove-share"; readonly id: string };
 
 /** The order key of the child `name` of a folder. */

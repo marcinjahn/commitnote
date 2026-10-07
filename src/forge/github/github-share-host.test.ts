@@ -43,16 +43,12 @@ describe("GitHub share host", () => {
   describe("create", () => {
     it("posts a secret gist and returns its locator", async () => {
       const { host, calls, reports } = setup(() =>
-        json({ id: "abc123", history: [{ version: "rev1" }] }, 201),
+        json({ id: "abc123" }, 201),
       );
 
       const locator = await host.create("envelope-text");
 
-      expect(locator).toEqual({
-        provider: "github",
-        gistId: "abc123",
-        revision: "rev1",
-      });
+      expect(locator).toEqual({ provider: "github", gistId: "abc123" });
       expect(calls).toEqual([
         {
           url: "https://api.github.com/gists",
@@ -98,8 +94,8 @@ describe("GitHub share host", () => {
       });
     });
 
-    it("rejects a response without a gist id or revision with Server", async () => {
-      for (const body of [{}, { id: "a", history: [] }, { id: 5 }]) {
+    it("rejects a response without a gist id with Server", async () => {
+      for (const body of [{}, { id: 5 }]) {
         const { host } = setup(() => json(body, 201));
         await expect(host.create("x")).rejects.toMatchObject({
           kind: "Server",
@@ -114,12 +110,46 @@ describe("GitHub share host", () => {
     });
   });
 
+  describe("update", () => {
+    const locator = { provider: "github", gistId: "abc123" } as const;
+
+    it("patches only the share file content", async () => {
+      const { host, calls, reports } = setup(() => json({ id: "abc123" }, 200));
+
+      await host.update(locator, "new-envelope");
+
+      expect(calls).toEqual([
+        {
+          url: "https://api.github.com/gists/abc123",
+          method: "PATCH",
+          authorization: `Bearer ${TOKEN}`,
+          body: {
+            files: { "commitnote-share.json": { content: "new-envelope" } },
+          },
+        },
+      ]);
+      expect(reports).toEqual([{ operation: "updateShare" }]);
+    });
+
+    it("maps 404 to NotFound", async () => {
+      const { host } = setup(() => json({ message: "Not Found" }, 404));
+      await expect(host.update(locator, "x")).rejects.toMatchObject({
+        kind: "NotFound",
+      });
+    });
+
+    it("rejects a gitlab locator without sending a request", async () => {
+      const { host, calls, reports } = setup(() => json({}, 200));
+      await expect(
+        host.update({ provider: "gitlab", snippetId: "1" }, "x"),
+      ).rejects.toMatchObject({ kind: "Server" });
+      expect(calls).toEqual([]);
+      expect(reports).toEqual([]);
+    });
+  });
+
   describe("delete", () => {
-    const locator = {
-      provider: "github",
-      gistId: "abc123",
-      revision: "rev1",
-    } as const;
+    const locator = { provider: "github", gistId: "abc123" } as const;
 
     it("deletes the gist", async () => {
       const { host, calls, reports } = setup(

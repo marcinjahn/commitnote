@@ -10,6 +10,7 @@ import {
 } from "./helpers";
 import {
   moveToTrash,
+  openHistory,
   openTrash,
   openWelcome,
   restoreTo,
@@ -51,8 +52,16 @@ async function closeSharedLinks(list: Locator): Promise<void> {
   await expect(list).toHaveCount(0);
 }
 
+async function shareAction(list: Locator, title: string, item: string): Promise<void> {
+  await list.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
+  );
+  await list.getByRole("button", { name: `Share actions for ${title}` }).click();
+  await list.page().getByRole("menu", { name: `Share actions for ${title}` }).getByRole("menuitem", { name: item }).click();
+}
+
 async function revoke(page: Page, list: Locator, title: string): Promise<void> {
-  await list.getByRole("button", { name: `Revoke link for ${title}` }).click();
+  await shareAction(list, title, "Revoke…");
   await page
     .getByRole("dialog", { name: "Revoke link?" })
     .getByRole("button", { name: "Revoke", exact: true })
@@ -97,7 +106,7 @@ test("the shared version shows the text from when the note was shared", async ({
   await waitForSynced(page);
 
   const list = await openSharedLinks(page);
-  await list.getByRole("button", { name: "View shared version of Welcome" }).click();
+  await shareAction(list, "Welcome", "View shared version");
   const version = page.getByRole("dialog", { name: "Shared version" });
   await expect(version.getByText(NOTE_TEXT)).toBeVisible();
   await expect(version.getByText("Edited after sharing")).toHaveCount(0);
@@ -110,7 +119,7 @@ test("a share survives a passphrase change", async ({ page }) => {
   await changePassphrase(page);
 
   const list = await openSharedLinks(page);
-  await list.getByRole("button", { name: "View shared version of Welcome" }).click();
+  await shareAction(list, "Welcome", "View shared version");
   const version = page.getByRole("dialog", { name: "Shared version" });
   await expect(
     version.getByText(
@@ -119,7 +128,7 @@ test("a share survives a passphrase change", async ({ page }) => {
   ).toBeVisible();
   await version.getByRole("button", { name: "Close" }).click();
   await expect(version).toHaveCount(0);
-  await expect(list.getByRole("button", { name: "Copy link for Welcome" })).toBeVisible();
+  await expect(list.getByRole("button", { name: "Share actions for Welcome" })).toBeVisible();
   await closeSharedLinks(list);
 
   const viewer = await openViewer(page, link);
@@ -146,7 +155,7 @@ test("the shared links list is available on a second device", async ({
 
   const list = await openSharedLinks(second.page);
   await expect(list.getByTestId("share-item")).toHaveCount(1);
-  await list.getByRole("button", { name: "Copy link for Welcome" }).click();
+  await shareAction(list, "Welcome", "Copy link");
   await expect(second.page.getByText("Link copied")).toBeVisible();
   expect(await second.page.evaluate(() => navigator.clipboard.readText())).toBe(link);
 
@@ -189,6 +198,45 @@ test("trashed and deleted notes stay in the shared links list", async ({ page })
   list = await openSharedLinks(page);
   const deleted = list.getByTestId("share-item").filter({ hasText: "Deleted note" });
   await expect(deleted).toContainText(OTHER_NOTE);
-  await revoke(page, list, "Deleted note");
+  await revoke(page, list, OTHER_NOTE);
   await expect(list.getByTestId("share-item")).toHaveCount(1);
+});
+
+test("the history Shared badge follows the shared version through update and revoke", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await shareFromRowMenu(page);
+  await openWelcome(page);
+  await page.getByRole("textbox", { name: "Note editor" }).click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("Edited after sharing");
+  await waitForSynced(page);
+
+  const badge = (history: Locator) => history.locator(".shared-badge");
+  const rows = (history: Locator) => history.getByTestId("version-row");
+
+  let history = await openHistory(page);
+  await expect(badge(history)).toHaveCount(1);
+  await expect(rows(history).first().locator(".shared-badge")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(history).toHaveCount(0);
+
+  const list = await openSharedLinks(page);
+  await shareAction(list, "Welcome", "Update to current version");
+  await expect(page.getByText("Link updated")).toBeVisible();
+  await closeSharedLinks(list);
+
+  history = await openHistory(page);
+  await expect(badge(history)).toHaveCount(1);
+  await expect(rows(history).first().locator(".shared-badge")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(history).toHaveCount(0);
+
+  const links = await openSharedLinks(page);
+  await revoke(page, links, "Welcome");
+  await closeSharedLinks(links);
+
+  history = await openHistory(page);
+  await expect(badge(history)).toHaveCount(0);
 });

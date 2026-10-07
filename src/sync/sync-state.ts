@@ -67,6 +67,7 @@ function entryPathOf(change: Change): NotePath | null {
         ? change.parent
         : [...change.parent, change.moved];
     case "add-share":
+    case "update-share":
       return change.entry.note.state === "active" ? change.entry.note.path : null;
     case "purge-trash":
     case "set-settings":

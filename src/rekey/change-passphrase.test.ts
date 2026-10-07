@@ -255,6 +255,7 @@ describe("changing the passphrase", () => {
                 sharedAt: "2026-02-01T00:00:00.000Z",
                 note: { state: "active", path: ["Welcome"] },
                 source: { commit: "c", storedPath: "p", blobSha: "b" },
+                updatedAt: null,
               },
             ],
           ]),

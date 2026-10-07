@@ -207,6 +207,7 @@ class GitLabAdapter implements ForgeAdapter {
   readonly limits = GITLAB_WRITE_LIMITS;
   readonly shareHost: ShareHost = {
     create: (envelope) => this.createShare(envelope),
+    update: (locator, envelope) => this.updateShare(locator, envelope),
     delete: (locator) => this.deleteShare(locator),
   };
   private readonly projectPath: string;
@@ -288,6 +289,32 @@ class GitLabAdapter implements ForgeAdapter {
       throw new ForgeError("Server", { status: response.status });
     }
     return { provider: "gitlab", snippetId: String(body.id) };
+  }
+
+  private async updateShare(
+    locator: ShareLocator,
+    envelope: string,
+  ): Promise<void> {
+    if (locator.provider !== "gitlab") {
+      throw new ForgeError("Server");
+    }
+    this.report("updateShare");
+    const response = await this.send(
+      `${GITLAB_API_BASE}/snippets/${encodeURIComponent(locator.snippetId)}`,
+      {
+        method: "PUT",
+        body: {
+          files: [
+            {
+              action: "update",
+              file_path: "commitnote-share.json",
+              content: envelope,
+            },
+          ],
+        },
+      },
+    );
+    if (!response.ok) throw this.errorFor(response);
   }
 
   private async deleteShare(locator: ShareLocator): Promise<void> {

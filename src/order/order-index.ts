@@ -285,6 +285,7 @@ export function applyChangeToOrder(
     case "set-settings":
     case "set-color-tag":
     case "add-share":
+    case "update-share":
     case "remove-share":
       return index;
     default:

@@ -7,7 +7,7 @@
   import { describeSyncError } from "../browse/sync-messages";
   import Dialog from "../dialogs/Dialog.svelte";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
-  import { describeSharedAt } from "./share-messages";
+  import { describeShareDate } from "./share-messages";
 
   interface Props {
     entry: ShareEntry;
@@ -54,7 +54,7 @@
 
 <Dialog open={true} wide closeButton title="Shared version" {onClose}>
   {#snippet children()}
-    <p class="version-date">{describeSharedAt(entry.sharedAt)}</p>
+    <p class="version-date">{describeShareDate(entry)}</p>
     {#if entry.source === null}
       <p class="version-message">{PASSPHRASE_CHANGED_MESSAGE}</p>
     {:else if content === null}

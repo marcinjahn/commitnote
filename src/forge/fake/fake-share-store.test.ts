@@ -28,7 +28,6 @@ describe("fake share store", () => {
     const locator = createFakeShareStore().create("github", "x");
     if (locator.provider !== "github") throw new Error("expected github");
     expect(locator.gistId).toMatch(/^[0-9a-f]{32}$/);
-    expect(locator.revision).toMatch(/^[0-9a-f]{40}$/);
   });
 
   it("creates snippet locators with increasing decimal ids from 1000", () => {
@@ -43,11 +42,18 @@ describe("fake share store", () => {
     });
   });
 
-  it("reads null for a known gist at another revision", () => {
+  it("replaces the stored envelope on update", () => {
     const store = createFakeShareStore();
-    const locator = store.create("github", "x");
-    if (locator.provider !== "github") throw new Error("expected github");
-    expect(store.read({ ...locator, revision: "0".repeat(40) })).toBeNull();
+    const locator = store.create("github", "before");
+    expect(store.update(locator, "after")).toBe(true);
+    expect(store.read(locator)).toBe("after");
+  });
+
+  it("reports false when updating a missing share", () => {
+    const store = createFakeShareStore();
+    const locator = { provider: "gitlab", snippetId: "5" } as const;
+    expect(store.update(locator, "x")).toBe(false);
+    expect(store.read(locator)).toBeNull();
   });
 
   it("reports false when deleting a missing share", () => {

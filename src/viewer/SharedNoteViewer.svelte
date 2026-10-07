@@ -4,7 +4,7 @@
   import Wordmark from "../ui/wordmark/Wordmark.svelte";
   import { livePreview } from "../editor/live-preview";
   import { linkOpen } from "../editor/link-open";
-  import { describeSharedAt } from "../ui/share/share-messages";
+  import { describeShareDate } from "../ui/share/share-messages";
   import type { ViewerController, ViewerState } from "./viewer-state";
   import {
     describeViewerError,
@@ -107,7 +107,7 @@
       <div class="note-head">
         <div class="note-title">
           <h1>{note.name}</h1>
-          <p class="muted">{describeSharedAt(note.sharedAt)}</p>
+          <p class="muted">{describeShareDate(note)}</p>
         </div>
         <button class="button" type="button" onclick={() => copy(note.markdown)}>
           Copy text

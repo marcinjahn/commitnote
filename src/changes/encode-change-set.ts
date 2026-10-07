@@ -348,6 +348,13 @@ async function applyChange(
       trailers.push(`${TRAILER.share}: add`);
       break;
     }
+    case "update-share": {
+      if (change.entry.note.state !== "active") fail();
+      const stored = await storedPathOf(change.entry.note.path);
+      if (!working.has(stored)) fail();
+      trailers.push(`${TRAILER.share}: update`);
+      break;
+    }
     case "remove-share":
       trailers.push(`${TRAILER.share}: remove`);
       break;

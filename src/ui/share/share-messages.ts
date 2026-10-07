@@ -12,6 +12,9 @@ const FORGE_NAMES: Readonly<Record<ForgeId, string>> = {
   gitlab: "GitLab",
 };
 
+export const SHARE_UPDATED_TEXT = "Link updated";
+export const SHARE_UNCHANGED_TEXT = "Link already shows the current version";
+
 const text = (value: string): MessagePart => ({ kind: "text", text: value });
 const link = (label: string, href: string): MessagePart => ({
   kind: "link",
@@ -83,6 +86,12 @@ export function describeShareError(
       ];
     case "tooLarge":
       return [text("This note is too large to share.")];
+    case "shareMissing":
+      return [
+        text(
+          `This link no longer exists on ${forge}. Revoke it to remove it from the list.`,
+        ),
+      ];
     case "sharesUnavailable":
       return [
         text(
@@ -96,9 +105,25 @@ export function messageText(parts: readonly MessagePart[]): string {
   return parts.map((part) => part.text).join("");
 }
 
-export function describeSharedAt(iso: string): string {
-  const date = new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-  }).format(new Date(iso));
-  return `Shared ${date}`;
+export function describeShareDate(dates: {
+  readonly sharedAt: string;
+  readonly updatedAt: string | null;
+}): string {
+  const format = (iso: string) =>
+    new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+      new Date(iso),
+    );
+  return dates.updatedAt === null
+    ? `Shared ${format(dates.sharedAt)}`
+    : `Updated ${format(dates.updatedAt)}`;
+}
+
+export function compactShareDate(iso: string, now: Date): string {
+  const date = new Date(iso);
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    ...(sameYear ? {} : { year: "numeric" }),
+  }).format(date);
 }

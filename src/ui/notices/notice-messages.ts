@@ -39,6 +39,7 @@ export function describeNotice(notice: EngineNotice): string {
         case "set-settings":
           return "Some settings couldn't be saved because they changed on another device.";
         case "add-share":
+        case "update-share":
         case "remove-share":
           return "A change to your shared links couldn't be saved.";
         case "set-color-tag":

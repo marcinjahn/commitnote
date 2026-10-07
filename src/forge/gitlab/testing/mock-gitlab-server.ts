@@ -220,6 +220,21 @@ export class MockGitLabRepo {
     const idMatch = new RegExp(`^${API_PREFIX}/snippets/(\\d+)$`).exec(
       url.pathname,
     );
+    if (method === "PUT" && idMatch !== null) {
+      const id = Number(idMatch[1]);
+      if (!this.snippets.has(id)) {
+        return jsonResponse({ message: "404 Snippet Not Found" }, 404);
+      }
+      const body = (await request.json()) as {
+        files?: readonly { content?: string }[];
+      };
+      const content = body.files?.[0]?.content;
+      if (typeof content !== "string") {
+        return jsonResponse({ message: "400 Bad request" }, 400);
+      }
+      this.snippets.set(id, content);
+      return jsonResponse({ id }, 200);
+    }
     if (method === "DELETE" && idMatch !== null) {
       return this.snippets.delete(Number(idMatch[1]))
         ? new HttpResponse(null, { status: 204 })

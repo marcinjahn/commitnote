@@ -1,3 +1,4 @@
+import type { ShareMenuId } from "../share/share-menu";
 import type { RowAction } from "./row-menu-types";
 
 const FOLDER_OUTLINE =
@@ -22,6 +23,28 @@ export const actionIcons = {
   "delete-permanently": [TRASH_CAN],
   share: LINK,
 } as const satisfies Record<RowAction, readonly string[]>;
+
+const LOCK = [
+  "M3.75 7.25h8.5a.75.75 0 0 1 .75.75v5a.75.75 0 0 1-.75.75h-8.5a.75.75 0 0 1-.75-.75V8a.75.75 0 0 1 .75-.75z",
+  "M5.25 7.25V5a2.75 2.75 0 0 1 5.5 0v2.25",
+] as const;
+
+export const shareMenuIcons = {
+  "copy-link": LINK,
+  "copy-password": LOCK,
+  update: [
+    "M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2.5v3.5H10",
+  ],
+  view: [
+    "M1.5 8s2.25-4.5 6.5-4.5S14.5 8 14.5 8s-2.25 4.5-6.5 4.5S1.5 8 1.5 8z",
+    "M8 6.25a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5z",
+  ],
+  open: [
+    "M6.5 3h-3a.75.75 0 0 0-.75.75v8.5c0 .41.34.75.75.75h8.5a.75.75 0 0 0 .75-.75v-3",
+    "M9.5 2.5h4v4M13.5 2.5 7.5 8.5",
+  ],
+  revoke: [TRASH_CAN],
+} as const satisfies Record<ShareMenuId, readonly string[]>;
 
 export const commandIcons = {
   settings: [

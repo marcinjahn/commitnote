@@ -76,6 +76,7 @@ const SHARE_FAILURE_MATCH: Record<
   { method: string; pathPattern: RegExp }
 > = {
   createShare: { method: "POST", pathPattern: /\/snippets$/ },
+  updateShare: { method: "PUT", pathPattern: /\/snippets\// },
   deleteShare: { method: "DELETE", pathPattern: /\/snippets\// },
 };
 

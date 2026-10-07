@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Change, ChangeSet, NotePath } from "../changes/change";
+import type { ShareEntry, ShareNoteLocation } from "../share/share-index";
 import {
   computeSyncStates,
   hasConflictMarkers,
@@ -9,6 +10,20 @@ import {
 
 function pathOf(...segments: string[]): NotePath {
   return segments;
+}
+
+function shareEntry(note: ShareNoteLocation): ShareEntry {
+  return {
+    id: "share-1",
+    locator: { provider: "github", gistId: "gist" },
+    linkSecret: "secret",
+    password: null,
+    name: "a.md",
+    sharedAt: "2026-01-01T00:00:00.000Z",
+    note,
+    source: null,
+    updatedAt: null,
+  };
 }
 
 describe("computeSyncStates entry paths", () => {
@@ -103,6 +118,22 @@ describe("computeSyncStates entry paths", () => {
         positions: [{ name: "a.md", key: "V" }],
       },
       expectedPath: pathOf("folder"),
+    },
+    {
+      description: "add-share marks its active note",
+      change: {
+        kind: "add-share",
+        entry: shareEntry({ state: "active", path: pathOf("folder", "a.md") }),
+      },
+      expectedPath: pathOf("folder", "a.md"),
+    },
+    {
+      description: "update-share marks its active note",
+      change: {
+        kind: "update-share",
+        entry: shareEntry({ state: "active", path: pathOf("folder", "a.md") }),
+      },
+      expectedPath: pathOf("folder", "a.md"),
     },
   ];
 
@@ -223,6 +254,23 @@ describe("computeSyncStates order", () => {
 
     expect(states.unsavedCount).toBe(1);
   });
+});
+
+describe("computeSyncStates shares", () => {
+  it.each(["add-share", "update-share"] as const)(
+    "doesn't count a %s of a note that is no longer active",
+    (kind) => {
+      const states = computeSyncStates({
+        pending: [{ kind, entry: shareEntry({ state: "deleted" }) }],
+        inFlight: [],
+        failed: false,
+        conflicts: [],
+      });
+
+      expect(states.stateOf([])).toBe(SYNCED);
+      expect(states.unsavedCount).toBe(0);
+    },
+  );
 });
 
 describe("computeSyncStates purge", () => {

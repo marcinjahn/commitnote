@@ -143,6 +143,7 @@ class GitHubAdapter implements ForgeAdapter {
   readonly limits = GITHUB_WRITE_LIMITS;
   readonly shareHost: ShareHost = {
     create: (envelope) => this.createShare(envelope),
+    update: (locator, envelope) => this.updateShare(locator, envelope),
     delete: (locator) => this.deleteShare(locator),
   };
   private readonly ownerPath: string;
@@ -211,19 +212,30 @@ class GitHubAdapter implements ForgeAdapter {
     }
     const body = (await response.json().catch(() => null)) as {
       id?: unknown;
-      history?: readonly { version?: unknown }[];
     } | null;
     const gistId = body?.id;
-    const revision = body?.history?.[0]?.version;
-    if (
-      typeof gistId !== "string" ||
-      gistId === "" ||
-      typeof revision !== "string" ||
-      revision === ""
-    ) {
+    if (typeof gistId !== "string" || gistId === "") {
       throw new ForgeError("Server", { status: response.status });
     }
-    return { provider: "github", gistId, revision };
+    return { provider: "github", gistId };
+  }
+
+  private async updateShare(
+    locator: ShareLocator,
+    envelope: string,
+  ): Promise<void> {
+    if (locator.provider !== "github") {
+      throw new ForgeError("Server");
+    }
+    this.report("updateShare");
+    const response = await this.send(
+      `${API_BASE}/gists/${encodeURIComponent(locator.gistId)}`,
+      {
+        method: "PATCH",
+        body: { files: { "commitnote-share.json": { content: envelope } } },
+      },
+    );
+    if (!response.ok) throw await this.errorFor(response);
   }
 
   private async deleteShare(locator: ShareLocator): Promise<void> {

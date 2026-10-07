@@ -198,9 +198,23 @@ export class MockGitHubRepo {
       }
       const id = `gist${this.nextGist++}`;
       this.gists.set(id, content);
-      return jsonResponse({ id, history: [{ version: `${id}-v1` }] }, 201);
+      return jsonResponse({ id }, 201);
     }
     const idMatch = /^\/gists\/([^/]+)$/.exec(pathname);
+    if (method === "PATCH" && idMatch !== null) {
+      if (!this.gists.has(idMatch[1])) {
+        return jsonResponse({ message: "Not Found" }, 404);
+      }
+      const body = (await request.json()) as {
+        files?: Record<string, { content?: string }>;
+      };
+      const content = body.files?.["commitnote-share.json"]?.content;
+      if (typeof content !== "string") {
+        return jsonResponse({ message: "Validation Failed" }, 422);
+      }
+      this.gists.set(idMatch[1], content);
+      return jsonResponse({ id: idMatch[1] }, 200);
+    }
     if (method === "DELETE" && idMatch !== null) {
       return this.gists.delete(idMatch[1])
         ? new HttpResponse(null, { status: 204 })

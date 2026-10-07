@@ -46,6 +46,7 @@ export type FailableOperation =
   | "findOldestCommit"
   | "readFileAt"
   | "createShare"
+  | "updateShare"
   | "deleteShare";
 
 function toCommitSummary(sha: string, commit: StoredCommit): CommitSummary {
@@ -109,6 +110,13 @@ export class FakeForgeAdapter implements ForgeAdapter {
         this.throwIfFailing("createShare");
         this.report({ operation: "createShare" });
         return store.create(provider, envelope);
+      },
+      update: async (locator, envelope) => {
+        this.throwIfFailing("updateShare");
+        this.report({ operation: "updateShare" });
+        if (!store.update(locator, envelope)) {
+          throw new ForgeError("NotFound");
+        }
       },
       delete: async (locator) => {
         this.throwIfFailing("deleteShare");

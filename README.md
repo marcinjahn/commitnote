@@ -169,7 +169,7 @@ next time.
 
 ## Sharing notes
 
-A share is an encrypted, fixed copy of a saved note, uploaded as a secret gist (GitHub) or public
+A share is a fixed, encrypted copy of the note's saved version, uploaded as a secret gist (GitHub) or public
 snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu, or the Share button in its header, to create a share link
 (`<app URL>#share=...`).
 
@@ -177,6 +177,8 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
   password is then needed in addition to the link.
 - "Shared links" in the command menu lists your shares. The list is stored encrypted in
   `.commitnote/shares`, so it is the same on every device.
+- A share never changes on its own. "Update to current version" in the share's "⋯" menu (also opened by right-click) replaces the shared copy with the note's current saved version, keeping the same link and the same password.
+- The link always shows the latest update. On GitHub, recipients may see the previous content for up to about a minute after an update.
 - Revoking a share deletes its gist or snippet, and the link stops working. Shares never expire.
 - After a passphrase change, existing links keep working, but "View shared version" can no longer
   show the old version.

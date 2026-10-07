@@ -24,6 +24,8 @@
     onCopyLink: (entry: ShareEntry) => void;
     onCopyPassword: (entry: ShareEntry) => void;
     onViewVersion: (entry: ShareEntry) => void;
+    updatingId: string | null;
+    onUpdate: (entry: ShareEntry) => void;
     onRevoke: (entry: ShareEntry) => void;
     onCopyText: (text: string, copied: string) => Promise<boolean>;
     onClose: () => void;
@@ -41,6 +43,8 @@
     onCopyLink,
     onCopyPassword,
     onViewVersion,
+    updatingId,
+    onUpdate,
     onRevoke,
     onCopyText,
     onClose,
@@ -119,6 +123,8 @@
             {onCopyLink}
             {onCopyPassword}
             {onViewVersion}
+            {updatingId}
+            {onUpdate}
             onOpenNote={undefined}
             {onRevoke}
           />

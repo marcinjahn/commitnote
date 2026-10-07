@@ -70,7 +70,7 @@ describe("createGitLabShareReader", () => {
   it("rejects a locator of another provider as damaged", async () => {
     expect(
       await kindOf(
-        reader.read({ provider: "github", gistId: "g", revision: "r" }),
+        reader.read({ provider: "github", gistId: "g" }),
       ),
     ).toBe("damaged");
   });

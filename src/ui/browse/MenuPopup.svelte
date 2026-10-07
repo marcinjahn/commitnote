@@ -154,6 +154,7 @@
       type="button"
       role="menuitem"
       class="menu-popup-item"
+      class:destructive={item.destructive === true}
       disabled={item.disabled === true}
       onclick={() => onSelect(item.id)}
     >
@@ -284,6 +285,10 @@
   .menu-popup-item:hover:not(:disabled),
   .menu-popup-item:focus-visible {
     background: var(--color-hover);
+  }
+
+  .menu-popup-item.destructive {
+    color: var(--color-danger);
   }
 
   .menu-popup-item:disabled {

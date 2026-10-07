@@ -62,6 +62,11 @@ export type VersionContent =
   | { readonly kind: "undecryptable"; readonly name: string | null }
   | { readonly kind: "failed"; readonly error: SyncError };
 
+export type NewestVersion =
+  | { readonly kind: "found"; readonly version: NoteVersion }
+  | { readonly kind: "none" }
+  | { readonly kind: "failed"; readonly error: SyncError };
+
 export interface NoteHistory {
   /**
    * The history of the note at `notePath` on `head`, starting to load when
@@ -69,6 +74,8 @@ export interface NoteHistory {
    * kept, so reopening one of them continues where it left off.
    */
   open(notePath: NotePath, head: string): NoteHistoryCursor;
+  /** The newest version of the note at `notePath` on `head`. */
+  newestVersion(notePath: NotePath, head: string): Promise<NewestVersion>;
   readVersion(version: NoteVersion): Promise<VersionContent>;
 }
 
@@ -262,8 +269,7 @@ export function createNoteHistory(deps: NoteHistoryDeps): NoteHistory {
     return cursor;
   }
 
-  return {
-    open(notePath, head) {
+  function open(notePath: NotePath, head: string): NoteHistoryCursor {
       const key = JSON.stringify([notePath, head]);
       let cursor = cursors.get(key);
       if (cursor === undefined) {
@@ -275,6 +281,21 @@ export function createNoteHistory(deps: NoteHistoryDeps): NoteHistory {
         void cursor.loadMore();
       }
       return cursor;
+  }
+
+  return {
+    open,
+
+    async newestVersion(notePath, head) {
+      const cursor = open(notePath, head);
+      for (;;) {
+        await cursor.loadMore();
+        const { versions, end, error } = cursor.getState();
+        const [newest] = versions;
+        if (newest !== undefined) return { kind: "found", version: newest };
+        if (error !== null) return { kind: "failed", error };
+        if (end !== null) return { kind: "none" };
+      }
     },
 
     async readVersion(version) {

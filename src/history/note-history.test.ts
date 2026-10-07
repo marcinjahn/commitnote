@@ -411,6 +411,47 @@ describe("note history", () => {
     );
   });
 
+  describe("newestVersion", () => {
+    it("returns the version the history lists first", async () => {
+      const repo = await createRepo();
+      await repo.save(create(["Note"], "v1"));
+      await repo.save(update(["Note"], "v2"));
+      await repo.save(create(["Other"], "x"));
+      const history = createNoteHistory(repo);
+      const head = await repo.adapter.getHead();
+
+      const newest = await history.newestVersion(["Note"], head);
+
+      const cursor = await openFully(history, repo, ["Note"]);
+      expect(newest).toEqual({
+        kind: "found",
+        version: cursor.getState().versions[0],
+      });
+      expect(newest.kind === "found" && newest.version.sha).not.toBe(head);
+    });
+
+    it("reports none for a path without history", async () => {
+      const repo = await createRepo();
+      await repo.save(create(["Note"], "v1"));
+      const history = createNoteHistory(repo);
+
+      expect(
+        await history.newestVersion(["Missing"], await repo.adapter.getHead()),
+      ).toEqual({ kind: "none" });
+    });
+
+    it("reports a failed adapter call", async () => {
+      const repo = await createRepo();
+      await repo.save(create(["Note"], "v1"));
+      repo.adapter.failNext("listCommits", new ForgeError("Network"));
+      const history = createNoteHistory(repo);
+
+      expect(
+        await history.newestVersion(["Note"], await repo.adapter.getHead()),
+      ).toEqual({ kind: "failed", error: { kind: "network" } });
+    });
+  });
+
   describe("loading", () => {
     it("pages through a long history across a rename", async () => {
       const repo = await createRepo();

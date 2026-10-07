@@ -283,6 +283,7 @@ export interface SyncEngine {
   addShare(entry: ShareEntry): ShareChangeResult;
   /** Forgets a revoked share. Saved immediately. */
   removeShare(id: string): ShareChangeResult;
+  updateShare(entry: ShareEntry): ShareChangeResult;
   moveFromTrash(
     entryId: string,
     subPath: NotePath,
@@ -1393,6 +1394,7 @@ export function createSyncEngine(options: {
       case "set-order":
       case "set-settings":
       case "add-share":
+      case "update-share":
       case "remove-share":
         return false;
     }
@@ -1418,6 +1420,7 @@ export function createSyncEngine(options: {
       changeSet: state.inFlight,
       baseTrash: base.trash,
       remoteTrash: remote.trash,
+      remoteShares: remote.shares,
       readBaseContent: (path) => readNoteText(base.tree, path),
       readRemoteContent: (path) => readNoteText(remote.tree, path),
     });
@@ -1713,6 +1716,7 @@ export function createSyncEngine(options: {
         case "set-settings":
         case "set-color-tag":
         case "add-share":
+        case "update-share":
         case "remove-share":
           break;
         default:
@@ -2011,6 +2015,31 @@ export function createSyncEngine(options: {
     }
     if (!shares.entries.has(id)) return { ok: true };
     applyStructureChange({ kind: "remove-share", id });
+    return { ok: true };
+  }
+
+  function updateShare(entry: ShareEntry): ShareChangeResult {
+    const { synced, workingTree, shares } = state;
+    if (
+      disposed ||
+      suspended ||
+      synced === null ||
+      workingTree === null ||
+      shares === null
+    ) {
+      return { ok: false, error: { kind: "notFound" } };
+    }
+    if (!synced.shares.writable) {
+      return { ok: false, error: { kind: "sharesUnavailable" } };
+    }
+    if (
+      !shares.entries.has(entry.id) ||
+      entry.note.state !== "active" ||
+      findWorkingNode(workingTree, entry.note.path)?.kind !== "note"
+    ) {
+      return { ok: false, error: { kind: "notFound" } };
+    }
+    applyStructureChange({ kind: "update-share", entry });
     return { ok: true };
   }
 
@@ -2348,6 +2377,7 @@ export function createSyncEngine(options: {
     setColorTag,
     addShare,
     removeShare,
+    updateShare,
     moveFromTrash,
     undoTrash,
     deleteFromTrash: purge,

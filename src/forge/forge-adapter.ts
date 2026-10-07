@@ -124,6 +124,7 @@ export type ContentCreatingOperation =
   | "closeMergeRequest"
   | "updateProject"
   | "createShare"
+  | "updateShare"
   | "deleteShare";
 
 export type AtomicCommitSupport =

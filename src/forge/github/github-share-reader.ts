@@ -35,7 +35,7 @@ export function createGitHubShareReader(
       let response: Response;
       try {
         response = await fetchImpl(
-          `${API_BASE}/gists/${locator.gistId}/${locator.revision}`,
+          `${API_BASE}/gists/${locator.gistId}`,
           {
             method: "GET",
             headers: { Accept: "application/vnd.github+json" },

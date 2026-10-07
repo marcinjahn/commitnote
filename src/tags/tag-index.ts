@@ -323,6 +323,7 @@ export function applyChangeToTags(index: TagIndex, change: Change): TagIndex {
     case "set-order":
     case "set-settings":
     case "add-share":
+    case "update-share":
     case "remove-share":
       return index;
     default: {

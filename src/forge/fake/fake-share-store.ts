@@ -7,6 +7,7 @@ const FIRST_SNIPPET_ID = 1000;
 
 export interface FakeShareStore {
   create(provider: ShareLocator["provider"], envelope: string): ShareLocator;
+  update(locator: ShareLocator, envelope: string): boolean;
   delete(locator: ShareLocator): boolean;
   read(locator: ShareLocator): string | null;
 }
@@ -33,7 +34,7 @@ function randomHex(length: number): string {
 
 function shareKey(locator: ShareLocator): string {
   return locator.provider === "github"
-    ? `gh:${locator.gistId}:${locator.revision}`
+    ? `gh:${locator.gistId}`
     : `gl:${locator.snippetId}`;
 }
 
@@ -57,11 +58,7 @@ export function createFakeShareStore(
       const state = load();
       let locator: ShareLocator;
       if (provider === "github") {
-        locator = {
-          provider,
-          gistId: randomHex(32),
-          revision: randomHex(40),
-        };
+        locator = { provider, gistId: randomHex(32) };
       } else {
         locator = { provider, snippetId: String(state.nextSnippetId) };
         state.nextSnippetId += 1;
@@ -69,6 +66,16 @@ export function createFakeShareStore(
       state.shares[shareKey(locator)] = envelope;
       save(state);
       return locator;
+    },
+    update(locator, envelope) {
+      const state = load();
+      const key = shareKey(locator);
+      if (!(key in state.shares)) {
+        return false;
+      }
+      state.shares[key] = envelope;
+      save(state);
+      return true;
     },
     delete(locator) {
       const state = load();
