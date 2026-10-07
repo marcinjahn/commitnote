@@ -178,9 +178,11 @@ test.describe("with GitHub-like forge latency", () => {
     await expect(headerSyncIcon(page)).toHaveAccessibleName(FAILED, {
       timeout: 10_000,
     });
+    await expect(page).toHaveTitle("● commitnote");
     await expect(headerSyncIcon(page)).toHaveCount(0, {
       timeout: 15_000,
     });
+    await expect(page).toHaveTitle("commitnote");
 
     const labels = await recordedHeaderIconLabels(page);
     const failedAt = labels.indexOf(FAILED);

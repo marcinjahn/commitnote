@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { flushSync, untrack } from "svelte";
+  import { onDestroy, flushSync, untrack } from "svelte";
+  import { tabTitle } from "../../app/tab-title";
   import { renderPrintMarkdown, showsPrintTitle } from "../../editor/print-markdown";
   import type { PrintNote } from "./print-note";
 
@@ -14,7 +15,7 @@
   let shown = $state.raw<PrintNote | null>(untrack(() => note));
   let body = $state<HTMLDivElement | null>(null);
   let timer: ReturnType<typeof setTimeout> | null = null;
-  let savedTitle: string | null = null;
+  let releaseTitle: (() => void) | null = null;
 
   function cancelTimer(): void {
     if (timer !== null) clearTimeout(timer);
@@ -47,16 +48,17 @@
     // The browser lays out the print right after this event, before Svelte's microtask flush.
     flushSync();
     if (shown !== null && shown.name !== "") {
-      savedTitle = document.title;
-      document.title = shown.name;
+      releaseTitle?.();
+      releaseTitle = tabTitle.override(shown.name);
     }
   }
 
   function handleAfterPrint(): void {
-    if (savedTitle === null) return;
-    document.title = savedTitle;
-    savedTitle = null;
+    releaseTitle?.();
+    releaseTitle = null;
   }
+
+  onDestroy(handleAfterPrint);
 </script>
 
 <svelte:window onbeforeprint={handleBeforePrint} onafterprint={handleAfterPrint} />

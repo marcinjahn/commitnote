@@ -5,6 +5,7 @@
   import type { HeldConflict, SyncEngine, SyncEngineState } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
   import { systemClock } from "../../sync/clock";
+  import { tabTitle } from "../../app/tab-title";
   import {
     applySettingsEdits,
     resolveSettings,
@@ -380,6 +381,13 @@
     return settingsSaver.subscribe(() => {
       pendingSettingsEdits = settingsSaver.pending;
     });
+  });
+
+  $effect(() => {
+    tabTitle.setUnsaved(
+      engineState.syncStates.hasUnsaved || Object.keys(pendingSettingsEdits).length > 0,
+    );
+    return () => tabTitle.setUnsaved(false);
   });
 
   const settings: Settings = $derived(
