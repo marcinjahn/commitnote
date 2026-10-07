@@ -1,3 +1,4 @@
+import { syntaxTree } from "@codemirror/language";
 import {
   EditorSelection,
   Prec,
@@ -13,6 +14,7 @@ import {
   escapeLinkLabel,
   overlapsBlockedNode,
 } from "./paste-link";
+import { markerState } from "./live-preview";
 
 interface RangeEdit {
   readonly changes: { from: number; to?: number; insert?: string }[];
@@ -170,6 +172,72 @@ export function insertLink(state: EditorState): TransactionSpec | null {
   return applyPerRange(state, (range) => linkRange(state, range));
 }
 
+function taskEditsForLine(
+  state: EditorState,
+  line: { from: number; to: number; text: string },
+): { from: number; to?: number; insert: string }[] {
+  const tree = syntaxTree(state);
+  let marker: number | null = null;
+  let listMarkEnd: number | null = null;
+  tree.iterate({
+    from: line.from,
+    to: line.to,
+    enter: (node) => {
+      if (node.from < line.from || node.from > line.to) return;
+      if (node.name === "TaskMarker") marker = node.from;
+      else if (node.name === "ListMark") listMarkEnd = node.to;
+    },
+  });
+
+  if (marker !== null) {
+    const next = markerState(state, marker) === "checked" ? " " : "x";
+    return [{ from: marker + 1, to: marker + 2, insert: next }];
+  }
+  if (listMarkEnd !== null) {
+    const hasSpace = state.sliceDoc(listMarkEnd, listMarkEnd + 1) === " ";
+    return [
+      hasSpace
+        ? { from: listMarkEnd + 1, insert: "[ ] " }
+        : { from: listMarkEnd, insert: " [ ] " },
+    ];
+  }
+
+  const indent = line.text.length - line.text.trimStart().length;
+  if (line.text.length > 0 && indent === line.text.length) return [];
+  const pos = line.from + indent;
+  let top = tree.resolveInner(pos, 1);
+  while (top.parent !== null && top.parent.name !== "Document") {
+    top = top.parent;
+  }
+  if (line.text.length === 0) {
+    return top.name === "Document" ? [{ from: pos, insert: "- [ ] " }] : [];
+  }
+  return top.name === "Paragraph" ? [{ from: pos, insert: "- [ ] " }] : [];
+}
+
+export function toggleTaskLines(state: EditorState): TransactionSpec | null {
+  if (!isWritable(state)) return null;
+  const seen = new Set<number>();
+  const edits: { from: number; to?: number; insert: string }[] = [];
+  for (const range of state.selection.ranges) {
+    const first = state.doc.lineAt(range.from).number;
+    const last = state.doc.lineAt(range.to).number;
+    for (let n = first; n <= last; n++) {
+      if (seen.has(n)) continue;
+      seen.add(n);
+      edits.push(...taskEditsForLine(state, state.doc.line(n)));
+    }
+  }
+  if (edits.length === 0) return null;
+  const changes = state.changes(edits);
+  return {
+    changes,
+    selection: state.selection.map(changes, 1),
+    userEvent: "input",
+    scrollIntoView: true,
+  };
+}
+
 function command(build: (state: EditorState) => TransactionSpec | null): Command {
   return (view) => {
     const spec = build(view.state);
@@ -185,6 +253,7 @@ export function formatKeymap(): Extension {
       { key: "Mod-i", run: command((s) => toggleInlineMarker(s, "*")) },
       { key: "Mod-Shift-x", run: command((s) => toggleInlineMarker(s, "~~")) },
       { key: "Mod-k", run: command(insertLink) },
+      { key: "Mod-Enter", run: command(toggleTaskLines) },
     ]),
   );
 }

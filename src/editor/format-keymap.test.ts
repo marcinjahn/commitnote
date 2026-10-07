@@ -6,9 +6,9 @@ import {
   createMarkdownEditor,
   type MarkdownEditor,
 } from "./create-markdown-editor";
-import { insertLink, toggleInlineMarker } from "./format-keymap";
+import { insertLink, toggleInlineMarker, toggleTaskLines } from "./format-keymap";
 
-let current: { editor: MarkdownEditor; parent: HTMLElement } | null = null;
+let created: { editor: MarkdownEditor; parent: HTMLElement }[] = [];
 
 type Sel = { anchor: number; head?: number };
 
@@ -25,7 +25,7 @@ function setup(text: string, selection: Sel, readOnly = false): MarkdownEditor {
   editor.view.dispatch({
     selection: EditorSelection.single(selection.anchor, selection.head),
   });
-  current = { editor, parent };
+  created.push({ editor, parent });
   return editor;
 }
 
@@ -41,7 +41,7 @@ function press(
 ): KeyboardEvent {
   const event = new KeyboardEvent("keydown", {
     key,
-    keyCode: key.toUpperCase().charCodeAt(0),
+    keyCode: key === "Enter" ? 13 : key.toUpperCase().charCodeAt(0),
     ctrlKey: true,
     shiftKey,
     bubbles: true,
@@ -61,9 +61,11 @@ function selected(editor: MarkdownEditor): string {
 }
 
 afterEach(() => {
-  current?.editor.destroy();
-  current?.parent.remove();
-  current = null;
+  for (const { editor, parent } of created) {
+    editor.destroy();
+    parent.remove();
+  }
+  created = [];
 });
 
 const MARKERS = [
@@ -233,6 +235,90 @@ describe("link shortcut", () => {
   });
 });
 
+describe("task toggle", () => {
+  function toggled(text: string, anchor: number, head?: number): MarkdownEditor {
+    const editor = setup(text, { anchor, head });
+    press(editor, "Enter");
+    return editor;
+  }
+
+  it("checks an unchecked task", () => {
+    expect(doc(toggled("- [ ] milk", 3))).toBe("- [x] milk");
+  });
+
+  it("unchecks lowercase and uppercase checked tasks", () => {
+    expect(doc(toggled("- [x] milk", 3))).toBe("- [ ] milk");
+    expect(doc(toggled("- [X] milk", 3))).toBe("- [ ] milk");
+  });
+
+  it("adds a checkbox to bullet and ordered list items", () => {
+    expect(doc(toggled("- milk", 4))).toBe("- [ ] milk");
+    expect(doc(toggled("1. milk", 5))).toBe("1. [ ] milk");
+  });
+
+  it("turns paragraph and empty lines into tasks", () => {
+    expect(doc(toggled("milk", 2))).toBe("- [ ] milk");
+    expect(doc(toggled("", 0))).toBe("- [ ] ");
+    expect(doc(toggled("# t\n\nmilk", 5))).toBe("# t\n\n- [ ] milk");
+  });
+
+  it("leaves headings, code, tables and continuation lines unchanged", () => {
+    for (const [text, at] of [
+      ["# title", 3],
+      ["```\ncode\n```", 5],
+      ["| a | b |\n| - | - |\n| 1 | 2 |", 3],
+      ["- item\n  more", 10],
+      ["> quote", 4],
+      ["---", 1],
+      ["    indented", 6],
+    ] as const) {
+      expect(doc(toggled(text, at))).toBe(text);
+    }
+  });
+
+  it("toggles every touched line in one undo step", () => {
+    const text = "- [ ] a\n# h\nplain\n- b";
+    const editor = toggled(text, 3, text.length);
+    expect(doc(editor)).toBe("- [x] a\n# h\n- [ ] plain\n- [ ] b");
+    undo(editor.view);
+    expect(doc(editor)).toBe(text);
+  });
+
+  it("handles each line once across multiple ranges", () => {
+    const editor = setup("- a\n- b", { anchor: 0 });
+    editor.view.dispatch({
+      selection: EditorSelection.create([
+        EditorSelection.cursor(1),
+        EditorSelection.cursor(2),
+        EditorSelection.cursor(6),
+      ]),
+    });
+    press(editor, "Enter");
+    expect(doc(editor)).toBe("- [ ] a\n- [ ] b");
+  });
+
+  it("keeps the caret on the same text", () => {
+    const flipped = toggled("- [ ] milk", 8);
+    expect(flipped.view.state.selection.main.head).toBe(8);
+    const added = toggled("- milk", 4);
+    expect(added.view.state.selection.main.head).toBe(8);
+    const prefixed = toggled("milk", 0);
+    expect(prefixed.view.state.selection.main.head).toBe(6);
+  });
+
+  it("changes nothing in a read-only editor but consumes the key", () => {
+    const editor = setup("- [ ] a", { anchor: 0 }, true);
+    const event = press(editor, "Enter");
+    expect(event.defaultPrevented).toBe(true);
+    expect(doc(editor)).toBe("- [ ] a");
+  });
+
+  it("does not insert a blank line", () => {
+    const editor = toggled("a\nb", 1);
+    expect(doc(editor).split("\n")).toHaveLength(2);
+  });
+});
+
 describe("builders", () => {
   it("return null for a read-only state", () => {
     const state = EditorState.create({
@@ -242,5 +328,6 @@ describe("builders", () => {
     });
     expect(toggleInlineMarker(state, "**")).toBeNull();
     expect(insertLink(state)).toBeNull();
+    expect(toggleTaskLines(state)).toBeNull();
   });
 });
