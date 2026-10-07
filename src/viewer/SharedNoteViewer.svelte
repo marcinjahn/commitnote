@@ -233,6 +233,7 @@
     padding: var(--space-3);
     background: var(--color-danger-surface);
     border: var(--hairline) solid var(--color-danger);
+    border-radius: var(--radius-sm);
   }
 
   .error-block p {

@@ -223,7 +223,7 @@ progress {
   display: block;
   overflow: hidden;
   border: none;
-  border-radius: var(--radius);
+  border-radius: var(--radius-pill);
   background: var(--color-border);
   color: var(--color-ink);
 }
@@ -276,7 +276,7 @@ textarea {
   min-height: var(--touch-target);
   min-width: var(--touch-target);
   padding: 0 var(--space-3);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   border: var(--hairline) solid var(--color-border-strong);
   font-weight: var(--font-weight-medium);
   background: var(--color-surface-raised);
@@ -365,7 +365,7 @@ textarea {
 .field select {
   min-height: var(--touch-target);
   padding: 0 var(--space-2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   border: var(--hairline) solid var(--color-border-strong);
   background: var(--color-surface-raised);
   color: var(--color-text);
@@ -408,7 +408,7 @@ textarea {
   color: var(--color-danger);
   background: var(--color-danger-surface);
   padding: var(--space-3);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   box-shadow: inset 2px 0 0 var(--color-tone-error);
 }
 
@@ -417,7 +417,7 @@ textarea {
   color: var(--color-warning);
   background: var(--color-warning-surface);
   padding: var(--space-3);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   box-shadow: inset 2px 0 0 var(--color-tone-warning);
   font-size: var(--font-size-sm);
 }

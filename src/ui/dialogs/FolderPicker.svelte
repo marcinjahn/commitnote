@@ -49,7 +49,7 @@
     gap: var(--space-2);
     min-height: var(--touch-target);
     padding: 0 var(--space-3);
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);
     font-size: var(--font-size-sm);
     cursor: pointer;
     transition: background var(--motion-duration) var(--motion-easing);
