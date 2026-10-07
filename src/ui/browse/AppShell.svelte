@@ -121,6 +121,8 @@
   import Wordmark from "../wordmark/Wordmark.svelte";
   import type { Command, RowAction } from "./row-menu-types";
   import type { ColorTag } from "../../tags/color-tag";
+  import { buildTagFilter } from "./tag-filter";
+  import TagFilterDots from "./TagFilterDots.svelte";
   import { describeMovedTo, describeStructureError } from "./structure-messages";
   import type { DropTarget } from "./tree-drop";
   import {
@@ -469,6 +471,22 @@
   }
 
   const tree = $derived(engineState.workingTree);
+  let tagFilter = $state<ColorTag | null>(null);
+  const tagFilterView = $derived(
+    tree === null ? null : buildTagFilter(tree, tagFilter),
+  );
+  const tagsWritable = $derived(engineState.synced?.tags.writable ?? false);
+  const usedTags = $derived(tagFilterView?.usedTags ?? []);
+
+  $effect(() => {
+    if (tagFilter !== null && (!tagsWritable || !usedTags.includes(tagFilter))) {
+      tagFilter = null;
+    }
+  });
+
+  function toggleTagFilter(tag: ColorTag): void {
+    tagFilter = tagFilter === tag ? null : tag;
+  }
   const openTreeNote = $derived.by(() => {
     if (openPath === null || tree === null) return undefined;
     const node = findWorkingNode(tree, openPath);
@@ -910,6 +928,7 @@
   }
 
   function startDraft(parent: NotePath): void {
+    tagFilter = null;
     leaveDraft();
     noteSwitch += 1;
     void engine.openNote(null);
@@ -942,6 +961,7 @@
           draftError = describeStructureError(result.error);
           break;
         }
+        tagFilter = null;
         draft = null;
         draftError = null;
         focusEditorOnEnter = true;
@@ -965,6 +985,7 @@
       draftError = describeStructureError(result.error);
       return;
     }
+    tagFilter = null;
     engine.editNote(result.path, action.content);
     if (action.fieldError !== null) {
       pendingFieldText = draft.name;
@@ -1131,6 +1152,7 @@
       if (!plan.ok) return { kind: "conflicts", count: plan.conflicts };
       const result = await engine.importChanges(plan.changes);
       if (result.ok) {
+        tagFilter = null;
         importDialog = null;
         if (plan.changes.length > 0) {
           importStarted = { summary: plan.summary, retryingShown: false };
@@ -1221,6 +1243,7 @@
       dialog = { ...dialog, error: describeStructureError(result.error) };
       return;
     }
+    tagFilter = null;
     const parent = dialog.parent;
     closeDialog();
     expandFolder(parent);
@@ -1584,6 +1607,9 @@
       </div>
     </div>
     <SearchTrigger onOpen={openSearch} />
+    {#if tagsWritable && usedTags.length > 0}
+      <TagFilterDots tags={usedTags} active={tagFilter} onToggle={toggleTagFilter} />
+    {/if}
     {#if tree === null && engineState.refresh.lastError !== null}
       <p role="alert" class="alert-error">
         {describeSyncError(engineState.refresh.lastError, forgeName)}
@@ -1591,6 +1617,7 @@
     {/if}
     <NoteTree
       {tree}
+      filteredTree={tagFilter === null || tagFilterView === null ? null : tagFilterView.tree}
       loading={treeLoading}
       {selectedPath}
       syncStates={engineState.syncStates}
@@ -1604,7 +1631,7 @@
       onTrash={handleDropTrash}
       onDragStateChange={handleTreeDragState}
       onAction={handleTreeAction}
-      tagsWritable={engineState.synced?.tags.writable ?? false}
+      {tagsWritable}
       onColorTag={handleColorTag}
       onNewNote={handleHeaderNewNote}
     />

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { SvelteMap } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin } from "../../changes/change";
@@ -15,6 +16,7 @@
 
   interface Props {
     tree: WorkingTree | null;
+    filteredTree: WorkingTree | null;
     loading: boolean;
     selectedPath: NotePath | null;
     syncStates: SyncStates;
@@ -35,6 +37,7 @@
 
   const {
     tree,
+    filteredTree,
     loading,
     selectedPath,
     syncStates,
@@ -56,16 +59,17 @@
   const expanded = new SvelteMap<string, boolean>();
 
   function isExpanded(key: string): boolean {
-    return expanded.get(key) ?? false;
+    return filteredTree !== null || (expanded.get(key) ?? false);
   }
 
   function onToggle(key: string): void {
+    if (filteredTree !== null) return;
     expanded.set(key, !isExpanded(key));
   }
 
   $effect(() => {
     const path = selectedPath;
-    if (path === null) return;
+    if (path === null || untrack(() => filteredTree) !== null) return;
     for (let depth = 1; depth < path.length; depth++) {
       expanded.set(path.slice(0, depth).join("/"), true);
     }
@@ -75,7 +79,7 @@
   // folder) so it becomes visible even without a selection change.
   $effect(() => {
     const request = expandRequest;
-    if (request === null) return;
+    if (request === null || untrack(() => filteredTree) !== null) return;
     for (let depth = 1; depth <= request.path.length; depth++) {
       expanded.set(request.path.slice(0, depth).join("/"), true);
     }
@@ -106,7 +110,8 @@
       handleCloseMenu();
       return;
     }
-    openMenu = { key, node, anchor, trigger };
+    const full = tree === null ? undefined : findWorkingNode(tree, node.path);
+    openMenu = { key, node: full ?? node, anchor, trigger };
   }
 
   function handleCloseMenu(): void {
@@ -115,8 +120,8 @@
     trigger?.focus();
   }
 
-  const dragOptions: TreeDragOptions = {
-    reorder: true,
+  const dragOptions: TreeDragOptions = $derived({
+    reorder: filteredTree === null,
     scene(dragged) {
       const current = tree;
       if (current === null) return null;
@@ -152,7 +157,7 @@
       if (node === undefined || trigger === null) return;
       handleOpenMenu(node.path.join("/"), node, { kind: "point", x, y }, trigger);
     },
-  };
+  });
 
   function handleMenuAction(action: RowAction): void {
     const node = openMenu?.node;
@@ -185,7 +190,7 @@
     </p>
   {:else}
     <ul class="tree" role="tree" aria-label="Notes">
-      {#each tree.root.children as child (child.path.join("/"))}
+      {#each (filteredTree ?? tree).root.children as child (child.path.join("/"))}
         <NoteTreeFolder
           node={child}
           depth={0}
