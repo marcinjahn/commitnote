@@ -99,3 +99,33 @@ test("on mobile the sync status button opens an unsaved note into the note view"
     .click();
   await expect(page.getByRole("textbox", { name: "Note editor" })).toBeVisible();
 });
+
+test("the status announcer reports going offline and the recovery, and stays quiet otherwise", async ({
+  page,
+}) => {
+  await openNotes(page);
+  const announcer = page.getByTestId("status-announcer");
+  await expect(announcer).toHaveRole("status");
+  await expect(announcer).toBeEmpty();
+  await expect(page.locator("#sidebar").getByTestId("status-announcer")).toHaveCount(0);
+  await expect(page.locator("#note-pane").getByTestId("status-announcer")).toHaveCount(0);
+
+  await openWelcome(page);
+  await page.getByRole("textbox", { name: "Note editor" }).click();
+  await page.keyboard.type(" ordinary edit");
+  await waitForSynced(page);
+  await expect(announcer).toBeEmpty();
+
+  await page.context().setOffline(true);
+  try {
+    await expect(announcer).toHaveText("Offline");
+    await page.getByRole("textbox", { name: "Note editor" }).click();
+    await page.keyboard.type(" written offline");
+    await flushPendingSaves(page);
+  } finally {
+    await page.context().setOffline(false);
+  }
+
+  await waitForSynced(page);
+  await expect(announcer).toHaveText("All changes saved");
+});

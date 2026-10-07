@@ -107,6 +107,12 @@
   import NoticeToasts from "../notices/NoticeToasts.svelte";
   import { toastHost } from "../notices/toast-host";
   import NoteHeader from "./NoteHeader.svelte";
+  import {
+    INITIAL_ANNOUNCER_STATE,
+    nextAnnouncement,
+    syncProblem,
+    type AnnouncerState,
+  } from "./status-announcer";
   import NoteTree from "./NoteTree.svelte";
   import SidebarResizeHandle from "./SidebarResizeHandle.svelte";
   import {
@@ -528,6 +534,21 @@
   }
 
   let atomicBlockedSeen = false;
+
+  let announcerState: AnnouncerState = INITIAL_ANNOUNCER_STATE;
+  let announcement = $state("");
+
+  $effect(() => {
+    const { syncStates, online, save } = engineState;
+    const root = syncStates.stateOf([]);
+    const result = nextAnnouncement(announcerState, {
+      problem: syncProblem({ online, root, save }),
+      allSaved: root.kind === "synced" && !syncStates.hasUnsaved,
+      hasUnsaved: syncStates.hasUnsaved,
+    });
+    announcerState = result.state;
+    if (result.message !== null) announcement = result.message;
+  });
 
   $effect(() => {
     return engine.subscribe((next) => {
@@ -2205,6 +2226,10 @@
     />
   </main>
 </div>
+
+<p class="visually-hidden" role="status" data-testid="status-announcer">
+  {announcement}
+</p>
 
 <div class="toast-host" use:toastHost>
   <NoticeToasts
