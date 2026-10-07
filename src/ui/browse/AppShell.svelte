@@ -65,12 +65,6 @@
   import type { ContentIndexer } from "../../search/content-indexer";
   import SearchPalette from "../search/SearchPalette.svelte";
   import SearchTrigger from "../search/SearchTrigger.svelte";
-  import {
-    classifySearchShortcut,
-    isApplePlatform,
-    isEditableTarget,
-  } from "../search/search-shortcuts";
-  import { dialogStack } from "../dialogs/dialog-stack";
   import CommandMenu from "./CommandMenu.svelte";
   import CommitSha from "./CommitSha.svelte";
   import { countDescendants } from "../dialogs/folder-options";
@@ -320,7 +314,6 @@
   let settingsOpen = $state(false);
   let searchOpen = $state(false);
   let searchReturnFocus: HTMLElement | null = null;
-  const applePlatform = isApplePlatform(navigator.userAgent);
 
   function openSearch(): void {
     searchReturnFocus =
@@ -348,18 +341,6 @@
     }
   }
 
-  function handleSearchShortcut(event: KeyboardEvent): void {
-    const action = classifySearchShortcut(event, {
-      apple: applePlatform,
-      paletteOpen: searchOpen,
-      otherDialogOpen: !searchOpen && dialogStack.top() !== null,
-      editableTarget: isEditableTarget(event.target),
-    });
-    if (action === null) return;
-    event.preventDefault();
-    if (action === "open") openSearch();
-    else void closeSearch();
-  }
   let historyDialog = $state<{
     readonly path: NotePath;
     readonly phase: HistoryPhase;
@@ -1509,8 +1490,6 @@
     }
   }
 </script>
-
-<svelte:window onkeydowncapture={handleSearchShortcut} />
 
 <div class="shell">
   <aside

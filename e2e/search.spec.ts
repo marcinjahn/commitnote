@@ -91,31 +91,23 @@ test("titles are found by name, folder and folded text, and opening one reveals 
   await expectEditorFocused(page);
 });
 
-test("shortcuts toggle the palette from the editor and return focus on close", async ({
+test("the search trigger opens the palette from the editor, Escape returns focus, and Ctrl+K does nothing", async ({
   page,
 }) => {
   await treeItem(page, "Welcome").click();
   await page.locator(".cm-content").click();
   await expectEditorFocused(page);
 
-  await page.keyboard.press("Control+K");
+  await openPalette(page);
   await expect(palette(page)).toBeVisible();
-  await expect(searchInput(page)).toBeFocused();
-
-  await page.keyboard.press("Control+K");
-  await expect(palette(page)).toHaveCount(0);
-
-  await page.keyboard.press("Control+K");
-  await expect(searchInput(page)).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(palette(page)).toHaveCount(0);
-  await expectEditorFocused(page);
+  await expect(page.getByRole("button", { name: "Search notes" })).toBeFocused();
 
-  await treeItem(page, "Reading list").click();
-  await treeItem(page, "Welcome").focus();
-  await page.keyboard.press("/");
-  await expect(searchInput(page)).toBeFocused();
-  await expect(searchInput(page)).toHaveValue("");
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+K");
+  await expect(palette(page)).toHaveCount(0);
+  await expectEditorFocused(page);
 });
 
 test("contents are searched with snippets, ignore the trash and include unsaved edits", async ({
@@ -161,7 +153,7 @@ test("contents are searched with snippets, ignore the trash and include unsaved 
   await treeItem(page, "Welcome").click();
   await page.locator(".cm-content").click();
   await page.keyboard.type("zebracorn");
-  await page.keyboard.press("Control+K");
+  await openPalette(page);
   await search(page, "zebracorn");
   await expect(group(page, "Contents")).toBeVisible();
   await expect(
