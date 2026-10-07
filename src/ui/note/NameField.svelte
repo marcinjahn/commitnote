@@ -15,6 +15,9 @@
     onInput?: (edited: string) => void;
   }
 
+  const uid = $props.id();
+  const errorId = `name-field-error-${uid}`;
+
   const {
     value,
     readOnly,
@@ -85,6 +88,7 @@
     class="name-input"
     aria-label="Note name"
     aria-invalid={error !== null ? "true" : undefined}
+    aria-describedby={error !== null ? errorId : undefined}
     readonly={readOnly}
     autocomplete="off"
     spellcheck="false"
@@ -94,7 +98,7 @@
     onblur={handleBlur}
   />
   {#if error !== null}
-    <p role="alert" class="name-error">{error}</p>
+    <p id={errorId} role="alert" class="name-error">{error}</p>
   {/if}
 </div>
 

@@ -247,6 +247,14 @@ test.describe("with a login that is not remembered", () => {
     await expect(changeDialog(page).getByRole("alert")).toHaveText(
       "The new passphrases do not match.",
     );
+    const repeat = changeDialog(page).getByRole("textbox", {
+      name: "Repeat new passphrase",
+    });
+    await expect(repeat).toHaveAttribute("aria-invalid", "true");
+    await expect(repeat).toHaveAccessibleDescription(
+      "The new passphrases do not match.",
+    );
+    await expect(changeDialog(page).getByRole("alert")).toHaveCount(1);
   });
 
   test("backing out of the review keeps the old passphrase and explains that version history starts over", async ({ page }) => {

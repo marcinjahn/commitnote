@@ -377,7 +377,7 @@
   {/if}
 
   {#if formError !== null}
-    <p role="alert" class="alert-error">{formError}</p>
+    <p id="login-form-error" role="alert" class="alert-error">{formError}</p>
   {/if}
 {/snippet}
 
@@ -418,7 +418,10 @@
           bind:value={accessToken}
           oninput={forgetRepositories}
           disabled={listing || submitting}
-          aria-describedby="login-access-token-hint"
+          aria-invalid={tokenError !== null ? "true" : undefined}
+          aria-describedby={tokenError !== null
+            ? "login-access-token-hint login-access-token-error"
+            : "login-access-token-hint"}
         />
         <p id="login-access-token-hint" class="field-hint">
           {provider.accessTokenHint ??
@@ -435,9 +438,15 @@
       {/if}
 
       {#if tokenError?.kind === "message"}
-        <p role="alert" class="alert-error">{tokenError.text}</p>
+        <p id="login-access-token-error" role="alert" class="alert-error">
+          {tokenError.text}
+        </p>
       {:else if tokenError?.kind === "noRepositories"}
-        <div role="alert" class="alert-error">
+        <div
+          id="login-access-token-error"
+          role="alert"
+          class="alert-error"
+        >
           <p>
             This access token has no access to any repository. Edit it on {provider.name}
             and add your notes repository.
@@ -516,6 +525,7 @@
           bind:passphrase
           {username}
           busy={submitting}
+          invalid={formError !== null}
           onsubmit={() => void handleUnlock()}
         >
           {@render passphraseFormFooter()}

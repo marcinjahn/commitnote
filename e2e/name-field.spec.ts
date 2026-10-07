@@ -55,3 +55,20 @@ test("clearing the name field and leaving it restores the previous name", async 
   await showTree(page);
   await expect(treeItem(page, "Welcome")).toBeVisible();
 });
+
+test("a rejected name is the field's accessible description", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await openWelcome(page);
+  await expect(nameField(page)).toHaveAccessibleDescription("");
+
+  await page.getByRole("button", { name: "New note", exact: true }).click();
+  await nameField(page).fill("Welcome");
+  await nameField(page).press("Enter");
+
+  await expect(nameField(page)).toHaveAttribute("aria-invalid", "true");
+  await expect(nameField(page)).toHaveAccessibleDescription(
+    "A note or folder with this name already exists here.",
+  );
+});

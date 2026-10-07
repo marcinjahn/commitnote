@@ -47,6 +47,7 @@
   });
   const valid = $derived(validationMessage === null);
   const showError = $derived(attempted && validationMessage !== null);
+  const hasError = $derived(showError || error !== null);
 
   function handleInput(): void {
     attempted = true;
@@ -72,8 +73,8 @@
           {placeholder}
           maxlength={maxLength}
           oninput={handleInput}
-          aria-describedby={errorId}
-          aria-invalid={showError}
+          aria-describedby={hasError ? errorId : undefined}
+          aria-invalid={hasError ? "true" : undefined}
         />
         {#if showError}
           <p id={errorId} role="alert" class="alert-error">
