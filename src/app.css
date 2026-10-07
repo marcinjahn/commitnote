@@ -33,6 +33,10 @@
   --color-border: light-dark(#e5e5e5, #262626);
   --color-border-strong: light-dark(#8f8f8f, #6e6e6e);
   --color-accent-hairline: color-mix(in srgb, var(--color-accent) 60%, var(--color-border));
+  --color-selected-accent: light-dark(
+    color-mix(in srgb, var(--color-accent) 9%, var(--color-selected)),
+    color-mix(in srgb, var(--color-accent) 12%, var(--color-selected))
+  );
   --color-danger: light-dark(#b3261e, #ff7a70);
   --color-danger-surface: light-dark(#fdecea, #2a1412);
   --color-warning: light-dark(#8a4b00, #ffb74d);

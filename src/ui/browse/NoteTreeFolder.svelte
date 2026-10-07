@@ -264,7 +264,7 @@
   }
 
   .tree-row-container.selected {
-    background: var(--color-selected);
+    background: var(--color-selected-accent);
     box-shadow: inset 2px 0 0 var(--color-accent);
   }
 
