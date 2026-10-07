@@ -87,7 +87,7 @@
 
   .markdown-editor :global(.cm-content) {
     padding: var(--space-5) var(--space-4);
-    caret-color: var(--color-text);
+    caret-color: var(--color-accent);
   }
 
   .markdown-editor :global(.cm-scroller) {
