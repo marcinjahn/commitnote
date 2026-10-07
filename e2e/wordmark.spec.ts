@@ -53,6 +53,10 @@ interface Snapshot {
   readonly phase: string | null;
   readonly width: number;
   readonly visibleLetters: number;
+  readonly caret: string | null;
+  readonly caretOpacity: string | null;
+  readonly tail: string;
+  readonly tailLetters: number;
 }
 
 function snapshot(wordmark: Locator): Promise<Snapshot> {
@@ -62,6 +66,11 @@ function snapshot(wordmark: Locator): Promise<Snapshot> {
     visibleLetters: [...el.querySelectorAll(".wordmark-letter")].filter(
       (letter) => getComputedStyle(letter).visibility !== "hidden",
     ).length,
+    caret: el.getAttribute("data-caret"),
+    caretOpacity:
+      el.querySelector<HTMLElement>(".wordmark-caret")?.style.opacity ?? null,
+    tail: el.style.getPropertyValue("--wordmark-tail"),
+    tailLetters: el.querySelectorAll(".wordmark-tail").length,
   }));
 }
 
@@ -185,6 +194,36 @@ test.describe("typed wordmark", () => {
       await expect(wordmark.locator(".wordmark-letter:visible")).toHaveCount(10);
     },
   );
+
+  test("shows the gradient tail only while the caret is on", async ({
+    page,
+  }) => {
+    await freezeClock(page);
+    await openNotesFrozen(page);
+    const wordmark = sidebarWordmark(page);
+
+    const seen = await playToDone(page, wordmark);
+
+    const animating = seen.filter((s) => s.phase !== "done");
+    for (const s of animating) {
+      expect(s.caretOpacity).toBe(s.caret === "on" ? "1" : "0");
+      expect(s.tail).toBe(s.caret === "on" ? "1" : "0");
+      if (s.visibleLetters >= 3) expect(s.tailLetters).toBe(3);
+    }
+    for (const s of seen.filter((s) => s.phase === "typing")) {
+      expect(s.caret).toBe("on");
+    }
+    const blinkRuns = seen
+      .filter((s) => s.phase === "blinking")
+      .map((s) => s.caret)
+      .filter((caret, i, all) => caret !== all[i - 1]);
+    expect(blinkRuns).toEqual(["on", "off", "on", "off", "on", "off"]);
+
+    const settled = seen[seen.length - 1];
+    expect(settled.caret).toBeNull();
+    expect(settled.tail).toBe("");
+    expect(settled.tailLetters).toBe(0);
+  });
 
   test("does not replay after navigating or logging in again", async ({
     page,

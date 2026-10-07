@@ -1,21 +1,20 @@
 export interface TypingSchedule {
   keystrokes: number[];
-  fadeStart: number;
+  blinkStart: number;
   caretToggles: number[];
   end: number;
 }
 
 export const TYPING_LEAD_IN_MS = 120;
-export const TAIL_FADE_MS = 450;
 export const CARET_BLINK_MS = 530;
+export const CARET_SOFT_EDGE_MS = 120;
 
 const BASE_INTERVAL_MS = 95;
 const INTERVAL_JITTER = 0.35;
 const BEAT_EXTRA_MS = 80;
 const MIN_SPAN_MS = 800;
 const MAX_SPAN_MS = 1400;
-const CARET_TOGGLE_COUNT = 4;
-const SETTLE_AFTER_BLINKS_MS = 530;
+const CARET_TOGGLE_COUNT = 5;
 
 export function createTypingSchedule(
   text: string,
@@ -61,8 +60,8 @@ export function createTypingSchedule(
 
   return {
     keystrokes,
-    fadeStart: last,
+    blinkStart: last,
     caretToggles,
-    end: caretToggles[CARET_TOGGLE_COUNT - 1] + SETTLE_AFTER_BLINKS_MS,
+    end: caretToggles[CARET_TOGGLE_COUNT - 1] + CARET_SOFT_EDGE_MS,
   };
 }
