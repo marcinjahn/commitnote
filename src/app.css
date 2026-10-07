@@ -37,6 +37,11 @@
     var(--color-accent) 60%,
     var(--color-border)
   );
+  --color-accent-rule: color-mix(
+    in srgb,
+    var(--color-accent) 45%,
+    var(--color-border-strong)
+  );
   --color-selected-accent: light-dark(
     color-mix(in srgb, var(--color-accent) 9%, var(--color-selected)),
     color-mix(in srgb, var(--color-accent) 12%, var(--color-selected))

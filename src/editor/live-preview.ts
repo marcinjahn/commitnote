@@ -73,7 +73,7 @@ const livePreviewHighlightStyle = HighlightStyle.define([
 
 const livePreviewBaseTheme = EditorView.baseTheme({
   [`.${QUOTE_LINE_CLASS}`]: {
-    borderLeft: "var(--hairline) solid var(--color-border-strong)",
+    borderLeft: "var(--hairline) solid var(--color-accent-rule)",
     paddingLeft: "var(--space-3)",
     color: "var(--color-text-muted)",
   },
