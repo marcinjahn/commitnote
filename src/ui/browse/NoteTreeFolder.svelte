@@ -260,7 +260,7 @@
   }
 
   .tree-row-container:hover {
-    background: var(--color-hover);
+    background: var(--color-hover-accent);
   }
 
   .tree-row-container.selected {

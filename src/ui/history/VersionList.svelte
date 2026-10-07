@@ -346,7 +346,7 @@
   }
 
   .version-row:hover {
-    background: var(--color-hover);
+    background: var(--color-hover-accent);
   }
 
   .version-row:focus-visible {
