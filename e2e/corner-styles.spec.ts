@@ -1,11 +1,24 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { fakeForge, openNotes } from "./helpers";
-import { treeItem } from "./helpers/tree";
+import {
+  KEY_DERIVATION_TIMEOUT,
+  SAMPLE,
+  chooseRepository,
+  expectTree,
+  fakeForge,
+  flushPendingSaves,
+  handOverRepo,
+  logOut,
+  openNotes,
+} from "./helpers";
+import { chooseOption, closeSettings, openSettings } from "./helpers/settings";
+import { openWelcome, treeItem } from "./helpers/tree";
+
+const CACHE_KEY = "commitnote.cornerStyle";
 
 const STYLES = {
-  rounded: { cornerStyle: undefined, attribute: null, radius: "12px" },
-  square: { cornerStyle: "square", attribute: "square", radius: "0px" },
+  rounded: { cornerStyle: undefined, attribute: null, radius: "12px", itemHeight: 32, rowRadius: "6px" },
+  square: { cornerStyle: "square", attribute: "square", radius: "0px", itemHeight: 44, rowRadius: "0px" },
 } as const;
 
 function surfaceStyle(surface: Locator) {
@@ -76,6 +89,187 @@ async function expectToneRail(page: Page, toast: Locator): Promise<void> {
   expect(firstLayer).toContain(errorColor);
 }
 
+function expectCorners(page: Page, value: "square" | null): Promise<void> {
+  const html = page.locator("html");
+  return value === null
+    ? expect(html).not.toHaveAttribute("data-corners")
+    : expect(html).toHaveAttribute("data-corners", value);
+}
+
+function radiusOf(locator: Locator): Promise<string> {
+  return locator.evaluate((el) => getComputedStyle(el).borderRadius);
+}
+
+async function pickCorners(
+  page: Page,
+  name: "Rounded" | "Square",
+): Promise<void> {
+  await openSettings(page);
+  await chooseOption(page, "Corners", name);
+  await closeSettings(page);
+  await flushPendingSaves(page);
+}
+
+function cachedCorners(page: Page): Promise<string | null> {
+  return page.evaluate((key) => localStorage.getItem(key), CACHE_KEY);
+}
+
+async function shareWelcome(page: Page): Promise<string> {
+  await treeItem(page, "Welcome").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Share…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Share “Welcome”" });
+  await dialog.getByRole("button", { name: "Create link" }).click();
+  const link = dialog.getByRole("textbox", { name: "Share link" });
+  await expect(link).toBeVisible({ timeout: KEY_DERIVATION_TIMEOUT });
+  const url = await link.inputValue();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  return url;
+}
+
+async function openRowMenu(page: Page): Promise<Locator> {
+  await rowMenuTrigger(page).click();
+  const menu = rowMenu(page);
+  await expect(menu).toBeVisible();
+  return menu;
+}
+
+test("rounded is the default and sizes buttons, dialogs and menus", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await expectCorners(page, null);
+  expect(await radiusOf(page.locator(".button").first())).toBe("6px");
+
+  const dialog = await openSettings(page);
+  expect(await radiusOf(dialog.locator(".dialog-card"))).toBe("16px");
+  await closeSettings(page);
+
+  const menu = await openRowMenu(page);
+  await expectSurface(menu, { material: true, radius: "12px" });
+});
+
+test("choosing Square flattens the corners with one settings commit, and Rounded restores them", async ({
+  page,
+}) => {
+  await openNotes(page);
+  const before = await fakeForge(page).commitMessages();
+  await pickCorners(page, "Square");
+  await expectCorners(page, "square");
+
+  await expect
+    .poll(async () => {
+      const added = (await fakeForge(page).commitMessages()).filter(
+        (m) => !before.includes(m),
+      );
+      return added.map((m) => m.split("\n"));
+    })
+    .toEqual([expect.arrayContaining(["Commitnote-Settings: cornerStyle"])]);
+
+  expect(await radiusOf(page.locator(".button").first())).toBe("0px");
+  const dialog = await openSettings(page);
+  expect(await radiusOf(dialog.locator(".dialog-card"))).toBe("0px");
+  await closeSettings(page);
+  const menu = await openRowMenu(page);
+  await expectSurface(menu, { material: true, radius: "0px" });
+  await page.keyboard.press("Escape");
+
+  await pickCorners(page, "Rounded");
+  await expectCorners(page, null);
+  expect(await radiusOf(page.locator(".button").first())).toBe("6px");
+});
+
+test("a cached Square is applied before the first paint on reload", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await page.evaluate((key) => localStorage.setItem(key, "square"), CACHE_KEY);
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      (window as unknown as { __loadedCorners: string | null }).__loadedCorners =
+        document.documentElement.getAttribute("data-corners");
+    });
+  });
+  await page.reload();
+  await expectTree(page);
+  const recorded = await page.evaluate(
+    () =>
+      (window as unknown as { __loadedCorners: string | null }).__loadedCorners,
+  );
+  expect(recorded).toBe("square");
+});
+
+test("logging out keeps the corner style", async ({ page }) => {
+  await openNotes(page);
+  await pickCorners(page, "Square");
+  await logOut(page);
+  await expect(page.getByLabel("Access token")).toBeVisible();
+  await expectCorners(page, "square");
+  expect(await cachedCorners(page)).toBe("square");
+  expect(await radiusOf(page.locator(".login-card"))).toBe("0px");
+});
+
+test("a shared note viewer follows the visitor's cached corner style", async ({
+  page,
+}) => {
+  await openNotes(page);
+  const link = await shareWelcome(page);
+  await page.evaluate((key) => localStorage.setItem(key, "square"), CACHE_KEY);
+
+  const viewer = await page.context().newPage();
+  await viewer.goto(link);
+  await expect(viewer).toHaveTitle("Shared note · commitnote");
+  await expectCorners(viewer, "square");
+
+  await viewer.evaluate((key) => localStorage.removeItem(key), CACHE_KEY);
+  await viewer.reload();
+  await expect(viewer).toHaveTitle("Shared note · commitnote");
+  await expectCorners(viewer, null);
+});
+
+test("login applies the repository's corner style at the passphrase step", async ({
+  page,
+  openSecondDevice,
+}) => {
+  await openNotes(page);
+  await pickCorners(page, "Square");
+  await expect
+    .poll(async () =>
+      (await fakeForge(page).commitMessages()).some((m) =>
+        m.split("\n").includes("Commitnote-Settings: cornerStyle"),
+      ),
+    )
+    .toBe(true);
+
+  const second = await openSecondDevice();
+  await handOverRepo(page, second.page);
+  await expectCorners(second.page, null);
+  await chooseRepository(second.page, { repo: SAMPLE.repo });
+  await expect(
+    second.page.getByLabel("Passphrase", { exact: true }),
+  ).toBeVisible();
+  await expectCorners(second.page, "square");
+});
+
+test.describe("pinned override", () => {
+  test.use({ cornerStyle: "square" });
+
+  test("keeps the pinned style over the synced one and never writes the cache", async ({
+    page,
+  }) => {
+    await openNotes(page);
+    const dialog = await openSettings(page);
+    await expect(
+      dialog
+        .getByRole("radiogroup", { name: "Corners" })
+        .getByRole("radio", { name: "Rounded", exact: true }),
+    ).toBeChecked();
+    await closeSettings(page);
+    await expectCorners(page, "square");
+    expect(await cachedCorners(page)).toBeNull();
+  });
+});
+
 for (const [name, style] of Object.entries(STYLES)) {
   test.describe(`${name} corners`, () => {
     test.use({ cornerStyle: style.cornerStyle });
@@ -121,6 +315,43 @@ for (const [name, style] of Object.entries(STYLES)) {
 
       const toast = await showErrorToast(page);
       await expectSurface(toast, { material: false, radius: style.radius });
+    });
+
+    test("menu items are the style's height on a fine pointer", async ({
+      page,
+    }) => {
+      await openNotes(page);
+      const menu = await openRowMenu(page);
+      const items = menu.getByRole("menuitem");
+      expect(await items.count()).toBeGreaterThan(0);
+      await expect
+        .poll(() =>
+          items.evaluateAll((els) => [
+            ...new Set(els.map((el) => el.getBoundingClientRect().height)),
+          ]),
+        )
+        .toEqual([style.itemHeight]);
+    });
+
+    test("the selected tree row is inset and rounded only in Rounded", async ({
+      page,
+    }) => {
+      await openNotes(page);
+      await openWelcome(page);
+      const row = treeItem(page, "Welcome").locator("xpath=..");
+      const tree = page.getByRole("tree", { name: "Notes" });
+      await expect(row).toHaveClass(/selected/);
+      expect(await radiusOf(row)).toBe(style.rowRadius);
+      expect(await radiusOf(treeItem(page, "Welcome"))).toBe(style.rowRadius);
+      const [rowBox, treeBox] = await Promise.all([
+        row.boundingBox(),
+        tree.boundingBox(),
+      ]);
+      if (style.attribute === null) {
+        expect(rowBox!.x).toBeGreaterThan(treeBox!.x);
+      } else {
+        expect(rowBox!.x).toBeCloseTo(treeBox!.x, 0);
+      }
     });
 
     test(
