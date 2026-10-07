@@ -32,6 +32,7 @@
   import { resolveSettings, SETTINGS_SCHEMA } from "../../settings/settings";
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { ColorModeId } from "../../settings/color-mode";
+  import type { CornerStyle } from "../../settings/corner-style";
   import UnlockForm from "./UnlockForm.svelte";
   import CreateNotesRepoForm from "./CreateNotesRepoForm.svelte";
   import Wordmark from "../wordmark/Wordmark.svelte";
@@ -63,6 +64,7 @@
     }) => void;
     onAccentColor: (id: AccentColorId) => void;
     onColorMode: (id: ColorModeId) => void;
+    onCornerStyle: (style: CornerStyle) => void;
   }
 
   const {
@@ -76,6 +78,7 @@
     onLoggedIn,
     onAccentColor,
     onColorMode,
+    onCornerStyle,
   }: Props = $props();
 
   type TokenError =
@@ -123,6 +126,7 @@
         : null;
     onAccentColor(settings?.accentColor ?? "system");
     if (settings) onColorMode(settings.colorMode);
+    if (settings) onCornerStyle(settings.cornerStyle);
   });
   let inspectedRepository = $state.raw<RepositorySummary | null>(null);
   let inspectionRun = 0;
