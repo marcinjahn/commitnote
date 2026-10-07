@@ -160,7 +160,7 @@ type SaveStatus =
   | { readonly kind: "saving" }
   | {
       readonly kind: "waiting";
-      readonly reason: "failed" | "rateBudget";
+      readonly reason: "failed" | "rateBudget" | "offline";
       readonly retryAt: number | null;
       readonly error: SyncError | null;
     };
@@ -214,6 +214,7 @@ export interface SyncEngineState {
   readonly atomicBlocked: { readonly canConfigure: boolean } | null;
   /** Saving, refreshing and every change are paused until `resume()`. */
   readonly suspended: boolean;
+  readonly online: boolean;
 }
 
 export type StructureError =
@@ -301,6 +302,8 @@ export interface SyncEngine {
   purgeExpiredTrash(): void;
   flush(): Promise<FlushResult>;
   retryNow(): void;
+  /** While offline nothing is saved; going online saves at once. */
+  setOnline(online: boolean): void;
   resolveConflict(path: NotePath, resolution: ConflictResolution): void;
   /** Records settings edits and saves them like any other change. */
   changeSettings(edits: SettingsEdits): void;
@@ -386,6 +389,13 @@ function validateIn(
   if (validation.ok) return validation;
   return { ok: false, error: { kind: "invalidName", error: validation.error } };
 }
+
+const OFFLINE_WAIT: SaveStatus = {
+  kind: "waiting",
+  reason: "offline",
+  retryAt: null,
+  error: null,
+};
 
 function isFailedSave(save: SaveStatus): boolean {
   return save.kind === "waiting" && save.reason === "failed";
@@ -477,6 +487,7 @@ const INITIAL_STATE: SyncEngineState = {
   importing: false,
   atomicBlocked: null,
   suspended: false,
+  online: true,
 };
 
 const KEY_CHANGED: SyncError = { kind: "keyChanged" };
@@ -499,14 +510,16 @@ export function createSyncEngine(options: {
   readonly purgeCaps?: PurgeCaps;
   readonly blobCache?: CachedBlobReader;
   readonly noteContentCache?: NoteContentCache;
+  readonly isOnline?: () => boolean;
 }): SyncEngine {
   const { keyring, clock } = options;
+  const isOnline = options.isOnline ?? (() => true);
   const adapter = options.adapter;
   const rateBudget = options.rateBudget ?? createRateBudget(clock, adapter.limits);
   const noteContentCache =
     options.noteContentCache ?? createNoteContentCache();
 
-  let state: SyncEngineState = INITIAL_STATE;
+  let state: SyncEngineState = { ...INITIAL_STATE, online: isOnline() };
   const subscribers = new Set<(state: SyncEngineState) => void>();
   let disposed = false;
   let stopped = false;
@@ -1203,6 +1216,10 @@ export function createSyncEngine(options: {
     if (state.synced === null) {
       return Promise.resolve();
     }
+    if (isOffline()) {
+      waitOffline();
+      return Promise.resolve();
+    }
     if (state.save.kind === "waiting" && !endWait) {
       return Promise.resolve();
     }
@@ -1401,6 +1418,11 @@ export function createSyncEngine(options: {
 
   function failAttempt(error: SyncError): void {
     if (dropAutoPurge(error)) return;
+    if (isOffline()) {
+      returnUncommitted();
+      update((current) => ({ ...current, save: OFFLINE_WAIT }));
+      return;
+    }
     consecutiveFailures++;
     const retryAt =
       clock.now() +
@@ -2372,6 +2394,53 @@ export function createSyncEngine(options: {
     return flushResult();
   }
 
+  // The browser's offline signal is reliable but its online one is not, so
+  // the probe can only demote to offline; only setOnline(true) promotes.
+  function isOffline(): boolean {
+    if (state.online && !isOnline()) {
+      update((current) => ({ ...current, online: false }));
+    }
+    return !state.online;
+  }
+
+  function isBlockedWait(save: SaveStatus): boolean {
+    return (
+      save.kind === "waiting" && save.reason === "failed" && save.retryAt === null
+    );
+  }
+
+  function waitOffline(): void {
+    if (isBlockedWait(state.save)) return;
+    cancelRetry();
+    if (state.pending.length > 0 || committedHead !== null) {
+      if (state.save !== OFFLINE_WAIT) {
+        update((current) => ({ ...current, save: OFFLINE_WAIT }));
+      }
+    } else if (state.save.kind === "waiting") {
+      update((current) => ({ ...current, save: { kind: "idle" } }));
+    }
+  }
+
+  function setOnline(online: boolean): void {
+    if (disposed || state.online === online) return;
+    update((current) => ({ ...current, online }));
+    const save = state.save;
+    if (!online) {
+      if (
+        save.kind === "waiting" &&
+        save.reason === "failed" &&
+        save.retryAt !== null
+      ) {
+        cancelRetry();
+        update((current) => ({ ...current, save: OFFLINE_WAIT }));
+      }
+      return;
+    }
+    if (save.kind === "waiting" && save.reason === "offline") {
+      void triggerSave(true);
+    }
+  }
+
   function retryNow(): void {
     const save = state.save;
     if (save.kind === "waiting" && save.reason === "failed") {
@@ -2520,6 +2589,7 @@ export function createSyncEngine(options: {
     purgeExpiredTrash,
     flush,
     retryNow,
+    setOnline,
     resolveConflict,
     changeSettings,
     dismissNotice,
