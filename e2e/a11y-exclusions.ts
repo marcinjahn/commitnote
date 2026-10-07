@@ -25,16 +25,6 @@ export const A11Y_EXCLUSIONS: readonly A11yExclusion[] = [
     target: ".tree",
   },
   {
-    finding: "A11Y-02",
-    rule: "landmark-one-main",
-    states: ["login", "login-error", "onboarding"],
-  },
-  {
-    finding: "A11Y-02",
-    rule: "region",
-    states: ["login", "login-error", "onboarding"],
-  },
-  {
     finding: "A11Y-NEW-4",
     rule: "landmark-one-main",
     states: ["commands-menu", "tree"],

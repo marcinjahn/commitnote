@@ -152,6 +152,9 @@ test("revoking a share removes the link and the markers", async ({ page }) => {
       exact: false,
     }),
   ).toBeVisible();
+  await expect(viewer.getByRole("heading", { level: 1 })).toHaveText(
+    "Shared note",
+  );
 
   await expect(treeItem(page, "Welcome")).not.toHaveAccessibleDescription(
     /Shared/,

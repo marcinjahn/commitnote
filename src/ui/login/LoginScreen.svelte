@@ -35,6 +35,7 @@
   import UnlockForm from "./UnlockForm.svelte";
   import CreateNotesRepoForm from "./CreateNotesRepoForm.svelte";
   import Wordmark from "../wordmark/Wordmark.svelte";
+  import { LOGIN_TAB_TITLE, tabTitle } from "../../app/tab-title";
 
   interface Props {
     providers: readonly ForgeProvider[];
@@ -110,6 +111,8 @@
         : null,
     ),
   );
+
+  $effect(() => tabTitle.override(LOGIN_TAB_TITLE));
 
   let inspection = $state.raw<Inspection | null>(null);
 
@@ -378,7 +381,7 @@
   {/if}
 {/snippet}
 
-<div class="login-shell">
+<main class="login-shell">
   <div class="login-card">
     <Wordmark element="h1" />
     <p class="login-tagline">
@@ -533,7 +536,7 @@
       {/if}
     {/if}
   </div>
-</div>
+</main>
 
 <style>
   .login-shell {

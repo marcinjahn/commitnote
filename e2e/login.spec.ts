@@ -32,8 +32,11 @@ async function failNextOnLoad(
 
 test("setting up an empty repo, then logging in to it", async ({ page }) => {
   await page.goto("/");
+  await expect(page).toHaveTitle("Log in · commitnote");
+  await expect(page.getByRole("main")).toBeVisible();
 
   await chooseRepository(page, { repo: EMPTY_REPO });
+  await expect(page).toHaveTitle("Log in · commitnote");
   await expect(
     page.getByText(
       "This repository is empty. Setting it up as a notes repo adds a commitnote configuration file and a README.",
@@ -61,6 +64,7 @@ test("setting up an empty repo, then logging in to it", async ({ page }) => {
   await page.getByRole("button", { name: "Set up notes repo" }).click();
   // An empty notes repo has no tree, just the empty-state message.
   await expectEmptyNotesRepo(page);
+  await expect(page).toHaveTitle("commitnote");
 
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page.getByLabel("Access token")).toHaveValue("");
