@@ -2,17 +2,14 @@ import { readFile } from "node:fs/promises";
 import { expect, test } from "./fixtures";
 import { strFromU8, unzipSync } from "fflate";
 import { openNotes } from "./helpers";
+import { openDataSecurityAction } from "./helpers/settings";
 
 
 test("exporting downloads a zip of all notes and folders", async ({ page }) => {
   await openNotes(page);
 
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Export notes" })
-    .click();
+  await openDataSecurityAction(page, "Export notes");
   const download = await downloadPromise;
 
   expect(download.suggestedFilename()).toMatch(

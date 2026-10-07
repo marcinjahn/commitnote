@@ -398,7 +398,6 @@
   let nextMessageId = 0;
   let exporting = $state(false);
   const UNDO_TOAST_MS = 8_000;
-  let importInput: HTMLInputElement | undefined = $state();
   let reading = $state(false);
   let importDialog = $state<{
     readonly fileName: string;
@@ -414,6 +413,7 @@
   } | null>(null);
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
+  let dialogOpener: Element | null = null;
   let settingsOpen = $state(false);
   let searchOpen = $state(false);
   let searchReturnFocus: HTMLElement | null = null;
@@ -713,21 +713,6 @@
       run: openSettings,
     },
     {
-      id: "export",
-      label: exporting ? "Exporting…" : "Export notes",
-      icon: commandIcons.export,
-      disabled: tree === null || exporting,
-      run: () => void handleExport(),
-    },
-    {
-      id: "import",
-      label: importing ? "Importing…" : "Import notes",
-      icon: commandIcons.import,
-      disabled:
-        tree === null || engineState.stopped !== null || importing || reading,
-      run: () => importInput?.click(),
-    },
-    {
       id: "shared-links",
       label: "Shared links",
       icon: commandIcons.sharedLinks,
@@ -736,17 +721,6 @@
         settingsSaver.flush();
         leaveDraft();
         sharedLinksOpen = true;
-      },
-    },
-    {
-      id: "change-passphrase",
-      label: "Change passphrase",
-      icon: commandIcons.passphrase,
-      disabled: tree === null || engineState.stopped !== null || importing,
-      run: () => {
-        settingsSaver.flush();
-        leaveDraft();
-        changePassphraseOpen = true;
       },
     },
     {
@@ -1384,11 +1358,22 @@
     }
   }
 
-  async function handleImportFile(event: Event): Promise<void> {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = "";
-    if (file === undefined || reading) return;
+  function rememberDialogOpener(): void {
+    dialogOpener = document.activeElement;
+  }
+
+  function restoreDialogOpener(): void {
+    const opener = dialogOpener;
+    dialogOpener = null;
+    if (opener instanceof HTMLElement) {
+      void tick().then(() => {
+        if (opener.isConnected) opener.focus();
+      });
+    }
+  }
+
+  async function handleImportFile(file: File): Promise<void> {
+    if (reading) return;
     clearToast("import");
     if (file.size > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
       showImportMessage("error", describeArchiveError("tooLarge"));
@@ -1465,6 +1450,7 @@
     return commitImport(destination, pending.contents.entries, policy, (plan) => {
       tagFilter = null;
       importDialog = null;
+      restoreDialogOpener();
       if (plan.changes.length > 0) {
         importStarted = { summary: plan.summary, retryingShown: false };
       }
@@ -2244,17 +2230,6 @@
   />
 {/if}
 
-<input
-  bind:this={importInput}
-  type="file"
-  accept=".zip,application/zip"
-  class="visually-hidden"
-  tabindex="-1"
-  aria-hidden="true"
-  data-testid="import-file"
-  onchange={(event) => void handleImportFile(event)}
-/>
-
 {#if importDialog !== null && tree !== null}
   <ImportDialog
     fileName={importDialog.fileName}
@@ -2263,7 +2238,10 @@
     {forgeName}
     onEnableAtomic={handleEnableAtomic}
     onImport={handleImport}
-    onClose={() => (importDialog = null)}
+    onClose={() => {
+      importDialog = null;
+      restoreDialogOpener();
+    }}
   />
 {/if}
 
@@ -2297,6 +2275,28 @@
       remembered: sessionRemembered,
       onReopenLastViewChange: handleReopenLastViewChange,
     }}
+    dataSecurity={{
+      exporting,
+      exportDisabled: tree === null || exporting,
+      onExport: () => void handleExport(),
+      importing,
+      importDisabled:
+        tree === null || engineState.stopped !== null || importing || reading,
+      onImportFile: (file) => {
+        rememberDialogOpener();
+        void handleImportFile(file).then(() => {
+          if (importDialog === null) dialogOpener = null;
+        });
+      },
+      changePassphraseDisabled:
+        tree === null || engineState.stopped !== null || importing,
+      onChangePassphrase: () => {
+        settingsSaver.flush();
+        leaveDraft();
+        rememberDialogOpener();
+        changePassphraseOpen = true;
+      },
+    }}
     onRetry={() => engine.retryNow()}
     onClose={() => {
       settingsSaver.flush();
@@ -2312,7 +2312,10 @@
     change={passphraseChange}
     onChanged={onPassphraseChanged}
     onLogOut={handleLogOut}
-    onClose={() => (changePassphraseOpen = false)}
+    onClose={() => {
+      changePassphraseOpen = false;
+      restoreDialogOpener();
+    }}
   />
 {/if}
 

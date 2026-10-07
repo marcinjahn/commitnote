@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { expectTree, logIn, SAMPLE, openNotes, logOut, fakeForge, handOverRepo } from "./helpers";
+import { closeSettings, openDataSecurityAction } from "./helpers/settings";
 
 const NEW_PASSPHRASE = "a brand new passphrase";
 const KEY_CHANGED_TEXT =
@@ -11,11 +12,7 @@ function changeDialog(page: Page) {
 }
 
 async function openChangeDialog(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Change passphrase" })
-    .click();
+  await openDataSecurityAction(page, "Change passphrase");
   await expect(changeDialog(page)).toBeVisible();
 }
 
@@ -49,6 +46,7 @@ async function changePassphrase(page: Page): Promise<void> {
   await expect(page.getByText("Passphrase changed.")).toBeVisible({
     timeout: 15_000,
   });
+  await closeSettings(page);
   await expectTree(page);
 }
 
@@ -206,6 +204,7 @@ test.describe("with a login that is not remembered", () => {
     await expect(dialog).toHaveCount(0);
     expect(await fakeForge(page).commitMessages()).toEqual(before);
 
+    await closeSettings(page);
     await page.getByRole("treeitem", { name: "Welcome" }).click();
     await expect(
       page.getByRole("textbox", { name: "Note editor" }),
@@ -268,6 +267,7 @@ test.describe("with a login that is not remembered", () => {
 
     await expect(review).toHaveCount(0);
     expect(await fakeForge(page).commitMessages()).toEqual(before);
+    await closeSettings(page);
     await page.getByRole("button", { name: "New folder" }).click();
     await page.getByLabel("Folder name").fill("After cancel");
     await page.getByRole("button", { name: "Create", exact: true }).click();

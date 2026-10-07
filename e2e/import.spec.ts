@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { strToU8, zipSync } from "fflate";
 import { openNotes, fakeForge } from "./helpers";
+import { openDataSecurityAction, settingsDialog } from "./helpers/settings";
 
 
 function zipOf(files: Record<string, string>): Buffer {
@@ -16,11 +17,7 @@ async function chooseArchive(
   buffer: Buffer,
 ): Promise<void> {
   const chooserPromise = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Import notes" })
-    .click();
+  await openDataSecurityAction(page, "Import notes");
   const chooser = await chooserPromise;
   await chooser.setFiles({ name, mimeType: "application/zip", buffer });
 }
@@ -138,4 +135,19 @@ test("reports a file that isn't a zip archive", async ({ page }) => {
   ).toBeVisible();
   await expect(importDialog(page)).toHaveCount(0);
   expect(await fakeForge(page).commitCount()).toBe(before);
+});
+
+test("closing Import notes with Escape keeps Settings open and refocuses its button", async ({
+  page,
+}) => {
+  await chooseArchive(page, "Trip notes.zip", zipOf({ "a.md": "# A" }));
+  await expect(importDialog(page)).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(importDialog(page)).toHaveCount(0);
+  const dialog = settingsDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Import notes", exact: true }),
+  ).toBeFocused();
 });
