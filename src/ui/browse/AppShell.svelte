@@ -84,6 +84,8 @@
   import NoteHeader from "./NoteHeader.svelte";
   import NoteTree from "./NoteTree.svelte";
   import RefreshButton from "./RefreshButton.svelte";
+  import SyncStatusButton from "./SyncStatusButton.svelte";
+  import { listUnsavedNotes } from "../../sync/unsaved-notes";
   import SettingsSaveIndicator from "../settings/SettingsSaveIndicator.svelte";
   import { settingsSaveState } from "../../settings/settings-save-state";
   import ShareDialog from "../share/ShareDialog.svelte";
@@ -175,6 +177,24 @@
   }: Props = $props();
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
+  const syncStatus = $derived(engineState.syncStates.stateOf([]));
+  const offline = $derived(!engineState.online);
+  const canRetry = $derived(
+    engineState.online &&
+      engineState.save.kind === "waiting" &&
+      engineState.save.reason === "failed",
+  );
+  const unsavedNotes = $derived(
+    engineState.workingTree === null
+      ? { notes: [], others: engineState.syncStates.unsavedCount }
+      : listUnsavedNotes({
+          pending: engineState.pending,
+          inFlight: engineState.inFlight,
+          conflicts: engineState.conflicts.map((c) => c.path),
+          tree: engineState.workingTree,
+          unsavedCount: engineState.syncStates.unsavedCount,
+        }),
+  );
   let pendingSettingsEdits = $state(untrack(() => settingsSaver.pending));
   let mobileView = $state<"tree" | "note">("tree");
   let repoLabelEl = $state<HTMLSpanElement | null>(null);
@@ -328,10 +348,14 @@
     if (searchReturnFocus?.isConnected) searchReturnFocus.focus();
   }
 
-  async function openSearchResult(path: NotePath): Promise<void> {
-    searchOpen = false;
+  async function revealAndOpen(path: NotePath): Promise<void> {
     if (path.length > 1) expandFolder(parentPath(path));
     await handleSelect(path);
+  }
+
+  async function openSearchResult(path: NotePath): Promise<void> {
+    searchOpen = false;
+    await revealAndOpen(path);
     await tick();
     if (
       !isNarrowLayout() &&
@@ -1508,6 +1532,16 @@
     <div class="tree-header">
       <Wordmark />
       <div class="tree-header-actions">
+        <SyncStatusButton
+          state={syncStatus}
+          {offline}
+          hasUnsaved={engineState.syncStates.hasUnsaved}
+          notes={unsavedNotes.notes}
+          others={unsavedNotes.others}
+          {canRetry}
+          onOpenNote={(path) => void revealAndOpen(path)}
+          onRetry={() => engine.retryNow()}
+        />
         <button
           type="button"
           class="button button-icon button-ghost"
@@ -2189,7 +2223,16 @@
       flex: 1;
     }
 
-    /* The 300px sidebar can't fit the wordmark plus four 44px-wide buttons. */
+    /* The 300px sidebar can't fit the wordmark plus five 36px-wide buttons. */
+    .tree-header {
+      gap: 0;
+      padding-right: var(--space-1);
+    }
+
+    .tree-header :global(.wordmark) {
+      font-size: var(--font-size-base);
+    }
+
     .tree-header-actions {
       gap: 0;
     }

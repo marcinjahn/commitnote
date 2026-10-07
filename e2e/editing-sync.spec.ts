@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { rowSyncState, openNotes, showTree, fakeForge, flushPendingSaves } from "./helpers";
-import { headerSyncIcon } from "./helpers/tree";
+import { headerSyncIcon, openWelcome } from "./helpers/tree";
 
 
 
@@ -279,4 +279,31 @@ test("a conflict is resolved by keeping theirs", async ({ page }) => {
   const note = page.getByRole("textbox", { name: "Note editor" });
   await expect(note).toContainText("Welcome from elsewhere");
   await expect(note).not.toContainText("Welcome from here");
+});
+
+test("the sync status button lists the unsaved note and retries a failed save", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.clock.install();
+  await openNotes(page);
+  await openWelcome(page);
+  const commitsBefore = await fakeForge(page).commitCount();
+
+  await fakeForge(page).failNext("commit", "Network");
+  await page.getByRole("textbox", { name: "Note editor" }).click();
+  await page.keyboard.type(" retry me");
+  await flushPendingSaves(page);
+
+  await showTree(page);
+  const button = page.getByRole("button", { name: FAILED });
+  await button.click();
+  const menu = page.getByRole("menu", { name: "Unsaved notes" });
+  await expect(menu.getByRole("menuitem", { name: "Welcome" })).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Retry now" }).click();
+
+  await expect(button).toHaveCount(0);
+  await expect
+    .poll(() => fakeForge(page).commitCount())
+    .toBe(commitsBefore + 1);
 });
