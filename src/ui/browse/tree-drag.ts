@@ -24,6 +24,11 @@ import {
  * While a drag or its settling runs, the container has `data-drag-state`.
  */
 export interface TreeDragOptions {
+  /**
+   * When false, no drag starts; a touch long-press released without moving
+   * still opens the row's menu.
+   */
+  readonly reorder: boolean;
   readonly scene: (
     dragged: NotePath,
   ) => Pick<DropScene, "draggedKind" | "conflicted" | "childrenOf"> | null;
@@ -425,6 +430,12 @@ export function treeDrag(
       moved: boolean;
     } | null;
   } | null = null;
+  let menuPress: {
+    readonly pointerId: number;
+    readonly row: HTMLElement;
+    readonly x: number;
+    readonly y: number;
+  } | null = null;
   let escapedMousePointer: number | null = null;
   let busy = false;
   let touchPressOnRow = false;
@@ -472,6 +483,11 @@ export function treeDrag(
     if (pending === null) return;
     const { pointerId, row, x, y } = pending;
     pending = null;
+    if (!options.reorder) {
+      menuPress = { pointerId, row, x, y };
+      liftedByTouch = true;
+      return;
+    }
     const drag = begin(row, x, y);
     if (drag === null) return;
     liftedByTouch = true;
@@ -480,6 +496,7 @@ export function treeDrag(
 
   function onPointerDown(event: PointerEvent): void {
     touchPressOnRow = false;
+    menuPress = null;
     escapedMousePointer = null;
     const touch = event.pointerType === "touch";
     if (!touch && (event.pointerType !== "mouse" || event.button !== 0)) return;
@@ -508,6 +525,16 @@ export function treeDrag(
   }
 
   function onPointerMove(event: PointerEvent): void {
+    if (menuPress !== null) {
+      if (
+        event.pointerId === menuPress.pointerId &&
+        Math.hypot(event.clientX - menuPress.x, event.clientY - menuPress.y) >
+          TOUCH_SLOP
+      ) {
+        menuPress = null;
+      }
+      return;
+    }
     if (session !== null) {
       if (event.pointerId !== session.pointerId) return;
       const { touch } = session;
@@ -537,6 +564,7 @@ export function treeDrag(
     if (distance <= MOUSE_DRAG_THRESHOLD) return;
     const { row, startX, startY } = pending;
     pending = null;
+    if (!options.reorder) return;
     const drag = begin(row, startX, startY);
     if (drag === null) return;
     setSession({ pointerId: event.pointerId, drag, touch: null });
@@ -546,6 +574,12 @@ export function treeDrag(
 
   function onPointerUp(event: PointerEvent): void {
     clearPending();
+    if (menuPress !== null && event.pointerId === menuPress.pointerId) {
+      const { row, x, y } = menuPress;
+      menuPress = null;
+      options.onMenu(row, x, y);
+      return;
+    }
     if (session === null) {
       if (event.pointerId === escapedMousePointer) {
         escapedMousePointer = null;
@@ -572,6 +606,9 @@ export function treeDrag(
       return;
     }
     clearPending();
+    if (menuPress !== null && event.pointerId === menuPress.pointerId) {
+      menuPress = null;
+    }
     if (session === null || event.pointerId !== session.pointerId) return;
     const { drag } = session;
     clearSession();

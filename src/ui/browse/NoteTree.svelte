@@ -116,6 +116,7 @@
   }
 
   const dragOptions: TreeDragOptions = {
+    reorder: true,
     scene(dragged) {
       const current = tree;
       if (current === null) return null;
