@@ -318,6 +318,10 @@
     list-style: none;
   }
 
+  :global(:root:not([data-corners="square"])) .rows {
+    padding-inline: var(--space-1);
+  }
+
   .session {
     position: relative;
   }
@@ -335,7 +339,7 @@
     min-height: var(--touch-target);
     padding: var(--space-2) var(--space-3);
     border: none;
-    border-radius: 0;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text);
     text-align: left;
@@ -376,6 +380,7 @@
 
   .badge {
     padding: 0 var(--space-1);
+    border-radius: var(--radius-pill);
     border: var(--hairline) solid var(--color-border-strong);
     color: var(--color-text-muted);
     font-size: var(--font-size-xs);
@@ -473,6 +478,7 @@
     display: block;
     height: 0.7rem;
     width: 70%;
+    border-radius: var(--radius-sm);
     background: var(--color-hover);
     animation: skeleton-pulse 1.2s var(--motion-easing) infinite alternate;
     animation-delay: calc(var(--i) * 80ms);

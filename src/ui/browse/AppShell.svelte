@@ -2764,7 +2764,7 @@
       background: var(--color-surface-raised);
       color: var(--color-text);
       border: var(--hairline) solid var(--color-border);
-      border-radius: var(--radius);
+      border-radius: var(--radius-sm);
       width: 1px;
       height: 1px;
       overflow: hidden;

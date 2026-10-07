@@ -417,6 +417,10 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
+  :global(:root:not([data-corners="square"])) .search-results {
+    padding-inline: var(--space-1);
+  }
+
   .search-message {
     margin: 0;
     padding: var(--space-3);
@@ -453,6 +457,7 @@
     justify-content: center;
     gap: 2px;
     padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-sm);
     cursor: pointer;
     transition: background-color var(--motion-duration) var(--motion-easing);
   }

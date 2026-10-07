@@ -264,6 +264,7 @@
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+    border-radius: var(--radius-sm);
     transition: background-color var(--motion-duration) var(--motion-easing);
   }
 
@@ -294,7 +295,7 @@
     color: var(--color-text);
     text-align: left;
     cursor: pointer;
-    border-radius: 0;
+    border-radius: var(--radius-sm);
   }
 
   .tree-row:focus-visible,
