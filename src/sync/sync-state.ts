@@ -45,7 +45,7 @@ const STATE_BY_LEVEL: readonly SyncState[] = [
 
 // Purges are background housekeeping of already-deleted items, so they never
 // count as unsaved work.
-function entryPathOf(change: Change): NotePath | null {
+export function entryPathOf(change: Change): NotePath | null {
   switch (change.kind) {
     case "create-note":
     case "update-note":
