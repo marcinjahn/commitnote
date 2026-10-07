@@ -5,9 +5,11 @@
   import { describeDateTime } from "../history/history-messages";
   import {
     NOT_SAVED_YET_LABEL,
+    countTasks,
     countWords,
     describeCreated,
     describeUpdated,
+    describeTaskProgress,
     describeWordCount,
   } from "../history/note-details-messages";
   import { createDatesGrace, type DetailsForm } from "./dates-grace";
@@ -29,16 +31,19 @@
   const NOW_REFRESH_MS = 60_000;
 
   let wordCount = $state(untrack(() => countWords(text)));
+  let taskProgress = $state(untrack(() => countTasks(text)));
   let countedSwitch = untrack(() => noteSwitch);
   $effect.pre(() => {
     const current = text;
     if (noteSwitch !== countedSwitch) {
       countedSwitch = noteSwitch;
       wordCount = countWords(current);
+      taskProgress = countTasks(current);
       return;
     }
     const timer = setTimeout(() => {
       wordCount = countWords(current);
+      taskProgress = countTasks(current);
     }, WORD_COUNT_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   });
@@ -114,6 +119,12 @@
   }
 </script>
 
+{#snippet stats()}
+  {describeWordCount(wordCount)}{#if taskProgress.total > 0}<span aria-hidden="true"
+      >{" · "}</span
+    >{describeTaskProgress(taskProgress)}{/if}
+{/snippet}
+
 {#snippet sharedBadge()}
   {#if sharedShown}
     <span in:formFade out:formFade
@@ -133,9 +144,7 @@
 >
   {#if form === "not-saved"}
     <span class="details-form" in:formFade out:formFade
-      >{NOT_SAVED_YET_LABEL}<span aria-hidden="true">{" · "}</span>{describeWordCount(
-        wordCount,
-      )}{@render sharedBadge()}</span
+      >{NOT_SAVED_YET_LABEL}<span aria-hidden="true">{" · "}</span>{@render stats()}{@render sharedBadge()}</span
     >
   {:else if form === "full" && fullDates !== null}
     <span class="details-form" in:formFade out:formFade
@@ -148,11 +157,11 @@
           data-settle={settling ? "" : undefined}
           title={describeDateTime(fullDates.updated)}>{describeUpdated(fullDates.updated, now)}</time
         ><span aria-hidden="true">{" · "}</span></span
-      >{describeWordCount(wordCount)}{@render sharedBadge()}</span
+      >{@render stats()}{@render sharedBadge()}</span
     >
   {:else if form === "compact"}
     <span class="details-form" in:formFade out:formFade
-      >{describeWordCount(wordCount)}{@render sharedBadge()}</span
+      >{@render stats()}{@render sharedBadge()}</span
     >
   {/if}
 </p>

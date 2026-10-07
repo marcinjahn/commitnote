@@ -1,3 +1,4 @@
+import { markdownLanguage } from "@codemirror/lang-markdown";
 import { dayKey } from "./history-messages";
 
 export const NOT_SAVED_YET_LABEL = "Not saved yet";
@@ -68,4 +69,31 @@ export function countWords(text: string, locale?: string): number {
 export function describeWordCount(count: number, locale?: string): string {
   const unit = count === 1 ? "word" : "words";
   return `${new Intl.NumberFormat(locale).format(count)} ${unit}`;
+}
+
+export interface TaskProgress {
+  readonly done: number;
+  readonly total: number;
+}
+
+export function countTasks(text: string): TaskProgress {
+  let done = 0;
+  let total = 0;
+  markdownLanguage.parser.parse(text).iterate({
+    enter(node) {
+      if (node.name !== "TaskMarker") return;
+      total++;
+      const state = text[node.from + 1];
+      if (state === "x" || state === "X") done++;
+    },
+  });
+  return { done, total };
+}
+
+export function describeTaskProgress(
+  progress: TaskProgress,
+  locale?: string,
+): string {
+  const format = new Intl.NumberFormat(locale);
+  return `${format.format(progress.done)}/${format.format(progress.total)} done`;
 }
