@@ -8,11 +8,14 @@ import { createShareReaders } from "./forge/share-readers";
 import type { ShareReaders } from "./forge/share-host";
 import { isShareHash } from "./share/share-link";
 import "./note-fonts.css";
+import { applyPlatform, detectPlatform } from "./ui/platform";
 
 const target = document.getElementById("app");
 if (!target) {
   throw new Error("Missing #app element");
 }
+
+applyPlatform(document.documentElement, detectPlatform(navigator));
 
 window.addEventListener("hashchange", (event) => {
   if (
