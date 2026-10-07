@@ -2,6 +2,7 @@ import type { IndexerState, IndexStatus } from "../../search/content-indexer";
 import { describeMinutes } from "../plural";
 
 export const NAME_SECTION_HEADING = "Titles";
+export const RECENT_SECTION_HEADING = "Recent";
 export const STILL_READING = "Still reading notes…";
 export const SEARCH_HINT = "Search note titles and contents";
 export const SEARCH_PLACEHOLDER = "Search notes";

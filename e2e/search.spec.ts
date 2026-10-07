@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { TouchFinger, openNotes, showTree } from "./helpers";
-import { treeItem } from "./helpers/tree";
+import { moveToTrash, treeItem } from "./helpers/tree";
 
 const SEARCH_REPO = "https://github.com/sample/search";
 const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
@@ -230,4 +230,104 @@ test("the palette is a full-screen sheet that opens a result and closes by swipe
   finger.hold(150);
   await finger.up();
   await expect(dialog).toHaveCount(0);
+});
+
+test.describe("recent notes", () => {
+  const noteName = (page: Page) =>
+    page.getByRole("textbox", { name: "Note name" });
+
+  async function openThreeNotes(page: Page): Promise<void> {
+    for (const name of ["Reading list", "Welcome", "Zażółć gęślą jaźń"]) {
+      await treeItem(page, name).click();
+      await expect(noteName(page)).toHaveValue(name);
+    }
+  }
+
+  test("the hint shows when no note was opened", async ({ page }) => {
+    await openPalette(page);
+
+    await expect(palette(page).getByText("Search note titles and contents")).toBeVisible();
+    await expect(group(page, "Recent")).toHaveCount(0);
+    await expect(searchInput(page)).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("lists previously opened notes most recent first without the open note, and Enter opens the first", async ({
+    page,
+  }) => {
+    await openThreeNotes(page);
+    await openPalette(page);
+
+    const recent = group(page, "Recent").getByRole("option");
+    await expect(recent).toHaveCount(2);
+    await expect(recent.nth(0)).toContainText("Welcome");
+    await expect(recent.nth(1)).toContainText("Reading list");
+    await expect(recent.first()).toHaveAttribute("aria-selected", "true");
+    await expect(palette(page).getByText("Search note titles and contents")).toHaveCount(0);
+
+    await page.keyboard.press("Enter");
+    await expect(palette(page)).toHaveCount(0);
+    await expect(noteName(page)).toHaveValue("Welcome");
+    await expectEditorFocused(page);
+
+    await openPalette(page);
+    await expect(recent.nth(0)).toContainText("Zażółć gęślą jaźń");
+    await expect(recent.nth(1)).toContainText("Reading list");
+  });
+
+  test("arrow keys and clicks open recent notes", async ({ page }) => {
+    await openThreeNotes(page);
+    await openPalette(page);
+
+    const recent = group(page, "Recent").getByRole("option");
+    await page.keyboard.press("ArrowDown");
+    await expect(recent.nth(1)).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Enter");
+    await expect(noteName(page)).toHaveValue("Reading list");
+
+    await openPalette(page);
+    await group(page, "Recent")
+      .getByRole("option", { name: /Zażółć gęślą jaźń/ })
+      .click();
+    await expect(palette(page)).toHaveCount(0);
+    await expect(noteName(page)).toHaveValue("Zażółć gęślą jaźń");
+  });
+
+  test("typing replaces the recent notes with search results", async ({ page }) => {
+    await openThreeNotes(page);
+    await openPalette(page);
+    await expect(group(page, "Recent")).toBeVisible();
+
+    await search(page, "reading");
+    await expect(group(page, "Recent")).toHaveCount(0);
+    await expect(group(page, "Titles")).toBeVisible();
+
+    await search(page, "");
+    await expect(group(page, "Recent")).toBeVisible();
+  });
+
+  test("a trashed note is no longer listed", async ({ page }) => {
+    await openThreeNotes(page);
+    await moveToTrash(page, "Reading list");
+
+    await openPalette(page);
+    const recent = group(page, "Recent").getByRole("option");
+    await expect(recent).toHaveCount(1);
+    await expect(recent.first()).toContainText("Welcome");
+  });
+
+  test("recent notes open by tap on mobile", { tag: "@mobile" }, async ({ page }) => {
+    await treeItem(page, "Welcome").click();
+    await expect(noteName(page)).toHaveValue("Welcome");
+    await showTree(page);
+    await treeItem(page, "Reading list").click();
+    await expect(noteName(page)).toHaveValue("Reading list");
+    await showTree(page);
+
+    await openPalette(page);
+    const recent = group(page, "Recent").getByRole("option");
+    await expect(recent).toHaveCount(1);
+    await recent.first().click();
+    await expect(palette(page)).toHaveCount(0);
+    await expect(noteName(page)).toHaveValue("Welcome");
+  });
 });

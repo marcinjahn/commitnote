@@ -21,6 +21,7 @@
     describeSearchStatus,
     describeShowingFirst,
     NAME_SECTION_HEADING,
+    RECENT_SECTION_HEADING,
     SEARCH_HINT,
     SEARCH_PLACEHOLDER,
     STILL_READING,
@@ -30,17 +31,19 @@
   interface Props {
     indexer: ContentIndexer;
     forgeName: string;
+    recent: readonly NotePath[];
     onOpen: (path: NotePath) => void;
     onClose: () => void;
   }
 
-  const { indexer, forgeName, onOpen, onClose }: Props = $props();
+  const { indexer, forgeName, recent, onOpen, onClose }: Props = $props();
 
   const PAUSED_REFRESH_MS = 15_000;
   const EMPTY_CONTENTS: MatchSection<ContentMatch> = { matches: [], more: false };
 
   const uid = $props.id();
   const listboxId = `search-results-${uid}`;
+  const recentHeadingId = `search-recent-${uid}`;
   const nameHeadingId = `search-names-${uid}`;
   const contentHeadingId = `search-contents-${uid}`;
   const optionId = (index: number) => `search-option-${uid}-${index}`;
@@ -147,7 +150,19 @@
   });
   const nameRows = $derived(nameSection.matches.map(toRow));
   const contentRows = $derived(contentSection.matches.map(toRow));
-  const rows = $derived([...nameRows, ...contentRows]);
+  const recentRows = $derived.by(() => {
+    if (terms.length > 0) return [];
+    const byKey = new Map(sources.map((source) => [JSON.stringify(source.path), source]));
+    return recent.flatMap((path) => {
+      const source = byKey.get(JSON.stringify(path));
+      return source === undefined
+        ? []
+        : [toRow({ source, nameRanges: [], folderRanges: [] })];
+    });
+  });
+  const rows = $derived(
+    terms.length === 0 ? recentRows : [...nameRows, ...contentRows],
+  );
   const showContentSection = $derived(
     contentRows.length > 0 || (nameRows.length > 0 && partial),
   );
@@ -274,7 +289,9 @@
 
   <div class="search-results">
     {#if terms.length === 0}
-      <p class="search-message">{SEARCH_HINT}</p>
+      {#if recentRows.length === 0}
+        <p class="search-message">{SEARCH_HINT}</p>
+      {/if}
     {:else if rows.length === 0 && contentsSettled}
       <p class="search-message">
         {describeNoMatches(query)}
@@ -284,7 +301,15 @@
       </p>
     {/if}
     <div role="listbox" id={listboxId} aria-label="Search results" class="listbox">
-      {#if nameRows.length > 0}
+      {#if recentRows.length > 0}
+        <div role="group" aria-labelledby={recentHeadingId} class="section">
+          <div id={recentHeadingId} class="section-heading">{RECENT_SECTION_HEADING}</div>
+          {#each recentRows as row, i (row.key)}
+            {@render option(row, i)}
+          {/each}
+        </div>
+      {/if}
+      {#if terms.length > 0 && nameRows.length > 0}
         <div role="group" aria-labelledby={nameHeadingId} class="section">
           <div id={nameHeadingId} class="section-heading">{NAME_SECTION_HEADING}</div>
           {#each nameRows as row, i (row.key)}

@@ -64,6 +64,7 @@
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
   import { actionIcons, commandIcons } from "./action-icons";
   import type { ContentIndexer } from "../../search/content-indexer";
+  import { createRecentNotes } from "../search/recent-notes";
   import SearchPalette from "../search/SearchPalette.svelte";
   import SearchTrigger from "../search/SearchTrigger.svelte";
   import CommandMenu from "./CommandMenu.svelte";
@@ -773,6 +774,16 @@
       trashOpen = false;
       trashDialog = { kind: "none" };
     }
+  });
+
+  const recentNotes = createRecentNotes();
+  let recentPaths = $state.raw<readonly NotePath[]>([]);
+  $effect(() => {
+    const path = openPath;
+    untrack(() => {
+      if (path !== null) recentNotes.record(path);
+      recentPaths = recentNotes.list(path);
+    });
   });
 
   let previousOpenPath: NotePath | null = null;
@@ -1820,6 +1831,7 @@
   <SearchPalette
     indexer={contentIndexer}
     {forgeName}
+    recent={recentPaths}
     onOpen={openSearchResult}
     onClose={closeSearch}
   />
