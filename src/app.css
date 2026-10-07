@@ -34,7 +34,7 @@
   --color-border-strong: light-dark(#8f8f8f, #6e6e6e);
   --color-accent-hairline: color-mix(
     in srgb,
-    var(--color-accent) 60%,
+    var(--color-accent) 50%,
     var(--color-border)
   );
   --color-accent-rule: color-mix(
@@ -43,8 +43,8 @@
     var(--color-border-strong)
   );
   --color-selected-accent: light-dark(
-    color-mix(in srgb, var(--color-accent) 9%, var(--color-selected)),
-    color-mix(in srgb, var(--color-accent) 12%, var(--color-selected))
+    color-mix(in srgb, var(--color-accent) 7%, var(--color-selected)),
+    color-mix(in srgb, var(--color-accent) 9%, var(--color-selected))
   );
   --color-hover-accent: color-mix(
     in srgb,
