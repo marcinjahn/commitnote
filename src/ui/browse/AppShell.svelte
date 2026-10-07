@@ -6,6 +6,7 @@
   import type { SettingsSaver } from "../../settings/settings-saver";
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
+  import { installSaveShortcut } from "../../app/save-shortcut";
   import {
     createLastViewStore,
     removeLastView,
@@ -155,7 +156,11 @@
   import { trashReveal } from "./trash-reveal";
   import { createTreeExpansion } from "./tree-expansion.svelte";
   import { createNoteNavigation, type NavigationEntry } from "../../app/note-navigation";
-  import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
+  import {
+    describeSaveShortcutResult,
+    describeSyncError,
+    describeUndecryptableFiles,
+  } from "./sync-messages";
 
   interface Props {
     engine: SyncEngine;
@@ -344,6 +349,7 @@
   });
   type ToastChannel =
     | "refresh"
+    | "save"
     | "export"
     | "trash"
     | "place"
@@ -354,6 +360,7 @@
     | "session";
   const TOAST_ORDER = [
     "refresh",
+    "save",
     "export",
     "trash",
     "place",
@@ -448,6 +455,27 @@
   function clearToast(channel: ToastChannel, id?: number): void {
     if (id === undefined || toasts[channel]?.id === id) delete toasts[channel];
   }
+
+  async function saveFromShortcut(): Promise<void> {
+    settingsSaver.flush();
+    await engine.flush();
+    const state = engine.getState();
+    const text = describeSaveShortcutResult({
+      stopped: state.stopped !== null,
+      suspended: state.suspended,
+      unsavedCount: state.syncStates.unsavedCount,
+      settingsPending: settingsSaver.hasPending,
+      offline:
+        !state.online ||
+        (state.save.kind === "waiting" && state.save.reason === "offline"),
+      waitingForRateBudget:
+        state.save.kind === "waiting" && state.save.reason === "rateBudget",
+    });
+    if (text === null) clearToast("save");
+    else showToast("save", "info", text);
+  }
+
+  $effect(() => installSaveShortcut(window, () => void saveFromShortcut()));
 
   let atomicBlockedSeen = false;
 
