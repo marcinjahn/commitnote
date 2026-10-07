@@ -1,5 +1,6 @@
 import { parseAccentColor, type AccentColorId } from "./accent-palette";
 import { parseColorMode, type ColorModeId } from "./color-mode";
+import { parseCornerStyle, type CornerStyle } from "./corner-style";
 import { parseNoteFont, type NoteFont } from "./note-font";
 import {
   parseNewFolderPlacement,
@@ -50,9 +51,15 @@ const colorModeSetting: SettingDefinition<ColorModeId> = {
   parse: parseColorMode,
 };
 
+const cornerStyleSetting: SettingDefinition<CornerStyle> = {
+  default: "rounded",
+  parse: parseCornerStyle,
+};
+
 export const SETTINGS_SCHEMA = {
   colorMode: colorModeSetting,
   accentColor: accentColorSetting,
+  cornerStyle: cornerStyleSetting,
   newNotePlacement: newNotePlacementSetting,
   newFolderPlacement: newFolderPlacementSetting,
   noteFont: noteFontSetting,

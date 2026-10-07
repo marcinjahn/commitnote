@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { AccentColorId } from "./accent-palette";
 import type { ColorModeId } from "./color-mode";
+import type { CornerStyle } from "./corner-style";
 import type { NoteFont } from "./note-font";
 import type { NewFolderPlacement, NewNotePlacement } from "./placement-options";
 import {
@@ -112,6 +113,7 @@ describe("placement settings", () => {
     expect(resolveSettings(SETTINGS_SCHEMA, {})).toEqual({
       colorMode: "system",
       accentColor: "system",
+      cornerStyle: "rounded",
       newNotePlacement: "beginning",
       newFolderPlacement: "end",
       noteFont: "inter",
@@ -317,5 +319,31 @@ describe("color mode setting", () => {
 
   it("types the color mode setting as the option id", () => {
     expectTypeOf<Settings["colorMode"]>().toEqualTypeOf<ColorModeId>();
+  });
+});
+
+describe("corner style setting", () => {
+  it("resolves a missing corner style to rounded", () => {
+    expect(resolveSettings(SETTINGS_SCHEMA, {}).cornerStyle).toBe("rounded");
+  });
+
+  it("resolves an unknown corner style to rounded and keeps it stored", () => {
+    const raw = { cornerStyle: "pill", futureKey: 1 };
+    expect(resolveSettings(SETTINGS_SCHEMA, raw).cornerStyle).toBe("rounded");
+    expect(applySettingsEdits(raw, { accentColor: "red" })).toEqual({
+      cornerStyle: "pill",
+      futureKey: 1,
+      accentColor: "red",
+    });
+  });
+
+  it("resolves a stored corner style id", () => {
+    expect(
+      resolveSettings(SETTINGS_SCHEMA, { cornerStyle: "square" }).cornerStyle,
+    ).toBe("square");
+  });
+
+  it("types the corner style setting as the option id", () => {
+    expectTypeOf<Settings["cornerStyle"]>().toEqualTypeOf<CornerStyle>();
   });
 });
