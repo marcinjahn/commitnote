@@ -210,7 +210,6 @@
     border-radius: var(--floating-radius);
     border: var(--floating-border);
     background-color: var(--floating-background);
-    background-image: var(--floating-texture);
     -webkit-backdrop-filter: var(--floating-backdrop);
     backdrop-filter: var(--floating-backdrop);
     box-shadow: var(--floating-edge-highlight), var(--floating-shadow);

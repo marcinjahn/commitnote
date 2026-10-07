@@ -14,7 +14,7 @@ const NOTES_STATES = [
   "note",
   "row-menu",
   "tree",
-  "windows-commands-menu",
+  "square-commands-menu",
 ] as const satisfies readonly A11yState[];
 
 export const A11Y_EXCLUSIONS: readonly A11yExclusion[] = [

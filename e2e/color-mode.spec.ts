@@ -142,6 +142,13 @@ test.describe("with notes open", () => {
         )
         .toBe(BACKGROUND[scheme]);
 
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("Emulation.setEmulatedMedia", {
+        features: [
+          { name: "prefers-color-scheme", value: os },
+          { name: "prefers-reduced-transparency", value: "reduce" },
+        ],
+      });
       await treeItem(page, "Welcome").click({ button: "right" });
       await expect(page.locator(".menu-popup")).toHaveCSS(
         "background-color",

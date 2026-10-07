@@ -27,26 +27,18 @@ const CONTRAST_EXCLUSIONS: readonly ContrastExclusion[] = [
   { finding: "A11Y-08", pair: "floating-danger" },
   { finding: "A11Y-09", pair: "danger-button-border" },
   { finding: "A11Y-10", pair: "border-strong", modes: ["light"], backgrounds: ["surface"] },
-  { finding: "A11Y-11", pair: "tone-rail-info", backgrounds: ["floating-mac", "floating-windows"] },
+  { finding: "A11Y-11", pair: "tone-rail-info", backgrounds: ["floating"] },
   {
     finding: "A11Y-NEW-1",
     pair: "tone-rail-success",
     modes: ["light"],
     accents: ["amber", "green", "orange", "pink", "red", "slate", "teal", "violet"],
-    backgrounds: ["floating-mac"],
+    backgrounds: ["floating"],
   },
-  {
-    finding: "A11Y-NEW-2",
-    pair: "tone-rail-success",
-    modes: ["light"],
-    accents: ["green", "orange", "teal"],
-    backgrounds: ["floating-windows"],
-  },
-  { finding: "A11Y-NEW-3", pair: "tone-rail-error", modes: ["dark"], backgrounds: ["floating-mac"] },
+  { finding: "A11Y-NEW-3", pair: "tone-rail-error", modes: ["dark"], backgrounds: ["floating"] },
 ];
 
 const MODES: readonly Mode[] = ["light", "dark"];
-const PLATFORMS = ["mac", "windows"] as const;
 const ACCENTS = ACCENT_PALETTE.filter((option) => option.id !== "system");
 const TEXT = 4.5;
 const NON_TEXT = 3;
@@ -159,19 +151,22 @@ function resolveToken(name: string, scope: Scope): Rgba {
   return resolveValue(value, scope, name);
 }
 
-function floatingAlphaPercent(platform: (typeof PLATFORMS)[number]): number {
+const FLOATING_BACKGROUND =
+  /--floating-background:\s*color-mix\(\s*in srgb,\s*var\(--color-surface-raised\)\s+(\d+(?:\.\d+)?)%,\s*transparent\s*\)/;
+
+function floatingAlphaPercent(): number {
   const rules = topLevelRules(stripComments(floatingCss));
   const supports = rules.find((rule) => rule.prelude.startsWith("@supports"));
   const inner = supports ? topLevelRules(supports.body) : [];
-  const rule = inner.find((candidate) =>
-    candidate.prelude.includes(`:root[data-platform="${platform}"]`),
+  const cornerSpecific = [...rules, ...inner].find(
+    (rule) => rule.prelude.includes("data-corners") && rule.body.includes("--floating-background"),
   );
-  const match =
-    rule &&
-    /--floating-background:\s*color-mix\(\s*in srgb,\s*var\(--color-surface-raised\)\s+(\d+(?:\.\d+)?)%,\s*transparent\s*\)/.exec(
-      rule.body,
-    );
-  if (!match) throw new Error(`Floating background for ${platform} not found`);
+  if (cornerSpecific) {
+    throw new Error(`Floating background differs per corner style in ${cornerSpecific.prelude}`);
+  }
+  const rule = inner.find((candidate) => candidate.prelude === ":root");
+  const match = rule && FLOATING_BACKGROUND.exec(rule.body);
+  if (!match) throw new Error("Floating background not found");
   return Number(match[1]);
 }
 
@@ -182,10 +177,7 @@ function dangerBorderValue(): string {
   return match[1].replace(/\s+/g, " ").trim();
 }
 
-const FLOATING_PERCENT = {
-  mac: floatingAlphaPercent("mac"),
-  windows: floatingAlphaPercent("windows"),
-};
+const FLOATING_PERCENT = floatingAlphaPercent();
 const DANGER_BORDER = dangerBorderValue();
 
 interface Probe {
@@ -208,9 +200,9 @@ function probe(mode: Mode, accent: (typeof ACCENTS)[number]): Probe {
   };
 }
 
-function floatingBackground(p: Probe, platform: keyof typeof FLOATING_PERCENT) {
+function floatingBackground(p: Probe) {
   return compositeOver(
-    mixSrgb(p.color("--color-surface-raised"), FLOATING_PERCENT[platform], TRANSPARENT),
+    mixSrgb(p.color("--color-surface-raised"), FLOATING_PERCENT, TRANSPARENT),
     p.color("--color-text"),
   );
 }
@@ -224,8 +216,7 @@ const surfaces: Backgrounds = {
 };
 
 const floating: Backgrounds = {
-  "floating-mac": (p) => floatingBackground(p, "mac"),
-  "floating-windows": (p) => floatingBackground(p, "windows"),
+  floating: floatingBackground,
 };
 
 interface Pair {

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   readFakeForgeOptions,
   resolveCornerStyleOverride,
-  resolvePlatformOverride,
 } from "./fake-forge-options";
 import { GITHUB_LIKE_LATENCY, NO_LATENCY } from "./forge-latency";
 
@@ -99,54 +98,6 @@ describe("readFakeForgeOptions argon2Results", () => {
     expect(
       readFakeForgeOptions({ latency: "none", argon2Results: [] }).latency,
     ).toBe(NO_LATENCY);
-  });
-});
-
-describe("readFakeForgeOptions platform", () => {
-  it.each(["mac", "windows", "linux", "ios", "android", "other"])(
-    "reads the valid platform %s",
-    (platform) => {
-      expect(readFakeForgeOptions({ platform }).platform).toBe(platform);
-    },
-  );
-
-  it.each([undefined, null, "", "MAC", "beos", 3, {}])(
-    "ignores the invalid platform %j",
-    (platform) => {
-      expect(readFakeForgeOptions({ platform }).platform).toBeNull();
-    },
-  );
-
-  it("is null when the source has no platform", () => {
-    expect(readFakeForgeOptions(undefined).platform).toBeNull();
-  });
-});
-
-describe("resolvePlatformOverride", () => {
-  const withOption = readFakeForgeOptions({ platform: "windows" });
-  const withoutOption = readFakeForgeOptions({});
-
-  it("prefers the URL parameter over the option", () => {
-    expect(resolvePlatformOverride("?fake-platform=mac", withOption)).toBe(
-      "mac",
-    );
-  });
-
-  it("falls back to the option when the URL parameter is invalid", () => {
-    expect(resolvePlatformOverride("?fake-platform=bogus", withOption)).toBe(
-      "windows",
-    );
-  });
-
-  it("uses the option when there is no URL parameter", () => {
-    expect(resolvePlatformOverride("?other=1", withOption)).toBe("windows");
-  });
-
-  it("is null when neither is set", () => {
-    expect(resolvePlatformOverride("", withoutOption)).toBeNull();
-    expect(
-      resolvePlatformOverride("?fake-platform=bogus", withoutOption),
-    ).toBeNull();
   });
 });
 

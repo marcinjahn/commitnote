@@ -539,6 +539,7 @@ test.describe("tag filter", () => {
 
 async function expectTouchSized(locator: Locator): Promise<void> {
   await expect(locator).toBeVisible();
-  const box = (await locator.boundingBox())!;
-  expect(box.height).toBeGreaterThanOrEqual(44);
+  await expect
+    .poll(async () => (await locator.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(44);
 }

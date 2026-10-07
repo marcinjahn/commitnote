@@ -20,8 +20,6 @@ import {
 
 const SEARCH_REPO = "https://github.com/sample/search";
 
-test.use({ platform: "mac" });
-
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
 });
@@ -204,12 +202,12 @@ test("viewer-unlocked @mobile", async ({ page }) => {
   await expectNoA11yViolations(viewer, "viewer-unlocked");
 });
 
-test.describe("on Windows", () => {
-  test.use({ platform: "windows" });
+test.describe("in Square corners", () => {
+  test.use({ cornerStyle: "square" });
 
-  test("windows-commands-menu", async ({ page }) => {
+  test("square-commands-menu", async ({ page }) => {
     await openNotes(page);
     await openCommandsMenu(page);
-    await expectNoA11yViolations(page, "windows-commands-menu");
+    await expectNoA11yViolations(page, "square-commands-menu");
   });
 });
