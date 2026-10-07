@@ -91,6 +91,53 @@ test("titles are found by name, folder and folded text, and opening one reveals 
   await expectEditorFocused(page);
 });
 
+test("the result count is announced once settled and matches the visible options", async ({
+  page,
+}) => {
+  await openPalette(page);
+  const status = palette(page).locator("p.visually-hidden[role='status']");
+  const settledText = /^(\d+ results?|No matches)$/;
+  const options = results(page).getByRole("option");
+  const expectStatusMatchesOptions = () =>
+    expect
+      .poll(async () => {
+        const count = await options.count();
+        const visible = count === 1 ? "1 result" : `${count} results`;
+        return (await status.textContent()) === visible;
+      })
+      .toBe(true);
+
+  await search(page, "road");
+  await expect(status).toHaveText(settledText);
+  await expectStatusMatchesOptions();
+
+  await search(page, "");
+  await expect(status).toHaveText("");
+  await status.evaluate((element) => {
+    const announced: string[] = [];
+    (window as unknown as { announced: string[] }).announced = announced;
+    new MutationObserver(() => {
+      if (element.textContent) announced.push(element.textContent);
+    }).observe(element, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  });
+
+  await search(page, "the");
+  await expect(status).toHaveText(settledText);
+  await expectStatusMatchesOptions();
+  const announced = await page.evaluate(
+    () => (window as unknown as { announced: string[] }).announced,
+  );
+  expect(announced.length).toBeGreaterThan(0);
+  expect(announced).not.toContain("No matches");
+
+  await search(page, "zzqxnonsense");
+  await expect(status).toHaveText("No matches");
+});
+
 test("the search trigger opens the palette from the editor, Escape returns focus, and Ctrl+K inserts a link instead of opening the palette", async ({
   page,
 }) => {

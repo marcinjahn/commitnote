@@ -4,6 +4,7 @@ import {
   contentSectionHeading,
   describeIndexStatus,
   describeNoMatches,
+  describeResultCount,
   describeSearchStatus,
   describeShowingFirst,
   describeUnreadable,
@@ -121,6 +122,17 @@ describe("headings and labels", () => {
     [1000, "Showing first 1,000"],
   ])("describes showing first %i", (count, expected) => {
     expect(describeShowingFirst(count)).toBe(expected);
+  });
+});
+
+describe("describeResultCount", () => {
+  it.each<[number, string]>([
+    [0, "No matches"],
+    [1, "1 result"],
+    [2, "2 results"],
+    [1234, "1,234 results"],
+  ])("describes %j", (count, expected) => {
+    expect(describeResultCount(count)).toBe(expected);
   });
 });
 

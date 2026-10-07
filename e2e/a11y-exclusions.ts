@@ -31,12 +31,6 @@ export const A11Y_EXCLUSIONS: readonly A11yExclusion[] = [
     projects: ["mobile"],
   },
   {
-    finding: "A11Y-04",
-    rule: "list",
-    states: ["trash"],
-    target: ".trash-list",
-  },
-  {
     finding: "A11Y-06",
     rule: "color-contrast",
     states: ["history"],
