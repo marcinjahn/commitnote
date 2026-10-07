@@ -91,9 +91,10 @@
     registry: ForgeRegistry;
     testModeBanner: string | null;
     argon2id?: Argon2idFunction;
+    cornerStyleOverride?: CornerStyle | null;
   }
 
-  const { registry, testModeBanner, argon2id }: Props = $props();
+  const { registry, testModeBanner, argon2id, cornerStyleOverride }: Props = $props();
 
   type Phase =
     | { readonly kind: "restoring" }
@@ -184,7 +185,9 @@
 
   $effect(() =>
     untrack(() => {
-      cornerStyleApplier = createCornerStyleApplier(document.documentElement);
+      cornerStyleApplier = createCornerStyleApplier(document.documentElement, {
+        override: cornerStyleOverride,
+      });
       return () => {
         cornerStyleApplier = null;
       };

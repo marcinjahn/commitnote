@@ -18,10 +18,13 @@ export type PlatformOption =
   | "other"
   | "detect";
 
+export type CornerStyleOption = "rounded" | "square";
+
 export const test = base.extend<
   {
     forgeLatency: ForgeLatencyOption;
     platform: PlatformOption;
+    cornerStyle: CornerStyleOption | undefined;
     argon2Cache: boolean;
     prepareContext: (context: BrowserContext) => Promise<void>;
     openSecondDevice: (
@@ -33,6 +36,7 @@ export const test = base.extend<
   forgeLatency: ["none", { option: true }],
   argon2Cache: [true, { option: true }],
   platform: ["other", { option: true }],
+  cornerStyle: [undefined as CornerStyleOption | undefined, { option: true }],
   argon2Results: [
     async ({}, use) => {
       await use(new Map());
@@ -40,7 +44,7 @@ export const test = base.extend<
     { scope: "worker" },
   ],
   prepareContext: async (
-    { forgeLatency, argon2Cache, platform, argon2Results },
+    { forgeLatency, argon2Cache, platform, cornerStyle, argon2Results },
     use,
   ) => {
     await use(async (context) => {
@@ -63,6 +67,7 @@ export const test = base.extend<
         {
           latency: forgeLatency,
           ...(platform === "detect" ? {} : { platform }),
+          ...(cornerStyle === undefined ? {} : { cornerStyle }),
           ...(argon2Cache ? { argon2Results: [...argon2Results] } : {}),
         },
       );

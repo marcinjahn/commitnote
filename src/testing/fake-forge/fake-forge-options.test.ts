@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   readFakeForgeOptions,
+  resolveCornerStyleOverride,
   resolvePlatformOverride,
 } from "./fake-forge-options";
 import { GITHUB_LIKE_LATENCY, NO_LATENCY } from "./forge-latency";
@@ -145,6 +146,51 @@ describe("resolvePlatformOverride", () => {
     expect(resolvePlatformOverride("", withoutOption)).toBeNull();
     expect(
       resolvePlatformOverride("?fake-platform=bogus", withoutOption),
+    ).toBeNull();
+  });
+});
+
+describe("readFakeForgeOptions cornerStyle", () => {
+  it.each(["rounded", "square"])("reads the valid corner style %s", (cornerStyle) => {
+    expect(readFakeForgeOptions({ cornerStyle }).cornerStyle).toBe(cornerStyle);
+  });
+
+  it.each([undefined, null, "", "SQUARE", "round", 3, {}])(
+    "ignores the invalid corner style %j",
+    (cornerStyle) => {
+      expect(readFakeForgeOptions({ cornerStyle }).cornerStyle).toBeNull();
+    },
+  );
+
+  it("is null when the source has no corner style", () => {
+    expect(readFakeForgeOptions(undefined).cornerStyle).toBeNull();
+  });
+});
+
+describe("resolveCornerStyleOverride", () => {
+  const withOption = readFakeForgeOptions({ cornerStyle: "square" });
+  const withoutOption = readFakeForgeOptions({});
+
+  it("prefers the URL parameter over the option", () => {
+    expect(resolveCornerStyleOverride("?fake-corners=rounded", withOption)).toBe(
+      "rounded",
+    );
+  });
+
+  it("falls back to the option when the URL parameter is invalid", () => {
+    expect(resolveCornerStyleOverride("?fake-corners=bogus", withOption)).toBe(
+      "square",
+    );
+  });
+
+  it("uses the option when there is no URL parameter", () => {
+    expect(resolveCornerStyleOverride("?other=1", withOption)).toBe("square");
+  });
+
+  it("is null when neither is set", () => {
+    expect(resolveCornerStyleOverride("", withoutOption)).toBeNull();
+    expect(
+      resolveCornerStyleOverride("?fake-corners=bogus", withoutOption),
     ).toBeNull();
   });
 });

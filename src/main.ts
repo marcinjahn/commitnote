@@ -10,6 +10,8 @@ import type { ShareReaders } from "./forge/share-host";
 import { isShareHash } from "./share/share-link";
 import "./note-fonts.css";
 import { applyPlatform, detectPlatform } from "./ui/platform";
+import { setCornerStyleAttribute } from "./ui/corner-style-applier";
+import type { CornerStyle } from "./settings/corner-style";
 
 const target = document.getElementById("app");
 if (!target) {
@@ -17,21 +19,24 @@ if (!target) {
 }
 
 let platform = detectPlatform(navigator);
+let cornerStyleOverride: CornerStyle | null = null;
 if (import.meta.env.MODE === "fake-forge") {
   const {
     FAKE_FORGE_OPTIONS_KEY,
     readFakeForgeOptions,
+    resolveCornerStyleOverride,
     resolvePlatformOverride,
   } = await import("./testing/fake-forge/fake-forge-options");
-  platform =
-    resolvePlatformOverride(
-      location.search,
-      readFakeForgeOptions(
-        (window as unknown as Record<string, unknown>)[FAKE_FORGE_OPTIONS_KEY],
-      ),
-    ) ?? platform;
+  const options = readFakeForgeOptions(
+    (window as unknown as Record<string, unknown>)[FAKE_FORGE_OPTIONS_KEY],
+  );
+  platform = resolvePlatformOverride(location.search, options) ?? platform;
+  cornerStyleOverride = resolveCornerStyleOverride(location.search, options);
 }
 applyPlatform(document.documentElement, platform);
+if (cornerStyleOverride !== null) {
+  setCornerStyleAttribute(document.documentElement, cornerStyleOverride);
+}
 
 window.addEventListener("hashchange", (event) => {
   if (
@@ -142,5 +147,8 @@ if (import.meta.env.MODE === "fake-forge") {
   }
 }
 
-  mount(App, { target, props: { registry, testModeBanner, argon2id } });
+  mount(App, {
+    target,
+    props: { registry, testModeBanner, argon2id, cornerStyleOverride },
+  });
 }

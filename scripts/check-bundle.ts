@@ -8,6 +8,7 @@ import {
 import { FAKE_SHARE_STORE_KEY } from "../src/forge/fake/fake-share-store";
 import {
   FAKE_FORGE_ARGON2_BINDING,
+  FAKE_CORNERS_PARAM,
   FAKE_FORGE_OPTIONS_KEY,
   FAKE_PLATFORM_PARAM,
 } from "../src/testing/fake-forge/fake-forge-options";
@@ -59,6 +60,7 @@ async function main(): Promise<void> {
     FAKE_FORGE_ARGON2_BINDING,
     FAKE_FORGE_SESSION_PARAM,
     FAKE_PLATFORM_PARAM,
+    FAKE_CORNERS_PARAM,
     FAKE_SHARE_STORE_KEY,
   ]);
   if (forbiddenInProd.length > 0) {
@@ -75,6 +77,7 @@ async function main(): Promise<void> {
     FAKE_FORGE_BANNER,
     FAKE_FORGE_CONTROLS_KEY,
     FAKE_PLATFORM_PARAM,
+    FAKE_CORNERS_PARAM,
   ]);
   if (!fakeHits.some((hit) => hit.needle === FAKE_FORGE_BANNER)) {
     console.error(
@@ -95,6 +98,14 @@ async function main(): Promise<void> {
   if (!fakeHits.some((hit) => hit.needle === FAKE_PLATFORM_PARAM)) {
     console.error(
       `dist-fake/ does not contain the platform override parameter ("${FAKE_PLATFORM_PARAM}"); the check cannot prove it can detect a leak`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!fakeHits.some((hit) => hit.needle === FAKE_CORNERS_PARAM)) {
+    console.error(
+      `dist-fake/ does not contain the corner-style override parameter ("${FAKE_CORNERS_PARAM}"); the check cannot prove it can detect a leak`,
     );
     process.exitCode = 1;
     return;

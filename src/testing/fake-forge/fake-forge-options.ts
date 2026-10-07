@@ -1,3 +1,4 @@
+import { parseCornerStyle, type CornerStyle } from "../../settings/corner-style";
 import { isPlatform, type Platform } from "../../ui/platform";
 import {
   type ForgeLatency,
@@ -9,10 +10,12 @@ export const FAKE_FORGE_OPTIONS_KEY = "__commitNoteFakeForgeOptions";
 export const FAKE_FORGE_ARGON2_BINDING = "__commitNoteFakeForgeArgon2Derived";
 
 export const FAKE_PLATFORM_PARAM = "fake-platform";
+export const FAKE_CORNERS_PARAM = "fake-corners";
 
 export interface FakeForgeOptions {
   readonly latency: ForgeLatency;
   readonly platform: Platform | null;
+  readonly cornerStyle: CornerStyle | null;
   readonly argon2Results: ReadonlyArray<readonly [string, string]> | null;
 }
 
@@ -32,6 +35,7 @@ export function readFakeForgeOptions(source: unknown): FakeForgeOptions {
           latency?: unknown;
           argon2Results?: unknown;
           platform?: unknown;
+          cornerStyle?: unknown;
         })
       : {};
   const latency = fields.latency === "none" ? NO_LATENCY : GITHUB_LIKE_LATENCY;
@@ -39,7 +43,8 @@ export function readFakeForgeOptions(source: unknown): FakeForgeOptions {
     ? fields.argon2Results.filter(isResultEntry)
     : null;
   const platform = isPlatform(fields.platform) ? fields.platform : null;
-  return { latency, platform, argon2Results };
+  const cornerStyle = parseCornerStyle(fields.cornerStyle) ?? null;
+  return { latency, platform, cornerStyle, argon2Results };
 }
 
 export function resolvePlatformOverride(
@@ -48,4 +53,14 @@ export function resolvePlatformOverride(
 ): Platform | null {
   const fromUrl = new URLSearchParams(search).get(FAKE_PLATFORM_PARAM);
   return isPlatform(fromUrl) ? fromUrl : options.platform;
+}
+
+export function resolveCornerStyleOverride(
+  search: string,
+  options: FakeForgeOptions,
+): CornerStyle | null {
+  const fromUrl = parseCornerStyle(
+    new URLSearchParams(search).get(FAKE_CORNERS_PARAM),
+  );
+  return fromUrl ?? options.cornerStyle;
 }
