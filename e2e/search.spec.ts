@@ -91,7 +91,7 @@ test("titles are found by name, folder and folded text, and opening one reveals 
   await expectEditorFocused(page);
 });
 
-test("the search trigger opens the palette from the editor, Escape returns focus, and Ctrl+K does nothing", async ({
+test("the search trigger opens the palette from the editor, Escape returns focus, and Ctrl+K inserts a link instead of opening the palette", async ({
   page,
 }) => {
   await treeItem(page, "Welcome").click();
@@ -108,6 +108,7 @@ test("the search trigger opens the palette from the editor, Escape returns focus
   await page.keyboard.press("Control+K");
   await expect(palette(page)).toHaveCount(0);
   await expectEditorFocused(page);
+  await expect(page.locator(".cm-content")).toContainText("[]()");
 });
 
 test("contents are searched with snippets, ignore the trash and include unsaved edits", async ({

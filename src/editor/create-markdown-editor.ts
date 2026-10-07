@@ -12,6 +12,7 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { formatKeymap } from "./format-keymap";
 import { pasteLink } from "./paste-link";
 
 const DEFAULT_ARIA_LABEL = "Note editor";
@@ -45,6 +46,7 @@ function baseExtensions(): Extension[] {
     keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
     EditorView.lineWrapping,
     pasteLink(),
+    formatKeymap(),
   ];
 }
 

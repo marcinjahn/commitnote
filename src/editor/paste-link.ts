@@ -3,10 +3,12 @@ import type { EditorState, Extension, TransactionSpec } from "@codemirror/state"
 import { EditorView } from "@codemirror/view";
 import { toOpenableUrl } from "./link-open";
 
-const BLOCKED_NODES = new Set([
+export const CODE_NODES: ReadonlySet<string> = new Set([
   "InlineCode",
   "FencedCode",
   "CodeBlock",
+]);
+export const LINK_NODES: ReadonlySet<string> = new Set([
   "Link",
   "Image",
   "Autolink",
@@ -15,19 +17,29 @@ const BLOCKED_NODES = new Set([
 const WWW_PREFIX = /^www\./i;
 const MAILTO_PREFIX = /^mailto:/i;
 
-function overlapsBlockedNode(
+export function escapeLinkLabel(text: string): string {
+  return text.replace(/[[\]]/g, "\\$&");
+}
+
+export function overlapsBlockedNode(
   state: EditorState,
   from: number,
   to: number,
+  nodes: ReadonlySet<string>,
 ): boolean {
   const tree = ensureSyntaxTree(state, state.doc.length) ?? syntaxTree(state);
+  const empty = from === to;
   let blocked = false;
   tree.iterate({
     from,
     to,
     enter: (node) => {
       if (blocked) return false;
-      if (BLOCKED_NODES.has(node.name) && node.from < to && node.to > from) {
+      if (!nodes.has(node.name)) return;
+      const overlaps = empty
+        ? node.from < from && node.to > from
+        : node.from < to && node.to > from;
+      if (overlaps) {
         blocked = true;
         return false;
       }
@@ -63,9 +75,14 @@ export function pasteLinkChange(
   if (token === "" || /\s/.test(token)) return null;
   const destination = destinationFor(token);
   if (destination === null) return null;
-  if (overlapsBlockedNode(state, from, to)) return null;
+  if (
+    overlapsBlockedNode(state, from, to, CODE_NODES) ||
+    overlapsBlockedNode(state, from, to, LINK_NODES)
+  ) {
+    return null;
+  }
 
-  const label = state.sliceDoc(from, to).replace(/[[\]]/g, "\\$&");
+  const label = escapeLinkLabel(state.sliceDoc(from, to));
   const insert = `[${label}](${destination})`;
   return {
     changes: { from, to, insert },
