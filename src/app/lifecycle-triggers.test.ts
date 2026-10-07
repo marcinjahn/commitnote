@@ -10,7 +10,11 @@ function createTargets() {
 }
 
 function createHandlers() {
-  const calls = { flush: 0, retryNow: 0 };
+  const calls = {
+    flush: 0,
+    retryNow: 0,
+    online: [] as boolean[],
+  };
   return {
     calls,
     handlers: {
@@ -21,6 +25,9 @@ function createHandlers() {
         calls.retryNow++;
       },
       hasUnsaved: () => false,
+      setOnline: (online: boolean) => {
+        calls.online.push(online);
+      },
     },
   };
 }
@@ -66,6 +73,18 @@ describe("installLifecycleTriggers", () => {
     targets.window.dispatchEvent(new Event("online"));
 
     expect(calls.retryNow).toBe(1);
+    expect(calls.online).toEqual([true]);
+  });
+
+  it("reports going offline without retrying", () => {
+    const targets = createTargets();
+    const { calls, handlers } = createHandlers();
+    installLifecycleTriggers(targets, handlers);
+
+    targets.window.dispatchEvent(new Event("offline"));
+
+    expect(calls.online).toEqual([false]);
+    expect(calls.retryNow).toBe(0);
   });
 
   it("prevents unload only when there is unsaved work", () => {
@@ -75,6 +94,7 @@ describe("installLifecycleTriggers", () => {
       flush: () => {},
       retryNow: () => {},
       hasUnsaved: () => unsaved,
+      setOnline: () => {},
     });
 
     const clean = new Event("beforeunload", {
@@ -102,6 +122,7 @@ describe("installLifecycleTriggers", () => {
     targets.document.visibilityState = "hidden";
     targets.document.dispatchEvent(new Event("visibilitychange"));
     targets.window.dispatchEvent(new Event("pagehide"));
+    targets.window.dispatchEvent(new Event("offline"));
     targets.window.dispatchEvent(new Event("online"));
     targets.window.dispatchEvent(
       new Event("beforeunload", { cancelable: true }),
@@ -109,5 +130,6 @@ describe("installLifecycleTriggers", () => {
 
     expect(calls.flush).toBe(0);
     expect(calls.retryNow).toBe(0);
+    expect(calls.online).toEqual([]);
   });
 });

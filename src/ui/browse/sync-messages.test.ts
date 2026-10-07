@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SyncError } from "../../sync/sync-engine";
 import type { SyncState } from "../../sync/sync-state";
 import {
+  describeOffline,
   describeSyncError,
   describeSyncState,
   describeUndecryptableFiles,
@@ -130,5 +131,17 @@ describe("describeUndecryptableFiles", () => {
     expect(describeUndecryptableFiles(3)).toBe(
       "3 files can't be decrypted with this passphrase and are not shown.",
     );
+  });
+});
+
+describe("describeOffline", () => {
+  it("tells the user to keep the tab open when changes are unsaved", () => {
+    expect(describeOffline(true)).toBe(
+      "Offline. Changes will save when you're back online. Keep this tab open.",
+    );
+  });
+
+  it("is just Offline when everything is saved", () => {
+    expect(describeOffline(false)).toBe("Offline");
   });
 });

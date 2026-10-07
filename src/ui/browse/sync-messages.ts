@@ -23,6 +23,12 @@ export function describeSyncState(state: SyncState): string {
   }
 }
 
+export function describeOffline(hasUnsaved: boolean): string {
+  return hasUnsaved
+    ? "Offline. Changes will save when you're back online. Keep this tab open."
+    : "Offline";
+}
+
 export function describeSyncError(
   error: SyncError,
   forgeName: string,

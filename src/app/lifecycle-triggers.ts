@@ -10,6 +10,7 @@ export interface LifecycleHandlers {
   readonly flush: () => void;
   readonly retryNow: () => void;
   readonly hasUnsaved: () => boolean;
+  readonly setOnline: (online: boolean) => void;
 }
 
 export function installLifecycleTriggers(
@@ -28,7 +29,12 @@ export function installLifecycleTriggers(
     handlers.flush();
   }
 
+  function handleOffline(): void {
+    handlers.setOnline(false);
+  }
+
   function handleOnline(): void {
+    handlers.setOnline(true);
     handlers.retryNow();
   }
 
@@ -40,12 +46,14 @@ export function installLifecycleTriggers(
 
   document.addEventListener("visibilitychange", handleVisibilityChange);
   window.addEventListener("pagehide", handlePageHide);
+  window.addEventListener("offline", handleOffline);
   window.addEventListener("online", handleOnline);
   window.addEventListener("beforeunload", handleBeforeUnload);
 
   return () => {
     document.removeEventListener("visibilitychange", handleVisibilityChange);
     window.removeEventListener("pagehide", handlePageHide);
+    window.removeEventListener("offline", handleOffline);
     window.removeEventListener("online", handleOnline);
     window.removeEventListener("beforeunload", handleBeforeUnload);
   };

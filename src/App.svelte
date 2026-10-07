@@ -264,6 +264,7 @@
       keyring: session.keyring,
       clock: systemClock,
       rateBudget,
+      isOnline: () => navigator.onLine,
       ...(blobCache === null ? {} : { blobCache }),
     });
     const contentIndexer = createContentIndexer({
@@ -302,6 +303,7 @@
           void engine.flush();
         },
         retryNow: () => engine.retryNow(),
+        setOnline: (online) => engine.setOnline(online),
         hasUnsaved: () =>
           settingsSaver.hasPending || engine.getState().syncStates.hasUnsaved,
       },
