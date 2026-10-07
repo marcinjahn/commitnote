@@ -31,6 +31,7 @@ export interface ShareEntry {
   readonly linkSecret: string;
   readonly password: string | null;
   readonly name: string;
+  readonly label: string | null;
   readonly sharedAt: string;
   readonly note: ShareNoteLocation;
   readonly source: ShareSource | null;
@@ -145,6 +146,7 @@ function parseEntry(id: string, value: unknown): ShareEntry | null {
     linkSecret: value.linkSecret,
     password: value.password,
     name: value.name,
+    label: isString(value.label) ? value.label : null,
     sharedAt: value.sharedAt,
     note,
     source,
@@ -202,6 +204,7 @@ function noteJson(note: ShareNoteLocation): Record<string, unknown> {
 
 function entryJson(entry: ShareEntry): Record<string, unknown> {
   return {
+    ...(entry.label === null ? {} : { label: entry.label }),
     linkSecret: entry.linkSecret,
     locator: locatorJson(entry.locator),
     name: entry.name,
@@ -324,9 +327,10 @@ export function applyChangeToShares(
       return { writable: true, entries };
     }
     case "update-share": {
-      if (!index.entries.has(change.entry.id)) return index;
+      const existing = index.entries.get(change.entry.id);
+      if (existing === undefined) return index;
       const entries = new Map(index.entries);
-      entries.set(change.entry.id, change.entry);
+      entries.set(change.entry.id, { ...change.entry, label: existing.label });
       return { writable: true, entries };
     }
     case "rename-note":

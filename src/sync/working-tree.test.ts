@@ -1272,6 +1272,7 @@ describe.each(["add-share", "update-share"] as const)("rebaseChanges %s", (kind)
       linkSecret: "secret",
       password: null,
       name: "Todo",
+      label: null,
       sharedAt: "2026-01-01T00:00:00.000Z",
       note,
       source: null,

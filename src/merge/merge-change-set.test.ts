@@ -290,6 +290,7 @@ const shareEntry = (id: string, note: ShareNoteLocation): ShareEntry => ({
   linkSecret: "secret",
   password: null,
   name: "n",
+  label: null,
   sharedAt: "2026-01-01T00:00:00.000Z",
   note,
   source: { commit: "c", storedPath: "s", blobSha: "b" },

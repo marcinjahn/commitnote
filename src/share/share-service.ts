@@ -257,6 +257,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       linkSecret: sealed.linkSecret,
       password: password || null,
       name: working.name,
+      label: null,
       sharedAt,
       note: { state: "active", path },
       source: { commit: version.sha, storedPath, blobSha },

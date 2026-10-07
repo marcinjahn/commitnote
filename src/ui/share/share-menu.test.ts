@@ -10,6 +10,7 @@ function entry(overrides: Partial<ShareEntry> = {}): ShareEntry {
     linkSecret: "secret",
     password: "hunter2",
     name: "Alpha",
+    label: null,
     sharedAt: "2026-01-01T00:00:00.000Z",
     note: { state: "active", path: ["Alpha"] },
     source: null,

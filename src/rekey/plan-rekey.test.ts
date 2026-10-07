@@ -106,6 +106,7 @@ function shareEntry(id: string, source: ShareEntry["source"]): ShareEntry {
     linkSecret: `secret-${id}`,
     password: id === "a" ? "pw" : null,
     name: `Note ${id}`,
+    label: `Label ${id}`,
     sharedAt: "2026-02-01T00:00:00.000Z",
     note: { state: "active", path: ["Welcome"] },
     source,

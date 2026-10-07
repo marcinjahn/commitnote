@@ -34,6 +34,7 @@ function entry(
     linkSecret: "secret",
     password: null,
     name: "Note",
+    label: null,
     sharedAt: "2026-01-01T00:00:00.000Z",
     note,
     source: { commit: "c", storedPath: "s", blobSha: "b" },
@@ -97,6 +98,46 @@ describe("parseShareIndex", () => {
     expect(stored.updatedAt).toBe("2026-02-01T00:00:00.000Z");
     expect(Object.keys(stored).at(-1)).toBe("updatedAt");
     expect(parseShareIndex(text).entries.get("a")).toEqual(a);
+  });
+
+  it("round-trips an index with and without a label", () => {
+    const index = indexOf(
+      entry("a", active("x"), { label: "Team link" }),
+      entry("b", active("y")),
+    );
+
+    expect(parseShareIndex(serializeShareIndex(index)).entries).toEqual(
+      index.entries,
+    );
+  });
+
+  it("reads a missing or mistyped label as none and keeps the entry", () => {
+    const stored = JSON.parse(
+      serializeShareIndex(indexOf(entry("a", active("x")), entry("b", active("y")))),
+    );
+    delete stored.shares.a.label;
+    stored.shares.b.label = 5;
+
+    const index = parseShareIndex(JSON.stringify(stored));
+
+    expect(index.entries.get("a")?.label).toBeNull();
+    expect(index.entries.get("b")?.label).toBeNull();
+  });
+
+  it("writes no label key for an entry without a label", () => {
+    const index = indexOf(entry("a", active("x")));
+
+    expect(serializeShareIndex(index)).toBe(
+      '{"shares":{"a":{"linkSecret":"secret","locator":{"gistId":"gist-a","provider":"github"},"name":"Note","note":{"path":["x"],"state":"active"},"password":null,"sharedAt":"2026-01-01T00:00:00.000Z","source":{"blobSha":"b","commit":"c","storedPath":"s"},"updatedAt":null}},"version":1}',
+    );
+  });
+
+  it("writes a label before the link secret", () => {
+    const text = serializeShareIndex(
+      indexOf(entry("a", active("x"), { label: "Team link" })),
+    );
+
+    expect(text).toContain('"a":{"label":"Team link","linkSecret"');
   });
 
   it("reads a missing or mistyped update time as never updated", () => {
@@ -301,11 +342,25 @@ describe("applyChangeToShares", () => {
 
     const result = applyChangeToShares(index, { kind: "update-share", entry: updated });
 
-    expect(result.entries.get("a")).toBe(updated);
+    expect(result.entries.get("a")).toEqual(updated);
     expect(result.entries.get("b")).toBe(index.entries.get("b"));
     expect(
       applyChangeToShares(index, { kind: "update-share", entry: entry("zzz", active("x")) }),
     ).toBe(index);
+  });
+
+  it("keeps the stored label on update", () => {
+    const index = indexOf(entry("a", active("x"), { label: "Mine" }));
+
+    for (const label of ["Other", null]) {
+      const result = applyChangeToShares(index, {
+        kind: "update-share",
+        entry: entry("a", active("x"), { label, linkSecret: "new" }),
+      });
+
+      expect(result.entries.get("a")?.label).toBe("Mine");
+      expect(result.entries.get("a")?.linkSecret).toBe("new");
+    }
   });
 
   it("removes an entry, and ignores an absent one", () => {
