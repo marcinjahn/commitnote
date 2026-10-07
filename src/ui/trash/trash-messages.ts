@@ -26,6 +26,10 @@ export function describeMovedToTrash(name: string): string {
   return `“${name}” moved to trash`;
 }
 
+export function describeMovedNotesToTrash(count: number): string {
+  return `${plural(count, "note", "notes")} moved to trash`;
+}
+
 export function describeUndoError(error: StructureError): string {
   return error.kind === "invalidName"
     ? "Couldn't undo: an item with that name already exists there. It is still in the trash."

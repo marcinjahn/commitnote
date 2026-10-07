@@ -1,3 +1,4 @@
+import type { DropSkipCounts } from "../../import/read-dropped-files";
 import type { ImportResult } from "../../sync/sync-engine";
 import type {
   ArchiveSkipCounts,
@@ -5,6 +6,7 @@ import type {
 } from "../../import/read-notes-archive";
 import { validateName } from "../../tree/note-names";
 import { plural } from "../plural";
+import { countDropSkipped } from "../../import/read-dropped-files";
 
 export const FALLBACK_IMPORT_FOLDER_NAME = "Imported notes";
 
@@ -90,4 +92,36 @@ export const SAVE_WITHOUT_ATOMIC_HINT =
 
 export function describeEnableAtomicFailure(forgeName: string): string {
   return `Couldn't change the ${forgeName} project settings. Try again later.`;
+}
+
+export function describeDropSkipped(skipped: DropSkipCounts): string | null {
+  const total = countDropSkipped(skipped);
+  if (total === 0) return null;
+  const parts = [
+    skipped.folders > 0 &&
+      `${skipped.folders} ${skipped.folders === 1 ? "folder" : "folders"}`,
+    skipped.unsupported > 0 &&
+      `${skipped.unsupported} not .md, .markdown or .txt`,
+    skipped.invalidEncoding > 0 && `${skipped.invalidEncoding} not UTF-8 text`,
+    skipped.invalidName > 0 && `${skipped.invalidName} with an invalid name`,
+    skipped.tooLarge > 0 && `${skipped.tooLarge} over 1 MiB`,
+    skipped.tooMany > 0 && `${skipped.tooMany} over the 100-file limit`,
+  ].filter((part) => part !== false);
+  return `Skipped ${plural(total, "file", "files")}: ${parts.join(", ")}.`;
+}
+
+function withDropSkipped(message: string, skipped: DropSkipCounts): string {
+  const skippedMessage = describeDropSkipped(skipped);
+  return skippedMessage === null ? message : `${message} ${skippedMessage}`;
+}
+
+export function describeFileDropDone(
+  notes: number,
+  skipped: DropSkipCounts,
+): string {
+  return withDropSkipped(`Imported ${plural(notes, "note", "notes")}.`, skipped);
+}
+
+export function describeNothingDropped(skipped: DropSkipCounts): string {
+  return withDropSkipped("No notes imported.", skipped);
 }

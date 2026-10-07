@@ -4,7 +4,10 @@ import {
   defaultImportFolderName,
   describeAtomicSetup,
   describeImportConflicts,
+  describeDropSkipped,
+  describeFileDropDone,
   describeImportCounts,
+  describeNothingDropped,
   describeSkipped,
   FALLBACK_IMPORT_FOLDER_NAME,
 } from "./import-messages";
@@ -46,5 +49,55 @@ describe("import messages", () => {
       /GitLab project to use the “Fast-forward merge” method\. commitnote can switch/,
     );
     expect(describeAtomicSetup("GitLab", false)).toMatch(/Ask a project Maintainer/);
+  });
+});
+
+describe("file drop messages", () => {
+  const none = {
+    folders: 0,
+    unsupported: 0,
+    invalidEncoding: 0,
+    invalidName: 0,
+    tooLarge: 0,
+    tooMany: 0,
+  };
+
+  it("says nothing when nothing was skipped", () => {
+    expect(describeDropSkipped(none)).toBeNull();
+  });
+
+  it("lists only non-zero reasons in a fixed order", () => {
+    expect(describeDropSkipped({ ...none, unsupported: 2, tooLarge: 1 })).toBe(
+      "Skipped 3 files: 2 not .md, .markdown or .txt, 1 over 1 MiB.",
+    );
+    expect(describeDropSkipped({ ...none, folders: 1 })).toBe(
+      "Skipped 1 file: 1 folder.",
+    );
+    expect(
+      describeDropSkipped({
+        folders: 2,
+        unsupported: 1,
+        invalidEncoding: 1,
+        invalidName: 1,
+        tooLarge: 1,
+        tooMany: 5,
+      }),
+    ).toBe(
+      "Skipped 11 files: 2 folders, 1 not .md, .markdown or .txt, 1 not UTF-8 text, 1 with an invalid name, 1 over 1 MiB, 5 over the 100-file limit.",
+    );
+  });
+
+  it("describes a finished drop", () => {
+    expect(describeFileDropDone(1, none)).toBe("Imported 1 note.");
+    expect(describeFileDropDone(2, { ...none, invalidName: 1 })).toBe(
+      "Imported 2 notes. Skipped 1 file: 1 with an invalid name.",
+    );
+  });
+
+  it("describes a drop that imported nothing", () => {
+    expect(describeNothingDropped(none)).toBe("No notes imported.");
+    expect(describeNothingDropped({ ...none, tooMany: 3 })).toBe(
+      "No notes imported. Skipped 3 files: 3 over the 100-file limit.",
+    );
   });
 });

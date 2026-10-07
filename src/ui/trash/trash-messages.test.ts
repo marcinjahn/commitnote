@@ -3,6 +3,7 @@ import { TRASH_RETENTION_MS } from "../../format/v1";
 import {
   describeDaysLeft,
   describeEmptyTrash,
+  describeMovedNotesToTrash,
   describeOriginalFolder,
   describeRevokeFailed,
   describeSharesRevokedOnTrash,
@@ -62,5 +63,12 @@ describe("describeRevokeFailed", () => {
     expect(describeRevokeFailed("Offline.", 2)).toBe(
       "Offline. Nothing was moved to the trash. 2 links were already revoked.",
     );
+  });
+});
+
+describe("describeMovedNotesToTrash", () => {
+  it("pluralises the note count", () => {
+    expect(describeMovedNotesToTrash(1)).toBe("1 note moved to trash");
+    expect(describeMovedNotesToTrash(3)).toBe("3 notes moved to trash");
   });
 });
