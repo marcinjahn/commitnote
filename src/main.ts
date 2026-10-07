@@ -15,7 +15,22 @@ if (!target) {
   throw new Error("Missing #app element");
 }
 
-applyPlatform(document.documentElement, detectPlatform(navigator));
+let platform = detectPlatform(navigator);
+if (import.meta.env.MODE === "fake-forge") {
+  const {
+    FAKE_FORGE_OPTIONS_KEY,
+    readFakeForgeOptions,
+    resolvePlatformOverride,
+  } = await import("./testing/fake-forge/fake-forge-options");
+  platform =
+    resolvePlatformOverride(
+      location.search,
+      readFakeForgeOptions(
+        (window as unknown as Record<string, unknown>)[FAKE_FORGE_OPTIONS_KEY],
+      ),
+    ) ?? platform;
+}
+applyPlatform(document.documentElement, platform);
 
 window.addEventListener("hashchange", (event) => {
   if (
