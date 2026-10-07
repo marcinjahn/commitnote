@@ -29,6 +29,16 @@ export function describeOffline(hasUnsaved: boolean): string {
     : "Offline";
 }
 
+export function describeSyncStatus(input: {
+  state: SyncState;
+  offline: boolean;
+  hasUnsaved: boolean;
+}): string {
+  return input.offline
+    ? describeOffline(input.hasUnsaved)
+    : describeSyncState(input.state);
+}
+
 export function describeSyncError(
   error: SyncError,
   forgeName: string,

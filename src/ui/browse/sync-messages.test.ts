@@ -5,6 +5,7 @@ import {
   describeOffline,
   describeSyncError,
   describeSyncState,
+  describeSyncStatus,
   describeUndecryptableFiles,
 } from "./sync-messages";
 
@@ -143,5 +144,24 @@ describe("describeOffline", () => {
 
   it("is just Offline when everything is saved", () => {
     expect(describeOffline(false)).toBe("Offline");
+  });
+});
+
+describe("describeSyncStatus", () => {
+  it("prefers the offline copy over the sync state", () => {
+    const state: SyncState = { kind: "out-of-sync", reason: "failed" };
+    expect(describeSyncStatus({ state, offline: true, hasUnsaved: true })).toBe(
+      describeOffline(true),
+    );
+    expect(describeSyncStatus({ state, offline: true, hasUnsaved: false })).toBe(
+      "Offline",
+    );
+  });
+
+  it("describes the sync state when online", () => {
+    const state: SyncState = { kind: "out-of-sync", reason: "pending" };
+    expect(describeSyncStatus({ state, offline: false, hasUnsaved: true })).toBe(
+      "Out of sync: waiting to save",
+    );
   });
 });
