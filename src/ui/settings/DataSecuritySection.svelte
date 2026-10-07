@@ -25,7 +25,7 @@
 <div class="data-security">
   <button
     type="button"
-    class="button"
+    class="link-button action"
     disabled={exportDisabled}
     onclick={onExport}
   >
@@ -33,7 +33,7 @@
   </button>
   <button
     type="button"
-    class="button"
+    class="link-button action"
     disabled={importDisabled}
     onclick={() => importInput?.click()}
   >
@@ -41,7 +41,7 @@
   </button>
   <button
     type="button"
-    class="button"
+    class="link-button action"
     disabled={changePassphraseDisabled}
     onclick={onChangePassphrase}
   >
@@ -63,17 +63,31 @@
   .data-security {
     display: flex;
     flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-2);
+    align-items: flex-start;
   }
 
-  .data-security .button {
-    justify-content: flex-start;
+  .data-security .action {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-target);
+    text-align: left;
+    text-decoration: none;
+    text-underline-offset: 3px;
+  }
+
+  .data-security .action:hover:not(:disabled),
+  .data-security .action:focus-visible {
+    text-decoration: underline;
+  }
+
+  .data-security .action:disabled {
+    color: var(--color-text-muted);
+    cursor: default;
   }
 
   @media (min-width: 768px) {
-    .data-security {
-      align-items: flex-start;
+    .data-security .action {
+      min-height: 32px;
     }
   }
 </style>

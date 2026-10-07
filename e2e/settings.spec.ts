@@ -1114,19 +1114,23 @@ test("the commands menu lists only Settings, Shared links and Log out", async ({
   ).toHaveText(["Settings", "Shared links", "Log out"]);
 });
 
-test("Data & security is the last Settings section with export, import and passphrase buttons", { tag: "@mobile" }, async ({
+test("Data & security is the last Settings section with export, import and passphrase links", { tag: "@mobile" }, async ({
   page,
 }) => {
   const dialog = await openSettings(page);
   const headings = dialog.getByRole("heading", { level: 3 });
   await expect(headings.last()).toHaveText("Data & security");
   await expect(headings.nth(-2)).toHaveText("This device");
+  const lefts: number[] = [];
   for (const name of ["Export notes", "Import notes", "Change passphrase"]) {
     const button = dialog.getByRole("button", { name, exact: true });
     await button.scrollIntoViewIfNeeded();
     await expect(button).toBeVisible();
     await expect(button).toBeEnabled();
+    await expect(button).toHaveCSS("border-style", "none");
+    lefts.push((await button.boundingBox())!.x);
   }
+  expect(new Set(lefts).size).toBe(1);
 });
 
 test("closing Change passphrase with Escape keeps Settings open and refocuses its button", async ({
