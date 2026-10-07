@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openNotes, showTree } from "./helpers";
 import { openWelcome, treeItem, treeRows } from "./helpers/tree";
@@ -197,4 +198,61 @@ test("tapping the selected note returns to the note view", { tag: "@mobile-only"
   await treeItem(page, "Welcome").click();
   await expect(page.getByRole("textbox", { name: "Note editor" })).toBeVisible();
   await expect(page.getByRole("tree", { name: "Notes" })).toBeHidden();
+});
+
+async function focusDocumentStart(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.body.tabIndex = -1;
+    document.body.focus();
+    document.body.removeAttribute("tabindex");
+  });
+}
+
+test("the skip link moves focus to the note editor", async ({ page }) => {
+  await openNotes(page);
+  await openWelcome(page);
+  await focusDocumentStart(page);
+
+  await page.keyboard.press("Tab");
+  const skipLink = page.getByRole("link", { name: "Skip to note" });
+  await expect(skipLink).toBeFocused();
+  await expect(skipLink).toBeVisible();
+
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("textbox", { name: "Note editor" })).toBeFocused();
+});
+
+test("the skip link focuses the main landmark when no note is open", async ({ page }) => {
+  await openNotes(page);
+  await focusDocumentStart(page);
+
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Skip to note" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("main")).toBeFocused();
+});
+
+test("the notes screen has navigation, main and a heading landmark structure", async ({
+  page,
+}) => {
+  await openNotes(page);
+
+  const navigation = page.getByRole("navigation", { name: "Notes" });
+  await expect(navigation.getByRole("tree", { name: "Notes" })).toBeVisible();
+  await expect(navigation.getByRole("separator", { name: "Resize sidebar" })).toBeVisible();
+  await expect(page.getByRole("main")).toHaveCount(1);
+  await expect(page.getByRole("heading", { level: 1, name: "commitnote" })).toHaveCount(1);
+});
+
+test("on a narrow screen the skip link is hidden and each view has its landmark", { tag: "@mobile" }, async ({
+  page,
+}) => {
+  await openNotes(page);
+  const narrow = (page.viewportSize()?.width ?? 0) < 768;
+  test.skip(!narrow, "narrow viewports only");
+
+  await expect(page.getByRole("link", { name: "Skip to note" })).toBeHidden();
+  await expect(page.getByRole("navigation", { name: "Notes" })).toBeVisible();
+  await openWelcome(page);
+  await expect(page.getByRole("main")).toBeVisible();
 });

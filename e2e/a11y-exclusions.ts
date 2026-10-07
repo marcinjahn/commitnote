@@ -5,6 +5,7 @@ export interface A11yExclusion {
   rule: string;
   states: readonly A11yState[];
   target?: string;
+  projects?: readonly string[];
 }
 
 const NOTES_STATES = [
@@ -26,17 +27,18 @@ export const A11Y_EXCLUSIONS: readonly A11yExclusion[] = [
   {
     finding: "A11Y-02",
     rule: "landmark-one-main",
-    states: ["login", "login-error", "onboarding", ...NOTES_STATES],
+    states: ["login", "login-error", "onboarding"],
   },
   {
     finding: "A11Y-02",
     rule: "region",
-    states: ["login", "login-error", "onboarding", ...NOTES_STATES],
+    states: ["login", "login-error", "onboarding"],
   },
   {
-    finding: "A11Y-03",
-    rule: "page-has-heading-one",
-    states: NOTES_STATES,
+    finding: "A11Y-NEW-4",
+    rule: "landmark-one-main",
+    states: ["commands-menu", "tree"],
+    projects: ["mobile"],
   },
   {
     finding: "A11Y-04",

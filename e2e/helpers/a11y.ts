@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
-import { expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { A11Y_EXCLUSIONS } from "../a11y-exclusions";
 
 export type A11yState =
@@ -66,6 +66,8 @@ async function scan(page: Page, state: A11yState, scheme: Scheme) {
         (entry) =>
           entry.rule === violation.id &&
           entry.states.includes(state) &&
+          (entry.projects === undefined ||
+            entry.projects.includes(test.info().project.name)) &&
           (entry.target === undefined || target.includes(entry.target)),
       );
       if (!excluded) {

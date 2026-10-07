@@ -9,7 +9,7 @@ function handle(page: Page) {
 }
 
 async function sidebarWidth(page: Page): Promise<number> {
-  const box = await page.locator("aside.sidebar").boundingBox();
+  const box = await page.getByRole("navigation", { name: "Notes" }).boundingBox();
   if (box === null) throw new Error("sidebar not rendered");
   return box.width;
 }
