@@ -8,6 +8,9 @@
   import { findWorkingNode } from "../../sync/working-tree";
   import type { DropTarget } from "./tree-drop";
   import { treeDrag, type TreeDragOptions } from "./tree-drag";
+  import { treeFileDrop } from "./tree-file-drop";
+  import type { ImportDestination } from "../../import/plan-import";
+  import type { DroppedFile } from "../../import/read-dropped-files";
   import NoteTreeFolder from "./NoteTreeFolder.svelte";
   import { countDescendants } from "../dialogs/folder-options";
   import type { ColorTag } from "../../tags/color-tag";
@@ -33,6 +36,7 @@
     tagsWritable: boolean;
     onColorTag: (path: NotePath, color: ColorTag | null) => void;
     onNewNote: () => void;
+    onFileDrop: (files: readonly DroppedFile[], destination: ImportDestination) => void;
   }
 
   const {
@@ -54,6 +58,7 @@
     tagsWritable,
     onColorTag,
     onNewNote,
+    onFileDrop,
   }: Props = $props();
 
   const expanded = new SvelteMap<string, boolean>();
@@ -178,7 +183,11 @@
   }
 </script>
 
-<div class="tree-container" use:treeDrag={dragOptions}>
+<div
+  class="tree-container"
+  use:treeDrag={dragOptions}
+  use:treeFileDrop={{ onDrop: (files, destination) => onFileDrop(files, destination) }}
+>
   {#if tree === null}
     {#if loading}
       <p class="tree-message">Loading notes…</p>
@@ -249,6 +258,7 @@
     opacity: 0.4;
   }
 
+  .tree-container:global([data-drop-into]),
   .tree-container :global([data-tree-row][data-drop-into]) {
     background: light-dark(
       color-mix(in srgb, var(--color-accent) 16%, transparent),

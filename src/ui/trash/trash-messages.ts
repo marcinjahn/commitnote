@@ -30,6 +30,16 @@ export function describeMovedNotesToTrash(count: number): string {
   return `${plural(count, "note", "notes")} moved to trash`;
 }
 
+export function describeSharedNotesKept(count: number): string {
+  return `${plural(count, "shared note", "shared notes")} kept.`;
+}
+
+export function describeUndoneFileDrop(trashed: number, kept: number): string {
+  if (kept === 0) return describeMovedNotesToTrash(trashed);
+  if (trashed === 0) return describeSharedNotesKept(kept);
+  return `${describeMovedNotesToTrash(trashed)}. ${describeSharedNotesKept(kept)}`;
+}
+
 export function describeUndoError(error: StructureError): string {
   return error.kind === "invalidName"
     ? "Couldn't undo: an item with that name already exists there. It is still in the trash."

@@ -36,21 +36,33 @@
     planImport,
     type CollisionPolicy,
     type ImportDestination,
+    type ImportPlan,
     type ImportSummary,
   } from "../../import/plan-import";
+  import {
+    readDroppedFiles,
+    type DroppedFile,
+    type DroppedNotes,
+    type DropSkipCounts,
+  } from "../../import/read-dropped-files";
   import {
     MAX_ARCHIVE_UNCOMPRESSED_BYTES,
     NotesArchiveError,
     readNotesArchive,
+    type ArchiveImportEntry,
     type NotesArchiveContents,
   } from "../../import/read-notes-archive";
   import ImportDialog from "../import/ImportDialog.svelte";
   import AtomicBlockedDialog from "../import/AtomicBlockedDialog.svelte";
   import {
     describeArchiveError,
+    describeAtomicSetup,
     describeEnableAtomicFailure,
+    describeFileDropDone,
     describeImportDone,
     describeImportRefusal,
+    describeNothingDropped,
+    ENABLE_ATOMIC_LABEL,
     IMPORT_RETRYING_MESSAGE,
   } from "../import/import-messages";
   import type { ImportOutcome } from "../import/import-outcome";
@@ -113,6 +125,7 @@
   import TrashDialog from "../trash/TrashDialog.svelte";
   import {
     describeEmptyTrash,
+    describeUndoneFileDrop,
     describeMovedToTrash,
     describeRevokeFailed,
     describeUndoError,
@@ -332,6 +345,10 @@
   let importStarted = $state<{
     readonly summary: ImportSummary;
     retryingShown: boolean;
+    readonly fileDrop?: {
+      readonly paths: readonly NotePath[];
+      readonly skipped: DropSkipCounts;
+    };
   } | null>(null);
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
@@ -1055,10 +1072,23 @@
     }
     if (!busy) {
       importStarted = null;
-      showImportMessage(
-        "success",
-        describeImportDone(started.summary.notes, started.summary.folders),
-      );
+      const { fileDrop } = started;
+      if (fileDrop === undefined) {
+        showImportMessage(
+          "success",
+          describeImportDone(started.summary.notes, started.summary.folders),
+        );
+      } else {
+        showToast(
+          "import",
+          "success",
+          describeFileDropDone(fileDrop.paths.length, fileDrop.skipped),
+          {
+            durationMs: UNDO_TOAST_MS,
+            action: { label: "Undo", run: () => undoFileDrop(fileDrop.paths) },
+          },
+        );
+      }
       return;
     }
     if (
@@ -1116,12 +1146,12 @@
     }
   }
 
-  async function handleImport(
+  async function commitImport(
     destination: ImportDestination,
+    entries: readonly ArchiveImportEntry[],
     policy: CollisionPolicy,
+    onQueued: (plan: Extract<ImportPlan, { ok: true }>) => void,
   ): Promise<ImportOutcome> {
-    const pending = importDialog;
-    if (pending === null) return { kind: "error", message: describeImportRefusal("unavailable") };
     try {
       const support = await engine.atomicCommitSupport();
       if (support.kind === "needsSetup") {
@@ -1142,7 +1172,7 @@
       }
       let plan;
       try {
-        plan = planImport(current, destination, pending.contents.entries, policy);
+        plan = planImport(current, destination, entries, policy);
       } catch {
         return {
           kind: "error",
@@ -1152,17 +1182,7 @@
       if (!plan.ok) return { kind: "conflicts", count: plan.conflicts };
       const result = await engine.importChanges(plan.changes);
       if (result.ok) {
-        tagFilter = null;
-        importDialog = null;
-        if (plan.changes.length > 0) {
-          importStarted = { summary: plan.summary, retryingShown: false };
-        }
-        const first = plan.changes[0];
-        if (destination.kind === "folder") {
-          expandFolder(destination.path);
-        } else if (destination.kind === "new-folder" && first !== undefined) {
-          expandFolder(first.kind === "create-folder" ? first.path : []);
-        }
+        onQueued(plan);
         return { kind: "queued" };
       }
       if (result.reason !== "outdated") {
@@ -1170,6 +1190,125 @@
       }
     }
     return { kind: "error", message: describeImportRefusal("outdated") };
+  }
+
+  async function handleImport(
+    destination: ImportDestination,
+    policy: CollisionPolicy,
+  ): Promise<ImportOutcome> {
+    const pending = importDialog;
+    if (pending === null) return { kind: "error", message: describeImportRefusal("unavailable") };
+    return commitImport(destination, pending.contents.entries, policy, (plan) => {
+      tagFilter = null;
+      importDialog = null;
+      if (plan.changes.length > 0) {
+        importStarted = { summary: plan.summary, retryingShown: false };
+      }
+      const first = plan.changes[0];
+      if (destination.kind === "folder") {
+        expandFolder(destination.path);
+      } else if (destination.kind === "new-folder" && first !== undefined) {
+        expandFolder(first.kind === "create-folder" ? first.path : []);
+      }
+    });
+  }
+
+  let droppingFiles = false;
+
+  async function handleFileDrop(
+    files: readonly DroppedFile[],
+    destination: ImportDestination,
+  ): Promise<void> {
+    if (droppingFiles || importing) return;
+    clearToast("import");
+    droppingFiles = true;
+    try {
+      const { entries, skipped } = await readDroppedFiles(files);
+      if (entries.length === 0) {
+        showImportMessage("warning", describeNothingDropped(skipped));
+        return;
+      }
+      await importDroppedNotes(entries, skipped, destination);
+    } finally {
+      droppingFiles = false;
+    }
+  }
+
+  async function importDroppedNotes(
+    entries: DroppedNotes["entries"],
+    skipped: DropSkipCounts,
+    destination: ImportDestination,
+  ): Promise<void> {
+    const outcome = await commitImport(destination, entries, "rename", (plan) => {
+      tagFilter = null;
+      if (destination.kind === "folder") expandFolder(destination.path);
+      const paths = plan.changes.flatMap((change) =>
+        change.kind === "create-note" ? [change.path] : [],
+      );
+      importStarted = {
+        summary: plan.summary,
+        retryingShown: false,
+        fileDrop: { paths, skipped },
+      };
+    });
+    if (outcome.kind === "needsSetup") {
+      showToast(
+        "import",
+        "error",
+        describeAtomicSetup(forgeName, outcome.canConfigure),
+        outcome.canConfigure
+          ? {
+              action: {
+                label: ENABLE_ATOMIC_LABEL,
+                run: () => void enableAtomicAndDrop(entries, skipped, destination),
+              },
+            }
+          : undefined,
+      );
+    } else if (outcome.kind === "error") {
+      showImportMessage("error", outcome.message);
+    }
+  }
+
+  async function enableAtomicAndDrop(
+    entries: DroppedNotes["entries"],
+    skipped: DropSkipCounts,
+    destination: ImportDestination,
+  ): Promise<void> {
+    if (droppingFiles || importing) return;
+    droppingFiles = true;
+    try {
+      const failure = await handleEnableAtomic();
+      if (failure !== null) {
+        showImportMessage("error", failure);
+        return;
+      }
+      await importDroppedNotes(entries, skipped, destination);
+    } finally {
+      droppingFiles = false;
+    }
+  }
+
+  function undoFileDrop(paths: readonly NotePath[]): void {
+    let trashed = 0;
+    let kept = 0;
+    let affectsOpenNote = false;
+    for (const path of paths) {
+      const current = engine.getState().workingTree;
+      if (current === null || findWorkingNode(current, path)?.kind !== "note") continue;
+      if (shareCountWithin(path) > 0) {
+        kept++;
+        continue;
+      }
+      const open = openPath;
+      if (!engine.delete(path).ok) continue;
+      trashed++;
+      if (open !== null && notePathEquals(open, path)) affectsOpenNote = true;
+    }
+    if (trashed > 0 || kept > 0) {
+      showToast("trash", "success", describeUndoneFileDrop(trashed, kept));
+    }
+    if (affectsOpenNote) mobileView = "tree";
   }
 
   function expandFolder(path: NotePath): void {
@@ -1634,6 +1773,7 @@
       {tagsWritable}
       onColorTag={handleColorTag}
       onNewNote={handleHeaderNewNote}
+      onFileDrop={(files, destination) => void handleFileDrop(files, destination)}
     />
     {#if (engineState.synced?.undecryptableFiles ?? 0) > 0}
       <p class="field-hint hidden-files" role="note">
