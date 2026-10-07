@@ -108,6 +108,15 @@
   import { toastHost } from "../notices/toast-host";
   import NoteHeader from "./NoteHeader.svelte";
   import NoteTree from "./NoteTree.svelte";
+  import SidebarResizeHandle from "./SidebarResizeHandle.svelte";
+  import {
+    SIDEBAR_MIN_WIDTH,
+    clearSidebarWidth,
+    maxSidebarWidth,
+    readSidebarWidth,
+    shownSidebarWidth,
+    writeSidebarWidth,
+  } from "./sidebar-width";
   import RefreshButton from "./RefreshButton.svelte";
   import SyncStatusButton from "./SyncStatusButton.svelte";
   import { listUnsavedNotes } from "../../sync/unsaved-notes";
@@ -338,6 +347,12 @@
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
   let notePaneEl: HTMLElement | undefined = $state();
   let sidebarEl: HTMLElement | undefined = $state();
+  let preferredSidebarWidth = $state(readSidebarWidth());
+  let viewportWidth = $state(0);
+  const sidebarWidth = $derived(
+    shownSidebarWidth(preferredSidebarWidth, viewportWidth),
+  );
+  const sidebarMaxWidth = $derived(maxSidebarWidth(viewportWidth));
   let shownMobileView = untrack(() => mobileView);
 
   $effect(() => {
@@ -1945,10 +1960,14 @@
   }
 </script>
 
+<svelte:window bind:innerWidth={viewportWidth} />
+
 <div class="shell">
   <aside
+    id="sidebar"
     class="sidebar"
     class:mobile-hidden={mobileView !== "tree"}
+    style:--sidebar-width="{sidebarWidth}px"
     bind:this={sidebarEl}
   >
     <div class="tree-header">
@@ -2080,6 +2099,19 @@
       </button>
     </div>
   </aside>
+
+  <SidebarResizeHandle
+    width={sidebarWidth}
+    min={SIDEBAR_MIN_WIDTH}
+    max={sidebarMaxWidth}
+    controls="sidebar"
+    onResize={(width) => (preferredSidebarWidth = width)}
+    onCommit={(width) => writeSidebarWidth(width)}
+    onReset={() => {
+      preferredSidebarWidth = SIDEBAR_MIN_WIDTH;
+      clearSidebarWidth();
+    }}
+  />
 
   <section
     class="note-pane"
