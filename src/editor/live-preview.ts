@@ -99,6 +99,9 @@ const livePreviewBaseTheme = EditorView.baseTheme({
     display: "inline-flex",
     alignItems: "center",
     verticalAlign: "middle",
+    padding: "calc((24px - var(--checkbox-size)) / 2)",
+    margin: "calc((24px - var(--checkbox-size)) / -2)",
+    cursor: "pointer",
   },
   ".cm-task-checkbox input": {
     width: "var(--checkbox-size)",
@@ -116,11 +119,15 @@ const livePreviewBaseTheme = EditorView.baseTheme({
   },
 });
 
+const taskCheckboxWidgets = new WeakMap<HTMLElement, TaskCheckboxWidget>();
+
 class TaskCheckboxWidget extends WidgetType {
   constructor(
     private readonly from: number,
     private readonly to: number,
     private readonly checked: boolean,
+    private readonly label: string,
+    private readonly readOnly: boolean,
   ) {
     super();
   }
@@ -129,22 +136,39 @@ class TaskCheckboxWidget extends WidgetType {
     return (
       other.from === this.from &&
       other.to === this.to &&
-      other.checked === this.checked
+      other.checked === this.checked &&
+      other.label === this.label &&
+      other.readOnly === this.readOnly
     );
+  }
+
+  override updateDOM(dom: HTMLElement): boolean {
+    const input = dom.firstElementChild;
+    if (!(input instanceof HTMLInputElement)) return false;
+    this.syncInput(input);
+    taskCheckboxWidgets.set(dom, this);
+    return true;
+  }
+
+  private syncInput(input: HTMLInputElement): void {
+    input.checked = this.checked;
+    input.disabled = this.readOnly;
+    input.setAttribute("aria-label", this.label);
   }
 
   override toDOM(view: EditorView): HTMLElement {
     const wrapper = document.createElement("span");
     wrapper.className = "cm-task-checkbox";
+    taskCheckboxWidgets.set(wrapper, this);
 
     const input = document.createElement("input");
     input.type = "checkbox";
-    input.checked = this.checked;
-    input.setAttribute("aria-label", "Toggle task");
+    this.syncInput(input);
 
     const toggle = (): void => {
       if (view.state.readOnly) return;
-      const from = this.resolveMarkerStart(view, wrapper);
+      const widget = taskCheckboxWidgets.get(wrapper) ?? this;
+      const from = widget.resolveMarkerStart(view, wrapper);
       if (from === null) return;
       const isChecked = markerState(view.state, from) === "checked";
       view.dispatch({
@@ -153,13 +177,13 @@ class TaskCheckboxWidget extends WidgetType {
       });
     };
 
-    input.addEventListener("mousedown", (event) => {
+    wrapper.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
       toggle();
     });
     // Preventing touchstart suppresses the emulated mouse events, focus change and mobile keyboard.
-    input.addEventListener(
+    wrapper.addEventListener(
       "touchstart",
       (event) => {
         event.preventDefault();
@@ -167,8 +191,13 @@ class TaskCheckboxWidget extends WidgetType {
       },
       { passive: false },
     );
-    input.addEventListener("click", (event) => {
-      event.preventDefault();
+    wrapper.addEventListener("click", (event) => {
+      if (event.detail !== 0) {
+        event.preventDefault();
+        return;
+      }
+      // Not cancelled: cancelling would make the browser restore the pre-click checked state after the toggle.
+      toggle();
     });
 
     wrapper.appendChild(input);
@@ -326,9 +355,19 @@ function collectLivePreviewDecorations(
         case "TaskMarker": {
           const text = state.doc.sliceString(node.from, node.to);
           const checked = text[1] === "x" || text[1] === "X";
+          const taskText = state.doc
+            .sliceString(node.to, state.doc.lineAt(node.to).to)
+            .trim();
+          const label = taskText ? `Task: ${taskText}` : "Task";
           decorations.push(
             Decoration.replace({
-              widget: new TaskCheckboxWidget(node.from, node.to, checked),
+              widget: new TaskCheckboxWidget(
+                node.from,
+                node.to,
+                checked,
+                label,
+                state.readOnly,
+              ),
             }).range(node.from, node.to),
           );
           decorations.push(
@@ -398,6 +437,7 @@ class LivePreviewPluginValue {
       update.docChanged ||
       update.selectionSet ||
       update.viewportChanged ||
+      update.state.readOnly !== update.startState.readOnly ||
       syntaxTree(update.state) !== syntaxTree(update.startState)
     ) {
       this.decorations = buildLivePreviewDecorations(update.state);

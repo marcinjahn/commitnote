@@ -14,11 +14,10 @@ interface Setup {
 
 let current: Setup | null = null;
 
-function setup(readOnly: boolean): Setup {
+function setup(readOnly: boolean, text: string = "- [ ] task"): Setup {
   const changes: string[] = [];
   const parent = document.createElement("div");
   document.body.appendChild(parent);
-  const text = "- [ ] task";
   const editor = createMarkdownEditor({
     parent,
     text,
@@ -98,7 +97,11 @@ describe("livePreview task checkbox", () => {
     const input = checkbox(parent);
 
     mousedown(input);
-    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    const click = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      detail: 1,
+    });
     input.dispatchEvent(click);
 
     expect(click.defaultPrevented).toBe(true);
@@ -127,5 +130,51 @@ describe("livePreview task checkbox", () => {
     expect(changes).toEqual([]);
     expect(editor.view.state.selection.main.eq(selectionBefore)).toBe(true);
     expect(checkbox(parent).checked).toBe(false);
+  });
+
+  it("toggles once on a keyboard-originated click", () => {
+    const { editor, parent, changes } = setup(false);
+
+    const click = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      detail: 0,
+    });
+    checkbox(parent).dispatchEvent(click);
+
+    expect(editor.view.state.doc.toString()).toBe("- [x] task");
+    expect(changes).toEqual(["- [x] task"]);
+  });
+
+  it("names the checkbox after the task text", () => {
+    const { parent } = setup(false, "- [ ]   Buy milk  ");
+    expect(checkbox(parent).getAttribute("aria-label")).toBe("Task: Buy milk");
+  });
+
+  it("names the checkbox plainly when the task has no text", () => {
+    const { parent } = setup(false, "- [ ] ");
+    expect(checkbox(parent).getAttribute("aria-label")).toBe("Task");
+  });
+
+  it("disables the checkbox when read-only, including after reconfiguring", () => {
+    const { editor, parent } = setup(true);
+    expect(checkbox(parent).disabled).toBe(true);
+
+    editor.setReadOnly(false);
+    expect(checkbox(parent).disabled).toBe(false);
+
+    editor.setReadOnly(true);
+    expect(checkbox(parent).disabled).toBe(true);
+  });
+
+  it("keeps the same input element across a toggle", () => {
+    const { parent } = setup(false);
+    const input = checkbox(parent);
+
+    mousedown(input);
+
+    expect(checkbox(parent)).toBe(input);
+    expect(input.checked).toBe(true);
+    expect(input.getAttribute("aria-label")).toBe("Task: task");
   });
 });
