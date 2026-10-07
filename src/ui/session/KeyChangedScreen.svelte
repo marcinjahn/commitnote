@@ -85,7 +85,7 @@
     gap: var(--space-3);
     background: var(--color-surface-raised);
     border: var(--hairline) solid var(--color-border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     padding: var(--space-5);
     box-shadow: var(--shadow-2);
   }
@@ -118,6 +118,7 @@
 
     .key-changed-card {
       border: none;
+      border-radius: 0px;
       box-shadow: none;
     }
 

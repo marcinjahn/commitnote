@@ -569,7 +569,7 @@
     gap: var(--space-4);
     background: var(--color-surface-raised);
     border: var(--hairline) solid var(--color-border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     padding: var(--space-5);
     box-shadow: var(--shadow-2);
   }
@@ -646,7 +646,7 @@
     min-height: var(--touch-target);
     padding: 0 var(--space-2);
     border: var(--hairline) solid var(--color-border-strong);
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);
     background: var(--color-surface-raised);
     font-weight: var(--font-weight-medium);
     text-align: center;
@@ -698,6 +698,7 @@
 
     .login-card {
       border: none;
+      border-radius: 0px;
       box-shadow: none;
     }
   }

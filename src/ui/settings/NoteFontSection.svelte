@@ -54,6 +54,7 @@
     z-index: 1;
     background: var(--color-surface-raised);
     border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
     padding: var(--space-3);
     margin-bottom: var(--space-2);
     font-size: var(--font-size-base);
