@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { dialogStack } from "./dialog-stack";
   import { swipeToClose } from "./swipe-to-close";
 
   interface Props {
@@ -12,6 +13,8 @@
     large?: boolean;
     /** Full screen on mobile; a wide, fixed-height card on desktop whose content scrolls itself. */
     wide?: boolean;
+    /** Large width on desktop only; mobile keeps the bottom sheet. Ignored with `large` or `wide`. */
+    desktopLarge?: boolean;
     closeButton?: boolean;
     accentBorder?: boolean;
     swipeToClose?: boolean;
@@ -26,18 +29,21 @@
     headerStatus,
     large: largeProp = false,
     wide = false,
+    desktopLarge: desktopLargeProp = false,
     closeButton = false,
     accentBorder = false,
     swipeToClose: swipeEnabled = true,
   }: Props = $props();
 
   const large = $derived(largeProp || wide);
+  const desktopLarge = $derived(desktopLargeProp && !large);
   const uid = $props.id();
   const titleId = `dialog-title-${uid}`;
 
   let dialogEl: HTMLDialogElement | undefined = $state();
+  let cardEl: HTMLDivElement | undefined = $state();
 
-  function focusInitialElement(el: HTMLDialogElement): void {
+  function focusInitialElement(el: HTMLElement): void {
     const field = el.querySelector<HTMLElement>(
       "input:not(:disabled), textarea:not(:disabled), select:not(:disabled)",
     );
@@ -64,12 +70,24 @@
     if (open) {
       if (!el.open) {
         el.showModal();
+        dialogStack.register(el);
       }
-      focusInitialElement(el);
+      if (cardEl !== undefined) focusInitialElement(cardEl);
     } else if (el.open) {
       el.close();
+      dialogStack.unregister(el);
     }
   });
+
+  $effect(() => {
+    const el = dialogEl;
+    if (el === undefined) return;
+    return () => dialogStack.unregister(el);
+  });
+
+  function handleClose(): void {
+    if (dialogEl !== undefined) dialogStack.unregister(dialogEl);
+  }
 
   function handleCancel(event: Event): void {
     event.preventDefault();
@@ -88,11 +106,19 @@
   class="dialog"
   class:large
   class:wide
+  class:desktop-large={desktopLarge}
   aria-labelledby={titleId}
   oncancel={handleCancel}
+  onclose={handleClose}
   onclick={handleBackdropClick}
 >
-  <div class="dialog-card" class:large class:wide class:accent-border={accentBorder}>
+  <div
+    bind:this={cardEl}
+    class="dialog-card"
+    class:large
+    class:wide
+    class:desktop-large={desktopLarge}
+    class:accent-border={accentBorder}>
     <div
       class="dialog-header"
       class:swipeable={swipeEnabled}
@@ -183,7 +209,7 @@
     background: var(--color-surface-raised);
     color: var(--color-text);
     box-shadow: var(--shadow-3);
-    border: var(--hairline) solid var(--color-border);
+    border: var(--hairline) solid light-dark(var(--color-border), var(--color-border-strong));
     border-bottom: none;
     border-radius: var(--radius) var(--radius) 0 0;
     padding: var(--dialog-card-padding-top) var(--dialog-card-padding-inline);
@@ -340,6 +366,14 @@
       border-bottom-color: var(--color-accent);
     }
 
+    .dialog.desktop-large {
+      max-width: var(--dialog-width-large);
+    }
+
+    .dialog-card.desktop-large {
+      --dialog-card-padding-inline: var(--space-5);
+    }
+
     .dialog.large {
       height: fit-content;
       max-width: var(--dialog-width-large);
@@ -348,7 +382,7 @@
     .dialog-card.large {
       height: auto;
       max-height: 80dvh;
-      border: var(--hairline) solid var(--color-border);
+      border: var(--hairline) solid light-dark(var(--color-border), var(--color-border-strong));
       border-radius: var(--radius);
       padding-top: var(--space-5);
     }

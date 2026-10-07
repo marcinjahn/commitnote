@@ -7,9 +7,14 @@ import {
 const SRGB_ACCENT = "color-mix(in srgb, AccentColor 100%, transparent)";
 
 let current = $state.raw<SystemAccent>(FALLBACK_SYSTEM_ACCENT);
+let activeUpdate: (() => void) | null = null;
 
 export function systemAccent(): SystemAccent {
   return current;
+}
+
+export function refreshSystemAccent(): void {
+  activeUpdate?.();
 }
 
 function readOsAccent(win: Window & typeof globalThis): string | null {
@@ -37,11 +42,13 @@ export function watchSystemAccent(win: Window & typeof globalThis): () => void {
   };
   const scheme = win.matchMedia("(prefers-color-scheme: dark)");
 
+  activeUpdate = update;
   update();
   win.addEventListener("focus", update);
   win.document.addEventListener("visibilitychange", onVisibilityChange);
   scheme.addEventListener("change", update);
   return () => {
+    if (activeUpdate === update) activeUpdate = null;
     win.removeEventListener("focus", update);
     win.document.removeEventListener("visibilitychange", onVisibilityChange);
     scheme.removeEventListener("change", update);

@@ -274,7 +274,7 @@ export async function flushPendingSaves(page: Page): Promise<void> {
 
 export async function expectSettingsIdle(page: Page): Promise<void> {
   await expect(
-    page.getByRole("dialog", { name: "Settings" }).getByRole("status"),
+    page.getByRole("dialog", { name: "Settings" }).locator(".settings-save-status"),
   ).not.toContainText(/Waiting to save|Saving\b/);
 }
 

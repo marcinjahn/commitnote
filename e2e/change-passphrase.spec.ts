@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { expectTree, logIn, SAMPLE, openNotes, logOut, fakeForge, handOverRepo } from "./helpers";
 
@@ -54,6 +54,13 @@ async function changePassphrase(page: Page): Promise<void> {
 
 const VERSION_HISTORY_NOTICE =
   "Version history starts over: commitnote can't show or restore versions of your notes from before the change.";
+
+const CHANGE_PASSPHRASE_INTRO =
+  "Change your passphrase if someone else may know it, or to switch to a stronger one. Your notes are re-encrypted so only the new passphrase opens them from now on.";
+const HISTORY_WARNING =
+  "Earlier versions of your notes stay in the repository's history, so the current passphrase still decrypts them after the change, though commitnote can no longer restore them.";
+const OTHER_DEVICES_WARNING =
+  "Other devices are signed out and must log in with the new passphrase. Reload commitnote in any other open tabs.";
 
 async function closeNoteHistory(page: Page): Promise<void> {
   const history = page.getByRole("dialog", { name: "Version history" });
@@ -203,6 +210,34 @@ test.describe("with a login that is not remembered", () => {
     await expect(
       page.getByRole("textbox", { name: "Note editor" }),
     ).toBeVisible();
+  });
+
+  test("explains the change and its consequences before the fields, with the current passphrase focused", async ({
+    page,
+  }) => {
+    await openChangeDialog(page);
+    const dialog = changeDialog(page);
+    const current = dialog.getByLabel("Current passphrase");
+
+    await expect(dialog.getByText(CHANGE_PASSPHRASE_INTRO)).toBeInViewport();
+    await expect(dialog.getByText(VERSION_HISTORY_NOTICE)).toBeInViewport();
+    await expect(current).toBeFocused();
+
+    const top = async (locator: Locator) =>
+      (await locator.boundingBox())?.y ?? Number.NaN;
+    const intro = await top(dialog.getByText(CHANGE_PASSPHRASE_INTRO));
+    const notice = await top(dialog.getByText(VERSION_HISTORY_NOTICE));
+    const checkbox = await top(
+      dialog.getByRole("checkbox", { name: "Also delete the old history" }),
+    );
+    const warning = await top(dialog.getByText(HISTORY_WARNING));
+    const otherDevices = await top(dialog.getByText(OTHER_DEVICES_WARNING));
+    const currentY = await top(current);
+    expect(intro).toBeLessThan(notice);
+    expect(notice).toBeLessThan(checkbox);
+    expect(checkbox).toBeLessThan(warning);
+    expect(warning).toBeLessThan(otherDevices);
+    expect(otherDevices).toBeLessThan(currentY);
   });
 
   test("asks again when the new passphrases differ", async ({ page }) => {

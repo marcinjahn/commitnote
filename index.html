@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="referrer" content="no-referrer" />
     <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fafafa" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0b" />
+    <script>
+      try {
+        const mode = localStorage.getItem("commitnote.colorMode");
+        if (mode === "light" || mode === "dark") {
+          const color = document.querySelector(
+            'meta[name="theme-color"][media="(prefers-color-scheme: ' + mode + ')"]',
+          ).content;
+          document.documentElement.dataset.colorMode = mode;
+          document.querySelector('meta[name="color-scheme"]').content = mode;
+          document
+            .querySelectorAll('meta[name="theme-color"]')
+            .forEach((meta) => (meta.content = color));
+        }
+      } catch (e) {}
+    </script>
     <link rel="icon" type="image/svg+xml" href="/src/assets/favicon.svg" />
     <title>commitnote</title>
   </head>

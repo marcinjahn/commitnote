@@ -235,7 +235,10 @@
   }
 
   .tree-container :global([data-tree-row][data-drop-into]) {
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    background: light-dark(
+      color-mix(in srgb, var(--color-accent) 16%, transparent),
+      color-mix(in srgb, var(--color-accent) 22%, transparent)
+    );
     box-shadow: inset 0 0 0 1.5px
       color-mix(in srgb, var(--color-accent) 70%, transparent);
   }
@@ -245,24 +248,20 @@
     top: 0;
     right: var(--space-2);
     box-sizing: border-box;
-    border: 1.5px dashed color-mix(in srgb, var(--color-accent) 65%, transparent);
+    border: 1.5px dashed
+      light-dark(
+        color-mix(in srgb, var(--color-accent) 65%, transparent),
+        color-mix(in srgb, var(--color-accent) 80%, transparent)
+      );
     border-radius: 8px;
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    background: light-dark(
+      color-mix(in srgb, var(--color-accent) 10%, transparent),
+      color-mix(in srgb, var(--color-accent) 16%, transparent)
+    );
     pointer-events: none;
     transition:
       translate 200ms var(--motion-easing),
       left 200ms var(--motion-easing);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .tree-container :global([data-tree-row][data-drop-into]) {
-      background: color-mix(in srgb, var(--color-accent) 22%, transparent);
-    }
-
-    .tree-container :global(.tree-drop-slot) {
-      border-color: color-mix(in srgb, var(--color-accent) 80%, transparent);
-      background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-    }
   }
 
   :global(.tree-drag-preview) {

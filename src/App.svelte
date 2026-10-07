@@ -47,7 +47,17 @@
     type AccentColorId,
     type AccentCustomProperties,
   } from "./settings/accent-palette";
-  import { systemAccent, watchSystemAccent } from "./ui/system-accent.svelte";
+  import {
+    refreshSystemAccent,
+    systemAccent,
+    watchSystemAccent,
+  } from "./ui/system-accent.svelte";
+  import { readCachedColorMode } from "./session/color-mode-cache";
+  import type { ColorModeId } from "./settings/color-mode";
+  import {
+    createColorModeApplier,
+    type ColorModeApplier,
+  } from "./ui/color-mode-applier";
   import { noteFontFamily, type NoteFont } from "./settings/note-font";
   import KeyChangedScreen from "./ui/session/KeyChangedScreen.svelte";
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
@@ -126,6 +136,25 @@
   );
 
   $effect(() => untrack(() => watchSystemAccent(window)));
+
+  let reportedColorMode = $state<ColorModeId>(readCachedColorMode() ?? "system");
+  let colorModeApplier: ColorModeApplier | null = null;
+
+  $effect(() =>
+    untrack(() => {
+      colorModeApplier = createColorModeApplier(window, {
+        onSchemeChange: refreshSystemAccent,
+      });
+      return () => {
+        colorModeApplier?.dispose();
+        colorModeApplier = null;
+      };
+    }),
+  );
+
+  $effect(() => {
+    colorModeApplier?.applyColorMode(reportedColorMode, { animate: true });
+  });
 
   function applyAccent(properties: AccentCustomProperties): void {
     const style = document.documentElement.style;
@@ -452,6 +481,7 @@
       initialize={boundInitialize}
       onLoggedIn={handleLoggedIn}
       onAccentColor={(id) => (reportedAccentColor = id)}
+      onColorMode={(id) => (reportedColorMode = id)}
     />
   {/key}
 {:else if phase.kind === "app" && keyChanged !== null}
@@ -477,6 +507,7 @@
       void handlePassphraseChanged(keyring, check, history)}
     onLogOut={logOut}
     onAccentColor={(id) => (reportedAccentColor = id)}
+      onColorMode={(id) => (reportedColorMode = id)}
     onNoteFont={(id) => (reportedNoteFont = id)}
     onPrintNote={(note) => (reportedPrintNote = note)}
   />

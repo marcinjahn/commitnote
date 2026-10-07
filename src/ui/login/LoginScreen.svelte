@@ -31,6 +31,7 @@
   } from "./login-messages";
   import { resolveSettings, SETTINGS_SCHEMA } from "../../settings/settings";
   import type { AccentColorId } from "../../settings/accent-palette";
+  import type { ColorModeId } from "../../settings/color-mode";
   import UnlockForm from "./UnlockForm.svelte";
   import CreateNotesRepoForm from "./CreateNotesRepoForm.svelte";
   import Wordmark from "../wordmark/Wordmark.svelte";
@@ -60,6 +61,7 @@
       rememberMe: boolean;
     }) => void;
     onAccentColor: (id: AccentColorId) => void;
+    onColorMode: (id: ColorModeId) => void;
   }
 
   const {
@@ -72,6 +74,7 @@
     initialize,
     onLoggedIn,
     onAccentColor,
+    onColorMode,
   }: Props = $props();
 
   type TokenError =
@@ -111,12 +114,12 @@
   let inspection = $state.raw<Inspection | null>(null);
 
   $effect(() => {
-    onAccentColor(
+    const settings =
       inspection?.kind === "notesRepo"
         ? resolveSettings(SETTINGS_SCHEMA, inspection.target.config.settings)
-            .accentColor
-        : "system",
-    );
+        : null;
+    onAccentColor(settings?.accentColor ?? "system");
+    if (settings) onColorMode(settings.colorMode);
   });
   let inspectedRepository = $state.raw<RepositorySummary | null>(null);
   let inspectionRun = 0;

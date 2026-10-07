@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { test, expect } from "./fixtures";
 
 // Playwright's own module loader can't import this straight from
@@ -6,8 +7,8 @@ import { test, expect } from "./fixtures";
 // import attribute for JSON that the source doesn't use.
 const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
 
-const CSP =
-  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com; img-src 'self' https: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const csp = (scriptHash: string) =>
+  `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-${scriptHash}'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com; img-src 'self' https: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
 
 test("login screen renders under the production CSP", async ({ page }) => {
   const consoleErrors: string[] = [];
@@ -28,7 +29,11 @@ test("login screen renders under the production CSP", async ({ page }) => {
   await expect(page).toHaveTitle("commitnote");
 
   const cspMeta = page.locator('meta[http-equiv="Content-Security-Policy"]');
-  await expect(cspMeta).toHaveAttribute("content", CSP);
+  const bootScript = await page.locator("head script:not([src])").textContent();
+  const bootScriptHash = createHash("sha256")
+    .update(bootScript ?? "")
+    .digest("base64");
+  await expect(cspMeta).toHaveAttribute("content", csp(bootScriptHash));
 
   await expect(page.getByText(FAKE_FORGE_BANNER)).toBeVisible();
 

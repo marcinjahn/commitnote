@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, tick } from "svelte";
   import type { Keyring } from "../../crypto/keyring";
   import type {
     CommitPassphraseChangeResult,
@@ -14,6 +15,7 @@
   import PassphraseStrength from "./PassphraseStrength.svelte";
   import { warningReveal } from "./warning-reveal";
   import {
+    CHANGE_PASSPHRASE_INTRO,
     describeCarriedOver,
     describeChangeAtomicSetup,
     describeChangeFailure,
@@ -111,6 +113,15 @@
       ? { value: stage.step.done, max: stage.step.total }
       : null,
   );
+
+  onMount(() => {
+    void tick().then(() => {
+      // Scrolling the field into view would hide the intro and consequences above it.
+      currentInput?.focus({ preventScroll: true });
+      const body = currentInput?.closest(".dialog-body");
+      if (body) body.scrollTop = 0;
+    });
+  });
 
   $effect(() => {
     if (!engineHeld) return;
@@ -236,7 +247,7 @@
 
 <Dialog open={true} {title} onClose={handleClose} closeButton={!working} swipeToClose={!working}>
   {#snippet children()}
-    {#if error !== null}
+    {#if error !== null && (stage.kind === "review" || stage.kind === "setup" || stage.kind === "unsettled")}
       <p role="alert" class="alert-error">{error}</p>
     {/if}
     {#if stage.kind === "review"}
@@ -257,7 +268,41 @@
       <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
     {:else}
       <form id={formId} class="passphrase-form" onsubmit={handleSubmit}>
+        <p>{CHANGE_PASSPHRASE_INTRO}</p>
         <fieldset disabled={working}>
+          <p class="alert-warning">{VERSION_HISTORY_NOTICE}</p>
+          {#if change.canRemoveHistory}
+            <div class="remove-history">
+              <label class="checkbox-field">
+                <input
+                  type="checkbox"
+                  aria-describedby={removeHistoryHintId}
+                  bind:checked={removeHistory}
+                />
+                {REMOVE_HISTORY_LABEL}
+              </label>
+              <div>
+                <p id={removeHistoryHintId} class="field-hint">
+                  {describeRemoveHistory(forgeName)}
+                </p>
+                {#if !removeHistory}
+                  <p
+                    role="note"
+                    class="alert-warning history-warning"
+                    transition:warningReveal
+                  >
+                    {HISTORY_WARNING}
+                  </p>
+                {/if}
+              </div>
+            </div>
+          {:else}
+            <p role="note" class="alert-warning">{HISTORY_WARNING}</p>
+          {/if}
+          <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
+          {#if error !== null}
+            <p role="alert" class="alert-error">{error}</p>
+          {/if}
           <div class="field">
             <label for={currentId}>Current passphrase</label>
             <input
@@ -293,37 +338,7 @@
               bind:value={repeatedPassphrase}
             />
           </div>
-          <p class="alert-warning">{VERSION_HISTORY_NOTICE}</p>
-          {#if change.canRemoveHistory}
-            <div class="remove-history">
-              <label class="checkbox-field">
-                <input
-                  type="checkbox"
-                  aria-describedby={removeHistoryHintId}
-                  bind:checked={removeHistory}
-                />
-                {REMOVE_HISTORY_LABEL}
-              </label>
-              <div>
-                <p id={removeHistoryHintId} class="field-hint">
-                  {describeRemoveHistory(forgeName)}
-                </p>
-                {#if !removeHistory}
-                  <p
-                    role="note"
-                    class="alert-warning history-warning"
-                    transition:warningReveal
-                  >
-                    {HISTORY_WARNING}
-                  </p>
-                {/if}
-              </div>
-            </div>
-          {:else}
-            <p role="note" class="alert-warning">{HISTORY_WARNING}</p>
-          {/if}
         </fieldset>
-        <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
       </form>
     {/if}
     {#if stage.kind === "working"}
@@ -411,6 +426,7 @@
 
   .review p,
   .passphrase-form > p,
+  .passphrase-form fieldset > p,
   .remove-history p {
     margin: 0;
   }

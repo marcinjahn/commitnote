@@ -1,0 +1,72 @@
+import type { Locator, Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { KEY_DERIVATION_TIMEOUT, openNotes } from "./helpers";
+
+function shareDialog(page: Page): Locator {
+  return page.getByRole("dialog", { name: "Share “Welcome”" });
+}
+
+function toast(page: Page, text: string): Locator {
+  return page.getByRole("group").filter({ hasText: text });
+}
+
+async function shareWelcome(page: Page): Promise<Locator> {
+  await page.getByRole("button", { name: "Actions for Welcome" }).click();
+  await page.getByRole("menuitem", { name: "Share…" }).click();
+  const dialog = shareDialog(page);
+  await dialog.getByRole("button", { name: "Create link" }).click();
+  await expect(dialog.getByRole("textbox", { name: "Share link" })).toBeVisible({
+    timeout: KEY_DERIVATION_TIMEOUT,
+  });
+  return dialog;
+}
+
+test.beforeEach(async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openNotes(page);
+});
+
+test("a toast over the Share dialog can be dismissed without closing it", { tag: "@mobile" }, async ({
+  page,
+}) => {
+  const dialog = await shareWelcome(page);
+
+  await dialog.getByRole("button", { name: "Copy link", exact: true }).click();
+  await expect(toast(page, "Link copied")).toBeVisible();
+  await toast(page, "Link copied").getByRole("button", { name: "Dismiss notice" }).click();
+
+  await expect(toast(page, "Link copied")).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+});
+
+test("a toast stays clickable while a confirm is stacked over Shared links", async ({ page }) => {
+  const share = await shareWelcome(page);
+  await page.keyboard.press("Escape");
+  await expect(share).toHaveCount(0);
+  await page.getByRole("button", { name: "More commands" }).click();
+  await page.getByRole("menu", { name: "Commands" }).getByRole("menuitem", { name: "Shared links" }).click();
+  const list = page.getByRole("dialog", { name: "Shared links" });
+
+  await list.getByRole("button", { name: "Copy link for Welcome" }).click();
+  await expect(toast(page, "Link copied")).toBeVisible();
+  await list.getByRole("button", { name: "Revoke link for Welcome" }).click();
+  const confirm = page.getByRole("dialog", { name: "Revoke link?" });
+  await expect(confirm).toBeVisible();
+  await toast(page, "Link copied").getByRole("button", { name: "Dismiss notice" }).click();
+
+  await expect(toast(page, "Link copied")).toHaveCount(0);
+  await expect(confirm).toBeVisible();
+});
+
+test("a toast stays clickable after its dialog closes", async ({ page }) => {
+  const dialog = await shareWelcome(page);
+  await dialog.getByRole("button", { name: "Copy link", exact: true }).click();
+  await expect(toast(page, "Link copied")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  await expect(toast(page, "Link copied")).toBeVisible();
+  await toast(page, "Link copied").getByRole("button", { name: "Dismiss notice" }).click();
+  await expect(toast(page, "Link copied")).toHaveCount(0);
+});

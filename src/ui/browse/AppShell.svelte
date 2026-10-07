@@ -12,6 +12,7 @@
     type Settings,
   } from "../../settings/settings";
   import type { AccentColorId } from "../../settings/accent-palette";
+  import type { ColorModeId } from "../../settings/color-mode";
   import type { NoteFont } from "../../settings/note-font";
   import type { NoteHistory, NoteVersion } from "../../history/note-history";
   import type { NoteDatesResolver } from "../../history/note-dates";
@@ -75,6 +76,7 @@
   import { derivePrintNote, type PrintNote } from "../print/print-note";
   import type { ToastMessage } from "../notices/notice-messages";
   import NoticeToasts from "../notices/NoticeToasts.svelte";
+  import { toastHost } from "../notices/toast-host";
   import NoteHeader from "./NoteHeader.svelte";
   import NoteTree from "./NoteTree.svelte";
   import RefreshButton from "./RefreshButton.svelte";
@@ -128,6 +130,7 @@
     ) => void;
     onLogOut: () => void;
     onAccentColor: (id: AccentColorId) => void;
+    onColorMode: (id: ColorModeId) => void;
     onNoteFont: (id: NoteFont) => void;
     onPrintNote: (note: PrintNote | null) => void;
   }
@@ -147,6 +150,7 @@
     onPassphraseChanged,
     onLogOut,
     onAccentColor,
+    onColorMode,
     onNoteFont,
     onPrintNote,
   }: Props = $props();
@@ -319,6 +323,11 @@
 
   $effect(() => {
     onAccentColor(settings.accentColor);
+  });
+
+  $effect(() => {
+    if (engineState.synced !== null || pendingSettingsEdits.colorMode !== undefined)
+      onColorMode(settings.colorMode);
   });
 
   $effect(() => {
@@ -719,6 +728,16 @@
   }
 
   function handleSelect(path: NotePath): Promise<void> {
+    const open = engineState.openNote;
+    if (
+      draft === null &&
+      selectedPath !== null &&
+      notePathEquals(path, selectedPath) &&
+      (open?.kind === "loaded" || open?.kind === "loading")
+    ) {
+      mobileView = "note";
+      return Promise.resolve();
+    }
     leaveDraft();
     mobileView = "note";
     return engine.openNote(path);
@@ -1481,13 +1500,15 @@
   </section>
 </div>
 
-<NoticeToasts
-  notices={engineState.notices}
-  messages={TOAST_ORDER.flatMap((channel) => toasts[channel] ?? [])}
-  onDismiss={(id) => engine.dismissNotice(id)}
-  onDismissMessage={dismissMessage}
-  onOpen={handleSelect}
-/>
+<div class="toast-host" use:toastHost>
+  <NoticeToasts
+    notices={engineState.notices}
+    messages={TOAST_ORDER.flatMap((channel) => toasts[channel] ?? [])}
+    onDismiss={(id) => engine.dismissNotice(id)}
+    onDismissMessage={dismissMessage}
+    onOpen={handleSelect}
+  />
+</div>
 
 {#if dialog.kind === "createFolder"}
   <NameDialog
@@ -1707,6 +1728,10 @@
 {/if}
 
 <style>
+  .toast-host {
+    display: contents;
+  }
+
   .shell {
     display: flex;
     flex-direction: column;
@@ -1735,9 +1760,15 @@
     inset: var(--space-2);
     z-index: 1;
     border-radius: 12px;
-    background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+    background: light-dark(
+      color-mix(in srgb, var(--color-accent) 5%, transparent),
+      color-mix(in srgb, var(--color-accent) 9%, transparent)
+    );
     box-shadow: inset 0 0 0 1.5px
-      color-mix(in srgb, var(--color-accent) 55%, transparent);
+      light-dark(
+        color-mix(in srgb, var(--color-accent) 55%, transparent),
+        color-mix(in srgb, var(--color-accent) 70%, transparent)
+      );
     opacity: 0;
     scale: 0.985;
     pointer-events: none;
@@ -1749,14 +1780,6 @@
   .note-pane:global([data-note-drop])::after {
     opacity: 1;
     scale: 1;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .note-pane::after {
-      background: color-mix(in srgb, var(--color-accent) 9%, transparent);
-      box-shadow: inset 0 0 0 1.5px
-        color-mix(in srgb, var(--color-accent) 70%, transparent);
-    }
   }
 
   .sidebar,
