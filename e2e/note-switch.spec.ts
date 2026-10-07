@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { flushPendingSaves, openNotes, showTree } from "./helpers";
-import { openWelcome, treeItem } from "./helpers/tree";
+import { moveToTrash, openWelcome, treeItem } from "./helpers/tree";
 
 const SEARCH_REPO = "https://github.com/sample/search";
 
@@ -735,4 +735,297 @@ test.describe("mobile view slide with reduced motion", () => {
 
     expect(await recordedSlides(page)).toEqual([]);
   });
+});
+
+test.describe("note fragment and history", () => {
+  const FRAGMENT = /^#n=[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$/;
+  const SAMPLE_NAMES = [
+    "Welcome",
+    "Zażółć",
+    "Projects",
+    "commitnote",
+    "Ideas",
+    "Roadmap",
+    "Journal",
+  ];
+
+  test.beforeEach(async ({ page }) => {
+    await openNotes(page, { repo: SEARCH_REPO });
+  });
+
+  function nameField(page: Page): Locator {
+    return page.getByRole("textbox", { name: "Note name" });
+  }
+
+  function hashOf(page: Page): string {
+    return new URL(page.url()).hash;
+  }
+
+  function historyLength(page: Page): Promise<number> {
+    return page.evaluate(() => history.length);
+  }
+
+  async function expectFragment(page: Page, segments?: number): Promise<string> {
+    await expect.poll(() => hashOf(page)).toMatch(FRAGMENT);
+    if (segments !== undefined) {
+      expect(hashOf(page).split("/")).toHaveLength(segments);
+    }
+    return hashOf(page);
+  }
+
+  async function expectNoNamesInUrlOrState(page: Page): Promise<void> {
+    const url = decodeURIComponent(page.url());
+    const state = await page.evaluate(() => JSON.stringify(history.state));
+    for (const name of SAMPLE_NAMES) {
+      expect(url).not.toContain(name);
+      expect(state).not.toContain(name);
+    }
+  }
+
+  async function openIdeas(page: Page): Promise<void> {
+    await treeItem(page, "Projects").click();
+    await treeItem(page, "commitnote").click();
+    await treeItem(page, "Ideas").click();
+    await expect(nameField(page)).toHaveValue("Ideas");
+  }
+
+  async function openWelcomeWithFragment(page: Page): Promise<string> {
+    await openWelcome(page);
+    return expectFragment(page, 1);
+  }
+
+  test("tree opens push entries that Back and Forward move between", async ({ page }) => {
+    const welcome = await openWelcomeWithFragment(page);
+    const length = await historyLength(page);
+
+    await openIdeas(page);
+    const ideas = await expectFragment(page, 3);
+    expect(ideas).not.toBe(welcome);
+    expect(await historyLength(page)).toBe(length + 1);
+    await expectNoNamesInUrlOrState(page);
+
+    await page.goBack();
+    await expect(nameField(page)).toHaveValue("Welcome");
+    expect(hashOf(page)).toBe(welcome);
+
+    await page.goForward();
+    await expect(nameField(page)).toHaveValue("Ideas");
+    expect(hashOf(page)).toBe(ideas);
+  });
+
+  test("opening a note from the search palette pushes an entry", async ({ page }) => {
+    await openWelcomeWithFragment(page);
+    const length = await historyLength(page);
+
+    await page.getByRole("button", { name: "Search notes" }).click();
+    const palette = page.getByRole("dialog", { name: "Search notes" });
+    await palette.getByRole("combobox", { name: "Search notes" }).fill("road");
+    await palette.getByRole("option", { name: /Roadmap/ }).first().click();
+    await expect(nameField(page)).toHaveValue("Roadmap");
+    await expectFragment(page, 3);
+    expect(await historyLength(page)).toBe(length + 1);
+
+    await page.goBack();
+    await expect(nameField(page)).toHaveValue("Welcome");
+  });
+
+  test("reloading reopens the note of the fragment with its folders expanded", async ({
+    page,
+  }) => {
+    await openIdeas(page);
+    const ideas = await expectFragment(page, 3);
+
+    await page.reload();
+
+    await expect(nameField(page)).toHaveValue("Ideas");
+    expect(hashOf(page)).toBe(ideas);
+    for (const folder of ["Projects", "commitnote"]) {
+      await expect(treeItem(page, folder)).toHaveAttribute("aria-expanded", "true");
+    }
+  });
+
+  test("renaming the open note replaces its entry", async ({ page }) => {
+    await openWelcomeWithFragment(page);
+    await treeItem(page, "Zażółć gęślą jaźń").click();
+    await expect(nameField(page)).toHaveValue("Zażółć gęślą jaźń");
+    const before = await expectFragment(page, 1);
+    const length = await historyLength(page);
+
+    await nameField(page).fill("Renamed");
+    await nameField(page).press("Enter");
+    await expect(treeItem(page, "Renamed")).toBeVisible();
+
+    await expect.poll(() => hashOf(page)).not.toBe(before);
+    await expectFragment(page, 1);
+    expect(await historyLength(page)).toBe(length);
+    await expectNoNamesInUrlOrState(page);
+
+    await page.goBack();
+    await expect(nameField(page)).toHaveValue("Welcome");
+    await page.goForward();
+    await expect(nameField(page)).toHaveValue("Renamed");
+  });
+
+  test("moving the open note to the trash clears the fragment", async ({ page }) => {
+    await openWelcomeWithFragment(page);
+    const length = await historyLength(page);
+
+    await moveToTrash(page, "Welcome");
+
+    await expect.poll(() => hashOf(page)).toBe("");
+    expect(await historyLength(page)).toBe(length);
+  });
+
+  test("undoing the trash of the open note restores its fragment", async ({ page }) => {
+    const welcome = await openWelcomeWithFragment(page);
+
+    await moveToTrash(page, "Welcome");
+    await expect.poll(() => hashOf(page)).toBe("");
+
+    await page
+      .getByRole("group")
+      .filter({ hasText: "moved to trash" })
+      .getByRole("button", { name: "Undo" })
+      .click();
+
+    await expect(nameField(page)).toHaveValue("Welcome");
+    await expect.poll(() => hashOf(page)).toBe(welcome);
+  });
+
+  test("a draft adds an entry that cannot come back once left", async ({ page }) => {
+    await openWelcomeWithFragment(page);
+    const length = await historyLength(page);
+
+    await page.getByRole("button", { name: "New note", exact: true }).click();
+    await expect(nameField(page)).toHaveValue("");
+    await expect.poll(() => historyLength(page)).toBe(length + 1);
+    await expect.poll(() => hashOf(page)).toBe("");
+
+    await page.goBack();
+    await expect(nameField(page)).toHaveValue("Welcome");
+
+    await page.goForward();
+    await expect(page.getByText("Select a note to read it, or")).toBeVisible();
+    await expect(nameField(page)).toHaveCount(0);
+  });
+
+  test("a draft that becomes a note keeps its entry", async ({ page }) => {
+    await openWelcomeWithFragment(page);
+
+    await page.getByRole("button", { name: "New note", exact: true }).click();
+    await expect(nameField(page)).toHaveValue("");
+    await expect.poll(() => hashOf(page)).toBe("");
+    const length = await historyLength(page);
+
+    await page.getByRole("textbox", { name: "Note editor" }).click();
+    await page.keyboard.type("Some thoughts");
+    await expect(nameField(page)).not.toHaveValue("");
+
+    await expectFragment(page, 1);
+    expect(await historyLength(page)).toBe(length);
+  });
+
+  test("a fragment of a missing note opens the empty pane and is removed", async ({
+    page,
+  }) => {
+    await page.goto("about:blank");
+    await page.goto("/#n=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+
+    await expect(page.getByText("Select a note to read it, or")).toBeVisible();
+    await expect.poll(() => hashOf(page)).toBe("");
+    await expect(nameField(page)).toHaveCount(0);
+    await expect(page.locator(".toasts").getByRole("group")).toHaveCount(0);
+  });
+
+  test(
+    "Back and the header back button both return to the tree on mobile",
+    { tag: "@mobile-only" },
+    async ({ page }) => {
+      const tree = page.getByRole("tree", { name: "Notes" });
+
+      await treeItem(page, "Welcome").tap();
+      await expect(nameField(page)).toBeVisible();
+      await page.goBack();
+      await expect(tree).toBeVisible();
+
+      await treeItem(page, "Welcome").tap();
+      await expect(nameField(page)).toBeVisible();
+      await expectFragment(page, 1);
+      await page.getByRole("button", { name: "Back to notes" }).tap();
+      await expect(tree).toBeVisible();
+      await expect.poll(() => hashOf(page)).toBe("");
+
+      await page.goForward();
+      await expect(nameField(page)).toBeVisible();
+      await expect(nameField(page)).toHaveValue("Welcome");
+    },
+  );
+
+  test(
+    "moving the note left open behind the tree keeps the tree entry on mobile",
+    { tag: "@mobile-only" },
+    async ({ page }) => {
+      const tree = page.getByRole("tree", { name: "Notes" });
+
+      await treeItem(page, "Welcome").tap();
+      await expect(nameField(page)).toBeVisible();
+      await expect(nameField(page)).toHaveValue("Welcome");
+      await expectFragment(page, 1);
+      await page.getByRole("button", { name: "Back to notes" }).tap();
+      await expect(tree).toBeVisible();
+      await expect.poll(() => hashOf(page)).toBe("");
+
+      await page.getByRole("button", { name: "Actions for Welcome" }).tap();
+      await page.getByRole("menuitem", { name: "Move to folder…" }).tap();
+      await page
+        .getByRole("radiogroup", { name: "Folder" })
+        .getByRole("radio", { name: "Projects", exact: true })
+        .check();
+      await page.getByRole("dialog").getByRole("button", { name: "Move" }).click();
+      const welcome = treeItem(page, "Welcome");
+      if ((await welcome.count()) === 0) {
+        await treeItem(page, "Projects").tap();
+      }
+      await expect(welcome).toBeVisible();
+
+      await expect(tree).toBeVisible();
+      await expect.poll(() => hashOf(page)).toBe("");
+
+      await welcome.tap();
+      await expect(nameField(page)).toHaveValue("Welcome");
+      await expectFragment(page, 2);
+    },
+  );
+
+  test(
+    "undoing the trash of the note behind the tree keeps the tree entry on mobile",
+    { tag: "@mobile-only" },
+    async ({ page }) => {
+      const tree = page.getByRole("tree", { name: "Notes" });
+
+      await treeItem(page, "Welcome").tap();
+      await expect(nameField(page)).toBeVisible();
+      await expect(nameField(page)).toHaveValue("Welcome");
+      await expectFragment(page, 1);
+      await page.getByRole("button", { name: "Back to notes" }).tap();
+      await expect(tree).toBeVisible();
+      await expect.poll(() => hashOf(page)).toBe("");
+
+      await moveToTrash(page, "Welcome");
+      await page
+        .getByRole("group")
+        .filter({ hasText: "moved to trash" })
+        .getByRole("button", { name: "Undo" })
+        .tap();
+
+      await expect(treeItem(page, "Welcome")).toBeVisible();
+      await expect(tree).toBeVisible();
+      await expect(nameField(page)).toBeHidden();
+      await expect.poll(() => hashOf(page)).toBe("");
+
+      await treeItem(page, "Welcome").tap();
+      await expect(nameField(page)).toHaveValue("Welcome");
+      await expectFragment(page, 1);
+    },
+  );
 });

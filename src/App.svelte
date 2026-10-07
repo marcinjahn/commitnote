@@ -2,6 +2,7 @@
   import { onMount, untrack } from "svelte";
   import { removeLastView } from "./app/last-view";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
+  import { clearNoteFragment } from "./app/note-navigation";
   import {
     openSessionBlobCache,
     purgeBlobCacheNow,
@@ -434,6 +435,7 @@
     if (clearStore) await store.clear();
     removeLastView(repoKeyOf(session.coordinates));
     logout = null;
+    clearNoteFragment(window.history, window.location);
     showLogin(null);
   }
 

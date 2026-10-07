@@ -59,6 +59,17 @@ test("log out anyway discards unsaved changes", async ({ page }) => {
   await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
 });
 
+test("logging out leaves no note fragment in the URL", async ({ page }) => {
+  await openNotes(page);
+  await page.getByRole("treeitem", { name: "Welcome" }).click();
+  await expect.poll(() => new URL(page.url()).hash).toMatch(/^#n=/);
+
+  await logOut(page);
+
+  await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
+  expect(new URL(page.url()).hash).toBe("");
+});
+
 test.describe("last view", () => {
   const REOPEN = "Reopen the last note and folders";
 
@@ -163,6 +174,25 @@ test.describe("last view", () => {
     for (const name of ["Ideas", "Projects", "Journal", "commitnote"]) {
       expect(stored).not.toContain(name);
     }
+  });
+
+  test("a note fragment wins over the last view", async ({ page }) => {
+    await openNotes(page);
+    await enableOption(page);
+    await openIdeasWithJournalExpanded(page);
+    await expect.poll(() => storedNote(page)).not.toBeNull();
+    await expect.poll(() => new URL(page.url()).hash).toMatch(/^#n=/);
+    const ideasUrl = page.url();
+    const ideasStored = await storedNote(page);
+
+    await treeItem(page, "Welcome").click();
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue("Welcome");
+    await expect.poll(() => storedNote(page)).not.toBe(ideasStored);
+
+    const other = await page.context().newPage();
+    await other.goto(ideasUrl);
+
+    await expect(other.getByRole("textbox", { name: "Note name" })).toHaveValue("Ideas");
   });
 
   test("shows the restored note's view on mobile @mobile", async ({ page }) => {

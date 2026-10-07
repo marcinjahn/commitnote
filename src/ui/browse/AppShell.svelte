@@ -154,6 +154,7 @@
   import { playViewSlide } from "../note/switch-motion-driver";
   import { trashReveal } from "./trash-reveal";
   import { createTreeExpansion } from "./tree-expansion.svelte";
+  import { createNoteNavigation, type NavigationEntry } from "../../app/note-navigation";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
@@ -304,6 +305,17 @@
     return createLastViewStore({ repoKey, keyring });
   });
   onDestroy(() => lastViewStore.dispose());
+  const navigation = untrack(() =>
+    createNoteNavigation({
+      keyring,
+      history: window.history,
+      location: window.location,
+      events: window,
+      onPopState: handlePopState,
+    }),
+  );
+  onDestroy(() => navigation.dispose());
+  const initialEntry = navigation.initial();
   let reopenLastView = $state(
     untrack(() => sessionRemembered && lastViewStore.isEnabled()),
   );
@@ -557,26 +569,33 @@
   }
 
   function openRestoredNote(path: NotePath): Promise<void> {
-    return revealAndOpen(path);
+    if (path.length > 1) expandFolder(parentPath(path));
+    return showNote(path);
   }
 
   async function restoreLastView(): Promise<void> {
-    if (!sessionRemembered || !reopenLastView) return;
-    const view = await lastViewStore.load();
+    const entry = await initialEntry;
+    const view =
+      sessionRemembered && reopenLastView ? await lastViewStore.load() : null;
     const current = tree;
-    if (view === null || current === null) return;
-    for (const folder of view.folders) {
+    if (current === null) return;
+    for (const folder of view?.folders ?? []) {
       if (findWorkingFolder(current, folder) !== undefined) {
         treeExpansion.setExpanded(folder, true);
       }
     }
-    const note = view.note;
-    if (
-      note !== null &&
-      findWorkingNode(current, note)?.kind === "note" &&
-      engineState.openNote === null &&
-      draft === null
-    ) {
+    if (engineState.openNote !== null || draft !== null) return;
+    if (entry.kind === "note") {
+      if (findWorkingNode(current, entry.path)?.kind === "note") {
+        await openRestoredNote(entry.path);
+      } else {
+        navigation.replace({ kind: "none" });
+      }
+      return;
+    }
+    const note = view?.note ?? null;
+    if (note !== null && findWorkingNode(current, note)?.kind === "note") {
+      navigation.replace({ kind: "note", path: note });
       await openRestoredNote(note);
     }
   }
@@ -974,6 +993,11 @@
   }
 
   function handleSelect(path: NotePath): Promise<void> {
+    navigation.push({ kind: "note", path });
+    return showNote(path);
+  }
+
+  function showNote(path: NotePath): Promise<void> {
     const open = engineState.openNote;
     if (
       draft === null &&
@@ -1022,6 +1046,75 @@
     mobileView = "tree";
   }
 
+  function handleHeaderBack(): void {
+    if (navigation.canGoBack()) {
+      navigation.back();
+      return;
+    }
+    handleBack();
+    navigation.replace({ kind: "none" });
+  }
+
+  function showNone(): void {
+    leaveDraft();
+    mobileView = "tree";
+    if (!isNarrowLayout() && engineState.openNote !== null) {
+      noteSwitch += 1;
+      void engine.openNote(null);
+    }
+  }
+
+  function handlePopState(entry: NavigationEntry): void {
+    if (entry.kind === "note") {
+      if (tree !== null && findWorkingNode(tree, entry.path)?.kind === "note") {
+        if (entry.path.length > 1) expandFolder(parentPath(entry.path));
+        void showNote(entry.path);
+        return;
+      }
+      navigation.replace({ kind: "none" });
+    } else if (entry.kind === "draft") {
+      navigation.replace({ kind: "none" });
+    }
+    showNone();
+  }
+
+  let navigatedOpenPath: NotePath | null = null;
+  let navigatedOpenKind: string | null = null;
+  $effect(() => {
+    const path = engineState.openNote?.path ?? null;
+    const kind = engineState.openNote?.kind ?? null;
+    const samePath =
+      path === null || navigatedOpenPath === null
+        ? path === navigatedOpenPath
+        : notePathEquals(path, navigatedOpenPath);
+    if (samePath && kind === navigatedOpenKind) return;
+    const previousPath = navigatedOpenPath;
+    const previousKind = navigatedOpenKind;
+    navigatedOpenPath = path;
+    navigatedOpenKind = kind;
+    if (path === null) return;
+    untrack(() => {
+      const current = navigation.current();
+      const currentIsOpen =
+        current.kind === "note" && notePathEquals(current.path, path);
+      const urlStandsForNote =
+        current.kind === "draft" ||
+        (previousKind === "missing" && (!isNarrowLayout() || mobileView === "note")) ||
+        (current.kind === "note" &&
+          previousPath !== null &&
+          notePathEquals(current.path, previousPath));
+      if (
+        (kind === "loaded" || kind === "loading") &&
+        !currentIsOpen &&
+        urlStandsForNote
+      ) {
+        navigation.replace({ kind: "note", path });
+      } else if (kind === "missing" && currentIsOpen) {
+        navigation.replace({ kind: "none" });
+      }
+    });
+  });
+
   function handleLogOut(): void {
     leaveDraft();
     onLogOut();
@@ -1039,6 +1132,7 @@
   function startDraft(parent: NotePath): void {
     tagFilter = null;
     leaveDraft();
+    navigation.push({ kind: "draft" });
     noteSwitch += 1;
     void engine.openNote(null);
     draft = { parent, name: "" };
@@ -1944,7 +2038,7 @@
           onNameEscape={handleNameEscape}
           onNameEnterDone={handleNameEnterDone}
           onNameInput={handleDraftNameInput}
-          onBack={handleBack}
+          onBack={handleHeaderBack}
         />
       {:else if engineState.openNote !== null}
         <NoteHeader
@@ -1961,7 +2055,7 @@
           onNameCommit={handleNameCommit}
           onNameEscape={handleNameEscape}
           onNameEnterDone={handleNameEnterDone}
-          onBack={handleBack}
+          onBack={handleHeaderBack}
           onHistory={() => void openHistory()}
           historyDisabled={engineState.openNote.kind === "missing" ||
             engineState.openNote.kind === "failed"}
