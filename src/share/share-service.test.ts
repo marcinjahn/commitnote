@@ -112,6 +112,69 @@ describe("createShare", () => {
     expect(result.password).toBeNull();
   });
 
+  it("stores a normalized label without sealing it", async () => {
+    const h = await setup();
+
+    const result = await h.service.createShare({
+      path: WELCOME,
+      password: "",
+      label: "  For Anna ",
+    });
+
+    if (!result.ok) throw new Error(`failed: ${result.error.kind}`);
+    expect(result.entry.label).toBe("For Anna");
+    expect(result.entry.name).toBe("Welcome");
+    expect(h.engine.getState().shares?.entries.get(result.entry.id)).toEqual(
+      result.entry,
+    );
+    const hash = hashOf(result.link);
+    expect(hostedEnvelope(h, hash)).not.toContain("For Anna");
+    const parsed = parseShareLink(hash);
+    if (parsed.kind !== "valid") throw new Error("invalid link");
+    const opened = await openShare(
+      hostedEnvelope(h, hash),
+      parsed.linkSecret,
+      undefined,
+      argon2idDirect,
+    );
+    expect(opened.name).toBe("Welcome");
+    expect(JSON.stringify(opened)).not.toContain("For Anna");
+  });
+
+  it.each([undefined, "", "   "])(
+    "stores no label for %j",
+    async (label) => {
+      const h = await setup();
+      const result = await h.service.createShare({
+        path: WELCOME,
+        password: "",
+        label,
+      });
+      if (!result.ok) throw new Error("failed");
+      expect(result.entry.label).toBeNull();
+    },
+  );
+
+  it("rejects a too long label before creating anything", async () => {
+    const h = await setup();
+    let calls = 0;
+    const create = h.fake.shareHost.create;
+    h.fake.shareHost.create = async (envelope) => {
+      calls++;
+      return create(envelope);
+    };
+
+    const result = await h.service.createShare({
+      path: WELCOME,
+      password: "",
+      label: "x".repeat(101),
+    });
+
+    expect(result).toEqual({ ok: false, error: { kind: "labelTooLong" } });
+    expect(calls).toBe(0);
+    expect(h.engine.getState().shares?.entries.size).toBe(0);
+  });
+
   it("records the shared version and the entry", async () => {
     const h = await setup();
     const result = await h.service.createShare({ path: WELCOME, password: "" });
@@ -351,6 +414,27 @@ describe("updateShare", () => {
     expect(calls).toBe(0);
   });
 
+  it("keeps the label", async () => {
+    const h = await setup();
+    const created = await h.service.createShare({
+      path: WELCOME,
+      password: "",
+      label: "For Anna",
+    });
+    if (!created.ok) throw new Error("failed");
+    await settle(h.engine);
+    h.engine.editNote(WELCOME, "# Fresh\n\nnew text");
+
+    const result = await h.service.updateShare(created.entry.id);
+
+    if (!result.ok) throw new Error(`failed: ${result.error.kind}`);
+    expect(result.unchanged).toBe(false);
+    expect(result.entry.label).toBe("For Anna");
+    expect(
+      h.engine.getState().shares?.entries.get(created.entry.id)?.label,
+    ).toBe("For Anna");
+  });
+
   it("reports unchanged right after the share was created", async () => {
     const { h, created } = await shared();
     const result = await h.service.updateShare(created.entry.id);
@@ -487,6 +571,93 @@ describe("updateShare", () => {
       error: { kind: "notSaved" },
     });
     expect((await openHosted(h, hash)).markdown).toBe("# Fresh\n\nnew text");
+  });
+});
+
+describe("setShareLabel", () => {
+  async function shared() {
+    const h = await setup();
+    const result = await h.service.createShare({ path: WELCOME, password: "" });
+    if (!result.ok) throw new Error("failed");
+    await settle(h.engine);
+    return { h, entry: result.entry };
+  }
+
+  function labelOf(h: Harness, id: string) {
+    return h.engine.getState().shares?.entries.get(id)?.label;
+  }
+
+  it("sets a normalized label and clears it with an empty one", async () => {
+    const { h, entry } = await shared();
+
+    expect(h.service.setShareLabel(entry.id, "  For Anna ")).toEqual({
+      ok: true,
+    });
+    expect(labelOf(h, entry.id)).toBe("For Anna");
+    await settle(h.engine);
+
+    expect(h.service.setShareLabel(entry.id, "")).toEqual({ ok: true });
+    expect(labelOf(h, entry.id)).toBeNull();
+  });
+
+  it("never calls the share host or spends the rate budget", async () => {
+    const { h, entry } = await shared();
+    const calls: string[] = [];
+    for (const method of ["create", "update", "delete"] as const) {
+      const original = h.fake.shareHost[method] as (
+        ...args: never[]
+      ) => Promise<unknown>;
+      (h.fake.shareHost as unknown as Record<string, unknown>)[method] = (
+        ...args: never[]
+      ) => {
+        calls.push(method);
+        return original(...args);
+      };
+    }
+    const availableAt = h.budget.availableAt(1);
+
+    h.service.setShareLabel(entry.id, "For Anna");
+    await settle(h.engine);
+
+    expect(calls).toEqual([]);
+    expect(h.budget.availableAt(1)).toBe(availableAt);
+  });
+
+  it("reports shareGone for an unknown share", async () => {
+    const { h } = await shared();
+    expect(h.service.setShareLabel("missing", "x")).toEqual({
+      ok: false,
+      error: { kind: "shareGone" },
+    });
+  });
+
+  it("reports labelTooLong and keeps the label", async () => {
+    const { h, entry } = await shared();
+    expect(h.service.setShareLabel(entry.id, "x".repeat(101))).toEqual({
+      ok: false,
+      error: { kind: "labelTooLong" },
+    });
+    expect(labelOf(h, entry.id)).toBeNull();
+  });
+
+  it("reports sharesUnavailable for an unreadable share index", async () => {
+    const fake = await createSampleNotesRepoAdapter();
+    await fake.pushFromAnotherDevice([
+      {
+        kind: "upsert-text",
+        path: SHARES_PATH,
+        text: await encryptNote(
+          keyring,
+          JSON.stringify({ shares: {}, version: 2 }),
+        ),
+      },
+    ]);
+    const h = await setup(fake);
+
+    expect(h.service.setShareLabel("any", "x")).toEqual({
+      ok: false,
+      error: { kind: "sharesUnavailable" },
+    });
   });
 });
 

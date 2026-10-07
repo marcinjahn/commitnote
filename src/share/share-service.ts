@@ -15,6 +15,7 @@ import { findWorkingNode } from "../sync/working-tree";
 import { findNode } from "../tree/note-tree";
 import { sealShare, ShareOpenError } from "./share-envelope";
 import { formatShareLink } from "./share-link";
+import { normalizeShareLabel } from "./share-label";
 import {
   newShareId,
   sharesWithin,
@@ -31,7 +32,9 @@ export type ShareError =
         | "notSaved"
         | "tooLarge"
         | "sharesUnavailable"
-        | "shareMissing";
+        | "shareMissing"
+        | "labelTooLong"
+        | "shareGone";
     }
   | { readonly kind: "rateLimited"; readonly retryAfterMs: number };
 
@@ -64,12 +67,18 @@ export type UpdateShareResult =
     }
   | { readonly ok: false; readonly error: ShareError };
 
+export type SetShareLabelResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly error: ShareError };
+
 export interface ShareService {
-  /** An empty `password` means no password. */
+  /** An empty `password` means no password; an empty `label` means no label. */
   createShare(input: {
     readonly path: NotePath;
     readonly password: string;
+    readonly label?: string;
   }): Promise<CreateShareResult>;
+  setShareLabel(id: string, rawLabel: string): SetShareLabelResult;
   updateShare(id: string): Promise<UpdateShareResult>;
   revokeShare(id: string): Promise<RevokeShareResult>;
   /**
@@ -202,12 +211,17 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
   async function createShare(input: {
     readonly path: NotePath;
     readonly password: string;
+    readonly label?: string;
   }): Promise<CreateShareResult> {
     const { path, password } = input;
     const fail = (error: ShareError): CreateShareResult => ({
       ok: false,
       error,
     });
+
+    const normalized = normalizeShareLabel(input.label ?? "");
+    if (!normalized.ok) return fail({ kind: "labelTooLong" });
+    const { label } = normalized;
 
     const initial = engine.getState();
     if (initial.synced !== null && !initial.synced.shares.writable) {
@@ -257,7 +271,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       linkSecret: sealed.linkSecret,
       password: password || null,
       name: working.name,
-      label: null,
+      label,
       sharedAt,
       note: { state: "active", path },
       source: { commit: version.sha, storedPath, blobSha },
@@ -278,6 +292,28 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       link: formatShareLink(deps.linkBase, locator, sealed.linkSecret),
       password: entry.password,
       entry,
+    };
+  }
+
+  function setShareLabel(id: string, rawLabel: string): SetShareLabelResult {
+    const normalized = normalizeShareLabel(rawLabel);
+    if (!normalized.ok) return { ok: false, error: { kind: "labelTooLong" } };
+
+    const state = engine.getState();
+    if (state.synced !== null && !state.synced.shares.writable) {
+      return { ok: false, error: { kind: "sharesUnavailable" } };
+    }
+    if (!state.shares?.entries.has(id)) {
+      return { ok: false, error: { kind: "shareGone" } };
+    }
+    const result = engine.setShareLabel(id, normalized.label);
+    if (result.ok) return { ok: true };
+    return {
+      ok: false,
+      error:
+        result.error.kind === "sharesUnavailable"
+          ? { kind: "sharesUnavailable" }
+          : { kind: "shareGone" },
     };
   }
 
@@ -393,5 +429,5 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     }
   }
 
-  return { createShare, updateShare, revokeShare, revokeShares };
+  return { createShare, setShareLabel, updateShare, revokeShare, revokeShares };
 }

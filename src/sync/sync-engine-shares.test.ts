@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { NotePath } from "../changes/change";
 import type { Keyring } from "../crypto/keyring";
-import { encryptNote } from "../crypto/note-cipher";
+import { decryptNote, encryptNote } from "../crypto/note-cipher";
 import { testKeyring } from "../crypto/testing/test-keyring";
 import { ForgeError } from "../forge/errors";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
@@ -198,6 +198,151 @@ describe("SyncEngine.removeShare", () => {
   });
 });
 
+async function rawShareEntry(
+  fake: FakeForgeAdapter,
+  id: string,
+): Promise<Record<string, unknown>> {
+  const sha = await sharesBlobSha(fake);
+  const text = await decryptNote(keyring, await fake.readBlob(sha!));
+  return JSON.parse(text).shares[id];
+}
+
+describe("SyncEngine.setShareLabel", () => {
+  async function withShare(entry: ShareEntry = ENTRY): Promise<Harness> {
+    const h = await setup();
+    h.engine.addShare(entry);
+    await waitIdle(h.engine);
+    return h;
+  }
+
+  it("commits at once with a trailer that does not contain the label", async () => {
+    const h = await withShare();
+    const start = await h.fake.getHead();
+
+    expect(h.engine.setShareLabel(ENTRY.id, "For Anna")).toEqual({ ok: true });
+    expect(h.engine.getState().shares?.entries.get(ENTRY.id)?.label).toBe(
+      "For Anna",
+    );
+    await waitIdle(h.engine);
+
+    expect(okCommitCount(h.fake, start)).toBe(1);
+    expect((await remoteShares(h.fake)).entries.get(ENTRY.id)?.label).toBe(
+      "For Anna",
+    );
+    const message = headMessage(h.fake);
+    expect(message).toContain(`${TRAILER.share}: label`);
+    expect(message).not.toContain("For Anna");
+  });
+
+  it("clears a label back to none", async () => {
+    const h = await withShare({ ...ENTRY, label: "For Anna" });
+
+    expect(h.engine.setShareLabel(ENTRY.id, null)).toEqual({ ok: true });
+    await waitIdle(h.engine);
+
+    expect((await remoteShares(h.fake)).entries.get(ENTRY.id)?.label).toBeNull();
+    expect(await rawShareEntry(h.fake, ENTRY.id)).not.toHaveProperty("label");
+  });
+
+  it("refuses an unknown id as not found without committing", async () => {
+    const h = await withShare();
+
+    expect(h.engine.setShareLabel("unknown", "x")).toEqual({
+      ok: false,
+      error: { kind: "notFound" },
+    });
+    expect(h.engine.getState().pending).toEqual([]);
+  });
+
+  it("does not commit when the label is unchanged", async () => {
+    const h = await withShare({ ...ENTRY, label: "For Anna" });
+    const start = await h.fake.getHead();
+
+    expect(h.engine.setShareLabel(ENTRY.id, "For Anna")).toEqual({ ok: true });
+    expect(h.engine.getState().pending).toEqual([]);
+    await advance(h, 2_000);
+
+    expect(okCommitCount(h.fake, start)).toBe(0);
+    expect(await h.fake.getHead()).toBe(start);
+  });
+
+  it("refuses when the share index is unreadable", async () => {
+    const fake = await createSampleNotesRepoAdapter();
+    await fake.pushFromAnotherDevice([
+      {
+        kind: "upsert-text",
+        path: SHARES_PATH,
+        text: await encryptNote(
+          keyring,
+          JSON.stringify({ shares: {}, version: 2 }),
+        ),
+      },
+    ]);
+    const h = await openEngine(fake);
+
+    expect(h.engine.setShareLabel(ENTRY.id, "x")).toEqual({
+      ok: false,
+      error: { kind: "sharesUnavailable" },
+    });
+  });
+
+  it("is rebased over an unrelated remote commit", async () => {
+    const h = await withShare();
+    h.fake.failNext("commit", new ForgeError("Network"));
+    h.engine.setShareLabel(ENTRY.id, "For Anna");
+    await waitIdle(h.engine);
+    await pushRemote(h.fake, [
+      { kind: "update-note", path: IDEAS, content: "remote ideas" },
+    ]);
+
+    await advance(h, 5_000);
+
+    expect(h.engine.getState().pending).toEqual([]);
+    expect((await remoteShares(h.fake)).entries.get(ENTRY.id)?.label).toBe(
+      "For Anna",
+    );
+  });
+
+  it("keeps a label set elsewhere over a local update rebased on it", async () => {
+    const h = await withShare();
+    h.fake.failNext("commit", new ForgeError("Network"));
+    h.engine.updateShare({
+      ...ENTRY,
+      name: "Welcome v2",
+      updatedAt: "2026-02-02T00:00:00.000Z",
+    });
+    await waitIdle(h.engine);
+    await pushRemote(h.fake, [
+      { kind: "set-share-label", id: ENTRY.id, label: "From B" },
+    ]);
+
+    await advance(h, 5_000);
+
+    expect(h.engine.getState().pending).toEqual([]);
+    const entry = (await remoteShares(h.fake)).entries.get(ENTRY.id);
+    expect(entry?.label).toBe("From B");
+    expect(entry?.name).toBe("Welcome v2");
+    expect(h.engine.getState().shares?.entries.get(ENTRY.id)?.label).toBe(
+      "From B",
+    );
+  });
+
+  it("resolves quietly when the remote revoked the share meanwhile", async () => {
+    const h = await withShare();
+    h.fake.failNext("commit", new ForgeError("Network"));
+    h.engine.setShareLabel(ENTRY.id, "For Anna");
+    await waitIdle(h.engine);
+    await pushRemote(h.fake, [{ kind: "remove-share", id: ENTRY.id }]);
+
+    await advance(h, 5_000);
+
+    expect(h.engine.getState().save).toEqual({ kind: "idle" });
+    expect(h.engine.getState().pending).toEqual([]);
+    expect((await remoteShares(h.fake)).entries.size).toBe(0);
+    expect(h.engine.getState().shares?.entries.size).toBe(0);
+  });
+});
+
 describe("SyncEngine.updateShare", () => {
   const UPDATED: ShareEntry = {
     ...ENTRY,
@@ -337,6 +482,10 @@ describe("SyncEngine shares with an unreadable share index", () => {
       error: { kind: "sharesUnavailable" },
     });
     expect(h.engine.updateShare(ENTRY)).toEqual({
+      ok: false,
+      error: { kind: "sharesUnavailable" },
+    });
+    expect(h.engine.setShareLabel(ENTRY.id, "x")).toEqual({
       ok: false,
       error: { kind: "sharesUnavailable" },
     });
