@@ -5,8 +5,13 @@ test("sidebar wordmark and repo label are not clipped", { tag: "@mobile" }, asyn
   await openNotes(page);
 
   const header = page.locator(".tree-header");
-  const wordmark = header.getByText("commitnote", { exact: true });
+  const wordmark = header.locator(".wordmark");
   await expect(wordmark).toBeVisible();
+  await expect(wordmark.locator(".visually-hidden")).toHaveText("commitnote");
+  await expect(header.locator(".wordmark-glyphs")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
   expect(
     await wordmark.evaluate((el) => el.scrollWidth <= el.clientWidth),
   ).toBe(true);

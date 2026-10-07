@@ -4,12 +4,18 @@
   }
 
   const { element = "span" }: Props = $props();
+
+  const LETTERS = [..."commitnote"];
 </script>
 
-<svelte:element this={element} class="wordmark">commitnote</svelte:element>
+<svelte:element this={element} class="wordmark">
+  <span class="visually-hidden">commitnote</span>
+  <span class="wordmark-glyphs" aria-hidden="true">{#each LETTERS as letter, index (index)}<span class="wordmark-letter" class:wordmark-light={index >= 6}>{letter}</span>{/each}</span>
+</svelte:element>
 
 <style>
   .wordmark {
+    position: relative;
     margin: 0;
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-semibold);
@@ -20,12 +26,7 @@
     color: var(--color-text);
   }
 
-  .wordmark::after {
-    content: "";
-    display: inline-block;
-    width: 0.25em;
-    height: 0.25em;
-    margin-inline-start: 0.08em;
-    background: var(--color-accent);
+  .wordmark-light {
+    font-weight: 400;
   }
 </style>
