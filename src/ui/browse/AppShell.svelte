@@ -555,6 +555,55 @@
     lastViewStore.setEnabled(on, currentLastView());
     reopenLastView = on;
   }
+
+  function openRestoredNote(path: NotePath): Promise<void> {
+    return revealAndOpen(path);
+  }
+
+  async function restoreLastView(): Promise<void> {
+    if (!sessionRemembered || !reopenLastView) return;
+    const view = await lastViewStore.load();
+    const current = tree;
+    if (view === null || current === null) return;
+    for (const folder of view.folders) {
+      if (findWorkingFolder(current, folder) !== undefined) {
+        treeExpansion.setExpanded(folder, true);
+      }
+    }
+    const note = view.note;
+    if (
+      note !== null &&
+      findWorkingNode(current, note)?.kind === "note" &&
+      engineState.openNote === null &&
+      draft === null
+    ) {
+      await openRestoredNote(note);
+    }
+  }
+
+  let restoreStarted = false;
+  let lastViewRestored = false;
+  $effect(() => {
+    if (tree === null || restoreStarted) return;
+    restoreStarted = true;
+    void untrack(restoreLastView)
+      .catch(() => {})
+      .finally(() => {
+        lastViewRestored = true;
+        saveLastView();
+      });
+  });
+
+  function saveLastView(): void {
+    if (lastViewRestored && reopenLastView && sessionRemembered) {
+      lastViewStore.save(currentLastView());
+    }
+  }
+
+  $effect(() => {
+    currentLastView();
+    saveLastView();
+  });
   const conflictPaths = $derived(engineState.conflicts.map((held) => held.path));
   const refreshing = $derived(engineState.refresh.inFlight);
   const head = $derived(engineState.synced?.head ?? null);
