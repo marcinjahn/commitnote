@@ -258,7 +258,7 @@
     width: 36px;
     height: 4px;
     transform: translateX(-50%);
-    background: var(--color-border-strong);
+    background: var(--color-accent-rule);
   }
 
   .dialog-header-status {
