@@ -1,6 +1,5 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { SvelteMap } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin } from "../../changes/change";
   import type { SyncStates } from "../../sync/sync-state";
@@ -12,6 +11,7 @@
   import type { ImportDestination } from "../../import/plan-import";
   import type { DroppedFile } from "../../import/read-dropped-files";
   import NoteTreeFolder from "./NoteTreeFolder.svelte";
+  import type { TreeExpansion } from "./tree-expansion.svelte";
   import { countDescendants } from "../dialogs/folder-options";
   import type { ColorTag } from "../../tags/color-tag";
   import RowMenu from "./RowMenu.svelte";
@@ -24,6 +24,7 @@
     selectedPath: NotePath | null;
     syncStates: SyncStates;
     expandRequest: { readonly path: NotePath } | null;
+    expansion: TreeExpansion;
     conflicts: readonly NotePath[];
     onSelect: (path: NotePath) => void;
     onPlace: (path: NotePath, target: DropTarget) => NotePath | null;
@@ -46,6 +47,7 @@
     selectedPath,
     syncStates,
     expandRequest,
+    expansion,
     conflicts,
     onSelect,
     onPlace,
@@ -61,23 +63,23 @@
     onFileDrop,
   }: Props = $props();
 
-  const expanded = new SvelteMap<string, boolean>();
-
-  function isExpanded(key: string): boolean {
-    return filteredTree !== null || (expanded.get(key) ?? false);
+  function isExpanded(path: NotePath): boolean {
+    return filteredTree !== null || expansion.isExpanded(path);
   }
 
-  function onToggle(key: string): void {
+  function onToggle(path: NotePath): void {
     if (filteredTree !== null) return;
-    expanded.set(key, !isExpanded(key));
+    expansion.setExpanded(path, !expansion.isExpanded(path));
   }
 
   $effect(() => {
     const path = selectedPath;
     if (path === null || untrack(() => filteredTree) !== null) return;
-    for (let depth = 1; depth < path.length; depth++) {
-      expanded.set(path.slice(0, depth).join("/"), true);
-    }
+    untrack(() => {
+      for (let depth = 1; depth < path.length; depth++) {
+        expansion.setExpanded(path.slice(0, depth), true);
+      }
+    });
   });
 
   // Set by the parent after a structure change (e.g. a newly created
@@ -85,9 +87,11 @@
   $effect(() => {
     const request = expandRequest;
     if (request === null || untrack(() => filteredTree) !== null) return;
-    for (let depth = 1; depth <= request.path.length; depth++) {
-      expanded.set(request.path.slice(0, depth).join("/"), true);
-    }
+    untrack(() => {
+      for (let depth = 1; depth <= request.path.length; depth++) {
+        expansion.setExpanded(request.path.slice(0, depth), true);
+      }
+    });
   });
 
   interface OpenMenu {

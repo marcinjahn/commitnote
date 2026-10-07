@@ -144,6 +144,7 @@
   } from "./drag-motion";
   import { playViewSlide } from "../note/switch-motion-driver";
   import { trashReveal } from "./trash-reveal";
+  import { createTreeExpansion } from "./tree-expansion.svelte";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
@@ -282,6 +283,7 @@
   let dialog = $state<DialogState>({ kind: "none" });
   let nameError = $state<string | null>(null);
   let nameResetKey = $state(0);
+  const treeExpansion = createTreeExpansion();
   let expandRequest = $state<{ readonly path: NotePath } | null>(null);
   let draft = $state<NoteDraft | null>(null);
   let draftError = $state<string | null>(null);
@@ -1761,6 +1763,7 @@
       {selectedPath}
       syncStates={engineState.syncStates}
       {expandRequest}
+      expansion={treeExpansion}
       conflicts={conflictPaths}
       onSelect={handleSelect}
       onPlace={handlePlace}

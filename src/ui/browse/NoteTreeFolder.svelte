@@ -18,8 +18,8 @@
     depth: number;
     selectedPath: NotePath | null;
     syncStates: SyncStates;
-    isExpanded: (key: string) => boolean;
-    onToggle: (key: string) => void;
+    isExpanded: (path: NotePath) => boolean;
+    onToggle: (path: NotePath) => void;
     onSelect: (path: NotePath) => void;
     menuOpenKey: string | null;
     onOpenMenu: (
@@ -43,7 +43,7 @@
   }: Props = $props();
 
   const key = $derived(node.path.join("/"));
-  const expanded = $derived(node.kind === "folder" && isExpanded(key));
+  const expanded = $derived(node.kind === "folder" && isExpanded(node.path));
   const noteCount = $derived(
     node.kind === "folder" && !expanded ? countFolderNotes(node) : null,
   );
@@ -94,7 +94,7 @@
 
   function handleActivate(): void {
     if (node.kind === "folder") {
-      onToggle(key);
+      onToggle(node.path);
     } else {
       onSelect(node.path);
     }
