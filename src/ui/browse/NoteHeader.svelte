@@ -16,6 +16,7 @@
   interface Props {
     name: string;
     draft: boolean;
+    autofocusName?: boolean;
     syncState: SyncState | null;
     nameError: string | null;
     nameReadOnly: boolean;
@@ -44,6 +45,7 @@
   const {
     name,
     draft,
+    autofocusName = true,
     syncState,
     nameError,
     nameReadOnly,
@@ -114,7 +116,7 @@
     readOnly={nameReadOnly}
     error={nameError}
     resetKey={nameResetKey}
-    autofocus={draft}
+    autofocus={draft && autofocusName}
     pendingText={namePendingText}
     onPendingConsumed={onNamePendingConsumed}
     onCommit={onNameCommit}

@@ -165,6 +165,14 @@
     editor?.focus();
   }
 
+  export function hasEditor(): boolean {
+    return editor !== undefined;
+  }
+
+  export function insertEditorText(text: string): void {
+    editor?.insertText(text);
+  }
+
   function handleEditorChange(text: string): void {
     if (heldContent !== null) return;
     if (draft) {

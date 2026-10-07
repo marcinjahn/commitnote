@@ -34,6 +34,16 @@
     editor?.setSelection(anchor, head);
   }
 
+  export function insertText(inserted: string): void {
+    if (editor === undefined) return;
+    const view = editor.view;
+    view.dispatch(view.state.replaceSelection(inserted), {
+      userEvent: "input.type",
+      scrollIntoView: true,
+    });
+    view.focus();
+  }
+
   onMount(() => {
     editor = createMarkdownEditor({
       parent: container,

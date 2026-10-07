@@ -7,6 +7,8 @@
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
   import { installSaveShortcut } from "../../app/save-shortcut";
+  import { installTypeToStart } from "./type-to-start";
+  import { dialogStack } from "../dialogs/dialog-stack";
   import {
     createLastViewStore,
     removeLastView,
@@ -328,6 +330,7 @@
   let draft = $state<NoteDraft | null>(null);
   let draftError = $state<string | null>(null);
   let draftSession = $state(0);
+  let draftFocus = $state<"name" | "editor">("name");
   let noteSwitch = $state(0);
   const headerSwitch = { seen: untrack(() => noteSwitch) };
   let pendingFieldText = $state<string | null>(null);
@@ -476,6 +479,37 @@
   }
 
   $effect(() => installSaveShortcut(window, () => void saveFromShortcut()));
+
+  $effect(() => {
+    const typeToStart = installTypeToStart(window, {
+      scene: () => ({
+        placeholderVisible:
+          tree !== null &&
+          engineState.openNote === null &&
+          draft === null &&
+          (!isNarrowLayout() || mobileView === "note"),
+        engineStopped: engineState.stopped !== null,
+        dialogOpen: dialogStack.top() !== null,
+        menuOpen: document.querySelector('[role="menu"]') !== null,
+        body: document.body,
+        notePane: notePaneEl ?? null,
+      }),
+      start: () => {
+        startDraft([], "editor");
+        void insertTypedText(() => typeToStart.drain());
+      },
+    });
+    return () => typeToStart.dispose();
+  });
+
+  async function insertTypedText(drain: () => string): Promise<void> {
+    for (let attempt = 0; attempt < 5 && notePane?.hasEditor() !== true; attempt += 1) {
+      await tick();
+    }
+    notePane?.focusEditor();
+    const text = drain();
+    if (text !== "") notePane?.insertEditorText(text);
+  }
 
   let atomicBlockedSeen = false;
 
@@ -1157,7 +1191,7 @@
     }
   }
 
-  function startDraft(parent: NotePath): void {
+  function startDraft(parent: NotePath, focus: "name" | "editor" = "name"): void {
     tagFilter = null;
     leaveDraft();
     navigation.push({ kind: "draft" });
@@ -1165,6 +1199,7 @@
     void engine.openNote(null);
     draft = { parent, name: "" };
     draftError = null;
+    draftFocus = focus;
     draftSession += 1;
     mobileView = "note";
   }
@@ -2056,6 +2091,7 @@
         <NoteHeader
           name={draft.name}
           draft={true}
+          autofocusName={draftFocus === "name"}
           syncState={null}
           nameError={draftError}
           nameReadOnly={false}
