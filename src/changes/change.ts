@@ -61,7 +61,12 @@ export type Change =
     }
   | { readonly kind: "add-share"; readonly entry: ShareEntry }
   | { readonly kind: "update-share"; readonly entry: ShareEntry }
-  | { readonly kind: "remove-share"; readonly id: string };
+  | { readonly kind: "remove-share"; readonly id: string }
+  | {
+      readonly kind: "set-share-label";
+      readonly id: string;
+      readonly label: string | null;
+    };
 
 /** The order key of the child `name` of a folder. */
 export interface OrderPosition {

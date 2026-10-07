@@ -1392,6 +1392,15 @@ describe.each(["add-share", "update-share"] as const)("rebaseChanges %s", (kind)
   });
 });
 
+describe("rebaseChanges set-share-label", () => {
+  it("keeps the change even when the remote removed its share's note", () => {
+    const change: Change = { kind: "set-share-label", id: "share-1", label: "Mine" };
+    expect(
+      rebaseChanges(SAMPLE_TREE, [{ kind: "delete-note", path: ["Welcome"] }], [change]),
+    ).toEqual({ changes: [change], dropped: [] });
+  });
+});
+
 describe("rebaseChanges set-order", () => {
   it("keeps only the positions of items that still exist, without reporting the rest", () => {
     const result = rebaseChanges(

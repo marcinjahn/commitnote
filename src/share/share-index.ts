@@ -326,6 +326,13 @@ export function applyChangeToShares(
       entries.delete(change.id);
       return { writable: true, entries };
     }
+    case "set-share-label": {
+      const existing = index.entries.get(change.id);
+      if (existing === undefined) return index;
+      const entries = new Map(index.entries);
+      entries.set(change.id, { ...existing, label: change.label });
+      return { writable: true, entries };
+    }
     case "update-share": {
       const existing = index.entries.get(change.entry.id);
       if (existing === undefined) return index;

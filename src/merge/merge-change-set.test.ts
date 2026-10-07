@@ -314,6 +314,11 @@ const sharesWith = (...ids: string[]): ShareIndex => ({
     ids.map((id) => [id, shareEntry(id, { state: "active", path: ["n.md"] })]),
   ),
 });
+const setShareLabel = (id = "share-1", label: string | null = "Mine"): Change => ({
+  kind: "set-share-label",
+  id,
+  label,
+});
 const sharedAt = (note: ShareNoteLocation, id = "share-1"): Change => ({
   kind: "add-share",
   entry: shareEntry(id, note),
@@ -1242,6 +1247,59 @@ const cases: MergeCase[] = [
     },
   },
   {
+    name: "drops a set-share-label of a share revoked remotely",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "n.md": "n" } },
+    remoteShares: sharesWith("other"),
+    changeSet: [FILLER, setShareLabel()],
+    check(result) {
+      expect(result.changeSet).toEqual([FILLER]);
+    },
+  },
+  {
+    name: "keeps a set-share-label of a share still present remotely",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "m.md": "m" } },
+    remoteShares: sharesWith("share-1"),
+    changeSet: [FILLER, setShareLabel("share-1", null)],
+    check(result) {
+      expect(result.changeSet).toEqual(this.changeSet);
+    },
+  },
+  {
+    name: "keeps a set-share-label of a share updated remotely",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "n.md": "n" } },
+    remoteShares: {
+      writable: true,
+      entries: new Map([
+        [
+          "share-1",
+          {
+            ...shareEntry("share-1", { state: "active", path: ["n.md"] }),
+            label: "Theirs",
+            linkSecret: "remote-secret",
+            updatedAt: "2026-03-01T00:00:00.000Z",
+          },
+        ],
+      ]),
+    },
+    changeSet: [FILLER, setShareLabel()],
+    check(result) {
+      expect(result.changeSet).toEqual(this.changeSet);
+    },
+  },
+  {
+    name: "keeps a set-share-label of a share added earlier in the same change set",
+    base: { notes: { "n.md": "n" } },
+    remote: { notes: { "n.md": "n", "m.md": "m" } },
+    remoteShares: sharesWith("other"),
+    changeSet: [addShare("n.md"), setShareLabel()],
+    check(result) {
+      expect(result.changeSet).toEqual(this.changeSet);
+    },
+  },
+  {
     name: "passes a set-settings change through unchanged without a notice",
     base: { notes: { "n.md": BASE_TEXT } },
     remote: { notes: { "n.md": THEIRS_TEXT } },
@@ -1304,7 +1362,12 @@ describe("mergeChangeSet", () => {
 
   it("produces no notices or conflicts for shares", async () => {
     for (const mergeCase of cases) {
-      if (!mergeCase.changeSet.some((change) => change.kind.endsWith("-share"))) {
+      if (
+        !mergeCase.changeSet.some(
+          (change) =>
+            change.kind.endsWith("-share") || change.kind === "set-share-label",
+        )
+      ) {
         continue;
       }
       const result = await runCase(mergeCase);

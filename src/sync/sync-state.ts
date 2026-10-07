@@ -72,6 +72,7 @@ function entryPathOf(change: Change): NotePath | null {
     case "purge-trash":
     case "set-settings":
     case "remove-share":
+    case "set-share-label":
       return null;
   }
 }

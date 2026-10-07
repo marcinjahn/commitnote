@@ -275,6 +275,7 @@ describe("encrypted share index", () => {
       { kind: "add-share", entry: entry("a", active("a")) },
       { kind: "update-share", entry: entry("a", active("a")) },
       { kind: "remove-share", id: "a" },
+      { kind: "set-share-label", id: "a", label: "Mine" },
       { kind: "delete-note", path: ["a"] },
     ] satisfies Change[]) {
       expect(applyChangeToShares(unreadable, change)).toBe(unreadable);
@@ -372,6 +373,35 @@ describe("applyChangeToShares", () => {
     expect(applyChangeToShares(removed, { kind: "remove-share", id: "zzz" })).toBe(
       removed,
     );
+  });
+
+  it("sets and clears a label, leaving everything else untouched", () => {
+    const original = entry("a", trashed("e1", "x"), { linkSecret: "kept" });
+    const index = indexOf(original, entry("b", active("y")));
+
+    const labeled = applyChangeToShares(index, {
+      kind: "set-share-label",
+      id: "a",
+      label: "Mine",
+    });
+    const cleared = applyChangeToShares(labeled, {
+      kind: "set-share-label",
+      id: "a",
+      label: null,
+    });
+
+    expect(labeled.entries.get("a")).toEqual({ ...original, label: "Mine" });
+    expect(labeled.entries.get("b")).toBe(index.entries.get("b"));
+    expect(cleared.entries.get("a")).toEqual(original);
+    expect(index.entries.get("a")?.label).toBeNull();
+  });
+
+  it("ignores a label for an unknown share", () => {
+    const index = indexOf(entry("a", active("x")));
+
+    expect(
+      applyChangeToShares(index, { kind: "set-share-label", id: "zzz", label: "Mine" }),
+    ).toBe(index);
   });
 
   it("follows a rename in a folder and a move to another folder", () => {

@@ -287,6 +287,7 @@ export function applyChangeToOrder(
     case "add-share":
     case "update-share":
     case "remove-share":
+    case "set-share-label":
       return index;
     default:
       return assertNever(change);

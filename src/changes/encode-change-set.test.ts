@@ -1408,6 +1408,45 @@ describe("encodeChangeSet: shares", () => {
     expect(result.changes.some((c) => c.path === SHARES_PATH)).toBe(false);
   });
 
+  it("writes the label with a data-free trailer for a set-share-label", async () => {
+    const LABEL = "Link for the auditors";
+    const { keyring, result } = await encode(
+      [{ kind: "set-share-label", id: ID, label: LABEL }],
+      indexOf(entry(ID, activeAlpha)),
+    );
+
+    expect(result.message).toContain("Commitnote-Share: label");
+    for (const secret of [LABEL, NAME, ID, GIST, SECRET, PASSWORD, "Alpha"]) {
+      expect(result.message).not.toContain(secret);
+    }
+    const written = await writtenShares(keyring, result);
+    expect(written?.entries.get(ID)).toEqual(
+      entry(ID, activeAlpha, { label: LABEL }),
+    );
+  });
+
+  it.each<ShareNoteLocation>([
+    { state: "trashed", entryId: "t1", path: [] },
+    { state: "deleted" },
+  ])("accepts a set-share-label for a share whose note is gone: %j", async (note) => {
+    const { keyring, result } = await encode(
+      [{ kind: "set-share-label", id: ID, label: "Mine" }],
+      indexOf(entry(ID, note)),
+    );
+
+    const written = await writtenShares(keyring, result);
+    expect(written?.entries.get(ID)?.label).toBe("Mine");
+  });
+
+  it("writes no files for a set-share-label that keeps the current label", async () => {
+    const { result } = await encode(
+      [{ kind: "set-share-label", id: ID, label: "Mine" }],
+      indexOf(entry(ID, activeAlpha, { label: "Mine" })),
+    );
+
+    expect(result.changes).toEqual([]);
+  });
+
   it("keeps both entries of two add-shares with different ids", async () => {
     const { keyring, result } = await encode([
       { kind: "add-share", entry: entry("a", activeAlpha) },

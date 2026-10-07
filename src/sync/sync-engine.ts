@@ -1474,6 +1474,7 @@ export function createSyncEngine(options: {
       case "add-share":
       case "update-share":
       case "remove-share":
+      case "set-share-label":
         return false;
     }
   }
@@ -1824,6 +1825,7 @@ export function createSyncEngine(options: {
         case "add-share":
         case "update-share":
         case "remove-share":
+        case "set-share-label":
           break;
         default:
           assertNever(change);

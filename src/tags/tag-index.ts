@@ -325,6 +325,7 @@ export function applyChangeToTags(index: TagIndex, change: Change): TagIndex {
     case "add-share":
     case "update-share":
     case "remove-share":
+    case "set-share-label":
       return index;
     default: {
       const unreachable: never = change;

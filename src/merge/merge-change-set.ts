@@ -232,6 +232,7 @@ class ChangeSetMerger {
   private readonly skippedTrash = new Map<string, SkippedTrash>();
   private readonly trashOrigins = new Map<string, NotePath>();
   private readonly emittedEntryIds = new Map<string, string>();
+  private readonly emittedShareIds = new Set<string>();
 
   constructor(private readonly input: MergeChangeSetInput) {
     this.working = new WorkingTree(input.remote);
@@ -298,6 +299,14 @@ class ChangeSetMerger {
       case "update-share":
         if (!this.input.remoteShares.entries.has(change.entry.id)) return;
         return this.addShare(change, true);
+      case "set-share-label":
+        if (
+          !this.input.remoteShares.entries.has(change.id) &&
+          !this.emittedShareIds.has(change.id)
+        ) {
+          return;
+        }
+        return this.emit(change);
       case "set-color-tag":
         return this.setColorTag(change);
       default:
@@ -801,6 +810,7 @@ class ChangeSetMerger {
       this.input.remoteTrash,
     );
     if (requireActive && entry.note.state !== "active") return;
+    if (change.kind === "add-share") this.emittedShareIds.add(entry.id);
     this.emit({ ...change, entry });
   }
 

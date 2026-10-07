@@ -353,6 +353,7 @@ function applyTreeChangeOrThrow(state: MutState, change: Change): void {
     case "add-share":
     case "update-share":
     case "remove-share":
+    case "set-share-label":
       return;
     case "set-color-tag":
       if (findMutNode(root, change.path)?.kind !== "note") invalidChange();
@@ -535,6 +536,7 @@ function touchesPath(change: Change, path: NotePath): boolean {
     case "add-share":
     case "update-share":
     case "remove-share":
+    case "set-share-label":
       return false;
   }
 }
@@ -677,6 +679,7 @@ export function localContentAt(
       case "add-share":
       case "update-share":
       case "remove-share":
+      case "set-share-label":
         break;
       case "trash-note": {
         const key = JSON.stringify(change.path);
@@ -897,6 +900,7 @@ export function rebaseChanges(
       }
       case "set-settings":
       case "remove-share":
+      case "set-share-label":
         kept.push(change);
         break;
       case "add-share":
