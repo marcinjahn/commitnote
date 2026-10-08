@@ -17,6 +17,7 @@ export interface Bounds {
 export interface OutlinedGlyph {
   commands: { command: string; args: number[] }[];
   offset: number;
+  advance: number;
   box: Bounds;
 }
 
@@ -61,12 +62,15 @@ export function outlineRuns(
     const face = instance(font, run.weight, options.opticalSize);
     for (const character of run.text) {
       const glyph = face.glyphForCodePoint(character.codePointAt(0) ?? 0);
+      const advance =
+        glyph.advanceWidth + options.trackingEm * face.unitsPerEm;
       glyphs.push({
         commands: glyph.path.commands,
         offset: pen,
+        advance,
         box: glyph.path.bbox,
       });
-      pen += glyph.advanceWidth + options.trackingEm * face.unitsPerEm;
+      pen += advance;
     }
   }
   const bounds: Bounds = {

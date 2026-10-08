@@ -4,7 +4,7 @@
       media="(prefers-color-scheme: dark)"
       srcset="docs/brand/wordmark-dark.svg"
     />
-    <img src="docs/brand/wordmark-light.svg" alt="commitnote" width="240" />
+    <img src="docs/brand/wordmark-light.svg" alt="commitnote" width="245" />
   </picture>
 </h1>
 
@@ -28,7 +28,7 @@ npm run dev
 
 Then open `http://localhost:5173`.
 
-`npm run generate:brand` regenerates the brand SVGs from the app font: the README wordmark SVGs in `docs/brand/` and the favicon in `src/assets/favicon.svg`.
+`npm run generate:brand` regenerates the brand SVGs from the app font: the README wordmark SVGs in `docs/brand/`, including their animated caret, and the favicon in `src/assets/favicon.svg`.
 
 ### Secure context
 

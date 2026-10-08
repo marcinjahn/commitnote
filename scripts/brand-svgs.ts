@@ -1,4 +1,8 @@
 import type { Font } from "fontkit";
+import { caretTailStops, CARET_TAIL_LENGTH } from "../src/editor/caret-style";
+import { accentOption } from "../src/settings/accent-palette";
+import { caretBlinkCss } from "./caret-blink";
+import { mixOklab } from "./color-mix";
 import {
   lowestOpticalSize,
   outlineRuns,
@@ -12,33 +16,84 @@ const EM = 100;
 const PADDING = 4;
 const TRACKING_EM = -0.022;
 const OPTICAL_SIZE = 20;
+// The app caret is CARET_WIDTH_PX (2 px) wide next to the 20 px topbar wordmark.
+const CARET_WIDTH_EM = 0.1;
+
+// On-screen px per SVG unit, pinned to the README's 240 px rendering of the 539.65-unit caret-less wordmark.
+export const WORDMARK_DISPLAY_SCALE = 240 / 539.65;
+
+export function readmeWordmarkWidth(svgWidth: number): number {
+  return Math.round(svgWidth * WORDMARK_DISPLAY_SCALE);
+}
 
 const WORDMARK_RUNS = [
   { text: "commit", weight: 600 },
   { text: "note", weight: 400 },
 ] as const;
 
-export function buildWordmarkSvg(font: Font, fill: string): string {
+export interface WordmarkColors {
+  text: string;
+  accent: string;
+}
+
+function gradientOffset(value: number): string {
+  return String(Number(value.toFixed(4)));
+}
+
+export function buildWordmarkSvg(font: Font, colors: WordmarkColors): string {
   const outline = outlineRuns(font, WORDMARK_RUNS, {
     trackingEm: TRACKING_EM,
     opticalSize: OPTICAL_SIZE,
   });
   const scale = EM / outline.unitsPerEm;
-  const { bounds } = outline;
-  const width = (bounds.maxX - bounds.minX) * scale + PADDING * 2;
+  const { bounds, glyphs } = outline;
+  const svgX = (fontX: number): number =>
+    (fontX - bounds.minX) * scale + PADDING;
   const height = (bounds.maxY - bounds.minY) * scale + PADDING * 2;
-  const paths = renderPaths(outline, {
+  const pathData = renderPaths(outline, {
     scale,
     left: PADDING,
     top: PADDING,
-  }).map((data) => `    <path d="${data}"/>`);
+  });
 
-  const w = round(width);
+  const tail = glyphs.slice(-CARET_TAIL_LENGTH);
+  const last = tail[tail.length - 1];
+  const boundaries = [
+    ...tail.map((glyph) => glyph.offset),
+    last.offset + last.advance,
+  ];
+  const start = boundaries[0];
+  const end = boundaries[boundaries.length - 1];
+  const mixes = caretTailStops(CARET_TAIL_LENGTH);
+  const stops = boundaries.map(
+    (boundary, i) =>
+      `      <stop offset="${gradientOffset((boundary - start) / (end - start))}" stop-color="${mixOklab(colors.text, colors.accent, mixes[i])}"/>`,
+  );
+
+  const caretX = svgX(end);
+  const caretWidth = CARET_WIDTH_EM * EM;
+  const w = round(caretX + caretWidth + PADDING);
   const h = round(height);
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`,
-    `  <g fill="${fill}">`,
-    ...paths,
+    "  <style>",
+    ...caretBlinkCss(".caret").map((line) => `    ${line}`),
+    "  </style>",
+    "  <defs>",
+    `    <linearGradient id="caret-tail" gradientUnits="userSpaceOnUse" x1="${round(svgX(start))}" y1="0" x2="${round(caretX)}" y2="0">`,
+    ...stops,
+    "    </linearGradient>",
+    "  </defs>",
+    `  <g fill="${colors.text}">`,
+    ...pathData.map((data) => `    <path d="${data}"/>`),
+    "  </g>",
+    '  <g class="caret">',
+    '    <g fill="url(#caret-tail)">',
+    ...pathData
+      .slice(-CARET_TAIL_LENGTH)
+      .map((data) => `      <path d="${data}"/>`),
+    "    </g>",
+    `    <rect x="${round(caretX)}" y="0" width="${round(caretWidth)}" height="${h}" fill="${colors.accent}"/>`,
     "  </g>",
     "</svg>",
     "",
@@ -110,14 +165,24 @@ export interface BrandSvg {
 }
 
 export function buildBrandSvgs(font: Font): BrandSvg[] {
+  const orange = accentOption("orange");
+  if (orange.light === undefined || orange.dark === undefined) {
+    throw new Error("The orange accent needs both light and dark colours");
+  }
   return [
     {
       path: "docs/brand/wordmark-light.svg",
-      contents: buildWordmarkSvg(font, "#0a0a0a"),
+      contents: buildWordmarkSvg(font, {
+        text: "#0a0a0a",
+        accent: orange.light,
+      }),
     },
     {
       path: "docs/brand/wordmark-dark.svg",
-      contents: buildWordmarkSvg(font, "#ededed"),
+      contents: buildWordmarkSvg(font, {
+        text: "#ededed",
+        accent: orange.dark,
+      }),
     },
     {
       path: "src/assets/favicon.svg",
