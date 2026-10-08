@@ -11,7 +11,10 @@ export interface ToastMessage {
     readonly label: string;
     readonly run: () => void;
   };
-  readonly durationMs?: number;
+}
+
+export function isPersistentToast(tone: ToastTone, hasAction: boolean): boolean {
+  return tone === "error" || tone === "warning" || hasAction;
 }
 
 export function noticeTone(notice: EngineNotice): ToastTone {

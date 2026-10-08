@@ -381,6 +381,7 @@
     position: relative;
     flex: 1;
     overflow-y: auto;
+    scroll-padding-bottom: var(--toast-stack-height, 0px);
   }
 
   .tree-container:global([data-drag-state]) {

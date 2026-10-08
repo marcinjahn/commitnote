@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EngineNotice } from "../../sync/sync-engine";
-import { describeNotice, noticeTone, toneLabel } from "./notice-messages";
+import { describeNotice, isPersistentToast, noticeTone, toneLabel } from "./notice-messages";
 
 function merge(notice: Extract<EngineNotice, { kind: "merge" }>["notice"]): EngineNotice {
   return { id: 1, kind: "merge", notice };
@@ -168,5 +168,20 @@ describe("toneLabel", () => {
     expect(toneLabel("info")).toBe("Info");
     expect(toneLabel("warning")).toBe("Warning");
     expect(toneLabel("error")).toBe("Error");
+  });
+});
+
+describe("isPersistentToast", () => {
+  it.each([
+    ["success", false, false],
+    ["info", false, false],
+    ["warning", false, true],
+    ["error", false, true],
+    ["success", true, true],
+    ["info", true, true],
+    ["warning", true, true],
+    ["error", true, true],
+  ] as const)("%s toast, action %s -> persistent %s", (tone, hasAction, expected) => {
+    expect(isPersistentToast(tone, hasAction)).toBe(expected);
   });
 });

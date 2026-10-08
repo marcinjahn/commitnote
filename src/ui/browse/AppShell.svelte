@@ -444,7 +444,6 @@
   );
   let nextMessageId = 0;
   let exporting = $state(false);
-  const UNDO_TOAST_MS = 8_000;
   let reading = $state(false);
   let importDialog = $state<{
     readonly fileName: string;
@@ -969,7 +968,6 @@
       "success",
       describeRestored(version.committedAt, Date.now()),
       {
-        durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
           run: () =>
@@ -1389,7 +1387,6 @@
           "success",
           describeFileDropDone(fileDrop.paths.length, fileDrop.skipped),
           {
-            durationMs: UNDO_TOAST_MS,
             action: { label: "Undo", run: () => undoFileDrop(fileDrop.paths) },
           },
         );
@@ -1799,7 +1796,6 @@
       clearToast("place");
     } else {
       showToast("place", "success", describeMovedTo(name, target.parent), {
-        durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
           run: () =>
@@ -1837,7 +1833,6 @@
       "success",
       direction === "up" ? describeMovedUp(name) : describeMovedDown(name),
       {
-        durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
           run: () => handleUndoPlace(placed, { parent, before: previousBefore }),
@@ -2058,7 +2053,6 @@
     const reopen = affectsOpenNote ? openPath : null;
     if (trashEntryId !== undefined) {
       showToast("trash", "success", describeMovedToTrash(name), {
-        durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
           run: () => handleUndoTrash(trashEntryId, reopen),

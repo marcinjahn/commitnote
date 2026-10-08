@@ -27,6 +27,7 @@ async function showRefreshFailure(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.clock.install();
   await openNotes(page);
 });
 
@@ -129,4 +130,59 @@ test("a toast action keeps clear of the dismiss control", { tag: "@mobile" }, as
 
   expect(undo!.x).toBeGreaterThanOrEqual(text!.x);
   expect(undo!.x + undo!.width).toBeLessThanOrEqual(dismiss!.x);
+});
+
+async function showUndoToast(page: Page) {
+  await openRowMenu(page, "Welcome");
+  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Move to trash", exact: true }).click();
+  const toast = page.getByRole("group", { name: "Success" }).filter({ hasText: "moved to trash" });
+  await expect(toast).toBeVisible();
+  return toast;
+}
+
+test("an error toast stays until dismissed", async ({ page }) => {
+  await showRefreshFailure(page);
+  const toast = page.getByRole("group", { name: "Error" }).filter({ hasText: REFRESH_FAILURE });
+  await expect(toast).toBeVisible();
+
+  await page.clock.runFor(15_000);
+  await expect(toast).toBeVisible();
+
+  await toast.getByRole("button", { name: "Dismiss notice" }).click();
+  await expect(toast).toHaveCount(0);
+});
+
+test("a success toast without an action disappears by itself", async ({ page }) => {
+  await showLinkCopied(page);
+  const toast = page.getByRole("group", { name: "Success" }).filter({ hasText: "Link copied" });
+  await expect(toast).toBeVisible();
+
+  await page.clock.runFor(11_000);
+  await expect(toast).toHaveCount(0);
+});
+
+test("a toast with an action stays until dismissed", async ({ page }) => {
+  const toast = await showUndoToast(page);
+
+  await page.clock.runFor(15_000);
+  await expect(toast).toBeVisible();
+
+  await toast.getByRole("button", { name: "Dismiss notice" }).click();
+  await expect(toast).toHaveCount(0);
+});
+
+test("toasts reserve scroll padding for the tree while shown", async ({ page }) => {
+  const tree = page.locator(".tree-container");
+  const scrollPadding = () => tree.evaluate((el) => parseFloat(getComputedStyle(el).scrollPaddingBottom) || 0);
+  expect(await scrollPadding()).toBe(0);
+
+  await showRefreshFailure(page);
+  const toast = page.getByRole("group", { name: "Error" }).filter({ hasText: REFRESH_FAILURE });
+  await expect(toast).toBeVisible();
+  await expect.poll(scrollPadding).toBeGreaterThan(0);
+
+  await toast.getByRole("button", { name: "Dismiss notice" }).click();
+  await expect(toast).toHaveCount(0);
+  await expect.poll(scrollPadding).toBe(0);
 });

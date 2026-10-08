@@ -3,6 +3,7 @@
   import type { EngineNotice } from "../../sync/sync-engine";
   import {
     describeNotice,
+    isPersistentToast,
     noticeTone,
     toneLabel,
     type ToastMessage,
@@ -31,7 +32,7 @@
     readonly text: string;
     readonly conflict: Extract<EngineNotice, { kind: "conflict" }> | null;
     readonly action: ToastMessage["action"] | undefined;
-    readonly durationMs: number;
+    readonly persistent: boolean;
     readonly dismiss: () => void;
   }
 
@@ -43,7 +44,7 @@
         text: describeNotice(notice),
         conflict: notice.kind === "conflict" ? notice : null,
         action: undefined,
-        durationMs: AUTO_DISMISS_MS,
+        persistent: isPersistentToast(noticeTone(notice), false),
         dismiss: () => onDismiss(notice.id),
       })),
       ...messages.map((message) => ({
@@ -52,7 +53,7 @@
         text: message.text,
         conflict: null,
         action: message.action,
-        durationMs: message.durationMs ?? AUTO_DISMISS_MS,
+        persistent: isPersistentToast(message.tone, message.action !== undefined),
         dismiss: () => onDismissMessage?.(message.id),
       })),
     ].slice(-MAX_VISIBLE),
@@ -63,7 +64,7 @@
   $effect(() => {
     const active = new Map<string, Toast>();
     for (const toast of visible) {
-      if (!pausedKeys.has(toast.key)) active.set(toast.key, toast);
+      if (!toast.persistent && !pausedKeys.has(toast.key)) active.set(toast.key, toast);
     }
     for (const [key, timer] of timers) {
       if (!active.has(key)) {
@@ -78,7 +79,7 @@
         setTimeout(() => {
           timers.delete(key);
           toast.dismiss();
-        }, toast.durationMs),
+        }, AUTO_DISMISS_MS),
       );
     }
   });
@@ -87,6 +88,27 @@
     return () => {
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
+    };
+  });
+
+  let toastsElement = $state<HTMLElement>();
+
+  $effect(() => {
+    const element = toastsElement;
+    const root = document.documentElement;
+    if (element === undefined || visible.length === 0) return;
+    const update = () => {
+      const height = Math.ceil(window.innerHeight - element.getBoundingClientRect().top);
+      root.style.setProperty("--toast-stack-height", `${height}px`);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+      root.style.removeProperty("--toast-stack-height");
     };
   });
 
@@ -121,7 +143,7 @@
   }
 </script>
 
-<div class="toasts" role="status" aria-live="polite">
+<div class="toasts" role="status" aria-live="polite" bind:this={toastsElement}>
   {#each visible as toast (toast.key)}
     <div
       class="toast"
