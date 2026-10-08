@@ -304,7 +304,11 @@ export class MockGitHubRepo {
       if (sha === undefined) {
         return jsonResponse({ message: "Not Found" }, 404);
       }
-      return jsonResponse(this.refShape(branch, sha), 200);
+      const etag = `W/"${sha}"`;
+      if (request.headers.get("if-none-match") === etag) {
+        return new HttpResponse(null, { status: 304, headers: { etag } });
+      }
+      return jsonResponse(this.refShape(branch, sha), 200, { etag });
     }
 
     if (method === "POST" && rest === "/git/refs") {

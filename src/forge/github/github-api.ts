@@ -8,16 +8,28 @@ export async function sendGitHubRequest(
   fetchImpl: typeof fetch,
   accessToken: string,
   pathOrUrl: string,
-  init: { method: string; body?: unknown },
+  init: {
+    method: string;
+    body?: unknown;
+    headers?: Readonly<Record<string, string>>;
+  },
   onResponse?: (response: Response) => void,
 ): Promise<Response> {
   const url = pathOrUrl.startsWith("https://")
     ? pathOrUrl
     : `${API_BASE}${pathOrUrl}`;
-  const response = await sendForgeRequest(fetchImpl, url, accessToken, init, {
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": API_VERSION,
-  });
+  const { headers, ...forgeInit } = init;
+  const response = await sendForgeRequest(
+    fetchImpl,
+    url,
+    accessToken,
+    forgeInit,
+    {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": API_VERSION,
+      ...headers,
+    },
+  );
   onResponse?.(response);
   return response;
 }

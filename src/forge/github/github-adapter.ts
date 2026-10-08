@@ -156,6 +156,7 @@ class GitHubAdapter implements ForgeAdapter {
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
   private readonly blobCache = new Map<string, string>();
+  private headMemo: { etag: string; head: string } | null = null;
   private readonly rateLimit = createRateLimitRecorder({
     remaining: "x-ratelimit-remaining",
     reset: "x-ratelimit-reset",
@@ -183,7 +184,11 @@ class GitHubAdapter implements ForgeAdapter {
 
   private send(
     path: string,
-    init: { method: string; body?: unknown },
+    init: {
+      method: string;
+      body?: unknown;
+      headers?: Readonly<Record<string, string>>;
+    },
   ): Promise<Response> {
     return sendGitHubRequest(
       this.fetchImpl,
@@ -377,9 +382,14 @@ class GitHubAdapter implements ForgeAdapter {
   }
 
   async getHead(): Promise<string> {
+    const memo = this.headMemo;
     const response = await this.send(`/git/ref/heads/${MAIN_BRANCH}`, {
       method: "GET",
+      ...(memo === null ? {} : { headers: { "If-None-Match": memo.etag } }),
     });
+    if (response.status === 304 && memo !== null) {
+      return memo.head;
+    }
     if (response.status === 404 || response.status === 409) {
       throw new ForgeError("NotFound", { status: response.status });
     }
@@ -387,6 +397,8 @@ class GitHubAdapter implements ForgeAdapter {
       throw await this.errorFor(response);
     }
     const body = (await response.json()) as { object: { sha: string } };
+    const etag = response.headers.get("etag");
+    this.headMemo = etag === null ? null : { etag, head: body.object.sha };
     return body.object.sha;
   }
 

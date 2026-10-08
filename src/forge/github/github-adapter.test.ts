@@ -815,3 +815,106 @@ describe("GitHubAdapter", () => {
     });
   });
 });
+
+describe("GitHubAdapter conditional getHead", () => {
+  function captureHeadRequests(): {
+    fetch: typeof fetch;
+    ifNoneMatch: (string | null)[];
+    statuses: number[];
+  } {
+    const ifNoneMatch: (string | null)[] = [];
+    const statuses: number[] = [];
+    const capturingFetch: typeof fetch = async (input, init) => {
+      const isHead = String(input).endsWith(`/git/ref/heads/${MAIN_BRANCH}`);
+      if (isHead) {
+        ifNoneMatch.push(new Headers(init?.headers).get("if-none-match"));
+      }
+      const response = await fetch(input, init);
+      if (isHead) statuses.push(response.status);
+      return response;
+    };
+    return { fetch: capturingFetch, ifNoneMatch, statuses };
+  }
+
+  const HEAD_REF = {
+    method: "GET",
+    pathPattern: /\/git\/ref\/heads\/main$/,
+  };
+
+  it("sends no validator first, then the memoised ETag, and reuses the head on 304", async () => {
+    const mock = useMock();
+    const head = await seedConfig(mock);
+    const { fetch: capturingFetch, ifNoneMatch, statuses } =
+      captureHeadRequests();
+    const { adapter } = makeAdapter({ fetch: capturingFetch });
+
+    expect(await adapter.getHead()).toBe(head);
+    expect(await adapter.getHead()).toBe(head);
+
+    expect(statuses).toEqual([200, 304]);
+    expect(ifNoneMatch[0]).toBeNull();
+    expect(ifNoneMatch[1]).toBe(`W/"${head}"`);
+  });
+
+  it("returns and memoises the new head after main moves", async () => {
+    const mock = useMock();
+    const first = await seedConfig(mock);
+    const { fetch: capturingFetch, ifNoneMatch, statuses } =
+      captureHeadRequests();
+    const { adapter } = makeAdapter({ fetch: capturingFetch });
+    await adapter.getHead();
+
+    const second = await commitFiles(mock.git, {
+      parent: first,
+      files: { "a.md": "a" },
+      message: "second",
+      branch: MAIN_BRANCH,
+    });
+    expect(await adapter.getHead()).toBe(second);
+    expect(await adapter.getHead()).toBe(second);
+
+    expect(statuses).toEqual([200, 200, 304]);
+    expect(ifNoneMatch).toEqual([null, `W/"${first}"`, `W/"${second}"`]);
+  });
+
+  it("keeps the memo across an error response", async () => {
+    const mock = useMock();
+    const head = await seedConfig(mock);
+    const { fetch: capturingFetch, ifNoneMatch } = captureHeadRequests();
+    const { adapter } = makeAdapter({ fetch: capturingFetch });
+    await adapter.getHead();
+
+    mock.failNext(HEAD_REF, { status: 500 });
+    await expect(adapter.getHead()).rejects.toBeDefined();
+    expect(await adapter.getHead()).toBe(head);
+
+    expect(ifNoneMatch).toEqual([null, `W/"${head}"`, `W/"${head}"`]);
+  });
+
+  it("records the rate limit carried by a 304", async () => {
+    const mock = useMock();
+    const head = await seedConfig(mock);
+    const now = 1_000_000;
+    const { adapter } = makeAdapter({
+      fetch: async (input, init) => {
+        const response = await fetch(input, init);
+        if (response.status !== 304) return response;
+        return new Response(null, {
+          status: 304,
+          headers: {
+            "x-ratelimit-remaining": "4321",
+            "x-ratelimit-reset": String(now / 1000),
+          },
+        });
+      },
+    });
+    await adapter.getHead();
+    expect(adapter.observedRateLimit?.() ?? null).toBeNull();
+
+    expect(await adapter.getHead()).toBe(head);
+    expect(adapter.observedRateLimit?.()).toEqual({
+      remaining: 4321,
+      resetAt: now,
+    });
+  });
+});
