@@ -984,7 +984,7 @@ describe("sync engine saves", () => {
     });
   });
 
-  it("keeps the open note through a folder rename and marks it missing after its delete", async () => {
+  it("keeps the open note through a folder rename and marks it trashed after its delete", async () => {
     const h = await setup();
     await h.engine.openNote(IDEAS);
 
@@ -995,10 +995,15 @@ describe("sync engine saves", () => {
       path: moved,
     });
 
-    h.engine.delete(moved);
+    const deleted = h.engine.delete(moved);
+    if (!deleted.ok || deleted.trashEntryId === undefined) {
+      throw new Error("expected the note to go to the trash");
+    }
     expect(h.engine.getState().openNote).toEqual({
-      kind: "missing",
+      kind: "trashed",
       path: moved,
+      entryId: deleted.trashEntryId,
+      entryKind: "note",
     });
     await waitIdle(h.engine);
     const tree = await mainTree(h.fake);

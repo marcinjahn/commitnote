@@ -8,6 +8,7 @@ import {
 } from "./helpers";
 import { enableVimMode } from "./helpers/settings";
 import {
+  moveToTrash,
   openRowMenu,
   openWelcome,
   treeItem,
@@ -295,4 +296,56 @@ test("follows a remote rename plus edit in one commit", async ({
   await refresh(page);
   await expectFollowed(page, "Greetings");
   await expect(editor(page)).toContainText("Renamed and edited.");
+});
+
+const TRASHED_TEXT = "This note was moved to trash.";
+
+test("a remotely trashed open note offers Restore", async ({
+  page,
+  openSecondDevice,
+}) => {
+  await openNotes(page);
+  await openLoadedWelcome(page);
+
+  const other = await openSecondDevice();
+  await openNotes(other.page);
+  await moveToTrash(other.page, "Welcome");
+  await handOverAfterSave(other.page, page);
+
+  await refresh(page);
+  await expect(page.getByText(TRASHED_TEXT)).toBeVisible();
+  await expect(page.getByText("This note no longer exists.")).toHaveCount(0);
+  await expect(page.getByTestId("status-announcer")).toHaveText(
+    "Moved to trash on another device.",
+  );
+  await expect(page.getByRole("alert")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Restore", exact: true }).click();
+  await expect(treeItem(page, "Welcome")).toBeVisible();
+  await expect(page.getByText(TRASHED_TEXT)).toHaveCount(0);
+  await expect(editor(page)).toContainText("This is your");
+});
+
+test("a remotely trashed folder offers Restore folder", async ({
+  page,
+  openSecondDevice,
+}) => {
+  await openNotes(page);
+  await treeItem(page, "Projects").click();
+  await treeItem(page, "commitnote").click();
+  await treeItem(page, "Roadmap").click();
+  await expect(editor(page)).toContainText("Add mobile client");
+
+  const other = await openSecondDevice();
+  await openNotes(other.page);
+  await moveToTrash(other.page, "Projects");
+  await handOverAfterSave(other.page, page);
+
+  await refresh(page);
+  await expect(page.getByText(TRASHED_TEXT)).toBeVisible();
+  await page.getByRole("button", { name: "Restore folder" }).click();
+
+  await expect(treeItem(page, "Projects")).toBeVisible();
+  await expect(page.getByText(TRASHED_TEXT)).toHaveCount(0);
+  await expect(editor(page)).toContainText("Add mobile client");
 });

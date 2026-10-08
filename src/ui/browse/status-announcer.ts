@@ -44,6 +44,8 @@ export function remoteChangeMessage(
       return "Updated on another device.";
     case "remote-relocated":
       return "Moved on another device.";
+    case "remote-trashed":
+      return "Moved to trash on another device.";
   }
 }
 

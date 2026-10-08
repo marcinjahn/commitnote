@@ -208,6 +208,14 @@ test("trash", async ({ page }) => {
   await expectNoA11yViolations(page, "trash");
 });
 
+test("trashed-note", async ({ page }) => {
+  await openNotes(page);
+  await openWelcome(page);
+  await moveToTrash(page, "Welcome");
+  await expect(page.getByText("This note was moved to trash.")).toBeVisible();
+  await expectNoA11yViolations(page, "trashed-note");
+});
+
 test("viewer-password", async ({ page }) => {
   const viewer = await createPasswordLinkViewer(page);
   await expectNoA11yViolations(viewer, "viewer-password");

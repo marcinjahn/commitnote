@@ -1240,7 +1240,7 @@
         current.kind === "note" && notePathEquals(current.path, path);
       const urlStandsForNote =
         current.kind === "draft" ||
-        (previousKind === "missing" && (!isNarrowLayout() || mobileView === "note")) ||
+        ((previousKind === "missing" || previousKind === "trashed") && (!isNarrowLayout() || mobileView === "note")) ||
         (current.kind === "note" &&
           previousPath !== null &&
           notePathEquals(current.path, previousPath));
@@ -1250,7 +1250,7 @@
         urlStandsForNote
       ) {
         navigation.replace({ kind: "note", path });
-      } else if (kind === "missing" && currentIsOpen) {
+      } else if ((kind === "missing" || kind === "trashed") && currentIsOpen) {
         navigation.replace({ kind: "none" });
       }
     });
@@ -1992,7 +1992,7 @@
     const open = engine.getState().openNote;
     if (
       reopen !== null &&
-      open?.kind === "missing" &&
+      (open?.kind === "missing" || open?.kind === "trashed") &&
       notePathEquals(open.path, reopen)
     ) {
       noteSwitch += 1;
@@ -2310,6 +2310,7 @@
           onBack={handleHeaderBack}
           onHistory={() => void openHistory()}
           historyDisabled={engineState.openNote.kind === "missing" ||
+            engineState.openNote.kind === "trashed" ||
             engineState.openNote.kind === "failed"}
           colorTag={openTreeNote?.colorTag ?? null}
           shared={openTreeNote?.shared ?? false}
@@ -2336,6 +2337,7 @@
       hasNotes={tree !== null && tree.root.children.length > 0}
       onDraftContent={handleDraftContent}
       onNewNote={handleHeaderNewNote}
+      onRestoreTrashed={(entryId, reopen) => handleUndoTrash(entryId, reopen)}
       noteFont={settings.noteFont}
       animatedCaret={settings.animatedCaret}
       vimMode={settings.vimMode}

@@ -142,6 +142,18 @@ describe("remote change announcements", () => {
     expect(result.state.announcedNoticeId).toBe(4);
   });
 
+  it("announces a remote trash politely", () => {
+    const trashed: EngineNotice = {
+      id: 5,
+      kind: "remote-trashed",
+      path: ["a"],
+      entryId: "20260930T120000Z-1-aaaaaaaa",
+    };
+    const result = step(INITIAL_ANNOUNCER_STATE, null, true, false, [trashed]);
+    expect(result.message).toBe("Moved to trash on another device.");
+    expect(result.state.announcedNoticeId).toBe(5);
+  });
+
   it("announces a notice only once", () => {
     const first = step(INITIAL_ANNOUNCER_STATE, null, true, false, [updated(0)]);
     const second = step(first.state, null, true, false, [updated(0)]);

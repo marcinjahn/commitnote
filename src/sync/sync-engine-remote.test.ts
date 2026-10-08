@@ -4,7 +4,13 @@ import type { Keyring } from "../crypto/keyring";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { createSyncEngine, type SyncEngine } from "./sync-engine";
+import { TRASH_RETENTION_MS } from "../format/v1";
+import { createTrashEntryId } from "../trash/trash-entry-id";
+import {
+  createSyncEngine,
+  isRemoteChangeNotice,
+  type SyncEngine,
+} from "./sync-engine";
 import { IDEAS, WELCOME, pushRemote, settle } from "./testing/engine-harness";
 import { createTestClock } from "./testing/test-clock";
 
@@ -19,9 +25,11 @@ interface Harness {
   readonly engine: SyncEngine;
 }
 
+const START = Date.UTC(2026, 8, 30, 12, 0, 0);
+
 async function openAt(path: NotePath): Promise<Harness> {
   const fake = await createSampleNotesRepoAdapter();
-  const clock = createTestClock(1_000_000);
+  const clock = createTestClock(START);
   const engine = createSyncEngine({ adapter: fake, keyring, clock });
   await engine.refresh();
   await engine.openNote(path);
@@ -35,12 +43,7 @@ function loadedContent(engine: SyncEngine): string {
 }
 
 function remoteNotices(engine: SyncEngine) {
-  return engine
-    .getState()
-    .notices.filter(
-      (notice) =>
-        notice.kind === "remote-relocated" || notice.kind === "remote-updated",
-    );
+  return engine.getState().notices.filter(isRemoteChangeNotice);
 }
 
 describe("following a remote relocation of the open note", () => {
@@ -150,5 +153,78 @@ describe("following a remote relocation of the open note", () => {
         .getState()
         .notices.filter((notice) => notice.kind === "remote-relocated"),
     ).toEqual([]);
+  });
+});
+
+describe("trashing the open note", () => {
+  it("marks the open note trashed with a notice when another device trashes it", async () => {
+    const h = await openAt(WELCOME);
+    const entryId = createTrashEntryId(START, 1);
+
+    await pushRemote(h.fake, [{ kind: "trash-note", path: WELCOME, entryId }]);
+    await h.engine.refresh();
+
+    expect(h.engine.getState().openNote).toEqual({
+      kind: "trashed",
+      path: WELCOME,
+      entryId,
+      entryKind: "note",
+    });
+    expect(remoteNotices(h.engine)).toMatchObject([
+      { kind: "remote-trashed", path: WELCOME, entryId },
+    ]);
+  });
+
+  it("marks the open note trashed inside a folder another device trashed", async () => {
+    const h = await openAt(IDEAS);
+    const entryId = createTrashEntryId(START, 1);
+
+    await pushRemote(h.fake, [
+      { kind: "trash-folder", path: ["Projects"], entryId },
+    ]);
+    await h.engine.refresh();
+
+    expect(h.engine.getState().openNote).toEqual({
+      kind: "trashed",
+      path: IDEAS,
+      entryId,
+      entryKind: "folder",
+    });
+    expect(remoteNotices(h.engine)).toMatchObject([
+      { kind: "remote-trashed", path: IDEAS, entryId },
+    ]);
+  });
+
+  it("marks a locally trashed open note trashed without a remote notice", async () => {
+    const h = await openAt(WELCOME);
+
+    const deleted = h.engine.delete(WELCOME);
+    if (!deleted.ok || deleted.trashEntryId === undefined) {
+      throw new Error("expected the note to go to the trash");
+    }
+    await settle(h.engine);
+    await h.engine.refresh();
+
+    expect(h.engine.getState().openNote).toEqual({
+      kind: "trashed",
+      path: WELCOME,
+      entryId: deleted.trashEntryId,
+      entryKind: "note",
+    });
+    expect(remoteNotices(h.engine)).toEqual([]);
+  });
+
+  it("leaves the open note missing when its trash entry is already expired", async () => {
+    const h = await openAt(WELCOME);
+    const entryId = createTrashEntryId(START - TRASH_RETENTION_MS - 1000, 1);
+
+    await pushRemote(h.fake, [{ kind: "trash-note", path: WELCOME, entryId }]);
+    await h.engine.refresh();
+
+    expect(h.engine.getState().openNote).toEqual({
+      kind: "missing",
+      path: WELCOME,
+    });
+    expect(remoteNotices(h.engine)).toEqual([]);
   });
 });

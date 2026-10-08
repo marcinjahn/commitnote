@@ -90,6 +90,7 @@ import {
 import {
   findTrashItem,
   findWorkingTrashEntry,
+  findWorkingTrashedLocation,
   visibleTrashEntries,
   type ReadableWorkingTrashEntry,
   type WorkingTrashEntry,
@@ -145,6 +146,12 @@ export type OpenNoteState =
     }
   | { readonly kind: "missing"; readonly path: NotePath }
   | {
+      readonly kind: "trashed";
+      readonly path: NotePath;
+      readonly entryId: string;
+      readonly entryKind: "note" | "folder";
+    }
+  | {
       readonly kind: "failed";
       readonly path: NotePath;
       readonly error: SyncError;
@@ -191,13 +198,18 @@ type NoticeBody =
       readonly kind: "remote-relocated";
       readonly from: NotePath;
       readonly to: NotePath;
+    }
+  | {
+      readonly kind: "remote-trashed";
+      readonly path: NotePath;
+      readonly entryId: string;
     };
 
 export type EngineNotice = NoticeBody & { readonly id: number };
 
 export type RemoteChangeNotice = Extract<
   EngineNotice,
-  { kind: "remote-updated" | "remote-relocated" }
+  { kind: "remote-updated" | "remote-relocated" | "remote-trashed" }
 >;
 
 export function isRemoteChangeNotice(
@@ -206,6 +218,7 @@ export function isRemoteChangeNotice(
   switch (notice.kind) {
     case "remote-updated":
     case "remote-relocated":
+    case "remote-trashed":
       return true;
     default:
       return false;
@@ -813,13 +826,26 @@ export function createSyncEngine(options: {
   type NoteResolution =
     | { readonly kind: "local"; readonly content: string }
     | { readonly kind: "blob"; readonly blobSha: string }
+    | {
+        readonly kind: "trashed";
+        readonly entryId: string;
+        readonly entryKind: "note" | "folder";
+      }
     | { readonly kind: "missing" };
 
   function resolveWorkingNote(path: NotePath): NoteResolution {
     const { synced, workingTree } = state;
     if (synced === null || workingTree === null) return { kind: "missing" };
     const node = findWorkingNode(workingTree, path);
-    if (node?.kind !== "note") return { kind: "missing" };
+    if (node?.kind !== "note") {
+      const trashed = findWorkingTrashedLocation(
+        visibleTrashEntries(state.trash ?? [], clock.now()),
+        path,
+      );
+      return trashed === null
+        ? { kind: "missing" }
+        : { kind: "trashed", ...trashed };
+    }
 
     const conflict = conflictAt(path);
     if (conflict !== undefined && conflict.editing !== null) {
@@ -847,6 +873,13 @@ export function createSyncEngine(options: {
     switch (resolution.kind) {
       case "missing":
         return { kind: "missing", path };
+      case "trashed":
+        return {
+          kind: "trashed",
+          path,
+          entryId: resolution.entryId,
+          entryKind: resolution.entryKind,
+        };
       case "local":
         return {
           kind: "loaded",
@@ -915,6 +948,15 @@ export function createSyncEngine(options: {
     switch (resolution.kind) {
       case "missing":
         if (current.kind !== "missing") {
+          applyOpenNoteResult(epoch, openNoteFor(path, resolution));
+        }
+        return;
+      case "trashed":
+        if (
+          current.kind !== "trashed" ||
+          current.entryId !== resolution.entryId ||
+          current.entryKind !== resolution.entryKind
+        ) {
           applyOpenNoteResult(epoch, openNoteFor(path, resolution));
         }
         return;
@@ -1003,7 +1045,13 @@ export function createSyncEngine(options: {
   function followDelete(deleted: NotePath): void {
     const current = state.openNote;
     if (current === null || !isAtOrWithin(current.path, deleted)) return;
-    replaceOpenNote({ kind: "missing", path: current.path });
+    const resolution = resolveWorkingNote(current.path);
+    replaceOpenNote(
+      openNoteFor(
+        current.path,
+        resolution.kind === "trashed" ? resolution : { kind: "missing" },
+      ),
+    );
   }
 
   function appendRebased(change: Change): void {
@@ -1764,6 +1812,17 @@ export function createSyncEngine(options: {
               { kind: "remote-updated", path: after.path },
             ]),
           }));
+        } else if (
+          appliedFrom?.kind === "loaded" &&
+          after?.kind === "trashed" &&
+          notePathEquals(appliedFrom.path, after.path)
+        ) {
+          update((current) => ({
+            ...current,
+            notices: notices(current.notices, [
+              { kind: "remote-trashed", path: after.path, entryId: after.entryId },
+            ]),
+          }));
         }
       }
 
@@ -1865,7 +1924,9 @@ export function createSyncEngine(options: {
           continue;
         }
         const resolution = resolveWorkingNote(child.path);
-        if (resolution.kind === "missing") continue;
+        if (resolution.kind === "missing" || resolution.kind === "trashed") {
+          continue;
+        }
         sources.push({
           path: child.path,
           name: child.name,
