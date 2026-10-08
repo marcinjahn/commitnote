@@ -1,0 +1,241 @@
+import type { Locator, Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
+import { TouchFinger, openNotes, showTree } from "./helpers";
+import { treeItem } from "./helpers/tree";
+
+const SEARCH_REPO = "https://github.com/sample/search";
+const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
+
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(SAMPLE_TRASH_NOW);
+  await openNotes(page, { repo: SEARCH_REPO });
+});
+
+function palette(page: Page): Locator {
+  return page.getByRole("dialog", { name: "Search notes" });
+}
+
+function searchInput(page: Page): Locator {
+  return palette(page).getByRole("combobox", { name: "Search notes" });
+}
+
+function results(page: Page): Locator {
+  return palette(page).getByRole("listbox", { name: "Search results" });
+}
+
+function group(page: Page, heading: string): Locator {
+  return results(page).getByRole("group", { name: heading, exact: true });
+}
+
+async function openPalette(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Search notes" }).click();
+  await expect(searchInput(page)).toBeFocused();
+}
+
+async function search(page: Page, query: string): Promise<void> {
+  await searchInput(page).fill(query);
+}
+
+async function expectEditorFocused(page: Page): Promise<void> {
+  await expect(page.locator(".cm-content")).toBeFocused();
+}
+
+test("titles are found by name, folder and folded text, and opening one reveals it", async ({
+  page,
+}) => {
+  await openPalette(page);
+
+  await search(page, "road");
+  const titles = group(page, "Titles");
+  const roadmap = titles.getByRole("option").first();
+  await expect(roadmap).toContainText("Roadmap");
+  await expect(roadmap.locator(".option-name mark")).toHaveText("Road");
+  await expect(roadmap.locator(".option-folder")).toHaveText(
+    "Projects / commitnote",
+  );
+  await expect(roadmap).toContainText("Blue tag");
+  await expect(results(page).getByText("Old roadmap")).toHaveCount(0);
+
+  await search(page, "proj road");
+  await expect(titles.getByRole("option").first()).toContainText("Roadmap");
+
+  await search(page, "zazolc");
+  await expect(
+    titles.getByRole("option", { name: /Zażółć gęślą jaźń/ }),
+  ).toBeVisible();
+
+  await search(page, "road");
+  await expect(group(page, "Contents")).toBeVisible();
+  const options = results(page).getByRole("option");
+  await expect(options).not.toHaveCount(1);
+  await expect(options.first()).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowUp");
+  await expect(options.last()).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowDown");
+  await expect(options.first()).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowDown");
+  await expect(options.nth(1)).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowUp");
+  await expect(options.first()).toContainText("Roadmap");
+
+  await page.keyboard.press("Enter");
+  await expect(palette(page)).toHaveCount(0);
+  await expect(treeItem(page, "Roadmap")).toBeVisible();
+  await expect(treeItem(page, "Roadmap")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+    "Roadmap",
+  );
+  await expectEditorFocused(page);
+});
+
+test("shortcuts toggle the palette from the editor and return focus on close", async ({
+  page,
+}) => {
+  await treeItem(page, "Welcome").click();
+  await page.locator(".cm-content").click();
+  await expectEditorFocused(page);
+
+  await page.keyboard.press("Control+K");
+  await expect(palette(page)).toBeVisible();
+  await expect(searchInput(page)).toBeFocused();
+
+  await page.keyboard.press("Control+K");
+  await expect(palette(page)).toHaveCount(0);
+
+  await page.keyboard.press("Control+K");
+  await expect(searchInput(page)).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(palette(page)).toHaveCount(0);
+  await expectEditorFocused(page);
+
+  await treeItem(page, "Reading list").click();
+  await treeItem(page, "Welcome").focus();
+  await page.keyboard.press("/");
+  await expect(searchInput(page)).toBeFocused();
+  await expect(searchInput(page)).toHaveValue("");
+});
+
+test("contents are searched with snippets, ignore the trash and include unsaved edits", async ({
+  page,
+}) => {
+  await openPalette(page);
+
+  await search(page, "lighthouse");
+  const contents = group(page, "Contents");
+  await expect(contents).toBeVisible();
+  const rows = contents.getByRole("option");
+  await expect(rows).toHaveCount(5);
+  for (const name of [
+    "February",
+    "January",
+    "Lisbon",
+    "Reading list",
+    "Welcome",
+  ]) {
+    await expect(
+      rows.filter({ has: page.locator(".option-name", { hasText: name }) }),
+    ).toHaveCount(1);
+  }
+  await expect(results(page).getByRole("group", { name: "Titles" })).toHaveCount(
+    0,
+  );
+  for (const row of await rows.all()) {
+    await expect(row.locator(".option-snippet mark").first()).toBeVisible();
+  }
+
+  await search(page, "kingfisher");
+  await expect(rows).toHaveCount(1);
+  const snippet = rows.first().locator(".option-snippet");
+  await expect(rows.first()).toContainText("Meeting minutes");
+  await expect(snippet).toHaveText(/^….*kingfisher.*…$/s);
+
+  await search(page, "quasar");
+  await expect(page.getByText("No notes match “quasar”")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(palette(page)).toHaveCount(0);
+
+  await treeItem(page, "Welcome").click();
+  await page.locator(".cm-content").click();
+  await page.keyboard.type("zebracorn");
+  await page.keyboard.press("Control+K");
+  await search(page, "zebracorn");
+  await expect(group(page, "Contents")).toBeVisible();
+  await expect(
+    group(page, "Contents")
+      .getByRole("option")
+      .filter({ has: page.locator(".option-name", { hasText: "Welcome" }) }),
+  ).toHaveCount(1);
+});
+
+test.describe("while notes are still being read", () => {
+  test.use({ forgeLatency: "github" });
+
+  test("the palette shows indexing progress and a partial contents section until done", async ({
+    page,
+  }) => {
+    await openPalette(page);
+    await search(page, "lighthouse");
+
+    const status = palette(page).locator(".search-status-text");
+    await expect(status).toHaveText(
+      /Reading notes for content search… \d+ of 13/,
+    );
+    await expect(
+      results(page).getByRole("group", { name: "Contents (partial)" }),
+    ).toBeVisible();
+
+    await expect(status).toHaveCount(0);
+    await expect(
+      results(page).getByRole("group", { name: "Contents", exact: true }),
+    ).toBeVisible();
+    await expect(
+      results(page).getByRole("group", { name: "Contents (partial)" }),
+    ).toHaveCount(0);
+  });
+});
+
+test("the palette is a full-screen sheet that opens a result and closes by swipe", {
+  tag: "@mobile-only",
+}, async ({ page }) => {
+  await page.getByRole("button", { name: "Search notes" }).tap();
+  const dialog = palette(page);
+  await expect(searchInput(page)).toBeFocused();
+  const viewport = page.viewportSize()!;
+  await expect
+    .poll(async () => {
+      const box = await dialog.locator(".dialog-card").boundingBox();
+      return box === null
+        ? null
+        : [box.x, box.y, box.width, box.height].map(Math.round);
+    })
+    .toEqual([0, 0, viewport.width, viewport.height]);
+
+  await search(page, "pierogi");
+  await results(page).getByRole("option", { name: /Pierogi/ }).tap();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+    "Pierogi",
+  );
+  await expect(treeItem(page, "Pierogi")).toBeHidden();
+
+  await showTree(page);
+  await page.getByRole("button", { name: "Search notes" }).tap();
+  await expect(dialog).toBeVisible();
+  const header = (await dialog.locator(".dialog-header").boundingBox())!;
+  const title = (await dialog.locator(".dialog-title").boundingBox())!;
+  const card = (await dialog.locator(".dialog-card").boundingBox())!;
+  const grab = {
+    x: title.x + title.width + 24,
+    y: header.y + header.height / 2,
+  };
+  const finger = await TouchFinger.on(page);
+  await finger.down(grab);
+  await finger.move({ x: grab.x, y: grab.y + card.height * 0.6 }, 20);
+  finger.hold(150);
+  await finger.up();
+  await expect(dialog).toHaveCount(0);
+});

@@ -62,6 +62,15 @@
   import ChangePassphraseDialog from "../passphrase/ChangePassphraseDialog.svelte";
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
   import { actionIcons, commandIcons } from "./action-icons";
+  import type { ContentIndexer } from "../../search/content-indexer";
+  import SearchPalette from "../search/SearchPalette.svelte";
+  import SearchTrigger from "../search/SearchTrigger.svelte";
+  import {
+    classifySearchShortcut,
+    isApplePlatform,
+    isEditableTarget,
+  } from "../search/search-shortcuts";
+  import { dialogStack } from "../dialogs/dialog-stack";
   import CommandMenu from "./CommandMenu.svelte";
   import CommitSha from "./CommitSha.svelte";
   import { countDescendants } from "../dialogs/folder-options";
@@ -94,10 +103,9 @@
   } from "../share/share-messages";
   import type { ShareService } from "../../share/share-service";
   import {
-    sharesIn,
+    sharesWithin,
     sharesOfNote,
     type ShareEntry,
-    type ShareScope,
   } from "../../share/share-index";
   import { sharedVersionShas } from "../../history/shared-versions";
   import { formatShareLink, shareLinkBase } from "../../share/share-link";
@@ -107,7 +115,6 @@
     describeEmptyTrash,
     describeMovedToTrash,
     describeRevokeFailed,
-    describeSharesRevokedOnDelete,
     describeUndoError,
   } from "../trash/trash-messages";
   import type { ReadableWorkingTrashEntry } from "../../sync/working-trash";
@@ -120,6 +127,7 @@
     DESKTOP_MEDIA_QUERY,
     DRAG_EASING,
     DRAG_MOTION_MS,
+    isNarrowLayout,
     prefersReducedMotion,
   } from "./drag-motion";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
@@ -127,6 +135,7 @@
   interface Props {
     engine: SyncEngine;
     settingsSaver: SettingsSaver;
+    contentIndexer: ContentIndexer;
     repoLabel: string;
     repoUrl: string;
     forgeName: string;
@@ -151,6 +160,7 @@
   const {
     engine,
     settingsSaver,
+    contentIndexer,
     repoLabel,
     repoUrl,
     forgeName,
@@ -223,12 +233,8 @@
         readonly node: WorkingNode;
         readonly error: string | null;
       }
-    | {
-        readonly kind: "deleteEntry";
-        readonly entry: ReadableWorkingTrashEntry;
-        readonly revoking: boolean;
-      }
-    | { readonly kind: "empty"; readonly revoking: boolean };
+    | { readonly kind: "deleteEntry"; readonly entry: ReadableWorkingTrashEntry }
+    | { readonly kind: "empty" };
 
   const linkBase = shareLinkBase(location);
   let sharedLinksOpen = $state(false);
@@ -293,6 +299,42 @@
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
   let settingsOpen = $state(false);
+  let searchOpen = $state(false);
+  let searchReturnFocus: HTMLElement | null = null;
+  const applePlatform = isApplePlatform(navigator.userAgent);
+
+  function openSearch(): void {
+    searchReturnFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    searchOpen = true;
+  }
+
+  async function closeSearch(): Promise<void> {
+    searchOpen = false;
+    await tick();
+    if (searchReturnFocus?.isConnected) searchReturnFocus.focus();
+  }
+
+  async function openSearchResult(path: NotePath): Promise<void> {
+    searchOpen = false;
+    if (path.length > 1) expandFolder(parentPath(path));
+    await handleSelect(path);
+    await tick();
+    if (!isNarrowLayout()) notePane?.focusEditor();
+  }
+
+  function handleSearchShortcut(event: KeyboardEvent): void {
+    const action = classifySearchShortcut(event, {
+      apple: applePlatform,
+      paletteOpen: searchOpen,
+      otherDialogOpen: !searchOpen && dialogStack.top() !== null,
+      editableTarget: isEditableTarget(event.target),
+    });
+    if (action === null) return;
+    event.preventDefault();
+    if (action === "open") openSearch();
+    else void closeSearch();
+  }
   let historyDialog = $state<{
     readonly path: NotePath;
     readonly phase: HistoryPhase;
@@ -1126,7 +1168,7 @@
           kind: "delete",
           node,
           itemCount: node.kind === "folder" ? countDescendants(node) : 0,
-          shareCount: shareCountIn({ kind: "within", path: node.path }),
+          shareCount: shareCountWithin(node.path),
           revoking: false,
           error: null,
         };
@@ -1316,56 +1358,15 @@
     closeTrashDialog();
   }
 
-  function shareCountIn(scope: ShareScope): number {
+  function shareCountWithin(path: NotePath): number {
     const shares = engine.getState().shares;
-    return shares === null ? 0 : sharesIn(shares, scope).length;
+    return shares === null ? 0 : sharesWithin(shares, path).length;
   }
 
-  function withShareRevocation(body: string, state: TrashDialogState): string {
-    const scope = trashDeleteScope(state);
-    if (scope === null || engineState.shares === null) return body;
-    const count = sharesIn(engineState.shares, scope).length;
-    return count === 0 ? body : `${body} ${describeSharesRevokedOnDelete(count)}`;
-  }
-
-  function trashDeleteScope(state: TrashDialogState): ShareScope | null {
-    if (state.kind === "deleteEntry") {
-      return { kind: "trashed", entryIds: [state.entry.id] };
-    }
-    return state.kind === "empty" ? { kind: "trashed", entryIds: "all" } : null;
-  }
-
-  async function handleTrashDeleteConfirm(): Promise<void> {
-    const current = trashDialog;
-    const scope = trashDeleteScope(current);
-    if (scope === null || current.kind === "none" || current.kind === "restore") {
-      return;
-    }
-    if (current.revoking) return;
-    if (shareCountIn(scope) > 0) {
-      trashDialog = { ...current, revoking: true };
-      const result = await shareService.revokeShares(scope);
-      if (trashDialog.kind === current.kind) {
-        trashDialog = { ...trashDialog, revoking: false };
-      }
-      if (!result.ok) {
-        closeTrashDialog();
-        showToast(
-          "share",
-          "error",
-          describeRevokeFailed(
-            messageText(describeShareError(result.error, forgeId)),
-            result.revoked,
-            "delete",
-          ),
-        );
-        return;
-      }
-      if (shareCountIn(scope) > 0) return;
-    }
-    if (current.kind === "deleteEntry") {
-      engine.deleteFromTrash([current.entry.id]);
-    } else {
+  function handleTrashDeleteConfirm(): void {
+    if (trashDialog.kind === "deleteEntry") {
+      engine.deleteFromTrash([trashDialog.entry.id]);
+    } else if (trashDialog.kind === "empty") {
       engine.emptyTrash();
     }
     closeTrashDialog();
@@ -1399,8 +1400,7 @@
     if (dialog.kind !== "delete" || dialog.revoking) return;
     const current = dialog;
     const path = current.node.path;
-    const scope: ShareScope = { kind: "within", path };
-    const shareCount = shareCountIn(scope);
+    const shareCount = shareCountWithin(path);
     if (shareCount > 0) {
       if (current.shareCount === 0) {
         dialog = { ...current, shareCount };
@@ -1415,11 +1415,11 @@
         return;
       }
       dialog = { ...current, shareCount, revoking: true, error: null };
-      const result = await shareService.revokeShares(scope);
+      const result = await shareService.revokeShares(path);
       if (dialog.kind !== "delete" || !notePathEquals(dialog.node.path, path)) {
         return;
       }
-      const remaining = shareCountIn(scope);
+      const remaining = shareCountWithin(path);
       if (!result.ok) {
         dialog = {
           ...dialog,
@@ -1428,7 +1428,6 @@
           error: describeRevokeFailed(
             messageText(describeShareError(result.error, forgeId)),
             result.revoked,
-            "trash",
           ),
         };
         return;
@@ -1471,6 +1470,8 @@
   }
 </script>
 
+<svelte:window onkeydowncapture={handleSearchShortcut} />
+
 <div class="shell">
   <aside class="sidebar" class:mobile-hidden={mobileView !== "tree"}>
     <div class="tree-header">
@@ -1506,6 +1507,7 @@
         <CommandMenu {commands} />
       </div>
     </div>
+    <SearchTrigger onOpen={openSearch} />
     {#if tree === null && engineState.refresh.lastError !== null}
       <p role="alert" class="alert-error">
         {describeSyncError(engineState.refresh.lastError, forgeName)}
@@ -1738,6 +1740,15 @@
   />
 {/if}
 
+{#if searchOpen}
+  <SearchPalette
+    indexer={contentIndexer}
+    {forgeName}
+    onOpen={openSearchResult}
+    onClose={closeSearch}
+  />
+{/if}
+
 {#if settingsOpen}
   <SettingsDialog
     {settings}
@@ -1850,12 +1861,8 @@
   now={trashNow}
   onRestore={(entry, node) =>
     (trashDialog = { kind: "restore", entry, node, error: null })}
-  trashedShareCount={engineState.shares === null
-    ? 0
-    : sharesIn(engineState.shares, { kind: "trashed", entryIds: "all" }).length}
-  onDelete={(entry) =>
-    (trashDialog = { kind: "deleteEntry", entry, revoking: false })}
-  onEmpty={() => (trashDialog = { kind: "empty", revoking: false })}
+  onDelete={(entry) => (trashDialog = { kind: "deleteEntry", entry })}
+  onEmpty={() => (trashDialog = { kind: "empty" })}
   onClose={() => (trashOpen = false)}
 />
 
@@ -1873,19 +1880,17 @@
 {:else if trashDialog.kind === "deleteEntry"}
   <ConfirmDialog
     title="Delete permanently?"
-    body={withShareRevocation("This can't be undone.", trashDialog)}
+    body="This can't be undone."
     confirmLabel="Delete permanently"
-    busyLabel={trashDialog.revoking ? "Revoking links…" : null}
-    onConfirm={() => void handleTrashDeleteConfirm()}
+    onConfirm={handleTrashDeleteConfirm}
     onClose={closeTrashDialog}
   />
 {:else if trashDialog.kind === "empty"}
   <ConfirmDialog
     title="Empty trash?"
-    body={withShareRevocation(describeEmptyTrash(trashEntries.length), trashDialog)}
+    body={describeEmptyTrash(trashEntries.length)}
     confirmLabel="Empty trash"
-    busyLabel={trashDialog.revoking ? "Revoking links…" : null}
-    onConfirm={() => void handleTrashDeleteConfirm()}
+    onConfirm={handleTrashDeleteConfirm}
     onClose={closeTrashDialog}
   />
 {/if}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ShareEntry, ShareNoteLocation } from "../../share/share-index";
+import type { ShareEntry } from "../../share/share-index";
 import { shareMenuIcons } from "../browse/action-icons";
 import { shareMenuItems, type ShareMenuContext } from "./share-menu";
 
@@ -43,15 +43,6 @@ describe("shareMenuItems", () => {
     const items = shareMenuItems(entry({ password: null }), CONTEXT);
 
     expect(find(items, "copy-password")).toBeUndefined();
-  });
-
-  it.each<[string, ShareNoteLocation]>([
-    ["trashed", { state: "trashed", entryId: "e1", path: ["Alpha"] }],
-    ["deleted", { state: "deleted" }],
-  ])("omits Update for a %s note", (_name, note) => {
-    const items = shareMenuItems(entry({ note }), CONTEXT);
-
-    expect(find(items, "update")).toBeUndefined();
   });
 
   it("enables Update when writable and idle", () => {

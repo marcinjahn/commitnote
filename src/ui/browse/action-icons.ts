@@ -77,3 +77,8 @@ export const noteIcons = {
   ],
   tag: ["M2.5 2.5h5.3l6.2 6.2-5.3 5.3-6.2-6.2z", "M5.25 5.25h.01"],
 } as const;
+
+export const searchIcon = [
+  "M7 2.25a4.75 4.75 0 1 0 0 9.5a4.75 4.75 0 1 0 0-9.5z",
+  "M10.5 10.5l3.25 3.25",
+] as const;

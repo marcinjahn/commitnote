@@ -10,7 +10,6 @@ import {
   openNotes,
 } from "./helpers";
 import {
-  moveToTrash,
   openHistory,
   openTrash,
   openWelcome,
@@ -223,7 +222,6 @@ test("trashing a shared note warns, and revokes its links only when confirmed @m
   await expectRevoked(page, second);
 
   const trash = await openTrash(page);
-  await expect(trash.getByTestId("trash-shared-notice")).toHaveCount(0);
   await restoreTo(page, "Welcome", "Notes (top level)");
   await expect(trash).toHaveCount(0);
   await expect(treeItem(page, "Welcome")).not.toHaveAccessibleDescription(/Shared/);
@@ -274,46 +272,6 @@ test("a failed revocation keeps the note and its remaining links", async ({ page
   const viewer = await openViewer(page, link);
   await expect(viewer.getByText(NOTE_TEXT)).toBeVisible();
   await viewer.close();
-});
-
-test("a note trashed on another device keeps its link until deleted from the trash", async ({
-  page,
-  openSecondDevice,
-}) => {
-  await openNotes(page);
-  const second = await openSecondDevice();
-  await logIn(second.page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
-  await expectTree(second.page);
-
-  await shareFromRowMenu(page);
-  await waitForSynced(page);
-
-  await fakeForge(second.page).failNext("commit", "Network");
-  await moveToTrash(second.page, "Welcome");
-  await handOverRepo(page, second.page);
-
-  const list = await openSharedLinks(second.page);
-  await expect(list.getByTestId("share-item")).toContainText("In trash", {
-    timeout: 15_000,
-  });
-  await closeSharedLinks(list);
-
-  const trash = await openTrash(second.page);
-  await expect(trash.getByTestId("trash-shared-notice")).toContainText(
-    "1 active share link still points to a note in the trash.",
-  );
-  await second.page
-    .getByRole("button", { name: "Delete Welcome permanently", exact: true })
-    .click();
-  const confirm = second.page.getByRole("dialog", { name: "Delete permanently?" });
-  await expect(confirm).toContainText(
-    "1 active share link to a note in the trash will be revoked too.",
-  );
-  await confirm.getByRole("button", { name: "Delete permanently", exact: true }).click();
-  await expect(confirm).toHaveCount(0);
-
-  const after = await openSharedLinks(second.page);
-  await expect(after.getByTestId("share-item")).toHaveCount(0);
 });
 
 test("the history Shared badge follows the shared version through update and revoke", async ({

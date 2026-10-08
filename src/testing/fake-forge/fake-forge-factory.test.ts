@@ -93,6 +93,20 @@ describe("createFakeForge", () => {
     expect(inspection.main.repoConfigText).not.toBeNull();
   });
 
+  it("sample/search is populated, writable and holds a repo config", async () => {
+    const factory = (await createFakeForge()).factory;
+    const adapter = factory(coordinatesFor("sample/search"), {
+      accessToken: TOKEN,
+    });
+
+    const inspection = await adapter.inspect();
+    if (inspection.kind !== "populated" || inspection.main === null) {
+      throw new Error("expected a populated repo with a main head");
+    }
+    expect(inspection.canWrite).toBe(true);
+    expect(inspection.main.repoConfigText).not.toBeNull();
+  });
+
   it("sample/foreign is populated with no repo config, a README and code", async () => {
     const factory = (await createFakeForge()).factory;
     const adapter = factory(coordinatesFor("sample/foreign"), {
@@ -320,6 +334,7 @@ describe("createFakeForge registry", () => {
       "https://github.com/sample/read-only",
       "https://github.com/sample/foreign",
       "https://github.com/sample/newer",
+      "https://github.com/sample/search",
       "https://github.com/sample/trash",
       "https://github.com/sample/almost-empty",
       "https://github.com/sample/public-empty",

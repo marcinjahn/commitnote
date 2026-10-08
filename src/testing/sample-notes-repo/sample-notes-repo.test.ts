@@ -26,18 +26,24 @@ import {
 import { compareNames } from "../../tree/note-names";
 import {
   generateSampleNotesRepo,
+  generateSampleSearchRepo,
   generateSampleTrashRepo,
 } from "./generate-sample-notes-repo";
 import {
   createSampleNotesRepoAdapter,
+  createSampleSearchRepoAdapter,
   createSampleTrashRepoAdapter,
   sampleNotesRepo,
+  sampleSearchRepo,
   sampleTrashRepo,
 } from "./seed-sample-notes-repo";
 import {
   sampleNotesRepoOrder,
   sampleNotesRepoSource,
   sampleNotesRepoTags,
+  sampleSearchRepoSource,
+  sampleSearchRepoTags,
+  sampleSearchRepoTrashed,
   sampleTrashRepoSource,
   sampleTrashRepoTrashed,
   SAMPLE_TRASH_NOW,
@@ -395,5 +401,180 @@ describe("sample trash repo fixture", () => {
       ["Archive", "Kept note"],
       ["Welcome"],
     ]);
+  });
+});
+
+describe("sample search repo fixture", () => {
+  const finalFiles = () =>
+    sampleSearchRepo.commits[sampleSearchRepo.commits.length - 1].files;
+
+  async function openKeyring(): Promise<{
+    adapter: FakeForgeAdapter;
+    keyring: Keyring;
+  }> {
+    const adapter = await createSampleSearchRepoAdapter();
+    const inspection = await adapter.inspect();
+    if (inspection.kind !== "populated" || inspection.main?.repoConfigText == null) {
+      throw new Error("expected a populated repo with a config");
+    }
+    const parsed = parseRepoConfig(inspection.main.repoConfigText);
+    if (parsed.kind !== "valid") throw new Error("invalid repo config");
+    const keyring = await deriveKeyring(
+      sampleSearchRepo.passphrase,
+      parsed.config.kdf,
+      sharedMemoizedArgon2id,
+    );
+    return { adapter, keyring };
+  }
+
+  function liveSource(): SampleEntry[] {
+    const trashedPaths = sampleSearchRepoTrashed.map((item) =>
+      item.path.join("/"),
+    );
+    function prune(
+      entries: readonly SampleEntry[],
+      parent: readonly string[],
+    ): SampleEntry[] {
+      return entries.flatMap((entry): SampleEntry[] => {
+        const path = [...parent, entry.name];
+        if (trashedPaths.includes(path.join("/"))) return [];
+        if (entry.kind === "folder") {
+          return [{ ...entry, children: prune(entry.children, path) }];
+        }
+        return [entry];
+      });
+    }
+    return prune(sampleSearchRepoSource, []);
+  }
+
+  function notesByPath(): Map<string, string> {
+    const notes = new Map<string, string>();
+    function walk(entries: readonly SampleEntry[], parent: readonly string[]) {
+      for (const entry of entries) {
+        const path = [...parent, entry.name];
+        if (entry.kind === "folder") walk(entry.children, path);
+        else notes.set(path.join("/"), entry.markdown);
+      }
+    }
+    walk(sampleSearchRepoSource, []);
+    return notes;
+  }
+
+  it("regenerating the fixture reproduces the committed JSON exactly", async () => {
+    expect(await generateSampleSearchRepo()).toEqual(sampleSearchRepo);
+  });
+
+  it("has thirteen live notes with the listed colour tags", async () => {
+    const { adapter, keyring } = await openKeyring();
+    const listing = await adapter.listTree(await adapter.getHead());
+    const tree = await buildNoteTree(listing, keyring);
+
+    expect(listNotes(tree).map((note) => note.path.join("/")).sort()).toEqual(
+      [
+            "Journal/2026/February",
+            "Journal/2026/January",
+            "Journal/Trips/Lisbon",
+            "Projects/Garden/Planting plan",
+            "Projects/commitnote/Ideas",
+            "Projects/commitnote/Meeting minutes",
+            "Projects/commitnote/Release checklist",
+            "Projects/commitnote/Roadmap",
+            "Reading list",
+            "Recipes/Pierogi",
+            "Recipes/Sourdough bread",
+            "Welcome",
+            "Zażółć gęślą jaźń",
+          ],
+    );
+
+    const entry = findTagEntry(listing);
+    if (entry === undefined) throw new Error("expected a tag file");
+    const index = await decryptTagIndex(
+      keyring,
+      await adapter.readBlob(entry.sha),
+    );
+    expect(index.notes.size).toBe(sampleSearchRepoTags.length);
+    for (const { path, color } of sampleSearchRepoTags) {
+      expect(index.notes.get(tagKey(path))).toEqual({ color });
+    }
+    expect(colorTagOf(index, ["Welcome"])).toBeNull();
+  });
+
+  it("keeps the live tree identical to the plaintext source without the trashed note", async () => {
+    const { adapter, keyring } = await openKeyring();
+    const tree = await buildNoteTree(
+      await adapter.listTree(await adapter.getHead()),
+      keyring,
+    );
+    await assertTreeMatchesSource(tree.root, liveSource(), adapter, keyring);
+  });
+
+  it("holds one trash entry for the old roadmap", async () => {
+    const { adapter, keyring } = await openKeyring();
+    const entries = await buildTrashIndex(
+      await adapter.listTree(await adapter.getHead()),
+      keyring,
+    );
+
+    expect(
+      entries.map((entry) =>
+        entry.undecryptable
+          ? null
+          : [entry.kind, entry.originalPath, new Date(entry.deletedAt).toISOString()],
+      ),
+    ).toEqual([["note", ["Projects", "Old roadmap"], "2026-09-28T08:00:00.000Z"]]);
+    expect(
+      Date.parse(SAMPLE_TRASH_NOW) - Date.parse("2026-09-28T08:00:00.000Z") <
+        TRASH_RETENTION_MS,
+    ).toBe(true);
+  });
+
+  it("places the search keywords only in the intended notes", () => {
+    const notes = notesByPath();
+    const containing = (word: string) =>
+      [...notes]
+        .filter(([, markdown]) => markdown.toLowerCase().includes(word))
+        .map(([path]) => path)
+        .sort();
+
+    expect(containing("lighthouse")).toEqual([
+      "Journal/2026/February",
+      "Journal/2026/January",
+      "Journal/Trips/Lisbon",
+      "Reading list",
+      "Welcome",
+    ]);
+    expect(containing("quasar")).toEqual(["Projects/Old roadmap"]);
+    expect(containing("kingfisher")).toEqual([
+      "Projects/commitnote/Meeting minutes",
+    ]);
+
+    const minutes = notes.get("Projects/commitnote/Meeting minutes") ?? "";
+    expect(minutes.length).toBeGreaterThan(3500);
+    expect(minutes.length).toBeLessThan(4500);
+    const position = minutes.indexOf("kingfisher") / minutes.length;
+    expect(position).toBeGreaterThan(0.4);
+    expect(position).toBeLessThan(0.6);
+
+    for (const name of flattenNames(sampleSearchRepoSource)) {
+      expect(name.toLowerCase()).not.toMatch(/lighthouse|kingfisher|quasar/);
+    }
+  });
+
+  it("leaks no note names or contents into paths or commit messages", () => {
+    const names = flattenNames(sampleSearchRepoSource).filter(
+      (name) => name !== APP_ID,
+    );
+    const markdowns = flattenMarkdown(sampleSearchRepoSource);
+    const texts = [
+      ...Object.keys(finalFiles()).map((path) =>
+        path.replace(/^\.commitnote\/trash\/[^/]+/, ""),
+      ),
+      ...sampleSearchRepo.commits.map((commit) => commit.message),
+    ].map((text) => text.replace(/\d{8}T\d{6}Z-\d+-[a-z2-7]{8}/g, ""));
+    for (const text of texts) {
+      for (const name of names) expect(text).not.toContain(name);
+      for (const markdown of markdowns) expect(text).not.toContain(markdown);
+    }
   });
 });

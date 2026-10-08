@@ -404,6 +404,7 @@ test("the repository list comes from the access token", async ({ page }) => {
     "sample/notes",
     "sample/public-empty",
     "sample/read-only",
+    "sample/search",
     "sample/trash",
   ]);
 
