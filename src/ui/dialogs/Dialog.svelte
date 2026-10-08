@@ -218,7 +218,7 @@
     box-shadow: var(--shadow-3);
     border: var(--dialog-card-border);
     border-bottom: none;
-    border-radius: var(--radius-lg) var(--radius-lg) 0px 0px;
+    border-radius: var(--radius) var(--radius) 0 0;
     padding: var(--dialog-card-padding-top) var(--dialog-card-padding-inline);
     padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
     transition:
@@ -261,7 +261,6 @@
     height: 4px;
     transform: translateX(-50%);
     background: var(--color-accent-rule);
-    border-radius: var(--radius-pill);
   }
 
   .dialog-header-status {
@@ -310,7 +309,7 @@
     height: 100dvh;
     max-height: 100dvh;
     border: none;
-    border-radius: 0px;
+    border-radius: 0;
     --dialog-card-padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0px));
   }
 
@@ -360,7 +359,7 @@
     .dialog-card {
       max-height: 80dvh;
       border-bottom: var(--dialog-card-border);
-      border-radius: var(--radius-lg);
+      border-radius: var(--radius);
       padding-bottom: var(--space-5);
     }
 
@@ -396,7 +395,7 @@
       height: auto;
       max-height: 80dvh;
       border: var(--dialog-card-border);
-      border-radius: var(--radius-lg);
+      border-radius: var(--radius);
       padding-top: var(--space-5);
     }
 

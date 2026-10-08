@@ -43,7 +43,6 @@
     background: color-mix(in srgb, var(--tag-color) 12%, transparent);
     color: var(--color-text);
     font-size: var(--font-size-sm);
-    border-radius: var(--radius-pill);
   }
 
   .swatch {
@@ -71,7 +70,7 @@
     height: 36px;
     padding: 0;
     border: none;
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius);
     background: transparent;
     color: var(--color-text-muted);
     cursor: pointer;

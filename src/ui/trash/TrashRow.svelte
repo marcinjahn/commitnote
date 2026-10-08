@@ -123,7 +123,7 @@
     min-height: var(--touch-target);
     padding: 0 var(--space-2);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius);
     background: transparent;
     color: var(--color-text);
     text-align: left;

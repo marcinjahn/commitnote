@@ -84,10 +84,7 @@
   --color-focus: var(--color-accent);
   --color-selection: color-mix(in srgb, var(--color-accent) 22%, transparent);
 
-  --radius-sm: 6px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-pill: 999px;
+  --radius: 0;
   --shadow-1:
     0 1px 2px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.3)),
     0 4px 12px light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.4));
@@ -138,13 +135,6 @@
   --content-max-width: 760px;
 
   color-scheme: light dark;
-}
-
-:root[data-corners="square"] {
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-pill: 0px;
 }
 
 :root[data-color-mode="light"] {
@@ -222,7 +212,7 @@ progress {
   display: block;
   overflow: hidden;
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius);
   background: var(--color-border);
   color: var(--color-ink);
 }
@@ -275,7 +265,7 @@ textarea {
   min-height: var(--touch-target);
   min-width: var(--touch-target);
   padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   border: var(--hairline) solid var(--color-border-strong);
   font-weight: var(--font-weight-medium);
   background: var(--color-surface-raised);
@@ -364,7 +354,7 @@ textarea {
 .field select {
   min-height: var(--touch-target);
   padding: 0 var(--space-2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   border: var(--hairline) solid var(--color-border-strong);
   background: var(--color-surface-raised);
   color: var(--color-text);
@@ -407,7 +397,7 @@ textarea {
   color: var(--color-danger);
   background: var(--color-danger-surface);
   padding: var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   box-shadow: inset 2px 0 0 var(--color-tone-error);
 }
 
@@ -416,7 +406,7 @@ textarea {
   color: var(--color-warning);
   background: var(--color-warning-surface);
   padding: var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   box-shadow: inset 2px 0 0 var(--color-tone-warning);
   font-size: var(--font-size-sm);
 }

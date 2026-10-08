@@ -46,7 +46,7 @@
     min-height: var(--touch-target);
     padding: 0 var(--space-2);
     border: var(--hairline) solid var(--color-border);
-    border-radius: var(--radius-sm);
+    border-radius: 0;
     background: transparent;
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);

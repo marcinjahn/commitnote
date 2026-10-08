@@ -68,12 +68,6 @@
   } from "./ui/system-accent.svelte";
   import { readCachedColorMode } from "./session/color-mode-cache";
   import type { ColorModeId } from "./settings/color-mode";
-  import { readCachedCornerStyle } from "./session/corner-style-cache";
-  import type { CornerStyle } from "./settings/corner-style";
-  import {
-    createCornerStyleApplier,
-    type CornerStyleApplier,
-  } from "./ui/corner-style-applier";
   import {
     createColorModeApplier,
     type ColorModeApplier,
@@ -91,10 +85,9 @@
     registry: ForgeRegistry;
     testModeBanner: string | null;
     argon2id?: Argon2idFunction;
-    cornerStyleOverride?: CornerStyle | null;
   }
 
-  const { registry, testModeBanner, argon2id, cornerStyleOverride }: Props = $props();
+  const { registry, testModeBanner, argon2id }: Props = $props();
 
   type Phase =
     | { readonly kind: "restoring" }
@@ -164,8 +157,6 @@
 
   let reportedColorMode = $state<ColorModeId>(readCachedColorMode() ?? "system");
   let colorModeApplier: ColorModeApplier | null = null;
-  let reportedCornerStyle = $state<CornerStyle>(readCachedCornerStyle() ?? "rounded");
-  let cornerStyleApplier: CornerStyleApplier | null = null;
 
   $effect(() =>
     untrack(() => {
@@ -181,21 +172,6 @@
 
   $effect(() => {
     colorModeApplier?.applyColorMode(reportedColorMode, { animate: true });
-  });
-
-  $effect(() =>
-    untrack(() => {
-      cornerStyleApplier = createCornerStyleApplier(document.documentElement, {
-        override: cornerStyleOverride,
-      });
-      return () => {
-        cornerStyleApplier = null;
-      };
-    }),
-  );
-
-  $effect(() => {
-    cornerStyleApplier?.applyCornerStyle(reportedCornerStyle);
   });
 
   function applyAccent(properties: AccentCustomProperties): void {
@@ -583,7 +559,6 @@
       onLoggedIn={handleLoggedIn}
       onAccentColor={(id) => (reportedAccentColor = id)}
       onColorMode={(id) => (reportedColorMode = id)}
-      onCornerStyle={(style) => (reportedCornerStyle = style)}
     />
   {/key}
 {:else if phase.kind === "app" && keyChanged !== null}
@@ -614,7 +589,6 @@
     onLogOut={logOut}
     onAccentColor={(id) => (reportedAccentColor = id)}
       onColorMode={(id) => (reportedColorMode = id)}
-      onCornerStyle={(style) => (reportedCornerStyle = style)}
     onNoteFont={(id) => (reportedNoteFont = id)}
     onPrintNote={(note) => (reportedPrintNote = note)}
   />

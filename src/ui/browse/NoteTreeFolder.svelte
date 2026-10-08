@@ -264,7 +264,6 @@
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
-    border-radius: var(--radius-sm);
     transition: background-color var(--motion-duration) var(--motion-easing);
   }
 
@@ -295,7 +294,7 @@
     color: var(--color-text);
     text-align: left;
     cursor: pointer;
-    border-radius: var(--radius-sm);
+    border-radius: 0;
   }
 
   .tree-row:focus-visible,
@@ -420,7 +419,7 @@
     height: var(--touch-target);
     margin-right: var(--space-1);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius);
     background: transparent;
     color: var(--color-text-muted);
     cursor: pointer;

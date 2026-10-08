@@ -318,7 +318,6 @@
   .skeleton-bar {
     display: block;
     height: 0.75rem;
-    border-radius: var(--radius-sm);
     width: calc(90% - var(--i, 0) * 7%);
     background: var(--color-hover);
     animation: skeleton-pulse 1.2s var(--motion-easing) infinite alternate;

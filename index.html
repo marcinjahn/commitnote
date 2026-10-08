@@ -20,8 +20,6 @@
             .querySelectorAll('meta[name="theme-color"]')
             .forEach((meta) => (meta.content = color));
         }
-        if (localStorage.getItem("commitnote.cornerStyle") === "square")
-          document.documentElement.dataset.corners = "square";
       } catch (e) {}
     </script>
     <link rel="icon" type="image/svg+xml" href="/src/assets/favicon.svg" />

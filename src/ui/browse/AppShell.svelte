@@ -22,7 +22,6 @@
   } from "../../settings/settings";
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { ColorModeId } from "../../settings/color-mode";
-  import type { CornerStyle } from "../../settings/corner-style";
   import type { NoteFont } from "../../settings/note-font";
   import type { NoteHistory, NoteVersion } from "../../history/note-history";
   import type { NoteDatesResolver } from "../../history/note-dates";
@@ -205,7 +204,6 @@
     onLogOut: () => void;
     onAccentColor: (id: AccentColorId) => void;
     onColorMode: (id: ColorModeId) => void;
-    onCornerStyle: (style: CornerStyle) => void;
     onNoteFont: (id: NoteFont) => void;
     onPrintNote: (note: PrintNote | null) => void;
   }
@@ -230,7 +228,6 @@
     onLogOut,
     onAccentColor,
     onColorMode,
-    onCornerStyle,
     onNoteFont,
     onPrintNote,
   }: Props = $props();
@@ -587,11 +584,6 @@
   $effect(() => {
     if (engineState.synced !== null || pendingSettingsEdits.colorMode !== undefined)
       onColorMode(settings.colorMode);
-  });
-
-  $effect(() => {
-    if (engineState.synced !== null || pendingSettingsEdits.cornerStyle !== undefined)
-      onCornerStyle(settings.cornerStyle);
   });
 
   $effect(() => {
@@ -2764,7 +2756,7 @@
       background: var(--color-surface-raised);
       color: var(--color-text);
       border: var(--hairline) solid var(--color-border);
-      border-radius: var(--radius-sm);
+      border-radius: var(--radius);
       width: 1px;
       height: 1px;
       overflow: hidden;

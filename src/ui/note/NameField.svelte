@@ -114,7 +114,7 @@
     height: var(--touch-target);
     padding: 0 var(--space-2);
     border: var(--hairline) solid transparent;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius);
     background: transparent;
     transition: border-color var(--motion-duration) var(--motion-easing);
     color: var(--color-text);

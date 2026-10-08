@@ -215,10 +215,11 @@
     padding: var(--space-3);
     padding-left: calc(var(--space-3) + 2px);
     background-color: var(--floating-background);
+    background-image: var(--floating-texture);
     -webkit-backdrop-filter: var(--floating-backdrop);
     backdrop-filter: var(--floating-backdrop);
-    border: var(--floating-border);
-    border-radius: var(--floating-radius);
+    border: var(--floating-toast-border);
+    border-radius: var(--floating-toast-radius);
     box-shadow:
       inset 2px 0 0 var(--toast-tone),
       var(--floating-edge-highlight),

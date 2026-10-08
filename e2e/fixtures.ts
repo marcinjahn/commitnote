@@ -9,12 +9,19 @@ export { expect } from "@playwright/test";
 
 export type ForgeLatencyOption = "none" | "github";
 
-export type CornerStyleOption = "rounded" | "square";
+export type PlatformOption =
+  | "mac"
+  | "windows"
+  | "linux"
+  | "ios"
+  | "android"
+  | "other"
+  | "detect";
 
 export const test = base.extend<
   {
     forgeLatency: ForgeLatencyOption;
-    cornerStyle: CornerStyleOption | undefined;
+    platform: PlatformOption;
     argon2Cache: boolean;
     prepareContext: (context: BrowserContext) => Promise<void>;
     openSecondDevice: (
@@ -25,7 +32,7 @@ export const test = base.extend<
 >({
   forgeLatency: ["none", { option: true }],
   argon2Cache: [true, { option: true }],
-  cornerStyle: [undefined as CornerStyleOption | undefined, { option: true }],
+  platform: ["other", { option: true }],
   argon2Results: [
     async ({}, use) => {
       await use(new Map());
@@ -33,7 +40,7 @@ export const test = base.extend<
     { scope: "worker" },
   ],
   prepareContext: async (
-    { forgeLatency, argon2Cache, cornerStyle, argon2Results },
+    { forgeLatency, argon2Cache, platform, argon2Results },
     use,
   ) => {
     await use(async (context) => {
@@ -55,7 +62,7 @@ export const test = base.extend<
         },
         {
           latency: forgeLatency,
-          ...(cornerStyle === undefined ? {} : { cornerStyle }),
+          ...(platform === "detect" ? {} : { platform }),
           ...(argon2Cache ? { argon2Results: [...argon2Results] } : {}),
         },
       );

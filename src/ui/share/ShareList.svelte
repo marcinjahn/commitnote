@@ -260,7 +260,7 @@
     width: var(--touch-target);
     height: var(--touch-target);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius);
     background: transparent;
     color: var(--color-text-muted);
     cursor: pointer;

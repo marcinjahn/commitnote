@@ -72,7 +72,6 @@
 
   .segment {
     height: 4px;
-    border-radius: var(--radius-pill);
     background: var(--color-border);
     transition: background-color var(--motion-duration) var(--motion-easing);
   }

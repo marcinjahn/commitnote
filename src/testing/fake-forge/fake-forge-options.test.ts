@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   readFakeForgeOptions,
-  resolveCornerStyleOverride,
+  resolvePlatformOverride,
 } from "./fake-forge-options";
 import { GITHUB_LIKE_LATENCY, NO_LATENCY } from "./forge-latency";
 
@@ -101,47 +101,50 @@ describe("readFakeForgeOptions argon2Results", () => {
   });
 });
 
-describe("readFakeForgeOptions cornerStyle", () => {
-  it.each(["rounded", "square"])("reads the valid corner style %s", (cornerStyle) => {
-    expect(readFakeForgeOptions({ cornerStyle }).cornerStyle).toBe(cornerStyle);
-  });
-
-  it.each([undefined, null, "", "SQUARE", "round", 3, {}])(
-    "ignores the invalid corner style %j",
-    (cornerStyle) => {
-      expect(readFakeForgeOptions({ cornerStyle }).cornerStyle).toBeNull();
+describe("readFakeForgeOptions platform", () => {
+  it.each(["mac", "windows", "linux", "ios", "android", "other"])(
+    "reads the valid platform %s",
+    (platform) => {
+      expect(readFakeForgeOptions({ platform }).platform).toBe(platform);
     },
   );
 
-  it("is null when the source has no corner style", () => {
-    expect(readFakeForgeOptions(undefined).cornerStyle).toBeNull();
+  it.each([undefined, null, "", "MAC", "beos", 3, {}])(
+    "ignores the invalid platform %j",
+    (platform) => {
+      expect(readFakeForgeOptions({ platform }).platform).toBeNull();
+    },
+  );
+
+  it("is null when the source has no platform", () => {
+    expect(readFakeForgeOptions(undefined).platform).toBeNull();
   });
 });
 
-describe("resolveCornerStyleOverride", () => {
-  const withOption = readFakeForgeOptions({ cornerStyle: "square" });
+describe("resolvePlatformOverride", () => {
+  const withOption = readFakeForgeOptions({ platform: "windows" });
   const withoutOption = readFakeForgeOptions({});
 
   it("prefers the URL parameter over the option", () => {
-    expect(resolveCornerStyleOverride("?fake-corners=rounded", withOption)).toBe(
-      "rounded",
+    expect(resolvePlatformOverride("?fake-platform=mac", withOption)).toBe(
+      "mac",
     );
   });
 
   it("falls back to the option when the URL parameter is invalid", () => {
-    expect(resolveCornerStyleOverride("?fake-corners=bogus", withOption)).toBe(
-      "square",
+    expect(resolvePlatformOverride("?fake-platform=bogus", withOption)).toBe(
+      "windows",
     );
   });
 
   it("uses the option when there is no URL parameter", () => {
-    expect(resolveCornerStyleOverride("?other=1", withOption)).toBe("square");
+    expect(resolvePlatformOverride("?other=1", withOption)).toBe("windows");
   });
 
   it("is null when neither is set", () => {
-    expect(resolveCornerStyleOverride("", withoutOption)).toBeNull();
+    expect(resolvePlatformOverride("", withoutOption)).toBeNull();
     expect(
-      resolveCornerStyleOverride("?fake-corners=bogus", withoutOption),
+      resolvePlatformOverride("?fake-platform=bogus", withoutOption),
     ).toBeNull();
   });
 });

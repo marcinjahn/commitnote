@@ -134,13 +134,12 @@ test("Settings is the first command and opens a dialog with the accent color opt
   );
 
   const sections = dialog.getByRole("radiogroup");
-  await expect(sections).toHaveCount(6);
+  await expect(sections).toHaveCount(5);
   await expect(sections.nth(0)).toHaveAccessibleName("Color mode");
   await expect(sections.nth(1)).toHaveAccessibleName("Accent color");
-  await expect(sections.nth(2)).toHaveAccessibleName("Corners");
-  await expect(sections.nth(3)).toHaveAccessibleName("Note font");
-  await expect(sections.nth(4)).toHaveAccessibleName("New notes");
-  await expect(sections.nth(5)).toHaveAccessibleName("New folders");
+  await expect(sections.nth(2)).toHaveAccessibleName("Note font");
+  await expect(sections.nth(3)).toHaveAccessibleName("New notes");
+  await expect(sections.nth(4)).toHaveAccessibleName("New folders");
   const notes = dialog.getByRole("radiogroup", { name: "New notes" });
   const folders = dialog.getByRole("radiogroup", { name: "New folders" });
   await expect(notes.getByRole("radio")).toHaveCount(NOTE_OPTIONS.length);

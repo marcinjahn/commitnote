@@ -111,7 +111,6 @@
     aspect-ratio: 4 / 3;
     overflow: hidden;
     border: var(--hairline) solid var(--color-border-strong);
-    border-radius: var(--radius-md);
     transition:
       transform var(--motion-duration) var(--motion-easing),
       box-shadow var(--motion-duration) var(--motion-easing);

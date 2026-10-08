@@ -348,10 +348,6 @@
     padding: 0;
   }
 
-  :global(:root:not([data-corners="square"])) .tree {
-    padding-inline: var(--space-1);
-  }
-
   .tree-message {
     padding: var(--space-3);
     color: var(--color-text-muted);

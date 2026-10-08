@@ -23,7 +23,7 @@ export type A11yState =
   | "trash"
   | "viewer-password"
   | "viewer-unlocked"
-  | "square-commands-menu";
+  | "windows-commands-menu";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 const BEST_PRACTICE_RULES = [

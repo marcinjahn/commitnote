@@ -32,7 +32,6 @@
   import { resolveSettings, SETTINGS_SCHEMA } from "../../settings/settings";
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { ColorModeId } from "../../settings/color-mode";
-  import type { CornerStyle } from "../../settings/corner-style";
   import UnlockForm from "./UnlockForm.svelte";
   import CreateNotesRepoForm from "./CreateNotesRepoForm.svelte";
   import Wordmark from "../wordmark/Wordmark.svelte";
@@ -64,7 +63,6 @@
     }) => void;
     onAccentColor: (id: AccentColorId) => void;
     onColorMode: (id: ColorModeId) => void;
-    onCornerStyle: (style: CornerStyle) => void;
   }
 
   const {
@@ -78,7 +76,6 @@
     onLoggedIn,
     onAccentColor,
     onColorMode,
-    onCornerStyle,
   }: Props = $props();
 
   type TokenError =
@@ -126,7 +123,6 @@
         : null;
     onAccentColor(settings?.accentColor ?? "system");
     if (settings) onColorMode(settings.colorMode);
-    if (settings) onCornerStyle(settings.cornerStyle);
   });
   let inspectedRepository = $state.raw<RepositorySummary | null>(null);
   let inspectionRun = 0;
@@ -569,7 +565,7 @@
     gap: var(--space-4);
     background: var(--color-surface-raised);
     border: var(--hairline) solid var(--color-border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius);
     padding: var(--space-5);
     box-shadow: var(--shadow-2);
   }
@@ -646,7 +642,7 @@
     min-height: var(--touch-target);
     padding: 0 var(--space-2);
     border: var(--hairline) solid var(--color-border-strong);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius);
     background: var(--color-surface-raised);
     font-weight: var(--font-weight-medium);
     text-align: center;
@@ -698,7 +694,6 @@
 
     .login-card {
       border: none;
-      border-radius: 0px;
       box-shadow: none;
     }
   }
