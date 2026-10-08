@@ -44,6 +44,7 @@ afterEach(() => {
 
 function scene(overrides: Partial<TypeToStartScene> = {}): TypeToStartScene {
   return {
+    enabled: true,
     placeholderVisible: true,
     engineStopped: false,
     dialogOpen: false,
@@ -93,6 +94,7 @@ describe("isTypeToStartKey", () => {
   });
 
   it.each([
+    ["setting off", { enabled: false }],
     ["placeholder hidden", { placeholderVisible: false }],
     ["engine stopped", { engineStopped: true }],
     ["dialog open", { dialogOpen: true }],

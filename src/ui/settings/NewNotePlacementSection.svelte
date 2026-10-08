@@ -16,3 +16,12 @@
   value={settings.newNotePlacement}
   onSelect={(id) => changeSettings({ newNotePlacement: id as NewNotePlacement })}
 />
+<label class="checkbox-field">
+  <input
+    type="checkbox"
+    checked={settings.typeToStart}
+    onchange={(event) =>
+      changeSettings({ typeToStart: event.currentTarget.checked })}
+  />
+  Start a note by typing
+</label>

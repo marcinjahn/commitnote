@@ -540,6 +540,7 @@
   $effect(() => {
     const typeToStart = installTypeToStart(window, {
       scene: () => ({
+        enabled: settings.typeToStart,
         placeholderVisible:
           tree !== null &&
           engineState.openNote === null &&

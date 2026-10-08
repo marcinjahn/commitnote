@@ -10,6 +10,7 @@ export interface TypeToStartKey {
 }
 
 export interface TypeToStartScene {
+  readonly enabled: boolean;
   readonly placeholderVisible: boolean;
   readonly engineStopped: boolean;
   readonly dialogOpen: boolean;
@@ -49,6 +50,7 @@ function isValidTarget(target: EventTarget | null, scene: TypeToStartScene): boo
 
 export function isTypeToStartKey(event: TypeToStartKey, scene: TypeToStartScene): boolean {
   if (
+    !scene.enabled ||
     !scene.placeholderVisible ||
     scene.engineStopped ||
     scene.dialogOpen ||

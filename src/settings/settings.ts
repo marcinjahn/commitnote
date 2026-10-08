@@ -55,6 +55,11 @@ const colorModeSetting: SettingDefinition<ColorModeId> = {
   parse: parseColorMode,
 };
 
+const typeToStartSetting: SettingDefinition<boolean> = {
+  default: true,
+  parse: (raw) => (typeof raw === "boolean" ? raw : undefined),
+};
+
 export const SETTINGS_SCHEMA = {
   colorMode: colorModeSetting,
   accentColor: accentColorSetting,
@@ -62,6 +67,7 @@ export const SETTINGS_SCHEMA = {
   newFolderPlacement: newFolderPlacementSetting,
   noteFont: noteFontSetting,
   animatedCaret: animatedCaretSetting,
+  typeToStart: typeToStartSetting,
 } as const satisfies SettingsSchema;
 
 export type Settings = SettingsOf<typeof SETTINGS_SCHEMA>;
