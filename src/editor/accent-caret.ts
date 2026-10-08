@@ -103,17 +103,10 @@ interface CaretPosition {
   tail: TailCluster[];
 }
 
-function typedText(update: ViewUpdate): boolean {
-  return update.transactions.some(
-    (tr) =>
-      tr.docChanged && (tr.isUserEvent("input") || tr.isUserEvent("delete")),
-  );
-}
 
 class AccentCaretState {
   carets: CaretPosition[] = [];
   composing = false;
-  typed = false;
   readonly blinker: CaretBlinker;
 
   constructor(readonly view: EditorView) {
@@ -131,10 +124,7 @@ class AccentCaretState {
   }
 
   update(update: ViewUpdate): void {
-    if (!caretMoved(update)) return;
-    if (update.docChanged || update.selectionSet || update.focusChanged)
-      this.typed = typedText(update);
-    this.refresh();
+    if (caretMoved(update)) this.refresh();
   }
 
   private refresh(): void {
@@ -145,9 +135,7 @@ class AccentCaretState {
             .map((range) => ({
               head: range.head,
               assoc: range.assoc < 0 ? -1 : 1,
-              tail: this.typed
-                ? tailClusters(this.view.state, range.head)
-                : [],
+              tail: tailClusters(this.view.state, range.head),
             }))
         : [];
     if (this.carets.length > 0) this.blinker.restart();

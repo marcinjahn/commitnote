@@ -55,7 +55,21 @@ test("typing tints the letters before a 2px caret that blinks after a hold", asy
   await expectLight(page, "solid");
 });
 
-test("the tint goes away when the caret moves without typing, the caret stays", async ({
+async function expectTintEndsAtCaret(page: Page): Promise<void> {
+  await expect(caret(page)).toHaveCount(1);
+  await expect(tint(page)).toHaveCount(3);
+  const caretBox = (await caret(page).boundingBox())!;
+  const tintBox = (await tint(page).last().boundingBox())!;
+  expect(
+    Math.abs(tintBox.x + tintBox.width - (caretBox.x + caretBox.width / 2)),
+  ).toBeLessThan(1.5);
+  await expect(tintLayer(page)).toHaveAttribute(
+    "data-caret",
+    (await caretLayer(page).getAttribute("data-caret"))!,
+  );
+}
+
+test("the tint follows the caret when it is moved with the arrow keys", async ({
   page,
 }) => {
   await newNote(page);
@@ -63,15 +77,39 @@ test("the tint goes away when the caret moves without typing, the caret stays", 
   await expect(tint(page)).not.toHaveCount(0);
 
   await page.keyboard.press("ArrowLeft");
-  await expect(tint(page)).toHaveCount(0);
-  await expect(caret(page)).toHaveCount(1);
+  await expectTintEndsAtCaret(page);
 
-  await page.keyboard.press("End");
-  await page.keyboard.type("s");
-  await expect(tint(page)).not.toHaveCount(0);
-  await editor(page).click({ position: { x: 5, y: 5 } });
-  await expect(tint(page)).toHaveCount(0);
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("Home");
   await expect(caret(page)).toHaveCount(1);
+  await expect(tint(page)).toHaveCount(0);
+});
+
+test("clicking into the middle of a word tints the letters before the caret", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await page.getByRole("button", { name: "New note", exact: true }).click();
+  await editor(page).click();
+  await page.keyboard.type("remarkable words");
+  await editor(page).blur();
+  await expect(caret(page)).toHaveCount(0);
+
+  const point = await page
+    .locator(".cm-line")
+    .last()
+    .evaluate((line) => {
+      const text = line.firstChild as Text;
+      const range = document.createRange();
+      range.setStart(text, "remark".length);
+      range.setEnd(text, "remark".length);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.left, y: rect.top + rect.height / 2 };
+    });
+  await page.mouse.click(point.x, point.y);
+
+  await expect(editor(page)).toBeFocused();
+  await expectTintEndsAtCaret(page);
 });
 
 test("nothing is drawn without focus or with a selection", async ({ page }) => {
@@ -160,8 +198,7 @@ test("the tint never moves or reshapes the letters", async ({ page }) => {
     });
   const tinted = await glyphs();
 
-  await page.keyboard.press("ArrowLeft");
-  await page.keyboard.press("ArrowRight");
+  await editor(page).blur();
   await expect(tint(page)).toHaveCount(0);
 
   expect(await glyphs()).toEqual(tinted);
