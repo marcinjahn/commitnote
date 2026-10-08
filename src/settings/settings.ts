@@ -60,6 +60,11 @@ const typeToStartSetting: SettingDefinition<boolean> = {
   parse: (raw) => (typeof raw === "boolean" ? raw : undefined),
 };
 
+const vimModeSetting: SettingDefinition<boolean> = {
+  default: false,
+  parse: (raw) => (typeof raw === "boolean" ? raw : undefined),
+};
+
 export const SETTINGS_SCHEMA = {
   colorMode: colorModeSetting,
   accentColor: accentColorSetting,
@@ -68,6 +73,7 @@ export const SETTINGS_SCHEMA = {
   noteFont: noteFontSetting,
   animatedCaret: animatedCaretSetting,
   typeToStart: typeToStartSetting,
+  vimMode: vimModeSetting,
 } as const satisfies SettingsSchema;
 
 export type Settings = SettingsOf<typeof SETTINGS_SCHEMA>;

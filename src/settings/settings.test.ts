@@ -138,6 +138,7 @@ describe("placement settings", () => {
       noteFont: "inter",
       animatedCaret: true,
       typeToStart: true,
+      vimMode: false,
     });
   });
 
@@ -361,6 +362,27 @@ describe("animated caret setting", () => {
         resolveSettings(SETTINGS_SCHEMA, { animatedCaret: value })
           .animatedCaret,
       ).toBe(true);
+    },
+  );
+});
+
+describe("vim mode setting", () => {
+  it("is off by default", () => {
+    expect(resolveSettings(SETTINGS_SCHEMA, {}).vimMode).toBe(false);
+  });
+
+  it("keeps a stored choice", () => {
+    expect(resolveSettings(SETTINGS_SCHEMA, { vimMode: true }).vimMode).toBe(
+      true,
+    );
+  });
+
+  it.each(["true", 1, null, {}])(
+    "falls back to off for the invalid value %j",
+    (value) => {
+      expect(resolveSettings(SETTINGS_SCHEMA, { vimMode: value }).vimMode).toBe(
+        false,
+      );
     },
   );
 });
