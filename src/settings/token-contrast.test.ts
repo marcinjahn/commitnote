@@ -205,6 +205,24 @@ const PAIRS: Pair[] = [
     backgrounds: { "hover-accent": token("--color-hover-accent") },
   },
   {
+    id: "vim-mode-label-on-wash",
+    threshold: TEXT,
+    foreground: token("--color-text"),
+    backgrounds: { "vim-mode-wash": token("--color-vim-mode-wash") },
+  },
+  {
+    id: "vim-block-cursor",
+    threshold: TEXT,
+    foreground: token("--color-on-accent"),
+    backgrounds: { accent: token("--color-accent") },
+  },
+  {
+    id: "vim-mode-hairline",
+    threshold: NON_TEXT,
+    foreground: token("--color-accent"),
+    backgrounds: pick(surfaces, "background"),
+  },
+  {
     id: "danger-text",
     threshold: TEXT,
     foreground: token("--color-danger"),
