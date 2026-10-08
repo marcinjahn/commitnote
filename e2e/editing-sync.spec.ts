@@ -200,6 +200,33 @@ test.describe("with GitHub-like forge latency", () => {
     await showTree(page);
     await expect(rowSyncState(page, "Work", { exact: true })).toHaveCount(0);
   });
+
+  test("a saving row shows a steady cue under reduced motion", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await openNotes(page);
+    await openWelcome(page);
+    const label = page
+      .getByRole("treeitem", { name: "Welcome" })
+      .locator("[data-drag-label]");
+    const overlay = () =>
+      label.evaluate((element) => {
+        const style = getComputedStyle(element, "::after");
+        return { maskImage: style.maskImage, opacity: style.opacity };
+      });
+
+    await page.getByRole("textbox", { name: "Note editor" }).click();
+    await page.keyboard.type(" steady");
+
+    await expect.poll(overlay, { timeout: 10_000 }).toEqual({
+      maskImage: "none",
+      opacity: "0.6",
+    });
+
+    await flushPendingSaves(page);
+    await expect.poll(overlay).toMatchObject({ opacity: "0" });
+  });
 });
 
 test("a concurrent remote edit at the end of a note merges cleanly", async ({
