@@ -225,6 +225,28 @@ describe("createFakeForge", () => {
 });
 
 describe("createFakeForge controls", () => {
+  it("counts getHead and listTree calls per repository", async () => {
+    const { factory, controls } = await createFakeForge();
+    const notes = factory(coordinatesFor("sample/notes"), {
+      accessToken: TOKEN,
+    });
+    const search = factory(coordinatesFor("sample/search"), {
+      accessToken: TOKEN,
+    });
+
+    const head = await notes.getHead();
+    await notes.getHead();
+    await notes.listTree(head);
+
+    expect(controls.getHeadCount("sample/notes")).toBe(2);
+    expect(controls.listTreeCount("sample/notes")).toBe(1);
+    expect(controls.getHeadCount("sample/search")).toBe(0);
+    expect(controls.listTreeCount("sample/search")).toBe(0);
+    await search.getHead();
+    expect(controls.getHeadCount("sample/search")).toBe(1);
+    expect(controls.getHeadCount("sample/notes")).toBe(2);
+  });
+
   it("editNote moves main and the change is visible through the factory", async () => {
     const { factory, controls } = await createFakeForge({
       argon2id: sharedMemoizedArgon2id,

@@ -92,6 +92,10 @@ export interface FakeForgeControls {
    * order.
    */
   blobReads(repoKey: string): readonly string[];
+  /** How many `getHead` calls that fixture has received, failed ones included. */
+  getHeadCount(repoKey: string): number;
+  /** How many `listTree` calls that fixture has received, failed ones included. */
+  listTreeCount(repoKey: string): number;
   /**
    * Make the next call of `operation` on that fixture fail with a
    * ForgeError of `kind` (or "stale" for commit and replaceHistory).
@@ -330,6 +334,12 @@ export async function createFakeForge(options?: {
     },
     blobReads(repoKey) {
       return [...fixtureAdapter(repoKey).blobReads];
+    },
+    getHeadCount(repoKey) {
+      return fixtureAdapter(repoKey).getHeadCalls;
+    },
+    listTreeCount(repoKey) {
+      return fixtureAdapter(repoKey).listTreeCalls;
     },
     failNext(repoKey, operation, kind) {
       const adapter = fixtureAdapter(repoKey);

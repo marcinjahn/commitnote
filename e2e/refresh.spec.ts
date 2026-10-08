@@ -52,6 +52,22 @@ test("focus and visibility do not refresh; clicking Refresh does", async ({
   await expect(remoteNote).toBeVisible();
 });
 
+test("clicking Refresh with an unchanged head reads the head once and lists no tree", async ({
+  page,
+}) => {
+  await openNotes(page);
+  const forge = fakeForge(page);
+  const headsBefore = await forge.getHeadCount();
+  const treesBefore = await forge.listTreeCount();
+
+  const refresh = page.getByRole("button", { name: "Refresh" });
+  await refresh.click();
+  await expect(refresh).toHaveAttribute("data-feedback", "success");
+
+  expect(await forge.getHeadCount()).toBe(headsBefore + 1);
+  expect(await forge.listTreeCount()).toBe(treesBefore);
+});
+
 test("clicking Refresh briefly shows a checkmark", async ({ page }) => {
   await openNotes(page);
   const refresh = page.getByRole("button", { name: "Refresh" });
