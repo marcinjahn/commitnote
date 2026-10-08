@@ -130,6 +130,18 @@ describe("remote change announcements", () => {
     expect(result.state.announcedNoticeId).toBe(0);
   });
 
+  it("announces a remote relocation politely", () => {
+    const relocated: EngineNotice = {
+      id: 4,
+      kind: "remote-relocated",
+      from: ["a"],
+      to: ["b"],
+    };
+    const result = step(INITIAL_ANNOUNCER_STATE, null, true, false, [relocated]);
+    expect(result.message).toBe("Moved on another device.");
+    expect(result.state.announcedNoticeId).toBe(4);
+  });
+
   it("announces a notice only once", () => {
     const first = step(INITIAL_ANNOUNCER_STATE, null, true, false, [updated(0)]);
     const second = step(first.state, null, true, false, [updated(0)]);

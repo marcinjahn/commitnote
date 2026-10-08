@@ -121,6 +121,7 @@
     type AnnouncerState,
   } from "./status-announcer";
   import NoteTree from "./NoteTree.svelte";
+  import { ancestorFolders, shouldFollowFocus } from "./relocation-follow";
   import SidebarResizeHandle from "./SidebarResizeHandle.svelte";
   import {
     SIDEBAR_MIN_WIDTH,
@@ -366,6 +367,7 @@
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
   let notePaneEl: HTMLElement | undefined = $state();
+  let noteTree: ReturnType<typeof NoteTree> | undefined = $state();
   let sidebarEl: HTMLElement | undefined = $state();
   let preferredSidebarWidth = $state(readSidebarWidth());
   let viewportWidth = $state(0);
@@ -575,6 +577,18 @@
 
   let atomicBlockedSeen = false;
 
+  function followRelocation(from: NotePath, to: NotePath): void {
+    const recordedFocus = noteTree?.focusedPath() ?? null;
+    for (const folder of ancestorFolders(to)) treeExpansion.setExpanded(folder, true);
+    void (async () => {
+      await tick();
+      const active = document.activeElement;
+      const focusLost =
+        noteTree?.containsFocus() !== true && (active === null || active === document.body);
+      if (shouldFollowFocus({ recordedFocus, from, focusLost })) await noteTree?.focusPath(to);
+    })();
+  }
+
   let announcerState: AnnouncerState = INITIAL_ANNOUNCER_STATE;
   let announcement = $state("");
 
@@ -590,7 +604,9 @@
     announcerState = result.state;
     if (result.message !== null) announcement = result.message;
     for (const notice of engineState.notices) {
-      if (isRemoteChangeNotice(notice)) engine.dismissNotice(notice.id);
+      if (!isRemoteChangeNotice(notice)) continue;
+      if (notice.kind === "remote-relocated") followRelocation(notice.from, notice.to);
+      engine.dismissNotice(notice.id);
     }
   });
 
@@ -2160,6 +2176,7 @@
       </p>
     {/if}
     <NoteTree
+      bind:this={noteTree}
       {tree}
       filteredTree={tagFilter === null || tagFilterView === null ? null : tagFilterView.tree}
       loading={treeLoading}

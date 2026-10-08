@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin, parentPath } from "../../changes/change";
   import type { SyncStates } from "../../sync/sync-state";
@@ -184,9 +184,35 @@
     item.scrollIntoView({ block: "nearest" });
   }
 
+  let focusedKey: string | null = null;
+
   function handleFocusIn(event: FocusEvent): void {
     const key = rowKeyOf(event.target);
-    if (key !== null) lastFocusedKey = key;
+    if (key === null) return;
+    lastFocusedKey = key;
+    focusedKey = key;
+  }
+
+  function handleFocusOut(event: FocusEvent): void {
+    const next = event.relatedTarget;
+    if (next instanceof Node && !treeEl?.contains(next)) focusedKey = null;
+  }
+
+  export function focusedPath(): NotePath | null {
+    return focusedKey === null ? null : (JSON.parse(focusedKey) as NotePath);
+  }
+
+  export function containsFocus(): boolean {
+    return treeEl?.contains(document.activeElement) ?? false;
+  }
+
+  export async function focusPath(path: NotePath): Promise<boolean> {
+    await tick();
+    const item = treeitemFor(JSON.stringify(path));
+    if (item === null) return false;
+    item.focus({ preventScroll: true });
+    item.scrollIntoView({ block: "nearest" });
+    return true;
   }
 
   const TYPEAHEAD_RESET_MS = 500;
@@ -336,6 +362,7 @@
       aria-label="Notes"
       bind:this={treeEl}
       onfocusin={handleFocusIn}
+      onfocusout={handleFocusOut}
       onkeydown={handleTreeKeydown}
     >
       {#each (filteredTree ?? tree).root.children as child, index (child.path.join("/"))}

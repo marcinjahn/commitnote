@@ -1,8 +1,18 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { flushPendingSaves, handOverRepo, openNotes } from "./helpers";
+import {
+  fakeForge,
+  flushPendingSaves,
+  handOverRepo,
+  openNotes,
+} from "./helpers";
 import { enableVimMode } from "./helpers/settings";
-import { openWelcome, waitForSynced } from "./helpers/tree";
+import {
+  openRowMenu,
+  openWelcome,
+  treeItem,
+  waitForSynced,
+} from "./helpers/tree";
 
 const REMOTE_LINE = "Remote line";
 
@@ -128,4 +138,161 @@ test("a remote edit is announced politely", async ({
     page.getByRole("group").filter({ hasText: "Updated on another device." }),
   ).toHaveCount(0);
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+async function renameOpenNote(page: Page, name: string): Promise<void> {
+  const field = page.getByRole("textbox", { name: "Note name" });
+  await field.fill(name);
+  await field.press("Enter");
+  await expect(field).toHaveValue(name);
+}
+
+async function handOverAfterSave(from: Page, to: Page): Promise<void> {
+  await flushPendingSaves(from);
+  await waitForSynced(from);
+  await handOverRepo(from, to);
+}
+
+async function expectFollowed(page: Page, name: string): Promise<void> {
+  await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+    name,
+  );
+  await expect(treeItem(page, name)).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("This note no longer exists.")).toHaveCount(0);
+  await expect(page.getByTestId("status-announcer")).toHaveText(
+    "Moved on another device.",
+  );
+  await expect(page.getByRole("alert")).toHaveCount(0);
+}
+
+test("follows a remote rename of the open note", async ({
+  page,
+  openSecondDevice,
+}) => {
+  await openNotes(page);
+  await openLoadedWelcome(page);
+
+  const other = await openSecondDevice();
+  await openNotes(other.page);
+  await openLoadedWelcome(other.page);
+  await renameOpenNote(other.page, "Greetings");
+  await handOverAfterSave(other.page, page);
+
+  await refresh(page);
+  await expectFollowed(page, "Greetings");
+  await expect(editor(page)).toContainText("This is your");
+  await expect(treeItem(page, "Welcome")).toHaveCount(0);
+});
+
+test("follows a remote folder rename", async ({ page, openSecondDevice }) => {
+  await openNotes(page);
+  await treeItem(page, "Projects").click();
+  await treeItem(page, "commitnote").click();
+  await treeItem(page, "Roadmap").click();
+  await expect(editor(page)).toContainText("Add mobile client");
+
+  const other = await openSecondDevice();
+  await openNotes(other.page);
+  await treeItem(other.page, "Projects").click();
+  await openRowMenu(other.page, "commitnote");
+  await other.page.getByRole("menuitem", { name: "Rename…" }).click();
+  await other.page.getByLabel("Folder name").fill("product");
+  await other.page.getByRole("button", { name: "Rename", exact: true }).click();
+  await expect(treeItem(other.page, "product")).toBeVisible();
+  await handOverAfterSave(other.page, page);
+
+  await refresh(page);
+  await expectFollowed(page, "Roadmap");
+  await expect(editor(page)).toContainText("Add mobile client");
+  await expect(treeItem(page, "product")).toBeVisible();
+  await expect(treeItem(page, "commitnote")).toHaveCount(0);
+});
+
+test("follows a remote move of the open note to another folder", async ({
+  page,
+  openSecondDevice,
+}) => {
+  await openNotes(page);
+  await openLoadedWelcome(page);
+
+  const other = await openSecondDevice();
+  await openNotes(other.page);
+  await openRowMenu(other.page, "Welcome");
+  await other.page.getByRole("menuitem", { name: "Move to folder…" }).click();
+  await other.page
+    .getByRole("radiogroup", { name: "Folder" })
+    .getByRole("radio", { name: "Projects", exact: true })
+    .check();
+  await other.page.getByRole("dialog").getByRole("button", { name: "Move" }).click();
+  await expect(treeItem(other.page, "Welcome")).toHaveCount(0);
+  await handOverAfterSave(other.page, page);
+
+  await refresh(page);
+  await expectFollowed(page, "Welcome");
+  await expect(editor(page)).toContainText("This is your");
+  await expect(treeItem(page, "Projects")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+});
+
+test("keeps the caret and undo across a followed rename", async ({
+  page,
+  openSecondDevice,
+}) => {
+  await openNotes(page);
+  await openLoadedWelcome(page);
+  await page.locator(".cm-line", { hasText: "Notes stay private" }).click();
+  await page.keyboard.press("End");
+  await page.keyboard.type("localword");
+  await waitForSynced(page);
+
+  const other = await openSecondDevice();
+  await openNotes(other.page);
+  await handOverRepo(page, other.page);
+  await refresh(other.page);
+  await openLoadedWelcome(other.page);
+  await renameOpenNote(other.page, "Greetings");
+  await handOverAfterSave(other.page, page);
+
+  await refresh(page);
+  await expectFollowed(page, "Greetings");
+  await expect(editor(page)).toContainText("localword");
+
+  await editor(page).focus();
+  await page.keyboard.type("Q");
+  await expect(
+    page.locator(".cm-line", { hasText: "Notes stay private" }),
+  ).toContainText("localwordQ");
+  await page.keyboard.press("ControlOrMeta+z");
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(editor(page)).not.toContainText("localword");
+});
+
+test("follows a remote rename plus edit in one commit", async ({
+  page,
+  openSecondDevice,
+}) => {
+  await openNotes(page);
+  await openLoadedWelcome(page);
+
+  const other = await openSecondDevice();
+  await other.page.clock.install();
+  await openNotes(other.page);
+  await openLoadedWelcome(other.page);
+  await editor(other.page).click();
+  await other.page.keyboard.press("ControlOrMeta+End");
+  await other.page.keyboard.type(" Renamed and edited.");
+  await renameOpenNote(other.page, "Greetings");
+  await flushPendingSaves(other.page);
+  await waitForSynced(other.page);
+
+  await expect
+    .poll(async () => (await fakeForge(other.page).commitMessages())[0])
+    .toContain("Commitnote-Rename");
+  await handOverRepo(other.page, page);
+
+  await refresh(page);
+  await expectFollowed(page, "Greetings");
+  await expect(editor(page)).toContainText("Renamed and edited.");
 });

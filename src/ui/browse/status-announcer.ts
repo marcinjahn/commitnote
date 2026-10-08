@@ -42,6 +42,8 @@ export function remoteChangeMessage(
   switch (kind) {
     case "remote-updated":
       return "Updated on another device.";
+    case "remote-relocated":
+      return "Moved on another device.";
   }
 }
 

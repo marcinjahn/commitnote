@@ -66,6 +66,7 @@ import {
   type NoteTree,
 } from "../tree/note-tree";
 import { createAutosave } from "./autosave";
+import { locateRemoteRelocation } from "./remote-relocation";
 import { retryDelayMs } from "./backoff";
 import type { Clock } from "./clock";
 import { createRateBudget, type RateBudget } from "./rate-budget";
@@ -175,18 +176,28 @@ export interface HeldConflict {
   readonly editing: string | null;
 }
 
+interface Relocation {
+  readonly from: NotePath;
+  readonly to: NotePath;
+}
+
 type NoticeBody =
   | { readonly kind: "merge"; readonly notice: MergeNotice }
   | { readonly kind: "conflict"; readonly path: NotePath }
   | { readonly kind: "edited-merge-restored"; readonly path: NotePath }
   | { readonly kind: "dropped"; readonly change: Change }
-  | { readonly kind: "remote-updated"; readonly path: NotePath };
+  | { readonly kind: "remote-updated"; readonly path: NotePath }
+  | {
+      readonly kind: "remote-relocated";
+      readonly from: NotePath;
+      readonly to: NotePath;
+    };
 
 export type EngineNotice = NoticeBody & { readonly id: number };
 
 export type RemoteChangeNotice = Extract<
   EngineNotice,
-  { kind: "remote-updated" }
+  { kind: "remote-updated" | "remote-relocated" }
 >;
 
 export function isRemoteChangeNotice(
@@ -194,6 +205,7 @@ export function isRemoteChangeNotice(
 ): notice is RemoteChangeNotice {
   switch (notice.kind) {
     case "remote-updated":
+    case "remote-relocated":
       return true;
     default:
       return false;
@@ -1661,6 +1673,40 @@ export function createSyncEngine(options: {
     );
   }
 
+  async function locateOpenNoteRelocation(
+    synced: SyncedState,
+  ): Promise<Relocation | null> {
+    const previous = state.synced;
+    const open = state.openNote;
+    if (
+      previous === null ||
+      open?.kind !== "loaded" ||
+      conflictAt(open.path) !== undefined ||
+      findNode(synced.tree, open.path)?.kind === "note"
+    ) {
+      return null;
+    }
+    const to = await locateRemoteRelocation({
+      previousTree: previous.tree,
+      newTree: synced.tree,
+      newHead: synced.head,
+      newTrash: synced.trash,
+      path: open.path,
+      listCommits: (request) => adapter.listCommits(request),
+    });
+    const stillApplies =
+      !disposed &&
+      !stopped &&
+      !suspended &&
+      saveLoop === null &&
+      !hasLocalWork() &&
+      state.synced === previous &&
+      state.openNote !== null &&
+      notePathEquals(state.openNote.path, open.path) &&
+      conflictAt(open.path) === undefined;
+    return to !== null && stillApplies ? { from: open.path, to } : null;
+  }
+
   async function doRefresh(): Promise<void> {
     update((current) => ({
       ...current,
@@ -1670,17 +1716,26 @@ export function createSyncEngine(options: {
     try {
       const head = await adapter.getHead();
       let appliedFrom: OpenNoteState | null | undefined;
+      let relocated: Relocation | null = null;
 
       if (saveLoop === null) {
         if (hasLocalWork()) {
           if (head !== state.synced?.head) void triggerSave();
         } else if (state.synced === null || state.synced.head !== head) {
           const synced = await loadSynced(head);
+          const relocation =
+            saveLoop === null && !hasLocalWork()
+              ? await locateOpenNoteRelocation(synced)
+              : null;
           // A save or local change started while the tree loaded is merged
           // by the save instead.
           if (saveLoop === null && !hasLocalWork()) {
             appliedFrom = state.openNote;
             update((current) => ({ ...current, synced }));
+            if (relocation !== null) {
+              followRelocation(relocation.from, relocation.to);
+              relocated = relocation;
+            }
             await recheckConflicts();
           } else if (saveLoop === null) {
             void triggerSave();
@@ -1688,7 +1743,15 @@ export function createSyncEngine(options: {
         }
         await reresolveOpenNote();
         const after = state.openNote;
-        if (
+        if (relocated !== null) {
+          const { from, to } = relocated;
+          update((current) => ({
+            ...current,
+            notices: notices(current.notices, [
+              { kind: "remote-relocated", from, to },
+            ]),
+          }));
+        } else if (
           appliedFrom?.kind === "loaded" &&
           after?.kind === "loaded" &&
           notePathEquals(appliedFrom.path, after.path) &&
