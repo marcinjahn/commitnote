@@ -12,6 +12,15 @@ import {
   CARET_SOFT_EDGE,
   CARET_WIDTH_PX,
 } from "./caret-style";
+import {
+  backdropMarker,
+  measureTail,
+  prefersLightGlyphs,
+  surfaceColor,
+  tailClusters,
+  tintMarker,
+  type TailCluster,
+} from "./caret-tail";
 
 export type CaretLight = "solid" | "on" | "off";
 
@@ -19,7 +28,7 @@ const CARET_LIGHT_PROPERTY = "--accent-caret-lit";
 const OWN_CARET_CLASS = "cm-own-caret";
 const FORCED_COLORS = "@media (forced-colors: active)";
 
-const BLINKING_LAYERS = ".cm-accent-caret-layer";
+const BLINKING_LAYERS = ".cm-accent-caret-layer, .cm-caret-tint-layer";
 
 const compositionChanged = StateEffect.define<null>();
 
@@ -91,11 +100,20 @@ function registerCaretLightProperty(): void {
 interface CaretPosition {
   head: number;
   assoc: -1 | 1;
+  tail: TailCluster[];
+}
+
+function typedText(update: ViewUpdate): boolean {
+  return update.transactions.some(
+    (tr) =>
+      tr.docChanged && (tr.isUserEvent("input") || tr.isUserEvent("delete")),
+  );
 }
 
 class AccentCaretState {
   carets: CaretPosition[] = [];
   composing = false;
+  typed = false;
   readonly blinker: CaretBlinker;
 
   constructor(readonly view: EditorView) {
@@ -113,7 +131,10 @@ class AccentCaretState {
   }
 
   update(update: ViewUpdate): void {
-    if (caretMoved(update)) this.refresh();
+    if (!caretMoved(update)) return;
+    if (update.docChanged || update.selectionSet || update.focusChanged)
+      this.typed = typedText(update);
+    this.refresh();
   }
 
   private refresh(): void {
@@ -124,6 +145,9 @@ class AccentCaretState {
             .map((range) => ({
               head: range.head,
               assoc: range.assoc < 0 ? -1 : 1,
+              tail: this.typed
+                ? tailClusters(this.view.state, range.head)
+                : [],
             }))
         : [];
     if (this.carets.length > 0) this.blinker.restart();
@@ -204,14 +228,37 @@ function caretMarkers(
   return markers;
 }
 
+function tailLayers(view: EditorView, state: AccentCaretState) {
+  const tails = state.carets.filter((caret) => caret.tail.length > 0);
+  if (tails.length === 0) return { tints: [], backdrops: [] };
+  const origin = layerOrigin(view);
+  const backdrop = surfaceColor(view.scrollDOM);
+  const blend = prefersLightGlyphs(view) ? "darken" : "lighten";
+  const tints: LayerMarker[] = [];
+  const backdrops: LayerMarker[] = [];
+  for (const caret of tails) {
+    for (const piece of measureTail(view, caret.head, caret.tail)) {
+      tints.push(tintMarker(piece, origin, blend));
+      backdrops.push(backdropMarker(piece, origin, backdrop));
+    }
+  }
+  return { tints, backdrops };
+}
+
 const accentCaretTheme = EditorView.baseTheme({
-  ".cm-accent-caret-layer": {
+  ".cm-accent-caret-layer, .cm-caret-tint-layer, .cm-caret-backdrop-layer": {
     pointerEvents: "none",
     [CARET_LIGHT_PROPERTY]: "1",
   },
-  ".cm-accent-caret-layer[data-caret=on], .cm-accent-caret-layer[data-caret=off]":
+  ".cm-accent-caret-layer[data-caret=on], .cm-accent-caret-layer[data-caret=off], .cm-caret-tint-layer[data-caret=on], .cm-caret-tint-layer[data-caret=off]":
     { transition: `${CARET_LIGHT_PROPERTY} ${CARET_SOFT_EDGE}` },
-  ".cm-accent-caret-layer[data-caret=off]": { [CARET_LIGHT_PROPERTY]: "0" },
+  ".cm-accent-caret-layer[data-caret=off], .cm-caret-tint-layer[data-caret=off]":
+    { [CARET_LIGHT_PROPERTY]: "0" },
+  // A layer's own z-index would isolate its blending from the text below it.
+  ".cm-caret-tint-layer": { zIndex: "auto !important" },
+  ".cm-caret-tint": { opacity: `var(${CARET_LIGHT_PROPERTY})` },
+  ".cm-caret-tint-lighten": { mixBlendMode: "lighten" },
+  ".cm-caret-tint-darken": { mixBlendMode: "darken" },
   ".cm-accent-caret": {
     width: `${CARET_WIDTH_PX}px`,
     background: "var(--color-accent)",
@@ -221,7 +268,9 @@ const accentCaretTheme = EditorView.baseTheme({
     caretColor: "transparent !important",
   },
   [FORCED_COLORS]: {
-    ".cm-accent-caret-layer": { display: "none" },
+    ".cm-accent-caret-layer, .cm-caret-tint-layer, .cm-caret-backdrop-layer": {
+      display: "none",
+    },
     [`.cm-content.${OWN_CARET_CLASS}`]: { caretColor: "auto !important" },
   },
 });
@@ -249,20 +298,43 @@ export function accentCaret(): Extension {
     },
   });
 
+  const redrawOnCaretMove = (update: ViewUpdate) =>
+    caretMoved(update) || update.viewportChanged;
+  const syncBlinkingLayer = (update: ViewUpdate, dom: HTMLElement) => {
+    const state = update.view.plugin(plugin);
+    if (state) dom.dataset.caret = state.blinker.light;
+    return redrawOnCaretMove(update);
+  };
+
   return [
     accentCaretTheme,
     plugin,
     layer({
       above: true,
       class: "cm-accent-caret-layer",
-      update: (update, dom) => {
-        const state = update.view.plugin(plugin);
-        if (state) dom.dataset.caret = state.blinker.light;
-        return caretMoved(update) || update.viewportChanged;
-      },
+      update: syncBlinkingLayer,
       markers: (view) => {
         const state = view.plugin(plugin);
         return state ? caretMarkers(view, state) : [];
+      },
+    }),
+    layer({
+      above: true,
+      class: "cm-caret-tint-layer",
+      update: syncBlinkingLayer,
+      markers: (view) => {
+        const state = view.plugin(plugin);
+        return state ? tailLayers(view, state).tints : [];
+      },
+    }),
+    // Blending needs an opaque surface behind the text inside the scroller.
+    layer({
+      above: false,
+      class: "cm-caret-backdrop-layer",
+      update: redrawOnCaretMove,
+      markers: (view) => {
+        const state = view.plugin(plugin);
+        return state ? tailLayers(view, state).backdrops : [];
       },
     }),
     EditorView.contentAttributes.of((view) =>
