@@ -164,7 +164,13 @@
   import { buildTagFilter } from "./tag-filter";
   import TagFilterButton from "./TagFilterButton.svelte";
   import TagFilterChip from "./TagFilterChip.svelte";
-  import { describeMovedTo, describeStructureError } from "./structure-messages";
+  import {
+    describeMovedDown,
+    describeMovedTo,
+    describeMovedUp,
+    describeStructureError,
+  } from "./structure-messages";
+  import { siblingMoveBefore } from "./sibling-move";
   import type { DropTarget } from "./tree-drop";
   import {
     DESKTOP_MEDIA_QUERY,
@@ -1647,6 +1653,10 @@
       case "share":
         if (node.kind === "note") openShareDialog(node.path, node.syncedPath);
         break;
+      case "move-up":
+      case "move-down":
+        void moveAmongSiblings(node.path, action === "move-up" ? "up" : "down");
+        break;
       case "move":
         dialog = { kind: "move", node, error: null };
         break;
@@ -1760,6 +1770,49 @@
   function handleColorTag(path: NotePath, color: ColorTag | null): void {
     const result = engine.setColorTag(path, color);
     if (!result.ok) showToast("tag", "error", describeStructureError(result.error));
+  }
+
+  async function moveAmongSiblings(
+    path: NotePath,
+    direction: "up" | "down",
+  ): Promise<void> {
+    const parent = parentPath(path);
+    const name = noteName(path);
+    const siblings = siblingNamesOf(parent);
+    const target = siblingMoveBefore(siblings, name, direction);
+    if (target === null) return;
+    const previousBefore = siblings[siblings.indexOf(name) + 1] ?? null;
+
+    const result = engine.place(path, { parent, before: target.before });
+    if (!result.ok) {
+      showToast("place", "error", describeStructureError(result.error));
+      return;
+    }
+    const placed = result.path;
+    showToast(
+      "place",
+      "success",
+      direction === "up" ? describeMovedUp(name) : describeMovedDown(name),
+      {
+        durationMs: UNDO_TOAST_MS,
+        action: {
+          label: "Undo",
+          run: () => handleUndoPlace(placed, { parent, before: previousBefore }),
+        },
+      },
+    );
+    await tick();
+    focusTreeItem(placed);
+  }
+
+  function focusTreeItem(path: NotePath): void {
+    const key = JSON.stringify(path);
+    for (const row of document.querySelectorAll<HTMLElement>("[data-tree-row]")) {
+      if (row.dataset.treePath === key) {
+        row.querySelector<HTMLElement>('[role="treeitem"]')?.focus();
+        return;
+      }
+    }
   }
 
   function handleUndoPlace(path: NotePath, target: DropTarget): void {

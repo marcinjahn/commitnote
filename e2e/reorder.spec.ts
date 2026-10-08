@@ -4,6 +4,7 @@ import { logIn, expectTree, rowSyncState, SAMPLE, openNotes, fakeForge, handOver
 import {
   hoverDrag,
   movedToast,
+  openRowMenu,
   release,
   treeItem,
   treeRows,
@@ -307,4 +308,60 @@ test("dropping a folder on the note area does nothing", async ({ page }) => {
   await expect(treeRows(page)).toHaveText(ROOT_ORDER);
   await expect(movedToast(page)).toHaveCount(0);
   expect(await fakeForge(page).commitCount()).toBe(commits);
+});
+
+test("Move down in the row menu reorders the row, keeps focus on it and can be undone", async ({
+  page,
+}) => {
+  await openRowMenu(page, "Journal");
+  await page.getByRole("menuitem", { name: "Move down" }).click();
+
+  await expect(treeRows(page)).toHaveText([
+    "Empty folder",
+    "Projects",
+    "Journal",
+    "Welcome",
+    "Zażółć gęślą jaźń",
+  ]);
+  await expect(treeItem(page, "Journal")).toBeFocused();
+  await expect(treeItem(page, "Journal")).toHaveAttribute("aria-posinset", "3");
+  const toast = page.getByRole("group").filter({ hasText: "“Journal” moved down" });
+  await expect(toast).toBeVisible();
+
+  await toast.getByRole("button", { name: "Undo" }).click();
+
+  await expect(treeRows(page)).toHaveText(ROOT_ORDER);
+  await expect(toast).toHaveCount(0);
+});
+
+test("Move up in the row menu moves the row before its previous sibling", async ({
+  page,
+}) => {
+  await openRowMenu(page, "Welcome");
+  await page.getByRole("menuitem", { name: "Move up" }).click();
+
+  await expect(treeRows(page)).toHaveText([
+    "Empty folder",
+    "Journal",
+    "Welcome",
+    "Projects",
+    "Zażółć gęślą jaźń",
+  ]);
+  await expect(treeItem(page, "Welcome")).toBeFocused();
+  await expect(
+    page.getByRole("group").filter({ hasText: "“Welcome” moved up" }),
+  ).toBeVisible();
+});
+
+test("Move up is disabled on the first sibling and Move down on the last", async ({
+  page,
+}) => {
+  await openRowMenu(page, "Empty folder");
+  await expect(page.getByRole("menuitem", { name: "Move up" })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: "Move down" })).toBeEnabled();
+  await page.keyboard.press("Escape");
+
+  await openRowMenu(page, "Zażółć gęślą jaźń");
+  await expect(page.getByRole("menuitem", { name: "Move down" })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: "Move up" })).toBeEnabled();
 });

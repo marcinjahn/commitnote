@@ -18,6 +18,8 @@ export const actionIcons = {
   ],
   "new-folder": [FOLDER_OUTLINE, "M8 6.75v4M6 8.75h4"],
   rename: ["M10.5 2.5l3 3-8 8H2.5v-3z", "M8.75 4.25l3 3"],
+  "move-up": ["M8 13V3M4.5 6.5L8 3l3.5 3.5"],
+  "move-down": ["M8 3v10M4.5 9.5L8 13l3.5-3.5"],
   move: [FOLDER_OUTLINE, "M5.5 8.75h5M8.5 6.75l2 2-2 2"],
   delete: [TRASH_CAN],
   "delete-permanently": [TRASH_CAN],

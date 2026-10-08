@@ -26,3 +26,11 @@ export function describeMovedTo(name: string, folder: NotePath): string {
     ? `“${name}” moved to the top level`
     : `“${name}” moved to “${folder[folder.length - 1]}”`;
 }
+
+export function describeMovedUp(name: string): string {
+  return `“${name}” moved up`;
+}
+
+export function describeMovedDown(name: string): string {
+  return `“${name}” moved down`;
+}

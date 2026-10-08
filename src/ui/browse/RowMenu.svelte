@@ -8,6 +8,8 @@
     name: string;
     kind: "note" | "folder";
     hasFolders: boolean;
+    canMoveUp: boolean;
+    canMoveDown: boolean;
     trashes: boolean;
     anchor: MenuAnchor;
     colorTag: ColorTag | null;
@@ -22,6 +24,8 @@
     name,
     kind,
     hasFolders,
+    canMoveUp,
+    canMoveDown,
     trashes,
     anchor,
     colorTag,
@@ -32,8 +36,8 @@
     trigger,
   }: Props = $props();
 
-  function item(id: RowAction, label: string): MenuItem<RowAction> {
-    return { id, label, icon: actionIcons[id] };
+  function item(id: RowAction, label: string, disabled = false): MenuItem<RowAction> {
+    return { id, label, icon: actionIcons[id], disabled };
   }
 
   const deleteLabel = $derived(trashes ? "Move to trash…" : "Delete…");
@@ -44,11 +48,15 @@
           item("new-note", "New note…"),
           item("new-folder", "New folder…"),
           item("rename", "Rename…"),
+          item("move-up", "Move up", !canMoveUp),
+          item("move-down", "Move down", !canMoveDown),
           item("move", "Move to folder…"),
           item("delete", deleteLabel),
         ]
       : [
           item("share", "Share…"),
+          item("move-up", "Move up", !canMoveUp),
+          item("move-down", "Move down", !canMoveDown),
           item("move", "Move to folder…"),
           item("delete", deleteLabel),
         ],

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
-  import { isAtOrWithin } from "../../changes/change";
+  import { isAtOrWithin, parentPath } from "../../changes/change";
   import type { SyncStates } from "../../sync/sync-state";
   import type { WorkingNode, WorkingTree } from "../../sync/working-tree";
   import { findWorkingNode } from "../../sync/working-tree";
@@ -16,6 +16,7 @@
   import type { ColorTag } from "../../tags/color-tag";
   import RowMenu from "./RowMenu.svelte";
   import type { MenuAnchor, RowAction } from "./row-menu-types";
+  import { siblingMoveBefore } from "./sibling-move";
   import { treeKeyTarget, typeaheadIndex, visibleRows } from "./tree-keyboard";
 
   interface Props {
@@ -109,6 +110,12 @@
   const hasFolders = $derived(tree !== null && containsFolder(tree.root.children));
 
   let openMenu = $state<OpenMenu | null>(null);
+
+  const openMenuSiblings = $derived.by(() => {
+    if (openMenu === null || tree === null) return [];
+    const parent = findWorkingNode(tree, parentPath(openMenu.node.path));
+    return parent?.kind === "folder" ? parent.children.map((child) => child.name) : [];
+  });
 
   function handleOpenMenu(
     key: string,
@@ -356,6 +363,8 @@
     name={openMenu.node.name}
     kind={openMenu.node.kind}
     {hasFolders}
+    canMoveUp={siblingMoveBefore(openMenuSiblings, openMenu.node.name, "up") !== null}
+    canMoveDown={siblingMoveBefore(openMenuSiblings, openMenu.node.name, "down") !== null}
     trashes={openMenu.node.kind === "note" || countDescendants(openMenu.node) > 0}
     trigger={openMenu.trigger}
     anchor={openMenu.anchor}
