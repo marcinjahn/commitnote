@@ -51,6 +51,27 @@ function headingLevel(state: EditorState, from: number, to: number): number {
   return level;
 }
 
+function lineHasNode(
+  state: EditorState,
+  from: number,
+  to: number,
+  name: string,
+): boolean {
+  let found = false;
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter(node) {
+      if (found) return false;
+      if (node.name === name) {
+        found = true;
+        return false;
+      }
+    },
+  });
+  return found;
+}
+
 function spacerFor(state: EditorState): GutterMarker {
   const width = Math.max(2, String(state.doc.lines).length);
   return new LineNumberMarker("9".repeat(width), "");
@@ -85,6 +106,20 @@ const theme = EditorView.theme({
   ".cm-relative-line-numbers .cm-relative-line-h3": {
     lineHeight: lineHeightOf("calc(var(--font-size-base) * 1.125)"),
   },
+  ".cm-relative-line-numbers .cm-relative-line-task": {
+    paddingTop: "calc(var(--space-2) + var(--space-1))",
+  },
+  ".cm-relative-line-numbers .cm-relative-line-code": {
+    lineHeight: lineHeightOf("calc(var(--font-size-base) * 0.875)"),
+  },
+  ".cm-relative-line-numbers .cm-relative-line-rule": {
+    paddingTop: `calc(${lineHeightOf("var(--font-size-base)")} / 2 + var(--space-3))`,
+  },
+  "@media (max-width: 767px)": {
+    ".cm-relative-line-numbers .cm-gutterElement": {
+      paddingLeft: "var(--space-2)",
+    },
+  },
   "@media (forced-colors: active)": {
     ".cm-relative-line-numbers .cm-gutterElement": {
       color: "CanvasText",
@@ -104,6 +139,17 @@ export function relativeLineNumbers(): Extension {
         if (line.number === cursorLine) classes.push(CURRENT_CLASS);
         const level = headingLevel(state, line.from, line.to);
         if (level > 0) classes.push(`cm-relative-line-h${level}`);
+        if (lineHasNode(state, line.from, line.to, "TaskMarker"))
+          classes.push("cm-relative-line-task");
+        if (
+          lineHasNode(state, line.from, line.to, "HorizontalRule") &&
+          !state.selection.ranges.some(
+            (range) => range.from <= line.to && range.to >= line.from,
+          )
+        )
+          classes.push("cm-relative-line-rule");
+        if (lineHasNode(state, line.from, line.to, "FencedCode"))
+          classes.push("cm-relative-line-code");
         return new LineNumberMarker(
           relativeLineLabel(line.number, cursorLine),
           classes.join(" "),

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
+import { forceParsing } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { markdownEditorExtensions } from "../create-markdown-editor";
@@ -53,6 +54,7 @@ describe("relativeLineNumbers", () => {
         ],
       }),
     });
+    forceParsing(view, view.state.doc.length, 5000);
     return view;
   }
 
@@ -98,6 +100,16 @@ describe("relativeLineNumbers", () => {
       "cm-relative-line-h4",
       undefined,
     ]);
+  });
+
+  it("marks task lines only", () => {
+    const editor = mount("plain\n- [ ] open\n- [x] done\n- item");
+
+    expect(
+      elements(editor).map((el) =>
+        el.classList.contains("cm-relative-line-task"),
+      ),
+    ).toEqual([false, true, true, false]);
   });
 
   it("sizes the spacer for the line count with a two character minimum", () => {

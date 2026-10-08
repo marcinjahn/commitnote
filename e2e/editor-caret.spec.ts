@@ -400,7 +400,8 @@ test.describe("vim mode", () => {
     await page.clock.runFor(CARET_BLINK_MS * 2);
     expect(await cursorStyle(page)).toEqual(normal);
 
-    const normalHeight = (await fatCursor(page).boundingBox())!.height;
+    const normalBox = (await fatCursor(page).boundingBox())!;
+    const normalHeight = normalBox.height;
     await page.keyboard.press("Shift+R");
     await expect(mode(page)).toHaveText("REPLACE");
     await expect(fatCursor(page)).toHaveCount(1);
@@ -409,9 +410,11 @@ test.describe("vim mode", () => {
     await page.clock.runFor(CARET_BLINK_MS);
     await expect
       .poll(async () => (await fatCursor(page).boundingBox())!.height)
-      .toBeLessThan(normalHeight);
+      .toBeCloseTo(normalHeight, 0);
+    expect((await fatCursor(page).boundingBox())!.y).toBeCloseTo(normalBox.y, 0);
     const replace = await cursorStyle(page);
     expect(replace.background).toBe(accent);
+    expect(replace.color).toBe(onAccent);
     await page.clock.runFor(CARET_BLINK_MS * 2);
     expect(await cursorStyle(page)).toEqual(replace);
   });

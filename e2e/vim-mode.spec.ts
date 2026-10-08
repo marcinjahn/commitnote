@@ -327,3 +327,87 @@ test("the bar and its buttons work on the narrow layout", { tag: "@mobile-only" 
   await bar(page).getByRole("button", { name: "Open command line" }).tap();
   await expect(commandInput(page)).toBeFocused();
 });
+
+test(
+  "relative line numbers keep an inset from the screen edge on the narrow layout",
+  { tag: "@mobile-only" },
+  async ({ page }) => {
+    await openVimWelcome(page);
+    await expect(gutter(page)).toBeVisible();
+
+    const lefts = await page.evaluate(() =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          ".cm-relative-line-numbers .cm-gutterElement",
+        ),
+      )
+        .filter((el) => el.textContent?.trim())
+        .map((el) => {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          return range.getBoundingClientRect().left;
+        }),
+    );
+
+    expect(lefts.length).toBeGreaterThan(0);
+    for (const left of lefts) expect(left).toBeGreaterThanOrEqual(8);
+  },
+);
+
+async function rowCentres(
+  page: Page,
+  lineText: string,
+): Promise<{ number: number; text: number }> {
+  return page.evaluate((needle) => {
+    const lines = Array.from(document.querySelectorAll(".cm-content .cm-line"));
+    const index = lines.findIndex((line) =>
+      line.textContent?.includes(needle),
+    );
+    const numbers = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        ".cm-relative-line-numbers .cm-gutterElement",
+      ),
+    ).filter((el) => el.style.visibility !== "hidden");
+    const firstRect = (root: Node) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.textContent?.trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rect = range.getClientRects()[0];
+        if (rect) return rect;
+      }
+      throw new Error(`no text rect for ${needle}`);
+    };
+    const number = firstRect(numbers[index]);
+    const text = firstRect(lines[index]);
+    return {
+      number: number.top + number.height / 2,
+      text: text.top + text.height / 2,
+    };
+  }, lineText);
+}
+
+test(
+  "relative line numbers align with the first row of their line",
+  { tag: "@mobile" },
+  async ({ page }) => {
+    await openVimWelcome(page);
+
+    for (const lineText of [
+      "Welcome",
+      "This is your",
+      "Done task",
+      "Open task",
+      "console.log",
+      "```js",
+    ]) {
+      await expect
+        .poll(async () => {
+          const centres = await rowCentres(page, lineText);
+          return Math.abs(centres.number - centres.text);
+        }, { message: lineText })
+        .toBeLessThanOrEqual(2);
+    }
+  },
+);

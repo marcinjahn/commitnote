@@ -54,6 +54,7 @@ const vimConfig = Facet.define<VimConfig, VimConfig>({
 });
 
 const PLAIN_CARET_CLASS = "cm-vim-plain-caret";
+const REPLACE_CLASS = "cm-vim-replace";
 
 function editingModeFrom(event: {
   mode: string;
@@ -200,11 +201,13 @@ const statusListener = EditorView.updateListener.of((update) => {
 
 const caretAttributes = EditorView.editorAttributes.compute(
   [vimStatusField, vimConfig],
-  (state): Record<string, string> =>
-    !state.facet(vimConfig).animatedCaret &&
-    state.field(vimStatusField).mode === "insert"
+  (state): Record<string, string> => {
+    const { mode } = state.field(vimStatusField);
+    if (mode === "replace") return { class: REPLACE_CLASS };
+    return !state.facet(vimConfig).animatedCaret && mode === "insert"
       ? { class: PLAIN_CARET_CLASS }
-      : {},
+      : {};
+  },
 );
 
 const FAT_CURSOR = "> .cm-scroller > .cm-vimCursorLayer .cm-fat-cursor";
@@ -236,8 +239,12 @@ const vimTheme = Prec.highest(
       outline: "1px solid var(--color-accent)",
       color: "var(--color-text) !important",
     },
-    [`&.cm-editor ${FAT_CURSOR}[style*="color: transparent"]`]: {
-      color: "transparent !important",
+    [`&.cm-editor:not(.${REPLACE_CLASS}) ${FAT_CURSOR}[style*="color: transparent"]`]:
+      { color: "transparent !important" },
+    [`&.${REPLACE_CLASS} ${FAT_CURSOR}`]: {
+      height: "auto !important",
+      lineHeight: "normal !important",
+      transform: "translateY(-80%)",
     },
     [`${SELECTION}, &.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground`]:
       { background: "var(--color-selection)" },
