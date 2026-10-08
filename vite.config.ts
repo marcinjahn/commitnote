@@ -47,6 +47,7 @@ function commitNoteCsp(): Plugin {
 export default defineConfig({
   base: "./",
   plugins: [svelte(), commitNoteCsp()],
+  optimizeDeps: { include: ["@replit/codemirror-vim"] },
   build: {
     assetsInlineLimit: (filePath) =>
       /\.(woff2|svg)$/.test(filePath) ? false : undefined,

@@ -4,6 +4,7 @@ import ColorModeSection from "./ColorModeSection.svelte";
 import AccentColorSection from "./AccentColorSection.svelte";
 import NoteFontSection from "./NoteFontSection.svelte";
 import AnimatedCaretSection from "./AnimatedCaretSection.svelte";
+import VimModeSection from "./VimModeSection.svelte";
 import NewFolderPlacementSection from "./NewFolderPlacementSection.svelte";
 import NewNotePlacementSection from "./NewNotePlacementSection.svelte";
 
@@ -23,6 +24,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: "accent-color", title: "Accent color", component: AccentColorSection },
   { id: "note-font", title: "Note font", component: NoteFontSection },
   { id: "caret", title: "Caret", component: AnimatedCaretSection },
+  { id: "vim-mode", title: "Vim mode", component: VimModeSection },
   {
     id: "new-note-placement",
     title: "New notes",

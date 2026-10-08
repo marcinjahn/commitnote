@@ -2312,6 +2312,9 @@
       onNewNote={handleHeaderNewNote}
       noteFont={settings.noteFont}
       animatedCaret={settings.animatedCaret}
+      vimMode={settings.vimMode}
+      onVimWrite={saveFromShortcut}
+      onVimQuit={handleHeaderBack}
       shared={openTreeNote?.shared ?? false}
       onShared={draft === null && openTreeNote !== undefined && !openConflicted
         ? () => openShareDialog(openTreeNote.path, openTreeNote.syncedPath)

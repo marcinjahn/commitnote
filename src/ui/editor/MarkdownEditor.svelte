@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Compartment, Extension } from "@codemirror/state";
+  import type { EditorView } from "@codemirror/view";
   import {
     createMarkdownEditor,
     type MarkdownEditor,
@@ -15,9 +16,18 @@
     extensions?: Extension[];
     ariaLabel?: string;
     noteFont: NoteFont;
+    hint?: string;
   }
 
-  const { text, readOnly, onChange, extensions, ariaLabel, noteFont }: Props = $props();
+  const {
+    text,
+    readOnly,
+    onChange,
+    extensions,
+    ariaLabel,
+    noteFont,
+    hint = "Press Escape, then Tab, to leave the editor.",
+  }: Props = $props();
 
   const hintId = $props.id();
 
@@ -38,6 +48,10 @@
 
   export function reconfigure(compartment: Compartment, extension: Extension): void {
     editor?.view.dispatch({ effects: compartment.reconfigure(extension) });
+  }
+
+  export function withView<T>(fn: (view: EditorView) => T): T | undefined {
+    return editor === undefined ? undefined : fn(editor.view);
   }
 
   export function insertText(inserted: string): void {
@@ -88,7 +102,7 @@
 </script>
 
 <div class="markdown-editor" bind:this={container}></div>
-<p id={hintId} hidden>Press Escape, then Tab, to leave the editor.</p>
+<p id={hintId} hidden>{hint}</p>
 
 <style>
   .markdown-editor {
