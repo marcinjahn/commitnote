@@ -687,3 +687,11 @@ textarea:focus-visible,
     break-inside: avoid;
   }
 }
+
+@media (forced-colors: active) {
+  .alert-error,
+  .alert-warning {
+    border-inline-start: 2px solid CanvasText;
+    padding-inline-start: calc(var(--space-3) - 2px);
+  }
+}
