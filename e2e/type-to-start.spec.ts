@@ -75,7 +75,7 @@ test.describe("on the empty note pane", () => {
   test("typing after clicking the placeholder text starts a note", async ({
     page,
   }) => {
-    await page.locator(".note-placeholder").click({ position: { x: 4, y: 4 } });
+    await page.locator(".note-placeholder").click({ position: { x: 24, y: 4 } });
 
     await page.keyboard.type("Clicked");
 

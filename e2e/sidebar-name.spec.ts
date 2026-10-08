@@ -50,7 +50,12 @@ test("sidebar wordmark and repo label are not clipped", { tag: "@mobile" }, asyn
 
   const sidebar = page.locator(".sidebar");
   expect(
-    await sidebar.evaluate((el) => el.scrollWidth <= el.clientWidth),
+    await sidebar.evaluate((el) => {
+      const limit = el.getBoundingClientRect().right;
+      return [...el.querySelectorAll("*")]
+        .filter((child) => !child.closest(".sidebar-resize-handle"))
+        .every((child) => child.getBoundingClientRect().right <= limit + 0.5);
+    }),
   ).toBe(true);
 });
 

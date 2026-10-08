@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openNotes } from "./helpers";
+import { openWelcome, rowActionsButton } from "./helpers/tree";
 
 const KEY = "commitnote.sidebarWidth";
 
@@ -144,6 +145,129 @@ test.describe("on desktop", () => {
     await page.setViewportSize(original);
     await page.setViewportSize({ width: 1280, height: 800 });
     await expectSidebarWidth(page, 500);
+  });
+
+  test("the handle has a 24px hit area reaching 16px into the note pane", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openWelcome(page);
+    const nav = await page
+      .getByRole("navigation", { name: "Notes" })
+      .boundingBox();
+    const box = await handle(page).boundingBox();
+    const input = await page
+      .getByRole("textbox", { name: "Note name" })
+      .boundingBox();
+    if (nav === null || box === null || input === null) {
+      throw new Error("not rendered");
+    }
+    const navRight = nav.x + nav.width;
+    const midY = box.y + box.height / 2;
+    expect(box.width).toBeCloseTo(24, 0);
+    expect(Math.abs(box.x + box.width - (navRight + 16))).toBeLessThanOrEqual(
+      1,
+    );
+    expect(box.x + box.width).toBeLessThanOrEqual(input.x);
+
+    const hitRole = (x: number) =>
+      page.evaluate(
+        ([px, py]) =>
+          document.elementFromPoint(px, py)?.getAttribute("role") ?? null,
+        [x, midY],
+      );
+    for (const x of [navRight + 12, navRight - 4]) {
+      expect(await hitRole(x)).toBe("separator");
+    }
+
+    await page.mouse.move(navRight + 12, midY);
+    await page.mouse.down();
+    await page.mouse.move(navRight + 62, midY, { steps: 4 });
+    await page.mouse.move(navRight + 112, midY, { steps: 4 });
+    await page.mouse.up();
+    await expectSidebarWidth(page, 400);
+
+    const newRight = navRight + 100;
+    for (const x of [newRight + 12, newRight - 4]) {
+      expect(await hitRole(x)).toBe("separator");
+    }
+  });
+
+  test("the handle does not cover the tree scrollbar", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const points = await page.getByRole("tree").evaluate((tree) => {
+      const container = tree.parentElement;
+      if (container === null) throw new Error("no tree container");
+      const spacer = document.createElement("div");
+      spacer.style.height = "3000px";
+      container.appendChild(spacer);
+      const width = container.offsetWidth - container.clientWidth;
+      const rect = container.getBoundingClientRect();
+      const nav = tree.closest("nav");
+      if (nav === null) throw new Error("no nav");
+      const y = rect.top + rect.height / 2;
+      const xs =
+        width > 0
+          ? [
+              Math.ceil(rect.right - width) + 1,
+              Math.floor(rect.right - width / 2) - 1,
+            ]
+          : [nav.getBoundingClientRect().right - 9];
+      return xs.map((x) => ({ x, y }));
+    });
+    const hits = await page.evaluate(
+      (pts) =>
+        pts.map(
+          ({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("role") ?? null,
+        ),
+      points,
+    );
+    for (const hit of hits) {
+      expect(hit).not.toBe("separator");
+    }
+  });
+
+  test("the visible line stays 2px wide at the sidebar edge", async ({
+    page,
+  }) => {
+    const line = await handle(page).evaluate((el) => {
+      const style = getComputedStyle(el, "::after");
+      return { right: style.right, width: style.width };
+    });
+    expect(line).toEqual({ right: "17px", width: "2px" });
+  });
+
+  test("the handle does not cover the row actions button", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openWelcome(page);
+    await page.getByRole("treeitem", { name: "Welcome", exact: true }).hover();
+    const button = rowActionsButton(page, "Welcome");
+    await expect(button).toBeVisible();
+    const box = await button.boundingBox();
+    if (box === null) throw new Error("button not rendered");
+    const isButton = await button.evaluate(
+      (el, [x, y]) => {
+        const hit = document.elementFromPoint(x, y);
+        return hit !== null && el.contains(hit);
+      },
+      [box.x + box.width / 2, box.y + box.height / 2],
+    );
+    expect(isButton).toBe(true);
+  });
+
+  test("the focused handle line is visible in forced colours", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ forcedColors: "active" });
+    await page.keyboard.press("Tab");
+    await handle(page).focus();
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    await expect(handle(page)).toBeFocused();
+    const background = await handle(page).evaluate(
+      (el) => getComputedStyle(el, "::after").backgroundColor,
+    );
+    expect(background).not.toBe("rgba(0, 0, 0, 0)");
   });
 
   test("typing with the handle focused starts no note", async ({ page }) => {

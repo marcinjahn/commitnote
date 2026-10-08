@@ -2835,6 +2835,12 @@
     }
   }
 
+  @media (min-width: 768px) and (min-height: 481px) {
+    .sidebar {
+      overflow: visible;
+    }
+  }
+
   @media (min-width: 768px) {
     .shell {
       flex-direction: row;
