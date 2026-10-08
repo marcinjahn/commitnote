@@ -217,7 +217,9 @@ function caretMarkers(
 }
 
 function tailLayers(view: EditorView, state: AccentCaretState) {
-  const tails = state.carets.filter((caret) => caret.tail.length > 0);
+  const tails = state.carets.filter((caret) =>
+    caret.tail.some((cluster) => cluster.ink),
+  );
   if (tails.length === 0) return { tints: [], backdrops: [] };
   const origin = layerOrigin(view);
   const backdrop = surfaceColor(view.scrollDOM);
@@ -225,7 +227,7 @@ function tailLayers(view: EditorView, state: AccentCaretState) {
   const tints: LayerMarker[] = [];
   const backdrops: LayerMarker[] = [];
   for (const caret of tails) {
-    for (const piece of measureTail(view, caret.head, caret.tail)) {
+    for (const piece of measureTail(view, caret.tail)) {
       tints.push(tintMarker(piece, origin, blend));
       backdrops.push(backdropMarker(piece, origin, backdrop));
     }

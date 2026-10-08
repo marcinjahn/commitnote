@@ -138,11 +138,37 @@ test("nothing is drawn without focus or with a selection", async ({ page }) => {
   await expect(tint(page)).toHaveCount(0);
 });
 
-test("no tint at the start of a line or after a space", async ({ page }) => {
+test("whitespace counts towards the three tinted positions", async ({
+  page,
+}) => {
   await newNote(page);
-  await page.keyboard.type("hello ");
+  const tinted = () =>
+    page
+      .locator(".cm-caret-tint")
+      .evaluateAll((pieces) =>
+        pieces.filter((piece) => piece.getBoundingClientRect().width > 0).length,
+      );
+
+  await page.keyboard.type("word ");
   await expect(caret(page)).toHaveCount(1);
+  await expect.poll(tinted).toBe(3);
+
+  await page.keyboard.type(" ");
+  await expect.poll(tinted).toBe(2);
+
+  await page.keyboard.type(" ");
   await expect(tint(page)).toHaveCount(0);
+
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("word");
+  await page.keyboard.insertText("\t");
+  await expect.poll(tinted).toBe(3);
+});
+
+test("no tint at the start of a line", async ({ page }) => {
+  await newNote(page);
+  await page.keyboard.type("hello");
+  await expect(tint(page)).not.toHaveCount(0);
 
   await page.keyboard.press("Enter");
   await expect(caret(page)).toHaveCount(1);

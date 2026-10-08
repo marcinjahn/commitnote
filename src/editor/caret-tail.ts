@@ -5,6 +5,7 @@ import { CARET_TAIL_LENGTH, caretTailStops } from "./caret-style";
 export interface TailCluster {
   from: number;
   to: number;
+  ink: boolean;
 }
 
 const OVERHANG_EM = 0.2;
@@ -22,8 +23,11 @@ export function tailClusters(
   while (end > 0 && clusters.length < length) {
     const start = findClusterBreak(line.text, end, false);
     const cluster = line.text.slice(start, end);
-    if (/\s/u.test(cluster) || PICTOGRAPHIC.test(cluster)) break;
-    clusters.unshift({ from: line.from + start, to: line.from + end });
+    clusters.unshift({
+      from: line.from + start,
+      to: line.from + end,
+      ink: !/\s/u.test(cluster) && !PICTOGRAPHIC.test(cluster),
+    });
     end = start;
   }
   return clusters;
@@ -53,21 +57,20 @@ function clusterBox(view: EditorView, cluster: TailCluster): Box | undefined {
   };
 }
 
-function endsWord(state: EditorState, caret: number): boolean {
-  const line = state.doc.lineAt(caret);
-  return (
-    caret === line.to || /\s/u.test(state.doc.sliceString(caret, caret + 1))
-  );
+function endsWord(state: EditorState, pos: number): boolean {
+  const line = state.doc.lineAt(pos);
+  return pos === line.to || /\s/u.test(state.doc.sliceString(pos, pos + 1));
 }
 
 export function measureTail(
   view: EditorView,
-  caret: number,
   clusters: TailCluster[],
 ): TailPiece[] {
   const stops = caretTailStops(clusters.length);
   const pieces: TailPiece[] = [];
+  let lastInked: TailCluster | undefined;
   clusters.forEach((cluster, index) => {
+    if (!cluster.ink) return;
     const box = clusterBox(view, cluster);
     if (!box) return;
     const height = box.bottom - box.top;
@@ -79,16 +82,17 @@ export function measureTail(
       from: stops[index],
       to: stops[index + 1],
     });
+    lastInked = cluster;
   });
   const last = pieces[pieces.length - 1];
-  if (last && endsWord(view.state, caret)) {
+  if (last && lastInked && endsWord(view.state, lastInked.to)) {
     const overhang = (last.bottom - last.top) * OVERHANG_EM;
     pieces.push({
       ...last,
       left: last.right,
       right: last.right + overhang,
-      from: 1,
-      to: 1,
+      from: last.to,
+      to: last.to,
     });
   }
   return pieces;
