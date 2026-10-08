@@ -347,4 +347,34 @@
     color: var(--color-text-muted);
     cursor: default;
   }
+
+  @media (forced-colors: active) {
+    .swatch-circle,
+    .swatch-none {
+      forced-color-adjust: none;
+    }
+
+    .swatch-circle {
+      box-shadow: 0 0 0 1px CanvasText;
+    }
+
+    .swatch-none {
+      box-shadow:
+        inset 0 0 0 1.5px var(--color-text-muted),
+        0 0 0 1px CanvasText;
+    }
+
+    .menu-swatch[aria-checked="true"] .swatch-circle {
+      box-shadow:
+        0 0 0 2px Canvas,
+        0 0 0 4px Highlight;
+    }
+
+    .menu-swatch[aria-checked="true"] .swatch-none {
+      box-shadow:
+        inset 0 0 0 1.5px var(--color-text-muted),
+        0 0 0 2px Canvas,
+        0 0 0 4px Highlight;
+    }
+  }
 </style>

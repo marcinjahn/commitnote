@@ -135,4 +135,11 @@
     width: var(--checkbox-size);
     height: var(--checkbox-size);
   }
+
+  @media (forced-colors: active) {
+    .setting-option:has(input:checked) {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+  }
 </style>

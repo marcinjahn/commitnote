@@ -175,4 +175,32 @@
     color: var(--color-text);
     font-weight: 500;
   }
+
+  @media (forced-colors: active) {
+    .accent-circle {
+      forced-color-adjust: none;
+      box-shadow: 0 0 0 1px CanvasText;
+    }
+
+    .system .accent-circle {
+      box-shadow:
+        0 0 0 1px CanvasText,
+        inset 0 0 0 2px
+          color-mix(in srgb, var(--color-on-accent) 55%, transparent);
+    }
+
+    input:checked + .accent-circle {
+      box-shadow:
+        0 0 0 2px Canvas,
+        0 0 0 4px Highlight;
+    }
+
+    .system input:checked + .accent-circle {
+      box-shadow:
+        0 0 0 2px Canvas,
+        0 0 0 4px Highlight,
+        inset 0 0 0 2px
+          color-mix(in srgb, var(--color-on-accent) 55%, transparent);
+    }
+  }
 </style>

@@ -538,3 +538,17 @@ async function expectTouchSized(locator: Locator): Promise<void> {
   const box = (await locator.boundingBox())!;
   expect(box.height).toBeGreaterThanOrEqual(44);
 }
+
+test("in forced colours the checked tag swatch keeps its colour and shows a ring", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop only");
+  await tagFromRowMenu(page, "Welcome", "Red");
+  await page.emulateMedia({ forcedColors: "active" });
+
+  const menu = await openRowMenu(page, "Welcome");
+  const circle = swatch(menu, "Red").locator(".swatch-circle");
+  await expect(circle).toHaveCSS("background-color", COLORS.Red);
+  const shadow = await circle.evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(shadow).toMatch(/0px 0px 0px 2px, .* 0px 0px 0px 4px$/);
+});

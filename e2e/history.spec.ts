@@ -316,3 +316,20 @@ test("a note with a conflict can't be restored until the conflict is resolved", 
   await expect(dialog.getByRole("button", { name: RESTORE })).toBeDisabled();
   await expect(dialog.getByText("Resolve the conflict first.")).toBeVisible();
 });
+
+test("in forced colours the selected version row has a bar", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop only");
+  await noteWithHistory(page);
+  const dialog = await selectFirstSave(page);
+  await page.emulateMedia({ forcedColors: "active" });
+
+  const row = dialog.getByTestId("version-row").nth(3);
+  const bar = await row.evaluate((el) => {
+    const style = getComputedStyle(el, "::before");
+    return { background: style.backgroundColor, width: style.width };
+  });
+  expect(bar.background).not.toBe("rgba(0, 0, 0, 0)");
+  expect(bar.width).toBe("2px");
+});

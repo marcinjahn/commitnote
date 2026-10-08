@@ -1148,3 +1148,41 @@ test("closing Change passphrase with Escape keeps Settings open and refocuses it
     dialog.getByRole("button", { name: "Change passphrase", exact: true }),
   ).toBeFocused();
 });
+
+test.describe("forced colours", () => {
+  test.skip(({ isMobile }) => isMobile, "desktop only");
+
+  test("the checked accent swatch keeps its colour and gains a two-ring outline", async ({
+    page,
+  }) => {
+    await openSettings(page);
+    await chooseAccent(page, "Violet");
+    const circle = settingsDialog(page)
+      .getByRole("radiogroup", { name: "Accent color" })
+      .locator("label")
+      .filter({ has: page.getByRole("radio", { name: "Violet", exact: true }) })
+      .locator(".accent-circle");
+    await expect(circle).toBeVisible();
+    const background = await circle.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+
+    await page.emulateMedia({ forcedColors: "active" });
+
+    await expect(circle).toHaveCSS("background-color", background);
+    const shadow = await circle.evaluate((el) => getComputedStyle(el).boxShadow);
+    expect(shadow).toMatch(/0px 0px 0px 2px, .* 0px 0px 0px 4px$/);
+  });
+
+  test("the checked setting option has a solid outline", async ({ page }) => {
+    await openSettings(page);
+    await page.emulateMedia({ forcedColors: "active" });
+
+    const option = settingsDialog(page)
+      .getByRole("radiogroup", { name: "Note font" })
+      .locator("label")
+      .filter({ has: page.getByRole("radio", { name: "Inter", exact: true }) });
+    await expect(option).toHaveCSS("outline-style", "solid");
+    await expect(option).toHaveCSS("outline-width", "2px");
+  });
+});
