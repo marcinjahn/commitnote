@@ -266,7 +266,18 @@ const vimTheme = Prec.highest(
     },
     [`${SELECTION}, &.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground`]:
       { background: "var(--color-selection)" },
+    "&.cm-editor .cm-searchMatch": {
+      backgroundColor: "var(--color-vim-mode-wash)",
+      boxShadow: "inset 0 -2px 0 var(--color-accent)",
+      color: "var(--color-text)",
+    },
     "@media (forced-colors: active)": {
+      ".cm-searchMatch": {
+        forcedColorAdjust: "none",
+        boxShadow: "none",
+        backgroundColor: "Mark",
+        color: "MarkText",
+      },
       ".cm-vimCursorLayer .cm-fat-cursor": {
         forcedColorAdjust: "none",
         background: "Highlight !important",

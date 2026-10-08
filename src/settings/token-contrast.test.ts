@@ -211,6 +211,21 @@ const PAIRS: Pair[] = [
     backgrounds: { "vim-mode-wash": token("--color-vim-mode-wash") },
   },
   {
+    id: "vim-search-match",
+    threshold: TEXT,
+    foreground: token("--color-text"),
+    backgrounds: { "vim-mode-wash": token("--color-vim-mode-wash") },
+  },
+  {
+    id: "vim-search-match-underline",
+    threshold: NON_TEXT,
+    foreground: token("--color-accent"),
+    backgrounds: {
+      ...pick(surfaces, "background"),
+      "vim-mode-wash": token("--color-vim-mode-wash"),
+    },
+  },
+  {
     id: "vim-block-cursor",
     threshold: TEXT,
     foreground: token("--color-on-accent"),

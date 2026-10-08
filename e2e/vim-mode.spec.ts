@@ -206,6 +206,50 @@ test("search moves the cursor to the match and n repeats it", async ({
   await expect(position(page)).not.toHaveText(first);
 });
 
+test("search matches use the themed highlight in light and dark", async ({
+  page,
+}) => {
+  await openVimWelcome(page);
+  await focusEditor(page);
+
+  await page.keyboard.press("/");
+  await expect(commandInput(page, "Search forward")).toBeFocused();
+  await page.keyboard.type("bullet");
+  await page.keyboard.press("Enter");
+  await expect(editor(page)).toBeFocused();
+
+  const resolve = (token: string) =>
+    page.evaluate((name) => {
+      const probe = document.createElement("div");
+      probe.style.backgroundColor = name.startsWith("--")
+        ? `var(${name})`
+        : name;
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return colour;
+    }, token);
+  const matchBackgrounds = () =>
+    page.evaluate(() =>
+      Array.from(document.querySelectorAll(".cm-searchMatch")).map(
+        (el) => getComputedStyle(el).backgroundColor,
+      ),
+    );
+
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    const wash = await resolve("--color-vim-mode-wash");
+    const selection = await resolve(
+      "color-mix(in srgb, var(--color-accent) 22%, var(--color-background))",
+    );
+    expect(wash).not.toBe(selection);
+    await expect
+      .poll(async () => (await matchBackgrounds()).includes(wash))
+      .toBe(true);
+    expect(await matchBackgrounds()).not.toContain(selection);
+  }
+});
+
 test("relative line numbers follow the cursor", async ({ page }) => {
   await openVimWelcome(page);
   await focusEditor(page);
