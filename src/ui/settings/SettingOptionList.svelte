@@ -117,11 +117,8 @@
   }
 
   .setting-option-label {
-    height: 1.25rem;
-    line-height: 1.25rem;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    min-height: 1.25rem;
+    line-height: 1.5385;
   }
 
   .setting-option-description {

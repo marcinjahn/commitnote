@@ -85,4 +85,75 @@ test.describe("reflow", () => {
     ]);
     expect(scrollHeight).toBeLessThanOrEqual(clientHeight);
   });
+
+  test.describe("text spacing", () => {
+    const spacing = `
+      * { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; }
+      p { margin-bottom: 2em !important; }
+    `;
+
+    for (const size of [
+      { width: 1280, height: 800 },
+      { width: 320, height: 640 },
+    ]) {
+      test(`${size.width}x${size.height} the name field grows with its text`, async ({
+        page,
+      }) => {
+        await page.setViewportSize(size);
+        await openNotes(page);
+        await openWelcome(page);
+        await page.addStyleTag({ content: spacing });
+
+        const name = page.getByRole("textbox", { name: "Note name" });
+        await expect(name).toBeVisible();
+        await expectNoOverflow(page);
+        const [scrollHeight, clientHeight] = await name.evaluate((el) => [
+          el.scrollHeight,
+          el.clientHeight,
+        ]);
+        expect(scrollHeight).toBeLessThanOrEqual(clientHeight + 1);
+      });
+    }
+
+    test("settings labels and font preview lines are not clipped", async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 320, height: 640 });
+      await openNotes(page);
+      const dialog = await openSettings(page);
+      await page.addStyleTag({ content: spacing });
+
+      const clipped = await dialog.evaluate((root) => {
+        const lines = root.querySelectorAll(
+          ".setting-option-label, [data-testid='font-preview'] p",
+        );
+        return {
+          count: lines.length,
+          clipped: [...lines]
+            .filter(
+              (el) =>
+                el.scrollHeight > el.clientHeight + 1 ||
+                el.scrollWidth > el.clientWidth + 1,
+            )
+            .map((el) => el.textContent?.trim()),
+        };
+      });
+      expect(clipped.count).toBeGreaterThan(0);
+      expect(clipped.clipped).toEqual([]);
+    });
+  });
+
+  test("the commit SHA reel scales with the text size", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openNotes(page);
+    const reel = page.getByTestId("commit-sha").locator(".reel").first();
+    await expect(reel).toBeVisible();
+    const height = () => reel.evaluate((el) => el.getBoundingClientRect().height);
+    const base = await height();
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = "200%";
+    });
+    await expect.poll(height).toBeGreaterThanOrEqual(base * 2 - 1);
+    expect(await height()).toBeLessThanOrEqual(base * 2 + 1);
+  });
 });
