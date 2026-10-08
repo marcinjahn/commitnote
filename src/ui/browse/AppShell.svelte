@@ -9,6 +9,7 @@
   import { installSaveShortcut } from "../../app/save-shortcut";
   import { installTypeToStart } from "./type-to-start";
   import { dialogStack } from "../dialogs/dialog-stack";
+  import { captureFocusReturn } from "../dialogs/focus-return";
   import {
     createLastViewStore,
     removeLastView,
@@ -415,6 +416,7 @@
   let importDialog = $state<{
     readonly fileName: string;
     readonly contents: NotesArchiveContents;
+    readonly opener: HTMLElement | null;
   } | null>(null);
   let importStarted = $state<{
     readonly summary: ImportSummary;
@@ -426,21 +428,15 @@
   } | null>(null);
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
-  let dialogOpener: Element | null = null;
   let settingsOpen = $state(false);
   let searchOpen = $state(false);
-  let searchReturnFocus: HTMLElement | null = null;
 
   function openSearch(): void {
-    searchReturnFocus =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     searchOpen = true;
   }
 
-  async function closeSearch(): Promise<void> {
+  function closeSearch(): void {
     searchOpen = false;
-    await tick();
-    if (searchReturnFocus?.isConnected) searchReturnFocus.focus();
   }
 
   async function revealAndOpen(path: NotePath): Promise<void> {
@@ -1395,20 +1391,6 @@
     }
   }
 
-  function rememberDialogOpener(): void {
-    dialogOpener = document.activeElement;
-  }
-
-  function restoreDialogOpener(): void {
-    const opener = dialogOpener;
-    dialogOpener = null;
-    if (opener instanceof HTMLElement) {
-      void tick().then(() => {
-        if (opener.isConnected) opener.focus();
-      });
-    }
-  }
-
   async function handleImportFile(file: File): Promise<void> {
     if (reading) return;
     clearToast("import");
@@ -1416,10 +1398,15 @@
       showImportMessage("error", describeArchiveError("tooLarge"));
       return;
     }
+    const opener = captureFocusReturn();
     reading = true;
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      importDialog = { fileName: file.name, contents: readNotesArchive(bytes) };
+      importDialog = {
+        fileName: file.name,
+        contents: readNotesArchive(bytes),
+        opener,
+      };
     } catch (error) {
       showImportMessage(
         "error",
@@ -1487,7 +1474,6 @@
     return commitImport(destination, pending.contents.entries, policy, (plan) => {
       tagFilter = null;
       importDialog = null;
-      restoreDialogOpener();
       if (plan.changes.length > 0) {
         importStarted = { summary: plan.summary, retryingShown: false };
       }
@@ -2348,9 +2334,9 @@
     {forgeName}
     onEnableAtomic={handleEnableAtomic}
     onImport={handleImport}
+    returnFocusTo={importDialog.opener}
     onClose={() => {
       importDialog = null;
-      restoreDialogOpener();
     }}
   />
 {/if}
@@ -2393,17 +2379,13 @@
       importDisabled:
         tree === null || engineState.stopped !== null || importing || reading,
       onImportFile: (file) => {
-        rememberDialogOpener();
-        void handleImportFile(file).then(() => {
-          if (importDialog === null) dialogOpener = null;
-        });
+        void handleImportFile(file);
       },
       changePassphraseDisabled:
         tree === null || engineState.stopped !== null || importing,
       onChangePassphrase: () => {
         settingsSaver.flush();
         leaveDraft();
-        rememberDialogOpener();
         changePassphraseOpen = true;
       },
     }}
@@ -2424,7 +2406,6 @@
     onLogOut={handleLogOut}
     onClose={() => {
       changePassphraseOpen = false;
-      restoreDialogOpener();
     }}
   />
 {/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import { tick, type Snippet } from "svelte";
   import { dialogStack } from "./dialog-stack";
+  import { captureFocusReturn, returnFocus } from "./focus-return";
   import { swipeToClose } from "./swipe-to-close";
 
   interface Props {
@@ -20,6 +21,8 @@
     closeButton?: boolean;
     accentBorder?: boolean;
     swipeToClose?: boolean;
+    /** Overrides the element focused when the dialog opened as the focus-return target. */
+    returnFocusTo?: HTMLElement | null;
   }
 
   const {
@@ -36,6 +39,7 @@
     closeButton = false,
     accentBorder = false,
     swipeToClose: swipeEnabled = true,
+    returnFocusTo = null,
   }: Props = $props();
 
   const large = $derived(largeProp || wide || top);
@@ -67,6 +71,24 @@
     }
   }
 
+  let returnTo: HTMLElement | null = null;
+  let focusRecorded = false;
+
+  $effect.pre(() => {
+    if (open && !focusRecorded) {
+      focusRecorded = true;
+      returnTo = returnFocusTo ?? captureFocusReturn();
+    }
+  });
+
+  function restoreFocus(closing: HTMLDialogElement): void {
+    if (!focusRecorded) return;
+    const target = returnTo;
+    returnTo = null;
+    focusRecorded = false;
+    void tick().then(() => returnFocus(target, closing));
+  }
+
   $effect(() => {
     const el = dialogEl;
     if (el === undefined) return;
@@ -79,13 +101,17 @@
     } else if (el.open) {
       el.close();
       dialogStack.unregister(el);
+      restoreFocus(el);
     }
   });
 
   $effect(() => {
     const el = dialogEl;
     if (el === undefined) return;
-    return () => dialogStack.unregister(el);
+    return () => {
+      dialogStack.unregister(el);
+      restoreFocus(el);
+    };
   });
 
   function handleClose(): void {
