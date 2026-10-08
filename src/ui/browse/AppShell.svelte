@@ -1,5 +1,11 @@
 <script lang="ts">
   import { onDestroy, tick, untrack } from "svelte";
+  import type { AutoRefresh } from "../../app/auto-refresh";
+  import {
+    autoRefreshFailureReport,
+    INITIAL_AUTO_REFRESH_FAILURE_STATE,
+  manualRefreshFailureState,
+  } from "./auto-refresh-failure-report";
   import { MediaQuery } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
@@ -196,6 +202,7 @@
 
   interface Props {
     engine: SyncEngine;
+    autoRefresh: AutoRefresh;
     settingsSaver: SettingsSaver;
     contentIndexer: ContentIndexer;
     repoLabel: string;
@@ -224,6 +231,7 @@
 
   const {
     engine,
+    autoRefresh,
     settingsSaver,
     contentIndexer,
     repoLabel,
@@ -591,6 +599,16 @@
 
   let announcerState: AnnouncerState = INITIAL_ANNOUNCER_STATE;
   let announcement = $state("");
+  let announcementSequence = 0;
+
+  function announce(message: string): void {
+    const sequence = ++announcementSequence;
+    // An identical message must change the live region's text to be read again.
+    announcement = "";
+    void tick().then(() => {
+      if (sequence === announcementSequence) announcement = message;
+    });
+  }
 
   $effect(() => {
     const { syncStates, online, save } = engineState;
@@ -602,7 +620,7 @@
       notices: engineState.notices,
     });
     announcerState = result.state;
-    if (result.message !== null) announcement = result.message;
+    if (result.message !== null) announce(result.message);
     for (const notice of engineState.notices) {
       if (!isRemoteChangeNotice(notice)) continue;
       if (notice.kind === "remote-relocated") followRelocation(notice.from, notice.to);
@@ -792,7 +810,7 @@
     saveLastView();
   });
   const conflictPaths = $derived(engineState.conflicts.map((held) => held.path));
-  const refreshing = $derived(engineState.refresh.inFlight);
+  let manualRefreshing = $state(false);
   const head = $derived(engineState.synced?.head ?? null);
 
   const importing = $derived(engineState.importing || importStarted !== null);
@@ -1356,18 +1374,41 @@
     showToast("refresh", "error", text);
   }
 
+  let failureReport = INITIAL_AUTO_REFRESH_FAILURE_STATE;
+
+  $effect(() =>
+    autoRefresh.onRefreshed((error) => {
+      const { state, action } = autoRefreshFailureReport(failureReport, {
+        error,
+        online: engineState.online,
+      });
+      failureReport = state;
+      if (action.kind === "show") {
+        showRefreshError(describeSyncError(action.error, forgeName));
+      } else if (action.kind === "clear") {
+        clearToast("refresh");
+      }
+    }),
+  );
+
   async function handleRefresh(): Promise<boolean> {
+    manualRefreshing = true;
     try {
       await engine.refresh();
     } catch {
       showRefreshError("Refresh failed. Try again later.");
       return false;
+    } finally {
+      manualRefreshing = false;
     }
     const error = engine.getState().refresh.lastError;
     if (error === null) {
+      autoRefresh.manualRefreshed();
+      failureReport = INITIAL_AUTO_REFRESH_FAILURE_STATE;
       clearToast("refresh");
       return true;
     }
+    failureReport = manualRefreshFailureState(error);
     showRefreshError(describeSyncError(error, forgeName));
     return false;
   }
@@ -2151,7 +2192,7 @@
             {/each}
           </svg>
         </button>
-        <RefreshButton {refreshing} onRefresh={handleRefresh} />
+        <RefreshButton refreshing={manualRefreshing} onRefresh={handleRefresh} />
         <CommandMenu {commands} />
       </div>
     </div>

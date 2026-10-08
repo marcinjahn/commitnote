@@ -1064,6 +1064,17 @@ describe("sync engine saves", () => {
     expect(await welcomeText(h.fake)).toBe("committed once");
   });
 
+  it("reports local work while an edit is pending and none once saved", async () => {
+    const h = await setup();
+    expect(h.engine.hasLocalWork()).toBe(false);
+
+    h.engine.editNote(WELCOME, "edited");
+    expect(h.engine.hasLocalWork()).toBe(true);
+
+    await h.engine.flush();
+    expect(h.engine.hasLocalWork()).toBe(false);
+  });
+
   it("flush reports saved or the unsaved count", async () => {
     const h = await setup();
     h.engine.editNote(WELCOME, "flushed");

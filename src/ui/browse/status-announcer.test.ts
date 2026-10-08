@@ -154,6 +154,13 @@ describe("remote change announcements", () => {
     expect(result.state.announcedNoticeId).toBe(5);
   });
 
+  it("announces each of two successive remote updates", () => {
+    const first = step(INITIAL_ANNOUNCER_STATE, null, true, false, [updated(0)]);
+    const second = step(first.state, null, true, false, [updated(1)]);
+    expect(first.message).toBe("Updated on another device.");
+    expect(second.message).toBe("Updated on another device.");
+  });
+
   it("announces a notice only once", () => {
     const first = step(INITIAL_ANNOUNCER_STATE, null, true, false, [updated(0)]);
     const second = step(first.state, null, true, false, [updated(0)]);

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { removeLastView } from "./app/last-view";
+  import { createAutoRefresh, type AutoRefresh } from "./app/auto-refresh";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
   import { clearNoteFragment } from "./app/note-navigation";
   import {
@@ -100,6 +101,7 @@
     | {
         readonly kind: "app";
         readonly engine: SyncEngine;
+        readonly autoRefresh: AutoRefresh;
         readonly settingsSaver: SettingsSaver;
         readonly contentIndexer: ContentIndexer;
         readonly session: Session;
@@ -143,6 +145,7 @@
 
   let phase = $state.raw<Phase>({ kind: "restoring" });
   let loginKey = $state(0);
+  let autoRefresh: AutoRefresh | null = null;
   let uninstallLifecycleTriggers: (() => void) | null = null;
   let uninstallBlobCachePurge: (() => void) | null = null;
   let unsubscribeStopped: (() => void) | null = null;
@@ -308,6 +311,8 @@
         },
         retryNow: () => engine.retryNow(),
         setOnline: (online) => engine.setOnline(online),
+        setVisible: (visible) => autoRefresh?.setVisible(visible),
+        refreshTrigger: (trigger) => autoRefresh?.trigger(trigger),
         hasUnsaved: () =>
           settingsSaver.hasPending || engine.getState().syncStates.hasUnsaved,
       },
@@ -322,9 +327,31 @@
       refreshed = false;
     }
 
+    const refreshScheduler = createAutoRefresh({
+      refresh: () => engine.refresh(),
+      lastError: () => engine.getState().refresh.lastError,
+      canRefresh: () => {
+        const s = engine.getState();
+        return (
+          document.visibilityState === "visible" &&
+          s.online &&
+          s.stopped === null &&
+          !s.suspended &&
+          !s.importing &&
+          !s.refresh.inFlight &&
+          !engine.hasLocalWork()
+        );
+      },
+      observedRateLimit: () => cachedAdapter.observedRateLimit?.() ?? null,
+      clock: systemClock,
+      visible: document.visibilityState === "visible",
+    });
+    autoRefresh = refreshScheduler;
+
     phase = {
       kind: "app",
       engine,
+      autoRefresh: refreshScheduler,
       settingsSaver,
       contentIndexer,
       session,
@@ -391,6 +418,8 @@
   ): Promise<void> {
     uninstallLifecycleTriggers?.();
     uninstallLifecycleTriggers = null;
+    autoRefresh?.dispose();
+    autoRefresh = null;
     uninstallBlobCachePurge?.();
     uninstallBlobCachePurge = null;
     unsubscribeStopped?.();
@@ -570,6 +599,7 @@
 {:else if phase.kind === "app"}
   <AppShell
     engine={phase.engine}
+    autoRefresh={phase.autoRefresh}
     settingsSaver={phase.settingsSaver}
     contentIndexer={phase.contentIndexer}
     repoLabel={phase.repoLabel}

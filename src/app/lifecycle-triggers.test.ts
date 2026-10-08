@@ -14,6 +14,8 @@ function createHandlers() {
     flush: 0,
     retryNow: 0,
     online: [] as boolean[],
+    visible: [] as boolean[],
+    triggers: [] as string[],
   };
   return {
     calls,
@@ -27,6 +29,12 @@ function createHandlers() {
       hasUnsaved: () => false,
       setOnline: (online: boolean) => {
         calls.online.push(online);
+      },
+      setVisible: (visible: boolean) => {
+        calls.visible.push(visible);
+      },
+      refreshTrigger: (trigger: "visible" | "online") => {
+        calls.triggers.push(trigger);
       },
     },
   };
@@ -95,6 +103,8 @@ describe("installLifecycleTriggers", () => {
       retryNow: () => {},
       hasUnsaved: () => unsaved,
       setOnline: () => {},
+      setVisible: () => {},
+      refreshTrigger: () => {},
     });
 
     const clean = new Event("beforeunload", {
@@ -131,5 +141,55 @@ describe("installLifecycleTriggers", () => {
     expect(calls.flush).toBe(0);
     expect(calls.retryNow).toBe(0);
     expect(calls.online).toEqual([]);
+  });
+
+  it("tracks visibility and triggers a refresh when the document becomes visible", () => {
+    const targets = createTargets();
+    const { calls, handlers } = createHandlers();
+    installLifecycleTriggers(targets, handlers);
+
+    targets.document.visibilityState = "hidden";
+    targets.document.dispatchEvent(new Event("visibilitychange"));
+    expect(calls.visible).toEqual([false]);
+    expect(calls.triggers).toEqual([]);
+
+    targets.document.visibilityState = "visible";
+    targets.document.dispatchEvent(new Event("visibilitychange"));
+    expect(calls.visible).toEqual([false, true]);
+    expect(calls.triggers).toEqual(["visible"]);
+  });
+
+  it("triggers a refresh on window focus only while visible", () => {
+    const targets = createTargets();
+    const { calls, handlers } = createHandlers();
+    installLifecycleTriggers(targets, handlers);
+
+    targets.window.dispatchEvent(new Event("focus"));
+    expect(calls.triggers).toEqual(["visible"]);
+
+    targets.document.visibilityState = "hidden";
+    targets.window.dispatchEvent(new Event("focus"));
+    expect(calls.triggers).toEqual(["visible"]);
+  });
+
+  it("triggers an online refresh when the browser comes back online", () => {
+    const targets = createTargets();
+    const { calls, handlers } = createHandlers();
+    installLifecycleTriggers(targets, handlers);
+
+    targets.window.dispatchEvent(new Event("online"));
+
+    expect(calls.triggers).toEqual(["online"]);
+  });
+
+  it("stops listening for focus after uninstall", () => {
+    const targets = createTargets();
+    const { calls, handlers } = createHandlers();
+    const uninstall = installLifecycleTriggers(targets, handlers);
+
+    uninstall();
+    targets.window.dispatchEvent(new Event("focus"));
+
+    expect(calls.triggers).toEqual([]);
   });
 });

@@ -141,6 +141,50 @@ test("a remote edit is announced politely", async ({
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
+test("a repeated remote edit is announced again", async ({
+  page,
+  openSecondDevice,
+}) => {
+  await openNotes(page);
+  await openLoadedWelcome(page);
+  await page.evaluate(() => {
+    const seen: string[] = [];
+    (window as unknown as { announced: string[] }).announced = seen;
+    const region = document.querySelector('[data-testid="status-announcer"]')!;
+    new MutationObserver(() => {
+      const text = region.textContent ?? "";
+      if (text !== "") seen.push(text);
+    }).observe(region, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  });
+
+  const other = await openSecondDevice();
+  await editRemotely(page, other.page, REMOTE_LINE);
+  await refresh(page);
+  await expect(page.getByTestId("status-announcer")).toHaveText(
+    "Updated on another device.",
+  );
+
+  await editRemotely(page, other.page, "Second remote line");
+  await refresh(page);
+  await expect(editor(page)).toContainText("Second remote line");
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { announced: string[] }).announced.filter(
+            (text) => text === "Updated on another device.",
+          ).length,
+      ),
+    )
+    .toBe(2);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
 async function renameOpenNote(page: Page, name: string): Promise<void> {
   const field = page.getByRole("textbox", { name: "Note name" });
   await field.fill(name);

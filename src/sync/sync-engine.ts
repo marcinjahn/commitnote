@@ -344,6 +344,7 @@ export interface SyncEngine {
   purgeExpiredTrash(): void;
   flush(): Promise<FlushResult>;
   retryNow(): void;
+  hasLocalWork(): boolean;
   /** While offline nothing is saved; going online saves at once. */
   setOnline(online: boolean): void;
   resolveConflict(path: NotePath, resolution: ConflictResolution): void;
@@ -2747,6 +2748,7 @@ export function createSyncEngine(options: {
     purgeExpiredTrash,
     flush,
     retryNow,
+    hasLocalWork: () => hasLocalWork() || saveLoop !== null,
     setOnline,
     resolveConflict,
     changeSettings,
