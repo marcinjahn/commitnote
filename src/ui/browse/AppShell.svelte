@@ -2219,6 +2219,7 @@
       onDraftContent={handleDraftContent}
       onNewNote={handleHeaderNewNote}
       noteFont={settings.noteFont}
+      animatedCaret={settings.animatedCaret}
       shared={openTreeNote?.shared ?? false}
       onShared={draft === null && openTreeNote !== undefined && !openConflicted
         ? () => openShareDialog(openTreeNote.path, openTreeNote.syncedPath)

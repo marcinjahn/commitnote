@@ -115,6 +115,7 @@ describe("placement settings", () => {
       newNotePlacement: "beginning",
       newFolderPlacement: "end",
       noteFont: "inter",
+      animatedCaret: true,
     });
   });
 
@@ -318,4 +319,26 @@ describe("color mode setting", () => {
   it("types the color mode setting as the option id", () => {
     expectTypeOf<Settings["colorMode"]>().toEqualTypeOf<ColorModeId>();
   });
+});
+
+describe("animated caret setting", () => {
+  it("is on by default", () => {
+    expect(resolveSettings(SETTINGS_SCHEMA, {}).animatedCaret).toBe(true);
+  });
+
+  it("keeps a stored choice", () => {
+    expect(
+      resolveSettings(SETTINGS_SCHEMA, { animatedCaret: false }).animatedCaret,
+    ).toBe(false);
+  });
+
+  it.each(["false", 0, null, {}])(
+    "falls back to on for the invalid value %j",
+    (value) => {
+      expect(
+        resolveSettings(SETTINGS_SCHEMA, { animatedCaret: value })
+          .animatedCaret,
+      ).toBe(true);
+    },
+  );
 });

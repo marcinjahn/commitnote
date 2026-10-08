@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { Extension } from "@codemirror/state";
+  import type { Compartment, Extension } from "@codemirror/state";
   import {
     createMarkdownEditor,
     type MarkdownEditor,
@@ -32,6 +32,10 @@
 
   export function setSelection(anchor: number, head: number): void {
     editor?.setSelection(anchor, head);
+  }
+
+  export function reconfigure(compartment: Compartment, extension: Extension): void {
+    editor?.view.dispatch({ effects: compartment.reconfigure(extension) });
   }
 
   export function insertText(inserted: string): void {

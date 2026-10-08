@@ -1,6 +1,15 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openNotes } from "./helpers";
+import {
+  SAMPLE,
+  chooseRepository,
+  expectSettingsIdle,
+  expectTree,
+  flushPendingSaves,
+  logOut,
+  openNotes,
+} from "./helpers";
+import { closeSettings, openSettings } from "./helpers/settings";
 import { CARET_BLINK_MS, CARET_HOLD_MS } from "../src/editor/caret-style";
 
 const caretLayer = (page: Page) => page.locator(".cm-accent-caret-layer");
@@ -202,4 +211,55 @@ test("the tint never moves or reshapes the letters", async ({ page }) => {
   await expect(tint(page)).toHaveCount(0);
 
   expect(await glyphs()).toEqual(tinted);
+});
+
+test("the animated caret can be turned off and stays off after logging in again", async ({
+  page,
+}) => {
+  const animatedCaret = () =>
+    page.getByRole("checkbox", { name: "Animated caret" });
+  await newNote(page);
+  await page.keyboard.type("hello");
+  await expect(caret(page)).toHaveCount(1);
+  await expect(tint(page)).not.toHaveCount(0);
+
+  await openSettings(page);
+  await expect(animatedCaret()).toBeChecked();
+  await animatedCaret().uncheck();
+  await flushPendingSaves(page);
+  await expectSettingsIdle(page);
+  await closeSettings(page);
+
+  await editor(page).click();
+  await page.keyboard.type("s");
+  await expect(caretLayer(page)).toHaveCount(0);
+  await expect(tint(page)).toHaveCount(0);
+  await expect(editor(page)).not.toHaveCSS("caret-color", "rgba(0, 0, 0, 0)");
+
+  await openSettings(page);
+  await animatedCaret().check();
+  await closeSettings(page);
+  await editor(page).click();
+  await page.keyboard.type("s");
+  await expect(caret(page)).toHaveCount(1);
+  await expect(editor(page)).toHaveCSS("caret-color", "rgba(0, 0, 0, 0)");
+
+  await openSettings(page);
+  await animatedCaret().uncheck();
+  await flushPendingSaves(page);
+  await expectSettingsIdle(page);
+  await closeSettings(page);
+
+  await logOut(page);
+  await chooseRepository(page, { repo: SAMPLE.repo });
+  await page.getByLabel("Passphrase", { exact: true }).fill(SAMPLE.passphrase);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expectTree(page);
+  await page.getByRole("treeitem", { name: "Welcome" }).click();
+  await editor(page).click();
+  await expect(editor(page)).toBeFocused();
+  await expect(caretLayer(page)).toHaveCount(0);
+
+  await openSettings(page);
+  await expect(animatedCaret()).not.toBeChecked();
 });

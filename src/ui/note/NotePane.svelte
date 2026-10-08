@@ -4,6 +4,7 @@
   import { livePreview } from "../../editor/live-preview";
   import { linkOpen } from "../../editor/link-open";
   import { accentCaret } from "../../editor/accent-caret";
+  import { Compartment } from "@codemirror/state";
   import type { HeldConflict, OpenNoteState, SyncEngine } from "../../sync/sync-engine";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
   import { describeSyncError } from "../browse/sync-messages";
@@ -30,13 +31,28 @@
     onDraftContent: (content: string) => void;
     onNewNote: () => void;
     noteFont: NoteFont;
+    animatedCaret?: boolean;
     shared?: boolean;
     onShared?: () => void;
   }
 
-  const { engine, forgeName, openNote, noteSwitch, conflict, draft, noteDates, treeLoaded, hasNotes, onDraftContent, onNewNote, noteFont, shared = false, onShared }: Props = $props();
+  const { engine, forgeName, openNote, noteSwitch, conflict, draft, noteDates, treeLoaded, hasNotes, onDraftContent, onNewNote, noteFont, animatedCaret = true, shared = false, onShared }: Props = $props();
 
-  const editorExtensions = [livePreview(), linkOpen(), accentCaret()];
+  const caretCompartment = new Compartment();
+  const caretExtension = (on: boolean) => (on ? accentCaret() : []);
+  const editorExtensions = $derived([
+    livePreview(),
+    linkOpen(),
+    caretCompartment.of(caretExtension(animatedCaret)),
+  ]);
+  let appliedCaret = untrack(() => animatedCaret);
+
+  $effect(() => {
+    const on = animatedCaret;
+    if (on === appliedCaret) return;
+    appliedCaret = on;
+    untrack(() => editor?.reconfigure(caretCompartment, caretExtension(on)));
+  });
 
   interface Presented {
     noteSwitch: number;
