@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { EngineNotice } from "../../sync/sync-engine";
+import type { EngineNotice as AnyEngineNotice, RemoteChangeNotice } from "../../sync/sync-engine";
+
+type EngineNotice = Exclude<AnyEngineNotice, RemoteChangeNotice>;
 import { describeNotice, isPersistentToast, noticeTone, toneLabel } from "./notice-messages";
 
 function merge(notice: Extract<EngineNotice, { kind: "merge" }>["notice"]): EngineNotice {

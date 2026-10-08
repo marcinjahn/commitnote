@@ -1,5 +1,5 @@
 import type { NotePath } from "../../changes/change";
-import type { EngineNotice } from "../../sync/sync-engine";
+import type { EngineNotice, RemoteChangeNotice } from "../../sync/sync-engine";
 
 export type ToastTone = "success" | "info" | "warning" | "error";
 
@@ -17,7 +17,9 @@ export function isPersistentToast(tone: ToastTone, hasAction: boolean): boolean 
   return tone === "error" || tone === "warning" || hasAction;
 }
 
-export function noticeTone(notice: EngineNotice): ToastTone {
+export function noticeTone(
+  notice: Exclude<EngineNotice, RemoteChangeNotice>,
+): ToastTone {
   switch (notice.kind) {
     case "conflict":
     case "dropped":
@@ -45,7 +47,9 @@ function quoted(path: NotePath): string {
   return `“${path.join(" / ")}”`;
 }
 
-export function describeNotice(notice: EngineNotice): string {
+export function describeNotice(
+  notice: Exclude<EngineNotice, RemoteChangeNotice>,
+): string {
   switch (notice.kind) {
     case "conflict":
       return `${quoted(notice.path)} was changed on another device too. Open it to resolve the conflict.`;

@@ -1,3 +1,4 @@
+import type { EngineNotice } from "../../sync/sync-engine";
 import { describe, expect, it } from "vitest";
 import {
   ALL_CHANGES_SAVED,
@@ -13,8 +14,9 @@ function step(
   problem: SyncProblem,
   allSaved: boolean,
   hasUnsaved = !allSaved,
+  notices: readonly EngineNotice[] = [],
 ) {
-  return nextAnnouncement(state, { problem, allSaved, hasUnsaved });
+  return nextAnnouncement(state, { problem, allSaved, hasUnsaved, notices });
 }
 
 describe("syncProblem", () => {
@@ -46,7 +48,11 @@ describe("nextAnnouncement", () => {
   it("announces going offline", () => {
     const result = step(INITIAL_ANNOUNCER_STATE, "offline", true, false);
     expect(result.message).toBe("Offline");
-    expect(result.state).toEqual({ problem: "offline", awaitingRecovery: true });
+    expect(result.state).toEqual({
+      problem: "offline",
+      awaitingRecovery: true,
+      announcedNoticeId: -1,
+    });
   });
 
   it("announces offline with unsaved changes", () => {
@@ -108,5 +114,47 @@ describe("nextAnnouncement", () => {
       state = result.state;
     }
     expect(state).toEqual(INITIAL_ANNOUNCER_STATE);
+  });
+});
+
+describe("remote change announcements", () => {
+  const updated = (id: number): EngineNotice => ({
+    id,
+    kind: "remote-updated",
+    path: ["a"],
+  });
+
+  it("announces a remote update politely", () => {
+    const result = step(INITIAL_ANNOUNCER_STATE, null, true, false, [updated(0)]);
+    expect(result.message).toBe("Updated on another device.");
+    expect(result.state.announcedNoticeId).toBe(0);
+  });
+
+  it("announces a notice only once", () => {
+    const first = step(INITIAL_ANNOUNCER_STATE, null, true, false, [updated(0)]);
+    const second = step(first.state, null, true, false, [updated(0)]);
+    expect(second.message).toBeNull();
+  });
+
+  it("announces a newer notice", () => {
+    const first = step(INITIAL_ANNOUNCER_STATE, null, true, false, [updated(0)]);
+    const second = step(first.state, null, true, false, [updated(0), updated(3)]);
+    expect(second.message).toBe("Updated on another device.");
+    expect(second.state.announcedNoticeId).toBe(3);
+  });
+
+  it("lets a problem take priority and still consumes the notice", () => {
+    const result = step(INITIAL_ANNOUNCER_STATE, "offline", true, false, [updated(2)]);
+    expect(result.message).toBe("Offline");
+    expect(result.state.announcedNoticeId).toBe(2);
+    const later = step(result.state, "offline", true, false, [updated(2)]);
+    expect(later.message).toBeNull();
+  });
+
+  it("lets the recovery message take priority", () => {
+    const offline = step(INITIAL_ANNOUNCER_STATE, "offline", false);
+    const result = step(offline.state, null, true, false, [updated(1)]);
+    expect(result.message).toBe(ALL_CHANGES_SAVED);
+    expect(step(result.state, null, true, false, [updated(1)]).message).toBeNull();
   });
 });

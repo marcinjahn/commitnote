@@ -3,7 +3,12 @@
   import { MediaQuery } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
-  import type { HeldConflict, SyncEngine, SyncEngineState } from "../../sync/sync-engine";
+  import {
+    isRemoteChangeNotice,
+    type HeldConflict,
+    type SyncEngine,
+    type SyncEngineState,
+  } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
@@ -580,9 +585,13 @@
       problem: syncProblem({ online, root, save }),
       allSaved: root.kind === "synced" && !syncStates.hasUnsaved,
       hasUnsaved: syncStates.hasUnsaved,
+      notices: engineState.notices,
     });
     announcerState = result.state;
     if (result.message !== null) announcement = result.message;
+    for (const notice of engineState.notices) {
+      if (isRemoteChangeNotice(notice)) engine.dismissNotice(notice.id);
+    }
   });
 
   $effect(() => {
@@ -2329,7 +2338,7 @@
 
 <div class="toast-host" use:toastHost>
   <NoticeToasts
-    notices={engineState.notices}
+    notices={engineState.notices.filter((n) => !isRemoteChangeNotice(n))}
     messages={TOAST_ORDER.flatMap((channel) => toasts[channel] ?? [])}
     onDismiss={(id) => engine.dismissNotice(id)}
     onDismissMessage={dismissMessage}

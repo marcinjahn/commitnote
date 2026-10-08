@@ -179,9 +179,26 @@ type NoticeBody =
   | { readonly kind: "merge"; readonly notice: MergeNotice }
   | { readonly kind: "conflict"; readonly path: NotePath }
   | { readonly kind: "edited-merge-restored"; readonly path: NotePath }
-  | { readonly kind: "dropped"; readonly change: Change };
+  | { readonly kind: "dropped"; readonly change: Change }
+  | { readonly kind: "remote-updated"; readonly path: NotePath };
 
 export type EngineNotice = NoticeBody & { readonly id: number };
+
+export type RemoteChangeNotice = Extract<
+  EngineNotice,
+  { kind: "remote-updated" }
+>;
+
+export function isRemoteChangeNotice(
+  notice: EngineNotice,
+): notice is RemoteChangeNotice {
+  switch (notice.kind) {
+    case "remote-updated":
+      return true;
+    default:
+      return false;
+  }
+}
 
 export interface SyncEngineState {
   readonly synced: SyncedState | null;
@@ -1652,6 +1669,7 @@ export function createSyncEngine(options: {
 
     try {
       const head = await adapter.getHead();
+      let appliedFrom: OpenNoteState | null | undefined;
 
       if (saveLoop === null) {
         if (hasLocalWork()) {
@@ -1661,6 +1679,7 @@ export function createSyncEngine(options: {
           // A save or local change started while the tree loaded is merged
           // by the save instead.
           if (saveLoop === null && !hasLocalWork()) {
+            appliedFrom = state.openNote;
             update((current) => ({ ...current, synced }));
             await recheckConflicts();
           } else if (saveLoop === null) {
@@ -1668,6 +1687,21 @@ export function createSyncEngine(options: {
           }
         }
         await reresolveOpenNote();
+        const after = state.openNote;
+        if (
+          appliedFrom?.kind === "loaded" &&
+          after?.kind === "loaded" &&
+          notePathEquals(appliedFrom.path, after.path) &&
+          appliedFrom.content !== after.content &&
+          !hasLocalWork()
+        ) {
+          update((current) => ({
+            ...current,
+            notices: notices(current.notices, [
+              { kind: "remote-updated", path: after.path },
+            ]),
+          }));
+        }
       }
 
       update((current) => ({

@@ -165,6 +165,71 @@ describe("createSyncEngine", () => {
     );
   });
 
+  describe("remote-updated notice", () => {
+    const remoteUpdates = (engine: SyncEngine) =>
+      engine.getState().notices.filter((n) => n.kind === "remote-updated");
+
+    it("is emitted once when another device changes the open loaded note", async () => {
+      const { fake, engine } = await setup();
+      await engine.refresh();
+      await engine.openNote(["Welcome"]);
+      const storedPath = await welcomeStoredPath(engine);
+
+      await fake.pushFromAnotherDevice([
+        {
+          kind: "upsert-text",
+          path: storedPath,
+          text: await encryptNote(keyring, "# Welcome\n\nchanged elsewhere\n"),
+        },
+      ]);
+      await engine.refresh();
+
+      expect(remoteUpdates(engine)).toMatchObject([
+        { kind: "remote-updated", path: ["Welcome"] },
+      ]);
+      await engine.refresh();
+      expect(remoteUpdates(engine)).toHaveLength(1);
+    });
+
+    it("is not emitted for a change to another note", async () => {
+      const { fake, engine } = await setup();
+      await engine.refresh();
+      await engine.openNote(["Welcome"]);
+
+      await fake.pushFromAnotherDevice([
+        {
+          kind: "upsert-text",
+          path: await encryptPath(keyring, ["Other"]),
+          text: await encryptNote(keyring, "# Other\n"),
+        },
+      ]);
+      await engine.refresh();
+
+      expect(remoteUpdates(engine)).toHaveLength(0);
+    });
+
+    it("is not emitted when the open note has local work, and local content wins", async () => {
+      const { fake, engine } = await setup();
+      await engine.refresh();
+      await engine.openNote(["Welcome"]);
+      const storedPath = await welcomeStoredPath(engine);
+
+      engine.editNote(["Welcome"], "local edit");
+      await fake.pushFromAnotherDevice([
+        {
+          kind: "upsert-text",
+          path: storedPath,
+          text: await encryptNote(keyring, "# Welcome\n\nremote\n"),
+        },
+      ]);
+      await engine.refresh();
+
+      expect(remoteUpdates(engine)).toHaveLength(0);
+      const open = engine.getState().openNote;
+      expect(open).toMatchObject({ kind: "loaded", content: "local edit" });
+    });
+  });
+
   it("lists the working tree in the stored order and reads the order file once per version", async () => {
     const { fake, counts, engine } = await setup();
     await engine.refresh();
