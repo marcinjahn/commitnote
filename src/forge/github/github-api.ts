@@ -4,19 +4,22 @@ import { retryAfterMs, sendForgeRequest } from "../forge-http";
 export const API_BASE = "https://api.github.com";
 const API_VERSION = "2022-11-28";
 
-export function sendGitHubRequest(
+export async function sendGitHubRequest(
   fetchImpl: typeof fetch,
   accessToken: string,
   pathOrUrl: string,
   init: { method: string; body?: unknown },
+  onResponse?: (response: Response) => void,
 ): Promise<Response> {
   const url = pathOrUrl.startsWith("https://")
     ? pathOrUrl
     : `${API_BASE}${pathOrUrl}`;
-  return sendForgeRequest(fetchImpl, url, accessToken, init, {
+  const response = await sendForgeRequest(fetchImpl, url, accessToken, init, {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": API_VERSION,
   });
+  onResponse?.(response);
+  return response;
 }
 
 export async function gitHubErrorFor(

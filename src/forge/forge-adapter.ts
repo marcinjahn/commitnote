@@ -150,6 +150,12 @@ export interface ForgeWriteLimits {
   readonly perHour: number;
 }
 
+export interface ObservedRateLimit {
+  readonly remaining: number;
+  /** Epoch milliseconds. */
+  readonly resetAt: number;
+}
+
 export interface ForgeAdapter {
   readonly limits: ForgeWriteLimits;
   readonly shareHost: ShareHost;
@@ -193,4 +199,6 @@ export interface ForgeAdapter {
   replaceHistory?(request: ReplaceHistoryRequest): Promise<CommitResult>;
   /** Removes leftovers of interrupted atomic commits. Best-effort. */
   sweepAbandoned?(): Promise<void>;
+  /** The latest rate limit the forge reported, or null before any report. */
+  observedRateLimit?(): ObservedRateLimit | null;
 }

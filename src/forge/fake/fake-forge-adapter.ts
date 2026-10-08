@@ -15,6 +15,7 @@ import type {
   RepoInspection,
   RootEntry,
   TreeEntry,
+  ObservedRateLimit,
 } from "../forge-adapter";
 import type { ShareHost, ShareLocator } from "../share-host";
 import { createFakeShareStore, type FakeShareStore } from "./fake-share-store";
@@ -276,6 +277,10 @@ export class FakeForgeAdapter implements ForgeAdapter {
     }
 
     return { kind: "ok", head: commitSha };
+  }
+
+  observedRateLimit(): ObservedRateLimit | null {
+    return null;
   }
 
   async getHead(): Promise<string> {

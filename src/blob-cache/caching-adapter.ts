@@ -40,5 +40,8 @@ export function withBlobCache(
     ...(inner.sweepAbandoned
       ? { sweepAbandoned: inner.sweepAbandoned.bind(inner) }
       : {}),
+    ...(inner.observedRateLimit
+      ? { observedRateLimit: inner.observedRateLimit.bind(inner) }
+      : {}),
   };
 }

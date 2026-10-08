@@ -8,6 +8,7 @@ import {
 import type { RepoCoordinates } from "../repo-coordinates";
 import { parseLinkHeader } from "../link-header";
 import {
+  createRateLimitRecorder,
   byPath,
   decodeBase64Text,
   defaultFetch,
@@ -31,6 +32,7 @@ import type {
   RepoInspection,
   RootEntry,
   TreeEntry,
+  ObservedRateLimit,
 } from "../forge-adapter";
 import type { ShareHost, ShareLocator } from "../share-host";
 
@@ -154,6 +156,10 @@ class GitHubAdapter implements ForgeAdapter {
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
   private readonly blobCache = new Map<string, string>();
+  private readonly rateLimit = createRateLimitRecorder({
+    remaining: "x-ratelimit-remaining",
+    reset: "x-ratelimit-reset",
+  });
 
   constructor(
     coordinates: Pick<RepoCoordinates, "owner" | "repo">,
@@ -186,7 +192,12 @@ class GitHubAdapter implements ForgeAdapter {
         ? path
         : `/repos/${this.ownerPath}/${this.repoPath}${path}`,
       init,
+      (response) => this.rateLimit.record(response),
     );
+  }
+
+  observedRateLimit(): ObservedRateLimit | null {
+    return this.rateLimit.current();
   }
 
   private errorFor(response: Response): Promise<ForgeError> {
