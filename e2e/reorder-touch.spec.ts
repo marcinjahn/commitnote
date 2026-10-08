@@ -115,7 +115,7 @@ test("a swipe scrolls the tree instead of dragging", { tag: "@mobile-only" }, as
   await treeItem(page, "Journal").tap();
   await treeItem(page, "2026").tap();
   await treeItem(page, "Projects").tap();
-  const container = page.getByRole("tree", { name: "Notes" }).locator("..");
+  const container = page.getByRole("navigation", { name: "Notes" });
   await expect
     .poll(() =>
       container.evaluate((el) => el.scrollHeight - el.clientHeight),

@@ -2828,6 +2828,13 @@
     margin: var(--space-2) var(--space-3) 0;
   }
 
+  @media (max-height: 480px) {
+    .sidebar {
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+  }
+
   @media (min-width: 768px) {
     .shell {
       flex-direction: row;

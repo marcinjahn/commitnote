@@ -384,6 +384,13 @@
     scroll-padding-bottom: var(--toast-stack-height, 0px);
   }
 
+  @media (max-height: 480px) {
+    .tree-container {
+      flex: 1 0 auto;
+      min-height: 10rem;
+    }
+  }
+
   .tree-container:global([data-drag-state]) {
     user-select: none;
   }
