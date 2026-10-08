@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   Compartment,
   EditorSelection,
@@ -553,5 +561,146 @@ describe("vimExtension configuration", () => {
 
     const event = keydown(view, { key: "Tab" });
     expect(event.defaultPrevented).toBe(true);
+  });
+});
+
+describe("vimExtension system clipboard", () => {
+  function mockClipboard(initial = "") {
+    let text = initial;
+    const clipboard = {
+      writeText: vi.fn(async (value: string) => {
+        text = value;
+      }),
+      readText: vi.fn(async () => text),
+    };
+    Object.defineProperty(navigator, "clipboard", {
+      value: clipboard,
+      configurable: true,
+    });
+    return clipboard;
+  }
+
+  const messageOf = (view: EditorView) => vimStatusOf(view.state)?.message;
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "clipboard");
+    vi.restoreAllMocks();
+  });
+
+  it("writes yanks and deletes into the unnamed register to the clipboard", async () => {
+    const clipboard = mockClipboard();
+    const { view } = await setup();
+
+    await press(view, "y", "w");
+    expect(clipboard.writeText).toHaveBeenLastCalledWith("first ");
+
+    await press(view, "y", "y");
+    expect(clipboard.writeText).toHaveBeenLastCalledWith("first line\n");
+
+    await press(view, "v", "l", "y");
+    expect(clipboard.writeText).toHaveBeenLastCalledWith("fi");
+
+    await press(view, "x");
+    expect(clipboard.writeText).toHaveBeenLastCalledWith("f");
+
+    await press(view, "j", "d", "d");
+    expect(clipboard.writeText).toHaveBeenLastCalledWith("second line\n");
+    expect(clipboard.writeText).toHaveBeenCalledTimes(5);
+  });
+
+  it("keeps named registers internal and treats + and * as the clipboard", async () => {
+    const clipboard = mockClipboard();
+    const { view } = await setup();
+
+    await press(view, '"', "a", "y", "y", '"', "_", "d", "w");
+    expect(clipboard.writeText).not.toHaveBeenCalled();
+
+    await press(view, '"', "+", "y", "w");
+    expect(clipboard.writeText).toHaveBeenLastCalledWith("line");
+
+    await press(view, '"', "*", "y", "y");
+    expect(clipboard.writeText).toHaveBeenLastCalledWith("line\n");
+    expect(Vim.getRegisterController().getRegister("+").toString()).toBe(
+      "line\n",
+    );
+  });
+
+  it("pastes text from the clipboard with p, P and visual p", async () => {
+    const clipboard = mockClipboard("XY");
+    const { view } = await setup();
+
+    await press(view, "p");
+    expect(clipboard.readText).toHaveBeenCalledTimes(1);
+    expect(docOf(view)).toBe("fXYirst line\nsecond line\nthird line");
+
+    await press(view, "0", "P");
+    expect(docOf(view)).toBe("XYfXYirst line\nsecond line\nthird line");
+
+    await press(view, "j", "0", "v", "e", '"', "+", "p");
+    expect(docOf(view)).toBe("XYfXYirst line\nXY line\nthird line");
+    expect(clipboard.writeText).toHaveBeenLastCalledWith("second");
+  });
+
+  it("pastes clipboard text ending in a newline as whole lines", async () => {
+    mockClipboard("new line\n");
+    const { view } = await setup();
+
+    await press(view, "p");
+
+    expect(docOf(view)).toBe("first line\nnew line\nsecond line\nthird line");
+  });
+
+  it("keeps yy p linewise and undoes the paste in one step", async () => {
+    mockClipboard();
+    const { view } = await setup();
+
+    await press(view, "y", "y", "p");
+    expect(docOf(view)).toBe(
+      "first line\nfirst line\nsecond line\nthird line",
+    );
+
+    await press(view, "u");
+    expect(docOf(view)).toBe(DOC);
+  });
+
+  it("falls back to the register when reading the clipboard fails", async () => {
+    const clipboard = mockClipboard();
+    clipboard.readText.mockRejectedValue(new Error("unavailable"));
+    const { view } = await setup();
+
+    await press(view, "y", "y", "p");
+    expect(docOf(view)).toBe(
+      "first line\nfirst line\nsecond line\nthird line",
+    );
+
+    await press(view, "p");
+    expect(clipboard.readText).toHaveBeenCalledTimes(2);
+    expect(messageOf(view)?.text).not.toContain("denied");
+  });
+
+  it("stops reading after the clipboard permission is denied", async () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const clipboard = mockClipboard();
+    clipboard.readText.mockRejectedValue(
+      new DOMException("denied", "NotAllowedError"),
+    );
+    const { view } = await setup();
+
+    await press(view, "y", "w", "p");
+    expect(docOf(view)).toBe("ffirst irst line\nsecond line\nthird line");
+    expect(messageOf(view)?.text).toBe(
+      "Clipboard access denied, pasting from the Vim register",
+    );
+
+    await press(view, "p");
+    expect(clipboard.readText).toHaveBeenCalledTimes(1);
+  });
+
+  it("pastes from the register when no clipboard is available", async () => {
+    const { view } = await setup();
+
+    await press(view, "y", "w", "P");
+
+    expect(docOf(view)).toBe("first first line\nsecond line\nthird line");
   });
 });

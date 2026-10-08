@@ -8,6 +8,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import { relativeLineNumbers } from "./relative-line-numbers";
+import { useSystemClipboard } from "./vim-clipboard";
 import { adoptVimDialogs, discardCommandLine } from "./vim-command-line";
 import { defineAppExCommands, vimCallbacks } from "./vim-ex-commands";
 import {
@@ -318,6 +319,7 @@ const staticExtensions: Extension = [
 
 export function vimExtension(options: VimExtensionOptions): Extension {
   leaveInsertCopyToBrowser();
+  useSystemClipboard();
   defineAppExCommands();
   const { initialMode, animatedCaret, onWrite, onQuit, onStatus } = options;
   return [

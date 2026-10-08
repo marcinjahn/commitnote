@@ -187,6 +187,44 @@ test("the command line runs ex commands and keeps history", async ({
   await expect(editor(page)).toContainText("Edited # Welcome");
 });
 
+test("yank and put go through the system clipboard", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const readClipboard = () =>
+    page.evaluate(() => navigator.clipboard.readText());
+  const lines = editor(page).locator(".cm-line");
+  await openNotes(page);
+  await enableVimMode(page);
+  await startNewNote(page);
+  await page.keyboard.type("alpha beta");
+  await page.keyboard.press("Escape");
+
+  await page.keyboard.type("0yw");
+  await expect.poll(readClipboard).toBe("alpha ");
+
+  await page.evaluate(() => navigator.clipboard.writeText("gamma "));
+  await page.keyboard.press("Shift+P");
+  await expect(lines).toHaveText(["gamma alpha beta"]);
+
+  await page.keyboard.type("yyp");
+  await expect(lines).toHaveText(["gamma alpha beta", "gamma alpha beta"]);
+  await expect.poll(readClipboard).toBe("gamma alpha beta\n");
+  await page.keyboard.press("u");
+  await expect(lines).toHaveText(["gamma alpha beta"]);
+
+  await page.evaluate(() => navigator.clipboard.writeText(" delta"));
+  await page.keyboard.press("Shift+A");
+  await expect(modeText(page)).toHaveText("INSERT");
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect(lines).toHaveText(["gamma alpha beta delta"]);
+  for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
+  await page.keyboard.press("ControlOrMeta+c");
+  await expect.poll(readClipboard).toBe("delta");
+  await expect(modeText(page)).toHaveText("INSERT");
+});
+
 test("search moves the cursor to the match and n repeats it", async ({
   page,
 }) => {
