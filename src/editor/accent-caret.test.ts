@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { CaretBlinker, accentCaret, type CaretLight } from "./accent-caret";
+import { setVimStatus, vimStatusField } from "./vim/vim-status";
 import { CARET_BLINK_MS, CARET_HOLD_MS } from "./caret-style";
 
 describe("CaretBlinker", () => {
@@ -107,5 +108,74 @@ describe("accentCaret", () => {
     expect(view.contentDOM.classList.contains("cm-own-caret")).toBe(false);
 
     view.destroy();
+  });
+
+  describe("with a vim status", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function createVimView(): EditorView {
+      const view = new EditorView({
+        parent: document.body,
+        state: EditorState.create({
+          doc: "hello",
+          extensions: [accentCaret(), vimStatusField],
+        }),
+      });
+      vi.spyOn(view, "hasFocus", "get").mockReturnValue(true);
+      vi.spyOn(view, "coordsAtPos").mockReturnValue({
+        left: 10,
+        right: 10,
+        top: 0,
+        bottom: 20,
+      });
+      view.dispatch({ selection: { anchor: 2 } });
+      return view;
+    }
+
+    const drawnCarets = (view: EditorView) => {
+      vi.advanceTimersByTime(50);
+      return view.dom.querySelectorAll(
+        ".cm-accent-caret-layer .cm-accent-caret",
+      ).length;
+    };
+    const ownsCaret = (view: EditorView) =>
+      view.contentDOM.classList.contains("cm-own-caret");
+    const enter = (view: EditorView, mode: "insert" | "visual") =>
+      view.dispatch({ effects: setVimStatus.of({ mode }) });
+
+    it("leaves the caret to the vim cursor in normal mode", () => {
+      const view = createVimView();
+
+      expect(drawnCarets(view)).toBe(0);
+      expect(ownsCaret(view)).toBe(false);
+      view.destroy();
+    });
+
+    it("draws the caret in insert mode", () => {
+      const view = createVimView();
+
+      enter(view, "insert");
+
+      expect(drawnCarets(view)).toBe(1);
+      expect(ownsCaret(view)).toBe(true);
+      view.destroy();
+    });
+
+    it("clears the caret again when switching to visual mode", () => {
+      const view = createVimView();
+      enter(view, "insert");
+
+      enter(view, "visual");
+
+      expect(drawnCarets(view)).toBe(0);
+      expect(ownsCaret(view)).toBe(false);
+      view.destroy();
+    });
   });
 });
