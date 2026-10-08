@@ -52,7 +52,7 @@ export default defineConfig({
       /\.(woff2|svg)$/.test(filePath) ? false : undefined,
   },
   test: {
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
     environment: "node",
     css: { include: /\.css\?raw$/ },
     passWithNoTests: true,
