@@ -1,5 +1,10 @@
 import type { Font } from "fontkit";
-import { outlineRuns, renderPaths, round } from "./font-outlining";
+import {
+  lowestOpticalSize,
+  outlineRuns,
+  renderPaths,
+  round,
+} from "./font-outlining";
 
 export const FONT_FILE = "src/assets/fonts/InterVariable.woff2";
 
@@ -40,6 +45,65 @@ export function buildWordmarkSvg(font: Font, fill: string): string {
   ].join("\n");
 }
 
+export interface FaviconStyle {
+  tile: boolean;
+  weights: readonly [c: number, n: number];
+  inset: number;
+  trackingEm: number;
+}
+
+export const FAVICON_STYLE: FaviconStyle = {
+  tile: true,
+  weights: [700, 400],
+  inset: 3,
+  trackingEm: -0.022,
+};
+
+const FAVICON_SIZE = 32;
+
+export function buildFaviconSvg(font: Font, style: FaviconStyle): string {
+  const outline = outlineRuns(
+    font,
+    [
+      { text: "c", weight: style.weights[0] },
+      { text: "n", weight: style.weights[1] },
+    ],
+    { trackingEm: style.trackingEm, opticalSize: lowestOpticalSize(font) },
+  );
+  const { bounds } = outline;
+  const inkWidth = bounds.maxX - bounds.minX;
+  const inkHeight = bounds.maxY - bounds.minY;
+  const available = FAVICON_SIZE - 2 * style.inset;
+  const scale = Math.min(available / inkWidth, available / inkHeight);
+  const paths = renderPaths(outline, {
+    scale,
+    left: (FAVICON_SIZE - inkWidth * scale) / 2,
+    top: (FAVICON_SIZE - inkHeight * scale) / 2,
+  }).map((data) => `  <path d="${data}"/>`);
+
+  const [light, dark] = style.tile
+    ? [
+        ["    rect { fill: #0a0a0a }", "    path { fill: #fafafa }"],
+        ["      rect { fill: #ededed }", "      path { fill: #0b0b0b }"],
+      ]
+    : [["    path { fill: #0a0a0a }"], ["      path { fill: #ededed }"]];
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${FAVICON_SIZE} ${FAVICON_SIZE}">`,
+    "  <style>",
+    ...light,
+    "    @media (prefers-color-scheme: dark) {",
+    ...dark,
+    "    }",
+    "  </style>",
+    ...(style.tile
+      ? [`  <rect width="${FAVICON_SIZE}" height="${FAVICON_SIZE}"/>`]
+      : []),
+    ...paths,
+    "</svg>",
+    "",
+  ].join("\n");
+}
+
 export interface BrandSvg {
   path: string;
   contents: string;
@@ -54,6 +118,10 @@ export function buildBrandSvgs(font: Font): BrandSvg[] {
     {
       path: "docs/brand/wordmark-dark.svg",
       contents: buildWordmarkSvg(font, "#ededed"),
+    },
+    {
+      path: "src/assets/favicon.svg",
+      contents: buildFaviconSvg(font, FAVICON_STYLE),
     },
   ];
 }

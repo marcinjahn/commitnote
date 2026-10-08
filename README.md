@@ -28,7 +28,7 @@ npm run dev
 
 Then open `http://localhost:5173`.
 
-`npm run generate:brand` regenerates the README wordmark SVGs in `docs/brand/` from the app font.
+`npm run generate:brand` regenerates the brand SVGs from the app font: the README wordmark SVGs in `docs/brand/` and the favicon in `src/assets/favicon.svg`.
 
 ### Secure context
 
