@@ -187,6 +187,59 @@ test.describe("selected note", () => {
   });
 });
 
+test("opening a note moves focus to Back to notes and hides the tree from the keyboard", {
+  tag: "@mobile-only",
+}, async ({ page }) => {
+  await openNotes(page);
+  await treeItem(page, "Welcome").click();
+
+  await expect(page.getByRole("button", { name: "Back to notes" })).toBeFocused();
+  await expect(page.locator("nav#sidebar")).toHaveAttribute("inert", "");
+  await expect(page.locator("main#note-pane")).not.toHaveAttribute("inert");
+});
+
+test("going back to the tree moves focus to a treeitem and hides the note pane from the keyboard", {
+  tag: "@mobile-only",
+}, async ({ page }) => {
+  await openNotes(page);
+  await openWelcome(page);
+
+  await page.getByRole("button", { name: "Back to notes" }).click();
+
+  await expect(page.locator('[role="treeitem"][tabindex="0"]')).toBeFocused();
+  await expect(page.locator("main#note-pane")).toHaveAttribute("inert", "");
+  await expect(page.locator("nav#sidebar")).not.toHaveAttribute("inert");
+});
+
+test("opening a search result moves focus to Back to notes", {
+  tag: "@mobile-only",
+}, async ({ page }) => {
+  await openNotes(page);
+  await page.getByRole("button", { name: "Search notes" }).focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("combobox", { name: "Search notes" }).fill("Welcome");
+  await expect(page.getByRole("option", { name: /Welcome/ }).first()).toBeVisible();
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByRole("textbox", { name: "Note editor" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back to notes" })).toBeFocused();
+});
+
+test("restoring a note on load does not move focus to Back to notes", {
+  tag: "@mobile-only",
+}, async ({ page }) => {
+  await openNotes(page);
+  await openWelcome(page);
+  const url = page.url();
+
+  await page.goto("about:blank");
+  await page.goto(url);
+  await expect(page.getByRole("textbox", { name: "Note editor" })).toBeVisible();
+
+  await expect(page.getByRole("button", { name: "Back to notes" })).not.toBeFocused();
+  await expect(page.locator('[role="treeitem"]:focus')).toHaveCount(0);
+});
+
 test("tapping the selected note returns to the note view", { tag: "@mobile-only" }, async ({
   page,
 }) => {
@@ -252,9 +305,14 @@ test("on a narrow screen the skip link is hidden and each view has its landmark"
   test.skip(!narrow, "narrow viewports only");
 
   await expect(page.getByRole("link", { name: "Skip to note" })).toBeHidden();
-  await expect(page.getByRole("navigation", { name: "Notes" })).toBeVisible();
+  await expect(page.getByRole("main")).toHaveCount(1);
+  await expect(
+    page.getByRole("main").getByRole("navigation", { name: "Notes" }),
+  ).toBeVisible();
   await openWelcome(page);
+  await expect(page.getByRole("main")).toHaveCount(1);
   await expect(page.getByRole("main")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Notes" })).toBeHidden();
 });
 
 test.describe("tree keyboard", () => {

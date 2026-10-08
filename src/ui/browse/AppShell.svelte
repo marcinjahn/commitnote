@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, tick, untrack } from "svelte";
+  import { MediaQuery } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
   import type { HeldConflict, SyncEngine, SyncEngineState } from "../../sync/sync-engine";
@@ -367,7 +368,39 @@
     shownSidebarWidth(preferredSidebarWidth, viewportWidth),
   );
   const sidebarMaxWidth = $derived(maxSidebarWidth(viewportWidth));
+  const desktopQuery = new MediaQuery(DESKTOP_MEDIA_QUERY);
+  const narrow = $derived(!desktopQuery.current);
   let shownMobileView = untrack(() => mobileView);
+  let focusedMobileView = untrack(() => mobileView);
+  let precedingMobileView = untrack(() => mobileView);
+  let focusWasOnElement = false;
+
+  $effect.pre(() => {
+    const view = mobileView;
+    if (view === precedingMobileView) return;
+    const active = document.activeElement;
+    focusWasOnElement = active !== null && active !== document.body;
+    precedingMobileView = view;
+  });
+
+  $effect(() => {
+    const view = mobileView;
+    if (view === focusedMobileView) return;
+    focusedMobileView = view;
+    if (!untrack(() => narrow)) return;
+    const moveFocus = focusWasOnElement;
+    void tick().then(() => {
+      if (!moveFocus) return;
+      const pane = view === "note" ? notePaneEl : sidebarEl;
+      if (pane === undefined || pane.contains(document.activeElement)) return;
+      if (view === "note") {
+        const back = pane.querySelector<HTMLElement>("[data-back-to-notes]");
+        (back ?? pane).focus();
+      } else {
+        pane.querySelector<HTMLElement>('[role="treeitem"][tabindex="0"]')?.focus();
+      }
+    });
+  });
 
   $effect(() => {
     const view = mobileView;
@@ -2047,7 +2080,7 @@
 
 <svelte:window bind:innerWidth={viewportWidth} />
 
-<div class="shell">
+<div class="shell" role={narrow && mobileView === "tree" ? "main" : undefined}>
   <a class="skip-link" href="#note-pane" onclick={skipToNote}>Skip to note</a>
   <header class="visually-hidden"><h1>commitnote</h1></header>
   <nav
@@ -2055,6 +2088,7 @@
     aria-label="Notes"
     class="sidebar"
     class:mobile-hidden={mobileView !== "tree"}
+    inert={narrow && mobileView !== "tree"}
     style:--sidebar-width="{sidebarWidth}px"
     bind:this={sidebarEl}
   >
@@ -2216,6 +2250,7 @@
     class="note-pane"
     tabindex="-1"
     class:mobile-hidden={mobileView !== "note"}
+    inert={narrow && mobileView !== "note"}
     bind:this={notePaneEl}
   >
     {#key draftSession}

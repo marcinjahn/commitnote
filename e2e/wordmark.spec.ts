@@ -285,6 +285,7 @@ test.describe("typed wordmark", () => {
       const noteUrl = page.url();
 
       await freezeClock(page);
+      await page.goto("about:blank");
       await page.goto(noteUrl);
       await advanceUntilVisible(
         page,

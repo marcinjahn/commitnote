@@ -10,12 +10,6 @@ export interface A11yExclusion {
 
 export const A11Y_EXCLUSIONS: readonly A11yExclusion[] = [
   {
-    finding: "A11Y-NEW-4",
-    rule: "landmark-one-main",
-    states: ["commands-menu", "tree"],
-    projects: ["mobile"],
-  },
-  {
     finding: "A11Y-06",
     rule: "color-contrast",
     states: ["history"],
