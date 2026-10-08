@@ -466,4 +466,20 @@
       opacity: 1;
     }
   }
+
+  @media (forced-colors: active) {
+    .tree-row-container.selected {
+      position: relative;
+    }
+
+    .tree-row-container.selected::before {
+      content: "";
+      position: absolute;
+      inset-block: 0;
+      inset-inline-start: 0;
+      width: 2px;
+      forced-color-adjust: none;
+      background: Highlight;
+    }
+  }
 </style>

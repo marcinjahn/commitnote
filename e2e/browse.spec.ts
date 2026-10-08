@@ -166,6 +166,30 @@ test.describe("selected note", () => {
     await expect(row).toHaveAttribute("aria-selected", "true");
   });
 
+  test("the selected row is marked in forced colours", async ({ page }) => {
+    await openNotes(page);
+    await openWelcome(page);
+    const container = treeItem(page, "Welcome").locator(
+      "xpath=ancestor::div[@data-tree-row][1]",
+    );
+    const marker = () =>
+      container.evaluate((el) => {
+        const style = getComputedStyle(el, "::before");
+        return {
+          content: style.content,
+          width: style.width,
+          background: style.backgroundColor,
+        };
+      });
+
+    expect((await marker()).content).toBe("none");
+
+    await page.emulateMedia({ forcedColors: "active" });
+    const forced = await marker();
+    expect(forced.width).toBe("2px");
+    expect(forced.background).not.toBe("rgba(0, 0, 0, 0)");
+  });
+
   test("the selected row keeps its context menu", async ({ page }) => {
     await openNotes(page);
     await openWelcome(page);

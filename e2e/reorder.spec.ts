@@ -96,6 +96,26 @@ test("another device shows the new order", async ({
   await expect(treeRows(other)).toHaveText(REORDERED_ROOT);
 });
 
+test("the folder under a dragged note is outlined in forced colours", async ({
+  page,
+}) => {
+  await page.emulateMedia({ forcedColors: "active" });
+  await hoverDrag(page, treeItem(page, "Welcome"), treeItem(page, "Journal"), {
+    y: 0.5,
+  });
+
+  const target = page.locator("[data-tree-row][data-drop-into]");
+  await expect(target).toHaveCount(1);
+  const outline = await target.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { style: style.outlineStyle, width: style.outlineWidth };
+  });
+  expect(outline).toEqual({ style: "solid", width: "2px" });
+
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+});
+
 test("dropping a note onto a folder moves it into the folder", async ({
   page,
 }) => {

@@ -2902,4 +2902,16 @@
       display: flex;
     }
   }
+
+  @media (forced-colors: active) {
+    .note-pane::after {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+
+    .trash-row:global([data-trash-drop]) {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+  }
 </style>

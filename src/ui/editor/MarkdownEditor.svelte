@@ -124,4 +124,11 @@
   .markdown-editor :global(.cm-editor.cm-focused) {
     outline: none;
   }
+
+  @media (forced-colors: active) {
+    .markdown-editor :global(.cm-editor.cm-focused) {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+  }
 </style>

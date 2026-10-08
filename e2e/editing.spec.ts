@@ -59,6 +59,22 @@ test("editing the note autosaves, and the edit is there after reopening it", asy
   ).toContainText("extra");
 });
 
+test("the focused editor has a 2px outline in forced colours", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await page.getByRole("treeitem", { name: "Welcome" }).click();
+  await page.emulateMedia({ forcedColors: "active" });
+
+  await page.getByRole("textbox", { name: "Note editor" }).click();
+
+  const outline = await page.locator(".cm-editor.cm-focused").evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { style: style.outlineStyle, width: style.outlineWidth };
+  });
+  expect(outline).toEqual({ style: "solid", width: "2px" });
+});
+
 test("clicking the empty area below a short note puts the cursor at its end", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {
