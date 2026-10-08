@@ -4,7 +4,7 @@ export interface DataSecurityActions {
   readonly onExport: () => void;
   readonly importing: boolean;
   readonly importDisabled: boolean;
-  readonly onImportFile: (file: File) => void;
+  readonly onImportFiles: (files: readonly File[]) => void;
   readonly changePassphraseDisabled: boolean;
   readonly onChangePassphrase: () => void;
 }

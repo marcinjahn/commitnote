@@ -1391,6 +1391,29 @@
     }
   }
 
+  async function handleImportFiles(files: readonly File[]): Promise<void> {
+    const isZip = (file: File) => file.name.toLowerCase().endsWith(".zip");
+    const [first] = files;
+    if (files.length === 1 && isZip(first)) {
+      await handleImportFile(first);
+      return;
+    }
+    if (files.some(isZip)) {
+      clearToast("import");
+      showImportMessage("error", "Choose one .zip archive, or Markdown and text files.");
+      return;
+    }
+    await handleFileDrop(
+      files.map((file) => ({
+        name: file.name,
+        size: file.size,
+        directory: false,
+        arrayBuffer: () => file.arrayBuffer(),
+      })),
+      { kind: "root" },
+    );
+  }
+
   async function handleImportFile(file: File): Promise<void> {
     if (reading) return;
     clearToast("import");
@@ -2378,8 +2401,8 @@
       importing,
       importDisabled:
         tree === null || engineState.stopped !== null || importing || reading,
-      onImportFile: (file) => {
-        void handleImportFile(file);
+      onImportFiles: (files) => {
+        void handleImportFiles(files);
       },
       changePassphraseDisabled:
         tree === null || engineState.stopped !== null || importing,

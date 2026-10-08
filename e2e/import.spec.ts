@@ -151,3 +151,44 @@ test("closing Import notes with Escape keeps Settings open and refocuses its but
     dialog.getByRole("button", { name: "Import notes", exact: true }),
   ).toBeFocused();
 });
+
+test("importing loose Markdown files from the picker adds them as root notes", async ({
+  page,
+}) => {
+  const before = await fakeForge(page).commitCount();
+  const chooserPromise = page.waitForEvent("filechooser");
+  await openDataSecurityAction(page, "Import notes");
+  const chooser = await chooserPromise;
+  await chooser.setFiles([
+    { name: "First.md", mimeType: "text/markdown", buffer: Buffer.from("First\n") },
+    { name: "Second.md", mimeType: "text/markdown", buffer: Buffer.from("Second\n") },
+  ]);
+
+  await expect(page.getByText("Imported 2 notes.")).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: "First" })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: "Second" })).toBeVisible();
+  await expect.poll(() => fakeForge(page).commitCount()).toBe(before + 1);
+});
+
+test("rejects a picker selection that mixes a zip archive with other files", async ({
+  page,
+}) => {
+  const before = await fakeForge(page).commitCount();
+  const chooserPromise = page.waitForEvent("filechooser");
+  await openDataSecurityAction(page, "Import notes");
+  const chooser = await chooserPromise;
+  await chooser.setFiles([
+    {
+      name: "notes.zip",
+      mimeType: "application/zip",
+      buffer: zipOf({ "a.md": "# A" }),
+    },
+    { name: "Extra.md", mimeType: "text/markdown", buffer: Buffer.from("Extra\n") },
+  ]);
+
+  await expect(
+    page.getByText("Choose one .zip archive, or Markdown and text files."),
+  ).toBeVisible();
+  await expect(importDialog(page)).toHaveCount(0);
+  expect(await fakeForge(page).commitCount()).toBe(before);
+});
