@@ -8,7 +8,11 @@ import {
   showTree,
 } from "./helpers";
 import { expectNoA11yViolations } from "./helpers/a11y";
-import { openDataSecurityAction, openSettings } from "./helpers/settings";
+import {
+  enableVimMode,
+  openDataSecurityAction,
+  openSettings,
+} from "./helpers/settings";
 import { createLink, shareDialog } from "./helpers/sharing";
 import {
   moveToTrash,
@@ -85,6 +89,22 @@ test("note @mobile", async ({ page }) => {
   await openNotes(page);
   await openWelcome(page);
   await expectNoA11yViolations(page, "note");
+});
+
+test("note-vim @mobile", async ({ page }) => {
+  await openNotes(page);
+  await enableVimMode(page);
+  await openWelcome(page);
+  const editor = page.getByRole("textbox", { name: "Note editor" });
+  await editor.focus();
+  await expect(page.locator(".vim-status-bar .mode-label")).toHaveText(
+    "NORMAL",
+  );
+  await expectNoA11yViolations(page, "note-vim");
+
+  await page.keyboard.press(":");
+  await expect(page.getByRole("textbox", { name: "Vim command" })).toBeFocused();
+  await expectNoA11yViolations(page, "note-vim");
 });
 
 test("commands-menu @mobile", async ({ page }) => {

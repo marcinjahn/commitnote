@@ -9,7 +9,12 @@ import {
   logOut,
   openNotes,
 } from "./helpers";
-import { closeSettings, openSettings } from "./helpers/settings";
+import {
+  closeSettings,
+  enableVimMode,
+  openSettings,
+} from "./helpers/settings";
+import { openWelcome } from "./helpers/tree";
 import { CARET_BLINK_MS, CARET_HOLD_MS } from "../src/editor/caret-style";
 
 const caretLayer = (page: Page) => page.locator(".cm-accent-caret-layer");
@@ -331,4 +336,163 @@ test("emoji in the tail are tinted like letters, one position each", async ({
   await page.keyboard.insertText("🇵🇱🇵🇱");
   await expect(emoji).toHaveCount(2);
   await expect(tint(page)).toHaveCount(3);
+});
+
+test.describe("vim mode", () => {
+  const fatCursor = (page: Page) => page.locator(".cm-fat-cursor:visible");
+  const thinCursor = (page: Page) => page.locator(".cm-cursor:visible");
+  const mode = (page: Page) => page.locator(".vim-status-bar .mode-label");
+
+  const tokenColour = (page: Page, token: string) =>
+    page.evaluate((name) => {
+      const probe = document.createElement("div");
+      probe.style.color = `var(${name})`;
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    }, token);
+
+  const cursorStyle = (page: Page) =>
+    fatCursor(page).evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        outline: `${style.outlineWidth} ${style.outlineStyle} ${style.outlineColor}`,
+        opacity: style.opacity,
+        visibility: style.visibility,
+      };
+    });
+
+  async function openVimNote(page: Page): Promise<void> {
+    await openNotes(page);
+    await enableVimMode(page);
+    await openWelcome(page);
+    await editor(page).focus();
+    await expect(editor(page)).toBeFocused();
+    await expect(mode(page)).toHaveText("NORMAL");
+  }
+
+  async function expectNoDrawnCaret(page: Page): Promise<void> {
+    await expect(caret(page)).toHaveCount(0);
+    await expect(tint(page)).toHaveCount(0);
+    await expect(page.locator(".cm-content")).not.toHaveClass(/cm-own-caret/);
+  }
+
+  test("normal and replace show a steady accent block instead of the drawn caret", async ({
+    page,
+  }) => {
+    await page.clock.install();
+    await openVimNote(page);
+
+    await expect(fatCursor(page)).toHaveCount(1);
+    await expectNoDrawnCaret(page);
+    await expect(thinCursor(page)).toHaveCount(0);
+
+    const accent = await tokenColour(page, "--color-accent");
+    const onAccent = await tokenColour(page, "--color-on-accent");
+    const normal = await cursorStyle(page);
+    expect(normal.background).toBe(accent);
+    expect(normal.color).toBe(onAccent);
+
+    await pauseClock(page);
+    await page.clock.runFor(CARET_BLINK_MS * 2);
+    expect(await cursorStyle(page)).toEqual(normal);
+
+    const normalHeight = (await fatCursor(page).boundingBox())!.height;
+    await page.keyboard.press("Shift+R");
+    await expect(mode(page)).toHaveText("REPLACE");
+    await expect(fatCursor(page)).toHaveCount(1);
+    await expectNoDrawnCaret(page);
+    await expect(thinCursor(page)).toHaveCount(0);
+    await page.clock.runFor(CARET_BLINK_MS);
+    await expect
+      .poll(async () => (await fatCursor(page).boundingBox())!.height)
+      .toBeLessThan(normalHeight);
+    const replace = await cursorStyle(page);
+    expect(replace.background).toBe(accent);
+    await page.clock.runFor(CARET_BLINK_MS * 2);
+    expect(await cursorStyle(page)).toEqual(replace);
+  });
+
+  test("the block becomes a hollow accent outline without focus", async ({
+    page,
+  }) => {
+    await openVimNote(page);
+    await editor(page).blur();
+
+    await expect(fatCursor(page)).toHaveCount(1);
+    const accent = await tokenColour(page, "--color-accent");
+    const style = await cursorStyle(page);
+    expect(style.background).toBe("rgba(0, 0, 0, 0)");
+    expect(style.outline).toBe(`1px solid ${accent}`);
+    await expectNoDrawnCaret(page);
+  });
+
+  test("insert keeps the animated accent caret and hides the block", async ({
+    page,
+  }) => {
+    await openVimNote(page);
+    await page.keyboard.press("i");
+    await expect(mode(page)).toHaveText("INSERT");
+
+    await expect(caret(page)).toHaveCount(1);
+    expect((await caret(page).boundingBox())!.width).toBe(2);
+    await expect(page.locator(".cm-content")).toHaveClass(/cm-own-caret/);
+    await expect(fatCursor(page)).toHaveCount(0);
+    await expect(thinCursor(page)).toHaveCount(0);
+
+    await page.keyboard.press("Escape");
+    await expect(mode(page)).toHaveText("NORMAL");
+    await expect(fatCursor(page)).toHaveCount(1);
+    await expect(caret(page)).toHaveCount(0);
+  });
+
+  test("insert with the animated caret off shows one thin cursor", async ({
+    page,
+  }) => {
+    await openNotes(page);
+    await enableVimMode(page);
+    await openSettings(page);
+    await page.getByRole("checkbox", { name: "Animated caret" }).uncheck();
+    await flushPendingSaves(page);
+    await expectSettingsIdle(page);
+    await closeSettings(page);
+    await openWelcome(page);
+    await editor(page).focus();
+    await expect(mode(page)).toHaveText("NORMAL");
+
+    await page.keyboard.press("i");
+    await expect(mode(page)).toHaveText("INSERT");
+    await expect(thinCursor(page)).toHaveCount(1);
+    expect((await thinCursor(page).boundingBox())!.width).toBe(2);
+    await expect(caret(page)).toHaveCount(0);
+    await expect(fatCursor(page)).toHaveCount(0);
+  });
+
+  test("visual shows the selection with the block at its head", async ({
+    page,
+  }) => {
+    await openVimNote(page);
+    await page.keyboard.press("0");
+    await page.keyboard.press("v");
+    await expect(mode(page)).toHaveText("VISUAL");
+    await page.keyboard.type("lll");
+
+    await expect(page.locator(".cm-selectionBackground:visible")).not.toHaveCount(
+      0,
+    );
+    await expect(fatCursor(page)).toHaveCount(1);
+    await expect(thinCursor(page)).toHaveCount(0);
+    await expectNoDrawnCaret(page);
+
+    const selection = (await page
+      .locator(".cm-selectionBackground:visible")
+      .first()
+      .boundingBox())!;
+    const block = (await fatCursor(page).boundingBox())!;
+    expect(block.x).toBeGreaterThanOrEqual(selection.x);
+    expect(block.x).toBeLessThanOrEqual(selection.x + selection.width);
+  });
 });
