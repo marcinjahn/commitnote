@@ -354,6 +354,7 @@
 
   .search-head:focus-within {
     border-bottom-color: var(--color-accent-hairline);
+    box-shadow: inset 0 -2px 0 var(--color-focus);
   }
 
   .search-input-row {
@@ -503,6 +504,28 @@
     background: color-mix(in srgb, var(--color-accent) 30%, transparent);
     color: var(--color-text);
     border-radius: 0;
+  }
+
+  @media (forced-colors: active) {
+    .search-input:focus-visible {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+
+    .option.active {
+      background: Highlight;
+      color: HighlightText;
+      forced-color-adjust: none;
+    }
+
+    .option.active * {
+      color: HighlightText;
+    }
+
+    .option.active mark {
+      background: transparent;
+      text-decoration: underline;
+    }
   }
 
   @media (pointer: coarse) {

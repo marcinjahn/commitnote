@@ -138,6 +138,45 @@ test("the result count is announced once settled and matches the visible options
   await expect(status).toHaveText("No matches");
 });
 
+test("the focused search input has a 2px underline", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "desktop-only focus styling");
+  await openPalette(page);
+  const head = searchInput(page).locator("xpath=../..");
+  const shadow = await head.evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(shadow).toContain("inset");
+  expect(shadow).toContain("-2px");
+  expect(shadow).not.toMatch(/rgba\(0, 0, 0, 0\)/);
+});
+
+test("forced colours show the focused input and the active option", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "desktop-only focus styling");
+  await page.emulateMedia({ forcedColors: "active" });
+  await openPalette(page);
+  await search(page, "road");
+  await expect(results(page).getByRole("option").first()).toBeVisible();
+  await searchInput(page).press("ArrowDown");
+  const active = results(page).getByRole("option", { selected: true });
+  await expect(active).toHaveCount(1);
+  const activeBackground = await active.evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
+  const listBackground = await results(page).evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
+  expect(activeBackground).not.toBe(listBackground);
+  const outline = await searchInput(page).evaluate((el) => {
+    const style = getComputedStyle(el);
+    return [style.outlineStyle, style.outlineWidth];
+  });
+  expect(outline).toEqual(["solid", "2px"]);
+});
+
 test("the search trigger opens the palette from the editor, Escape returns focus, and Ctrl+K inserts a link instead of opening the palette", async ({
   page,
 }) => {
