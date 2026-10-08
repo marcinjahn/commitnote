@@ -1,4 +1,5 @@
 import {
+  Facet,
   StateEffect,
   StateField,
   type EditorState,
@@ -36,6 +37,11 @@ export interface VimStatus {
   readonly commandLine: CommandLineState | null;
 }
 
+export const initialEditingMode: Facet<VimEditingMode, VimEditingMode> =
+  Facet.define<VimEditingMode, VimEditingMode>({
+    combine: (values) => values[values.length - 1] ?? "normal",
+  });
+
 export type VimStatusUpdate = Partial<Omit<VimStatus, "line" | "column">>;
 
 export const setVimStatus: StateEffectType<VimStatusUpdate> =
@@ -50,7 +56,7 @@ function position(state: EditorState): Pick<VimStatus, "line" | "column"> {
 export const vimStatusField = StateField.define<VimStatus>({
   create(state) {
     return {
-      mode: "normal",
+      mode: state.facet(initialEditingMode),
       pendingKeys: "",
       recording: null,
       message: null,
