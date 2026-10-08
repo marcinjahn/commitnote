@@ -22,8 +22,7 @@ export type A11yState =
   | "shared-links"
   | "trash"
   | "viewer-password"
-  | "viewer-unlocked"
-  | "windows-commands-menu";
+  | "viewer-unlocked";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 const BEST_PRACTICE_RULES = [

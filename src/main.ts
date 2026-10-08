@@ -4,34 +4,15 @@ import { forgeRegistry } from "./forge/registry";
 import type { ForgeRegistry } from "./forge/registry";
 import { type Argon2idFunction, argon2idInWorker } from "./crypto/argon2";
 import "./app.css";
-import "./ui/floating-surface.css";
 import { createShareReaders } from "./forge/share-readers";
 import type { ShareReaders } from "./forge/share-host";
 import { isShareHash } from "./share/share-link";
 import "./note-fonts.css";
-import { applyPlatform, detectPlatform } from "./ui/platform";
 
 const target = document.getElementById("app");
 if (!target) {
   throw new Error("Missing #app element");
 }
-
-let platform = detectPlatform(navigator);
-if (import.meta.env.MODE === "fake-forge") {
-  const {
-    FAKE_FORGE_OPTIONS_KEY,
-    readFakeForgeOptions,
-    resolvePlatformOverride,
-  } = await import("./testing/fake-forge/fake-forge-options");
-  platform =
-    resolvePlatformOverride(
-      location.search,
-      readFakeForgeOptions(
-        (window as unknown as Record<string, unknown>)[FAKE_FORGE_OPTIONS_KEY],
-      ),
-    ) ?? platform;
-}
-applyPlatform(document.documentElement, platform);
 
 window.addEventListener("hashchange", (event) => {
   if (

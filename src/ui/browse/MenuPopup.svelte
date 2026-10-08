@@ -31,12 +31,11 @@
   }
 
   // Position after mount, once the popup's own size is known, then clamp it
-  // to the viewport so it never opens off-screen. offsetWidth/offsetHeight
-  // ignore the entrance transform, which is still applied at this point.
+  // to the viewport so it never opens off-screen.
   $effect(() => {
     const el = menuEl;
     if (el === undefined) return;
-    const rect = { width: el.offsetWidth, height: el.offsetHeight };
+    const rect = el.getBoundingClientRect();
     const margin = 8;
     const rawTop =
       anchor.kind === "rect" ? anchor.rect.bottom + 4 : anchor.y;
@@ -113,7 +112,6 @@
 <div
   bind:this={menuEl}
   class="menu-popup"
-  data-anchor={anchor.kind}
   role="menu"
   tabindex="-1"
   aria-label={label}
@@ -201,31 +199,17 @@
     display: flex;
     flex-direction: column;
     min-width: var(--menu-min-width);
-    padding: var(--space-1) var(--floating-item-inset);
-    border-radius: var(--floating-radius);
-    border: var(--floating-border);
-    background-color: var(--floating-background);
-    background-image: var(--floating-texture);
-    -webkit-backdrop-filter: var(--floating-backdrop);
-    backdrop-filter: var(--floating-backdrop);
-    box-shadow: var(--floating-edge-highlight), var(--floating-shadow);
-    transition:
-      opacity var(--floating-enter-duration) var(--floating-enter-easing),
-      transform var(--floating-enter-duration) var(--floating-enter-easing);
-  }
-
-  .menu-popup[data-anchor="rect"] {
-    transform-origin: top right;
-  }
-
-  .menu-popup[data-anchor="point"] {
-    transform-origin: top left;
+    padding: var(--space-1) 0;
+    border-radius: var(--radius);
+    border: var(--hairline) solid light-dark(var(--color-border), var(--color-border-strong));
+    background: var(--color-surface-raised);
+    box-shadow: var(--shadow-1);
+    transition: opacity var(--motion-duration) var(--motion-easing);
   }
 
   @starting-style {
     .menu-popup {
       opacity: 0;
-      transform: var(--floating-enter-transform);
     }
   }
 
@@ -313,7 +297,7 @@
     min-height: var(--touch-target);
     padding: 0 var(--space-3);
     border: none;
-    border-radius: var(--floating-item-radius);
+    border-radius: var(--radius);
     background: transparent;
     color: var(--color-text);
     text-align: left;
@@ -352,20 +336,7 @@
 
   .menu-popup-item:hover:not(:disabled),
   .menu-popup-item:focus-visible {
-    background: var(--floating-highlight);
-  }
-
-  @media (pointer: fine) {
-    .menu-popup-item {
-      min-height: var(--floating-item-height-fine);
-    }
-  }
-
-  @media (forced-colors: active) {
-    .menu-popup-item:hover:not(:disabled),
-    .menu-popup-item:focus-visible {
-      color: HighlightText;
-    }
+    background: var(--color-hover);
   }
 
   .menu-popup-item.destructive {

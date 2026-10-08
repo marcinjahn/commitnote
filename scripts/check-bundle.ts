@@ -9,7 +9,6 @@ import { FAKE_SHARE_STORE_KEY } from "../src/forge/fake/fake-share-store";
 import {
   FAKE_FORGE_ARGON2_BINDING,
   FAKE_FORGE_OPTIONS_KEY,
-  FAKE_PLATFORM_PARAM,
 } from "../src/testing/fake-forge/fake-forge-options";
 import { FAKE_FORGE_SESSION_PARAM } from "../src/testing/fake-forge/remembered-session";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
@@ -58,7 +57,6 @@ async function main(): Promise<void> {
     FAKE_FORGE_OPTIONS_KEY,
     FAKE_FORGE_ARGON2_BINDING,
     FAKE_FORGE_SESSION_PARAM,
-    FAKE_PLATFORM_PARAM,
     FAKE_SHARE_STORE_KEY,
   ]);
   if (forbiddenInProd.length > 0) {
@@ -74,7 +72,6 @@ async function main(): Promise<void> {
   const fakeHits = await findForbidden(fakeDistDir, [
     FAKE_FORGE_BANNER,
     FAKE_FORGE_CONTROLS_KEY,
-    FAKE_PLATFORM_PARAM,
   ]);
   if (!fakeHits.some((hit) => hit.needle === FAKE_FORGE_BANNER)) {
     console.error(
@@ -87,14 +84,6 @@ async function main(): Promise<void> {
   if (!fakeHits.some((hit) => hit.needle === FAKE_FORGE_CONTROLS_KEY)) {
     console.error(
       `dist-fake/ does not contain the test controls key ("${FAKE_FORGE_CONTROLS_KEY}"); the check cannot prove it can detect a leak`,
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  if (!fakeHits.some((hit) => hit.needle === FAKE_PLATFORM_PARAM)) {
-    console.error(
-      `dist-fake/ does not contain the platform override parameter ("${FAKE_PLATFORM_PARAM}"); the check cannot prove it can detect a leak`,
     );
     process.exitCode = 1;
     return;

@@ -20,8 +20,6 @@ import {
 
 const SEARCH_REPO = "https://github.com/sample/search";
 
-test.use({ platform: "mac" });
-
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
 });
@@ -202,14 +200,4 @@ test("viewer-unlocked @mobile", async ({ page }) => {
     viewer.getByRole("heading", { name: "Welcome", level: 1 }).first(),
   ).toBeVisible({ timeout: KEY_DERIVATION_TIMEOUT });
   await expectNoA11yViolations(viewer, "viewer-unlocked");
-});
-
-test.describe("on Windows", () => {
-  test.use({ platform: "windows" });
-
-  test("windows-commands-menu", async ({ page }) => {
-    await openNotes(page);
-    await openCommandsMenu(page);
-    await expectNoA11yViolations(page, "windows-commands-menu");
-  });
 });

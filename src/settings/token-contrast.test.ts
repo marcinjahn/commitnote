@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import appCss from "../app.css?raw";
-import floatingCss from "../ui/floating-surface.css?raw";
 import { ACCENT_PALETTE, type AccentColorId } from "./accent-palette";
 import {
   compositeOver,
@@ -23,30 +22,11 @@ interface ContrastExclusion {
 const CONTRAST_EXCLUSIONS: readonly ContrastExclusion[] = [
   { finding: "A11Y-06", pair: "muted-on-selected" },
   { finding: "A11Y-07", pair: "search-mark" },
-  { finding: "A11Y-08", pair: "floating-muted" },
-  { finding: "A11Y-08", pair: "floating-danger" },
   { finding: "A11Y-09", pair: "danger-button-border" },
   { finding: "A11Y-10", pair: "border-strong", modes: ["light"], backgrounds: ["surface"] },
-  { finding: "A11Y-11", pair: "tone-rail-info", backgrounds: ["floating-mac", "floating-windows"] },
-  {
-    finding: "A11Y-NEW-1",
-    pair: "tone-rail-success",
-    modes: ["light"],
-    accents: ["amber", "green", "orange", "pink", "red", "slate", "teal", "violet"],
-    backgrounds: ["floating-mac"],
-  },
-  {
-    finding: "A11Y-NEW-2",
-    pair: "tone-rail-success",
-    modes: ["light"],
-    accents: ["green", "orange", "teal"],
-    backgrounds: ["floating-windows"],
-  },
-  { finding: "A11Y-NEW-3", pair: "tone-rail-error", modes: ["dark"], backgrounds: ["floating-mac"] },
 ];
 
 const MODES: readonly Mode[] = ["light", "dark"];
-const PLATFORMS = ["mac", "windows"] as const;
 const ACCENTS = ACCENT_PALETTE.filter((option) => option.id !== "system");
 const TEXT = 4.5;
 const NON_TEXT = 3;
@@ -159,22 +139,6 @@ function resolveToken(name: string, scope: Scope): Rgba {
   return resolveValue(value, scope, name);
 }
 
-function floatingAlphaPercent(platform: (typeof PLATFORMS)[number]): number {
-  const rules = topLevelRules(stripComments(floatingCss));
-  const supports = rules.find((rule) => rule.prelude.startsWith("@supports"));
-  const inner = supports ? topLevelRules(supports.body) : [];
-  const rule = inner.find((candidate) =>
-    candidate.prelude.includes(`:root[data-platform="${platform}"]`),
-  );
-  const match =
-    rule &&
-    /--floating-background:\s*color-mix\(\s*in srgb,\s*var\(--color-surface-raised\)\s+(\d+(?:\.\d+)?)%,\s*transparent\s*\)/.exec(
-      rule.body,
-    );
-  if (!match) throw new Error(`Floating background for ${platform} not found`);
-  return Number(match[1]);
-}
-
 function dangerBorderValue(): string {
   const rule = appRules.find((candidate) => candidate.prelude === ".button-danger");
   const match = rule && /border-color:\s*([^;]+);/.exec(rule.body);
@@ -182,10 +146,6 @@ function dangerBorderValue(): string {
   return match[1].replace(/\s+/g, " ").trim();
 }
 
-const FLOATING_PERCENT = {
-  mac: floatingAlphaPercent("mac"),
-  windows: floatingAlphaPercent("windows"),
-};
 const DANGER_BORDER = dangerBorderValue();
 
 interface Probe {
@@ -208,24 +168,12 @@ function probe(mode: Mode, accent: (typeof ACCENTS)[number]): Probe {
   };
 }
 
-function floatingBackground(p: Probe, platform: keyof typeof FLOATING_PERCENT) {
-  return compositeOver(
-    mixSrgb(p.color("--color-surface-raised"), FLOATING_PERCENT[platform], TRANSPARENT),
-    p.color("--color-text"),
-  );
-}
-
 type Backgrounds = Record<string, (p: Probe) => Rgba>;
 
 const surfaces: Backgrounds = {
   background: (p) => p.color("--color-background"),
   surface: (p) => p.color("--color-surface"),
   "surface-raised": (p) => p.color("--color-surface-raised"),
-};
-
-const floating: Backgrounds = {
-  "floating-mac": (p) => floatingBackground(p, "mac"),
-  "floating-windows": (p) => floatingBackground(p, "windows"),
 };
 
 interface Pair {
@@ -291,9 +239,6 @@ const PAIRS: Pair[] = [
         ),
     },
   },
-  { id: "floating-text", threshold: TEXT, foreground: token("--color-text"), backgrounds: floating },
-  { id: "floating-muted", threshold: TEXT, foreground: token("--color-text-muted"), backgrounds: floating },
-  { id: "floating-danger", threshold: TEXT, foreground: token("--color-danger"), backgrounds: floating },
   {
     id: "border-strong",
     threshold: NON_TEXT,
@@ -315,7 +260,7 @@ const PAIRS: Pair[] = [
       id: `tone-rail-${tone}`,
       threshold: NON_TEXT,
       foreground: token(`--color-tone-${tone}`),
-      backgrounds: { ...pick(surfaces, "surface-raised"), ...floating },
+      backgrounds: pick(surfaces, "surface-raised"),
     }),
   ),
   { id: "focus", threshold: NON_TEXT, foreground: token("--color-focus"), backgrounds: surfaces },
