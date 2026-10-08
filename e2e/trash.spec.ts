@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { expectTree, openNotes, fakeForge, onFakeForgeReady } from "./helpers";
-import { moveToTrash, openTrash, restoreTo, treeItem } from "./helpers/tree";
+import { moveToTrash, openRowMenu, openTrash, restoreTo, treeItem } from "./helpers/tree";
 
 const TRASH_REPO = "https://github.com/sample/trash";
 const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
@@ -171,7 +171,7 @@ test("deleting an empty folder is permanent and leaves no trash", async ({
 }) => {
   await openNotes(page);
 
-  await page.getByRole("button", { name: "Actions for Empty folder" }).click();
+  await openRowMenu(page, "Empty folder");
   await page.getByRole("menuitem", { name: "Delete…" }).click();
   const dialog = page.getByRole("dialog");
   await expect(

@@ -19,6 +19,7 @@ import {
   treeItem,
   treeRows,
   waitForSynced,
+  openRowMenu,
 } from "./helpers/tree";
 
 const COLORS = {
@@ -125,7 +126,7 @@ test("a folder menu offers no color swatches", async ({ page }) => {
 test("No color from the ⋯ button removes a tag", async ({ page }) => {
   await expectTagged(page, PURPLE_NOTE, "Purple");
 
-  await page.getByRole("button", { name: `Actions for ${PURPLE_NOTE}` }).click();
+  await openRowMenu(page, PURPLE_NOTE);
   await swatch(rowMenu(page, PURPLE_NOTE), "No color").click();
 
   await expect(treeItem(page, PURPLE_NOTE)).not.toHaveAccessibleDescription(
@@ -262,12 +263,7 @@ test("notes inside a trashed folder show their colors in the trash", async ({
 });
 
 test("the color picker is operable from the keyboard", async ({ page }) => {
-  const opener = page.getByRole("button", { name: "Actions for Welcome" });
-  const menu = rowMenu(page, "Welcome");
-
-  await opener.focus();
-  await page.keyboard.press("Enter");
-  await expect(menu).toBeVisible();
+  const menu = await openRowMenu(page, "Welcome");
   await expect(swatch(menu, "No color")).toBeFocused();
 
   await page.keyboard.press("ArrowLeft");
@@ -275,15 +271,15 @@ test("the color picker is operable from the keyboard", async ({ page }) => {
   await page.keyboard.press("Enter");
 
   await expect(menu).toHaveCount(0);
-  await expect(opener).toBeFocused();
+  await expect(treeItem(page, "Welcome")).toBeFocused();
   await expectTagged(page, "Welcome", "Purple");
 
-  await page.keyboard.press("Enter");
+  await openRowMenu(page, "Welcome");
   await expect(menu).toBeVisible();
   await expect(swatch(menu, "Purple")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
-  await expect(opener).toBeFocused();
+  await expect(treeItem(page, "Welcome")).toBeFocused();
 });
 
 test("the header color button is a touch-sized target", { tag: "@mobile" }, async ({

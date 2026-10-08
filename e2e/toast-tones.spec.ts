@@ -1,13 +1,14 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { KEY_DERIVATION_TIMEOUT, fakeForge, openNotes } from "./helpers";
+import { openRowMenu } from "./helpers/tree";
 import { chooseAccent, closeSettings, openSettings, rootAccent } from "./helpers/settings";
 
 const TEAL = "rgb(0, 133, 115)";
 const REFRESH_FAILURE = "Could not reach GitHub. Showing the last loaded notes.";
 
 async function showLinkCopied(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Actions for Welcome" }).click();
+  await openRowMenu(page, "Welcome");
   await page.getByRole("menuitem", { name: "Share…" }).click();
   const dialog = page.getByRole("dialog", { name: "Share “Welcome”" });
   await dialog.getByRole("button", { name: "Create link" }).click();
@@ -109,7 +110,7 @@ test("the dismiss control is touch-sized on mobile", { tag: "@mobile-only" }, as
 });
 
 test("a toast action keeps clear of the dismiss control", { tag: "@mobile" }, async ({ page }) => {
-  await page.getByRole("button", { name: "Actions for Welcome" }).click();
+  await openRowMenu(page, "Welcome");
   await page.getByRole("menuitem", { name: "Move to trash…" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Move to trash", exact: true }).click();
   const toast = page.getByRole("group", { name: "Success" }).filter({ hasText: "moved to trash" });

@@ -341,7 +341,9 @@ export function rowSyncState(
   const item = page.getByRole("treeitem", { name, exact: options.exact });
   return item
     .and(page.locator("[data-unsynced]"))
-    .or(item.locator("xpath=following-sibling::span").getByRole("img"));
+    .or(item.locator(
+      "xpath=following-sibling::span[contains(concat(' ', normalize-space(@class), ' '), ' sync-indicator ')]",
+    ));
 }
 
 export interface TouchPoint {

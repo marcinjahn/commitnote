@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { flushPendingSaves, openNotes, showTree } from "./helpers";
-import { moveToTrash, openWelcome, treeItem } from "./helpers/tree";
+import { moveToTrash, openWelcome, rowActionsButton, treeItem } from "./helpers/tree";
 
 const SEARCH_REPO = "https://github.com/sample/search";
 
@@ -975,7 +975,7 @@ test.describe("note fragment and history", () => {
       await expect(tree).toBeVisible();
       await expect.poll(() => hashOf(page)).toBe("");
 
-      await page.getByRole("button", { name: "Actions for Welcome" }).tap();
+      await rowActionsButton(page, "Welcome").tap();
       await page.getByRole("menuitem", { name: "Move to folder…" }).tap();
       await page
         .getByRole("radiogroup", { name: "Folder" })

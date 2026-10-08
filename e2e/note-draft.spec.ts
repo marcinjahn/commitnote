@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openNotes, showTree } from "./helpers";
-import { treeItem } from "./helpers/tree";
+import { openRowMenu, treeItem } from "./helpers/tree";
 
 
 const AUTO_NAME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -59,7 +59,7 @@ test("a draft opened from a folder row menu is created inside that folder", asyn
 }) => {
   await openNotes(page);
 
-  await page.getByRole("button", { name: "Actions for Projects" }).click();
+  await openRowMenu(page, "Projects");
   await page.getByRole("menuitem", { name: "New note…" }).click();
   await expectEmptyDraft(page);
 

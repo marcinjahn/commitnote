@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openNotes, showTree } from "./helpers";
-import { openWelcome, treeItem, treeRows } from "./helpers/tree";
+import { openRowMenu, openWelcome, treeItem, treeRows } from "./helpers/tree";
 
 
 test("the tree lists root notes in order, folders in their stored order, and expands and collapses folders", async ({
@@ -171,7 +171,7 @@ test.describe("selected note", () => {
     await openWelcome(page);
     const row = treeItem(page, "Welcome");
 
-    await page.getByRole("button", { name: "Actions for Welcome" }).click();
+    await openRowMenu(page, "Welcome");
     await expect(
       page.getByRole("menuitem", { name: "Move to trash…" }),
     ).toBeVisible();
@@ -255,4 +255,96 @@ test("on a narrow screen the skip link is hidden and each view has its landmark"
   await expect(page.getByRole("navigation", { name: "Notes" })).toBeVisible();
   await openWelcome(page);
   await expect(page.getByRole("main")).toBeVisible();
+});
+
+test.describe("tree keyboard", () => {
+  async function tabIntoTree(page: Page): Promise<void> {
+    await focusDocumentStart(page);
+    const focusedTreeitem = page.locator('[role="treeitem"]:focus');
+    for (let presses = 0; presses < 30; presses++) {
+      await page.keyboard.press("Tab");
+      if ((await focusedTreeitem.count()) > 0) return;
+    }
+    throw new Error("Tab never reached the tree");
+  }
+
+  test("the tree is one tab stop with a roving row and valid children", async ({ page }) => {
+    await openNotes(page);
+    const tree = page.getByRole("tree", { name: "Notes" });
+
+    await tabIntoTree(page);
+    await expect(treeItem(page, "Empty folder")).toBeFocused();
+    await expect(tree.locator('[role="treeitem"][tabindex="0"]')).toHaveCount(1);
+    await expect(tree.getByRole("button")).toHaveCount(0);
+    await expect(tree.getByRole("img")).toHaveCount(0);
+
+    await page.keyboard.press("Tab");
+    await expect(page.locator('[role="treeitem"]:focus')).toHaveCount(0);
+    await page.keyboard.press("Shift+Tab");
+    await expect(treeItem(page, "Empty folder")).toBeFocused();
+  });
+
+  test("arrow keys, Home, End and type-ahead move through the rows", async ({ page }) => {
+    await openNotes(page);
+    await treeItem(page, "Journal").focus();
+
+    await page.keyboard.press("ArrowDown");
+    await expect(treeItem(page, "Projects")).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(treeItem(page, "Journal")).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(treeItem(page, "Zażółć gęślą jaźń")).toBeFocused();
+    await page.keyboard.press("Home");
+    await expect(treeItem(page, "Empty folder")).toBeFocused();
+
+    const projects = treeItem(page, "Projects");
+    await page.keyboard.press("p");
+    await expect(projects).toBeFocused();
+    await expect(projects).toHaveAttribute("aria-expanded", "false");
+    await page.keyboard.press("ArrowRight");
+    await expect(projects).toHaveAttribute("aria-expanded", "true");
+    await expect(projects).toBeFocused();
+    await page.keyboard.press("ArrowRight");
+    const child = treeItem(page, "commitnote");
+    await expect(child).toBeFocused();
+    await expect(child).toHaveAttribute("aria-level", "2");
+    await expect(child).toHaveAttribute("aria-posinset", "1");
+    await expect(child).toHaveAttribute("aria-setsize", "1");
+    await page.keyboard.press("ArrowLeft");
+    await expect(projects).toBeFocused();
+    await page.keyboard.press("ArrowLeft");
+    await expect(projects).toHaveAttribute("aria-expanded", "false");
+    await expect(projects).toBeFocused();
+
+    const welcome = treeItem(page, "Welcome");
+    await expect(welcome).toHaveAttribute("aria-level", "1");
+    await expect(welcome).toHaveAttribute("aria-posinset", "4");
+    await expect(welcome).toHaveAttribute("aria-setsize", "5");
+
+    await page.keyboard.type("we");
+    await expect(welcome).toBeFocused();
+    await expect(page.getByRole("textbox", { name: "Note editor" })).toHaveCount(0);
+  });
+
+  test("Enter opens the focused note, which is the tab stop when the tree is entered", async ({
+    page,
+  }) => {
+    await openNotes(page);
+    const welcome = treeItem(page, "Welcome");
+    await treeItem(page, "Journal").focus();
+    await page.keyboard.press("w");
+    await expect(welcome).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue("Welcome");
+    await expect(welcome).toHaveAttribute("aria-selected", "true");
+    await expect.poll(() => new URL(page.url()).hash).toMatch(/^#n=/);
+
+    await page.reload();
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue("Welcome");
+    await tabIntoTree(page);
+    await expect(welcome).toBeFocused();
+    await expect(
+      page.getByRole("tree", { name: "Notes" }).locator('[role="treeitem"][tabindex="0"]'),
+    ).toHaveCount(1);
+  });
 });

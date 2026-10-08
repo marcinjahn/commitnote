@@ -8,21 +8,7 @@ export interface A11yExclusion {
   projects?: readonly string[];
 }
 
-const NOTES_STATES = [
-  "commands-menu",
-  "error-toast",
-  "note",
-  "row-menu",
-  "tree",
-] as const satisfies readonly A11yState[];
-
 export const A11Y_EXCLUSIONS: readonly A11yExclusion[] = [
-  {
-    finding: "A11Y-01",
-    rule: "aria-required-children",
-    states: NOTES_STATES,
-    target: ".tree",
-  },
   {
     finding: "A11Y-NEW-4",
     rule: "landmark-one-main",

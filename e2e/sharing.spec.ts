@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { KEY_DERIVATION_TIMEOUT, fakeForge, openNotes } from "./helpers";
 import { createLink, shareDialog } from "./helpers/sharing";
-import { openWelcome, treeItem, waitForSynced } from "./helpers/tree";
+import { openRowMenu, openWelcome, treeItem, waitForSynced } from "./helpers/tree";
 
 const FAKELAB_NOTES_REPO = "https://fakelab.test/team/notes";
 const FAKELAB_KEY = "team/notes";
@@ -516,7 +516,7 @@ test(
   async ({ page, isMobile }) => {
     test.skip(!isMobile, "bottom sheets are mobile only");
     await openNotes(page);
-    await page.getByRole("button", { name: "Actions for Welcome" }).click();
+    await openRowMenu(page, "Welcome");
     await page.getByRole("menuitem", { name: "Share…" }).click();
     const dialog = shareDialog(page);
     await expect(dialog.getByTestId("dialog-grab-handle")).toBeVisible();
@@ -532,7 +532,7 @@ test(
   { tag: "@mobile" },
   async ({ page }) => {
     await openNotes(page);
-    await page.getByRole("button", { name: "Actions for Welcome" }).click();
+    await openRowMenu(page, "Welcome");
     await page.getByRole("menuitem", { name: "Share…" }).click();
     const link = await createLink(page);
 
@@ -551,7 +551,7 @@ test(
   async ({ page, isMobile }) => {
     test.skip(!isMobile, "taps are mobile only");
     await openNotes(page);
-    await page.getByRole("button", { name: "Actions for Welcome" }).click();
+    await openRowMenu(page, "Welcome");
     await page.getByRole("menuitem", { name: "Share…" }).click();
     await createLink(page);
     await closeDialog(shareDialog(page));
