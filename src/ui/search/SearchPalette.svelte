@@ -501,7 +501,7 @@
 
   mark {
     background: color-mix(in srgb, var(--color-accent) 30%, transparent);
-    color: inherit;
+    color: var(--color-text);
     border-radius: 0;
   }
 
