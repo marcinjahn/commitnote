@@ -289,3 +289,34 @@ test("the animated caret can be turned off and stays off after logging in again"
   await openSettings(page);
   await expect(animatedCaret()).not.toBeChecked();
 });
+
+test("emoji in the tail are tinted like letters, one position each", async ({
+  page,
+}) => {
+  await newNote(page);
+  await page.keyboard.type("Coding ");
+  await page.keyboard.insertText("👩‍💻");
+
+  const emoji = page.locator(".cm-caret-tint-emoji");
+  await expect(emoji).toHaveCount(1);
+  await expect(emoji).toHaveText("👩‍💻");
+  await expect(tint(page)).toHaveCount(2);
+
+  const glyph = await page
+    .locator(".cm-line")
+    .last()
+    .evaluate((line) => {
+      const text = line.firstChild as Text;
+      const range = document.createRange();
+      range.setStart(text, "Coding ".length);
+      range.setEnd(text, text.length);
+      return range.getBoundingClientRect().left;
+    });
+  expect(Math.abs((await emoji.boundingBox())!.x - glyph)).toBeLessThan(0.5);
+
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("ok");
+  await page.keyboard.insertText("🇵🇱🇵🇱");
+  await expect(emoji).toHaveCount(2);
+  await expect(tint(page)).toHaveCount(3);
+});

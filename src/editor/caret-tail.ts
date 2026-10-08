@@ -6,11 +6,13 @@ export interface TailCluster {
   from: number;
   to: number;
   ink: boolean;
+  emoji: boolean;
 }
 
 const OVERHANG_EM = 0.2;
 const BLEED_EM = 0.12;
-const PICTOGRAPHIC = /\p{Extended_Pictographic}/u;
+const EMOJI_PRESENTATION =
+  /\p{Emoji_Presentation}|\uFE0F|\p{Regional_Indicator}|\u20E3/u;
 
 export function tailClusters(
   state: EditorState,
@@ -26,7 +28,8 @@ export function tailClusters(
     clusters.unshift({
       from: line.from + start,
       to: line.from + end,
-      ink: !/\s/u.test(cluster) && !PICTOGRAPHIC.test(cluster),
+      ink: !/\s/u.test(cluster),
+      emoji: EMOJI_PRESENTATION.test(cluster),
     });
     end = start;
   }
@@ -40,9 +43,44 @@ interface Box {
   bottom: number;
 }
 
+export interface EmojiGlyph {
+  text: string;
+  font: string;
+  top: number;
+  height: number;
+}
+
 export interface TailPiece extends Box {
   from: number;
   to: number;
+  emoji?: EmojiGlyph;
+}
+
+const FONT_PROPERTIES = [
+  "font-family",
+  "font-size",
+  "font-weight",
+  "font-style",
+  "font-stretch",
+] as const;
+
+function emojiGlyph(
+  view: EditorView,
+  cluster: TailCluster,
+  box: Box,
+): EmojiGlyph | undefined {
+  const { node } = view.domAtPos(cluster.from, 1);
+  const element = node instanceof Element ? node : node.parentElement;
+  if (!element) return undefined;
+  const style = getComputedStyle(element);
+  return {
+    text: view.state.doc.sliceString(cluster.from, cluster.to),
+    font: FONT_PROPERTIES.map(
+      (property) => `${property}: ${style.getPropertyValue(property)}`,
+    ).join("; "),
+    top: box.top,
+    height: box.bottom - box.top,
+  };
 }
 
 function clusterBox(view: EditorView, cluster: TailCluster): Box | undefined {
@@ -81,14 +119,21 @@ export function measureTail(
       bottom: box.bottom + bleed,
       from: stops[index],
       to: stops[index + 1],
+      emoji: cluster.emoji ? emojiGlyph(view, cluster, box) : undefined,
     });
     lastInked = cluster;
   });
   const last = pieces[pieces.length - 1];
-  if (last && lastInked && endsWord(view.state, lastInked.to)) {
+  if (
+    last &&
+    lastInked &&
+    !lastInked.emoji &&
+    endsWord(view.state, lastInked.to)
+  ) {
     const overhang = (last.bottom - last.top) * OVERHANG_EM;
     pieces.push({
       ...last,
+      emoji: undefined,
       left: last.right,
       right: last.right + overhang,
       from: last.to,
@@ -146,18 +191,69 @@ export class BoxMarker implements LayerMarker {
   }
 }
 
+class EmojiTintMarker implements LayerMarker {
+  constructor(
+    readonly left: number,
+    readonly top: number,
+    readonly glyph: EmojiGlyph,
+    readonly background: string,
+  ) {}
+
+  eq(other: LayerMarker): boolean {
+    return (
+      other instanceof EmojiTintMarker &&
+      other.left === this.left &&
+      other.top === this.top &&
+      other.background === this.background &&
+      other.glyph.text === this.glyph.text &&
+      other.glyph.font === this.glyph.font &&
+      other.glyph.height === this.glyph.height
+    );
+  }
+
+  draw(): HTMLElement {
+    const dom = document.createElement("div");
+    dom.className = "cm-caret-tint cm-caret-tint-emoji";
+    dom.append(document.createElement("span"));
+    this.paint(dom);
+    return dom;
+  }
+
+  update(dom: HTMLElement, prev: LayerMarker): boolean {
+    if (!(prev instanceof EmojiTintMarker)) return false;
+    this.paint(dom);
+    return true;
+  }
+
+  private paint(dom: HTMLElement): void {
+    dom.style.cssText = `${this.glyph.font}; left: ${this.left}px; top: ${this.top}px; height: ${this.glyph.height}px; line-height: ${this.glyph.height}px;`;
+    const copy = dom.firstElementChild as HTMLElement;
+    copy.textContent = this.glyph.text;
+    copy.style.backgroundImage = this.background;
+  }
+}
+
 export function tintMarker(
   piece: TailPiece,
   origin: { left: number; top: number },
   blend: "lighten" | "darken",
 ): LayerMarker {
+  const gradient = `linear-gradient(to right, ${accentAt(piece.from)}, ${accentAt(piece.to)})`;
+  if (piece.emoji) {
+    return new EmojiTintMarker(
+      piece.left - origin.left,
+      piece.emoji.top - origin.top,
+      piece.emoji,
+      gradient,
+    );
+  }
   return new BoxMarker(
     `cm-caret-tint cm-caret-tint-${blend}`,
     piece.left - origin.left,
     piece.top - origin.top,
     piece.right - piece.left,
     piece.bottom - piece.top,
-    `linear-gradient(to right, ${accentAt(piece.from)}, ${accentAt(piece.to)})`,
+    gradient,
   );
 }
 

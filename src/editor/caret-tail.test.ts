@@ -4,9 +4,10 @@ import { tailClusters } from "./caret-tail";
 
 function tail(doc: string, caret = doc.length) {
   const state = EditorState.create({ doc });
-  return tailClusters(state, caret).map(({ from, to, ink }) => ({
+  return tailClusters(state, caret).map(({ from, to, ink, emoji }) => ({
     text: state.doc.sliceString(from, to),
     ink,
+    emoji,
   }));
 }
 
@@ -60,9 +61,24 @@ describe("tailClusters", () => {
     expect(tailText("jaźń")).toEqual(["a", "ź", "ń"]);
   });
 
-  it("counts an emoji as a position it cannot tint", () => {
+  it("tints an emoji like a letter", () => {
     expect(tailText("party 🎉")).toEqual(["y", " ", "🎉"]);
-    expect(inked("party 🎉")).toEqual(["y"]);
+    expect(inked("party 🎉")).toEqual(["y", "🎉"]);
+  });
+
+  it.each([
+    ["a ZWJ sequence", "👩‍💻"],
+    ["a skin tone", "👍🏽"],
+    ["a flag", "🇵🇱"],
+    ["a keycap", "1️⃣"],
+  ])("counts %s as one emoji position", (_, emoji) => {
+    const [last] = tail(`ab${emoji}`).slice(-1);
+    expect(tailText(`ab${emoji}`)).toEqual(["a", "b", emoji]);
+    expect(last).toEqual({ text: emoji, ink: true, emoji: true });
+  });
+
+  it("treats text-style symbols as letters", () => {
+    expect(tail("a ©").pop()).toEqual({ text: "©", ink: true, emoji: false });
   });
 
   it("includes visible markdown syntax", () => {

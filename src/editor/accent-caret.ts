@@ -249,6 +249,17 @@ const accentCaretTheme = EditorView.baseTheme({
   ".cm-caret-tint": { opacity: `var(${CARET_LIGHT_PROPERTY})` },
   ".cm-caret-tint-lighten": { mixBlendMode: "lighten" },
   ".cm-caret-tint-darken": { mixBlendMode: "darken" },
+  // A copy of the emoji, clipped to its own glyph, recolours it with the
+  // accent's hue while keeping the emoji's shading.
+  ".cm-caret-tint-emoji": {
+    mixBlendMode: "color",
+    whiteSpace: "pre",
+    "& > span": {
+      backgroundClip: "text",
+      "-webkit-background-clip": "text",
+      "-webkit-text-fill-color": "transparent",
+    },
+  },
   ".cm-accent-caret": {
     width: `${CARET_WIDTH_PX}px`,
     background: "var(--color-accent)",
