@@ -203,12 +203,16 @@ test.describe("with notes open", () => {
   }) => {
     const before = await fakeForge(page).commitCount();
     await openSettings(page);
+    // Paused so a slow machine can't let the save debounce fire between picks.
+    await page.clock.install();
+    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1_000);
     for (const mode of ["Light", "Dark", "System", "Dark"] as const) {
       await chooseOption(page, "Color mode", mode);
     }
     await expect(
       colorModeGroup(page).getByRole("radio", { name: "Dark", exact: true }),
     ).toBeChecked();
+    await page.clock.resume();
     await flushPendingSaves(page);
     await expectSettingsIdle(page);
     await closeSettings(page);

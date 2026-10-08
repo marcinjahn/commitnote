@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EngineNotice } from "../../sync/sync-engine";
-import { describeNotice } from "./notice-messages";
+import { describeNotice, noticeTone, toneLabel } from "./notice-messages";
 
 function merge(notice: Extract<EngineNotice, { kind: "merge" }>["notice"]): EngineNotice {
   return { id: 1, kind: "merge", notice };
@@ -135,5 +135,38 @@ describe("describeNotice", () => {
     ).toBe(
       "Some items couldn't be permanently deleted from the trash because it changed on another device.",
     );
+  });
+});
+
+describe("noticeTone", () => {
+  it("warns about conflicts and dropped changes", () => {
+    expect(
+      noticeTone({ id: 1, kind: "conflict", path: ["a"] } as EngineNotice),
+    ).toBe("warning");
+    expect(
+      noticeTone({
+        id: 2,
+        kind: "dropped",
+        change: { kind: "purge-trash", entryIds: ["e"] },
+      }),
+    ).toBe("warning");
+  });
+
+  it("treats merge outcomes as info", () => {
+    expect(
+      noticeTone(merge({ kind: "delete-skipped", path: ["a"], target: "note" })),
+    ).toBe("info");
+    expect(
+      noticeTone({ id: 3, kind: "edited-merge-restored", path: ["a"] } as EngineNotice),
+    ).toBe("info");
+  });
+});
+
+describe("toneLabel", () => {
+  it("capitalises the tone", () => {
+    expect(toneLabel("success")).toBe("Success");
+    expect(toneLabel("info")).toBe("Info");
+    expect(toneLabel("warning")).toBe("Warning");
+    expect(toneLabel("error")).toBe("Error");
   });
 });

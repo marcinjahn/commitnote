@@ -1,14 +1,41 @@
 import type { NotePath } from "../../changes/change";
 import type { EngineNotice } from "../../sync/sync-engine";
 
+export type ToastTone = "success" | "info" | "warning" | "error";
+
 export interface ToastMessage {
   readonly id: number;
+  readonly tone: ToastTone;
   readonly text: string;
   readonly action?: {
     readonly label: string;
     readonly run: () => void;
   };
   readonly durationMs?: number;
+}
+
+export function noticeTone(notice: EngineNotice): ToastTone {
+  switch (notice.kind) {
+    case "conflict":
+    case "dropped":
+      return "warning";
+    case "merge":
+    case "edited-merge-restored":
+      return "info";
+  }
+}
+
+export function toneLabel(tone: ToastTone): string {
+  switch (tone) {
+    case "success":
+      return "Success";
+    case "info":
+      return "Info";
+    case "warning":
+      return "Warning";
+    case "error":
+      return "Error";
+  }
 }
 
 function quoted(path: NotePath): string {

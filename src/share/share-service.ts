@@ -15,7 +15,12 @@ import { findWorkingNode } from "../sync/working-tree";
 import { findNode } from "../tree/note-tree";
 import { sealShare, ShareOpenError } from "./share-envelope";
 import { formatShareLink } from "./share-link";
-import { newShareId, type ShareEntry } from "./share-index";
+import {
+  newShareId,
+  sharesIn,
+  type ShareEntry,
+  type ShareScope,
+} from "./share-index";
 
 export type ShareError =
   | {
@@ -44,6 +49,14 @@ export type RevokeShareResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: ShareError };
 
+export type RevokeSharesResult =
+  | { readonly ok: true; readonly revoked: number }
+  | {
+      readonly ok: false;
+      readonly error: ShareError;
+      readonly revoked: number;
+    };
+
 export type UpdateShareResult =
   | {
       readonly ok: true;
@@ -60,6 +73,11 @@ export interface ShareService {
   }): Promise<CreateShareResult>;
   updateShare(id: string): Promise<UpdateShareResult>;
   revokeShare(id: string): Promise<RevokeShareResult>;
+  /**
+   * Revokes every share in the scope, one by one, stopping at the first
+   * failure. Shares revoked before a failure stay revoked.
+   */
+  revokeShares(scope: ShareScope): Promise<RevokeSharesResult>;
 }
 
 export interface ShareServiceDeps {
@@ -357,5 +375,22 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     return { ok: true };
   }
 
-  return { createShare, updateShare, revokeShare };
+  async function revokeShares(scope: ShareScope): Promise<RevokeSharesResult> {
+    const attempted = new Set<string>();
+    let revoked = 0;
+    for (;;) {
+      const { shares } = engine.getState();
+      const next = shares === null ? undefined : sharesIn(shares, scope)[0];
+      if (next === undefined) return { ok: true, revoked };
+      if (attempted.has(next.id)) {
+        return { ok: false, error: { kind: "server" }, revoked };
+      }
+      attempted.add(next.id);
+      const result = await revokeShare(next.id);
+      if (!result.ok) return { ok: false, error: result.error, revoked };
+      revoked += 1;
+    }
+  }
+
+  return { createShare, updateShare, revokeShare, revokeShares };
 }

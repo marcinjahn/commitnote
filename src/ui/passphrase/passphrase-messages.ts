@@ -6,6 +6,7 @@ import type {
 } from "../../rekey/change-passphrase";
 import type { RekeySummary } from "../../rekey/plan-rekey";
 import type { SyncError } from "../../sync/sync-engine";
+import type { ToastMessage } from "../notices/notice-messages";
 import { KEY_CHANGED_MESSAGE } from "../browse/sync-messages";
 import { describeMinutes, plural } from "../plural";
 
@@ -20,19 +21,26 @@ export const HISTORY_NOT_REMOVED_MESSAGE =
 export function describePassphraseChanged(
   check: LandedCheck,
   history: HistoryOutcome,
-): string {
+): Pick<ToastMessage, "tone" | "text"> {
   if (check === "mismatch") {
-    return history === "notRemoved"
-      ? `${PASSPHRASE_CHANGED_MISMATCH_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`
-      : PASSPHRASE_CHANGED_MISMATCH_MESSAGE;
+    return {
+      tone: "warning",
+      text:
+        history === "notRemoved"
+          ? `${PASSPHRASE_CHANGED_MISMATCH_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`
+          : PASSPHRASE_CHANGED_MISMATCH_MESSAGE,
+    };
   }
   switch (history) {
     case "kept":
-      return PASSPHRASE_CHANGED_MESSAGE;
+      return { tone: "success", text: PASSPHRASE_CHANGED_MESSAGE };
     case "removed":
-      return HISTORY_REMOVED_MESSAGE;
+      return { tone: "success", text: HISTORY_REMOVED_MESSAGE };
     case "notRemoved":
-      return `${PASSPHRASE_CHANGED_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`;
+      return {
+        tone: "warning",
+        text: `${PASSPHRASE_CHANGED_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`,
+      };
   }
 }
 export const PASSPHRASES_DIFFER = "The new passphrases do not match.";

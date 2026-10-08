@@ -84,21 +84,22 @@ describe("passphrase change messages", () => {
   });
 
   it("tells whether the old history was deleted", () => {
-    expect(describePassphraseChanged("matched", "kept")).toBe(
-      PASSPHRASE_CHANGED_MESSAGE,
-    );
-    expect(describePassphraseChanged("matched", "removed")).toBe(
-      HISTORY_REMOVED_MESSAGE,
-    );
-    expect(describePassphraseChanged("unchecked", "notRemoved")).toBe(
-      `${PASSPHRASE_CHANGED_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`,
-    );
-    expect(describePassphraseChanged("mismatch", "removed")).toBe(
-      PASSPHRASE_CHANGED_MISMATCH_MESSAGE,
-    );
-    expect(describePassphraseChanged("mismatch", "notRemoved")).toBe(
-      `${PASSPHRASE_CHANGED_MISMATCH_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`,
-    );
+    const notRemoved = `${PASSPHRASE_CHANGED_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`;
+    const mismatchNotRemoved = `${PASSPHRASE_CHANGED_MISMATCH_MESSAGE} ${HISTORY_NOT_REMOVED_MESSAGE}`;
+    const cases = [
+      ["matched", "kept", "success", PASSPHRASE_CHANGED_MESSAGE],
+      ["matched", "removed", "success", HISTORY_REMOVED_MESSAGE],
+      ["matched", "notRemoved", "warning", notRemoved],
+      ["unchecked", "kept", "success", PASSPHRASE_CHANGED_MESSAGE],
+      ["unchecked", "removed", "success", HISTORY_REMOVED_MESSAGE],
+      ["unchecked", "notRemoved", "warning", notRemoved],
+      ["mismatch", "kept", "warning", PASSPHRASE_CHANGED_MISMATCH_MESSAGE],
+      ["mismatch", "removed", "warning", PASSPHRASE_CHANGED_MISMATCH_MESSAGE],
+      ["mismatch", "notRemoved", "warning", mismatchNotRemoved],
+    ] as const;
+    for (const [check, history, tone, text] of cases) {
+      expect(describePassphraseChanged(check, history)).toEqual({ tone, text });
+    }
   });
 
   it("says version history can't reach back past the change", () => {

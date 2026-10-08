@@ -535,6 +535,69 @@ describe("revokeShare", () => {
   });
 });
 
+describe("revokeShares", () => {
+  async function sharedTwice() {
+    const h = await setup();
+    const first = await h.service.createShare({ path: WELCOME, password: "" });
+    const second = await h.service.createShare({ path: IDEAS, password: "" });
+    if (!first.ok || !second.ok) throw new Error("failed");
+    await settle(h.engine);
+    return { h, entries: [first.entry, second.entry] };
+  }
+
+  it("revokes every share within a folder and leaves the others", async () => {
+    const { h, entries } = await sharedTwice();
+    const [welcome, ideas] = entries;
+
+    expect(
+      await h.service.revokeShares({ kind: "within", path: ["Projects"] }),
+    ).toEqual({ ok: true, revoked: 1 });
+
+    expect(h.store.read(ideas.locator)).toBeNull();
+    expect(h.store.read(welcome.locator)).not.toBeNull();
+    expect([...(h.engine.getState().shares?.entries.keys() ?? [])]).toEqual([
+      welcome.id,
+    ]);
+  });
+
+  it("stops at the first failure and keeps what it already revoked", async () => {
+    const store = createFakeShareStore();
+    let deletes = 0;
+    const fake: FakeForgeAdapter = await createSampleNotesRepoAdapter({
+      shares: { store, provider: "github" },
+      onContentCreatingRequest: ({ operation }) => {
+        if (operation !== "deleteShare") return;
+        deletes += 1;
+        if (deletes === 1) fake.failNext("deleteShare", new ForgeError("Network"));
+      },
+    });
+    const h = await setup(fake, store);
+    const first = await h.service.createShare({ path: WELCOME, password: "" });
+    const second = await h.service.createShare({ path: IDEAS, password: "" });
+    if (!first.ok || !second.ok) throw new Error("failed");
+    await settle(h.engine);
+
+    const result = await h.service.revokeShares({ kind: "within", path: [] });
+
+    expect(result).toEqual({ ok: false, error: { kind: "network" }, revoked: 1 });
+    const left = [...(h.engine.getState().shares?.entries.values() ?? [])];
+    expect(left).toHaveLength(1);
+    expect(h.store.read(left[0].locator)).not.toBeNull();
+    const gone = [first.entry, second.entry].find((e) => e.id !== left[0].id);
+    expect(gone && h.store.read(gone.locator)).toBeNull();
+  });
+
+  it("treats a hosted copy that is already gone as revoked", async () => {
+    const { h, entries } = await sharedTwice();
+    h.store.delete(entries[0].locator);
+
+    expect(
+      await h.service.revokeShares({ kind: "within", path: WELCOME }),
+    ).toEqual({ ok: true, revoked: 1 });
+    expect(h.engine.getState().shares?.entries.has(entries[0].id)).toBe(false);
+  });
+});
+
 describe("shareErrorOf", () => {
   it.each([
     [new ForgeError("Forbidden"), "create", { kind: "permissionMissing" }],

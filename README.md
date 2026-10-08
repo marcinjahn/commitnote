@@ -180,6 +180,10 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
 - A share never changes on its own. "Update to current version" in the share's "⋯" menu (also opened by right-click) replaces the shared copy with the note's current saved version, keeping the same link and the same password.
 - The link always shows the latest update. On GitHub, recipients may see the previous content for up to about a minute after an update.
 - Revoking a share deletes its gist or snippet, and the link stops working. Shares never expire.
+- Moving a shared note (or a folder holding one) to the trash asks first, then revokes its links.
+  Restoring it from the trash doesn't bring them back. Links of notes trashed on another device
+  stay listed until revoked or until the note is deleted permanently from the trash, which
+  revokes them too.
 - After a passphrase change, existing links keep working, but "View shared version" can no longer
   show the old version.
 - GitLab sharing is blocked by the production Content Security Policy like the rest of GitLab

@@ -74,7 +74,7 @@
   import NotePane from "../note/NotePane.svelte";
   import { createNoteDatesView, type ShownNoteDates } from "../note/note-dates-view";
   import { derivePrintNote, type PrintNote } from "../print/print-note";
-  import type { ToastMessage } from "../notices/notice-messages";
+  import type { ToastMessage, ToastTone } from "../notices/notice-messages";
   import NoticeToasts from "../notices/NoticeToasts.svelte";
   import { toastHost } from "../notices/toast-host";
   import NoteHeader from "./NoteHeader.svelte";
@@ -94,8 +94,10 @@
   } from "../share/share-messages";
   import type { ShareService } from "../../share/share-service";
   import {
+    sharesIn,
     sharesOfNote,
     type ShareEntry,
+    type ShareScope,
   } from "../../share/share-index";
   import { sharedVersionShas } from "../../history/shared-versions";
   import { formatShareLink, shareLinkBase } from "../../share/share-link";
@@ -104,6 +106,8 @@
   import {
     describeEmptyTrash,
     describeMovedToTrash,
+    describeRevokeFailed,
+    describeSharesRevokedOnDelete,
     describeUndoError,
   } from "../trash/trash-messages";
   import type { ReadableWorkingTrashEntry } from "../../sync/working-trash";
@@ -131,7 +135,7 @@
     shareService: ShareService;
     forgeId: ForgeId;
     noteDatesResolver: NoteDatesResolver;
-    initialMessage?: string | null;
+    initialMessage?: Pick<ToastMessage, "tone" | "text"> | null;
     onPassphraseChanged: (
       keyring: Keyring,
       check: LandedCheck,
@@ -206,6 +210,8 @@
         readonly kind: "delete";
         readonly node: WorkingNode;
         readonly itemCount: number;
+        readonly shareCount: number;
+        readonly revoking: boolean;
         readonly error: string | null;
       };
 
@@ -217,8 +223,12 @@
         readonly node: WorkingNode;
         readonly error: string | null;
       }
-    | { readonly kind: "deleteEntry"; readonly entry: ReadableWorkingTrashEntry }
-    | { readonly kind: "empty" };
+    | {
+        readonly kind: "deleteEntry";
+        readonly entry: ReadableWorkingTrashEntry;
+        readonly revoking: boolean;
+      }
+    | { readonly kind: "empty"; readonly revoking: boolean };
 
   const linkBase = shareLinkBase(location);
   let sharedLinksOpen = $state(false);
@@ -264,7 +274,7 @@
     untrack(() =>
       initialMessage === null
         ? {}
-        : { session: { id: -1, text: initialMessage } },
+        : { session: { id: -1, ...initialMessage } },
     ),
   );
   let nextMessageId = 0;
@@ -296,11 +306,12 @@
 
   function showToast(
     channel: ToastChannel,
+    tone: ToastTone,
     text: string,
-    extra?: Omit<ToastMessage, "id" | "text">,
+    extra?: Omit<ToastMessage, "id" | "tone" | "text">,
   ): number {
     const id = ++nextMessageId;
-    toasts[channel] = { id, text, ...extra };
+    toasts[channel] = { id, tone, text, ...extra };
     return id;
   }
 
@@ -609,6 +620,7 @@
     const restored = engine.getState().openNote;
     const id = showToast(
       "history",
+      "success",
       describeRestored(version.committedAt, Date.now()),
       {
         durationMs: UNDO_TOAST_MS,
@@ -672,7 +684,7 @@
     undoGuard = null;
     const result = setNoteState(path, content, name);
     if (result.ok) clearToast("history");
-    else showToast("history", result.message);
+    else showToast("history", "error", result.message);
   }
 
   $effect(() => {
@@ -888,7 +900,7 @@
   function showRefreshError(text: string): void {
     // The inline alert explains an empty sidebar; a toast would repeat it.
     if (tree === null) return;
-    showToast("refresh", text);
+    showToast("refresh", "error", text);
   }
 
   async function handleRefresh(): Promise<boolean> {
@@ -915,14 +927,14 @@
     try {
       await downloadNotesArchive(snapshot);
     } catch {
-      showToast("export", "Export failed. Try again later.");
+      showToast("export", "error", "Export failed. Try again later.");
     } finally {
       exporting = false;
     }
   }
 
-  function showImportMessage(text: string): void {
-    showToast("import", text);
+  function showImportMessage(tone: ToastTone, text: string): void {
+    showToast("import", tone, text);
   }
 
   $effect(() => {
@@ -936,6 +948,7 @@
     if (!busy) {
       importStarted = null;
       showImportMessage(
+        "success",
         describeImportDone(started.summary.notes, started.summary.folders),
       );
       return;
@@ -947,7 +960,7 @@
       save.reason === "failed"
     ) {
       started.retryingShown = true;
-      showImportMessage(IMPORT_RETRYING_MESSAGE);
+      showImportMessage("warning", IMPORT_RETRYING_MESSAGE);
     }
   });
 
@@ -976,7 +989,7 @@
     if (file === undefined || reading) return;
     clearToast("import");
     if (file.size > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
-      showImportMessage(describeArchiveError("tooLarge"));
+      showImportMessage("error", describeArchiveError("tooLarge"));
       return;
     }
     reading = true;
@@ -985,6 +998,7 @@
       importDialog = { fileName: file.name, contents: readNotesArchive(bytes) };
     } catch (error) {
       showImportMessage(
+        "error",
         describeArchiveError(
           error instanceof NotesArchiveError ? error.kind : "invalidArchive",
         ),
@@ -1112,6 +1126,8 @@
           kind: "delete",
           node,
           itemCount: node.kind === "folder" ? countDescendants(node) : 0,
+          shareCount: shareCountIn({ kind: "within", path: node.path }),
+          revoking: false,
           error: null,
         };
         break;
@@ -1199,14 +1215,14 @@
 
     const result = engine.place(path, target);
     if (!result.ok) {
-      showToast("place", describeStructureError(result.error));
+      showToast("place", "error", describeStructureError(result.error));
       return null;
     }
     const placed = result.path;
     if (notePathEquals(from, target.parent)) {
       clearToast("place");
     } else {
-      showToast("place", describeMovedTo(name, target.parent), {
+      showToast("place", "success", describeMovedTo(name, target.parent), {
         durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
@@ -1220,13 +1236,13 @@
 
   function handleColorTag(path: NotePath, color: ColorTag | null): void {
     const result = engine.setColorTag(path, color);
-    if (!result.ok) showToast("tag", describeStructureError(result.error));
+    if (!result.ok) showToast("tag", "error", describeStructureError(result.error));
   }
 
   function handleUndoPlace(path: NotePath, target: DropTarget): void {
     const result = engine.place(path, target);
     if (result.ok) clearToast("place");
-    else showToast("place", describeStructureError(result.error));
+    else showToast("place", "error", describeStructureError(result.error));
   }
 
   function dismissMessage(id: number): void {
@@ -1235,8 +1251,8 @@
 
   async function copyShareText(text: string, copied: string): Promise<boolean> {
     const ok = await copyText(text);
-    if (ok) showToast("share", copied);
-    else showToast("share", "Couldn't copy. Select the text and copy it.");
+    if (ok) showToast("share", "success", copied);
+    else showToast("share", "error", "Couldn't copy. Select the text and copy it.");
     return ok;
   }
 
@@ -1254,9 +1270,13 @@
     try {
       const result = await shareService.updateShare(entry.id);
       if (!result.ok) {
-        showToast("share", messageText(describeShareError(result.error, forgeId)));
+        showToast("share", "error", messageText(describeShareError(result.error, forgeId)));
       } else {
-        showToast("share", result.unchanged ? SHARE_UNCHANGED_TEXT : SHARE_UPDATED_TEXT);
+        showToast(
+          "share",
+          result.unchanged ? "info" : "success",
+          result.unchanged ? SHARE_UNCHANGED_TEXT : SHARE_UPDATED_TEXT,
+        );
       }
     } finally {
       updatingShareId = null;
@@ -1268,8 +1288,8 @@
     const { id } = revokeEntry;
     revokeEntry = null;
     const result = await shareService.revokeShare(id);
-    if (result.ok) showToast("share", "Link revoked");
-    else showToast("share", messageText(describeShareError(result.error, forgeId)));
+    if (result.ok) showToast("share", "success", "Link revoked");
+    else showToast("share", "error", messageText(describeShareError(result.error, forgeId)));
   }
 
   function openTrash(): void {
@@ -1296,10 +1316,56 @@
     closeTrashDialog();
   }
 
-  function handleTrashDeleteConfirm(): void {
-    if (trashDialog.kind === "deleteEntry") {
-      engine.deleteFromTrash([trashDialog.entry.id]);
-    } else if (trashDialog.kind === "empty") {
+  function shareCountIn(scope: ShareScope): number {
+    const shares = engine.getState().shares;
+    return shares === null ? 0 : sharesIn(shares, scope).length;
+  }
+
+  function withShareRevocation(body: string, state: TrashDialogState): string {
+    const scope = trashDeleteScope(state);
+    if (scope === null || engineState.shares === null) return body;
+    const count = sharesIn(engineState.shares, scope).length;
+    return count === 0 ? body : `${body} ${describeSharesRevokedOnDelete(count)}`;
+  }
+
+  function trashDeleteScope(state: TrashDialogState): ShareScope | null {
+    if (state.kind === "deleteEntry") {
+      return { kind: "trashed", entryIds: [state.entry.id] };
+    }
+    return state.kind === "empty" ? { kind: "trashed", entryIds: "all" } : null;
+  }
+
+  async function handleTrashDeleteConfirm(): Promise<void> {
+    const current = trashDialog;
+    const scope = trashDeleteScope(current);
+    if (scope === null || current.kind === "none" || current.kind === "restore") {
+      return;
+    }
+    if (current.revoking) return;
+    if (shareCountIn(scope) > 0) {
+      trashDialog = { ...current, revoking: true };
+      const result = await shareService.revokeShares(scope);
+      if (trashDialog.kind === current.kind) {
+        trashDialog = { ...trashDialog, revoking: false };
+      }
+      if (!result.ok) {
+        closeTrashDialog();
+        showToast(
+          "share",
+          "error",
+          describeRevokeFailed(
+            messageText(describeShareError(result.error, forgeId)),
+            result.revoked,
+            "delete",
+          ),
+        );
+        return;
+      }
+      if (shareCountIn(scope) > 0) return;
+    }
+    if (current.kind === "deleteEntry") {
+      engine.deleteFromTrash([current.entry.id]);
+    } else {
       engine.emptyTrash();
     }
     closeTrashDialog();
@@ -1308,7 +1374,7 @@
   function handleUndoTrash(entryId: string, reopen: NotePath | null): void {
     const result = engine.undoTrash(entryId);
     if (!result.ok) {
-      showToast("trash", describeUndoError(result.error));
+      showToast("trash", "error", describeUndoError(result.error));
       return;
     }
     const open = engine.getState().openNote;
@@ -1321,13 +1387,65 @@
     }
   }
 
-  function handleDeleteConfirm(): void {
+  function isConflictedWithin(path: NotePath): boolean {
+    return engine
+      .getState()
+      .conflicts.some((held) => isAtOrWithin(held.path, path));
+  }
+
+  // Shares are revoked before the item is trashed, so a failure leaves the
+  // item in place and no trashed note keeps a live link.
+  async function handleDeleteConfirm(): Promise<void> {
+    if (dialog.kind !== "delete" || dialog.revoking) return;
+    const current = dialog;
+    const path = current.node.path;
+    const scope: ShareScope = { kind: "within", path };
+    const shareCount = shareCountIn(scope);
+    if (shareCount > 0) {
+      if (current.shareCount === 0) {
+        dialog = { ...current, shareCount };
+        return;
+      }
+      if (isConflictedWithin(path)) {
+        dialog = {
+          ...current,
+          shareCount,
+          error: describeStructureError({ kind: "conflicted" }),
+        };
+        return;
+      }
+      dialog = { ...current, shareCount, revoking: true, error: null };
+      const result = await shareService.revokeShares(scope);
+      if (dialog.kind !== "delete" || !notePathEquals(dialog.node.path, path)) {
+        return;
+      }
+      const remaining = shareCountIn(scope);
+      if (!result.ok) {
+        dialog = {
+          ...dialog,
+          shareCount: remaining,
+          revoking: false,
+          error: describeRevokeFailed(
+            messageText(describeShareError(result.error, forgeId)),
+            result.revoked,
+            "trash",
+          ),
+        };
+        return;
+      }
+      if (remaining > 0) {
+        dialog = { ...dialog, shareCount: remaining, revoking: false };
+        return;
+      }
+    }
+    trashItem(path, current.node.name);
+  }
+
+  function trashItem(path: NotePath, name: string): void {
     if (dialog.kind !== "delete") return;
-    const path = dialog.node.path;
     const affectsOpenNote =
       openPath !== null &&
       isAtOrWithin(openPath, path);
-    const name = dialog.node.name;
     const result = engine.delete(path);
     if (!result.ok) {
       dialog = { ...dialog, error: describeStructureError(result.error) };
@@ -1337,7 +1455,7 @@
     const { trashEntryId } = result;
     const reopen = affectsOpenNote ? openPath : null;
     if (trashEntryId !== undefined) {
-      showToast("trash", describeMovedToTrash(name), {
+      showToast("trash", "success", describeMovedToTrash(name), {
         durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
@@ -1579,8 +1697,10 @@
     itemName={dialog.node.name}
     itemKind={dialog.node.kind}
     itemCount={dialog.itemCount}
+    shareCount={dialog.shareCount}
+    revoking={dialog.revoking}
     error={dialog.error}
-    onConfirm={handleDeleteConfirm}
+    onConfirm={() => void handleDeleteConfirm()}
     onClose={closeDialog}
   />
 {/if}
@@ -1730,8 +1850,12 @@
   now={trashNow}
   onRestore={(entry, node) =>
     (trashDialog = { kind: "restore", entry, node, error: null })}
-  onDelete={(entry) => (trashDialog = { kind: "deleteEntry", entry })}
-  onEmpty={() => (trashDialog = { kind: "empty" })}
+  trashedShareCount={engineState.shares === null
+    ? 0
+    : sharesIn(engineState.shares, { kind: "trashed", entryIds: "all" }).length}
+  onDelete={(entry) =>
+    (trashDialog = { kind: "deleteEntry", entry, revoking: false })}
+  onEmpty={() => (trashDialog = { kind: "empty", revoking: false })}
   onClose={() => (trashOpen = false)}
 />
 
@@ -1749,17 +1873,19 @@
 {:else if trashDialog.kind === "deleteEntry"}
   <ConfirmDialog
     title="Delete permanently?"
-    body="This can't be undone."
+    body={withShareRevocation("This can't be undone.", trashDialog)}
     confirmLabel="Delete permanently"
-    onConfirm={handleTrashDeleteConfirm}
+    busyLabel={trashDialog.revoking ? "Revoking links…" : null}
+    onConfirm={() => void handleTrashDeleteConfirm()}
     onClose={closeTrashDialog}
   />
 {:else if trashDialog.kind === "empty"}
   <ConfirmDialog
     title="Empty trash?"
-    body={describeEmptyTrash(trashEntries.length)}
+    body={withShareRevocation(describeEmptyTrash(trashEntries.length), trashDialog)}
     confirmLabel="Empty trash"
-    onConfirm={handleTrashDeleteConfirm}
+    busyLabel={trashDialog.revoking ? "Revoking links…" : null}
+    onConfirm={() => void handleTrashDeleteConfirm()}
     onClose={closeTrashDialog}
   />
 {/if}
@@ -1769,7 +1895,8 @@
     display: contents;
   }
 
-  .toast-host:global([data-moving]) :global(.toast) {
+  .toast-host:global([data-moving]) :global(.toast),
+  .toast-host:global([data-moving]) :global(.toast *) {
     transition: none;
   }
 

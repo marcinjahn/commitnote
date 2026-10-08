@@ -4,6 +4,7 @@ import {
   KEY_DERIVATION_TIMEOUT,
   SAMPLE,
   expectTree,
+  fakeForge,
   handOverRepo,
   logIn,
   openNotes,
@@ -19,7 +20,6 @@ import {
 } from "./helpers/tree";
 
 const NOTE_TEXT = "Notes stay private even to the forge that hosts them.";
-const OTHER_NOTE = "Zażółć gęślą jaźń";
 const NEW_PASSPHRASE = "a brand new passphrase";
 
 async function shareFromRowMenu(page: Page, name = "Welcome"): Promise<string> {
@@ -169,37 +169,151 @@ test("the shared links list is available on a second device", async ({
   await expect(treeItem(page, "Welcome").locator(".share-glyph")).toHaveCount(0);
 });
 
-test("trashed and deleted notes stay in the shared links list", async ({ page }) => {
-  await openNotes(page);
-  await shareFromRowMenu(page);
-  await shareFromRowMenu(page, OTHER_NOTE);
+function trashDialog(page: Page): Locator {
+  return page.getByRole("dialog").filter({
+    has: page.getByRole("heading", { name: "Move to trash?" }),
+  });
+}
 
-  await moveToTrash(page, "Welcome");
+async function startTrash(page: Page, name: string): Promise<Locator> {
+  await page.getByRole("button", { name: `Actions for ${name}` }).click();
+  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
+  const dialog = trashDialog(page);
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+async function expectRevoked(page: Page, link: string): Promise<void> {
+  const viewer = await openViewer(page, link);
+  await expect(
+    viewer.getByText("This shared note is no longer available.", { exact: false }),
+  ).toBeVisible();
+  await viewer.close();
+}
+
+test("trashing a shared note warns, and revokes its links only when confirmed @mobile", async ({
+  page,
+}) => {
+  await openNotes(page);
+  const first = await shareFromRowMenu(page);
+  const second = await shareFromRowMenu(page);
+
+  let dialog = await startTrash(page, "Welcome");
+  await expect(dialog.getByTestId("trash-share-warning")).toHaveText(
+    "This note has 2 active share links. Moving it to the trash revokes them permanently. Restoring it won't bring them back.",
+  );
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(treeItem(page, "Welcome")).toHaveAccessibleDescription(/Shared/);
   let list = await openSharedLinks(page);
-  const welcome = list.getByTestId("share-item").filter({ hasText: "Welcome" });
-  await expect(welcome).toContainText("In trash");
+  await expect(list.getByTestId("share-item")).toHaveCount(2);
   await closeSharedLinks(list);
 
-  const trash = await openTrash(page);
-  await restoreTo(page, "Welcome", "Notes (top level)");
-  await expect(trash).toHaveCount(0);
-  await expect(treeItem(page, "Welcome")).toHaveAccessibleDescription(/Shared/);
-  await expect(treeItem(page, "Welcome").locator(".share-glyph")).toBeVisible();
-
-  await moveToTrash(page, OTHER_NOTE);
-  await openTrash(page);
-  await page.getByRole("button", { name: `Delete ${OTHER_NOTE} permanently`, exact: true }).click();
-  await page
-    .getByRole("dialog", { name: "Delete permanently?" })
-    .getByRole("button", { name: "Delete permanently", exact: true })
+  dialog = await startTrash(page, "Welcome");
+  await dialog
+    .getByRole("button", { name: "Revoke links and move to trash", exact: true })
     .click();
-  await expect(page.getByRole("dialog", { name: "Trash" })).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);
+  await expect(treeItem(page, "Welcome")).toHaveCount(0);
 
   list = await openSharedLinks(page);
-  const deleted = list.getByTestId("share-item").filter({ hasText: "Deleted note" });
-  await expect(deleted).toContainText(OTHER_NOTE);
-  await revoke(page, list, OTHER_NOTE);
+  await expect(list.getByTestId("share-item")).toHaveCount(0);
+  await closeSharedLinks(list);
+  await expectRevoked(page, first);
+  await expectRevoked(page, second);
+
+  const trash = await openTrash(page);
+  await expect(trash.getByTestId("trash-shared-notice")).toHaveCount(0);
+  await restoreTo(page, "Welcome", "Notes (top level)");
+  await expect(trash).toHaveCount(0);
+  await expect(treeItem(page, "Welcome")).not.toHaveAccessibleDescription(/Shared/);
+});
+
+test("trashing a folder revokes the links of the shared notes inside it", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await treeItem(page, "Projects").click();
+  await treeItem(page, "commitnote").click();
+  await expect(treeItem(page, "Ideas")).toBeVisible();
+  const inside = await shareFromRowMenu(page, "Ideas");
+  await shareFromRowMenu(page, "Welcome");
+
+  const dialog = await startTrash(page, "Projects");
+  await expect(dialog.getByTestId("trash-share-warning")).toHaveText(
+    "Notes in this folder have 1 active share link. Moving it to the trash revokes it permanently. Restoring it won't bring it back.",
+  );
+  await dialog
+    .getByRole("button", { name: "Revoke links and move to trash", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(treeItem(page, "Projects")).toHaveCount(0);
+
+  const list = await openSharedLinks(page);
   await expect(list.getByTestId("share-item")).toHaveCount(1);
+  await expect(list.getByTestId("share-item")).toContainText("Welcome");
+  await closeSharedLinks(list);
+  await expectRevoked(page, inside);
+});
+
+test("a failed revocation keeps the note and its remaining links", async ({ page }) => {
+  await openNotes(page);
+  const link = await shareFromRowMenu(page);
+  await fakeForge(page).failNext("deleteShare", "Network");
+
+  const dialog = await startTrash(page, "Welcome");
+  await dialog
+    .getByRole("button", { name: "Revoke links and move to trash", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Nothing was moved to the trash.",
+  );
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(treeItem(page, "Welcome")).toHaveAccessibleDescription(/Shared/);
+
+  const viewer = await openViewer(page, link);
+  await expect(viewer.getByText(NOTE_TEXT)).toBeVisible();
+  await viewer.close();
+});
+
+test("a note trashed on another device keeps its link until deleted from the trash", async ({
+  page,
+  openSecondDevice,
+}) => {
+  await openNotes(page);
+  const second = await openSecondDevice();
+  await logIn(second.page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
+  await expectTree(second.page);
+
+  await shareFromRowMenu(page);
+  await waitForSynced(page);
+
+  await fakeForge(second.page).failNext("commit", "Network");
+  await moveToTrash(second.page, "Welcome");
+  await handOverRepo(page, second.page);
+
+  const list = await openSharedLinks(second.page);
+  await expect(list.getByTestId("share-item")).toContainText("In trash", {
+    timeout: 15_000,
+  });
+  await closeSharedLinks(list);
+
+  const trash = await openTrash(second.page);
+  await expect(trash.getByTestId("trash-shared-notice")).toContainText(
+    "1 active share link still points to a note in the trash.",
+  );
+  await second.page
+    .getByRole("button", { name: "Delete Welcome permanently", exact: true })
+    .click();
+  const confirm = second.page.getByRole("dialog", { name: "Delete permanently?" });
+  await expect(confirm).toContainText(
+    "1 active share link to a note in the trash will be revoked too.",
+  );
+  await confirm.getByRole("button", { name: "Delete permanently", exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+
+  const after = await openSharedLinks(second.page);
+  await expect(after.getByTestId("share-item")).toHaveCount(0);
 });
 
 test("the history Shared badge follows the shared version through update and revoke", async ({
