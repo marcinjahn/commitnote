@@ -217,6 +217,29 @@
     presentedPath = editorText !== null && !shown.draft && shown.openNote?.kind === "loaded" ? shown.openNote.path : null;
   });
 
+  const presentedPathNow = $derived(
+    editorText !== null && !shown.draft && shown.openNote?.kind === "loaded" ? shown.openNote.path : null,
+  );
+  let relocationPath: NotePath | null = null;
+  let relocationSwitch = untrack(() => shown.noteSwitch);
+
+  $effect(() => {
+    const path = presentedPathNow;
+    const presented = shown.noteSwitch;
+    untrack(() => {
+      if (
+        relocationPath !== null &&
+        path !== null &&
+        presented === relocationSwitch &&
+        JSON.stringify(path) !== JSON.stringify(relocationPath)
+      ) {
+        positions.move(relocationPath, path);
+      }
+      relocationPath = path;
+      relocationSwitch = presented;
+    });
+  });
+
   $effect.pre(() => {
     const current = live;
     motion.update({
@@ -318,6 +341,7 @@
     <MarkdownEditor
       bind:this={editor}
       text={editorText}
+      noteSwitch={shown.noteSwitch}
       readOnly={heldContent !== null}
       extensions={editorExtensions}
       {noteFont}

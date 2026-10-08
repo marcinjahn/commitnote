@@ -69,4 +69,23 @@ describe("createNotePositions", () => {
     expect(positions.get(["a/b"])).toEqual({ anchor: 1, head: 1, scrollTop: 1 });
     expect(positions.get(["a", "b"])).toEqual({ anchor: 2, head: 2, scrollTop: 2 });
   });
+
+  it("moves a saved position to a new path", () => {
+    const positions = createNotePositions();
+    positions.save(["a"], { anchor: 1, head: 2, scrollTop: 3 });
+
+    positions.move(["a"], ["folder", "a"]);
+
+    expect(positions.get(["a"])).toBeUndefined();
+    expect(positions.get(["folder", "a"])).toEqual({ anchor: 1, head: 2, scrollTop: 3 });
+  });
+
+  it("ignores a move from a path without a saved position", () => {
+    const positions = createNotePositions();
+    positions.save(["b"], { anchor: 1, head: 1, scrollTop: 1 });
+
+    positions.move(["a"], ["b"]);
+
+    expect(positions.get(["b"])).toEqual({ anchor: 1, head: 1, scrollTop: 1 });
+  });
 });

@@ -63,6 +63,7 @@
   {#if conflict.editing === null}
     <MarkdownEditor
       text={conflict.merged}
+      noteSwitch={0}
       readOnly={true}
       onChange={() => {}}
       extensions={highlightExtensions}
@@ -73,6 +74,7 @@
     <p role="status" class="conflict-hint">{CONFLICT_EDIT_HINT}</p>
     <MarkdownEditor
       text={conflict.editing}
+      noteSwitch={0}
       readOnly={false}
       onChange={onMergedChange}
       extensions={highlightExtensions}

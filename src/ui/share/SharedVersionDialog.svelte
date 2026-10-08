@@ -68,6 +68,7 @@
     {:else if content.kind === "readable"}
       <MarkdownEditor
         text={content.content}
+        noteSwitch={0}
         readOnly={true}
         onChange={() => {}}
         extensions={editorExtensions}

@@ -9,6 +9,7 @@ export interface NotePosition {
 export interface NotePositions {
   save(path: NotePath, position: NotePosition): void;
   get(path: NotePath): NotePosition | undefined;
+  move(from: NotePath, to: NotePath): void;
 }
 
 function clamp(value: number, max: number): number {
@@ -34,6 +35,13 @@ export function createNotePositions(): NotePositions {
     },
     get(path) {
       return positions.get(JSON.stringify(path));
+    },
+    move(from, to) {
+      const fromKey = JSON.stringify(from);
+      const position = positions.get(fromKey);
+      if (position === undefined) return;
+      positions.delete(fromKey);
+      positions.set(JSON.stringify(to), position);
     },
   };
 }

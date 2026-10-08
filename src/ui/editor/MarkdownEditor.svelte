@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import type { Compartment, Extension } from "@codemirror/state";
   import type { EditorView } from "@codemirror/view";
   import {
@@ -8,9 +8,11 @@
   } from "../../editor/create-markdown-editor";
 
   import type { NoteFont } from "../../settings/note-font";
+  import { decideEditorTextSync } from "./editor-text-sync";
 
   interface Props {
     text: string;
+    noteSwitch: number;
     readOnly: boolean;
     onChange: (text: string) => void;
     extensions?: Extension[];
@@ -21,6 +23,7 @@
 
   const {
     text,
+    noteSwitch,
     readOnly,
     onChange,
     extensions,
@@ -33,6 +36,8 @@
 
   let container: HTMLDivElement;
   let editor: MarkdownEditor | undefined;
+  let appliedSwitch = untrack(() => noteSwitch);
+  let editorBase = untrack(() => text);
 
   export function focus(): void {
     editor?.focus();
@@ -86,9 +91,30 @@
   });
 
   $effect(() => {
-    if (editor !== undefined && text !== editor.view.state.doc.toString()) {
-      editor.setText(text);
-    }
+    const incoming = text;
+    const incomingSwitch = noteSwitch;
+    if (editor === undefined) return;
+    const current = editor;
+    untrack(() => {
+      const doc = current.view.state.doc.toString();
+      const decision = decideEditorTextSync({
+        noteSwitch: incomingSwitch,
+        appliedSwitch,
+        text: incoming,
+        doc,
+        base: editorBase,
+      });
+      if (decision === "set") {
+        if (incoming !== doc) current.setText(incoming);
+        appliedSwitch = incomingSwitch;
+        editorBase = incoming;
+      } else if (decision === "update") {
+        current.updateText(incoming);
+        editorBase = incoming;
+      } else if (decision === "accept") {
+        editorBase = incoming;
+      }
+    });
   });
 
   $effect(() => {

@@ -123,6 +123,7 @@
       </p>
       <MarkdownEditor
         text={note.markdown}
+        noteSwitch={0}
         readOnly={true}
         onChange={() => {}}
         extensions={editorExtensions}

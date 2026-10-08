@@ -4,6 +4,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { CaretBlinker, accentCaret, type CaretLight } from "./accent-caret";
 import { setVimStatus, vimStatusField } from "./vim/vim-status";
+import { createMarkdownEditor } from "./create-markdown-editor";
 import { CARET_BLINK_MS, CARET_HOLD_MS } from "./caret-style";
 
 describe("CaretBlinker", () => {
@@ -177,5 +178,45 @@ describe("accentCaret", () => {
       expect(ownsCaret(view)).toBe(false);
       view.destroy();
     });
+  });
+
+  it("keeps drawing the caret at the mapped position after an in-place update", () => {
+    vi.useFakeTimers();
+    const proto = Range.prototype;
+    const original = {
+      getClientRects: proto.getClientRects,
+      getBoundingClientRect: proto.getBoundingClientRect,
+    };
+    proto.getClientRects = () =>
+      Object.assign([], { item: () => null }) as unknown as DOMRectList;
+    proto.getBoundingClientRect = () => new DOMRect();
+    const editor = createMarkdownEditor({
+      parent: document.body,
+      text: "one\ntwo",
+      readOnly: false,
+      onChange: () => {},
+      extensions: [accentCaret(), vimStatusField],
+    });
+    const { view } = editor;
+    vi.spyOn(view, "hasFocus", "get").mockReturnValue(true);
+    const coords = vi.spyOn(view, "coordsAtPos").mockReturnValue({
+      left: 10,
+      right: 10,
+      top: 0,
+      bottom: 20,
+    });
+    view.dispatch({ effects: setVimStatus.of({ mode: "insert" }) });
+    editor.setSelection(5, 5);
+
+    editor.updateText("new\none\ntwo");
+    vi.advanceTimersByTime(50);
+
+    expect(
+      view.dom.querySelectorAll(".cm-accent-caret-layer .cm-accent-caret"),
+    ).toHaveLength(1);
+    expect(coords).toHaveBeenLastCalledWith(9, expect.anything());
+    editor.destroy();
+    Object.assign(proto, original);
+    vi.useRealTimers();
   });
 });

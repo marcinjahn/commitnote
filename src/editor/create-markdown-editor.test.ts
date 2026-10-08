@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { undo } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { insertNewlineContinueMarkup } from "@codemirror/lang-markdown";
 import {
   createMarkdownEditor,
@@ -232,6 +233,140 @@ describe("createMarkdownEditor", () => {
 
     expect(editor.view.state.doc.toString()).toBe("");
     editor.destroy();
+  });
+
+  describe("updateText", () => {
+    function create(text: string, onChange: (text: string) => void = () => {}) {
+      return createMarkdownEditor({
+        parent: document.createElement("div"),
+        text,
+        readOnly: false,
+        onChange,
+      });
+    }
+
+    it("replaces the document without firing onChange", () => {
+      const onChange = vi.fn();
+      const editor = create("a\nb\nc", onChange);
+
+      editor.updateText("a\nB\nc\nd");
+
+      expect(editor.view.state.doc.toString()).toBe("a\nB\nc\nd");
+      expect(onChange).not.toHaveBeenCalled();
+      editor.destroy();
+    });
+
+    it("shifts a caret after an earlier insertion by the inserted length", () => {
+      const editor = create("one\ntwo\nthree");
+      editor.setSelection(10, 10);
+
+      editor.updateText("one\nINSERTED\ntwo\nthree");
+
+      expect(editor.getSelection()).toEqual({ anchor: 19, head: 19 });
+      editor.destroy();
+    });
+
+    it("keeps a caret before the change and a selection spanning it mapped", () => {
+      const editor = create("one\ntwo\nthree");
+      editor.setSelection(1, 1);
+      editor.updateText("one\ntwo\nthree\nfour");
+      expect(editor.getSelection()).toEqual({ anchor: 1, head: 1 });
+
+      editor.setSelection(2, 12);
+      editor.updateText("one\nXX\ntwo\nthree\nfour");
+      expect(editor.getSelection()).toEqual({ anchor: 2, head: 15 });
+      editor.destroy();
+    });
+
+    it("keeps a caret inside a changed line in range", () => {
+      const editor = create("hello world");
+      editor.setSelection(8, 8);
+
+      editor.updateText("hello brave world");
+
+      const { head } = editor.getSelection();
+      expect(head).toBeGreaterThanOrEqual(6);
+      expect(head).toBeLessThanOrEqual(17);
+      editor.destroy();
+    });
+
+    it("leaves a local edit undoable and the remote change in place", () => {
+      const editor = create("a\nb\nc");
+      editor.view.dispatch({
+        changes: { from: 5, insert: "!" },
+        userEvent: "input.type",
+      });
+
+      editor.updateText("REMOTE\na\nb\nc!");
+      undo(editor.view);
+
+      expect(editor.view.state.doc.toString()).toBe("REMOTE\na\nb\nc");
+      editor.destroy();
+    });
+
+    it("does not make the update itself undoable", () => {
+      const editor = create("a");
+
+      editor.updateText("a\nb");
+      undo(editor.view);
+
+      expect(editor.view.state.doc.toString()).toBe("a\nb");
+      editor.destroy();
+    });
+
+    it("still lets setText clear history", () => {
+      const editor = create("a");
+      editor.view.dispatch({
+        changes: { from: 1, insert: "b" },
+        userEvent: "input.type",
+      });
+      editor.updateText("X\nab");
+
+      editor.setText("fresh");
+      undo(editor.view);
+
+      expect(editor.view.state.doc.toString()).toBe("fresh");
+      editor.destroy();
+    });
+
+    it("does not dispatch for identical text", () => {
+      const editor = create("same");
+      const spy = vi.spyOn(editor.view, "dispatch");
+
+      editor.updateText("same");
+
+      expect(spy).not.toHaveBeenCalled();
+      editor.destroy();
+    });
+
+    it("carries a scroll snapshot effect", () => {
+      const scrollEffects: number[] = [];
+      let scrollType: unknown;
+      const editor = createMarkdownEditor({
+        parent: document.createElement("div"),
+        text: "a\nb",
+        readOnly: false,
+        onChange: () => {},
+        extensions: [
+          EditorView.updateListener.of((update) => {
+            for (const tr of update.transactions) {
+              scrollEffects.push(
+                tr.effects.filter((effect) => (effect as unknown as { type: unknown }).type === scrollType)
+                  .length,
+              );
+            }
+          }),
+        ],
+      });
+      scrollType = (
+        editor.view.scrollSnapshot() as unknown as { type: unknown }
+      ).type;
+
+      editor.updateText("a\nb\nc");
+
+      expect(scrollEffects).toEqual([1]);
+      editor.destroy();
+    });
   });
 
   describe("markdown keymap continuation", () => {

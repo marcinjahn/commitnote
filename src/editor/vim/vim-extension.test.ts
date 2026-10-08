@@ -8,7 +8,10 @@ import {
 } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { Vim, getCM } from "@replit/codemirror-vim";
-import { markdownEditorExtensions } from "../create-markdown-editor";
+import {
+  createMarkdownEditor,
+  markdownEditorExtensions,
+} from "../create-markdown-editor";
 import { livePreview } from "../live-preview";
 import { linkOpen } from "../link-open";
 import { accentCaret } from "../accent-caret";
@@ -255,6 +258,59 @@ describe("vimExtension visual position after external selection changes", () => 
       line: normalLine.number,
       column: normalHead - normalLine.from + 1,
     });
+  });
+});
+
+describe("vimExtension in-place text updates", () => {
+  async function setupEditor(initialMode: "normal" | "insert") {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const compartment = new Compartment();
+    const editor = createMarkdownEditor({
+      parent,
+      text: DOC,
+      readOnly: false,
+      onChange: () => {},
+      extensions: [
+        compartment.of(
+          vimExtension({
+            initialMode,
+            animatedCaret: true,
+            onWrite: async () => {},
+            onQuit: () => {},
+            onStatus: () => {},
+          }),
+        ),
+      ],
+    });
+    views.push(editor.view);
+    await settle();
+    return editor;
+  }
+
+  it("stays in normal mode and keeps the cursor on its text", async () => {
+    const editor = await setupEditor("normal");
+    await press(editor.view, "2", "G");
+    const before = editor.getSelection().head;
+
+    editor.updateText(`inserted\n${DOC}`);
+    await settle();
+
+    expect(modeOf(editor.view)).toBe("normal");
+    expect(editor.getSelection().head).toBe(before + "inserted\n".length);
+    await press(editor.view, "x");
+    expect(docOf(editor.view)).toBe(
+      "inserted\nfirst line\necond line\nthird line",
+    );
+  });
+
+  it("stays in insert mode", async () => {
+    const editor = await setupEditor("insert");
+
+    editor.updateText(`${DOC}\nfourth line`);
+    await settle();
+
+    expect(modeOf(editor.view)).toBe("insert");
   });
 });
 
