@@ -172,6 +172,24 @@ describe("last view store", () => {
     expect(await store.load()).toEqual(view);
   });
 
+  it("replaces a written note with its later path after a rename", async () => {
+    const { store, timers } = setup();
+    store.setEnabled(true, { note: null, folders: [] });
+    store.save({ note: ["Welcome"], folders: [] });
+    timers.fire();
+    await flush();
+    const renamed: LastView = {
+      note: ["Journal", "Greetings"],
+      folders: [["Journal"]],
+    };
+
+    store.save(renamed);
+    timers.fire();
+    await flush();
+
+    expect(await store.load()).toEqual(renamed);
+  });
+
   it("uses the default delay constant", () => {
     expect(LAST_VIEW_SAVE_DELAY_MS).toBe(500);
   });
