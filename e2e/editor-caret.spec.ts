@@ -498,4 +498,45 @@ test.describe("vim mode", () => {
     expect(block.x).toBeGreaterThanOrEqual(selection.x);
     expect(block.x).toBeLessThanOrEqual(selection.x + selection.width);
   });
+
+  test("visual selection stays inside the text column @mobile", async ({
+    page,
+  }) => {
+    await openVimNote(page);
+    await page.keyboard.type("ggjvje");
+    await expect(mode(page)).toHaveText("VISUAL");
+    await expect(page.locator(".cm-selectionBackground:visible")).not.toHaveCount(
+      0,
+    );
+
+    const { textLeft, columnRight, edges } = await page.evaluate(() => {
+      const content = document.querySelector(".cm-content")!;
+      const line = content.querySelectorAll(".cm-line")[2]!;
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      let textLeft = Number.POSITIVE_INFINITY;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const rect of range.getClientRects())
+          if (rect.width > 0) textLeft = Math.min(textLeft, rect.left);
+      }
+      const edges = [
+        ...document.querySelectorAll(".cm-selectionBackground"),
+      ].map((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, right: rect.right };
+      });
+      return {
+        textLeft,
+        columnRight: content.getBoundingClientRect().right,
+        edges,
+      };
+    });
+
+    expect(edges.length).toBeGreaterThan(0);
+    for (const edge of edges) {
+      expect(edge.left).toBeGreaterThanOrEqual(textLeft - 1);
+      expect(edge.right).toBeLessThanOrEqual(columnRight + 1);
+    }
+  });
 });

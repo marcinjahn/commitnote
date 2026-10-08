@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import {
+  Compartment,
+  EditorSelection,
+  EditorState,
+  type Extension,
+} from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { Vim, getCM } from "@replit/codemirror-vim";
 import { markdownEditorExtensions } from "../create-markdown-editor";
@@ -109,6 +114,23 @@ beforeAll(() => {
   Range.prototype.getClientRects = () =>
     Object.assign([], { item: () => null }) as unknown as DOMRectList;
   Range.prototype.getBoundingClientRect = empty;
+  EditorView.prototype.moveVertically = function (start, forward) {
+    const doc = this.state.doc;
+    const line = doc.lineAt(start.head);
+    const target = doc.line(
+      Math.min(
+        doc.lines,
+        Math.max(1, line.number + (forward ? 1 : -1)),
+      ),
+    );
+    const column = start.goalColumn ?? start.head - line.from;
+    return EditorSelection.cursor(
+      Math.min(target.from + column, target.to),
+      start.assoc,
+      undefined,
+      column,
+    );
+  };
 });
 
 beforeEach(() => {
@@ -187,6 +209,52 @@ describe("vimExtension status publishing", () => {
 
     expect(statuses.at(-1)).toBe(vimStatusOf(view.state));
     expect(statuses.at(-1)?.mode).toBe("insert");
+  });
+});
+
+describe("vimExtension cursor position", () => {
+  it.each([
+    [["w", "l"], 1, 8],
+    [["w", "l", "v"], 1, 8],
+    [["w", "l", "v", "l"], 1, 9],
+    [["$", "v", "h"], 1, 9],
+    [["0", "V"], 1, 1],
+    [["0", "V", "j"], 2, 1],
+    [["w", "l", "<C-v>", "j"], 2, 8],
+    [["w", "l", "v", "l", "<Esc>"], 1, 9],
+  ])("publishes the vim cursor after %j", async (keys, line, column) => {
+    const { view } = await setup();
+
+    await press(view, ...keys);
+
+    expect(vimStatusOf(view.state)).toMatchObject({ line, column });
+  });
+});
+
+describe("vimExtension visual position after external selection changes", () => {
+  it("follows a programmatic selection in VISUAL and returns to the head on Escape", async () => {
+    const { view } = await setup();
+    await press(view, "v");
+
+    view.dispatch({ selection: EditorSelection.single(2, 15) });
+    await settle();
+
+    const cm = cmOf(view);
+    const head = cm.indexFromPos(cm.state.vim!.sel.head);
+    const line = view.state.doc.lineAt(head);
+    expect(vimStatusOf(view.state)).toMatchObject({
+      line: line.number,
+      column: head - line.from + 1,
+    });
+    expect(line.number).toBe(2);
+
+    await press(view, "<Esc>");
+    const normalHead = view.state.selection.main.head;
+    const normalLine = view.state.doc.lineAt(normalHead);
+    expect(vimStatusOf(view.state)).toMatchObject({
+      line: normalLine.number,
+      column: normalHead - normalLine.from + 1,
+    });
   });
 });
 

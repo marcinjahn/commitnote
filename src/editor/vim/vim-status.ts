@@ -31,6 +31,7 @@ export interface VimStatus {
   readonly mode: VimEditingMode;
   readonly line: number;
   readonly column: number;
+  readonly cursor: number | null;
   readonly pendingKeys: string;
   readonly recording: string | null;
   readonly message: VimMessage | null;
@@ -47,8 +48,11 @@ export type VimStatusUpdate = Partial<Omit<VimStatus, "line" | "column">>;
 export const setVimStatus: StateEffectType<VimStatusUpdate> =
   StateEffect.define<VimStatusUpdate>();
 
-function position(state: EditorState): Pick<VimStatus, "line" | "column"> {
-  const head = state.selection.main.head;
+function position(
+  state: EditorState,
+  cursor: number | null,
+): Pick<VimStatus, "line" | "column"> {
+  const head = Math.min(cursor ?? state.selection.main.head, state.doc.length);
   const line = state.doc.lineAt(head);
   return { line: line.number, column: head - line.from + 1 };
 }
@@ -61,15 +65,20 @@ export const vimStatusField = StateField.define<VimStatus>({
       recording: null,
       message: null,
       commandLine: null,
-      ...position(state),
+      cursor: null,
+      ...position(state, null),
     };
   },
   update(value, tr) {
     let next = value;
+    let moved = tr.docChanged || tr.selection !== undefined;
     for (const effect of tr.effects)
-      if (effect.is(setVimStatus)) next = { ...next, ...effect.value };
-    if (tr.docChanged || tr.selection) {
-      const { line, column } = position(tr.state);
+      if (effect.is(setVimStatus)) {
+        next = { ...next, ...effect.value };
+        if (effect.value.cursor !== undefined) moved = true;
+      }
+    if (moved) {
+      const { line, column } = position(tr.state, next.cursor);
       if (line !== next.line || column !== next.column)
         next = { ...next, line, column };
     }

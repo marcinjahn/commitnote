@@ -23,6 +23,7 @@ describe("vimStatusField", () => {
       mode: "normal",
       line: 1,
       column: 1,
+      cursor: null,
       pendingKeys: "",
       recording: null,
       message: null,

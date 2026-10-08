@@ -127,6 +127,13 @@ class VimSession {
     });
   }
 
+  private visualCursor(
+    state: NonNullable<VimAdapter["state"]["vim"]>,
+  ): number | null {
+    if (!this.cm || !state.visualMode || !state.sel) return null;
+    return this.cm.indexFromPos(state.sel.head);
+  }
+
   publish(extra: VimStatusUpdate = {}): boolean {
     const state = this.cm?.state.vim;
     const current = vimStatusOf(this.view.state);
@@ -134,6 +141,7 @@ class VimSession {
     const macro = Vim.getVimGlobalState_().macroModeState;
     const update: VimStatusUpdate = {
       mode: this.mode,
+      cursor: this.visualCursor(state),
       pendingKeys: state.status ?? "",
       recording: macro.isRecording ? (macro.latestRegister ?? null) : null,
       ...extra,
@@ -144,7 +152,11 @@ class VimSession {
   }
 
   update(update: ViewUpdate): void {
-    if (update.startState.facet(vimConfig) !== update.state.facet(vimConfig))
+    if (
+      update.startState.facet(vimConfig) !== update.state.facet(vimConfig) ||
+      ((update.selectionSet || update.docChanged) &&
+        this.cm?.state.vim?.visualMode)
+    )
       this.schedule();
   }
 
@@ -217,6 +229,12 @@ const SELECTION =
 const vimTheme = Prec.highest(
   EditorView.theme({
     ".cm-vim-panel": { display: "none !important" },
+    "&.cm-editor > .cm-scroller > .cm-content": {
+      paddingLeft: "0",
+      paddingRight: "0",
+      marginLeft: "var(--space-4)",
+      marginRight: "var(--space-4)",
+    },
     "& > .cm-panels-bottom": { borderTop: "none" },
     ".cm-cursorLayer:not(.cm-vimCursorLayer) .cm-cursor": {
       display: "none !important",

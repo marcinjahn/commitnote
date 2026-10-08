@@ -225,6 +225,50 @@ test("relative line numbers follow the cursor", async ({ page }) => {
   await expect(current).toHaveText("2");
 });
 
+test("the position names the vim cursor in every visual mode", async ({
+  page,
+}) => {
+  await openVimWelcome(page);
+  await focusEditor(page);
+
+  await page.keyboard.type("ggjvje");
+  await expect(modeText(page)).toHaveText("VISUAL");
+  await expect(position(page)).toHaveText("3:4");
+
+  await page.keyboard.press("Escape");
+  await expect(modeText(page)).toHaveText("NORMAL");
+  await expect(position(page)).toHaveText("3:4");
+
+  await page.keyboard.type("0V");
+  await expect(modeText(page)).toHaveText("V-LINE");
+  await expect(position(page)).toHaveText("3:1");
+});
+
+test("the visual position follows a shift-click", async ({ page }) => {
+  await openVimWelcome(page);
+  await focusEditor(page);
+
+  await page.keyboard.type("gg");
+  await page.keyboard.press("v");
+  await expect(modeText(page)).toHaveText("VISUAL");
+
+  const line = page.locator(".cm-line", { hasText: "This is your" });
+  const box = await line.boundingBox();
+  if (!box) throw new Error("the paragraph line has no box");
+  await page.mouse.move(box.x + 48, box.y + 8);
+  await page.keyboard.down("Shift");
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+
+  await expect(position(page)).toHaveText(/^3:([1-9]|1[0-2])$/);
+  const column = Number((await position(page).innerText()).split(":")[1]);
+  await expect(page.locator(".cm-fat-cursor")).toHaveText(
+    "This is your"[column - 1] ?? "",
+  );
+  await expect(page.locator(".cm-relative-line-current")).toHaveText("3");
+});
+
 test("Escape then Tab leaves the editor from insert and visual, and Tab indents", async ({
   page,
 }) => {
