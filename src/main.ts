@@ -7,6 +7,7 @@ import "./app.css";
 import { createShareReaders } from "./forge/share-readers";
 import type { ShareReaders } from "./forge/share-host";
 import { isShareHash } from "./share/share-link";
+import { startBrowserAppUpdates } from "./app/app-updates";
 import "./note-fonts.css";
 
 const target = document.getElementById("app");
@@ -67,6 +68,8 @@ async function mountViewer(target: HTMLElement): Promise<void> {
   mount(SharedNoteViewer, { target, props: { controller, testModeBanner } });
 }
 
+const appUpdates = import.meta.env.DEV ? null : startBrowserAppUpdates();
+
 if (isShareHash(location.hash)) {
   await mountViewer(target);
 } else {
@@ -123,5 +126,8 @@ if (import.meta.env.MODE === "fake-forge") {
   }
 }
 
-  mount(App, { target, props: { registry, testModeBanner, argon2id } });
+  mount(App, {
+    target,
+    props: { registry, testModeBanner, argon2id, appUpdates },
+  });
 }

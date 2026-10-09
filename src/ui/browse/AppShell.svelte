@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onDestroy, tick, untrack } from "svelte";
   import type { AutoRefresh } from "../../app/auto-refresh";
+  import type { AppUpdates } from "../../app/app-updates";
+  import type { UpdateGate } from "../../app/update-gate";
+  import { updateToastKind, type UpdateToastKind } from "../../app/update-toast";
   import {
     autoRefreshFailureReport,
     INITIAL_AUTO_REFRESH_FAILURE_STATE,
@@ -208,6 +211,8 @@
     engine: SyncEngine;
     autoRefresh: AutoRefresh;
     settingsSaver: SettingsSaver;
+    updateGate: UpdateGate;
+    appUpdates: AppUpdates | null;
     contentIndexer: ContentIndexer;
     repoLabel: string;
     repoUrl: string;
@@ -237,6 +242,8 @@
     engine,
     autoRefresh,
     settingsSaver,
+    updateGate,
+    appUpdates,
     contentIndexer,
     repoLabel,
     repoUrl,
@@ -455,7 +462,8 @@
     | "share"
     | "import"
     | "history"
-    | "session";
+    | "session"
+    | "update";
   const TOAST_ORDER = [
     "refresh",
     "save",
@@ -467,6 +475,7 @@
     "import",
     "history",
     "session",
+    "update",
   ] as const satisfies readonly ToastChannel[];
   let toasts = $state<Partial<Record<ToastChannel, ToastMessage>>>(
     untrack(() =>
@@ -547,6 +556,42 @@
   function clearToast(channel: ToastChannel, id?: number): void {
     if (id === undefined || toasts[channel]?.id === id) delete toasts[channel];
   }
+
+  let shownUpdateToast: UpdateToastKind | null = null;
+
+  function syncUpdateToast(): void {
+    const kind = updateToastKind(appUpdates?.updateWaiting ?? false, updateGate.state);
+    if (kind === shownUpdateToast) return;
+    shownUpdateToast = kind;
+    switch (kind) {
+      case null:
+        clearToast("update");
+        return;
+      case "available":
+        showToast("update", "info", "A new version of commitnote is available.", {
+          action: { label: "Update", run: () => updateGate.accept() },
+        });
+        return;
+      case "waitingForSave":
+        showToast("update", "info", "commitnote will update once your changes are saved.");
+        return;
+      case "reloadPending":
+        showToast("update", "info", "Reload to finish updating.", {
+          action: { label: "Reload", run: () => updateGate.reloadWhenClean() },
+        });
+        return;
+    }
+  }
+
+  $effect(() => {
+    untrack(syncUpdateToast);
+    const stopGate = updateGate.subscribe(syncUpdateToast);
+    const stopUpdates = appUpdates?.subscribe(syncUpdateToast);
+    return () => {
+      stopGate();
+      stopUpdates?.();
+    };
+  });
 
   async function saveFromShortcut(): Promise<void> {
     settingsSaver.flush();

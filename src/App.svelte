@@ -3,6 +3,8 @@
   import { removeLastView } from "./app/last-view";
   import { createAutoRefresh, type AutoRefresh } from "./app/auto-refresh";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
+  import type { AppUpdates } from "./app/app-updates";
+  import { createUpdateGate, type UpdateGate } from "./app/update-gate";
   import { clearNoteFragment } from "./app/note-navigation";
   import {
     openSessionBlobCache,
@@ -86,9 +88,10 @@
     registry: ForgeRegistry;
     testModeBanner: string | null;
     argon2id?: Argon2idFunction;
+    appUpdates: AppUpdates | null;
   }
 
-  const { registry, testModeBanner, argon2id }: Props = $props();
+  const { registry, testModeBanner, argon2id, appUpdates }: Props = $props();
 
   type Phase =
     | { readonly kind: "restoring" }
@@ -103,6 +106,7 @@
         readonly engine: SyncEngine;
         readonly autoRefresh: AutoRefresh;
         readonly settingsSaver: SettingsSaver;
+        readonly updateGate: UpdateGate;
         readonly contentIndexer: ContentIndexer;
         readonly session: Session;
         readonly adapter: ForgeAdapter;
@@ -147,6 +151,8 @@
   let loginKey = $state(0);
   let autoRefresh: AutoRefresh | null = null;
   let uninstallLifecycleTriggers: (() => void) | null = null;
+  let updateGate: UpdateGate | null = null;
+  let detachUpdateGate: (() => void) | null = null;
   let uninstallBlobCachePurge: (() => void) | null = null;
   let unsubscribeStopped: (() => void) | null = null;
   let keyChanged = $state<{ readonly unsavedCount: number } | null>(null);
@@ -302,21 +308,42 @@
         keyChanged = null;
       }
     });
+    const hasUnsaved = () =>
+      settingsSaver.hasPending || engine.getState().syncStates.hasUnsaved;
+    const flush = () => {
+      settingsSaver.flush();
+      void engine.flush();
+    };
     uninstallLifecycleTriggers = installLifecycleTriggers(
       { window, document },
       {
-        flush: () => {
-          settingsSaver.flush();
-          void engine.flush();
-        },
+        flush,
         retryNow: () => engine.retryNow(),
         setOnline: (online) => engine.setOnline(online),
         setVisible: (visible) => autoRefresh?.setVisible(visible),
-        refreshTrigger: (trigger) => autoRefresh?.trigger(trigger),
-        hasUnsaved: () =>
-          settingsSaver.hasPending || engine.getState().syncStates.hasUnsaved,
+        refreshTrigger: (trigger) => {
+          autoRefresh?.trigger(trigger);
+          appUpdates?.checkForUpdate();
+        },
+        hasUnsaved,
       },
     );
+    const gate = createUpdateGate({
+      hasUnsaved,
+      flush,
+      onUnsavedChange: (listener) => {
+        const stopEngine = engine.subscribe(() => listener());
+        const stopSaver = settingsSaver.subscribe(listener);
+        return () => {
+          stopEngine();
+          stopSaver();
+        };
+      },
+      skipWaiting: () => appUpdates?.skipWaiting(),
+      reload: () => location.reload(),
+    });
+    updateGate = gate;
+    detachUpdateGate = appUpdates?.attachGate(gate) ?? null;
 
     // Forge errors resolve with `refresh.lastError` set, which the shell shows.
     let refreshed = true;
@@ -353,6 +380,7 @@
       engine,
       autoRefresh: refreshScheduler,
       settingsSaver,
+      updateGate: gate,
       contentIndexer,
       session,
       adapter,
@@ -418,6 +446,10 @@
   ): Promise<void> {
     uninstallLifecycleTriggers?.();
     uninstallLifecycleTriggers = null;
+    detachUpdateGate?.();
+    detachUpdateGate = null;
+    updateGate?.dispose();
+    updateGate = null;
     autoRefresh?.dispose();
     autoRefresh = null;
     uninstallBlobCachePurge?.();
@@ -601,6 +633,8 @@
     engine={phase.engine}
     autoRefresh={phase.autoRefresh}
     settingsSaver={phase.settingsSaver}
+    updateGate={phase.updateGate}
+    {appUpdates}
     contentIndexer={phase.contentIndexer}
     repoLabel={phase.repoLabel}
     repoUrl={phase.repoUrl}
