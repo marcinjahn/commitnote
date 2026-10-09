@@ -21,7 +21,7 @@
   }
 </script>
 
-<div>
+<div class="font-picker">
   <div
     class="font-preview"
     data-testid="font-preview"
@@ -29,8 +29,8 @@
     style:font-family={previewedFamily}
   >
     <p class="font-preview-heading">Weekly notes</p>
-    <p>A <strong>clear</strong> list keeps the week <em>calm</em>.</p>
-    <p>Run <code>cargo clippy</code> before you push.</p>
+    <p>A <strong>clear</strong> list keeps a week <em>calm</em>.</p>
+    <p class="font-preview-code">Run <code>cargo clippy</code> before you push.</p>
   </div>
   <SettingOptionList
     label="Note font"
@@ -48,6 +48,10 @@
 </div>
 
 <style>
+  .font-picker {
+    container-type: inline-size;
+  }
+
   .font-preview {
     position: sticky;
     top: 0;
@@ -81,6 +85,18 @@
     min-height: 1.875rem;
     font-weight: var(--font-weight-semibold);
     font-size: var(--font-size-lg);
+  }
+
+  /* Leaves room for the padded code box, which hangs below the line in fonts with a low baseline. */
+  .font-preview .font-preview-code {
+    min-height: 1.75rem;
+  }
+
+  /* Below this width the widest note fonts wrap a body line, so every font reserves two lines. */
+  @container (max-width: 24.5rem) {
+    .font-preview p:not(.font-preview-heading) {
+      min-height: 3rem;
+    }
   }
 
   strong {
