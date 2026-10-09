@@ -181,8 +181,12 @@ test.describe("window controls overlay", () => {
 
     const header = page.locator(".tree-header");
     await expectDragHeader(header);
-    const wordmark = await header.locator(".wordmark").first().boundingBox();
-    expect(wordmark!.x).toBeGreaterThanOrEqual(area.x);
+    await expect
+      .poll(
+        async () =>
+          (await header.locator(".wordmark").first().boundingBox())!.x,
+      )
+      .toBeGreaterThanOrEqual(area.x);
     const controls = await interactiveBoxes(page, ".tree-header");
     expect(controls.length).toBeGreaterThan(0);
     for (const box of controls) expect(box.x).toBeGreaterThanOrEqual(area.x);

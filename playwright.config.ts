@@ -13,6 +13,7 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     serviceWorkers: "block",
+    reducedMotion: "reduce",
   },
   projects: [
     {

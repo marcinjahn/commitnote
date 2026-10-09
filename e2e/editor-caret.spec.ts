@@ -41,32 +41,36 @@ async function expectLight(page: Page, light: string): Promise<void> {
   await expect(tintLayer(page)).toHaveAttribute("data-caret", light);
 }
 
-test("typing tints the letters before a 2px caret that blinks after a hold", async ({
-  page,
-}) => {
-  await page.clock.install();
-  await newNote(page);
+test.describe("with motion", () => {
+  test.use({ reducedMotion: "no-preference" });
 
-  await page.keyboard.type("keeps typing");
-  await expect(caret(page)).toHaveCount(1);
-  await expect(tint(page)).not.toHaveCount(0);
-  expect((await caret(page).boundingBox())!.width).toBe(2);
-  await expect(editor(page)).toHaveCSS("caret-color", "rgba(0, 0, 0, 0)");
+  test("typing tints the letters before a 2px caret that blinks after a hold", async ({
+    page,
+  }) => {
+    await page.clock.install();
+    await newNote(page);
 
-  await pauseClock(page);
-  await page.keyboard.type("s");
-  await expectLight(page, "solid");
-  await page.clock.runFor(CARET_HOLD_MS - 1);
-  await expectLight(page, "solid");
-  await page.clock.runFor(1);
-  await expectLight(page, "off");
-  await page.clock.runFor(CARET_BLINK_MS);
-  await expectLight(page, "on");
-  await page.clock.runFor(CARET_BLINK_MS);
-  await expectLight(page, "off");
+    await page.keyboard.type("keeps typing");
+    await expect(caret(page)).toHaveCount(1);
+    await expect(tint(page)).not.toHaveCount(0);
+    expect((await caret(page).boundingBox())!.width).toBe(2);
+    await expect(editor(page)).toHaveCSS("caret-color", "rgba(0, 0, 0, 0)");
 
-  await page.keyboard.type("s");
-  await expectLight(page, "solid");
+    await pauseClock(page);
+    await page.keyboard.type("s");
+    await expectLight(page, "solid");
+    await page.clock.runFor(CARET_HOLD_MS - 1);
+    await expectLight(page, "solid");
+    await page.clock.runFor(1);
+    await expectLight(page, "off");
+    await page.clock.runFor(CARET_BLINK_MS);
+    await expectLight(page, "on");
+    await page.clock.runFor(CARET_BLINK_MS);
+    await expectLight(page, "off");
+
+    await page.keyboard.type("s");
+    await expectLight(page, "solid");
+  });
 });
 
 async function expectTintEndsAtCaret(page: Page): Promise<void> {
@@ -392,9 +396,13 @@ test.describe("vim mode", () => {
 
     const accent = await tokenColour(page, "--color-accent");
     const onAccent = await tokenColour(page, "--color-on-accent");
+    await expect
+      .poll(async () => {
+        const { background, color } = await cursorStyle(page);
+        return { background, color };
+      })
+      .toEqual({ background: accent, color: onAccent });
     const normal = await cursorStyle(page);
-    expect(normal.background).toBe(accent);
-    expect(normal.color).toBe(onAccent);
 
     await pauseClock(page);
     await page.clock.runFor(CARET_BLINK_MS * 2);
@@ -411,7 +419,9 @@ test.describe("vim mode", () => {
     await expect
       .poll(async () => (await fatCursor(page).boundingBox())!.height)
       .toBeCloseTo(normalHeight, 0);
-    expect((await fatCursor(page).boundingBox())!.y).toBeCloseTo(normalBox.y, 0);
+    await expect
+      .poll(async () => (await fatCursor(page).boundingBox())!.y)
+      .toBeCloseTo(normalBox.y, 0);
     const replace = await cursorStyle(page);
     expect(replace.background).toBe(accent);
     expect(replace.color).toBe(onAccent);
