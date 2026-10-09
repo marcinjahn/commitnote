@@ -50,6 +50,8 @@ through a LAN IP address over plain HTTP does not work.
 - `check:bundle` — build both `dist/` and `dist-fake/` and verify the production build never
   ships test-mode fixture data
 - `generate:brand` — regenerate the brand SVGs and app icons (see above)
+- `generate:pwa-screenshots` — regenerate the web app manifest screenshots in `public/screenshots/` from
+  the test-mode build, using the system Chrome (optional `E2E_PORT`)
 - `fixture:sample-notes-repo` — regenerate the sample notes repo fixture
 
 ## Deployment
