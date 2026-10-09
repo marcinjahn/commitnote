@@ -3,6 +3,8 @@
   import { removeLastView } from "./app/last-view";
   import { createAutoRefresh, type AutoRefresh } from "./app/auto-refresh";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
+  import { isStandalone } from "./app/display-mode";
+  import { requestPersistentStorage } from "./app/persistent-storage";
   import type { AppUpdates } from "./app/app-updates";
   import { createUpdateGate, type UpdateGate } from "./app/update-gate";
   import { clearNoteFragment } from "./app/note-navigation";
@@ -256,9 +258,20 @@
     rememberMe: boolean,
     initialMessage: Pick<ToastMessage, "tone" | "text"> | null = null,
     purgeBlobCache = false,
+    resumed = false,
   ): Promise<void> {
     phase = { kind: "restoring" };
     const { remembered } = await store.start(session, { rememberMe });
+    if (
+      remembered &&
+      (!resumed ||
+        isStandalone({
+          matchMedia: (q) => window.matchMedia(q),
+          navigator: navigator as { standalone?: boolean },
+        }))
+    ) {
+      void requestPersistentStorage(navigator.storage);
+    }
     const blobCache = await openSessionBlobCache({
       remembered,
       coordinates: session.coordinates,
@@ -579,7 +592,14 @@
         const result = await resumeSession(session, loginDeps());
         switch (result.kind) {
           case "loggedIn":
-            await startApp(result.session, result.adapter, true);
+            await startApp(
+              result.session,
+              result.adapter,
+              true,
+              null,
+              false,
+              true,
+            );
             return;
           case "failed": {
             if (!isTransient(result.error)) {
