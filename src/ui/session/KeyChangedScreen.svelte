@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { downloadNotesArchive } from "../../export/download-notes-archive";
+  import { exportNotesArchive } from "../../export/export-notes-archive";
   import type { SyncEngine } from "../../sync/sync-engine";
   import { KEY_CHANGED_MESSAGE } from "../browse/sync-messages";
   import Wordmark from "../wordmark/Wordmark.svelte";
@@ -27,7 +27,7 @@
     exporting = true;
     exportFailed = false;
     try {
-      await downloadNotesArchive(snapshot);
+      await exportNotesArchive(snapshot);
     } catch {
       exportFailed = true;
     } finally {

@@ -57,7 +57,7 @@
     type HistoryPhase,
   } from "../history/NoteHistoryDialog.svelte";
   import type { WorkingNode } from "../../sync/working-tree";
-  import { downloadNotesArchive } from "../../export/download-notes-archive";
+  import { exportNotesArchive } from "../../export/export-notes-archive";
   import {
     planImport,
     type CollisionPolicy,
@@ -1445,7 +1445,7 @@
     exporting = true;
     clearToast("export");
     try {
-      await downloadNotesArchive(snapshot);
+      await exportNotesArchive(snapshot);
     } catch {
       showToast("export", "error", "Export failed. Try again later.");
     } finally {
