@@ -36,7 +36,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run build:fake && npm run preview:fake -- --port ${PORT} --strictPort`,
+    command: `npm run build:fake -- --if-stale && npm run preview:fake -- --port ${PORT} --strictPort`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

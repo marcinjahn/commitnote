@@ -7,7 +7,7 @@
     "dev": "vite",
     "dev:fake": "vite --mode fake-forge",
     "build": "vite build",
-    "build:fake": "vite build --mode fake-forge --outDir dist-fake",
+    "build:fake": "tsx scripts/build-fake.ts",
     "preview": "vite preview",
     "preview:fake": "vite preview --outDir dist-fake",
     "test": "vitest run",
