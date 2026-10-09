@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { removeLastView } from "./app/last-view";
   import { createAutoRefresh, type AutoRefresh } from "./app/auto-refresh";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
@@ -85,15 +85,26 @@
   import PrintView from "./ui/print/PrintView.svelte";
   import type { PrintNote } from "./ui/print/print-note";
   import Wordmark from "./ui/wordmark/Wordmark.svelte";
+  import type { InstallController } from "./app/install-controller";
+  import InstallBar from "./ui/install/InstallBar.svelte";
+  import InstallHowToDialog from "./ui/install/InstallHowToDialog.svelte";
+  import { createDialogEntries } from "./ui/dialogs/dialog-entries";
+  import { bindDialogHistory, type DialogHistory } from "./ui/dialogs/dialog-history";
+  import { dialogStack } from "./ui/dialogs/dialog-stack";
 
   interface Props {
     registry: ForgeRegistry;
     testModeBanner: string | null;
     argon2id?: Argon2idFunction;
     appUpdates: AppUpdates | null;
+    install: InstallController;
   }
 
-  const { registry, testModeBanner, argon2id, appUpdates }: Props = $props();
+  const { registry, testModeBanner, argon2id, appUpdates, install }: Props =
+    $props();
+
+  let installState = $state(untrack(() => install.getState()));
+  onMount(() => install.subscribe((state) => (installState = state)));
 
   type Phase =
     | { readonly kind: "restoring" }
@@ -579,6 +590,29 @@
     return initializeNotesRepo(pending, passphrase, loginDeps(), onStep);
   }
 
+  const onLoginScreen = $derived(phase.kind === "login");
+
+  $effect(() => {
+    if (!onLoginScreen) return;
+    let binding: DialogHistory | null = null;
+    const entries = createDialogEntries({
+      history: window.history,
+      events: window,
+      onBack: (count) => void binding?.closeFromBack(count),
+    });
+    binding = bindDialogHistory({
+      stack: dialogStack,
+      navigation: entries,
+      requestClose: (el) =>
+        el.dispatchEvent(new Event("cancel", { cancelable: true })),
+      settle: tick,
+    });
+    return () => {
+      binding?.dispose();
+      entries.dispose();
+    };
+  });
+
   onMount(() => {
     void (async () => {
       try {
@@ -628,8 +662,17 @@
     <p class="restoring-text">Loading…</p>
   </main>
 {:else if phase.kind === "login"}
+  {#if installState.bar !== "none"}
+    <InstallBar
+      variant={installState.bar}
+      sideInsets
+      onInstall={() => void install.install()}
+      onDismiss={() => install.dismiss()}
+    />
+  {/if}
   {#key loginKey}
     <LoginScreen
+      belowInstallBar={installState.bar !== "none"}
       {providers}
       initialRepoUrl={phase.initialRepoUrl}
       initialForgeId={phase.initialForgeId}
@@ -655,6 +698,7 @@
     settingsSaver={phase.settingsSaver}
     updateGate={phase.updateGate}
     {appUpdates}
+    {install}
     contentIndexer={phase.contentIndexer}
     repoLabel={phase.repoLabel}
     repoUrl={phase.repoUrl}
@@ -684,6 +728,11 @@
     onLogOutAnyway={finishLogOut}
   />
 {/if}
+
+<InstallHowToDialog
+  open={installState.howToOpen}
+  onClose={() => install.closeHowTo()}
+/>
 
 <PrintView note={phase.kind === "app" && keyChanged === null ? reportedPrintNote : null} />
 

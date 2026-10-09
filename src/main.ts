@@ -8,12 +8,16 @@ import { createShareReaders } from "./forge/share-readers";
 import type { ShareReaders } from "./forge/share-host";
 import { isShareHash } from "./share/share-link";
 import { startBrowserAppUpdates } from "./app/app-updates";
+import { captureInstallEvents } from "./app/install-events";
+import { createBrowserInstallController } from "./app/install-controller";
 import "./note-fonts.css";
 
 const target = document.getElementById("app");
 if (!target) {
   throw new Error("Missing #app element");
 }
+
+const installEvents = captureInstallEvents(window);
 
 window.addEventListener("hashchange", (event) => {
   if (
@@ -126,8 +130,9 @@ if (import.meta.env.MODE === "fake-forge") {
   }
 }
 
+  const install = createBrowserInstallController(installEvents);
   mount(App, {
     target,
-    props: { registry, testModeBanner, argon2id, appUpdates },
+    props: { registry, testModeBanner, argon2id, appUpdates, install },
   });
 }

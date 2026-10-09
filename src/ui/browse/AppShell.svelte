@@ -2,6 +2,8 @@
   import { onDestroy, tick, untrack } from "svelte";
   import type { AutoRefresh } from "../../app/auto-refresh";
   import type { AppUpdates } from "../../app/app-updates";
+  import type { InstallController } from "../../app/install-controller";
+  import InstallBar from "../install/InstallBar.svelte";
   import type { UpdateGate } from "../../app/update-gate";
   import { updateToastKind, type UpdateToastKind } from "../../app/update-toast";
   import {
@@ -213,6 +215,7 @@
     settingsSaver: SettingsSaver;
     updateGate: UpdateGate;
     appUpdates: AppUpdates | null;
+    install: InstallController;
     contentIndexer: ContentIndexer;
     repoLabel: string;
     repoUrl: string;
@@ -244,6 +247,7 @@
     settingsSaver,
     updateGate,
     appUpdates,
+    install,
     contentIndexer,
     repoLabel,
     repoUrl,
@@ -378,6 +382,8 @@
     requestClose: (el) => el.dispatchEvent(new Event("cancel", { cancelable: true })),
     settle: tick,
   });
+  let installState = $state(untrack(() => install.getState()));
+  onDestroy(untrack(() => install.subscribe((state) => (installState = state))));
   let anyDialogOpen = $state(dialogStack.top() !== null);
   const stopDialogWatch = dialogStack.subscribe((top) => (anyDialogOpen = top !== null));
   onDestroy(() => {
@@ -903,6 +909,16 @@
         sharedLinksOpen = true;
       },
     },
+    ...(installState.command !== null
+      ? [
+          {
+            id: "install",
+            label: "Install app",
+            icon: commandIcons.install,
+            run: () => void install.install(),
+          },
+        ]
+      : []),
     {
       id: "log-out",
       label: "Log out",
@@ -2230,10 +2246,18 @@
     aria-label="Notes"
     class="sidebar"
     class:mobile-hidden={mobileView !== "tree"}
+    class:with-install-bar={installState.bar !== "none"}
     inert={narrow && mobileView !== "tree"}
     style:--sidebar-width="{sidebarWidth}px"
     bind:this={sidebarEl}
   >
+    {#if installState.bar !== "none"}
+      <InstallBar
+        variant={installState.bar}
+        onInstall={() => void install.install()}
+        onDismiss={() => install.dismiss()}
+      />
+    {/if}
     <div
       class="tree-header"
       use:pullGesture={{
@@ -2864,6 +2888,11 @@
       var(--space-2) var(--space-3);
     justify-content: space-between;
     border-bottom: var(--hairline) solid var(--color-border);
+  }
+
+  .sidebar.with-install-bar .tree-header {
+    min-height: calc(var(--touch-target) + var(--space-2) * 2);
+    padding-top: var(--space-2);
   }
 
   .sidebar-footer {

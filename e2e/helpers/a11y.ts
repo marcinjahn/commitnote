@@ -24,7 +24,11 @@ export type A11yState =
   | "trash"
   | "trashed-note"
   | "viewer-password"
-  | "viewer-unlocked";
+  | "viewer-unlocked"
+  | "install-bar"
+  | "install-bar-login"
+  | "install-bar-ios"
+  | "install-howto";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 const BEST_PRACTICE_RULES = [
