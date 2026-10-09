@@ -73,6 +73,8 @@ describe("brand SVGs", () => {
         "public/icons/maskable-512.png",
         "public/icons/monochrome-512.png",
         "public/icons/apple-touch-icon.png",
+        "public/icons/shortcut-new-note-96.png",
+        "public/icons/shortcut-search-96.png",
       ]),
     );
   });

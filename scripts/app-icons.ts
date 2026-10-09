@@ -8,6 +8,7 @@ import {
   layoutFaviconGlyphs,
   type GlyphFit,
 } from "./brand-svgs";
+import { buildShortcutIcons, SHORTCUT_ICONS } from "./shortcut-icons";
 
 export type AppIconPurpose =
   | "any"
@@ -40,10 +41,10 @@ export const APP_ICONS: readonly AppIcon[] = [
 
 export const MASKABLE_SAFE_ZONE_RADIUS = 0.4;
 
-const TILE = "#0a0a0a";
-const LETTERS = "#fafafa";
+export const TILE = "#0a0a0a";
+export const LETTERS = "#fafafa";
 const MONOCHROME_LETTERS = "#000000";
-const CORNER_RADIUS = 0.2;
+export const CORNER_RADIUS = 0.2;
 const SAFE_ZONE_FIT = 0.36;
 const SHEET_GAP = 32;
 const SHEET_LIGHT = "#fafafa";
@@ -103,15 +104,19 @@ export async function buildAppIcons(
 }
 
 export async function buildIconContactSheet(font: Font): Promise<Uint8Array> {
-  const pngs = await buildAppIcons(font);
-  const rowHeight = Math.max(...APP_ICONS.map((icon) => icon.size));
+  const icons: readonly { path: string; size: number; purpose?: AppIconPurpose }[] = [
+    ...APP_ICONS,
+    ...SHORTCUT_ICONS,
+  ];
+  const pngs = [...(await buildAppIcons(font)), ...(await buildShortcutIcons())];
+  const rowHeight = Math.max(...icons.map((icon) => icon.size));
   const width =
-    APP_ICONS.reduce((sum, icon) => sum + icon.size + SHEET_GAP, SHEET_GAP);
+    icons.reduce((sum, icon) => sum + icon.size + SHEET_GAP, SHEET_GAP);
   const height = rowHeight * 2 + SHEET_GAP * 3;
   const rows = [SHEET_LIGHT, SHEET_DARK].flatMap((background, row) => {
     const top = SHEET_GAP + row * (rowHeight + SHEET_GAP);
     let left = SHEET_GAP;
-    const items = APP_ICONS.flatMap((icon, index) => {
+    const items = icons.flatMap((icon, index) => {
       const x = left;
       left += icon.size + SHEET_GAP;
       const base64 = Buffer.from(pngs[index].contents).toString("base64");
