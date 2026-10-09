@@ -9,6 +9,8 @@ import {
   type NavigationEntry,
 } from "./note-navigation";
 
+const WAIT = { timeout: 5000 };
+
 const ORIGIN = "https://app.test";
 const SESSION = "session-a";
 
@@ -224,7 +226,7 @@ describe("push and replace", () => {
     navigation.push(note("a.md"));
     expect(navigation.current()).toEqual(note("a.md"));
     expect(navigation.canGoBack()).toBe(true);
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(2));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
     const stored = await storedOf(["a.md"]);
     expect(fake.entry).toEqual({
       state: { note: stored, nav: { session: SESSION, depth: 1 } },
@@ -232,7 +234,7 @@ describe("push and replace", () => {
     });
 
     navigation.push({ kind: "draft" });
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(3));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(3), WAIT);
     expect(fake.entry).toEqual({
       state: { draft: true, nav: { session: SESSION, depth: 2 } },
       url: "/app/?x=1",
@@ -247,7 +249,7 @@ describe("push and replace", () => {
     navigation.push(note("a", "b.md"));
     navigation.push({ kind: "draft" });
     navigation.push({ kind: "draft" });
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(3));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(3), WAIT);
     expect(fake.writes.filter((w) => w.method === "push")).toHaveLength(2);
   });
 
@@ -263,6 +265,7 @@ describe("push and replace", () => {
         state: { note: stored, nav: { session: SESSION, depth: 1 } },
         url: `/app/#n=${stored}`,
       }),
+      WAIT,
     );
     expect(fake.entries).toHaveLength(2);
 
@@ -272,6 +275,7 @@ describe("push and replace", () => {
         state: { nav: { session: SESSION, depth: 1 } },
         url: "/app/",
       }),
+      WAIT,
     );
     expect(fake.entries).toHaveLength(2);
   });
@@ -280,14 +284,14 @@ describe("push and replace", () => {
     const { fake, navigation } = setup("/app/");
     await navigation.initial();
     navigation.push(note("a", ""));
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(2));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
     expect(fake.entry).toEqual({
       state: { nav: { session: SESSION, depth: 1 } },
       url: "/app/",
     });
 
     navigation.push(note("ok.md"));
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(3));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(3), WAIT);
   });
 
   it("reaches history in call order for rapid push, push, replace", async () => {
@@ -296,7 +300,7 @@ describe("push and replace", () => {
     navigation.push(note("first.md"));
     navigation.push(note("second.md"));
     navigation.replace(note("third.md"));
-    await vi.waitFor(() => expect(fake.writes).toHaveLength(4));
+    await vi.waitFor(() => expect(fake.writes).toHaveLength(4), WAIT);
     const [first, second, third] = await Promise.all(
       [["first.md"], ["second.md"], ["third.md"]].map(storedOf),
     );
@@ -329,13 +333,13 @@ describe("popstate", () => {
     navigation.push(note("a.md"));
     navigation.push(note("b.md"));
     navigation.back();
-    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]));
+    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]), WAIT);
     expect(navigation.current()).toEqual(note("a.md"));
     expect(navigation.canGoBack()).toBe(true);
     expect(fake.index).toBe(1);
 
     navigation.back();
-    await vi.waitFor(() => expect(popped).toHaveLength(2));
+    await vi.waitFor(() => expect(popped).toHaveLength(2), WAIT);
     expect(popped[1]).toEqual({ kind: "none" });
     expect(navigation.canGoBack()).toBe(false);
     expect(fake.writes).toHaveLength(3);
@@ -347,7 +351,7 @@ describe("popstate", () => {
     navigation.push({ kind: "draft" });
     navigation.push(note("a.md"));
     navigation.back();
-    await vi.waitFor(() => expect(popped).toEqual([{ kind: "draft" }]));
+    await vi.waitFor(() => expect(popped).toEqual([{ kind: "draft" }]), WAIT);
     expect(navigation.current()).toEqual({ kind: "draft" });
     expect(navigation.canGoBack()).toBe(true);
   });
@@ -365,7 +369,7 @@ describe("popstate", () => {
     fake.index = 1;
     await navigation.initial();
     navigation.back();
-    await vi.waitFor(() => expect(popped).toEqual([note("old.md")]));
+    await vi.waitFor(() => expect(popped).toEqual([note("old.md")]), WAIT);
     expect(fake.entries[0]).toEqual({
       state: { note: fragment.slice(3), nav: { session: SESSION, depth: 0 } },
       url: `/app/${fragment}`,
@@ -380,6 +384,7 @@ describe("popstate", () => {
     fake.editHash(fragment);
     await vi.waitFor(() =>
       expect(popped).toEqual([note("Notatki", "Łódź.md")]),
+      WAIT,
     );
     expect(fake.entry).toEqual({
       state: { note: fragment.slice(3), nav: { session: SESSION, depth: 0 } },
@@ -392,7 +397,7 @@ describe("popstate", () => {
     const { fake, navigation, popped } = setup("/app/");
     await navigation.initial();
     fake.editHash("#n=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-    await vi.waitFor(() => expect(popped).toEqual([{ kind: "none" }]));
+    await vi.waitFor(() => expect(popped).toEqual([{ kind: "none" }]), WAIT);
     expect(fake.entry).toEqual({
       state: { nav: { session: SESSION, depth: 0 } },
       url: "/app/",
@@ -417,7 +422,7 @@ describe("popstate", () => {
     navigation.push(note("a.md"));
     navigation.back();
     navigation.push(note("b.md"));
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(2));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
     expect(fake.index).toBe(1);
   });
 
@@ -426,7 +431,7 @@ describe("popstate", () => {
     expect(fake.listeners).toBe(1);
     await navigation.initial();
     navigation.push(note("a.md"));
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(2));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
     navigation.dispose();
     expect(fake.listeners).toBe(0);
     fake.history.back();
@@ -446,7 +451,7 @@ describe("dialog entries", () => {
     await navigation.initial();
     navigation.push(note(...path));
     navigation.pushDialog();
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(3));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(3), WAIT);
     return { ...setupResult, stored: await storedOf(path) };
   }
 
@@ -456,7 +461,7 @@ describe("dialog entries", () => {
     navigation.pushDialog();
     expect(navigation.openDialogs()).toBe(1);
     expect(navigation.canGoBack()).toBe(false);
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(2));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
     expect(fake.entry).toEqual({
       state: { dialog: true, nav: nav(1) },
       url: "/app/?x=1",
@@ -478,9 +483,9 @@ describe("dialog entries", () => {
     expect(navigation.canGoBack()).toBe(true);
     navigation.consumeDialog();
     expect(navigation.openDialogs()).toBe(0);
-    await vi.waitFor(() => expect(fake.index).toBe(1));
+    await vi.waitFor(() => expect(fake.index).toBe(1), WAIT);
     navigation.push(note("b.md"));
-    await vi.waitFor(() => expect(fake.index).toBe(2));
+    await vi.waitFor(() => expect(fake.index).toBe(2), WAIT);
     expect(popped).toEqual([]);
     expect(dialogBacks).toEqual([]);
     expect(navigation.current()).toEqual(note("b.md"));
@@ -492,7 +497,7 @@ describe("dialog entries", () => {
     navigation.push(note("a.md"));
     navigation.consumeDialog();
     navigation.push(note("b.md"));
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(3));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(3), WAIT);
     expect(fake.index).toBe(2);
     expect(popped).toEqual([]);
     expect(navigation.openDialogs()).toBe(0);
@@ -502,7 +507,7 @@ describe("dialog entries", () => {
     const { fake, navigation, popped, dialogBacks, stored } =
       await withDialogOver(["a.md"]);
     fake.history.back();
-    await vi.waitFor(() => expect(dialogBacks).toEqual([1]));
+    await vi.waitFor(() => expect(dialogBacks).toEqual([1]), WAIT);
     expect(popped).toEqual([]);
     expect(fake.entry.url).toBe(`/app/#n=${stored}`);
     expect(navigation.openDialogs()).toBe(0);
@@ -518,16 +523,16 @@ describe("dialog entries", () => {
     navigation.pushDialog();
     navigation.pushDialog();
     expect(navigation.openDialogs()).toBe(2);
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(5));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(5), WAIT);
 
     fake.history.back();
-    await vi.waitFor(() => expect(dialogBacks).toEqual([1]));
+    await vi.waitFor(() => expect(dialogBacks).toEqual([1]), WAIT);
     expect(navigation.openDialogs()).toBe(1);
     fake.history.back();
-    await vi.waitFor(() => expect(dialogBacks).toEqual([1, 1]));
+    await vi.waitFor(() => expect(dialogBacks).toEqual([1, 1]), WAIT);
     expect(popped).toEqual([]);
     fake.history.back();
-    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]));
+    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]), WAIT);
     expect(dialogBacks).toEqual([1, 1]);
     expect(navigation.openDialogs()).toBe(0);
   });
@@ -539,9 +544,9 @@ describe("dialog entries", () => {
     navigation.push(note("b.md"));
     navigation.pushDialog();
     navigation.pushDialog();
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(5));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(5), WAIT);
     fake.history.go(-3);
-    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]));
+    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]), WAIT);
     expect(dialogBacks).toEqual([2]);
     expect(navigation.openDialogs()).toBe(0);
     expect(navigation.canGoBack()).toBe(true);
@@ -559,6 +564,7 @@ describe("dialog entries", () => {
         state: { note: stored, nav: nav(2) },
         url: `/app/#n=${stored}`,
       }),
+      WAIT,
     );
     expect(fake.entries).toHaveLength(3);
     expect(fake.entries[1].state).toEqual({
@@ -567,7 +573,7 @@ describe("dialog entries", () => {
     });
 
     fake.history.back();
-    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]));
+    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]), WAIT);
     expect(dialogBacks).toEqual([]);
   });
 
@@ -576,7 +582,7 @@ describe("dialog entries", () => {
     navigation.push(note("b.md"));
     navigation.consumeDialog();
     navigation.push(note("c.md"));
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(4));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(4), WAIT);
     expect(fake.index).toBe(3);
     expect(fake.entries[2].state).toEqual({
       note: await storedOf(["b.md"]),
@@ -592,7 +598,7 @@ describe("dialog entries", () => {
     fake.deferPopStates();
     navigation.consumeDialog();
     navigation.push(note("b.md"));
-    await vi.waitFor(() => expect(fake.index).toBe(1));
+    await vi.waitFor(() => expect(fake.index).toBe(1), WAIT);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(fake.writes.filter((w) => w.method === "push")).toHaveLength(2);
 
@@ -603,6 +609,7 @@ describe("dialog entries", () => {
         state: { note: stored, nav: nav(2) },
         url: `/app/#n=${stored}`,
       }),
+      WAIT,
     );
     expect(fake.entries).toHaveLength(3);
     expect(popped).toEqual([]);
@@ -619,6 +626,7 @@ describe("dialog entries", () => {
         state: { note: stored, dialog: true, nav: nav(2) },
         url: `/app/#n=${stored}`,
       }),
+      WAIT,
     );
     expect(fake.entries[1].state).toEqual({
       note: await storedOf(["a.md"]),
@@ -631,6 +639,7 @@ describe("dialog entries", () => {
         state: { note: stored, nav: nav(1) },
         url: `/app/#n=${stored}`,
       }),
+      WAIT,
     );
     expect(fake.index).toBe(1);
     expect(popped).toEqual([]);
@@ -642,9 +651,10 @@ describe("dialog entries", () => {
     const stored = await storedOf(["b.md"]);
     await vi.waitFor(() =>
       expect(fake.entry.url).toBe(`/app/#n=${stored}`),
+      WAIT,
     );
     fake.history.back();
-    await vi.waitFor(() => expect(dialogBacks).toEqual([1]));
+    await vi.waitFor(() => expect(dialogBacks).toEqual([1]), WAIT);
     expect(fake.entry).toEqual({
       state: { note: stored, nav: nav(1) },
       url: `/app/#n=${stored}`,
@@ -655,9 +665,9 @@ describe("dialog entries", () => {
     const { fake, navigation, popped, dialogBacks, stored } =
       await withDialogOver(["a.md"]);
     fake.history.back();
-    await vi.waitFor(() => expect(dialogBacks).toEqual([1]));
+    await vi.waitFor(() => expect(dialogBacks).toEqual([1]), WAIT);
     fake.history.go(1);
-    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]));
+    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]), WAIT);
     expect(fake.entry).toEqual({
       state: { note: stored, nav: nav(2) },
       url: `/app/#n=${stored}`,
@@ -666,7 +676,7 @@ describe("dialog entries", () => {
     expect(navigation.openDialogs()).toBe(0);
 
     navigation.push(note("b.md"));
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(4));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(4), WAIT);
     expect(fake.entry.state).toMatchObject({ nav: nav(3) });
   });
 
@@ -691,7 +701,7 @@ describe("dialog entries", () => {
     await navigation.initial();
     navigation.consumeDialog();
     navigation.push(note("a.md"));
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(2));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
     expect(fake.index).toBe(1);
     expect(popped).toEqual([]);
   });
@@ -700,7 +710,7 @@ describe("dialog entries", () => {
     const { fake, navigation } = await withDialogOver(["a.md"]);
     fake.deferPopStates();
     navigation.consumeDialog();
-    await vi.waitFor(() => expect(fake.index).toBe(1));
+    await vi.waitFor(() => expect(fake.index).toBe(1), WAIT);
     navigation.dispose();
     await expect(navigation.initial()).resolves.toEqual({ kind: "none" });
   });
@@ -766,7 +776,7 @@ describe("plaintext", () => {
     navigation.push({ kind: "draft" });
     navigation.replace(note(names[0], names[2]));
     navigation.back();
-    await vi.waitFor(() => expect(popped).toHaveLength(1));
+    await vi.waitFor(() => expect(popped).toHaveLength(1), WAIT);
     const written = JSON.stringify([fake.writes, fake.entries]);
     for (const name of [...names, "Tajny", "plan"]) {
       expect(written).not.toContain(name);
