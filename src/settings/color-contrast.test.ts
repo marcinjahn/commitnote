@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  clampOklchLightness,
   compositeOver,
   contrastRatio,
   mixSrgb,
@@ -64,5 +65,30 @@ describe("compositeOver", () => {
       b: 63.75,
       a: 1,
     });
+  });
+});
+
+describe("clampOklchLightness", () => {
+  const rounded = ({ r, g, b }: { r: number; g: number; b: number }) =>
+    [r, g, b].map(Math.round);
+
+  it.each([
+    ["#cc4e00", "min", 0.48, [168, 42, 0]],
+    ["#008573", "min", 0.48, [0, 111, 94]],
+    ["#3358d4", "min", 0.48, [43, 78, 201]],
+    ["#5e6c7d", "max", 0.78, [170, 185, 204]],
+  ] as const)(
+    "matches the browser for oklch(from %s %s(l, %s) c h)",
+    (hex, clamp, bound, expected) => {
+      expect(rounded(clampOklchLightness(parseHex(hex), clamp, bound))).toEqual(
+        expected,
+      );
+    },
+  );
+
+  it("leaves a colour already inside the bound unchanged", () => {
+    expect(
+      rounded(clampOklchLightness(parseHex("#3dd68c"), "max", 0.78)),
+    ).toEqual([61, 214, 140]);
   });
 });
