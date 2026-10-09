@@ -811,6 +811,10 @@
   });
   const conflictPaths = $derived(engineState.conflicts.map((held) => held.path));
   let manualRefreshing = $state(false);
+  const REFRESH_FEEDBACK_MS = 1200;
+  let refreshFeedback = $state<"success" | "error" | null>(null);
+  let refreshFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
+  onDestroy(() => clearTimeout(refreshFeedbackTimer));
   const head = $derived(engineState.synced?.head ?? null);
 
   const importing = $derived(engineState.importing || importStarted !== null);
@@ -1392,6 +1396,16 @@
   );
 
   async function handleRefresh(): Promise<boolean> {
+    if (manualRefreshing) return false;
+    clearTimeout(refreshFeedbackTimer);
+    refreshFeedback = null;
+    const ok = await runManualRefresh();
+    refreshFeedback = ok ? "success" : "error";
+    refreshFeedbackTimer = setTimeout(() => (refreshFeedback = null), REFRESH_FEEDBACK_MS);
+    return ok;
+  }
+
+  async function runManualRefresh(): Promise<boolean> {
     manualRefreshing = true;
     try {
       await engine.refresh();
@@ -2192,7 +2206,11 @@
             {/each}
           </svg>
         </button>
-        <RefreshButton refreshing={manualRefreshing} onRefresh={handleRefresh} />
+        <RefreshButton
+          refreshing={manualRefreshing}
+          feedback={refreshFeedback}
+          onRefresh={handleRefresh}
+        />
         <CommandMenu {commands} />
       </div>
     </div>

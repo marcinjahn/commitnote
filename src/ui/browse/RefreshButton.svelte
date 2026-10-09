@@ -1,34 +1,13 @@
 <script lang="ts">
   interface Props {
     refreshing: boolean;
-    onRefresh: () => Promise<boolean>;
+    feedback: "success" | "error" | null;
+    onRefresh: () => void;
   }
 
-  const { refreshing, onRefresh }: Props = $props();
-
-  const FEEDBACK_MS = 1200;
-
-  let feedback = $state<"success" | "error" | null>(null);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let destroyed = false;
-
-  $effect(() => {
-    return () => {
-      destroyed = true;
-      clearTimeout(timer);
-    };
-  });
+  const { refreshing, feedback, onRefresh }: Props = $props();
 
   const glyph = $derived(refreshing || feedback === null ? "refresh" : feedback);
-
-  async function handleClick(): Promise<void> {
-    clearTimeout(timer);
-    feedback = null;
-    const ok = await onRefresh();
-    if (destroyed) return;
-    feedback = ok ? "success" : "error";
-    timer = setTimeout(() => (feedback = null), FEEDBACK_MS);
-  }
 </script>
 
 <button
@@ -38,7 +17,7 @@
   aria-busy={refreshing}
   data-feedback={glyph === "refresh" ? undefined : glyph}
   disabled={refreshing}
-  onclick={handleClick}
+  onclick={() => onRefresh()}
 >
   <span class="glyph" class:active={glyph === "refresh"}>
     <svg
