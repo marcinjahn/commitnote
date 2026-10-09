@@ -67,18 +67,22 @@ async function expectClearOfControls(
 ): Promise<void> {
   const width = page.viewportSize()!.width;
   const controls = controlsRects(platform, width);
-  const boxes = await interactiveBoxes(page, scope);
-  expect(boxes.length).toBeGreaterThan(0);
-  const overlapping = boxes.filter((box) =>
-    controls.some((rect) => intersects(box, rect)),
-  );
-  expect(overlapping).toEqual([]);
+  await expect(async () => {
+    const boxes = await interactiveBoxes(page, scope);
+    expect(boxes.length).toBeGreaterThan(0);
+    const overlapping = boxes.filter((box) =>
+      controls.some((rect) => intersects(box, rect)),
+    );
+    expect(overlapping).toEqual([]);
+  }).toPass();
 }
 
 async function expectDragHeader(header: Locator): Promise<void> {
-  const box = await header.boundingBox();
-  expect(box!.y).toBe(0);
-  expect(box!.height).toBeGreaterThanOrEqual(33);
+  await expect(async () => {
+    const box = await header.boundingBox();
+    expect(box!.y).toBe(0);
+    expect(box!.height).toBeGreaterThanOrEqual(33);
+  }).toPass();
   await expect(header).toHaveCSS("-webkit-app-region", "drag");
   const regions = await appRegions(header);
   expect(regions.length).toBeGreaterThan(0);
@@ -89,17 +93,19 @@ async function expectDragScreen(
   page: Page,
   platform: OverlayPlatform,
 ): Promise<void> {
-  const topLevel = await page.evaluate(() =>
-    [...document.querySelectorAll("body *")]
-      .filter(
-        (element) =>
-          element.getBoundingClientRect().top === 0 &&
-          getComputedStyle(element).getPropertyValue("-webkit-app-region") ===
-            "drag",
-      )
-      .map((element) => element.tagName),
-  );
-  expect(topLevel.length).toBeGreaterThan(0);
+  await expect(async () => {
+    const topLevel = await page.evaluate(() =>
+      [...document.querySelectorAll("body *")]
+        .filter(
+          (element) =>
+            element.getBoundingClientRect().top === 0 &&
+            getComputedStyle(element).getPropertyValue("-webkit-app-region") ===
+              "drag",
+        )
+        .map((element) => element.tagName),
+    );
+    expect(topLevel.length).toBeGreaterThan(0);
+  }).toPass();
   const draggable = await page.evaluate((selector) => {
     const region = (element: Element): string =>
       getComputedStyle(element).getPropertyValue("-webkit-app-region");
@@ -121,15 +127,17 @@ async function expectDragScreen(
   expect(draggable).toEqual([]);
   await expectClearOfControls(page, platform);
   const controls = controlsRects(platform, page.viewportSize()!.width);
-  const wordmarks = await page
-    .locator(".wordmark")
-    .evaluateAll((elements) =>
-      elements.map((element) => element.getBoundingClientRect().toJSON() as Box),
-    );
-  expect(wordmarks.length).toBeGreaterThan(0);
-  for (const wordmark of wordmarks) {
-    for (const rect of controls) expect(intersects(wordmark, rect)).toBe(false);
-  }
+  await expect(async () => {
+    const wordmarks = await page
+      .locator(".wordmark")
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().toJSON() as Box),
+      );
+    expect(wordmarks.length).toBeGreaterThan(0);
+    for (const wordmark of wordmarks) {
+      for (const rect of controls) expect(intersects(wordmark, rect)).toBe(false);
+    }
+  }).toPass();
 }
 
 test.describe("window controls overlay", () => {
@@ -159,15 +167,17 @@ test.describe("window controls overlay", () => {
 
     const placeholder = page.locator(".note-placeholder");
     await expect(placeholder).toBeVisible();
-    const box = (await placeholder.boundingBox())!;
-    expect(box.y).toBeGreaterThanOrEqual(33);
     const button = placeholder.getByRole("button", { name: /new note/i });
     await expect(button).toBeVisible();
-    const buttonBox = (await button.boundingBox())!;
-    for (const rect of controlsRects("windows", 1280)) {
-      expect(intersects(box, rect)).toBe(false);
-      expect(intersects(buttonBox, rect)).toBe(false);
-    }
+    await expect(async () => {
+      const box = (await placeholder.boundingBox())!;
+      expect(box.y).toBeGreaterThanOrEqual(33);
+      const buttonBox = (await button.boundingBox())!;
+      for (const rect of controlsRects("windows", 1280)) {
+        expect(intersects(box, rect)).toBe(false);
+        expect(intersects(buttonBox, rect)).toBe(false);
+      }
+    }).toPass();
     await expectClearOfControls(page, "windows");
   });
 
@@ -187,9 +197,11 @@ test.describe("window controls overlay", () => {
           (await header.locator(".wordmark").first().boundingBox())!.x,
       )
       .toBeGreaterThanOrEqual(area.x);
-    const controls = await interactiveBoxes(page, ".tree-header");
-    expect(controls.length).toBeGreaterThan(0);
-    for (const box of controls) expect(box.x).toBeGreaterThanOrEqual(area.x);
+    await expect(async () => {
+      const controls = await interactiveBoxes(page, ".tree-header");
+      expect(controls.length).toBeGreaterThan(0);
+      for (const box of controls) expect(box.x).toBeGreaterThanOrEqual(area.x);
+    }).toPass();
     await expectClearOfControls(page, "macos");
   });
 
@@ -201,13 +213,15 @@ test.describe("window controls overlay", () => {
     await openWelcome(page);
     await emulateWindowControlsOverlay(page, { platform: "macos" });
 
-    const sidebar = (await page.locator(".sidebar").boundingBox())!;
-    const controls = await interactiveBoxes(page, ".tree-header");
-    expect(controls.length).toBeGreaterThan(0);
-    for (const box of controls) {
-      expect(box.x).toBeGreaterThanOrEqual(sidebar.x);
-      expect(box.x + box.width).toBeLessThanOrEqual(sidebar.x + sidebar.width);
-    }
+    await expect(async () => {
+      const sidebar = (await page.locator(".sidebar").boundingBox())!;
+      const controls = await interactiveBoxes(page, ".tree-header");
+      expect(controls.length).toBeGreaterThan(0);
+      for (const box of controls) {
+        expect(box.x).toBeGreaterThanOrEqual(sidebar.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(sidebar.x + sidebar.width);
+      }
+    }).toPass();
 
     await page.getByRole("button", { name: "More commands" }).click();
     await expect(page.getByRole("menu")).toBeVisible();
@@ -272,8 +286,9 @@ test.describe("window controls overlay", () => {
     await emulateWindowControlsOverlay(page, { platform: "macos" });
     await page.locator(".sidebar-resize-handle").focus();
 
-    const pane = (await page.locator(".note-pane").boundingBox())!;
-    expect(pane.width).toBeGreaterThanOrEqual(400);
+    await expect
+      .poll(async () => (await page.locator(".note-pane").boundingBox())!.width)
+      .toBeGreaterThanOrEqual(400);
   });
 
   test("Windows: the sidebar still resizes 1:1 from 300px", async ({
@@ -311,11 +326,13 @@ test.describe("window controls overlay", () => {
 
     const skipLink = page.locator(".skip-link");
     await skipLink.focus();
-    const box = (await skipLink.boundingBox())!;
-    expect(box.width).toBeGreaterThan(1);
-    for (const rect of controlsRects("macos", 1280)) {
-      expect(intersects(box, rect)).toBe(false);
-    }
+    await expect(async () => {
+      const box = (await skipLink.boundingBox())!;
+      expect(box.width).toBeGreaterThan(1);
+      for (const rect of controlsRects("macos", 1280)) {
+        expect(intersects(box, rect)).toBe(false);
+      }
+    }).toPass();
     await expect(skipLink).toHaveCSS("-webkit-app-region", "no-drag");
   });
 
