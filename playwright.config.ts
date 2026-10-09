@@ -19,11 +19,18 @@ export default defineConfig({
       name: "desktop",
       use: { ...devices["Desktop Chrome"] },
       grepInvert: /@mobile-only/,
+      testIgnore: /installability\.spec\.ts/,
     },
     {
       name: "mobile",
       use: { ...devices["Pixel 7"] },
       grep: /@mobile/,
+      testIgnore: /installability\.spec\.ts/,
+    },
+    {
+      name: "installability",
+      use: { ...devices["Desktop Chrome"], channel: "chrome" },
+      testMatch: /installability\.spec\.ts/,
     },
   ],
   webServer: {
