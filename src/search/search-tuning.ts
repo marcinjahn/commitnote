@@ -12,6 +12,7 @@ export const FOLD_TABLE: Readonly<Record<string, string>> = {
 };
 
 export const INDEXER_CONCURRENCY = 3;
+export const CACHE_LOOKUP_CONCURRENCY = 8;
 export const READS_PER_MINUTE = 120;
 export const READS_PER_HOUR = 1_500;
 export const INDEX_MEMORY_CAP_BYTES = 48 * 1024 * 1024;

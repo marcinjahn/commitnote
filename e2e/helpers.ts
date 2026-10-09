@@ -141,6 +141,7 @@ interface FakeForgeControls {
   exportRepo(repoKey: string): string;
   adoptRepo(repoKey: string, exported: string): void;
   changeRepoKey(repoKey: string): Promise<void>;
+  blobReads(repoKey: string): readonly string[];
 }
 
 type FakeForgeWindow = { __commitNoteFakeForge: FakeForgeControls };
@@ -212,6 +213,16 @@ export function fakeForge(page: Page, repoKey: string = SAMPLE.key) {
         [repoKey, state] as const,
       );
     },
+    blobReads: async () => {
+      await controlsReady(page);
+      return page.evaluate(
+        (key) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.blobReads(
+            key,
+          ),
+        repoKey,
+      );
+    },
     changeRepoKey: () =>
       page.evaluate(
         (key) =>
@@ -221,6 +232,36 @@ export function fakeForge(page: Page, repoKey: string = SAMPLE.key) {
         repoKey,
       ),
   };
+}
+
+export async function blobCacheEntryCount(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const open = indexedDB.open("commitnote-blobs");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          if (!db.objectStoreNames.contains("blobs")) {
+            db.close();
+            resolve(0);
+            return;
+          }
+          const count = db
+            .transaction("blobs", "readonly")
+            .objectStore("blobs")
+            .count();
+          count.onerror = () => {
+            db.close();
+            reject(count.error);
+          };
+          count.onsuccess = () => {
+            db.close();
+            resolve(count.result);
+          };
+        };
+      }),
+  );
 }
 
 export async function handOverRepo(

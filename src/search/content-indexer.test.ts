@@ -7,6 +7,7 @@ import type { SyncEngineState } from "../sync/sync-engine";
 import { createTestClock } from "../sync/testing/test-clock";
 import { createContentIndexer } from "./content-indexer";
 import type { IndexerEnvironment } from "./indexer-environment";
+import { READS_PER_MINUTE } from "./search-tuning";
 
 vi.mock("./search-tuning", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./search-tuning")>()),
@@ -49,12 +50,20 @@ function createFakeEngine(initial: readonly SearchSource[]) {
   const listeners = new Set<(state: SyncEngineState) => void>();
   const pending: PendingRead[] = [];
   const readCalls: string[] = [];
+  const cached = new Map<string, string>();
+  const cacheCalls: string[] = [];
+  let cacheRead: ((sha: string) => Promise<string | null>) | null = null;
   let autoRead: ((sha: string) => string) | null = null;
   let searchSourcesCalls = 0;
 
   return {
     pending,
     readCalls,
+    cached,
+    cacheCalls,
+    setCacheRead(fn: ((sha: string) => Promise<string | null>) | null) {
+      cacheRead = fn;
+    },
     get searchSourcesCalls() {
       return searchSourcesCalls;
     },
@@ -86,6 +95,11 @@ function createFakeEngine(initial: readonly SearchSource[]) {
       return new Promise<string>((resolve, reject) => {
         pending.push({ sha, resolve, reject });
       });
+    },
+    readCachedNoteText(sha: string): Promise<string | null> {
+      cacheCalls.push(sha);
+      if (cacheRead !== null) return cacheRead(sha);
+      return Promise.resolve(cached.get(sha) ?? null);
     },
   };
 }
@@ -168,6 +182,7 @@ describe("createContentIndexer", () => {
     const sources = shas(5).map((sha, i) => blob(`n${i}`, sha));
     const { engine, indexer } = setup(sources);
     indexer.open();
+    await flush();
 
     expect(engine.readCalls).toEqual(["sha0", "sha1", "sha2"]);
     expect(indexer.getState().status).toEqual({
@@ -217,6 +232,7 @@ describe("createContentIndexer", () => {
       blob("d", "sha3"),
     ]);
     indexer.open();
+    await flush();
     engine
       .take("sha0")
       .reject(new ForgeError("RateLimited", { retryAfterMs: 5_000 }));
@@ -238,6 +254,7 @@ describe("createContentIndexer", () => {
   it("retries Network errors with back-off, then counts the note unreadable", async () => {
     const { engine, clock, indexer } = setup([blob("a", "sha0")]);
     indexer.open();
+    await flush();
     const countReads = () => engine.readCalls.length;
 
     engine.take("sha0").reject(new ForgeError("Network"));
@@ -281,6 +298,7 @@ describe("createContentIndexer", () => {
   it("marks decryption failures unreadable and NotFound skipped", async () => {
     const { engine, indexer } = setup([blob("a", "sha0"), blob("b", "sha1")]);
     indexer.open();
+    await flush();
     engine.take("sha0").reject(new NoteDecryptionError("bad"));
     engine.take("sha1").reject(new ForgeError("NotFound"));
     await flush();
@@ -293,6 +311,7 @@ describe("createContentIndexer", () => {
 
     indexer.close();
     indexer.open();
+    await flush();
     expect(engine.readCalls).toEqual(["sha0", "sha1", "sha0", "sha1"]);
   });
 
@@ -300,6 +319,7 @@ describe("createContentIndexer", () => {
     const sources = shas(5).map((sha, i) => blob(`n${i}`, sha));
     const { engine, indexer } = setup(sources);
     indexer.open();
+    await flush();
     engine.take("sha0").reject(new ForgeError("Unauthorized"));
     await flush();
 
@@ -310,6 +330,7 @@ describe("createContentIndexer", () => {
 
     indexer.close();
     indexer.open();
+    await flush();
     expect(engine.readCalls).toEqual(["sha0", "sha1", "sha2", "sha0", "sha3"]);
   });
 
@@ -321,6 +342,7 @@ describe("createContentIndexer", () => {
       blob("d", "sha3"),
     ]);
     indexer.open();
+    await flush();
     env.setHidden(true);
     engine.take("sha0").resolve("zero");
     await flush();
@@ -338,6 +360,7 @@ describe("createContentIndexer", () => {
       blob("d", "sha3"),
     ]);
     indexer.open();
+    await flush();
     env.setOnline(false);
     expect(indexer.getState().status).toEqual({ kind: "offline" });
 
@@ -433,6 +456,7 @@ describe("createContentIndexer", () => {
     const { engine, indexer } = setup(sources);
     indexer.open();
     indexer.close();
+    await flush();
     engine.take("sha0").resolve("zero");
     await flush();
     expect(engine.readCalls).toEqual(["sha0", "sha1", "sha2", "sha3"]);
@@ -470,6 +494,7 @@ describe("createContentIndexer", () => {
     const listener = vi.fn();
     indexer.subscribe(listener);
     indexer.open();
+    await flush();
     listener.mockClear();
 
     indexer.dispose();
@@ -481,5 +506,189 @@ describe("createContentIndexer", () => {
     expect(indexer.contentFor(sources[1])).toBeUndefined();
     expect(indexer.getState().status).toEqual({ kind: "idle" });
     expect(env.listenerCount()).toBe(0);
+  });
+
+  describe("blob cache lookups", () => {
+    it("completes from a warm cache without network reads or pacing", async () => {
+      const count = READS_PER_MINUTE + 10;
+      const sources = shas(count).map((sha, i) => blob(`n${i}`, sha));
+      const { engine, indexer } = setup(sources);
+      for (const sha of shas(count)) engine.cached.set(sha, "");
+      indexer.open();
+      expect(indexer.getState().status).toEqual({
+        kind: "indexing",
+        done: 0,
+        total: count,
+      });
+
+      await flush();
+      expect(engine.cacheCalls).toHaveLength(count);
+      expect(engine.readCalls).toEqual([]);
+      expect(indexer.contentFor(sources[5])?.text).toBe("");
+      expect(indexer.getState().status).toEqual({ kind: "complete" });
+
+      engine.setSources([...sources, blob("new", "fresh")]);
+      await flush();
+      expect(engine.readCalls).toEqual(["fresh"]);
+    });
+
+    it("reads only cache misses and counts only them", async () => {
+      const sources = shas(5).map((sha, i) => blob(`n${i}`, sha));
+      const { engine, indexer } = setup(sources);
+      engine.cached.set("sha1", "one");
+      engine.cached.set("sha3", "three");
+      indexer.open();
+      await flush();
+
+      expect(engine.readCalls).toEqual(["sha0", "sha2", "sha4"]);
+      expect(indexer.getState().status).toEqual({
+        kind: "indexing",
+        done: 0,
+        total: 3,
+      });
+
+      engine.take("sha0").resolve("zero");
+      await flush();
+      expect(indexer.getState().status).toEqual({
+        kind: "indexing",
+        done: 1,
+        total: 3,
+      });
+
+      engine.take("sha2").resolve("two");
+      engine.take("sha4").resolve("four");
+      await flush();
+      expect(indexer.getState().status).toEqual({ kind: "complete" });
+      expect(engine.cacheCalls).toEqual(shas(5));
+    });
+
+    it("counts a cached decryption failure unreadable without a network read", async () => {
+      const { engine, indexer } = setup([blob("a", "sha0")]);
+      engine.setCacheRead(() =>
+        Promise.reject(new NoteDecryptionError("bad")),
+      );
+      indexer.open();
+      await flush();
+
+      expect(engine.readCalls).toEqual([]);
+      expect(indexer.getState()).toEqual({
+        status: { kind: "complete" },
+        unreadable: 1,
+      });
+    });
+
+    it("falls back to the network when a lookup fails with a forge error", async () => {
+      const { engine, indexer } = setup([blob("a", "sha0")]);
+      engine.setCacheRead(() => Promise.reject(new ForgeError("Network")));
+      engine.setAutoRead(() => "remote");
+      indexer.open();
+      await flush();
+
+      expect(engine.readCalls).toEqual(["sha0"]);
+      expect(indexer.contentFor(blob("a", "sha0"))?.text).toBe("remote");
+    });
+
+    it("looks up while offline or hidden but holds network reads", async () => {
+      const sources = [blob("a", "sha0"), blob("b", "sha1")];
+      const { engine, env, indexer } = setup(sources);
+      engine.cached.set("sha0", "zero");
+      env.setOnline(false);
+      env.setHidden(true);
+      indexer.open();
+      await flush();
+
+      expect(engine.cacheCalls).toEqual(["sha0", "sha1"]);
+      expect(engine.readCalls).toEqual([]);
+      expect(indexer.contentFor(sources[0])?.text).toBe("zero");
+      expect(indexer.getState().status).toEqual({ kind: "offline" });
+
+      env.setOnline(true);
+      expect(engine.readCalls).toEqual([]);
+      env.setHidden(false);
+      expect(engine.readCalls).toEqual(["sha1"]);
+    });
+
+    it("looks up while paused but holds network reads", async () => {
+      const { engine, indexer } = setup([blob("a", "sha0")]);
+      indexer.open();
+      await flush();
+      engine.take("sha0").reject(new ForgeError("RateLimited"));
+      await flush();
+      expect(indexer.getState().status.kind).toBe("paused");
+
+      engine.cached.set("sha1", "one");
+      engine.setSources([blob("a", "sha0"), blob("b", "sha1"), blob("c", "sha2")]);
+      await flush();
+
+      expect(engine.cacheCalls).toEqual(["sha0", "sha1", "sha2"]);
+      expect(engine.readCalls).toEqual(["sha0"]);
+      expect(indexer.contentFor(blob("b", "sha1"))?.text).toBe("one");
+    });
+
+    it("does not look up a rate-limited blob again until reopened", async () => {
+      const { engine, clock, indexer } = setup([blob("a", "sha0")]);
+      indexer.open();
+      await flush();
+      engine.take("sha0").reject(new ForgeError("RateLimited"));
+      await flush();
+      clock.advance(60_000);
+      await flush();
+      expect(engine.cacheCalls).toEqual(["sha0"]);
+      expect(engine.readCalls).toEqual(["sha0", "sha0"]);
+
+      engine.take("sha0").reject(new ForgeError("Unauthorized"));
+      await flush();
+      indexer.close();
+      engine.cached.set("sha0", "zero");
+      indexer.open();
+      await flush();
+      expect(engine.cacheCalls).toEqual(["sha0", "sha0"]);
+      expect(engine.readCalls).toEqual(["sha0", "sha0"]);
+      expect(indexer.getState().status).toEqual({ kind: "complete" });
+    });
+
+    it("stores nothing from a lookup that resolves after dispose", async () => {
+      const source = blob("a", "sha0");
+      const { engine, indexer } = setup([source]);
+      let resolveLookup: (text: string | null) => void = () => undefined;
+      engine.setCacheRead(
+        () =>
+          new Promise((resolve) => {
+            resolveLookup = resolve;
+          }),
+      );
+      const listener = vi.fn();
+      indexer.subscribe(listener);
+      indexer.open();
+      listener.mockClear();
+
+      indexer.dispose();
+      resolveLookup("late");
+      await flush();
+
+      expect(listener).not.toHaveBeenCalled();
+      expect(indexer.contentFor(source)).toBeUndefined();
+      expect(engine.readCalls).toEqual([]);
+    });
+
+    it("drops a lookup result whose source disappeared", async () => {
+      const source = blob("a", "sha0");
+      const { engine, indexer } = setup([source]);
+      let resolveLookup: (text: string | null) => void = () => undefined;
+      engine.setCacheRead(
+        () =>
+          new Promise((resolve) => {
+            resolveLookup = resolve;
+          }),
+      );
+      indexer.open();
+      engine.setSources([]);
+      resolveLookup(null);
+      await flush();
+
+      expect(indexer.contentFor(source)).toBeUndefined();
+      expect(engine.readCalls).toEqual([]);
+      expect(indexer.getState().status).toEqual({ kind: "complete" });
+    });
   });
 });

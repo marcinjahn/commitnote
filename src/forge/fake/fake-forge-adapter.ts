@@ -84,6 +84,7 @@ export class FakeForgeAdapter implements ForgeAdapter {
   private readonly onContentCreatingRequest:
     ((request: ContentCreatingRequest) => void) | undefined;
   private readonly blobCache = new Map<string, string>();
+  private readonly blobReadLog: string[] = [];
   private readonly pendingFailures = new Map<
     FailableOperation,
     Array<ForgeError | "stale">
@@ -299,7 +300,12 @@ export class FakeForgeAdapter implements ForgeAdapter {
     return this.repo.listTreeEntries(commit.tree);
   }
 
+  get blobReads(): readonly string[] {
+    return this.blobReadLog;
+  }
+
   async readBlob(sha: string): Promise<string> {
+    this.blobReadLog.push(sha);
     const cached = this.blobCache.get(sha);
     if (cached !== undefined) {
       return cached;

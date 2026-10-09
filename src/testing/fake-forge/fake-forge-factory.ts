@@ -88,6 +88,11 @@ export interface FakeForgeControls {
    */
   adoptRepo(repoKey: string, exported: string): void;
   /**
+   * SHAs passed to `readBlob` on that fixture since page load, in call
+   * order.
+   */
+  blobReads(repoKey: string): readonly string[];
+  /**
    * Make the next call of `operation` on that fixture fail with a
    * ForgeError of `kind` (or "stale" for commit and replaceHistory).
    */
@@ -322,6 +327,9 @@ export async function createFakeForge(options?: {
       };
       repo.importObjects(objects);
       if (main !== null) repo.setRef(MAIN_BRANCH, main);
+    },
+    blobReads(repoKey) {
+      return [...fixtureAdapter(repoKey).blobReads];
     },
     failNext(repoKey, operation, kind) {
       const adapter = fixtureAdapter(repoKey);

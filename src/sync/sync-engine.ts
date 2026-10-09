@@ -305,6 +305,10 @@ export interface SyncEngine {
   searchSources(): readonly SearchSource[];
   /** Reads and decrypts a note blob without touching engine state. */
   readNoteText(blobSha: string): Promise<string>;
+  /** Decrypts a note blob only if it is available without a network read. */
+  readCachedNoteText(blobSha: string): Promise<string | null>;
+  /** Every blob SHA of the synced listing, or null before the first sync. */
+  referencedBlobShas(): ReadonlySet<string> | null;
   /**
    * Saves earlier changes first, then queues `changes` to be committed on
    * their own as one atomic commit.
@@ -478,12 +482,17 @@ class KeyChangedError extends Error {
   }
 }
 
+export interface CachedBlobReader {
+  read(blobSha: string): Promise<string | null>;
+}
+
 export function createSyncEngine(options: {
   readonly adapter: ForgeAdapter;
   readonly keyring: Keyring;
   readonly clock: Clock;
   readonly rateBudget?: RateBudget;
   readonly purgeCaps?: PurgeCaps;
+  readonly blobCache?: CachedBlobReader;
 }): SyncEngine {
   const { keyring, clock } = options;
   const adapter = options.adapter;
@@ -642,6 +651,22 @@ export function createSyncEngine(options: {
 
   async function readNoteBlob(blobSha: string): Promise<string> {
     return decryptNote(keyring, await adapter.readBlob(blobSha));
+  }
+
+  async function readCachedNoteText(blobSha: string): Promise<string | null> {
+    if (options.blobCache === undefined) return null;
+    const text = await options.blobCache.read(blobSha);
+    return text === null ? null : decryptNote(keyring, text);
+  }
+
+  function referencedBlobShas(): ReadonlySet<string> | null {
+    const synced = state.synced;
+    if (synced === null) return null;
+    const shas = new Set<string>();
+    for (const entry of synced.listing) {
+      if (entry.type === "blob") shas.add(entry.sha);
+    }
+    return shas;
   }
 
   async function verifyConfig(
@@ -2424,6 +2449,8 @@ export function createSyncEngine(options: {
     snapshotNotes,
     searchSources,
     readNoteText: readNoteBlob,
+    readCachedNoteText,
+    referencedBlobShas,
     importChanges,
     atomicCommitSupport,
     enableAtomicCommits,
