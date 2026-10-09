@@ -218,8 +218,11 @@
     display: flex;
     align-items: center;
     gap: var(--space-1);
-    min-height: calc(var(--touch-target) + var(--space-2) * 2);
-    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-1);
+    min-height: calc(
+      var(--touch-target) + var(--space-2) * 2 + env(safe-area-inset-top)
+    );
+    padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-3)
+      var(--space-2) var(--space-1);
     border-bottom: var(--hairline) solid var(--color-border);
     background: var(--color-background);
     transition: border-bottom-color var(--motion-duration) var(--motion-easing);

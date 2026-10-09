@@ -2688,6 +2688,8 @@
     display: flex;
     flex-direction: column;
     height: 100dvh;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   .sidebar,
@@ -2755,8 +2757,11 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    min-height: calc(var(--touch-target) + var(--space-2) * 2);
-    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+    min-height: calc(
+      var(--touch-target) + var(--space-2) * 2 + env(safe-area-inset-top)
+    );
+    padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-2)
+      var(--space-2) var(--space-3);
     justify-content: space-between;
     border-bottom: var(--hairline) solid var(--color-border);
   }

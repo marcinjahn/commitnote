@@ -161,10 +161,13 @@
     min-height: 100dvh;
     display: flex;
     flex-direction: column;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   .top-bar {
-    padding: var(--space-3) var(--space-4);
+    padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4)
+      var(--space-3);
     border-bottom: var(--hairline) solid var(--color-border);
   }
 
