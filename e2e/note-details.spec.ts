@@ -79,6 +79,18 @@ test("shows created and updated dates and the word count above the editor", { ta
   await expect(line).toHaveText(
     /^Created 12 Mar 2026 · Updated just now · \d+ words\s*$/,
   );
+  await expect
+    .poll(() =>
+      page
+        .locator(".note-content")
+        .evaluate(
+          (el) =>
+            el
+              .getAnimations({ subtree: true })
+              .filter((animation) => !(animation instanceof CSSAnimation)).length,
+        ),
+    )
+    .toBe(0);
 
   const lineBox = await line.boundingBox();
   const editorBox = await editor(page).boundingBox();
@@ -393,7 +405,8 @@ test("a note re-created under a reused name on another device shows its own date
       { capture: true, once: true },
     );
     new MutationObserver(() => {
-      const text = document.querySelector(".note-details")?.textContent ?? "";
+      const text =
+        document.querySelector(".note-content:not(.held) .note-details")?.textContent ?? "";
       if (record.detailTexts.at(-1) !== text) record.detailTexts.push(text);
     }).observe(document.body, {
       subtree: true,
@@ -422,6 +435,13 @@ test("the left alignment of note details text matches the editor text", { tag: "
   await startSession(page);
   await treeItem(page, "Welcome").click();
   await expect(details(page)).toBeVisible();
+  await expect
+    .poll(() =>
+      page
+        .locator(".note-pane")
+        .evaluate((pane) => pane.getAnimations().length),
+    )
+    .toBe(0);
 
   const detailsTextX = await firstTextLeft(page, ".note-details");
   const editorLineTextX = await firstTextLeft(page, ".cm-line");

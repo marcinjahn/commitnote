@@ -125,11 +125,9 @@
   import type { DropTarget } from "./tree-drop";
   import {
     DESKTOP_MEDIA_QUERY,
-    DRAG_EASING,
-    DRAG_MOTION_MS,
     isNarrowLayout,
-    prefersReducedMotion,
   } from "./drag-motion";
+  import { playViewSlide } from "../note/switch-motion-driver";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
@@ -251,10 +249,25 @@
   let draft = $state<NoteDraft | null>(null);
   let draftError = $state<string | null>(null);
   let draftSession = $state(0);
+  let noteSwitch = $state(0);
+  const headerSwitch = { seen: untrack(() => noteSwitch) };
   let pendingFieldText = $state<string | null>(null);
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
   let notePaneEl: HTMLElement | undefined = $state();
+  let sidebarEl: HTMLElement | undefined = $state();
+  let shownMobileView = untrack(() => mobileView);
+
+  $effect(() => {
+    const view = mobileView;
+    if (view === shownMobileView) return;
+    shownMobileView = view;
+    if (!isNarrowLayout()) return;
+    const incoming = view === "note" ? notePaneEl : sidebarEl;
+    if (incoming !== undefined) {
+      playViewSlide(incoming, view === "note" ? "forward" : "back");
+    }
+  });
   type ToastChannel =
     | "refresh"
     | "export"
@@ -320,7 +333,13 @@
     if (path.length > 1) expandFolder(parentPath(path));
     await handleSelect(path);
     await tick();
-    if (!isNarrowLayout()) notePane?.focusEditor();
+    if (
+      !isNarrowLayout() &&
+      selectedPath !== null &&
+      notePathEquals(selectedPath, path)
+    ) {
+      notePane?.focusEditor();
+    }
   }
 
   function handleSearchShortcut(event: KeyboardEvent): void {
@@ -539,6 +558,7 @@
     const state = untrack(() => engine.getState());
     return noteDatesView.update({
       key: loadedKey,
+      noteSwitch: untrack(() => noteSwitch),
       blobSha: loadedBlobSha,
       idle: saveIdle,
       headHasOpenNote,
@@ -809,6 +829,7 @@
     }
     leaveDraft();
     mobileView = "note";
+    noteSwitch += 1;
     return engine.openNote(path);
   }
 
@@ -819,31 +840,8 @@
       : null;
   }
 
-  function slideIn(element: Element): void {
-    element.animate(
-      [
-        { opacity: 0, translate: "0 6px" },
-        { opacity: 1, translate: "0 0" },
-      ],
-      { duration: DRAG_MOTION_MS, easing: DRAG_EASING },
-    );
-  }
-
-  // The header slides in at once; the note's text once it has loaded.
-  async function handleDropOpen(path: NotePath): Promise<void> {
-    const opening = handleSelect(path);
-    await tick();
-    const pane = notePaneEl;
-    if (pane === undefined || prefersReducedMotion()) return;
-    const content = pane.lastElementChild;
-    for (const child of pane.children) {
-      if (child !== content) slideIn(child);
-    }
-    await opening;
-    await tick();
-    if (content !== null && openPath !== null && notePathEquals(openPath, path)) {
-      slideIn(content);
-    }
+  function handleDropOpen(path: NotePath): void {
+    void handleSelect(path);
   }
 
   function handleBack(): void {
@@ -867,6 +865,7 @@
 
   function startDraft(parent: NotePath): void {
     leaveDraft();
+    noteSwitch += 1;
     void engine.openNote(null);
     draft = { parent, name: "" };
     draftError = null;
@@ -1384,6 +1383,7 @@
       open?.kind === "missing" &&
       notePathEquals(open.path, reopen)
     ) {
+      noteSwitch += 1;
       void engine.openNote(reopen);
     }
   }
@@ -1473,7 +1473,11 @@
 <svelte:window onkeydowncapture={handleSearchShortcut} />
 
 <div class="shell">
-  <aside class="sidebar" class:mobile-hidden={mobileView !== "tree"}>
+  <aside
+    class="sidebar"
+    class:mobile-hidden={mobileView !== "tree"}
+    bind:this={sidebarEl}
+  >
     <div class="tree-header">
       <Wordmark />
       <div class="tree-header-actions">
@@ -1596,6 +1600,8 @@
           nameError={draftError}
           nameReadOnly={false}
           {nameResetKey}
+          {noteSwitch}
+          seenSwitch={headerSwitch}
           onNameCommit={handleNameCommit}
           onNameEscape={handleNameEscape}
           onNameEnterDone={handleNameEnterDone}
@@ -1610,6 +1616,8 @@
           {nameError}
           nameReadOnly={openConflicted}
           {nameResetKey}
+          {noteSwitch}
+          seenSwitch={headerSwitch}
           namePendingText={pendingFieldText}
           onNamePendingConsumed={() => (pendingFieldText = null)}
           onNameCommit={handleNameCommit}
@@ -1636,6 +1644,7 @@
       {engine}
       {forgeName}
       openNote={engineState.openNote}
+      {noteSwitch}
       conflict={openConflict}
       draft={draft !== null}
       {noteDates}
