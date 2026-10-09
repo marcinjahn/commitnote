@@ -166,6 +166,9 @@
   }
 
   .top-bar {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
     padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4)
       var(--space-3);
     border-bottom: var(--hairline) solid var(--color-border);

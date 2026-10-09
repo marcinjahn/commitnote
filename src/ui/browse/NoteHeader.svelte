@@ -215,6 +215,9 @@
 
 <style>
   .note-header {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
     display: flex;
     align-items: center;
     gap: var(--space-1);
@@ -240,6 +243,11 @@
     width: 22px;
     height: 22px;
     stroke-width: 1.75;
+  }
+
+  .note-header :global(:is(input, textarea)) {
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   .note-header :global(.name-input) {

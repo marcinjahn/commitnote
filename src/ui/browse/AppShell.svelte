@@ -2754,6 +2754,9 @@
   }
 
   .tree-header {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
     display: flex;
     align-items: center;
     gap: var(--space-2);
