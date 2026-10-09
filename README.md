@@ -48,7 +48,8 @@ through a LAN IP address over plain HTTP does not work.
 - `test:e2e` — run end-to-end tests with Playwright
 - `check` — type-check the app and the Node-side config/scripts
 - `check:bundle` — build both `dist/` and `dist-fake/` and verify the production build never
-  ships test-mode fixture data
+  ships test-mode fixture data, and that the web app manifest and every icon and screenshot it
+  references are in the production build
 - `generate:brand` — regenerate the brand SVGs and app icons (see above)
 - `generate:pwa-screenshots` — regenerate the web app manifest screenshots in `public/screenshots/` from
   the test-mode build, using the system Chrome (optional `E2E_PORT`)
@@ -201,4 +202,5 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
 ## Production build
 
 `npm run build` writes plain static files to `dist/`. The build ships with a strict Content
-Security Policy applied via a `<meta>` tag; it is not present in the dev server.
+Security Policy applied via a `<meta>` tag; it is not present in the dev server. The build also ships a web app manifest
+(`public/manifest.webmanifest`), so commitnote can be installed as an app.
