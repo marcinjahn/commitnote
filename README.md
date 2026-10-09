@@ -28,7 +28,7 @@ npm run dev
 
 Then open `http://localhost:5173`.
 
-`npm run generate:brand` regenerates the brand SVGs from the app font: the README wordmark SVGs in `docs/brand/`, including their animated caret, and the favicon in `src/assets/favicon.svg`.
+`npm run generate:brand` regenerates the brand SVGs from the app font: the README wordmark SVGs in `docs/brand/`, including their animated caret, and the favicon in `src/assets/favicon.svg`. It also rasterises the app icons (`any` 192/512, `maskable` 192/512, `monochrome` 512 and `apple-touch-icon` 180) into `public/icons/`. Never edit them by hand: the drift test fails when they are stale. `npm run generate:brand -- --contact-sheet <file.png>` also writes an uncommitted review sheet with the maskable safe-zone circle.
 
 ### Secure context
 
@@ -49,6 +49,7 @@ through a LAN IP address over plain HTTP does not work.
 - `check` — type-check the app and the Node-side config/scripts
 - `check:bundle` — build both `dist/` and `dist-fake/` and verify the production build never
   ships test-mode fixture data
+- `generate:brand` — regenerate the brand SVGs and app icons (see above)
 - `fixture:sample-notes-repo` — regenerate the sample notes repo fixture
 
 ## Deployment
