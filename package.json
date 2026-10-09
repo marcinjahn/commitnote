@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "preview:fake": "vite preview --outDir dist-fake",
     "test": "vitest run",
-    "test:e2e": "playwright install chromium-headless-shell && playwright test",
+    "test:e2e": "sh scripts/test-e2e.sh",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.sw.json",
     "check:bundle": "npm run build && npm run build:fake && tsx scripts/check-bundle.ts",
     "fixture:sample-notes-repo": "tsx scripts/generate-sample-notes-repo.ts",
