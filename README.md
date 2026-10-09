@@ -41,11 +41,11 @@ through a LAN IP address over plain HTTP does not work.
 - `dev` — start the Vite dev server
 - `dev:fake` — start the Vite dev server in test mode (fake forge, see below)
 - `build` — produce a production build in `dist/`
-- `build:fake` — produce a test-mode build in `dist-fake/`
+- `build:fake` — produce a test-mode build in `dist-fake/` (`--if-stale` reuses an up-to-date one)
 - `preview` — preview the production build locally
 - `preview:fake` — preview the test-mode build locally
 - `test` — run unit tests with Vitest
-- `test:e2e` — run end-to-end tests with Playwright
+- `test:e2e` — run end-to-end tests with Playwright under the e2e lock (see below)
 - `check` — type-check the app and the Node-side config/scripts
 - `check:bundle` — build both `dist/` and `dist-fake/` and verify the production build never
   ships test-mode fixture data, that the web app manifest and every icon and screenshot it
@@ -64,21 +64,29 @@ Actions" once. The build uses relative asset paths, so it works under any Pages 
 
 ## End-to-end tests
 
-Install the Chromium browser once:
-
-```
-npx playwright install chromium
-```
-
-Then run:
-
 ```
 npm run test:e2e
 ```
 
-The suite runs the built app in test mode (fake forge, no network) at both a desktop and a mobile
-viewport. `E2E_PORT` overrides the port it is served on (default 4173). On a 6-CPU machine the
-e2e suite ran fastest with `npm run test:e2e -- --workers=4`.
+Arguments after `--` go to Playwright, e.g. `npm run test:e2e -- e2e/refresh.spec.ts`. The script
+installs Playwright's headless shell (`chromium-headless-shell`, with its bundled FFmpeg)
+automatically when it is missing. The `installability` project (the PWA installability test) runs
+on the system Google Chrome, so Chrome must be installed; `generate:pwa-screenshots` needs it too.
+
+The suite runs the built app in test mode (fake forge, no network) in the `desktop` and `mobile`
+projects, with 5 workers by default. Motion is reduced by default (`reducedMotion: "reduce"`);
+a test that needs motion opts in with `test.use({ reducedMotion: "no-preference" })`. The web
+server reuses `dist-fake/` when `check:bundle` just built it from the same inputs.
+
+Runs take the e2e lock on `/tmp/commitnote-e2e.lock`: a second `npm run test:e2e` anywhere on the
+machine (any jj workspace, the agent cage, your own shell) prints a waiting notice and starts when
+the first one finishes. `npx playwright test` bypasses the lock.
+
+`E2E_PORT` overrides the port the app is served on (default 4173). Never run two e2e runs on the
+same port at once; direct `playwright test` runs can still overlap.
+
+In the 6-CPU agent cage with nothing else running, the full e2e suite takes about 4.5 min (270 s).
+Full local validation (`check` + `test` + `check:bundle` + `test:e2e`) takes about 5.2 min.
 
 ## Manual live check
 
