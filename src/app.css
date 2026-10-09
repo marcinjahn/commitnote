@@ -168,6 +168,7 @@
 html,
 body {
   height: 100%;
+  overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
 }
 

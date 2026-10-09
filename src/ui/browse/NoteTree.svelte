@@ -408,6 +408,7 @@
     position: relative;
     flex: 1;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
     scroll-padding-bottom: var(--toast-stack-height, 0px);
   }
 

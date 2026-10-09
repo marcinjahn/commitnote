@@ -128,6 +128,9 @@
     type AnnouncerState,
   } from "./status-announcer";
   import NoteTree from "./NoteTree.svelte";
+  import PullIndicator from "./PullIndicator.svelte";
+  import { pullGesture } from "./pull-gesture";
+  import { INITIAL_PULL, type PullState } from "./pull-to-refresh";
   import { ancestorFolders, shouldFollowFocus } from "./relocation-follow";
   import SidebarResizeHandle from "./SidebarResizeHandle.svelte";
   import {
@@ -368,9 +371,12 @@
     requestClose: (el) => el.dispatchEvent(new Event("cancel", { cancelable: true })),
     settle: tick,
   });
+  let anyDialogOpen = $state(dialogStack.top() !== null);
+  const stopDialogWatch = dialogStack.subscribe((top) => (anyDialogOpen = top !== null));
   onDestroy(() => {
     dialogHistory?.dispose();
     navigation.dispose();
+    stopDialogWatch();
   });
   const initialEntry = navigation.initial();
   let reopenLastView = $state(
@@ -827,6 +833,10 @@
   let refreshFeedback = $state<"success" | "error" | null>(null);
   let refreshFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
   onDestroy(() => clearTimeout(refreshFeedbackTimer));
+  const pullEnabled = $derived(
+    narrow && mobileView === "tree" && !anyDialogOpen && !manualRefreshing,
+  );
+  let pull = $state<PullState>(INITIAL_PULL);
   const head = $derived(engineState.synced?.head ?? null);
 
   const importing = $derived(engineState.importing || importStarted !== null);
@@ -2179,7 +2189,14 @@
     style:--sidebar-width="{sidebarWidth}px"
     bind:this={sidebarEl}
   >
-    <div class="tree-header">
+    <div
+      class="tree-header"
+      use:pullGesture={{
+        enabled: pullEnabled,
+        onChange: (next) => (pull = next),
+        onRefresh: handleRefresh,
+      }}
+    >
       <Wordmark typed />
       <div class="tree-header-actions">
         <SyncStatusButton
@@ -2225,6 +2242,9 @@
         />
         <CommandMenu {commands} />
       </div>
+      {#if narrow}
+        <PullIndicator state={pull} />
+      {/if}
     </div>
     <SearchTrigger onOpen={openSearch}>
       {#snippet trailing()}
@@ -2784,6 +2804,7 @@
   }
 
   .tree-header {
+    position: relative;
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
@@ -2938,10 +2959,17 @@
     margin: var(--space-2) var(--space-3) 0;
   }
 
+  @media (max-width: 767px) {
+    .tree-header {
+      touch-action: none;
+    }
+  }
+
   @media (max-height: 480px) {
     .sidebar {
       overflow-x: hidden;
       overflow-y: auto;
+      overscroll-behavior-y: contain;
     }
   }
 
