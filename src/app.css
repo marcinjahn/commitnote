@@ -183,6 +183,8 @@ body {
 }
 
 #app {
+  display: flex;
+  flex-direction: column;
   min-height: 100dvh;
 }
 
@@ -431,6 +433,10 @@ button,
   border-bottom: var(--hairline) solid var(--color-border);
   padding: var(--space-3);
   font-size: var(--font-size-sm);
+}
+
+.test-mode-banner {
+  flex: none;
 }
 
 button:focus-visible,

@@ -697,7 +697,7 @@
   }
 
   .restoring {
-    min-height: 100dvh;
+    flex: 1 0 auto;
     display: grid;
     place-content: center;
     justify-items: center;

@@ -2782,7 +2782,8 @@
   .shell {
     display: flex;
     flex-direction: column;
-    height: 100dvh;
+    flex: 1 1 0;
+    min-height: 0;
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }
@@ -3027,7 +3028,6 @@
   @media (min-width: 768px) {
     .shell {
       flex-direction: row;
-      height: 100dvh;
     }
 
     .skip-link {

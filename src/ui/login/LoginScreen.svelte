@@ -550,7 +550,7 @@
 
 <style>
   .login-shell {
-    min-height: 100dvh;
+    flex: 1 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;

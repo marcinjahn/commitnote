@@ -158,7 +158,7 @@
   }
 
   .viewer {
-    min-height: 100dvh;
+    flex: 1 0 auto;
     display: flex;
     flex-direction: column;
     padding-left: env(safe-area-inset-left);
