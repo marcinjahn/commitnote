@@ -1,5 +1,5 @@
 import { access, readdir, readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FAKE_FORGE_BANNER,
@@ -11,6 +11,10 @@ import {
   FAKE_FORGE_OPTIONS_KEY,
 } from "../src/testing/fake-forge/fake-forge-options";
 import { FAKE_FORGE_SESSION_PARAM } from "../src/testing/fake-forge/remembered-session";
+import {
+  computeBuildId,
+  parsePrecacheManifest,
+} from "./precache-manifest";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -115,6 +119,84 @@ async function findManifestProblems(distDir: string): Promise<string[]> {
   return problems;
 }
 
+async function findServiceWorkerProblems(
+  outDir: string,
+): Promise<{ readonly problems: string[]; readonly fileCount: number | null }> {
+  const swPath = join(outDir, "sw.js");
+  if (!(await exists(swPath))) {
+    return { problems: ["sw.js is missing"], fileCount: null };
+  }
+  const sw = await readFile(swPath);
+
+  const killSwitchPath = join(rootDir, "public", "sw.js");
+  if (await exists(killSwitchPath)) {
+    const killSwitch = await readFile(killSwitchPath);
+    return {
+      problems: sw.equals(killSwitch)
+        ? []
+        : ["sw.js differs from public/sw.js, which must be shipped unchanged"],
+      fileCount: null,
+    };
+  }
+
+  const manifest = parsePrecacheManifest(sw.toString("utf8"));
+  if (manifest === null) {
+    return {
+      problems: ["sw.js has no valid precache manifest"],
+      fileCount: null,
+    };
+  }
+
+  const problems: string[] = [];
+  const listed = new Set(manifest.files);
+  const emitted = new Set(
+    (await collectFiles(outDir))
+      .map((file) => relative(outDir, file).split("\\").join("/"))
+      .filter((file) => file !== "sw.js"),
+  );
+  for (const file of [...emitted].sort()) {
+    if (!listed.has(file)) {
+      problems.push(`sw.js precache list is missing emitted file ${file}`);
+    }
+  }
+  for (const file of [...listed].sort()) {
+    if (!emitted.has(file)) {
+      problems.push(`sw.js precache list contains ${file}, which was not emitted`);
+    }
+  }
+
+  const required = ["index.html", "manifest.webmanifest"];
+  try {
+    const webManifest = JSON.parse(
+      await readFile(join(outDir, "manifest.webmanifest"), "utf8"),
+    ) as WebManifest;
+    for (const { src } of webManifest.icons ?? []) {
+      required.push(relative(outDir, resolve(outDir, src)).split("\\").join("/"));
+    }
+  } catch {
+    problems.push("manifest.webmanifest cannot be read to check its icons");
+  }
+  for (const file of required) {
+    if (!listed.has(file)) {
+      problems.push(`sw.js precache list does not include ${file}`);
+    }
+  }
+
+  const contents: Array<{ path: string; content: Uint8Array }> = [];
+  for (const path of manifest.files) {
+    if (emitted.has(path)) {
+      contents.push({ path, content: await readFile(join(outDir, path)) });
+    }
+  }
+  const actualBuildId = computeBuildId(contents);
+  if (problems.length === 0 && actualBuildId !== manifest.buildId) {
+    problems.push(
+      `sw.js build id ${manifest.buildId} does not match the files on disk (${actualBuildId})`,
+    );
+  }
+  return { problems, fileCount: manifest.files.length };
+}
+
 async function main(): Promise<void> {
   const distDir = join(rootDir, "dist");
   const fakeDistDir = join(rootDir, "dist-fake");
@@ -167,8 +249,28 @@ async function main(): Promise<void> {
     return;
   }
 
+  const serviceWorkers: string[] = [];
+  const swProblems: string[] = [];
+  for (const dir of [distDir, fakeDistDir]) {
+    const name = basename(dir);
+    const result = await findServiceWorkerProblems(dir);
+    swProblems.push(...result.problems.map((problem) => `${name}/${problem}`));
+    serviceWorkers.push(
+      result.fileCount === null
+        ? "kill-switch service worker shipped"
+        : `${result.fileCount} precached files`,
+    );
+  }
+  if (swProblems.length > 0) {
+    console.error(
+      `Service worker check failed:\n${swProblems.map((problem) => `  - ${problem}`).join("\n")}`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   console.log(
-    "Bundle check passed: production build never ships fake forge fixtures and ships a complete web app manifest.",
+    `Bundle check passed: production build never ships fake forge fixtures and ships a complete web app manifest, service worker (${serviceWorkers.join("; ")}).`,
   );
 }
 
