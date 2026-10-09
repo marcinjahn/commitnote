@@ -873,7 +873,8 @@ test.describe("note fragment and history", () => {
     await moveToTrash(page, "Welcome");
 
     await expect.poll(() => hashOf(page)).toBe("");
-    expect(await historyLength(page)).toBe(length);
+    // the confirm dialog's own entry stays behind as a forward entry
+    expect(await historyLength(page)).toBe(length + 1);
   });
 
   test("undoing the trash of the open note restores its fragment", async ({ page }) => {

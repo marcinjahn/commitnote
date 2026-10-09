@@ -3,21 +3,34 @@ export interface DialogStack<T> {
   unregister(item: T): void;
   top(): T | null;
   subscribe(listener: (top: T | null) => void): () => void;
+  observe(listener: (items: readonly T[]) => void): () => void;
 }
 
 export function createDialogStack<T>(): DialogStack<T> {
   const items: T[] = [];
   const listeners = new Set<(top: T | null) => void>();
+  const observers = new Set<(items: readonly T[]) => void>();
 
   function top(): T | null {
     return items.at(-1) ?? null;
   }
 
+  function snapshot(): readonly T[] {
+    return Object.freeze([...items]);
+  }
+
   function change(mutate: () => void): void {
-    const before = top();
+    const before = [...items];
     mutate();
+    const reordered =
+      before.length !== items.length ||
+      before.some((item, index) => item !== items[index]);
+    if (reordered) {
+      const current = snapshot();
+      for (const observer of [...observers]) observer(current);
+    }
     const after = top();
-    if (after === before) return;
+    if (after === (before.at(-1) ?? null)) return;
     for (const listener of [...listeners]) listener(after);
   }
 
@@ -41,6 +54,13 @@ export function createDialogStack<T>(): DialogStack<T> {
       listener(top());
       return () => {
         listeners.delete(listener);
+      };
+    },
+    observe(listener) {
+      observers.add(listener);
+      listener(snapshot());
+      return () => {
+        observers.delete(listener);
       };
     },
   };

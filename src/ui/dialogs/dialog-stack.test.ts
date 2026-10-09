@@ -87,4 +87,76 @@ describe("createDialogStack", () => {
 
     expect(seen).toEqual([null, "a"]);
   });
+
+  it("notifies an observer at once with the current items", () => {
+    const stack = createDialogStack<string>();
+    stack.register("a");
+    stack.register("b");
+    const seen: (readonly string[])[] = [];
+
+    stack.observe((items) => seen.push(items));
+
+    expect(seen).toEqual([["a", "b"]]);
+  });
+
+  it("notifies an observer after every change in membership or order", () => {
+    const stack = createDialogStack<string>();
+    const seen: (readonly string[])[] = [];
+
+    stack.observe((items) => seen.push(items));
+    stack.register("a");
+    stack.register("b");
+    stack.register("c");
+    stack.unregister("b");
+    stack.register("a");
+    stack.unregister("c");
+
+    expect(seen).toEqual([
+      [],
+      ["a"],
+      ["a", "b"],
+      ["a", "b", "c"],
+      ["a", "c"],
+      ["c", "a"],
+      ["a"],
+    ]);
+  });
+
+  it("does not notify an observer when nothing changes", () => {
+    const stack = createDialogStack<string>();
+    stack.register("a");
+    const seen: (readonly string[])[] = [];
+
+    stack.observe((items) => seen.push(items));
+    stack.register("a");
+    stack.unregister("b");
+
+    expect(seen).toEqual([["a"]]);
+  });
+
+  it("passes observers a frozen copy of the items", () => {
+    const stack = createDialogStack<string>();
+    stack.register("a");
+    let observed: readonly string[] = [];
+
+    stack.observe((items) => (observed = items));
+    stack.register("b");
+    const copy = observed;
+    stack.unregister("a");
+
+    expect(Object.isFrozen(copy)).toBe(true);
+    expect(copy).toEqual(["a", "b"]);
+  });
+
+  it("stops notifying an observer after it unsubscribes", () => {
+    const stack = createDialogStack<string>();
+    const seen: (readonly string[])[] = [];
+
+    const unsubscribe = stack.observe((items) => seen.push(items));
+    stack.register("a");
+    unsubscribe();
+    stack.register("b");
+
+    expect(seen).toEqual([[], ["a"]]);
+  });
 });

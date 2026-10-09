@@ -21,6 +21,7 @@
   import { installSaveShortcut } from "../../app/save-shortcut";
   import { installTypeToStart } from "./type-to-start";
   import { dialogStack } from "../dialogs/dialog-stack";
+  import { bindDialogHistory, type DialogHistory } from "../dialogs/dialog-history";
   import { captureFocusReturn } from "../dialogs/focus-return";
   import {
     createLastViewStore,
@@ -350,6 +351,7 @@
     return createLastViewStore({ repoKey, keyring });
   });
   onDestroy(() => lastViewStore.dispose());
+  let dialogHistory: DialogHistory | null = null;
   const navigation = untrack(() =>
     createNoteNavigation({
       keyring,
@@ -357,9 +359,19 @@
       location: window.location,
       events: window,
       onPopState: handlePopState,
+      onDialogBack: (count) => void dialogHistory?.closeFromBack(count),
     }),
   );
-  onDestroy(() => navigation.dispose());
+  dialogHistory = bindDialogHistory({
+    stack: dialogStack,
+    navigation,
+    requestClose: (el) => el.dispatchEvent(new Event("cancel", { cancelable: true })),
+    settle: tick,
+  });
+  onDestroy(() => {
+    dialogHistory?.dispose();
+    navigation.dispose();
+  });
   const initialEntry = navigation.initial();
   let reopenLastView = $state(
     untrack(() => sessionRemembered && lastViewStore.isEnabled()),
