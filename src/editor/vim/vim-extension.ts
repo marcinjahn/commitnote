@@ -8,7 +8,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import { relativeLineNumbers } from "./relative-line-numbers";
-import { useSystemClipboard } from "./vim-clipboard";
+import { nativePaste, useSystemClipboard } from "./vim-clipboard";
 import { adoptVimDialogs, discardCommandLine } from "./vim-command-line";
 import { defineAppExCommands, vimCallbacks } from "./vim-ex-commands";
 import {
@@ -310,6 +310,7 @@ const staticExtensions: Extension = [
   Prec.high(vim()),
   drawSelection(),
   textInputGuard,
+  nativePaste,
   vimStatusField,
   vimSession,
   statusListener,

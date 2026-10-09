@@ -206,6 +206,11 @@ test("yank and put go through the system clipboard", async ({
 
   await page.evaluate(() => navigator.clipboard.writeText("gamma "));
   await page.keyboard.press("Shift+P");
+  await expect(lines).toHaveText(["alpha alpha beta"]);
+  await page.keyboard.press("u");
+
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await page.keyboard.press("Shift+P");
   await expect(lines).toHaveText(["gamma alpha beta"]);
 
   await page.keyboard.type("yyp");
@@ -223,6 +228,16 @@ test("yank and put go through the system clipboard", async ({
   await page.keyboard.press("ControlOrMeta+c");
   await expect.poll(readClipboard).toBe("delta");
   await expect(modeText(page)).toHaveText("INSERT");
+
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("0");
+  await page.keyboard.press(
+    process.platform === "darwin" ? "Meta+v" : "Control+Shift+V",
+  );
+  await expect(lines).toHaveText(["gdeltaamma alpha beta delta"]);
+  await expect(modeText(page)).toHaveText("NORMAL");
+  await page.keyboard.press("u");
+  await expect(lines).toHaveText(["gamma alpha beta delta"]);
 });
 
 test("search moves the cursor to the match and n repeats it", async ({

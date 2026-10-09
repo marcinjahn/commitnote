@@ -582,6 +582,21 @@ describe("vimExtension system clipboard", () => {
 
   const messageOf = (view: EditorView) => vimStatusOf(view.state)?.message;
 
+  const leaveWindow = () => window.dispatchEvent(new Event("blur"));
+
+  function clipboardEvent(type: string, text: string): Event {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", {
+      value: {
+        getData: (format: string) => (format === "text/plain" ? text : ""),
+        types: ["text/plain"],
+        files: [],
+        items: [],
+      },
+    });
+    return event;
+  }
+
   afterEach(() => {
     Reflect.deleteProperty(navigator, "clipboard");
     vi.restoreAllMocks();
@@ -668,7 +683,9 @@ describe("vimExtension system clipboard", () => {
     clipboard.readText.mockRejectedValue(new Error("unavailable"));
     const { view } = await setup();
 
-    await press(view, "y", "y", "p");
+    await press(view, "y", "y");
+    leaveWindow();
+    await press(view, "p");
     expect(docOf(view)).toBe(
       "first line\nfirst line\nsecond line\nthird line",
     );
@@ -686,14 +703,117 @@ describe("vimExtension system clipboard", () => {
     );
     const { view } = await setup();
 
-    await press(view, "y", "w", "p");
+    await press(view, "y", "w");
+    leaveWindow();
+    await press(view, "p");
     expect(docOf(view)).toBe("ffirst irst line\nsecond line\nthird line");
     expect(messageOf(view)?.text).toBe(
       "Clipboard access denied, pasting from the Vim register",
     );
 
+    leaveWindow();
     await press(view, "p");
     expect(clipboard.readText).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the clipboard only after the window was left", async () => {
+    const clipboard = mockClipboard();
+    const { view } = await setup();
+
+    await press(view, "y", "w");
+    clipboard.readText.mockResolvedValue("ext ");
+    await press(view, "P");
+    expect(clipboard.readText).not.toHaveBeenCalled();
+    expect(docOf(view)).toBe("first first line\nsecond line\nthird line");
+
+    leaveWindow();
+    await press(view, "0", "P");
+    expect(clipboard.readText).toHaveBeenCalledTimes(1);
+    expect(docOf(view)).toBe("ext first first line\nsecond line\nthird line");
+
+    await press(view, "0", "P");
+    expect(clipboard.readText).toHaveBeenCalledTimes(1);
+    expect(docOf(view)).toBe(
+      "ext ext first first line\nsecond line\nthird line",
+    );
+  });
+
+  it("treats a hidden page as having left the window", async () => {
+    const clipboard = mockClipboard();
+    const { view } = await setup();
+    await press(view, "y", "w");
+    clipboard.readText.mockResolvedValue("ext ");
+
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    visibility.mockRestore();
+    await press(view, "P");
+
+    expect(clipboard.readText).toHaveBeenCalledTimes(1);
+    expect(docOf(view)).toBe("ext first line\nsecond line\nthird line");
+  });
+
+  it("learns the clipboard from copy and paste events instead of reading it", async () => {
+    const clipboard = mockClipboard();
+    const { view } = await setup();
+    leaveWindow();
+
+    document.dispatchEvent(clipboardEvent("copy", "copied\n"));
+    await press(view, "p");
+    expect(docOf(view)).toBe(
+      "first line\ncopied\nsecond line\nthird line",
+    );
+
+    leaveWindow();
+    document.dispatchEvent(clipboardEvent("paste", "pasted"));
+    await press(view, "u", "g", "g", "0", "P");
+    expect(docOf(view)).toBe("pastedfirst line\nsecond line\nthird line");
+    expect(clipboard.readText).not.toHaveBeenCalled();
+  });
+
+  it("puts a native paste in NORMAL like p, in one undo step", async () => {
+    const clipboard = mockClipboard();
+    const { view } = await setup();
+    await press(view, "y", "y");
+
+    const event = clipboardEvent("paste", "first line\n");
+    view.contentDOM.dispatchEvent(event);
+    await settle();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(modeOf(view)).toBe("normal");
+    expect(docOf(view)).toBe(
+      "first line\nfirst line\nsecond line\nthird line",
+    );
+    expect(clipboard.readText).not.toHaveBeenCalled();
+
+    await press(view, "u");
+    expect(docOf(view)).toBe(DOC);
+  });
+
+  it("replaces the selection on a native paste in VISUAL", async () => {
+    mockClipboard();
+    const { view } = await setup();
+
+    await press(view, "v", "e");
+    view.contentDOM.dispatchEvent(clipboardEvent("paste", "1st"));
+    await settle();
+
+    expect(modeOf(view)).toBe("normal");
+    expect(docOf(view)).toBe("1st line\nsecond line\nthird line");
+  });
+
+  it("leaves a native paste in INSERT to the editor", async () => {
+    mockClipboard();
+    const { view } = await setup({ initialMode: "insert" });
+
+    view.contentDOM.dispatchEvent(clipboardEvent("paste", "hi "));
+    await settle();
+
+    expect(modeOf(view)).toBe("insert");
+    expect(docOf(view)).toBe("hi first line\nsecond line\nthird line");
   });
 
   it("pastes from the register when no clipboard is available", async () => {
