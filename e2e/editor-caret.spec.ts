@@ -81,10 +81,21 @@ async function expectTintEndsAtCaret(page: Page): Promise<void> {
   expect(
     Math.abs(tintBox.x + tintBox.width - (caretBox.x + caretBox.width / 2)),
   ).toBeLessThan(1.5);
-  await expect(tintLayer(page)).toHaveAttribute(
-    "data-caret",
-    (await caretLayer(page).getAttribute("data-caret"))!,
-  );
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const caretState = document
+          .querySelector(".cm-accent-caret-layer")
+          ?.getAttribute("data-caret");
+        const tintState = document
+          .querySelector(".cm-caret-tint-layer")
+          ?.getAttribute("data-caret");
+        return caretState != null && caretState === tintState
+          ? "in sync"
+          : `caret ${caretState}, tint ${tintState}`;
+      }),
+    )
+    .toBe("in sync");
 }
 
 test("the tint follows the caret when it is moved with the arrow keys", async ({
@@ -437,9 +448,15 @@ test.describe("vim mode", () => {
 
     await expect(fatCursor(page)).toHaveCount(1);
     const accent = await tokenColour(page, "--color-accent");
-    const style = await cursorStyle(page);
-    expect(style.background).toBe("rgba(0, 0, 0, 0)");
-    expect(style.outline).toBe(`1px solid ${accent}`);
+    await expect
+      .poll(async () => {
+        const { background, outline } = await cursorStyle(page);
+        return { background, outline };
+      })
+      .toEqual({
+        background: "rgba(0, 0, 0, 0)",
+        outline: `1px solid ${accent}`,
+      });
     await expectNoDrawnCaret(page);
   });
 
