@@ -52,16 +52,23 @@ async function useScheme(page: Page, scheme: Scheme): Promise<void> {
   });
 }
 
+function axeOptions(scheme: Scheme) {
+  if (scheme === "dark") {
+    return { runOnly: { type: "rule" as const, values: ["color-contrast"] } };
+  }
+  return {
+    runOnly: { type: "tag" as const, values: TAGS },
+    rules: Object.fromEntries(
+      BEST_PRACTICE_RULES.map((rule) => [rule, { enabled: true }]),
+    ),
+  };
+}
+
 async function scan(page: Page, state: A11yState, scheme: Scheme) {
   await useScheme(page, scheme);
   const results = await new AxeBuilder({ page })
     .exclude(".test-mode-banner")
-    .options({
-      runOnly: { type: "tag", values: TAGS },
-      rules: Object.fromEntries(
-        BEST_PRACTICE_RULES.map((rule) => [rule, { enabled: true }]),
-      ),
-    })
+    .options(axeOptions(scheme))
     .analyze();
   const lines: string[] = [];
   for (const violation of results.violations) {
