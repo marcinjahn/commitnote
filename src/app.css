@@ -722,3 +722,15 @@ textarea:focus-visible,
     padding-inline-start: calc(var(--space-3) - 2px);
   }
 }
+
+@media (display-mode: window-controls-overlay) {
+  .window-drag {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+
+  .window-drag > * {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+}

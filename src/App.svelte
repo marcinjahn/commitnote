@@ -657,7 +657,7 @@
 {/if}
 
 {#if phase.kind === "restoring"}
-  <main class="restoring">
+  <main class="restoring window-drag">
     <Wordmark element="h1" />
     <p class="restoring-text">Loading…</p>
   </main>
@@ -760,5 +760,14 @@
     margin: 0;
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);
+  }
+
+  @media (display-mode: window-controls-overlay) {
+    .restoring {
+      padding-top: max(
+        calc(var(--space-4) + env(safe-area-inset-top)),
+        calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, 0px))
+      );
+    }
   }
 </style>

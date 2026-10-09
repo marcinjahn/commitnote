@@ -318,4 +318,39 @@
       display: inline;
     }
   }
+
+  @media (display-mode: window-controls-overlay) {
+    .note-header {
+      -webkit-app-region: drag;
+      app-region: drag;
+      min-height: max(
+        calc(
+        var(--touch-target) + var(--space-2) * 2 + env(safe-area-inset-top)
+      ),
+        calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, 0px))
+      );
+      padding-right: calc(var(--space-3) + calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
+    }
+
+    .note-header :global(:is(button,
+    a[href],
+    input,
+    select,
+    textarea,
+    [role="button"],
+    [role="menu"],
+    [role="menuitem"],
+    [role="menuitemradio"],
+    [popover],
+    [tabindex]:not([tabindex="-1"]))) {
+      -webkit-app-region: no-drag;
+      app-region: no-drag;
+    }
+  }
+
+  @media (display-mode: window-controls-overlay) and (max-width: 767px) {
+    .note-header {
+      padding-left: calc(var(--space-1) + env(titlebar-area-x, 0px));
+    }
+  }
 </style>

@@ -19,6 +19,7 @@ interface Manifest {
   readonly screenshots: readonly ManifestImage[];
   readonly shortcuts?: ReadonlyArray<{ readonly icons?: readonly ManifestImage[] }>;
   readonly categories: readonly string[];
+  readonly display_override?: readonly string[];
 }
 
 async function readManifest(): Promise<Manifest> {
@@ -56,6 +57,10 @@ describe("web app manifest", () => {
       lang: "en",
       dir: "ltr",
     });
+    expect(manifest.display_override).toEqual([
+      "window-controls-overlay",
+      "standalone",
+    ]);
     expect(manifest.categories).toContain("productivity");
     expect(String(manifest.description).length).toBeGreaterThan(0);
   });

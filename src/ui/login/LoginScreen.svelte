@@ -383,7 +383,7 @@
   {/if}
 {/snippet}
 
-<main class="login-shell" class:below-install-bar={belowInstallBar}>
+<main class="login-shell window-drag" class:below-install-bar={belowInstallBar}>
   <div class="login-card">
     <Wordmark element="h1" />
     <p class="login-tagline">
@@ -702,6 +702,15 @@
     .login-card {
       border: none;
       box-shadow: none;
+    }
+  }
+
+  @media (display-mode: window-controls-overlay) {
+    .login-shell {
+      padding-top: max(
+        calc(var(--space-5) + var(--login-top-inset)),
+        calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, 0px))
+      );
     }
   }
 </style>

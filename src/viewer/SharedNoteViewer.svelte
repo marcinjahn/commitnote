@@ -73,7 +73,7 @@
 {/if}
 
 <div class="viewer">
-  <header class="top-bar">
+  <header class="top-bar window-drag">
     <Wordmark />
   </header>
 
@@ -172,6 +172,16 @@
     padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4)
       var(--space-3);
     border-bottom: var(--hairline) solid var(--color-border);
+  }
+
+  @media (display-mode: window-controls-overlay) {
+    .top-bar {
+      min-height: calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, 0px));
+      padding-left: calc(var(--space-4) + env(titlebar-area-x, 0px));
+      padding-right: calc(
+        var(--space-4) + 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
+      );
+    }
   }
 
   .column {

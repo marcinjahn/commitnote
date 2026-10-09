@@ -36,7 +36,7 @@
   }
 </script>
 
-<main class="key-changed-shell">
+<main class="key-changed-shell window-drag">
   <div class="key-changed-card">
     <Wordmark />
     <h1>Passphrase changed</h1>
@@ -123,6 +123,15 @@
 
     .actions {
       flex-direction: column;
+    }
+  }
+
+  @media (display-mode: window-controls-overlay) {
+    .key-changed-shell {
+      padding-top: max(
+        calc(var(--space-5) + env(safe-area-inset-top)),
+        calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, 0px))
+      );
     }
   }
 </style>

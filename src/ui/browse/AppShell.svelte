@@ -141,6 +141,7 @@
   import {
     SIDEBAR_MIN_WIDTH,
     clearSidebarWidth,
+    effectiveSidebarMinWidth,
     maxSidebarWidth,
     readSidebarWidth,
     shownSidebarWidth,
@@ -410,10 +411,35 @@
   let sidebarEl: HTMLElement | undefined = $state();
   let preferredSidebarWidth = $state(readSidebarWidth());
   let viewportWidth = $state(0);
+  let sidebarMinWidth = $state(SIDEBAR_MIN_WIDTH);
   const sidebarWidth = $derived(
-    shownSidebarWidth(preferredSidebarWidth, viewportWidth),
+    shownSidebarWidth(preferredSidebarWidth, viewportWidth, sidebarMinWidth),
   );
-  const sidebarMaxWidth = $derived(maxSidebarWidth(viewportWidth));
+  const sidebarMaxWidth = $derived(
+    maxSidebarWidth(viewportWidth, sidebarMinWidth),
+  );
+
+  function measureSidebarMinWidth(): void {
+    if (!sidebarEl) return;
+    sidebarMinWidth = effectiveSidebarMinWidth(
+      parseFloat(getComputedStyle(sidebarEl).minWidth),
+    );
+  }
+
+  $effect(() => {
+    void viewportWidth;
+    measureSidebarMinWidth();
+  });
+
+  $effect(() => {
+    const overlay = (
+      navigator as Navigator & { windowControlsOverlay?: EventTarget }
+    ).windowControlsOverlay;
+    if (!overlay) return;
+    overlay.addEventListener("geometrychange", measureSidebarMinWidth);
+    return () =>
+      overlay.removeEventListener("geometrychange", measureSidebarMinWidth);
+  });
   const desktopQuery = new MediaQuery(DESKTOP_MEDIA_QUERY);
   const narrow = $derived(!desktopQuery.current);
   let shownMobileView = untrack(() => mobileView);
@@ -2414,8 +2440,9 @@
     </div>
     <SidebarResizeHandle
       width={sidebarWidth}
-      min={SIDEBAR_MIN_WIDTH}
+      min={sidebarMinWidth}
       max={sidebarMaxWidth}
+      onMeasure={measureSidebarMinWidth}
       controls="sidebar"
       onResize={(width) => (preferredSidebarWidth = width)}
       onCommit={(width) => writeSidebarWidth(width)}
@@ -3125,6 +3152,55 @@
 
     .mobile-hidden {
       display: flex;
+    }
+  }
+
+  @media (display-mode: window-controls-overlay) {
+    .sidebar {
+      min-width: calc(300px + env(titlebar-area-x, 0px));
+    }
+
+    .skip-link {
+      inset-inline-start: calc(var(--space-2) + env(titlebar-area-x, 0px));
+      -webkit-app-region: no-drag;
+      app-region: no-drag;
+    }
+
+    .tree-header {
+      -webkit-app-region: drag;
+      app-region: drag;
+      min-height: max(
+        calc(
+        var(--touch-target) + var(--space-2) * 2 + env(safe-area-inset-top)
+      ),
+        calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, 0px))
+      );
+      padding-left: calc(var(--space-3) + env(titlebar-area-x, 0px));
+    }
+
+    .tree-header :global(:is(button,
+    a[href],
+    input,
+    select,
+    textarea,
+    [role="button"],
+    [role="menu"],
+    [role="menuitem"],
+    [role="menuitemradio"],
+    [popover],
+    [tabindex]:not([tabindex="-1"]))) {
+      -webkit-app-region: no-drag;
+      app-region: no-drag;
+    }
+
+    .note-pane:not(:has(> :global(.note-header))) {
+      padding-top: calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, 0px));
+    }
+  }
+
+  @media (display-mode: window-controls-overlay) and (max-width: 767px) {
+    .tree-header {
+      padding-right: calc(var(--space-2) + calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
     }
   }
 

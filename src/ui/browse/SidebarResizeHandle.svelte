@@ -10,10 +10,19 @@
     onResize: (width: number) => void;
     onCommit: (width: number) => void;
     onReset: () => void;
+    onMeasure: () => void;
   }
 
-  const { width, min, max, controls, onResize, onCommit, onReset }: Props =
-    $props();
+  const {
+    width,
+    min,
+    max,
+    controls,
+    onResize,
+    onCommit,
+    onReset,
+    onMeasure,
+  }: Props = $props();
 
   const RESIZING_CLASS = "sidebar-resizing";
 
@@ -35,6 +44,7 @@
   }
 
   function onkeydown(event: KeyboardEvent): void {
+    onMeasure();
     switch (event.key) {
       case "ArrowLeft":
         step(width - SIDEBAR_WIDTH_STEP);
@@ -59,6 +69,7 @@
 
   function onpointerdown(event: PointerEvent): void {
     if (event.button !== 0 || drag !== null) return;
+    onMeasure();
     const handle = event.currentTarget as HTMLElement;
     handle.setPointerCapture(event.pointerId);
     drag = {
@@ -107,6 +118,8 @@
   aria-controls={controls}
   tabindex="0"
   {onkeydown}
+  onfocus={onMeasure}
+  onpointerenter={onMeasure}
   {onpointerdown}
   {onpointermove}
   onpointerup={endDrag}
@@ -161,6 +174,13 @@
   :global(html.sidebar-resizing *) {
     cursor: col-resize !important;
     user-select: none !important;
+  }
+
+  @media (display-mode: window-controls-overlay) {
+    .sidebar-resize-handle {
+      -webkit-app-region: no-drag;
+      app-region: no-drag;
+    }
   }
 
   @media (max-width: 767.98px) {

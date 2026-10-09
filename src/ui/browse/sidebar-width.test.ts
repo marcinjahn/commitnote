@@ -4,6 +4,7 @@ import {
   SIDEBAR_WIDTH_KEY,
   clampPreferredWidth,
   clearSidebarWidth,
+  effectiveSidebarMinWidth,
   maxSidebarWidth,
   readSidebarWidth,
   shownSidebarWidth,
@@ -67,6 +68,36 @@ describe("maxSidebarWidth", () => {
     [500, 300],
   ])("viewport %s allows %s", (viewport, expected) => {
     expect(maxSidebarWidth(viewport)).toBe(expected);
+  });
+});
+
+describe("effectiveSidebarMinWidth", () => {
+  it.each([
+    [378, 378],
+    [300, 300],
+    [120, 300],
+    [Number.NaN, 300],
+  ])("rendered minimum %s gives %s", (rendered, expected) => {
+    expect(effectiveSidebarMinWidth(rendered)).toBe(expected);
+  });
+});
+
+describe("with a raised minimum", () => {
+  it("never allows less than the minimum", () => {
+    expect(maxSidebarWidth(1000, 378)).toBe(600);
+    expect(maxSidebarWidth(768, 378)).toBe(378);
+    expect(maxSidebarWidth(500, 378)).toBe(378);
+  });
+
+  it("keeps the note pane minimum wherever the viewport allows", () => {
+    expect(maxSidebarWidth(800, 378)).toBe(400);
+    expect(shownSidebarWidth(640, 800, 378)).toBe(400);
+  });
+
+  it("shows a stored width below the minimum at the minimum", () => {
+    expect(shownSidebarWidth(300, 1280, 378)).toBe(378);
+    expect(shownSidebarWidth(350, 1280, 378)).toBe(378);
+    expect(shownSidebarWidth(450, 1280, 378)).toBe(450);
   });
 });
 
