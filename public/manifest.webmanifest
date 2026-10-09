@@ -22,5 +22,19 @@
   "screenshots": [
     { "src": "screenshots/narrow.png", "sizes": "824x1830", "type": "image/png", "form_factor": "narrow", "label": "Notes tree on a phone" },
     { "src": "screenshots/wide.png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide", "label": "Editing a note on desktop" }
-  ]
+  ],
+  "shortcuts": [
+    {
+      "name": "New note",
+      "url": "./?action=new-note",
+      "icons": [{ "src": "icons/shortcut-new-note-96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Search notes",
+      "url": "./?action=search",
+      "icons": [{ "src": "icons/shortcut-search-96.png", "sizes": "96x96", "type": "image/png" }]
+    }
+  ],
+  "note_taking": { "new_note_url": "./?action=new-note" },
+  "launch_handler": { "client_mode": "focus-existing" }
 }

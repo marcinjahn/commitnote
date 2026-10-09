@@ -17,7 +17,13 @@ interface Manifest {
   readonly [key: string]: unknown;
   readonly icons: readonly ManifestImage[];
   readonly screenshots: readonly ManifestImage[];
-  readonly shortcuts?: ReadonlyArray<{ readonly icons?: readonly ManifestImage[] }>;
+  readonly shortcuts?: ReadonlyArray<{
+    readonly name: string;
+    readonly url: string;
+    readonly icons?: readonly ManifestImage[];
+  }>;
+  readonly note_taking?: { readonly new_note_url?: string };
+  readonly launch_handler?: { readonly client_mode?: string };
   readonly categories: readonly string[];
   readonly display_override?: readonly string[];
 }
@@ -106,6 +112,34 @@ describe("web app manifest", () => {
     expect(light).toBeDefined();
     expect(manifest.background_color).toBe(light);
     expect(manifest.theme_color).toBe(light);
+  });
+
+  it("advertises the launch actions inside the scope", async () => {
+    const manifest = await readManifest();
+    const shortcuts = manifest.shortcuts ?? [];
+
+    expect(shortcuts.map(({ name, url }) => ({ name, url }))).toEqual([
+      { name: "New note", url: "./?action=new-note" },
+      { name: "Search notes", url: "./?action=search" },
+    ]);
+    for (const shortcut of shortcuts) {
+      expect(shortcut.icons).toHaveLength(1);
+      expect(shortcut.icons?.[0]?.sizes).toBe("96x96");
+    }
+    expect(manifest.note_taking?.new_note_url).toBe("./?action=new-note");
+    expect(manifest.launch_handler?.client_mode).toBe("focus-existing");
+
+    const base = "https://example.test/app/manifest.webmanifest";
+    const scope = new URL(String(manifest.scope), base);
+    const urls = [
+      ...shortcuts.map((shortcut) => shortcut.url),
+      manifest.note_taking?.new_note_url ?? "",
+    ];
+    for (const url of urls) {
+      const resolved = new URL(url, base);
+      expect(resolved.origin).toBe(scope.origin);
+      expect(resolved.pathname.startsWith(scope.pathname)).toBe(true);
+    }
   });
 
   it("links an apple touch icon that is a 180x180 PNG", async () => {

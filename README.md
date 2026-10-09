@@ -220,6 +220,10 @@ Security Policy applied via a `<meta>` tag; it is not present in the dev server.
 - **Desktop window:** the installed app draws its headers into the title bar, next to the window
   controls. Drag the window by an empty part of a header. Use the title-bar toggle (the chevron
   next to the window controls) to switch back to a classic title bar; both work the same.
+- **Shortcuts:** the installed app's icon offers **New note** and **Search notes** (long press on
+  Android, right-click or the jump list on desktop). If you need to log in first, the shortcut runs
+  right after. Launching the app again focuses the window that is already open instead of opening
+  a second one.
 - Dismissing the install bar is remembered on that device (localStorage
   `commitnote.installBarDismissed`); **Install app** in the command menu still works afterwards.
   The bar never appears in the installed app, on desktop, in the note view or in the shared-note

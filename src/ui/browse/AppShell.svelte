@@ -3,6 +3,7 @@
   import type { AutoRefresh } from "../../app/auto-refresh";
   import type { AppUpdates } from "../../app/app-updates";
   import type { InstallController } from "../../app/install-controller";
+  import type { LaunchAction, LaunchActions } from "../../app/launch-action";
   import InstallBar from "../install/InstallBar.svelte";
   import type { UpdateGate } from "../../app/update-gate";
   import { updateToastKind, type UpdateToastKind } from "../../app/update-toast";
@@ -217,6 +218,7 @@
     updateGate: UpdateGate;
     appUpdates: AppUpdates | null;
     install: InstallController;
+    launchActions: LaunchActions;
     contentIndexer: ContentIndexer;
     repoLabel: string;
     repoUrl: string;
@@ -249,6 +251,7 @@
     updateGate,
     appUpdates,
     install,
+    launchActions,
     contentIndexer,
     repoLabel,
     repoUrl,
@@ -544,6 +547,23 @@
   function closeSearch(): void {
     searchOpen = false;
   }
+
+  function runLaunchAction(action: LaunchAction): void {
+    if (searchOpen || dialogStack.top() !== null) return;
+    if (action === "new-note") handleHeaderNewNote();
+    else openSearch();
+  }
+
+  let launchActionsDestroyed = false;
+  let detachLaunchActions: (() => void) | null = null;
+  void initialEntry.then(() => {
+    if (launchActionsDestroyed) return;
+    detachLaunchActions = untrack(() => launchActions.attach(runLaunchAction));
+  });
+  onDestroy(() => {
+    launchActionsDestroyed = true;
+    detachLaunchActions?.();
+  });
 
   async function revealAndOpen(path: NotePath): Promise<void> {
     if (path.length > 1) expandFolder(parentPath(path));

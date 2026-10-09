@@ -86,6 +86,7 @@
   import type { PrintNote } from "./ui/print/print-note";
   import Wordmark from "./ui/wordmark/Wordmark.svelte";
   import type { InstallController } from "./app/install-controller";
+  import type { LaunchActions } from "./app/launch-action";
   import InstallBar from "./ui/install/InstallBar.svelte";
   import InstallHowToDialog from "./ui/install/InstallHowToDialog.svelte";
   import { createDialogEntries } from "./ui/dialogs/dialog-entries";
@@ -98,10 +99,17 @@
     argon2id?: Argon2idFunction;
     appUpdates: AppUpdates | null;
     install: InstallController;
+    launchActions: LaunchActions;
   }
 
-  const { registry, testModeBanner, argon2id, appUpdates, install }: Props =
-    $props();
+  const {
+    registry,
+    testModeBanner,
+    argon2id,
+    appUpdates,
+    install,
+    launchActions,
+  }: Props = $props();
 
   let installState = $state(untrack(() => install.getState()));
   onMount(() => install.subscribe((state) => (installState = state)));
@@ -699,6 +707,7 @@
     updateGate={phase.updateGate}
     {appUpdates}
     {install}
+    {launchActions}
     contentIndexer={phase.contentIndexer}
     repoLabel={phase.repoLabel}
     repoUrl={phase.repoUrl}

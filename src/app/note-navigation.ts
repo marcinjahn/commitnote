@@ -1,5 +1,6 @@
 import { notePathEquals, type NotePath } from "../changes/change";
 import type { Keyring } from "../crypto/keyring";
+import { LAUNCH_ACTION_PARAM } from "./launch-action";
 import {
   decodeNotePath,
   encodeNotePath,
@@ -428,4 +429,19 @@ export function clearNoteFragment(
 ): void {
   if (!isNoteFragment(location.hash)) return;
   history.replaceState({}, "", baseUrl(location));
+}
+
+export function clearLaunchAction(
+  history: Pick<History, "state" | "replaceState">,
+  location: Pick<Location, "pathname" | "search" | "hash">,
+): void {
+  const params = new URLSearchParams(location.search);
+  if (!params.has(LAUNCH_ACTION_PARAM)) return;
+  params.delete(LAUNCH_ACTION_PARAM);
+  const remaining = params.toString();
+  history.replaceState(
+    history.state,
+    "",
+    location.pathname + (remaining ? "?" + remaining : "") + location.hash,
+  );
 }
