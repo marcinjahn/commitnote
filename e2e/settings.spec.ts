@@ -556,6 +556,12 @@ test("the Note font section lists eleven options with Inter checked, each label 
   const group = noteFontGroup(page);
 
   await expect(group.getByRole("radio")).toHaveCount(11);
+  await expect(group).toHaveCSS("border-top-style", "solid");
+  await expect(noteFontRow(page, "Inter")).toHaveCSS("border-bottom-style", "solid");
+  await expect(noteFontRow(page, "Inter").locator(".setting-option-label")).toHaveCSS(
+    "font-size",
+    "16px",
+  );
   await expect(group.getByRole("radio").nth(6)).toHaveAccessibleName("Literata");
   await expect(group.getByRole("radio").nth(6)).toHaveAccessibleDescription(
     NOTE_FONTS.Literata.description,

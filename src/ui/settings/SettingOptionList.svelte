@@ -83,7 +83,7 @@
   .setting-options {
     display: grid;
     gap: 0;
-    border-top: var(--hairline);
+    border-top: var(--hairline) solid var(--color-border);
   }
 
   @media (min-width: 768px) {
@@ -97,7 +97,7 @@
     align-items: center;
     min-height: var(--touch-target);
     padding: var(--space-2) var(--space-3);
-    border-bottom: var(--hairline);
+    border-bottom: var(--hairline) solid var(--color-border);
     border-inline-start: 2px solid transparent;
     border-radius: var(--radius);
     font-size: var(--font-size-sm);
@@ -136,6 +136,7 @@
 
   .setting-option-label {
     min-height: 1.25rem;
+    font-size: var(--font-size-base);
     line-height: 1.5385;
   }
 
