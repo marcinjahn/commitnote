@@ -75,7 +75,9 @@ test.describe("on the empty note pane", () => {
   test("typing after clicking the placeholder text starts a note", async ({
     page,
   }) => {
-    await page.locator(".note-placeholder").click({ position: { x: 24, y: 4 } });
+    await page
+      .locator(".note-placeholder")
+      .click({ position: { x: 24, y: 4 } });
 
     await page.keyboard.type("Clicked");
 
@@ -124,6 +126,9 @@ test.describe("on the empty note pane", () => {
       name: "Start a note by typing",
     });
     await expect(checkbox).toBeChecked();
+    await expect(checkbox).toHaveAccessibleDescription(
+      "When no note is open, start typing to begin a new note.",
+    );
 
     await checkbox.uncheck();
     await closeSettings(page);

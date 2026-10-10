@@ -6,10 +6,14 @@
   const { settings, changeSettings, scopes, changeSettingScope }: SettingsSectionProps =
     $props();
 
+  const hintId = "type-to-start-hint";
   const inputId = $props.id();
 </script>
 
-<SettingRow>
+<SettingRow
+  {hintId}
+  hint="When no note is open, start typing to begin a new note."
+>
   {#snippet label()}
     <label for={inputId}>Start a note by typing</label>
   {/snippet}
@@ -28,6 +32,7 @@
     id={inputId}
     type="checkbox"
     checked={settings.typeToStart}
+    aria-describedby={hintId}
     onchange={(event) =>
       changeSettings({ typeToStart: event.currentTarget.checked })}
   />
