@@ -120,6 +120,7 @@
   --font-weight-semibold: 600;
   --letter-spacing-tight: -0.011em;
   --letter-spacing-tighter: -0.022em;
+  --letter-spacing-caps: 0.08em;
   --line-height: 1.55;
 
   --motion-duration: 140ms;
@@ -425,6 +426,19 @@ button,
 .checkbox-field input[type="checkbox"] {
   width: var(--checkbox-size);
   height: var(--checkbox-size);
+}
+
+.setting-row-control > input[type="checkbox"] {
+  display: block;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
+  margin: 0;
+  border-radius: var(--radius);
+  accent-color: var(--color-ink);
+}
+
+.setting-row-label > label {
+  cursor: pointer;
 }
 
 .alert-error {

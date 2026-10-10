@@ -6,34 +6,29 @@
   const { settings, changeSettings, scopes, changeSettingScope }: SettingsSectionProps =
     $props();
 
-  const hintId = "vim-mode-hint";
   const inputId = $props.id();
 </script>
 
-<SettingRow
-  {hintId}
-  hint="Edit notes with Vim keys: Normal, Insert and Visual modes, relative line numbers and a status bar at the bottom."
->
+<SettingRow>
   {#snippet label()}
-    <label for={inputId}>Vim mode</label>
+    <label for={inputId}>Start a note by typing</label>
   {/snippet}
   {#snippet aside()}
     <ScopeToggle
-      label="Vim mode"
-      scope={scopes.vimMode}
+      label="Start a note by typing"
+      scope={scopes.typeToStart}
       onToggle={() =>
         changeSettingScope(
-          "vimMode",
-          scopes.vimMode === "device" ? "synced" : "device",
+          "typeToStart",
+          scopes.typeToStart === "device" ? "synced" : "device",
         )}
     />
   {/snippet}
   <input
     id={inputId}
     type="checkbox"
-    checked={settings.vimMode}
-    aria-describedby={hintId}
+    checked={settings.typeToStart}
     onchange={(event) =>
-      changeSettings({ vimMode: event.currentTarget.checked })}
+      changeSettings({ typeToStart: event.currentTarget.checked })}
   />
 </SettingRow>

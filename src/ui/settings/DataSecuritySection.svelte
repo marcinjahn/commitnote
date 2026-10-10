@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingRow from "./SettingRow.svelte";
   import type { DataSecurityActions } from "./data-security-actions";
 
   const {
@@ -22,43 +23,48 @@
   }
 </script>
 
-<div class="data-security">
-  <button
-    type="button"
-    class="link-button action"
-    disabled={exportDisabled}
-    onclick={onExport}
-  >
-    {exporting ? "Exporting…" : "Export notes"}
-  </button>
-  <button
-    type="button"
-    class="link-button action"
-    disabled={importDisabled}
-    onclick={() => importInput?.click()}
-  >
-    {importing ? "Importing…" : "Import notes"}
-  </button>
-  <button
-    type="button"
-    class="link-button action"
-    disabled={changePassphraseDisabled}
-    onclick={onChangePassphrase}
-  >
-    Change passphrase
-  </button>
-  <input
-    bind:this={importInput}
-    type="file"
-    accept=".zip,application/zip,.md,.markdown,.txt"
-    multiple
-    class="visually-hidden"
-    tabindex="-1"
-    aria-hidden="true"
-    data-testid="import-file"
-    onchange={onImportChange}
-  />
-</div>
+<SettingRow stacked>
+  {#snippet label()}
+    <span class="visually-hidden">Data &amp; security actions</span>
+  {/snippet}
+  <div class="data-security">
+    <button
+      type="button"
+      class="link-button action"
+      disabled={exportDisabled}
+      onclick={onExport}
+    >
+      {exporting ? "Exporting…" : "Export notes"}
+    </button>
+    <button
+      type="button"
+      class="link-button action"
+      disabled={importDisabled}
+      onclick={() => importInput?.click()}
+    >
+      {importing ? "Importing…" : "Import notes"}
+    </button>
+    <button
+      type="button"
+      class="link-button action"
+      disabled={changePassphraseDisabled}
+      onclick={onChangePassphrase}
+    >
+      Change passphrase
+    </button>
+    <input
+      bind:this={importInput}
+      type="file"
+      accept=".zip,application/zip,.md,.markdown,.txt"
+      multiple
+      class="visually-hidden"
+      tabindex="-1"
+      aria-hidden="true"
+      data-testid="import-file"
+      onchange={onImportChange}
+    />
+  </div>
+</SettingRow>
 
 <style>
   .data-security {

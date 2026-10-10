@@ -108,6 +108,13 @@ test("Settings is the first command and opens a dialog with the accent color opt
 
   const dialog = settingsDialog(page);
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("heading", { level: 3 })).toHaveText([
+    "Appearance",
+    "Editor",
+    "Notes",
+    "This device",
+    "Data & security",
+  ]);
   const colorModes = dialog.getByRole("radiogroup", { name: "Color mode" });
   await expect(colorModes.getByRole("radio")).toHaveCount(3);
   const systemMode = colorModes.getByRole("radio", { name: "System" });
@@ -1216,7 +1223,7 @@ test.describe("setting scope", () => {
     await expect(dialog.getByRole("button", { name: /New folders only/ })).toHaveCount(0);
 
     await dialog.getByRole("checkbox", { name: "Vim mode" }).focus();
-    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
     await expect(scopeToggle(dialog, "Vim mode")).toBeFocused();
   });
 

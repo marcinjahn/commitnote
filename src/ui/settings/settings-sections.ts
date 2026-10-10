@@ -11,6 +11,7 @@ import NoteFontSection from "./NoteFontSection.svelte";
 import AnimatedCaretSection from "./AnimatedCaretSection.svelte";
 import VimModeSection from "./VimModeSection.svelte";
 import NewFolderPlacementSection from "./NewFolderPlacementSection.svelte";
+import TypeToStartSection from "./TypeToStartSection.svelte";
 import NewNotePlacementSection from "./NewNotePlacementSection.svelte";
 
 export interface SettingsSectionProps {
@@ -23,46 +24,26 @@ export interface SettingsSectionProps {
   ) => void;
 }
 
-export interface SettingsSection {
+export interface SettingsGroup {
   readonly id: string;
   readonly title: string;
-  readonly scopeKey?: SwitchableSettingKey;
-  readonly scopeLabel?: string;
-  readonly component: Component<SettingsSectionProps>;
+  readonly components: readonly Component<SettingsSectionProps>[];
 }
 
-export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
+export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
   {
-    id: "color-mode",
-    title: "Color mode",
-    scopeKey: "colorMode",
-    scopeLabel: "Color mode",
-    component: ColorModeSection,
+    id: "appearance",
+    title: "Appearance",
+    components: [ColorModeSection, AccentColorSection, NoteFontSection],
   },
   {
-    id: "accent-color",
-    title: "Accent color",
-    scopeKey: "accentColor",
-    scopeLabel: "Accent color",
-    component: AccentColorSection,
+    id: "editor",
+    title: "Editor",
+    components: [AnimatedCaretSection, VimModeSection, TypeToStartSection],
   },
   {
-    id: "note-font",
-    title: "Note font",
-    scopeKey: "noteFont",
-    scopeLabel: "Note font",
-    component: NoteFontSection,
-  },
-  { id: "caret", title: "Caret", component: AnimatedCaretSection },
-  { id: "vim-mode", title: "Vim mode", component: VimModeSection },
-  {
-    id: "new-note-placement",
-    title: "New notes",
-    component: NewNotePlacementSection,
-  },
-  {
-    id: "new-folder-placement",
-    title: "New folders",
-    component: NewFolderPlacementSection,
+    id: "notes",
+    title: "Notes",
+    components: [NewNotePlacementSection, NewFolderPlacementSection],
   },
 ];

@@ -4,31 +4,28 @@
     REOPEN_LAST_VIEW_NEEDS_REMEMBER,
     type ReopenLastViewOption,
   } from "./reopen-last-view-option";
+  import SettingRow from "./SettingRow.svelte";
 
   const { reopenLastView, remembered, onReopenLastViewChange }: ReopenLastViewOption =
     $props();
 
   const hintId = "reopen-last-view-hint";
+  const inputId = $props.id();
 </script>
 
-<label class="checkbox-field">
+<SettingRow
+  {hintId}
+  hint={remembered ? undefined : REOPEN_LAST_VIEW_NEEDS_REMEMBER}
+>
+  {#snippet label()}
+    <label for={inputId}>{REOPEN_LAST_VIEW_LABEL}</label>
+  {/snippet}
   <input
+    id={inputId}
     type="checkbox"
     checked={reopenLastView && remembered}
     disabled={!remembered}
     aria-describedby={remembered ? undefined : hintId}
     onchange={(event) => onReopenLastViewChange(event.currentTarget.checked)}
   />
-  {REOPEN_LAST_VIEW_LABEL}
-</label>
-{#if !remembered}
-  <p id={hintId} class="field-hint device-hint">
-    {REOPEN_LAST_VIEW_NEEDS_REMEMBER}
-  </p>
-{/if}
-
-<style>
-  .device-hint {
-    margin: 0;
-  }
-</style>
+</SettingRow>
