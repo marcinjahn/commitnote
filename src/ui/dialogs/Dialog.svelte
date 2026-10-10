@@ -206,6 +206,8 @@
   .dialog-card {
     --dialog-card-padding-top: var(--space-5);
     --dialog-card-padding-inline: var(--space-4);
+    --dialog-card-border: var(--hairline) solid
+      light-dark(var(--color-border), var(--color-border-strong));
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
@@ -214,7 +216,7 @@
     background: var(--color-surface-raised);
     color: var(--color-text);
     box-shadow: var(--shadow-3);
-    border: var(--hairline) solid light-dark(var(--color-border), var(--color-border-strong));
+    border: var(--dialog-card-border);
     border-bottom: none;
     border-radius: var(--radius) var(--radius) 0 0;
     padding: var(--dialog-card-padding-top) var(--dialog-card-padding-inline);
@@ -258,7 +260,7 @@
     width: 36px;
     height: 4px;
     transform: translateX(-50%);
-    background: var(--color-border-strong);
+    background: var(--color-accent-rule);
   }
 
   .dialog-header-status {
@@ -356,7 +358,7 @@
 
     .dialog-card {
       max-height: 80dvh;
-      border-bottom: var(--hairline) solid var(--color-border);
+      border-bottom: var(--dialog-card-border);
       border-radius: var(--radius);
       padding-bottom: var(--space-5);
     }
@@ -392,7 +394,7 @@
     .dialog-card.large {
       height: auto;
       max-height: 80dvh;
-      border: var(--hairline) solid light-dark(var(--color-border), var(--color-border-strong));
+      border: var(--dialog-card-border);
       border-radius: var(--radius);
       padding-top: var(--space-5);
     }

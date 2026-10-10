@@ -219,6 +219,11 @@
     padding: var(--space-2) var(--space-3) var(--space-2) var(--space-1);
     border-bottom: var(--hairline) solid var(--color-border);
     background: var(--color-background);
+    transition: border-bottom-color var(--motion-duration) var(--motion-easing);
+  }
+
+  :global(.note-pane:has(.cm-editor.cm-focused)) .note-header {
+    border-bottom-color: var(--color-accent-hairline);
   }
 
   .back-button {

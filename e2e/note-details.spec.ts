@@ -159,6 +159,55 @@ test("saving an edit keeps the cached dates until they refresh", async ({
   expect(texts.filter((text) => /^\d+ words?$/.test(text))).toEqual([]);
 });
 
+async function observeSettle(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const record = window as unknown as { settleCount: number };
+    record.settleCount = 0;
+    new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        const target = mutation.target as Element;
+        if (target.matches(".note-dates time") && target.hasAttribute("data-settle")) {
+          record.settleCount += 1;
+        }
+      }
+    }).observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-settle"],
+    });
+  });
+}
+
+function settleCount(page: Page): Promise<number> {
+  return page.evaluate(() => (window as unknown as { settleCount: number }).settleCount);
+}
+
+test("the updated time settles after a save", async ({ page }) => {
+  await startSession(page);
+  await treeItem(page, "Welcome").click();
+  await expect(details(page)).toContainText("Updated");
+  await observeSettle(page);
+
+  await typeAndSave(page, " more");
+  await expect.poll(() => settleCount(page), { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
+  await expect(details(page).locator("span.note-dates time").nth(1)).not.toHaveAttribute(
+    "data-settle",
+  );
+});
+
+test("switching notes does not settle the updated time", async ({ page }) => {
+  await startSession(page);
+  await treeItem(page, "Welcome").click();
+  await expect(details(page)).toContainText("Updated");
+  await observeSettle(page);
+
+  await treeItem(page, "Projects").click();
+  await treeItem(page, "commitnote").click();
+  await treeItem(page, "Roadmap").click();
+  await expect(details(page).locator("span.note-dates")).toBeVisible();
+  expect(await settleCount(page)).toBe(0);
+});
+
 test("a new note shows it is not saved yet until it is saved", async ({
   page,
 }) => {

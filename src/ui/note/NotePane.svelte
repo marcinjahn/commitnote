@@ -184,6 +184,7 @@
     display: flex;
     flex-direction: column;
     position: relative;
+    scrollbar-color: color-mix(in srgb, var(--color-accent) 25%, var(--color-border-strong)) transparent;
   }
 
   .held > :global(:not(.note-loading)) {

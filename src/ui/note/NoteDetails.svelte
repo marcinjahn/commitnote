@@ -12,6 +12,7 @@
   } from "../history/note-details-messages";
   import { createDatesGrace, type DetailsForm } from "./dates-grace";
   import { detailsFade } from "./details-fade";
+  import { createUpdatedSettle } from "./updated-settle";
 
   interface Props {
     text: string;
@@ -73,6 +74,15 @@
   });
   onDestroy(() => grace.dispose());
 
+  let settling = $state(false);
+  const updatedSettle = createUpdatedSettle({
+    clock: systemClock,
+    onSettle: (next) => {
+      settling = next;
+    },
+  });
+  onDestroy(() => updatedSettle.dispose());
+
   $effect.pre(() => {
     const input = { noteSwitch, notSaved, hasDates: dates !== null };
     const latestDates = dates;
@@ -86,6 +96,10 @@
       updating = true;
       grace.update(input);
       updating = false;
+      updatedSettle.update({
+        noteSwitch: input.noteSwitch,
+        updated: latestDates?.updated ?? null,
+      });
       if (switched) reserving = form !== "full";
       else if (form === "full") reserving = false;
     });
@@ -131,6 +145,7 @@
           title={describeDateTime(fullDates.created.at)}>{describeCreated(fullDates.created)}</time
         ><span aria-hidden="true">{" · "}</span><time
           datetime={new Date(fullDates.updated).toISOString()}
+          data-settle={settling ? "" : undefined}
           title={describeDateTime(fullDates.updated)}>{describeUpdated(fullDates.updated, now)}</time
         ><span aria-hidden="true">{" · "}</span></span
       >{describeWordCount(wordCount)}{@render sharedBadge()}</span
@@ -160,6 +175,15 @@
 
   .details-form {
     grid-area: 1 / 1;
+  }
+
+  .note-dates time {
+    transition: color 600ms var(--motion-easing);
+  }
+
+  .note-dates time[data-settle] {
+    color: var(--color-link);
+    transition: none;
   }
 
   .details-shared {

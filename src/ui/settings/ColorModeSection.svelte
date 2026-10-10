@@ -180,7 +180,7 @@
   }
 
   .mock-row.selected {
-    background: var(--color-selected);
+    background: var(--color-selected-accent);
     opacity: 1;
     box-shadow: inset 2px 0 0 var(--color-accent);
   }

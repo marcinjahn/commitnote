@@ -78,9 +78,12 @@
   }
 
   .synced,
-  .pending,
-  .syncing {
+  .pending {
     color: var(--color-text-muted);
+  }
+
+  .syncing {
+    color: color-mix(in srgb, var(--color-accent) 70%, var(--color-text-muted));
   }
 
   .failed,

@@ -19,4 +19,13 @@
     flex-shrink: 0;
     color: var(--color-text);
   }
+
+  .wordmark::after {
+    content: "";
+    display: inline-block;
+    width: 0.25em;
+    height: 0.25em;
+    margin-inline-start: 0.08em;
+    background: var(--color-accent);
+  }
 </style>

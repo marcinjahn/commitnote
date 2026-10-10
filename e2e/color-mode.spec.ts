@@ -316,6 +316,18 @@ test.describe("with notes open", () => {
     ).toEqual([]);
     expect(errors.filter((text) => !text.includes("frame-ancestors"))).toEqual([]);
   });
+
+  test("a dark dialog card draws its bottom border like its sides", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await treeItem(page, "Welcome").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Share…" }).click();
+    const card = page
+      .getByRole("dialog", { name: "Share “Welcome”" })
+      .locator(".dialog-card");
+    await expect(card).toHaveCSS("border-left-color", "rgb(110, 110, 110)");
+    await expect(card).toHaveCSS("border-bottom-width", "1px");
+    await expect(card).toHaveCSS("border-bottom-color", "rgb(110, 110, 110)");
+  });
 });
 
 test("login applies the repository's color mode at the passphrase step", async ({
