@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
+  import { setStandalone } from "../ui/standalone-context";
   import MarkdownEditor from "../ui/editor/MarkdownEditor.svelte";
   import Wordmark from "../ui/wordmark/Wordmark.svelte";
   import { livePreview } from "../editor/live-preview";
@@ -20,9 +21,12 @@
   interface Props {
     controller: ViewerController;
     testModeBanner: string | null;
+    standalone: boolean;
   }
 
-  const { controller, testModeBanner }: Props = $props();
+  const { controller, testModeBanner, standalone }: Props = $props();
+
+  setStandalone(untrack(() => standalone));
 
   let view = $state<ViewerState>({ kind: "loading" });
   let password = $state("");

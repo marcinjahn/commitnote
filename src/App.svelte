@@ -3,7 +3,6 @@
   import { removeLastView } from "./app/last-view";
   import { createAutoRefresh, type AutoRefresh } from "./app/auto-refresh";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
-  import { isStandalone } from "./app/display-mode";
   import { requestPersistentStorage } from "./app/persistent-storage";
   import type { AppUpdates } from "./app/app-updates";
   import { createUpdateGate, type UpdateGate } from "./app/update-gate";
@@ -94,6 +93,7 @@
   import { createDialogEntries } from "./ui/dialogs/dialog-entries";
   import { bindDialogHistory, type DialogHistory } from "./ui/dialogs/dialog-history";
   import { dialogStack } from "./ui/dialogs/dialog-stack";
+  import { setStandalone } from "./ui/standalone-context";
 
   interface Props {
     registry: ForgeRegistry;
@@ -102,6 +102,7 @@
     appUpdates: AppUpdates | null;
     install: InstallController;
     launchActions: LaunchActions;
+    standalone: boolean;
   }
 
   const {
@@ -111,7 +112,10 @@
     appUpdates,
     install,
     launchActions,
+    standalone,
   }: Props = $props();
+
+  setStandalone(untrack(() => standalone));
 
   let installState = $state(untrack(() => install.getState()));
   onMount(() => install.subscribe((state) => (installState = state)));
@@ -286,14 +290,7 @@
   ): Promise<void> {
     phase = { kind: "restoring" };
     const { remembered } = await store.start(session, { rememberMe });
-    if (
-      remembered &&
-      (!resumed ||
-        isStandalone({
-          matchMedia: (q) => window.matchMedia(q),
-          navigator: navigator as { standalone?: boolean },
-        }))
-    ) {
+    if (remembered && (!resumed || standalone)) {
       void requestPersistentStorage(navigator.storage);
     }
     const blobCache = await openSessionBlobCache({
