@@ -7,3 +7,8 @@ playwright-report
 blob-report
 playwright/.cache
 .fake-forge-build-fingerprint
+dist-desktop
+dist-desktop-fake
+dist-appimage
+src-tauri/target
+src-tauri/gen

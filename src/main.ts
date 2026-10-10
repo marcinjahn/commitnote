@@ -47,7 +47,7 @@ async function mountViewer(target: HTMLElement): Promise<void> {
   let readers: ShareReaders;
   let testModeBanner: string | null = null;
   let argon2id: Argon2idFunction = argon2idInWorker;
-  if (import.meta.env.MODE === "fake-forge") {
+  if (__FAKE_FORGE__) {
     const { FAKE_FORGE_BANNER } = await import(
       "./testing/fake-forge/fake-forge-factory"
     );
@@ -95,7 +95,9 @@ const standalone = isStandalone({
   navigator: navigator as { standalone?: boolean },
 });
 
-const appUpdates = import.meta.env.DEV ? null : startBrowserAppUpdates();
+const appUpdates = import.meta.env.DEV || __DESKTOP_SHELL__
+  ? null
+  : startBrowserAppUpdates();
 
 if (isShareHash(location.hash)) {
   await mountViewer(target);
@@ -103,7 +105,7 @@ if (isShareHash(location.hash)) {
 let registry: ForgeRegistry = forgeRegistry;
 let testModeBanner: string | null = null;
 let argon2id: Argon2idFunction | undefined;
-if (import.meta.env.MODE === "fake-forge") {
+if (__FAKE_FORGE__) {
   const fake = await import("./testing/fake-forge/fake-forge-factory");
   const {
     FAKE_FORGE_ARGON2_BINDING,
