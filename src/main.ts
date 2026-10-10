@@ -15,6 +15,7 @@ import { captureInstallEvents } from "./app/install-events";
 import { createBrowserInstallController } from "./app/install-controller";
 import { type LaunchQueueLike, startLaunchActions } from "./app/launch-action";
 import { clearLaunchAction } from "./app/note-navigation";
+import { startKeyboardInset } from "./ui/dialogs/keyboard-inset";
 import "./note-fonts.css";
 
 const target = document.getElementById("app");
@@ -23,6 +24,12 @@ if (!target) {
 }
 
 preventGestureZoom(document);
+
+startKeyboardInset({
+  viewport: window.visualViewport,
+  layoutHeight: () => document.documentElement.clientHeight,
+  target: document.documentElement,
+});
 
 const installEvents = captureInstallEvents(window);
 
