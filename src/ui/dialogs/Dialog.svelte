@@ -1,5 +1,7 @@
 <script lang="ts">
   import { tick, type Snippet } from "svelte";
+  import { MediaQuery } from "svelte/reactivity";
+  import { DESKTOP_MEDIA_QUERY } from "../browse/drag-motion";
   import { dialogStack } from "./dialog-stack";
   import { captureFocusReturn, returnFocus } from "./focus-return";
   import { swipeToClose } from "./swipe-to-close";
@@ -114,6 +116,28 @@
     };
   });
 
+  const desktopQuery = new MediaQuery(DESKTOP_MEDIA_QUERY);
+
+  $effect(() => {
+    const viewport = window.visualViewport;
+    if (!open || desktopQuery.current || viewport === null) return;
+    let frame = 0;
+    const reveal = (): void => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (active !== null && dialogEl?.contains(active)) {
+          active.scrollIntoView({ block: "nearest" });
+        }
+      });
+    };
+    viewport.addEventListener("resize", reveal);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", reveal);
+    };
+  });
+
   function handleClose(): void {
     if (dialogEl !== undefined) dialogStack.unregister(dialogEl);
   }
@@ -191,7 +215,7 @@
 <style>
   .dialog {
     position: fixed;
-    inset: auto 0 0 0;
+    inset: auto 0 var(--keyboard-inset, 0px) 0;
     margin: 0;
     width: 100%;
     max-width: 100%;
@@ -237,7 +261,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-    max-height: 90dvh;
+    max-height: calc(90dvh - var(--keyboard-inset, 0px));
     overflow: hidden;
     background: var(--color-surface-raised);
     color: var(--color-text);
@@ -328,13 +352,13 @@
   }
 
   .dialog.large {
-    height: 100dvh;
+    height: calc(100dvh - var(--keyboard-inset, 0px));
     max-height: none;
   }
 
   .dialog-card.large {
-    height: 100dvh;
-    max-height: 100dvh;
+    height: calc(100dvh - var(--keyboard-inset, 0px));
+    max-height: calc(100dvh - var(--keyboard-inset, 0px));
     border: none;
     border-radius: 0;
     --dialog-card-padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0px));
