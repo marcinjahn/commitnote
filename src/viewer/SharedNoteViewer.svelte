@@ -9,7 +9,7 @@
   import type { ViewerController, ViewerState } from "./viewer-state";
   import {
     describeViewerError,
-    FOOTER_TEXT,
+    footerText,
     LOADING_TEXT,
     PASSWORD_HEADING,
     UNLOCK_LABEL,
@@ -137,7 +137,7 @@
     {:else}
       <h1 class="visually-hidden">Shared note</h1>
       <div class="error-block" role="alert">
-        <p>{describeViewerError(view.error, view.provider)}</p>
+        <p>{describeViewerError(view.error, view.provider, standalone)}</p>
         {#if view.retryable}
           <button class="button" type="button" onclick={() => controller.retry()}>
             Try again
@@ -148,7 +148,7 @@
   </main>
 
   {#if view.kind === "note"}
-    <footer class="footer">{FOOTER_TEXT}</footer>
+    <footer class="footer">{footerText(standalone)}</footer>
   {/if}
 </div>
 

@@ -6,13 +6,18 @@ export const PASSWORD_HEADING = "This note is protected with a password";
 export const WRONG_PASSWORD_TEXT = "Wrong password";
 export const UNLOCK_LABEL = "Unlock";
 export const UNLOCKING_LABEL = "Unlocking…";
-export const FOOTER_TEXT = "End-to-end encrypted. Decrypted in your browser.";
-
 const PROVIDER_NAMES = { github: "GitHub", gitlab: "GitLab" } as const;
+
+export function footerText(standalone: boolean): string {
+  return standalone
+    ? "End-to-end encrypted. Decrypted on this device."
+    : "End-to-end encrypted. Decrypted in your browser.";
+}
 
 export function describeViewerError(
   error: ViewerErrorKind,
   provider: "github" | "gitlab" | null,
+  standalone: boolean,
 ): string {
   const host = provider ? PROVIDER_NAMES[provider] : "the host";
   switch (error) {
@@ -28,6 +33,8 @@ export function describeViewerError(
     case "server":
       return `${host} isn't responding right now. Try again in a moment.`;
     case "unsupported":
-      return "This browser can't open encrypted notes.";
+      return standalone
+        ? "This device can't open encrypted notes."
+        : "This browser can't open encrypted notes.";
   }
 }
