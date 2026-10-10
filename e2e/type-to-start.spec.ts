@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openNotes } from "./helpers";
+import { fakeForge, flushPendingSaves, openNotes } from "./helpers";
 import { closeSettings, openSettings } from "./helpers/settings";
 import { openWelcome, treeItem } from "./helpers/tree";
 
@@ -118,6 +118,7 @@ test.describe("on the empty note pane", () => {
     page,
   }) => {
     const before = await treeItemNames(page);
+    const commitsBefore = await fakeForge(page).commitCount();
     const settings = await openSettings(page);
     const checkbox = settings.getByRole("checkbox", {
       name: "Start a note by typing",
@@ -126,6 +127,8 @@ test.describe("on the empty note pane", () => {
 
     await checkbox.uncheck();
     await closeSettings(page);
+    await flushPendingSaves(page);
+    expect(await fakeForge(page).commitCount()).toBe(commitsBefore);
     await focusBody(page);
     await page.keyboard.type("x");
     await expectNoDraft(page, before);

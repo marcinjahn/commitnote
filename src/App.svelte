@@ -48,6 +48,7 @@
   import { createBrowserIndexerEnvironment } from "./search/indexer-environment";
   import { SETTINGS_SAVE_DEBOUNCE_MS, SETTINGS_SAVE_MAX_WAIT_MS } from "./sync/tuning";
   import { createSettingsSaver, type SettingsSaver } from "./settings/settings-saver";
+  import { createDeviceSettingsStore } from "./settings/device-settings-store";
   import type { SyncEngine } from "./sync/sync-engine";
   import type { Keyring } from "./crypto/keyring";
   import type { Argon2idFunction } from "./crypto/argon2";
@@ -177,6 +178,9 @@
   let uninstallBlobCachePurge: (() => void) | null = null;
   let unsubscribeStopped: (() => void) | null = null;
   let keyChanged = $state<{ readonly unsavedCount: number } | null>(null);
+
+  const deviceSettingsStore = createDeviceSettingsStore();
+  onMount(() => () => deviceSettingsStore.dispose());
 
   let reportedAccentColor = $state<AccentColorId>("system");
   const appliedAccentColor = $derived<AccentColorId>(
@@ -689,6 +693,7 @@
       unlock={boundUnlock}
       initialize={boundInitialize}
       onLoggedIn={handleLoggedIn}
+      {deviceSettingsStore}
       onAccentColor={(id) => (reportedAccentColor = id)}
       onColorMode={(id) => (reportedColorMode = id)}
     />
@@ -704,6 +709,7 @@
     engine={phase.engine}
     autoRefresh={phase.autoRefresh}
     settingsSaver={phase.settingsSaver}
+    {deviceSettingsStore}
     updateGate={phase.updateGate}
     {appUpdates}
     {install}

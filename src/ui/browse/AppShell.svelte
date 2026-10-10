@@ -22,6 +22,11 @@
     type SyncEngineState,
   } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
+  import type { DeviceSettingsStore } from "../../settings/device-settings-store";
+  import {
+    resolveEffectiveSettings,
+    routeSettingsEdits,
+  } from "../../settings/setting-scope";
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
   import { installSaveShortcut } from "../../app/save-shortcut";
@@ -34,12 +39,7 @@
     removeLastView,
     type LastView,
   } from "../../app/last-view";
-  import {
-    applySettingsEdits,
-    resolveSettings,
-    SETTINGS_SCHEMA,
-    type Settings,
-  } from "../../settings/settings";
+  import { applySettingsEdits, type Settings } from "../../settings/settings";
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { ColorModeId } from "../../settings/color-mode";
   import type { NoteFont } from "../../settings/note-font";
@@ -215,6 +215,7 @@
     engine: SyncEngine;
     autoRefresh: AutoRefresh;
     settingsSaver: SettingsSaver;
+    deviceSettingsStore: DeviceSettingsStore;
     updateGate: UpdateGate;
     appUpdates: AppUpdates | null;
     install: InstallController;
@@ -248,6 +249,7 @@
     engine,
     autoRefresh,
     settingsSaver,
+    deviceSettingsStore,
     updateGate,
     appUpdates,
     install,
@@ -293,6 +295,7 @@
         }),
   );
   let pendingSettingsEdits = $state(untrack(() => settingsSaver.pending));
+  let deviceSettings = $state.raw(untrack(() => deviceSettingsStore.read()));
   let mobileView = $state<"tree" | "note">("tree");
   let repoLabelEl = $state<HTMLSpanElement | null>(null);
   let repoLabelTruncated = $state(false);
@@ -757,25 +760,37 @@
   });
 
   $effect(() => {
+    deviceSettings = deviceSettingsStore.read();
+    return deviceSettingsStore.subscribe(() => {
+      deviceSettings = deviceSettingsStore.read();
+    });
+  });
+
+  $effect(() => {
     tabTitle.setUnsaved(
       engineState.syncStates.hasUnsaved || Object.keys(pendingSettingsEdits).length > 0,
     );
     return () => tabTitle.setUnsaved(false);
   });
 
-  const settings: Settings = $derived(
-    resolveSettings(
-      SETTINGS_SCHEMA,
-      applySettingsEdits(engineState.rawSettings, pendingSettingsEdits),
-    ),
+  const syncedRawSettings = $derived(
+    applySettingsEdits(engineState.rawSettings, pendingSettingsEdits),
   );
+  const effectiveSettings = $derived(
+    resolveEffectiveSettings(syncedRawSettings, deviceSettings),
+  );
+  const settings: Settings = $derived(effectiveSettings.settings);
 
   $effect(() => {
     onAccentColor(settings.accentColor);
   });
 
   $effect(() => {
-    if (engineState.synced !== null || pendingSettingsEdits.colorMode !== undefined)
+    if (
+      engineState.synced !== null ||
+      pendingSettingsEdits.colorMode !== undefined ||
+      effectiveSettings.scopes.colorMode === "device"
+    )
       onColorMode(settings.colorMode);
   });
 
@@ -808,7 +823,9 @@
   );
 
   function changeSettings(edits: Partial<Settings>): void {
-    settingsSaver.change(edits);
+    const { device, synced } = routeSettingsEdits(edits, effectiveSettings.scopes);
+    if (Object.keys(device).length > 0) deviceSettingsStore.writeValues(device);
+    if (Object.keys(synced).length > 0) settingsSaver.change(synced);
   }
 
   function openSettings(): void {
