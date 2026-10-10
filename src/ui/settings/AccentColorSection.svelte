@@ -4,20 +4,25 @@
     accentOption,
     type AccentOption,
   } from "../../settings/accent-palette";
+  import { getStandalone } from "../standalone-context";
   import { systemAccent } from "../system-accent.svelte";
   import ScopeToggle from "./ScopeToggle.svelte";
   import SettingRow from "./SettingRow.svelte";
+  import { describeSystemAccent } from "./settings-messages";
   import type { SettingsSectionProps } from "./settings-sections";
 
   const { settings, changeSettings, scopes, changeSettingScope }: SettingsSectionProps = $props();
 
+  const standalone = getStandalone();
   const descriptionId = $props.id();
 
   const systemOption = $derived(accentOption(systemAccent().id));
   const systemDescription = $derived(
-    systemAccent().fromOs
-      ? `${systemOption.label}, closest to your OS accent color`
-      : `${systemOption.label}, because the browser doesn't share your OS accent color`,
+    describeSystemAccent({
+      label: systemOption.label,
+      fromOs: systemAccent().fromOs,
+      standalone,
+    }),
   );
 
   const selected = $derived(accentOption(settings.accentColor));

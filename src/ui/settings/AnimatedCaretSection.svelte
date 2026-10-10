@@ -1,19 +1,19 @@
 <script lang="ts">
+  import { getStandalone } from "../standalone-context";
   import ScopeToggle from "./ScopeToggle.svelte";
   import SettingRow from "./SettingRow.svelte";
+  import { animatedCaretHint } from "./settings-messages";
   import type { SettingsSectionProps } from "./settings-sections";
 
   const { settings, changeSettings, scopes, changeSettingScope }: SettingsSectionProps =
     $props();
 
+  const standalone = getStandalone();
   const hintId = "animated-caret-hint";
   const inputId = $props.id();
 </script>
 
-<SettingRow
-  {hintId}
-  hint="A thicker accent caret that blinks softly and tints the letters just before it. Turn it off for the browser’s standard caret."
->
+<SettingRow {hintId} hint={animatedCaretHint(standalone)}>
   {#snippet label()}
     <label for={inputId}>Animated caret</label>
   {/snippet}
