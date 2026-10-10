@@ -2,10 +2,10 @@
   import {
     REOPEN_LAST_VIEW_LABEL,
     REOPEN_LAST_VIEW_NEEDS_REMEMBER,
-    type DeviceSettings,
-  } from "./device-settings";
+    type ReopenLastViewOption,
+  } from "./reopen-last-view-option";
 
-  const { reopenLastView, remembered, onReopenLastViewChange }: DeviceSettings =
+  const { reopenLastView, remembered, onReopenLastViewChange }: ReopenLastViewOption =
     $props();
 
   const hintId = "reopen-last-view-hint";

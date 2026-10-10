@@ -1,4 +1,4 @@
-export interface DeviceSettings {
+export interface ReopenLastViewOption {
   readonly reopenLastView: boolean;
   readonly remembered: boolean;
   readonly onReopenLastViewChange: (on: boolean) => void;

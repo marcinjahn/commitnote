@@ -2,7 +2,7 @@
   import type { Settings } from "../../settings/settings";
   import type { SyncState } from "../../sync/sync-state";
   import SettingsSaveStatus from "../settings/SettingsSaveStatus.svelte";
-  import type { DeviceSettings } from "../settings/device-settings";
+  import type { ReopenLastViewOption } from "../settings/reopen-last-view-option";
   import DataSecuritySection from "../settings/DataSecuritySection.svelte";
   import type { DataSecurityActions } from "../settings/data-security-actions";
   import ThisDeviceSection from "../settings/ThisDeviceSection.svelte";
@@ -13,7 +13,7 @@
     settings: Settings;
     changeSettings: (edits: Partial<Settings>) => void;
     saveState: SyncState;
-    device: DeviceSettings;
+    device: ReopenLastViewOption;
     dataSecurity: DataSecurityActions;
     onRetry: () => void;
     onClose: () => void;
