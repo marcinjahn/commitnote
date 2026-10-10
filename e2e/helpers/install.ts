@@ -40,7 +40,23 @@ export async function announceInstalled(page: Page): Promise<void> {
   await page.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
 }
 
-export async function emulateStandalone(page: Page): Promise<void> {
+export async function emulateStandalone(
+  page: Page,
+  platform: "display-mode" | "ios" = "display-mode",
+): Promise<void> {
+  if (platform === "ios") {
+    await page.addInitScript((userAgent) => {
+      Object.defineProperty(Navigator.prototype, "standalone", {
+        get: () => true,
+        configurable: true,
+      });
+      Object.defineProperty(Navigator.prototype, "userAgent", {
+        get: () => userAgent,
+        configurable: true,
+      });
+    }, IPHONE_USER_AGENT);
+    return;
+  }
   await page.addInitScript(() => {
     const original = window.matchMedia.bind(window);
     window.matchMedia = (query: string) => {

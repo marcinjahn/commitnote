@@ -34,6 +34,7 @@
   import type { DeviceSettingsStore } from "../../settings/device-settings-store";
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { ColorModeId } from "../../settings/color-mode";
+  import { getStandalone } from "../standalone-context";
   import UnlockForm from "./UnlockForm.svelte";
   import CreateNotesRepoForm from "./CreateNotesRepoForm.svelte";
   import Wordmark from "../wordmark/Wordmark.svelte";
@@ -147,6 +148,7 @@
   let passphrase = $state("");
   let repeatedPassphrase = $state("");
   let passphrasesDiffer = $state(false);
+  const standalone = getStandalone();
   let rememberMe = $state(false);
   let submitting = $state(false);
   let step = $state<LoginStep | null>(null);
@@ -301,7 +303,7 @@
       onLoggedIn({
         session: result.session,
         adapter: result.adapter,
-        rememberMe,
+        rememberMe: standalone || rememberMe,
       });
       return;
     }
@@ -373,21 +375,25 @@
 {/snippet}
 
 {#snippet passphraseFormFooter()}
-  <div>
-    <label class="checkbox-field">
-      <input
-        type="checkbox"
-        bind:checked={rememberMe}
-        disabled={submitting}
-        aria-describedby="login-remember-me-hint"
-      />
-      Remember me
-    </label>
-    <p id="login-remember-me-hint" class="field-hint">
-      Keeps your access token and keys in this browser until you log out. Use
-      only on your own device.
-    </p>
-  </div>
+  {#if standalone}
+    <p class="field-hint">You stay logged in on this device until you log out.</p>
+  {:else}
+    <div>
+      <label class="checkbox-field">
+        <input
+          type="checkbox"
+          bind:checked={rememberMe}
+          disabled={submitting}
+          aria-describedby="login-remember-me-hint"
+        />
+        Remember me
+      </label>
+      <p id="login-remember-me-hint" class="field-hint">
+        Keeps your access token and keys in this browser until you log out. Use
+        only on your own device.
+      </p>
+    </div>
+  {/if}
 
   {#if submitting}
     {@render progress(describeLoginStep(step ?? "derivingKeys"))}
