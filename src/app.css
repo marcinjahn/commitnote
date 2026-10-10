@@ -125,6 +125,10 @@
 
   --motion-duration: 140ms;
   --motion-easing: cubic-bezier(0.2, 0, 0, 1);
+  --sheet-enter-duration: 300ms;
+  --sheet-enter-easing: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --sheet-exit-duration: 200ms;
+  --sheet-exit-easing: cubic-bezier(0.3, 0, 0.8, 0.15);
   --hairline: 1px;
 
   --touch-target: 44px;
@@ -539,7 +543,8 @@ textarea:focus-visible,
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
-  *::after {
+  *::after,
+  ::backdrop {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

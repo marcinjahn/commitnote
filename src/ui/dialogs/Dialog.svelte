@@ -224,14 +224,14 @@
     background: transparent;
     color: inherit;
     /* the card scrolls its own body; a scrolling <dialog> would flash a
-       scrollbar while the opening translateY pushes the card past its box */
+       scrollbar while the sheet slides in from below its box */
     overflow: visible;
   }
 
   .dialog::backdrop {
     background: var(--color-backdrop);
     opacity: calc(1 - var(--swipe-progress, 0));
-    transition: opacity var(--motion-duration) var(--motion-easing);
+    transition: opacity var(--sheet-enter-duration) var(--motion-easing);
   }
 
   .dialog:global([data-swipe="dragging"])::backdrop,
@@ -272,14 +272,15 @@
     padding: var(--dialog-card-padding-top) var(--dialog-card-padding-inline);
     padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
     transition:
-      opacity var(--motion-duration) var(--motion-easing),
+      translate var(--sheet-enter-duration) var(--sheet-enter-easing),
       transform var(--motion-duration) var(--motion-easing);
   }
 
-  @starting-style {
-    .dialog[open] .dialog-card {
-      opacity: 0;
-      transform: translateY(var(--space-2));
+  @media (max-width: 767.98px) {
+    @starting-style {
+      .dialog[open] .dialog-card {
+        translate: 0 calc(100% + var(--keyboard-inset, 0px));
+      }
     }
   }
 
@@ -399,6 +400,23 @@
   }
 
   @media (min-width: 768px) {
+    .dialog::backdrop {
+      transition: opacity var(--motion-duration) var(--motion-easing);
+    }
+
+    .dialog-card {
+      transition:
+        opacity var(--motion-duration) var(--motion-easing),
+        transform var(--motion-duration) var(--motion-easing);
+    }
+
+    @starting-style {
+      .dialog[open] .dialog-card {
+        opacity: 0;
+        transform: translateY(var(--space-2));
+      }
+    }
+
     .dialog {
       position: fixed;
       inset: 0;
