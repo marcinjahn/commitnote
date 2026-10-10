@@ -37,11 +37,23 @@ test.describe("scroll", () => {
       );
     }, `\n${lines.join("\n")}`);
 
-    await noteContent(page).evaluate((el) => {
-      el.scrollTop = el.scrollHeight;
-    });
-    await expect.poll(() => scrollTop(page)).toBeGreaterThan(0);
+    await expect
+      .poll(() =>
+        noteContent(page).evaluate(async (el) => {
+          const height = el.scrollHeight;
+          el.scrollTop = height;
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          );
+          return (
+            el.scrollHeight === height &&
+            Math.abs(el.scrollTop + el.clientHeight - el.scrollHeight) <= 1
+          );
+        }),
+      )
+      .toBe(true);
     const left = await scrollTop(page);
+    expect(left).toBeGreaterThan(0);
 
     await treeItem(page, "Zażółć gęślą jaźń").click();
     await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
