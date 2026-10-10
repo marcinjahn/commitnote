@@ -107,7 +107,7 @@
 
   @media (min-width: 768px) {
     .setting-option {
-      min-height: 40px;
+      min-height: var(--option-row-height);
     }
   }
 

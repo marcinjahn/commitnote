@@ -65,7 +65,7 @@
 
   @media (min-width: 768px) {
     .segment {
-      min-height: 32px;
+      min-height: var(--control-height-compact);
     }
   }
 

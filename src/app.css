@@ -128,6 +128,8 @@
   --hairline: 1px;
 
   --touch-target: 44px;
+  --control-height-compact: 32px;
+  --option-row-height: 40px;
   --icon-size: 16px;
   --icon-stroke: 1.5;
   --checkbox-size: 20px;
