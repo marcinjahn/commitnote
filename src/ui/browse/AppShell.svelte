@@ -1,11 +1,16 @@
 <script lang="ts">
-  import { tick, untrack } from "svelte";
+  import { onDestroy, tick, untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
   import type { HeldConflict, SyncEngine, SyncEngineState } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
+  import {
+    createLastViewStore,
+    removeLastView,
+    type LastView,
+  } from "../../app/last-view";
   import {
     applySettingsEdits,
     resolveSettings,
@@ -25,7 +30,11 @@
     describeRestored,
     UNSAVED_BEFORE_RESTORE_MESSAGE,
   } from "../history/history-messages";
-  import { findWorkingNode, type WorkingFolder } from "../../sync/working-tree";
+  import {
+    findWorkingFolder,
+    findWorkingNode,
+    type WorkingFolder,
+  } from "../../sync/working-tree";
   import { findNode } from "../../tree/note-tree";
   import NoteHistoryDialog, {
     type HistoryPhase,
@@ -144,6 +153,8 @@
   } from "./drag-motion";
   import { playViewSlide } from "../note/switch-motion-driver";
   import { trashReveal } from "./trash-reveal";
+  import { createTreeExpansion } from "./tree-expansion.svelte";
+  import { createNoteNavigation, type NavigationEntry } from "../../app/note-navigation";
   import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
 
   interface Props {
@@ -158,6 +169,9 @@
     shareService: ShareService;
     forgeId: ForgeId;
     noteDatesResolver: NoteDatesResolver;
+    keyring: Keyring;
+    repoKey: string;
+    sessionRemembered: boolean;
     initialMessage?: Pick<ToastMessage, "tone" | "text"> | null;
     onPassphraseChanged: (
       keyring: Keyring,
@@ -183,6 +197,9 @@
     shareService,
     forgeId,
     noteDatesResolver,
+    keyring,
+    repoKey,
+    sessionRemembered,
     initialMessage = null,
     onPassphraseChanged,
     onLogOut,
@@ -282,6 +299,26 @@
   let dialog = $state<DialogState>({ kind: "none" });
   let nameError = $state<string | null>(null);
   let nameResetKey = $state(0);
+  const treeExpansion = createTreeExpansion();
+  const lastViewStore = untrack(() => {
+    if (!sessionRemembered) removeLastView(repoKey);
+    return createLastViewStore({ repoKey, keyring });
+  });
+  onDestroy(() => lastViewStore.dispose());
+  const navigation = untrack(() =>
+    createNoteNavigation({
+      keyring,
+      history: window.history,
+      location: window.location,
+      events: window,
+      onPopState: handlePopState,
+    }),
+  );
+  onDestroy(() => navigation.dispose());
+  const initialEntry = navigation.initial();
+  let reopenLastView = $state(
+    untrack(() => sessionRemembered && lastViewStore.isEnabled()),
+  );
   let expandRequest = $state<{ readonly path: NotePath } | null>(null);
   let draft = $state<NoteDraft | null>(null);
   let draftError = $state<string | null>(null);
@@ -512,6 +549,80 @@
   const treeLoading = $derived(engineState.synced === null && engineState.refresh.inFlight);
   const trashEntries = $derived(engineState.visibleTrash ?? []);
   const selectedPath = $derived(engineState.openNote?.path ?? null);
+
+  function currentLastView(): LastView {
+    const kind = engineState.openNote?.kind;
+    const note = kind === "loaded" || kind === "loading" ? openPath : null;
+    const folders =
+      tree === null
+        ? []
+        : treeExpansion
+            .expandedPaths()
+            .filter((path) => findWorkingFolder(tree, path) !== undefined);
+    return { note, folders };
+  }
+
+  function handleReopenLastViewChange(on: boolean): void {
+    if (!sessionRemembered) return;
+    lastViewStore.setEnabled(on, currentLastView());
+    reopenLastView = on;
+  }
+
+  function openRestoredNote(path: NotePath): Promise<void> {
+    if (path.length > 1) expandFolder(parentPath(path));
+    return showNote(path);
+  }
+
+  async function restoreLastView(): Promise<void> {
+    const entry = await initialEntry;
+    const view =
+      sessionRemembered && reopenLastView ? await lastViewStore.load() : null;
+    const current = tree;
+    if (current === null) return;
+    for (const folder of view?.folders ?? []) {
+      if (findWorkingFolder(current, folder) !== undefined) {
+        treeExpansion.setExpanded(folder, true);
+      }
+    }
+    if (engineState.openNote !== null || draft !== null) return;
+    if (entry.kind === "note") {
+      if (findWorkingNode(current, entry.path)?.kind === "note") {
+        await openRestoredNote(entry.path);
+      } else {
+        navigation.replace({ kind: "none" });
+      }
+      return;
+    }
+    const note = view?.note ?? null;
+    if (note !== null && findWorkingNode(current, note)?.kind === "note") {
+      navigation.replace({ kind: "note", path: note });
+      await openRestoredNote(note);
+    }
+  }
+
+  let restoreStarted = false;
+  let lastViewRestored = false;
+  $effect(() => {
+    if (tree === null || restoreStarted) return;
+    restoreStarted = true;
+    void untrack(restoreLastView)
+      .catch(() => {})
+      .finally(() => {
+        lastViewRestored = true;
+        saveLastView();
+      });
+  });
+
+  function saveLastView(): void {
+    if (lastViewRestored && reopenLastView && sessionRemembered) {
+      lastViewStore.save(currentLastView());
+    }
+  }
+
+  $effect(() => {
+    currentLastView();
+    saveLastView();
+  });
   const conflictPaths = $derived(engineState.conflicts.map((held) => held.path));
   const refreshing = $derived(engineState.refresh.inFlight);
   const head = $derived(engineState.synced?.head ?? null);
@@ -882,6 +993,11 @@
   }
 
   function handleSelect(path: NotePath): Promise<void> {
+    navigation.push({ kind: "note", path });
+    return showNote(path);
+  }
+
+  function showNote(path: NotePath): Promise<void> {
     const open = engineState.openNote;
     if (
       draft === null &&
@@ -930,6 +1046,75 @@
     mobileView = "tree";
   }
 
+  function handleHeaderBack(): void {
+    if (navigation.canGoBack()) {
+      navigation.back();
+      return;
+    }
+    handleBack();
+    navigation.replace({ kind: "none" });
+  }
+
+  function showNone(): void {
+    leaveDraft();
+    mobileView = "tree";
+    if (!isNarrowLayout() && engineState.openNote !== null) {
+      noteSwitch += 1;
+      void engine.openNote(null);
+    }
+  }
+
+  function handlePopState(entry: NavigationEntry): void {
+    if (entry.kind === "note") {
+      if (tree !== null && findWorkingNode(tree, entry.path)?.kind === "note") {
+        if (entry.path.length > 1) expandFolder(parentPath(entry.path));
+        void showNote(entry.path);
+        return;
+      }
+      navigation.replace({ kind: "none" });
+    } else if (entry.kind === "draft") {
+      navigation.replace({ kind: "none" });
+    }
+    showNone();
+  }
+
+  let navigatedOpenPath: NotePath | null = null;
+  let navigatedOpenKind: string | null = null;
+  $effect(() => {
+    const path = engineState.openNote?.path ?? null;
+    const kind = engineState.openNote?.kind ?? null;
+    const samePath =
+      path === null || navigatedOpenPath === null
+        ? path === navigatedOpenPath
+        : notePathEquals(path, navigatedOpenPath);
+    if (samePath && kind === navigatedOpenKind) return;
+    const previousPath = navigatedOpenPath;
+    const previousKind = navigatedOpenKind;
+    navigatedOpenPath = path;
+    navigatedOpenKind = kind;
+    if (path === null) return;
+    untrack(() => {
+      const current = navigation.current();
+      const currentIsOpen =
+        current.kind === "note" && notePathEquals(current.path, path);
+      const urlStandsForNote =
+        current.kind === "draft" ||
+        (previousKind === "missing" && (!isNarrowLayout() || mobileView === "note")) ||
+        (current.kind === "note" &&
+          previousPath !== null &&
+          notePathEquals(current.path, previousPath));
+      if (
+        (kind === "loaded" || kind === "loading") &&
+        !currentIsOpen &&
+        urlStandsForNote
+      ) {
+        navigation.replace({ kind: "note", path });
+      } else if (kind === "missing" && currentIsOpen) {
+        navigation.replace({ kind: "none" });
+      }
+    });
+  });
+
   function handleLogOut(): void {
     leaveDraft();
     onLogOut();
@@ -947,6 +1132,7 @@
   function startDraft(parent: NotePath): void {
     tagFilter = null;
     leaveDraft();
+    navigation.push({ kind: "draft" });
     noteSwitch += 1;
     void engine.openNote(null);
     draft = { parent, name: "" };
@@ -1761,6 +1947,7 @@
       {selectedPath}
       syncStates={engineState.syncStates}
       {expandRequest}
+      expansion={treeExpansion}
       conflicts={conflictPaths}
       onSelect={handleSelect}
       onPlace={handlePlace}
@@ -1851,7 +2038,7 @@
           onNameEscape={handleNameEscape}
           onNameEnterDone={handleNameEnterDone}
           onNameInput={handleDraftNameInput}
-          onBack={handleBack}
+          onBack={handleHeaderBack}
         />
       {:else if engineState.openNote !== null}
         <NoteHeader
@@ -1868,7 +2055,7 @@
           onNameCommit={handleNameCommit}
           onNameEscape={handleNameEscape}
           onNameEnterDone={handleNameEnterDone}
-          onBack={handleBack}
+          onBack={handleHeaderBack}
           onHistory={() => void openHistory()}
           historyDisabled={engineState.openNote.kind === "missing" ||
             engineState.openNote.kind === "failed"}
@@ -2009,6 +2196,11 @@
     {settings}
     {changeSettings}
     saveState={settingsSave}
+    device={{
+      reopenLastView,
+      remembered: sessionRemembered,
+      onReopenLastViewChange: handleReopenLastViewChange,
+    }}
     onRetry={() => engine.retryNow()}
     onClose={() => {
       settingsSaver.flush();

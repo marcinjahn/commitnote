@@ -2,6 +2,8 @@
   import type { Settings } from "../../settings/settings";
   import type { SyncState } from "../../sync/sync-state";
   import SettingsSaveStatus from "../settings/SettingsSaveStatus.svelte";
+  import type { DeviceSettings } from "../settings/device-settings";
+  import ThisDeviceSection from "../settings/ThisDeviceSection.svelte";
   import { SETTINGS_SECTIONS } from "../settings/settings-sections";
   import Dialog from "./Dialog.svelte";
 
@@ -9,6 +11,7 @@
     settings: Settings;
     changeSettings: (edits: Partial<Settings>) => void;
     saveState: SyncState;
+    device: DeviceSettings;
     onRetry: () => void;
     onClose: () => void;
   }
@@ -17,6 +20,7 @@
     settings,
     changeSettings,
     saveState,
+    device,
     onRetry,
     onClose,
   }: Props = $props();
@@ -31,6 +35,8 @@
       <h3 class="settings-section-title">{section.title}</h3>
       <section.component {settings} {changeSettings} />
     {/each}
+    <h3 class="settings-section-title">This device</h3>
+    <ThisDeviceSection {...device} />
   {/snippet}
 </Dialog>
 

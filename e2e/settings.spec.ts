@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, showTree, fakeForge, expectFamily, expectedFamily, flushPendingSaves, expectSettingsIdle, MONO_STACK, SERIF_STACK } from "./helpers";
+import { chooseRepository, expectTree, logIn, SAMPLE, openNotes, logOut, showTree, fakeForge, expectFamily, expectedFamily, flushPendingSaves, expectSettingsIdle, MONO_STACK, SERIF_STACK } from "./helpers";
 import { chooseAccent, chooseOption, closeSettings, openSettings, rootAccent, settingsDialog, collectFontFiles } from "./helpers/settings";
 import { openWelcome } from "./helpers/tree";
 
@@ -1005,4 +1005,102 @@ test("the font picker keeps its layout while the fonts are still downloading", {
   releaseFonts();
   await waitForAllNoteFonts(page);
   expect(await pickerLayout(page)).toEqual(before);
+});
+
+const REOPEN = "Reopen the last note and folders";
+const NEEDS_REMEMBER = "Needs “Remember me” when you log in.";
+
+function lastViewKeys(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Object.keys(localStorage).filter((key) => key.startsWith("commitnote.lastView.")),
+  );
+}
+
+test.describe("this device", () => {
+  test("is listed with an enabled, unchecked checkbox in a remembered session", async ({ page }) => {
+    const dialog = await openSettings(page);
+
+    await expect(dialog.getByRole("heading", { name: "This device" })).toBeVisible();
+    const checkbox = dialog.getByRole("checkbox", { name: REOPEN, exact: true });
+    await expect(checkbox).toBeVisible();
+    await expect(checkbox).toBeEnabled();
+    await expect(checkbox).not.toBeChecked();
+    await expect(dialog.getByText(NEEDS_REMEMBER)).toHaveCount(0);
+  });
+
+  test("stays checked after reloading", async ({ page }) => {
+    let dialog = await openSettings(page);
+    await dialog.getByRole("checkbox", { name: REOPEN, exact: true }).check();
+    await closeSettings(page);
+
+    await page.goto("/");
+    await expectTree(page);
+    dialog = await openSettings(page);
+    await expect(dialog.getByRole("checkbox", { name: REOPEN, exact: true })).toBeChecked();
+  });
+
+  test("leaves nothing stored once turned off", async ({ page }) => {
+    const dialog = await openSettings(page);
+    const checkbox = dialog.getByRole("checkbox", { name: REOPEN, exact: true });
+    await checkbox.check();
+    await expect.poll(() => lastViewKeys(page)).toHaveLength(1);
+
+    await checkbox.uncheck();
+    await expect.poll(() => lastViewKeys(page)).toEqual([]);
+  });
+
+  test("stores no note or folder names", async ({ page }) => {
+    const dialog = await openSettings(page);
+    await dialog.getByRole("checkbox", { name: REOPEN, exact: true }).check();
+
+    await expect.poll(() => lastViewKeys(page)).toHaveLength(1);
+    const stored = await page.evaluate(() =>
+      Object.entries(localStorage)
+        .filter(([key]) => key.startsWith("commitnote.lastView."))
+        .map(([, value]) => value)
+        .join("\n"),
+    );
+    for (const name of ["Welcome", "Projects", "Zażółć"]) {
+      expect(stored).not.toContain(name);
+    }
+  });
+
+  test("is disabled with a hint without Remember me", async ({ page }) => {
+    await logOut(page);
+    await expect(page.getByLabel("Access token")).toBeVisible();
+    await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
+    await expectTree(page);
+    const dialog = await openSettings(page);
+
+    const checkbox = dialog.getByRole("checkbox", { name: REOPEN, exact: true });
+    await expect(checkbox).toBeDisabled();
+    await expect(checkbox).not.toBeChecked();
+    await expect(dialog.getByText(NEEDS_REMEMBER)).toBeVisible();
+    expect(await lastViewKeys(page)).toEqual([]);
+  });
+
+  test("is removed on log out", async ({ page }) => {
+    const dialog = await openSettings(page);
+    await dialog.getByRole("checkbox", { name: REOPEN, exact: true }).check();
+    await expect.poll(() => lastViewKeys(page)).toHaveLength(1);
+    await closeSettings(page);
+
+    await logOut(page);
+    await expect(page.getByLabel("Access token")).toBeVisible();
+    expect(await lastViewKeys(page)).toEqual([]);
+  });
+
+  test("shows the section and the disabled hint on mobile", { tag: "@mobile" }, async ({ page }) => {
+    await logOut(page);
+    await expect(page.getByLabel("Access token")).toBeVisible();
+    await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
+    await expectTree(page);
+    const dialog = await openSettings(page);
+
+    const hint = dialog.getByText(NEEDS_REMEMBER);
+    await hint.scrollIntoViewIfNeeded();
+    await expect(dialog.getByRole("heading", { name: "This device" })).toBeVisible();
+    await expect(dialog.getByRole("checkbox", { name: REOPEN, exact: true })).toBeDisabled();
+    await expect(hint).toBeVisible();
+  });
 });
