@@ -26,6 +26,9 @@
   import {
     resolveEffectiveSettings,
     routeSettingsEdits,
+    switchSettingScope,
+    type SettingScope,
+    type SwitchableSettingKey,
   } from "../../settings/setting-scope";
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
@@ -39,7 +42,12 @@
     removeLastView,
     type LastView,
   } from "../../app/last-view";
-  import { applySettingsEdits, type Settings } from "../../settings/settings";
+  import {
+    applySettingsEdits,
+    resolveSettings,
+    SETTINGS_SCHEMA,
+    type Settings,
+  } from "../../settings/settings";
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { ColorModeId } from "../../settings/color-mode";
   import type { NoteFont } from "../../settings/note-font";
@@ -826,6 +834,21 @@
     const { device, synced } = routeSettingsEdits(edits, effectiveSettings.scopes);
     if (Object.keys(device).length > 0) deviceSettingsStore.writeValues(device);
     if (Object.keys(synced).length > 0) settingsSaver.change(synced);
+  }
+
+  function changeSettingScope(
+    key: SwitchableSettingKey,
+    to: SettingScope,
+  ): void {
+    const syncedResolved = resolveSettings(SETTINGS_SCHEMA, syncedRawSettings);
+    const { deviceValue, syncedEdits } = switchSettingScope(
+      key,
+      to,
+      settings,
+      syncedResolved,
+    );
+    if (Object.keys(syncedEdits).length > 0) settingsSaver.change(syncedEdits);
+    deviceSettingsStore.setScope(key, to, deviceValue);
   }
 
   function openSettings(): void {
@@ -2691,6 +2714,8 @@
   <SettingsDialog
     {settings}
     {changeSettings}
+    scopes={effectiveSettings.scopes}
+    {changeSettingScope}
     saveState={settingsSave}
     device={{
       reopenLastView,

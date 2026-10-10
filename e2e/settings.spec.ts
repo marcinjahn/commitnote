@@ -1185,6 +1185,113 @@ test("closing Change passphrase with Escape keeps Settings open and refocuses it
   ).toBeFocused();
 });
 
+test.describe("setting scope", () => {
+  function scopeToggle(dialog: Locator, label: string): Locator {
+    return dialog.getByRole("button", { name: `${label} only on this device` });
+  }
+
+  function storedDevice(page: Page) {
+    return page.evaluate(() =>
+      JSON.parse(localStorage.getItem("commitnote.deviceSettings") ?? "{}"),
+    );
+  }
+
+  test("shows the scopes by default and the toggles are reachable by keyboard", async ({
+    page,
+  }) => {
+    const dialog = await openSettings(page);
+
+    await expect(
+      dialog.getByText("Settings apply to all your devices unless marked This device."),
+    ).toBeVisible();
+    for (const label of ["Vim mode", "Start a note by typing"]) {
+      const toggle = scopeToggle(dialog, label);
+      await expect(toggle).toHaveAttribute("aria-pressed", "true");
+      await expect(toggle).toHaveText("This device");
+    }
+    const accent = scopeToggle(dialog, "Accent color");
+    await expect(accent).toHaveAttribute("aria-pressed", "false");
+    await expect(accent).toHaveText("All devices");
+    await expect(dialog.getByRole("button", { name: /New notes only/ })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: /New folders only/ })).toHaveCount(0);
+
+    await dialog.getByRole("checkbox", { name: "Vim mode" }).focus();
+    await page.keyboard.press("Tab");
+    await expect(scopeToggle(dialog, "Vim mode")).toBeFocused();
+  });
+
+  test("switching scope keeps the value and only commits when switching back", async ({
+    page,
+  }) => {
+    const dialog = await openSettings(page);
+    const before = await fakeForge(page).commitMessages();
+    await chooseAccent(page, "Teal");
+    await expectSettingsCommits(page, before.length + 1);
+    const afterTeal = await fakeForge(page).commitMessages();
+
+    await scopeToggle(dialog, "Accent color").click();
+
+    await expect(scopeToggle(dialog, "Accent color")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(
+      dialog
+        .getByRole("radiogroup", { name: "Accent color" })
+        .getByRole("radio", { name: "Teal", exact: true }),
+    ).toBeChecked();
+    await expect
+      .poll(() => storedDevice(page))
+      .toMatchObject({
+        scopes: { accentColor: "device" },
+        values: { accentColor: "teal" },
+      });
+    await flushPendingSaves(page);
+    expect(await fakeForge(page).commitCount()).toBe(afterTeal.length);
+
+    await chooseAccent(page, "Violet");
+    await expectRootAccent(page, VIOLET);
+    await flushPendingSaves(page);
+    expect(await fakeForge(page).commitCount()).toBe(afterTeal.length);
+
+    await scopeToggle(dialog, "Accent color").click();
+    await flushPendingSaves(page);
+    await expectSettingsCommits(page, afterTeal.length + 1);
+    const [latest] = await fakeForge(page).commitMessages();
+    const trailers = latest.split("\n").filter((l) => l.startsWith("Commitnote-Settings"));
+    expect(trailers).toEqual(["Commitnote-Settings: accentColor"]);
+    await expectRootAccent(page, VIOLET);
+
+    const afterBack = await fakeForge(page).commitMessages();
+    await scopeToggle(dialog, "Animated caret").click();
+    await scopeToggle(dialog, "Animated caret").click();
+    await expect(scopeToggle(dialog, "Animated caret")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await flushPendingSaves(page);
+    expect(await fakeForge(page).commitCount()).toBe(afterBack.length);
+  });
+
+  test("a device color mode applies on the passphrase step", async ({ page }) => {
+    const dialog = await openSettings(page);
+    await scopeToggle(dialog, "Color mode").click();
+    await chooseOption(page, "Color mode", "Dark");
+    await closeSettings(page);
+
+    await logOut(page);
+    await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
+    await chooseRepository(page, { repo: SAMPLE.repo });
+    await expect(page.getByLabel("Passphrase", { exact: true })).toBeVisible();
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.documentElement.dataset.colorMode),
+      )
+      .toBe("dark");
+  });
+});
+
 test.describe("forced colours", () => {
   test.skip(({ isMobile }) => isMobile, "desktop only");
 
