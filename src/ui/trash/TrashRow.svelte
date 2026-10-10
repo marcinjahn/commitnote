@@ -134,8 +134,10 @@
     cursor: pointer;
   }
 
-  button.trash-row-main:hover {
-    background: var(--color-hover);
+  @media (hover: hover) {
+    button.trash-row-main:hover {
+      background: var(--color-hover);
+    }
   }
 
   .trash-row-text {
@@ -176,8 +178,10 @@
     gap: var(--space-1);
   }
 
-  .trash-action:hover {
-    color: var(--color-text);
+  @media (hover: hover) {
+    .trash-action:hover {
+      color: var(--color-text);
+    }
   }
 
   @media (max-width: 767px) {

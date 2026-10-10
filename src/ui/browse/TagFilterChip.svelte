@@ -79,9 +79,11 @@
       color var(--motion-duration) var(--motion-easing);
   }
 
-  .clear:hover {
-    background: color-mix(in srgb, var(--tag-color) 18%, transparent);
-    color: var(--color-text);
+  @media (hover: hover) {
+    .clear:hover {
+      background: color-mix(in srgb, var(--tag-color) 18%, transparent);
+      color: var(--color-text);
+    }
   }
 
   .clear:focus-visible {

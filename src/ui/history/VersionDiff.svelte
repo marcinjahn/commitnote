@@ -291,9 +291,11 @@
     border-bottom: none;
   }
 
-  .fold:hover {
-    background: var(--color-hover);
-    color: var(--color-text);
+  @media (hover: hover) {
+    .fold:hover {
+      background: var(--color-hover);
+      color: var(--color-text);
+    }
   }
 
   .fold:focus-visible {

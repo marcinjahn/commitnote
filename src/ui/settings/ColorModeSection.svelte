@@ -116,9 +116,11 @@
       box-shadow var(--motion-duration) var(--motion-easing);
   }
 
-  .color-mode:hover .preview-card {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-2);
+  @media (hover: hover) {
+    .color-mode:hover .preview-card {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-2);
+    }
   }
 
   input:checked + .preview-card {
@@ -127,11 +129,13 @@
       0 0 0 4px var(--color-text);
   }
 
-  .color-mode:hover input:checked + .preview-card {
-    box-shadow:
-      0 0 0 2px var(--color-background),
-      0 0 0 4px var(--color-text),
-      var(--shadow-2);
+  @media (hover: hover) {
+    .color-mode:hover input:checked + .preview-card {
+      box-shadow:
+        0 0 0 2px var(--color-background),
+        0 0 0 4px var(--color-text),
+        var(--shadow-2);
+    }
   }
 
   input:focus-visible + .preview-card {
@@ -257,12 +261,22 @@
       forced-color-adjust: none;
     }
 
-    .preview-card,
+    .preview-card {
+      box-shadow: 0 0 0 1px CanvasText;
+    }
+
+    input:checked + .preview-card {
+      box-shadow:
+        0 0 0 2px Canvas,
+        0 0 0 4px Highlight;
+    }
+  }
+
+  @media (forced-colors: active) and (hover: hover) {
     .color-mode:hover .preview-card {
       box-shadow: 0 0 0 1px CanvasText;
     }
 
-    input:checked + .preview-card,
     .color-mode:hover input:checked + .preview-card {
       box-shadow:
         0 0 0 2px Canvas,

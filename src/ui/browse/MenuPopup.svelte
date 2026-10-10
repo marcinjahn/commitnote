@@ -334,9 +334,14 @@
     visibility: visible;
   }
 
-  .menu-popup-item:hover:not(:disabled),
   .menu-popup-item:focus-visible {
     background: var(--color-hover);
+  }
+
+  @media (hover: hover) {
+    .menu-popup-item:hover:not(:disabled) {
+      background: var(--color-hover);
+    }
   }
 
   .menu-popup-item.destructive {

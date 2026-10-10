@@ -105,8 +105,10 @@
     color: var(--color-text-muted);
   }
 
-  .sync-status-button:hover {
-    color: var(--color-text);
+  @media (hover: hover) {
+    .sync-status-button:hover {
+      color: var(--color-text);
+    }
   }
 
   .sync-status-button.failed {

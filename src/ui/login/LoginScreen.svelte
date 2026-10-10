@@ -660,8 +660,10 @@
       border-color var(--motion-duration) var(--motion-easing);
   }
 
-  .provider-option:hover {
-    border-color: var(--color-text);
+  @media (hover: hover) {
+    .provider-option:hover {
+      border-color: var(--color-text);
+    }
   }
 
   .provider-option:has(input:checked) {

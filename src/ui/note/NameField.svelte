@@ -127,9 +127,14 @@
     text-overflow: ellipsis;
   }
 
-  .name-input:hover:not([readonly]),
   .name-input:focus {
     border-color: var(--color-border-strong);
+  }
+
+  @media (hover: hover) {
+    .name-input:hover:not([readonly]) {
+      border-color: var(--color-border-strong);
+    }
   }
 
   .name-input[aria-invalid="true"] {

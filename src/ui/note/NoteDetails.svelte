@@ -206,8 +206,10 @@
     cursor: pointer;
   }
 
-  .details-shared:hover {
-    text-decoration: underline;
+  @media (hover: hover) {
+    .details-shared:hover {
+      text-decoration: underline;
+    }
   }
 
   @media (pointer: coarse) {

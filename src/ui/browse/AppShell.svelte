@@ -2985,9 +2985,11 @@
       box-shadow 200ms var(--motion-easing);
   }
 
-  .trash-row:hover {
-    background: var(--color-hover);
-    color: var(--color-text);
+  @media (hover: hover) {
+    .trash-row:hover {
+      background: var(--color-hover);
+      color: var(--color-text);
+    }
   }
 
   .trash-row:global([data-trash-drop]) {
@@ -3037,8 +3039,10 @@
     mask-image: linear-gradient(to right, #000 calc(100% - var(--space-4)), transparent);
   }
 
-  .repo-link:hover {
-    color: var(--color-text);
+  @media (hover: hover) {
+    .repo-link:hover {
+      color: var(--color-text);
+    }
   }
 
   .repo-label {
@@ -3049,8 +3053,10 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .repo-link:hover .repo-label {
-    text-decoration: underline;
+  @media (hover: hover) {
+    .repo-link:hover .repo-label {
+      text-decoration: underline;
+    }
   }
 
   .log-out {
@@ -3058,8 +3064,10 @@
     color: var(--color-text-muted);
   }
 
-  .log-out:hover:not(:disabled) {
-    color: var(--color-text);
+  @media (hover: hover) {
+    .log-out:hover:not(:disabled) {
+      color: var(--color-text);
+    }
   }
 
   .tree-header-actions {
@@ -3073,8 +3081,10 @@
     color: var(--color-text-muted);
   }
 
-  .tree-header-actions :global(.button:hover:not(:disabled)) {
-    color: var(--color-text);
+  @media (hover: hover) {
+    .tree-header-actions :global(.button:hover:not(:disabled)) {
+      color: var(--color-text);
+    }
   }
 
   .alert-error {
