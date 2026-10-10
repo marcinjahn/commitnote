@@ -1332,7 +1332,7 @@ test.describe("forced colours", () => {
       .getByRole("radiogroup", { name: "Accent color" })
       .locator("label")
       .filter({ has: page.getByRole("radio", { name: "Violet", exact: true }) })
-      .locator(".accent-circle");
+      .locator(".accent-square");
     await expect(circle).toBeVisible();
     const background = await circle.evaluate(
       (el) => getComputedStyle(el).backgroundColor,

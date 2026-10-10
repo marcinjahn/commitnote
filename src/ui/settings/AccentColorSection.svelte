@@ -67,7 +67,7 @@
             checked={settings.accentColor === option.id}
             onchange={() => changeSettings({ accentColor: option.id })}
           />
-          <span class="accent-circle" style={swatchStyle(system ? systemOption : option)}>
+          <span class="accent-square" style={swatchStyle(system ? systemOption : option)}>
             {#if system}
               <svg
                 class="system-icon"
@@ -134,17 +134,26 @@
     cursor: pointer;
   }
 
-  .accent-circle {
+  @media (max-width: 767px) {
+    .accent-swatch {
+      box-sizing: border-box;
+      min-width: var(--touch-target);
+      min-height: var(--touch-target);
+      align-items: center;
+      justify-content: center;
+    }
+  }
+
+  .accent-square {
     display: grid;
     place-items: center;
     width: 32px;
     height: 32px;
-    border-radius: 50%;
     background: light-dark(var(--swatch-light), var(--swatch-dark));
     transition: box-shadow var(--motion-duration) var(--motion-easing);
   }
 
-  .system .accent-circle {
+  .system .accent-square {
     box-shadow: inset 0 0 0 2px
       color-mix(in srgb, var(--color-on-accent) 55%, transparent);
   }
@@ -159,18 +168,18 @@
 
   .accent-divider {
     align-self: stretch;
-    width: 1px;
+    width: var(--hairline);
     margin: 10px var(--space-1);
     background: var(--color-border-strong);
   }
 
-  input:checked + .accent-circle {
+  input:checked + .accent-square {
     box-shadow:
       0 0 0 2px var(--color-background),
       0 0 0 4px var(--color-text);
   }
 
-  .system input:checked + .accent-circle {
+  .system input:checked + .accent-square {
     box-shadow:
       inset 0 0 0 2px
         color-mix(in srgb, var(--color-on-accent) 55%, transparent),
@@ -178,7 +187,7 @@
       0 0 0 4px var(--color-text);
   }
 
-  input:focus-visible + .accent-circle {
+  input:focus-visible + .accent-square {
     outline: 2px solid var(--color-focus);
     outline-offset: 6px;
   }
@@ -193,25 +202,25 @@
   }
 
   @media (forced-colors: active) {
-    .accent-circle {
+    .accent-square {
       forced-color-adjust: none;
       box-shadow: 0 0 0 1px CanvasText;
     }
 
-    .system .accent-circle {
+    .system .accent-square {
       box-shadow:
         0 0 0 1px CanvasText,
         inset 0 0 0 2px
           color-mix(in srgb, var(--color-on-accent) 55%, transparent);
     }
 
-    input:checked + .accent-circle {
+    input:checked + .accent-square {
       box-shadow:
         0 0 0 2px Canvas,
         0 0 0 4px Highlight;
     }
 
-    .system input:checked + .accent-circle {
+    .system input:checked + .accent-square {
       box-shadow:
         0 0 0 2px Canvas,
         0 0 0 4px Highlight,
