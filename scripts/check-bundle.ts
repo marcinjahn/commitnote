@@ -18,6 +18,24 @@ import {
 import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree-source";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
 
+export const TAURI_NEEDLES = [
+  "__TAURI_INTERNALS__",
+  "plugin:opener",
+  "plugin:dialog",
+  "plugin:fs",
+] as const;
+
+const PROD_LEAK_NEEDLES: readonly string[] = [
+  FAKE_FORGE_BANNER,
+  SAMPLE_NOTES_REPO_PASSPHRASE,
+  FAKE_FORGE_CONTROLS_KEY,
+  FAKE_FORGE_OPTIONS_KEY,
+  FAKE_FORGE_ARGON2_BINDING,
+  FAKE_FORGE_SESSION_PARAM,
+  FAKE_SHARE_STORE_KEY,
+  LARGE_TREE_REPO_KEY,
+];
+
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 async function collectFiles(dir: string): Promise<string[]> {
@@ -201,17 +219,9 @@ async function findServiceWorkerProblems(
 async function main(): Promise<void> {
   const distDir = join(rootDir, "dist");
   const fakeDistDir = join(rootDir, "dist-fake");
+  const desktopDistDir = join(rootDir, "dist-desktop");
 
-  const forbiddenInProd = await findForbidden(distDir, [
-    FAKE_FORGE_BANNER,
-    SAMPLE_NOTES_REPO_PASSPHRASE,
-    FAKE_FORGE_CONTROLS_KEY,
-    FAKE_FORGE_OPTIONS_KEY,
-    FAKE_FORGE_ARGON2_BINDING,
-    FAKE_FORGE_SESSION_PARAM,
-    FAKE_SHARE_STORE_KEY,
-    LARGE_TREE_REPO_KEY,
-  ]);
+  const forbiddenInProd = await findForbidden(distDir, PROD_LEAK_NEEDLES);
   if (forbiddenInProd.length > 0) {
     for (const hit of forbiddenInProd) {
       console.error(
@@ -280,8 +290,58 @@ async function main(): Promise<void> {
     return;
   }
 
+  const tauriInWeb = await findForbidden(distDir, TAURI_NEEDLES);
+  if (tauriInWeb.length > 0) {
+    for (const hit of tauriInWeb) {
+      console.error(
+        `dist/ ships desktop shell code: "${hit.needle}" found in ${hit.file}`,
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  const forbiddenInDesktop = await findForbidden(desktopDistDir, PROD_LEAK_NEEDLES);
+  if (forbiddenInDesktop.length > 0) {
+    for (const hit of forbiddenInDesktop) {
+      console.error(
+        `dist-desktop/ leaks fake forge fixture data: "${hit.needle}" found in ${hit.file}`,
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  if (await exists(join(desktopDistDir, "sw.js"))) {
+    console.error(
+      "dist-desktop/sw.js exists; the desktop build must not ship a service worker",
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const desktopHtml = await readFile(join(desktopDistDir, "index.html"), "utf8");
+  const desktopCsp = desktopHtml.match(
+    /<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]*)"/,
+  )?.[1];
+  if (desktopCsp === undefined) {
+    console.error("dist-desktop/index.html has no Content-Security-Policy meta tag");
+    process.exitCode = 1;
+    return;
+  }
+  const missingCsp = ["https://gitlab.com", "ipc:"].filter(
+    (value) => !desktopCsp.includes(value),
+  );
+  if (missingCsp.length > 0) {
+    console.error(
+      `dist-desktop/index.html CSP is missing ${missingCsp.map((value) => `"${value}"`).join(", ")}`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   console.log(
-    `Bundle check passed: production build never ships fake forge fixtures and ships a complete web app manifest, service worker (${serviceWorkers.join("; ")}).`,
+    `Bundle check passed: production build never ships fake forge fixtures or desktop shell code and ships a complete web app manifest, service worker (${serviceWorkers.join("; ")}); desktop build ships no fake forge fixtures or service worker and its CSP allows https://gitlab.com and ipc:.`,
   );
 }
 
