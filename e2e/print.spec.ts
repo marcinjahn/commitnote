@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { openNotes, showTree, expectFamily, MONO_STACK, SERIF_STACK } from "./helpers";
+import { flushPendingSaves, openNotes, showTree, expectFamily, MONO_STACK, SERIF_STACK } from "./helpers";
 import { chooseOption, closeSettings, openSettings, settingsDialog } from "./helpers/settings";
 import { openWelcome } from "./helpers/tree";
 
@@ -104,6 +104,25 @@ test.describe("with a note", () => {
     await dispatchPrintEvent(page, "beforeprint");
     await expect(page).toHaveTitle("Welcome");
     await dispatchPrintEvent(page, "afterprint");
+    await expect(page).toHaveTitle("commitnote");
+  });
+
+  test("the unsaved marker returns after printing and clears once saved", async ({
+    page,
+  }) => {
+    await openWelcome(page);
+    await page.clock.install();
+    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1_000);
+    await editor(page).click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.type(" unsaved");
+    await expect(page).toHaveTitle("● commitnote");
+    await dispatchPrintEvent(page, "beforeprint");
+    await expect(page).toHaveTitle("Welcome");
+    await dispatchPrintEvent(page, "afterprint");
+    await expect(page).toHaveTitle("● commitnote");
+    await page.clock.resume();
+    await flushPendingSaves(page);
     await expect(page).toHaveTitle("commitnote");
   });
 

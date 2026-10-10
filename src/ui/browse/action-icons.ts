@@ -83,3 +83,8 @@ export const searchIcon = [
   "M7 2.25a4.75 4.75 0 1 0 0 9.5a4.75 4.75 0 1 0 0-9.5z",
   "M10.5 10.5l3.25 3.25",
 ] as const;
+
+export const syncStatusIcons = {
+  note: ["M3.5 1.5h6l3 3v10h-9z", "M9.5 1.5v3h3"],
+  retry: ["M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2.5v3.5H10"],
+} as const;
