@@ -77,7 +77,7 @@ test("shows created and updated dates and the word count above the editor", { ta
 
   const line = details(page);
   await expect(line).toHaveText(
-    /^Created 12 Mar 2026 · Updated just now · \d+ words\s*$/,
+    /^Created 12 Mar 2026 · Updated just now · \d+ words · 1\/2 done\s*$/,
   );
   await expect
     .poll(() =>
@@ -110,6 +110,22 @@ test("shows created and updated dates and the word count above the editor", { ta
   const before = await wordCount(page);
   await typeAtEnd(page, " alpha beta");
   await expect(line).toContainText(`${before + 2} words`);
+});
+
+test("shows task progress only when the note has tasks", async ({ page }) => {
+  await startSession(page);
+  await page.getByRole("button", { name: "New note", exact: true }).click();
+  const field = page.getByRole("textbox", { name: "Note name" });
+  await field.fill("Checklist");
+  await field.press("Enter");
+  await expect(editor(page)).toBeFocused();
+
+  await page.keyboard.type("plain text");
+  await expect(details(page)).toContainText("2 words");
+  await expect(details(page)).not.toContainText("done");
+
+  await typeAtEnd(page, "\n- [x] a\nb");
+  await expect(details(page)).toContainText("1/2 done");
 });
 
 test("saving an edit keeps the cached dates until they refresh", async ({

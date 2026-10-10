@@ -186,6 +186,38 @@ test("a folder can't be dropped into itself", async ({ page }) => {
   expect(await fakeForge(page).commitCount()).toBe(commits);
 });
 
+test("Escape cancels a lifted drag and the release does nothing", async ({
+  page,
+}) => {
+  const commits = await fakeForge(page).commitCount();
+
+  await hoverDrag(
+    page,
+    treeItem(page, "Zażółć gęślą jaźń"),
+    treeItem(page, "Welcome"),
+    { y: 0.25 },
+  );
+  const focusBefore = await page.evaluate(
+    () => document.activeElement?.outerHTML ?? null,
+  );
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[data-drag-state]")).toHaveCount(0);
+  await expect(treeRows(page)).toHaveText(ROOT_ORDER);
+
+  await page.mouse.up();
+
+  await expect(page.getByRole("textbox", { name: "Note editor" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(treeRows(page)).toHaveText(ROOT_ORDER);
+  expect(
+    await page.evaluate(() => document.activeElement?.outerHTML ?? null),
+  ).toBe(focusBefore);
+  expect(await fakeForge(page).commitCount()).toBe(commits);
+});
+
 test("a click still opens a note and a drag doesn't", async ({ page }) => {
   await dragRow(page, treeItem(page, "Welcome"), treeItem(page, "Welcome"), {
     y: 0.5,

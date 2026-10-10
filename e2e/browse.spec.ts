@@ -49,6 +49,26 @@ test("the tree lists root notes in order, folders in their stored order, and exp
   await expect(page.getByRole("treeitem", { name: "Roadmap" })).toHaveCount(0);
 });
 
+test("collapsed folders show their recursive note count without changing the row name", async ({
+  page,
+}) => {
+  await openNotes(page);
+
+  const count = (name: string) =>
+    treeItem(page, name).locator(".tree-row-count");
+
+  await expect(count("Empty folder")).toBeVisible();
+  await expect(count("Empty folder")).toHaveAttribute("data-count", "0");
+  await expect(count("Journal")).toHaveAttribute("data-count", "1");
+  await expect(count("Projects")).toHaveAttribute("data-count", "2");
+
+  await treeItem(page, "Projects").click();
+  await expect(treeItem(page, "commitnote")).toBeVisible();
+  await expect(count("Projects")).toHaveCount(0);
+  await expect(count("Journal")).toHaveCount(1);
+  await expect(treeItem(page, "Projects")).toBeVisible();
+});
+
 test("tree and note are both visible on desktop", async ({ page }) => {
   await openNotes(page);
 

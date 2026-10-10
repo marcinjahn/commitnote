@@ -196,3 +196,62 @@ test("Ctrl+click on a markdown link with a www destination opens it over https",
   const newPage = await pagePromise;
   await newPage.waitForURL("https://www.example.org/md");
 });
+
+async function pasteText(page: import("@playwright/test").Page, value: string) {
+  await page.locator(".cm-content").evaluate((el, text) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", text);
+    el.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }, value);
+}
+
+test("pasting a URL over a selected word makes an undoable link", async ({
+  page,
+  context,
+}) => {
+  const { editor } = await openWelcomeLink(page);
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("\nvisit docs");
+  for (let i = 0; i < "docs".length; i++) {
+    await page.keyboard.press("Shift+ArrowLeft");
+  }
+
+  await pasteText(page, "https://www.example.org/pasted");
+  await expect(editor).toContainText("[docs](https://www.example.org/pasted)");
+  await page
+    .locator(".cm-content .cm-line", { hasText: "Notes stay private" })
+    .click();
+  const link = page.locator(".cm-content .cm-link", { hasText: "docs" });
+  await expect(link).toHaveText("docs");
+
+  const pagePromise = context.waitForEvent("page");
+  await link.click({ modifiers: ["Control"] });
+  const newPage = await pagePromise;
+  await newPage.waitForURL("https://www.example.org/pasted");
+
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.locator(".cm-content .cm-link", { hasText: "docs" })).toHaveCount(0);
+  await expect(editor).toContainText("visit docs");
+  await expect(editor).not.toContainText("example.org/pasted");
+});
+
+test("pasting a URL with no selection inserts it as plain text", async ({
+  page,
+}) => {
+  const { editor } = await openWelcomeLink(page);
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("\nsee ");
+
+  await pasteText(page, "https://www.example.org/plain");
+  await expect(editor).toContainText("see https://www.example.org/plain");
+  await expect(editor).not.toContainText("](");
+});

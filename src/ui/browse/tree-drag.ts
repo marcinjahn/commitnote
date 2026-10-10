@@ -425,6 +425,7 @@ export function treeDrag(
       moved: boolean;
     } | null;
   } | null = null;
+  let escapedMousePointer: number | null = null;
   let busy = false;
   let touchPressOnRow = false;
   let liftedByTouch = false;
@@ -432,6 +433,26 @@ export function treeDrag(
   function clearPending(): void {
     if (pending?.timer !== undefined) clearTimeout(pending.timer);
     pending = null;
+  }
+
+  function setSession(next: NonNullable<typeof session>): void {
+    session = next;
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+  }
+
+  function clearSession(): void {
+    session = null;
+    window.removeEventListener("keydown", onKeyDown, { capture: true });
+  }
+
+  function onKeyDown(event: KeyboardEvent): void {
+    if (event.key !== "Escape" || session === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const { drag, pointerId, touch } = session;
+    clearSession();
+    if (touch === null) escapedMousePointer = pointerId;
+    drag.cancel();
   }
 
   function begin(row: HTMLElement, x: number, y: number): DragSession | null {
@@ -454,11 +475,12 @@ export function treeDrag(
     const drag = begin(row, x, y);
     if (drag === null) return;
     liftedByTouch = true;
-    session = { pointerId, drag, touch: { row, x, y, moved: false } };
+    setSession({ pointerId, drag, touch: { row, x, y, moved: false } });
   }
 
   function onPointerDown(event: PointerEvent): void {
     touchPressOnRow = false;
+    escapedMousePointer = null;
     const touch = event.pointerType === "touch";
     if (!touch && (event.pointerType !== "mouse" || event.button !== 0)) return;
     if (busy || session !== null) return;
@@ -517,16 +539,23 @@ export function treeDrag(
     pending = null;
     const drag = begin(row, startX, startY);
     if (drag === null) return;
-    session = { pointerId: event.pointerId, drag, touch: null };
+    setSession({ pointerId: event.pointerId, drag, touch: null });
     container.setPointerCapture(event.pointerId);
     drag.move(event.clientX, event.clientY);
   }
 
   function onPointerUp(event: PointerEvent): void {
     clearPending();
-    if (session === null || event.pointerId !== session.pointerId) return;
+    if (session === null) {
+      if (event.pointerId === escapedMousePointer) {
+        escapedMousePointer = null;
+        suppressNextClick();
+      }
+      return;
+    }
+    if (event.pointerId !== session.pointerId) return;
     const { drag, touch } = session;
-    session = null;
+    clearSession();
     if (touch === null) {
       suppressNextClick();
       drag.drop();
@@ -545,7 +574,7 @@ export function treeDrag(
     clearPending();
     if (session === null || event.pointerId !== session.pointerId) return;
     const { drag } = session;
-    session = null;
+    clearSession();
     drag.cancel();
   }
 
@@ -586,6 +615,7 @@ export function treeDrag(
     destroy() {
       clearPending();
       session?.drag.cancel();
+      clearSession();
       container.removeEventListener("pointerdown", onPointerDown);
       container.removeEventListener("pointermove", onPointerMove);
       container.removeEventListener("pointerup", onPointerUp);

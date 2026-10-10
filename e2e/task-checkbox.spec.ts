@@ -27,9 +27,11 @@ test("toggling a task checkbox autosaves without focusing the editor", { tag: "@
     .getByRole("checkbox", { name: "Toggle task" });
 
   await expect(openTask).not.toBeChecked();
+  await expect(page.locator(".note-details")).toContainText("1/2 done");
   await press(openTask, testInfo);
 
   await expect(openTask).toBeChecked();
+  await expect(page.locator(".note-details")).toContainText("2/2 done");
   expect(
     await page.evaluate(() => !!document.activeElement?.closest(".cm-content")),
   ).toBe(false);

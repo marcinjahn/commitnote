@@ -12,6 +12,7 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { pasteLink } from "./paste-link";
 
 const DEFAULT_ARIA_LABEL = "Note editor";
 
@@ -38,9 +39,10 @@ export interface MarkdownEditor {
 
 function baseExtensions(): Extension[] {
   return [
-    markdown({ base: markdownLanguage }),
+    markdown({ base: markdownLanguage, pasteURLAsLink: false }),
     keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
     EditorView.lineWrapping,
+    pasteLink(),
   ];
 }
 

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   NOT_SAVED_YET_LABEL,
+  countTasks,
   countWords,
   describeCreated,
   describeUpdated,
+  describeTaskProgress,
   describeWordCount,
 } from "./note-details-messages";
 
@@ -146,5 +148,64 @@ describe("describeWordCount", () => {
 
   it("groups thousands", () => {
     expect(describeWordCount(1234, "en-GB")).toBe("1,234 words");
+  });
+});
+
+describe("countTasks", () => {
+  it("counts nothing when there are no tasks", () => {
+    expect(countTasks("")).toEqual({ done: 0, total: 0 });
+    expect(countTasks("# Title\n\n- item\n- other")).toEqual({
+      done: 0,
+      total: 0,
+    });
+  });
+
+  it("counts open and done tasks", () => {
+    expect(countTasks("- [ ] a\n- [x] b\n- [X] c")).toEqual({
+      done: 2,
+      total: 3,
+    });
+  });
+
+  it("counts nested tasks", () => {
+    expect(countTasks("- [x] a\n  - [ ] b\n  - [x] c\n    1. [ ] d")).toEqual({
+      done: 2,
+      total: 4,
+    });
+  });
+
+  it("ignores task syntax in inline code", () => {
+    expect(countTasks("- text `- [ ] a` more\n- [x] b")).toEqual({
+      done: 1,
+      total: 1,
+    });
+  });
+
+  it("ignores task syntax in fenced code blocks", () => {
+    expect(countTasks("```\n- [ ] a\n- [x] b\n```\n- [ ] c")).toEqual({
+      done: 0,
+      total: 1,
+    });
+  });
+
+  it("ignores brackets that are not list tasks", () => {
+    expect(countTasks("[x] not a task\n\ntext [ ] here")).toEqual({
+      done: 0,
+      total: 0,
+    });
+  });
+});
+
+describe("describeTaskProgress", () => {
+  it("shows done out of total", () => {
+    expect(describeTaskProgress({ done: 3, total: 7 }, "en-GB")).toBe(
+      "3/7 done",
+    );
+  });
+
+  it("groups thousands", () => {
+    expect(describeTaskProgress({ done: 1200, total: 1234 }, "en-GB")).toBe(
+      "1,200/1,234 done",
+    );
   });
 });

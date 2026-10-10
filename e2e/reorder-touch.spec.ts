@@ -4,6 +4,14 @@ import { TouchFinger, type TouchPoint, openNotes, fakeForge } from "./helpers";
 import { treeItem, treeRows } from "./helpers/tree";
 
 
+const ROOT_ORDER = [
+  "Empty folder",
+  "Journal",
+  "Projects",
+  "Welcome",
+  "Zażółć gęślą jaźń",
+];
+
 const REORDERED_ROOT = [
   "Empty folder",
   "Journal",
@@ -78,6 +86,28 @@ test("a long-press released without moving opens the row menu", { tag: "@mobile-
   ).toBeVisible();
   await expect(page.locator("[data-drag-state]")).toHaveCount(0);
   await expect(editor(page)).toHaveCount(0);
+});
+
+test("Escape cancels a long-press drag without opening the menu", { tag: "@mobile-only" }, async ({
+  page,
+}) => {
+  const commits = await fakeForge(page).commitCount();
+  const finger = await TouchFinger.on(page);
+  await finger.down(
+    await pointIn(treeItem(page, "Zażółć gęślą jaźń"), { y: 0.5 }),
+  );
+  await expect(page.locator("[data-drag-state='dragging']")).toHaveCount(1);
+  await finger.move(await pointIn(treeItem(page, "Welcome"), { y: 0.25 }));
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[data-drag-state]")).toHaveCount(0);
+  await expect(treeRows(page)).toHaveText(ROOT_ORDER);
+  await finger.up();
+
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(editor(page)).toHaveCount(0);
+  await expect(treeRows(page)).toHaveText(ROOT_ORDER);
+  expect(await fakeForge(page).commitCount()).toBe(commits);
 });
 
 test("a swipe scrolls the tree instead of dragging", { tag: "@mobile-only" }, async ({ page }) => {

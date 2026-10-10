@@ -60,6 +60,22 @@ test("dropping a note on the trash button moves it to the trash", async ({
   await expect(treeItem(page, "Welcome")).toBeVisible();
 });
 
+test("Escape cancels a lifted drag over the trash button", async ({ page }) => {
+  const commits = await fakeForge(page).commitCount();
+  await liftRow(page, treeItem(page, "Welcome"));
+  await hoverOnto(page, trashButton(page));
+  await expect(trashButton(page)).toHaveAttribute("data-trash-drop", /.*/);
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[data-drag-state]")).toHaveCount(0);
+  await expect(page.locator("[data-trash-drop]")).toHaveCount(0);
+  await page.mouse.up();
+
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(treeItem(page, "Welcome")).toBeVisible();
+  expect(await fakeForge(page).commitCount()).toBe(commits);
+});
+
 test("cancelling the dialog after a trash drop changes nothing", async ({
   page,
 }) => {
