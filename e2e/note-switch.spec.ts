@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { flushPendingSaves, openNotes } from "./helpers";
+import { flushPendingSaves, openNotes, showTree } from "./helpers";
 import { openWelcome, treeItem } from "./helpers/tree";
 
 const SEARCH_REPO = "https://github.com/sample/search";
@@ -18,7 +18,9 @@ test.describe("scroll", () => {
     await openNotes(page, { repo: SEARCH_REPO });
   });
 
-  test("resets to the top on every note switch", async ({ page }) => {
+  test("opens a new note at the top and restores the scroll of a visited one", async ({
+    page,
+  }) => {
     await openWelcome(page);
     await page.getByRole("textbox", { name: "Note editor" }).click();
     await page.keyboard.press("ControlOrMeta+End");
@@ -39,6 +41,7 @@ test.describe("scroll", () => {
       el.scrollTop = el.scrollHeight;
     });
     await expect.poll(() => scrollTop(page)).toBeGreaterThan(0);
+    const left = await scrollTop(page);
 
     await treeItem(page, "Zażółć gęślą jaźń").click();
     await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
@@ -52,9 +55,85 @@ test.describe("scroll", () => {
       "Welcome",
     );
     await expect(page.getByRole("textbox", { name: "Note editor" })).toContainText(
+      "Line 200",
+    );
+    await expect
+      .poll(async () => Math.abs((await scrollTop(page)) - left))
+      .toBeLessThanOrEqual(4);
+  });
+
+  test(
+    "restores the scroll of a visited note after going back to the tree",
+    { tag: "@mobile" },
+    async ({ page }) => {
+      await openWelcome(page);
+      await page.getByRole("textbox", { name: "Note editor" }).click();
+      await page.keyboard.press("ControlOrMeta+End");
+      const lines = Array.from({ length: 200 }, (_, i) => `Line ${i + 1}`);
+      await page.locator(".cm-content").evaluate((el, value) => {
+        const data = new DataTransfer();
+        data.setData("text/plain", value);
+        el.dispatchEvent(
+          new ClipboardEvent("paste", {
+            clipboardData: data,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      }, `\n${lines.join("\n")}`);
+
+      await noteContent(page).evaluate((el) => {
+        el.scrollTop = 1500;
+        return new Promise((resolve) => el.addEventListener("scrollend", resolve, { once: true }));
+      });
+      await expect.poll(() => scrollTop(page)).toBeGreaterThan(0);
+      const left = await scrollTop(page);
+
+      await showTree(page);
+      await treeItem(page, "Zażółć gęślą jaźń").click();
+      await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+        "Zażółć gęślą jaźń",
+      );
+      await showTree(page);
+      await treeItem(page, "Welcome").click();
+      await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+        "Welcome",
+      );
+      await expect(page.getByRole("textbox", { name: "Note editor" })).toContainText(
+        "Line 200",
+      );
+      await expect
+        .poll(async () => Math.abs((await scrollTop(page)) - left))
+        .toBeLessThanOrEqual(4);
+    },
+  );
+
+  test("restores the caret of a visited note", async ({ page }) => {
+    await openWelcome(page);
+    const editor = page.getByRole("textbox", { name: "Note editor" });
+    const firstLine = (await editor.locator(".cm-line").first().innerText()).trimEnd();
+    await editor.click();
+    await page.keyboard.press("ControlOrMeta+Home");
+    await page.keyboard.press("End");
+
+    await treeItem(page, "Zażółć gęślą jaźń").click();
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+      "Zażółć gęślą jaźń",
+    );
+    await page.getByRole("button", { name: "Search notes" }).click();
+    const input = page
+      .getByRole("dialog", { name: "Search notes" })
+      .getByRole("combobox", { name: "Search notes" });
+    await expect(input).toBeFocused();
+    await input.fill("Welcome");
+    await input.press("Enter");
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
       "Welcome",
     );
-    await expect.poll(() => scrollTop(page)).toBe(0);
+    await expect(editor).toBeFocused();
+
+    await page.keyboard.type("§");
+    await expect(editor.locator(".cm-line").first()).toHaveText(`${firstLine}§`);
   });
 });
 
@@ -385,11 +464,9 @@ test.describe("slow note load", () => {
   test("holds the previous note without a loading flash", async ({ page }) => {
     await openNotes(page);
     await openWelcome(page);
-    const welcomeText = await page
-      .getByRole("textbox", { name: "Note editor" })
-      .innerText();
     const editor = page.getByRole("textbox", { name: "Note editor" });
     await editor.click();
+    const welcomeText = await editor.innerText();
     await page.locator(".cm-editor").evaluate((el) => {
       const record = window as unknown as {
         samples: {

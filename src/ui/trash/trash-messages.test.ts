@@ -3,9 +3,12 @@ import { TRASH_RETENTION_MS } from "../../format/v1";
 import {
   describeDaysLeft,
   describeEmptyTrash,
+  describeMovedNotesToTrash,
   describeOriginalFolder,
   describeRevokeFailed,
+  describeSharedNotesKept,
   describeSharesRevokedOnTrash,
+  describeUndoneFileDrop,
 } from "./trash-messages";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -62,5 +65,39 @@ describe("describeRevokeFailed", () => {
     expect(describeRevokeFailed("Offline.", 2)).toBe(
       "Offline. Nothing was moved to the trash. 2 links were already revoked.",
     );
+  });
+});
+
+describe("describeMovedNotesToTrash", () => {
+  it("pluralises the note count", () => {
+    expect(describeMovedNotesToTrash(1)).toBe("1 note moved to trash");
+    expect(describeMovedNotesToTrash(3)).toBe("3 notes moved to trash");
+  });
+});
+
+describe("describeSharedNotesKept", () => {
+  it("pluralises the kept count", () => {
+    expect(describeSharedNotesKept(1)).toBe("1 shared note kept.");
+    expect(describeSharedNotesKept(2)).toBe("2 shared notes kept.");
+  });
+});
+
+describe("describeUndoneFileDrop", () => {
+  it("reports only the trashed notes when none were kept", () => {
+    expect(describeUndoneFileDrop(2, 0)).toBe("2 notes moved to trash");
+  });
+
+  it("combines trashed and kept notes", () => {
+    expect(describeUndoneFileDrop(1, 1)).toBe(
+      "1 note moved to trash. 1 shared note kept.",
+    );
+    expect(describeUndoneFileDrop(2, 3)).toBe(
+      "2 notes moved to trash. 3 shared notes kept.",
+    );
+  });
+
+  it("reports only the kept notes when nothing was trashed", () => {
+    expect(describeUndoneFileDrop(0, 1)).toBe("1 shared note kept.");
+    expect(describeUndoneFileDrop(0, 2)).toBe("2 shared notes kept.");
   });
 });

@@ -33,6 +33,8 @@ export interface MarkdownEditor {
   readonly view: EditorView;
   setText(text: string): void;
   setReadOnly(readOnly: boolean): void;
+  getSelection(): { anchor: number; head: number };
+  setSelection(anchor: number, head: number): void;
   focus(): void;
   destroy(): void;
 }
@@ -107,6 +109,17 @@ export function createMarkdownEditor(
         effects: readOnlyCompartment.reconfigure(
           readOnlyExtensions(nextReadOnly),
         ),
+      });
+    },
+    getSelection(): { anchor: number; head: number } {
+      const { anchor, head } = view.state.selection.main;
+      return { anchor, head };
+    },
+    setSelection(anchor: number, head: number): void {
+      const length = view.state.doc.length;
+      const clamp = (value: number) => Math.min(Math.max(value, 0), length);
+      view.dispatch({
+        selection: { anchor: clamp(anchor), head: clamp(head) },
       });
     },
     focus(): void {

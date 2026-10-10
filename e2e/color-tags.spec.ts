@@ -17,6 +17,7 @@ import {
   restoreTo,
   trashRow,
   treeItem,
+  treeRows,
   waitForSynced,
 } from "./helpers/tree";
 
@@ -318,4 +319,127 @@ test("long-pressing a row opens a menu that can tag it", { tag: "@mobile-only" }
 
   await expect(menu).toHaveCount(0);
   await expectTagged(page, "Welcome", "Yellow");
+});
+
+function filterDot(page: Page, label: string): Locator {
+  return page.getByRole("button", { name: `Filter by ${label} tag`, exact: true });
+}
+
+function dots(page: Page): Locator {
+  return page.getByRole("group", { name: "Tag filter" }).getByRole("button");
+}
+
+async function expand(page: Page, name: string): Promise<void> {
+  await treeItem(page, name).click();
+  await expect(treeItem(page, name)).toHaveAttribute("aria-expanded", "true");
+}
+
+test.describe("tag filter", () => {
+  test("dots list the used colors in palette order", async ({ page }) => {
+    const names = ["Orange", "Green", "Blue", "Purple"];
+    await expect(dots(page)).toHaveCount(names.length);
+    for (const [i, name] of names.entries()) {
+      await expect(dots(page).nth(i)).toHaveAccessibleName(`Filter by ${name} tag`);
+    }
+
+    await tagFromRowMenu(page, "Welcome", "Red");
+    await expect(dots(page)).toHaveCount(names.length + 1);
+    await expect(dots(page).first()).toHaveAccessibleName("Filter by Red tag");
+  });
+
+  test("filters to the tagged note and restores the expansion", async ({ page }) => {
+    await expand(page, "Projects");
+    const purple = filterDot(page, "Purple");
+
+    await purple.click();
+    await expect(purple).toHaveAttribute("aria-pressed", "true");
+    await expect(treeRows(page)).toHaveCount(1);
+    await expect(treeItem(page, PURPLE_NOTE)).toBeVisible();
+    await expect(treeItem(page, "Welcome")).toBeHidden();
+
+    await purple.click();
+    await expect(purple).toHaveAttribute("aria-pressed", "false");
+    await expect(treeItem(page, "Welcome")).toBeVisible();
+    await expect(treeItem(page, "Projects")).toHaveAttribute("aria-expanded", "true");
+    await expect(treeItem(page, "Journal")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("shows ancestors expanded and restores collapsed folders", async ({ page }) => {
+    await expand(page, "Projects");
+    await expand(page, "commitnote");
+    await tagFromRowMenu(page, "Ideas", "Purple");
+    await treeItem(page, "Projects").click();
+    await expect(treeItem(page, "Projects")).toHaveAttribute("aria-expanded", "false");
+
+    await filterDot(page, "Purple").click();
+    await expect(treeItem(page, "Projects")).toHaveAttribute("aria-expanded", "true");
+    await expect(treeItem(page, "commitnote")).toHaveAttribute("aria-expanded", "true");
+    await expect(treeItem(page, "Ideas")).toBeVisible();
+    await expect(treeItem(page, "Roadmap")).toBeHidden();
+
+    await filterDot(page, "Purple").click();
+    await expect(treeItem(page, "Projects")).toHaveAttribute("aria-expanded", "false");
+    await expect(treeItem(page, "Ideas")).toBeHidden();
+  });
+
+  test("blocks tree drag but keeps row menus", async ({ page }) => {
+    await filterDot(page, "Purple").click();
+    const row = treeItem(page, PURPLE_NOTE);
+    const box = (await row.boundingBox())!;
+    await page.mouse.move(box.x + 40, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 40, box.y + box.height / 2 + 8, { steps: 4 });
+    await page.mouse.move(box.x + 40, box.y + box.height / 2 + 40, { steps: 4 });
+    await expect(page.locator("[data-drag-state]")).toHaveCount(0);
+    await page.mouse.up();
+
+    await row.click({ button: "right" });
+    await expect(rowMenu(page, PURPLE_NOTE)).toBeVisible();
+  });
+
+  test("keeps the open note open", async ({ page }) => {
+    await openWelcome(page);
+    await filterDot(page, "Purple").click();
+    await expect(treeItem(page, "Welcome")).toBeHidden();
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+      "Welcome",
+    );
+  });
+
+  test("clears when its color is no longer used", async ({ page }) => {
+    await filterDot(page, "Purple").click();
+    await treeItem(page, PURPLE_NOTE).click({ button: "right" });
+    await swatch(rowMenu(page, PURPLE_NOTE), "No color").click();
+
+    await expect(filterDot(page, "Purple")).toHaveCount(0);
+    await expect(treeItem(page, "Welcome")).toBeVisible();
+    await expect(dots(page).locator("[aria-pressed='true']")).toHaveCount(0);
+  });
+
+  test("clears when a note is created", async ({ page }) => {
+    await filterDot(page, "Purple").click();
+    await expect(treeItem(page, "Welcome")).toBeHidden();
+    await page.getByRole("button", { name: "New note", exact: true }).click();
+    await expect(filterDot(page, "Purple")).toHaveAttribute("aria-pressed", "false");
+    await expect(treeItem(page, "Welcome")).toBeVisible();
+  });
+
+  test("dots show on mobile and long-press opens a row menu", { tag: "@mobile" }, async ({
+    page,
+  }) => {
+    await showTree(page);
+    await filterDot(page, "Purple").click();
+    await expect(filterDot(page, "Purple")).toHaveAttribute("aria-pressed", "true");
+
+    const box = (await treeItem(page, PURPLE_NOTE).boundingBox())!;
+    const finger = await TouchFinger.on(page);
+    await page.clock.install();
+    await finger.down({ x: box.x + 40, y: box.y + box.height / 2 });
+    await page.clock.runFor(600);
+    await expect(page.locator("[data-drag-state]")).toHaveCount(0);
+    await finger.up();
+
+    await expect(rowMenu(page, PURPLE_NOTE)).toBeVisible();
+    await expect(page.locator("[data-drag-state='dragging']")).toHaveCount(0);
+  });
 });

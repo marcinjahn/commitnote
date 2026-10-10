@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { SvelteMap } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin } from "../../changes/change";
@@ -7,6 +8,9 @@
   import { findWorkingNode } from "../../sync/working-tree";
   import type { DropTarget } from "./tree-drop";
   import { treeDrag, type TreeDragOptions } from "./tree-drag";
+  import { treeFileDrop } from "./tree-file-drop";
+  import type { ImportDestination } from "../../import/plan-import";
+  import type { DroppedFile } from "../../import/read-dropped-files";
   import NoteTreeFolder from "./NoteTreeFolder.svelte";
   import { countDescendants } from "../dialogs/folder-options";
   import type { ColorTag } from "../../tags/color-tag";
@@ -15,6 +19,7 @@
 
   interface Props {
     tree: WorkingTree | null;
+    filteredTree: WorkingTree | null;
     loading: boolean;
     selectedPath: NotePath | null;
     syncStates: SyncStates;
@@ -31,10 +36,12 @@
     tagsWritable: boolean;
     onColorTag: (path: NotePath, color: ColorTag | null) => void;
     onNewNote: () => void;
+    onFileDrop: (files: readonly DroppedFile[], destination: ImportDestination) => void;
   }
 
   const {
     tree,
+    filteredTree,
     loading,
     selectedPath,
     syncStates,
@@ -51,21 +58,23 @@
     tagsWritable,
     onColorTag,
     onNewNote,
+    onFileDrop,
   }: Props = $props();
 
   const expanded = new SvelteMap<string, boolean>();
 
   function isExpanded(key: string): boolean {
-    return expanded.get(key) ?? false;
+    return filteredTree !== null || (expanded.get(key) ?? false);
   }
 
   function onToggle(key: string): void {
+    if (filteredTree !== null) return;
     expanded.set(key, !isExpanded(key));
   }
 
   $effect(() => {
     const path = selectedPath;
-    if (path === null) return;
+    if (path === null || untrack(() => filteredTree) !== null) return;
     for (let depth = 1; depth < path.length; depth++) {
       expanded.set(path.slice(0, depth).join("/"), true);
     }
@@ -75,7 +84,7 @@
   // folder) so it becomes visible even without a selection change.
   $effect(() => {
     const request = expandRequest;
-    if (request === null) return;
+    if (request === null || untrack(() => filteredTree) !== null) return;
     for (let depth = 1; depth <= request.path.length; depth++) {
       expanded.set(request.path.slice(0, depth).join("/"), true);
     }
@@ -106,7 +115,8 @@
       handleCloseMenu();
       return;
     }
-    openMenu = { key, node, anchor, trigger };
+    const full = tree === null ? undefined : findWorkingNode(tree, node.path);
+    openMenu = { key, node: full ?? node, anchor, trigger };
   }
 
   function handleCloseMenu(): void {
@@ -115,7 +125,8 @@
     trigger?.focus();
   }
 
-  const dragOptions: TreeDragOptions = {
+  const dragOptions: TreeDragOptions = $derived({
+    reorder: filteredTree === null,
     scene(dragged) {
       const current = tree;
       if (current === null) return null;
@@ -151,7 +162,7 @@
       if (node === undefined || trigger === null) return;
       handleOpenMenu(node.path.join("/"), node, { kind: "point", x, y }, trigger);
     },
-  };
+  });
 
   function handleMenuAction(action: RowAction): void {
     const node = openMenu?.node;
@@ -172,7 +183,11 @@
   }
 </script>
 
-<div class="tree-container" use:treeDrag={dragOptions}>
+<div
+  class="tree-container"
+  use:treeDrag={dragOptions}
+  use:treeFileDrop={{ onDrop: (files, destination) => onFileDrop(files, destination) }}
+>
   {#if tree === null}
     {#if loading}
       <p class="tree-message">Loading notes…</p>
@@ -184,7 +199,7 @@
     </p>
   {:else}
     <ul class="tree" role="tree" aria-label="Notes">
-      {#each tree.root.children as child (child.path.join("/"))}
+      {#each (filteredTree ?? tree).root.children as child (child.path.join("/"))}
         <NoteTreeFolder
           node={child}
           depth={0}
@@ -243,6 +258,7 @@
     opacity: 0.4;
   }
 
+  .tree-container:global([data-drop-into]),
   .tree-container :global([data-tree-row][data-drop-into]) {
     background: light-dark(
       color-mix(in srgb, var(--color-accent) 16%, transparent),
