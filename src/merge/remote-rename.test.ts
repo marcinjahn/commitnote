@@ -192,6 +192,7 @@ describe("relocateShareEntry", () => {
     linkSecret: "secret",
     password: null,
     name: "a",
+    label: null,
     sharedAt: "2026-01-01T00:00:00.000Z",
     note,
     source: null,

@@ -358,6 +358,9 @@ async function applyChange(
     case "remove-share":
       trailers.push(`${TRAILER.share}: remove`);
       break;
+    case "set-share-label":
+      trailers.push(`${TRAILER.share}: label`);
+      break;
     case "set-settings": {
       const values: unknown = change.values;
       if (

@@ -288,6 +288,7 @@ export interface SyncEngine {
   addShare(entry: ShareEntry): ShareChangeResult;
   /** Forgets a revoked share. Saved immediately. */
   removeShare(id: string): ShareChangeResult;
+  setShareLabel(id: string, label: string | null): ShareChangeResult;
   updateShare(entry: ShareEntry): ShareChangeResult;
   moveFromTrash(
     entryId: string,
@@ -1474,6 +1475,7 @@ export function createSyncEngine(options: {
       case "add-share":
       case "update-share":
       case "remove-share":
+      case "set-share-label":
         return false;
     }
   }
@@ -1824,6 +1826,7 @@ export function createSyncEngine(options: {
         case "add-share":
         case "update-share":
         case "remove-share":
+        case "set-share-label":
           break;
         default:
           assertNever(change);
@@ -2121,6 +2124,30 @@ export function createSyncEngine(options: {
     }
     if (!shares.entries.has(id)) return { ok: true };
     applyStructureChange({ kind: "remove-share", id });
+    return { ok: true };
+  }
+
+  function setShareLabel(
+    id: string,
+    label: string | null,
+  ): ShareChangeResult {
+    const { synced, workingTree, shares } = state;
+    if (
+      disposed ||
+      suspended ||
+      synced === null ||
+      workingTree === null ||
+      shares === null
+    ) {
+      return { ok: false, error: { kind: "notFound" } };
+    }
+    if (!synced.shares.writable) {
+      return { ok: false, error: { kind: "sharesUnavailable" } };
+    }
+    const entry = shares.entries.get(id);
+    if (entry === undefined) return { ok: false, error: { kind: "notFound" } };
+    if (entry.label === label) return { ok: true };
+    applyStructureChange({ kind: "set-share-label", id, label });
     return { ok: true };
   }
 
@@ -2484,6 +2511,7 @@ export function createSyncEngine(options: {
     setColorTag,
     addShare,
     removeShare,
+    setShareLabel,
     updateShare,
     moveFromTrash,
     undoTrash,

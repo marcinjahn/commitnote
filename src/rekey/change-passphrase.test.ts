@@ -252,6 +252,7 @@ describe("changing the passphrase", () => {
                 linkSecret: "secret",
                 password: null,
                 name: "Welcome",
+                label: null,
                 sharedAt: "2026-02-01T00:00:00.000Z",
                 note: { state: "active", path: ["Welcome"] },
                 source: { commit: "c", storedPath: "p", blobSha: "b" },

@@ -68,6 +68,7 @@ export function describeNotice(notice: EngineNotice): string {
         case "add-share":
         case "update-share":
         case "remove-share":
+        case "set-share-label":
           return "A change to your shared links couldn't be saved.";
         case "set-color-tag":
         default:

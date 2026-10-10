@@ -1,4 +1,5 @@
 import type { ForgeId } from "../../forge/repo-coordinates";
+import { MAX_SHARE_LABEL_LENGTH } from "../../share/share-label";
 import type { ShareError } from "../../share/share-service";
 
 export type MessagePart =
@@ -92,6 +93,10 @@ export function describeShareError(
           `This link no longer exists on ${forge}. Revoke it to remove it from the list.`,
         ),
       ];
+    case "labelTooLong":
+      return [text(`Use ${MAX_SHARE_LABEL_LENGTH} characters or fewer.`)];
+    case "shareGone":
+      return [text("This link is no longer in your shared links.")];
     case "sharesUnavailable":
       return [
         text(

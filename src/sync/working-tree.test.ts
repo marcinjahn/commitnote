@@ -1272,6 +1272,7 @@ describe.each(["add-share", "update-share"] as const)("rebaseChanges %s", (kind)
       linkSecret: "secret",
       password: null,
       name: "Todo",
+      label: null,
       sharedAt: "2026-01-01T00:00:00.000Z",
       note,
       source: null,
@@ -1388,6 +1389,15 @@ describe.each(["add-share", "update-share"] as const)("rebaseChanges %s", (kind)
       changes: [change],
       dropped: [],
     });
+  });
+});
+
+describe("rebaseChanges set-share-label", () => {
+  it("keeps the change even when the remote removed its share's note", () => {
+    const change: Change = { kind: "set-share-label", id: "share-1", label: "Mine" };
+    expect(
+      rebaseChanges(SAMPLE_TREE, [{ kind: "delete-note", path: ["Welcome"] }], [change]),
+    ).toEqual({ changes: [change], dropped: [] });
   });
 });
 

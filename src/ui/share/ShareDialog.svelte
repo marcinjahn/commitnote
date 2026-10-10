@@ -4,6 +4,7 @@
   import { sharesOfNote, type ShareEntry, type ShareIndex } from "../../share/share-index";
   import type { ShareError, ShareService } from "../../share/share-service";
   import type { WorkingTree } from "../../sync/working-tree";
+  import { MAX_SHARE_LABEL_LENGTH } from "../../share/share-label";
   import Dialog from "../dialogs/Dialog.svelte";
   import {
     describeShareError,
@@ -26,6 +27,7 @@
     onViewVersion: (entry: ShareEntry) => void;
     updatingId: string | null;
     onUpdate: (entry: ShareEntry) => void;
+    onRename: (entry: ShareEntry) => void;
     onRevoke: (entry: ShareEntry) => void;
     onCopyText: (text: string, copied: string) => Promise<boolean>;
     onClose: () => void;
@@ -45,17 +47,20 @@
     onViewVersion,
     updatingId,
     onUpdate,
+    onRename,
     onRevoke,
     onCopyText,
     onClose,
   }: Props = $props();
 
   const uid = $props.id();
+  const labelId = `share-label-${uid}`;
   const passwordId = `share-password-${uid}`;
   const hintId = `share-password-hint-${uid}`;
   const linkFieldId = `share-link-${uid}`;
   const passwordFieldId = `share-password-result-${uid}`;
 
+  let label = $state("");
   let password = $state("");
   let running = $state(false);
   let error = $state<readonly MessagePart[] | null>(null);
@@ -81,7 +86,7 @@
     running = true;
     error = null;
     try {
-      const result = await shareService.createShare({ path, password });
+      const result = await shareService.createShare({ path, password, label });
       if (result.ok) {
         created = { link: result.link, password: result.password };
       } else {
@@ -104,6 +109,7 @@
 
   function createAnother(): void {
     created = null;
+    label = "";
     password = "";
     error = null;
   }
@@ -126,6 +132,7 @@
             {updatingId}
             {onUpdate}
             onOpenNote={undefined}
+            {onRename}
             {onRevoke}
           />
         </section>
@@ -141,6 +148,18 @@
 
       {#if created === null}
         <form class="share-form" onsubmit={handleSubmit}>
+          <div class="field">
+            <label for={labelId}>Name (optional)</label>
+            <input
+              id={labelId}
+              type="text"
+              autocomplete="off"
+              maxlength={MAX_SHARE_LABEL_LENGTH}
+              placeholder={noteName}
+              bind:value={label}
+              disabled={unreadable || running}
+            />
+          </div>
           <div class="field">
             <label for={passwordId}>Password (optional)</label>
             <input

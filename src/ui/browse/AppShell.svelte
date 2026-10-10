@@ -101,6 +101,8 @@
     SHARE_UNCHANGED_TEXT,
     SHARE_UPDATED_TEXT,
   } from "../share/share-messages";
+  import { MAX_SHARE_LABEL_LENGTH, normalizeShareLabel } from "../../share/share-label";
+  import { shareNoteName } from "../share/share-row-title";
   import type { ShareService } from "../../share/share-service";
   import {
     sharesWithin,
@@ -240,6 +242,9 @@
   let sharePath = $state<NotePath | null>(null);
   let sharedVersionEntry = $state<ShareEntry | null>(null);
   let revokeEntry = $state<ShareEntry | null>(null);
+  let renameShare = $state<{ readonly entry: ShareEntry; readonly error: string | null } | null>(
+    null,
+  );
   let trashOpen = $state(false);
   let trashNow = $state(Date.now());
   let trashDialog = $state<TrashDialogState>({ kind: "none" });
@@ -1334,6 +1339,20 @@
     }
   }
 
+  function validateShareLabel(input: string): string | null {
+    return normalizeShareLabel(input).ok
+      ? null
+      : messageText(describeShareError({ kind: "labelTooLong" }, forgeId));
+  }
+
+  function handleRenameShareSubmit(raw: string): void {
+    if (renameShare === null) return;
+    const { entry } = renameShare;
+    const result = shareService.setShareLabel(entry.id, raw);
+    if (result.ok) renameShare = null;
+    else renameShare = { entry, error: messageText(describeShareError(result.error, forgeId)) };
+  }
+
   async function handleRevokeConfirm(): Promise<void> {
     if (revokeEntry === null) return;
     const { id } = revokeEntry;
@@ -1846,6 +1865,7 @@
     onViewVersion={(entry) => (sharedVersionEntry = entry)}
     updatingId={updatingShareId}
     onUpdate={(entry) => void handleUpdateShare(entry)}
+    onRename={(entry) => (renameShare = { entry, error: null })}
     onRevoke={(entry) => (revokeEntry = entry)}
     onClose={() => (sharePath = null)}
   />
@@ -1867,7 +1887,8 @@
   updatingId={updatingShareId}
   onUpdate={(entry) => void handleUpdateShare(entry)}
   onOpenNote={handleOpenSharedNote}
-  onRevoke={(entry) => (revokeEntry = entry)}
+  onRename={(entry) => (renameShare = { entry, error: null })}
+    onRevoke={(entry) => (revokeEntry = entry)}
   onClose={() => (sharedLinksOpen = false)}
 />
 
@@ -1878,6 +1899,21 @@
     {forgeName}
     noteFont={settings.noteFont}
     onClose={() => (sharedVersionEntry = null)}
+  />
+{/if}
+
+{#if renameShare !== null}
+  <NameDialog
+    title="Rename link"
+    label="Name"
+    submitLabel="Rename"
+    initialName={renameShare.entry.label ?? ""}
+    placeholder={shareNoteName(renameShare.entry)}
+    maxLength={MAX_SHARE_LABEL_LENGTH}
+    validate={validateShareLabel}
+    error={renameShare.error}
+    onSubmit={handleRenameShareSubmit}
+    onClose={() => (renameShare = null)}
   />
 {/if}
 

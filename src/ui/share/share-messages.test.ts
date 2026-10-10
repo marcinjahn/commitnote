@@ -45,6 +45,16 @@ const SIMPLE: readonly [ShareError["kind"], string, string][] = [
     "Shared links can't be changed because the stored list of shared links can't be read.",
     "Shared links can't be changed because the stored list of shared links can't be read.",
   ],
+  [
+    "labelTooLong",
+    "Use 100 characters or fewer.",
+    "Use 100 characters or fewer.",
+  ],
+  [
+    "shareGone",
+    "This link is no longer in your shared links.",
+    "This link is no longer in your shared links.",
+  ],
 ];
 
 describe("describeShareError", () => {
