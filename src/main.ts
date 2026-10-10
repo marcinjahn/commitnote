@@ -15,7 +15,7 @@ import { captureInstallEvents } from "./app/install-events";
 import { createBrowserInstallController } from "./app/install-controller";
 import { type LaunchQueueLike, startLaunchActions } from "./app/launch-action";
 import { clearLaunchAction } from "./app/note-navigation";
-import { isStandalone } from "./app/display-mode";
+import { resolveStandalone } from "./app/display-mode";
 import { startKeyboardInset } from "./ui/dialogs/keyboard-inset";
 import "./note-fonts.css";
 
@@ -90,7 +90,7 @@ async function mountViewer(target: HTMLElement): Promise<void> {
   });
 }
 
-const standalone = isStandalone({
+const standalone = resolveStandalone(__DESKTOP_SHELL__, {
   matchMedia: (q) => window.matchMedia(q),
   navigator: navigator as { standalone?: boolean },
 });
@@ -155,7 +155,7 @@ if (__FAKE_FORGE__) {
   }
 }
 
-  const install = createBrowserInstallController(installEvents);
+  const install = createBrowserInstallController(installEvents, standalone);
   const launchActions = startLaunchActions({
     bootHref,
     launchQueue: (window as { launchQueue?: LaunchQueueLike }).launchQueue,

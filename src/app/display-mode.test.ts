@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isStandalone, STANDALONE_DISPLAY_MODES } from "./display-mode";
+import {
+  isStandalone,
+  resolveStandalone,
+  STANDALONE_DISPLAY_MODES,
+} from "./display-mode";
 
 function environment(
   activeMode: string | null,
@@ -28,5 +32,20 @@ describe("isStandalone", () => {
 
   it("is false when navigator.standalone is undefined", () => {
     expect(isStandalone(environment(null))).toBe(false);
+  });
+});
+
+describe("resolveStandalone", () => {
+  it("is true in the desktop shell whatever the display mode", () => {
+    expect(resolveStandalone(true, environment("browser", false))).toBe(true);
+    expect(resolveStandalone(true, environment(null))).toBe(true);
+  });
+
+  it.each([
+    ["standalone", environment("standalone")],
+    ["browser", environment("browser", false)],
+    ["navigator.standalone", environment(null, true)],
+  ])("matches isStandalone outside the desktop shell (%s)", (_, env) => {
+    expect(resolveStandalone(false, env)).toBe(isStandalone(env));
   });
 });

@@ -1,5 +1,4 @@
 import type { StorageLike } from "../session/session-store";
-import { isStandalone } from "./display-mode";
 import {
   readInstallBarDismissed,
   writeInstallBarDismissed,
@@ -116,15 +115,13 @@ export function createInstallController(
 
 export function createBrowserInstallController(
   events: InstallEvents,
+  standalone: boolean,
 ): InstallController {
   return createInstallController({
     environment: {
       coarsePointer: matchMedia("(pointer: coarse)").matches,
       browserDisplayMode: matchMedia("(display-mode: browser)").matches,
-      standalone: isStandalone({
-        matchMedia: (query) => window.matchMedia(query),
-        navigator: navigator as { standalone?: boolean },
-      }),
+      standalone,
       ios: isIosDevice({
         userAgent: navigator.userAgent,
         maxTouchPoints: navigator.maxTouchPoints,
