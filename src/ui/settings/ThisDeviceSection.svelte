@@ -1,21 +1,23 @@
 <script lang="ts">
   import {
+    describeReopenLastViewUnavailable,
     REOPEN_LAST_VIEW_LABEL,
-    REOPEN_LAST_VIEW_NEEDS_REMEMBER,
     type ReopenLastViewOption,
   } from "./reopen-last-view-option";
   import SettingRow from "./SettingRow.svelte";
+  import { getStandalone } from "../standalone-context";
 
   const { reopenLastView, remembered, onReopenLastViewChange }: ReopenLastViewOption =
     $props();
 
+  const standalone = getStandalone();
   const hintId = "reopen-last-view-hint";
   const inputId = $props.id();
 </script>
 
 <SettingRow
   {hintId}
-  hint={remembered ? undefined : REOPEN_LAST_VIEW_NEEDS_REMEMBER}
+  hint={remembered ? undefined : describeReopenLastViewUnavailable(standalone)}
 >
   {#snippet label()}
     <label for={inputId}>{REOPEN_LAST_VIEW_LABEL}</label>

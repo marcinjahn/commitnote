@@ -5,5 +5,9 @@ export interface ReopenLastViewOption {
 }
 
 export const REOPEN_LAST_VIEW_LABEL = "Reopen the last note and folders";
-export const REOPEN_LAST_VIEW_NEEDS_REMEMBER =
-  "Needs “Remember me” when you log in.";
+
+export function describeReopenLastViewUnavailable(standalone: boolean): string {
+  return standalone
+    ? "Unavailable because this device can't keep you logged in."
+    : "Needs “Remember me” when you log in.";
+}
