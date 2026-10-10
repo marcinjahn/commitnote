@@ -397,11 +397,32 @@ test("arrow keys move the note placement selection", async ({ page }) => {
   const group = settingsDialog(page).getByRole("radiogroup", {
     name: "New notes",
   });
-  await group.getByRole("radio", { name: "At the beginning" }).focus();
+  const beginning = group.getByRole("radio", { name: "At the beginning" });
+  await beginning.focus();
+
+  const segmentBackground = (name: string) =>
+    group
+      .locator("label.segment")
+      .filter({ has: page.getByRole("radio", { name }) })
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+  const ink = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.backgroundColor = "var(--color-ink)";
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  expect(await segmentBackground("At the beginning")).toBe(ink);
+  expect(await segmentBackground("At the end")).not.toBe(ink);
 
   await page.keyboard.press("ArrowDown");
 
   await expect(group.getByRole("radio", { name: "At the end" })).toBeChecked();
+  await expect.poll(() => segmentBackground("At the end")).toBe(ink);
+  await expect
+    .poll(() => segmentBackground("At the beginning"))
+    .not.toBe(ink);
 });
 
 const SYSTEM_STACK =

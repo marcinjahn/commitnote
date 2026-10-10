@@ -3,16 +3,16 @@
     NEW_FOLDER_PLACEMENT_OPTIONS,
     type NewFolderPlacement,
   } from "../../settings/placement-options";
-  import SettingOptionList from "./SettingOptionList.svelte";
+  import SegmentedControl from "./SegmentedControl.svelte";
   import SettingRow from "./SettingRow.svelte";
   import type { SettingsSectionProps } from "./settings-sections";
 
   const { settings, changeSettings }: SettingsSectionProps = $props();
 </script>
 
-<SettingRow stacked>
+<SettingRow>
   {#snippet label()}New folders{/snippet}
-  <SettingOptionList
+  <SegmentedControl
     label="New folders"
     name="new-folder-placement"
     options={NEW_FOLDER_PLACEMENT_OPTIONS}

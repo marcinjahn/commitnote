@@ -3,16 +3,16 @@
     NEW_NOTE_PLACEMENT_OPTIONS,
     type NewNotePlacement,
   } from "../../settings/placement-options";
-  import SettingOptionList from "./SettingOptionList.svelte";
+  import SegmentedControl from "./SegmentedControl.svelte";
   import SettingRow from "./SettingRow.svelte";
   import type { SettingsSectionProps } from "./settings-sections";
 
   const { settings, changeSettings }: SettingsSectionProps = $props();
 </script>
 
-<SettingRow stacked>
+<SettingRow>
   {#snippet label()}New notes{/snippet}
-  <SettingOptionList
+  <SegmentedControl
     label="New notes"
     name="new-note-placement"
     options={NEW_NOTE_PLACEMENT_OPTIONS}

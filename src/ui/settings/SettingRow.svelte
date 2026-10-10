@@ -32,8 +32,9 @@
   .setting-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     justify-content: space-between;
-    gap: var(--space-3);
+    gap: var(--space-2) var(--space-3);
     min-height: var(--touch-target);
     padding-block: var(--space-2);
   }
@@ -44,14 +45,19 @@
 
   .setting-row.stacked {
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: stretch;
     justify-content: flex-start;
     gap: var(--space-2);
   }
 
   .setting-row-head {
-    flex: 1 1 auto;
+    flex: 1 1 8rem;
     min-width: 0;
+  }
+
+  .stacked .setting-row-head {
+    flex: 1 1 auto;
   }
 
   .setting-row-label-line {
@@ -73,9 +79,12 @@
   .setting-row-control {
     flex: none;
     min-width: 0;
+    max-width: 100%;
+    margin-inline-start: auto;
   }
 
   .stacked .setting-row-control {
     flex: 1 1 auto;
+    margin-inline-start: 0;
   }
 </style>
