@@ -283,8 +283,10 @@
     transition: background-color var(--motion-duration) var(--motion-easing);
   }
 
-  .tree-row-container:hover {
-    background: var(--color-hover-accent);
+  @media (hover: hover) {
+    .tree-row-container:hover {
+      background: var(--color-hover-accent);
+    }
   }
 
   .tree-row-container.selected {
@@ -456,8 +458,10 @@
       opacity var(--motion-duration) var(--motion-easing);
   }
 
-  .row-actions:hover {
-    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  @media (hover: hover) {
+    .row-actions:hover {
+      background: color-mix(in srgb, var(--color-text) 8%, transparent);
+    }
   }
 
   @media (pointer: fine) {
@@ -471,9 +475,14 @@
       opacity: 0;
     }
 
-    .tree-row-container:hover .row-actions,
     .tree-row-container:focus-within .row-actions,
     .row-actions.menu-open {
+      opacity: 1;
+    }
+  }
+
+  @media (pointer: fine) and (min-width: 768px) and (hover: hover) {
+    .tree-row-container:hover .row-actions {
       opacity: 1;
     }
   }

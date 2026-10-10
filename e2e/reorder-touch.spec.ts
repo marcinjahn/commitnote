@@ -110,7 +110,7 @@ test("Escape cancels a long-press drag without opening the menu", { tag: "@mobil
   expect(await fakeForge(page).commitCount()).toBe(commits);
 });
 
-test("a swipe scrolls the tree instead of dragging", { tag: "@mobile-only" }, async ({ page }) => {
+async function makeTreeScrollable(page: Page): Promise<Locator> {
   await page.setViewportSize({ width: 412, height: 320 });
   await treeItem(page, "Journal").tap();
   await treeItem(page, "2026").tap();
@@ -121,6 +121,22 @@ test("a swipe scrolls the tree instead of dragging", { tag: "@mobile-only" }, as
       container.evaluate((el) => el.scrollHeight - el.clientHeight),
     )
     .toBeGreaterThan(40);
+  return container;
+}
+
+async function highlightedRows(page: Page): Promise<string[]> {
+  return page.locator(".tree-row-container").evaluateAll((rows) =>
+    rows
+      .filter(
+        (row) =>
+          getComputedStyle(row).backgroundColor !== "rgba(0, 0, 0, 0)",
+      )
+      .map((row) => row.querySelector(".tree-row-label")!.textContent!),
+  );
+}
+
+test("a swipe scrolls the tree instead of dragging", { tag: "@mobile-only" }, async ({ page }) => {
+  const container = await makeTreeScrollable(page);
   const rowsBefore = await treeRows(page).allTextContents();
 
   const start = await pointIn(treeItem(page, "commitnote"), { y: 0.5 });
@@ -137,6 +153,29 @@ test("a swipe scrolls the tree instead of dragging", { tag: "@mobile-only" }, as
     .toBeGreaterThan(0);
   await expect(treeRows(page)).toHaveText(rowsBefore);
   await expect(editor(page)).toHaveCount(0);
+});
+
+test("a swipe over the tree highlights no row", { tag: "@mobile-only" }, async ({ page }) => {
+  const container = await makeTreeScrollable(page);
+  expect(await page.evaluate(() => matchMedia("(hover: hover)").matches)).toBe(false);
+
+  const start = await pointIn(treeItem(page, "commitnote"), { y: 0.5 });
+  const finger = await TouchFinger.on(page);
+  await finger.down(start);
+  await finger.move({ x: start.x, y: start.y - 120 });
+  await expect
+    .poll(() => container.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(0);
+  await expect.poll(() => highlightedRows(page)).toEqual([]);
+  await finger.up();
+  await expect.poll(() => highlightedRows(page)).toEqual([]);
+});
+
+test("tapping a note highlights only that row", { tag: "@mobile-only" }, async ({ page }) => {
+  await treeItem(page, "Welcome").tap();
+  await expect(editor(page)).toBeVisible();
+
+  await expect.poll(() => highlightedRows(page)).toEqual(["Welcome"]);
 });
 
 test("a tap still opens the note", { tag: "@mobile-only" }, async ({ page }) => {
