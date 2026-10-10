@@ -43,14 +43,18 @@ import {
   REPO_CONFIG_PATH,
   SAVE_SUBJECT,
 } from "../../format/v1";
+import { generateLargeTreeRepo } from "../sample-notes-repo/generate-sample-notes-repo";
+import { LARGE_TREE_REPO_KEY } from "../sample-notes-repo/large-tree-source";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../sample-notes-repo/sample-source";
 import {
+  createAdapterFor,
   createSampleNotesRepoAdapter,
   createSampleSearchRepoAdapter,
   createSampleTrashRepoAdapter,
   sampleNotesRepo,
 } from "../sample-notes-repo/seed-sample-notes-repo";
 import { delay, type ForgeLatency, withLatency } from "./forge-latency";
+import { createLazyForgeAdapter } from "./lazy-forge-adapter";
 
 export const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
 export const FAKE_FORGE_INVALID_TOKEN = "invalid-token";
@@ -219,6 +223,14 @@ export async function createFakeForge(options?: {
     ["sample/newer", await createNewerRepoAdapter(githubShares)],
     ["sample/search", await createSampleSearchRepoAdapter({ shares: githubShares })],
     ["sample/trash", await createSampleTrashRepoAdapter({ shares: githubShares })],
+    [
+      LARGE_TREE_REPO_KEY,
+      createLazyForgeAdapter(async () =>
+        createAdapterFor(await generateLargeTreeRepo(argon2id), {
+          shares: githubShares,
+        }),
+      ),
+    ],
     ["sample/almost-empty", await createAlmostEmptyRepoAdapter(githubShares)],
     ["sample/public-empty", new FakeForgeAdapter({ shares: githubShares })],
   ]);

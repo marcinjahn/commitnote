@@ -109,6 +109,8 @@ Any access token lists all of these fixture repositories:
   `src/testing/sample-notes-repo/sample-source.ts`), the note deleted 2026-01-05 and the folder
   (with a nested note) deleted 2026-01-12 are expired, and the note deleted 2026-09-27 is fresh.
   `sample/notes` has no trash, so it never triggers a startup purge
+- `https://github.com/sample/large-tree` — same passphrase; a large generated tree (600+ notes in
+  nested folders) for checking tree performance, built on first open
 - `https://github.com/sample/empty` — empty and writable
 - `https://github.com/sample/almost-empty` — writable, with only `README.md`, `LICENSE` and
   `.gitignore`
