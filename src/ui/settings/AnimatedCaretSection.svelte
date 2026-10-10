@@ -28,12 +28,14 @@
         )}
     />
   {/snippet}
-  <input
-    id={inputId}
-    type="checkbox"
-    checked={settings.animatedCaret}
-    aria-describedby={hintId}
-    onchange={(event) =>
-      changeSettings({ animatedCaret: event.currentTarget.checked })}
-  />
+  <label class="setting-checkbox">
+    <input
+      id={inputId}
+      type="checkbox"
+      checked={settings.animatedCaret}
+      aria-describedby={hintId}
+      onchange={(event) =>
+        changeSettings({ animatedCaret: event.currentTarget.checked })}
+    />
+  </label>
 </SettingRow>

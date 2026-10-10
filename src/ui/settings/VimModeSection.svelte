@@ -28,12 +28,14 @@
         )}
     />
   {/snippet}
-  <input
-    id={inputId}
-    type="checkbox"
-    checked={settings.vimMode}
-    aria-describedby={hintId}
-    onchange={(event) =>
-      changeSettings({ vimMode: event.currentTarget.checked })}
-  />
+  <label class="setting-checkbox">
+    <input
+      id={inputId}
+      type="checkbox"
+      checked={settings.vimMode}
+      aria-describedby={hintId}
+      onchange={(event) =>
+        changeSettings({ vimMode: event.currentTarget.checked })}
+    />
+  </label>
 </SettingRow>

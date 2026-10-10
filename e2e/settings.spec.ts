@@ -1182,6 +1182,30 @@ test("Data & security is the last Settings section with export, import and passp
   page,
 }) => {
   const dialog = await openSettings(page);
+  const mobile = (page.viewportSize()?.width ?? 0) < 768;
+  if (mobile) {
+    for (const name of [
+      "Animated caret",
+      "Vim mode",
+      "Start a note by typing",
+      "Reopen the last note and folders",
+    ]) {
+      const checkbox = dialog.getByRole("checkbox", { name, exact: true });
+      await checkbox.scrollIntoViewIfNeeded();
+      const box = await checkbox
+        .locator("xpath=ancestor::label[contains(@class, 'setting-checkbox')]")
+        .boundingBox();
+      expect(box?.width).toBeGreaterThanOrEqual(44);
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+    }
+    const vim = dialog.getByRole("checkbox", { name: "Vim mode", exact: true });
+    const wrapper = vim.locator("xpath=ancestor::label[contains(@class, 'setting-checkbox')]");
+    const before = await vim.isChecked();
+    await wrapper.click({ position: { x: 2, y: 2 } });
+    expect(await vim.isChecked()).toBe(!before);
+    await wrapper.click({ position: { x: 2, y: 2 } });
+    expect(await vim.isChecked()).toBe(before);
+  }
   const headings = dialog.getByRole("heading", { level: 3 });
   await expect(headings.last()).toHaveText("Data & security");
   await expect(headings.nth(-2)).toHaveText("This device");

@@ -20,12 +20,14 @@
   {#snippet label()}
     <label for={inputId}>{REOPEN_LAST_VIEW_LABEL}</label>
   {/snippet}
-  <input
-    id={inputId}
-    type="checkbox"
-    checked={reopenLastView && remembered}
-    disabled={!remembered}
-    aria-describedby={remembered ? undefined : hintId}
-    onchange={(event) => onReopenLastViewChange(event.currentTarget.checked)}
-  />
+  <label class="setting-checkbox">
+    <input
+      id={inputId}
+      type="checkbox"
+      checked={reopenLastView && remembered}
+      disabled={!remembered}
+      aria-describedby={remembered ? undefined : hintId}
+      onchange={(event) => onReopenLastViewChange(event.currentTarget.checked)}
+    />
+  </label>
 </SettingRow>

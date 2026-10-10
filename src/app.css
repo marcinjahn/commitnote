@@ -428,7 +428,24 @@ button,
   height: var(--checkbox-size);
 }
 
-.setting-row-control > input[type="checkbox"] {
+.setting-checkbox {
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+@media (max-width: 767px) {
+  .setting-checkbox {
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+  }
+}
+
+.setting-checkbox:has(input:disabled) {
+  cursor: default;
+}
+
+.setting-checkbox > input[type="checkbox"] {
   display: block;
   width: var(--checkbox-size);
   height: var(--checkbox-size);
