@@ -58,9 +58,13 @@ export async function moveToTrash(
 }
 
 export async function openTrash(page: Page): Promise<Locator> {
-  const trashButton = page.getByTestId("open-trash");
-  await trashButton.focus();
-  await page.keyboard.press("Enter");
+  if (page.viewportSize()!.width < 768) {
+    await page.getByRole("button", { name: "More commands" }).click();
+    await page.getByRole("menuitem", { name: /^Trash \(/ }).click();
+  } else {
+    await page.getByTestId("open-trash").focus();
+    await page.keyboard.press("Enter");
+  }
   const dialog = page.getByRole("dialog", { name: "Trash" });
   await expect(dialog).toBeVisible();
   return dialog;

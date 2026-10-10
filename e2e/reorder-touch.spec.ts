@@ -205,5 +205,7 @@ test("long-pressing a row and dropping it on the trash button deletes it", { tag
   ).toBeVisible();
   await dialog.getByRole("button", { name: "Move to trash", exact: true }).click();
   await expect(treeItem(page, "Welcome")).toHaveCount(0);
-  await expect(trash).toHaveText(/Trash \(1\)/);
+  await expect(trash).toHaveCount(0);
+  await page.getByRole("button", { name: "More commands" }).click();
+  await expect(page.getByRole("menuitem", { name: "Trash (1)" })).toBeVisible();
 });

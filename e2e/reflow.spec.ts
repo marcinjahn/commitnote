@@ -19,7 +19,7 @@ async function expectNoOverflow(page: Page): Promise<void> {
 }
 
 test.describe("reflow", () => {
-  test("at 320x256 the sidebar scrolls to the trash row", async ({
+  test("at 320x256 the Trash menu item stays in view", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 320, height: 256 });
@@ -33,16 +33,12 @@ test.describe("reflow", () => {
     );
     expect(container).toBeGreaterThanOrEqual(120);
 
-    const nav = page.getByRole("navigation", { name: "Notes" });
-    await nav.evaluate((el) => el.scrollTo(0, el.scrollHeight));
-
-    const viewportHeight = page.viewportSize()!.height;
-    for (const target of [page.getByTestId("open-trash")]) {
-      const box = await target.boundingBox();
-      expect(box).not.toBeNull();
-      expect(box!.y).toBeGreaterThanOrEqual(0);
-      expect(box!.y + box!.height).toBeLessThanOrEqual(viewportHeight);
-    }
+    await page.getByRole("button", { name: "More commands" }).click();
+    const item = page.getByRole("menuitem", { name: "Trash (1)" });
+    const box = await item.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
     await expectNoOverflow(page);
   });
 

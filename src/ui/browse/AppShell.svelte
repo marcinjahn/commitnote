@@ -938,6 +938,16 @@
 
   const importing = $derived(engineState.importing || importStarted !== null);
   const commands: readonly Command[] = $derived([
+    ...(narrow && trashEntries.length > 0
+      ? [
+          {
+            id: "trash",
+            label: `Trash (${trashEntries.length})`,
+            icon: commandIcons.trash,
+            run: openTrash,
+          },
+        ]
+      : []),
     {
       id: "settings",
       label: "Settings",
@@ -2409,7 +2419,7 @@
         {describeUndecryptableFiles(engineState.synced?.undecryptableFiles ?? 0)}
       </p>
     {/if}
-    {#if trashEntries.length > 0 || treeDragActive}
+    {#if narrow ? treeDragActive : trashEntries.length > 0 || treeDragActive}
       <div class="trash-slot" transition:trashReveal>
         <button
           bind:this={trashButtonEl}
