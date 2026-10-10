@@ -1,9 +1,16 @@
 <script lang="ts">
-  import { tick, type Snippet } from "svelte";
+  import { tick, untrack, type Snippet } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
-  import { DESKTOP_MEDIA_QUERY } from "../browse/drag-motion";
+  import type { TransitionConfig } from "svelte/transition";
+  import {
+    DESKTOP_MEDIA_QUERY,
+    isNarrowLayout,
+    prefersReducedMotion,
+  } from "../browse/drag-motion";
   import { dialogStack } from "./dialog-stack";
   import { captureFocusReturn, returnFocus } from "./focus-return";
+  import { getScreenScope } from "./screen-scope";
+  import { sheetExitDuration, sheetExitTokenMs } from "./sheet-motion";
   import { swipeToClose } from "./swipe-to-close";
 
   interface Props {
@@ -49,8 +56,8 @@
   const uid = $props.id();
   const titleId = `dialog-title-${uid}`;
 
-  let dialogEl: HTMLDialogElement | undefined = $state();
-  let cardEl: HTMLDivElement | undefined = $state();
+  let dialogEl: HTMLDialogElement | null = $state(null);
+  let cardEl: HTMLDivElement | null = $state(null);
 
   function focusInitialElement(el: HTMLElement): void {
     const field = el.querySelector<HTMLElement>(
@@ -76,8 +83,13 @@
   let returnTo: HTMLElement | null = null;
   let focusRecorded = false;
 
+  const screenIsCurrent = getScreenScope();
+  const exitDurations = new WeakMap<HTMLDialogElement, number>();
+  let exitingEl: HTMLDialogElement | null = $state(null);
+  const resting = $derived(open && (dialogEl === null || exitingEl !== dialogEl));
+
   $effect.pre(() => {
-    if (open && !focusRecorded) {
+    if (resting && !focusRecorded) {
       focusRecorded = true;
       returnTo = returnFocusTo ?? captureFocusReturn();
     }
@@ -91,26 +103,77 @@
     void tick().then(() => returnFocus(target, closing));
   }
 
+  function beginExit(el: HTMLDialogElement): number {
+    const started = exitDurations.get(el);
+    if (started !== undefined) return started;
+    // swipe-to-close clears data-swipe on the native close event
+    const swiped = el.dataset.swipe === "closed";
+    // A dialog torn down with its screen must not hold that screen in layout.
+    const duration = screenIsCurrent !== null && !screenIsCurrent()
+      ? 0
+      : sheetExitDuration({
+        narrowLayout: isNarrowLayout(),
+        reducedMotion: prefersReducedMotion(),
+        swiped,
+        tokenDurationMs: sheetExitTokenMs(
+          getComputedStyle(el).getPropertyValue("--sheet-exit-duration"),
+        ),
+      });
+    exitDurations.set(el, duration);
+    exitingEl = el;
+    el.dataset.exiting = "";
+    el.inert = true;
+    el.setAttribute("aria-hidden", "true");
+    if (el.open) el.close();
+    dialogStack.unregister(el);
+    restoreFocus(el);
+    return duration;
+  }
+
+  function cancelExit(el: HTMLDialogElement): void {
+    if (!exitDurations.delete(el)) return;
+    if (exitingEl === el) exitingEl = null;
+    delete el.dataset.exiting;
+    el.inert = false;
+    el.removeAttribute("aria-hidden");
+  }
+
+  // Global, so an ancestor's teardown also waits for the exit. Svelte keeps
+  // the first config of an out-only transition across a re-open that resumes
+  // the outro, so the close runs from the getter, which is read on every outro.
+  // The outro starts inside a block effect; untrack lets dialog-stack
+  // listeners update state from there.
+  function sheetExit(node: HTMLDialogElement): TransitionConfig {
+    return {
+      get duration() {
+        return untrack(() => beginExit(node));
+      },
+    };
+  }
+
+  // Resuming an exiting block (a re-open during the exit, possibly through an
+  // ancestor {#if} while `open` stays true) changes no prop; Svelte only
+  // re-runs intros then, so this intro is the signal to undo the exit.
+  function exitResume(node: HTMLDialogElement): TransitionConfig {
+    cancelExit(node);
+    return {};
+  }
+
   $effect(() => {
     const el = dialogEl;
-    if (el === undefined) return;
-    if (open) {
-      if (!el.open) {
-        el.showModal();
-        dialogStack.register(el);
-      }
-      if (cardEl !== undefined) focusInitialElement(cardEl);
-    } else if (el.open) {
-      el.close();
-      dialogStack.unregister(el);
-      restoreFocus(el);
+    if (el === null || !resting) return;
+    if (!el.open) {
+      el.showModal();
+      dialogStack.register(el);
     }
+    if (cardEl !== null) focusInitialElement(cardEl);
   });
 
   $effect(() => {
     const el = dialogEl;
-    if (el === undefined) return;
+    if (el === null) return;
     return () => {
+      if (exitDurations.has(el)) return;
       dialogStack.unregister(el);
       restoreFocus(el);
     };
@@ -139,7 +202,7 @@
   });
 
   function handleClose(): void {
-    if (dialogEl !== undefined) dialogStack.unregister(dialogEl);
+    if (dialogEl !== null && !dialogEl.open) dialogStack.unregister(dialogEl);
   }
 
   function handleCancel(event: Event): void {
@@ -154,63 +217,67 @@
   }
 </script>
 
-<dialog
-  bind:this={dialogEl}
-  class="dialog"
-  class:large
-  class:wide
-  class:top
-  class:desktop-large={desktopLarge}
-  aria-labelledby={titleId}
-  oncancel={handleCancel}
-  onclose={handleClose}
-  onclick={handleBackdropClick}
->
-  <div
-    bind:this={cardEl}
-    class="dialog-card"
+{#if open}
+  <dialog
+    bind:this={dialogEl}
+    in:exitResume|global
+    out:sheetExit|global
+    class="dialog"
     class:large
     class:wide
     class:top
     class:desktop-large={desktopLarge}
-    class:accent-border={accentBorder}>
+    aria-labelledby={titleId}
+    oncancel={handleCancel}
+    onclose={handleClose}
+    onclick={handleBackdropClick}
+  >
     <div
-      class="dialog-header"
-      class:swipeable={swipeEnabled}
-      use:swipeToClose={{ enabled: swipeEnabled, onClose }}
-    >
-      {#if swipeEnabled}
-        <div class="dialog-grab-handle" data-testid="dialog-grab-handle" aria-hidden="true"></div>
-      {/if}
-      <h2 id={titleId} class="dialog-title">{title}</h2>
-      {#if headerStatus}
-        <div class="dialog-header-status">
-          {@render headerStatus()}
+      bind:this={cardEl}
+      class="dialog-card"
+      class:large
+      class:wide
+      class:top
+      class:desktop-large={desktopLarge}
+      class:accent-border={accentBorder}>
+      <div
+        class="dialog-header"
+        class:swipeable={swipeEnabled}
+        use:swipeToClose={{ enabled: swipeEnabled, onClose }}
+      >
+        {#if swipeEnabled}
+          <div class="dialog-grab-handle" data-testid="dialog-grab-handle" aria-hidden="true"></div>
+        {/if}
+        <h2 id={titleId} class="dialog-title">{title}</h2>
+        {#if headerStatus}
+          <div class="dialog-header-status">
+            {@render headerStatus()}
+          </div>
+        {/if}
+        {#if closeButton}
+          <button
+            type="button"
+            class="button button-icon button-ghost dialog-close"
+            aria-label="Close"
+            onclick={onClose}
+          >
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        {/if}
+      </div>
+      <div class="dialog-body" class:wide class:top>
+        {@render children()}
+      </div>
+      {#if actions}
+        <div class="dialog-actions">
+          {@render actions()}
         </div>
       {/if}
-      {#if closeButton}
-        <button
-          type="button"
-          class="button button-icon button-ghost dialog-close"
-          aria-label="Close"
-          onclick={onClose}
-        >
-          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <path d="M4 4l8 8M12 4l-8 8" />
-          </svg>
-        </button>
-      {/if}
     </div>
-    <div class="dialog-body" class:wide class:top>
-      {@render children()}
-    </div>
-    {#if actions}
-      <div class="dialog-actions">
-        {@render actions()}
-      </div>
-    {/if}
-  </div>
-</dialog>
+  </dialog>
+{/if}
 
 <style>
   .dialog {
@@ -277,6 +344,24 @@
   }
 
   @media (max-width: 767.98px) {
+    .dialog {
+      transition:
+        display var(--sheet-exit-duration) allow-discrete,
+        overlay var(--sheet-exit-duration) allow-discrete;
+    }
+
+    .dialog:not([open])::backdrop {
+      opacity: 0;
+      transition: opacity var(--sheet-exit-duration) var(--motion-easing);
+    }
+
+    .dialog:not([open]) .dialog-card {
+      translate: 0 calc(100% + var(--keyboard-inset, 0px));
+      transition:
+        translate var(--sheet-exit-duration) var(--sheet-exit-easing),
+        transform var(--motion-duration) var(--motion-easing);
+    }
+
     @starting-style {
       .dialog[open] .dialog-card {
         translate: 0 calc(100% + var(--keyboard-inset, 0px));

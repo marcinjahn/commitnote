@@ -96,6 +96,7 @@ export function swipeToClose(
   function close(): void {
     if (card === null) return;
     settle(card.offsetHeight, 1, () => {
+      if (dialog !== null) dialog.dataset.swipe = "closed";
       options.onClose();
       closeCheckTimer = setTimeout(() => {
         closeCheckTimer = undefined;
