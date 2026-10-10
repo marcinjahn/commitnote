@@ -51,6 +51,7 @@
       }}
     >
       <input
+        class="visually-hidden"
         type="radio"
         {name}
         value={option.id}
@@ -81,7 +82,8 @@
 <style>
   .setting-options {
     display: grid;
-    gap: var(--space-1);
+    gap: 0;
+    border-top: var(--hairline);
   }
 
   @media (min-width: 768px) {
@@ -93,17 +95,30 @@
   .setting-option {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
     min-height: var(--touch-target);
-    padding: var(--space-1) var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: var(--hairline);
+    border-inline-start: 2px solid transparent;
     border-radius: var(--radius);
     font-size: var(--font-size-sm);
     cursor: pointer;
     transition: background var(--motion-duration) var(--motion-easing);
   }
 
+  @media (min-width: 768px) {
+    .setting-option {
+      min-height: 40px;
+    }
+  }
+
   .setting-option:has(input:checked) {
     background: var(--color-selected);
+    border-inline-start-color: var(--color-accent);
+  }
+
+  .setting-option:has(input:focus-visible) {
+    outline: 2px solid var(--color-focus);
+    outline-offset: -2px;
   }
 
   @media (hover: hover) {
@@ -115,6 +130,7 @@
   .setting-option-text {
     display: flex;
     flex-direction: column;
+    flex: 1;
     min-width: 0;
   }
 
@@ -127,12 +143,9 @@
     font-family: var(--font-sans);
     font-size: var(--font-size-xs);
     color: var(--color-text-muted);
-  }
-
-  input {
-    flex-shrink: 0;
-    width: var(--checkbox-size);
-    height: var(--checkbox-size);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   @media (forced-colors: active) {
