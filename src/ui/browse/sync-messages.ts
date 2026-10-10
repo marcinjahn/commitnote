@@ -23,10 +23,14 @@ export function describeSyncState(state: SyncState): string {
   }
 }
 
-export function describeOffline(hasUnsaved: boolean): string {
-  return hasUnsaved
-    ? "Offline. Changes will save when you're back online. Keep this tab open."
-    : "Offline";
+export function describeOffline(
+  hasUnsaved: boolean,
+  standalone: boolean,
+): string {
+  if (!hasUnsaved) return "Offline";
+  return standalone
+    ? "Offline. Changes will save when you're back online. Keep the app open."
+    : "Offline. Changes will save when you're back online. Keep this tab open.";
 }
 
 export function describeSaveShortcutResult(input: {
@@ -36,10 +40,11 @@ export function describeSaveShortcutResult(input: {
   settingsPending: boolean;
   offline: boolean;
   waitingForRateBudget: boolean;
+  standalone: boolean;
 }): string | null {
   if (input.stopped || input.suspended) return null;
   if (input.unsavedCount === 0 && !input.settingsPending) return "All saved";
-  if (input.offline) return describeOffline(true);
+  if (input.offline) return describeOffline(true, input.standalone);
   if (input.waitingForRateBudget) return "Saving soon (commit limit reached)";
   return null;
 }
@@ -48,9 +53,10 @@ export function describeSyncStatus(input: {
   state: SyncState;
   offline: boolean;
   hasUnsaved: boolean;
+  standalone: boolean;
 }): string {
   return input.offline
-    ? describeOffline(input.hasUnsaved)
+    ? describeOffline(input.hasUnsaved, input.standalone)
     : describeSyncState(input.state);
 }
 

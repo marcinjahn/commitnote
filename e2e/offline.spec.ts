@@ -7,6 +7,7 @@ import {
   treeItem,
   waitForSynced,
 } from "./helpers/tree";
+import { emulateStandalone } from "./helpers/install";
 
 const OFFLINE_LONG =
   "Offline. Changes will save when you're back online. Keep this tab open.";
@@ -82,6 +83,23 @@ test("the sync status button shows offline and opens an unsaved note from its me
 
   await page.context().setOffline(false);
   await expect(page.getByRole("button", { name: /^Offline/ })).toHaveCount(0);
+});
+
+test("the installed app says to keep the app open while offline", async ({
+  page,
+}) => {
+  await emulateStandalone(page);
+  await openNotes(page);
+  await page.context().setOffline(true);
+  await editIdeasOffline(page);
+  await showTree(page);
+
+  await expect(
+    page.getByRole("button", {
+      name: "Offline. Changes will save when you're back online. Keep the app open.",
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: OFFLINE_LONG })).toHaveCount(0);
 });
 
 test("on mobile the sync status button opens an unsaved note into the note view", { tag: "@mobile" }, async ({

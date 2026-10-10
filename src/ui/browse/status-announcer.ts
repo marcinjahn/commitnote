@@ -56,6 +56,7 @@ export function nextAnnouncement(
     allSaved: boolean;
     hasUnsaved: boolean;
     notices: readonly EngineNotice[];
+    standalone: boolean;
   },
 ): { state: AnnouncerState; message: string | null } {
   const { problem } = input;
@@ -76,7 +77,7 @@ export function nextAnnouncement(
     }
     const message =
       problem === "offline"
-        ? describeOffline(input.hasUnsaved)
+        ? describeOffline(input.hasUnsaved, input.standalone)
         : describeSyncState({ kind: "out-of-sync", reason: "failed" });
     return {
       state: { problem, awaitingRecovery: true, announcedNoticeId },

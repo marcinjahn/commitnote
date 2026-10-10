@@ -15,8 +15,15 @@ function step(
   allSaved: boolean,
   hasUnsaved = !allSaved,
   notices: readonly EngineNotice[] = [],
+  standalone = false,
 ) {
-  return nextAnnouncement(state, { problem, allSaved, hasUnsaved, notices });
+  return nextAnnouncement(state, {
+    problem,
+    allSaved,
+    hasUnsaved,
+    notices,
+    standalone,
+  });
 }
 
 describe("syncProblem", () => {
@@ -59,6 +66,13 @@ describe("nextAnnouncement", () => {
     const result = step(INITIAL_ANNOUNCER_STATE, "offline", false, true);
     expect(result.message).toBe(
       "Offline. Changes will save when you're back online. Keep this tab open.",
+    );
+  });
+
+  it("announces offline with unsaved changes in the installed app", () => {
+    const result = step(INITIAL_ANNOUNCER_STATE, "offline", false, true, [], true);
+    expect(result.message).toBe(
+      "Offline. Changes will save when you're back online. Keep the app open.",
     );
   });
 
