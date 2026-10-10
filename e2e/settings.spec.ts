@@ -397,6 +397,16 @@ test("arrow keys move the note placement selection", async ({ page }) => {
   const group = settingsDialog(page).getByRole("radiogroup", {
     name: "New notes",
   });
+  const foldersGroup = settingsDialog(page).getByRole("radiogroup", {
+    name: "New folders",
+  });
+  const notesBox = await group.boundingBox();
+  const foldersBox = await foldersGroup.boundingBox();
+  expect(notesBox).not.toBeNull();
+  expect(foldersBox).not.toBeNull();
+  expect(Math.abs(notesBox!.x - foldersBox!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(notesBox!.width - foldersBox!.width)).toBeLessThanOrEqual(1);
+
   const beginning = group.getByRole("radio", { name: "At the beginning" });
   await beginning.focus();
 

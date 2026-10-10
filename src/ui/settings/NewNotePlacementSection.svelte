@@ -10,7 +10,7 @@
   const { settings, changeSettings }: SettingsSectionProps = $props();
 </script>
 
-<SettingRow>
+<SettingRow stacked>
   {#snippet label()}New notes{/snippet}
   <SegmentedControl
     label="New notes"
