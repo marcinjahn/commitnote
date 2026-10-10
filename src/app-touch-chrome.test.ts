@@ -16,6 +16,10 @@ describe("touch chrome", () => {
     );
   });
 
+  test("the root element skips the double-tap delay", () => {
+    expect(ruleBody(/html/)).toMatch(/touch-action:\s*manipulation/);
+  });
+
   test("buttons skip the double-tap delay and are not selectable", () => {
     const body = ruleBody(/button,\s*\.button/);
     expect(body).toMatch(/touch-action:\s*manipulation/);

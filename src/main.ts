@@ -10,6 +10,7 @@ import { createShareReaders } from "./forge/share-readers";
 import type { ShareReaders } from "./forge/share-host";
 import { isShareHash } from "./share/share-link";
 import { startBrowserAppUpdates } from "./app/app-updates";
+import { preventGestureZoom } from "./app/gesture-zoom-guard";
 import { captureInstallEvents } from "./app/install-events";
 import { createBrowserInstallController } from "./app/install-controller";
 import { type LaunchQueueLike, startLaunchActions } from "./app/launch-action";
@@ -20,6 +21,8 @@ const target = document.getElementById("app");
 if (!target) {
   throw new Error("Missing #app element");
 }
+
+preventGestureZoom(document);
 
 const installEvents = captureInstallEvents(window);
 
