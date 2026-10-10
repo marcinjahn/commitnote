@@ -350,7 +350,16 @@ export async function showTree(page: Page): Promise<void> {
 
 export async function logOut(page: Page): Promise<void> {
   await showTree(page);
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
+  const footerButton = page.getByRole("button", { name: "Log out", exact: true });
+  if ((await footerButton.count()) > 0) {
+    await footerButton.click();
+    return;
+  }
+  await page.getByRole("button", { name: "More commands" }).click();
+  await page
+    .getByRole("menu", { name: "Commands" })
+    .getByRole("menuitem", { name: "Log out" })
+    .click();
 }
 
 // Matches while the row shows any sync state: a waiting or saving label

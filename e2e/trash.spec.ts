@@ -6,7 +6,7 @@ import { moveToTrash, openRowMenu, openTrash, openWelcome, restoreTo, treeItem }
 const TRASH_REPO = "https://github.com/sample/trash";
 const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
 
-test("the Trash row sits below the tree and leaves the repo link visible", { tag: "@mobile" }, async ({
+test("the Trash row sits below the tree and leaves the repo link visible", async ({
   page,
 }) => {
   await openNotes(page);

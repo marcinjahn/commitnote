@@ -2430,34 +2430,42 @@
         </button>
       </div>
     {/if}
-    <div class="sidebar-footer">
-      <a
-        class="repo-link"
-        href={repoUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={repoLabelTruncated ? repoLabel : undefined}
-      >
-        <span class="repo-label" bind:this={repoLabelEl}>{repoLabel}</span>
-        {#if head !== null}
-          <CommitSha sha={head} />
-        {/if}
-      </a>
-      <SettingsSaveIndicator state={settingsSave} onOpen={openSettings} />
-      <button
-        type="button"
-        class="button button-icon button-ghost log-out"
-        aria-label="Log out"
-        title="Log out"
-        onclick={handleLogOut}
-      >
-        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-          {#each commandIcons.logOut as d (d)}
-            <path {d} />
-          {/each}
-        </svg>
-      </button>
-    </div>
+    {#if narrow}
+      {#if settingsSave.kind !== "synced"}
+        <div class="sidebar-footer">
+          <SettingsSaveIndicator state={settingsSave} onOpen={openSettings} />
+        </div>
+      {/if}
+    {:else}
+      <div class="sidebar-footer">
+        <a
+          class="repo-link"
+          href={repoUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={repoLabelTruncated ? repoLabel : undefined}
+        >
+          <span class="repo-label" bind:this={repoLabelEl}>{repoLabel}</span>
+          {#if head !== null}
+            <CommitSha sha={head} />
+          {/if}
+        </a>
+        <SettingsSaveIndicator state={settingsSave} onOpen={openSettings} />
+        <button
+          type="button"
+          class="button button-icon button-ghost log-out"
+          aria-label="Log out"
+          title="Log out"
+          onclick={handleLogOut}
+        >
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            {#each commandIcons.logOut as d (d)}
+              <path {d} />
+            {/each}
+          </svg>
+        </button>
+      </div>
+    {/if}
     <SidebarResizeHandle
       width={sidebarWidth}
       min={sidebarMinWidth}

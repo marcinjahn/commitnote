@@ -19,7 +19,7 @@ async function expectNoOverflow(page: Page): Promise<void> {
 }
 
 test.describe("reflow", () => {
-  test("at 320x256 the sidebar scrolls to the trash row and log out", async ({
+  test("at 320x256 the sidebar scrolls to the trash row", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 320, height: 256 });
@@ -37,10 +37,7 @@ test.describe("reflow", () => {
     await nav.evaluate((el) => el.scrollTo(0, el.scrollHeight));
 
     const viewportHeight = page.viewportSize()!.height;
-    for (const target of [
-      page.getByTestId("open-trash"),
-      page.getByRole("button", { name: "Log out", exact: true }),
-    ]) {
+    for (const target of [page.getByTestId("open-trash")]) {
       const box = await target.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.y).toBeGreaterThanOrEqual(0);
