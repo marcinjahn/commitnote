@@ -1,0 +1,120 @@
+:root {
+  --floating-background: var(--color-surface-raised);
+  --floating-backdrop: none;
+  --floating-texture: none;
+  --floating-border: var(--hairline) solid light-dark(var(--color-border), var(--color-border-strong));
+  --floating-toast-border: var(--hairline) solid var(--color-border);
+  --floating-edge-highlight: 0 0 0 0 transparent;
+  --floating-shadow: var(--shadow-1);
+  --floating-radius: var(--radius);
+  --floating-toast-radius: var(--radius);
+  --floating-item-radius: var(--radius);
+  --floating-item-inset: 0px;
+  --floating-item-height-fine: var(--touch-target);
+  --floating-highlight: var(--color-hover);
+  --floating-enter-transform: none;
+  --floating-enter-duration: var(--motion-duration);
+  --floating-enter-easing: var(--motion-easing);
+}
+
+:root[data-platform="mac"],
+:root[data-platform="ios"] {
+  --floating-border: var(--hairline) solid light-dark(rgb(0 0 0 / 0.12), rgb(255 255 255 / 0.14));
+  --floating-toast-border: var(--floating-border);
+  --floating-edge-highlight: inset 0 1px 0 light-dark(rgb(255 255 255 / 0.7), rgb(255 255 255 / 0.12));
+  --floating-shadow:
+    0 10px 30px light-dark(rgb(0 0 0 / 0.12), rgb(0 0 0 / 0.45)),
+    0 1px 3px light-dark(rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.35));
+  --floating-enter-transform: scale(0.96);
+  --floating-enter-duration: 160ms;
+  --floating-enter-easing: cubic-bezier(0.2, 0, 0, 1);
+}
+
+:root[data-platform="mac"] {
+  --floating-radius: 10px;
+  --floating-toast-radius: 12px;
+  --floating-item-radius: 6px;
+  --floating-item-inset: 4px;
+  --floating-item-height-fine: 32px;
+  --floating-highlight: color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+
+:root[data-platform="ios"] {
+  --floating-radius: 14px;
+  --floating-toast-radius: 16px;
+  --floating-item-radius: 0;
+  --floating-item-inset: 0px;
+  --floating-item-height-fine: var(--touch-target);
+  --floating-highlight: color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+
+:root[data-platform="windows"] {
+  --floating-radius: 8px;
+  --floating-toast-radius: 8px;
+  --floating-item-radius: 4px;
+  --floating-item-inset: 4px;
+  --floating-item-height-fine: 32px;
+  --floating-highlight: light-dark(
+    color-mix(in srgb, var(--color-text) 6%, transparent),
+    color-mix(in srgb, var(--color-text) 8%, transparent)
+  );
+  --floating-border: var(--hairline) solid light-dark(rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.5));
+  --floating-toast-border: var(--floating-border);
+  --floating-edge-highlight: inset 0 0 0 1px light-dark(transparent, rgb(255 255 255 / 0.06));
+  --floating-shadow:
+    0 8px 16px light-dark(rgb(0 0 0 / 0.14), rgb(0 0 0 / 0.28)),
+    0 0 2px light-dark(rgb(0 0 0 / 0.12), rgb(0 0 0 / 0.24));
+  --floating-enter-transform: translateY(-6px);
+  --floating-enter-duration: 180ms;
+  --floating-enter-easing: cubic-bezier(0, 0, 0, 1);
+}
+
+:root[data-platform="android"] {
+  --floating-radius: 4px;
+  --floating-toast-radius: 4px;
+  --floating-item-radius: 0;
+  --floating-item-inset: 0px;
+  --floating-item-height-fine: var(--touch-target);
+  --floating-highlight: color-mix(in srgb, var(--color-text) 8%, transparent);
+  --floating-border: var(--hairline) solid var(--color-border);
+  --floating-toast-border: var(--floating-border);
+  --floating-shadow: var(--shadow-2);
+  --floating-enter-transform: scaleY(0.92);
+  --floating-enter-duration: 150ms;
+  --floating-enter-easing: var(--motion-easing);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root[data-platform="mac"],
+  :root[data-platform="ios"] {
+    --floating-background: color-mix(in srgb, var(--color-surface-raised) 72%, transparent);
+    --floating-backdrop: blur(24px) saturate(180%);
+  }
+
+  :root[data-platform="windows"] {
+    --floating-background: color-mix(in srgb, var(--color-surface-raised) 80%, transparent);
+    --floating-backdrop: blur(30px) saturate(125%);
+    --floating-texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+/* A positive query on purpose: engines that do not know the feature treat it as false,
+   so a negated query would switch the translucent material off there too. */
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-platform] {
+    --floating-background: var(--color-surface-raised);
+    --floating-backdrop: none;
+    --floating-texture: none;
+  }
+}
+
+@media (forced-colors: active) {
+  :root[data-platform] {
+    --floating-background: Canvas;
+    --floating-backdrop: none;
+    --floating-texture: none;
+    --floating-edge-highlight: 0 0 0 0 transparent;
+    --floating-shadow: none;
+    --floating-highlight: Highlight;
+  }
+}
