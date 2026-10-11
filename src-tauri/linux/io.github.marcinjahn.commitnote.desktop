@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Name=commitnote
+Comment=Encrypted markdown notes, stored in a Git repository you own.
+Exec=commitnote %U
+Icon=io.github.marcinjahn.commitnote
+Terminal=false
+Categories=Utility;TextEditor;
+Keywords=notes;markdown;encrypted;git;
+StartupWMClass=commitnote
+Actions=new-note;search;
+
+[Desktop Action new-note]
+Name=New note
+Exec=commitnote --action new-note
+
+[Desktop Action search]
+Name=Search notes
+Exec=commitnote --action search
