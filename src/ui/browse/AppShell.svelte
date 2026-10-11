@@ -1389,6 +1389,11 @@
 
   let trashButtonEl = $state<HTMLButtonElement | null>(null);
   let treeDragActive = $state(false);
+  let notePullPhase = $state<PullPhase>("idle");
+  let notePullChip = $state<HTMLElement | null>(null);
+  const notePullEnabled = $derived(
+    narrow && mobileView === "note" && !anyDialogOpen && !manualRefreshing && !openConflicted,
+  );
   const treePullEnabled = $derived(
     narrow && mobileView === "tree" && !anyDialogOpen && !manualRefreshing && !treeDragActive,
   );
@@ -2564,6 +2569,15 @@
     class:mobile-hidden={mobileView !== "note"}
     inert={narrow && mobileView !== "note"}
     bind:this={notePaneEl}
+    use:pullGesture={{
+      enabled: notePullEnabled,
+      atTop: () => (notePane?.contentElement()?.scrollTop ?? 0) <= 0,
+      canStart: () => !(notePane?.hasSelection() ?? false),
+      content: () => notePane?.contentElement() ?? null,
+      indicator: () => notePullChip,
+      onChange: (phase) => (notePullPhase = phase),
+      onRefresh: handleRefresh,
+    }}
   >
     {#key draftSession}
       {#if draft !== null}
@@ -2615,6 +2629,11 @@
         />
       {/if}
     {/key}
+    {#if narrow}
+      <div class="note-pull-anchor">
+        <PullIndicator phase={notePullPhase} bind:chip={notePullChip} />
+      </div>
+    {/if}
     <NotePane
       bind:this={notePane}
       {engine}
@@ -3008,6 +3027,13 @@
 
   .sidebar {
     background: var(--color-background);
+  }
+
+  .note-pull-anchor {
+    position: relative;
+    height: 0;
+    flex-shrink: 0;
+    z-index: 1;
   }
 
   .tree-header {

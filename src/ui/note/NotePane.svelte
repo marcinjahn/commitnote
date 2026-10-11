@@ -270,6 +270,15 @@
     editor?.insertText(text);
   }
 
+  export function contentElement(): HTMLElement | null {
+    return contentEl ?? null;
+  }
+
+  export function hasSelection(): boolean {
+    const selection = editor?.getSelection();
+    return selection !== undefined && selection.anchor !== selection.head;
+  }
+
   function handleEditorChange(text: string): void {
     if (heldContent !== null) return;
     if (draft) {

@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import {
   fakeForge,
+  flushPendingSaves,
   openNotes,
   SAMPLE,
   TouchFinger,
@@ -16,7 +17,11 @@ test.beforeEach(async ({ page }) => {
 });
 
 function indicator(page: Page): Locator {
-  return page.locator(".pull-indicator");
+  return page.locator(".tree-header .pull-indicator");
+}
+
+function noteIndicator(page: Page): Locator {
+  return page.locator(".note-pull-anchor .pull-indicator");
 }
 
 function highlightedRows(page: Page): Promise<string[]> {
@@ -73,6 +78,70 @@ async function fullPull(page: Page): Promise<void> {
   const finger = await pull(page, await wordmarkPoint(page), 200);
   await expect(indicator(page)).toHaveAttribute("data-phase", "armed");
   await expect(indicator(page)).toBeVisible();
+  await finger.up();
+}
+
+const noteEditor = (page: Page) =>
+  page.getByRole("textbox", { name: "Note editor" });
+
+const LONG_NOTE = [
+  "# Welcome",
+  ...Array.from({ length: 120 }, (_, i) => `\nLine ${i + 1} of the long note`),
+].join("\n");
+
+async function openLongNote(page: Page): Promise<void> {
+  await fakeForge(page).editNote(["Welcome"], LONG_NOTE);
+  await refreshManually(page);
+  await openWelcome(page);
+  await expect(noteEditor(page)).toContainText("Line 1 of");
+  await expect
+    .poll(() =>
+      page.locator(".note-content").evaluate((el) => el.scrollHeight - el.clientHeight),
+    )
+    .toBeGreaterThan(600);
+}
+
+function caretOffset(page: Page): Promise<{ text: string | null; offset: number | null; collapsed: boolean }> {
+  return page.evaluate(() => {
+    const sel = window.getSelection();
+    return {
+      text: sel?.anchorNode?.textContent ?? null,
+      offset: sel?.anchorOffset ?? null,
+      collapsed: sel?.isCollapsed ?? true,
+    };
+  });
+}
+
+async function tapAt(page: Page, at: TouchPoint): Promise<void> {
+  const tap = await TouchFinger.on(page);
+  await tap.down(at);
+  await tap.up();
+}
+
+async function recordNotePhases(page: Page): Promise<void> {
+  await noteIndicator(page).evaluate((el) => {
+    const seen = window as unknown as { notePhases: string[] };
+    seen.notePhases = [el.dataset.phase!];
+    new MutationObserver(() => {
+      seen.notePhases.push(el.dataset.phase!);
+    }).observe(el, { attributes: true, attributeFilter: ["data-phase"] });
+  });
+}
+
+function notePhases(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () => (window as unknown as { notePhases: string[] }).notePhases,
+  );
+}
+
+async function expectNoteSettled(page: Page): Promise<void> {
+  await expect(noteIndicator(page)).toHaveAttribute("data-phase", "idle");
+  await expect(noteIndicator(page)).toBeHidden();
+}
+
+async function fullNotePull(page: Page, from: TouchPoint): Promise<void> {
+  const finger = await pull(page, from, 200);
+  await expect(noteIndicator(page)).toHaveAttribute("data-phase", "armed");
   await finger.up();
 }
 
@@ -289,26 +358,215 @@ test(
   },
 );
 
-test("the note view has no pull gesture", MOBILE_ONLY, async ({ page }) => {
+test("a pull on the note refreshes it in place", MOBILE_ONLY, async ({ page }) => {
   const forge = fakeForge(page);
   await openWelcome(page);
+  const editor = page.getByRole("textbox", { name: "Note editor" });
+  const text = editor.locator(".cm-line").first();
+  const tap = await TouchFinger.on(page);
+  const at = await pointIn(text);
+  await tap.down(at);
+  await tap.up();
+  await flushPendingSaves(page);
   const before = await forge.getHeadCount();
-  const header = page.locator(".note-header");
-  const box = (await header.boundingBox())!;
 
-  const finger = await pull(
-    page,
-    { x: box.x + box.width / 2, y: box.y + 4 },
-    200,
-  );
-  await expect(indicator(page)).toHaveAttribute("data-phase", "idle");
+  await forge.editNote(["Welcome"], "# Welcome\n\nRefreshed remotely");
+  const finger = await pull(page, await pointIn(text), 200);
+  await expect(noteIndicator(page)).toHaveAttribute("data-phase", "armed");
   await finger.up();
-  expect(await forge.getHeadCount()).toBe(before);
 
-  await page.getByRole("button", { name: "Back to notes" }).click();
-  await expect(treeItem(page, "Welcome")).toBeVisible();
-  await refreshManually(page);
   await expect.poll(() => forge.getHeadCount()).toBe(before + 1);
+  await expect(editor).toContainText("Refreshed remotely");
+  await expect(noteIndicator(page)).toHaveAttribute("data-phase", "idle");
+  await expect(editor).toBeVisible();
+});
+
+test.describe("note touch", () => {
+  test(
+    "a swipe on a scrolled note only scrolls",
+    MOBILE_ONLY,
+    async ({ page }) => {
+      const forge = fakeForge(page);
+      await openLongNote(page);
+      const scroller = page.locator(".note-content");
+      await scroller.evaluate((el) => {
+        el.scrollTop = 400;
+      });
+      const scrolled = await scroller.evaluate((el) => el.scrollTop);
+      expect(scrolled).toBeGreaterThan(0);
+      const before = await forge.getHeadCount();
+
+      const finger = await pull(page, { x: 200, y: 300 }, 150);
+      await expect(noteIndicator(page)).toHaveAttribute("data-phase", "idle");
+      await finger.up();
+
+      await expect
+        .poll(() => scroller.evaluate((el) => el.scrollTop))
+        .toBeLessThan(scrolled);
+      await expect(noteIndicator(page)).toHaveAttribute("data-phase", "idle");
+      expect(await forge.getHeadCount()).toBe(before);
+    },
+  );
+
+  test(
+    "a tap in the note still places the caret",
+    MOBILE_ONLY,
+    async ({ page }) => {
+      const forge = fakeForge(page);
+      await openWelcome(page);
+      const before = await forge.getHeadCount();
+      const line = noteEditor(page).locator(".cm-line").first();
+      const box = (await line.boundingBox())!;
+
+      await tapAt(page, { x: box.x + 60, y: box.y + box.height / 2 });
+
+      await expect(noteEditor(page)).toBeFocused();
+      const caret = await caretOffset(page);
+      expect(caret.collapsed).toBe(true);
+      expect(caret.offset).toBeGreaterThan(0);
+      await expect(noteIndicator(page)).toHaveAttribute("data-phase", "idle");
+      expect(await forge.getHeadCount()).toBe(before);
+    },
+  );
+
+  test(
+    "a long-press in the note never pulls",
+    MOBILE_ONLY,
+    async ({ page }) => {
+      const forge = fakeForge(page);
+      await openWelcome(page);
+      const before = await forge.getHeadCount();
+      await recordNotePhases(page);
+      const from = await pointIn(noteEditor(page).locator(".cm-line").first());
+
+      const finger = await TouchFinger.on(page);
+      await finger.down(from);
+      await finger.hold(450);
+      await finger.move({ x: from.x, y: from.y + 200 });
+      await finger.up();
+
+      await expectNoteSettled(page);
+      expect(await notePhases(page)).toEqual(["idle"]);
+      expect(await forge.getHeadCount()).toBe(before);
+    },
+  );
+
+  test(
+    "a pull is ignored while text is selected",
+    MOBILE_ONLY,
+    async ({ page }) => {
+      const forge = fakeForge(page);
+      await openWelcome(page);
+      await tapAt(page, await pointIn(noteEditor(page).locator(".cm-line").first()));
+      await expect(noteEditor(page)).toBeFocused();
+      await page.keyboard.press("Control+Home");
+      await page.keyboard.press("Shift+End");
+      expect((await caretOffset(page)).collapsed).toBe(false);
+      const before = await forge.getHeadCount();
+      await recordNotePhases(page);
+
+      const finger = await pull(
+        page,
+        await pointIn(noteEditor(page).locator(".cm-line").nth(2)),
+        200,
+      );
+      await finger.up();
+
+      await expectNoteSettled(page);
+      expect(await notePhases(page)).toEqual(["idle"]);
+      expect(await forge.getHeadCount()).toBe(before);
+      expect((await caretOffset(page)).collapsed).toBe(false);
+    },
+  );
+
+  test(
+    "releasing a pull does not move the caret",
+    MOBILE_ONLY,
+    async ({ page }) => {
+      const forge = fakeForge(page);
+      await forge.editNote(
+        ["Welcome"],
+        "# Welcome\n\nfirst paragraph of text\n\nsecond paragraph of text",
+      );
+      await refreshManually(page);
+      await openWelcome(page);
+      const lines = noteEditor(page).locator(".cm-line");
+      await expect(noteEditor(page)).toContainText("second paragraph");
+      const first = (await lines.first().boundingBox())!;
+      await tapAt(page, { x: first.x + 60, y: first.y + first.height / 2 });
+      await expect(noteEditor(page)).toBeFocused();
+      await flushPendingSaves(page);
+      const caret = await caretOffset(page);
+      const before = await forge.getHeadCount();
+
+      await fullNotePull(page, await pointIn(lines.last()));
+
+      await expect.poll(() => forge.getHeadCount()).toBe(before + 1);
+      await expectNoteSettled(page);
+      expect(await caretOffset(page)).toEqual(caret);
+      await expect(noteEditor(page)).toBeFocused();
+    },
+  );
+
+  test(
+    "a pull works with the editor focused",
+    MOBILE_ONLY,
+    async ({ page }) => {
+      const forge = fakeForge(page);
+      await openWelcome(page);
+      const text = noteEditor(page).locator(".cm-line").first();
+      await tapAt(page, await pointIn(text));
+      await expect(noteEditor(page)).toBeFocused();
+      await flushPendingSaves(page);
+      const before = await forge.getHeadCount();
+
+      await fullNotePull(page, await pointIn(text));
+
+      await expect.poll(() => forge.getHeadCount()).toBe(before + 1);
+      await expectNoteSettled(page);
+      expect(await forge.getHeadCount()).toBe(before + 1);
+      await expect(noteEditor(page)).toBeFocused();
+    },
+  );
+
+  test(
+    "dragging back up cancels a note pull",
+    MOBILE_ONLY,
+    async ({ page }) => {
+      const forge = fakeForge(page);
+      await openWelcome(page);
+      const before = await forge.getHeadCount();
+      const from = await pointIn(noteEditor(page).locator(".cm-line").first());
+
+      const finger = await pull(page, from, 200);
+      await expect(noteIndicator(page)).toHaveAttribute("data-phase", "armed");
+      await finger.move({ x: from.x, y: from.y - 30 });
+      await expect(noteIndicator(page)).toHaveAttribute("data-phase", "pulling");
+      await finger.up();
+
+      await expectNoteSettled(page);
+      expect(await forge.getHeadCount()).toBe(before);
+    },
+  );
+
+  test("a note pull never reloads the page", MOBILE_ONLY, async ({ page }) => {
+    await openWelcome(page);
+    await page.evaluate(() => {
+      (window as unknown as { __pullSentinel: number }).__pullSentinel = 1;
+    });
+
+    await fullNotePull(
+      page,
+      await pointIn(noteEditor(page).locator(".cm-line").first()),
+    );
+    await expectNoteSettled(page);
+
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { __pullSentinel?: number }).__pullSentinel,
+      ),
+    ).toBe(1);
+  });
 });
 
 test.describe("with reduced motion", () => {
@@ -339,7 +597,7 @@ test.describe("with reduced motion", () => {
 
       const finger = await pull(page, await wordmarkPoint(page), 200);
       await expect(indicator(page)).toHaveAttribute("data-phase", "armed");
-      const transforms = await page.locator(".pull-chip").evaluate((el) => ({
+      const transforms = await page.locator(".tree-header .pull-chip").evaluate((el) => ({
         chip: getComputedStyle(el).transform,
         icon: getComputedStyle(el.querySelector("svg")!).transform,
       }));
@@ -371,6 +629,24 @@ test.describe("with reduced motion", () => {
       200,
     );
     await expect(indicator(page)).toHaveAttribute("data-phase", "armed");
+    await expect(content).toHaveCSS("transform", "none");
+    await finger.up();
+
+    await expect.poll(() => forge.getHeadCount()).toBe(before + 1);
+    await expect(content).toHaveCSS("transform", "none");
+  });
+  test("the note content stays still", MOBILE_ONLY, async ({ page }) => {
+    const forge = fakeForge(page);
+    await openWelcome(page);
+    const before = await forge.getHeadCount();
+    const content = page.locator(".note-content");
+
+    const finger = await pull(
+      page,
+      await pointIn(noteEditor(page).locator(".cm-line").first()),
+      200,
+    );
+    await expect(noteIndicator(page)).toHaveAttribute("data-phase", "armed");
     await expect(content).toHaveCSS("transform", "none");
     await finger.up();
 

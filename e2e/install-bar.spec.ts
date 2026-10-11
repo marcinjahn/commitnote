@@ -169,14 +169,14 @@ test.describe("install bar on Android", MOBILE_ONLY, () => {
     const finger = await TouchFinger.on(page);
     await finger.down(from);
     await finger.move({ x: from.x, y: from.y + 200 });
-    await expect(page.locator(".pull-indicator")).toHaveAttribute(
+    await expect(page.locator(".tree-header .pull-indicator")).toHaveAttribute(
       "data-phase",
       "armed",
     );
     await finger.up();
 
     await expect.poll(() => forge.getHeadCount()).toBe(before + 1);
-    await expect(page.locator(".pull-indicator")).toHaveAttribute(
+    await expect(page.locator(".tree-header .pull-indicator")).toHaveAttribute(
       "data-phase",
       "idle",
     );
