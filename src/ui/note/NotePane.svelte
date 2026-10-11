@@ -1,10 +1,3 @@
-<script module lang="ts">
-  const importVim = () => import("../../editor/vim/vim-extension");
-  type VimModule = Awaited<ReturnType<typeof importVim>>;
-  let vimModule: Promise<VimModule> | undefined;
-  const loadVim = () => (vimModule ??= importVim());
-</script>
-
 <script lang="ts">
   import { onDestroy, tick, untrack } from "svelte";
   import { systemClock } from "../../sync/clock";
@@ -22,10 +15,8 @@
   import { playLeaveFade, playSwitchEnter } from "./switch-motion-driver";
   import { clampNotePosition, createNotePositions, type NotePosition } from "./note-position";
   import type { NotePath } from "../../changes/change";
-  import type { EditorView } from "@codemirror/view";
-  import type { VimStatus } from "../../editor/vim/vim-status";
   import VimStatusBar from "./VimStatusBar.svelte";
-  import type { VimBarCommands } from "./vim-bar-commands";
+  import { createVimWiring, type VimInitialMode } from "./vim-wiring.svelte";
 
   import type { NoteFont } from "../../settings/note-font";
 
@@ -74,14 +65,7 @@
   }: Props = $props();
 
   const caretCompartment = new Compartment();
-  const vimCompartment = new Compartment();
   const caretExtension = (on: boolean) => (on ? accentCaret() : []);
-  const editorExtensions = $derived([
-    livePreview(),
-    linkOpen(),
-    caretCompartment.of(caretExtension(animatedCaret)),
-    vimCompartment.of([]),
-  ]);
   let appliedCaret = untrack(() => animatedCaret);
 
   $effect(() => {
@@ -122,60 +106,24 @@
 
   let editor: EditorHandle | undefined = $state();
 
-  let vimStatus = $state<VimStatus | null>(null);
-  let vim: { module: VimModule; editor: EditorHandle; animatedCaret: boolean } | null = null;
-  const vimInitialMode = (): "normal" | "insert" => (shown.draft ? "insert" : "normal");
+  const vimInitialMode = (): VimInitialMode => (shown.draft ? "insert" : "normal");
   let vimEntryMode = untrack(vimInitialMode);
 
-  $effect(() => {
-    const on = vimMode;
-    const target = editor;
-    const caret = animatedCaret;
-    if (!on || !target) {
-      vim?.editor.reconfigure(vimCompartment, []);
-      vim = null;
-      vimStatus = null;
-      return;
-    }
-    if (vim?.editor === target && vim.animatedCaret === caret) return;
-    let current = true;
-    void loadVim().then((module) => {
-      if (!current) return;
-      if (vim?.editor !== target) vimStatus = null;
-      vim = { module, editor: target, animatedCaret: caret };
-      target.reconfigure(
-        vimCompartment,
-        module.vimExtension({
-          initialMode: vimEntryMode,
-          animatedCaret: caret,
-          onWrite: () => onVimWrite(),
-          onQuit: () => onVimQuit(),
-          onStatus: (status) => {
-            if (vim?.editor === target) vimStatus = status;
-          },
-        }),
-      );
-    });
-    return () => {
-      current = false;
-    };
+  const vim = createVimWiring({
+    editor: () => editor,
+    enabled: () => vimMode,
+    animatedCaret: () => animatedCaret,
+    initialMode: () => vimEntryMode,
+    onWrite: () => onVimWrite(),
+    onQuit: () => onVimQuit(),
   });
 
-  function withVim(fn: (module: VimModule, view: EditorView) => void): void {
-    if (vim === null || vim.editor !== editor) return;
-    const { module } = vim;
-    vim.editor.withView((view) => fn(module, view));
-  }
-
-  const vimBarCommands: VimBarCommands = {
-    escape: () => withVim((module, view) => module.vimEscape(view)),
-    enterInsert: () => withVim((module, view) => module.vimEnterInsert(view)),
-    openCommandLine: (kind) => withVim((module, view) => module.openCommandLine(view, kind)),
-    keyDown: (event, value) => withVim((module, view) => module.commandLineKeyDown(view, event, value)),
-    keyUp: (event, value) => withVim((module, view) => module.commandLineKeyUp(view, event, value)),
-    input: (event, value) => withVim((module, view) => module.commandLineInput(view, event, value)),
-    close: () => withVim((module, view) => module.closeCommandLine(view)),
-  };
+  const editorExtensions = $derived([
+    livePreview(),
+    linkOpen(),
+    caretCompartment.of(caretExtension(animatedCaret)),
+    vim.extension,
+  ]);
 
   let contentEl: HTMLDivElement | undefined = $state();
   let seenSwitch = untrack(() => noteSwitch);
@@ -269,7 +217,7 @@
     const mode = untrack(vimInitialMode);
     vimEntryMode = mode;
     void tick().then(() => {
-      if (presented === vimResetSwitch) withVim((module, view) => module.resetEditingMode(view, mode));
+      if (presented === vimResetSwitch) vim.withVim((module, view) => module.resetEditingMode(view, mode));
     });
   });
 
@@ -382,8 +330,8 @@
     <p class="note-status note-loading" role="status">Loading…</p>
   {/if}
 </div>
-{#if vimMode && vimStatus !== null && editorText !== null}
-  <VimStatusBar status={vimStatus} commands={vimBarCommands} />
+{#if vimMode && vim.status !== null && editorText !== null}
+  <VimStatusBar status={vim.status} commands={vim.commands} />
 {/if}
 
 <style>
