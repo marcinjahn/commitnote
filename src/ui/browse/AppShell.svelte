@@ -3224,6 +3224,13 @@
       flex: 1;
     }
 
+    /* WebKit cannot resolve 100% against the shell's flexed height and falls
+       back to content height; stretching gives both panes the full row. */
+    .sidebar,
+    .note-pane {
+      height: auto;
+    }
+
     /* The 300px sidebar can't fit the wordmark plus five 36px-wide buttons. */
     .tree-header {
       gap: 0;
