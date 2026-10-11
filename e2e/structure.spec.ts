@@ -127,6 +127,54 @@ test("right-click on a row opens its menu", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("a row menu opens in the top layer at the pointer", async ({ page }) => {
+  await openNotes(page);
+
+  const row = page.getByRole("treeitem", { name: "Welcome" });
+  const box = await row.boundingBox();
+  if (box === null) throw new Error("row has no box");
+  await row.click({ button: "right", position: { x: 20, y: 10 } });
+  const menu = page.getByRole("menu", { name: "Actions for Welcome" });
+
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate((el) => el.matches(":popover-open"))).toBe(true);
+  await expect(menu).toHaveCSS("opacity", "1");
+  const menuBox = await menu.boundingBox();
+  expect(menuBox?.y).toBeCloseTo(box.y + 10, -1);
+  expect(menuBox?.x).toBeCloseTo(box.x + 20, -1);
+});
+
+test("a row menu opens at the pointer without popover support", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    delete (HTMLElement.prototype as { showPopover?: unknown }).showPopover;
+    const originalMatches = Element.prototype.matches;
+    Element.prototype.matches = function (this: Element, selector: string) {
+      if (selector.includes(":popover-open")) {
+        throw new DOMException("unsupported selector", "SyntaxError");
+      }
+      return originalMatches.call(this, selector);
+    } as typeof Element.prototype.matches;
+  });
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error));
+  await openNotes(page);
+
+  const row = page.getByRole("treeitem", { name: "Welcome" });
+  const box = await row.boundingBox();
+  if (box === null) throw new Error("row has no box");
+  await row.click({ button: "right", position: { x: 20, y: 10 } });
+  const menu = page.getByRole("menu", { name: "Actions for Welcome" });
+
+  await expect(menu).toBeVisible();
+  await expect(menu).toHaveCSS("opacity", "1");
+  const menuBox = await menu.boundingBox();
+  expect(menuBox?.y).toBeCloseTo(box.y + 10, -1);
+  expect(menuBox?.x).toBeCloseTo(box.x + 20, -1);
+  expect(pageErrors).toEqual([]);
+});
+
 test("Shift+F10 and the ContextMenu key open the focused row's menu and Escape returns to the row", async ({
   page,
 }) => {

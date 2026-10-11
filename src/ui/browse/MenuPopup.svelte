@@ -35,6 +35,8 @@
   $effect(() => {
     const el = menuEl;
     if (el === undefined) return;
+    if (typeof el.showPopover === "function" && !el.matches(":popover-open"))
+      el.showPopover();
     const rect = el.getBoundingClientRect();
     const margin = 8;
     const rawTop =
@@ -112,6 +114,7 @@
 <div
   bind:this={menuEl}
   class="menu-popup"
+  popover="manual"
   role="menu"
   tabindex="-1"
   aria-label={label}
@@ -195,6 +198,10 @@
 <style>
   .menu-popup {
     position: fixed;
+    inset: auto;
+    margin: 0;
+    overflow: visible;
+    color: var(--color-text);
     z-index: 20;
     display: flex;
     flex-direction: column;
