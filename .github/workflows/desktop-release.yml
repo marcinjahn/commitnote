@@ -1,0 +1,130 @@
+name: Desktop release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  appimage:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Install git and certificates
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compute version
+        id: version
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          number=$(git rev-list --count HEAD)
+          version=0.1.$number
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "date=$(date -u +%F)"
+          } >> "$GITHUB_OUTPUT"
+      - name: Install GitHub CLI
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl gpg
+          install -d -m 755 /etc/apt/keyrings
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
+          chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gh
+      - name: Check for an existing release
+        id: existing
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Release $TAG already exists, nothing to publish"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install build dependencies
+        if: steps.existing.outputs.exists != 'true'
+        run: |
+          bash scripts/appimage/install-build-deps.sh src-tauri/rust-toolchain.toml
+          echo /usr/local/bin >> "$GITHUB_PATH"
+          echo /usr/local/cargo/bin >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        if: steps.existing.outputs.exists != 'true'
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-
+      - uses: actions/cache@v4
+        if: steps.existing.outputs.exists != 'true'
+        with:
+          path: |
+            /usr/local/cargo/registry
+            /usr/local/cargo/git
+            src-tauri/target
+          key: cargo-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/rust-toolchain.toml') }}
+          restore-keys: cargo-
+      - name: Install npm packages
+        if: steps.existing.outputs.exists != 'true'
+        run: npm ci
+      - name: Check
+        if: steps.existing.outputs.exists != 'true'
+        run: npm run check
+      - name: Test
+        if: steps.existing.outputs.exists != 'true'
+        run: npm test
+      - name: Build AppImage
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          DATE: ${{ steps.version.outputs.date }}
+        run: bash scripts/appimage/build-appimage.sh --mode desktop --version "$VERSION" --date "$DATE" --out dist-appimage/desktop
+      - uses: actions/attest-build-provenance@v4
+        if: steps.existing.outputs.exists != 'true'
+        with:
+          subject-path: dist-appimage/desktop/commitnote-x86_64.AppImage
+      - name: Write release notes
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git tag -l 'v0.1.*' | bash scripts/appimage/release.sh notes "$TAG" "$GITHUB_SHA" "$GITHUB_REPOSITORY" dist-appimage/desktop/SHA256SUMS > "$RUNNER_TEMP/release-notes.md"
+      - name: Publish release
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "commitnote $VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --latest \
+            dist-appimage/desktop/commitnote-x86_64.AppImage \
+            dist-appimage/desktop/commitnote-x86_64.AppImage.zsync \
+            dist-appimage/desktop/SHA256SUMS
+      - name: Prune old releases
+        if: steps.existing.outputs.exists != 'true'
+        run: |
+          gh release list --limit 200 --json tagName --jq '.[].tagName' | bash scripts/appimage/release.sh prune 10 | while read -r tag; do
+            gh release delete "$tag" --cleanup-tag --yes
+          done
