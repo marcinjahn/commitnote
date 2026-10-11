@@ -1,7 +1,13 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openNotes, showTree, fakeForge } from "./helpers";
-import { headerSyncIcon, openHistory, waitForSynced } from "./helpers/tree";
+import {
+  headerSyncIcon,
+  openHistory,
+  openRowMenu,
+  treeItem,
+  waitForSynced,
+} from "./helpers/tree";
 
 
 async function appendText(page: Page, text: string): Promise<void> {
@@ -48,14 +54,16 @@ test.describe("with motion", () => {
     const rows = dialog.getByTestId("version-row");
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(0)).toContainText("Current");
-    await expect(rows.nth(0)).toContainText("Renamed from “Welcome”");
-    await expect(rows.nth(1)).toContainText(" · 3 saves");
+    await expect(rows.nth(0)).toContainText("Welcome");
+    await expect(rows.nth(1)).toContainText(" · 2 saves");
     await expect(rows.nth(1)).toContainText("Welcome");
     await expect(rows.nth(2)).toContainText("Created");
+    await expect(dialog).not.toContainText("Renamed");
+    await expect(dialog).not.toContainText("Moved");
     await expect(dialog.getByRole("heading", { name: "Today" })).toBeVisible();
 
-    await dialog.getByRole("button", { name: "Show 3 saves" }).click();
-    await expect(rows).toHaveCount(5);
+    await dialog.getByRole("button", { name: "Show 2 saves" }).click();
+    await expect(rows).toHaveCount(4);
   });
 
   test("closing the history dialog returns focus to its opener", async ({
@@ -76,7 +84,7 @@ test.describe("with motion", () => {
     await noteWithHistory(page);
     const dialog = await openHistory(page);
     const rows = dialog.getByTestId("version-row");
-    const toggle = dialog.getByRole("button", { name: "Show 3 saves" });
+    const toggle = dialog.getByRole("button", { name: "Show 2 saves" });
 
     await rows.nth(1).focus();
     await page.keyboard.press("ArrowDown");
@@ -118,15 +126,16 @@ test.describe("with motion", () => {
     if (mobile) {
       await expect(detail).toBeHidden();
     } else {
+      await expect(rows.nth(0)).not.toHaveAttribute("aria-current", "true");
       await expect(rows.nth(1)).toHaveAttribute("aria-current", "true");
       await expect(detail.getByTestId("diff-title")).toHaveText(
         "Title: “Hello” → “Welcome”",
       );
     }
 
-    await dialog.getByRole("button", { name: "Show 3 saves" }).click();
-    await select(3);
-    if (mobile) await expect(rows.nth(3)).toBeHidden();
+    await dialog.getByRole("button", { name: "Show 2 saves" }).click();
+    await select(2);
+    if (mobile) await expect(rows.nth(2)).toBeHidden();
     await expect(summary).toHaveText("Restoring would change: +1 added −1 removed lines");
     const line = (kind: string) =>
       detail.locator(`[data-testid='diff-line'][data-kind='${kind}']`);
@@ -140,13 +149,13 @@ test.describe("with motion", () => {
     if (mobile) {
       await dialog.getByRole("button", { name: "All versions" }).click();
       await expect(detail).toBeHidden();
-      await expect(rows.nth(3)).toBeFocused();
+      await expect(rows.nth(2)).toBeFocused();
     }
 
     await select(0);
-    await expect(summary).toHaveText("Same as the current version.");
+    await expect(summary).toHaveText("Restoring would change only the title.");
 
-    await select(4);
+    await select(3);
     await expect(summary).toHaveText("Restoring would change: +0 added −1 removed line");
     await expect(line("removed")).toHaveText(/one two three$/);
     await expect(detail).toContainText("Adds a line break at the end.");
@@ -190,8 +199,8 @@ function restoredToast(page: Page) {
 /** Opens the history and selects the save that left the last line as "one". */
 async function selectFirstSave(page: Page) {
   const dialog = await openHistory(page);
-  await dialog.getByRole("button", { name: "Show 3 saves" }).click();
-  await dialog.getByTestId("version-row").nth(3).click();
+  await dialog.getByRole("button", { name: "Show 2 saves" }).click();
+  await dialog.getByTestId("version-row").nth(2).click();
   await expect(dialog.getByTestId("diff-summary")).toHaveText(
     "Restoring would change: +1 added −1 removed lines",
   );
@@ -221,7 +230,7 @@ test.describe("with motion", () => {
       await waitForSynced(page);
 
       const reopened = await openHistory(page);
-      await expect(reopened.getByTestId("version-row")).toHaveCount(4);
+      await expect(reopened.getByTestId("version-row")).toHaveCount(3);
       await reopened.getByRole("button", { name: "Close" }).click();
       await expect(reopened).toHaveCount(0);
     });
@@ -336,7 +345,7 @@ test.describe("with motion", () => {
     const dialog = await selectFirstSave(page);
     await page.emulateMedia({ forcedColors: "active" });
 
-    const row = dialog.getByTestId("version-row").nth(3);
+    const row = dialog.getByTestId("version-row").nth(2);
     const bar = await row.evaluate((el) => {
       const style = getComputedStyle(el, "::before");
       return { background: style.backgroundColor, width: style.width };
@@ -344,4 +353,58 @@ test.describe("with motion", () => {
     expect(bar.background).not.toBe("rgba(0, 0, 0, 0)");
     expect(bar.width).toBe("2px");
   });
+});
+
+test("moving a note and renaming its folder add no versions, and restoring keeps it in the folder", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await treeItem(page, "Welcome").click();
+  await appendText(page, " zzqq");
+
+  async function expectUnchangedHistory(): Promise<void> {
+    const dialog = await openHistory(page);
+    const rows = dialog.getByTestId("version-row");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("Current");
+    await expect(rows.nth(1)).toContainText("Created");
+    await expect(dialog).not.toContainText("Moved");
+    await expect(dialog).not.toContainText("Renamed");
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toHaveCount(0);
+  }
+
+  await expectUnchangedHistory();
+
+  await showTree(page);
+  await openRowMenu(page, "Welcome");
+  await page.getByRole("menuitem", { name: "Move to folder…" }).click();
+  await page
+    .getByRole("radiogroup", { name: "Folder" })
+    .getByRole("radio", { name: "Journal", exact: true })
+    .check();
+  await page.getByRole("dialog").getByRole("button", { name: "Move" }).click();
+  await waitForSynced(page);
+  await expect(treeItem(page, "Welcome")).toHaveAttribute("aria-level", "2");
+  await expectUnchangedHistory();
+
+  await showTree(page);
+  await openRowMenu(page, "Journal");
+  await page.getByRole("menuitem", { name: "Rename…" }).click();
+  await page.getByLabel("Folder name").fill("Diary");
+  await page.getByRole("button", { name: "Rename", exact: true }).click();
+  await expect(treeItem(page, "Diary")).toBeVisible();
+  await waitForSynced(page);
+  await expectUnchangedHistory();
+
+  const dialog = await openHistory(page);
+  await dialog.getByTestId("version-row").nth(1).click();
+  await dialog.getByRole("button", { name: RESTORE }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(restoredToast(page)).toBeVisible();
+  await expect(noteEditor(page)).not.toContainText("zzqq");
+  await waitForSynced(page);
+  await showTree(page);
+  await expect(treeItem(page, "Diary")).toBeVisible();
+  await expect(treeItem(page, "Welcome")).toHaveAttribute("aria-level", "2");
 });
