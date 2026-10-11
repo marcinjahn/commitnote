@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { chooseRepository, expectTree, logIn, SAMPLE, openNotes, logOut, showTree, fakeForge, expectFamily, expectedFamily, flushPendingSaves, expectSettingsIdle, MONO_STACK, SERIF_STACK } from "./helpers";
-import { chooseAccent, chooseOption, closeSettings, openSettings, rootAccent, settingsDialog, collectFontFiles } from "./helpers/settings";
+import { chooseAccent, chooseOption, closeSettings, openDataSecurityAction, openSettings, rootAccent, settingsDialog, collectFontFiles } from "./helpers/settings";
 import { openWelcome } from "./helpers/tree";
 
 
@@ -878,7 +878,7 @@ function pickerLayout(page: Page): Promise<PickerLayout> {
 async function openUnscrolledSettings(page: Page): Promise<void> {
   const viewport = page.viewportSize();
   if (!viewport) throw new Error("no viewport");
-  await page.setViewportSize({ width: viewport.width, height: 2000 });
+  await page.setViewportSize({ width: viewport.width, height: 2400 });
   await openSettings(page);
   await expect
     .poll(() =>
@@ -1103,4 +1103,44 @@ test.describe("this device", () => {
     await expect(dialog.getByRole("checkbox", { name: REOPEN, exact: true })).toBeDisabled();
     await expect(hint).toBeVisible();
   });
+});
+
+test("the commands menu lists only Settings, Shared links and Log out", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: "More commands" }).click();
+  await expect(
+    page.getByRole("menu", { name: "Commands" }).getByRole("menuitem"),
+  ).toHaveText(["Settings", "Shared links", "Log out"]);
+});
+
+test("Data & security is the last Settings section with export, import and passphrase buttons", { tag: "@mobile" }, async ({
+  page,
+}) => {
+  const dialog = await openSettings(page);
+  const headings = dialog.getByRole("heading", { level: 3 });
+  await expect(headings.last()).toHaveText("Data & security");
+  await expect(headings.nth(-2)).toHaveText("This device");
+  for (const name of ["Export notes", "Import notes", "Change passphrase"]) {
+    const button = dialog.getByRole("button", { name, exact: true });
+    await button.scrollIntoViewIfNeeded();
+    await expect(button).toBeVisible();
+    await expect(button).toBeEnabled();
+  }
+});
+
+test("closing Change passphrase with Escape keeps Settings open and refocuses its button", async ({
+  page,
+}) => {
+  await openDataSecurityAction(page, "Change passphrase");
+  const change = page.getByRole("dialog", { name: "Change passphrase" });
+  await expect(change).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(change).toHaveCount(0);
+  const dialog = settingsDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Change passphrase", exact: true }),
+  ).toBeFocused();
 });

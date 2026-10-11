@@ -1,6 +1,6 @@
 <script lang="ts" generics="Id extends string">
   import { COLOR_TAG_PALETTE, colorTagStyle, type ColorTag } from "../../tags/color-tag";
-  import type { MenuAnchor, MenuItem } from "./row-menu-types";
+  import type { MenuAnchor, MenuItem, MenuRadioGroup } from "./row-menu-types";
 
   interface Props {
     label: string;
@@ -12,11 +12,12 @@
       disabled: boolean;
       onPick: (color: ColorTag | null) => void;
     };
+    radios?: MenuRadioGroup;
     onSelect: (id: Id) => void;
     onClose: () => void;
   }
 
-  const { label, items, anchor, trigger, swatches, onSelect, onClose }: Props = $props();
+  const { label, items, anchor, trigger, swatches, radios, onSelect, onClose }: Props = $props();
 
   let menuEl: HTMLDivElement | undefined = $state();
   let position = $state({ top: -9999, left: -9999 });
@@ -147,6 +148,29 @@
           </svg>
         </span>
       </button>
+    </div>
+  {/if}
+  {#if radios !== undefined}
+    <div role="group" aria-label={radios.label}>
+      {#each radios.options as option (option.id)}
+        <button
+          type="button"
+          role="menuitemradio"
+          class="menu-popup-item menu-radio"
+          aria-checked={option.id === radios.selected}
+          onclick={() => radios.onPick(option.id)}
+        >
+          {#if option.swatch === null}
+            <span class="swatch-circle swatch-hollow"></span>
+          {:else}
+            <span class="swatch-circle tag-colored" style={colorTagStyle(option.swatch)}></span>
+          {/if}
+          <span class="menu-radio-label">{option.label}</span>
+          <svg class="menu-radio-check" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M3 8.5 6.5 12 13 4.5" />
+          </svg>
+        </button>
+      {/each}
     </div>
   {/if}
   {#each items as item (item.id)}
@@ -280,6 +304,34 @@
     cursor: pointer;
     font-size: var(--font-size-sm);
     transition: background-color var(--motion-duration) var(--motion-easing);
+  }
+
+  .swatch-hollow {
+    background: transparent;
+    box-shadow: inset 0 0 0 var(--hairline) var(--color-text-muted);
+  }
+
+  .menu-radio {
+    width: 100%;
+  }
+
+  .menu-radio-label {
+    flex: 1;
+  }
+
+  .menu-radio-check {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    visibility: hidden;
+  }
+
+  .menu-radio[aria-checked="true"] .menu-radio-check {
+    visibility: visible;
   }
 
   .menu-popup-item:hover:not(:disabled),

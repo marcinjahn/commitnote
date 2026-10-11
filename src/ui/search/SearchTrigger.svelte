@@ -1,12 +1,14 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import { searchIcon } from "../browse/action-icons";
   import { SEARCH_TRIGGER_LABEL } from "./search-messages";
 
   interface Props {
     onOpen: () => void;
+    trailing?: Snippet;
   }
 
-  const { onOpen }: Props = $props();
+  const { onOpen, trailing }: Props = $props();
 </script>
 
 <div class="search-trigger-row">
@@ -24,10 +26,13 @@
     </svg>
     <span class="search-trigger-text">Search notes</span>
   </button>
+  {@render trailing?.()}
 </div>
 
 <style>
   .search-trigger-row {
+    display: flex;
+    gap: var(--space-1);
     padding: var(--space-2);
     border-bottom: var(--hairline) solid var(--color-border);
   }
@@ -35,8 +40,9 @@
   .search-trigger {
     display: flex;
     align-items: center;
+    flex: 1;
     gap: var(--space-2);
-    width: 100%;
+    min-width: 0;
     min-height: var(--touch-target);
     padding: 0 var(--space-2);
     border: var(--hairline) solid var(--color-border);

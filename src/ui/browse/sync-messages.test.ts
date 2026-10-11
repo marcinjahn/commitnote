@@ -3,6 +3,7 @@ import type { SyncError } from "../../sync/sync-engine";
 import type { SyncState } from "../../sync/sync-state";
 import {
   describeOffline,
+  describeSaveShortcutResult,
   describeSyncError,
   describeSyncState,
   describeSyncStatus,
@@ -163,5 +164,79 @@ describe("describeSyncStatus", () => {
     expect(describeSyncStatus({ state, offline: false, hasUnsaved: true })).toBe(
       "Out of sync: waiting to save",
     );
+  });
+});
+
+describe("describeSaveShortcutResult", () => {
+  const settled = {
+    stopped: false,
+    suspended: false,
+    unsavedCount: 0,
+    settingsPending: false,
+    offline: false,
+    waitingForRateBudget: false,
+  };
+
+  it("says nothing when sync is stopped", () => {
+    expect(describeSaveShortcutResult({ ...settled, stopped: true })).toBeNull();
+  });
+
+  it("says nothing when sync is suspended", () => {
+    expect(describeSaveShortcutResult({ ...settled, suspended: true })).toBeNull();
+  });
+
+  it("reports everything saved", () => {
+    expect(describeSaveShortcutResult(settled)).toBe("All saved");
+  });
+
+  it("reports everything saved while offline with nothing unsaved", () => {
+    expect(describeSaveShortcutResult({ ...settled, offline: true })).toBe("All saved");
+  });
+
+  it("does not report saved while settings are pending", () => {
+    expect(describeSaveShortcutResult({ ...settled, settingsPending: true })).toBeNull();
+  });
+
+  it("describes unsaved changes offline", () => {
+    expect(
+      describeSaveShortcutResult({ ...settled, unsavedCount: 2, offline: true }),
+    ).toBe(describeOffline(true));
+  });
+
+  it("describes pending settings offline", () => {
+    expect(
+      describeSaveShortcutResult({ ...settled, settingsPending: true, offline: true }),
+    ).toBe(describeOffline(true));
+  });
+
+  it("describes waiting for the rate budget", () => {
+    expect(
+      describeSaveShortcutResult({
+        ...settled,
+        unsavedCount: 1,
+        waitingForRateBudget: true,
+      }),
+    ).toBe("Saving soon (commit limit reached)");
+  });
+
+  it("prefers the offline copy over the rate budget copy", () => {
+    expect(
+      describeSaveShortcutResult({
+        ...settled,
+        unsavedCount: 1,
+        offline: true,
+        waitingForRateBudget: true,
+      }),
+    ).toBe(describeOffline(true));
+  });
+
+  it("says nothing for unsaved changes that remain after the attempt", () => {
+    expect(describeSaveShortcutResult({ ...settled, unsavedCount: 1 })).toBeNull();
+  });
+
+  it("lets stopped win over everything else", () => {
+    expect(
+      describeSaveShortcutResult({ ...settled, stopped: true, offline: true }),
+    ).toBeNull();
   });
 });

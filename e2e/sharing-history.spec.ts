@@ -17,6 +17,7 @@ import {
   treeItem,
   waitForSynced,
 } from "./helpers/tree";
+import { closeSettings, openDataSecurityAction } from "./helpers/settings";
 
 const NOTE_TEXT = "Notes stay private even to the forge that hosts them.";
 const NEW_PASSPHRASE = "a brand new passphrase";
@@ -75,11 +76,7 @@ async function openViewer(page: Page, link: string): Promise<Page> {
 }
 
 async function changePassphrase(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Change passphrase" })
-    .click();
+  await openDataSecurityAction(page, "Change passphrase");
   const dialog = page.getByRole("dialog", { name: "Change passphrase" });
   await dialog.getByLabel("Current passphrase").fill(SAMPLE.passphrase);
   await dialog.getByLabel("New passphrase", { exact: true }).fill(NEW_PASSPHRASE);
@@ -91,6 +88,7 @@ async function changePassphrase(page: Page): Promise<void> {
   await expect(page.getByText("Passphrase changed.")).toBeVisible({
     timeout: KEY_DERIVATION_TIMEOUT,
   });
+  await closeSettings(page);
   await expectTree(page);
 }
 

@@ -196,7 +196,7 @@ class TaskCheckboxWidget extends WidgetType {
   }
 }
 
-function markerState(
+export function markerState(
   state: EditorState,
   from: number,
 ): "checked" | "unchecked" | null {

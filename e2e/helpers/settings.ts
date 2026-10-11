@@ -16,6 +16,15 @@ export async function openSettings(page: Page): Promise<Locator> {
   return dialog;
 }
 
+export async function openDataSecurityAction(
+  page: Page,
+  label: "Export notes" | "Import notes" | "Change passphrase",
+): Promise<void> {
+  const dialog = settingsDialog(page);
+  if ((await dialog.count()) === 0) await openSettings(page);
+  await dialog.getByRole("button", { name: label, exact: true }).click();
+}
+
 export async function closeSettings(page: Page): Promise<void> {
   await page.keyboard.press("Escape");
   await expect(settingsDialog(page)).toHaveCount(0);

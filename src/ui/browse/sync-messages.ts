@@ -29,6 +29,21 @@ export function describeOffline(hasUnsaved: boolean): string {
     : "Offline";
 }
 
+export function describeSaveShortcutResult(input: {
+  stopped: boolean;
+  suspended: boolean;
+  unsavedCount: number;
+  settingsPending: boolean;
+  offline: boolean;
+  waitingForRateBudget: boolean;
+}): string | null {
+  if (input.stopped || input.suspended) return null;
+  if (input.unsavedCount === 0 && !input.settingsPending) return "All saved";
+  if (input.offline) return describeOffline(true);
+  if (input.waitingForRateBudget) return "Saving soon (commit limit reached)";
+  return null;
+}
+
 export function describeSyncStatus(input: {
   state: SyncState;
   offline: boolean;

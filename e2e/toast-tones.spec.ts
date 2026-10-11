@@ -107,3 +107,25 @@ test("the dismiss control is touch-sized on mobile", { tag: "@mobile-only" }, as
   expect(Math.round(box!.width)).toBeGreaterThanOrEqual(44);
   expect(Math.round(box!.height)).toBeGreaterThanOrEqual(44);
 });
+
+test("a toast action keeps clear of the dismiss control", { tag: "@mobile" }, async ({ page }) => {
+  await page.getByRole("button", { name: "Actions for Welcome" }).click();
+  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Move to trash", exact: true }).click();
+  const toast = page.getByRole("group", { name: "Success" }).filter({ hasText: "moved to trash" });
+  await expect(toast).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.querySelector(".toasts")?.getAnimations({ subtree: true }).length ?? 0,
+      ),
+    )
+    .toBe(0);
+
+  const text = await toast.getByText("moved to trash").boundingBox();
+  const undo = await toast.getByRole("button", { name: "Undo" }).boundingBox();
+  const dismiss = await toast.getByRole("button", { name: "Dismiss notice" }).boundingBox();
+
+  expect(undo!.x).toBeGreaterThanOrEqual(text!.x);
+  expect(undo!.x + undo!.width).toBeLessThanOrEqual(dismiss!.x);
+});

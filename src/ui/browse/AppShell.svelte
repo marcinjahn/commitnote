@@ -6,6 +6,9 @@
   import type { SettingsSaver } from "../../settings/settings-saver";
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
+  import { installSaveShortcut } from "../../app/save-shortcut";
+  import { installTypeToStart } from "./type-to-start";
+  import { dialogStack } from "../dialogs/dialog-stack";
   import {
     createLastViewStore,
     removeLastView,
@@ -105,6 +108,15 @@
   import { toastHost } from "../notices/toast-host";
   import NoteHeader from "./NoteHeader.svelte";
   import NoteTree from "./NoteTree.svelte";
+  import SidebarResizeHandle from "./SidebarResizeHandle.svelte";
+  import {
+    SIDEBAR_MIN_WIDTH,
+    clearSidebarWidth,
+    maxSidebarWidth,
+    readSidebarWidth,
+    shownSidebarWidth,
+    writeSidebarWidth,
+  } from "./sidebar-width";
   import RefreshButton from "./RefreshButton.svelte";
   import SyncStatusButton from "./SyncStatusButton.svelte";
   import { listUnsavedNotes } from "../../sync/unsaved-notes";
@@ -144,7 +156,8 @@
   import type { Command, RowAction } from "./row-menu-types";
   import type { ColorTag } from "../../tags/color-tag";
   import { buildTagFilter } from "./tag-filter";
-  import TagFilterDots from "./TagFilterDots.svelte";
+  import TagFilterButton from "./TagFilterButton.svelte";
+  import TagFilterChip from "./TagFilterChip.svelte";
   import { describeMovedTo, describeStructureError } from "./structure-messages";
   import type { DropTarget } from "./tree-drop";
   import {
@@ -155,7 +168,11 @@
   import { trashReveal } from "./trash-reveal";
   import { createTreeExpansion } from "./tree-expansion.svelte";
   import { createNoteNavigation, type NavigationEntry } from "../../app/note-navigation";
-  import { describeSyncError, describeUndecryptableFiles } from "./sync-messages";
+  import {
+    describeSaveShortcutResult,
+    describeSyncError,
+    describeUndecryptableFiles,
+  } from "./sync-messages";
 
   interface Props {
     engine: SyncEngine;
@@ -323,6 +340,7 @@
   let draft = $state<NoteDraft | null>(null);
   let draftError = $state<string | null>(null);
   let draftSession = $state(0);
+  let draftFocus = $state<"name" | "editor">("name");
   let noteSwitch = $state(0);
   const headerSwitch = { seen: untrack(() => noteSwitch) };
   let pendingFieldText = $state<string | null>(null);
@@ -330,6 +348,12 @@
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
   let notePaneEl: HTMLElement | undefined = $state();
   let sidebarEl: HTMLElement | undefined = $state();
+  let preferredSidebarWidth = $state(readSidebarWidth());
+  let viewportWidth = $state(0);
+  const sidebarWidth = $derived(
+    shownSidebarWidth(preferredSidebarWidth, viewportWidth),
+  );
+  const sidebarMaxWidth = $derived(maxSidebarWidth(viewportWidth));
   let shownMobileView = untrack(() => mobileView);
 
   $effect(() => {
@@ -344,6 +368,7 @@
   });
   type ToastChannel =
     | "refresh"
+    | "save"
     | "export"
     | "trash"
     | "place"
@@ -354,6 +379,7 @@
     | "session";
   const TOAST_ORDER = [
     "refresh",
+    "save",
     "export",
     "trash",
     "place",
@@ -373,7 +399,6 @@
   let nextMessageId = 0;
   let exporting = $state(false);
   const UNDO_TOAST_MS = 8_000;
-  let importInput: HTMLInputElement | undefined = $state();
   let reading = $state(false);
   let importDialog = $state<{
     readonly fileName: string;
@@ -389,6 +414,7 @@
   } | null>(null);
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
+  let dialogOpener: Element | null = null;
   let settingsOpen = $state(false);
   let searchOpen = $state(false);
   let searchReturnFocus: HTMLElement | null = null;
@@ -447,6 +473,58 @@
 
   function clearToast(channel: ToastChannel, id?: number): void {
     if (id === undefined || toasts[channel]?.id === id) delete toasts[channel];
+  }
+
+  async function saveFromShortcut(): Promise<void> {
+    settingsSaver.flush();
+    await engine.flush();
+    const state = engine.getState();
+    const text = describeSaveShortcutResult({
+      stopped: state.stopped !== null,
+      suspended: state.suspended,
+      unsavedCount: state.syncStates.unsavedCount,
+      settingsPending: settingsSaver.hasPending,
+      offline:
+        !state.online ||
+        (state.save.kind === "waiting" && state.save.reason === "offline"),
+      waitingForRateBudget:
+        state.save.kind === "waiting" && state.save.reason === "rateBudget",
+    });
+    if (text === null) clearToast("save");
+    else showToast("save", "info", text);
+  }
+
+  $effect(() => installSaveShortcut(window, () => void saveFromShortcut()));
+
+  $effect(() => {
+    const typeToStart = installTypeToStart(window, {
+      scene: () => ({
+        placeholderVisible:
+          tree !== null &&
+          engineState.openNote === null &&
+          draft === null &&
+          (!isNarrowLayout() || mobileView === "note"),
+        engineStopped: engineState.stopped !== null,
+        dialogOpen: dialogStack.top() !== null,
+        menuOpen: document.querySelector('[role="menu"]') !== null,
+        body: document.body,
+        notePane: notePaneEl ?? null,
+      }),
+      start: () => {
+        startDraft([], "editor");
+        void insertTypedText(() => typeToStart.drain());
+      },
+    });
+    return () => typeToStart.dispose();
+  });
+
+  async function insertTypedText(drain: () => string): Promise<void> {
+    for (let attempt = 0; attempt < 5 && notePane?.hasEditor() !== true; attempt += 1) {
+      await tick();
+    }
+    notePane?.focusEditor();
+    const text = drain();
+    if (text !== "") notePane?.insertEditorText(text);
   }
 
   let atomicBlockedSeen = false;
@@ -538,9 +616,18 @@
     }
   });
 
-  function toggleTagFilter(tag: ColorTag): void {
-    tagFilter = tagFilter === tag ? null : tag;
+  let tagFilterButton: TagFilterButton | undefined = $state();
+
+  function setTagFilter(tag: ColorTag | null): void {
+    tagFilter = tag;
   }
+
+  async function clearTagFilter(): Promise<void> {
+    setTagFilter(null);
+    await tick();
+    tagFilterButton?.focus();
+  }
+
   const openTreeNote = $derived.by(() => {
     if (openPath === null || tree === null) return undefined;
     const node = findWorkingNode(tree, openPath);
@@ -636,21 +723,6 @@
       run: openSettings,
     },
     {
-      id: "export",
-      label: exporting ? "Exporting…" : "Export notes",
-      icon: commandIcons.export,
-      disabled: tree === null || exporting,
-      run: () => void handleExport(),
-    },
-    {
-      id: "import",
-      label: importing ? "Importing…" : "Import notes",
-      icon: commandIcons.import,
-      disabled:
-        tree === null || engineState.stopped !== null || importing || reading,
-      run: () => importInput?.click(),
-    },
-    {
       id: "shared-links",
       label: "Shared links",
       icon: commandIcons.sharedLinks,
@@ -659,17 +731,6 @@
         settingsSaver.flush();
         leaveDraft();
         sharedLinksOpen = true;
-      },
-    },
-    {
-      id: "change-passphrase",
-      label: "Change passphrase",
-      icon: commandIcons.passphrase,
-      disabled: tree === null || engineState.stopped !== null || importing,
-      run: () => {
-        settingsSaver.flush();
-        leaveDraft();
-        changePassphraseOpen = true;
       },
     },
     {
@@ -1129,7 +1190,7 @@
     }
   }
 
-  function startDraft(parent: NotePath): void {
+  function startDraft(parent: NotePath, focus: "name" | "editor" = "name"): void {
     tagFilter = null;
     leaveDraft();
     navigation.push({ kind: "draft" });
@@ -1137,6 +1198,7 @@
     void engine.openNote(null);
     draft = { parent, name: "" };
     draftError = null;
+    draftFocus = focus;
     draftSession += 1;
     mobileView = "note";
   }
@@ -1306,11 +1368,22 @@
     }
   }
 
-  async function handleImportFile(event: Event): Promise<void> {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = "";
-    if (file === undefined || reading) return;
+  function rememberDialogOpener(): void {
+    dialogOpener = document.activeElement;
+  }
+
+  function restoreDialogOpener(): void {
+    const opener = dialogOpener;
+    dialogOpener = null;
+    if (opener instanceof HTMLElement) {
+      void tick().then(() => {
+        if (opener.isConnected) opener.focus();
+      });
+    }
+  }
+
+  async function handleImportFile(file: File): Promise<void> {
+    if (reading) return;
     clearToast("import");
     if (file.size > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
       showImportMessage("error", describeArchiveError("tooLarge"));
@@ -1387,6 +1460,7 @@
     return commitImport(destination, pending.contents.entries, policy, (plan) => {
       tagFilter = null;
       importDialog = null;
+      restoreDialogOpener();
       if (plan.changes.length > 0) {
         importStarted = { summary: plan.summary, retryingShown: false };
       }
@@ -1882,10 +1956,14 @@
   }
 </script>
 
+<svelte:window bind:innerWidth={viewportWidth} />
+
 <div class="shell">
   <aside
+    id="sidebar"
     class="sidebar"
     class:mobile-hidden={mobileView !== "tree"}
+    style:--sidebar-width="{sidebarWidth}px"
     bind:this={sidebarEl}
   >
     <div class="tree-header">
@@ -1931,9 +2009,20 @@
         <CommandMenu {commands} />
       </div>
     </div>
-    <SearchTrigger onOpen={openSearch} />
-    {#if tagsWritable && usedTags.length > 0}
-      <TagFilterDots tags={usedTags} active={tagFilter} onToggle={toggleTagFilter} />
+    <SearchTrigger onOpen={openSearch}>
+      {#snippet trailing()}
+        {#if tagsWritable && usedTags.length > 0}
+          <TagFilterButton
+            bind:this={tagFilterButton}
+            tags={usedTags}
+            active={tagFilter}
+            onChange={setTagFilter}
+          />
+        {/if}
+      {/snippet}
+    </SearchTrigger>
+    {#if tagFilter !== null}
+      <TagFilterChip tag={tagFilter} onClear={() => void clearTagFilter()} />
     {/if}
     {#if tree === null && engineState.refresh.lastError !== null}
       <p role="alert" class="alert-error">
@@ -2018,6 +2107,19 @@
     </div>
   </aside>
 
+  <SidebarResizeHandle
+    width={sidebarWidth}
+    min={SIDEBAR_MIN_WIDTH}
+    max={sidebarMaxWidth}
+    controls="sidebar"
+    onResize={(width) => (preferredSidebarWidth = width)}
+    onCommit={(width) => writeSidebarWidth(width)}
+    onReset={() => {
+      preferredSidebarWidth = SIDEBAR_MIN_WIDTH;
+      clearSidebarWidth();
+    }}
+  />
+
   <section
     class="note-pane"
     class:mobile-hidden={mobileView !== "note"}
@@ -2028,6 +2130,7 @@
         <NoteHeader
           name={draft.name}
           draft={true}
+          autofocusName={draftFocus === "name"}
           syncState={null}
           nameError={draftError}
           nameReadOnly={false}
@@ -2148,17 +2251,6 @@
   />
 {/if}
 
-<input
-  bind:this={importInput}
-  type="file"
-  accept=".zip,application/zip"
-  class="visually-hidden"
-  tabindex="-1"
-  aria-hidden="true"
-  data-testid="import-file"
-  onchange={(event) => void handleImportFile(event)}
-/>
-
 {#if importDialog !== null && tree !== null}
   <ImportDialog
     fileName={importDialog.fileName}
@@ -2167,7 +2259,10 @@
     {forgeName}
     onEnableAtomic={handleEnableAtomic}
     onImport={handleImport}
-    onClose={() => (importDialog = null)}
+    onClose={() => {
+      importDialog = null;
+      restoreDialogOpener();
+    }}
   />
 {/if}
 
@@ -2201,6 +2296,28 @@
       remembered: sessionRemembered,
       onReopenLastViewChange: handleReopenLastViewChange,
     }}
+    dataSecurity={{
+      exporting,
+      exportDisabled: tree === null || exporting,
+      onExport: () => void handleExport(),
+      importing,
+      importDisabled:
+        tree === null || engineState.stopped !== null || importing || reading,
+      onImportFile: (file) => {
+        rememberDialogOpener();
+        void handleImportFile(file).then(() => {
+          if (importDialog === null) dialogOpener = null;
+        });
+      },
+      changePassphraseDisabled:
+        tree === null || engineState.stopped !== null || importing,
+      onChangePassphrase: () => {
+        settingsSaver.flush();
+        leaveDraft();
+        rememberDialogOpener();
+        changePassphraseOpen = true;
+      },
+    }}
     onRetry={() => engine.retryNow()}
     onClose={() => {
       settingsSaver.flush();
@@ -2216,7 +2333,10 @@
     change={passphraseChange}
     onChanged={onPassphraseChanged}
     onLogOut={handleLogOut}
-    onClose={() => (changePassphraseOpen = false)}
+    onClose={() => {
+      changePassphraseOpen = false;
+      restoreDialogOpener();
+    }}
   />
 {/if}
 

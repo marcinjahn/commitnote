@@ -321,12 +321,30 @@ test("long-pressing a row opens a menu that can tag it", { tag: "@mobile-only" }
   await expectTagged(page, "Welcome", "Yellow");
 });
 
-function filterDot(page: Page, label: string): Locator {
-  return page.getByRole("button", { name: `Filter by ${label} tag`, exact: true });
+function filterButton(page: Page): Locator {
+  return page.getByRole("button", { name: /^Filter by color/ });
 }
 
-function dots(page: Page): Locator {
-  return page.getByRole("group", { name: "Tag filter" }).getByRole("button");
+function filterMenu(page: Page): Locator {
+  return page.getByRole("menu", { name: "Filter by color" });
+}
+
+function filterChip(page: Page, label: string): Locator {
+  return page.getByText(`Showing: ${label}`, { exact: true });
+}
+
+function clearFilter(page: Page): Locator {
+  return page.getByRole("button", { name: "Clear color filter" });
+}
+
+function filterOption(page: Page, label: string): Locator {
+  return filterMenu(page).getByRole("menuitemradio", { name: label, exact: true });
+}
+
+async function filterBy(page: Page, label: string): Promise<void> {
+  await filterButton(page).click();
+  await filterOption(page, label).click();
+  await expect(filterMenu(page)).toHaveCount(0);
 }
 
 async function expand(page: Page, name: string): Promise<void> {
@@ -335,33 +353,77 @@ async function expand(page: Page, name: string): Promise<void> {
 }
 
 test.describe("tag filter", () => {
-  test("dots list the used colors in palette order", async ({ page }) => {
-    const names = ["Orange", "Green", "Blue", "Purple"];
-    await expect(dots(page)).toHaveCount(names.length);
+  test("menu lists the used colors in palette order", async ({ page }) => {
+    const names = ["All notes", "Orange", "Green", "Blue", "Purple"];
+    await filterButton(page).click();
+    const items = filterMenu(page).getByRole("menuitemradio");
+    await expect(items).toHaveCount(names.length);
     for (const [i, name] of names.entries()) {
-      await expect(dots(page).nth(i)).toHaveAccessibleName(`Filter by ${name} tag`);
+      await expect(items.nth(i)).toHaveAccessibleName(name);
     }
+    await expect(items.first()).toHaveAttribute("aria-checked", "true");
+    await expect(filterButton(page)).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press("Escape");
+    await expect(filterMenu(page)).toHaveCount(0);
 
     await tagFromRowMenu(page, "Welcome", "Red");
-    await expect(dots(page)).toHaveCount(names.length + 1);
-    await expect(dots(page).first()).toHaveAccessibleName("Filter by Red tag");
+    await filterButton(page).click();
+    await expect(items).toHaveCount(names.length + 1);
+    await expect(items.nth(0)).toHaveAccessibleName("All notes");
+    await expect(items.nth(1)).toHaveAccessibleName("Red");
   });
 
   test("filters to the tagged note and restores the expansion", async ({ page }) => {
     await expand(page, "Projects");
-    const purple = filterDot(page, "Purple");
 
-    await purple.click();
-    await expect(purple).toHaveAttribute("aria-pressed", "true");
+    await filterBy(page, "Purple");
+    await expect(filterButton(page)).toHaveAccessibleName("Filter by color: Purple");
+    await expect(filterChip(page, "Purple")).toBeVisible();
     await expect(treeRows(page)).toHaveCount(1);
     await expect(treeItem(page, PURPLE_NOTE)).toBeVisible();
     await expect(treeItem(page, "Welcome")).toBeHidden();
 
-    await purple.click();
-    await expect(purple).toHaveAttribute("aria-pressed", "false");
+    await filterButton(page).click();
+    await expect(filterOption(page, "Purple")).toHaveAttribute("aria-checked", "true");
+    await expect(filterOption(page, "All notes")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    await page.keyboard.press("Escape");
+
+    await clearFilter(page).click();
+    await expect(filterChip(page, "Purple")).toHaveCount(0);
+    await expect(filterButton(page)).toHaveAccessibleName("Filter by color");
+    await expect(filterButton(page)).toBeFocused();
     await expect(treeItem(page, "Welcome")).toBeVisible();
     await expect(treeItem(page, "Projects")).toHaveAttribute("aria-expanded", "true");
     await expect(treeItem(page, "Journal")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("All notes clears the filter and focuses the button", async ({ page }) => {
+    await filterBy(page, "Purple");
+    await expect(treeItem(page, "Welcome")).toBeHidden();
+
+    await filterBy(page, "All notes");
+    await expect(filterChip(page, "Purple")).toHaveCount(0);
+    await expect(filterButton(page)).toHaveAccessibleName("Filter by color");
+    await expect(filterButton(page)).toBeFocused();
+    await expect(treeItem(page, "Welcome")).toBeVisible();
+  });
+
+  test("works from the keyboard", async ({ page }) => {
+    await filterButton(page).focus();
+    await page.keyboard.press("Enter");
+    await expect(filterMenu(page)).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await expect(filterOption(page, "Green")).toBeFocused();
+    await page.keyboard.press("Enter");
+
+    await expect(filterMenu(page)).toHaveCount(0);
+    await expect(filterButton(page)).toHaveAccessibleName("Filter by color: Green");
+    await expect(filterChip(page, "Green")).toBeVisible();
+    await expect(filterButton(page)).toBeFocused();
   });
 
   test("shows ancestors expanded and restores collapsed folders", async ({ page }) => {
@@ -371,19 +433,19 @@ test.describe("tag filter", () => {
     await treeItem(page, "Projects").click();
     await expect(treeItem(page, "Projects")).toHaveAttribute("aria-expanded", "false");
 
-    await filterDot(page, "Purple").click();
+    await filterBy(page, "Purple");
     await expect(treeItem(page, "Projects")).toHaveAttribute("aria-expanded", "true");
     await expect(treeItem(page, "commitnote")).toHaveAttribute("aria-expanded", "true");
     await expect(treeItem(page, "Ideas")).toBeVisible();
     await expect(treeItem(page, "Roadmap")).toBeHidden();
 
-    await filterDot(page, "Purple").click();
+    await clearFilter(page).click();
     await expect(treeItem(page, "Projects")).toHaveAttribute("aria-expanded", "false");
     await expect(treeItem(page, "Ideas")).toBeHidden();
   });
 
   test("blocks tree drag but keeps row menus", async ({ page }) => {
-    await filterDot(page, "Purple").click();
+    await filterBy(page, "Purple");
     const row = treeItem(page, PURPLE_NOTE);
     const box = (await row.boundingBox())!;
     await page.mouse.move(box.x + 40, box.y + box.height / 2);
@@ -399,7 +461,7 @@ test.describe("tag filter", () => {
 
   test("keeps the open note open", async ({ page }) => {
     await openWelcome(page);
-    await filterDot(page, "Purple").click();
+    await filterBy(page, "Purple");
     await expect(treeItem(page, "Welcome")).toBeHidden();
     await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
       "Welcome",
@@ -407,29 +469,60 @@ test.describe("tag filter", () => {
   });
 
   test("clears when its color is no longer used", async ({ page }) => {
-    await filterDot(page, "Purple").click();
+    await filterBy(page, "Purple");
     await treeItem(page, PURPLE_NOTE).click({ button: "right" });
     await swatch(rowMenu(page, PURPLE_NOTE), "No color").click();
 
-    await expect(filterDot(page, "Purple")).toHaveCount(0);
+    await expect(filterChip(page, "Purple")).toHaveCount(0);
+    await expect(filterButton(page)).toHaveAccessibleName("Filter by color");
     await expect(treeItem(page, "Welcome")).toBeVisible();
-    await expect(dots(page).locator("[aria-pressed='true']")).toHaveCount(0);
+    await filterButton(page).click();
+    await expect(filterOption(page, "Purple")).toHaveCount(0);
   });
 
   test("clears when a note is created", async ({ page }) => {
-    await filterDot(page, "Purple").click();
+    await filterBy(page, "Purple");
     await expect(treeItem(page, "Welcome")).toBeHidden();
     await page.getByRole("button", { name: "New note", exact: true }).click();
-    await expect(filterDot(page, "Purple")).toHaveAttribute("aria-pressed", "false");
+    await expect(filterChip(page, "Purple")).toHaveCount(0);
+    await expect(filterButton(page)).toHaveAccessibleName("Filter by color");
     await expect(treeItem(page, "Welcome")).toBeVisible();
   });
 
-  test("dots show on mobile and long-press opens a row menu", { tag: "@mobile" }, async ({
+  test("the button is absent while no color is in use", async ({ page }) => {
+    const tagged = treeRows(page).filter({
+      has: page.locator("svg.note-icon.tag-colored"),
+    });
+    while (await filterButton(page).isVisible()) {
+      await filterButton(page).click();
+      await filterMenu(page).getByRole("menuitemradio").nth(1).click();
+      await tagged.first().click({ button: "right" });
+      await swatch(page.getByRole("menu", { name: /^Actions for / }), "No color").click();
+    }
+    await expect(filterButton(page)).toHaveCount(0);
+    await expect(treeItem(page, "Welcome")).toBeVisible();
+  });
+
+  test("controls are touch sized on mobile", { tag: "@mobile-only" }, async ({ page }) => {
+    await showTree(page);
+    await expectTouchSized(filterButton(page));
+    await filterButton(page).click();
+    await expect(filterMenu(page)).toBeVisible();
+    const items = filterMenu(page).getByRole("menuitemradio");
+    for (let i = 0; i < (await items.count()); i++) {
+      await expectTouchSized(items.nth(i));
+    }
+    await filterOption(page, "Purple").click();
+    await expect(filterChip(page, "Purple")).toBeVisible();
+    await expectTouchSized(clearFilter(page));
+  });
+
+  test("long-press opens a row menu while filtered", { tag: "@mobile" }, async ({
     page,
   }) => {
     await showTree(page);
-    await filterDot(page, "Purple").click();
-    await expect(filterDot(page, "Purple")).toHaveAttribute("aria-pressed", "true");
+    await filterBy(page, "Purple");
+    await expect(filterChip(page, "Purple")).toBeVisible();
 
     const box = (await treeItem(page, PURPLE_NOTE).boundingBox())!;
     const finger = await TouchFinger.on(page);
@@ -443,3 +536,9 @@ test.describe("tag filter", () => {
     await expect(page.locator("[data-drag-state='dragging']")).toHaveCount(0);
   });
 });
+
+async function expectTouchSized(locator: Locator): Promise<void> {
+  await expect(locator).toBeVisible();
+  const box = (await locator.boundingBox())!;
+  expect(box.height).toBeGreaterThanOrEqual(44);
+}

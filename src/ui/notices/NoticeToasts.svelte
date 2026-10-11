@@ -143,7 +143,28 @@
       >
         {#each toneIcons[toast.tone] as d (d)}<path {d} />{/each}
       </svg>
-      <p class="text">{toast.text}</p>
+      <div class="body">
+        <p class="text">{toast.text}</p>
+        {#if toast.action || (toast.conflict !== null && onOpen)}
+          <div class="actions">
+            {#if toast.action}
+              <button
+                type="button"
+                class="button"
+                data-testid="toast-action"
+                onclick={() => handleAction(toast)}
+              >
+                {toast.action.label}
+              </button>
+            {/if}
+            {#if toast.conflict !== null && onOpen}
+              <button type="button" class="button" onclick={() => handleOpen(toast)}>
+                Open note
+              </button>
+            {/if}
+          </div>
+        {/if}
+      </div>
       <button
         type="button"
         class="button button-ghost dismiss"
@@ -159,25 +180,6 @@
           {#each dismissIcon as d (d)}<path {d} />{/each}
         </svg>
       </button>
-      {#if toast.action || (toast.conflict !== null && onOpen)}
-        <div class="actions">
-          {#if toast.action}
-            <button
-              type="button"
-              class="button"
-              data-testid="toast-action"
-              onclick={() => handleAction(toast)}
-            >
-              {toast.action.label}
-            </button>
-          {/if}
-          {#if toast.conflict !== null && onOpen}
-            <button type="button" class="button" onclick={() => handleOpen(toast)}>
-              Open note
-            </button>
-          {/if}
-        </div>
-      {/if}
     </div>
   {/each}
 </div>
@@ -261,7 +263,17 @@
     color: var(--color-text-muted);
   }
 
+  .body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    column-gap: var(--space-3);
+    row-gap: calc(var(--space-2) + var(--space-1) + var(--hairline));
+    min-width: 0;
+  }
+
   .text {
+    flex: 1 1 auto;
     margin: 0;
     font-size: var(--font-size-sm);
     color: var(--color-text);
@@ -305,18 +317,17 @@
   }
 
   .actions {
-    grid-column: 2 / -1;
     display: flex;
-    justify-content: flex-end;
     gap: var(--space-2);
-    margin-top: var(--space-2);
   }
 
   .actions .button {
     min-height: 0;
     min-width: 0;
     padding: var(--space-1) var(--space-3);
+    margin-block: calc((var(--space-1) + var(--hairline)) * -1);
     font-size: var(--font-size-sm);
+    line-height: var(--line-height);
   }
 
   .actions .button:hover {
