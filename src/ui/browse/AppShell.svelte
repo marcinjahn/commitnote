@@ -986,11 +986,14 @@
   let refreshFeedback = $state<"success" | "error" | null>(null);
   let refreshFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
   onDestroy(() => clearTimeout(refreshFeedbackTimer));
-  const pullEnabled = $derived(
-    narrow && mobileView === "tree" && !anyDialogOpen && !manualRefreshing,
-  );
+  let treePullContent = $state<HTMLElement | null>(null);
   let treePullPhase = $state<PullPhase>("idle");
   let treePullChip = $state<HTMLElement | null>(null);
+  function treeAtTop(): boolean {
+    if (!sidebarEl || sidebarEl.scrollTop > 0) return false;
+    const container = treePullContent?.querySelector<HTMLElement>(".tree-container");
+    return (container?.scrollTop ?? 0) <= 0;
+  }
   const head = $derived(engineState.synced?.head ?? null);
 
   const importing = $derived(engineState.importing || importStarted !== null);
@@ -1386,6 +1389,9 @@
 
   let trashButtonEl = $state<HTMLButtonElement | null>(null);
   let treeDragActive = $state(false);
+  const treePullEnabled = $derived(
+    narrow && mobileView === "tree" && !anyDialogOpen && !manualRefreshing && !treeDragActive,
+  );
 
   function trashDropArea(): HTMLElement | null {
     return trashButtonEl;
@@ -2363,6 +2369,14 @@
     inert={narrow && mobileView !== "tree"}
     style:--sidebar-width="{sidebarWidth}px"
     bind:this={sidebarEl}
+    use:pullGesture={{
+      enabled: treePullEnabled,
+      atTop: treeAtTop,
+      content: () => treePullContent,
+      indicator: () => treePullChip,
+      onChange: (phase) => (treePullPhase = phase),
+      onRefresh: handleRefresh,
+    }}
   >
     {#if installState.bar !== "none"}
       <InstallBar
@@ -2371,17 +2385,7 @@
         onDismiss={() => install.dismiss()}
       />
     {/if}
-    <div
-      class="tree-header"
-      use:pullGesture={{
-        enabled: pullEnabled,
-        atTop: () => true,
-        content: () => null,
-        indicator: () => treePullChip,
-        onChange: (phase) => (treePullPhase = phase),
-        onRefresh: handleRefresh,
-      }}
-    >
+    <div class="tree-header">
       <Wordmark typed />
       <div class="tree-header-actions">
         <SyncStatusButton
@@ -2431,6 +2435,7 @@
         <PullIndicator phase={treePullPhase} bind:chip={treePullChip} />
       {/if}
     </div>
+    <div class="tree-pull-content" bind:this={treePullContent}>
     <SearchTrigger onOpen={openSearch}>
       {#snippet trailing()}
         {#if tagsWritable && usedTags.length > 0}
@@ -2536,6 +2541,7 @@
         </button>
       </div>
     {/if}
+    </div>
     <SidebarResizeHandle
       width={sidebarWidth}
       min={sidebarMinWidth}
@@ -3026,6 +3032,13 @@
     padding-top: var(--space-2);
   }
 
+  .tree-pull-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
   .sidebar-footer {
     display: flex;
     align-items: center;
@@ -3182,6 +3195,10 @@
   }
 
   @media (max-height: 480px) {
+    .tree-pull-content {
+      flex: 1 0 auto;
+    }
+
     .sidebar {
       overflow-x: hidden;
       overflow-y: auto;
