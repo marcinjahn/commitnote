@@ -3,9 +3,8 @@ import {
   CARET_BLINK_MS,
   CARET_HOLD_MS,
   CARET_SOFT_EDGE_MS,
-  TYPING_LEAD_IN_MS,
-  createTypingSchedule,
-} from "./typing-schedule";
+} from "../../editor/caret-style";
+import { TYPING_LEAD_IN_MS, createTypingSchedule } from "./typing-schedule";
 
 const TEXT = "commitnote";
 const BEAT_INDEX = 6;

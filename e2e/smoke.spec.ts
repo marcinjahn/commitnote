@@ -26,7 +26,7 @@ test("login screen renders under the production CSP", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "commitnote" })).toBeVisible();
-  await expect(page).toHaveTitle("commitnote");
+  await expect(page).toHaveTitle("Log in · commitnote");
 
   const cspMeta = page.locator('meta[http-equiv="Content-Security-Policy"]');
   const bootScript = await page.locator("head script:not([src])").textContent();
@@ -44,7 +44,10 @@ test("login screen renders under the production CSP", async ({ page }) => {
   expect(unexpectedConsoleErrors).toEqual([]);
 });
 
-test("self-hosted font loads under a dark colour scheme", async ({ page, baseURL }) => {
+test("self-hosted font loads under a dark colour scheme", async ({
+  page,
+  baseURL,
+}) => {
   await page.emulateMedia({ colorScheme: "dark" });
 
   const consoleErrors: string[] = [];

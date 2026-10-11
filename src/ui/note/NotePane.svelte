@@ -222,7 +222,7 @@
     </p>
   {/if}
   {#if loadingRevealed}
-    <p class="note-status note-loading">Loading…</p>
+    <p class="note-status note-loading" role="status">Loading…</p>
   {/if}
 </div>
 

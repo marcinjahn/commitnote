@@ -135,3 +135,26 @@ test("the row actions button toggles its menu", { tag: "@mobile" }, async ({ pag
   await button.click();
   await expect(page.getByRole("menu")).toHaveCount(0);
 });
+
+test("a rejected folder name is announced as the field's description", async ({
+  page,
+}) => {
+  await openNotes(page);
+
+  await page.getByRole("button", { name: "New folder" }).click();
+  await page.getByLabel("Folder name").fill("Recipes");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByRole("treeitem", { name: "Recipes" })).toBeVisible();
+
+  await page.getByRole("button", { name: "New folder" }).click();
+  const dialog = page.getByRole("dialog");
+  const folderName = dialog.getByRole("textbox", { name: "Folder name" });
+  await expect(folderName).toHaveAccessibleDescription("");
+  await expect(folderName).not.toHaveAttribute("aria-invalid", /.*/);
+
+  await folderName.fill("Recipes");
+  await expect(folderName).toHaveAttribute("aria-invalid", "true");
+  await expect(folderName).toHaveAccessibleDescription(
+    "A note or folder with this name already exists here.",
+  );
+});

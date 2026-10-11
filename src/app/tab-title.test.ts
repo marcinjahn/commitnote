@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeTabTitle, createTabTitle } from "./tab-title";
+import { LOGIN_TAB_TITLE, computeTabTitle, createTabTitle } from "./tab-title";
 
 describe("computeTabTitle", () => {
   it("is the plain name when saved", () => {
@@ -56,6 +56,15 @@ describe("createTabTitle", () => {
     first();
     expect(target.title).toBe("Second");
     second();
+    expect(target.title).toBe("commitnote");
+  });
+
+  it("shows the login title until released, then the notes title", () => {
+    const target = { title: "" };
+    const title = createTabTitle(target);
+    const release = title.override(LOGIN_TAB_TITLE);
+    expect(target.title).toBe("Log in · commitnote");
+    release();
     expect(target.title).toBe("commitnote");
   });
 });

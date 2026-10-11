@@ -87,8 +87,8 @@
         {:else}
           <p class="counts" data-testid="diff-summary">
             Restoring would change:
-            <span class="count added">+{diff.added}</span>
-            <span class="count removed">−{diff.removed}</span>
+            <span class="count added">+{diff.added}{" "}<span class="visually-hidden">added</span></span>
+            <span class="count removed">−{diff.removed}{" "}<span class="visually-hidden">removed</span></span>
             {lineUnit(diff.added + diff.removed)}
           </p>
         {/if}

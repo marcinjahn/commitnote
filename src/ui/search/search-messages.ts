@@ -59,6 +59,11 @@ export function describeNoMatches(query: string): string {
   return `No notes match “${query.trim()}”`;
 }
 
+export function describeResultCount(count: number): string {
+  if (count === 0) return "No matches";
+  return count === 1 ? "1 result" : `${formatCount(count)} results`;
+}
+
 export function describeShowingFirst(count: number): string {
   return `Showing first ${formatCount(count)}`;
 }

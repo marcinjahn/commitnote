@@ -59,6 +59,8 @@
   const currentId = `change-passphrase-current-${uid}`;
   const newId = `change-passphrase-new-${uid}`;
   const repeatId = `change-passphrase-repeat-${uid}`;
+  const currentErrorId = `change-passphrase-current-error-${uid}`;
+  const repeatErrorId = `change-passphrase-repeat-error-${uid}`;
   const hintId = `change-passphrase-hint-${uid}`;
   const strengthId = `change-passphrase-strength-${uid}`;
   const removeHistoryHintId = `change-passphrase-remove-history-hint-${uid}`;
@@ -86,6 +88,15 @@
   let confirmButton: HTMLButtonElement | undefined = $state();
   let setupButton: HTMLButtonElement | undefined = $state();
 
+  const currentError = $derived(
+    error === ENTER_CURRENT_PASSPHRASE ? error : null,
+  );
+  const repeatError = $derived(error === PASSPHRASES_DIFFER ? error : null);
+  const formError = $derived(
+    error === ENTER_CURRENT_PASSPHRASE || error === PASSPHRASES_DIFFER
+      ? null
+      : error,
+  );
   const working = $derived(
     stage.kind === "working" || stage.kind === "unsettled",
   );
@@ -300,8 +311,8 @@
             <p role="note" class="alert-warning">{HISTORY_WARNING}</p>
           {/if}
           <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
-          {#if error !== null}
-            <p role="alert" class="alert-error">{error}</p>
+          {#if formError !== null}
+            <p role="alert" class="alert-error">{formError}</p>
           {/if}
           <div class="field">
             <label for={currentId}>Current passphrase</label>
@@ -311,7 +322,16 @@
               autocomplete="current-password"
               bind:this={currentInput}
               bind:value={currentPassphrase}
+              aria-invalid={currentError !== null ? "true" : undefined}
+              aria-describedby={currentError !== null
+                ? currentErrorId
+                : undefined}
             />
+            {#if currentError !== null}
+              <p id={currentErrorId} role="alert" class="field-error">
+                {currentError}
+              </p>
+            {/if}
           </div>
           <div class="field">
             <label for={newId}>New passphrase</label>
@@ -336,7 +356,16 @@
               type="password"
               autocomplete="new-password"
               bind:value={repeatedPassphrase}
+              aria-invalid={repeatError !== null ? "true" : undefined}
+              aria-describedby={repeatError !== null
+                ? repeatErrorId
+                : undefined}
             />
+            {#if repeatError !== null}
+              <p id={repeatErrorId} role="alert" class="field-error">
+                {repeatError}
+              </p>
+            {/if}
           </div>
         </fieldset>
       </form>
@@ -439,6 +468,12 @@
   /* A margin rather than a grid gap, so the reveal transition animates it. */
   .remove-history .history-warning {
     margin-top: var(--space-3);
+  }
+
+  .field-error {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    color: var(--color-danger);
   }
 
   .step-progress {

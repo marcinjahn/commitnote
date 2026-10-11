@@ -114,10 +114,11 @@
 
 <style>
   .sidebar-resize-handle {
-    flex: none;
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
     width: 8px;
-    margin-inline: -4px;
-    position: relative;
+    margin: 0;
     z-index: 1;
     cursor: col-resize;
     background: transparent;
@@ -133,9 +134,8 @@
     content: "";
     position: absolute;
     inset-block: 0;
-    left: 50%;
+    inset-inline-end: 0;
     width: 2px;
-    transform: translateX(-50%);
     background: transparent;
   }
 

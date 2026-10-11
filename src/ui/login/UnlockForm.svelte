@@ -5,6 +5,7 @@
   interface Props {
     username: string;
     busy: boolean;
+    invalid: boolean;
     passphrase: string;
     onsubmit: () => void;
     children: Snippet;
@@ -13,6 +14,7 @@
   let {
     username,
     busy,
+    invalid,
     passphrase = $bindable(),
     onsubmit,
     children,
@@ -42,6 +44,8 @@
       bind:this={passphraseInput}
       bind:value={passphrase}
       disabled={busy}
+      aria-invalid={invalid ? "true" : undefined}
+      aria-describedby={invalid ? "login-form-error" : undefined}
     />
   </div>
 

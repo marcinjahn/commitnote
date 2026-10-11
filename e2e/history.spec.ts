@@ -88,7 +88,7 @@ test("shows what restoring a version would change", { tag: "@mobile" }, async ({
   await dialog.getByRole("button", { name: "Show 3 saves" }).click();
   await select(3);
   if (mobile) await expect(rows.nth(3)).toBeHidden();
-  await expect(summary).toHaveText("Restoring would change: +1 −1 lines");
+  await expect(summary).toHaveText("Restoring would change: +1 added −1 removed lines");
   const line = (kind: string) =>
     detail.locator(`[data-testid='diff-line'][data-kind='${kind}']`);
   await expect(line("removed")).toHaveText(/one two three$/);
@@ -108,7 +108,7 @@ test("shows what restoring a version would change", { tag: "@mobile" }, async ({
   await expect(summary).toHaveText("Same as the current version.");
 
   await select(4);
-  await expect(summary).toHaveText("Restoring would change: +0 −1 line");
+  await expect(summary).toHaveText("Restoring would change: +0 added −1 removed line");
   await expect(line("removed")).toHaveText(/one two three$/);
   await expect(detail).toContainText("Adds a line break at the end.");
 });
@@ -153,7 +153,7 @@ async function selectFirstSave(page: Page) {
   await dialog.getByRole("button", { name: "Show 3 saves" }).click();
   await dialog.getByTestId("version-row").nth(3).click();
   await expect(dialog.getByTestId("diff-summary")).toHaveText(
-    "Restoring would change: +1 −1 lines",
+    "Restoring would change: +1 added −1 removed lines",
   );
   return dialog;
 }

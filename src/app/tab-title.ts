@@ -1,5 +1,7 @@
 export const TAB_TITLE = "commitnote";
 
+export const LOGIN_TAB_TITLE = "Log in · commitnote";
+
 const UNSAVED_TAB_TITLE = `● ${TAB_TITLE}`;
 
 export function computeTabTitle(input: { unsaved: boolean; override: string | null }): string {

@@ -79,6 +79,7 @@
 
   <main class="column">
     {#if view.kind === "loading"}
+      <h1 class="visually-hidden">Shared note</h1>
       <p class="muted" role="status">{LOADING_TEXT}</p>
     {:else if view.kind === "password"}
       <h1>{PASSWORD_HEADING}</h1>
@@ -129,6 +130,7 @@
         noteFont="inter"
       />
     {:else}
+      <h1 class="visually-hidden">Shared note</h1>
       <div class="error-block" role="alert">
         <p>{describeViewerError(view.error, view.provider)}</p>
         {#if view.retryable}

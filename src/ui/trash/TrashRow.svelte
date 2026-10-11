@@ -20,7 +20,7 @@
   const colorTag = $derived(node.kind === "note" ? node.colorTag : null);
 </script>
 
-<li role="none">
+<li>
   <div class="trash-row" style="--depth: {depth}" data-testid="trash-row">
     {#if node.kind === "folder"}
       <button
@@ -92,7 +92,7 @@
     {/if}
   </div>
   {#if node.kind === "folder" && expanded}
-    <ul role="group">
+    <ul>
       {#each node.children as child (child.name)}
         <TrashRow node={child} depth={depth + 1} {onRestore} />
       {/each}

@@ -32,8 +32,11 @@ async function failNextOnLoad(
 
 test("setting up an empty repo, then logging in to it", async ({ page }) => {
   await page.goto("/");
+  await expect(page).toHaveTitle("Log in · commitnote");
+  await expect(page.getByRole("main")).toBeVisible();
 
   await chooseRepository(page, { repo: EMPTY_REPO });
+  await expect(page).toHaveTitle("Log in · commitnote");
   await expect(
     page.getByText(
       "This repository is empty. Setting it up as a notes repo adds a commitnote configuration file and a README.",
@@ -61,6 +64,7 @@ test("setting up an empty repo, then logging in to it", async ({ page }) => {
   await page.getByRole("button", { name: "Set up notes repo" }).click();
   // An empty notes repo has no tree, just the empty-state message.
   await expectEmptyNotesRepo(page);
+  await expect(page).toHaveTitle("commitnote");
 
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page.getByLabel("Access token")).toHaveValue("");
@@ -78,6 +82,13 @@ test("setting up an empty repo, then logging in to it", async ({ page }) => {
   await page.getByRole("button", { name: "Log in" }).click();
   await expectLoginAlert(page, "Wrong passphrase.");
   await expect(page.getByLabel("Passphrase", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Passphrase", { exact: true })).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await expect(
+    page.getByLabel("Passphrase", { exact: true }),
+  ).toHaveAccessibleDescription("Wrong passphrase.");
 });
 
 test("a weak passphrase shows a strength warning but does not block setup", async ({
@@ -416,6 +427,17 @@ test("the repository list comes from the access token", async ({ page }) => {
   await page.getByLabel("Access token").fill("another-token");
   await expect(repository).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
+});
+
+test("an empty access token is flagged on the field", async ({ page }) => {
+  await page.goto("/");
+  const token = page.getByRole("textbox", { name: "Access token" });
+  await expect(token).not.toHaveAttribute("aria-invalid", /.*/);
+
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(token).toHaveAttribute("aria-invalid", "true");
+  await expect(token).toHaveAccessibleDescription(/Enter the access token\./);
 });
 
 test("refusal: an invalid access token", async ({ page }) => {

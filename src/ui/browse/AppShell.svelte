@@ -107,6 +107,12 @@
   import NoticeToasts from "../notices/NoticeToasts.svelte";
   import { toastHost } from "../notices/toast-host";
   import NoteHeader from "./NoteHeader.svelte";
+  import {
+    INITIAL_ANNOUNCER_STATE,
+    nextAnnouncement,
+    syncProblem,
+    type AnnouncerState,
+  } from "./status-announcer";
   import NoteTree from "./NoteTree.svelte";
   import SidebarResizeHandle from "./SidebarResizeHandle.svelte";
   import {
@@ -528,6 +534,21 @@
   }
 
   let atomicBlockedSeen = false;
+
+  let announcerState: AnnouncerState = INITIAL_ANNOUNCER_STATE;
+  let announcement = $state("");
+
+  $effect(() => {
+    const { syncStates, online, save } = engineState;
+    const root = syncStates.stateOf([]);
+    const result = nextAnnouncement(announcerState, {
+      problem: syncProblem({ online, root, save }),
+      allSaved: root.kind === "synced" && !syncStates.hasUnsaved,
+      hasUnsaved: syncStates.hasUnsaved,
+    });
+    announcerState = result.state;
+    if (result.message !== null) announcement = result.message;
+  });
 
   $effect(() => {
     return engine.subscribe((next) => {
@@ -1954,13 +1975,22 @@
       mobileView = "tree";
     }
   }
+
+  function skipToNote(event: MouseEvent): void {
+    event.preventDefault();
+    if (notePane?.hasEditor() === true) notePane.focusEditor();
+    else notePaneEl?.focus();
+  }
 </script>
 
 <svelte:window bind:innerWidth={viewportWidth} />
 
 <div class="shell">
-  <aside
+  <a class="skip-link" href="#note-pane" onclick={skipToNote}>Skip to note</a>
+  <header class="visually-hidden"><h1>commitnote</h1></header>
+  <nav
     id="sidebar"
+    aria-label="Notes"
     class="sidebar"
     class:mobile-hidden={mobileView !== "tree"}
     style:--sidebar-width="{sidebarWidth}px"
@@ -2105,23 +2135,24 @@
         </svg>
       </button>
     </div>
-  </aside>
+    <SidebarResizeHandle
+      width={sidebarWidth}
+      min={SIDEBAR_MIN_WIDTH}
+      max={sidebarMaxWidth}
+      controls="sidebar"
+      onResize={(width) => (preferredSidebarWidth = width)}
+      onCommit={(width) => writeSidebarWidth(width)}
+      onReset={() => {
+        preferredSidebarWidth = SIDEBAR_MIN_WIDTH;
+        clearSidebarWidth();
+      }}
+    />
+  </nav>
 
-  <SidebarResizeHandle
-    width={sidebarWidth}
-    min={SIDEBAR_MIN_WIDTH}
-    max={sidebarMaxWidth}
-    controls="sidebar"
-    onResize={(width) => (preferredSidebarWidth = width)}
-    onCommit={(width) => writeSidebarWidth(width)}
-    onReset={() => {
-      preferredSidebarWidth = SIDEBAR_MIN_WIDTH;
-      clearSidebarWidth();
-    }}
-  />
-
-  <section
+  <main
+    id="note-pane"
     class="note-pane"
+    tabindex="-1"
     class:mobile-hidden={mobileView !== "note"}
     bind:this={notePaneEl}
   >
@@ -2193,8 +2224,12 @@
         ? () => openShareDialog(openTreeNote.path, openTreeNote.syncedPath)
         : undefined}
     />
-  </section>
+  </main>
 </div>
+
+<p class="visually-hidden" role="status" data-testid="status-announcer">
+  {announcement}
+</p>
 
 <div class="toast-host" use:toastHost>
   <NoticeToasts
@@ -2511,6 +2546,14 @@
     position: relative;
   }
 
+  .note-pane:focus {
+    outline: none;
+  }
+
+  .skip-link {
+    display: none;
+  }
+
   .note-pane::after {
     content: "";
     position: absolute;
@@ -2703,7 +2746,36 @@
       height: 100dvh;
     }
 
+    .skip-link {
+      display: block;
+      position: fixed;
+      inset-block-start: var(--space-2);
+      inset-inline-start: var(--space-2);
+      z-index: 10;
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-surface-raised);
+      color: var(--color-text);
+      border: var(--hairline) solid var(--color-border);
+      border-radius: var(--radius);
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+    }
+
+    .skip-link:focus,
+    .skip-link:focus-visible {
+      width: auto;
+      height: auto;
+      overflow: visible;
+      clip: auto;
+      outline: 2px solid var(--color-focus);
+      outline-offset: 2px;
+    }
+
     .sidebar {
+      position: relative;
       width: var(--sidebar-width);
       flex-shrink: 0;
       background: var(--color-surface);

@@ -18,6 +18,7 @@
   import {
     contentSectionHeading,
     describeNoMatches,
+    describeResultCount,
     describeSearchStatus,
     describeShowingFirst,
     NAME_SECTION_HEADING,
@@ -167,6 +168,11 @@
     contentRows.length > 0 || (nameRows.length > 0 && partial),
   );
   const contentsSettled = $derived(contentTerms === terms);
+  const resultCountText = $derived(
+    terms.length === 0 || !contentsSettled
+      ? ""
+      : describeResultCount(rows.length),
+  );
 
   let active = $state(-1);
   let activeKey: string | null = null;
@@ -286,6 +292,8 @@
       {/if}
     </div>
   </div>
+
+  <p class="visually-hidden" role="status">{resultCountText}</p>
 
   <div class="search-results">
     {#if terms.length === 0}

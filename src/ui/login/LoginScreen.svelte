@@ -35,6 +35,7 @@
   import UnlockForm from "./UnlockForm.svelte";
   import CreateNotesRepoForm from "./CreateNotesRepoForm.svelte";
   import Wordmark from "../wordmark/Wordmark.svelte";
+  import { LOGIN_TAB_TITLE, tabTitle } from "../../app/tab-title";
 
   interface Props {
     providers: readonly ForgeProvider[];
@@ -110,6 +111,8 @@
         : null,
     ),
   );
+
+  $effect(() => tabTitle.override(LOGIN_TAB_TITLE));
 
   let inspection = $state.raw<Inspection | null>(null);
 
@@ -374,11 +377,11 @@
   {/if}
 
   {#if formError !== null}
-    <p role="alert" class="alert-error">{formError}</p>
+    <p id="login-form-error" role="alert" class="alert-error">{formError}</p>
   {/if}
 {/snippet}
 
-<div class="login-shell">
+<main class="login-shell">
   <div class="login-card">
     <Wordmark element="h1" />
     <p class="login-tagline">
@@ -415,7 +418,10 @@
           bind:value={accessToken}
           oninput={forgetRepositories}
           disabled={listing || submitting}
-          aria-describedby="login-access-token-hint"
+          aria-invalid={tokenError !== null ? "true" : undefined}
+          aria-describedby={tokenError !== null
+            ? "login-access-token-hint login-access-token-error"
+            : "login-access-token-hint"}
         />
         <p id="login-access-token-hint" class="field-hint">
           {provider.accessTokenHint ??
@@ -432,9 +438,15 @@
       {/if}
 
       {#if tokenError?.kind === "message"}
-        <p role="alert" class="alert-error">{tokenError.text}</p>
+        <p id="login-access-token-error" role="alert" class="alert-error">
+          {tokenError.text}
+        </p>
       {:else if tokenError?.kind === "noRepositories"}
-        <div role="alert" class="alert-error">
+        <div
+          id="login-access-token-error"
+          role="alert"
+          class="alert-error"
+        >
           <p>
             This access token has no access to any repository. Edit it on {provider.name}
             and add your notes repository.
@@ -513,6 +525,7 @@
           bind:passphrase
           {username}
           busy={submitting}
+          invalid={formError !== null}
           onsubmit={() => void handleUnlock()}
         >
           {@render passphraseFormFooter()}
@@ -533,7 +546,7 @@
       {/if}
     {/if}
   </div>
-</div>
+</main>
 
 <style>
   .login-shell {
