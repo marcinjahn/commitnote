@@ -535,16 +535,73 @@ describe("sync engine saves", () => {
   });
 
   describe("resolving a conflict", () => {
-    it("keepMine commits mine", async () => {
+    it("keepMine saves mine through the debounced edit path", async () => {
       const h = await setup();
-      const { mine } = await heldWelcomeConflict(h);
+      const { mine, remoteHead } = await heldWelcomeConflict(h);
 
       h.engine.resolveConflict(WELCOME, "keepMine");
+
+      expect(h.engine.getState().conflicts).toEqual([]);
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "out-of-sync",
+        reason: "pending",
+      });
+      expect(await h.fake.getHead()).toBe(remoteHead);
+
+      h.clock.advance(1_999);
+      expect(await h.fake.getHead()).toBe(remoteHead);
+      h.clock.advance(1);
       await waitIdle(h.engine);
 
+      expect(okCommitCount(h.fake, remoteHead)).toBe(1);
       expect(await welcomeText(h.fake)).toBe(mine);
-      expect(h.engine.getState().conflicts).toEqual([]);
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "synced",
+      });
       expect(h.engine.getState().syncStates.hasUnsaved).toBe(false);
+    });
+
+    it("keepMine shows the normal failed state when the save fails", async () => {
+      const h = await setup();
+      const { mine } = await heldWelcomeConflict(h);
+      h.fake.failNext("commit", new ForgeError("Network"));
+
+      h.engine.resolveConflict(WELCOME, "keepMine");
+      h.clock.advance(2_000);
+      await waitIdle(h.engine);
+
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "out-of-sync",
+        reason: "failed",
+      });
+
+      h.clock.advance(5_000);
+      await waitIdle(h.engine);
+      expect(await welcomeText(h.fake)).toBe(mine);
+    });
+
+    it("keepTheirs announces which device's version was kept", async () => {
+      const h = await setup();
+      const { remoteHead } = await heldWelcomeConflict(h, "Pixel app");
+      await vi.waitFor(() =>
+        expect(h.engine.getState().conflicts[0].theirsDevice).toBe("Pixel app"),
+      );
+
+      h.engine.resolveConflict(WELCOME, "keepTheirs");
+      await waitIdle(h.engine);
+
+      const kept = h.engine
+        .getState()
+        .notices.filter((notice) => notice.kind === "kept-other-version");
+      expect(kept).toEqual([
+        {
+          id: expect.any(Number),
+          kind: "kept-other-version",
+          path: WELCOME,
+          device: "Pixel app",
+        },
+      ]);
+      expect(await h.fake.getHead()).toBe(remoteHead);
     });
 
     it("keepTheirs leaves the remote content and the note synced", async () => {

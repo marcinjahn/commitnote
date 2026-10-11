@@ -9,6 +9,51 @@ function merge(notice: Extract<EngineNotice, { kind: "merge" }>["notice"]): Engi
 }
 
 describe("describeNotice", () => {
+  it("describes a kept other-device version with and without a name", () => {
+    expect(
+      describeNotice({
+        id: 1,
+        kind: "kept-other-version",
+        path: ["a"],
+        device: "Pixel app",
+      }),
+    ).toBe("Kept the other device's version (Pixel app). It's already saved.");
+    expect(
+      describeNotice({
+        id: 1,
+        kind: "kept-other-version",
+        path: ["a"],
+        device: null,
+      }),
+    ).toBe("Kept the other device's version. It's already saved.");
+  });
+
+  it("is informational and auto-dismissing for a kept other-device version", () => {
+    const notice: EngineNotice = {
+      id: 1,
+      kind: "kept-other-version",
+      path: ["a"],
+      device: null,
+    };
+    expect(noticeTone(notice)).toBe("info");
+    expect(isPersistentToast(noticeTone(notice), false)).toBe(false);
+  });
+
+  it("never uses the words mine or theirs", () => {
+    const notices: EngineNotice[] = [
+      { id: 1, kind: "conflict", path: ["a"] },
+      { id: 1, kind: "edited-merge-restored", path: ["a"] },
+      { id: 1, kind: "kept-other-version", path: ["a"], device: "Pixel app" },
+      { id: 1, kind: "kept-other-version", path: ["a"], device: null },
+      merge({ kind: "edit-restored", path: ["a"] }),
+      merge({ kind: "delete-skipped", path: ["a"], target: "note" }),
+      { id: 1, kind: "dropped", change: { kind: "set-order" } } as EngineNotice,
+    ];
+    for (const notice of notices) {
+      expect(describeNotice(notice)).not.toMatch(/\bmine\b|\btheirs\b/i);
+    }
+  });
+
   it("describes a dropped set-settings change", () => {
     expect(
       describeNotice({

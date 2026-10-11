@@ -198,6 +198,11 @@ type NoticeBody =
   | { readonly kind: "merge"; readonly notice: MergeNotice }
   | { readonly kind: "conflict"; readonly path: NotePath }
   | { readonly kind: "edited-merge-restored"; readonly path: NotePath }
+  | {
+      readonly kind: "kept-other-version";
+      readonly path: NotePath;
+      readonly device: string | null;
+    }
   | { readonly kind: "dropped"; readonly change: Change }
   | { readonly kind: "remote-updated"; readonly path: NotePath }
   | {
@@ -2730,12 +2735,19 @@ export function createSyncEngine(options: {
         }));
         appendRebased({ kind: "update-note", path, content: conflict.mine });
         void reresolveOpenNote();
-        autosave.saveNow();
+        autosave.noteEdited();
         return;
       case "keepTheirs":
         update((current) => ({
           ...current,
           conflicts: current.conflicts.filter((held) => held !== conflict),
+          notices: notices(current.notices, [
+            {
+              kind: "kept-other-version",
+              path,
+              device: conflict.theirsDevice,
+            },
+          ]),
         }));
         void reresolveOpenNote();
         return;
