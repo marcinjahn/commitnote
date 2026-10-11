@@ -554,6 +554,7 @@ export function createSyncEngine(options: {
   readonly blobCache?: CachedBlobReader;
   readonly noteContentCache?: NoteContentCache;
   readonly isOnline?: () => boolean;
+  readonly deviceName?: () => string;
 }): SyncEngine {
   const { keyring, clock } = options;
   const isOnline = options.isOnline ?? (() => true);
@@ -1387,7 +1388,7 @@ export function createSyncEngine(options: {
           shares: attemptSynced.shares,
           config: attemptSynced.config,
           keyring,
-          device: null,
+          device: options.deviceName?.() ?? null,
         });
         if (encoded.changes.length === 0) {
           endImportAttempt();

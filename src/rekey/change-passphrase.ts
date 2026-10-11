@@ -1,4 +1,7 @@
-import { encodeChangePassphraseMessage } from "../changes/encode-change-set";
+import {
+  encodeChangePassphraseMessage,
+  type DeviceStamp,
+} from "../changes/encode-change-set";
 import type { Argon2idFunction } from "../crypto/argon2";
 import {
   createRepoConfig,
@@ -46,6 +49,7 @@ export interface PassphraseChangeDeps {
   readonly argon2id?: Argon2idFunction;
   readonly random?: RandomSource;
   readonly sleep?: (ms: number) => Promise<void>;
+  readonly deviceName?: () => string;
 }
 
 export type PassphraseChangeStep =
@@ -382,8 +386,22 @@ async function checkLanded(
 
 // Runs only once the change landed, so a failure here leaves the passphrase
 // changed with the old history in place.
+function deviceStamp(
+  deps: PassphraseChangeDeps,
+  prepared: PreparedPassphraseChange,
+): DeviceStamp | null {
+  return deps.deviceName === undefined
+    ? null
+    : {
+        name: deps.deviceName(),
+        contentKey: prepared.keyring.contentKey,
+        random: deps.random,
+      };
+}
+
 async function replaceHistory(
   deps: PassphraseChangeDeps,
+  prepared: PreparedPassphraseChange,
   head: string,
   onStep: (step: PassphraseChangeStep) => void,
 ): Promise<{ readonly history: HistoryOutcome; readonly head: string }> {
@@ -394,7 +412,7 @@ async function replaceHistory(
     onStep({ kind: "removingHistory" });
     const result = await adapter.replaceHistory({
       head,
-      message: await encodeChangePassphraseMessage(null),
+      message: await encodeChangePassphraseMessage(deviceStamp(deps, prepared)),
     });
     if (result.kind === "ok") return { history: "removed", head: result.head };
     console.error("Removing the old history failed: main moved on");
@@ -411,7 +429,7 @@ async function landed(
   onStep: (step: PassphraseChangeStep) => void,
 ): Promise<CommitPassphraseChangeResult> {
   const final = prepared.removeHistory
-    ? await replaceHistory(deps, head, onStep)
+    ? await replaceHistory(deps, prepared, head, onStep)
     : { history: "kept" as const, head };
   return {
     ok: true,
@@ -456,7 +474,7 @@ export async function commitPassphraseChange(
     result = await adapter.commit({
       parent: prepared.parent,
       changes: prepared.changes,
-      message: await encodeChangePassphraseMessage(null),
+      message: await encodeChangePassphraseMessage(deviceStamp(deps, prepared)),
       atomic: true,
     });
   } catch (caught) {

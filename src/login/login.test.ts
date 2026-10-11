@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { readDeviceTrailer } from "../changes/device-trailer";
 import { encodeInitializeMessage } from "../changes/encode-change-set";
 import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
 import {
@@ -274,6 +275,28 @@ describe("inspecting and unlocking", () => {
       error: { kind: "newerFormat", formatVersion: 2 },
     });
     expect(repo.getRef(MAIN_BRANCH)).toBe(head);
+  });
+
+  it("stamps the initialize commit with the device name, encrypted", async () => {
+    const adapter = new FakeForgeAdapter({ defaultBranch: "master" });
+    const pending = await inspectUninitialized(adapter);
+
+    const result = expectLoggedIn(
+      await initializeNotesRepo(
+        pending,
+        "a fresh passphrase",
+        deps(adapter, { deviceName: () => "Kitchen tablet" }),
+      ),
+    );
+
+    const head = adapter.repo.getRef(MAIN_BRANCH) as string;
+    const message = adapter.repo.getCommit(
+      adapter.repo.getCommit(head)?.parent as string,
+    )?.message as string;
+    expect(message).not.toContain("Kitchen tablet");
+    expect(
+      await readDeviceTrailer(message, result.session.keyring.contentKey),
+    ).toBe("Kitchen tablet");
   });
 
   it("initializes an empty repository end-to-end, after which the same passphrase logs in and a wrong one does not", async () => {

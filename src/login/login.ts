@@ -49,6 +49,7 @@ export interface LoginDependencies {
   readonly argon2id?: Argon2idFunction;
   readonly random?: RandomSource;
   readonly now?: () => Date;
+  readonly deviceName?: () => string;
 }
 
 export interface PendingInitialization {
@@ -363,7 +364,15 @@ export async function initializeNotesRepo(
   });
 
   onStep?.("initializing");
-  const initializeMessage = await encodeInitializeMessage(null);
+  const initializeMessage = await encodeInitializeMessage(
+    deps.deviceName === undefined
+      ? null
+      : {
+          name: deps.deviceName(),
+          contentKey: keyring.contentKey,
+          random: deps.random,
+        },
+  );
   let result: CommitResult;
   try {
     result =

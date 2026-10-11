@@ -94,6 +94,8 @@
   import { bindDialogHistory, type DialogHistory } from "./ui/dialogs/dialog-history";
   import { dialogStack } from "./ui/dialogs/dialog-stack";
   import { setStandalone } from "./ui/standalone-context";
+  import { readPlatformInputs } from "./app/platform-inputs";
+  import { effectiveDeviceName } from "./settings/device-name";
   import type { DesktopShell } from "./desktop/desktop-shell-types";
 
   interface Props {
@@ -263,8 +265,16 @@
     | { readonly kind: "unsaved"; readonly count: number }
   >(null);
 
+  const platformInputs = readPlatformInputs(untrack(() => standalone));
+  const currentDeviceName = () =>
+    effectiveDeviceName(deviceSettingsStore.readDeviceName(), platformInputs);
+
   function loginDeps() {
-    return { createAdapter: budgetedCreateAdapter, argon2id };
+    return {
+      createAdapter: budgetedCreateAdapter,
+      argon2id,
+      deviceName: currentDeviceName,
+    };
   }
 
   function resetReported(): void {
@@ -316,6 +326,7 @@
       clock: systemClock,
       rateBudget,
       isOnline: () => navigator.onLine,
+      deviceName: currentDeviceName,
       ...(blobCache === null ? {} : { blobCache }),
     });
     const contentIndexer = createContentIndexer({
@@ -447,6 +458,7 @@
         rateBudget,
         clock: systemClock,
         argon2id,
+        deviceName: currentDeviceName,
       }),
       noteHistory,
       shareService: createShareService({

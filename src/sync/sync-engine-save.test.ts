@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { readDeviceTrailer } from "../changes/device-trailer";
 import { encodeInitializeMessage } from "../changes/encode-change-set";
 import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
 import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
@@ -72,6 +73,7 @@ function wrap(
 async function setup(
   fake?: FakeForgeAdapter,
   engineKeyring?: Keyring,
+  deviceName?: () => string,
 ): Promise<Harness> {
   const forge = fake ?? (await createSampleNotesRepoAdapter());
   const commits: CommitRequest[] = [];
@@ -82,6 +84,7 @@ async function setup(
     adapter: wrap(forge, commits, gate, readGate),
     keyring: engineKeyring ?? keyring,
     clock,
+    ...(deviceName === undefined ? {} : { deviceName }),
   });
   await engine.refresh();
   return {
@@ -219,6 +222,30 @@ describe("sync engine saves", () => {
     expect(await mainContent(h.fake, WELCOME)).toBe("welcome secret text");
     expect(await mainContent(h.fake, ZAZOLC)).toBe("zazolc secret text");
     expect(h.engine.getState().synced?.head).toBe(head);
+  });
+
+  it("stamps each save with the current device name, encrypted", async () => {
+    let name = "Phone";
+    const h = await setup(undefined, undefined, () => name);
+
+    h.engine.editNote(WELCOME, "first");
+    h.clock.advance(30_000);
+    await waitIdle(h.engine);
+    const first = messageOf(h.fake, await h.fake.getHead());
+    name = "Renamed tablet";
+    h.engine.editNote(WELCOME, "second");
+    h.clock.advance(30_000);
+    await waitIdle(h.engine);
+    const second = messageOf(h.fake, await h.fake.getHead());
+
+    expect(await readDeviceTrailer(first, keyring.contentKey)).toBe("Phone");
+    expect(await readDeviceTrailer(second, keyring.contentKey)).toBe(
+      "Renamed tablet",
+    );
+    for (const message of [first, second]) {
+      expect(message).not.toContain("Phone");
+      expect(message).not.toContain("Renamed tablet");
+    }
   });
 
   it("commits each structure operation immediately with its trailer", async () => {
