@@ -22,6 +22,8 @@
     type SyncEngineState,
   } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
+  import { automaticDeviceName } from "../../settings/device-name";
+  import { readPlatformInputs } from "../../app/platform-inputs";
   import type { DeviceSettingsStore } from "../../settings/device-settings-store";
   import {
     resolveEffectiveSettings,
@@ -288,6 +290,8 @@
   }: Props = $props();
 
   const standalone = getStandalone();
+  const platformInputs = readPlatformInputs(standalone);
+  const automaticName = $derived(automaticDeviceName(platformInputs));
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
   const syncStatus = $derived(engineState.syncStates.stateOf([]));
@@ -310,6 +314,7 @@
   );
   let pendingSettingsEdits = $state(untrack(() => settingsSaver.pending));
   let deviceSettings = $state.raw(untrack(() => deviceSettingsStore.read()));
+  let deviceName = $state<string | null>(untrack(() => deviceSettingsStore.readDeviceName()));
   let mobileView = $state<"tree" | "note">("tree");
   let repoLabelEl = $state<HTMLSpanElement | null>(null);
   let repoLabelTruncated = $state(false);
@@ -777,8 +782,10 @@
 
   $effect(() => {
     deviceSettings = deviceSettingsStore.read();
+    deviceName = deviceSettingsStore.readDeviceName();
     return deviceSettingsStore.subscribe(() => {
       deviceSettings = deviceSettingsStore.read();
+      deviceName = deviceSettingsStore.readDeviceName();
     });
   });
 
@@ -2729,6 +2736,9 @@
       reopenLastView,
       remembered: sessionRemembered,
       onReopenLastViewChange: handleReopenLastViewChange,
+      deviceName,
+      automaticDeviceName: automaticName,
+      onDeviceNameChange: (raw) => deviceSettingsStore.writeDeviceName(raw),
     }}
     dataSecurity={{
       exporting,
