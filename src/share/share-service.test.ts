@@ -190,7 +190,7 @@ describe("createShare", () => {
     const file = listing.find((e) => e.sha === result.entry.source?.blobSha);
     expect(result.entry.source).toEqual({
       commit: newest.kind === "found" ? newest.version.sha : null,
-      storedPath: file?.path,
+      storedPath: newest.kind === "found" ? newest.version.storedPath : null,
       blobSha: file?.sha,
     });
     expect(h.engine.getState().shares?.entries.get(result.entry.id)).toEqual(
@@ -412,6 +412,33 @@ describe("updateShare", () => {
 
     expect(second).toEqual({ ok: true, entry: first.entry, unchanged: true });
     expect(calls).toBe(0);
+  });
+
+  it("records the updated version's own stored path and reads it back", async () => {
+    const { h, created } = await shared();
+    h.engine.editNote(WELCOME, "# Fresh\n\nnew text");
+
+    const result = await h.service.updateShare(created.entry.id);
+
+    if (!result.ok) throw new Error("failed");
+    const source = result.entry.source;
+    if (!source) throw new Error("no source");
+    const history = createNoteHistory({ adapter: h.fake, keyring });
+    const newest = await history.newestVersion(WELCOME, await h.fake.getHead());
+    if (newest.kind !== "found") throw new Error("no version");
+    expect(source.commit).toBe(newest.version.sha);
+    expect(source.storedPath).toBe(newest.version.storedPath);
+    const read = await history.readVersion({
+      sha: source.commit,
+      storedPath: source.storedPath,
+      committedAt: 0,
+      name: null,
+      events: [],
+    });
+    expect(read).toMatchObject({
+      kind: "readable",
+      content: "# Fresh\n\nnew text",
+    });
   });
 
   it("keeps the label", async () => {

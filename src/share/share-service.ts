@@ -171,7 +171,6 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     | {
         readonly ok: true;
         readonly version: NoteVersion;
-        readonly storedPath: string;
         readonly blobSha: string;
       }
     | { readonly ok: false; readonly error: ShareError }
@@ -189,7 +188,6 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     return {
       ok: true,
       version: newest.version,
-      storedPath: node.storedPath,
       blobSha: node.blobSha,
     };
   }
@@ -239,7 +237,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     const { working } = saved;
     const located = await locateVersion(saved, path);
     if (!located.ok) return fail(located.error);
-    const { version, storedPath, blobSha } = located;
+    const { version, blobSha } = located;
     const read = await readContent(version);
     if (!read.ok) return fail(read.error);
 
@@ -274,7 +272,11 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       label,
       sharedAt,
       note: { state: "active", path },
-      source: { commit: version.sha, storedPath, blobSha },
+      source: {
+        commit: version.sha,
+        storedPath: version.storedPath,
+        blobSha,
+      },
       updatedAt: null,
     };
     const added = engine.addShare(entry);
@@ -343,7 +345,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     }
     const located = await locateVersion(saved, path);
     if (!located.ok) return fail(located.error);
-    const { version, storedPath, blobSha } = located;
+    const { version, blobSha } = located;
     if (version.sha === entry.source?.commit) {
       return { ok: true, entry, unchanged: true };
     }
@@ -383,7 +385,11 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       ...entry,
       name,
       updatedAt,
-      source: { commit: version.sha, storedPath, blobSha },
+      source: {
+        commit: version.sha,
+        storedPath: version.storedPath,
+        blobSha,
+      },
     };
     const changed = engine.updateShare(updated);
     if (!changed.ok) return fail(NOT_SAVED);
