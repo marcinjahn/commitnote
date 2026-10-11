@@ -1,10 +1,14 @@
 export type ArchiveDelivery = "shared" | "cancelled" | "downloaded";
 
+export type ArchiveDownload = (
+  file: File,
+) => Promise<"downloaded" | "cancelled">;
+
 export interface ArchiveDeliveryEnvironment {
   coarsePointer: boolean;
   canShare?: (data: ShareData) => boolean;
   share?: (data: ShareData) => Promise<void>;
-  download: (file: File) => void;
+  download: ArchiveDownload;
 }
 
 export async function deliverArchive(
@@ -23,6 +27,5 @@ export async function deliverArchive(
       }
     }
   }
-  download(file);
-  return "downloaded";
+  return download(file);
 }

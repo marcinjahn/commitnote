@@ -71,6 +71,7 @@
     type HistoryPhase,
   } from "../history/NoteHistoryDialog.svelte";
   import type { WorkingNode } from "../../sync/working-tree";
+  import type { ArchiveDownload } from "../../export/deliver-archive";
   import { exportNotesArchive } from "../../export/export-notes-archive";
   import {
     planImport,
@@ -252,6 +253,7 @@
     onColorMode: (id: ColorModeId) => void;
     onNoteFont: (id: NoteFont) => void;
     onPrintNote: (note: PrintNote | null) => void;
+    download?: ArchiveDownload;
   }
 
   const {
@@ -282,6 +284,7 @@
     onColorMode,
     onNoteFont,
     onPrintNote,
+    download,
   }: Props = $props();
 
   const standalone = getStandalone();
@@ -1617,7 +1620,7 @@
     exporting = true;
     clearToast("export");
     try {
-      await exportNotesArchive(snapshot);
+      await exportNotesArchive(snapshot, { download });
     } catch {
       showToast("export", "error", "Export failed. Try again later.");
     } finally {

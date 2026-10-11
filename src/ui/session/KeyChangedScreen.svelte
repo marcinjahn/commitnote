@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ArchiveDownload } from "../../export/deliver-archive";
   import { exportNotesArchive } from "../../export/export-notes-archive";
   import type { SyncEngine } from "../../sync/sync-engine";
   import { KEY_CHANGED_MESSAGE } from "../browse/sync-messages";
@@ -8,9 +9,10 @@
     engine: SyncEngine;
     unsavedCount: number;
     onLogInAgain: () => void;
+    download?: ArchiveDownload;
   }
 
-  const { engine, unsavedCount, onLogInAgain }: Props = $props();
+  const { engine, unsavedCount, onLogInAgain, download }: Props = $props();
 
   let exporting = $state(false);
   let exportFailed = $state(false);
@@ -27,7 +29,7 @@
     exporting = true;
     exportFailed = false;
     try {
-      await exportNotesArchive(snapshot);
+      await exportNotesArchive(snapshot, { download });
     } catch {
       exportFailed = true;
     } finally {

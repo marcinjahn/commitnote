@@ -1,5 +1,9 @@
 import type { NotesSnapshot } from "../sync/sync-engine";
-import { type ArchiveDelivery, deliverArchive } from "./deliver-archive";
+import {
+  type ArchiveDelivery,
+  type ArchiveDownload,
+  deliverArchive,
+} from "./deliver-archive";
 import { buildNotesArchive } from "./notes-archive";
 
 function exportFileName(now: Date): string {
@@ -7,7 +11,7 @@ function exportFileName(now: Date): string {
   return `commitnote-export-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.zip`;
 }
 
-function downloadFile(file: File): void {
+async function browserDownload(file: File): ReturnType<ArchiveDownload> {
   const url = URL.createObjectURL(file);
   const link = document.createElement("a");
   link.href = url;
@@ -16,10 +20,12 @@ function downloadFile(file: File): void {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 0);
+  return "downloaded";
 }
 
 export async function exportNotesArchive(
   snapshot: NotesSnapshot,
+  options: { download?: ArchiveDownload } = {},
 ): Promise<ArchiveDelivery> {
   const now = new Date();
   const archive = await buildNotesArchive(
@@ -40,6 +46,6 @@ export async function exportNotesArchive(
       typeof navigator.share === "function"
         ? navigator.share.bind(navigator)
         : undefined,
-    download: downloadFile,
+    download: options.download ?? browserDownload,
   });
 }
