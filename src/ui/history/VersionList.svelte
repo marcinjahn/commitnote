@@ -97,12 +97,7 @@
   }
 
   function labelsOf(version: NoteVersion): string[] {
-    const index = indexBySha.get(version.sha);
-    const previous =
-      index === undefined ? undefined : versions[index + 1];
-    return version.events.map((event) =>
-      describeEvent(event, previous?.name ?? null),
-    );
+    return version.events.map((event) => describeEvent(event));
   }
 
   function handleKeydown(event: KeyboardEvent): void {

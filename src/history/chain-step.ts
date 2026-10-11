@@ -5,9 +5,6 @@ import { rewindPath, type RewindStep } from "./rewind-path";
 
 export type VersionEvent =
   | "created"
-  | "renamed"
-  | "moved"
-  | "restoredFromTrash"
   | "passphraseChanged"
   | "external";
 

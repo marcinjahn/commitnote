@@ -48,7 +48,7 @@ describe("groupVersions", () => {
     expect(
       shas([
         version("d", NOON + 3 * MINUTE),
-        version("c", NOON + 2 * MINUTE, ["renamed"]),
+        version("c", NOON + 2 * MINUTE, ["external"]),
         version("b", NOON + MINUTE),
         version("a", NOON, ["created"]),
       ]),

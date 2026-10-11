@@ -63,22 +63,10 @@ export function describeSession(
   return `${range} · ${saves} saves`;
 }
 
-/** `previousName` is the note's name before the change, when known. */
-export function describeEvent(
-  event: VersionEvent,
-  previousName: string | null,
-): string {
+export function describeEvent(event: VersionEvent): string {
   switch (event) {
     case "created":
       return "Created";
-    case "renamed":
-      return previousName === null
-        ? "Renamed"
-        : `Renamed from “${previousName}”`;
-    case "moved":
-      return "Moved";
-    case "restoredFromTrash":
-      return "Restored from trash";
     case "passphraseChanged":
       return "Passphrase changed";
     case "external":
