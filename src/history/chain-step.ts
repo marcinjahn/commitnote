@@ -36,13 +36,6 @@ function onlyOne<T>(items: readonly T[]): T | undefined {
   return items.length === 1 ? items[0] : undefined;
 }
 
-function movedEvents(step: Extract<RewindStep, { kind: "moved" }>) {
-  const events: VersionEvent[] = [];
-  if (step.renamed) events.push("renamed");
-  if (step.moved) events.push("moved");
-  return events;
-}
-
 export function createChainStep(
   deps: ChainStepDeps,
 ): (commit: CommitSummary, path: string) => Promise<ChainStep> {
@@ -105,7 +98,7 @@ export function createChainStep(
         return {
           kind: "relocated",
           previousPath: step.before,
-          events: movedEvents(step),
+          events: step.edited ? [] : null,
         };
       case "trashed":
         return { kind: "relocated", previousPath: step.before, events: null };
@@ -117,10 +110,13 @@ export function createChainStep(
         return { kind: "passphraseChanged", events: ["passphraseChanged"] };
       case "restored": {
         const source = await traceRestore(commit, path, step);
-        const events = ["restoredFromTrash"] as const;
         return source === null
-          ? { kind: "untraceable", events }
-          : { kind: "relocated", previousPath: source, events };
+          ? { kind: "untraceable", events: [] }
+          : {
+              kind: "relocated",
+              previousPath: source,
+              events: step.edited ? [] : null,
+            };
       }
     }
   };

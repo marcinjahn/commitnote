@@ -13,7 +13,7 @@ import { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import { commitFiles, InMemoryGitRepo } from "../forge/fake/in-memory-git-repo";
 import type { ForgeAdapter } from "../forge/forge-adapter";
 import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../format/v1";
-import type { OrderIndex } from "../order/order-index";
+import { EMPTY_ORDER, type OrderIndex } from "../order/order-index";
 import {
   commitPassphraseChange,
   preparePassphraseChange,
@@ -190,21 +190,75 @@ describe("note history", () => {
 
     expect(rows(versions)).toEqual([
       ["B", []],
-      ["B", ["moved"]],
-      ["B", ["moved"]],
-      ["B", ["renamed"]],
       ["A", []],
       ["A", ["created"]],
     ]);
     expect(end).toEqual({ kind: "created" });
-    expect(await contents(history, versions)).toEqual([
-      "b",
-      "a2",
-      "a2",
-      "a2",
-      "a2",
-      "a1",
+    expect(await contents(history, versions)).toEqual(["b", "a2", "a1"]);
+  });
+
+  it.each<[string, Change[]]>([
+    [
+      "an edit then a rename",
+      [update(["A"], "a3"), { kind: "rename-note", from: ["A"], to: ["B"] }],
+    ],
+    [
+      "a rename then an edit",
+      [{ kind: "rename-note", from: ["A"], to: ["B"] }, update(["B"], "a3")],
+    ],
+  ])("lists a commit with %s of the note", async (_, changeSet) => {
+    const repo = await createRepo();
+    await repo.save(create(["A"], "a1"));
+    await repo.save(update(["A"], "a2"));
+    await repo.save(...changeSet);
+    const history = createNoteHistory(repo);
+
+    const { versions, end } = (
+      await openFully(history, repo, ["B"])
+    ).getState();
+
+    expect(rows(versions)).toEqual([
+      ["B", []],
+      ["A", []],
+      ["A", ["created"]],
     ]);
+    expect(end).toEqual({ kind: "created" });
+    expect(await contents(history, versions)).toEqual(["a3", "a2", "a1"]);
+  });
+
+  it("lists no version for a reorder between two edits", async () => {
+    const repo = await createRepo();
+    await repo.save(create(["N"], "a"), create(["Other"], "x"));
+    const parent = await repo.adapter.getHead();
+    const reorder = await encodeChangeSet({
+      listing: await repo.adapter.listTree(parent),
+      changeSet: [
+        {
+          kind: "set-order",
+          parent: [],
+          positions: [
+            { name: "Other", key: "a" },
+            { name: "N", key: "b" },
+          ],
+        },
+      ],
+      order: EMPTY_ORDER,
+      tags: EMPTY_TAGS,
+      shares: EMPTY_SHARES,
+      keyring: repo.keyring,
+    });
+    expect(reorder.message).toContain("Commitnote-Order");
+    await repo.adapter.commit({ parent, ...reorder });
+    await repo.save(update(["N"], "b"));
+    const history = createNoteHistory(repo);
+
+    const { versions } = (await openFully(history, repo, ["N"])).getState();
+
+    expect(rows(versions)).toEqual([
+      ["N", []],
+      ["N", ["created"]],
+    ]);
+    expect(await contents(history, versions)).toEqual(["b", "a"]);
   });
 
   it("follows a note restored on its own out of a trashed folder", async () => {
@@ -232,12 +286,11 @@ describe("note history", () => {
 
     expect(rows(versions)).toEqual([
       ["N", []],
-      ["N", ["restoredFromTrash"]],
       ["N", []],
       ["N", ["created"]],
     ]);
     expect(end).toEqual({ kind: "created" });
-    expect(await contents(history, versions)).toEqual(["c", "b", "b", "a"]);
+    expect(await contents(history, versions)).toEqual(["c", "b", "a"]);
   });
 
   it.each<[string, Change, NotePath]>([
@@ -274,7 +327,7 @@ describe("note history", () => {
       ).getState();
 
       expect(rows(versions)).toEqual([
-        ["N", ["restoredFromTrash"]],
+        ["N", []],
         ["N", ["created"]],
       ]);
       expect(end).toEqual({ kind: "created" });
@@ -302,11 +355,51 @@ describe("note history", () => {
       await openFully(history, repo, ["F", "N"])
     ).getState();
 
-    expect(rows(versions)).toEqual([
-      ["N", ["restoredFromTrash"]],
-      ["N", ["created"]],
-    ]);
+    expect(rows(versions)).toEqual([["N", ["created"]]]);
     expect(end).toEqual({ kind: "created" });
+  });
+
+  it("ends at a restore from trash it can't trace, listing its content", async () => {
+    const repo = await createRepo();
+    await repo.save(create(["N"], "a"));
+    await repo.save({ kind: "trash-note", path: ["N"], entryId: TRASH_ID });
+    const restore = await encodeChangeSet({
+      listing: await repo.adapter.listTree(await repo.adapter.getHead()),
+      changeSet: [
+        {
+          kind: "restore-trash",
+          entryId: TRASH_ID,
+          subPath: [],
+          target: "note",
+          to: ["N"],
+        },
+      ],
+      order: NO_ORDER,
+      tags: EMPTY_TAGS,
+      shares: EMPTY_SHARES,
+      keyring: repo.keyring,
+    });
+    await repo.adapter.pushFromAnotherDevice(
+      restore.changes.filter((change) => change.kind === "delete"),
+      "Purge by hand",
+    );
+    const restoredAt = await repo.adapter.pushFromAnotherDevice(
+      restore.changes.filter((change) => change.kind !== "delete"),
+      restore.message,
+    );
+    const history = createNoteHistory(repo);
+
+    const { versions, end } = (
+      await openFully(history, repo, ["N"])
+    ).getState();
+
+    expect(rows(versions)).toEqual([["N", []]]);
+    expect(versions[0].sha).toBe(restoredAt);
+    expect(end).toEqual({ kind: "untraceable" });
+    expect(await contents(history, versions)).toEqual(["a"]);
+    expect(
+      await createNoteHistory(repo).newestVersion(["N"], restoredAt),
+    ).toEqual({ kind: "found", version: versions[0] });
   });
 
   it("stops at a recreation under the same name", async () => {
@@ -430,6 +523,35 @@ describe("note history", () => {
       expect(newest.kind === "found" && newest.version.sha).not.toBe(head);
     });
 
+    it("skips relocation-only commits to the older content write", async () => {
+      const repo = await createRepo();
+      await repo.save({ kind: "create-folder", path: ["F"] }, create(["N"], "a"));
+      const written = await repo.save(update(["N"], "b"));
+      await repo.save({ kind: "rename-note", from: ["N"], to: ["M"] });
+      await repo.save({ kind: "rename-note", from: ["M"], to: ["F", "M"] });
+      const history = createNoteHistory(repo);
+
+      const newest = await history.newestVersion(
+        ["F", "M"],
+        await repo.adapter.getHead(),
+      );
+
+      expect(newest).toMatchObject({
+        kind: "found",
+        version: {
+          sha: written,
+          storedPath: await encryptPath(repo.keyring, ["N"]),
+          name: "N",
+          events: [],
+        },
+      });
+      if (newest.kind !== "found") throw new Error("no version");
+      expect(await history.readVersion(newest.version)).toMatchObject({
+        kind: "readable",
+        content: "b",
+      });
+    });
+
     it("reports none for a path without history", async () => {
       const repo = await createRepo();
       await repo.save(create(["Note"], "v1"));
@@ -468,10 +590,10 @@ describe("note history", () => {
       const second = cursor.getState();
 
       expect(first.end).toBeNull();
-      expect(first.versions).toHaveLength(61);
+      expect(first.versions).toHaveLength(60);
       expect(second.end).toEqual({ kind: "created" });
-      expect(second.versions).toHaveLength(72);
-      expect(new Set(second.versions.map((v) => v.sha)).size).toBe(72);
+      expect(second.versions).toHaveLength(71);
+      expect(new Set(second.versions.map((v) => v.sha)).size).toBe(71);
       expect(await contents(history, second.versions.slice(-1))).toEqual(["0"]);
     });
 
@@ -495,11 +617,23 @@ describe("note history", () => {
       await cursor.loadMore();
 
       expect(calls.listCommits).toBe(HISTORY_MAX_REQUESTS);
-      expect(cursor.getState()).toMatchObject({ end: null, loading: false });
-      await cursor.loadMore();
-      expect(cursor.getState().versions.map((v) => v.name)).toEqual(
-        Array.from({ length: 9 }, (_, i) => `N${8 - i}`),
-      );
+      expect(cursor.getState()).toMatchObject({
+        versions: [],
+        end: null,
+        loading: false,
+      });
+      for (let i = 0; i < 5 && cursor.getState().end === null; i++) {
+        const before = calls.listCommits;
+        await cursor.loadMore();
+        expect(calls.listCommits - before).toBeLessThanOrEqual(
+          HISTORY_MAX_REQUESTS,
+        );
+      }
+      expect(cursor.getState()).toMatchObject({
+        end: { kind: "created" },
+        error: null,
+      });
+      expect(rows(cursor.getState().versions)).toEqual([["N0", ["created"]]]);
     });
 
     it("reports a failed load and loads again on retry", async () => {
@@ -550,7 +684,6 @@ describe("note history", () => {
       expect(rows(failed.versions)).toEqual([["N", []]]);
       expect(rows(cursor.getState().versions)).toEqual([
         ["N", []],
-        ["N", ["restoredFromTrash"]],
         ["N", ["created"]],
       ]);
     });

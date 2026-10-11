@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Keyring } from "../crypto/keyring";
 import { argon2idDirect } from "../crypto/argon2";
+import { encryptPath } from "../crypto/name-cipher";
 import { encryptNote } from "../crypto/note-cipher";
+import type { NotePath } from "../changes/change";
 import { ForgeError } from "../forge/errors";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import {
@@ -87,6 +89,19 @@ function hostedEnvelope(h: Harness, hash: string): string {
 function hashOf(link: string): string {
   return link.slice(LINK_BASE.length);
 }
+
+const RELOCATIONS: [
+  string,
+  (engine: SyncEngine) => { ok: boolean },
+  NotePath,
+][] = [
+  ["renamed", (engine) => engine.rename(WELCOME, "Renamed"), ["Renamed"]],
+  [
+    "moved into another folder",
+    (engine) => engine.move(WELCOME, ["Projects"]),
+    ["Projects", "Welcome"],
+  ],
+];
 
 describe("createShare", () => {
   it("flushes pending edits and shares the saved text", async () => {
@@ -218,6 +233,38 @@ describe("createShare", () => {
     expect(newest.version.sha).not.toBe(otherHead);
     expect(result.entry.source?.commit).toBe(newest.version.sha);
   });
+
+  it.each(RELOCATIONS)(
+    "records the older content write of a note only %s since",
+    async (_, relocate, path) => {
+      const h = await setup();
+      const content = await mainContent(h.fake, WELCOME);
+      expect(relocate(h.engine).ok).toBe(true);
+      await settle(h.engine);
+
+      const result = await h.service.createShare({ path, password: "" });
+
+      if (!result.ok) throw new Error(`failed: ${result.error.kind}`);
+      const source = result.entry.source;
+      if (!source) throw new Error("no source");
+      const head = await h.fake.getHead();
+      const history = createNoteHistory({ adapter: h.fake, keyring });
+      const newest = await history.newestVersion(path, head);
+      if (newest.kind !== "found") throw new Error("no version");
+      expect(newest.version.sha).not.toBe(head);
+      expect(source.commit).toBe(newest.version.sha);
+      expect(source.storedPath).toBe(newest.version.storedPath);
+      expect(source.storedPath).not.toBe(await encryptPath(keyring, path));
+      const read = await history.readVersion({
+        sha: source.commit,
+        storedPath: source.storedPath,
+        committedAt: 0,
+        name: null,
+        events: [],
+      });
+      expect(read).toMatchObject({ kind: "readable", content });
+    },
+  );
 
   it("stores the password and needs it to open", async () => {
     const h = await setup();
@@ -471,6 +518,25 @@ describe("updateShare", () => {
       unchanged: true,
     });
   });
+
+  it.each(RELOCATIONS)(
+    "reports unchanged for a note only %s since",
+    async (_, relocate) => {
+      const { h, created } = await shared();
+      expect(relocate(h.engine).ok).toBe(true);
+      await settle(h.engine);
+      const before = h.engine.getState().shares?.entries.get(created.entry.id);
+      if (!before) throw new Error("no entry");
+
+      const result = await h.service.updateShare(created.entry.id);
+
+      expect(result).toEqual({ ok: true, entry: before, unchanged: true });
+      expect(before.source).toEqual(created.entry.source);
+      expect(h.engine.getState().shares?.entries.get(created.entry.id)).toBe(
+        before,
+      );
+    },
+  );
 
   it("refuses a note with a conflict", async () => {
     const { h, created } = await shared();
