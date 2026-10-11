@@ -22,7 +22,7 @@
     type SyncEngineState,
   } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
-  import { automaticDeviceName } from "../../settings/device-name";
+  import { automaticDeviceName, effectiveDeviceName } from "../../settings/device-name";
   import { readPlatformInputs } from "../../app/platform-inputs";
   import type { DeviceSettingsStore } from "../../settings/device-settings-store";
   import {
@@ -315,6 +315,7 @@
   let pendingSettingsEdits = $state(untrack(() => settingsSaver.pending));
   let deviceSettings = $state.raw(untrack(() => deviceSettingsStore.read()));
   let deviceName = $state<string | null>(untrack(() => deviceSettingsStore.readDeviceName()));
+  const thisDeviceName = $derived(effectiveDeviceName(deviceName, platformInputs));
   let mobileView = $state<"tree" | "note">("tree");
   let repoLabelEl = $state<HTMLSpanElement | null>(null);
   let repoLabelTruncated = $state(false);
@@ -2619,6 +2620,7 @@
       onNewNote={handleHeaderNewNote}
       onRestoreTrashed={(entryId, reopen) => handleUndoTrash(entryId, reopen)}
       noteFont={settings.noteFont}
+      {thisDeviceName}
       animatedCaret={settings.animatedCaret}
       vimMode={settings.vimMode}
       onVimWrite={saveFromShortcut}

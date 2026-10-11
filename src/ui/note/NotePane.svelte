@@ -34,6 +34,7 @@
     onNewNote: () => void;
     onRestoreTrashed: (entryId: string, reopen: NotePath) => void;
     noteFont: NoteFont;
+    thisDeviceName: string;
     animatedCaret?: boolean;
     shared?: boolean;
     onShared?: () => void;
@@ -56,6 +57,7 @@
     onNewNote,
     onRestoreTrashed,
     noteFont,
+    thisDeviceName,
     animatedCaret = true,
     shared = false,
     onShared,
@@ -310,7 +312,7 @@
     </p>
     {/if}
   {:else if shown.openNote.kind === "loaded" && shown.conflict !== undefined}
-    <ConflictView {engine} conflict={shown.conflict} {noteFont} />
+    <ConflictView {engine} conflict={shown.conflict} {noteFont} {thisDeviceName} />
   {:else if shown.openNote.kind === "missing"}
     <p class="note-status">This note no longer exists.</p>
   {:else if shown.openNote.kind === "trashed"}

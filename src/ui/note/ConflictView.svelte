@@ -3,12 +3,13 @@
   import { conflictMarkerHighlight } from "../../editor/conflict-highlight";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
   import {
-    CONFLICT_BANNER_HEADING,
     CONFLICT_BANNER_TEXT,
     CONFLICT_EDIT_HINT,
     CONFLICT_EDIT_MERGED_LABEL,
-    CONFLICT_KEEP_MINE_LABEL,
-    CONFLICT_KEEP_THEIRS_LABEL,
+    conflictBannerHeading,
+    conflictLegendLabel,
+    keepOtherDeviceLabel,
+    keepThisDeviceLabel,
   } from "./conflict-copy";
 
   import type { NoteFont } from "../../settings/note-font";
@@ -17,9 +18,10 @@
     engine: SyncEngine;
     conflict: HeldConflict;
     noteFont: NoteFont;
+    thisDeviceName: string;
   }
 
-  const { engine, conflict, noteFont }: Props = $props();
+  const { engine, conflict, noteFont, thisDeviceName }: Props = $props();
 
   const highlightExtensions = [conflictMarkerHighlight()];
 
@@ -42,14 +44,24 @@
 
 <div class="conflict-view">
   <div role="region" aria-label="Conflict" class="conflict-banner">
-    <h2>{CONFLICT_BANNER_HEADING}</h2>
+    <h2>{conflictBannerHeading(conflict.theirsDevice)}</h2>
     <p>{CONFLICT_BANNER_TEXT}</p>
+    <ul class="conflict-legend" aria-label="Legend">
+      <li>
+        <span class="conflict-swatch conflict-swatch-mine" aria-hidden="true"></span>
+        {conflictLegendLabel("mine", thisDeviceName)}
+      </li>
+      <li>
+        <span class="conflict-swatch conflict-swatch-theirs" aria-hidden="true"></span>
+        {conflictLegendLabel("theirs", conflict.theirsDevice)}
+      </li>
+    </ul>
     <div class="conflict-actions">
       <button type="button" class="button button-ghost" onclick={keepMine}>
-        {CONFLICT_KEEP_MINE_LABEL}
+        {keepThisDeviceLabel(thisDeviceName)}
       </button>
       <button type="button" class="button button-ghost" onclick={keepTheirs}>
-        {CONFLICT_KEEP_THEIRS_LABEL}
+        {keepOtherDeviceLabel(conflict.theirsDevice)}
       </button>
       <button
         type="button"
@@ -79,7 +91,7 @@
       onChange={onMergedChange}
       extensions={highlightExtensions}
       {noteFont}
-      ariaLabel="Note editor"
+      ariaLabel="Merged text"
     />
   {/if}
 </div>
@@ -119,6 +131,54 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
+  }
+
+  .conflict-legend {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-4);
+    font-size: var(--font-size-sm);
+  }
+
+  .conflict-legend li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .conflict-swatch {
+    flex: none;
+    width: 0.75rem;
+    height: 0.75rem;
+    border: var(--hairline) solid var(--color-border);
+  }
+
+  .conflict-swatch-mine {
+    background: var(--color-conflict-mine);
+  }
+
+  .conflict-swatch-theirs {
+    background: var(--color-conflict-theirs);
+  }
+
+  .conflict-actions .button {
+    white-space: normal;
+    text-align: center;
+  }
+
+  @media (max-width: 767px) {
+    .conflict-actions {
+      flex-direction: column;
+    }
+
+    .conflict-actions .button {
+      width: 100%;
+    }
   }
 
   .conflict-hint {

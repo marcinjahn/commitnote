@@ -9,7 +9,7 @@ const WAITING = "Out of sync: waiting to save";
 const FAILED = "Out of sync: saving failed, will retry";
 const CONFLICT = "Out of sync: conflict, needs your decision";
 
-const CONFLICT_KEEP_THEIRS_LABEL = "Keep theirs";
+const CONFLICT_KEEP_OTHER_LABEL = "Keep other device's version";
 const CONFLICT_EDIT_MERGED_LABEL = "Edit merged";
 
 const IDEAS_MARKDOWN = [
@@ -269,7 +269,7 @@ test("a conflict is resolved by editing the merged text", async ({ page }) => {
     .getByRole("button", { name: CONFLICT_EDIT_MERGED_LABEL })
     .click();
 
-  const editor = page.getByRole("textbox", { name: "Note editor" });
+  const editor = page.getByRole("textbox", { name: "Merged text" });
   await expect(editor).toBeVisible();
   await expect(
     page.getByRole("status").getByText(/conflict marker/),
@@ -298,12 +298,12 @@ test("a conflict is resolved by editing the merged text", async ({ page }) => {
   await expect(note).not.toContainText("Welcome from elsewhere");
 });
 
-test("a conflict is resolved by keeping theirs", async ({ page }) => {
+test("a conflict is resolved by keeping the other device's version", async ({ page }) => {
   await startConflictOnWelcome(page);
 
   await page
     .getByRole("region", { name: "Conflict" })
-    .getByRole("button", { name: CONFLICT_KEEP_THEIRS_LABEL })
+    .getByRole("button", { name: CONFLICT_KEEP_OTHER_LABEL })
     .click();
 
   await expect(headerSyncIcon(page)).toHaveCount(0, {
