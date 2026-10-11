@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { fakeForge, flushPendingSaves, openNotes } from "./helpers";
+import { startConflictOnWelcome } from "./helpers/conflict";
 import {
   closeSettings,
   enableVimMode,
@@ -611,3 +612,35 @@ test(
     }
   },
 );
+
+test("the conflict view follows vim mode live", async ({ page }) => {
+  await startConflictOnWelcome(page);
+  const merged = page.getByRole("textbox", { name: "Merged text" });
+  await expect(bar(page)).toHaveCount(0);
+
+  await enableVimMode(page);
+  await expect(modeText(page)).toHaveText("NORMAL");
+  await merged.click();
+  await expect(merged).toBeFocused();
+  await page.keyboard.type("gg");
+  await expect(position(page)).toHaveText("1:1");
+  await page.keyboard.press("j");
+  await expect(position(page)).toHaveText("2:1");
+
+  await page.getByRole("button", { name: "Edit merged" }).click();
+  await expect(modeText(page)).toHaveText("NORMAL");
+  await expect(merged).toHaveAccessibleDescription(VIM_DESCRIPTION);
+  await merged.focus();
+  await page.keyboard.press("i");
+  await expect(modeText(page)).toHaveText("INSERT");
+  await page.keyboard.type("typed in vim");
+  await expect(merged).toContainText("typed in vim");
+  await page.keyboard.press("Escape");
+  await expect(modeText(page)).toHaveText("NORMAL");
+
+  await openSettings(page).then((dialog) =>
+    dialog.getByRole("checkbox", { name: "Vim mode" }).uncheck(),
+  );
+  await closeSettings(page);
+  await expect(bar(page)).toHaveCount(0);
+});

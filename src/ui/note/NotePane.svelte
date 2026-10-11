@@ -312,7 +312,16 @@
     </p>
     {/if}
   {:else if shown.openNote.kind === "loaded" && shown.conflict !== undefined}
-    <ConflictView {engine} conflict={shown.conflict} {noteFont} {thisDeviceName} />
+    <ConflictView
+      {engine}
+      conflict={shown.conflict}
+      {noteFont}
+      {thisDeviceName}
+      {vimMode}
+      {animatedCaret}
+      {onVimWrite}
+      {onVimQuit}
+    />
   {:else if shown.openNote.kind === "missing"}
     <p class="note-status">This note no longer exists.</p>
   {:else if shown.openNote.kind === "trashed"}

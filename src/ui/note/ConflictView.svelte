@@ -1,7 +1,11 @@
 <script lang="ts">
+  import { Compartment } from "@codemirror/state";
+  import { EditorView } from "@codemirror/view";
   import type { HeldConflict, SyncEngine } from "../../sync/sync-engine";
   import { conflictMarkerHighlight } from "../../editor/conflict-highlight";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
+  import VimStatusBar from "./VimStatusBar.svelte";
+  import { createVimWiring } from "./vim-wiring.svelte";
   import {
     CONFLICT_BANNER_TEXT,
     CONFLICT_EDIT_HINT,
@@ -19,11 +23,46 @@
     conflict: HeldConflict;
     noteFont: NoteFont;
     thisDeviceName: string;
+    vimMode?: boolean;
+    animatedCaret?: boolean;
+    onVimWrite?: () => Promise<void>;
+    onVimQuit?: () => void;
   }
 
-  const { engine, conflict, noteFont, thisDeviceName }: Props = $props();
+  const {
+    engine,
+    conflict,
+    noteFont,
+    thisDeviceName,
+    vimMode = false,
+    animatedCaret = true,
+    onVimWrite = async () => {},
+    onVimQuit = () => {},
+  }: Props = $props();
 
-  const highlightExtensions = [conflictMarkerHighlight()];
+  let editor: ReturnType<typeof MarkdownEditor> | undefined = $state();
+
+  const vim = createVimWiring({
+    editor: () => editor,
+    enabled: () => vimMode,
+    animatedCaret: () => animatedCaret,
+    initialMode: () => "normal",
+    onWrite: () => onVimWrite(),
+    onQuit: () => onVimQuit(),
+  });
+
+  const focusable = new Compartment();
+  const editorExtensions = $derived([conflictMarkerHighlight(), vim.extension, focusable.of([])]);
+
+  $effect(() => {
+    editor?.reconfigure(
+      focusable,
+      vimMode ? EditorView.contentAttributes.of({ tabindex: "0" }) : [],
+    );
+  });
+  const vimHint = $derived(
+    vimMode ? "Vim mode is on. Press Escape, then Tab, to leave the editor." : undefined,
+  );
 
   function keepMine(): void {
     engine.resolveConflict(conflict.path, "keepMine");
@@ -74,27 +113,34 @@
   </div>
   {#if conflict.editing === null}
     <MarkdownEditor
+      bind:this={editor}
       text={conflict.merged}
       noteSwitch={0}
       readOnly={true}
       onChange={() => {}}
-      extensions={highlightExtensions}
+      extensions={editorExtensions}
+      hint={vimHint}
       {noteFont}
       ariaLabel="Merged text"
     />
   {:else}
     <p role="status" class="conflict-hint">{CONFLICT_EDIT_HINT}</p>
     <MarkdownEditor
+      bind:this={editor}
       text={conflict.editing}
       noteSwitch={0}
       readOnly={false}
       onChange={onMergedChange}
-      extensions={highlightExtensions}
+      extensions={editorExtensions}
+      hint={vimHint}
       {noteFont}
       ariaLabel="Merged text"
     />
   {/if}
 </div>
+{#if vimMode && vim.status !== null}
+  <VimStatusBar status={vim.status} commands={vim.commands} />
+{/if}
 
 <style>
   .conflict-view {
