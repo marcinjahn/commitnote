@@ -7,6 +7,7 @@ import {
   startConflictOnWelcome,
 } from "./helpers/conflict";
 import { headerSyncIcon, openRowMenu, openWelcome } from "./helpers/tree";
+import { closeSettings, openSettings } from "./helpers/settings";
 
 const WAITING = "Out of sync: waiting to save";
 const FAILED = "Out of sync: saving failed, will retry";
@@ -111,6 +112,31 @@ test.describe("with GitHub-like forge latency", () => {
 
     await showTree(page);
     await expect(rowSyncState(page, "Work", { exact: true })).toHaveCount(0);
+  });
+
+  test("keeping this device's version is saved visibly", async ({ page }) => {
+    await startConflictOnWelcome(page);
+    const commitsBefore = await fakeForge(page).commitCount();
+    await recordHeaderIconLabels(page);
+
+    await page
+      .getByRole("region", { name: "Conflict" })
+      .getByRole("button", { name: "Keep this device's version" })
+      .click();
+
+    const note = page.getByRole("textbox", { name: "Note editor" });
+    await expect(note).toContainText("# Welcome from here");
+    await expect(page.getByRole("region", { name: "Conflict" })).toHaveCount(0);
+    await expect(headerSyncIcon(page)).toHaveCount(0, { timeout: 15_000 });
+    await expect
+      .poll(() => fakeForge(page).commitCount())
+      .toBe(commitsBefore + 1);
+
+    const labels = await recordedHeaderIconLabels(page);
+    const waitingAt = labels.indexOf(WAITING);
+    expect(waitingAt).toBeGreaterThanOrEqual(0);
+    expect(labels.indexOf("Saving")).toBeGreaterThan(waitingAt);
+    expect(labels.at(-1)).toBe("(no status)");
   });
 
   test("a saving row shows a steady cue under reduced motion", async ({
@@ -251,4 +277,76 @@ test("the sync status button lists the unsaved note and retries a failed save", 
   await expect
     .poll(() => fakeForge(page).commitCount())
     .toBe(commitsBefore + 1);
+});
+
+test("a conflict names both devices, using the renamed device", async ({
+  page,
+}) => {
+  await openNotes(page);
+  const settings = await openSettings(page);
+  const nameField = settings.getByRole("textbox", { name: "Device name" });
+  await nameField.fill("Work laptop");
+  await nameField.press("Enter");
+  await closeSettings(page);
+
+  await startConflictOnWelcome(page, { remoteDevice: "Pixel app" });
+
+  const region = page.getByRole("region", { name: "Conflict" });
+  const legend = region.getByRole("list", { name: "Legend" });
+  await expect(legend).toContainText("This device · Work laptop");
+  await expect(legend).toContainText("Other device · Pixel app");
+  await expect(
+    region.getByRole("button", { name: "Keep this device's version (Work laptop)" }),
+  ).toBeVisible();
+  await expect(
+    region.getByRole("button", { name: "Keep other device's version (Pixel app)" }),
+  ).toBeVisible();
+  const merged = page.getByRole("textbox", { name: "Merged text" });
+  await expect(merged).toContainText("<<<<<<< This device · Work laptop");
+  await expect(merged).toContainText(">>>>>>> Other device · Pixel app");
+});
+
+test("keeping the other device's version shows a notice and saves nothing", async ({
+  page,
+}) => {
+  await startConflictOnWelcome(page, { remoteDevice: "Pixel app" });
+  const commitsBefore = await fakeForge(page).commitCount();
+
+  await page
+    .getByRole("region", { name: "Conflict" })
+    .getByRole("button", { name: "Keep other device's version (Pixel app)" })
+    .click();
+
+  await expect(
+    page.getByText("Kept the other device's version (Pixel app). It's already saved."),
+  ).toBeVisible();
+  const note = page.getByRole("textbox", { name: "Note editor" });
+  await expect(note).toContainText("Welcome from elsewhere");
+  await flushPendingSaves(page);
+  expect(await fakeForge(page).commitCount()).toBe(commitsBefore);
+});
+
+test("the conflict banner fits a phone screen", { tag: "@mobile" }, async ({
+  page,
+}) => {
+  await startConflictOnWelcome(page, { remoteDevice: "Pixel app" });
+
+  const region = page.getByRole("region", { name: "Conflict" });
+  const buttons = [
+    region.getByRole("button", { name: "Keep this device's version" }),
+    region.getByRole("button", { name: "Keep other device's version (Pixel app)" }),
+    region.getByRole("button", { name: "Edit merged" }),
+  ];
+  const viewportWidth = page.viewportSize()!.width;
+  for (const button of buttons) {
+    await expect(button).toBeVisible();
+    const box = (await button.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewportWidth);
+  }
+  const overflow = await region.evaluate((element) => ({
+    scroll: element.scrollWidth,
+    client: element.clientWidth,
+  }));
+  expect(overflow.scroll).toBeLessThanOrEqual(overflow.client);
 });

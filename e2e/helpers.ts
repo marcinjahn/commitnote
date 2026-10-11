@@ -139,6 +139,8 @@ interface FakeForgeControls {
     repoKey: string,
     notePath: readonly string[],
     markdown: string,
+    passphrase?: string,
+    deviceName?: string,
   ): Promise<void>;
   exportRepo(repoKey: string): string;
   adoptRepo(repoKey: string, exported: string): void;
@@ -188,15 +190,21 @@ export function fakeForge(page: Page, repoKey: string = SAMPLE.key) {
         [repoKey, operation, kind] as const,
       );
     },
-    editNote: (notePath: readonly string[], markdown: string) =>
+    editNote: (
+      notePath: readonly string[],
+      markdown: string,
+      deviceName?: string,
+    ) =>
       page.evaluate(
-        ([key, path, text]) =>
+        ([key, path, text, device]) =>
           (window as unknown as FakeForgeWindow).__commitNoteFakeForge.editNote(
             key,
             path,
             text,
+            undefined,
+            device,
           ),
-        [repoKey, notePath, markdown] as const,
+        [repoKey, notePath, markdown, deviceName] as const,
       ),
     exportRepo: () =>
       page.evaluate(

@@ -53,11 +53,15 @@ export async function editRemotely(
   page: Page,
   notePath: readonly string[],
   markdown: string,
+  deviceName?: string,
 ): Promise<void> {
-  await fakeForge(page).editNote(notePath, markdown);
+  await fakeForge(page).editNote(notePath, markdown, deviceName);
 }
 
-export async function startConflictOnWelcome(page: Page): Promise<void> {
+export async function startConflictOnWelcome(
+  page: Page,
+  options: { remoteDevice?: string } = {},
+): Promise<void> {
   await openNotes(page);
   await openNote(page, ["Welcome"]);
 
@@ -70,6 +74,7 @@ export async function startConflictOnWelcome(page: Page): Promise<void> {
     page,
     ["Welcome"],
     welcomeWithHeading("# Welcome from elsewhere"),
+    options.remoteDevice,
   );
 
   await expect(headerSyncIcon(page)).toHaveAccessibleName(CONFLICT, {
@@ -83,15 +88,28 @@ export async function startConflictOnWelcome(page: Page): Promise<void> {
   const region = page.getByRole("region", { name: "Conflict" });
   await expect(region).toBeVisible();
   await expect(
-    region.getByText("This note was changed on another device too"),
+    region.getByText(
+      options.remoteDevice === undefined
+        ? "This note was changed on another device too"
+        : `This note was also changed on ${options.remoteDevice}`,
+    ),
   ).toBeVisible();
   await expect(
     page.getByRole("textbox", { name: "Merged text" }),
   ).toContainText("<<<<<<< This device");
 
+  const backToNotes = page.getByRole("button", { name: "Back to notes" });
+  const treeHidden = await backToNotes.isVisible();
+  if (treeHidden) await backToNotes.click();
   const tree = page.getByRole("tree", { name: "Notes" });
   await expect(tree.getByRole("treeitem", { name: "Welcome" })).toHaveAccessibleDescription(
     new RegExp(CONFLICT),
   );
   await expect(tree.getByRole("img")).toHaveCount(0);
+  if (treeHidden) {
+    await tree.getByRole("treeitem", { name: "Welcome" }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Merged text" }),
+    ).toBeVisible();
+  }
 }
