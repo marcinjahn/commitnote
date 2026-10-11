@@ -100,6 +100,10 @@ const appUpdates = import.meta.env.DEV || __DESKTOP_SHELL__
   : startBrowserAppUpdates();
 
 if (isShareHash(location.hash)) {
+  if (__DESKTOP_SHELL__) {
+    const { startDesktopShell } = await import("./desktop/desktop-shell");
+    await startDesktopShell({ launchActions: null });
+  }
   await mountViewer(target);
 } else {
 let registry: ForgeRegistry = forgeRegistry;
@@ -161,6 +165,11 @@ if (__FAKE_FORGE__) {
     launchQueue: (window as { launchQueue?: LaunchQueueLike }).launchQueue,
     clearUrl: () => clearLaunchAction(window.history, window.location),
   });
+  const desktop = __DESKTOP_SHELL__
+    ? await (await import("./desktop/desktop-shell")).startDesktopShell({
+        launchActions,
+      })
+    : null;
   mount(App, {
     target,
     props: {
@@ -171,6 +180,7 @@ if (__FAKE_FORGE__) {
       install,
       launchActions,
       standalone,
+      desktop,
     },
   });
 }

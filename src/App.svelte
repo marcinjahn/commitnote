@@ -94,6 +94,7 @@
   import { bindDialogHistory, type DialogHistory } from "./ui/dialogs/dialog-history";
   import { dialogStack } from "./ui/dialogs/dialog-stack";
   import { setStandalone } from "./ui/standalone-context";
+  import type { DesktopShell } from "./desktop/desktop-shell-types";
 
   interface Props {
     registry: ForgeRegistry;
@@ -103,6 +104,7 @@
     install: InstallController;
     launchActions: LaunchActions;
     standalone: boolean;
+    desktop?: DesktopShell | null;
   }
 
   const {
@@ -113,6 +115,7 @@
     install,
     launchActions,
     standalone,
+    desktop = null,
   }: Props = $props();
 
   setStandalone(untrack(() => standalone));
@@ -180,6 +183,7 @@
   let uninstallLifecycleTriggers: (() => void) | null = null;
   let updateGate: UpdateGate | null = null;
   let detachUpdateGate: (() => void) | null = null;
+  let uninstallCloseGuard: (() => void) | null = null;
   let uninstallBlobCachePurge: (() => void) | null = null;
   let unsubscribeStopped: (() => void) | null = null;
   let keyChanged = $state<{ readonly unsavedCount: number } | null>(null);
@@ -362,22 +366,38 @@
         hasUnsaved,
       },
     );
+    const onUnsavedChange = (listener: () => void) => {
+      const stopEngine = engine.subscribe(() => listener());
+      const stopSaver = settingsSaver.subscribe(listener);
+      return () => {
+        stopEngine();
+        stopSaver();
+      };
+    };
     const gate = createUpdateGate({
       hasUnsaved,
       flush,
-      onUnsavedChange: (listener) => {
-        const stopEngine = engine.subscribe(() => listener());
-        const stopSaver = settingsSaver.subscribe(listener);
-        return () => {
-          stopEngine();
-          stopSaver();
-        };
-      },
+      onUnsavedChange,
       skipWaiting: () => appUpdates?.skipWaiting(),
       reload: () => location.reload(),
     });
     updateGate = gate;
     detachUpdateGate = appUpdates?.attachGate(gate) ?? null;
+    uninstallCloseGuard =
+      desktop?.installCloseGuard({
+        hasUnsaved,
+        flush,
+        onUnsavedChange,
+        hasSettledUnsaved: () => {
+          const state = engine.getState();
+          return (
+            state.save.kind === "waiting" ||
+            state.conflicts.length > 0 ||
+            state.stopped !== null ||
+            !state.online
+          );
+        },
+      }) ?? null;
 
     // Forge errors resolve with `refresh.lastError` set, which the shell shows.
     let refreshed = true;
@@ -484,6 +504,8 @@
     detachUpdateGate = null;
     updateGate?.dispose();
     updateGate = null;
+    uninstallCloseGuard?.();
+    uninstallCloseGuard = null;
     autoRefresh?.dispose();
     autoRefresh = null;
     uninstallBlobCachePurge?.();
@@ -701,6 +723,7 @@
     engine={phase.engine}
     unsavedCount={keyChanged.unsavedCount}
     onLogInAgain={() => void logInAfterKeyChange()}
+    download={desktop?.download}
   />
 {:else if phase.kind === "app"}
   <ScreenScope current={() => phase.kind === "app" && keyChanged === null}>
@@ -713,6 +736,7 @@
       {appUpdates}
       {install}
       {launchActions}
+      download={desktop?.download}
       contentIndexer={phase.contentIndexer}
       repoLabel={phase.repoLabel}
       repoUrl={phase.repoUrl}
