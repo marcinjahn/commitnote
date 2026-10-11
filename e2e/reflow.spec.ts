@@ -19,9 +19,7 @@ async function expectNoOverflow(page: Page): Promise<void> {
 }
 
 test.describe("reflow", () => {
-  test("at 320x256 the Trash menu item stays in view", async ({
-    page,
-  }) => {
+  test("at 320x256 the Trash menu item stays in view", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 256 });
     await openNotes(page);
     await moveToTrash(page, "Welcome");
@@ -38,7 +36,9 @@ test.describe("reflow", () => {
     const box = await item.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.y).toBeGreaterThanOrEqual(0);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(
+      page.viewportSize()!.height,
+    );
     await expectNoOverflow(page);
   });
 
@@ -141,7 +141,8 @@ test.describe("reflow", () => {
     await openNotes(page);
     const reel = page.getByTestId("commit-sha").locator(".reel").first();
     await expect(reel).toBeVisible();
-    const height = () => reel.evaluate((el) => el.getBoundingClientRect().height);
+    const height = () =>
+      reel.evaluate((el) => el.getBoundingClientRect().height);
     const base = await height();
     await page.evaluate(() => {
       document.documentElement.style.fontSize = "200%";

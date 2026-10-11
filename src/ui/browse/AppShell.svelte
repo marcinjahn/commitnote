@@ -146,6 +146,9 @@
   } from "./status-announcer";
   import NoteTree from "./NoteTree.svelte";
   import PullIndicator from "./PullIndicator.svelte";
+  import FloatingNewNoteButton from "./FloatingNewNoteButton.svelte";
+  import { floatingNewNoteState, isTextEntry } from "./floating-new-note";
+  import { keyboardInset } from "../dialogs/keyboard-inset";
   import { pullGesture } from "./pull-gesture";
   import type { PullPhase } from "./pull-to-refresh";
   import { ancestorFolders, shouldFollowFocus } from "./relocation-follow";
@@ -1398,6 +1401,57 @@
     narrow && mobileView === "tree" && !anyDialogOpen && !manualRefreshing && !treeDragActive,
   );
 
+  let noteShownThisSession = $state(false);
+  $effect(() => {
+    if (mobileView === "note") noteShownThisSession = true;
+  });
+
+  let textEntryFocused = $state(isTextEntry(document.activeElement as HTMLElement | null));
+  $effect(() => {
+    const onFocusIn = (event: FocusEvent): void => {
+      textEntryFocused = isTextEntry(event.target as HTMLElement | null);
+    };
+    const onFocusOut = (event: FocusEvent): void => {
+      textEntryFocused = isTextEntry(event.relatedTarget as HTMLElement | null);
+    };
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    return () => {
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+    };
+  });
+
+  let keyboardOpen = $state(false);
+  $effect(() => {
+    const viewport = window.visualViewport;
+    if (viewport === null) return;
+    const update = (): void => {
+      keyboardOpen = keyboardInset(document.documentElement.clientHeight, viewport) > 0;
+    };
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+    };
+  });
+
+  const floatingNewNote = $derived(
+    floatingNewNoteState({
+      narrow,
+      mobileView,
+      treeLoaded: tree !== null,
+      anyDialogOpen,
+      searchOpen,
+      textEntryFocused,
+      keyboardOpen,
+      treeDragActive,
+      noteShownThisSession,
+    }),
+  );
+
   function trashDropArea(): HTMLElement | null {
     return trashButtonEl;
   }
@@ -2381,6 +2435,8 @@
       indicator: () => treePullChip,
       onChange: (phase) => (treePullPhase = phase),
       onRefresh: handleRefresh,
+      canStart: (event) =>
+        !(event.target instanceof Element && event.target.closest("[data-floating-new-note]")),
     }}
   >
     {#if installState.bar !== "none"}
@@ -2403,19 +2459,21 @@
           onOpenNote={(path) => void revealAndOpen(path)}
           onRetry={() => engine.retryNow()}
         />
-        <button
-          type="button"
-          class="button button-icon button-ghost"
-          aria-label="New note"
-          disabled={tree === null}
-          onclick={handleHeaderNewNote}
-        >
-          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            {#each actionIcons["new-note"] as d (d)}
-              <path {d} />
-            {/each}
-          </svg>
-        </button>
+        {#if !narrow}
+          <button
+            type="button"
+            class="button button-icon button-ghost"
+            aria-label="New note"
+            disabled={tree === null}
+            onclick={handleHeaderNewNote}
+          >
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              {#each actionIcons["new-note"] as d (d)}
+                <path {d} />
+              {/each}
+            </svg>
+          </button>
+        {/if}
         <button
           type="button"
           class="button button-icon button-ghost"
@@ -2547,6 +2605,13 @@
       </div>
     {/if}
     </div>
+    {#if narrow}
+      <FloatingNewNoteButton
+        state={floatingNewNote}
+        aboveFooter={settingsSave.kind !== "synced"}
+        onNewNote={handleHeaderNewNote}
+      />
+    {/if}
     <SidebarResizeHandle
       width={sidebarWidth}
       min={sidebarMinWidth}

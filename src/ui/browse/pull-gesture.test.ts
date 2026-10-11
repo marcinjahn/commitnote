@@ -216,6 +216,14 @@ describe("pullGesture listeners", () => {
     expect(g.phases).toEqual([]);
   });
 
+  it("passes the touchstart event to canStart", () => {
+    const canStart = vi.fn(() => true);
+    const g = setup({ canStart });
+    const start = g.send("touchstart");
+
+    expect(canStart).toHaveBeenCalledWith(start);
+  });
+
   it("ignores a start with two fingers down", () => {
     const g = setup();
     g.send("touchstart", { fingers: 2 });
