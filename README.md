@@ -94,7 +94,7 @@ type-check and unit tests, the AppImage build in `ubuntu:22.04`, a build-provena
 GitHub release `v0.1.<N>` (N is the commit count of `main`) titled `commitnote 0.1.<N>` and marked
 Latest. Its assets are `commitnote-x86_64.AppImage`, `commitnote-x86_64.AppImage.zsync` and
 `SHA256SUMS`. Only the 10 newest desktop releases are kept; older ones are deleted together with
-their tags.
+their tags. Manual runs only build and publish from `main`.
 
 ## End-to-end tests
 
