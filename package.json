@@ -20,6 +20,7 @@
     "generate:brand": "tsx scripts/generate-brand-svgs.ts",
     "generate:pwa-screenshots": "npm run build:fake && npm run build:desktop && tsx scripts/generate-pwa-screenshots.ts",
     "profile:tree-scroll": "tsx scripts/profile-tree-scroll.ts",
+    "appimage": "sh scripts/appimage/docker-run.sh bash scripts/appimage/build-appimage.sh",
     "tauri": "tauri"
   },
   "dependencies": {

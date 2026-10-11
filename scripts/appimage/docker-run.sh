@@ -24,7 +24,7 @@ if ! docker image inspect "$image" >/dev/null 2>&1; then
 fi
 
 cache_root="${COMMITNOTE_APPIMAGE_CACHE_DIR:-$HOME/.cache/commitnote-appimage}"
-mkdir -p "$cache_root/cargo-registry" "$cache_root/cargo-target" "$cache_root/npm"
+mkdir -p "$cache_root/cargo-registry" "$cache_root/cargo-target" "$cache_root/npm" "$cache_root/xdg"
 
 tty_flags=
 if [ -t 0 ] && [ -t 1 ]; then
@@ -40,8 +40,10 @@ exec docker run --rm --init $tty_flags \
   -v "$cache_root/cargo-registry:/usr/local/cargo/registry" \
   -v "$cache_root/cargo-target:/cargo-target" \
   -v "$cache_root/npm:/npm-cache" \
+  -v "$cache_root/xdg:/xdg-cache" \
   -e CARGO_TARGET_DIR=/cargo-target \
   -e npm_config_cache=/npm-cache \
+  -e XDG_CACHE_HOME=/xdg-cache \
   -w /src \
   "$image" \
   sh -c 'npm ci --no-audit --no-fund && exec "$@"' sh "$@"
