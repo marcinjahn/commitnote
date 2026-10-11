@@ -173,20 +173,24 @@ test.describe("with reduced motion", () => {
         };
         new MutationObserver(() => {
           if (el.dataset.phase !== "refreshing" || seen.pullRefreshing) return;
-          const running = el
-            .getAnimations({ subtree: true })
-            .filter((animation) => animation.playState === "running").length;
+          const running = el.getAnimations({ subtree: true }).filter(
+            // The global reduced-motion rule turns every style change into a
+            // 0.01 ms transition; only longer ones are visible motion.
+            (animation) =>
+              animation.playState === "running" &&
+              Number(animation.effect?.getComputedTiming().duration) > 1,
+          ).length;
           seen.pullRefreshing = { running };
         }).observe(el, { attributes: true, attributeFilter: ["data-phase"] });
       });
 
       const finger = await pull(page, await wordmarkPoint(page), 200);
       await expect(indicator(page)).toHaveAttribute("data-phase", "armed");
-      const transforms = await indicator(page).evaluate((el) => ({
-        indicator: getComputedStyle(el).transform,
+      const transforms = await page.locator(".pull-chip").evaluate((el) => ({
+        chip: getComputedStyle(el).transform,
         icon: getComputedStyle(el.querySelector("svg")!).transform,
       }));
-      expect(transforms.indicator).toMatch(/^matrix\(1, 0, 0, 1, /);
+      expect(transforms.chip).toMatch(/^matrix\(1, 0, 0, 1, /);
       expect(transforms.icon).toBe("none");
       await finger.up();
 

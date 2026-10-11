@@ -147,7 +147,7 @@
   import NoteTree from "./NoteTree.svelte";
   import PullIndicator from "./PullIndicator.svelte";
   import { pullGesture } from "./pull-gesture";
-  import { INITIAL_PULL, type PullState } from "./pull-to-refresh";
+  import type { PullPhase } from "./pull-to-refresh";
   import { ancestorFolders, shouldFollowFocus } from "./relocation-follow";
   import SidebarResizeHandle from "./SidebarResizeHandle.svelte";
   import {
@@ -989,7 +989,8 @@
   const pullEnabled = $derived(
     narrow && mobileView === "tree" && !anyDialogOpen && !manualRefreshing,
   );
-  let pull = $state<PullState>(INITIAL_PULL);
+  let treePullPhase = $state<PullPhase>("idle");
+  let treePullChip = $state<HTMLElement | null>(null);
   const head = $derived(engineState.synced?.head ?? null);
 
   const importing = $derived(engineState.importing || importStarted !== null);
@@ -2374,7 +2375,10 @@
       class="tree-header"
       use:pullGesture={{
         enabled: pullEnabled,
-        onChange: (next) => (pull = next),
+        atTop: () => true,
+        content: () => null,
+        indicator: () => treePullChip,
+        onChange: (phase) => (treePullPhase = phase),
         onRefresh: handleRefresh,
       }}
     >
@@ -2424,7 +2428,7 @@
         <CommandMenu {commands} />
       </div>
       {#if narrow}
-        <PullIndicator state={pull} />
+        <PullIndicator phase={treePullPhase} bind:chip={treePullChip} />
       {/if}
     </div>
     <SearchTrigger onOpen={openSearch}>
