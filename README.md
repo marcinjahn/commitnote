@@ -12,7 +12,8 @@ commitnote is a static, client-side web app for encrypted markdown notes. Notes 
 entirely in your browser and stored as files in a GitHub or GitLab repository you own — there is no backend
 server.
 
-The app is available at [commitnote.eu](https://commitnote.eu).
+The app is available at [commitnote.eu](https://commitnote.eu). A Linux desktop build is available as an
+[AppImage download](https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.AppImage) (see [Desktop app](#desktop-app-linux-appimage)).
 
 ## Prerequisites
 
@@ -47,20 +48,53 @@ through a LAN IP address over plain HTTP does not work.
 - `test` — run unit tests with Vitest
 - `test:e2e` — run end-to-end tests with Playwright under the e2e lock (see below)
 - `check` — type-check the app and the Node-side config/scripts
-- `check:bundle` — build both `dist/` and `dist-fake/` and verify the production build never
-  ships test-mode fixture data, that the web app manifest and every icon and screenshot it
-  references are in the production build, and that `sw.js` is present and its precache list equals
-  the emitted files
+- `check:bundle` — build `dist/`, `dist-fake/` and `dist-desktop/` and verify the production build
+  never ships test-mode fixture data or desktop shell code, that the web app manifest and every icon
+  and screenshot it references are in the production build, that `sw.js` is present and its precache
+  list equals the emitted files, and that the desktop build ships the desktop shell but no fake-forge
+  fixture data or `sw.js`, and that its CSP allows `https://gitlab.com` and `ipc:`
 - `generate:brand` — regenerate the brand SVGs and app icons (see above)
 - `generate:pwa-screenshots` — regenerate the web app manifest screenshots in `public/screenshots/` from
   the test-mode build, using the system Chrome (optional `E2E_PORT`)
 - `fixture:sample-notes-repo` — regenerate the sample notes repo fixture
+- `build:desktop` — build only the web assets of the desktop app into `dist-desktop/`
+- `build:desktop-fake` — build the same in test mode (fake forge) into `dist-desktop-fake/`, for the
+  local desktop-fake AppImage only (never published)
+- `appimage` — build the Linux AppImage in Docker (see below)
+- `tauri` — run the Tauri CLI
+
+### Build the AppImage locally
+
+Needs `docker`. The build runs in an Ubuntu 22.04 builder image (created on first use), the same
+base as the release workflow:
+
+```
+npm run appimage
+npm run appimage -- --mode desktop-fake
+```
+
+The first writes `dist-appimage/desktop/` (the AppImage, its `.zsync` file and `SHA256SUMS`). The
+second builds a fake-forge AppImage for local testing; it is never published. Cargo, npm and tool
+caches live in `~/.cache/commitnote-appimage`; set `COMMITNOTE_APPIMAGE_CACHE_DIR` to move them.
+
+`scripts/appimage/xvfb-smoke.sh` is a smoke test that starts a `desktop-fake` AppImage under Xvfb:
+
+```
+sh scripts/appimage/docker-run.sh bash scripts/appimage/xvfb-smoke.sh dist-appimage/desktop-fake/commitnote-x86_64.AppImage
+```
 
 ## Deployment
 
 Every push to `main` runs `.github/workflows/pages.yml`: type-check, unit tests, the bundle check, then
 a publish of `dist/` to GitHub Pages. In the repository settings, set Pages > Source to "GitHub
 Actions" once. The build uses relative asset paths, so it works under any Pages path.
+
+Every push to `main` also runs `.github/workflows/desktop-release.yml`, separate from `pages.yml`:
+type-check and unit tests, the AppImage build in `ubuntu:22.04`, a build-provenance attestation, and a
+GitHub release `v0.1.<N>` (N is the commit count of `main`) titled `commitnote 0.1.<N>` and marked
+Latest. Its assets are `commitnote-x86_64.AppImage`, `commitnote-x86_64.AppImage.zsync` and
+`SHA256SUMS`. Only the 10 newest desktop releases are kept; older ones are deleted together with
+their tags.
 
 ## End-to-end tests
 
@@ -247,6 +281,42 @@ Security Policy applied via a `<meta>` tag; it is not present in the dev server.
 - On iPhone and iPad the installed app keeps its own storage, separate from Safari, so you log in
   again there. On Android and desktop, the installed app shares storage with the browser it was
   installed from, so logging in or out in one also applies to the other.
+
+### Desktop app (Linux AppImage)
+
+Download the latest build:
+[commitnote-x86_64.AppImage](https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.AppImage).
+Linux x86_64 only.
+
+```
+chmod +x commitnote-x86_64.AppImage
+./commitnote-x86_64.AppImage
+```
+
+- **Requirements:** no `libfuse2` is needed (static runtime) and WebKitGTK is bundled. The AppImage
+  is built on Ubuntu 22.04 (glibc 2.35), so it runs on Ubuntu 22.04+, Debian 12+, Fedora 36+ and
+  current Arch and openSUSE.
+- **Updating:** the AppImage embeds zsync update information
+  (`gh-releases-zsync|marcinjahn|commitnote|latest|commitnote-x86_64.AppImage.zsync`), so
+  AppImageUpdate, Gear Lever or AppImageLauncher update it in place with a delta download. There is
+  no in-app updater, no service worker and no update toast in the desktop app.
+- **Verifying:** download `SHA256SUMS` from the same release and run
+  `sha256sum -c SHA256SUMS`. The AppImage also has a GitHub build-provenance attestation:
+  `gh attestation verify commitnote-x86_64.AppImage --repo marcinjahn/commitnote`. There is no GPG
+  signature.
+- **Differences from the web app:** a native window with the system title bar. It counts as the
+  installed app: no Remember me option (the login is kept until **Log out**), and there is no
+  install bar or **Install app** command. Export opens a native save dialog, links open in the
+  default browser, and share links point at `https://commitnote.eu/`. Page zoom is disabled.
+  Closing the window with unsaved edits saves first, and asks before quitting if saving fails.
+  Starting the app again focuses the running window. The app menu offers **New note** and
+  **Search notes** (`commitnote --action new-note` or `--action search`).
+- **Blank window:** `WEBKIT_DISABLE_DMABUF_RENDERER=1` is set unless you set it yourself; it works
+  around a blank window on NVIDIA and some Wayland setups.
+- **Data:** `~/.local/share/io.github.marcinjahn.commitnote/` (user-only). The access token and
+  the non-extractable keys derived from your passphrase live in IndexedDB there, the same model as
+  the installed web app. The passphrase is never stored and the OS keyring is not used. Log out
+  deletes the stored record.
 
 ### What is cached
 
