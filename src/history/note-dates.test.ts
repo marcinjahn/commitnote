@@ -58,6 +58,7 @@ function repoOver(adapter: FakeForgeAdapter, keyring: Keyring): Repo {
     async save(...changeSet) {
       const parent = await adapter.getHead();
       const { changes, message } = await encodeChangeSet({
+        device: null,
         listing: await adapter.listTree(parent),
         changeSet,
         order: NO_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
@@ -87,7 +88,7 @@ async function createRepo(): Promise<Repo> {
   await commitFiles(git, {
     parent: null,
     files: { [REPO_CONFIG_PATH]: configText },
-    message: encodeInitializeMessage(),
+    message: await encodeInitializeMessage(null),
     branch: MAIN_BRANCH,
   });
   return repoOver(new FakeForgeAdapter({ repo: git }), keyring);

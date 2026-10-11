@@ -24,7 +24,9 @@ import {
   type FolderNode,
 } from "../../tree/note-tree";
 import { compareNames } from "../../tree/note-names";
+import { readDeviceTrailer } from "../../changes/device-trailer";
 import {
+  SAMPLE_DEVICE_NAME,
   generateSampleNotesRepo,
   generateSampleSearchRepo,
   generateSampleTrashRepo,
@@ -158,6 +160,28 @@ describe("sample notes repo fixture", () => {
     }
   });
 
+  it("stamps the app-built commits with the encrypted sample device name", async () => {
+    const keyring = await sampleNotesRepoKeyring();
+    const [initialize, save, ...rest] = sampleNotesRepo.commits;
+    for (const commit of [initialize, save]) {
+      await expect(
+        readDeviceTrailer(commit.message, keyring.contentKey),
+      ).resolves.toBe(SAMPLE_DEVICE_NAME);
+    }
+    expect(rest.length).toBeGreaterThan(0);
+    await expect(
+      readDeviceTrailer(rest[rest.length - 1].message, keyring.contentKey),
+    ).resolves.toBeNull();
+  });
+
+  it("never writes the device name in plaintext in any fixture commit message", () => {
+    for (const repo of [sampleNotesRepo, sampleTrashRepo, sampleSearchRepo]) {
+      for (const commit of repo.commits) {
+        expect(commit.message).not.toContain(SAMPLE_DEVICE_NAME);
+      }
+    }
+  });
+
   it("every folder in commit 2 has an empty folder marker", () => {
     const files = sampleNotesRepo.commits[1].files;
     const markerPaths = Object.keys(files).filter((path) =>
@@ -231,7 +255,9 @@ describe("sample notes repo fixture order", () => {
         expected.push(`${TRAILER.order}: ${await encryptPath(keyring, [...parent, name])}`);
       }
     }
-    expect(message).toBe(expected.join("\n"));
+    const lines = message.split("\n");
+    expect(lines.pop()).toMatch(new RegExp(`^${TRAILER.device}: `));
+    expect(lines.join("\n")).toBe(expected.join("\n"));
   });
 
   it("stores an order file that sorts the reordered folder as listed in the source", async () => {

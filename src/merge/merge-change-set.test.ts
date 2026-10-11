@@ -188,6 +188,7 @@ async function runCase(mergeCase: MergeCase): Promise<MergeChangeSetResult> {
   ).not.toThrow();
   await expect(
     encodeChangeSet({
+      device: null,
       listing: [
         ...remote.listing,
         { path: REPO_CONFIG_PATH, type: "blob", sha: "sha-config" },

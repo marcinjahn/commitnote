@@ -109,6 +109,7 @@ export async function pushRemote(
     tags,
     shares,
     keyring,
+    device: null,
   });
   return fake.pushFromAnotherDevice(encoded.changes, encoded.message);
 }

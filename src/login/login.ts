@@ -363,20 +363,18 @@ export async function initializeNotesRepo(
   });
 
   onStep?.("initializing");
+  const initializeMessage = await encodeInitializeMessage(null);
   let result: CommitResult;
   try {
     result =
       pending.base === null
-        ? await pending.adapter.initialize(
-            configText,
-            encodeInitializeMessage(),
-          )
+        ? await pending.adapter.initialize(configText, initializeMessage)
         : await pending.adapter.commit({
             parent: pending.base.head,
             changes: [
               { kind: "upsert-text", path: REPO_CONFIG_PATH, text: configText },
             ],
-            message: encodeInitializeMessage(),
+            message: initializeMessage,
           });
   } catch (error) {
     // GitLab can apply the config commit on top of an unrelated commit that

@@ -18,6 +18,7 @@ describe("parseCommitMessage", () => {
     const b = await encryptPath(keyring, ["B"]);
 
     const { message } = await encodeChangeSet({
+      device: null,
       listing: [],
       changeSet: [
         { kind: "create-note", path: ["A"], content: "x" },
@@ -39,8 +40,8 @@ describe("parseCommitMessage", () => {
     });
   });
 
-  it("reads a passphrase change as its subject with no trailers", () => {
-    expect(parseCommitMessage(encodeChangePassphraseMessage())).toEqual({
+  it("reads a passphrase change as its subject with no trailers", async () => {
+    expect(parseCommitMessage(await encodeChangePassphraseMessage(null))).toEqual({
       subject: CHANGE_PASSPHRASE_SUBJECT,
       formatVersion: 1,
       trailers: [],

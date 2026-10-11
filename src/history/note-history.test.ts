@@ -55,6 +55,7 @@ function saver(
   return async (...changeSet) => {
     const parent = await adapter.getHead();
     const { changes, message } = await encodeChangeSet({
+      device: null,
       listing: await adapter.listTree(parent),
       changeSet,
       order: NO_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
@@ -73,7 +74,7 @@ async function createRepo(): Promise<Repo> {
   await commitFiles(git, {
     parent: null,
     files: { [REPO_CONFIG_PATH]: configText },
-    message: encodeInitializeMessage(),
+    message: await encodeInitializeMessage(null),
     branch: MAIN_BRANCH,
   });
   const adapter = new FakeForgeAdapter({ repo: git });
@@ -231,6 +232,7 @@ describe("note history", () => {
     await repo.save(create(["N"], "a"), create(["Other"], "x"));
     const parent = await repo.adapter.getHead();
     const reorder = await encodeChangeSet({
+      device: null,
       listing: await repo.adapter.listTree(parent),
       changeSet: [
         {
@@ -364,6 +366,7 @@ describe("note history", () => {
     await repo.save(create(["N"], "a"));
     await repo.save({ kind: "trash-note", path: ["N"], entryId: TRASH_ID });
     const restore = await encodeChangeSet({
+      device: null,
       listing: await repo.adapter.listTree(await repo.adapter.getHead()),
       changeSet: [
         {

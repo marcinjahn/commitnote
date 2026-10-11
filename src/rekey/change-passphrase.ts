@@ -394,7 +394,7 @@ async function replaceHistory(
     onStep({ kind: "removingHistory" });
     const result = await adapter.replaceHistory({
       head,
-      message: encodeChangePassphraseMessage(),
+      message: await encodeChangePassphraseMessage(null),
     });
     if (result.kind === "ok") return { history: "removed", head: result.head };
     console.error("Removing the old history failed: main moved on");
@@ -456,7 +456,7 @@ export async function commitPassphraseChange(
     result = await adapter.commit({
       parent: prepared.parent,
       changes: prepared.changes,
-      message: encodeChangePassphraseMessage(),
+      message: await encodeChangePassphraseMessage(null),
       atomic: true,
     });
   } catch (caught) {

@@ -298,7 +298,7 @@ describe("inspecting and unlocking", () => {
     const commit = adapter.repo.getCommit(head as string);
     expect(commit?.message).toBe(README_COMMIT_MESSAGE);
     expect(adapter.repo.getCommit(commit?.parent as string)?.message).toBe(
-      encodeInitializeMessage(),
+      await encodeInitializeMessage(null),
     );
 
     const entries = await adapter.listTree(head as string);
@@ -646,7 +646,7 @@ describe("initializeNotesRepo on an almost-empty repository", () => {
     const newHead = adapter.repo.getRef(MAIN_BRANCH) as string;
     const commit = adapter.repo.getCommit(newHead);
     expect(commit?.parent).toBe(head);
-    expect(commit?.message).toBe(encodeInitializeMessage());
+    expect(commit?.message).toBe(await encodeInitializeMessage(null));
     const after = await blobShasAt(adapter, newHead);
     expect(Object.keys(after).sort()).toEqual(
       [...Object.keys(before), REPO_CONFIG_PATH].sort(),
@@ -671,7 +671,7 @@ describe("initializeNotesRepo on an almost-empty repository", () => {
     const readmeCommit = adapter.repo.getCommit(newHead);
     expect(readmeCommit?.message).toBe(README_COMMIT_MESSAGE);
     const configCommit = adapter.repo.getCommit(readmeCommit?.parent as string);
-    expect(configCommit?.message).toBe(encodeInitializeMessage());
+    expect(configCommit?.message).toBe(await encodeInitializeMessage(null));
     expect(configCommit?.parent).toBe(head);
     const files = await blobShasAt(adapter, newHead);
     expect(await adapter.readBlob(files[README_PATH])).toBe(README_TEXT);

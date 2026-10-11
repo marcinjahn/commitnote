@@ -1387,6 +1387,7 @@ export function createSyncEngine(options: {
           shares: attemptSynced.shares,
           config: attemptSynced.config,
           keyring,
+          device: null,
         });
         if (encoded.changes.length === 0) {
           endImportAttempt();

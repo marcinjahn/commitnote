@@ -1150,7 +1150,7 @@ describe("sync engine saves", () => {
     const created = await createRepoConfig("fresh passphrase", {
       argon2id: sharedMemoizedArgon2id,
     });
-    await fake.initialize(created.configText, encodeInitializeMessage());
+    await fake.initialize(created.configText, await encodeInitializeMessage(null));
     const h = await setup(fake, created.keyring);
 
     expect(h.engine.createFolder([], "Notes")).toEqual({

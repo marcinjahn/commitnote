@@ -1,7 +1,7 @@
 import type { Keyring } from "../crypto/keyring";
 import { encryptPath } from "../crypto/name-cipher";
 import { encryptNote } from "../crypto/note-cipher";
-import type { RandomSource } from "../crypto/random";
+import { secureRandom, type RandomSource } from "../crypto/random";
 import { serializeRepoConfig, type RepoConfig } from "../crypto/repo-config";
 import type { CommitFileChange, TreeEntry } from "../forge/forge-adapter";
 import {
@@ -18,6 +18,7 @@ import {
   TRAILER,
   UNDO_OUTDATED_SAVE_SUBJECT,
 } from "../format/v1";
+import { encodeDeviceTrailer } from "./device-trailer";
 import { isValidKey } from "../order/fractional-key";
 import {
   applyChangeToOrder,
@@ -55,6 +56,8 @@ export interface EncodeChangeSetInput {
   readonly shares: ShareIndex;
   readonly keyring: Keyring;
   readonly random?: RandomSource;
+  /** Effective device name to stamp (encrypted) on the commit, or null for none. */
+  readonly device: string | null;
   /** The parsed config at the head of `listing`; required for `set-settings`. */
   readonly config?: RepoConfig;
 }
@@ -387,22 +390,44 @@ function buildMessage(subject: string, trailers: readonly string[]): string {
   return `${subject}\n\n${lines.join("\n")}`;
 }
 
-export function encodeInitializeMessage(): string {
-  return buildMessage(INITIALIZE_SUBJECT, []);
+export interface DeviceStamp {
+  readonly name: string;
+  readonly contentKey: CryptoKey;
+  readonly random?: RandomSource;
+}
+
+async function deviceTrailers(
+  device: DeviceStamp | null,
+): Promise<readonly string[]> {
+  if (device === null) return [];
+  const value = await encodeDeviceTrailer(
+    device.name,
+    device.contentKey,
+    device.random ?? secureRandom,
+  );
+  return [`${TRAILER.device}: ${value}`];
+}
+
+export async function encodeInitializeMessage(
+  device: DeviceStamp | null,
+): Promise<string> {
+  return buildMessage(INITIALIZE_SUBJECT, await deviceTrailers(device));
 }
 
 export function encodeUndoOutdatedSaveMessage(): string {
   return buildMessage(UNDO_OUTDATED_SAVE_SUBJECT, []);
 }
 
-export function encodeChangePassphraseMessage(): string {
-  return buildMessage(CHANGE_PASSPHRASE_SUBJECT, []);
+export async function encodeChangePassphraseMessage(
+  device: DeviceStamp | null,
+): Promise<string> {
+  return buildMessage(CHANGE_PASSPHRASE_SUBJECT, await deviceTrailers(device));
 }
 
 export async function encodeChangeSet(
   input: EncodeChangeSetInput,
 ): Promise<EncodedChangeSet> {
-  const { listing, changeSet, keyring, random, config } = input;
+  const { listing, changeSet, keyring, random, config, device } = input;
   let order = input.order;
   let tags = input.tags;
   let shares = input.shares;
@@ -515,8 +540,17 @@ export async function encodeChangeSet(
     a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
   );
 
+  const allTrailers = [
+    ...trailers,
+    ...(await deviceTrailers(
+      device === null
+        ? null
+        : { name: device, contentKey: keyring.contentKey, random },
+    )),
+  ];
+
   return {
     changes: commitChanges,
-    message: buildMessage(SAVE_SUBJECT, trailers),
+    message: buildMessage(SAVE_SUBJECT, allTrailers),
   };
 }
