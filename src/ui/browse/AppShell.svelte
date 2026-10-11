@@ -366,7 +366,7 @@
     | { readonly kind: "deleteEntry"; readonly entry: ReadableWorkingTrashEntry }
     | { readonly kind: "empty" };
 
-  const linkBase = shareLinkBase(location);
+  const linkBase = shareLinkBase(location, __DESKTOP_SHELL__);
   let sharedLinksOpen = $state(false);
   let sharePath = $state<NotePath | null>(null);
   let sharedVersionEntry = $state<ShareEntry | null>(null);

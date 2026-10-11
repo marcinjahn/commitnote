@@ -4,6 +4,7 @@ import {
   createMarkdownEditor,
   type MarkdownEditor,
 } from "./create-markdown-editor";
+import { resetExternalOpener, setExternalOpener } from "../app/external-open";
 import { linkOpen } from "./link-open";
 import { livePreview } from "./live-preview";
 
@@ -210,6 +211,18 @@ describe("linkOpen", () => {
     const s = setup({ readOnly: true });
     mouse("mousedown", linkEl(s, "site"), { ctrlKey: true });
     expect(s.open).toHaveBeenCalledWith("https://example.com/a");
+  });
+
+  it("routes activation through the replaceable external opener", () => {
+    const replaced = vi.fn<(url: string) => void>();
+    setExternalOpener(replaced);
+    try {
+      const s = setup({ defaultOpener: true });
+      mouse("mousedown", linkEl(s, "site"), { ctrlKey: true });
+      expect(replaced).toHaveBeenCalledWith("https://example.com/a");
+    } finally {
+      resetExternalOpener();
+    }
   });
 
   it("falls back to window.open with noopener and noreferrer", () => {

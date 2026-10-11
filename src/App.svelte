@@ -436,7 +436,7 @@
         rateBudget,
         clock: systemClock,
         argon2id: argon2id ?? argon2idInWorker,
-        linkBase: shareLinkBase(location),
+        linkBase: shareLinkBase(location, __DESKTOP_SHELL__),
       }),
       noteDatesResolver: createNoteDates({
         adapter: cachedAdapter,

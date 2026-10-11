@@ -6,12 +6,14 @@ import {
   isShareHash,
   parseShareLink,
   shareLinkBase,
+  WEB_APP_URL,
 } from "./share-link";
 
-const base = shareLinkBase({
+const location = {
   origin: "https://example.github.io",
   pathname: "/commitnote/",
-});
+};
+const base = shareLinkBase(location, false);
 const secret = toBase64Url(Uint8Array.from({ length: 32 }, (_, i) => i * 7));
 const gistId = "0123456789abcdef0123456789abcdef";
 const oldRevision = "a".repeat(40);
@@ -24,6 +26,13 @@ const validGitlab = `#share=1.gl.4815162342.${secret}`;
 describe("shareLinkBase", () => {
   it("is origin plus pathname", () => {
     expect(base).toBe("https://example.github.io/commitnote/");
+  });
+
+  it("is the web app URL in the desktop shell", () => {
+    expect(shareLinkBase(location, true)).toBe(WEB_APP_URL);
+    expect(
+      shareLinkBase({ origin: "tauri://localhost", pathname: "/" }, true),
+    ).toBe("https://commitnote.eu/");
   });
 });
 
