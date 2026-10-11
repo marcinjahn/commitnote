@@ -90,6 +90,7 @@ export async function mainContent(
 export async function pushRemote(
   fake: FakeForgeAdapter,
   changeSet: ChangeSet,
+  deviceName?: string,
 ): Promise<string> {
   const keyring = await sampleNotesRepoKeyring();
   const listing = await fake.listTree(await fake.getHead());
@@ -109,7 +110,7 @@ export async function pushRemote(
     tags,
     shares,
     keyring,
-    device: null,
+    device: deviceName ?? null,
   });
   return fake.pushFromAnotherDevice(encoded.changes, encoded.message);
 }
@@ -120,4 +121,37 @@ export function fullBudget(clock: TestClock): RateBudget {
     budget.record();
   }
   return budget;
+}
+
+export async function welcomeText(fake: FakeForgeAdapter): Promise<string> {
+  const text = await mainContent(fake, WELCOME);
+  if (text === undefined) throw new Error("expected Welcome");
+  return text;
+}
+
+export function replaceLine(text: string, from: string, to: string): string {
+  if (!text.includes(from)) throw new Error(`missing line ${from}`);
+  return text.replace(from, to);
+}
+
+// Leaves a held conflict on Welcome: mine and theirs both rewrite its title.
+export async function heldWelcomeConflict(
+  h: { readonly fake: FakeForgeAdapter; readonly engine: SyncEngine },
+  remoteDeviceName?: string,
+): Promise<{
+  readonly mine: string;
+  readonly theirs: string;
+  readonly remoteHead: string;
+}> {
+  const original = await welcomeText(h.fake);
+  const mine = replaceLine(original, "# Welcome", "# Welcome (mine)");
+  const theirs = replaceLine(original, "# Welcome", "# Welcome (theirs)");
+  const remoteHead = await pushRemote(
+    h.fake,
+    [{ kind: "update-note", path: WELCOME, content: theirs }],
+    remoteDeviceName,
+  );
+  h.engine.editNote(WELCOME, mine);
+  await h.engine.flush();
+  return { mine, theirs, remoteHead };
 }

@@ -1,5 +1,6 @@
 import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { isAtOrWithin, notePathEquals, parentPath } from "../changes/change";
+import { readDeviceTrailer } from "../changes/device-trailer";
 import { encodeChangeSet } from "../changes/encode-change-set";
 import { verifyKeyCheck, type Keyring } from "../crypto/keyring";
 import { decryptNote, NoteDecryptionError } from "../crypto/note-cipher";
@@ -30,6 +31,10 @@ import {
   type MergeNotice,
   type NoteConflict,
 } from "../merge/merge-change-set";
+import {
+  type ConflictMarkerLabels,
+  conflictSideLabel,
+} from "../merge/conflict-labels";
 import { mergeText } from "../merge/merge-text";
 import {
   decryptOrderIndex,
@@ -179,6 +184,7 @@ export interface HeldConflict {
   readonly mine: string;
   readonly theirs: string;
   readonly theirsBlobSha: string;
+  readonly theirsDevice: string | null;
   readonly merged: string;
   readonly editing: string | null;
 }
@@ -559,9 +565,9 @@ export function createSyncEngine(options: {
   const { keyring, clock } = options;
   const isOnline = options.isOnline ?? (() => true);
   const adapter = options.adapter;
-  const rateBudget = options.rateBudget ?? createRateBudget(clock, adapter.limits);
-  const noteContentCache =
-    options.noteContentCache ?? createNoteContentCache();
+  const rateBudget =
+    options.rateBudget ?? createRateBudget(clock, adapter.limits);
+  const noteContentCache = options.noteContentCache ?? createNoteContentCache();
 
   let state: SyncEngineState = { ...INITIAL_STATE, online: isOnline() };
   const subscribers = new Set<(state: SyncEngineState) => void>();
@@ -1022,7 +1028,12 @@ export function createSyncEngine(options: {
           : undefined;
       const next: OpenNoteState =
         resolution.kind === "blob" && cached !== undefined
-          ? { kind: "loaded", path, blobSha: resolution.blobSha, content: cached }
+          ? {
+              kind: "loaded",
+              path,
+              blobSha: resolution.blobSha,
+              content: cached,
+            }
           : openNoteFor(path, resolution);
       update((current) => ({ ...current, openNote: next }));
       if (resolution.kind === "blob" && cached === undefined) {
@@ -1088,7 +1099,7 @@ export function createSyncEngine(options: {
     const reads: {
       path: NotePath;
       seenBlobSha: string;
-      theirs: { blobSha: string; text: string } | null;
+      theirs: { blobSha: string; storedPath: string; text: string } | null;
     }[] = [];
     for (const conflict of state.conflicts) {
       const node = syncedNoteAt(synced, workingTree, conflict.path);
@@ -1103,7 +1114,7 @@ export function createSyncEngine(options: {
         reads.push({
           path: conflict.path,
           seenBlobSha: conflict.theirsBlobSha,
-          theirs: { blobSha: node.blobSha, text },
+          theirs: { blobSha: node.blobSha, storedPath: node.storedPath, text },
         });
       }
     }
@@ -1111,6 +1122,7 @@ export function createSyncEngine(options: {
 
     let needsSave = false;
     const paths = new Set<string>();
+    const remerged: { conflict: HeldConflict; storedPath: string }[] = [];
     for (const { path, seenBlobSha, theirs } of reads) {
       // The conflict may have been resolved or re-taken while the new version loaded.
       const conflict = conflictAt(path);
@@ -1143,19 +1155,28 @@ export function createSyncEngine(options: {
         });
         needsSave = true;
       } else if (conflict.editing !== null) {
+        const labels = conflictLabels(null);
         const rebased = mergeText(
           conflict.theirs,
           conflict.editing,
           theirs.text,
+          labels,
         );
-        const fresh = mergeText(conflict.base, conflict.mine, theirs.text);
+        const fresh = mergeText(
+          conflict.base,
+          conflict.mine,
+          theirs.text,
+          labels,
+        );
         const replaced: HeldConflict = {
           ...conflict,
           theirs: theirs.text,
           theirsBlobSha: theirs.blobSha,
+          theirsDevice: null,
           merged: fresh.text,
           editing: rebased.text,
         };
+        remerged.push({ conflict: replaced, storedPath: theirs.storedPath });
         update((current) => ({
           ...current,
           conflicts: current.conflicts.map((held) =>
@@ -1166,7 +1187,12 @@ export function createSyncEngine(options: {
           ]),
         }));
       } else {
-        const result = mergeText(conflict.base, conflict.mine, theirs.text);
+        const result = mergeText(
+          conflict.base,
+          conflict.mine,
+          theirs.text,
+          conflictLabels(null),
+        );
         if (result.kind === "clean" && !hasConflictMarkers(result.text)) {
           update((current) => ({
             ...current,
@@ -1183,8 +1209,10 @@ export function createSyncEngine(options: {
             ...conflict,
             theirs: theirs.text,
             theirsBlobSha: theirs.blobSha,
+            theirsDevice: null,
             merged: result.text,
           };
+          remerged.push({ conflict: replaced, storedPath: theirs.storedPath });
           update((current) => ({
             ...current,
             conflicts: current.conflicts.map((held) =>
@@ -1197,6 +1225,10 @@ export function createSyncEngine(options: {
         }
       }
       paths.add(JSON.stringify(conflict.path));
+    }
+
+    for (const { conflict, storedPath } of remerged) {
+      lookUpConflictSource(conflict, synced.head, storedPath);
     }
 
     const open = state.openNote;
@@ -1504,9 +1536,7 @@ export function createSyncEngine(options: {
       return;
     }
     consecutiveFailures++;
-    const retryAt =
-      clock.now() +
-      retryDelayMs(error, consecutiveFailures);
+    const retryAt = clock.now() + retryDelayMs(error, consecutiveFailures);
     returnUncommitted();
     update((current) => ({
       ...current,
@@ -1619,6 +1649,7 @@ export function createSyncEngine(options: {
       toHeldConflict(conflict, remote, mergedTree),
     );
 
+    let heldConflicts: readonly HeldConflict[] = [];
     update((current) => {
       const bodies: NoticeBody[] = merged.notices.map((notice) => ({
         kind: "merge",
@@ -1646,6 +1677,7 @@ export function createSyncEngine(options: {
             conflict.base,
             change.content,
             conflict.theirs,
+            conflictLabels(conflict.theirsDevice),
           );
           if (result.kind === "clean") {
             conflicts.splice(index, 1);
@@ -1679,6 +1711,7 @@ export function createSyncEngine(options: {
       for (const conflict of conflicts) {
         bodies.push({ kind: "conflict", path: conflict.path });
       }
+      heldConflicts = conflicts;
 
       return {
         ...current,
@@ -1692,6 +1725,13 @@ export function createSyncEngine(options: {
         notices: notices(current.notices, bodies),
       };
     });
+
+    for (const conflict of heldConflicts) {
+      const node = syncedNoteAt(remote, mergedTree, conflict.path);
+      if (node !== undefined) {
+        lookUpConflictSource(conflict, remote.head, node.storedPath);
+      }
+    }
 
     await recheckConflicts();
     await reresolveOpenNote();
@@ -1711,9 +1751,74 @@ export function createSyncEngine(options: {
       mine: conflict.mine,
       theirs: conflict.theirs,
       theirsBlobSha: node?.blobSha ?? "",
-      merged: conflict.merged,
+      theirsDevice: null,
+      merged: mergeText(
+        conflict.base,
+        conflict.mine,
+        conflict.theirs,
+        conflictLabels(null),
+      ).text,
       editing: null,
     };
+  }
+
+  function conflictLabels(theirsDevice: string | null): ConflictMarkerLabels {
+    return {
+      mine: conflictSideLabel("mine", options.deviceName?.() ?? null),
+      theirs: conflictSideLabel("theirs", theirsDevice),
+    };
+  }
+
+  function lookUpConflictSource(
+    conflict: HeldConflict,
+    head: string,
+    storedPath: string,
+  ): void {
+    void (async () => {
+      let device: string | null;
+      try {
+        const commits = await adapter.listCommits({
+          from: head,
+          path: storedPath,
+          limit: 1,
+        });
+        if (commits.length === 0) return;
+        device = await readDeviceTrailer(
+          commits[0].message,
+          keyring.contentKey,
+        );
+      } catch {
+        return;
+      }
+      if (device === null || disposed) return;
+      // The conflict may have been resolved or re-merged while the lookup ran.
+      const current = conflictAt(conflict.path);
+      if (
+        current === undefined ||
+        current.theirsBlobSha !== conflict.theirsBlobSha
+      ) {
+        return;
+      }
+      const updated: HeldConflict = {
+        ...current,
+        theirsDevice: device,
+        merged:
+          current.editing === null
+            ? mergeText(
+                current.base,
+                current.mine,
+                current.theirs,
+                conflictLabels(device),
+              ).text
+            : current.merged,
+      };
+      update((latest) => ({
+        ...latest,
+        conflicts: latest.conflicts.map((held) =>
+          held === current ? updated : held,
+        ),
+      }));
+    })();
   }
 
   function hasLocalWork(): boolean {
@@ -1823,7 +1928,11 @@ export function createSyncEngine(options: {
           update((current) => ({
             ...current,
             notices: notices(current.notices, [
-              { kind: "remote-trashed", path: after.path, entryId: after.entryId },
+              {
+                kind: "remote-trashed",
+                path: after.path,
+                entryId: after.entryId,
+              },
             ]),
           }));
         }
@@ -2156,7 +2265,8 @@ export function createSyncEngine(options: {
         >;
       }
     | { readonly ok: false; readonly error: StructureError } {
-    if (isConflictedWithin(path)) return { ok: false, error: { kind: "conflicted" } };
+    if (isConflictedWithin(path))
+      return { ok: false, error: { kind: "conflicted" } };
     if (
       notePathEquals(newParent, parentPath(path)) ||
       (node.kind === "folder" && isAtOrWithin(newParent, path))
@@ -2310,10 +2420,7 @@ export function createSyncEngine(options: {
     return { ok: true };
   }
 
-  function setShareLabel(
-    id: string,
-    label: string | null,
-  ): ShareChangeResult {
+  function setShareLabel(id: string, label: string | null): ShareChangeResult {
     const { synced, workingTree, shares } = state;
     if (
       disposed ||
@@ -2437,7 +2544,8 @@ export function createSyncEngine(options: {
       missing.unshift(existing);
       existing = parentPath(existing);
     }
-    if (missing.length === 0) return moveFromTrash(entry.id, [], originalParent);
+    if (missing.length === 0)
+      return moveFromTrash(entry.id, [], originalParent);
 
     const item = findTrashItem(entry, []);
     if (item === undefined) return failure({ kind: "notFound" });
@@ -2519,11 +2627,7 @@ export function createSyncEngine(options: {
       adapter.commitCost([]) + TRASH_PURGE_HEADROOM,
     );
     if (budgetAt > clock.now()) return;
-    const [batch] = selectExpired(
-      synced.trash,
-      clock.now(),
-      options.purgeCaps,
-    );
+    const [batch] = selectExpired(synced.trash, clock.now(), options.purgeCaps);
     if (batch === undefined) return;
     const entryIds = batch
       .map((entry) => entry.id)
@@ -2566,7 +2670,9 @@ export function createSyncEngine(options: {
 
   function isBlockedWait(save: SaveStatus): boolean {
     return (
-      save.kind === "waiting" && save.reason === "failed" && save.retryAt === null
+      save.kind === "waiting" &&
+      save.reason === "failed" &&
+      save.retryAt === null
     );
   }
 

@@ -26,11 +26,14 @@ import {
   WELCOME,
   ZAZOLC,
   drainAsync,
+  heldWelcomeConflict,
   mainContent,
   mainTree,
   okCommitCount,
   pushRemote,
+  replaceLine,
   waitIdle,
+  welcomeText,
 } from "./testing/engine-harness";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
 
@@ -131,35 +134,6 @@ function messageOf(fake: FakeForgeAdapter, head: string): string {
   const commit = fake.repo.getCommit(head);
   if (commit === undefined) throw new Error("unknown commit");
   return commit.message;
-}
-
-
-async function welcomeText(fake: FakeForgeAdapter): Promise<string> {
-  const text = await mainContent(fake, WELCOME);
-  if (text === undefined) throw new Error("expected Welcome");
-  return text;
-}
-
-function replaceLine(text: string, from: string, to: string): string {
-  if (!text.includes(from)) throw new Error(`missing line ${from}`);
-  return text.replace(from, to);
-}
-
-// Leaves a held conflict on Welcome: mine and theirs both rewrite its title.
-async function heldWelcomeConflict(h: Harness): Promise<{
-  readonly mine: string;
-  readonly theirs: string;
-  readonly remoteHead: string;
-}> {
-  const original = await welcomeText(h.fake);
-  const mine = replaceLine(original, "# Welcome", "# Welcome (mine)");
-  const theirs = replaceLine(original, "# Welcome", "# Welcome (theirs)");
-  const remoteHead = await pushRemote(h.fake, [
-    { kind: "update-note", path: WELCOME, content: theirs },
-  ]);
-  h.engine.editNote(WELCOME, mine);
-  await h.engine.flush();
-  return { mine, theirs, remoteHead };
 }
 
 describe("sync engine saves", () => {
