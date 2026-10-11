@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { downloadDir, homeDir, join } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
@@ -19,6 +20,14 @@ const QUIT_WITH_UNSAVED_MESSAGE =
 
 function openInBrowser(url: string): void {
   openUrl(url).catch((error: unknown) => console.error(error));
+}
+
+async function exportDirectory(): Promise<string> {
+  try {
+    return await downloadDir();
+  } catch {
+    return await homeDir();
+  }
 }
 
 async function confirmQuit(): Promise<boolean> {
@@ -83,6 +92,7 @@ export async function startDesktopShell(options: {
   }
   return {
     download: createDesktopDownload({
+      defaultPath: async (fileName) => join(await exportDirectory(), fileName),
       save: async (dialogOptions) => (await save(dialogOptions)) ?? null,
       writeFile: (path, bytes) => writeFile(path, bytes),
     }),

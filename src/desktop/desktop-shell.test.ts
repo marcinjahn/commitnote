@@ -33,10 +33,18 @@ const tauri = vi.hoisted(() => {
     save: vi.fn(async (): Promise<string | null> => null),
     writeFile: vi.fn(async () => {}),
     openUrl: vi.fn(async () => {}),
+    downloadDir: vi.fn(async () => "/home/me/Downloads"),
+    homeDir: vi.fn(async () => "/home/me"),
+    join: vi.fn(async (...parts: string[]) => parts.join("/")),
   };
 });
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: tauri.listen }));
+vi.mock("@tauri-apps/api/path", () => ({
+  downloadDir: tauri.downloadDir,
+  homeDir: tauri.homeDir,
+  join: tauri.join,
+}));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => tauri.window,
 }));
@@ -116,11 +124,22 @@ describe("startDesktopShell", () => {
 
     expect(result).toBe("downloaded");
     expect(tauri.save).toHaveBeenCalledWith(
-      expect.objectContaining({ defaultPath: "notes.zip" }),
+      expect.objectContaining({ defaultPath: "/home/me/Downloads/notes.zip" }),
     );
     expect(tauri.writeFile).toHaveBeenCalledWith(
       "/home/me/notes.zip",
       new Uint8Array([1, 2, 3]),
+    );
+  });
+
+  it("suggests the home folder when there is no downloads folder", async () => {
+    tauri.downloadDir.mockRejectedValueOnce(new Error("unknown path"));
+    const shell = await startDesktopShell({ launchActions: null });
+
+    await shell.download(new File([], "notes.zip"));
+
+    expect(tauri.save).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultPath: "/home/me/notes.zip" }),
     );
   });
 
