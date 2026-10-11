@@ -82,6 +82,7 @@
 <style>
   .setting-options {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0;
     border-top: var(--hairline) solid var(--color-border);
   }

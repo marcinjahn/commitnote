@@ -121,6 +121,17 @@
     container-type: inline-size;
   }
 
+  @container (width < 18.75rem) {
+    .accent-swatches {
+      grid-template-columns: auto auto repeat(3, auto);
+    }
+
+    .system,
+    .accent-divider {
+      grid-row: span 3;
+    }
+  }
+
   @container (min-width: 34rem) {
     .accent-swatches {
       grid-template-columns: auto auto repeat(var(--swatch-count), auto);
