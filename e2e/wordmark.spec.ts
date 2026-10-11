@@ -53,6 +53,10 @@ interface Snapshot {
   readonly phase: string | null;
   readonly width: number;
   readonly visibleLetters: number;
+  readonly caret: string | null;
+  readonly caretOpacity: string | null;
+  readonly tail: string;
+  readonly tailLetters: number;
 }
 
 function snapshot(wordmark: Locator): Promise<Snapshot> {
@@ -62,6 +66,11 @@ function snapshot(wordmark: Locator): Promise<Snapshot> {
     visibleLetters: [...el.querySelectorAll(".wordmark-letter")].filter(
       (letter) => getComputedStyle(letter).visibility !== "hidden",
     ).length,
+    caret: el.getAttribute("data-caret"),
+    caretOpacity:
+      el.querySelector<HTMLElement>(".wordmark-caret")?.style.opacity ?? null,
+    tail: el.style.getPropertyValue("--wordmark-tail"),
+    tailLetters: el.querySelectorAll(".wordmark-tail").length,
   }));
 }
 
@@ -124,7 +133,7 @@ test.describe("static wordmark", () => {
   test("sidebar header once typed", async ({ page }) => {
     await openNotes(page);
     await expect(sidebarWordmark(page)).toHaveAttribute("data-typing", "done", {
-      timeout: 10_000,
+      timeout: 15_000,
     });
     await expectStaticWordmark(sidebarWordmark(page), { typed: true });
   });
@@ -185,6 +194,52 @@ test.describe("typed wordmark", () => {
       await expect(wordmark.locator(".wordmark-letter:visible")).toHaveCount(10);
     },
   );
+
+  test("shows the gradient tail only while the caret is on", async ({
+    page,
+  }) => {
+    await freezeClock(page);
+    await openNotesFrozen(page);
+    const wordmark = sidebarWordmark(page);
+
+    const seen = await playToDone(page, wordmark);
+
+    const animating = seen.filter((s) => s.phase !== "done");
+    for (const s of animating) {
+      expect(s.caretOpacity).toBe(s.caret === "on" ? "1" : "0");
+      expect(s.tail).toBe(s.caret === "on" ? "1" : "0");
+      if (s.visibleLetters >= 3) expect(s.tailLetters).toBe(3);
+    }
+    for (const s of seen.filter((s) => s.phase === "typing")) {
+      expect(s.caret).toBe("on");
+    }
+    const blinkRuns: { caret: string | null; samples: number }[] = [];
+    for (const s of seen.filter((s) => s.phase === "blinking")) {
+      const run = blinkRuns.at(-1);
+      if (run?.caret === s.caret) run.samples++;
+      else blinkRuns.push({ caret: s.caret, samples: 1 });
+    }
+    expect(blinkRuns.map((run) => run.caret)).toEqual([
+      "on",
+      "off",
+      "on",
+      "off",
+      "on",
+      "off",
+    ]);
+    const [hold, ...phases] = blinkRuns.map((run) => run.samples);
+    expect(hold).toBeGreaterThanOrEqual(6);
+    expect(hold).toBeLessThanOrEqual(7);
+    for (const samples of phases.slice(0, -1)) {
+      expect(samples).toBeGreaterThanOrEqual(7);
+      expect(samples).toBeLessThanOrEqual(9);
+    }
+
+    const settled = seen[seen.length - 1];
+    expect(settled.caret).toBeNull();
+    expect(settled.tail).toBe("");
+    expect(settled.tailLetters).toBe(0);
+  });
 
   test("does not replay after navigating or logging in again", async ({
     page,

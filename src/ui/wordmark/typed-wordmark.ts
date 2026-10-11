@@ -9,7 +9,7 @@ export const FONT_WAIT_MS = 300;
 export interface TypedWordmarkCallbacks {
   onStart(): void;
   onType(count: number): void;
-  onFade(): void;
+  onBlink(): void;
   onCaret(visible: boolean): void;
   onDone(): void;
 }
@@ -73,7 +73,7 @@ export function driveTypedWordmark(
     schedule.keystrokes.forEach((time, index) => {
       later(() => callbacks.onType(index + 1), time);
     });
-    later(callbacks.onFade, schedule.fadeStart);
+    later(callbacks.onBlink, schedule.blinkStart);
     schedule.caretToggles.forEach((time, index) => {
       later(() => callbacks.onCaret(index % 2 === 1), time);
     });

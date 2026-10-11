@@ -5,7 +5,7 @@
     initialTypingPhase,
     type TypingPhase,
   } from "./typed-wordmark";
-  import { TAIL_FADE_MS } from "./typing-schedule";
+  import { CARET_SOFT_EDGE_MS } from "./typing-schedule";
 
   interface Props {
     element?: "h1" | "span";
@@ -25,10 +25,11 @@
     untrack(() => typed) ? initialTypingPhase() : undefined,
   );
   let typedCount = $state(0);
-  let caretVisible = $state(true);
+  let lit = $state(true);
   let caret = $state<{ left: number; top: number; height: number }>();
 
   const animating = $derived(phase === "typing" || phase === "blinking");
+  const softEdge = `${CARET_SOFT_EDGE_MS}ms ease-in-out`;
   const tailStart = $derived(typedCount - Math.min(TAIL_LENGTH, typedCount));
 
   function accentMix(fraction: number): string {
@@ -72,11 +73,11 @@
         await tick();
         measureCaret();
       },
-      onFade() {
+      onBlink() {
         phase = "blinking";
       },
       onCaret(visible) {
-        caretVisible = visible;
+        lit = visible;
       },
       onDone() {
         phase = "done";
@@ -90,12 +91,13 @@
   bind:this={root}
   class="wordmark"
   data-typing={phase}
-  style={phase === "blinking"
-    ? `--wordmark-tail: 0; transition: --wordmark-tail ${TAIL_FADE_MS}ms ease-out`
+  data-caret={animating ? (lit ? "on" : "off") : undefined}
+  style={animating
+    ? `--wordmark-tail: ${lit ? 1 : 0}; transition: --wordmark-tail ${softEdge}`
     : undefined}
 >
   <span class="visually-hidden">commitnote</span>
-  <span class="wordmark-glyphs" aria-hidden="true">{#each LETTERS as letter, index (index)}<span class="wordmark-letter" class:wordmark-regular={index >= 6} class:wordmark-untyped={phase === "typing" && index >= typedCount} class:wordmark-tail={tailStyle(index) !== undefined} style={tailStyle(index)}>{letter}</span>{/each}</span>{#if animating && caret}<span class="wordmark-caret" aria-hidden="true" style="left: {caret.left}px; top: {caret.top}px; height: {caret.height}px;{caretVisible ? '' : ' visibility: hidden;'}"></span>{/if}
+  <span class="wordmark-glyphs" aria-hidden="true">{#each LETTERS as letter, index (index)}<span class="wordmark-letter" class:wordmark-regular={index >= 6} class:wordmark-untyped={phase === "typing" && index >= typedCount} class:wordmark-tail={tailStyle(index) !== undefined} style={tailStyle(index)}>{letter}</span>{/each}</span>{#if animating && caret}<span class="wordmark-caret" aria-hidden="true" style="left: {caret.left}px; top: {caret.top}px; height: {caret.height}px; opacity: {lit ? 1 : 0}; transition: opacity {softEdge};"></span>{/if}
 </svelte:element>
 
 <style>

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   CARET_BLINK_MS,
+  CARET_HOLD_MS,
+  CARET_SOFT_EDGE_MS,
   TYPING_LEAD_IN_MS,
   createTypingSchedule,
 } from "./typing-schedule";
@@ -107,26 +109,29 @@ describe("createTypingSchedule", () => {
     expect(sums.beat / runs).toBeGreaterThan(sums.after / runs);
   });
 
-  it("starts fading the gradient tail at the last keystroke", () => {
+  it("starts blinking at the last keystroke", () => {
     const schedule = createTypingSchedule(TEXT, BEAT_INDEX, mulberry32(3));
 
-    expect(schedule.fadeStart).toBe(
+    expect(schedule.blinkStart).toBe(
       schedule.keystrokes[schedule.keystrokes.length - 1],
     );
   });
 
-  it("blinks the caret twice at the native cadence and then ends", () => {
+  it("holds the caret solid, blinks it twice in slow phases, hides it and then ends", () => {
     const schedule = createTypingSchedule(TEXT, BEAT_INDEX, mulberry32(4));
     const last = schedule.keystrokes[schedule.keystrokes.length - 1];
 
+    expect(CARET_HOLD_MS).toBe(650);
+    expect(CARET_BLINK_MS).toBe(800);
+    expect(CARET_SOFT_EDGE_MS).toBe(160);
     expect(schedule.caretToggles).toEqual([
-      last + CARET_BLINK_MS,
-      last + 2 * CARET_BLINK_MS,
-      last + 3 * CARET_BLINK_MS,
-      last + 4 * CARET_BLINK_MS,
+      last + 650,
+      last + 1450,
+      last + 2250,
+      last + 3050,
+      last + 3850,
     ]);
-    expect(schedule.end).toBeGreaterThan(schedule.caretToggles[3]);
-    expect(schedule.end).toBe(last + 2650);
+    expect(schedule.end).toBe(last + 4010);
   });
 
   it("is deterministic for the same random source", () => {
