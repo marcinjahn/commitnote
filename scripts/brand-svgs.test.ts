@@ -5,7 +5,7 @@ import type { Font } from "fontkit";
 import { beforeAll, describe, expect, it } from "vitest";
 import { CARET_TAIL_LENGTH } from "../src/editor/caret-style";
 import { accentOption } from "../src/settings/accent-palette";
-import { APP_ICONS } from "./app-icons";
+import { APP_ICONS, DESKTOP_ICONS } from "./app-icons";
 import { buildBrandOutputs } from "./brand-outputs";
 import { buildBrandSvgs, FONT_FILE, readmeWordmarkWidth } from "./brand-svgs";
 import { loadFont } from "./font-outlining";
@@ -75,6 +75,11 @@ describe("brand SVGs", () => {
         "public/icons/apple-touch-icon.png",
         "public/icons/shortcut-new-note-96.png",
         "public/icons/shortcut-search-96.png",
+        "src-tauri/icons/32x32.png",
+        "src-tauri/icons/64x64.png",
+        "src-tauri/icons/128x128.png",
+        "src-tauri/icons/128x128@2x.png",
+        "src-tauri/icons/icon.png",
       ]),
     );
   });
@@ -92,7 +97,7 @@ describe("brand SVGs", () => {
         `${output.path} is out of date, run \`npm run generate:brand\``,
       ).toBe(true);
 
-      const icon = APP_ICONS.find((candidate) => candidate.path === output.path);
+      const icon = [...APP_ICONS, ...DESKTOP_ICONS].find((candidate) => candidate.path === output.path);
       if (icon !== undefined) {
         expect(readPngSize(committed)).toEqual({
           width: icon.size,
