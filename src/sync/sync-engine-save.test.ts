@@ -12,10 +12,14 @@ import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
 import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { FOLDER_MARKER, TRAILER } from "../format/v1";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { CONFLICT_MARKERS } from "../merge/merge-text";
+import { PLAIN_CONFLICT_LABELS } from "../merge/conflict-labels";
+import { CONFLICT_MARKER_PREFIX } from "../merge/merge-text";
 import { findNode, type NoteTree } from "../tree/note-tree";
 import { hasConflictMarkers } from "./sync-state";
 import { createTestClock } from "./testing/test-clock";
+
+const MINE_MARKER = `${CONFLICT_MARKER_PREFIX.mine} ${PLAIN_CONFLICT_LABELS.mine}`;
+const THEIRS_MARKER = `${CONFLICT_MARKER_PREFIX.theirs} ${PLAIN_CONFLICT_LABELS.theirs}`;
 import {
   IDEAS,
   WELCOME,
@@ -112,9 +116,9 @@ function withoutTheirsSide(text: string): string {
   const lines: string[] = [];
   let skipping = false;
   for (const line of text.split("\n")) {
-    if (line === CONFLICT_MARKERS.mine) continue;
-    if (line === CONFLICT_MARKERS.separator) skipping = true;
-    else if (line === CONFLICT_MARKERS.theirs) skipping = false;
+    if (line === MINE_MARKER) continue;
+    if (line === CONFLICT_MARKER_PREFIX.separator) skipping = true;
+    else if (line === THEIRS_MARKER) skipping = false;
     else if (!skipping) lines.push(line);
   }
   return lines.join("\n");
@@ -455,8 +459,8 @@ describe("sync engine saves", () => {
     expect(conflict.path).toEqual(WELCOME);
     expect(conflict.mine).toBe(mine);
     expect(conflict.theirs).toBe(theirs);
-    expect(conflict.merged).toContain("<<<<<<< mine");
-    expect(conflict.merged).toContain(">>>>>>> theirs");
+    expect(conflict.merged).toContain(MINE_MARKER);
+    expect(conflict.merged).toContain(THEIRS_MARKER);
     expect(conflict.editing).toBeNull();
     expect(
       state.notices.filter((notice) => notice.kind === "conflict"),
@@ -678,7 +682,7 @@ describe("sync engine saves", () => {
       const after = h.engine.getState().conflicts[0].editing;
       expect(after).not.toBe(editing);
       expect(after).toContain("- First!");
-      expect(after).toContain(CONFLICT_MARKERS.mine);
+      expect(after).toContain(MINE_MARKER);
       expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
         kind: "out-of-sync",
         reason: "conflict",
@@ -706,7 +710,7 @@ describe("sync engine saves", () => {
 
       const editing = h.engine.getState().conflicts[0].editing ?? "";
       expect(editing).toContain("- First!");
-      expect(editing).toContain(CONFLICT_MARKERS.mine);
+      expect(editing).toContain(MINE_MARKER);
       expect(await h.fake.getHead()).toBe(remoteHead);
       expect(h.engine.getState().pending).toEqual([]);
       expect(
@@ -741,7 +745,7 @@ describe("sync engine saves", () => {
       await vi.waitFor(() => {
         expect(h.engine.getState().synced?.head).toBe(remoteHead);
       });
-      const typed = `${h.engine.getState().conflicts[0].editing}\nmy own line\n${CONFLICT_MARKERS.mine}`;
+      const typed = `${h.engine.getState().conflicts[0].editing}\nmy own line\n${MINE_MARKER}`;
       h.engine.editNote(WELCOME, typed);
       release();
       await refreshing;

@@ -481,7 +481,7 @@ const cases: MergeCase[] = [
       expect(conflict.base).toBe(BASE_TEXT);
       expect(conflict.mine).toBe(MINE_TEXT);
       expect(conflict.theirs).toBe(THEIRS_OVERLAP);
-      expect(conflict.merged).toContain("<<<<<<< mine");
+      expect(conflict.merged).toContain("<<<<<<< This device");
       expect(conflict.hunks).toEqual([
         { mine: "FIRST mine", base: "first", theirs: "FIRST theirs" },
       ]);

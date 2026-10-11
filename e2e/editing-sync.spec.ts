@@ -144,7 +144,7 @@ async function startConflictOnWelcome(page: Page): Promise<void> {
   ).toBeVisible();
   await expect(
     page.getByRole("textbox", { name: "Merged text" }),
-  ).toContainText("<<<<<<< mine");
+  ).toContainText("<<<<<<< This device");
 
   const tree = page.getByRole("tree", { name: "Notes" });
   await expect(tree.getByRole("treeitem", { name: "Welcome" })).toHaveAccessibleDescription(
