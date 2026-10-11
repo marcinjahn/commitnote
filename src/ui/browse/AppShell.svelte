@@ -1967,7 +1967,7 @@
     bind:this={sidebarEl}
   >
     <div class="tree-header">
-      <Wordmark />
+      <Wordmark typed />
       <div class="tree-header-actions">
         <SyncStatusButton
           state={syncStatus}

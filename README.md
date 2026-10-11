@@ -1,6 +1,12 @@
-<p align="center"><img src="src/assets/favicon.svg" alt="commitnote logo" width="96" height="96" /></p>
-
-<h1 align="center">commitnote</h1>
+<h1 align="center">
+  <picture>
+    <source
+      media="(prefers-color-scheme: dark)"
+      srcset="docs/brand/wordmark-dark.svg"
+    />
+    <img src="docs/brand/wordmark-light.svg" alt="commitnote" width="240" />
+  </picture>
+</h1>
 
 commitnote is a static, client-side web app for encrypted markdown notes. Notes are encrypted
 entirely in your browser and stored as files in a GitHub or GitLab repository you own — there is no backend
@@ -21,6 +27,8 @@ npm run dev
 ```
 
 Then open `http://localhost:5173`.
+
+`npm run generate:wordmark` regenerates the README wordmark SVGs in `docs/brand/` from the app font.
 
 ### Secure context
 

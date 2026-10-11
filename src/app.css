@@ -12,6 +12,12 @@
   initial-value: #3358d4;
 }
 
+@property --wordmark-tail {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+
 :root,
 .color-scheme-scope {
   --color-background: light-dark(#fafafa, #0b0b0b);
