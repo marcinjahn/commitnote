@@ -117,11 +117,12 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          latest=$(git tag -l 'v0.1.*' | bash scripts/appimage/release.sh latest "${TAG##*.}")
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
             --title "commitnote $VERSION" \
             --notes-file "$RUNNER_TEMP/release-notes.md" \
-            --latest \
+            --latest="$latest" \
             dist-appimage/desktop/commitnote-x86_64.AppImage \
             dist-appimage/desktop/commitnote-x86_64.AppImage.zsync \
             dist-appimage/desktop/SHA256SUMS

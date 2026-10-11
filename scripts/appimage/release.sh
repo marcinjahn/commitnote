@@ -7,6 +7,7 @@ keep_default=10
 usage() {
   echo "usage: $0 previous <number> < tags" >&2
   echo "       $0 prune [keep] < tags" >&2
+  echo "       $0 latest <number> < tags" >&2
   echo "       $0 notes <tag> <sha> <repo> <sums-file> < tags" >&2
   exit 2
 }
@@ -25,6 +26,16 @@ previous_tag() {
   done
 }
 
+is_latest() {
+  local number=$1 highest
+  highest=$(desktop_tags_desc | sed -n '1p')
+  if [ -n "$highest" ] && [ "${highest##*.}" -gt "$number" ]; then
+    echo false
+  else
+    echo true
+  fi
+}
+
 cmd=${1:-}
 [ -n "$cmd" ] || usage
 shift
@@ -33,6 +44,10 @@ case "$cmd" in
 previous)
   [ "$#" -eq 1 ] || usage
   previous_tag "$1"
+  ;;
+latest)
+  [ "$#" -eq 1 ] || usage
+  is_latest "$1"
   ;;
 prune)
   keep=${1:-$keep_default}
