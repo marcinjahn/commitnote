@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { StorageLike } from "../session/session-store";
 import {
   createDeviceSettingsStore,
+  DEVICE_NAME_KEY,
   DEVICE_SETTINGS_KEY,
 } from "./device-settings-store";
 import { EMPTY_DEVICE_SETTINGS } from "./setting-scope";
@@ -358,5 +359,113 @@ describe("createDeviceSettingsStore", () => {
       store.writeValues({ vimMode: true });
       expect(listener).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("device name", () => {
+  it("persists under its own key and reads back in a new store", () => {
+    const storage = new MemoryStorage();
+    createDeviceSettingsStore({ storage, events: null }).writeDeviceName(
+      "Work laptop",
+    );
+    expect(DEVICE_NAME_KEY).toBe("commitnote.deviceName");
+    expect(storage.map.get(DEVICE_NAME_KEY)).toBe("Work laptop");
+    expect(
+      createDeviceSettingsStore({ storage, events: null }).readDeviceName(),
+    ).toBe("Work laptop");
+  });
+
+  it("is null when nothing is stored", () => {
+    const store = createDeviceSettingsStore({
+      storage: new MemoryStorage(),
+      events: null,
+    });
+    expect(store.readDeviceName()).toBeNull();
+  });
+
+  it("removes the key when written as null or blank", () => {
+    const storage = new MemoryStorage();
+    const store = createDeviceSettingsStore({ storage, events: null });
+    store.writeDeviceName("Work laptop");
+    store.writeDeviceName(null);
+    expect(storage.map.has(DEVICE_NAME_KEY)).toBe(false);
+    expect(store.readDeviceName()).toBeNull();
+    store.writeDeviceName("Work laptop");
+    store.writeDeviceName("  \n ");
+    expect(storage.map.has(DEVICE_NAME_KEY)).toBe(false);
+    expect(store.readDeviceName()).toBeNull();
+  });
+
+  it("normalizes on write and on read", () => {
+    const storage = new MemoryStorage();
+    const store = createDeviceSettingsStore({ storage, events: null });
+    store.writeDeviceName("  Work \n  laptop\u0000 ");
+    expect(store.readDeviceName()).toBe("Work laptop");
+    expect(storage.map.get(DEVICE_NAME_KEY)).toBe("Work laptop");
+
+    storage.map.set(DEVICE_NAME_KEY, "   ");
+    expect(
+      createDeviceSettingsStore({ storage, events: null }).readDeviceName(),
+    ).toBeNull();
+  });
+
+  it("updates and notifies on a cross-tab storage event", () => {
+    const storage = new MemoryStorage();
+    const events = new FakeEvents();
+    const store = createDeviceSettingsStore({ storage, events });
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    storage.map.set(DEVICE_NAME_KEY, "Other tab");
+    events.dispatch(DEVICE_NAME_KEY);
+    expect(store.readDeviceName()).toBe("Other tab");
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    events.dispatch(DEVICE_NAME_KEY);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    storage.map.delete(DEVICE_NAME_KEY);
+    events.dispatch(DEVICE_NAME_KEY);
+    expect(store.readDeviceName()).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it("notifies only on a real change", () => {
+    const store = createDeviceSettingsStore({
+      storage: new MemoryStorage(),
+      events: null,
+    });
+    const listener = vi.fn();
+    store.subscribe(listener);
+    store.writeDeviceName(null);
+    expect(listener).not.toHaveBeenCalled();
+    store.writeDeviceName("A");
+    store.writeDeviceName(" A ");
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the device settings record untouched", () => {
+    const storage = new MemoryStorage();
+    const store = createDeviceSettingsStore({ storage, events: null });
+    store.writeDeviceName("Work laptop");
+    expect(storage.map.has(DEVICE_SETTINGS_KEY)).toBe(false);
+
+    store.writeValues({ vimMode: true });
+    const before = storage.map.get(DEVICE_SETTINGS_KEY);
+    store.writeDeviceName("Home");
+    store.writeDeviceName(null);
+    expect(storage.map.get(DEVICE_SETTINGS_KEY)).toBe(before);
+    expect(storedOf(storage)).not.toHaveProperty("deviceName");
+  });
+
+  it("keeps the value in memory when storage throws", () => {
+    const store = createDeviceSettingsStore({
+      storage: new ThrowingStorage(),
+      events: null,
+    });
+    store.writeDeviceName("Work laptop");
+    expect(store.readDeviceName()).toBe("Work laptop");
+    store.writeDeviceName(null);
+    expect(store.readDeviceName()).toBeNull();
   });
 });
