@@ -79,6 +79,10 @@ test("tree and note are both visible on desktop", async ({ page }) => {
   await expect(
     page.getByRole("textbox", { name: "Note editor" }),
   ).toBeVisible();
+  await expect(
+    page.locator(".tree-header").getByRole("button", { name: "New note" }),
+  ).toHaveCount(1);
+  await expect(page.locator("[data-floating-new-note]")).toHaveCount(0);
 });
 
 test("opening a note hides the tree on mobile", { tag: "@mobile-only" }, async ({ page }) => {

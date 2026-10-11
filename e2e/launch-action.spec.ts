@@ -57,12 +57,15 @@ async function expectCleanAddress(page: Page): Promise<void> {
 test(
   "new-note in the start URL opens a draft after auto-login",
   { tag: "@mobile" },
-  async ({ page }) => {
+  async ({ page }, testInfo) => {
     await page.goto(`/?${SESSION}&action=new-note`);
 
     await expect(nameField(page)).toBeFocused({
       timeout: KEY_DERIVATION_TIMEOUT,
     });
+    if (testInfo.project.name === "mobile") {
+      await expect(page.locator("[data-floating-new-note]")).toBeHidden();
+    }
     await expectCleanAddress(page);
   },
 );
