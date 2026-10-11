@@ -19,7 +19,8 @@
     "fixture:sample-notes-repo": "tsx scripts/generate-sample-notes-repo.ts",
     "generate:brand": "tsx scripts/generate-brand-svgs.ts",
     "generate:pwa-screenshots": "npm run build:fake && npm run build:desktop && tsx scripts/generate-pwa-screenshots.ts",
-    "profile:tree-scroll": "tsx scripts/profile-tree-scroll.ts"
+    "profile:tree-scroll": "tsx scripts/profile-tree-scroll.ts",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -56,6 +57,7 @@
     "@playwright/test": "^1.63.0",
     "@resvg/resvg-wasm": "2.6.2",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tauri-apps/cli": "2.12.0",
     "@tsconfig/svelte": "^5.0.8",
     "@types/fontkit": "^2.0.9",
     "@types/node": "^26.0.0",
