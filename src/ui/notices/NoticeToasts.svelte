@@ -214,16 +214,12 @@
     line-height: var(--line-height);
     padding: var(--space-3);
     padding-left: calc(var(--space-3) + 2px);
-    background-color: var(--floating-background);
-    background-image: var(--floating-texture);
-    -webkit-backdrop-filter: var(--floating-backdrop);
-    backdrop-filter: var(--floating-backdrop);
-    border: var(--floating-toast-border);
-    border-radius: var(--floating-toast-radius);
+    background: var(--color-surface-raised);
+    border: var(--hairline) solid var(--color-border);
+    border-radius: var(--radius);
     box-shadow:
       inset 2px 0 0 var(--toast-tone),
-      var(--floating-edge-highlight),
-      var(--floating-shadow);
+      var(--shadow-1);
     transition:
       opacity var(--motion-duration) var(--motion-easing),
       transform var(--motion-duration) var(--motion-easing);
@@ -250,12 +246,12 @@
 
   .toast[data-tone="warning"] {
     --toast-tone: var(--color-tone-warning);
-    background-color: color-mix(in srgb, var(--toast-tone) 5%, var(--floating-background));
+    background: color-mix(in srgb, var(--toast-tone) 5%, var(--color-surface-raised));
   }
 
   .toast[data-tone="error"] {
     --toast-tone: var(--color-tone-error);
-    background-color: color-mix(in srgb, var(--toast-tone) 5%, var(--floating-background));
+    background: color-mix(in srgb, var(--toast-tone) 5%, var(--color-surface-raised));
   }
 
   .tone-icon {
