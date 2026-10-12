@@ -12,7 +12,8 @@ commitnote is a static, client-side web app for encrypted markdown notes. Notes 
 entirely in your browser and stored as files in a GitHub or GitLab repository you own — there is no backend
 server.
 
-The app is available at [commitnote.eu](https://commitnote.eu). A Linux desktop build is available as an
+[commitnote.eu](https://commitnote.eu) is the landing page; the app is at
+[commitnote.eu/app](https://commitnote.eu/app/). A Linux desktop build is available as an
 [AppImage download](https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.AppImage) (see [Desktop app](#desktop-app-linux-appimage)).
 
 ## Prerequisites
@@ -27,7 +28,8 @@ npm install
 npm run dev
 ```
 
-Then open `http://localhost:5173`.
+Then open `http://localhost:5173`. `npm run dev:landing` starts the landing page dev server instead
+(see [Landing page](#landing-page)).
 
 `npm run generate:brand` regenerates the brand SVGs from the app font: the README wordmark SVGs in `docs/brand/`, including their animated caret, and the favicon in `src/assets/favicon.svg`. It also rasterises the app icons (`any` 192/512, `maskable` 192/512, `monochrome` 512 and `apple-touch-icon` 180) into `public/icons/`. Never edit them by hand: the drift test fails when they are stale. `npm run generate:brand -- --contact-sheet <file.png>` also writes an uncommitted review sheet with the maskable safe-zone circle.
 
@@ -41,21 +43,26 @@ through a LAN IP address over plain HTTP does not work.
 
 - `dev` — start the Vite dev server
 - `dev:fake` — start the Vite dev server in test mode (fake forge, see below)
-- `build` — produce a production build in `dist/`
+- `dev:landing` — start the Vite dev server for the landing page (`landing/`)
+- `build` — produce the production site in `dist/`: the landing build first (it empties `dist/`),
+  then the app build into `dist/app/`
 - `build:fake` — produce a test-mode build in `dist-fake/` (`--if-stale` reuses an up-to-date one)
-- `preview` — preview the production build locally
+- `preview` — preview the built site locally: landing page at `/`, app at `/app/`
 - `preview:fake` — preview the test-mode build locally
 - `test` — run unit tests with Vitest
 - `test:e2e` — run end-to-end tests with Playwright under the e2e lock (see below)
 - `check` — type-check the app and the Node-side config/scripts
-- `check:bundle` — build `dist/`, `dist-fake/` and `dist-desktop/` and verify the production build
-  never ships test-mode fixture data or desktop shell code, that the web app manifest and every icon
-  and screenshot it references are in the production build, that `sw.js` is present and its precache
-  list equals the emitted files, and that the desktop build ships the desktop shell but no fake-forge
+- `check:bundle` — build `dist/`, `dist-fake/` and `dist-desktop/` and verify the site layout, the
+  landing page's CSP and retirement worker, and the landing size budget (see
+  [Landing page](#landing-page)), and that the production build never ships test-mode fixture data or desktop shell code, that the web app manifest and every icon
+  and screenshot it references are in the production build, that `app/sw.js` is present and its
+  precache list equals the emitted files under `app/`, and that the desktop build ships the desktop shell but no fake-forge
   fixture data or `sw.js`, and that its CSP allows `https://gitlab.com` and `ipc:`
 - `generate:brand` — regenerate the brand SVGs and app icons (see above)
 - `generate:pwa-screenshots` — regenerate the web app manifest screenshots in `public/screenshots/` from
   the test-mode build, using the system Chrome (optional `E2E_PORT`)
+- `generate:landing-screenshots` — regenerate the landing screenshots in `landing/screenshots/`, in
+  light and dark, from the test-mode build; run it after visible UI changes (optional `E2E_PORT`)
 - `fixture:sample-notes-repo` — regenerate the sample notes repo fixture
 - `build:desktop` — build only the web assets of the desktop app into `dist-desktop/`
 - `build:desktop-fake` — build the same in test mode (fake forge) into `dist-desktop-fake/`, for the
@@ -83,11 +90,32 @@ caches live in `~/.cache/commitnote-appimage`; set `COMMITNOTE_APPIMAGE_CACHE_DI
 sh scripts/appimage/docker-run.sh bash scripts/appimage/xvfb-smoke.sh dist-appimage/desktop-fake/commitnote-x86_64.AppImage
 ```
 
+## Landing page
+
+The landing page lives in `landing/`: plain HTML, CSS and a small TypeScript module, with its own Vite
+config (`landing/vite.config.ts`) and no app code. The app lives under `src/`.
+
+- `npm run dev:landing` runs it, and `npm run build` builds it into the root of `dist/` before the app.
+- `landing/src/boot.ts` is a pre-render script bundled and inlined into `<head>`. It applies the saved
+  color mode and performs app forwarding: a share link, a note fragment, a launch action or an
+  installed display mode sends the visitor to `/app/` with the query and hash kept. The landing page's
+  own anchors never forward.
+- The page ships a strict CSP applied via a `<meta>` tag, which includes the hash of the inline boot
+  script.
+- The landing stylesheet copies the app's design tokens; `landing/src/tokens.test.ts` fails when they
+  drift apart.
+- The landing screenshots are in `landing/screenshots/`; regenerate them with
+  `npm run generate:landing-screenshots`.
+- `npm run check:bundle` enforces the size budget: landing HTML, CSS and JS together at most 40 KB,
+  and each landing screenshot PNG at most 400 KB.
+
 ## Deployment
 
 Every push to `main` runs `.github/workflows/pages.yml`: type-check, unit tests, the bundle check, then
 a publish of `dist/` to GitHub Pages. In the repository settings, set Pages > Source to "GitHub
-Actions" once. The build uses relative asset paths, so it works under any Pages path.
+Actions" once. `dist/` is the whole site: the landing page at the root (with the retirement worker
+`sw.js` and `social.png`) and the app in `dist/app/`, served at `https://commitnote.eu/app/`. The
+build uses relative asset paths. Desktop builds stay app-only: `dist-desktop/` has no landing page.
 
 Every push to `main` also runs `.github/workflows/desktop-release.yml`, separate from `pages.yml`:
 type-check and unit tests, the AppImage build in `ubuntu:22.04`, a build-provenance attestation, and a
@@ -107,8 +135,9 @@ installs Playwright's headless shell (`chromium-headless-shell`, with its bundle
 automatically when it is missing. The `installability` project (the PWA installability test) runs
 on the system Google Chrome, so Chrome must be installed; `generate:pwa-screenshots` needs it too.
 
-The suite runs the built app in test mode (fake forge, no network) in the `desktop` and `mobile`
-projects, with 5 workers by default. Motion is reduced by default (`reducedMotion: "reduce"`);
+The suite runs the built site in test mode (fake forge, no network, `dist-fake/`) with `baseURL` at
+`/app/`, in the `desktop` and `mobile` projects, with 5 workers by default. App specs navigate with
+relative paths (`./`), landing specs with root paths (`/`). Motion is reduced by default (`reducedMotion: "reduce"`);
 a test that needs motion opts in with `test.use({ reducedMotion: "no-preference" })`. The web
 server reuses `dist-fake/` when `check:bundle` just built it from the same inputs.
 
@@ -244,7 +273,8 @@ is none, so Forward still reaches the notes it skipped.
 
 A share is a fixed, encrypted copy of the note's saved version, uploaded as a secret gist (GitHub) or public
 snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu, or the Share button in its header, to create a share link
-(`<app URL>#share=...`).
+(`https://commitnote.eu/app/#share=...` on the web; the desktop app uses the same app URL). Old
+`https://commitnote.eu/#share=...` links keep working through app forwarding.
 
 - The link's secret stays in the URL fragment, so it never reaches a server. An optional share
   password is then needed in addition to the link.
@@ -260,9 +290,10 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
 
 ## Production build
 
-`npm run build` writes plain static files to `dist/`. The build ships with a strict Content
-Security Policy applied via a `<meta>` tag; it is not present in the dev server. The build also ships a web app manifest
-(`public/manifest.webmanifest`), so commitnote can be installed as an app.
+`npm run build` writes plain static files to `dist/`: the landing page at the root and the app in
+`dist/app/`. The app build ships with a strict Content
+Security Policy applied via a `<meta>` tag; it is not present in the dev server. The app build also ships a web app manifest
+(`public/manifest.webmanifest`, `id` `/`), so commitnote can be installed as an app.
 
 ## Installing and updates
 
@@ -320,7 +351,7 @@ chmod +x commitnote-x86_64.AppImage
 - **Differences from the web app:** a native window with the system title bar. It counts as the
   installed app: no Remember me option (the login is kept until **Log out**), and there is no
   install bar or **Install app** command. Export opens a native save dialog, links open in the
-  default browser, and share links point at `https://commitnote.eu/`. Page zoom is disabled.
+  default browser, and share links point at `https://commitnote.eu/app/`. Page zoom is disabled.
   Closing the window with unsaved edits saves first, and asks before quitting if saving fails.
   Starting the app again focuses the running window. The app menu offers **New note** and
   **Search notes** (`commitnote --action new-note` or `--action search`).
@@ -333,11 +364,16 @@ chmod +x commitnote-x86_64.AppImage
 
 ### What is cached
 
-The service worker (`sw.js`, generated by the build) precaches only the app shell into a Cache
+The app's service worker (`/app/sw.js`, scope `/app/`, generated by the app build) precaches only the app shell into a Cache
 Storage cache named `commitnote-shell-<buildId>`. It never stores notes, tokens or forge responses.
 The remembered session's ciphertext blob cache in IndexedDB is unchanged and stays the only data
 cache. The build id hashes the path and content of every precached file, so any change to the shell
 produces a new build id and a new service worker.
+
+The root `/sw.js` is the retirement worker: it only unregisters itself. Visitors who still have the old
+root service worker get it replaced and unregistered by it. Returning users may see the old app once
+until the new worker activates, and a first visit straight to `/app/` under the old worker may need one
+reload. The manifest `id` is `/`, so apps installed before the move remain the same app.
 
 ### Update flow
 
@@ -366,7 +402,7 @@ workers unless a spec opts in with `test.use({ serviceWorkers: "allow" })`.
 
 ### Kill switch
 
-If a broken service worker ever ships, commit `public/sw.js` with the following content and push:
+If a broken app service worker ever ships, commit `public/sw.js` with the following content and push:
 
 ```js
 self.addEventListener("install", () => self.skipWaiting());
@@ -382,7 +418,8 @@ self.addEventListener("activate", (event) => {
 });
 ```
 
-The build ships it unchanged in place of the generated worker, and `check:bundle` accepts it. It
+The app build ships it unchanged as `app/sw.js` in place of the generated worker, and `check:bundle`
+accepts it. It replaces only the app worker; the root `sw.js` is always the retirement worker. It
 has no `fetch` handler and never navigates clients: it deletes the commitnote caches and
 unregisters itself. Open pages reload once through their `controllerchange` handling. In Chromium they may stay
 controlled by the kill-switch worker until every commitnote page is closed; it has no `fetch`
