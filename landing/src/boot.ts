@@ -7,6 +7,9 @@ try {
 
 let installed = false;
 try {
+  if (matchMedia("(prefers-reduced-motion: no-preference)").matches) {
+    document.documentElement.dataset.motion = "";
+  }
   installed = runsInstalled((query) => matchMedia(query));
 } catch {}
 

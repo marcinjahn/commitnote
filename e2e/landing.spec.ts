@@ -141,6 +141,50 @@ test("every section is visible without motion", async ({ page }) => {
   expect(hidden).toEqual([]);
 });
 
+test.describe("motion", () => {
+  test.use({ reducedMotion: "no-preference" });
+
+  function opacity(locator: ReturnType<Page["locator"]>): Promise<string> {
+    return locator.evaluate((el) => getComputedStyle(el).opacity);
+  }
+
+  test("the hero wordmark types itself in", async ({ page }) => {
+    await openLanding(page);
+    await expect(page.locator(".hero-wordmark")).toHaveAttribute(
+      "data-typing",
+      "done",
+    );
+  });
+
+  test("a section below the fold reveals on scroll", async ({ page }) => {
+    await openLanding(page);
+    const head = page.locator("#what-you-need .section-head");
+
+    expect(Number(await opacity(head))).toBeLessThan(1);
+    await head.scrollIntoViewIfNeeded();
+    await expect.poll(() => opacity(head)).toBe("1");
+  });
+
+  test("the commit illustration plays once it comes into view", async ({
+    page,
+  }) => {
+    await openLanding(page);
+    const illustration = page.locator(".commit-illustration");
+    const entry = illustration.locator(".commit-entry");
+
+    await illustration.scrollIntoViewIfNeeded();
+    await expect(illustration).toHaveAttribute("data-played", "");
+    await expect
+      .poll(() =>
+        entry.evaluate((el) => {
+          const style = getComputedStyle(el);
+          return `${style.opacity} ${style.translate}`;
+        }),
+      )
+      .toMatch(/^1 (none|0px)$/);
+  });
+});
+
 test("the landing page contacts only its own origin and has no CSP violations", async ({
   page,
 }) => {
