@@ -148,8 +148,7 @@
   import NoteTree from "./NoteTree.svelte";
   import PullIndicator from "./PullIndicator.svelte";
   import FloatingNewNoteButton from "./FloatingNewNoteButton.svelte";
-  import { floatingNewNoteState, isTextEntry } from "./floating-new-note";
-  import { keyboardInset } from "../dialogs/keyboard-inset";
+  import { floatingNewNoteState, isKeyboardOpen, isTextEntry } from "./floating-new-note";
   import { pullGesture } from "./pull-gesture";
   import type { PullPhase } from "./pull-to-refresh";
   import { ancestorFolders, shouldFollowFocus } from "./relocation-follow";
@@ -1494,7 +1493,7 @@
     const viewport = window.visualViewport;
     if (viewport === null) return;
     const update = (): void => {
-      keyboardOpen = keyboardInset(document.documentElement.clientHeight, viewport) > 0;
+      keyboardOpen = isKeyboardOpen(document.documentElement.clientHeight, viewport);
     };
     update();
     viewport.addEventListener("resize", update);

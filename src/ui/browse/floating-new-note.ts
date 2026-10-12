@@ -1,3 +1,5 @@
+import { keyboardInset } from "../dialogs/keyboard-inset";
+
 export type FloatingNewNoteState = "hidden" | "extended" | "compact";
 
 export interface FloatingNewNoteInputs {
@@ -26,6 +28,16 @@ export function floatingNewNoteState(inputs: FloatingNewNoteInputs): FloatingNew
     return "hidden";
   }
   return inputs.noteShownThisSession ? "compact" : "extended";
+}
+
+export const KEYBOARD_OPEN_MIN_INSET = 150;
+
+export function isKeyboardOpen(
+  layoutHeight: number,
+  viewport: { height: number; offsetTop: number; scale: number },
+): boolean {
+  if (viewport.scale > 1) return false;
+  return keyboardInset(layoutHeight, viewport) >= KEYBOARD_OPEN_MIN_INSET;
 }
 
 const NON_TEXT_INPUT_TYPES = new Set([
