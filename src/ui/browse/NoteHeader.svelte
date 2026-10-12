@@ -73,6 +73,11 @@
   let tagButton: HTMLButtonElement | undefined = $state();
   let tagAnchor = $state<MenuAnchor | null>(null);
   let headerEl: HTMLElement | undefined = $state();
+  let nameField: ReturnType<typeof NameField> | undefined = $state();
+
+  export function focusName(anchor: number, head: number): void {
+    nameField?.focusAt(anchor, head);
+  }
 
   $effect(() => {
     if (noteSwitch === seenSwitch.seen) return;
@@ -113,6 +118,7 @@
     </svg>
   </button>
   <NameField
+    bind:this={nameField}
     value={name}
     readOnly={nameReadOnly}
     error={nameError}

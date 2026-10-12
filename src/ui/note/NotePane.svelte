@@ -266,8 +266,12 @@
     return !!editor;
   }
 
-  export function insertEditorText(text: string): void {
-    editor?.insertText(text);
+  export function insertEditorText(text: string, focus = true): void {
+    editor?.insertText(text, focus);
+  }
+
+  export function setEditorSelection(anchor: number, head: number): void {
+    editor?.setSelection(anchor, head);
   }
 
   export function contentElement(): HTMLElement | null {

@@ -90,6 +90,53 @@ describe("createLaunchActions", () => {
   });
 });
 
+describe("createLaunchActions with an accepts filter", () => {
+  const onlyNewNote = (a: LaunchAction) => a === "new-note";
+
+  it("runs an accepted action once and does not re-deliver it to a later handler", () => {
+    const actions = createLaunchActions();
+    const early: LaunchAction[] = [];
+    const late: LaunchAction[] = [];
+    const detach = actions.attach((a) => early.push(a), onlyNewNote);
+    actions.deliver("new-note");
+    detach();
+    actions.attach((a) => late.push(a));
+    expect(early).toEqual(["new-note"]);
+    expect(late).toEqual([]);
+  });
+
+  it("keeps a rejected action pending for the next accepting handler", () => {
+    const actions = createLaunchActions();
+    const early: LaunchAction[] = [];
+    const late: LaunchAction[] = [];
+    const detach = actions.attach((a) => early.push(a), onlyNewNote);
+    actions.deliver("search");
+    expect(early).toEqual([]);
+    detach();
+    actions.attach((a) => late.push(a));
+    expect(late).toEqual(["search"]);
+  });
+
+  it("runs a pending accepted action when the filtered handler attaches", () => {
+    const actions = createLaunchActions();
+    const ran: LaunchAction[] = [];
+    actions.deliver("new-note");
+    actions.attach((a) => ran.push(a), onlyNewNote);
+    expect(ran).toEqual(["new-note"]);
+  });
+
+  it("leaves a pending rejected action pending on attach", () => {
+    const actions = createLaunchActions();
+    const early: LaunchAction[] = [];
+    const late: LaunchAction[] = [];
+    actions.deliver("search");
+    actions.attach((a) => early.push(a), onlyNewNote);
+    expect(early).toEqual([]);
+    actions.attach((a) => late.push(a));
+    expect(late).toEqual(["search"]);
+  });
+});
+
 class FakeLaunchQueue implements LaunchQueueLike {
   consumer: ((params: LaunchParamsLike) => void) | null = null;
 

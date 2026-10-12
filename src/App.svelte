@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick, untrack } from "svelte";
+  import { flushSync, onMount, tick, untrack } from "svelte";
   import { removeLastView } from "./app/last-view";
   import { createAutoRefresh, type AutoRefresh } from "./app/auto-refresh";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
@@ -88,6 +88,15 @@
   import Wordmark from "./ui/wordmark/Wordmark.svelte";
   import type { InstallController } from "./app/install-controller";
   import type { LaunchActions } from "./app/launch-action";
+  import { emptyEarlyDraft, isUntouched, type EarlyDraft } from "./app/early-draft";
+  import { installTypeToStart } from "./ui/browse/type-to-start";
+  import FloatingNewNoteButton from "./ui/browse/FloatingNewNoteButton.svelte";
+  import EarlyDraftView from "./ui/note/EarlyDraftView.svelte";
+  import {
+    DEFAULT_SETTING_SCOPES,
+    type SwitchableSettingKey,
+  } from "./settings/setting-scope";
+  import { SETTINGS_SCHEMA, type Settings } from "./settings/settings";
   import InstallBar from "./ui/install/InstallBar.svelte";
   import InstallHowToDialog from "./ui/install/InstallHowToDialog.svelte";
   import { createDialogEntries } from "./ui/dialogs/dialog-entries";
@@ -666,6 +675,85 @@
     };
   });
 
+  let earlyDraft = $state<EarlyDraft | null>(null);
+  let earlyDraftOpen = $state(false);
+  let earlyDraftOffered = $state(false);
+  let earlyDraftView = $state<ReturnType<typeof EarlyDraftView> | undefined>();
+  let earlyDraftHandingOff = $state(false);
+
+  const earlyDraftShown = $derived(
+    earlyDraft !== null && earlyDraftOpen && !earlyDraftHandingOff,
+  );
+
+  $effect(() => {
+    if (phase.kind !== "restoring") earlyDraftOffered = false;
+  });
+
+  function deviceScopedSetting<K extends SwitchableSettingKey>(
+    key: K,
+  ): Settings[K] | undefined {
+    const record = deviceSettingsStore.read();
+    const scope = record.scopes[key] ?? DEFAULT_SETTING_SCOPES[key];
+    return scope === "device" ? record.values[key] : undefined;
+  }
+
+  function typeToStartDeviceEnabled(): boolean {
+    const record = deviceSettingsStore.read();
+    const scope = record.scopes.typeToStart ?? DEFAULT_SETTING_SCOPES.typeToStart;
+    if (scope !== "device") return false;
+    return record.values.typeToStart ?? SETTINGS_SCHEMA.typeToStart.default;
+  }
+
+  function openEarlyDraft(): void {
+    if (earlyDraft === null) earlyDraft = emptyEarlyDraft("name");
+    earlyDraftOpen = true;
+  }
+
+  function handleEarlyDraftHandedOff(): void {
+    earlyDraftHandingOff = true;
+    flushSync();
+    // The view stays mounted until the app has moved focus into its own draft.
+    queueMicrotask(() => {
+      earlyDraft = null;
+      earlyDraftOpen = false;
+      earlyDraftHandingOff = false;
+    });
+  }
+
+  function closeEarlyDraft(): void {
+    if (earlyDraft !== null && isUntouched(earlyDraft)) earlyDraft = null;
+    earlyDraftOpen = false;
+  }
+
+  $effect(() => {
+    if (!earlyDraftOffered) return;
+    return launchActions.attach(openEarlyDraft, (action) => action === "new-note");
+  });
+
+  $effect(() => {
+    if (!earlyDraftOffered) return;
+    const typeToStart = installTypeToStart(window, {
+      scene: () => ({
+        enabled:
+          typeToStartDeviceEnabled() &&
+          !earlyDraftOpen &&
+          (earlyDraft === null || isUntouched(earlyDraft)),
+        placeholderVisible: true,
+        engineStopped: false,
+        dialogOpen: false,
+        menuOpen: false,
+        body: document.body,
+        notePane: null,
+      }),
+      start: () => {
+        earlyDraft = emptyEarlyDraft("body");
+        earlyDraftOpen = true;
+        void tick().then(() => earlyDraftView?.insertBodyText(typeToStart.drain()));
+      },
+    });
+    return () => typeToStart.dispose();
+  });
+
   onMount(() => {
     void (async () => {
       try {
@@ -676,6 +764,7 @@
           return;
         }
 
+        earlyDraftOffered = true;
         const result = await resumeSession(session, loginDeps());
         switch (result.kind) {
           case "loggedIn":
@@ -690,6 +779,7 @@
             );
             return;
           case "failed": {
+            earlyDraftOffered = false;
             if (!isTransient(result.error)) {
               await store.clear();
               removeLastView(repoKeyOf(session.coordinates));
@@ -710,11 +800,23 @@
   <p class="notice test-mode-banner" role="note">{testModeBanner}</p>
 {/if}
 
+<div
+  class="phase-content"
+  inert={earlyDraftShown}
+  aria-hidden={earlyDraftShown ? "true" : undefined}
+>
 {#if phase.kind === "restoring"}
   <main class="restoring window-drag">
     <Wordmark element="h1" />
     <p class="restoring-text">Loading…</p>
   </main>
+  {#if earlyDraftOffered && !earlyDraftOpen}
+    <FloatingNewNoteButton
+      state="extended"
+      aboveFooter={false}
+      onNewNote={openEarlyDraft}
+    />
+  {/if}
 {:else if phase.kind === "login"}
   {#if installState.bar !== "none"}
     <InstallBar
@@ -772,6 +874,8 @@
       repoKey={repoKeyOf(phase.session.coordinates)}
       sessionRemembered={phase.remembered}
       initialMessage={phase.initialMessage}
+      {earlyDraft}
+      onEarlyDraftHandedOff={handleEarlyDraftHandedOff}
       onPassphraseChanged={(keyring, check, history) =>
         void handlePassphraseChanged(keyring, check, history)}
       onLogOut={logOut}
@@ -781,6 +885,22 @@
       onPrintNote={(note) => (reportedPrintNote = note)}
     />
   </ScreenScope>
+{/if}
+</div>
+
+{#if earlyDraft !== null && earlyDraftOpen}
+  <EarlyDraftView
+    bind:this={earlyDraftView}
+    draft={earlyDraft}
+    onChange={(next) => (earlyDraft = next)}
+    onBack={closeEarlyDraft}
+    noteFont={deviceScopedSetting("noteFont") ?? SETTINGS_SCHEMA.noteFont.default}
+    animatedCaret={deviceScopedSetting("animatedCaret") ?? SETTINGS_SCHEMA.animatedCaret.default}
+  >
+    {#snippet status()}
+      <p role="status">Loading notes…</p>
+    {/snippet}
+  </EarlyDraftView>
 {/if}
 
 <LogoutDialog
@@ -805,6 +925,10 @@
     font-size: var(--font-size-xs);
     letter-spacing: 0.02em;
     padding: var(--space-1) var(--space-3);
+  }
+
+  .phase-content {
+    display: contents;
   }
 
   .restoring {

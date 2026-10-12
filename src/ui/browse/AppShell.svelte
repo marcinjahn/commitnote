@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onDestroy, tick, untrack } from "svelte";
+  import { flushSync, onDestroy, tick, untrack } from "svelte";
+  import { planEarlyDraftHandoff, type EarlyDraft } from "../../app/early-draft";
   import type { AutoRefresh } from "../../app/auto-refresh";
   import type { AppUpdates } from "../../app/app-updates";
   import type { InstallController } from "../../app/install-controller";
@@ -248,6 +249,8 @@
     repoKey: string;
     sessionRemembered: boolean;
     initialMessage?: Pick<ToastMessage, "tone" | "text"> | null;
+    earlyDraft: EarlyDraft | null;
+    onEarlyDraftHandedOff: () => void;
     onPassphraseChanged: (
       keyring: Keyring,
       check: LandedCheck,
@@ -283,6 +286,8 @@
     repoKey,
     sessionRemembered,
     initialMessage = null,
+    earlyDraft,
+    onEarlyDraftHandedOff,
     onPassphraseChanged,
     onLogOut,
     onAccentColor,
@@ -435,6 +440,7 @@
   let pendingFieldText = $state<string | null>(null);
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
+  let noteHeader: ReturnType<typeof NoteHeader> | undefined = $state();
   let notePaneEl: HTMLElement | undefined = $state();
   let noteTree: ReturnType<typeof NoteTree> | undefined = $state();
   let sidebarEl: HTMLElement | undefined = $state();
@@ -716,10 +722,14 @@
     return () => typeToStart.dispose();
   });
 
-  async function insertTypedText(drain: () => string): Promise<void> {
+  async function waitForEditor(): Promise<void> {
     for (let attempt = 0; attempt < 5 && notePane?.hasEditor() !== true; attempt += 1) {
       await tick();
     }
+  }
+
+  async function insertTypedText(drain: () => string): Promise<void> {
+    await waitForEditor();
     notePane?.focusEditor();
     const text = drain();
     if (text !== "") notePane?.insertEditorText(text);
@@ -957,6 +967,55 @@
     if (note !== null && findWorkingNode(current, note)?.kind === "note") {
       navigation.replace({ kind: "note", path: note });
       await openRestoredNote(note);
+    }
+  }
+
+  let earlyDraftHandoffStarted = false;
+  $effect(() => {
+    if (tree === null || earlyDraft === null || earlyDraftHandoffStarted) return;
+    earlyDraftHandoffStarted = true;
+    const focus = earlyDraft.focus === "body" ? "editor" : "name";
+    untrack(() => startDraft([], focus));
+    void handOffEarlyDraft();
+  });
+
+  async function handOffEarlyDraft(): Promise<void> {
+    await waitForEditor();
+    const early = untrack(() => earlyDraft);
+    onEarlyDraftHandedOff();
+    if (early === null || draft === null) return;
+    const plan = planEarlyDraftHandoff(early);
+    let focus = early.focus;
+    let selection = early.selection;
+    if (plan.kind !== "untouched") draft = { ...draft, name: early.name };
+    if (plan.kind === "content") {
+      const now = new Date(plan.contentStartedAt ?? Date.now());
+      if (notePane?.hasEditor() === true) {
+        earlyContentTime = now;
+        try {
+          notePane.insertEditorText(plan.body, false);
+        } finally {
+          earlyContentTime = undefined;
+        }
+      }
+      if (draft !== null) handleDraftContent(plan.body, now);
+    } else if (plan.kind === "confirmName") {
+      handleDraftNameCommit(plan.name);
+      focusEditorOnEnter = false;
+      if (draft === null) {
+        focus = "body";
+        selection = { anchor: 0, head: 0 };
+      } else {
+        focus = "name";
+        selection = { anchor: plan.name.length, head: plan.name.length };
+      }
+    }
+    flushSync();
+    if (focus === "name") {
+      noteHeader?.focusName(selection.anchor, selection.head);
+    } else {
+      notePane?.setEditorSelection(selection.anchor, selection.head);
+      notePane?.focusEditor();
     }
   }
 
@@ -1591,11 +1650,13 @@
     }
   }
 
-  function handleDraftContent(content: string): void {
+  let earlyContentTime: Date | undefined;
+
+  function handleDraftContent(content: string, now: Date = new Date()): void {
     if (draft === null) return;
     const action = resolveNoteDraft(
       draft,
-      { kind: "contentChanged", content, now: new Date() },
+      { kind: "contentChanged", content, now },
       siblingNamesOf(draft.parent),
     );
     if (action.kind !== "createWithContent") return;
@@ -2638,6 +2699,7 @@
     {#key draftSession}
       {#if draft !== null}
         <NoteHeader
+          bind:this={noteHeader}
           name={draft.name}
           draft={true}
           autofocusName={draftFocus === "name"}
@@ -2655,6 +2717,7 @@
         />
       {:else if engineState.openNote !== null}
         <NoteHeader
+          bind:this={noteHeader}
           name={noteName(engineState.openNote.path)}
           draft={false}
           syncState={engineState.syncStates.stateOf(engineState.openNote.path)}
@@ -2701,7 +2764,7 @@
       {noteDates}
       treeLoaded={tree !== null}
       hasNotes={tree !== null && tree.root.children.length > 0}
-      onDraftContent={handleDraftContent}
+      onDraftContent={(content) => handleDraftContent(content, earlyContentTime)}
       onNewNote={handleHeaderNewNote}
       onRestoreTrashed={(entryId, reopen) => handleUndoTrash(entryId, reopen)}
       noteFont={settings.noteFont}

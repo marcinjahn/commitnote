@@ -53,6 +53,15 @@
     if (autofocus) inputEl?.focus();
   });
 
+  export function focusAt(anchor: number, head: number): void {
+    if (inputEl === undefined) return;
+    inputEl.focus();
+    const length = inputEl.value.length;
+    const start = Math.min(anchor, head, length);
+    const end = Math.min(Math.max(anchor, head), length);
+    inputEl.setSelectionRange(start, end, anchor > head ? "backward" : "forward");
+  }
+
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key === "Enter") {
       event.preventDefault();

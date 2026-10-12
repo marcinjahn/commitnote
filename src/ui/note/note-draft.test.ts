@@ -49,6 +49,21 @@ describe("resolveNoteDraft", () => {
       });
     });
 
+    it("names the note from the time content started", () => {
+      const contentStartedAt = new Date(2026, 2, 9, 21, 45, 3).getTime();
+      expect(
+        resolveNoteDraft(
+          draft(""),
+          {
+            kind: "contentChanged",
+            content: "hello",
+            now: new Date(contentStartedAt),
+          },
+          siblings,
+        ),
+      ).toMatchObject({ kind: "createWithContent", name: "2026-03-09 21:45:03" });
+    });
+
     it("uses the auto name when the name is empty", () => {
       expect(resolveNoteDraft(draft(""), event, siblings)).toEqual({
         kind: "createWithContent",

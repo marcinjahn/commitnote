@@ -135,6 +135,8 @@ export async function openNotes(
 interface FakeForgeControls {
   commitMessages(repoKey: string): string[];
   failNext(repoKey: string, operation: string, kind: string): void;
+  hold(repoKey: string, operation: string): void;
+  release(repoKey: string, operation: string): void;
   editNote(
     repoKey: string,
     notePath: readonly string[],
@@ -188,6 +190,28 @@ export function fakeForge(page: Page, repoKey: string = SAMPLE.key) {
             errorKind,
           ),
         [repoKey, operation, kind] as const,
+      );
+    },
+    hold: async (operation: string) => {
+      await controlsReady(page);
+      await page.evaluate(
+        ([key, op]) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.hold(
+            key,
+            op,
+          ),
+        [repoKey, operation] as const,
+      );
+    },
+    release: async (operation: string) => {
+      await controlsReady(page);
+      await page.evaluate(
+        ([key, op]) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.release(
+            key,
+            op,
+          ),
+        [repoKey, operation] as const,
       );
     },
     editNote: (
@@ -331,6 +355,18 @@ export async function onFakeForgeReady<Arg>(
   await page.addInitScript({
     content: `(${hook.toString()})(${callback.toString()}, ${JSON.stringify(arg)})`,
   });
+}
+
+export async function holdOnLoad(
+  page: Page,
+  operation: string,
+  repoKey: string = SAMPLE.key,
+): Promise<void> {
+  await onFakeForgeReady(
+    page,
+    (controls, [repo, op]) => controls.hold(repo, op),
+    [repoKey, operation],
+  );
 }
 
 export async function flushPendingSaves(page: Page): Promise<void> {

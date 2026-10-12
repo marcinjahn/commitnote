@@ -14,6 +14,8 @@ import {
   SAMPLE,
   openNotes,
   onFakeForgeReady,
+  holdOnLoad,
+  fakeForge,
 } from "./helpers";
 
 const EMPTY_REPO = "https://github.com/sample/empty";
@@ -355,6 +357,19 @@ test("a remembered session keeps the loading screen until the notes load", async
   expect(await page.evaluate(() => [...(window as any).__seenTexts])).toEqual([
     "create a new note",
   ]);
+});
+
+test("a held operation keeps the loading screen until it is released", async ({
+  page,
+}) => {
+  await rememberSession(page);
+  await holdOnLoad(page, "listTree");
+
+  await page.reload();
+  await expect(page.getByText("Loading…")).toBeVisible();
+
+  await fakeForge(page).release("listTree");
+  await expectTree(page);
 });
 
 test("a remembered session whose notes fail to load shows the error", async ({

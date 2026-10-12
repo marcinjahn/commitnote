@@ -59,14 +59,14 @@
     return editor === undefined ? undefined : fn(editor.view);
   }
 
-  export function insertText(inserted: string): void {
+  export function insertText(inserted: string, focus = true): void {
     if (editor === undefined) return;
     const view = editor.view;
     view.dispatch(view.state.replaceSelection(inserted), {
       userEvent: "input.type",
       scrollIntoView: true,
     });
-    view.focus();
+    if (focus) view.focus();
   }
 
   onMount(() => {
