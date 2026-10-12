@@ -195,11 +195,14 @@
     grid-area: 1 / 1;
     display: flex;
     flex-wrap: wrap;
-    column-gap: var(--space-5);
+    column-gap: calc(var(--space-3) * 2 + 1px);
     row-gap: var(--space-1);
+    /* Hides the divider of a group that wrapped to the start of a line. */
+    clip-path: inset(-1lh -1lh -1lh calc(var(--space-2) * -1));
   }
 
   .details-group {
+    position: relative;
     display: flex;
     flex-wrap: wrap;
     column-gap: var(--space-3);
@@ -208,6 +211,16 @@
 
   .detail-item {
     white-space: nowrap;
+  }
+
+  .details-group + .details-group::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: calc((var(--space-3) + 1px) * -1);
+    height: 0.9em;
+    border-inline-start: 1px solid var(--color-border-strong);
+    translate: 0 -50%;
   }
 
   .detail-value {

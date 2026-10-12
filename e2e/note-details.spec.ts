@@ -138,7 +138,7 @@ function contrastRatio(foreground: string, background: string): number {
   return (light + 0.05) / (dark + 0.05);
 }
 
-test("note details show unbreakable items in a dates group and a stats group", { tag: "@mobile" }, async ({
+test("note details show unbreakable, evenly spaced items in dates and stats groups split by a divider", { tag: "@mobile" }, async ({
   page,
 }) => {
   await startSession(page);
@@ -174,19 +174,58 @@ test("note details show unbreakable items in a dates group and a stats group", {
   const narrow = page.viewportSize()!.width < 600;
   await expect
     .poll(async () => {
-      const [dates, stats] = await page.evaluate(() =>
-        [...document.querySelectorAll(".note-details .details-group")].map((group) => {
-          const { top, bottom, left, right } = group.getBoundingClientRect();
-          return { top, bottom, left, right };
-        }),
+      const layout = await page.evaluate(() => {
+        const form = document.querySelector(".note-details .details-form")!;
+        const [dates, stats] = [...form.querySelectorAll(".details-group")];
+        const items = [...form.querySelectorAll("[role=listitem]")].map((item) =>
+          item.getBoundingClientRect(),
+        );
+        const separator = (group: Element) => {
+          const style = getComputedStyle(group, "::before");
+          return style.content === "none"
+            ? null
+            : {
+                left: group.getBoundingClientRect().left + parseFloat(style.left),
+                width: parseFloat(style.borderInlineStartWidth),
+              };
+        };
+        return {
+          formLeft: form.getBoundingClientRect().left,
+          clipped: getComputedStyle(form).clipPath !== "none",
+          datesLast: form.querySelectorAll(".details-group")[0].children.length - 1,
+          items: items.map(({ top, left, right }) => ({ top, left, right })),
+          datesSeparator: separator(dates),
+          statsSeparator: separator(stats),
+        };
+      });
+      const { items, datesLast, formLeft } = layout;
+      const sameLine = (a: { top: number }, b: { top: number }) => Math.abs(a.top - b.top) < 1;
+      const gaps = items.slice(1).flatMap((item, i) =>
+        sameLine(items[i], item) && i !== datesLast ? [Math.round(item.left - items[i].right)] : [],
       );
+      const lastDate = items[datesLast];
+      const firstStat = items[datesLast + 1];
+      const sep = layout.statsSeparator;
       return {
-        stacked: stats.top > dates.bottom - 1,
-        flushLeft: Math.abs(stats.left - dates.left) <= 1,
-        spaced: stats.left - dates.right >= 31,
+        itemGaps: [...new Set(gaps)],
+        stacked: !sameLine(lastDate, firstStat),
+        flushLeft: Math.abs(firstStat.left - formLeft) <= 1,
+        datesSeparator: layout.datesSeparator,
+        boundaryGaps:
+          sep !== null && sameLine(lastDate, firstStat)
+            ? [Math.round(sep.left - lastDate.right), Math.round(firstStat.left - sep.left - sep.width)]
+            : null,
+        separatorHidden: sep !== null && layout.clipped && sep.left + sep.width < formLeft - 4,
       };
     })
-    .toEqual({ stacked: narrow, flushLeft: narrow, spaced: !narrow });
+    .toEqual({
+      itemGaps: [16],
+      stacked: narrow,
+      flushLeft: narrow,
+      datesSeparator: null,
+      boundaryGaps: narrow ? null : [16, 16],
+      separatorHidden: narrow,
+    });
 
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
@@ -197,7 +236,7 @@ test("note details show unbreakable items in a dates group and a stats group", {
       .toContain(scheme);
     await expect
       .poll(async () => {
-        const { value, label, background } = await page.evaluate(() => {
+        const { value, label, separator, background } = await page.evaluate(() => {
           const pixel = (color: string): number[] => {
             const canvas = document.createElement("canvas");
             canvas.width = 1;
@@ -224,15 +263,22 @@ test("note details show unbreakable items in a dates group and a stats group", {
           return {
             value: toRgb(getComputedStyle(valueEl).color),
             label: toRgb(getComputedStyle(labelEl).color),
+            separator: toRgb(
+              getComputedStyle(
+                document.querySelector(".note-details .details-group + .details-group")!,
+                "::before",
+              ).borderInlineStartColor,
+            ),
             background: toRgb(background),
           };
         });
         return {
           differ: value !== label,
           readable: contrastRatio(label, background) >= 4.5,
+          separatorVisible: contrastRatio(separator, background) >= 3,
         };
       })
-      .toEqual({ differ: true, readable: true });
+      .toEqual({ differ: true, readable: true, separatorVisible: true });
   }
 
   await page.setViewportSize({ width: 140, height: page.viewportSize()!.height });
