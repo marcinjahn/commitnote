@@ -117,6 +117,142 @@ test("shows created and updated dates and the word count above the editor", { ta
   await expect(line).toContainText(`${before + 2} words`);
 });
 
+function channelToLinear(channel: number): number {
+  const c = channel / 255;
+  return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+function parseRgb(color: string): [number, number, number] {
+  const match = /rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)/.exec(color);
+  expect(match, `unparsed colour ${color}`).not.toBeNull();
+  return [Number(match![1]), Number(match![2]), Number(match![3])];
+}
+
+function luminance(color: string): number {
+  const [r, g, b] = parseRgb(color).map(channelToLinear);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const [light, dark] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+test("note details show unbreakable items in a dates group and a stats group", { tag: "@mobile" }, async ({
+  page,
+}) => {
+  await startSession(page);
+  await treeItem(page, "Welcome").click();
+
+  const items = details(page).getByRole("listitem");
+  await expect(items).toHaveCount(4);
+  await expect
+    .poll(() =>
+      page
+        .locator(".note-content")
+        .evaluate(
+          (el) =>
+            el
+              .getAnimations({ subtree: true })
+              .filter((animation) => !(animation instanceof CSSAnimation)).length,
+        ),
+    )
+    .toBe(0);
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const row = document.querySelector(".note-details")!;
+        const lineHeight = parseFloat(getComputedStyle(row).lineHeight);
+        return [...row.querySelectorAll("[role=listitem]")].every(
+          (item) => item.getBoundingClientRect().height <= lineHeight + 1,
+        );
+      }),
+    )
+    .toBe(true);
+
+  const narrow = page.viewportSize()!.width < 600;
+  await expect
+    .poll(async () => {
+      const [dates, stats] = await page.evaluate(() =>
+        [...document.querySelectorAll(".note-details .details-group")].map((group) => {
+          const { top, bottom, left, right } = group.getBoundingClientRect();
+          return { top, bottom, left, right };
+        }),
+      );
+      return {
+        stacked: stats.top > dates.bottom - 1,
+        flushLeft: Math.abs(stats.left - dates.left) <= 1,
+        spaced: stats.left - dates.right >= 31,
+      };
+    })
+    .toEqual({ stacked: narrow, flushLeft: narrow, spaced: !narrow });
+
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await expect
+      .poll(() =>
+        page.evaluate(() => getComputedStyle(document.documentElement).colorScheme),
+      )
+      .toContain(scheme);
+    await expect
+      .poll(async () => {
+        const { value, label, background } = await page.evaluate(() => {
+          const pixel = (color: string): number[] => {
+            const canvas = document.createElement("canvas");
+            canvas.width = 1;
+            canvas.height = 1;
+            const context = canvas.getContext("2d")!;
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return [...context.getImageData(0, 0, 1, 1).data];
+          };
+          const toRgb = (color: string): string => {
+            const [r, g, b] = pixel(color);
+            return `rgb(${r}, ${g}, ${b})`;
+          };
+          const valueEl = document.querySelector(".note-details .detail-value")!;
+          const labelEl = document.querySelector(".note-details .detail-label")!;
+          let backgroundEl: Element = document.body;
+          for (let el: Element | null = labelEl; el; el = el.parentElement) {
+            if (pixel(getComputedStyle(el).backgroundColor)[3] > 0) {
+              backgroundEl = el;
+              break;
+            }
+          }
+          const background = getComputedStyle(backgroundEl).backgroundColor;
+          return {
+            value: toRgb(getComputedStyle(valueEl).color),
+            label: toRgb(getComputedStyle(labelEl).color),
+            background: toRgb(background),
+          };
+        });
+        return {
+          differ: value !== label,
+          readable: contrastRatio(label, background) >= 4.5,
+        };
+      })
+      .toEqual({ differ: true, readable: true });
+  }
+
+  await page.setViewportSize({ width: 140, height: page.viewportSize()!.height });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const row = document.querySelector(".note-details")!;
+        const lineHeight = parseFloat(getComputedStyle(row).lineHeight);
+        const rects = [...row.querySelectorAll("[role=listitem]")].map((item) =>
+          item.getBoundingClientRect(),
+        );
+        return {
+          singleLine: rects.every((rect) => rect.height <= lineHeight + 1),
+          ownLines: new Set(rects.map((rect) => Math.round(rect.top))).size,
+        };
+      }),
+    )
+    .toEqual({ singleLine: true, ownLines: 4 });
+});
+
 test("shows task progress only when the note has tasks", async ({ page }) => {
   await startSession(page);
   await page.getByRole("button", { name: "New note", exact: true }).click();
