@@ -320,7 +320,7 @@ export interface NotesSnapshot {
 export interface SyncEngine {
   getState(): SyncEngineState;
   subscribe(run: (state: SyncEngineState) => void): () => void;
-  refresh(): Promise<void>;
+  refresh(options?: { knownHead?: string }): Promise<void>;
   openNote(path: NotePath | null): Promise<void>;
   editNote(path: NotePath, content: string): void;
   createNote(parent: NotePath, name: string): StructureResult;
@@ -1868,14 +1868,14 @@ export function createSyncEngine(options: {
     return to !== null && stillApplies ? { from: open.path, to } : null;
   }
 
-  async function doRefresh(): Promise<void> {
+  async function doRefresh(knownHead?: string): Promise<void> {
     update((current) => ({
       ...current,
       refresh: { ...current.refresh, inFlight: true },
     }));
 
     try {
-      const head = await adapter.getHead();
+      const head = knownHead ?? (await adapter.getHead());
       let appliedFrom: OpenNoteState | null | undefined;
       let relocated: Relocation | null = null;
 
@@ -1978,11 +1978,11 @@ export function createSyncEngine(options: {
     }
   }
 
-  function refresh(): Promise<void> {
+  function refresh(options?: { knownHead?: string }): Promise<void> {
     if (disposed || stopped || suspended) return Promise.resolve();
     if (refreshInFlight !== null) return refreshInFlight;
 
-    const promise = doRefresh().finally(() => {
+    const promise = doRefresh(options?.knownHead).finally(() => {
       if (refreshInFlight === promise) {
         refreshInFlight = null;
       }

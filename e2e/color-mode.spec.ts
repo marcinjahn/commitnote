@@ -177,7 +177,7 @@ test.describe("with notes open", () => {
       page,
       (controls, arg) => {
         controls.adoptRepo(arg.key, arg.exported);
-        controls.failNext(arg.key, "getHead", "Network");
+        controls.failNext(arg.key, "listTree", "Network");
       },
       { key: SAMPLE.key, exported },
     );

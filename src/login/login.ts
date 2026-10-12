@@ -80,6 +80,7 @@ export type LoginResult =
       readonly kind: "loggedIn";
       readonly session: Session;
       readonly adapter: ForgeAdapter;
+      readonly head?: string;
     }
   | { readonly kind: "failed"; readonly error: LoginError };
 
@@ -100,7 +101,11 @@ type RepositoryCheck =
       readonly hasReadme: boolean;
       readonly existingFiles: readonly string[];
     }
-  | { readonly kind: "config"; readonly config: RepoConfig }
+  | {
+      readonly kind: "config";
+      readonly config: RepoConfig;
+      readonly head: string;
+    }
   | { readonly kind: "error"; readonly error: LoginError };
 
 function mapInspectError(error: unknown): LoginError {
@@ -211,7 +216,7 @@ async function checkRepository(
     };
   }
 
-  return { kind: "config", config: parsed.config };
+  return { kind: "config", config: parsed.config, head: inspection.main.head };
 }
 
 export type RepositoryListResult =
@@ -447,5 +452,5 @@ export async function resumeSession(
     return { kind: "failed", error: { kind: "wrongPassphrase" } };
   }
 
-  return { kind: "loggedIn", session, adapter };
+  return { kind: "loggedIn", session, adapter, head: check.head };
 }

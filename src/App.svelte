@@ -301,6 +301,7 @@
     initialMessage: Pick<ToastMessage, "tone" | "text"> | null = null,
     purgeBlobCache = false,
     resumed = false,
+    knownHead?: string,
   ): Promise<void> {
     phase = { kind: "restoring" };
     const { remembered } = await store.start(session, { rememberMe });
@@ -413,7 +414,7 @@
     // Forge errors resolve with `refresh.lastError` set, which the shell shows.
     let refreshed = true;
     try {
-      await engine.refresh();
+      await engine.refresh({ knownHead });
     } catch (e) {
       console.error(e);
       refreshed = false;
@@ -591,7 +592,15 @@
     const result = await resumeSession(remembered, loginDeps());
     if (result.kind === "loggedIn") {
       await stopApp(engine, settingsSaver, contentIndexer, blobCache, true);
-      await startApp(result.session, result.adapter, true);
+      await startApp(
+        result.session,
+        result.adapter,
+        true,
+        null,
+        false,
+        false,
+        result.head,
+      );
       return;
     }
     await finishLogOut(!isTransient(result.error));
@@ -677,6 +686,7 @@
               null,
               false,
               true,
+              result.head,
             );
             return;
           case "failed": {

@@ -761,7 +761,12 @@ describe("resumeSession", () => {
       (step) => steps.push(step),
     );
 
-    expect(result).toEqual({ kind: "loggedIn", session, adapter });
+    expect(result).toEqual({
+      kind: "loggedIn",
+      session,
+      adapter,
+      head: await adapter.getHead(),
+    });
     expect(argon2id).not.toHaveBeenCalled();
     expect(steps).toEqual(["checkingRepository"]);
   });

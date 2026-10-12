@@ -361,7 +361,7 @@ test("a remembered session whose notes fail to load shows the error", async ({
   page,
 }) => {
   await rememberSession(page);
-  await failNextOnLoad(page, "sample/notes", "getHead", "Network");
+  await failNextOnLoad(page, "sample/notes", "listTree", "Network");
 
   await page.reload();
 
