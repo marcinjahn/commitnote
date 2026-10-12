@@ -76,9 +76,14 @@ test("shows created and updated dates and the word count above the editor", { ta
   await treeItem(page, "Welcome").click();
 
   const line = details(page);
-  await expect(line).toHaveText(
-    /^Created 12 Mar 2026 · Updated just now · \d+ words · 1\/2 done\s*$/,
-  );
+  const list = line.getByRole("list", { name: "Note details" });
+  await expect(list).toHaveCount(1);
+  await expect(list.getByRole("listitem")).toHaveText([
+    "Created 12 Mar 2026",
+    "Updated just now",
+    /^\d+ words$/,
+    "1/2 tasks done",
+  ]);
   await expect
     .poll(() =>
       page
@@ -99,7 +104,7 @@ test("shows created and updated dates and the word count above the editor", { ta
   expect(lineBox!.y + lineBox!.height).toBeLessThanOrEqual(editorBox!.y);
   await expect(page.locator(".note-content .note-details")).toHaveCount(1);
 
-  const times = line.locator("span.note-dates time");
+  const times = line.locator(".note-dates time");
   await expect(times).toHaveCount(2);
   for (const time of await times.all()) {
     const datetime = await time.getAttribute("datetime");
@@ -125,7 +130,7 @@ test("shows task progress only when the note has tasks", async ({ page }) => {
   await expect(details(page)).not.toContainText("done");
 
   await typeAtEnd(page, "\n- [x] a\nb");
-  await expect(details(page)).toContainText("1/2 done");
+  await expect(details(page)).toContainText("1/2 tasks done");
 });
 
 test("saving an edit keeps the cached dates until they refresh", async ({
@@ -165,7 +170,7 @@ test("saving an edit keeps the cached dates until they refresh", async ({
   const cachedShown = texts.findIndex(
     (text, index) =>
       index > lastUnsaved &&
-      text.includes("Created 12 Mar 2026 · Updated 3 days ago"),
+      text.includes("Created 12 Mar 2026 Updated 3 days ago"),
   );
   expect(cachedShown).toBeGreaterThan(lastUnsaved);
   const refreshed = texts.findIndex((text) =>
@@ -206,7 +211,7 @@ test("the updated time settles after a save", async ({ page }) => {
 
   await typeAndSave(page, " more");
   await expect.poll(() => settleCount(page), { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
-  await expect(details(page).locator("span.note-dates time").nth(1)).not.toHaveAttribute(
+  await expect(details(page).locator(".note-dates time").nth(1)).not.toHaveAttribute(
     "data-settle",
   );
 });
@@ -220,7 +225,7 @@ test("switching notes does not settle the updated time", async ({ page }) => {
   await treeItem(page, "Projects").click();
   await treeItem(page, "commitnote").click();
   await treeItem(page, "Roadmap").click();
-  await expect(details(page).locator("span.note-dates")).toBeVisible();
+  await expect(details(page).locator(".note-dates")).toBeVisible();
   expect(await settleCount(page)).toBe(0);
 });
 
@@ -230,7 +235,10 @@ test("a new note shows it is not saved yet until it is saved", async ({
   await startSession(page);
   await page.getByRole("button", { name: "New note", exact: true }).click();
 
-  await expect(details(page)).toHaveText("Not saved yet · 0 words");
+  await expect(details(page).getByRole("listitem")).toHaveText([
+    "Not saved yet",
+    "0 words",
+  ]);
 
   await page.getByRole("textbox", { name: "Note name" }).fill("Fresh idea");
   await page.getByRole("textbox", { name: "Note name" }).press("Enter");
@@ -257,7 +265,7 @@ test("reopening a note shows its dates immediately", async ({
 }) => {
   await startSession(page);
   await treeItem(page, "Welcome").click();
-  await expect(details(page).locator("span.note-dates")).toBeVisible();
+  await expect(details(page).locator(".note-dates")).toBeVisible();
 
   await showTree(page);
   await treeItem(page, "Zażółć gęślą jaźń").click();
@@ -265,7 +273,7 @@ test("reopening a note shows its dates immediately", async ({
   await showTree(page);
   await treeItem(page, "Welcome").click();
 
-  await expect(details(page).locator("span.note-dates")).toBeVisible({
+  await expect(details(page).locator(".note-dates")).toBeVisible({
     timeout: 1_000,
   });
 });

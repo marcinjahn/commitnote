@@ -115,61 +115,65 @@
     if (form === "full" && !reserving) fullHeight = measuredHeight;
   });
 
-  function labelFirst({ label, value }: DetailItemText): string {
-    return `${label} ${value}`;
-  }
-
   function formFade(node: Element) {
     return detailsFade(node, instant);
   }
 </script>
 
-{#snippet stats()}
-  {@const words = describeWordCount(wordCount)}{words.value} {words.label}{#if taskProgress.total > 0}<span aria-hidden="true"
-      >{" · "}</span
-    >{@const tasks = describeTaskProgress(taskProgress)}{tasks.value} {tasks.label}{/if}
+{#snippet countItem(text: DetailItemText)}
+  <span class="detail-item" role="listitem"
+    ><span class="detail-value">{text.value}</span>{" "}<span class="detail-label">{text.label}</span></span
+  >
 {/snippet}
 
-{#snippet sharedBadge()}
-  {#if sharedShown}
-    <span in:formFade out:formFade
-      ><span aria-hidden="true">{" · "}</span><button
-        type="button"
-        class="details-shared"
-        onclick={onShared}>Shared</button
-      ></span
-    >
-  {/if}
+{#snippet dateItem(text: DetailItemText)}
+  <span class="detail-label">{text.label}</span>{" "}<span class="detail-value">{text.value}</span>
 {/snippet}
 
-<p
+{#snippet statsGroup()}
+  <div class="details-group" role="presentation"
+    >{@render countItem(describeWordCount(wordCount))}{#if taskProgress.total > 0}{" "}{@render countItem(
+        describeTaskProgress(taskProgress),
+      )}{/if}{#if sharedShown}{" "}<span class="detail-item" role="listitem" in:formFade out:formFade
+        ><button type="button" class="details-shared" onclick={onShared}>Shared</button></span
+      >{/if}</div
+  >
+{/snippet}
+
+<div
   class="note-details"
   style:min-height={reserving && fullHeight > 0 ? `${fullHeight}px` : null}
   bind:borderBoxSize
 >
   {#if form === "not-saved"}
-    <span class="details-form" in:formFade out:formFade
-      >{NOT_SAVED_YET_LABEL}<span aria-hidden="true">{" · "}</span>{@render stats()}{@render sharedBadge()}</span
+    <div class="details-form" role="list" aria-label="Note details" in:formFade out:formFade
+      ><div class="details-group" role="presentation"
+        ><span class="detail-item" role="listitem">{NOT_SAVED_YET_LABEL}</span></div
+      >{" "}{@render statsGroup()}</div
     >
   {:else if form === "full" && fullDates !== null}
-    <span class="details-form" in:formFade out:formFade
-      ><span class="note-dates"
+    <div class="details-form" role="list" aria-label="Note details" in:formFade out:formFade
+      ><div class="details-group note-dates" role="presentation"
         ><time
+          class="detail-item"
+          role="listitem"
           datetime={new Date(fullDates.created.at).toISOString()}
-          title={describeDateTime(fullDates.created.at)}>{labelFirst(describeCreated(fullDates.created))}</time
-        ><span aria-hidden="true">{" · "}</span><time
+          title={describeDateTime(fullDates.created.at)}>{@render dateItem(describeCreated(fullDates.created))}</time
+        >{" "}<time
+          class="detail-item"
+          role="listitem"
           datetime={new Date(fullDates.updated).toISOString()}
           data-settle={settling ? "" : undefined}
-          title={describeDateTime(fullDates.updated)}>{labelFirst(describeUpdated(fullDates.updated, now))}</time
-        ><span aria-hidden="true">{" · "}</span></span
-      >{@render stats()}{@render sharedBadge()}</span
+          title={describeDateTime(fullDates.updated)}>{@render dateItem(describeUpdated(fullDates.updated, now))}</time
+        ></div
+      >{" "}{@render statsGroup()}</div
     >
   {:else if form === "compact"}
-    <span class="details-form" in:formFade out:formFade
-      >{@render stats()}{@render sharedBadge()}</span
+    <div class="details-form" role="list" aria-label="Note details" in:formFade out:formFade
+      >{@render statsGroup()}</div
     >
   {/if}
-</p>
+</div>
 
 <style>
   .note-details {
@@ -181,7 +185,7 @@
     margin: 0 auto;
     padding: var(--space-4) var(--space-4) 0 calc(var(--space-4) + 6px);
     flex: none;
-    font-size: var(--font-size-xs);
+    font-size: var(--font-size-sm);
     line-height: var(--line-height);
     color: var(--color-text-muted);
     font-variant-numeric: tabular-nums;
@@ -189,13 +193,32 @@
 
   .details-form {
     grid-area: 1 / 1;
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: var(--space-5);
+    row-gap: var(--space-1);
   }
 
-  .note-dates time {
+  .details-group {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: var(--space-3);
+    row-gap: var(--space-1);
+  }
+
+  .detail-item {
+    white-space: nowrap;
+  }
+
+  .detail-value {
+    color: var(--color-text);
+  }
+
+  .note-dates .detail-value {
     transition: color 600ms var(--motion-easing);
   }
 
-  .note-dates time[data-settle] {
+  .note-dates time[data-settle] .detail-value {
     color: var(--color-link);
     transition: none;
   }

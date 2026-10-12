@@ -178,10 +178,18 @@ describe("countTasks", () => {
 
 describe("describeTaskProgress", () => {
   it("shows done out of total", () => {
-    expect(describeTaskProgress({ done: 3, total: 7 }, "en-GB")).toEqual({ label: "done", value: "3/7" });
+    expect(describeTaskProgress({ done: 3, total: 7 }, "en-GB")).toEqual({ label: "tasks done", value: "3/7" });
   });
 
   it("groups thousands", () => {
-    expect(describeTaskProgress({ done: 1200, total: 1234 }, "en-GB")).toEqual({ label: "done", value: "1,200/1,234" });
+    expect(describeTaskProgress({ done: 1200, total: 1234 }, "en-GB")).toEqual({ label: "tasks done", value: "1,200/1,234" });
+  });
+
+  it("keeps the plural label for a single task", () => {
+    expect(describeTaskProgress({ done: 1, total: 1 }, "en-GB")).toEqual({ label: "tasks done", value: "1/1" });
+  });
+
+  it("groups thousands in the given locale", () => {
+    expect(describeTaskProgress({ done: 1000, total: 2000 }, "de-DE")).toEqual({ label: "tasks done", value: "1.000/2.000" });
   });
 });

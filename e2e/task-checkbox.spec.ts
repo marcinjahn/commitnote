@@ -28,11 +28,11 @@ test("toggling a task checkbox autosaves without focusing the editor", { tag: "@
     .getByRole("checkbox", { name: "Task: Open task" });
 
   await expect(openTask).not.toBeChecked();
-  await expect(page.locator(".note-details")).toContainText("1/2 done");
+  await expect(page.locator(".note-details")).toContainText("1/2 tasks done");
   await press(openTask, testInfo);
 
   await expect(openTask).toBeChecked();
-  await expect(page.locator(".note-details")).toContainText("2/2 done");
+  await expect(page.locator(".note-details")).toContainText("2/2 tasks done");
   expect(
     await page.evaluate(() => !!document.activeElement?.closest(".cm-content")),
   ).toBe(false);
@@ -66,12 +66,12 @@ test("Space toggles a focused task checkbox and keeps focus", async ({
   const openTask = page
     .locator(".cm-line", { hasText: "Open task" })
     .getByRole("checkbox", { name: "Task: Open task" });
-  await expect(page.locator(".note-details")).toContainText("1/2 done");
+  await expect(page.locator(".note-details")).toContainText("1/2 tasks done");
 
   await openTask.focus();
   await page.keyboard.press("Space");
 
-  await expect(page.locator(".note-details")).toContainText("2/2 done");
+  await expect(page.locator(".note-details")).toContainText("2/2 tasks done");
   await expect(openTask).toBeFocused();
   await expect(openTask).toBeChecked();
 });

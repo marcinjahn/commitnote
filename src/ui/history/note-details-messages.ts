@@ -116,6 +116,6 @@ export function describeTaskProgress(
   const format = new Intl.NumberFormat(locale);
   return {
     value: `${format.format(progress.done)}/${format.format(progress.total)}`,
-    label: "done",
+    label: "tasks done",
   };
 }
