@@ -289,3 +289,72 @@ test("a late load failure with no action still lets the user leave the early dra
   await expect(page.getByRole("button", { name: "Back to notes" })).toHaveCount(0);
   await expect(page.locator(".phase-content")).not.toHaveAttribute("inert");
 });
+
+async function earlyDraftRecords(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      new Promise<string[]>((resolve, reject) => {
+        const open = indexedDB.open("commitnote-early-draft");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          if (!db.objectStoreNames.contains("drafts")) {
+            db.close();
+            resolve([]);
+            return;
+          }
+          const all = db
+            .transaction("drafts", "readonly")
+            .objectStore("drafts")
+            .getAll();
+          all.onerror = () => {
+            db.close();
+            reject(all.error);
+          };
+          all.onsuccess = () => {
+            db.close();
+            resolve(all.result.map((record) => JSON.stringify(record)));
+          };
+        };
+      }),
+  );
+}
+
+test("an early draft is stored encrypted and reopens after the app is closed", async ({
+  page,
+  context,
+}) => {
+  await openNotes(page);
+  const createsBefore = createCommits(await fakeForge(page).commitMessages());
+  await holdLoadingScreen(page);
+
+  await newNoteButton(page).click();
+  await expect(nameField(page)).toBeFocused();
+  await page.keyboard.type("Persisted idea");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Persisted body text");
+
+  await expect.poll(async () => (await earlyDraftRecords(page)).length).toBe(1);
+  const raw = (await earlyDraftRecords(page)).join("");
+  expect(raw).not.toContain("Persisted idea");
+  expect(raw).not.toContain("Persisted body text");
+
+  const url = page.url();
+  await page.close();
+  const reopened = await context.newPage();
+  await reopened.goto(url);
+  await expectTree(reopened);
+
+  await expect(nameField(reopened)).toHaveValue("Persisted idea");
+  await expect(reopened.locator("#note-pane .cm-content")).toHaveText(
+    "Persisted body text",
+  );
+  await expect
+    .poll(async () => (await earlyDraftRecords(reopened)).length)
+    .toBe(0);
+
+  await flushPendingSaves(reopened);
+  await expect
+    .poll(async () => createCommits(await fakeForge(reopened).commitMessages()))
+    .toBe(createsBefore + 1);
+});

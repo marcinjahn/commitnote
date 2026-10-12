@@ -15,6 +15,10 @@
   import type { BlobCache } from "./blob-cache/blob-cache";
   import { deleteBlobCacheDatabase } from "./blob-cache/blob-store";
   import { repoKeyOf } from "./blob-cache/blob-cache";
+  import {
+    createEarlyDraftStore,
+    deleteEarlyDraftDatabase,
+  } from "./session/early-draft-store";
   import { withBlobCache } from "./blob-cache/caching-adapter";
   import type {
     LoginError,
@@ -318,6 +322,12 @@
   ): Promise<void> {
     phase = { kind: "restoring" };
     const { remembered } = await store.start(session, { rememberMe });
+    earlyDraftBacking = remembered
+      ? {
+          repoKey: repoKeyOf(session.coordinates),
+          keyring: session.keyring,
+        }
+      : null;
     if (remembered && (!resumed || standalone)) {
       void requestPersistentStorage(navigator.storage);
     }
@@ -584,7 +594,11 @@
     if (phase.kind !== "app") return;
     const { engine, settingsSaver, contentIndexer, blobCache, session } = phase;
     await stopApp(engine, settingsSaver, contentIndexer, blobCache, true);
-    if (clearStore) await store.clear();
+    earlyDraftBacking = null;
+    if (clearStore) {
+      await store.clear();
+      await discardEarlyDraftData();
+    }
     removeLastView(repoKeyOf(session.coordinates));
     logout = null;
     clearNoteFragment(window.history, window.location);
@@ -693,6 +707,60 @@
   let earlyDraftOffered = $state(false);
   let earlyDraftView = $state<ReturnType<typeof EarlyDraftView> | undefined>();
   let earlyDraftHandingOff = $state(false);
+  let earlyDraftBacking = $state.raw<{
+    readonly repoKey: string;
+    readonly keyring: Keyring;
+  } | null>(null);
+  let earlyDraftStore = createEarlyDraftStore();
+  let earlyDraftStoreQueue: Promise<unknown> = Promise.resolve();
+
+  function queueEarlyDraftStore<T>(task: () => Promise<T>): Promise<T> {
+    const result = earlyDraftStoreQueue.then(task, task);
+    earlyDraftStoreQueue = result.catch(() => undefined);
+    return result;
+  }
+
+  async function discardEarlyDraftData(): Promise<void> {
+    earlyDraftBacking = null;
+    await queueEarlyDraftStore(async () => {
+      await deleteEarlyDraftDatabase();
+      earlyDraftStore = createEarlyDraftStore();
+    });
+  }
+
+  $effect(() => {
+    const backing = earlyDraftBacking;
+    const draft = earlyDraft;
+    if (backing === null) return;
+    if (draft === null || isUntouched(draft)) {
+      void queueEarlyDraftStore(() => earlyDraftStore.remove(backing.repoKey));
+      return;
+    }
+    const save = () =>
+      void queueEarlyDraftStore(() =>
+        earlyDraftStore.save(backing.repoKey, backing.keyring, draft),
+      );
+    let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      timer = null;
+      save();
+    }, EARLY_DRAFT_SAVE_DEBOUNCE_MS);
+    const flush = () => {
+      if (timer === null) return;
+      clearTimeout(timer);
+      timer = null;
+      save();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flush);
+    };
+  });
 
   const earlyDraftShown = $derived(
     earlyDraft !== null && earlyDraftOpen && !earlyDraftHandingOff,
@@ -723,6 +791,10 @@
   }
 
   function handleEarlyDraftHandedOff(): void {
+    const backing = earlyDraftBacking;
+    if (backing !== null) {
+      void queueEarlyDraftStore(() => earlyDraftStore.remove(backing.repoKey));
+    }
     earlyDraftHandingOff = true;
     flushSync();
     // The view stays mounted until the app has moved focus into its own draft.
@@ -734,7 +806,11 @@
   }
 
   function earlyDraftNeedsGuard(): boolean {
-    return earlyDraft !== null && !isUntouched(earlyDraft);
+    return (
+      earlyDraft !== null &&
+      !isUntouched(earlyDraft) &&
+      earlyDraftBacking === null
+    );
   }
 
   onMount(() => {
@@ -781,6 +857,8 @@
     return () => typeToStart.dispose();
   });
 
+  const EARLY_DRAFT_SAVE_DEBOUNCE_MS = 300;
+
   let resumeError = $state.raw<LoginError | null>(null);
   let resumeForgeName = $state("");
 
@@ -807,10 +885,23 @@
       const session = await store.loadRememberedSession();
       if (session === null) {
         await deleteBlobCacheDatabase();
+        await discardEarlyDraftData();
         leaveToLogin(null);
         return;
       }
 
+      const backing = {
+        repoKey: repoKeyOf(session.coordinates),
+        keyring: session.keyring,
+      };
+      const stored = await queueEarlyDraftStore(() =>
+        earlyDraftStore.load(backing.repoKey, backing.keyring),
+      );
+      earlyDraftBacking = backing;
+      if (stored !== null && (earlyDraft === null || isUntouched(earlyDraft))) {
+        earlyDraft = stored;
+        earlyDraftOpen = true;
+      }
       earlyDraftOffered = true;
       resumeForgeName = registry[session.coordinates.forge].name;
       const result = await resumeSession(session, loginDeps());
@@ -832,6 +923,7 @@
             await store.clear();
             removeLastView(repoKeyOf(session.coordinates));
             await deleteBlobCacheDatabase();
+            await discardEarlyDraftData();
           }
           if (earlyDraft === null || isUntouched(earlyDraft)) {
             leaveToLogin(result.error);
