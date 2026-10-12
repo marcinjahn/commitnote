@@ -344,7 +344,7 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
 
 `npm run build` writes plain static files to `dist/`: the landing page at the root and the app in
 `dist/app/`. The app build ships with a strict Content
-Security Policy applied via a `<meta>` tag; its `connect-src` allows `https://api.github.com` and, when analytics is enabled, the GoatCounter origin; it is not present in the dev server. The app build also ships a web app manifest
+Security Policy applied via a `<meta>` tag; its `connect-src` allows `https://api.github.com` and `https://gitlab.com` and, when analytics is enabled, the GoatCounter origin; it is not present in the dev server. The app build also ships a web app manifest
 (`public/manifest.webmanifest`, `id` `/`), so commitnote can be installed as an app.
 
 ## Installing and updates
