@@ -98,7 +98,7 @@
               </div>
             </div>
             <ul class="privacy-list">
-              <li>No backend: the app talks only to GitHub or GitLab.</li>
+              <li>No backend: the app talks only to GitHub or GitLab, plus one anonymous visit count (see <a href="#privacy">Privacy</a>).</li>
               <li>Your passphrase never leaves your device and is never stored.</li>
               <li>Commit messages never contain note names or contents.</li>
             </ul>
@@ -195,6 +195,25 @@
         </div>
       </section>
 
+      <section class="section" id="privacy" aria-labelledby="privacy-title">
+        <div class="container">
+          <div class="section-head">
+            <h2 id="privacy-title">Privacy</h2>
+            <p>Each page load of this site or the app sends one anonymous visit to GoatCounter, an open source analytics service hosted in the EU. It carries only two fixed values: the page (<code>landing</code> or <code>app</code>) and the platform (<code>web</code>, <code>pwa</code> or <code>appimage</code>).</p>
+          </div>
+          <div class="privacy-details">
+            <p>The only visit paths ever sent are <code>/landing/web</code>, <code>/app/web</code>, <code>/app/pwa</code> and <code>/app/appimage</code>.</p>
+            <p>Never sent or stored: cookies or browser storage for counting, identifiers or fingerprints, the page URL, its path, <code>#</code> fragment or <code>?</code> query, note contents or names, repository or account names, tokens, the Referer header. GoatCounter derives the country from the IP address and browser and OS names from the User-Agent, and stores neither.</p>
+            <p>Nothing is sent when Do Not Track or Global Privacy Control is on, when you are offline, or after you opt out. Opting out here also covers the web app in this browser; the desktop app has its own switch in Settings › This device.</p>
+            <p><a href="https://www.goatcounter.com/help/privacy" rel="noopener noreferrer">GoatCounter privacy policy</a></p>
+            <div class="privacy-control">
+              <p id="analytics-status" aria-live="polite"></p>
+              <button type="button" class="button" id="analytics-opt-out" hidden>Don't count my visits in this browser</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="cta" aria-labelledby="cta-title">
         <div class="container">
           <h2 id="cta-title">Your notes. Your repository.</h2>
@@ -212,8 +231,9 @@
         <nav class="footer-links" aria-label="Project">
           <a href="https://github.com/marcinjahn/commitnote">Source on GitHub</a>
           <a href="https://github.com/marcinjahn/commitnote/releases/latest">Latest release</a>
+          <a href="#privacy">Privacy</a>
         </nav>
-        <p class="footer-note">No accounts, no tracking, no backend.</p>
+        <p class="footer-note">No accounts, no cookies, no backend. One anonymous visit count — <a href="#privacy">Privacy</a>.</p>
       </div>
     </footer>
   </body>
