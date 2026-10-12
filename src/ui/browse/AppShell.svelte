@@ -1465,18 +1465,9 @@
     treeDragActive = active;
   }
 
-  function handleBack(): void {
-    leaveDraft();
-    mobileView = "tree";
-  }
-
   function handleHeaderBack(): void {
-    if (navigation.canGoBack()) {
-      navigation.back();
-      return;
-    }
-    handleBack();
-    navigation.replace({ kind: "none" });
+    showNone();
+    navigation.backToTree();
   }
 
   function showNone(): void {

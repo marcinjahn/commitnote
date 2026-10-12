@@ -201,6 +201,16 @@ next time.
 In the installed app there is no Remember me option: logging in always keeps you logged in on that
 device, the same as checking it, until you log out. Log out works the same in both.
 
+## Navigating notes
+
+Every opened note gets its own browser history entry, with the encrypted note path in the URL
+fragment. The browser's Back and Forward, and the system back gesture on Android, step through the
+notes you visited in order, closing an open dialog first. On a phone, the "Back to notes" button in
+the note header is an "up" button instead: one tap always returns to the note tree, however many
+notes you went through, even ones opened before the window was narrowed from the desktop layout.
+It rewinds the history to the latest tree entry, or turns the first entry into the tree when there
+is none, so Forward still reaches the notes it skipped.
+
 ## Editing and saving
 
 - Each note has one view: an editable name field on top and the live-preview markdown editor below.
