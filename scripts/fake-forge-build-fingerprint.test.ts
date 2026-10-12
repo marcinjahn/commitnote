@@ -170,8 +170,9 @@ describe("fake-forge build fingerprint", () => {
   });
 
   describe("isFakeForgeBuildFresh", () => {
-    it("is true when the record matches and dist-fake/index.html exists", async () => {
+    it("is true when the record matches and both dist-fake/index.html and dist-fake/app/index.html exist", async () => {
       await put("dist-fake/index.html", "<html>");
+      await put("dist-fake/app/index.html", "<html>");
       const fingerprint = await compute();
       await recordFakeForgeBuildFingerprint(dir, fingerprint);
       expect(await isFakeForgeBuildFresh(dir, fingerprint)).toBe(true);
@@ -183,13 +184,22 @@ describe("fake-forge build fingerprint", () => {
       expect(await isFakeForgeBuildFresh(dir, fingerprint)).toBe(false);
     });
 
+    it("is false when only the landing index exists", async () => {
+      await put("dist-fake/index.html", "<html>");
+      const fingerprint = await compute();
+      await recordFakeForgeBuildFingerprint(dir, fingerprint);
+      expect(await isFakeForgeBuildFresh(dir, fingerprint)).toBe(false);
+    });
+
     it("is false when the record is missing", async () => {
       await put("dist-fake/index.html", "<html>");
+      await put("dist-fake/app/index.html", "<html>");
       expect(await isFakeForgeBuildFresh(dir, await compute())).toBe(false);
     });
 
     it("is false after the record is cleared, and clearing twice is fine", async () => {
       await put("dist-fake/index.html", "<html>");
+      await put("dist-fake/app/index.html", "<html>");
       const fingerprint = await compute();
       await recordFakeForgeBuildFingerprint(dir, fingerprint);
       await clearFakeForgeBuildFingerprint(dir);
@@ -199,6 +209,7 @@ describe("fake-forge build fingerprint", () => {
 
     it("is false when the record holds a different fingerprint", async () => {
       await put("dist-fake/index.html", "<html>");
+      await put("dist-fake/app/index.html", "<html>");
       await recordFakeForgeBuildFingerprint(dir, "0".repeat(64));
       expect(await isFakeForgeBuildFresh(dir, await compute())).toBe(false);
     });

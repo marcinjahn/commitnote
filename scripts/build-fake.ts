@@ -10,19 +10,24 @@ import {
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-function runBuild(): Promise<number> {
+function runVite(args: string[]): Promise<number> {
   return new Promise((resolveExit) => {
-    const child = spawn(
-      join(rootDir, "node_modules", ".bin", "vite"),
-      ["build", "--mode", "fake-forge", "--outDir", "dist-fake"],
-      { cwd: rootDir, stdio: "inherit" },
-    );
+    const child = spawn(join(rootDir, "node_modules", ".bin", "vite"), args, {
+      cwd: rootDir,
+      stdio: "inherit",
+    });
     child.on("error", (error) => {
       console.error(error);
       resolveExit(1);
     });
     child.on("close", (code) => resolveExit(code ?? 1));
   });
+}
+
+async function runBuild(): Promise<number> {
+  const landing = await runVite(["build", "--config", "landing/vite.config.ts", "--mode", "fake-forge"]);
+  if (landing !== 0) return landing;
+  return runVite(["build", "--mode", "fake-forge"]);
 }
 
 async function safeClear(): Promise<void> {

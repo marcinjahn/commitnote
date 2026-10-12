@@ -41,7 +41,7 @@ function tree(page: Page): Locator {
 }
 
 async function openNotesFrozen(page: Page): Promise<void> {
-  await page.goto("/?fake-forge-session=" + encodeURIComponent(SAMPLE.repo));
+  await page.goto("./?fake-forge-session=" + encodeURIComponent(SAMPLE.repo));
   await advanceUntilVisible(page, tree(page));
 }
 
@@ -123,7 +123,7 @@ async function expectStaticWordmark(
 
 test.describe("static wordmark", () => {
   test("login screen", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("./");
     await expect(page.getByLabel("Access token")).toBeVisible();
     const heading = page.getByRole("heading", { name: "commitnote" });
     await expect(heading).toBeVisible();
@@ -324,7 +324,7 @@ test.describe("typed wordmark", () => {
 
   test("plays after logging in", async ({ page }) => {
     await page.clock.install({ time: START });
-    await page.goto("/");
+    await page.goto("./");
     await expect(page.getByLabel("Access token")).toBeVisible();
     await expect(page.locator(".wordmark")).not.toHaveAttribute("data-typing");
     await chooseRepository(page, { repo: SAMPLE.repo });

@@ -63,7 +63,7 @@ async function expectTextEntryNoSmallerThan16px(page: Page): Promise<void> {
 }
 
 test("text entry fields never trigger focus zoom", MOBILE, async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   await expect(page.getByLabel("Access token")).toBeVisible();
   await expectTextEntryNoSmallerThan16px(page);
 

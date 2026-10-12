@@ -811,7 +811,7 @@ async function main(): Promise<void> {
     const { defaultBrowserType: _, ...pixel7 } = devices["Pixel 7"];
     const context = await browser.newContext({
       ...pixel7,
-      baseURL: `http://localhost:${port}`,
+      baseURL: `http://localhost:${port}/app/`,
     });
     const page = await context.newPage();
     const cdp = await context.newCDPSession(page);

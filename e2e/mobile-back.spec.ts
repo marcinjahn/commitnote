@@ -45,7 +45,7 @@ async function searchAndOpen(page: Page, query: string, name: RegExp): Promise<v
   await page.evaluate(
     () =>
       (window as unknown as LaunchWindow).__launchConsumer!({
-        targetURL: location.origin + "/?action=search",
+        targetURL: new URL("./?action=search", location.href).href,
       }),
   );
   const palette = page.getByRole("dialog", { name: "Search notes" });

@@ -12,7 +12,7 @@ export default defineConfig({
   reporter: "list",
   timeout: 60_000,
   use: {
-    baseURL: BASE_URL,
+    baseURL: `${BASE_URL}/app/`,
     serviceWorkers: "block",
     reducedMotion: "reduce",
   },
@@ -37,7 +37,7 @@ export default defineConfig({
   ],
   webServer: {
     command: `npm run build:fake -- --if-stale && npm run preview:fake -- --port ${PORT} --strictPort`,
-    url: BASE_URL,
+    url: `${BASE_URL}/app/`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

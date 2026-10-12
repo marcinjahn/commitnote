@@ -1,5 +1,5 @@
-import { access, readdir, readFile } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { access, readdir, readFile, stat } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FAKE_FORGE_BANNER,
@@ -15,6 +15,7 @@ import {
   computeBuildId,
   parsePrecacheManifest,
 } from "./precache-manifest";
+import { inlineScriptHashes } from "./csp";
 import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree-source";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
 
@@ -101,16 +102,19 @@ function linkHrefs(html: string, rel: string): string[] {
   return hrefs;
 }
 
-async function findManifestProblems(distDir: string): Promise<string[]> {
+async function findManifestProblems(
+  distDir: string,
+  label: string,
+): Promise<string[]> {
   const manifestPath = join(distDir, "manifest.webmanifest");
   if (!(await exists(manifestPath))) {
-    return ["dist/manifest.webmanifest is missing"];
+    return [`${label}/manifest.webmanifest is missing`];
   }
   let manifest: WebManifest;
   try {
     manifest = JSON.parse(await readFile(manifestPath, "utf8")) as WebManifest;
   } catch {
-    return ["dist/manifest.webmanifest is not valid JSON"];
+    return [`${label}/manifest.webmanifest is not valid JSON`];
   }
 
   const problems: string[] = [];
@@ -118,15 +122,17 @@ async function findManifestProblems(distDir: string): Promise<string[]> {
     ...(manifest.icons ?? []),
     ...(manifest.screenshots ?? []),
     ...(manifest.shortcuts ?? []).flatMap((shortcut) => shortcut.icons ?? []),
-  ].map(({ src }) => ({ from: "manifest.webmanifest", src }));
+  ].map(({ src }) => ({ from: `${label}/manifest.webmanifest`, src }));
 
   const html = await readFile(join(distDir, "index.html"), "utf8");
   for (const rel of ["manifest", "apple-touch-icon"]) {
     const hrefs = linkHrefs(html, rel);
     if (hrefs.length === 0) {
-      problems.push(`dist/index.html has no rel="${rel}" link`);
+      problems.push(`${label}/index.html has no rel="${rel}" link`);
     }
-    references.push(...hrefs.map((src) => ({ from: "index.html", src })));
+    references.push(
+      ...hrefs.map((src) => ({ from: `${label}/index.html`, src })),
+    );
   }
 
   for (const { from, src } of references) {
@@ -140,10 +146,11 @@ async function findManifestProblems(distDir: string): Promise<string[]> {
 
 async function findServiceWorkerProblems(
   outDir: string,
+  label: string,
 ): Promise<{ readonly problems: string[]; readonly fileCount: number | null }> {
   const swPath = join(outDir, "sw.js");
   if (!(await exists(swPath))) {
-    return { problems: ["sw.js is missing"], fileCount: null };
+    return { problems: [`${label}/sw.js is missing`], fileCount: null };
   }
   const sw = await readFile(swPath);
 
@@ -153,7 +160,9 @@ async function findServiceWorkerProblems(
     return {
       problems: sw.equals(killSwitch)
         ? []
-        : ["sw.js differs from public/sw.js, which must be shipped unchanged"],
+        : [
+            `${label}/sw.js differs from public/sw.js, which must be shipped unchanged`,
+          ],
       fileCount: null,
     };
   }
@@ -161,7 +170,7 @@ async function findServiceWorkerProblems(
   const manifest = parsePrecacheManifest(sw.toString("utf8"));
   if (manifest === null) {
     return {
-      problems: ["sw.js has no valid precache manifest"],
+      problems: [`${label}/sw.js has no valid precache manifest`],
       fileCount: null,
     };
   }
@@ -175,12 +184,12 @@ async function findServiceWorkerProblems(
   );
   for (const file of [...emitted].sort()) {
     if (!listed.has(file)) {
-      problems.push(`sw.js precache list is missing emitted file ${file}`);
+      problems.push(`${label}/sw.js precache list is missing emitted file ${file}`);
     }
   }
   for (const file of [...listed].sort()) {
     if (!emitted.has(file)) {
-      problems.push(`sw.js precache list contains ${file}, which was not emitted`);
+      problems.push(`${label}/sw.js precache list contains ${file}, which was not emitted`);
     }
   }
 
@@ -193,11 +202,11 @@ async function findServiceWorkerProblems(
       required.push(relative(outDir, resolve(outDir, src)).split("\\").join("/"));
     }
   } catch {
-    problems.push("manifest.webmanifest cannot be read to check its icons");
+    problems.push(`${label}/manifest.webmanifest cannot be read to check its icons`);
   }
   for (const file of required) {
     if (!listed.has(file)) {
-      problems.push(`sw.js precache list does not include ${file}`);
+      problems.push(`${label}/sw.js precache list does not include ${file}`);
     }
   }
 
@@ -210,10 +219,108 @@ async function findServiceWorkerProblems(
   const actualBuildId = computeBuildId(contents);
   if (problems.length === 0 && actualBuildId !== manifest.buildId) {
     problems.push(
-      `sw.js build id ${manifest.buildId} does not match the files on disk (${actualBuildId})`,
+      `${label}/sw.js build id ${manifest.buildId} does not match the files on disk (${actualBuildId})`,
     );
   }
   return { problems, fileCount: manifest.files.length };
+}
+
+const LANDING_TEXT_BUDGET_BYTES = 40_960;
+const LANDING_PNG_BUDGET_BYTES = 409_600;
+
+function toPosix(path: string): string {
+  return path.split("\\").join("/");
+}
+
+async function findLandingProblems(
+  siteDir: string,
+  name: string,
+): Promise<string[]> {
+  const problems: string[] = [];
+  const htmlPath = join(siteDir, "index.html");
+  if (!(await exists(htmlPath))) {
+    problems.push(`${name}/index.html is missing`);
+  } else {
+    const html = await readFile(htmlPath, "utf8");
+    const cspTags = html.match(
+      /<meta\s+http-equiv="Content-Security-Policy"[^>]*>/g,
+    );
+    if (cspTags === null || cspTags.length !== 1) {
+      problems.push(
+        `${name}/index.html must contain exactly one Content-Security-Policy meta tag, found ${cspTags?.length ?? 0}`,
+      );
+    } else {
+      const policy = cspTags[0].match(/\scontent="([^"]*)"/)?.[1] ?? "";
+      if (!policy.includes("connect-src 'none'")) {
+        problems.push(`${name}/index.html CSP does not contain connect-src 'none'`);
+      }
+      for (const hash of inlineScriptHashes(html)) {
+        if (!policy.includes(hash)) {
+          problems.push(
+            `${name}/index.html CSP does not allow its inline script ${hash}`,
+          );
+        }
+      }
+    }
+    if (linkHrefs(html, "manifest").length > 0) {
+      problems.push(`${name}/index.html has a rel="manifest" link`);
+    }
+  }
+  if (!(await exists(join(siteDir, "social.png")))) {
+    problems.push(`${name}/social.png is missing`);
+  }
+
+  const swPath = join(siteDir, "sw.js");
+  if (!(await exists(swPath))) {
+    problems.push(`${name}/sw.js (retirement worker) is missing`);
+  } else {
+    const source = await readFile(join(rootDir, "landing", "public", "sw.js"));
+    if (!(await readFile(swPath)).equals(source)) {
+      problems.push(
+        `${name}/sw.js differs from landing/public/sw.js, which must be shipped unchanged`,
+      );
+    }
+  }
+
+  for (const leaked of ["manifest.webmanifest", "icons"]) {
+    if (await exists(join(siteDir, leaked))) {
+      problems.push(`${name}/${leaked} exists; app files belong under ${name}/app/`);
+    }
+  }
+  return problems;
+}
+
+async function findLandingBudgetProblems(
+  siteDir: string,
+  name: string,
+): Promise<{ readonly problems: string[]; readonly textBytes: number }> {
+  const problems: string[] = [];
+  let textBytes = 0;
+  for (const file of await collectFiles(siteDir)) {
+    const rel = toPosix(relative(siteDir, file));
+    if (rel.startsWith("app/") || rel === "sw.js") {
+      continue;
+    }
+    const { size } = await stat(file);
+    if (/\.(html|css|js)$/.test(rel)) {
+      textBytes += size;
+    } else if (rel.endsWith(".png") && size > LANDING_PNG_BUDGET_BYTES) {
+      problems.push(
+        `${name}/${rel} is ${size} bytes, over the ${LANDING_PNG_BUDGET_BYTES} byte image budget`,
+      );
+    }
+  }
+  if (textBytes > LANDING_TEXT_BUDGET_BYTES) {
+    problems.push(
+      `landing html, css and js in ${name}/ total ${textBytes} bytes, over the ${LANDING_TEXT_BUDGET_BYTES} byte budget`,
+    );
+  }
+  return { problems, textBytes };
+}
+
+function fail(message: string): void {
+  console.error(message);
+  process.exitCode = 1;
 }
 
 async function main(): Promise<void> {
@@ -261,21 +368,42 @@ async function main(): Promise<void> {
     return;
   }
 
-  const manifestProblems = await findManifestProblems(distDir);
-  if (manifestProblems.length > 0) {
-    console.error(
-      `dist/ does not ship a complete web app manifest:\n${manifestProblems.map((problem) => `  - ${problem}`).join("\n")}`,
+  const layoutProblems: string[] = [];
+  for (const [siteDir, name] of [
+    [distDir, "dist"],
+    [fakeDistDir, "dist-fake"],
+  ] as const) {
+    layoutProblems.push(...(await findLandingProblems(siteDir, name)));
+    if (!(await exists(join(siteDir, "app", "index.html")))) {
+      layoutProblems.push(`${name}/app/index.html is missing`);
+    }
+  }
+  if (layoutProblems.length > 0) {
+    fail(
+      `Site layout check failed:\n${layoutProblems.map((problem) => `  - ${problem}`).join("\n")}`,
     );
-    process.exitCode = 1;
+    return;
+  }
+
+  const manifestProblems = [
+    ...(await findManifestProblems(join(distDir, "app"), "dist/app")),
+    ...(await findManifestProblems(join(fakeDistDir, "app"), "dist-fake/app")),
+  ];
+  if (manifestProblems.length > 0) {
+    fail(
+      `The app does not ship a complete web app manifest:\n${manifestProblems.map((problem) => `  - ${problem}`).join("\n")}`,
+    );
     return;
   }
 
   const serviceWorkers: string[] = [];
   const swProblems: string[] = [];
-  for (const dir of [distDir, fakeDistDir]) {
-    const name = basename(dir);
-    const result = await findServiceWorkerProblems(dir);
-    swProblems.push(...result.problems.map((problem) => `${name}/${problem}`));
+  for (const [dir, label] of [
+    [join(distDir, "app"), "dist/app"],
+    [join(fakeDistDir, "app"), "dist-fake/app"],
+  ] as const) {
+    const result = await findServiceWorkerProblems(dir, label);
+    swProblems.push(...result.problems);
     serviceWorkers.push(
       result.fileCount === null
         ? "kill-switch service worker shipped"
@@ -283,10 +411,17 @@ async function main(): Promise<void> {
     );
   }
   if (swProblems.length > 0) {
-    console.error(
+    fail(
       `Service worker check failed:\n${swProblems.map((problem) => `  - ${problem}`).join("\n")}`,
     );
-    process.exitCode = 1;
+    return;
+  }
+
+  const budget = await findLandingBudgetProblems(distDir, "dist");
+  if (budget.problems.length > 0) {
+    fail(
+      `Landing size budget check failed:\n${budget.problems.map((problem) => `  - ${problem}`).join("\n")}`,
+    );
     return;
   }
 
@@ -324,6 +459,16 @@ async function main(): Promise<void> {
     return;
   }
 
+  for (const landingOnly of ["app", "social.png"]) {
+    if (await exists(join(desktopDistDir, landingOnly))) {
+      console.error(
+        `dist-desktop/${landingOnly} exists; the desktop build is app-only and must not ship the landing page or an app path`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+  }
+
   if (await exists(join(desktopDistDir, "sw.js"))) {
     console.error(
       "dist-desktop/sw.js exists; the desktop build must not ship a service worker",
@@ -353,7 +498,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `Bundle check passed: production build never ships fake forge fixtures or desktop shell code and ships a complete web app manifest, service worker (${serviceWorkers.join("; ")}); desktop build ships the desktop shell but no fake forge fixtures or service worker, and its CSP allows https://gitlab.com and ipc:.`,
+    `Bundle check passed: production build never ships fake forge fixtures or desktop shell code and serves the landing page at the root and the app under app/ with a complete web app manifest and service worker (${serviceWorkers.join("; ")}); landing html, css and js total ${budget.textBytes} of ${LANDING_TEXT_BUDGET_BYTES} bytes; desktop build ships the desktop shell but no fake forge fixtures or service worker, and its CSP allows https://gitlab.com and ipc:.`,
   );
 }
 

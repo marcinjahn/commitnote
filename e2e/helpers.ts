@@ -120,14 +120,14 @@ export async function openNotes(
 ): Promise<void> {
   const repo = options.repo ?? SAMPLE.repo;
   if (options.via === "login") {
-    await page.goto("/");
+    await page.goto("./");
     await logIn(page, {
       ...options,
       repo,
       passphrase: options.passphrase ?? SAMPLE.passphrase,
     });
   } else {
-    await page.goto("/?fake-forge-session=" + encodeURIComponent(repo));
+    await page.goto("./?fake-forge-session=" + encodeURIComponent(repo));
   }
   await expectTree(page);
 }

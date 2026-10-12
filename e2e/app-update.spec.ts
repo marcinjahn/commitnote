@@ -29,7 +29,7 @@ const test = base.extend<{ shellServer: ShellServer }>({
     }
   },
   baseURL: async ({ shellServer }, use) => {
-    await use(shellServer.origin);
+    await use(shellServer.appURL);
   },
 });
 
@@ -220,7 +220,7 @@ test("after an update, an earlier build's chunk still loads from the shell cache
     /^assets\/vim-extension-.+\.js$/.test(file),
   );
   expect(chunk).toBeDefined();
-  const chunkUrl = `${shellServer.origin}/${chunk}`;
+  const chunkUrl = `${shellServer.appURL}${chunk}`;
 
   await shellServer.serveSecondBuild({ drop: [chunk!] });
   await checkForUpdate(page);

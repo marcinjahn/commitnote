@@ -209,7 +209,7 @@ async function main(): Promise<void> {
   });
   const problems: string[] = [];
   try {
-    const baseURL = `http://localhost:${port}`;
+    const baseURL = `http://localhost:${port}/app/`;
     const browser = await chromium.launch({ channel: "chrome" });
     try {
       for (const shot of shots) {

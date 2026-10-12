@@ -19,11 +19,11 @@ test("the app is installable", async ({
     launchOptions,
   });
   try {
-    await page.goto("/");
+    await page.goto("./");
 
     const manifest = await appManifest(page);
     expect(manifest.errors).toEqual([]);
-    expect(manifest.url).toMatch(/manifest\.webmanifest$/);
+    expect(manifest.url).toMatch(/\/app\/manifest\.webmanifest$/);
     const data = JSON.parse(manifest.data ?? "{}") as {
       name?: string;
       icons?: { src: string }[];

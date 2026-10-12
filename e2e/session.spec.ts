@@ -148,7 +148,7 @@ test.describe("last view", () => {
   }
 
   async function revisit(page: Page): Promise<void> {
-    await page.goto("/");
+    await page.goto("./");
   }
 
   test("reopens the last note and expanded folders when the option is on", async ({

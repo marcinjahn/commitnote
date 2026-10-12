@@ -16,7 +16,7 @@ async function expectNoVerticalOverflow(page: Page): Promise<void> {
 
 test.describe("viewport height", { tag: "@mobile" }, () => {
   test("login screen does not overflow the page", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("./");
     await expect(page.getByLabel("Access token")).toBeVisible();
     await expectNoVerticalOverflow(page);
   });

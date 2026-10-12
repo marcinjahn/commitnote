@@ -5,6 +5,8 @@ import { commitNoteCsp } from "./scripts/csp-plugin.ts";
 import { serviceWorker } from "./scripts/service-worker-plugin.ts";
 
 const OUT_DIRS: Record<string, string> = {
+  production: "dist/app",
+  "fake-forge": "dist-fake/app",
   desktop: "dist-desktop",
   "desktop-fake": "dist-desktop-fake",
 };

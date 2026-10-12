@@ -64,20 +64,20 @@ async function createPasswordLinkViewer(page: Page): Promise<Page> {
 }
 
 test("login @mobile", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   await expect(page.getByLabel("Access token")).toBeVisible();
   await expectNoA11yViolations(page, "login");
 });
 
 test("login-error", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("alert")).toHaveText("Enter the access token.");
   await expectNoA11yViolations(page, "login-error");
 });
 
 test("onboarding", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   await chooseRepository(page, { repo: "https://github.com/sample/empty" });
   await expect(page.getByLabel("Create passphrase")).toBeVisible({
     timeout: KEY_DERIVATION_TIMEOUT,
@@ -244,7 +244,7 @@ test("install bar @mobile-only", async ({ page }) => {
 });
 
 test("install bar on login @mobile-only", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   await expect(page.getByLabel("Access token")).toBeVisible();
   await offerInstallPrompt(page);
   await expect(installBar(page)).toBeVisible();
@@ -255,14 +255,14 @@ test.describe("on iPhone", () => {
   test.use({ userAgent: IPHONE_USER_AGENT });
 
   test("install bar ios @mobile-only", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("./");
     await expect(page.getByLabel("Access token")).toBeVisible();
     await expect(installBar(page)).toBeVisible();
     await expectNoA11yViolations(page, "install-bar-ios");
   });
 
   test("install how-to @mobile-only", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("./");
     await expect(page.getByLabel("Access token")).toBeVisible();
     await installBar(page).getByRole("button", { name: "How to install" }).click();
     await expect(
