@@ -22,6 +22,10 @@ function settleIdle(page: Page): Promise<void> {
   );
 }
 
+async function flushVisits(page: Page): Promise<void> {
+  await page.clock.runFor(10_000);
+}
+
 async function overrideNavigator(
   page: Page,
   property: "doNotTrack" | "globalPrivacyControl",
@@ -53,8 +57,9 @@ test("the landing page sends one bare visit", async ({
   page,
   analyticsRequests,
 }) => {
+  await page.clock.install();
   await page.goto("/");
-  await settleIdle(page);
+  await flushVisits(page);
 
   await expectUrls(analyticsRequests, [LANDING]);
   const request = analyticsRequests[0];
@@ -140,8 +145,9 @@ test("Do Not Track suppresses every visit", async ({
   ).toBeDisabled();
   await closeSettings(page);
 
+  await page.clock.install();
   await page.goto("/");
-  await settleIdle(page);
+  await flushVisits(page);
   await expectCount(analyticsRequests, 0);
 });
 
@@ -158,8 +164,9 @@ test("Global Privacy Control suppresses every visit", async ({
   ).toBeDisabled();
   await closeSettings(page);
 
+  await page.clock.install();
   await page.goto("/");
-  await settleIdle(page);
+  await flushVisits(page);
   await expectCount(analyticsRequests, 0);
 });
 
@@ -197,8 +204,9 @@ test("opting out on the landing page stops counting everywhere until opting back
   page,
   analyticsRequests,
 }) => {
+  await page.clock.install();
   await page.goto("/");
-  await settleIdle(page);
+  await flushVisits(page);
   await expectCount(analyticsRequests, 1);
 
   await page
@@ -208,16 +216,16 @@ test("opting out on the landing page stops counting everywhere until opting back
     "Your visits in this browser are not counted.",
   );
   await page.reload();
-  await settleIdle(page);
+  await flushVisits(page);
   await expectCount(analyticsRequests, 1);
 
   await openNotes(page);
-  await settleIdle(page);
+  await flushVisits(page);
   await expectCount(analyticsRequests, 1);
 
   await page.goto("/");
   await page.getByRole("button", { name: "Count my visits again" }).click();
   await page.reload();
-  await settleIdle(page);
+  await flushVisits(page);
   await expectCount(analyticsRequests, 2);
 });
