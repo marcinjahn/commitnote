@@ -163,7 +163,7 @@ test("the new-note launch action during a held load opens one early draft that i
   page,
 }) => {
   await openNotes(page);
-  await holdLoadingScreen(page, "/?action=new-note");
+  await holdLoadingScreen(page, "./?action=new-note");
 
   await expect(nameField(page)).toBeFocused();
   await page.keyboard.type("Launched");

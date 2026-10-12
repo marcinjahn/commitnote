@@ -99,9 +99,7 @@ config (`landing/vite.config.ts`). It imports only the dependency-free analytics
 
 - `npm run dev:landing` runs it, and `npm run build` builds it into the root of `dist/` before the app.
 - `landing/src/boot.ts` is a pre-render script bundled and inlined into `<head>`. It applies the saved
-  color mode and performs app forwarding: a share link, a note fragment, a launch action or an
-  installed display mode sends the visitor to `/app/` with the query and hash kept. The landing page's
-  own anchors never forward.
+  color mode and enables motion when the visitor allows it.
 - The page ships a strict CSP applied via a `<meta>` tag, which includes the hash of the inline boot
   script. Its `connect-src` is `'none'` unless analytics is enabled, then exactly the GoatCounter origin.
 - The landing stylesheet copies the app's design tokens; `landing/src/tokens.test.ts` fails when they
@@ -325,8 +323,7 @@ is none, so Forward still reaches the notes it skipped.
 
 A share is a fixed, encrypted copy of the note's saved version, uploaded as a secret gist (GitHub) or public
 snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu, or the Share button in its header, to create a share link
-(`https://commitnote.eu/app/#share=...` on the web; the desktop app uses the same app URL). Old
-`https://commitnote.eu/#share=...` links keep working through app forwarding.
+(`https://commitnote.eu/app/#share=...` on the web; the desktop app uses the same app URL).
 
 - The link's secret stays in the URL fragment, so it never reaches a server. An optional share
   password is then needed in addition to the link.
