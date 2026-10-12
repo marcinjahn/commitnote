@@ -54,7 +54,7 @@ through a LAN IP address over plain HTTP does not work.
 - `test:e2e` — run end-to-end tests with Playwright under the e2e lock (see below)
 - `check` — type-check the app and the Node-side config/scripts
 - `check:bundle` — build `dist/`, `dist-fake/` and `dist-desktop/` and verify the site layout, the
-  landing page's CSP and retirement worker, and the landing size budget (see
+  landing page's CSP, and the landing size budget (see
   [Landing page](#landing-page)), and that the production build never ships test-mode fixture data or desktop shell code, that the web app manifest and every icon
   and screenshot it references are in the production build, that `app/sw.js` is present and its
   precache list equals the emitted files under `app/`, and that the desktop build ships the desktop shell but no fake-forge
@@ -163,8 +163,7 @@ The dev server and unit tests always have no endpoint. Fake-forge builds use
 
 Every push to `main` runs `.github/workflows/pages.yml`: type-check, unit tests, the bundle check, then
 a publish of `dist/` to GitHub Pages. In the repository settings, set Pages > Source to "GitHub
-Actions" once. `dist/` is the whole site: the landing page at the root (with the retirement worker
-`sw.js` and `social.png`) and the app in `dist/app/`, served at `https://commitnote.eu/app/`. The
+Actions" once. `dist/` is the whole site: the landing page at the root (with `social.png`) and the app in `dist/app/`, served at `https://commitnote.eu/app/`. The
 build uses relative asset paths. Desktop builds stay app-only: `dist-desktop/` has no landing page.
 
 Every push to `main` also runs `.github/workflows/desktop-release.yml`, separate from `pages.yml`:
@@ -419,10 +418,7 @@ The remembered session's ciphertext blob cache in IndexedDB is unchanged and sta
 cache. The build id hashes the path and content of every precached file, so any change to the shell
 produces a new build id and a new service worker.
 
-The root `/sw.js` is the retirement worker: it only unregisters itself. Visitors who still have the old
-root service worker get it replaced and unregistered by it. Returning users may see the old app once
-until the new worker activates, and a first visit straight to `/app/` under the old worker may need one
-reload. The manifest `id` is `/`, so apps installed before the move remain the same app.
+The landing page at `/` has no service worker. The manifest `id` is `/`, so apps installed before the move remain the same app.
 
 ### Update flow
 
@@ -468,7 +464,7 @@ self.addEventListener("activate", (event) => {
 ```
 
 The app build ships it unchanged as `app/sw.js` in place of the generated worker, and `check:bundle`
-accepts it. It replaces only the app worker; the root `sw.js` is always the retirement worker. It
+accepts it. It replaces only the app worker. It
 has no `fetch` handler and never navigates clients: it deletes the commitnote caches and
 unregisters itself. Open pages reload once through their `controllerchange` handling. In Chromium they may stay
 controlled by the kill-switch worker until every commitnote page is closed; it has no `fetch`

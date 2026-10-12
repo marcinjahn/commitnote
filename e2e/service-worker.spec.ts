@@ -74,3 +74,28 @@ test("the shared note viewer works with the worker in place", { tag: "@mobile" }
     await viewer.evaluate(() => navigator.serviceWorker.controller !== null),
   ).toBe(true);
 });
+
+test("the service worker is scoped to the app path and leaves the landing page alone", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await waitForActiveWorker(page);
+
+  const origin = new URL(page.url()).origin;
+  expect(
+    await page.evaluate(async () =>
+      (await navigator.serviceWorker.getRegistrations()).map((r) => r.scope),
+    ),
+  ).toEqual([origin + "/app/"]);
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Encrypted markdown notes in your own git repository.",
+    }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => navigator.serviceWorker.controller),
+  ).toBeNull();
+});
