@@ -68,6 +68,7 @@
     onColorMode: (id: ColorModeId) => void;
     deviceSettingsStore: DeviceSettingsStore;
     belowInstallBar?: boolean;
+    unsavedNote?: { name: string; body: string } | null;
   }
 
   const {
@@ -79,6 +80,7 @@
     unlock,
     initialize,
     belowInstallBar = false,
+    unsavedNote = null,
     onLoggedIn,
     onAccentColor,
     onColorMode,
@@ -568,6 +570,18 @@
         </CreateNotesRepoForm>
       {/if}
     {/if}
+    {#if unsavedNote !== null}
+      <section class="unsaved-note" aria-labelledby="unsaved-note-heading">
+        <h2 id="unsaved-note-heading">Unsaved note</h2>
+        <p class="unsaved-note-hint">
+          This note is not saved yet. It opens as a new note after you log in.
+        </p>
+        {#if unsavedNote.name !== ""}
+          <p class="unsaved-note-name">{unsavedNote.name}</p>
+        {/if}
+        <p class="unsaved-note-body">{unsavedNote.body}</p>
+      </section>
+    {/if}
   </div>
 </main>
 
@@ -602,6 +616,39 @@
     margin: 0;
     font-size: var(--font-size-sm);
     color: var(--color-text-muted);
+  }
+
+  .unsaved-note {
+    display: grid;
+    gap: var(--space-2);
+    border-top: var(--hairline) solid var(--color-border);
+    padding-top: var(--space-4);
+  }
+
+  .unsaved-note h2 {
+    margin: 0;
+    font-size: var(--font-size-base);
+  }
+
+  .unsaved-note p {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+  }
+
+  .unsaved-note .unsaved-note-hint {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+  }
+
+  .unsaved-note .unsaved-note-name {
+    font-weight: 600;
+  }
+
+  .unsaved-note .unsaved-note-body {
+    max-height: 12rem;
+    overflow-y: auto;
   }
 
   form {

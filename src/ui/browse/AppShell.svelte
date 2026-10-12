@@ -971,6 +971,8 @@
   }
 
   let earlyDraftHandoffStarted = false;
+  let shellDestroyed = false;
+  onDestroy(() => (shellDestroyed = true));
   $effect(() => {
     if (tree === null || earlyDraft === null || earlyDraftHandoffStarted) return;
     earlyDraftHandoffStarted = true;
@@ -981,9 +983,15 @@
 
   async function handOffEarlyDraft(): Promise<void> {
     await waitForEditor();
+    if (shellDestroyed) return;
+    if (draft === null) {
+      // Retried by the handoff effect on the next tree or early draft change.
+      earlyDraftHandoffStarted = false;
+      return;
+    }
     const early = untrack(() => earlyDraft);
     onEarlyDraftHandedOff();
-    if (early === null || draft === null) return;
+    if (early === null) return;
     const plan = planEarlyDraftHandoff(early);
     let focus = early.focus;
     let selection = early.selection;

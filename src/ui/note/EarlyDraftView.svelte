@@ -22,10 +22,19 @@
     onBack: () => void;
     noteFont: NoteFont;
     animatedCaret: boolean;
+    showBack?: boolean;
     status: Snippet;
   }
 
-  const { draft, onChange, onBack, noteFont, animatedCaret, status }: Props = $props();
+  const {
+    draft,
+    onChange,
+    onBack,
+    noteFont,
+    animatedCaret,
+    showBack = true,
+    status,
+  }: Props = $props();
 
   const initial = untrack(() => draft);
   let current = initial;
@@ -127,17 +136,19 @@
 </script>
 
 <div class="early-draft-view">
-  <header class="early-draft-header">
-    <button
-      type="button"
-      class="button button-ghost button-icon back-button"
-      aria-label="Back to notes"
-      onclick={onBack}
-    >
-      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <path d="M10 3L5 8l5 5" />
-      </svg>
-    </button>
+  <header class="early-draft-header" class:without-back={!showBack}>
+    {#if showBack}
+      <button
+        type="button"
+        class="button button-ghost button-icon back-button"
+        aria-label="Back to notes"
+        onclick={onBack}
+      >
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M10 3L5 8l5 5" />
+        </svg>
+      </button>
+    {/if}
     <div
       class="name-slot"
       bind:this={nameEl}
@@ -203,6 +214,10 @@
 
   .early-draft-view:has(:global(.cm-editor.cm-focused)) .early-draft-header {
     border-bottom-color: var(--color-accent-hairline);
+  }
+
+  .early-draft-header.without-back {
+    padding-left: var(--space-3);
   }
 
   .back-button {

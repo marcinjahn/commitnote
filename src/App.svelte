@@ -89,6 +89,8 @@
   import type { InstallController } from "./app/install-controller";
   import type { LaunchActions } from "./app/launch-action";
   import { emptyEarlyDraft, isUntouched, type EarlyDraft } from "./app/early-draft";
+  import { earlyDraftLoadStatus } from "./app/early-draft-load-status";
+  import type { SyncError } from "./sync/sync-engine";
   import { installTypeToStart } from "./ui/browse/type-to-start";
   import FloatingNewNoteButton from "./ui/browse/FloatingNewNoteButton.svelte";
   import EarlyDraftView from "./ui/note/EarlyDraftView.svelte";
@@ -198,6 +200,8 @@
   let uninstallBlobCachePurge: (() => void) | null = null;
   let unsubscribeStopped: (() => void) | null = null;
   let keyChanged = $state<{ readonly unsavedCount: number } | null>(null);
+  let appRefreshError = $state.raw<SyncError | null>(null);
+  let appTreeLoaded = $state(false);
 
   const deviceSettingsStore = createDeviceSettingsStore();
   onMount(() => () => deviceSettingsStore.dispose());
@@ -360,6 +364,8 @@
       save: (edits) => engine.changeSettings(edits),
     });
     unsubscribeStopped = engine.subscribe((state) => {
+      appRefreshError = state.refresh.lastError;
+      appTreeLoaded = state.workingTree !== null;
       if (state.stopped?.kind === "keyChanged") {
         keyChanged = { unsavedCount: state.syncStates.unsavedCount };
         resetReported();
@@ -368,7 +374,9 @@
       }
     });
     const hasUnsaved = () =>
-      settingsSaver.hasPending || engine.getState().syncStates.hasUnsaved;
+      settingsSaver.hasPending ||
+      engine.getState().syncStates.hasUnsaved ||
+      earlyDraftNeedsGuard();
     const flush = () => {
       settingsSaver.flush();
       void engine.flush();
@@ -510,7 +518,10 @@
     adapter: ForgeAdapter;
     rememberMe: boolean;
   }): Promise<void> {
-    await startApp(result.session, result.adapter, result.rememberMe);
+    const carried = earlyDraft !== null && !isUntouched(earlyDraft);
+    const started = startApp(result.session, result.adapter, result.rememberMe);
+    if (carried) earlyDraftOpen = true;
+    await started;
   }
 
   function stopApp(
@@ -535,6 +546,8 @@
     unsubscribeStopped?.();
     unsubscribeStopped = null;
     keyChanged = null;
+    appRefreshError = null;
+    appTreeLoaded = false;
     settingsSaver.dispose();
     contentIndexer.dispose();
     engine.dispose();
@@ -720,6 +733,20 @@
     });
   }
 
+  function earlyDraftNeedsGuard(): boolean {
+    return earlyDraft !== null && !isUntouched(earlyDraft);
+  }
+
+  onMount(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!earlyDraftNeedsGuard()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  });
+
   function closeEarlyDraft(): void {
     if (earlyDraft !== null && isUntouched(earlyDraft)) earlyDraft = null;
     earlyDraftOpen = false;
@@ -754,45 +781,92 @@
     return () => typeToStart.dispose();
   });
 
-  onMount(() => {
-    void (async () => {
-      try {
-        const session = await store.loadRememberedSession();
-        if (session === null) {
-          await deleteBlobCacheDatabase();
-          showLogin(null);
-          return;
-        }
+  let resumeError = $state.raw<LoginError | null>(null);
+  let resumeForgeName = $state("");
 
-        earlyDraftOffered = true;
-        const result = await resumeSession(session, loginDeps());
-        switch (result.kind) {
-          case "loggedIn":
-            await startApp(
-              result.session,
-              result.adapter,
-              true,
-              null,
-              false,
-              true,
-              result.head,
-            );
-            return;
-          case "failed": {
-            earlyDraftOffered = false;
-            if (!isTransient(result.error)) {
-              await store.clear();
-              removeLastView(repoKeyOf(session.coordinates));
-              await deleteBlobCacheDatabase();
-            }
-            showLogin(result.error);
-          }
-        }
-      } catch (e) {
-        console.error(e);
-        showLogin(null);
+  const earlyDraftStatus = $derived(
+    earlyDraftLoadStatus({
+      resumeError,
+      phase: phase.kind,
+      refreshError: appRefreshError,
+      treeLoaded: appTreeLoaded,
+      keyChanged: keyChanged !== null,
+      sessionRemembered: phase.kind === "app" ? phase.remembered : true,
+      forgeName: phase.kind === "app" ? phase.forgeName : resumeForgeName,
+    }),
+  );
+
+  function leaveToLogin(error: LoginError | null): void {
+    earlyDraftOffered = false;
+    closeEarlyDraft();
+    showLogin(error);
+  }
+
+  async function resumeRemembered(): Promise<void> {
+    try {
+      const session = await store.loadRememberedSession();
+      if (session === null) {
+        await deleteBlobCacheDatabase();
+        leaveToLogin(null);
+        return;
       }
-    })();
+
+      earlyDraftOffered = true;
+      resumeForgeName = registry[session.coordinates.forge].name;
+      const result = await resumeSession(session, loginDeps());
+      switch (result.kind) {
+        case "loggedIn":
+          await startApp(
+            result.session,
+            result.adapter,
+            true,
+            null,
+            false,
+            true,
+            result.head,
+          );
+          return;
+        case "failed": {
+          const transient = isTransient(result.error);
+          if (!transient) {
+            await store.clear();
+            removeLastView(repoKeyOf(session.coordinates));
+            await deleteBlobCacheDatabase();
+          }
+          if (earlyDraft === null || isUntouched(earlyDraft)) {
+            leaveToLogin(result.error);
+            return;
+          }
+          resumeError = result.error;
+          earlyDraftOpen = true;
+          if (!transient) showLogin(result.error);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      leaveToLogin(null);
+    }
+  }
+
+  function retryResume(): void {
+    resumeError = null;
+    void resumeRemembered();
+  }
+
+  async function logInFromEarlyDraft(): Promise<void> {
+    if (keyChanged !== null) {
+      await logInAfterKeyChange();
+      if (phase.kind === "login") earlyDraftOpen = false;
+      return;
+    }
+    const error = resumeError;
+    resumeError = null;
+    earlyDraftOpen = false;
+    if (phase.kind !== "login") showLogin(error);
+  }
+
+  onMount(() => {
+    void resumeRemembered();
   });
 </script>
 
@@ -837,6 +911,11 @@
       unlock={boundUnlock}
       initialize={boundInitialize}
       onLoggedIn={handleLoggedIn}
+      unsavedNote={earlyDraft !== null &&
+      !isUntouched(earlyDraft) &&
+      !earlyDraftOpen
+        ? { name: earlyDraft.name, body: earlyDraft.body }
+        : null}
       {deviceSettingsStore}
       onAccentColor={(id) => (reportedAccentColor = id)}
       onColorMode={(id) => (reportedColorMode = id)}
@@ -894,11 +973,39 @@
     draft={earlyDraft}
     onChange={(next) => (earlyDraft = next)}
     onBack={closeEarlyDraft}
+    showBack={earlyDraftStatus.kind !== "failed" ||
+      earlyDraftStatus.actions.length === 0 ||
+      isUntouched(earlyDraft)}
     noteFont={deviceScopedSetting("noteFont") ?? SETTINGS_SCHEMA.noteFont.default}
     animatedCaret={deviceScopedSetting("animatedCaret") ?? SETTINGS_SCHEMA.animatedCaret.default}
   >
     {#snippet status()}
-      <p role="status">Loading notes…</p>
+      {#if earlyDraftStatus.kind === "failed"}
+        <div class="early-draft-failure" role="alert">
+          <p>{earlyDraftStatus.message}</p>
+          {#if earlyDraftStatus.notSavedYet}
+            <p>This note is not saved yet.</p>
+          {/if}
+          {#if earlyDraftStatus.actions.length > 0}
+            <div class="early-draft-actions">
+              {#if earlyDraftStatus.actions.includes("tryAgain")}
+                <button type="button" class="button" onclick={retryResume}>Try again</button>
+              {/if}
+              {#if earlyDraftStatus.actions.includes("logIn")}
+                <button
+                  type="button"
+                  class="button"
+                  onclick={() => void logInFromEarlyDraft()}
+                >
+                  Log in
+                </button>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <p class="early-draft-loading" role="status">Loading notes…</p>
+      {/if}
     {/snippet}
   </EarlyDraftView>
 {/if}
@@ -940,6 +1047,31 @@
     padding: calc(var(--space-4) + env(safe-area-inset-top))
       calc(var(--space-4) + env(safe-area-inset-right)) var(--space-4)
       calc(var(--space-4) + env(safe-area-inset-left));
+  }
+
+  .early-draft-loading {
+    margin: 0;
+    padding: var(--space-2) var(--space-3) 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+  }
+
+  .early-draft-failure {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-bottom: var(--hairline) solid var(--color-border);
+    font-size: var(--font-size-sm);
+  }
+
+  .early-draft-failure p {
+    margin: 0;
+  }
+
+  .early-draft-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
   }
 
   .restoring-text {
