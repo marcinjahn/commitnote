@@ -1,6 +1,12 @@
 <script lang="ts">
   import { DEVICE_NAME_MAX_LENGTH, normalizeDeviceName } from "../../settings/device-name";
   import {
+    ANALYTICS_LABEL,
+    ANALYTICS_PRIVACY_URL,
+    describeAnalytics,
+    type AnalyticsOption,
+  } from "./analytics-option";
+  import {
     DEVICE_NAME_HINT,
     DEVICE_NAME_LABEL,
     type DeviceNameOption,
@@ -20,13 +26,18 @@
     deviceName,
     automaticDeviceName,
     onDeviceNameChange,
-  }: ReopenLastViewOption & DeviceNameOption = $props();
+    analyticsCounted,
+    analyticsBlockedByBrowser,
+    onAnalyticsCountedChange,
+  }: ReopenLastViewOption & DeviceNameOption & AnalyticsOption = $props();
 
   const standalone = getStandalone();
   const hintId = "reopen-last-view-hint";
   const inputId = $props.id();
   const deviceNameId = `${inputId}-device-name`;
   const deviceNameHintId = `${inputId}-device-name-hint`;
+  const analyticsId = `${inputId}-analytics`;
+  const analyticsHintId = `${inputId}-analytics-hint`;
 
   function commitDeviceName(input: HTMLInputElement) {
     onDeviceNameChange(input.value);
@@ -67,6 +78,25 @@
       disabled={!remembered}
       aria-describedby={remembered ? undefined : hintId}
       onchange={(event) => onReopenLastViewChange(event.currentTarget.checked)}
+    />
+  </label>
+</SettingRow>
+
+<SettingRow hintId={analyticsHintId} hint={describeAnalytics(analyticsBlockedByBrowser)}>
+  {#snippet label()}
+    <label for={analyticsId}>{ANALYTICS_LABEL}</label>
+  {/snippet}
+  {#snippet aside()}
+    <a href={ANALYTICS_PRIVACY_URL} target="_blank" rel="noopener noreferrer">What is sent</a>
+  {/snippet}
+  <label class="setting-checkbox">
+    <input
+      id={analyticsId}
+      type="checkbox"
+      checked={analyticsCounted && !analyticsBlockedByBrowser}
+      disabled={analyticsBlockedByBrowser}
+      aria-describedby={analyticsHintId}
+      onchange={(event) => onAnalyticsCountedChange(event.currentTarget.checked)}
     />
   </label>
 </SettingRow>

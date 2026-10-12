@@ -8,6 +8,7 @@
   import type { SyncState } from "../../sync/sync-state";
   import SettingsSaveStatus from "../settings/SettingsSaveStatus.svelte";
   import type { ReopenLastViewOption } from "../settings/reopen-last-view-option";
+  import type { AnalyticsOption } from "../settings/analytics-option";
   import type { DeviceNameOption } from "../settings/device-name-option";
   import DataSecuritySection from "../settings/DataSecuritySection.svelte";
   import type { DataSecurityActions } from "../settings/data-security-actions";
@@ -21,7 +22,7 @@
     scopes: SettingScopes;
     changeSettingScope: (key: SwitchableSettingKey, scope: SettingScope) => void;
     saveState: SyncState;
-    device: ReopenLastViewOption & DeviceNameOption;
+    device: ReopenLastViewOption & DeviceNameOption & AnalyticsOption;
     dataSecurity: DataSecurityActions;
     onRetry: () => void;
     onClose: () => void;
