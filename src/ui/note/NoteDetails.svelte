@@ -7,6 +7,7 @@
     NOT_SAVED_YET_LABEL,
     countTasks,
     countWords,
+    type DetailItemText,
     describeCreated,
     describeUpdated,
     describeTaskProgress,
@@ -114,15 +115,19 @@
     if (form === "full" && !reserving) fullHeight = measuredHeight;
   });
 
+  function labelFirst({ label, value }: DetailItemText): string {
+    return `${label} ${value}`;
+  }
+
   function formFade(node: Element) {
     return detailsFade(node, instant);
   }
 </script>
 
 {#snippet stats()}
-  {describeWordCount(wordCount)}{#if taskProgress.total > 0}<span aria-hidden="true"
+  {@const words = describeWordCount(wordCount)}{words.value} {words.label}{#if taskProgress.total > 0}<span aria-hidden="true"
       >{" · "}</span
-    >{describeTaskProgress(taskProgress)}{/if}
+    >{@const tasks = describeTaskProgress(taskProgress)}{tasks.value} {tasks.label}{/if}
 {/snippet}
 
 {#snippet sharedBadge()}
@@ -151,11 +156,11 @@
       ><span class="note-dates"
         ><time
           datetime={new Date(fullDates.created.at).toISOString()}
-          title={describeDateTime(fullDates.created.at)}>{describeCreated(fullDates.created)}</time
+          title={describeDateTime(fullDates.created.at)}>{labelFirst(describeCreated(fullDates.created))}</time
         ><span aria-hidden="true">{" · "}</span><time
           datetime={new Date(fullDates.updated).toISOString()}
           data-settle={settling ? "" : undefined}
-          title={describeDateTime(fullDates.updated)}>{describeUpdated(fullDates.updated, now)}</time
+          title={describeDateTime(fullDates.updated)}>{labelFirst(describeUpdated(fullDates.updated, now))}</time
         ><span aria-hidden="true">{" · "}</span></span
       >{@render stats()}{@render sharedBadge()}</span
     >

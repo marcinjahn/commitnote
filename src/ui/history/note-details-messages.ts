@@ -8,6 +8,11 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 const RELATIVE_DAYS_LIMIT = 7;
 
+export interface DetailItemText {
+  readonly label: string;
+  readonly value: string;
+}
+
 function describeDate(ms: number, locale?: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(ms);
 }
@@ -15,9 +20,11 @@ function describeDate(ms: number, locale?: string): string {
 export function describeCreated(
   created: { at: number; exact: boolean },
   locale?: string,
-): string {
-  const date = describeDate(created.at, locale);
-  return created.exact ? `Created ${date}` : `Created before ${date}`;
+): DetailItemText {
+  return {
+    label: created.exact ? "Created" : "Created before",
+    value: describeDate(created.at, locale),
+  };
 }
 
 function calendarDaysBetween(from: number, to: number): number {
@@ -34,21 +41,28 @@ export function describeUpdated(
   at: number,
   now: number,
   locale?: string,
-): string {
+): DetailItemText {
+  const label = "Updated";
   const elapsed = now - at;
-  if (elapsed < MINUTE) return "Updated just now";
+  if (elapsed < MINUTE) return { label, value: "just now" };
   const relative = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   if (elapsed < HOUR) {
-    return `Updated ${relative.format(-Math.floor(elapsed / MINUTE), "minute")}`;
+    return {
+      label,
+      value: relative.format(-Math.floor(elapsed / MINUTE), "minute"),
+    };
   }
   if (elapsed < DAY) {
-    return `Updated ${relative.format(-Math.floor(elapsed / HOUR), "hour")}`;
+    return {
+      label,
+      value: relative.format(-Math.floor(elapsed / HOUR), "hour"),
+    };
   }
   const days = Math.max(1, calendarDaysBetween(at, now));
   if (days < RELATIVE_DAYS_LIMIT) {
-    return `Updated ${relative.format(-days, "day")}`;
+    return { label, value: relative.format(-days, "day") };
   }
-  return `Updated ${describeDate(at, locale)}`;
+  return { label, value: describeDate(at, locale) };
 }
 
 const segmenters = new Map<string | undefined, Intl.Segmenter>();
@@ -66,9 +80,14 @@ export function countWords(text: string, locale?: string): number {
   return count;
 }
 
-export function describeWordCount(count: number, locale?: string): string {
-  const unit = count === 1 ? "word" : "words";
-  return `${new Intl.NumberFormat(locale).format(count)} ${unit}`;
+export function describeWordCount(
+  count: number,
+  locale?: string,
+): DetailItemText {
+  return {
+    value: new Intl.NumberFormat(locale).format(count),
+    label: count === 1 ? "word" : "words",
+  };
 }
 
 export interface TaskProgress {
@@ -93,7 +112,10 @@ export function countTasks(text: string): TaskProgress {
 export function describeTaskProgress(
   progress: TaskProgress,
   locale?: string,
-): string {
+): DetailItemText {
   const format = new Intl.NumberFormat(locale);
-  return `${format.format(progress.done)}/${format.format(progress.total)} done`;
+  return {
+    value: `${format.format(progress.done)}/${format.format(progress.total)}`,
+    label: "done",
+  };
 }
