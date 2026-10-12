@@ -15,7 +15,8 @@ import {
   computeBuildId,
   parsePrecacheManifest,
 } from "./precache-manifest";
-import { inlineScriptHashes } from "./csp";
+import { buildModeFacts, FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
+import { buildCsp, inlineScriptHashes, type CspTarget } from "./csp";
 import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree-source";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
 
@@ -35,7 +36,10 @@ const PROD_LEAK_NEEDLES: readonly string[] = [
   FAKE_FORGE_SESSION_PARAM,
   FAKE_SHARE_STORE_KEY,
   LARGE_TREE_REPO_KEY,
+  new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
 ];
+
+const GOATCOUNTER_ENDPOINT_NEEDLE = ".goatcounter.com/count";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -232,9 +236,40 @@ function toPosix(path: string): string {
   return path.split("\\").join("/");
 }
 
+function readCspMeta(html: string): string | undefined {
+  return html.match(/<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]*)"/)?.[1];
+}
+
+async function findExactCspProblems(
+  htmlPath: string,
+  label: string,
+  target: CspTarget,
+  mode: string,
+): Promise<string[]> {
+  if (!(await exists(htmlPath))) {
+    return [`${label}/index.html is missing`];
+  }
+  const html = await readFile(htmlPath, "utf8");
+  const policy = readCspMeta(html);
+  if (policy === undefined) {
+    return [`${label}/index.html has no Content-Security-Policy meta tag`];
+  }
+  const expected = buildCsp(
+    target,
+    inlineScriptHashes(html),
+    buildModeFacts(mode).analyticsEndpoint,
+  );
+  return policy === expected
+    ? []
+    : [
+        `${label}/index.html CSP does not match the expected ${target} policy\n    expected: ${expected}\n    actual:   ${policy}`,
+      ];
+}
+
 async function findLandingProblems(
   siteDir: string,
   name: string,
+  mode: string,
 ): Promise<string[]> {
   const problems: string[] = [];
   const htmlPath = join(siteDir, "index.html");
@@ -250,17 +285,9 @@ async function findLandingProblems(
         `${name}/index.html must contain exactly one Content-Security-Policy meta tag, found ${cspTags?.length ?? 0}`,
       );
     } else {
-      const policy = cspTags[0].match(/\scontent="([^"]*)"/)?.[1] ?? "";
-      if (!policy.includes("connect-src 'none'")) {
-        problems.push(`${name}/index.html CSP does not contain connect-src 'none'`);
-      }
-      for (const hash of inlineScriptHashes(html)) {
-        if (!policy.includes(hash)) {
-          problems.push(
-            `${name}/index.html CSP does not allow its inline script ${hash}`,
-          );
-        }
-      }
+      problems.push(
+        ...(await findExactCspProblems(htmlPath, name, "landing", mode)),
+      );
     }
     if (linkHrefs(html, "manifest").length > 0) {
       problems.push(`${name}/index.html has a rel="manifest" link`);
@@ -343,7 +370,16 @@ async function main(): Promise<void> {
     FAKE_FORGE_BANNER,
     FAKE_FORGE_CONTROLS_KEY,
     LARGE_TREE_REPO_KEY,
+    new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
   ]);
+  if (!fakeHits.some((hit) => hit.needle === new URL(FAKE_ANALYTICS_ENDPOINT).hostname)) {
+    console.error(
+      `dist-fake/ does not contain the fake analytics host ("${new URL(FAKE_ANALYTICS_ENDPOINT).hostname}"); the check cannot prove it can detect a leak`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   if (!fakeHits.some((hit) => hit.needle === FAKE_FORGE_BANNER)) {
     console.error(
       `dist-fake/ does not contain the test-mode banner ("${FAKE_FORGE_BANNER}"); the check cannot prove it can detect a leak`,
@@ -369,14 +405,19 @@ async function main(): Promise<void> {
   }
 
   const layoutProblems: string[] = [];
-  for (const [siteDir, name] of [
-    [distDir, "dist"],
-    [fakeDistDir, "dist-fake"],
+  for (const [siteDir, name, mode] of [
+    [distDir, "dist", "production"],
+    [fakeDistDir, "dist-fake", "fake-forge"],
   ] as const) {
-    layoutProblems.push(...(await findLandingProblems(siteDir, name)));
-    if (!(await exists(join(siteDir, "app", "index.html")))) {
-      layoutProblems.push(`${name}/app/index.html is missing`);
-    }
+    layoutProblems.push(...(await findLandingProblems(siteDir, name, mode)));
+    layoutProblems.push(
+      ...(await findExactCspProblems(
+        join(siteDir, "app", "index.html"),
+        `${name}/app`,
+        "web",
+        mode,
+      )),
+    );
   }
   if (layoutProblems.length > 0) {
     fail(
@@ -477,28 +518,35 @@ async function main(): Promise<void> {
     return;
   }
 
-  const desktopHtml = await readFile(join(desktopDistDir, "index.html"), "utf8");
-  const desktopCsp = desktopHtml.match(
-    /<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]*)"/,
-  )?.[1];
-  if (desktopCsp === undefined) {
-    console.error("dist-desktop/index.html has no Content-Security-Policy meta tag");
-    process.exitCode = 1;
-    return;
-  }
-  const missingCsp = ["https://gitlab.com", "ipc:"].filter(
-    (value) => !desktopCsp.includes(value),
+  const desktopCspProblems = await findExactCspProblems(
+    join(desktopDistDir, "index.html"),
+    "dist-desktop",
+    "desktop",
+    "desktop",
   );
-  if (missingCsp.length > 0) {
-    console.error(
-      `dist-desktop/index.html CSP is missing ${missingCsp.map((value) => `"${value}"`).join(", ")}`,
-    );
-    process.exitCode = 1;
+  if (desktopCspProblems.length > 0) {
+    fail(desktopCspProblems.join("\n"));
     return;
   }
 
+  if (buildModeFacts("production").analyticsEndpoint === null) {
+    const goatCounterHits = [
+      ...(await findForbidden(distDir, [GOATCOUNTER_ENDPOINT_NEEDLE])),
+      ...(await findForbidden(desktopDistDir, [GOATCOUNTER_ENDPOINT_NEEDLE])),
+    ];
+    if (goatCounterHits.length > 0) {
+      for (const hit of goatCounterHits) {
+        console.error(
+          `No analytics site code is configured, but "${hit.needle}" was found in ${hit.file}`,
+        );
+      }
+      process.exitCode = 1;
+      return;
+    }
+  }
+
   console.log(
-    `Bundle check passed: production build never ships fake forge fixtures or desktop shell code and serves the landing page at the root and the app under app/ with a complete web app manifest and service worker (${serviceWorkers.join("; ")}); landing html, css and js total ${budget.textBytes} of ${LANDING_TEXT_BUDGET_BYTES} bytes; desktop build ships the desktop shell but no fake forge fixtures or service worker, and its CSP allows https://gitlab.com and ipc:.`,
+    `Bundle check passed: production build never ships fake forge fixtures or desktop shell code and serves the landing page at the root and the app under app/ with a complete web app manifest and service worker (${serviceWorkers.join("; ")}); landing html, css and js total ${budget.textBytes} of ${LANDING_TEXT_BUDGET_BYTES} bytes; desktop build ships the desktop shell but no fake forge fixtures or service worker, and its CSP matches the expected policy.`,
   );
 }
 

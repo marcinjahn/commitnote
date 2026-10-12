@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { test, expect } from "./fixtures";
+import { buildModeFacts } from "../scripts/build-mode.ts";
 import { buildCsp } from "../scripts/csp.ts";
 
 // Playwright's own module loader can't import this straight from
@@ -32,7 +33,11 @@ test("login screen renders under the production CSP", async ({ page }) => {
   const bootScriptHash = createHash("sha256")
     .update(bootScript ?? "")
     .digest("base64");
-  await expect(cspMeta).toHaveAttribute("content", buildCsp("web", [`'sha256-${bootScriptHash}'`]));
+  await expect(cspMeta).toHaveAttribute("content", buildCsp(
+      "web",
+      [`'sha256-${bootScriptHash}'`],
+      buildModeFacts("fake-forge").analyticsEndpoint,
+    ));
 
   await expect(page.getByText(FAKE_FORGE_BANNER)).toBeVisible();
 

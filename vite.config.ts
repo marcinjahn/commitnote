@@ -11,17 +11,21 @@ const OUT_DIRS: Record<string, string> = {
   "desktop-fake": "dist-desktop-fake",
 };
 
-export default defineConfig(({ mode }) => {
-  const { desktopShell, fakeForge } = buildModeFacts(mode);
+export default defineConfig(({ mode, command }) => {
+  const facts = buildModeFacts(mode);
+  const { desktopShell, fakeForge } = facts;
   return {
     base: "./",
     define: {
       __DESKTOP_SHELL__: JSON.stringify(desktopShell),
       __FAKE_FORGE__: JSON.stringify(fakeForge),
+      __ANALYTICS_ENDPOINT__: JSON.stringify(
+        command === "build" ? facts.analyticsEndpoint : null,
+      ),
     },
     plugins: desktopShell
-      ? [svelte(), commitNoteCsp("desktop")]
-      : [svelte(), commitNoteCsp("web"), serviceWorker()],
+      ? [svelte(), commitNoteCsp("desktop", facts.analyticsEndpoint)]
+      : [svelte(), commitNoteCsp("web", facts.analyticsEndpoint), serviceWorker()],
     optimizeDeps: { include: ["@replit/codemirror-vim"] },
     build: {
       ...(OUT_DIRS[mode] ? { outDir: OUT_DIRS[mode] } : {}),

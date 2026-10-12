@@ -16,7 +16,10 @@ export function inlineScriptHashes(html: string): string[] {
 export function buildCsp(
   target: CspTarget,
   scriptHashes: readonly string[],
+  analyticsEndpoint: string | null,
 ): string {
+  const analyticsOrigin =
+    analyticsEndpoint === null ? null : new URL(analyticsEndpoint).origin;
   if (target === "landing") {
     return [
       "default-src 'self'",
@@ -24,7 +27,9 @@ export function buildCsp(
       "style-src 'self'",
       "img-src 'self' data:",
       "font-src 'self'",
-      "connect-src 'none'",
+      analyticsOrigin === null
+        ? "connect-src 'none'"
+        : `connect-src ${analyticsOrigin}`,
       "worker-src 'none'",
       "manifest-src 'none'",
       "object-src 'none'",
@@ -36,6 +41,9 @@ export function buildCsp(
   const connectSrc = ["connect-src https://api.github.com https://gitlab.com"];
   if (target === "desktop") {
     connectSrc.push("ipc: http://ipc.localhost");
+  }
+  if (analyticsOrigin !== null) {
+    connectSrc.push(analyticsOrigin);
   }
   return [
     "default-src 'self'",
