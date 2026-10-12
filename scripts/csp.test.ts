@@ -31,6 +31,21 @@ describe("buildCsp", () => {
   });
 });
 
+describe("buildCsp landing", () => {
+  const policy = (hashes: string) =>
+    `default-src 'self'; script-src 'self' ${hashes}; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
+
+  it("builds the landing policy with one hash", () => {
+    expect(buildCsp("landing", ["'sha256-AAA'"])).toBe(policy("'sha256-AAA'"));
+  });
+
+  it("builds the landing policy with two hashes", () => {
+    expect(buildCsp("landing", ["'sha256-AAA'", "'sha256-BBB'"])).toBe(
+      policy("'sha256-AAA' 'sha256-BBB'"),
+    );
+  });
+});
+
 describe("inlineScriptHashes", () => {
   const sha = (text: string) =>
     `'sha256-${createHash("sha256").update(text).digest("base64")}'`;

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:landing": "vite --config landing/vite.config.ts",
     "dev:fake": "vite --mode fake-forge",
     "build": "vite build",
     "build:desktop": "vite build --mode desktop",

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export type CspTarget = "web" | "desktop";
+export type CspTarget = "web" | "desktop" | "landing";
 
 export function inlineScriptHashes(html: string): string[] {
   const hashes: string[] = [];
@@ -17,6 +17,21 @@ export function buildCsp(
   target: CspTarget,
   scriptHashes: readonly string[],
 ): string {
+  if (target === "landing") {
+    return [
+      "default-src 'self'",
+      ["script-src 'self'", ...scriptHashes].join(" "),
+      "style-src 'self'",
+      "img-src 'self' data:",
+      "font-src 'self'",
+      "connect-src 'none'",
+      "worker-src 'none'",
+      "manifest-src 'none'",
+      "object-src 'none'",
+      "base-uri 'none'",
+      "form-action 'none'",
+    ].join("; ");
+  }
   const scriptSrc = ["script-src 'self' 'wasm-unsafe-eval'", ...scriptHashes];
   const connectSrc = ["connect-src https://api.github.com https://gitlab.com"];
   if (target === "desktop") {
