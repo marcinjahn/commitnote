@@ -341,7 +341,7 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
 `npm run build` writes plain static files to `dist/`: the landing page at the root and the app in
 `dist/app/`. The app build ships with a strict Content
 Security Policy applied via a `<meta>` tag; its `connect-src` allows `https://api.github.com` and `https://gitlab.com` and, when analytics is enabled, the GoatCounter origin; it is not present in the dev server. The app build also ships a web app manifest
-(`public/manifest.webmanifest`, `id` `/`), so commitnote can be installed as an app.
+(`public/manifest.webmanifest`, `id`, `start_url` and `scope` all `/app/`), so commitnote can be installed as an app.
 
 ## Installing and updates
 
@@ -418,7 +418,7 @@ The remembered session's ciphertext blob cache in IndexedDB is unchanged and sta
 cache. The build id hashes the path and content of every precached file, so any change to the shell
 produces a new build id and a new service worker.
 
-The landing page at `/` has no service worker. The manifest `id` is `/`, so apps installed before the move remain the same app.
+The landing page at `/` has no service worker.
 
 ### Update flow
 
