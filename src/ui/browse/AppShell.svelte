@@ -2,12 +2,15 @@
   import { flushSync, onDestroy, tick, untrack } from "svelte";
   import { planEarlyDraftHandoff, type EarlyDraft } from "../../app/early-draft";
   import type { AutoRefresh } from "../../app/auto-refresh";
-  import type { AppUpdates } from "../../app/app-updates";
+  import type { UpdateView } from "../../app/auto-update";
+  import {
+    browserSessionStorage,
+    saveUpdateResume,
+    takeUpdateResume,
+  } from "../../app/update-resume";
   import type { InstallController } from "../../app/install-controller";
   import type { LaunchAction, LaunchActions } from "../../app/launch-action";
   import InstallBar from "../install/InstallBar.svelte";
-  import type { UpdateGate } from "../../app/update-gate";
-  import { updateToastKind, type UpdateToastKind } from "../../app/update-toast";
   import {
     autoRefreshFailureReport,
     INITIAL_AUTO_REFRESH_FAILURE_STATE,
@@ -231,8 +234,7 @@
     autoRefresh: AutoRefresh;
     settingsSaver: SettingsSaver;
     deviceSettingsStore: DeviceSettingsStore;
-    updateGate: UpdateGate;
-    appUpdates: AppUpdates | null;
+    registerUpdateView: (view: UpdateView) => () => void;
     install: InstallController;
     launchActions: LaunchActions;
     contentIndexer: ContentIndexer;
@@ -268,8 +270,7 @@
     autoRefresh,
     settingsSaver,
     deviceSettingsStore,
-    updateGate,
-    appUpdates,
+    registerUpdateView,
     install,
     launchActions,
     contentIndexer,
@@ -528,8 +529,7 @@
     | "share"
     | "import"
     | "history"
-    | "session"
-    | "update";
+    | "session";
   const TOAST_ORDER = [
     "refresh",
     "save",
@@ -541,7 +541,6 @@
     "import",
     "history",
     "session",
-    "update",
   ] as const satisfies readonly ToastChannel[];
   let toasts = $state<Partial<Record<ToastChannel, ToastMessage>>>(
     untrack(() =>
@@ -639,42 +638,6 @@
   function clearToast(channel: ToastChannel, id?: number): void {
     if (id === undefined || toasts[channel]?.id === id) delete toasts[channel];
   }
-
-  let shownUpdateToast: UpdateToastKind | null = null;
-
-  function syncUpdateToast(): void {
-    const kind = updateToastKind(appUpdates?.updateWaiting ?? false, updateGate.state);
-    if (kind === shownUpdateToast) return;
-    shownUpdateToast = kind;
-    switch (kind) {
-      case null:
-        clearToast("update");
-        return;
-      case "available":
-        showToast("update", "info", "A new version of commitnote is available.", {
-          action: { label: "Update", run: () => updateGate.accept() },
-        });
-        return;
-      case "waitingForSave":
-        showToast("update", "info", "commitnote will update once your changes are saved.");
-        return;
-      case "reloadPending":
-        showToast("update", "info", "Reload to finish updating.", {
-          action: { label: "Reload", run: () => updateGate.reloadWhenClean() },
-        });
-        return;
-    }
-  }
-
-  $effect(() => {
-    untrack(syncUpdateToast);
-    const stopGate = updateGate.subscribe(syncUpdateToast);
-    const stopUpdates = appUpdates?.subscribe(syncUpdateToast);
-    return () => {
-      stopGate();
-      stopUpdates?.();
-    };
-  });
 
   async function saveFromShortcut(): Promise<void> {
     settingsSaver.flush();
@@ -942,20 +905,51 @@
     return showNote(path);
   }
 
+  onDestroy(
+    untrack(() =>
+      registerUpdateView({
+        busy: () => draft !== null,
+        saveResume: () =>
+          saveUpdateResume(browserSessionStorage(), {
+            keyring,
+            repoKey,
+            now: Date.now(),
+            resume: {
+              folders: currentLastView().folders,
+              notePosition: notePane?.currentPosition() ?? null,
+              treeScrollTop: sidebarEl?.scrollTop ?? null,
+            },
+          }),
+      }),
+    ),
+  );
+
   async function restoreLastView(): Promise<void> {
     const entry = await initialEntry;
+    const resume = await takeUpdateResume(browserSessionStorage(), {
+      keyring,
+      repoKey,
+      now: Date.now(),
+    });
     const view =
       sessionRemembered && reopenLastView ? await lastViewStore.load() : null;
     const current = tree;
     if (current === null) return;
-    for (const folder of view?.folders ?? []) {
+    for (const folder of resume?.folders ?? view?.folders ?? []) {
       if (findWorkingFolder(current, folder) !== undefined) {
         treeExpansion.setExpanded(folder, true);
       }
     }
+    if (resume?.treeScrollTop != null) {
+      const treeScrollTop = resume.treeScrollTop;
+      void tick().then(() => {
+        if (sidebarEl) sidebarEl.scrollTop = treeScrollTop;
+      });
+    }
     if (engineState.openNote !== null || draft !== null) return;
     if (entry.kind === "note") {
       if (findWorkingNode(current, entry.path)?.kind === "note") {
+        if (resume?.notePosition) notePane?.seedPosition(entry.path, resume.notePosition);
         await openRestoredNote(entry.path);
       } else {
         navigation.replace({ kind: "none" });

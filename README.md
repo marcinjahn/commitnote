@@ -312,7 +312,7 @@ chmod +x commitnote-x86_64.AppImage
 - **Updating:** the AppImage embeds zsync update information
   (`gh-releases-zsync|marcinjahn|commitnote|latest|commitnote-x86_64.AppImage.zsync`), so
   AppImageUpdate, Gear Lever or AppImageLauncher update it in place with a delta download. There is
-  no in-app updater, no service worker and no update toast in the desktop app.
+  no in-app updater and no service worker in the desktop app.
 - **Verifying:** download `SHA256SUMS` from the same release and run
   `sha256sum -c SHA256SUMS`. The AppImage also has a GitHub build-provenance attestation:
   `gh attestation verify commitnote-x86_64.AppImage --repo marcinjahn/commitnote`. There is no GPG
@@ -343,13 +343,17 @@ produces a new build id and a new service worker.
 
 - The app checks for an app update on start, when it becomes visible and when it comes online, at
   most every 15 minutes.
-- A waiting app update shows "A new version of commitnote is available." with an "Update" action.
-- "Update" saves first and activates the app update only when nothing is unsaved. Until then the
-  toast says "commitnote will update once your changes are saved."
-- Other open tabs reload by themselves once their changes are saved, or show "Reload to finish
-  updating." with a "Reload" action.
-- If you never click "Update", the app update applies on the next cold start, once no page of the
-  old version is open.
+- The app also checks every 15 minutes while it stays open.
+- A downloaded app update applies by itself, with no prompt, at a moment that cannot cost any work:
+  - right after the app starts, before the first click or key press (within 10 seconds);
+  - when the tab or app goes to the background;
+  - after a minute without input, with no dialog or menu open and no text field focused.
+- It never applies while anything is unsaved: it waits until saving finishes, offline included.
+  Nor does it apply while a new note, a dialog, an import or a passphrase change is open, or while
+  you are logged in without Remember me (that would log you out); then it applies on the next start.
+- Applying reloads the page and keeps the open note, its cursor and scroll position, the expanded
+  folders and the tree scroll position. Other open tabs reload at their own safe moment.
+- At most one automatic reload happens per minute in a tab, so a broken update cannot loop.
 - The previous version's shell cache is kept, so pages of the old version that are still open keep
   working.
 

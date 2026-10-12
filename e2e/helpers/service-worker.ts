@@ -42,6 +42,30 @@ export async function shellCacheNames(page: Page): Promise<string[]> {
   );
 }
 
+export async function waitForWaitingWorker(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          async () => (await navigator.serviceWorker.getRegistration())?.waiting?.state ?? null,
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe("installed");
+}
+
+export async function activeBuildId(page: Page): Promise<string | null> {
+  return page
+    .evaluate(async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (!registration) return null;
+      const cache = await caches.open("commitnote-sw-state");
+      const hit = await cache.match(new URL("active-build", registration.scope).href);
+      return hit ? hit.text() : null;
+    })
+    .catch(() => null);
+}
+
 export async function checkForUpdate(page: Page): Promise<void> {
   await page.evaluate(async () => {
     await (await navigator.serviceWorker.getRegistration())?.update();
