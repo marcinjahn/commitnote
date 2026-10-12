@@ -50,7 +50,6 @@ function initAnalyticsOptOut(): void {
   const render = () => {
     const optedOut = readAnalyticsOptOut();
     button.hidden = false;
-    button.setAttribute("aria-pressed", String(optedOut));
     button.textContent = optedOut
       ? "Count my visits again"
       : "Don't count my visits in this browser";
