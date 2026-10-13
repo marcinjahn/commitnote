@@ -16,6 +16,9 @@
   interface Props {
     node: WorkingNode;
     depth: number;
+    posinset: number;
+    setsize: number;
+    tabbableKey: string | null;
     selectedPath: NotePath | null;
     syncStates: SyncStates;
     isExpanded: (path: NotePath) => boolean;
@@ -33,6 +36,9 @@
   const {
     node,
     depth,
+    posinset,
+    setsize,
+    tabbableKey,
     selectedPath,
     syncStates,
     isExpanded,
@@ -43,6 +49,7 @@
   }: Props = $props();
 
   const key = $derived(node.path.join("/"));
+  const pathKey = $derived(JSON.stringify(node.path));
   const expanded = $derived(node.kind === "folder" && isExpanded(node.path));
   const noteCount = $derived(
     node.kind === "folder" && !expanded ? countFolderNotes(node) : null,
@@ -66,11 +73,12 @@
   const colorTag = $derived(node.kind === "note" ? node.colorTag : null);
   const shareId = `${statusId}-share`;
   const shared = $derived(node.kind === "note" && node.shared);
+  const describesStatus = $derived(unsynced || showsSyncIcon);
   const describedBy = $derived(
     [
       colorTag !== null ? tagId : null,
       shared ? shareId : null,
-      unsynced ? statusId : null,
+      describesStatus ? statusId : null,
     ]
       .filter((id) => id !== null)
       .join(" ") || undefined,
@@ -113,7 +121,7 @@
   function handleContextMenu(event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    if (actionsButton === undefined) return;
+    if (actionsButton === undefined || menuOpen) return;
     onOpenMenu(
       key,
       node,
@@ -136,6 +144,10 @@
     role="treeitem"
     class="tree-row"
     style="--depth: {depth}"
+    tabindex={pathKey === tabbableKey ? 0 : -1}
+    aria-level={depth + 1}
+    aria-posinset={posinset}
+    aria-setsize={setsize}
     aria-expanded={node.kind === "folder" ? expanded : undefined}
     aria-selected={node.kind === "note" ? selected : undefined}
     title={node.name}
@@ -191,19 +203,18 @@
     {/if}
   </button>
   {#if colorTag !== null}
-    <span id={tagId} class="visually-hidden">{describeColorTag(colorTag)}</span>
+    <span id={tagId} hidden>{describeColorTag(colorTag)}</span>
   {/if}
   {#if shared}
-    <span id={shareId} class="visually-hidden">Shared</span>
+    <span id={shareId} hidden>Shared</span>
   {/if}
-  {#if unsynced}
-    <span id={statusId} class="visually-hidden"
-      >{describeSyncState(syncState)}</span
-    >
+  {#if describesStatus}
+    <span id={statusId} hidden>{describeSyncState(syncState)}</span>
   {/if}
   {#if showsSyncIcon}
     <span
       class="sync-indicator"
+      aria-hidden="true"
       data-drag-omit
       in:syncIndicatorFade={{ duration: 200 }}
       out:syncIndicatorFade={{ duration: 400 }}
@@ -216,6 +227,8 @@
     class="row-actions"
     class:menu-open={menuOpen}
     data-drag-omit
+    aria-hidden="true"
+    tabindex="-1"
     bind:this={actionsButton}
     aria-label={`Actions for ${node.name}`}
     aria-haspopup="menu"
@@ -230,10 +243,13 @@
   </div>
   {#if node.kind === "folder" && expanded && node.children.length > 0}
     <ul role="group">
-      {#each node.children as child (child.path.join("/"))}
+      {#each node.children as child, index (child.path.join("/"))}
         <NoteTreeFolder
           node={child}
           depth={depth + 1}
+          posinset={index + 1}
+          setsize={node.children.length}
+          {tabbableKey}
           {selectedPath}
           {syncStates}
           {isExpanded}

@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { expectTree, openNotes, fakeForge, onFakeForgeReady } from "./helpers";
-import { moveToTrash, openTrash, restoreTo, treeItem } from "./helpers/tree";
+import { moveToTrash, openRowMenu, openTrash, restoreTo, treeItem } from "./helpers/tree";
 
 const TRASH_REPO = "https://github.com/sample/trash";
 const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
@@ -171,7 +171,7 @@ test("deleting an empty folder is permanent and leaves no trash", async ({
 }) => {
   await openNotes(page);
 
-  await page.getByRole("button", { name: "Actions for Empty folder" }).click();
+  await openRowMenu(page, "Empty folder");
   await page.getByRole("menuitem", { name: "Delete…" }).click();
   const dialog = page.getByRole("dialog");
   await expect(
@@ -304,7 +304,7 @@ test("Undo after the trash was saved restores the note to its folder", async ({
   expect(before.length).toBeGreaterThan(0);
 });
 
-test("the trash toast disappears by itself after a few seconds", async ({
+test("the trash toast stays until dismissed", async ({
   page,
 }) => {
   await openNotes(page);
@@ -315,9 +315,9 @@ test("the trash toast disappears by itself after a few seconds", async ({
   const toast = moveToTrashToast(page);
   await expect(toast).toBeVisible();
 
-  await page.clock.runFor(7_000);
+  await page.clock.runFor(15_000);
   await expect(toast).toBeVisible();
-  await page.clock.runFor(2_000);
+  await toast.getByRole("button", { name: "Dismiss notice" }).click();
   await expect(toast).toHaveCount(0);
   await expect(page.getByTestId("open-trash")).toHaveText(/Trash \(1\)/);
 });

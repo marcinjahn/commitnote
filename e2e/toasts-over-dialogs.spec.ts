@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { KEY_DERIVATION_TIMEOUT, openNotes } from "./helpers";
+import { openRowMenu } from "./helpers/tree";
 
 function shareDialog(page: Page): Locator {
   return page.getByRole("dialog", { name: "Share “Welcome”" });
@@ -11,7 +12,7 @@ function toast(page: Page, text: string): Locator {
 }
 
 async function shareWelcome(page: Page): Promise<Locator> {
-  await page.getByRole("button", { name: "Actions for Welcome" }).click();
+  await openRowMenu(page, "Welcome");
   await page.getByRole("menuitem", { name: "Share…" }).click();
   const dialog = shareDialog(page);
   await dialog.getByRole("button", { name: "Create link" }).click();
@@ -103,7 +104,7 @@ test("a toast stays still while a dialog opens or closes over it", async ({ page
   expect(await copied.evaluate((el) => el.getAnimations().length)).toBe(0);
   expect(await copied.boundingBox()).toEqual(settled);
 
-  await page.getByRole("button", { name: "Actions for Welcome" }).click();
+  await openRowMenu(page, "Welcome");
   await page.getByRole("menuitem", { name: "Share…" }).click();
   await expect(shareDialog(page)).toBeVisible();
   expect(await copied.evaluate((el) => el.getAnimations().length)).toBe(0);

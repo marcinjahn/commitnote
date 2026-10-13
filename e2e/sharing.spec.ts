@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { KEY_DERIVATION_TIMEOUT, fakeForge, openNotes } from "./helpers";
 import { createLink, shareDialog } from "./helpers/sharing";
-import { openWelcome, treeItem, waitForSynced } from "./helpers/tree";
+import { openRowMenu, openWelcome, treeItem, waitForSynced } from "./helpers/tree";
 
 const FAKELAB_NOTES_REPO = "https://fakelab.test/team/notes";
 const FAKELAB_KEY = "team/notes";
@@ -448,6 +448,34 @@ test("names, renames and clears a share link without revealing it", async ({
   expect(joined).not.toContain("Welcome");
 });
 
+test("closing the share dialog returns focus to the note's row", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await openRowMenu(page, "Welcome");
+  await page.getByRole("menuitem", { name: "Share…" }).click();
+  const dialog = shareDialog(page);
+  await expect(dialog).toBeVisible();
+
+  await closeDialog(dialog);
+
+  await expect(treeItem(page, "Welcome")).toBeFocused();
+});
+
+test("focus lands on a tree row when the dialog's opener disappears", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await openWelcome(page);
+  await openRowMenu(page, "Welcome");
+  await page.getByRole("menuitem", { name: "Move to trash…" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Move to trash", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await expect(page.getByRole("treeitem").and(page.locator(":focus"))).toHaveCount(1);
+});
+
 test("a GitHub token without gist permission gets a helpful error", async ({
   page,
 }) => {
@@ -516,7 +544,7 @@ test(
   async ({ page, isMobile }) => {
     test.skip(!isMobile, "bottom sheets are mobile only");
     await openNotes(page);
-    await page.getByRole("button", { name: "Actions for Welcome" }).click();
+    await openRowMenu(page, "Welcome");
     await page.getByRole("menuitem", { name: "Share…" }).click();
     const dialog = shareDialog(page);
     await expect(dialog.getByTestId("dialog-grab-handle")).toBeVisible();
@@ -532,7 +560,7 @@ test(
   { tag: "@mobile" },
   async ({ page }) => {
     await openNotes(page);
-    await page.getByRole("button", { name: "Actions for Welcome" }).click();
+    await openRowMenu(page, "Welcome");
     await page.getByRole("menuitem", { name: "Share…" }).click();
     const link = await createLink(page);
 
@@ -551,7 +579,7 @@ test(
   async ({ page, isMobile }) => {
     test.skip(!isMobile, "taps are mobile only");
     await openNotes(page);
-    await page.getByRole("button", { name: "Actions for Welcome" }).click();
+    await openRowMenu(page, "Welcome");
     await page.getByRole("menuitem", { name: "Share…" }).click();
     await createLink(page);
     await closeDialog(shareDialog(page));

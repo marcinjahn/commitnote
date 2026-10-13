@@ -151,7 +151,7 @@ test("Settings is the first command and opens a dialog with the accent color opt
 
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await expect(page.locator("body")).toBeFocused();
+  await expect(page.getByRole("button", { name: "More commands" })).toBeFocused();
 
   await openSettings(page);
   await settingsDialog(page).getByRole("button", { name: "Close" }).click();

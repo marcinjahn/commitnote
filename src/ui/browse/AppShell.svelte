@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, tick, untrack } from "svelte";
+  import { MediaQuery } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
   import type { HeldConflict, SyncEngine, SyncEngineState } from "../../sync/sync-engine";
@@ -9,6 +10,7 @@
   import { installSaveShortcut } from "../../app/save-shortcut";
   import { installTypeToStart } from "./type-to-start";
   import { dialogStack } from "../dialogs/dialog-stack";
+  import { captureFocusReturn } from "../dialogs/focus-return";
   import {
     createLastViewStore,
     removeLastView,
@@ -164,7 +166,13 @@
   import { buildTagFilter } from "./tag-filter";
   import TagFilterButton from "./TagFilterButton.svelte";
   import TagFilterChip from "./TagFilterChip.svelte";
-  import { describeMovedTo, describeStructureError } from "./structure-messages";
+  import {
+    describeMovedDown,
+    describeMovedTo,
+    describeMovedUp,
+    describeStructureError,
+  } from "./structure-messages";
+  import { siblingMoveBefore } from "./sibling-move";
   import type { DropTarget } from "./tree-drop";
   import {
     DESKTOP_MEDIA_QUERY,
@@ -360,7 +368,39 @@
     shownSidebarWidth(preferredSidebarWidth, viewportWidth),
   );
   const sidebarMaxWidth = $derived(maxSidebarWidth(viewportWidth));
+  const desktopQuery = new MediaQuery(DESKTOP_MEDIA_QUERY);
+  const narrow = $derived(!desktopQuery.current);
   let shownMobileView = untrack(() => mobileView);
+  let focusedMobileView = untrack(() => mobileView);
+  let precedingMobileView = untrack(() => mobileView);
+  let focusWasOnElement = false;
+
+  $effect.pre(() => {
+    const view = mobileView;
+    if (view === precedingMobileView) return;
+    const active = document.activeElement;
+    focusWasOnElement = active !== null && active !== document.body;
+    precedingMobileView = view;
+  });
+
+  $effect(() => {
+    const view = mobileView;
+    if (view === focusedMobileView) return;
+    focusedMobileView = view;
+    if (!untrack(() => narrow)) return;
+    const moveFocus = focusWasOnElement;
+    void tick().then(() => {
+      if (!moveFocus) return;
+      const pane = view === "note" ? notePaneEl : sidebarEl;
+      if (pane === undefined || pane.contains(document.activeElement)) return;
+      if (view === "note") {
+        const back = pane.querySelector<HTMLElement>("[data-back-to-notes]");
+        (back ?? pane).focus();
+      } else {
+        pane.querySelector<HTMLElement>('[role="treeitem"][tabindex="0"]')?.focus();
+      }
+    });
+  });
 
   $effect(() => {
     const view = mobileView;
@@ -404,11 +444,11 @@
   );
   let nextMessageId = 0;
   let exporting = $state(false);
-  const UNDO_TOAST_MS = 8_000;
   let reading = $state(false);
   let importDialog = $state<{
     readonly fileName: string;
     readonly contents: NotesArchiveContents;
+    readonly opener: HTMLElement | null;
   } | null>(null);
   let importStarted = $state<{
     readonly summary: ImportSummary;
@@ -420,21 +460,15 @@
   } | null>(null);
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
-  let dialogOpener: Element | null = null;
   let settingsOpen = $state(false);
   let searchOpen = $state(false);
-  let searchReturnFocus: HTMLElement | null = null;
 
   function openSearch(): void {
-    searchReturnFocus =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     searchOpen = true;
   }
 
-  async function closeSearch(): Promise<void> {
+  function closeSearch(): void {
     searchOpen = false;
-    await tick();
-    if (searchReturnFocus?.isConnected) searchReturnFocus.focus();
   }
 
   async function revealAndOpen(path: NotePath): Promise<void> {
@@ -505,6 +539,7 @@
   $effect(() => {
     const typeToStart = installTypeToStart(window, {
       scene: () => ({
+        enabled: settings.typeToStart,
         placeholderVisible:
           tree !== null &&
           engineState.openNote === null &&
@@ -933,7 +968,6 @@
       "success",
       describeRestored(version.committedAt, Date.now()),
       {
-        durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
           run: () =>
@@ -1353,7 +1387,6 @@
           "success",
           describeFileDropDone(fileDrop.paths.length, fileDrop.skipped),
           {
-            durationMs: UNDO_TOAST_MS,
             action: { label: "Undo", run: () => undoFileDrop(fileDrop.paths) },
           },
         );
@@ -1389,18 +1422,27 @@
     }
   }
 
-  function rememberDialogOpener(): void {
-    dialogOpener = document.activeElement;
-  }
-
-  function restoreDialogOpener(): void {
-    const opener = dialogOpener;
-    dialogOpener = null;
-    if (opener instanceof HTMLElement) {
-      void tick().then(() => {
-        if (opener.isConnected) opener.focus();
-      });
+  async function handleImportFiles(files: readonly File[]): Promise<void> {
+    const isZip = (file: File) => file.name.toLowerCase().endsWith(".zip");
+    const [first] = files;
+    if (files.length === 1 && isZip(first)) {
+      await handleImportFile(first);
+      return;
     }
+    if (files.some(isZip)) {
+      clearToast("import");
+      showImportMessage("error", "Choose one .zip archive, or Markdown and text files.");
+      return;
+    }
+    await handleFileDrop(
+      files.map((file) => ({
+        name: file.name,
+        size: file.size,
+        directory: false,
+        arrayBuffer: () => file.arrayBuffer(),
+      })),
+      { kind: "root" },
+    );
   }
 
   async function handleImportFile(file: File): Promise<void> {
@@ -1410,10 +1452,15 @@
       showImportMessage("error", describeArchiveError("tooLarge"));
       return;
     }
+    const opener = captureFocusReturn();
     reading = true;
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      importDialog = { fileName: file.name, contents: readNotesArchive(bytes) };
+      importDialog = {
+        fileName: file.name,
+        contents: readNotesArchive(bytes),
+        opener,
+      };
     } catch (error) {
       showImportMessage(
         "error",
@@ -1481,7 +1528,6 @@
     return commitImport(destination, pending.contents.entries, policy, (plan) => {
       tagFilter = null;
       importDialog = null;
-      restoreDialogOpener();
       if (plan.changes.length > 0) {
         importStarted = { summary: plan.summary, retryingShown: false };
       }
@@ -1647,6 +1693,10 @@
       case "share":
         if (node.kind === "note") openShareDialog(node.path, node.syncedPath);
         break;
+      case "move-up":
+      case "move-down":
+        void moveAmongSiblings(node.path, action === "move-up" ? "up" : "down");
+        break;
       case "move":
         dialog = { kind: "move", node, error: null };
         break;
@@ -1746,7 +1796,6 @@
       clearToast("place");
     } else {
       showToast("place", "success", describeMovedTo(name, target.parent), {
-        durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
           run: () =>
@@ -1760,6 +1809,48 @@
   function handleColorTag(path: NotePath, color: ColorTag | null): void {
     const result = engine.setColorTag(path, color);
     if (!result.ok) showToast("tag", "error", describeStructureError(result.error));
+  }
+
+  async function moveAmongSiblings(
+    path: NotePath,
+    direction: "up" | "down",
+  ): Promise<void> {
+    const parent = parentPath(path);
+    const name = noteName(path);
+    const siblings = siblingNamesOf(parent);
+    const target = siblingMoveBefore(siblings, name, direction);
+    if (target === null) return;
+    const previousBefore = siblings[siblings.indexOf(name) + 1] ?? null;
+
+    const result = engine.place(path, { parent, before: target.before });
+    if (!result.ok) {
+      showToast("place", "error", describeStructureError(result.error));
+      return;
+    }
+    const placed = result.path;
+    showToast(
+      "place",
+      "success",
+      direction === "up" ? describeMovedUp(name) : describeMovedDown(name),
+      {
+        action: {
+          label: "Undo",
+          run: () => handleUndoPlace(placed, { parent, before: previousBefore }),
+        },
+      },
+    );
+    await tick();
+    focusTreeItem(placed);
+  }
+
+  function focusTreeItem(path: NotePath): void {
+    const key = JSON.stringify(path);
+    for (const row of document.querySelectorAll<HTMLElement>("[data-tree-row]")) {
+      if (row.dataset.treePath === key) {
+        row.querySelector<HTMLElement>('[role="treeitem"]')?.focus();
+        return;
+      }
+    }
   }
 
   function handleUndoPlace(path: NotePath, target: DropTarget): void {
@@ -1962,7 +2053,6 @@
     const reopen = affectsOpenNote ? openPath : null;
     if (trashEntryId !== undefined) {
       showToast("trash", "success", describeMovedToTrash(name), {
-        durationMs: UNDO_TOAST_MS,
         action: {
           label: "Undo",
           run: () => handleUndoTrash(trashEntryId, reopen),
@@ -1985,7 +2075,7 @@
 
 <svelte:window bind:innerWidth={viewportWidth} />
 
-<div class="shell">
+<div class="shell" role={narrow && mobileView === "tree" ? "main" : undefined}>
   <a class="skip-link" href="#note-pane" onclick={skipToNote}>Skip to note</a>
   <header class="visually-hidden"><h1>commitnote</h1></header>
   <nav
@@ -1993,6 +2083,7 @@
     aria-label="Notes"
     class="sidebar"
     class:mobile-hidden={mobileView !== "tree"}
+    inert={narrow && mobileView !== "tree"}
     style:--sidebar-width="{sidebarWidth}px"
     bind:this={sidebarEl}
   >
@@ -2154,6 +2245,7 @@
     class="note-pane"
     tabindex="-1"
     class:mobile-hidden={mobileView !== "note"}
+    inert={narrow && mobileView !== "note"}
     bind:this={notePaneEl}
   >
     {#key draftSession}
@@ -2295,9 +2387,9 @@
     {forgeName}
     onEnableAtomic={handleEnableAtomic}
     onImport={handleImport}
+    returnFocusTo={importDialog.opener}
     onClose={() => {
       importDialog = null;
-      restoreDialogOpener();
     }}
   />
 {/if}
@@ -2339,18 +2431,14 @@
       importing,
       importDisabled:
         tree === null || engineState.stopped !== null || importing || reading,
-      onImportFile: (file) => {
-        rememberDialogOpener();
-        void handleImportFile(file).then(() => {
-          if (importDialog === null) dialogOpener = null;
-        });
+      onImportFiles: (files) => {
+        void handleImportFiles(files);
       },
       changePassphraseDisabled:
         tree === null || engineState.stopped !== null || importing,
       onChangePassphrase: () => {
         settingsSaver.flush();
         leaveDraft();
-        rememberDialogOpener();
         changePassphraseOpen = true;
       },
     }}
@@ -2371,7 +2459,6 @@
     onLogOut={handleLogOut}
     onClose={() => {
       changePassphraseOpen = false;
-      restoreDialogOpener();
     }}
   />
 {/if}

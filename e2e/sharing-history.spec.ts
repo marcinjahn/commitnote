@@ -16,6 +16,7 @@ import {
   restoreTo,
   treeItem,
   waitForSynced,
+  openRowMenu,
 } from "./helpers/tree";
 import { closeSettings, openDataSecurityAction } from "./helpers/settings";
 
@@ -173,7 +174,7 @@ function trashDialog(page: Page): Locator {
 }
 
 async function startTrash(page: Page, name: string): Promise<Locator> {
-  await page.getByRole("button", { name: `Actions for ${name}` }).click();
+  await openRowMenu(page, name);
   await page.getByRole("menuitem", { name: "Move to trash…" }).click();
   const dialog = trashDialog(page);
   await expect(dialog).toBeVisible();

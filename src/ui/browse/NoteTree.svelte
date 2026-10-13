@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
-  import { isAtOrWithin } from "../../changes/change";
+  import { isAtOrWithin, parentPath } from "../../changes/change";
   import type { SyncStates } from "../../sync/sync-state";
   import type { WorkingNode, WorkingTree } from "../../sync/working-tree";
   import { findWorkingNode } from "../../sync/working-tree";
@@ -16,6 +16,8 @@
   import type { ColorTag } from "../../tags/color-tag";
   import RowMenu from "./RowMenu.svelte";
   import type { MenuAnchor, RowAction } from "./row-menu-types";
+  import { siblingMoveBefore } from "./sibling-move";
+  import { treeKeyTarget, typeaheadIndex, visibleRows } from "./tree-keyboard";
 
   interface Props {
     tree: WorkingTree | null;
@@ -109,6 +111,12 @@
 
   let openMenu = $state<OpenMenu | null>(null);
 
+  const openMenuSiblings = $derived.by(() => {
+    if (openMenu === null || tree === null) return [];
+    const parent = findWorkingNode(tree, parentPath(openMenu.node.path));
+    return parent?.kind === "folder" ? parent.children.map((child) => child.name) : [];
+  });
+
   function handleOpenMenu(
     key: string,
     node: WorkingNode,
@@ -124,9 +132,129 @@
   }
 
   function handleCloseMenu(): void {
-    const trigger = openMenu?.trigger ?? null;
+    const path = openMenu?.node.path ?? null;
     openMenu = null;
-    trigger?.focus();
+    const target =
+      (path === null ? null : treeitemFor(JSON.stringify(path))) ??
+      treeEl?.querySelector<HTMLElement>('[role="treeitem"][tabindex="0"]');
+    target?.focus();
+  }
+
+  let treeEl: HTMLUListElement | undefined = $state();
+
+  const rows = $derived.by(() => {
+    const displayed = filteredTree ?? tree;
+    return displayed === null ? [] : visibleRows(displayed.root, isExpanded);
+  });
+
+  let lastFocusedKey = $state<string | null>(null);
+
+  const tabbableKey = $derived.by(() => {
+    const keys = rows.map((row) => JSON.stringify(row.path));
+    if (lastFocusedKey !== null && keys.includes(lastFocusedKey)) return lastFocusedKey;
+    const openKey = selectedPath === null ? null : JSON.stringify(selectedPath);
+    if (openKey !== null && keys.includes(openKey)) return openKey;
+    return keys[0] ?? null;
+  });
+
+  function rowElementFor(key: string): HTMLElement | null {
+    for (const row of treeEl?.querySelectorAll<HTMLElement>("[data-tree-row]") ?? []) {
+      if (row.dataset.treePath === key) return row;
+    }
+    return null;
+  }
+
+  function treeitemFor(key: string): HTMLElement | null {
+    return rowElementFor(key)?.querySelector<HTMLElement>('[role="treeitem"]') ?? null;
+  }
+
+  function rowKeyOf(target: EventTarget | null): string | null {
+    if (!(target instanceof HTMLElement) || target.getAttribute("role") !== "treeitem") {
+      return null;
+    }
+    return target.closest<HTMLElement>("[data-tree-row]")?.dataset.treePath ?? null;
+  }
+
+  function focusRow(index: number): void {
+    const row = rows[index];
+    if (row === undefined) return;
+    const item = treeitemFor(JSON.stringify(row.path));
+    if (item === null) return;
+    item.focus({ preventScroll: true });
+    item.scrollIntoView({ block: "nearest" });
+  }
+
+  function handleFocusIn(event: FocusEvent): void {
+    const key = rowKeyOf(event.target);
+    if (key !== null) lastFocusedKey = key;
+  }
+
+  const TYPEAHEAD_RESET_MS = 500;
+  let typeahead = "";
+  let typeaheadAt = -Infinity;
+
+  const NAVIGATION_KEYS = new Set([
+    "ArrowUp",
+    "ArrowDown",
+    "Home",
+    "End",
+    "ArrowRight",
+    "ArrowLeft",
+  ]);
+
+  function handleTreeKeydown(event: KeyboardEvent): void {
+    const key = rowKeyOf(event.target);
+    if (key === null || event.isComposing) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const current = rows.findIndex((row) => JSON.stringify(row.path) === key);
+    if (current === -1) return;
+
+    if ((event.key === "F10" && event.shiftKey) || event.key === "ContextMenu") {
+      event.preventDefault();
+      typeahead = "";
+      openRowMenu(key);
+      return;
+    }
+
+    if (NAVIGATION_KEYS.has(event.key)) {
+      event.preventDefault();
+      typeahead = "";
+      const result = treeKeyTarget(rows, current, event.key);
+      if (result.kind === "focus") {
+        focusRow(result.index);
+      } else if (result.kind === "expand" || result.kind === "collapse") {
+        const row = rows[result.index];
+        if (row !== undefined) onToggle(row.path);
+      }
+      return;
+    }
+
+    if (event.key.length !== 1) return;
+    if (event.timeStamp - typeaheadAt > TYPEAHEAD_RESET_MS) typeahead = "";
+    if (event.key === " " && typeahead === "") return;
+    event.preventDefault();
+    typeahead += event.key;
+    typeaheadAt = event.timeStamp;
+    const chars = Array.from(typeahead);
+    const repeated = chars.every((c) => c.toLocaleLowerCase() === chars[0]!.toLocaleLowerCase());
+    // A longer prefix may still match the focused row, so the search starts on it.
+    const target = typeaheadIndex(rows, repeated ? current : current - 1, typeahead);
+    if (target !== null) focusRow(target);
+  }
+
+  function openRowMenu(key: string): void {
+    const current = tree;
+    const row = rowElementFor(key);
+    if (current === null || row === null) return;
+    const node = findWorkingNode(current, JSON.parse(key) as NotePath);
+    const trigger = row.querySelector<HTMLElement>('[aria-haspopup="menu"]');
+    if (node === undefined || trigger === null) return;
+    handleOpenMenu(
+      node.path.join("/"),
+      node,
+      { kind: "rect", rect: row.getBoundingClientRect() },
+      trigger,
+    );
   }
 
   const dragOptions: TreeDragOptions = $derived({
@@ -202,11 +330,21 @@
       <button type="button" class="link-button" onclick={onNewNote}>create one</button>
     </p>
   {:else}
-    <ul class="tree" role="tree" aria-label="Notes">
-      {#each (filteredTree ?? tree).root.children as child (child.path.join("/"))}
+    <ul
+      class="tree"
+      role="tree"
+      aria-label="Notes"
+      bind:this={treeEl}
+      onfocusin={handleFocusIn}
+      onkeydown={handleTreeKeydown}
+    >
+      {#each (filteredTree ?? tree).root.children as child, index (child.path.join("/"))}
         <NoteTreeFolder
           node={child}
           depth={0}
+          posinset={index + 1}
+          setsize={(filteredTree ?? tree).root.children.length}
+          {tabbableKey}
           {selectedPath}
           {syncStates}
           {isExpanded}
@@ -225,6 +363,8 @@
     name={openMenu.node.name}
     kind={openMenu.node.kind}
     {hasFolders}
+    canMoveUp={siblingMoveBefore(openMenuSiblings, openMenu.node.name, "up") !== null}
+    canMoveDown={siblingMoveBefore(openMenuSiblings, openMenu.node.name, "down") !== null}
     trashes={openMenu.node.kind === "note" || countDescendants(openMenu.node) > 0}
     trigger={openMenu.trigger}
     anchor={openMenu.anchor}
@@ -241,6 +381,7 @@
     position: relative;
     flex: 1;
     overflow-y: auto;
+    scroll-padding-bottom: var(--toast-stack-height, 0px);
   }
 
   .tree-container:global([data-drag-state]) {

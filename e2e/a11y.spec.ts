@@ -16,6 +16,7 @@ import {
   openTrash,
   openWelcome,
   treeItem,
+  openRowMenu,
 } from "./helpers/tree";
 
 const SEARCH_REPO = "https://github.com/sample/search";
@@ -94,7 +95,7 @@ test("commands-menu @mobile", async ({ page }) => {
 
 test("row-menu", async ({ page }) => {
   await openNotes(page);
-  await page.getByRole("button", { name: "Actions for Welcome" }).click();
+  await openRowMenu(page, "Welcome");
   await expect(
     page.getByRole("menu", { name: "Actions for Welcome" }),
   ).toBeVisible();

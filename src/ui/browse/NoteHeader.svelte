@@ -105,6 +105,7 @@
     type="button"
     class="button button-ghost button-icon back-button"
     aria-label="Back to notes"
+    data-back-to-notes
     onclick={onBack}
   >
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">

@@ -118,6 +118,7 @@
 
   .markdown-editor :global(.cm-scroller) {
     font-family: var(--font-note);
+    scroll-padding-bottom: var(--toast-stack-height, 0px);
   }
 
   .markdown-editor :global(.cm-editor.cm-focused) {

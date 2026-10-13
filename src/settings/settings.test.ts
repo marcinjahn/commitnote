@@ -107,6 +107,27 @@ describe("resolveSettings", () => {
   });
 });
 
+describe("type to start setting", () => {
+  it("defaults to on", () => {
+    expect(resolveSettings(SETTINGS_SCHEMA, {}).typeToStart).toBe(true);
+  });
+
+  it.each([true, false])("accepts the boolean %j", (value) => {
+    expect(
+      resolveSettings(SETTINGS_SCHEMA, { typeToStart: value }).typeToStart,
+    ).toBe(value);
+  });
+
+  it.each(["false", 0, 1, null, {}, []])(
+    "resolves %j to the default",
+    (value) => {
+      expect(
+        resolveSettings(SETTINGS_SCHEMA, { typeToStart: value }).typeToStart,
+      ).toBe(true);
+    },
+  );
+});
+
 describe("placement settings", () => {
   it("defaults new note placement to the beginning and new folder placement to the end", () => {
     expect(resolveSettings(SETTINGS_SCHEMA, {})).toEqual({
@@ -116,6 +137,7 @@ describe("placement settings", () => {
       newFolderPlacement: "end",
       noteFont: "inter",
       animatedCaret: true,
+      typeToStart: true,
     });
   });
 

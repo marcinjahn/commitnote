@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openNotes } from "./helpers";
-import { openSettings } from "./helpers/settings";
+import { closeSettings, openSettings } from "./helpers/settings";
 import { openWelcome, treeItem } from "./helpers/tree";
 
 const AUTO_NAME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -112,6 +112,32 @@ test.describe("on the empty note pane", () => {
     await expect(nameField(page)).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expectNoDraft(page, before);
+  });
+
+  test("turning the setting off stops typing from starting a note, turning it on restores it", async ({
+    page,
+  }) => {
+    const before = await treeItemNames(page);
+    const settings = await openSettings(page);
+    const checkbox = settings.getByRole("checkbox", {
+      name: "Start a note by typing",
+    });
+    await expect(checkbox).toBeChecked();
+
+    await checkbox.uncheck();
+    await closeSettings(page);
+    await focusBody(page);
+    await page.keyboard.type("x");
+    await expectNoDraft(page, before);
+
+    await openSettings(page);
+    await checkbox.check();
+    await closeSettings(page);
+    await focusBody(page);
+    await page.keyboard.type("Back");
+
+    await expect(nameField(page)).toHaveValue(AUTO_NAME);
+    await expect(editor(page)).toHaveText("Back");
   });
 
   test("typing while a menu is open starts nothing", async ({ page }) => {

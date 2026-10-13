@@ -35,6 +35,7 @@
       policy: CollisionPolicy,
     ) => Promise<ImportOutcome>;
     onClose: () => void;
+    returnFocusTo?: HTMLElement | null;
   }
 
   const {
@@ -45,6 +46,7 @@
     onEnableAtomic,
     onImport,
     onClose,
+    returnFocusTo = null,
   }: Props = $props();
 
   const uid = $props.id();
@@ -149,7 +151,7 @@
   }
 </script>
 
-<Dialog open={true} {title} onClose={handleClose} closeButton={true} swipeToClose={!busy}>
+<Dialog open={true} {title} {returnFocusTo} onClose={handleClose} closeButton={true} swipeToClose={!busy}>
   {#snippet children()}
     {#if error !== null}
       <p role="alert" class="alert-error">{error}</p>

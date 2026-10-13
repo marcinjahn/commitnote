@@ -1,7 +1,7 @@
 import type { ColorTag } from "../../tags/color-tag";
 
 export type RowAction =
-  "new-note" | "new-folder" | "rename" | "move" | "delete" | "delete-permanently" | "share";
+  "new-note" | "new-folder" | "rename" | "move-up" | "move-down" | "move" | "delete" | "delete-permanently" | "share";
 
 export type MenuAnchor =
   | { readonly kind: "rect"; readonly rect: DOMRect }

@@ -55,6 +55,18 @@ test("lists the note's versions with an editing session and labels", async ({
   await expect(rows).toHaveCount(5);
 });
 
+test("closing the history dialog returns focus to its opener", async ({
+  page,
+}) => {
+  await noteWithHistory(page);
+
+  const dialog = await openHistory(page);
+  await page.keyboard.press("Escape");
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Version history" })).toBeFocused();
+});
+
 test("arrow keys, Home and End move through rows and session toggles in order", async ({
   page,
 }) => {

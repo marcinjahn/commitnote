@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { rowSyncState, openNotes, showTree, fakeForge, flushPendingSaves } from "./helpers";
-import { headerSyncIcon, openWelcome } from "./helpers/tree";
+import { headerSyncIcon, openRowMenu, openWelcome } from "./helpers/tree";
 
 
 
@@ -104,7 +104,7 @@ async function createNoteThroughRowMenu(
   folderName: string,
   noteName: string,
 ): Promise<void> {
-  await page.getByRole("button", { name: `Actions for ${folderName}` }).click();
+  await openRowMenu(page, folderName);
   await page.getByRole("menuitem", { name: "New note…" }).click();
   const nameField = page.getByRole("textbox", { name: "Note name" });
   await nameField.fill(noteName);
@@ -145,6 +145,12 @@ async function startConflictOnWelcome(page: Page): Promise<void> {
   await expect(
     page.getByRole("textbox", { name: "Merged text" }),
   ).toContainText("<<<<<<< mine");
+
+  const tree = page.getByRole("tree", { name: "Notes" });
+  await expect(tree.getByRole("treeitem", { name: "Welcome" })).toHaveAccessibleDescription(
+    new RegExp(CONFLICT),
+  );
+  await expect(tree.getByRole("img")).toHaveCount(0);
 }
 
 test.describe("with GitHub-like forge latency", () => {

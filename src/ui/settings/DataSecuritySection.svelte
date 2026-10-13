@@ -7,7 +7,7 @@
     onExport,
     importing,
     importDisabled,
-    onImportFile,
+    onImportFiles,
     changePassphraseDisabled,
     onChangePassphrase,
   }: DataSecurityActions = $props();
@@ -16,9 +16,9 @@
 
   function onImportChange(event: Event & { currentTarget: HTMLInputElement }) {
     const input = event.currentTarget;
-    const file = input.files?.[0];
+    const files = Array.from(input.files ?? []);
     input.value = "";
-    if (file) onImportFile(file);
+    if (files.length > 0) onImportFiles(files);
   }
 </script>
 
@@ -50,7 +50,8 @@
   <input
     bind:this={importInput}
     type="file"
-    accept=".zip,application/zip"
+    accept=".zip,application/zip,.md,.markdown,.txt"
+    multiple
     class="visually-hidden"
     tabindex="-1"
     aria-hidden="true"

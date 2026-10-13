@@ -6,6 +6,21 @@ export function treeItem(page: Page, name: string | RegExp): Locator {
   return page.getByRole("treeitem", { name, exact: true });
 }
 
+export async function openRowMenu(page: Page, name: string): Promise<Locator> {
+  await treeItem(page, name).focus();
+  await page.keyboard.press("Shift+F10");
+  const menu = page.getByRole("menu", { name: `Actions for ${name}` });
+  await expect(menu).toBeVisible();
+  return menu;
+}
+
+export function rowActionsButton(page: Page, name: string): Locator {
+  return page
+    .locator("[data-tree-row]")
+    .filter({ has: treeItem(page, name) })
+    .locator('button[aria-haspopup="menu"]');
+}
+
 export function treeRows(page: Page): Locator {
   return page.getByRole("tree", { name: "Notes" }).getByRole("treeitem");
 }
@@ -27,7 +42,7 @@ export async function moveToTrash(
   name: string,
   dialogText?: RegExp,
 ): Promise<void> {
-  await page.getByRole("button", { name: `Actions for ${name}` }).click();
+  await openRowMenu(page, name);
   await page.getByRole("menuitem", { name: "Move to trash…" }).click();
   const dialog = page.getByRole("dialog");
   await expect(
