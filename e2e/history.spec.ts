@@ -55,6 +55,30 @@ test("lists the note's versions with an editing session and labels", async ({
   await expect(rows).toHaveCount(5);
 });
 
+test("arrow keys, Home and End move through rows and session toggles in order", async ({
+  page,
+}) => {
+  await noteWithHistory(page);
+  const dialog = await openHistory(page);
+  const rows = dialog.getByTestId("version-row");
+  const toggle = dialog.getByRole("button", { name: "Show 3 saves" });
+
+  await rows.nth(1).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(toggle).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(rows.nth(2)).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(toggle).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(rows.nth(1)).toBeFocused();
+
+  await page.keyboard.press("End");
+  await expect(rows.nth(2)).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(rows.nth(0)).toBeFocused();
+});
+
 test("shows what restoring a version would change", { tag: "@mobile" }, async ({
   page,
 }, testInfo) => {

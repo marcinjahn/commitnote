@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { Extension } from "@codemirror/state";
+  import type { Compartment, Extension } from "@codemirror/state";
   import {
     createMarkdownEditor,
     type MarkdownEditor,
@@ -19,6 +19,8 @@
 
   const { text, readOnly, onChange, extensions, ariaLabel, noteFont }: Props = $props();
 
+  const hintId = $props.id();
+
   let container: HTMLDivElement;
   let editor: MarkdownEditor | undefined;
 
@@ -32,6 +34,10 @@
 
   export function setSelection(anchor: number, head: number): void {
     editor?.setSelection(anchor, head);
+  }
+
+  export function reconfigure(compartment: Compartment, extension: Extension): void {
+    editor?.view.dispatch({ effects: compartment.reconfigure(extension) });
   }
 
   export function insertText(inserted: string): void {
@@ -52,6 +58,7 @@
       onChange,
       extensions,
       ariaLabel,
+      describedBy: hintId,
     });
 
     const remeasure = () => editor?.view.requestMeasure();
@@ -81,6 +88,7 @@
 </script>
 
 <div class="markdown-editor" bind:this={container}></div>
+<p id={hintId} hidden>Press Escape, then Tab, to leave the editor.</p>
 
 <style>
   .markdown-editor {

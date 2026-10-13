@@ -100,3 +100,24 @@ test("task toggle shortcut adds, checks and undoes one step", async ({
 
   await flushPendingSaves(page);
 });
+
+test("editor describes how to leave it and Escape then Tab moves focus out", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await openWelcome(page);
+  const editor = page.getByRole("textbox", { name: "Note editor" });
+  await expect(editor).toHaveAccessibleDescription(
+    "Press Escape, then Tab, to leave the editor.",
+  );
+
+  await editor.click();
+  await expect(editor).toBeFocused();
+  const before = (await editor.textContent()) ?? "";
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Tab");
+
+  await expect(editor).not.toBeFocused();
+  await editor.focus();
+  await expect(editor).toHaveText(before);
+});

@@ -103,17 +103,10 @@ interface CaretPosition {
   tail: TailCluster[];
 }
 
-function typedText(update: ViewUpdate): boolean {
-  return update.transactions.some(
-    (tr) =>
-      tr.docChanged && (tr.isUserEvent("input") || tr.isUserEvent("delete")),
-  );
-}
 
 class AccentCaretState {
   carets: CaretPosition[] = [];
   composing = false;
-  typed = false;
   readonly blinker: CaretBlinker;
 
   constructor(readonly view: EditorView) {
@@ -131,10 +124,7 @@ class AccentCaretState {
   }
 
   update(update: ViewUpdate): void {
-    if (!caretMoved(update)) return;
-    if (update.docChanged || update.selectionSet || update.focusChanged)
-      this.typed = typedText(update);
-    this.refresh();
+    if (caretMoved(update)) this.refresh();
   }
 
   private refresh(): void {
@@ -145,9 +135,7 @@ class AccentCaretState {
             .map((range) => ({
               head: range.head,
               assoc: range.assoc < 0 ? -1 : 1,
-              tail: this.typed
-                ? tailClusters(this.view.state, range.head)
-                : [],
+              tail: tailClusters(this.view.state, range.head),
             }))
         : [];
     if (this.carets.length > 0) this.blinker.restart();
@@ -229,7 +217,9 @@ function caretMarkers(
 }
 
 function tailLayers(view: EditorView, state: AccentCaretState) {
-  const tails = state.carets.filter((caret) => caret.tail.length > 0);
+  const tails = state.carets.filter((caret) =>
+    caret.tail.some((cluster) => cluster.ink),
+  );
   if (tails.length === 0) return { tints: [], backdrops: [] };
   const origin = layerOrigin(view);
   const backdrop = surfaceColor(view.scrollDOM);
@@ -237,7 +227,7 @@ function tailLayers(view: EditorView, state: AccentCaretState) {
   const tints: LayerMarker[] = [];
   const backdrops: LayerMarker[] = [];
   for (const caret of tails) {
-    for (const piece of measureTail(view, caret.head, caret.tail)) {
+    for (const piece of measureTail(view, caret.tail)) {
       tints.push(tintMarker(piece, origin, blend));
       backdrops.push(backdropMarker(piece, origin, backdrop));
     }
@@ -259,6 +249,17 @@ const accentCaretTheme = EditorView.baseTheme({
   ".cm-caret-tint": { opacity: `var(${CARET_LIGHT_PROPERTY})` },
   ".cm-caret-tint-lighten": { mixBlendMode: "lighten" },
   ".cm-caret-tint-darken": { mixBlendMode: "darken" },
+  // A copy of the emoji, clipped to its own glyph, recolours it with the
+  // accent's hue while keeping the emoji's shading.
+  ".cm-caret-tint-emoji": {
+    mixBlendMode: "color",
+    whiteSpace: "pre",
+    "& > span": {
+      backgroundClip: "text",
+      "-webkit-background-clip": "text",
+      "-webkit-text-fill-color": "transparent",
+    },
+  },
   ".cm-accent-caret": {
     width: `${CARET_WIDTH_PX}px`,
     background: "var(--color-accent)",

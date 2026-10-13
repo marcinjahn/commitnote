@@ -45,6 +45,11 @@ const noteFontSetting: SettingDefinition<NoteFont> = {
   parse: parseNoteFont,
 };
 
+const animatedCaretSetting: SettingDefinition<boolean> = {
+  default: true,
+  parse: (raw) => (typeof raw === "boolean" ? raw : undefined),
+};
+
 const colorModeSetting: SettingDefinition<ColorModeId> = {
   default: "system",
   parse: parseColorMode,
@@ -56,6 +61,7 @@ export const SETTINGS_SCHEMA = {
   newNotePlacement: newNotePlacementSetting,
   newFolderPlacement: newFolderPlacementSetting,
   noteFont: noteFontSetting,
+  animatedCaret: animatedCaretSetting,
 } as const satisfies SettingsSchema;
 
 export type Settings = SettingsOf<typeof SETTINGS_SCHEMA>;

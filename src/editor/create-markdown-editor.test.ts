@@ -89,6 +89,57 @@ describe("createMarkdownEditor", () => {
     editor.destroy();
   });
 
+  describe("describedBy", () => {
+    function create(readOnly: boolean, describedBy?: string) {
+      const parent = document.createElement("div");
+      const editor = createMarkdownEditor({
+        parent,
+        text: "hello",
+        readOnly,
+        onChange: () => {},
+        describedBy,
+      });
+      return editor;
+    }
+
+    it("points the editable content at the description", () => {
+      const editor = create(false, "hint");
+      expect(editor.view.contentDOM.getAttribute("aria-describedby")).toBe(
+        "hint",
+      );
+      editor.destroy();
+    });
+
+    it("leaves a read-only editor without a description", () => {
+      const editor = create(true, "hint");
+      expect(editor.view.contentDOM.hasAttribute("aria-describedby")).toBe(
+        false,
+      );
+      editor.destroy();
+    });
+
+    it("adds and removes the description when read-only toggles", () => {
+      const editor = create(false, "hint");
+      editor.setReadOnly(true);
+      expect(editor.view.contentDOM.hasAttribute("aria-describedby")).toBe(
+        false,
+      );
+      editor.setReadOnly(false);
+      expect(editor.view.contentDOM.getAttribute("aria-describedby")).toBe(
+        "hint",
+      );
+      editor.destroy();
+    });
+
+    it("sets no description when none is given", () => {
+      const editor = create(false);
+      expect(editor.view.contentDOM.hasAttribute("aria-describedby")).toBe(
+        false,
+      );
+      editor.destroy();
+    });
+  });
+
   it("setSelection sets the main selection, clamped to the document", () => {
     const parent = document.createElement("div");
     document.body.append(parent);
