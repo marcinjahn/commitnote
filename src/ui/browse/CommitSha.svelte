@@ -80,11 +80,11 @@
     /* Inter, unlike the system monospace fonts, draws capitals and figures at the same
        height, so A–F line up with the digits; fixed cells stand in for monospacing. */
     font-family: var(--font-sans);
-    font-size: 9px;
+    font-size: 0.5625rem;
     font-variant-numeric: lining-nums tabular-nums;
     line-height: var(--reel-height);
     white-space: nowrap;
-    --reel-height: 12px;
+    --reel-height: 1.3333em;
   }
 
   .reels {

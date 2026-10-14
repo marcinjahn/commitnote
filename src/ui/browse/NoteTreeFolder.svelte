@@ -417,6 +417,17 @@
     animation: tree-row-saving 1.6s linear infinite;
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .tree-row-label::after {
+      mask-image: none;
+      animation: none;
+    }
+
+    .tree-row-label.saving::after {
+      opacity: 0.6;
+    }
+  }
+
   @keyframes tree-row-saving {
     from {
       mask-position: 100% 0;
@@ -464,6 +475,22 @@
     .tree-row-container:focus-within .row-actions,
     .row-actions.menu-open {
       opacity: 1;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .tree-row-container.selected {
+      position: relative;
+    }
+
+    .tree-row-container.selected::before {
+      content: "";
+      position: absolute;
+      inset-block: 0;
+      inset-inline-start: 0;
+      width: 2px;
+      forced-color-adjust: none;
+      background: Highlight;
     }
   }
 </style>

@@ -62,6 +62,17 @@ test("a failure shows an error toast", async ({ page }) => {
   await expect(toast).toHaveAttribute("data-tone", "error");
 });
 
+test("an error toast keeps its rail in forced colours", async ({ page }) => {
+  await page.emulateMedia({ forcedColors: "active" });
+  await showRefreshFailure(page);
+
+  const toast = page.getByRole("group", { name: "Error" }).filter({ hasText: REFRESH_FAILURE });
+  await expect(toast).toBeVisible();
+  await expect(toast).toHaveCSS("border-inline-start-width", "2px");
+  const color = await toast.evaluate((el) => getComputedStyle(el).borderInlineStartColor);
+  expect(color).not.toBe("rgba(0, 0, 0, 0)");
+});
+
 test("with reduced motion a dismissed toast leaves without animating", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await showRefreshFailure(page);

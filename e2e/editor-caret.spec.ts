@@ -188,6 +188,18 @@ test("the caret stays solid with reduced motion", async ({ page }) => {
   await expectLight(page, "solid");
 });
 
+test("forced colours hide the drawn caret and restore the browser caret", async ({
+  page,
+}) => {
+  await page.emulateMedia({ forcedColors: "active" });
+  await newNote(page);
+  await page.keyboard.type("contrast");
+
+  await expect(caretLayer(page)).toBeHidden();
+  await expect(tintLayer(page)).toBeHidden();
+  await expect(editor(page)).not.toHaveCSS("caret-color", "rgba(0, 0, 0, 0)");
+});
+
 test("the browser caret takes over during IME composition", async ({
   page,
 }) => {

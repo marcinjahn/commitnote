@@ -119,8 +119,8 @@
   .sidebar-resize-handle {
     position: absolute;
     inset-block: 0;
-    inset-inline-end: 0;
-    width: 8px;
+    inset-inline-end: -17px;
+    width: 24px;
     margin: 0;
     z-index: 1;
     cursor: col-resize;
@@ -137,7 +137,7 @@
     content: "";
     position: absolute;
     inset-block: 0;
-    inset-inline-end: 0;
+    inset-inline-end: 17px;
     width: 2px;
     background: transparent;
   }
@@ -146,6 +146,15 @@
   .sidebar-resize-handle.dragging::after,
   .sidebar-resize-handle:focus-visible::after {
     background: var(--color-accent);
+  }
+
+  @media (forced-colors: active) {
+    .sidebar-resize-handle:hover::after,
+    .sidebar-resize-handle.dragging::after,
+    .sidebar-resize-handle:focus-visible::after {
+      forced-color-adjust: none;
+      background: Highlight;
+    }
   }
 
   :global(html.sidebar-resizing),

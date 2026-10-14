@@ -42,7 +42,7 @@
     onSelect={(id) => changeSettings({ noteFont: id })}
   >
     {#snippet optionLabel(option)}
-      <span style:font-family={option.family}>{option.label}</span>
+      <span class="font-label" style:font-family={option.family}>{option.label}</span>
     {/snippet}
   </SettingOptionList>
 </div>
@@ -61,11 +61,16 @@
 
   .font-preview p {
     margin: 0;
-    height: 1.5rem;
-    line-height: 1.5rem;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    min-height: 1.5rem;
+    line-height: 1.5;
+  }
+
+  .font-label {
+    line-height: 0;
+  }
+
+  .font-preview p > * {
+    line-height: 0;
   }
 
   .font-preview p + p {
@@ -73,8 +78,7 @@
   }
 
   .font-preview .font-preview-heading {
-    height: 1.875rem;
-    line-height: 1.875rem;
+    min-height: 1.875rem;
     font-weight: var(--font-weight-semibold);
     font-size: var(--font-size-lg);
   }

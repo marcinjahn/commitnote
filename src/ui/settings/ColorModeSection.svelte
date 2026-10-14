@@ -250,4 +250,23 @@
     color: var(--color-text);
     font-weight: 500;
   }
+
+  @media (forced-colors: active) {
+    .preview-card,
+    .preview-card * {
+      forced-color-adjust: none;
+    }
+
+    .preview-card,
+    .color-mode:hover .preview-card {
+      box-shadow: 0 0 0 1px CanvasText;
+    }
+
+    input:checked + .preview-card,
+    .color-mode:hover input:checked + .preview-card {
+      box-shadow:
+        0 0 0 2px Canvas,
+        0 0 0 4px Highlight;
+    }
+  }
 </style>

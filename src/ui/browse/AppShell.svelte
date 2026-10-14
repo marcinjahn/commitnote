@@ -2828,6 +2828,19 @@
     margin: var(--space-2) var(--space-3) 0;
   }
 
+  @media (max-height: 480px) {
+    .sidebar {
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+  }
+
+  @media (min-width: 768px) and (min-height: 481px) {
+    .sidebar {
+      overflow: visible;
+    }
+  }
+
   @media (min-width: 768px) {
     .shell {
       flex-direction: row;
@@ -2900,6 +2913,18 @@
 
     .mobile-hidden {
       display: flex;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .note-pane::after {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+
+    .trash-row:global([data-trash-drop]) {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
     }
   }
 </style>

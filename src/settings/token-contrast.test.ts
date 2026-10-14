@@ -19,12 +19,7 @@ interface ContrastExclusion {
   backgrounds?: string[];
 }
 
-const CONTRAST_EXCLUSIONS: readonly ContrastExclusion[] = [
-  { finding: "A11Y-06", pair: "muted-on-selected" },
-  { finding: "A11Y-07", pair: "search-mark" },
-  { finding: "A11Y-09", pair: "danger-button-border" },
-  { finding: "A11Y-10", pair: "border-strong", modes: ["light"], backgrounds: ["surface"] },
-];
+const CONTRAST_EXCLUSIONS: readonly ContrastExclusion[] = [];
 
 const MODES: readonly Mode[] = ["light", "dark"];
 const ACCENTS = ACCENT_PALETTE.filter((option) => option.id !== "system");
@@ -230,7 +225,7 @@ const PAIRS: Pair[] = [
   {
     id: "search-mark",
     threshold: TEXT,
-    foreground: token("--color-text-muted"),
+    foreground: token("--color-text"),
     backgrounds: {
       "accent-over-surface-raised": (p) =>
         compositeOver(

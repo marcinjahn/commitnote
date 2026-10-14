@@ -241,6 +241,25 @@ test.describe("typed wordmark", () => {
     expect(settled.tailLetters).toBe(0);
   });
 
+  test("keeps the tail and caret visible in forced colours", async ({ page }) => {
+    await page.emulateMedia({ forcedColors: "active" });
+    await freezeClock(page);
+    await openNotesFrozen(page);
+    const wordmark = sidebarWordmark(page);
+    const tail = wordmark.locator(".wordmark-tail");
+    await advanceUntilVisible(page, tail.nth(2));
+
+    const fills = await tail.evaluateAll((els) =>
+      els.map((el) => getComputedStyle(el).webkitTextFillColor),
+    );
+    expect(fills).toHaveLength(3);
+    for (const fill of fills) expect(fill).not.toBe("rgba(0, 0, 0, 0)");
+    const gradients = await tail.evaluateAll((els) =>
+      els.map((el) => getComputedStyle(el).backgroundImage),
+    );
+    for (const image of gradients) expect(image).toBe("none");
+  });
+
   test("does not replay after navigating or logging in again", async ({
     page,
   }) => {

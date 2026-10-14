@@ -137,4 +137,16 @@
     background: var(--color-accent);
     pointer-events: none;
   }
+
+  @media (forced-colors: active) {
+    .wordmark-tail {
+      -webkit-text-fill-color: CanvasText;
+      background-image: none !important;
+    }
+
+    .wordmark-caret {
+      forced-color-adjust: none;
+      background: CanvasText;
+    }
+  }
 </style>

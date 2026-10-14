@@ -384,6 +384,13 @@
     scroll-padding-bottom: var(--toast-stack-height, 0px);
   }
 
+  @media (max-height: 480px) {
+    .tree-container {
+      flex: 1 0 auto;
+      min-height: 10rem;
+    }
+  }
+
   .tree-container:global([data-drag-state]) {
     user-select: none;
   }
@@ -493,5 +500,17 @@
     padding: var(--space-3);
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);
+  }
+
+  @media (forced-colors: active) {
+    .tree-container:global([data-drop-into]),
+    .tree-container :global([data-tree-row][data-drop-into]) {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+
+    .tree-container :global(.tree-drop-slot) {
+      border-color: Highlight;
+    }
   }
 </style>

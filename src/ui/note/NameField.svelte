@@ -111,7 +111,7 @@
   .name-input {
     box-sizing: border-box;
     width: 100%;
-    height: var(--touch-target);
+    min-height: var(--touch-target);
     padding: 0 var(--space-2);
     border: var(--hairline) solid transparent;
     border-radius: var(--radius);

@@ -482,6 +482,17 @@ const refusals: ReadonlyArray<{
   },
 ];
 
+test("an inline alert keeps a rail in forced colours", async ({ page }) => {
+  await page.emulateMedia({ forcedColors: "active" });
+  await page.goto("/");
+
+  await continueWithToken(page, "invalid-token");
+
+  const alert = page.getByRole("alert");
+  await expect(alert).toBeVisible();
+  await expect(alert).toHaveCSS("border-inline-start-width", "2px");
+});
+
 test("refusals name the problem and offer to check again", async ({ page }) => {
   await page.goto("/");
 

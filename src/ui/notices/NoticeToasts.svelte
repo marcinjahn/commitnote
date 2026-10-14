@@ -251,6 +251,13 @@
     transition: none;
   }
 
+  @media (forced-colors: active) {
+    .toast {
+      border-inline-start: 2px solid CanvasText;
+      padding-left: var(--space-3);
+    }
+  }
+
   @starting-style {
     .toast {
       opacity: 0;

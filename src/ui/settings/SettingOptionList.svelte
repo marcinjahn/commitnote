@@ -117,11 +117,8 @@
   }
 
   .setting-option-label {
-    height: 1.25rem;
-    line-height: 1.25rem;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    min-height: 1.25rem;
+    line-height: 1.5385;
   }
 
   .setting-option-description {
@@ -134,5 +131,12 @@
     flex-shrink: 0;
     width: var(--checkbox-size);
     height: var(--checkbox-size);
+  }
+
+  @media (forced-colors: active) {
+    .setting-option:has(input:checked) {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
   }
 </style>
