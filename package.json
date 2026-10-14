@@ -15,7 +15,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "check:bundle": "npm run build && npm run build:fake && tsx scripts/check-bundle.ts",
     "fixture:sample-notes-repo": "tsx scripts/generate-sample-notes-repo.ts",
-    "generate:wordmark": "tsx scripts/generate-wordmark-svgs.ts"
+    "generate:brand": "tsx scripts/generate-brand-svgs.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
