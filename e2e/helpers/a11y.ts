@@ -9,6 +9,7 @@ export type A11yState =
   | "onboarding"
   | "tree"
   | "note"
+  | "note-vim"
   | "commands-menu"
   | "row-menu"
   | "error-toast"

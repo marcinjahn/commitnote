@@ -21,6 +21,7 @@ import {
   tintMarker,
   type TailCluster,
 } from "./caret-tail";
+import { editingModeOf } from "./vim/vim-status";
 
 export type CaretLight = "solid" | "on" | "off";
 
@@ -37,6 +38,7 @@ function caretMoved(update: ViewUpdate): boolean {
     update.docChanged ||
     update.selectionSet ||
     update.focusChanged ||
+    editingModeOf(update.startState) !== editingModeOf(update.state) ||
     update.transactions.some((tr) =>
       tr.effects.some((effect) => effect.is(compositionChanged)),
     )
@@ -120,7 +122,12 @@ class AccentCaretState {
   }
 
   get owned(): boolean {
-    return !this.composing && this.view.state.facet(EditorView.editable);
+    const mode = editingModeOf(this.view.state);
+    return (
+      !this.composing &&
+      this.view.state.facet(EditorView.editable) &&
+      (mode === null || mode === "insert")
+    );
   }
 
   update(update: ViewUpdate): void {

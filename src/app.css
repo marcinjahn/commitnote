@@ -30,6 +30,11 @@
     var(--accent-dark, #86a4ff)
   );
   --color-on-accent: light-dark(#ffffff, #0b0b0b);
+  --color-vim-mode-wash: color-mix(
+    in srgb,
+    var(--color-accent) 12%,
+    var(--color-background)
+  );
   --color-link: light-dark(#3358d4, #86a4ff);
   --color-ink: light-dark(#0a0a0a, #ededed);
   --color-ink-hover: light-dark(#2e2e2e, #cfcfcf);
