@@ -70,6 +70,16 @@ describe("withBlobCache", () => {
     return { store, cache, adapter: withBlobCache(inner, cache) };
   }
 
+  it("forwards the inner observed rate limit", () => {
+    const limit = { remaining: 7, resetAt: 1234 };
+    const { adapter } = cached();
+    expect(adapter.observedRateLimit?.()).toBeNull();
+    inner = delegateAdapter(new FakeForgeAdapter(), {
+      observedRateLimit: () => limit,
+    });
+    expect(cached().adapter.observedRateLimit?.()).toBe(limit);
+  });
+
   async function addBlob(text: string): Promise<string> {
     const sha = await gitBlobSha(text);
     blobs.set(sha, text);

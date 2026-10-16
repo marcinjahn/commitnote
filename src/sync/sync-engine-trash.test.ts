@@ -180,8 +180,10 @@ describe("sync engine trash commands", () => {
       depth: 1,
     });
     expect(h.engine.getState().openNote).toEqual({
-      kind: "missing",
+      kind: "trashed",
       path: WELCOME,
+      entryId: change.entryId,
+      entryKind: "note",
     });
     expect(h.engine.getState().trash).toMatchObject([
       { id: change.entryId, synced: false, kind: "note" },

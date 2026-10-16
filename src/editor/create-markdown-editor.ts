@@ -14,6 +14,7 @@ import {
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { formatKeymap } from "./format-keymap";
 import { pasteLink } from "./paste-link";
+import { minimalChanges } from "./minimal-changes";
 
 const DEFAULT_ARIA_LABEL = "Note editor";
 
@@ -34,6 +35,7 @@ export interface MarkdownEditorOptions {
 export interface MarkdownEditor {
   readonly view: EditorView;
   setText(text: string): void;
+  updateText(text: string): void;
   setReadOnly(readOnly: boolean): void;
   getSelection(): { anchor: number; head: number };
   setSelection(anchor: number, head: number): void;
@@ -116,6 +118,18 @@ export function createMarkdownEditor(
       });
       view.dispatch({ effects: historyCompartment.reconfigure([]) });
       view.dispatch({ effects: historyCompartment.reconfigure(history()) });
+    },
+    updateText(newText: string): void {
+      const changes = minimalChanges(view.state.doc.toString(), newText);
+      if (changes.length === 0) return;
+      view.dispatch({
+        changes,
+        annotations: [
+          Transaction.userEvent.of(SET_TEXT_USER_EVENT),
+          Transaction.addToHistory.of(false),
+        ],
+        effects: view.scrollSnapshot(),
+      });
     },
     setReadOnly(nextReadOnly: boolean): void {
       view.dispatch({

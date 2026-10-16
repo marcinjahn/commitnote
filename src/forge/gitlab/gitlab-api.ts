@@ -8,16 +8,19 @@ export const GITLAB_DEVELOPER_ACCESS_LEVEL = 30;
 
 // Only Authorization and Content-Type are sent, both of which GitLab's API
 // allows in CORS preflights.
-export function sendGitLabRequest(
+export async function sendGitLabRequest(
   fetchImpl: typeof fetch,
   accessToken: string,
   pathOrUrl: string,
   init: { method: string; body?: unknown },
+  onResponse?: (response: Response) => void,
 ): Promise<Response> {
   const url = pathOrUrl.startsWith("https://")
     ? pathOrUrl
     : `${GITLAB_API_BASE}${pathOrUrl}`;
-  return sendForgeRequest(fetchImpl, url, accessToken, init);
+  const response = await sendForgeRequest(fetchImpl, url, accessToken, init);
+  onResponse?.(response);
+  return response;
 }
 
 // GitLab's error bodies can quote file paths (e.g. on a rejected commit

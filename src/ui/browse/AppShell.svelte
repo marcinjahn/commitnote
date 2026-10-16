@@ -1,9 +1,20 @@
 <script lang="ts">
   import { onDestroy, tick, untrack } from "svelte";
+  import type { AutoRefresh } from "../../app/auto-refresh";
+  import {
+    autoRefreshFailureReport,
+    INITIAL_AUTO_REFRESH_FAILURE_STATE,
+  manualRefreshFailureState,
+  } from "./auto-refresh-failure-report";
   import { MediaQuery } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
-  import type { HeldConflict, SyncEngine, SyncEngineState } from "../../sync/sync-engine";
+  import {
+    isRemoteChangeNotice,
+    type HeldConflict,
+    type SyncEngine,
+    type SyncEngineState,
+  } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
@@ -116,6 +127,7 @@
     type AnnouncerState,
   } from "./status-announcer";
   import NoteTree from "./NoteTree.svelte";
+  import { ancestorFolders, shouldFollowFocus } from "./relocation-follow";
   import SidebarResizeHandle from "./SidebarResizeHandle.svelte";
   import {
     SIDEBAR_MIN_WIDTH,
@@ -190,6 +202,7 @@
 
   interface Props {
     engine: SyncEngine;
+    autoRefresh: AutoRefresh;
     settingsSaver: SettingsSaver;
     contentIndexer: ContentIndexer;
     repoLabel: string;
@@ -218,6 +231,7 @@
 
   const {
     engine,
+    autoRefresh,
     settingsSaver,
     contentIndexer,
     repoLabel,
@@ -361,6 +375,7 @@
   let focusEditorOnEnter = false;
   let notePane: ReturnType<typeof NotePane> | undefined = $state();
   let notePaneEl: HTMLElement | undefined = $state();
+  let noteTree: ReturnType<typeof NoteTree> | undefined = $state();
   let sidebarEl: HTMLElement | undefined = $state();
   let preferredSidebarWidth = $state(readSidebarWidth());
   let viewportWidth = $state(0);
@@ -570,8 +585,30 @@
 
   let atomicBlockedSeen = false;
 
+  function followRelocation(from: NotePath, to: NotePath): void {
+    const recordedFocus = noteTree?.focusedPath() ?? null;
+    for (const folder of ancestorFolders(to)) treeExpansion.setExpanded(folder, true);
+    void (async () => {
+      await tick();
+      const active = document.activeElement;
+      const focusLost =
+        noteTree?.containsFocus() !== true && (active === null || active === document.body);
+      if (shouldFollowFocus({ recordedFocus, from, focusLost })) await noteTree?.focusPath(to);
+    })();
+  }
+
   let announcerState: AnnouncerState = INITIAL_ANNOUNCER_STATE;
   let announcement = $state("");
+  let announcementSequence = 0;
+
+  function announce(message: string): void {
+    const sequence = ++announcementSequence;
+    // An identical message must change the live region's text to be read again.
+    announcement = "";
+    void tick().then(() => {
+      if (sequence === announcementSequence) announcement = message;
+    });
+  }
 
   $effect(() => {
     const { syncStates, online, save } = engineState;
@@ -580,9 +617,15 @@
       problem: syncProblem({ online, root, save }),
       allSaved: root.kind === "synced" && !syncStates.hasUnsaved,
       hasUnsaved: syncStates.hasUnsaved,
+      notices: engineState.notices,
     });
     announcerState = result.state;
-    if (result.message !== null) announcement = result.message;
+    if (result.message !== null) announce(result.message);
+    for (const notice of engineState.notices) {
+      if (!isRemoteChangeNotice(notice)) continue;
+      if (notice.kind === "remote-relocated") followRelocation(notice.from, notice.to);
+      engine.dismissNotice(notice.id);
+    }
   });
 
   $effect(() => {
@@ -767,7 +810,7 @@
     saveLastView();
   });
   const conflictPaths = $derived(engineState.conflicts.map((held) => held.path));
-  const refreshing = $derived(engineState.refresh.inFlight);
+  let manualRefreshing = $state(false);
   const head = $derived(engineState.synced?.head ?? null);
 
   const importing = $derived(engineState.importing || importStarted !== null);
@@ -1215,7 +1258,7 @@
         current.kind === "note" && notePathEquals(current.path, path);
       const urlStandsForNote =
         current.kind === "draft" ||
-        (previousKind === "missing" && (!isNarrowLayout() || mobileView === "note")) ||
+        ((previousKind === "missing" || previousKind === "trashed") && (!isNarrowLayout() || mobileView === "note")) ||
         (current.kind === "note" &&
           previousPath !== null &&
           notePathEquals(current.path, previousPath));
@@ -1225,7 +1268,7 @@
         urlStandsForNote
       ) {
         navigation.replace({ kind: "note", path });
-      } else if (kind === "missing" && currentIsOpen) {
+      } else if ((kind === "missing" || kind === "trashed") && currentIsOpen) {
         navigation.replace({ kind: "none" });
       }
     });
@@ -1331,18 +1374,41 @@
     showToast("refresh", "error", text);
   }
 
+  let failureReport = INITIAL_AUTO_REFRESH_FAILURE_STATE;
+
+  $effect(() =>
+    autoRefresh.onRefreshed((error) => {
+      const { state, action } = autoRefreshFailureReport(failureReport, {
+        error,
+        online: engineState.online,
+      });
+      failureReport = state;
+      if (action.kind === "show") {
+        showRefreshError(describeSyncError(action.error, forgeName));
+      } else if (action.kind === "clear") {
+        clearToast("refresh");
+      }
+    }),
+  );
+
   async function handleRefresh(): Promise<boolean> {
+    manualRefreshing = true;
     try {
       await engine.refresh();
     } catch {
       showRefreshError("Refresh failed. Try again later.");
       return false;
+    } finally {
+      manualRefreshing = false;
     }
     const error = engine.getState().refresh.lastError;
     if (error === null) {
+      autoRefresh.manualRefreshed();
+      failureReport = INITIAL_AUTO_REFRESH_FAILURE_STATE;
       clearToast("refresh");
       return true;
     }
+    failureReport = manualRefreshFailureState(error);
     showRefreshError(describeSyncError(error, forgeName));
     return false;
   }
@@ -1967,7 +2033,7 @@
     const open = engine.getState().openNote;
     if (
       reopen !== null &&
-      open?.kind === "missing" &&
+      (open?.kind === "missing" || open?.kind === "trashed") &&
       notePathEquals(open.path, reopen)
     ) {
       noteSwitch += 1;
@@ -2126,7 +2192,7 @@
             {/each}
           </svg>
         </button>
-        <RefreshButton {refreshing} onRefresh={handleRefresh} />
+        <RefreshButton refreshing={manualRefreshing} onRefresh={handleRefresh} />
         <CommandMenu {commands} />
       </div>
     </div>
@@ -2151,6 +2217,7 @@
       </p>
     {/if}
     <NoteTree
+      bind:this={noteTree}
       {tree}
       filteredTree={tagFilter === null || tagFilterView === null ? null : tagFilterView.tree}
       loading={treeLoading}
@@ -2284,6 +2351,7 @@
           onBack={handleHeaderBack}
           onHistory={() => void openHistory()}
           historyDisabled={engineState.openNote.kind === "missing" ||
+            engineState.openNote.kind === "trashed" ||
             engineState.openNote.kind === "failed"}
           colorTag={openTreeNote?.colorTag ?? null}
           shared={openTreeNote?.shared ?? false}
@@ -2310,6 +2378,7 @@
       hasNotes={tree !== null && tree.root.children.length > 0}
       onDraftContent={handleDraftContent}
       onNewNote={handleHeaderNewNote}
+      onRestoreTrashed={(entryId, reopen) => handleUndoTrash(entryId, reopen)}
       noteFont={settings.noteFont}
       animatedCaret={settings.animatedCaret}
       vimMode={settings.vimMode}
@@ -2329,7 +2398,7 @@
 
 <div class="toast-host" use:toastHost>
   <NoticeToasts
-    notices={engineState.notices}
+    notices={engineState.notices.filter((n) => !isRemoteChangeNotice(n))}
     messages={TOAST_ORDER.flatMap((channel) => toasts[channel] ?? [])}
     onDismiss={(id) => engine.dismissNotice(id)}
     onDismissMessage={dismissMessage}

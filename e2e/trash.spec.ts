@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { expectTree, openNotes, fakeForge, onFakeForgeReady } from "./helpers";
-import { moveToTrash, openRowMenu, openTrash, restoreTo, treeItem } from "./helpers/tree";
+import { moveToTrash, openRowMenu, openTrash, openWelcome, restoreTo, treeItem } from "./helpers/tree";
 
 const TRASH_REPO = "https://github.com/sample/trash";
 const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
@@ -258,12 +258,20 @@ test("no Trash button when every entry expired and the startup purge fails", asy
   await expect(page.getByTestId("open-trash")).toHaveCount(0);
 });
 
+async function backToNotes(page: Page): Promise<void> {
+  const back = page.getByRole("button", { name: "Back to notes" });
+  if (await back.isVisible()) await back.click();
+  await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible();
+}
+
 function moveToTrashToast(page: Page) {
   return page.getByRole("group").filter({ hasText: "moved to trash" });
 }
 
 test("Undo in the toast puts a deleted note back", async ({ page }) => {
   await openNotes(page);
+  await openWelcome(page);
+  await backToNotes(page);
 
   await moveToTrash(page, "Welcome");
 
@@ -275,6 +283,27 @@ test("Undo in the toast puts a deleted note back", async ({ page }) => {
   await expect(treeItem(page, "Welcome")).toBeVisible();
   await expect(page.getByTestId("open-trash")).toHaveCount(0);
   await expect(toast).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Note editor" })).toContainText(
+    "This is your",
+  );
+});
+
+test("Restore in the note pane reopens a locally trashed note", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await openWelcome(page);
+  await backToNotes(page);
+
+  await moveToTrash(page, "Welcome");
+  await expect(page.getByText("This note was moved to trash.")).toBeVisible();
+  await page.getByRole("button", { name: "Restore", exact: true }).click();
+
+  await expect(page.getByText("This note was moved to trash.")).toHaveCount(0);
+  await expect(treeItem(page, "Welcome")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Note editor" })).toContainText(
+    "This is your",
+  );
 });
 
 test("Undo after the trash was saved restores the note to its folder", async ({

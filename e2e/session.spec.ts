@@ -1,9 +1,18 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { logIn, expectTree, SAMPLE, openNotes, logOut, fakeForge, flushPendingSaves, onFakeForgeReady } from "./helpers";
+import {
+  logIn,
+  expectTree,
+  SAMPLE,
+  openNotes,
+  logOut,
+  fakeForge,
+  flushPendingSaves,
+  handOverRepo,
+  onFakeForgeReady,
+} from "./helpers";
 import { closeSettings, openSettings } from "./helpers/settings";
-import { moveToTrash, treeItem } from "./helpers/tree";
-
+import { moveToTrash, openWelcome, treeItem, waitForSynced } from "./helpers/tree";
 
 async function openWelcomeAndType(page: Page, text: string): Promise<void> {
   await page.getByRole("treeitem", { name: "Welcome" }).click();
@@ -18,14 +27,16 @@ test("logging out saves pending edits first", async ({ page }) => {
   await openWelcomeAndType(page, " typed before logout");
   await logOut(page);
 
-  await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByLabel("Access token")).toBeVisible({
+    timeout: 10_000,
+  });
 
   await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(page);
   await page.getByRole("treeitem", { name: "Welcome" }).click();
-  await expect(page.getByRole("textbox", { name: "Note editor" })).toContainText(
-    "typed before logout",
-  );
+  await expect(
+    page.getByRole("textbox", { name: "Note editor" }),
+  ).toContainText("typed before logout");
 });
 
 test("keep trying retries the save and then logs out", async ({ page }) => {
@@ -34,12 +45,16 @@ test("keep trying retries the save and then logs out", async ({ page }) => {
   await fakeForge(page).failNext("commit", "Network");
   await logOut(page);
 
-  const dialog = page.getByRole("dialog", { name: "Some changes are not saved" });
+  const dialog = page.getByRole("dialog", {
+    name: "Some changes are not saved",
+  });
   await expect(dialog).toBeVisible({ timeout: 10_000 });
   await expect(dialog).toContainText("1 note or folder is not saved yet.");
 
   await dialog.getByRole("button", { name: "Keep trying" }).click();
-  await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByLabel("Access token")).toBeVisible({
+    timeout: 10_000,
+  });
 });
 
 test("log out anyway discards unsaved changes", async ({ page }) => {
@@ -49,14 +64,18 @@ test("log out anyway discards unsaved changes", async ({ page }) => {
   await fakeForge(page).failNext("commit", "Network");
   await logOut(page);
 
-  const dialog = page.getByRole("dialog", { name: "Some changes are not saved" });
+  const dialog = page.getByRole("dialog", {
+    name: "Some changes are not saved",
+  });
   await expect(dialog).toBeVisible({ timeout: 10_000 });
   await dialog.getByRole("button", { name: "Keep trying" }).click();
   await expect(dialog).toBeVisible({ timeout: 10_000 });
   await expect(dialog).toContainText("1 note or folder is not saved yet.");
 
   await dialog.getByRole("button", { name: "Log out anyway" }).click();
-  await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByLabel("Access token")).toBeVisible({
+    timeout: 10_000,
+  });
 });
 
 test("logging out leaves no note fragment in the URL", async ({ page }) => {
@@ -66,7 +85,9 @@ test("logging out leaves no note fragment in the URL", async ({ page }) => {
 
   await logOut(page);
 
-  await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByLabel("Access token")).toBeVisible({
+    timeout: 10_000,
+  });
   expect(new URL(page.url()).hash).toBe("");
 });
 
@@ -84,7 +105,9 @@ test.describe("last view", () => {
 
   async function storedNote(page: Page): Promise<string | null> {
     const raw = await storedLastView(page);
-    return raw === null ? null : (JSON.parse(raw) as { note: string | null }).note;
+    return raw === null
+      ? null
+      : (JSON.parse(raw) as { note: string | null }).note;
   }
 
   async function enableOption(page: Page): Promise<void> {
@@ -95,18 +118,25 @@ test.describe("last view", () => {
 
   async function openIdeasWithJournalExpanded(page: Page): Promise<void> {
     await treeItem(page, "Journal").click();
-    await expect(treeItem(page, "Journal")).toHaveAttribute("aria-expanded", "true");
+    await expect(treeItem(page, "Journal")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     await treeItem(page, "Projects").click();
     await treeItem(page, "commitnote").click();
     await treeItem(page, "Ideas").click();
-    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue("Ideas");
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+      "Ideas",
+    );
   }
 
   async function revisit(page: Page): Promise<void> {
     await page.goto("/");
   }
 
-  test("reopens the last note and expanded folders when the option is on", async ({ page }) => {
+  test("reopens the last note and expanded folders when the option is on", async ({
+    page,
+  }) => {
     await openNotes(page);
     await enableOption(page);
     await openIdeasWithJournalExpanded(page);
@@ -114,9 +144,14 @@ test.describe("last view", () => {
 
     await revisit(page);
 
-    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue("Ideas");
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+      "Ideas",
+    );
     for (const folder of ["Projects", "commitnote", "Journal"]) {
-      await expect(treeItem(page, folder)).toHaveAttribute("aria-expanded", "true");
+      await expect(treeItem(page, folder)).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
     }
   });
 
@@ -126,8 +161,13 @@ test.describe("last view", () => {
 
     await revisit(page);
 
-    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveCount(0);
-    await expect(treeItem(page, "Journal")).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveCount(
+      0,
+    );
+    await expect(treeItem(page, "Journal")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 
   test("skips a trashed note and keeps the folders that remain", async ({
@@ -157,10 +197,18 @@ test.describe("last view", () => {
 
     await revisit(page);
 
-    await expect(treeItem(page, "Projects")).toHaveAttribute("aria-expanded", "true");
-    await expect(treeItem(page, "Journal")).toHaveAttribute("aria-expanded", "true");
+    await expect(treeItem(page, "Projects")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    await expect(treeItem(page, "Journal")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     await expect(treeItem(page, "Roadmap")).toBeVisible();
-    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveCount(
+      0,
+    );
     await expect(page.getByRole("alert")).toHaveCount(0);
   });
 
@@ -186,13 +234,17 @@ test.describe("last view", () => {
     const ideasStored = await storedNote(page);
 
     await treeItem(page, "Welcome").click();
-    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue("Welcome");
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+      "Welcome",
+    );
     await expect.poll(() => storedNote(page)).not.toBe(ideasStored);
 
     const other = await page.context().newPage();
     await other.goto(ideasUrl);
 
-    await expect(other.getByRole("textbox", { name: "Note name" })).toHaveValue("Ideas");
+    await expect(other.getByRole("textbox", { name: "Note name" })).toHaveValue(
+      "Ideas",
+    );
   });
 
   test("shows the restored note's view on mobile @mobile", async ({ page }) => {
@@ -203,7 +255,57 @@ test.describe("last view", () => {
 
     await revisit(page);
 
-    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue("Ideas");
-    await expect(page.getByRole("textbox", { name: "Note editor" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+      "Ideas",
+    );
+    await expect(
+      page.getByRole("textbox", { name: "Note editor" }),
+    ).toBeVisible();
+  });
+
+  test("reopens a remotely renamed note at its new path", async ({
+    page,
+    openSecondDevice,
+  }) => {
+    await page.clock.install();
+    await openNotes(page);
+    await enableOption(page);
+    await openWelcome(page);
+    await expect.poll(() => storedNote(page)).not.toBeNull();
+    const welcomeStored = await storedNote(page);
+
+    const other = await openSecondDevice();
+    await openNotes(other.page);
+    await openWelcome(other.page);
+    const nameField = other.page.getByRole("textbox", { name: "Note name" });
+    await nameField.fill("Greetings");
+    await nameField.press("Enter");
+    await expect(treeItem(other.page, "Greetings")).toBeVisible();
+    await waitForSynced(other.page);
+    const exported = await fakeForge(other.page).exportRepo();
+    await handOverRepo(other.page, page);
+
+    await page.clock.runFor(60_000);
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+      "Greetings",
+    );
+    await expect.poll(() => storedNote(page)).not.toBe(welcomeStored);
+    await onFakeForgeReady(
+      page,
+      (controls, arg) => controls.adoptRepo(arg.key, arg.exported),
+      { key: SAMPLE.key, exported },
+    );
+
+    await page.reload();
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+      "Greetings",
+    );
+    await expect(page.getByText("This is your")).toBeVisible();
+
+    await revisit(page);
+    await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+      "Greetings",
+    );
+    await expect(page.getByText("This is your")).toBeVisible();
   });
 });

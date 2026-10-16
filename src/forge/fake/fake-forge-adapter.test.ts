@@ -285,6 +285,24 @@ describe("FakeForgeAdapter.failNext", () => {
   });
 });
 
+describe("FakeForgeAdapter call counters", () => {
+  it("counts getHead and listTree calls, including failed ones", async () => {
+    const adapter = new FakeForgeAdapter();
+    expect([adapter.getHeadCalls, adapter.listTreeCalls]).toEqual([0, 0]);
+
+    adapter.failNext("getHead", new ForgeError("Network"));
+    adapter.failNext("listTree", new ForgeError("Network"));
+    await expect(adapter.getHead()).rejects.toBeInstanceOf(ForgeError);
+    await expect(adapter.listTree("missing")).rejects.toBeInstanceOf(
+      ForgeError,
+    );
+    await expect(adapter.getHead()).rejects.toBeInstanceOf(ForgeError);
+
+    expect(adapter.getHeadCalls).toBe(2);
+    expect(adapter.listTreeCalls).toBe(1);
+  });
+});
+
 describe("FakeForgeAdapter.readBlob", () => {
   it("caches blob text and serves a cache hit before consulting queued failures", async () => {
     const adapter = new FakeForgeAdapter();

@@ -41,6 +41,7 @@
     hasNotes: boolean;
     onDraftContent: (content: string) => void;
     onNewNote: () => void;
+    onRestoreTrashed: (entryId: string, reopen: NotePath) => void;
     noteFont: NoteFont;
     animatedCaret?: boolean;
     shared?: boolean;
@@ -62,6 +63,7 @@
     hasNotes,
     onDraftContent,
     onNewNote,
+    onRestoreTrashed,
     noteFont,
     animatedCaret = true,
     shared = false,
@@ -217,6 +219,29 @@
     presentedPath = editorText !== null && !shown.draft && shown.openNote?.kind === "loaded" ? shown.openNote.path : null;
   });
 
+  const presentedPathNow = $derived(
+    editorText !== null && !shown.draft && shown.openNote?.kind === "loaded" ? shown.openNote.path : null,
+  );
+  let relocationPath: NotePath | null = null;
+  let relocationSwitch = untrack(() => shown.noteSwitch);
+
+  $effect(() => {
+    const path = presentedPathNow;
+    const presented = shown.noteSwitch;
+    untrack(() => {
+      if (
+        relocationPath !== null &&
+        path !== null &&
+        presented === relocationSwitch &&
+        JSON.stringify(path) !== JSON.stringify(relocationPath)
+      ) {
+        positions.move(relocationPath, path);
+      }
+      relocationPath = path;
+      relocationSwitch = presented;
+    });
+  });
+
   $effect.pre(() => {
     const current = live;
     motion.update({
@@ -318,6 +343,7 @@
     <MarkdownEditor
       bind:this={editor}
       text={editorText}
+      noteSwitch={shown.noteSwitch}
       readOnly={heldContent !== null}
       extensions={editorExtensions}
       {noteFont}
@@ -339,6 +365,14 @@
     <ConflictView {engine} conflict={shown.conflict} {noteFont} />
   {:else if shown.openNote.kind === "missing"}
     <p class="note-status">This note no longer exists.</p>
+  {:else if shown.openNote.kind === "trashed"}
+    {@const trashed = shown.openNote}
+    <div class="note-status note-trashed">
+      <p>This note was moved to trash.</p>
+      <button type="button" class="button" onclick={() => onRestoreTrashed(trashed.entryId, trashed.path)}>
+        {trashed.entryKind === "folder" ? "Restore folder" : "Restore"}
+      </button>
+    </div>
   {:else if shown.openNote.kind === "failed"}
     <p role="alert" class="alert-error">
       {describeSyncError(shown.openNote.error, forgeName)}
@@ -401,6 +435,17 @@
     padding: var(--space-4);
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);
+  }
+
+  .note-trashed {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+
+  .note-trashed p {
+    margin: 0;
   }
 
   .alert-error {

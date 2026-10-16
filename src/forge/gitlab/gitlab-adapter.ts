@@ -2,6 +2,7 @@ import { encodeUndoOutdatedSaveMessage } from "../../changes/encode-change-set";
 import { MAIN_BRANCH, REPO_CONFIG_PATH } from "../../format/v1";
 import { toBase64 } from "../../crypto/base64";
 import {
+  createRateLimitRecorder,
   byPath,
   decodeBase64Text,
   defaultFetch,
@@ -33,6 +34,7 @@ import type {
   RepoInspection,
   RootEntry,
   TreeEntry,
+  ObservedRateLimit,
 } from "../forge-adapter";
 import type { ShareHost, ShareLocator } from "../share-host";
 import { ROOT_LISTING_LIMIT, blobShasByPath } from "../forge-adapter";
@@ -221,6 +223,10 @@ class GitLabAdapter implements ForgeAdapter {
   private atomicSupport: AtomicCommitSupport | undefined;
   private readonly blobCache = new Map<string, string>();
   private readonly treeCache = new Map<string, readonly TreeEntry[]>();
+  private readonly rateLimit = createRateLimitRecorder({
+    remaining: "ratelimit-remaining",
+    reset: "ratelimit-reset",
+  });
 
   constructor(
     coordinates: Pick<RepoCoordinates, "owner" | "repo">,
@@ -259,7 +265,12 @@ class GitLabAdapter implements ForgeAdapter {
         ? pathOrUrl
         : `${this.projectPath}${pathOrUrl}`,
       init,
+      (response) => this.rateLimit.record(response),
     );
+  }
+
+  observedRateLimit(): ObservedRateLimit | null {
+    return this.rateLimit.current();
   }
 
   private errorFor(response: Response): ForgeError {

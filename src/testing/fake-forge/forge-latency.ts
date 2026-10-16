@@ -52,6 +52,7 @@ export function withLatency(
 ): ForgeAdapter {
   const replaceHistory = adapter.replaceHistory?.bind(adapter);
   const shareHost = adapter.shareHost;
+  const observedRateLimit = adapter.observedRateLimit?.bind(adapter);
   return {
     limits: adapter.limits,
     commitCost: (...args) => adapter.commitCost(...args),
@@ -85,5 +86,6 @@ export function withLatency(
           replaceHistory: (...args) =>
             delayed(latency.commitMs, () => replaceHistory(...args)),
         }),
+    ...(observedRateLimit === undefined ? {} : { observedRateLimit }),
   };
 }

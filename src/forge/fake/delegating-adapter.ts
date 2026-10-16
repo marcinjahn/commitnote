@@ -2,7 +2,8 @@ import type { ForgeAdapter } from "../forge-adapter";
 
 /**
  * Forwards the required members to `inner` and applies `overrides`. Optional
- * members stay absent unless an override provides them.
+ * members stay absent unless an override provides them, except
+ * `observedRateLimit`, which is forwarded when `inner` has it.
  */
 export function delegateAdapter(
   inner: ForgeAdapter,
@@ -21,6 +22,9 @@ export function delegateAdapter(
     listCommits: (request) => inner.listCommits(request),
     findOldestCommit: (request) => inner.findOldestCommit(request),
     readFileAt: (commitSha, path) => inner.readFileAt(commitSha, path),
+    ...(inner.observedRateLimit
+      ? { observedRateLimit: () => inner.observedRateLimit!() }
+      : {}),
     ...overrides,
   };
 }

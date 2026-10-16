@@ -66,6 +66,7 @@ import {
   type NoteTree,
 } from "../tree/note-tree";
 import { createAutosave } from "./autosave";
+import { locateRemoteRelocation } from "./remote-relocation";
 import { retryDelayMs } from "./backoff";
 import type { Clock } from "./clock";
 import { createRateBudget, type RateBudget } from "./rate-budget";
@@ -89,6 +90,7 @@ import {
 import {
   findTrashItem,
   findWorkingTrashEntry,
+  findWorkingTrashedLocation,
   visibleTrashEntries,
   type ReadableWorkingTrashEntry,
   type WorkingTrashEntry,
@@ -144,6 +146,12 @@ export type OpenNoteState =
     }
   | { readonly kind: "missing"; readonly path: NotePath }
   | {
+      readonly kind: "trashed";
+      readonly path: NotePath;
+      readonly entryId: string;
+      readonly entryKind: "note" | "folder";
+    }
+  | {
       readonly kind: "failed";
       readonly path: NotePath;
       readonly error: SyncError;
@@ -175,13 +183,47 @@ export interface HeldConflict {
   readonly editing: string | null;
 }
 
+interface Relocation {
+  readonly from: NotePath;
+  readonly to: NotePath;
+}
+
 type NoticeBody =
   | { readonly kind: "merge"; readonly notice: MergeNotice }
   | { readonly kind: "conflict"; readonly path: NotePath }
   | { readonly kind: "edited-merge-restored"; readonly path: NotePath }
-  | { readonly kind: "dropped"; readonly change: Change };
+  | { readonly kind: "dropped"; readonly change: Change }
+  | { readonly kind: "remote-updated"; readonly path: NotePath }
+  | {
+      readonly kind: "remote-relocated";
+      readonly from: NotePath;
+      readonly to: NotePath;
+    }
+  | {
+      readonly kind: "remote-trashed";
+      readonly path: NotePath;
+      readonly entryId: string;
+    };
 
 export type EngineNotice = NoticeBody & { readonly id: number };
+
+export type RemoteChangeNotice = Extract<
+  EngineNotice,
+  { kind: "remote-updated" | "remote-relocated" | "remote-trashed" }
+>;
+
+export function isRemoteChangeNotice(
+  notice: EngineNotice,
+): notice is RemoteChangeNotice {
+  switch (notice.kind) {
+    case "remote-updated":
+    case "remote-relocated":
+    case "remote-trashed":
+      return true;
+    default:
+      return false;
+  }
+}
 
 export interface SyncEngineState {
   readonly synced: SyncedState | null;
@@ -302,6 +344,7 @@ export interface SyncEngine {
   purgeExpiredTrash(): void;
   flush(): Promise<FlushResult>;
   retryNow(): void;
+  hasLocalWork(): boolean;
   /** While offline nothing is saved; going online saves at once. */
   setOnline(online: boolean): void;
   resolveConflict(path: NotePath, resolution: ConflictResolution): void;
@@ -784,13 +827,26 @@ export function createSyncEngine(options: {
   type NoteResolution =
     | { readonly kind: "local"; readonly content: string }
     | { readonly kind: "blob"; readonly blobSha: string }
+    | {
+        readonly kind: "trashed";
+        readonly entryId: string;
+        readonly entryKind: "note" | "folder";
+      }
     | { readonly kind: "missing" };
 
   function resolveWorkingNote(path: NotePath): NoteResolution {
     const { synced, workingTree } = state;
     if (synced === null || workingTree === null) return { kind: "missing" };
     const node = findWorkingNode(workingTree, path);
-    if (node?.kind !== "note") return { kind: "missing" };
+    if (node?.kind !== "note") {
+      const trashed = findWorkingTrashedLocation(
+        visibleTrashEntries(state.trash ?? [], clock.now()),
+        path,
+      );
+      return trashed === null
+        ? { kind: "missing" }
+        : { kind: "trashed", ...trashed };
+    }
 
     const conflict = conflictAt(path);
     if (conflict !== undefined && conflict.editing !== null) {
@@ -818,6 +874,13 @@ export function createSyncEngine(options: {
     switch (resolution.kind) {
       case "missing":
         return { kind: "missing", path };
+      case "trashed":
+        return {
+          kind: "trashed",
+          path,
+          entryId: resolution.entryId,
+          entryKind: resolution.entryKind,
+        };
       case "local":
         return {
           kind: "loaded",
@@ -886,6 +949,15 @@ export function createSyncEngine(options: {
     switch (resolution.kind) {
       case "missing":
         if (current.kind !== "missing") {
+          applyOpenNoteResult(epoch, openNoteFor(path, resolution));
+        }
+        return;
+      case "trashed":
+        if (
+          current.kind !== "trashed" ||
+          current.entryId !== resolution.entryId ||
+          current.entryKind !== resolution.entryKind
+        ) {
           applyOpenNoteResult(epoch, openNoteFor(path, resolution));
         }
         return;
@@ -974,7 +1046,13 @@ export function createSyncEngine(options: {
   function followDelete(deleted: NotePath): void {
     const current = state.openNote;
     if (current === null || !isAtOrWithin(current.path, deleted)) return;
-    replaceOpenNote({ kind: "missing", path: current.path });
+    const resolution = resolveWorkingNote(current.path);
+    replaceOpenNote(
+      openNoteFor(
+        current.path,
+        resolution.kind === "trashed" ? resolution : { kind: "missing" },
+      ),
+    );
   }
 
   function appendRebased(change: Change): void {
@@ -1644,6 +1722,40 @@ export function createSyncEngine(options: {
     );
   }
 
+  async function locateOpenNoteRelocation(
+    synced: SyncedState,
+  ): Promise<Relocation | null> {
+    const previous = state.synced;
+    const open = state.openNote;
+    if (
+      previous === null ||
+      open?.kind !== "loaded" ||
+      conflictAt(open.path) !== undefined ||
+      findNode(synced.tree, open.path)?.kind === "note"
+    ) {
+      return null;
+    }
+    const to = await locateRemoteRelocation({
+      previousTree: previous.tree,
+      newTree: synced.tree,
+      newHead: synced.head,
+      newTrash: synced.trash,
+      path: open.path,
+      listCommits: (request) => adapter.listCommits(request),
+    });
+    const stillApplies =
+      !disposed &&
+      !stopped &&
+      !suspended &&
+      saveLoop === null &&
+      !hasLocalWork() &&
+      state.synced === previous &&
+      state.openNote !== null &&
+      notePathEquals(state.openNote.path, open.path) &&
+      conflictAt(open.path) === undefined;
+    return to !== null && stillApplies ? { from: open.path, to } : null;
+  }
+
   async function doRefresh(): Promise<void> {
     update((current) => ({
       ...current,
@@ -1652,22 +1764,67 @@ export function createSyncEngine(options: {
 
     try {
       const head = await adapter.getHead();
+      let appliedFrom: OpenNoteState | null | undefined;
+      let relocated: Relocation | null = null;
 
       if (saveLoop === null) {
         if (hasLocalWork()) {
           if (head !== state.synced?.head) void triggerSave();
         } else if (state.synced === null || state.synced.head !== head) {
           const synced = await loadSynced(head);
+          const relocation =
+            saveLoop === null && !hasLocalWork()
+              ? await locateOpenNoteRelocation(synced)
+              : null;
           // A save or local change started while the tree loaded is merged
           // by the save instead.
           if (saveLoop === null && !hasLocalWork()) {
+            appliedFrom = state.openNote;
             update((current) => ({ ...current, synced }));
+            if (relocation !== null) {
+              followRelocation(relocation.from, relocation.to);
+              relocated = relocation;
+            }
             await recheckConflicts();
           } else if (saveLoop === null) {
             void triggerSave();
           }
         }
         await reresolveOpenNote();
+        const after = state.openNote;
+        if (relocated !== null) {
+          const { from, to } = relocated;
+          update((current) => ({
+            ...current,
+            notices: notices(current.notices, [
+              { kind: "remote-relocated", from, to },
+            ]),
+          }));
+        } else if (
+          appliedFrom?.kind === "loaded" &&
+          after?.kind === "loaded" &&
+          notePathEquals(appliedFrom.path, after.path) &&
+          appliedFrom.content !== after.content &&
+          !hasLocalWork()
+        ) {
+          update((current) => ({
+            ...current,
+            notices: notices(current.notices, [
+              { kind: "remote-updated", path: after.path },
+            ]),
+          }));
+        } else if (
+          appliedFrom?.kind === "loaded" &&
+          after?.kind === "trashed" &&
+          notePathEquals(appliedFrom.path, after.path)
+        ) {
+          update((current) => ({
+            ...current,
+            notices: notices(current.notices, [
+              { kind: "remote-trashed", path: after.path, entryId: after.entryId },
+            ]),
+          }));
+        }
       }
 
       update((current) => ({
@@ -1768,7 +1925,9 @@ export function createSyncEngine(options: {
           continue;
         }
         const resolution = resolveWorkingNote(child.path);
-        if (resolution.kind === "missing") continue;
+        if (resolution.kind === "missing" || resolution.kind === "trashed") {
+          continue;
+        }
         sources.push({
           path: child.path,
           name: child.name,
@@ -2589,6 +2748,7 @@ export function createSyncEngine(options: {
     purgeExpiredTrash,
     flush,
     retryNow,
+    hasLocalWork: () => hasLocalWork() || saveLoop !== null,
     setOnline,
     resolveConflict,
     changeSettings,

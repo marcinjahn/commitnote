@@ -1,5 +1,6 @@
 import { fromBase64 } from "../crypto/base64";
 import { ForgeError } from "./errors";
+import type { ObservedRateLimit } from "./forge-adapter";
 
 export async function sendForgeRequest(
   fetchImpl: typeof fetch,
@@ -27,6 +28,28 @@ export async function sendForgeRequest(
   } catch (cause) {
     throw new ForgeError("Network", { cause });
   }
+}
+
+export function createRateLimitRecorder(headers: {
+  remaining: string;
+  reset: string;
+}): { record(response: Response): void; current(): ObservedRateLimit | null } {
+  let latest: ObservedRateLimit | null = null;
+  const parse = (value: string | null): number | null => {
+    if (value === null || value.trim() === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  };
+  return {
+    record(response) {
+      const remaining = parse(response.headers.get(headers.remaining));
+      const reset = parse(response.headers.get(headers.reset));
+      if (remaining !== null && reset !== null) {
+        latest = { remaining, resetAt: reset * 1000 };
+      }
+    },
+    current: () => latest,
+  };
 }
 
 export function retryAfterMs(

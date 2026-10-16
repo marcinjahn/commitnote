@@ -22,6 +22,7 @@ export type A11yState =
   | "share-link-created"
   | "shared-links"
   | "trash"
+  | "trashed-note"
   | "viewer-password"
   | "viewer-unlocked";
 

@@ -1,4 +1,5 @@
 import type { NotePath } from "../changes/change";
+import { isWithinFolder, notePathEquals } from "../changes/change";
 import { isExpired } from "../trash/expiry";
 import type { WorkingNode } from "./working-tree";
 
@@ -57,4 +58,23 @@ export function findTrashItem(
     current = next;
   }
   return current;
+}
+
+export function findWorkingTrashedLocation(
+  trash: readonly WorkingTrashEntry[],
+  path: NotePath,
+): { readonly entryId: string; readonly entryKind: "note" | "folder" } | null {
+  let found: ReadableWorkingTrashEntry | null = null;
+  for (const entry of trash) {
+    if (entry.undecryptable) continue;
+    if (found !== null && entry.deletedAt <= found.deletedAt) continue;
+    const matches =
+      entry.kind === "note"
+        ? notePathEquals(entry.originalPath, path)
+        : isWithinFolder(path, entry.originalPath) &&
+          findTrashItem(entry, path.slice(entry.originalPath.length))?.kind ===
+            "note";
+    if (matches) found = entry;
+  }
+  return found === null ? null : { entryId: found.id, entryKind: found.kind };
 }

@@ -142,6 +142,8 @@ interface FakeForgeControls {
   adoptRepo(repoKey: string, exported: string): void;
   changeRepoKey(repoKey: string): Promise<void>;
   blobReads(repoKey: string): readonly string[];
+  getHeadCount(repoKey: string): number;
+  listTreeCount(repoKey: string): number;
 }
 
 type FakeForgeWindow = { __commitNoteFakeForge: FakeForgeControls };
@@ -220,6 +222,26 @@ export function fakeForge(page: Page, repoKey: string = SAMPLE.key) {
           (window as unknown as FakeForgeWindow).__commitNoteFakeForge.blobReads(
             key,
           ),
+        repoKey,
+      );
+    },
+    getHeadCount: async () => {
+      await controlsReady(page);
+      return page.evaluate(
+        (key) =>
+          (
+            window as unknown as FakeForgeWindow
+          ).__commitNoteFakeForge.getHeadCount(key),
+        repoKey,
+      );
+    },
+    listTreeCount: async () => {
+      await controlsReady(page);
+      return page.evaluate(
+        (key) =>
+          (
+            window as unknown as FakeForgeWindow
+          ).__commitNoteFakeForge.listTreeCount(key),
         repoKey,
       );
     },

@@ -48,4 +48,15 @@ describe("withLatency", () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(settled).toEqual(["readFileAt", "listCommits"]);
   });
+
+  it("forwards the observed rate limit without delay", () => {
+    const limit = { remaining: 5, resetAt: 99 };
+    const inner = new FakeForgeAdapter();
+    inner.observedRateLimit = () => limit;
+    const adapter = withLatency(inner, {
+      ...GITHUB_LIKE_LATENCY,
+      getHeadMs: 1000,
+    });
+    expect(adapter.observedRateLimit?.()).toBe(limit);
+  });
 });

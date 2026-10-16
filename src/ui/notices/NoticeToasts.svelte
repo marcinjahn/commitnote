@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { NotePath } from "../../changes/change";
-  import type { EngineNotice } from "../../sync/sync-engine";
+  import type { EngineNotice, RemoteChangeNotice } from "../../sync/sync-engine";
   import {
     describeNotice,
     isPersistentToast,
@@ -13,7 +13,7 @@
   import { dismissIcon, toneIcons } from "./tone-icons";
 
   interface Props {
-    notices: readonly EngineNotice[];
+    notices: readonly Exclude<EngineNotice, RemoteChangeNotice>[];
     messages?: readonly ToastMessage[];
     onDismiss: (id: number) => void;
     onDismissMessage?: (id: number) => void;

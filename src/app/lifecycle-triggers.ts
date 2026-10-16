@@ -11,6 +11,8 @@ export interface LifecycleHandlers {
   readonly retryNow: () => void;
   readonly hasUnsaved: () => boolean;
   readonly setOnline: (online: boolean) => void;
+  readonly setVisible: (visible: boolean) => void;
+  readonly refreshTrigger: (trigger: "visible" | "online") => void;
 }
 
 export function installLifecycleTriggers(
@@ -21,7 +23,17 @@ export function installLifecycleTriggers(
 
   function handleVisibilityChange(): void {
     if (document.visibilityState === "hidden") {
+      handlers.setVisible(false);
       handlers.flush();
+    } else {
+      handlers.setVisible(true);
+      handlers.refreshTrigger("visible");
+    }
+  }
+
+  function handleFocus(): void {
+    if (document.visibilityState === "visible") {
+      handlers.refreshTrigger("visible");
     }
   }
 
@@ -36,6 +48,7 @@ export function installLifecycleTriggers(
   function handleOnline(): void {
     handlers.setOnline(true);
     handlers.retryNow();
+    handlers.refreshTrigger("online");
   }
 
   function handleBeforeUnload(event: BeforeUnloadEvent): void {
@@ -45,6 +58,7 @@ export function installLifecycleTriggers(
   }
 
   document.addEventListener("visibilitychange", handleVisibilityChange);
+  window.addEventListener("focus", handleFocus);
   window.addEventListener("pagehide", handlePageHide);
   window.addEventListener("offline", handleOffline);
   window.addEventListener("online", handleOnline);
@@ -52,6 +66,7 @@ export function installLifecycleTriggers(
 
   return () => {
     document.removeEventListener("visibilitychange", handleVisibilityChange);
+    window.removeEventListener("focus", handleFocus);
     window.removeEventListener("pagehide", handlePageHide);
     window.removeEventListener("offline", handleOffline);
     window.removeEventListener("online", handleOnline);

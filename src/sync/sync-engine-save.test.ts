@@ -984,7 +984,7 @@ describe("sync engine saves", () => {
     });
   });
 
-  it("keeps the open note through a folder rename and marks it missing after its delete", async () => {
+  it("keeps the open note through a folder rename and marks it trashed after its delete", async () => {
     const h = await setup();
     await h.engine.openNote(IDEAS);
 
@@ -995,10 +995,15 @@ describe("sync engine saves", () => {
       path: moved,
     });
 
-    h.engine.delete(moved);
+    const deleted = h.engine.delete(moved);
+    if (!deleted.ok || deleted.trashEntryId === undefined) {
+      throw new Error("expected the note to go to the trash");
+    }
     expect(h.engine.getState().openNote).toEqual({
-      kind: "missing",
+      kind: "trashed",
       path: moved,
+      entryId: deleted.trashEntryId,
+      entryKind: "note",
     });
     await waitIdle(h.engine);
     const tree = await mainTree(h.fake);
@@ -1057,6 +1062,17 @@ describe("sync engine saves", () => {
     expect(okCommitCount(h.fake, start)).toBe(1);
     expect(h.engine.getState().synced?.head).toBe(await h.fake.getHead());
     expect(await welcomeText(h.fake)).toBe("committed once");
+  });
+
+  it("reports local work while an edit is pending and none once saved", async () => {
+    const h = await setup();
+    expect(h.engine.hasLocalWork()).toBe(false);
+
+    h.engine.editNote(WELCOME, "edited");
+    expect(h.engine.hasLocalWork()).toBe(true);
+
+    await h.engine.flush();
+    expect(h.engine.hasLocalWork()).toBe(false);
   });
 
   it("flush reports saved or the unsaved count", async () => {

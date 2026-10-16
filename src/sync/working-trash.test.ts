@@ -4,9 +4,11 @@ import type { NoteTree } from "../tree/note-tree";
 import {
   findTrashItem,
   findWorkingTrashEntry,
+  findWorkingTrashedLocation,
   type ReadableWorkingTrashEntry,
+  type WorkingTrashEntry,
 } from "./working-trash";
-import { buildWorkingState } from "./working-tree";
+import { buildWorkingState, type WorkingNote } from "./working-tree";
 
 const buildWorkingTrash = (
   ...args: Parameters<typeof buildWorkingState>
@@ -167,5 +169,107 @@ describe("findWorkingTrashEntry", () => {
         PENDING_ID,
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("findWorkingTrashedLocation", () => {
+  const note = (path: string[]): WorkingNote => ({
+    kind: "note",
+    name: path[path.length - 1],
+    path,
+    syncedPath: null,
+    colorTag: null,
+    shared: false,
+  });
+
+  const noteEntry = (
+    id: string,
+    deletedAt: number,
+    path: string[],
+  ): ReadableWorkingTrashEntry => ({
+    id,
+    deletedAt,
+    undecryptable: false,
+    synced: true,
+    kind: "note",
+    originalPath: path,
+    tree: note(path),
+  });
+
+  const folderEntry: ReadableWorkingTrashEntry = {
+    id: SYNCED_ID,
+    deletedAt: 100,
+    undecryptable: false,
+    synced: true,
+    kind: "folder",
+    originalPath: ["Old"],
+    tree: {
+      kind: "folder",
+      name: "Old",
+      path: ["Old"],
+      children: [
+        {
+          kind: "folder",
+          name: "Sub",
+          path: ["Old", "Sub"],
+          children: [note(["Old", "Sub", "Leaf"])],
+        },
+      ],
+    },
+  };
+
+  it("finds a trashed note by its original path", () => {
+    expect(
+      findWorkingTrashedLocation(
+        [noteEntry(PENDING_ID, 100, ["Welcome"])],
+        ["Welcome"],
+      ),
+    ).toEqual({ entryId: PENDING_ID, entryKind: "note" });
+  });
+
+  it("finds a note nested in a trashed folder", () => {
+    expect(
+      findWorkingTrashedLocation([folderEntry], ["Old", "Sub", "Leaf"]),
+    ).toEqual({ entryId: SYNCED_ID, entryKind: "folder" });
+  });
+
+  it("returns null when a trashed folder does not hold the note", () => {
+    expect(findWorkingTrashedLocation([folderEntry], ["Old", "Gone"])).toBeNull();
+    expect(findWorkingTrashedLocation([folderEntry], ["Old", "Sub"])).toBeNull();
+    expect(findWorkingTrashedLocation([folderEntry], ["Old"])).toBeNull();
+  });
+
+  it("skips undecryptable entries", () => {
+    const undecryptable: WorkingTrashEntry = {
+      id: "20261001T100000Z-1-dddddddd",
+      deletedAt: 200,
+      undecryptable: true,
+      synced: true,
+    };
+    expect(
+      findWorkingTrashedLocation(
+        [undecryptable, noteEntry(PENDING_ID, 100, ["Welcome"])],
+        ["Welcome"],
+      ),
+    ).toEqual({ entryId: PENDING_ID, entryKind: "note" });
+  });
+
+  it("prefers the most recently deleted entry", () => {
+    const olderId = "20260801T100000Z-3-cccccccc";
+    const older = noteEntry(olderId, 100, ["Old", "Sub", "Leaf"]);
+    const newer = { ...folderEntry, id: PENDING_ID, deletedAt: 200 };
+    expect(
+      findWorkingTrashedLocation([newer, older], ["Old", "Sub", "Leaf"]),
+    ).toEqual({ entryId: PENDING_ID, entryKind: "folder" });
+    expect(
+      findWorkingTrashedLocation(
+        [{ ...folderEntry, deletedAt: 50 }, older],
+        ["Old", "Sub", "Leaf"],
+      ),
+    ).toEqual({ entryId: olderId, entryKind: "note" });
+  });
+
+  it("returns null when nothing in the trash matches", () => {
+    expect(findWorkingTrashedLocation([], ["Welcome"])).toBeNull();
   });
 });

@@ -15,6 +15,7 @@ import type {
   RepoInspection,
   RootEntry,
   TreeEntry,
+  ObservedRateLimit,
 } from "../forge-adapter";
 import type { ShareHost, ShareLocator } from "../share-host";
 import { createFakeShareStore, type FakeShareStore } from "./fake-share-store";
@@ -85,6 +86,8 @@ export class FakeForgeAdapter implements ForgeAdapter {
     ((request: ContentCreatingRequest) => void) | undefined;
   private readonly blobCache = new Map<string, string>();
   private readonly blobReadLog: string[] = [];
+  private getHeadCount = 0;
+  private listTreeCount = 0;
   private readonly pendingFailures = new Map<
     FailableOperation,
     Array<ForgeError | "stale">
@@ -276,7 +279,12 @@ export class FakeForgeAdapter implements ForgeAdapter {
     return { kind: "ok", head: commitSha };
   }
 
+  observedRateLimit(): ObservedRateLimit | null {
+    return null;
+  }
+
   async getHead(): Promise<string> {
+    this.getHeadCount += 1;
     this.throwIfFailing("getHead");
 
     const head = this.repo.getRef(MAIN_BRANCH);
@@ -289,6 +297,7 @@ export class FakeForgeAdapter implements ForgeAdapter {
   }
 
   async listTree(commitSha: string): Promise<TreeEntry[]> {
+    this.listTreeCount += 1;
     this.throwIfFailing("listTree");
 
     const commit = this.repo.getCommit(commitSha);
@@ -298,6 +307,14 @@ export class FakeForgeAdapter implements ForgeAdapter {
       });
     }
     return this.repo.listTreeEntries(commit.tree);
+  }
+
+  get getHeadCalls(): number {
+    return this.getHeadCount;
+  }
+
+  get listTreeCalls(): number {
+    return this.listTreeCount;
   }
 
   get blobReads(): readonly string[] {
