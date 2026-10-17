@@ -95,7 +95,7 @@ const theme = EditorView.theme({
     padding: "0 var(--space-2) 0 0",
   },
   [`.cm-relative-line-numbers .${CURRENT_CLASS}`]: {
-    color: "var(--color-text)",
+    color: "var(--color-link)",
   },
   ".cm-relative-line-numbers .cm-relative-line-h1": {
     lineHeight: lineHeightOf("var(--font-size-xl)"),
@@ -123,6 +123,9 @@ const theme = EditorView.theme({
   "@media (forced-colors: active)": {
     ".cm-relative-line-numbers .cm-gutterElement": {
       color: "CanvasText",
+    },
+    [`.cm-relative-line-numbers .${CURRENT_CLASS}`]: {
+      color: "Highlight",
     },
   },
 });

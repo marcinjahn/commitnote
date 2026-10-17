@@ -1,5 +1,5 @@
 import { Vim, getCM } from "@replit/codemirror-vim";
-import type { EditorView } from "@codemirror/view";
+import { ViewPlugin, type EditorView } from "@codemirror/view";
 
 type RegisterController = ReturnType<typeof Vim.getRegisterController>;
 type Register = RegisterController["unnamedRegister"];
@@ -22,19 +22,20 @@ interface ClipboardEntry {
   readonly text: string;
   readonly linewise: boolean;
   readonly blockwise: boolean;
-  failed: boolean;
 }
 
 const CLIPBOARD_ALIASES = new Set(["+", "*"]);
 const DENIED_MESSAGE = "Clipboard access denied, pasting from the Vim register";
 
 interface ClipboardSync {
-  lastWritten: ClipboardEntry | null;
+  known: ClipboardEntry | null;
+  knownSince: number;
   readsDenied: boolean;
 }
 
 let pendingPastes = 0;
 let pasteQueue: Promise<void> = Promise.resolve();
+let windowLeaves = 0;
 const syncs = new WeakMap<RegisterController, ClipboardSync>();
 
 const systemClipboard = (): Clipboard | undefined =>
@@ -45,22 +46,35 @@ const unalias = (name: string | null | undefined) =>
 
 const normalize = (text: string): string => text.replace(/\r\n?/g, "\n");
 
+function remember(sync: ClipboardSync, entry: ClipboardEntry): void {
+  sync.known = entry;
+  sync.knownSince = windowLeaves;
+}
+
+function rememberText(sync: ClipboardSync, text: string): ClipboardEntry {
+  const known = sync.known?.text === text ? sync.known : null;
+  const entry = known ?? {
+    text,
+    linewise: text.endsWith("\n"),
+    blockwise: false,
+  };
+  remember(sync, entry);
+  return entry;
+}
+
+const knownClipboard = (sync: ClipboardSync): ClipboardEntry | null =>
+  sync.knownSince === windowLeaves ? sync.known : null;
+
 function writeClipboard(sync: ClipboardSync, register: Register): void {
-  const entry: ClipboardEntry = {
-    text: register.toString(),
+  const text = register.toString();
+  remember(sync, {
+    text,
     linewise: register.linewise,
     blockwise: register.blockwise,
-    failed: false,
-  };
-  sync.lastWritten = entry;
-  const clipboard = systemClipboard();
-  if (typeof clipboard?.writeText !== "function") {
-    entry.failed = true;
-    return;
-  }
-  clipboard.writeText(entry.text).catch(() => {
-    entry.failed = true;
   });
+  systemClipboard()
+    ?.writeText?.(text)
+    .catch(() => {});
 }
 
 function isClipboardBound(
@@ -76,7 +90,11 @@ function isClipboardBound(
 function syncOf(controller: RegisterController): ClipboardSync {
   const existing = syncs.get(controller);
   if (existing) return existing;
-  const sync: ClipboardSync = { lastWritten: null, readsDenied: false };
+  const sync: ClipboardSync = {
+    known: null,
+    knownSince: -1,
+    readsDenied: false,
+  };
   syncs.set(controller, sync);
   controller.registers["+"] = controller.unnamedRegister;
   const pushText = controller.pushText.bind(controller);
@@ -103,7 +121,6 @@ async function readClipboard(
   const clipboard = systemClipboard();
   if (
     sync.readsDenied ||
-    sync.lastWritten?.failed ||
     typeof clipboard?.readText !== "function"
   )
     return null;
@@ -122,13 +139,8 @@ async function readClipboard(
   }
 }
 
-function adoptClipboardText(controller: RegisterController, text: string) {
-  const sync = syncOf(controller);
-  const known = sync.lastWritten?.text === text ? sync.lastWritten : null;
-  const linewise = known ? known.linewise : text.endsWith("\n");
-  const blockwise = known ? known.blockwise : false;
-  controller.unnamedRegister.setText(text, linewise, blockwise);
-  if (!known) sync.lastWritten = { text, linewise, blockwise, failed: false };
+function adoptClipboard(controller: RegisterController, entry: ClipboardEntry) {
+  controller.unnamedRegister.setText(entry.text, entry.linewise, entry.blockwise);
 }
 
 function runPaste(
@@ -166,23 +178,30 @@ function paste(
   const sync = syncOf(controller);
   const name = args.registerName;
   const fromClipboard = isClipboardBound(controller, unalias(name), "paste");
-  if (!fromClipboard && pendingPastes === 0) {
+  const known = fromClipboard ? knownClipboard(sync) : null;
+  if ((!fromClipboard || known) && pendingPastes === 0) {
+    if (known) adoptClipboard(controller, known);
     runPaste(this, cm, args, vim, controller.getRegister(name));
     return;
   }
   pendingPastes++;
   pasteQueue = pasteQueue
     .then(async () => {
-      const text = fromClipboard ? await readClipboard(sync, cm) : null;
-      if (!stillAttached(cm)) return;
       const current = Vim.getRegisterController();
-      if (text !== null) adoptClipboardText(current, text);
+      const currentSync = syncOf(current);
+      let entry = fromClipboard ? knownClipboard(currentSync) : null;
+      if (fromClipboard && !entry) {
+        const text = await readClipboard(currentSync, cm);
+        if (text !== null) entry = rememberText(currentSync, text);
+      }
+      if (!stillAttached(cm)) return;
+      if (entry) adoptClipboard(current, entry);
       runPaste(
         this,
         cm,
         args,
         cm.state.vim ?? vim,
-        fromClipboard ? current.unnamedRegister : current.getRegister(name),
+        current.getRegister(name),
       );
     })
     .catch(() => {})
@@ -191,11 +210,52 @@ function paste(
     });
 }
 
-let pasteDefined = false;
+function clipboardEventText(event: ClipboardEvent): string {
+  const data = event.clipboardData?.getData("text/plain") ?? "";
+  if (data || event.type === "paste") return normalize(data);
+  if (event.defaultPrevented) return "";
+  return normalize(document.getSelection()?.toString() ?? "");
+}
+
+function onClipboardEvent(event: ClipboardEvent): void {
+  const text = clipboardEventText(event);
+  if (text || event.type === "paste")
+    rememberText(syncOf(Vim.getRegisterController()), text);
+}
+
+function onWindowLeave(): void {
+  windowLeaves++;
+}
+
+function onVisibilityChange(): void {
+  if (document.visibilityState === "hidden") onWindowLeave();
+}
+
+let installed = false;
 
 export function useSystemClipboard(): void {
   syncOf(Vim.getRegisterController());
-  if (pasteDefined) return;
-  pasteDefined = true;
+  if (installed) return;
+  installed = true;
   Vim.defineAction("paste", paste);
+  if (typeof window === "undefined") return;
+  window.addEventListener("blur", onWindowLeave);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  document.addEventListener("copy", onClipboardEvent);
+  document.addEventListener("cut", onClipboardEvent);
+  document.addEventListener("paste", onClipboardEvent, true);
 }
+
+export const nativePaste = ViewPlugin.define((view) => {
+  const onPaste = (event: ClipboardEvent) => {
+    const cm = getCM(view);
+    if (!cm?.state.vim || cm.state.vim.insertMode) return;
+    event.preventDefault();
+    event.stopPropagation();
+    Vim.handleKey(cm, "p", "user");
+  };
+  view.dom.addEventListener("paste", onPaste, true);
+  return {
+    destroy: () => view.dom.removeEventListener("paste", onPaste, true),
+  };
+});

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import appCss from "../app.css?raw";
 import { ACCENT_PALETTE, type AccentColorId } from "./accent-palette";
 import {
+  clampOklchLightness,
   compositeOver,
   contrastRatio,
   mixSrgb,
@@ -69,11 +70,16 @@ const tokenRule = appRules.find((rule) =>
 const focusRule = appRules.find(
   (rule) => rule.prelude === ":root" && rule.body.includes("--color-focus:"),
 );
-if (!tokenRule || !focusRule) throw new Error("Token blocks not found in app.css");
+const oklchRule = appRules.find((rule) =>
+  /^@supports \(color: oklch\(from red l c h\)\)$/.test(rule.prelude),
+);
+if (!tokenRule || !focusRule || !oklchRule)
+  throw new Error("Token blocks not found in app.css");
 
 const TOKENS = new Map([
   ...declarations(tokenRule.body),
   ...declarations(focusRule.body),
+  ...declarations(oklchRule.body),
 ]);
 
 function splitArgs(args: string): string[] {
@@ -113,6 +119,18 @@ function resolveValue(value: string, scope: Scope, token: string): Rgba {
       const direct = scope.accent[name] ?? TOKENS.get(name);
       if (direct !== undefined) return resolveValue(direct, scope, name);
       if (args.length === 2) return resolveValue(args[1], scope, token);
+    }
+    if (fn === "oklch") {
+      const clamp = /^from (.+) (min|max)\(l, (\d+(?:\.\d+)?)\) c h$/.exec(
+        inner.replace(/\s+/g, " ").trim(),
+      );
+      if (clamp) {
+        return clampOklchLightness(
+          resolveValue(clamp[1], scope, token),
+          clamp[2] as "min" | "max",
+          Number(clamp[3]),
+        );
+      }
     }
     if (fn === "color-mix" && args.length === 3 && args[0] === "in srgb") {
       const first = /^(.+)\s+(\d+(?:\.\d+)?)%$/.exec(args[1]);
@@ -224,6 +242,12 @@ const PAIRS: Pair[] = [
       ...pick(surfaces, "background"),
       "vim-mode-wash": token("--color-vim-mode-wash"),
     },
+  },
+  {
+    id: "vim-current-line-number",
+    threshold: TEXT,
+    foreground: token("--color-link"),
+    backgrounds: surfaces,
   },
   {
     id: "vim-block-cursor",

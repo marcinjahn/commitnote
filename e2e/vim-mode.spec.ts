@@ -206,6 +206,11 @@ test("yank and put go through the system clipboard", async ({
 
   await page.evaluate(() => navigator.clipboard.writeText("gamma "));
   await page.keyboard.press("Shift+P");
+  await expect(lines).toHaveText(["alpha alpha beta"]);
+  await page.keyboard.press("u");
+
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await page.keyboard.press("Shift+P");
   await expect(lines).toHaveText(["gamma alpha beta"]);
 
   await page.keyboard.type("yyp");
@@ -223,6 +228,16 @@ test("yank and put go through the system clipboard", async ({
   await page.keyboard.press("ControlOrMeta+c");
   await expect.poll(readClipboard).toBe("delta");
   await expect(modeText(page)).toHaveText("INSERT");
+
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("0");
+  await page.keyboard.press(
+    process.platform === "darwin" ? "Meta+v" : "Control+Shift+V",
+  );
+  await expect(lines).toHaveText(["gdeltaamma alpha beta delta"]);
+  await expect(modeText(page)).toHaveText("NORMAL");
+  await page.keyboard.press("u");
+  await expect(lines).toHaveText(["gamma alpha beta delta"]);
 });
 
 test("search moves the cursor to the match and n repeats it", async ({
@@ -305,6 +320,42 @@ test("relative line numbers follow the cursor", async ({ page }) => {
 
   await page.keyboard.press("k");
   await expect(current).toHaveText("2");
+});
+
+test("the current line number uses the text-safe accent", async ({ page }) => {
+  await openVimWelcome(page);
+  await focusEditor(page);
+  const colorOf = (selector: string) =>
+    page.locator(selector).first().evaluate((element) => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--color-link)";
+      element.append(probe);
+      const colors = {
+        own: getComputedStyle(element).color,
+        link: getComputedStyle(probe).color,
+      };
+      probe.remove();
+      return colors;
+    });
+  const current = ".cm-relative-line-current";
+  const other =
+    ".cm-relative-line-numbers .cm-gutterElement:not(.cm-relative-line-current):not([style*='visibility'])";
+  const width = () =>
+    gutter(page).evaluate((element) => element.getBoundingClientRect().width);
+
+  const before = await width();
+  const colors = await colorOf(current);
+  expect(colors.own).toBe(colors.link);
+  expect((await colorOf(other)).own).not.toBe(colors.own);
+
+  await page.keyboard.press("j");
+  await expect(page.locator(current)).toHaveText("2");
+  expect(await width()).toBe(before);
+
+  await page.emulateMedia({ forcedColors: "active" });
+  await expect
+    .poll(async () => (await colorOf(current)).own)
+    .not.toBe((await colorOf(other)).own);
 });
 
 test("the position names the vim cursor in every visual mode", async ({
