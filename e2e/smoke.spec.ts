@@ -8,7 +8,7 @@ import { test, expect } from "./fixtures";
 const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
 
 const csp = (scriptHash: string) =>
-  `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-${scriptHash}'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com; img-src 'self' https: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+  `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-${scriptHash}'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com; img-src 'self' https: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'`;
 
 test("login screen renders under the production CSP", async ({ page }) => {
   const consoleErrors: string[] = [];

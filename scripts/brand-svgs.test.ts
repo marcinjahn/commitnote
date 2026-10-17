@@ -5,8 +5,11 @@ import type { Font } from "fontkit";
 import { beforeAll, describe, expect, it } from "vitest";
 import { CARET_TAIL_LENGTH } from "../src/editor/caret-style";
 import { accentOption } from "../src/settings/accent-palette";
+import { APP_ICONS } from "./app-icons";
+import { buildBrandOutputs } from "./brand-outputs";
 import { buildBrandSvgs, FONT_FILE, readmeWordmarkWidth } from "./brand-svgs";
 import { loadFont } from "./font-outlining";
+import { readPngSize } from "./png-size";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -59,14 +62,41 @@ describe("brand SVGs", () => {
     );
   });
 
+  it("covers every app icon", async () => {
+    const paths = (await buildBrandOutputs(font)).map((output) => output.path);
+
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "public/icons/icon-192.png",
+        "public/icons/icon-512.png",
+        "public/icons/maskable-192.png",
+        "public/icons/maskable-512.png",
+        "public/icons/monochrome-512.png",
+        "public/icons/apple-touch-icon.png",
+      ]),
+    );
+  });
+
   it("matches the committed files", async () => {
-    for (const svg of buildBrandSvgs(font)) {
-      const committed = await readFile(resolve(root, svg.path), "utf8");
+    for (const output of await buildBrandOutputs(font)) {
+      const committed = await readFile(resolve(root, output.path));
+      const generated =
+        typeof output.contents === "string"
+          ? Buffer.from(output.contents, "utf8")
+          : Buffer.from(output.contents);
 
       expect(
-        committed === svg.contents,
-        `${svg.path} is out of date, run \`npm run generate:brand\``,
+        committed.equals(generated),
+        `${output.path} is out of date, run \`npm run generate:brand\``,
       ).toBe(true);
+
+      const icon = APP_ICONS.find((candidate) => candidate.path === output.path);
+      if (icon !== undefined) {
+        expect(readPngSize(committed)).toEqual({
+          width: icon.size,
+          height: icon.size,
+        });
+      }
     }
   });
 

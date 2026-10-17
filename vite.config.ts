@@ -4,7 +4,7 @@ import { defineConfig, type Plugin } from "vitest/config";
 
 const SCRIPT_SRC = "script-src 'self' 'wasm-unsafe-eval'";
 const CSP_TEMPLATE =
-  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com; img-src 'self' https: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com; img-src 'self' https: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'";
 
 function inlineScriptHashes(html: string): string[] {
   const hashes: string[] = [];

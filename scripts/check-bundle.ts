@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -46,6 +46,75 @@ async function findForbidden(
   return hits;
 }
 
+interface ManifestImage {
+  readonly src: string;
+}
+
+interface WebManifest {
+  readonly icons?: readonly ManifestImage[];
+  readonly screenshots?: readonly ManifestImage[];
+  readonly shortcuts?: ReadonlyArray<{ readonly icons?: readonly ManifestImage[] }>;
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function linkHrefs(html: string, rel: string): string[] {
+  const hrefs: string[] = [];
+  for (const tag of html.match(/<link\b[^>]*>/g) ?? []) {
+    if (tag.includes(`rel="${rel}"`)) {
+      const href = tag.match(/\shref="([^"]+)"/)?.[1];
+      if (href !== undefined) {
+        hrefs.push(href);
+      }
+    }
+  }
+  return hrefs;
+}
+
+async function findManifestProblems(distDir: string): Promise<string[]> {
+  const manifestPath = join(distDir, "manifest.webmanifest");
+  if (!(await exists(manifestPath))) {
+    return ["dist/manifest.webmanifest is missing"];
+  }
+  let manifest: WebManifest;
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, "utf8")) as WebManifest;
+  } catch {
+    return ["dist/manifest.webmanifest is not valid JSON"];
+  }
+
+  const problems: string[] = [];
+  const references: Array<{ readonly from: string; readonly src: string }> = [
+    ...(manifest.icons ?? []),
+    ...(manifest.screenshots ?? []),
+    ...(manifest.shortcuts ?? []).flatMap((shortcut) => shortcut.icons ?? []),
+  ].map(({ src }) => ({ from: "manifest.webmanifest", src }));
+
+  const html = await readFile(join(distDir, "index.html"), "utf8");
+  for (const rel of ["manifest", "apple-touch-icon"]) {
+    const hrefs = linkHrefs(html, rel);
+    if (hrefs.length === 0) {
+      problems.push(`dist/index.html has no rel="${rel}" link`);
+    }
+    references.push(...hrefs.map((src) => ({ from: "index.html", src })));
+  }
+
+  for (const { from, src } of references) {
+    const target = resolve(distDir, src);
+    if (!(await exists(target))) {
+      problems.push(`${from} references ${src}, but ${target} is missing`);
+    }
+  }
+  return problems;
+}
+
 async function main(): Promise<void> {
   const distDir = join(rootDir, "dist");
   const fakeDistDir = join(rootDir, "dist-fake");
@@ -89,8 +158,17 @@ async function main(): Promise<void> {
     return;
   }
 
+  const manifestProblems = await findManifestProblems(distDir);
+  if (manifestProblems.length > 0) {
+    console.error(
+      `dist/ does not ship a complete web app manifest:\n${manifestProblems.map((problem) => `  - ${problem}`).join("\n")}`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   console.log(
-    "Bundle check passed: production build never ships fake forge fixtures.",
+    "Bundle check passed: production build never ships fake forge fixtures and ships a complete web app manifest.",
   );
 }
 

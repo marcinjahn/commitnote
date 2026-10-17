@@ -116,7 +116,20 @@ export const FAVICON_STYLE: FaviconStyle = {
 
 const FAVICON_SIZE = 32;
 
-export function buildFaviconSvg(font: Font, style: FaviconStyle): string {
+export type GlyphFit =
+  | { kind: "box"; size: number }
+  | { kind: "halfDiagonal"; length: number };
+
+export function faviconGlyphBox(style: FaviconStyle, edge: number): number {
+  return (edge * (FAVICON_SIZE - 2 * style.inset)) / FAVICON_SIZE;
+}
+
+export function layoutFaviconGlyphs(
+  font: Font,
+  style: FaviconStyle,
+  edge: number,
+  fit: GlyphFit,
+): string[] {
   const outline = outlineRuns(
     font,
     [
@@ -128,12 +141,21 @@ export function buildFaviconSvg(font: Font, style: FaviconStyle): string {
   const { bounds } = outline;
   const inkWidth = bounds.maxX - bounds.minX;
   const inkHeight = bounds.maxY - bounds.minY;
-  const available = FAVICON_SIZE - 2 * style.inset;
-  const scale = Math.min(available / inkWidth, available / inkHeight);
-  const paths = renderPaths(outline, {
+  const scale =
+    fit.kind === "box"
+      ? Math.min(fit.size / inkWidth, fit.size / inkHeight)
+      : fit.length / (Math.hypot(inkWidth, inkHeight) / 2);
+  return renderPaths(outline, {
     scale,
-    left: (FAVICON_SIZE - inkWidth * scale) / 2,
-    top: (FAVICON_SIZE - inkHeight * scale) / 2,
+    left: (edge - inkWidth * scale) / 2,
+    top: (edge - inkHeight * scale) / 2,
+  });
+}
+
+export function buildFaviconSvg(font: Font, style: FaviconStyle): string {
+  const paths = layoutFaviconGlyphs(font, style, FAVICON_SIZE, {
+    kind: "box",
+    size: faviconGlyphBox(style, FAVICON_SIZE),
   }).map((data) => `  <path d="${data}"/>`);
 
   const [light, dark] = style.tile
