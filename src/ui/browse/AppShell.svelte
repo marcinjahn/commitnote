@@ -21,6 +21,7 @@
   import { installSaveShortcut } from "../../app/save-shortcut";
   import { installTypeToStart } from "./type-to-start";
   import { dialogStack } from "../dialogs/dialog-stack";
+  import { bindDialogHistory, type DialogHistory } from "../dialogs/dialog-history";
   import { captureFocusReturn } from "../dialogs/focus-return";
   import {
     createLastViewStore,
@@ -56,7 +57,7 @@
     type HistoryPhase,
   } from "../history/NoteHistoryDialog.svelte";
   import type { WorkingNode } from "../../sync/working-tree";
-  import { downloadNotesArchive } from "../../export/download-notes-archive";
+  import { exportNotesArchive } from "../../export/export-notes-archive";
   import {
     planImport,
     type CollisionPolicy,
@@ -127,6 +128,9 @@
     type AnnouncerState,
   } from "./status-announcer";
   import NoteTree from "./NoteTree.svelte";
+  import PullIndicator from "./PullIndicator.svelte";
+  import { pullGesture } from "./pull-gesture";
+  import { INITIAL_PULL, type PullState } from "./pull-to-refresh";
   import { ancestorFolders, shouldFollowFocus } from "./relocation-follow";
   import SidebarResizeHandle from "./SidebarResizeHandle.svelte";
   import {
@@ -350,6 +354,7 @@
     return createLastViewStore({ repoKey, keyring });
   });
   onDestroy(() => lastViewStore.dispose());
+  let dialogHistory: DialogHistory | null = null;
   const navigation = untrack(() =>
     createNoteNavigation({
       keyring,
@@ -357,9 +362,22 @@
       location: window.location,
       events: window,
       onPopState: handlePopState,
+      onDialogBack: (count) => void dialogHistory?.closeFromBack(count),
     }),
   );
-  onDestroy(() => navigation.dispose());
+  dialogHistory = bindDialogHistory({
+    stack: dialogStack,
+    navigation,
+    requestClose: (el) => el.dispatchEvent(new Event("cancel", { cancelable: true })),
+    settle: tick,
+  });
+  let anyDialogOpen = $state(dialogStack.top() !== null);
+  const stopDialogWatch = dialogStack.subscribe((top) => (anyDialogOpen = top !== null));
+  onDestroy(() => {
+    dialogHistory?.dispose();
+    navigation.dispose();
+    stopDialogWatch();
+  });
   const initialEntry = navigation.initial();
   let reopenLastView = $state(
     untrack(() => sessionRemembered && lastViewStore.isEnabled()),
@@ -811,6 +829,14 @@
   });
   const conflictPaths = $derived(engineState.conflicts.map((held) => held.path));
   let manualRefreshing = $state(false);
+  const REFRESH_FEEDBACK_MS = 1200;
+  let refreshFeedback = $state<"success" | "error" | null>(null);
+  let refreshFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
+  onDestroy(() => clearTimeout(refreshFeedbackTimer));
+  const pullEnabled = $derived(
+    narrow && mobileView === "tree" && !anyDialogOpen && !manualRefreshing,
+  );
+  let pull = $state<PullState>(INITIAL_PULL);
   const head = $derived(engineState.synced?.head ?? null);
 
   const importing = $derived(engineState.importing || importStarted !== null);
@@ -1392,6 +1418,16 @@
   );
 
   async function handleRefresh(): Promise<boolean> {
+    if (manualRefreshing) return false;
+    clearTimeout(refreshFeedbackTimer);
+    refreshFeedback = null;
+    const ok = await runManualRefresh();
+    refreshFeedback = ok ? "success" : "error";
+    refreshFeedbackTimer = setTimeout(() => (refreshFeedback = null), REFRESH_FEEDBACK_MS);
+    return ok;
+  }
+
+  async function runManualRefresh(): Promise<boolean> {
     manualRefreshing = true;
     try {
       await engine.refresh();
@@ -1419,7 +1455,7 @@
     exporting = true;
     clearToast("export");
     try {
-      await downloadNotesArchive(snapshot);
+      await exportNotesArchive(snapshot);
     } catch {
       showToast("export", "error", "Export failed. Try again later.");
     } finally {
@@ -2153,7 +2189,14 @@
     style:--sidebar-width="{sidebarWidth}px"
     bind:this={sidebarEl}
   >
-    <div class="tree-header">
+    <div
+      class="tree-header"
+      use:pullGesture={{
+        enabled: pullEnabled,
+        onChange: (next) => (pull = next),
+        onRefresh: handleRefresh,
+      }}
+    >
       <Wordmark typed />
       <div class="tree-header-actions">
         <SyncStatusButton
@@ -2192,9 +2235,16 @@
             {/each}
           </svg>
         </button>
-        <RefreshButton refreshing={manualRefreshing} onRefresh={handleRefresh} />
+        <RefreshButton
+          refreshing={manualRefreshing}
+          feedback={refreshFeedback}
+          onRefresh={handleRefresh}
+        />
         <CommandMenu {commands} />
       </div>
+      {#if narrow}
+        <PullIndicator state={pull} />
+      {/if}
     </div>
     <SearchTrigger onOpen={openSearch}>
       {#snippet trailing()}
@@ -2688,6 +2738,8 @@
     display: flex;
     flex-direction: column;
     height: 100dvh;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   .sidebar,
@@ -2752,11 +2804,18 @@
   }
 
   .tree-header {
+    position: relative;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    min-height: calc(var(--touch-target) + var(--space-2) * 2);
-    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+    min-height: calc(
+      var(--touch-target) + var(--space-2) * 2 + env(safe-area-inset-top)
+    );
+    padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-2)
+      var(--space-2) var(--space-3);
     justify-content: space-between;
     border-bottom: var(--hairline) solid var(--color-border);
   }
@@ -2900,10 +2959,17 @@
     margin: var(--space-2) var(--space-3) 0;
   }
 
+  @media (max-width: 767px) {
+    .tree-header {
+      touch-action: none;
+    }
+  }
+
   @media (max-height: 480px) {
     .sidebar {
       overflow-x: hidden;
       overflow-y: auto;
+      overscroll-behavior-y: contain;
     }
   }
 

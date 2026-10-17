@@ -158,6 +158,7 @@
 
   .markdown-editor :global(.cm-scroller) {
     font-family: var(--font-note);
+    overscroll-behavior-y: contain;
     scroll-padding-bottom: var(--toast-stack-height, 0px);
   }
 

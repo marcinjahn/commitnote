@@ -32,6 +32,7 @@ class FakeBrowser {
   }[] = [];
   index = 0;
   listeners = 0;
+  deferredPopStates: Event[] | null = null;
 
   constructor(url = "/app/?x=1", state: unknown = null) {
     this.entries = [{ state, url }];
@@ -94,8 +95,12 @@ class FakeBrowser {
       };
     },
     back: () => {
-      if (this.index === 0) return;
-      this.index--;
+      this.history.go(-1);
+    },
+    go: (delta = 0) => {
+      const target = this.index + delta;
+      if (delta === 0 || target < 0 || target >= this.entries.length) return;
+      this.index = target;
       this.dispatchPopState();
     },
   }))(this);
@@ -116,7 +121,18 @@ class FakeBrowser {
     const event = Object.assign(new Event("popstate"), {
       state: structuredClone(this.entry.state),
     });
-    this.events.dispatchEvent(event);
+    if (this.deferredPopStates === null) this.events.dispatchEvent(event);
+    else this.deferredPopStates.push(event);
+  }
+
+  deferPopStates(): void {
+    this.deferredPopStates = [];
+  }
+
+  flushPopStates(): void {
+    const events = this.deferredPopStates ?? [];
+    this.deferredPopStates = null;
+    for (const event of events) this.events.dispatchEvent(event);
   }
 }
 
@@ -126,15 +142,17 @@ function setup(url?: string, state?: unknown, sessionId = SESSION) {
   current = new FakeBrowser(url, state);
   const fake = current;
   const popped: NavigationEntry[] = [];
+  const dialogBacks: number[] = [];
   const navigation = createNoteNavigation({
     keyring,
     history: fake.history as unknown as History,
     location: fake.location,
     events: fake.events as unknown as Window,
     onPopState: (entry) => popped.push(entry),
+    onDialogBack: (count) => dialogBacks.push(count),
     sessionId,
   });
-  return { fake, navigation, popped };
+  return { fake, navigation, popped, dialogBacks };
 }
 
 async function fragmentOf(path: string[]): Promise<string> {
@@ -415,6 +433,275 @@ describe("popstate", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(popped).toEqual([]);
     expect(fake.writes).toHaveLength(2);
+  });
+});
+
+describe("dialog entries", () => {
+  const nav = (depth: number) => ({ session: SESSION, depth });
+
+  async function withDialogOver(path: string[]) {
+    const setupResult = setup("/app/");
+    const { fake, navigation } = setupResult;
+    await navigation.initial();
+    navigation.push(note(...path));
+    navigation.pushDialog();
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(3));
+    return { ...setupResult, stored: await storedOf(path) };
+  }
+
+  it("pushes a same-URL dialog entry one level deeper without counting it for Back", async () => {
+    const { fake, navigation } = setup("/app/?x=1");
+    await navigation.initial();
+    navigation.pushDialog();
+    expect(navigation.openDialogs()).toBe(1);
+    expect(navigation.canGoBack()).toBe(false);
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2));
+    expect(fake.entry).toEqual({
+      state: { dialog: true, nav: nav(1) },
+      url: "/app/?x=1",
+    });
+    expect(navigation.canGoBack()).toBe(false);
+
+    const { fake: other, stored } = await withDialogOver(["a.md"]);
+    expect(other.entry).toEqual({
+      state: { note: stored, dialog: true, nav: nav(2) },
+      url: `/app/#n=${stored}`,
+    });
+    expect(other.entries[1].url).toBe(other.entry.url);
+  });
+
+  it("goes back one entry on consume and swallows its popstate", async () => {
+    const { fake, navigation, popped, dialogBacks } = await withDialogOver([
+      "a.md",
+    ]);
+    expect(navigation.canGoBack()).toBe(true);
+    navigation.consumeDialog();
+    expect(navigation.openDialogs()).toBe(0);
+    await vi.waitFor(() => expect(fake.index).toBe(1));
+    navigation.push(note("b.md"));
+    await vi.waitFor(() => expect(fake.index).toBe(2));
+    expect(popped).toEqual([]);
+    expect(dialogBacks).toEqual([]);
+    expect(navigation.current()).toEqual(note("b.md"));
+  });
+
+  it("ignores a consume without open dialog entries", async () => {
+    const { fake, navigation, popped } = setup("/app/");
+    await navigation.initial();
+    navigation.push(note("a.md"));
+    navigation.consumeDialog();
+    navigation.push(note("b.md"));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(3));
+    expect(fake.index).toBe(2);
+    expect(popped).toEqual([]);
+    expect(navigation.openDialogs()).toBe(0);
+  });
+
+  it("reports a system Back over a dialog entry as a dialog back", async () => {
+    const { fake, navigation, popped, dialogBacks, stored } =
+      await withDialogOver(["a.md"]);
+    fake.history.back();
+    await vi.waitFor(() => expect(dialogBacks).toEqual([1]));
+    expect(popped).toEqual([]);
+    expect(fake.entry.url).toBe(`/app/#n=${stored}`);
+    expect(navigation.openDialogs()).toBe(0);
+    expect(navigation.current()).toEqual(note("a.md"));
+    expect(navigation.canGoBack()).toBe(true);
+  });
+
+  it("closes nested dialogs one Back at a time before leaving the note", async () => {
+    const { fake, navigation, popped, dialogBacks } = setup("/app/");
+    await navigation.initial();
+    navigation.push(note("a.md"));
+    navigation.push(note("b.md"));
+    navigation.pushDialog();
+    navigation.pushDialog();
+    expect(navigation.openDialogs()).toBe(2);
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(5));
+
+    fake.history.back();
+    await vi.waitFor(() => expect(dialogBacks).toEqual([1]));
+    expect(navigation.openDialogs()).toBe(1);
+    fake.history.back();
+    await vi.waitFor(() => expect(dialogBacks).toEqual([1, 1]));
+    expect(popped).toEqual([]);
+    fake.history.back();
+    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]));
+    expect(dialogBacks).toEqual([1, 1]);
+    expect(navigation.openDialogs()).toBe(0);
+  });
+
+  it("reports every passed dialog when Back skips past them into an earlier note", async () => {
+    const { fake, navigation, popped, dialogBacks } = setup("/app/");
+    await navigation.initial();
+    navigation.push(note("a.md"));
+    navigation.push(note("b.md"));
+    navigation.pushDialog();
+    navigation.pushDialog();
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(5));
+    fake.history.go(-3);
+    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]));
+    expect(dialogBacks).toEqual([2]);
+    expect(navigation.openDialogs()).toBe(0);
+    expect(navigation.canGoBack()).toBe(true);
+  });
+
+  it("rewinds open dialog entries before a push", async () => {
+    const { fake, navigation, popped, dialogBacks } = await withDialogOver([
+      "a.md",
+    ]);
+    navigation.push(note("b.md"));
+    expect(navigation.openDialogs()).toBe(0);
+    const stored = await storedOf(["b.md"]);
+    await vi.waitFor(() =>
+      expect(fake.entry).toEqual({
+        state: { note: stored, nav: nav(2) },
+        url: `/app/#n=${stored}`,
+      }),
+    );
+    expect(fake.entries).toHaveLength(3);
+    expect(fake.entries[1].state).toEqual({
+      note: await storedOf(["a.md"]),
+      nav: nav(1),
+    });
+
+    fake.history.back();
+    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]));
+    expect(dialogBacks).toEqual([]);
+  });
+
+  it("treats a consume after a rewinding push as a no-op", async () => {
+    const { fake, navigation, popped } = await withDialogOver(["a.md"]);
+    navigation.push(note("b.md"));
+    navigation.consumeDialog();
+    navigation.push(note("c.md"));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(4));
+    expect(fake.index).toBe(3);
+    expect(fake.entries[2].state).toEqual({
+      note: await storedOf(["b.md"]),
+      nav: nav(2),
+    });
+    expect(popped).toEqual([]);
+  });
+
+  it("writes a push queued after a consume only once the browser has landed", async () => {
+    const { fake, navigation, popped, dialogBacks } = await withDialogOver([
+      "a.md",
+    ]);
+    fake.deferPopStates();
+    navigation.consumeDialog();
+    navigation.push(note("b.md"));
+    await vi.waitFor(() => expect(fake.index).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fake.writes.filter((w) => w.method === "push")).toHaveLength(2);
+
+    fake.flushPopStates();
+    const stored = await storedOf(["b.md"]);
+    await vi.waitFor(() =>
+      expect(fake.entry).toEqual({
+        state: { note: stored, nav: nav(2) },
+        url: `/app/#n=${stored}`,
+      }),
+    );
+    expect(fake.entries).toHaveLength(3);
+    expect(popped).toEqual([]);
+    expect(dialogBacks).toEqual([]);
+  });
+
+  it("replaces the top dialog entry and rewrites the stale base after the consume", async () => {
+    const { fake, navigation, popped } = await withDialogOver(["a.md"]);
+    navigation.replace(note("b.md"));
+    expect(navigation.current()).toEqual(note("b.md"));
+    const stored = await storedOf(["b.md"]);
+    await vi.waitFor(() =>
+      expect(fake.entry).toEqual({
+        state: { note: stored, dialog: true, nav: nav(2) },
+        url: `/app/#n=${stored}`,
+      }),
+    );
+    expect(fake.entries[1].state).toEqual({
+      note: await storedOf(["a.md"]),
+      nav: nav(1),
+    });
+
+    navigation.consumeDialog();
+    await vi.waitFor(() =>
+      expect(fake.entries[1]).toEqual({
+        state: { note: stored, nav: nav(1) },
+        url: `/app/#n=${stored}`,
+      }),
+    );
+    expect(fake.index).toBe(1);
+    expect(popped).toEqual([]);
+  });
+
+  it("rewrites the stale base when a system Back lands on it", async () => {
+    const { fake, navigation, dialogBacks } = await withDialogOver(["a.md"]);
+    navigation.replace(note("b.md"));
+    const stored = await storedOf(["b.md"]);
+    await vi.waitFor(() =>
+      expect(fake.entry.url).toBe(`/app/#n=${stored}`),
+    );
+    fake.history.back();
+    await vi.waitFor(() => expect(dialogBacks).toEqual([1]));
+    expect(fake.entry).toEqual({
+      state: { note: stored, nav: nav(1) },
+      url: `/app/#n=${stored}`,
+    });
+  });
+
+  it("re-stamps a stale dialog entry reached by Forward as a normal entry", async () => {
+    const { fake, navigation, popped, dialogBacks, stored } =
+      await withDialogOver(["a.md"]);
+    fake.history.back();
+    await vi.waitFor(() => expect(dialogBacks).toEqual([1]));
+    fake.history.go(1);
+    await vi.waitFor(() => expect(popped).toEqual([note("a.md")]));
+    expect(fake.entry).toEqual({
+      state: { note: stored, nav: nav(2) },
+      url: `/app/#n=${stored}`,
+    });
+    expect(dialogBacks).toEqual([1]);
+    expect(navigation.openDialogs()).toBe(0);
+
+    navigation.push(note("b.md"));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(4));
+    expect(fake.entry.state).toMatchObject({ nav: nav(3) });
+  });
+
+  it("strips the dialog flag on initial", async () => {
+    const fragment = await fragmentOf(["a.md"]);
+    const { fake, navigation } = setup(`/app/${fragment}`, {
+      note: fragment.slice(3),
+      dialog: true,
+      nav: nav(2),
+    });
+    expect(await navigation.initial()).toEqual(note("a.md"));
+    expect(fake.entry).toEqual({
+      state: { note: fragment.slice(3), nav: nav(0) },
+      url: `/app/${fragment}`,
+    });
+    expect(navigation.openDialogs()).toBe(0);
+  });
+
+  it("skips a dialog push made before initial and does not wait for its consume", async () => {
+    const { fake, navigation, popped } = setup("/app/");
+    navigation.pushDialog();
+    await navigation.initial();
+    navigation.consumeDialog();
+    navigation.push(note("a.md"));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2));
+    expect(fake.index).toBe(1);
+    expect(popped).toEqual([]);
+  });
+
+  it("releases a waiting consume on dispose", async () => {
+    const { fake, navigation } = await withDialogOver(["a.md"]);
+    fake.deferPopStates();
+    navigation.consumeDialog();
+    await vi.waitFor(() => expect(fake.index).toBe(1));
+    navigation.dispose();
+    await expect(navigation.initial()).resolves.toEqual({ kind: "none" });
   });
 });
 

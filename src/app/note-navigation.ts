@@ -15,10 +15,11 @@ export type NavigationEntry =
 
 export interface NoteNavigationOptions {
   keyring: Keyring;
-  history: Pick<History, "state" | "pushState" | "replaceState" | "back">;
+  history: Pick<History, "state" | "pushState" | "replaceState" | "back" | "go">;
   location: Pick<Location, "hash" | "pathname" | "search">;
   events: Pick<Window, "addEventListener" | "removeEventListener">;
   onPopState: (entry: NavigationEntry) => void;
+  onDialogBack?: (count: number) => void;
   sessionId?: string;
 }
 
@@ -29,6 +30,9 @@ export interface NoteNavigation {
   replace(entry: NavigationEntry): void;
   canGoBack(): boolean;
   back(): void;
+  pushDialog(): void;
+  consumeDialog(): void;
+  openDialogs(): number;
   dispose(): void;
 }
 
@@ -41,6 +45,13 @@ type StoredEntry =
   | { readonly kind: "note"; readonly storedPath: string }
   | { readonly kind: "draft" }
   | { readonly kind: "none" };
+
+interface StaleEntries {
+  readonly stored: StoredEntry;
+  readonly entry: NavigationEntry;
+  readonly from: number;
+  readonly to: number;
+}
 
 const NONE: NavigationEntry = { kind: "none" };
 
@@ -64,15 +75,16 @@ function urlOf(
     : base;
 }
 
-function stateOf(stored: StoredEntry, nav: Bookkeeping): object {
+function stateOf(stored: StoredEntry, nav: Bookkeeping, dialog = false): object {
   const bookkeeping = { session: nav.session, depth: nav.depth };
+  const marker = dialog ? { dialog: true } : {};
   switch (stored.kind) {
     case "note":
-      return { note: stored.storedPath, nav: bookkeeping };
+      return { note: stored.storedPath, ...marker, nav: bookkeeping };
     case "draft":
-      return { draft: true, nav: bookkeeping };
+      return { draft: true, ...marker, nav: bookkeeping };
     case "none":
-      return { nav: bookkeeping };
+      return { ...marker, nav: bookkeeping };
   }
 }
 
@@ -92,14 +104,19 @@ function bookkeepingOf(state: unknown): Bookkeeping | null {
 export function createNoteNavigation(
   options: NoteNavigationOptions,
 ): NoteNavigation {
-  const { keyring, history, location, events, onPopState } = options;
+  const { keyring, history, location, events, onPopState, onDialogBack } =
+    options;
   const sessionId = options.sessionId ?? crypto.randomUUID();
 
   let currentEntry: NavigationEntry = NONE;
-  let writtenDepth = 0;
+  let baseDepth = 0;
+  let writtenDialogs = 0;
+  let openDialogs = 0;
   let pendingPushes = 0;
   let generation = 0;
   let disposed = false;
+  let stale: StaleEntries | null = null;
+  let arrival: ((state: unknown) => void) | null = null;
   let chain: Promise<unknown> = Promise.resolve();
 
   function enqueue<T>(task: () => Promise<T>, fallback: T): Promise<T> {
@@ -140,14 +157,70 @@ export function createNoteNavigation(
     return { session: sessionId, depth };
   }
 
+  function ownDepthOf(state: unknown): number | null {
+    const nav = bookkeepingOf(state);
+    return nav !== null && nav.session === sessionId ? nav.depth : null;
+  }
+
+  function travel(move: () => void): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      arrival = resolve;
+      try {
+        move();
+      } catch (error) {
+        arrival = null;
+        reject(error);
+      }
+    });
+  }
+
+  function refreshStale(depth: number): NavigationEntry | null {
+    if (stale === null || depth < stale.from || depth > stale.to) return null;
+    const { stored, entry } = stale;
+    history.replaceState(
+      stateOf(stored, stamp(depth), depth > baseDepth),
+      "",
+      urlOf(location, stored),
+    );
+    if (depth === stale.from) stale = null;
+    return entry;
+  }
+
+  function landQuietly(state: unknown): void {
+    const depth = ownDepthOf(state) ?? baseDepth;
+    if (depth < baseDepth) baseDepth = depth;
+    writtenDialogs = depth - baseDepth;
+    refreshStale(depth);
+  }
+
+  function closeDialogs(count: number): void {
+    const closed = Math.min(count, openDialogs);
+    openDialogs -= closed;
+    if (closed > 0) onDialogBack?.(closed);
+  }
+
   async function processPopState(
     state: unknown,
     hash: string,
     arrivedAt: number,
   ): Promise<void> {
-    const nav = bookkeepingOf(state);
-    const ours = nav !== null && nav.session === sessionId;
-    const depth = ours ? nav.depth : 0;
+    const ownDepth = ownDepthOf(state);
+    const ours = ownDepth !== null;
+    const depth = ownDepth ?? 0;
+
+    if (
+      ours &&
+      writtenDialogs > 0 &&
+      depth >= baseDepth &&
+      depth < baseDepth + writtenDialogs
+    ) {
+      if (disposed) return;
+      const passed = baseDepth + writtenDialogs - depth;
+      writtenDialogs = depth - baseDepth;
+      refreshStale(depth);
+      closeDialogs(passed);
+      return;
+    }
 
     let entry: NavigationEntry = NONE;
     let stored: StoredEntry = { kind: "none" };
@@ -172,7 +245,10 @@ export function createNoteNavigation(
     }
 
     if (disposed) return;
-    writtenDepth = depth;
+    const passed = !ours || depth < baseDepth ? writtenDialogs : 0;
+    baseDepth = depth;
+    writtenDialogs = 0;
+    closeDialogs(passed);
     if (generation !== arrivedAt) return;
 
     if (undecodable) {
@@ -181,13 +257,14 @@ export function createNoteNavigation(
         "",
         baseUrl(location),
       );
-    } else if (!ours) {
+    } else if (!ours || (isRecord(state) && state.dialog === true)) {
       const url =
         stored.kind === "note"
           ? urlOf(location, stored)
           : baseUrl(location) + hash;
       history.replaceState(stateOf(stored, stamp(depth)), "", url);
     }
+    if (ours) entry = refreshStale(depth) ?? entry;
 
     currentEntry = entry;
     onPopState(entry);
@@ -195,6 +272,12 @@ export function createNoteNavigation(
 
   const handlePopState = (event: Event): void => {
     const state: unknown = (event as PopStateEvent).state;
+    if (arrival !== null) {
+      const arrived = arrival;
+      arrival = null;
+      arrived(state);
+      return;
+    }
     const hash = location.hash;
     const arrivedAt = ++generation;
     void enqueue(() => processPopState(state, hash, arrivedAt), undefined);
@@ -221,7 +304,8 @@ export function createNoteNavigation(
           path !== null && storedPath !== null
             ? { kind: "note", storedPath }
             : { kind: "none" };
-        writtenDepth = 0;
+        baseDepth = 0;
+        writtenDialogs = 0;
         history.replaceState(stateOf(stored, stamp(0)), "", url);
         if (generation === startedAt) currentEntry = entry;
         return entry;
@@ -237,17 +321,25 @@ export function createNoteNavigation(
       currentEntry = entry;
       generation++;
       pendingPushes++;
+      openDialogs = 0;
       void enqueue(async () => {
         try {
           const stored = await storedOf(entry);
           if (disposed) return;
-          const depth = writtenDepth + 1;
+          if (writtenDialogs > 0) {
+            const landed = await travel(() => history.go(-writtenDialogs));
+            if (disposed) return;
+            landQuietly(landed);
+          }
+          const depth = baseDepth + writtenDialogs + 1;
           history.pushState(
             stateOf(stored, stamp(depth)),
             "",
             urlOf(location, stored),
           );
-          writtenDepth = depth;
+          if (stale !== null && stale.from >= depth) stale = null;
+          baseDepth = depth;
+          writtenDialogs = 0;
         } finally {
           pendingPushes--;
         }
@@ -260,16 +352,28 @@ export function createNoteNavigation(
       void enqueue(async () => {
         const stored = await storedOf(entry);
         if (disposed) return;
+        const depth = baseDepth + writtenDialogs;
         history.replaceState(
-          stateOf(stored, stamp(writtenDepth)),
+          stateOf(stored, stamp(depth), writtenDialogs > 0),
           "",
           urlOf(location, stored),
         );
+        if (writtenDialogs > 0) {
+          stale = {
+            stored,
+            entry,
+            from: baseDepth,
+            to: Math.max(
+              depth - 1,
+              stale?.from === baseDepth ? stale.to : 0,
+            ),
+          };
+        }
       }, undefined);
     },
 
     canGoBack() {
-      return writtenDepth + pendingPushes > 0;
+      return baseDepth + pendingPushes > 0;
     },
 
     back() {
@@ -278,9 +382,42 @@ export function createNoteNavigation(
       }, undefined);
     },
 
+    pushDialog() {
+      openDialogs++;
+      void enqueue(async () => {
+        const state: unknown = history.state;
+        if (ownDepthOf(state) === null || !isRecord(state)) return;
+        const depth = baseDepth + writtenDialogs + 1;
+        history.pushState(
+          { ...state, dialog: true, nav: stamp(depth) },
+          "",
+          baseUrl(location) + location.hash,
+        );
+        writtenDialogs++;
+      }, undefined);
+    },
+
+    consumeDialog() {
+      if (openDialogs === 0) return;
+      openDialogs--;
+      void enqueue(async () => {
+        if (writtenDialogs === 0) return;
+        const landed = await travel(() => history.back());
+        if (disposed) return;
+        landQuietly(landed);
+      }, undefined);
+    },
+
+    openDialogs() {
+      return openDialogs;
+    },
+
     dispose() {
       disposed = true;
       events.removeEventListener("popstate", handlePopState);
+      const arrived = arrival;
+      arrival = null;
+      arrived?.(undefined);
     },
   };
 }

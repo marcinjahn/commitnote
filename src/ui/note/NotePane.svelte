@@ -391,6 +391,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
     scroll-padding-bottom: var(--toast-stack-height, 0px);
     display: flex;
     flex-direction: column;

@@ -168,6 +168,8 @@
 html,
 body {
   height: 100%;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -261,6 +263,14 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button,
+.button {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .button {

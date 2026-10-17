@@ -89,6 +89,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
     display: flex;
     flex-direction: column;
   }
