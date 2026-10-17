@@ -68,11 +68,15 @@ test("the focused editor has a 2px outline in forced colours", async ({
 
   await page.getByRole("textbox", { name: "Note editor" }).click();
 
-  const outline = await page.locator(".cm-editor.cm-focused").evaluate((el) => {
-    const style = getComputedStyle(el);
-    return { style: style.outlineStyle, width: style.outlineWidth };
-  });
-  expect(outline).toEqual({ style: "solid", width: "2px" });
+  const focused = page.locator(".cm-editor.cm-focused");
+  await expect
+    .poll(() =>
+      focused.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { style: style.outlineStyle, width: style.outlineWidth };
+      }),
+    )
+    .toEqual({ style: "solid", width: "2px" });
 });
 
 test("clicking the empty area below a short note puts the cursor at its end", { tag: "@mobile" }, async ({

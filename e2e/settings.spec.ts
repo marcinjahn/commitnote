@@ -934,6 +934,42 @@ test("moving keyboard focus across the font options moves nothing around the fon
   }
 });
 
+test("on a 360 px wide phone, previewing each font moves nothing around the font picker", { tag: "@mobile" }, async ({
+  page,
+}) => {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("no viewport");
+  await page.setViewportSize({ ...viewport, width: 360 });
+  await openUnscrolledSettings(page);
+  await waitForAllNoteFonts(page);
+  const preview = fontPreview(page);
+  const before = await pickerLayout(page);
+  await noteFontGroup(page).getByRole("radio", { name: "Inter", exact: true }).focus();
+
+  for (const [index, [name, { stack }]] of Object.entries(NOTE_FONTS).entries()) {
+    if (index > 0) await page.keyboard.press("ArrowDown");
+    await expect(
+      noteFontGroup(page).getByRole("radio", { name, exact: true }),
+    ).toBeFocused();
+    await expectFamily(page, preview, stack);
+    await page.evaluate(() => document.fonts.ready);
+
+    expect(await pickerLayout(page), name).toEqual(before);
+  }
+});
+
+test("on desktop the font preview keeps each body line one line tall", async ({
+  page,
+}) => {
+  await openSettings(page);
+  const lines = fontPreview(page).locator("p");
+
+  for (const index of [1, 2]) {
+    const box = await lines.nth(index).boundingBox();
+    expect(box?.height, `line ${index + 1}`).toBeLessThan(32);
+  }
+});
+
 test("hovering font rows under the stuck preview moves nothing and keeps the scroll position", async ({
   page,
 }) => {

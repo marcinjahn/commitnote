@@ -291,14 +291,17 @@ test("search matches use the themed highlight in light and dark", async ({
 
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
-    const wash = await resolve("--color-vim-mode-wash");
-    const selection = await resolve(
-      "color-mix(in srgb, var(--color-accent) 22%, var(--color-background))",
-    );
-    expect(wash).not.toBe(selection);
+    const selectionToken =
+      "color-mix(in srgb, var(--color-accent) 22%, var(--color-background))";
     await expect
-      .poll(async () => (await matchBackgrounds()).includes(wash))
+      .poll(async () => {
+        const wash = await resolve("--color-vim-mode-wash");
+        return (await matchBackgrounds()).includes(wash);
+      })
       .toBe(true);
+    const wash = await resolve("--color-vim-mode-wash");
+    const selection = await resolve(selectionToken);
+    expect(wash).not.toBe(selection);
     expect(await matchBackgrounds()).not.toContain(selection);
   }
 });

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Keyring } from "../crypto/keyring";
 import { testKeyring } from "../crypto/testing/test-keyring";
 import type { StorageLike } from "../session/session-store";
@@ -9,6 +9,32 @@ import {
   removeLastView,
   type LastView,
 } from "./last-view";
+
+const encodes: Promise<unknown>[] = [];
+
+vi.mock("../crypto/name-cipher", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("../crypto/name-cipher")>();
+  return {
+    ...original,
+    encryptPath: (...args: Parameters<typeof original.encryptPath>) => {
+      const encode = original.encryptPath(...args);
+      encodes.push(encode);
+      return encode;
+    },
+  };
+});
+
+async function settled(): Promise<void> {
+  let seen = -1;
+  while (seen !== encodes.length) {
+    seen = encodes.length;
+    await Promise.allSettled(encodes);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+const WAIT = { timeout: 5000 };
 
 class MemoryStorage implements StorageLike {
   readonly map = new Map<string, string>();
@@ -75,12 +101,11 @@ const view: LastView = {
   folders: [["Projects"], ["Projects", "Alpha"]],
 };
 
-const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 20));
-
 let keyring: Keyring;
 let otherKeyring: Keyring;
 
 beforeEach(async () => {
+  encodes.length = 0;
   keyring = await testKeyring();
   otherKeyring = await testKeyring("another passphrase", 9);
 });
@@ -128,10 +153,11 @@ describe("last view store", () => {
       note: null,
       folders: [],
     });
-    await flush();
-    const settled = JSON.parse(storage.getItem(lastViewStorageKey(REPO))!);
-    expect(settled.note).toEqual(expect.any(String));
-    expect(settled.folders).toHaveLength(2);
+    await vi.waitFor(() => {
+      const stored = JSON.parse(storage.getItem(lastViewStorageKey(REPO))!);
+      expect(stored.note).toEqual(expect.any(String));
+      expect(stored.folders).toHaveLength(2);
+    }, WAIT);
     expect(await store.load()).toEqual(view);
   });
 
@@ -144,7 +170,7 @@ describe("last view store", () => {
     expect(store.isEnabled()).toBe(false);
     expect(timers.count).toBe(0);
     timers.fire();
-    await flush();
+    await settled();
     expect(storage.getItem(lastViewStorageKey(REPO))).toBeNull();
   });
 
@@ -152,14 +178,15 @@ describe("last view store", () => {
     const { store, storage } = setup();
     store.setEnabled(true, view);
     store.setEnabled(false, view);
-    await flush();
+    expect(encodes).not.toHaveLength(0);
+    await settled();
     expect(storage.getItem(lastViewStorageKey(REPO))).toBeNull();
   });
 
   it("debounces several saves into one write of the last view", async () => {
     const { store, storage, timers } = setup();
     store.setEnabled(true, { note: null, folders: [] });
-    await flush();
+    await settled();
     const before = storage.writes;
     store.save({ note: ["a"], folders: [] });
     store.save({ note: ["b"], folders: [] });
@@ -167,8 +194,7 @@ describe("last view store", () => {
     expect(timers.count).toBe(1);
     expect(storage.writes).toBe(before);
     timers.fire();
-    await flush();
-    expect(storage.writes).toBe(before + 1);
+    await vi.waitFor(() => expect(storage.writes).toBe(before + 1), WAIT);
     expect(await store.load()).toEqual(view);
   });
 
@@ -177,7 +203,11 @@ describe("last view store", () => {
     store.setEnabled(true, { note: null, folders: [] });
     store.save({ note: ["Welcome"], folders: [] });
     timers.fire();
-    await flush();
+    await vi.waitFor(
+      async () =>
+        expect(await store.load()).toEqual({ note: ["Welcome"], folders: [] }),
+      WAIT,
+    );
     const renamed: LastView = {
       note: ["Journal", "Greetings"],
       folders: [["Journal"]],
@@ -185,9 +215,11 @@ describe("last view store", () => {
 
     store.save(renamed);
     timers.fire();
-    await flush();
 
-    expect(await store.load()).toEqual(renamed);
+    await vi.waitFor(
+      async () => expect(await store.load()).toEqual(renamed),
+      WAIT,
+    );
   });
 
   it("uses the default delay constant", () => {
@@ -199,7 +231,7 @@ describe("last view store", () => {
     store.save(view);
     expect(timers.count).toBe(0);
     timers.fire();
-    await flush();
+    await settled();
     expect(storage.writes).toBe(0);
     expect(storage.getItem(lastViewStorageKey(REPO))).toBeNull();
   });
@@ -209,8 +241,10 @@ describe("last view store", () => {
     store.setEnabled(true, { note: null, folders: [] });
     store.save(view);
     timers.fire();
-    await flush();
-    expect(await store.load()).toEqual(view);
+    await vi.waitFor(
+      async () => expect(await store.load()).toEqual(view),
+      WAIT,
+    );
   });
 
   it("never stores a plaintext segment", async () => {
@@ -218,7 +252,11 @@ describe("last view store", () => {
     store.setEnabled(true, view);
     store.save(view);
     timers.fire();
-    await flush();
+    await vi.waitFor(() => {
+      const stored = JSON.parse(storage.getItem(lastViewStorageKey(REPO))!);
+      expect(stored.note).toEqual(expect.any(String));
+      expect(stored.folders).toHaveLength(2);
+    }, WAIT);
     const raw = storage.getItem(lastViewStorageKey(REPO))!;
     for (const segment of ["Projects", "Alpha", POLISH]) {
       expect(raw).not.toContain(segment);
@@ -230,7 +268,10 @@ describe("last view store", () => {
     store.setEnabled(true, { note: null, folders: [] });
     store.save(view);
     timers.fire();
-    await flush();
+    await vi.waitFor(
+      async () => expect(await store.load()).toEqual(view),
+      WAIT,
+    );
     const foreign = createLastViewStore({
       repoKey: REPO,
       keyring: otherKeyring,
@@ -244,8 +285,11 @@ describe("last view store", () => {
     store.setEnabled(true, { note: null, folders: [] });
     store.save({ note: [], folders: [[], [""], ["Ok"]] });
     timers.fire();
-    await flush();
-    expect(await store.load()).toEqual({ note: null, folders: [["Ok"]] });
+    await vi.waitFor(
+      async () =>
+        expect(await store.load()).toEqual({ note: null, folders: [["Ok"]] }),
+      WAIT,
+    );
   });
 
   it("treats corrupt JSON and a wrong version as off", async () => {
@@ -285,22 +329,24 @@ describe("last view store", () => {
     a.store.setEnabled(true, { note: null, folders: [] });
     a.store.save(view);
     a.timers.fire();
-    await flush();
+    await vi.waitFor(
+      async () => expect(await a.store.load()).toEqual(view),
+      WAIT,
+    );
     expect(b.store.isEnabled()).toBe(false);
     expect(await b.store.load()).toBeNull();
-    expect(await a.store.load()).toEqual(view);
   });
 
   it("drops a pending write on dispose but keeps the entry", async () => {
     const { store, storage, timers } = setup();
     store.setEnabled(true, { note: null, folders: [] });
-    await flush();
+    await settled();
     const before = storage.writes;
     store.save(view);
     store.dispose();
     expect(timers.count).toBe(0);
     timers.fire();
-    await flush();
+    await settled();
     expect(storage.writes).toBe(before);
     expect(store.isEnabled()).toBe(true);
   });
@@ -323,7 +369,7 @@ describe("last view store", () => {
     expect(() => removeLastView(REPO, throwing)).not.toThrow();
     expect(() => store.dispose()).not.toThrow();
     timers.fire();
-    await flush();
+    await settled();
   });
 
   it("works without any storage", async () => {
