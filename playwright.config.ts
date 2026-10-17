@@ -12,6 +12,7 @@ export default defineConfig({
   timeout: 60_000,
   use: {
     baseURL: BASE_URL,
+    serviceWorkers: "block",
   },
   projects: [
     {

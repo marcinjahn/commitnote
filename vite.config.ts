@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig, type Plugin } from "vitest/config";
+import { serviceWorker } from "./scripts/service-worker-plugin.ts";
 
 const SCRIPT_SRC = "script-src 'self' 'wasm-unsafe-eval'";
 const CSP_TEMPLATE =
@@ -46,7 +47,7 @@ function commitNoteCsp(): Plugin {
 
 export default defineConfig({
   base: "./",
-  plugins: [svelte(), commitNoteCsp()],
+  plugins: [svelte(), commitNoteCsp(), serviceWorker()],
   optimizeDeps: { include: ["@replit/codemirror-vim"] },
   build: {
     assetsInlineLimit: (filePath) =>
