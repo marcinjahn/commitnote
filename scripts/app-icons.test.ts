@@ -13,6 +13,7 @@ import {
 import { FONT_FILE } from "./brand-svgs";
 import { loadFont } from "./font-outlining";
 import { readPngSize } from "./png-size";
+import { SHORTCUT_ICONS } from "./shortcut-icons";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -137,7 +138,13 @@ describe("app icons", () => {
   it("builds a contact sheet PNG", async () => {
     const { width, height } = readPngSize(await buildIconContactSheet(font));
 
-    expect(width).toBe(32 + APP_ICONS.reduce((sum, i) => sum + i.size + 32, 0));
+    expect(width).toBe(
+      32 +
+        [...APP_ICONS, ...SHORTCUT_ICONS].reduce(
+          (sum, i) => sum + i.size + 32,
+          0,
+        ),
+    );
     expect(height).toBe(512 * 2 + 32 * 3);
   });
 

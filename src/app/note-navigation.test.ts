@@ -3,6 +3,7 @@ import type { Keyring } from "../crypto/keyring";
 import { testKeyring } from "../crypto/testing/test-keyring";
 import { encodeNotePath, noteFragmentOf } from "./note-fragment";
 import {
+  clearLaunchAction,
   clearNoteFragment,
   createNoteNavigation,
   type NavigationEntry,
@@ -719,6 +720,37 @@ describe("clearNoteFragment", () => {
       const fake = new FakeBrowser(url);
       current = fake;
       clearNoteFragment(fake.history, fake.location);
+      expect(fake.writes).toEqual([]);
+    },
+  );
+});
+
+describe("clearLaunchAction", () => {
+  it("removes only the action parameter and keeps the hash and state", () => {
+    const fake = new FakeBrowser("/app/?x=1&action=search&y=2#n=abc", {
+      keep: true,
+    });
+    current = fake;
+    clearLaunchAction(fake.history, fake.location);
+    expect(fake.entry).toEqual({
+      state: { keep: true },
+      url: "/app/?x=1&y=2#n=abc",
+    });
+  });
+
+  it("drops the question mark when no parameters remain", () => {
+    const fake = new FakeBrowser("/app/?action=new-note");
+    current = fake;
+    clearLaunchAction(fake.history, fake.location);
+    expect(fake.entry.url).toBe("/app/");
+  });
+
+  it.each(["/app/", "/app/?x=1", "/app/#action=search"])(
+    "leaves %s alone",
+    (url) => {
+      const fake = new FakeBrowser(url);
+      current = fake;
+      clearLaunchAction(fake.history, fake.location);
       expect(fake.writes).toEqual([]);
     },
   );

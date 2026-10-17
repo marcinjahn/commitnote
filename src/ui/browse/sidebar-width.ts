@@ -25,9 +25,18 @@ export function clampPreferredWidth(width: number): number {
   );
 }
 
-export function maxSidebarWidth(viewportWidth: number): number {
+export function effectiveSidebarMinWidth(rendered: number): number {
+  return Number.isFinite(rendered)
+    ? Math.max(SIDEBAR_MIN_WIDTH, rendered)
+    : SIDEBAR_MIN_WIDTH;
+}
+
+export function maxSidebarWidth(
+  viewportWidth: number,
+  minWidth: number = SIDEBAR_MIN_WIDTH,
+): number {
   return Math.max(
-    SIDEBAR_MIN_WIDTH,
+    minWidth,
     Math.min(SIDEBAR_MAX_WIDTH, viewportWidth - NOTE_PANE_MIN_WIDTH),
   );
 }
@@ -35,10 +44,11 @@ export function maxSidebarWidth(viewportWidth: number): number {
 export function shownSidebarWidth(
   preferred: number,
   viewportWidth: number,
+  minWidth: number = SIDEBAR_MIN_WIDTH,
 ): number {
   return Math.min(
-    maxSidebarWidth(viewportWidth),
-    Math.max(SIDEBAR_MIN_WIDTH, preferred),
+    maxSidebarWidth(viewportWidth, minWidth),
+    Math.max(minWidth, preferred),
   );
 }
 

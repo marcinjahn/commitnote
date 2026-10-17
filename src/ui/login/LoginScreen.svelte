@@ -63,6 +63,7 @@
     }) => void;
     onAccentColor: (id: AccentColorId) => void;
     onColorMode: (id: ColorModeId) => void;
+    belowInstallBar?: boolean;
   }
 
   const {
@@ -73,6 +74,7 @@
     inspect,
     unlock,
     initialize,
+    belowInstallBar = false,
     onLoggedIn,
     onAccentColor,
     onColorMode,
@@ -381,7 +383,7 @@
   {/if}
 {/snippet}
 
-<main class="login-shell">
+<main class="login-shell window-drag" class:below-install-bar={belowInstallBar}>
   <div class="login-card">
     <Wordmark element="h1" />
     <p class="login-tagline">
@@ -550,12 +552,17 @@
 
 <style>
   .login-shell {
-    min-height: 100dvh;
+    flex: 1 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;
     background: var(--color-background);
-    padding: calc(var(--space-5) + env(safe-area-inset-top)) calc(var(--space-4) + env(safe-area-inset-right)) var(--space-5) calc(var(--space-4) + env(safe-area-inset-left));
+    --login-top-inset: env(safe-area-inset-top);
+    padding: calc(var(--space-5) + var(--login-top-inset)) calc(var(--space-4) + env(safe-area-inset-right)) var(--space-5) calc(var(--space-4) + env(safe-area-inset-left));
+  }
+
+  .login-shell.below-install-bar {
+    --login-top-inset: 0px;
   }
 
   .login-card {
@@ -695,6 +702,15 @@
     .login-card {
       border: none;
       box-shadow: none;
+    }
+  }
+
+  @media (display-mode: window-controls-overlay) {
+    .login-shell {
+      padding-top: max(
+        calc(var(--space-5) + var(--login-top-inset)),
+        calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, 0px))
+      );
     }
   }
 </style>

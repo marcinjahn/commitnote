@@ -183,6 +183,8 @@ body {
 }
 
 #app {
+  display: flex;
+  flex-direction: column;
   min-height: 100dvh;
 }
 
@@ -431,6 +433,10 @@ button,
   border-bottom: var(--hairline) solid var(--color-border);
   padding: var(--space-3);
   font-size: var(--font-size-sm);
+}
+
+.test-mode-banner {
+  flex: none;
 }
 
 button:focus-visible,
@@ -714,5 +720,17 @@ textarea:focus-visible,
   .alert-warning {
     border-inline-start: 2px solid CanvasText;
     padding-inline-start: calc(var(--space-3) - 2px);
+  }
+}
+
+@media (display-mode: window-controls-overlay) {
+  .window-drag {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+
+  .window-drag > * {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
   }
 }

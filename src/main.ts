@@ -1,3 +1,5 @@
+const bootHref = location.href;
+
 import { mount } from "svelte";
 import App from "./App.svelte";
 import { forgeRegistry } from "./forge/registry";
@@ -8,12 +10,18 @@ import { createShareReaders } from "./forge/share-readers";
 import type { ShareReaders } from "./forge/share-host";
 import { isShareHash } from "./share/share-link";
 import { startBrowserAppUpdates } from "./app/app-updates";
+import { captureInstallEvents } from "./app/install-events";
+import { createBrowserInstallController } from "./app/install-controller";
+import { type LaunchQueueLike, startLaunchActions } from "./app/launch-action";
+import { clearLaunchAction } from "./app/note-navigation";
 import "./note-fonts.css";
 
 const target = document.getElementById("app");
 if (!target) {
   throw new Error("Missing #app element");
 }
+
+const installEvents = captureInstallEvents(window);
 
 window.addEventListener("hashchange", (event) => {
   if (
@@ -126,8 +134,21 @@ if (import.meta.env.MODE === "fake-forge") {
   }
 }
 
+  const install = createBrowserInstallController(installEvents);
+  const launchActions = startLaunchActions({
+    bootHref,
+    launchQueue: (window as { launchQueue?: LaunchQueueLike }).launchQueue,
+    clearUrl: () => clearLaunchAction(window.history, window.location),
+  });
   mount(App, {
     target,
-    props: { registry, testModeBanner, argon2id, appUpdates },
+    props: {
+      registry,
+      testModeBanner,
+      argon2id,
+      appUpdates,
+      install,
+      launchActions,
+    },
   });
 }

@@ -9,6 +9,11 @@ import {
 } from "./helpers";
 import { expectNoA11yViolations } from "./helpers/a11y";
 import {
+  IPHONE_USER_AGENT,
+  installBar,
+  offerInstallPrompt,
+} from "./helpers/install";
+import {
   enableVimMode,
   openDataSecurityAction,
   openSettings,
@@ -229,4 +234,40 @@ test("viewer-unlocked @mobile", async ({ page }) => {
     viewer.getByRole("heading", { name: "Welcome", level: 1 }).first(),
   ).toBeVisible({ timeout: KEY_DERIVATION_TIMEOUT });
   await expectNoA11yViolations(viewer, "viewer-unlocked");
+});
+
+test("install bar @mobile-only", async ({ page }) => {
+  await openNotes(page);
+  await offerInstallPrompt(page);
+  await expect(installBar(page)).toBeVisible();
+  await expectNoA11yViolations(page, "install-bar");
+});
+
+test("install bar on login @mobile-only", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByLabel("Access token")).toBeVisible();
+  await offerInstallPrompt(page);
+  await expect(installBar(page)).toBeVisible();
+  await expectNoA11yViolations(page, "install-bar-login");
+});
+
+test.describe("on iPhone", () => {
+  test.use({ userAgent: IPHONE_USER_AGENT });
+
+  test("install bar ios @mobile-only", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByLabel("Access token")).toBeVisible();
+    await expect(installBar(page)).toBeVisible();
+    await expectNoA11yViolations(page, "install-bar-ios");
+  });
+
+  test("install how-to @mobile-only", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByLabel("Access token")).toBeVisible();
+    await installBar(page).getByRole("button", { name: "How to install" }).click();
+    await expect(
+      page.getByRole("dialog", { name: "Install commitnote" }),
+    ).toBeVisible();
+    await expectNoA11yViolations(page, "install-howto");
+  });
 });

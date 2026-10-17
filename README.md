@@ -210,8 +210,26 @@ Security Policy applied via a `<meta>` tag; it is not present in the dev server.
 
 ### Installing
 
-Use the browser's install action, or Add to Home Screen on a phone. The installed app keeps its own
-storage, separate from the browser tab, so you log in again there.
+- **Android and other Chromium phones:** an install bar at the top of the login screen and the
+  notes list offers **Install**, which opens the browser's own install dialog. Declining that
+  dialog hides the bar for good.
+- **iPhone and iPad:** the install bar says to add commitnote to the Home Screen from the Share
+  menu. **How to install** shows the steps; keep "Open as Web App" turned on.
+- **Desktop:** choose **Install app** in the command menu ("More commands"), or use the browser's
+  install action.
+- **Desktop window:** the installed app draws its headers into the title bar, next to the window
+  controls. Drag the window by an empty part of a header. Use the title-bar toggle (the chevron
+  next to the window controls) to switch back to a classic title bar; both work the same.
+- **Shortcuts:** the installed app's icon offers **New note** and **Search notes** (long press on
+  Android, right-click or the jump list on desktop). If you need to log in first, the shortcut runs
+  right after. Launching the app again focuses the window that is already open instead of opening
+  a second one.
+- Dismissing the install bar is remembered on that device (localStorage
+  `commitnote.installBarDismissed`); **Install app** in the command menu still works afterwards.
+  The bar never appears in the installed app, on desktop, in the note view or in the shared-note
+  viewer.
+- The installed app keeps its own storage, separate from the browser tab, so you log in again
+  there.
 
 ### What is cached
 
