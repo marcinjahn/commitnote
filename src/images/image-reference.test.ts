@@ -4,6 +4,7 @@ import {
   imageAltText,
   parseImageReferences,
   parseImageUrl,
+  parseMarkdownImages,
   referencedImageIds,
   rewriteImageReferences,
   stripImageReferences,
@@ -13,6 +14,56 @@ import source from "./image-reference.ts?raw";
 const A = "abcdefghijklmnopqrstuvwxyz".slice(0, 26);
 const B = "bcdefghijklmnopqrstuvwxyz2";
 const C = "cdefghijklmnopqrstuvwxyz23";
+
+describe("parseMarkdownImages", () => {
+  const slice = (text: string, i: { from: number; to: number }) =>
+    text.slice(i.from, i.to);
+
+  it("returns alt raw and url as written", () => {
+    const text = "x ![a \\[b\\] c](pics/a.png) y";
+    const [image] = parseMarkdownImages(text);
+    expect(image).toMatchObject({ alt: "a \\[b\\] c", url: "pics/a.png" });
+    expect(slice(text, image)).toBe("![a \\[b\\] c](pics/a.png)");
+  });
+
+  it("drops the title", () => {
+    const text = '![a](a.png "Title")';
+    expect(parseMarkdownImages(text)).toEqual([
+      { from: 0, to: text.length, alt: "a", url: "a.png" },
+    ]);
+  });
+
+  it("unwraps angle brackets", () => {
+    const text = "![a](<my pic.png>)";
+    expect(parseMarkdownImages(text)).toEqual([
+      { from: 0, to: text.length, alt: "a", url: "my pic.png" },
+    ]);
+  });
+
+  it("ignores images in code", () => {
+    const text = "`![a](a.png)`\n\n```\n![b](b.png)\n```\n\n![c](c.png)";
+    expect(parseMarkdownImages(text).map((i) => i.url)).toEqual(["c.png"]);
+  });
+
+  it("includes image references and several images in a paragraph", () => {
+    const text = `![a](a.png) text ![b](image:${A}#1x1) ![c](https://x/c.png)`;
+    const images = parseMarkdownImages(text);
+    expect(images.map((i) => i.url)).toEqual([
+      "a.png",
+      `image:${A}#1x1`,
+      "https://x/c.png",
+    ]);
+    expect(images.map((i) => slice(text, i))).toEqual([
+      "![a](a.png)",
+      `![b](image:${A}#1x1)`,
+      "![c](https://x/c.png)",
+    ]);
+  });
+
+  it("skips reference-style images", () => {
+    expect(parseMarkdownImages("![a][ref]\n\n[ref]: pics/a.png")).toEqual([]);
+  });
+});
 
 describe("parseImageReferences", () => {
   it("parses a reference with dimensions", () => {
