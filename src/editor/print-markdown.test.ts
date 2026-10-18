@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { renderPrintMarkdown } from "./print-markdown";
+import {
+  PRINT_IMAGE_UNAVAILABLE_TEXT,
+  renderPrintMarkdown,
+} from "./print-markdown";
 
 function render(md: string): HTMLDivElement {
   const el = document.createElement("div");
@@ -310,5 +313,87 @@ describe("renderPrintMarkdown input handling", () => {
     const fragment = renderPrintMarkdown("# a\n\ntext\n", doc);
     expect(fragment.ownerDocument).toBe(doc);
     expect(fragment.firstChild?.ownerDocument).toBe(doc);
+  });
+});
+
+describe("renderPrintMarkdown images", () => {
+  const ID = "abcdefghijklmnopqrstuvwxyz";
+  const SECOND = "bcdefghijklmnopqrstuvwxyza";
+
+  function renderWith(md: string, urls: [string, string][]): HTMLDivElement {
+    const el = document.createElement("div");
+    el.append(renderPrintMarkdown(md, document, new Map(urls)));
+    return el;
+  }
+
+  it("renders a resolved reference as an img with alt, width and height", () => {
+    const el = renderWith(`![a \\[b\\] *c*](image:${ID}#640x480)\n`, [
+      [ID, "blob:resolved"],
+    ]);
+    const img = one(el, "img.print-note-image");
+    expect(el.querySelectorAll("img")).toHaveLength(1);
+    expect(img.getAttribute("src")).toBe("blob:resolved");
+    expect(img.getAttribute("alt")).toBe("a [b] c");
+    expect(img.getAttribute("width")).toBe("640");
+    expect(img.getAttribute("height")).toBe("480");
+    expect(el.querySelector(".print-url")).toBeNull();
+    expect(el.textContent).toBe("");
+  });
+
+  it("omits width and height without a size in the reference", () => {
+    const el = renderWith(`![](image:${ID})\n`, [[ID, "blob:resolved"]]);
+    const img = one(el, "img.print-note-image");
+    expect(img.getAttribute("alt")).toBe("");
+    expect(img.hasAttribute("width")).toBe(false);
+    expect(img.hasAttribute("height")).toBe(false);
+  });
+
+  it("renders an unresolved reference without alt as the unavailable text", () => {
+    const el = render(`![](image:${ID}#10x10)\n`);
+    expect(el.querySelector("img")).toBeNull();
+    expect(one(el, "span.print-image-unavailable").textContent).toBe(
+      PRINT_IMAGE_UNAVAILABLE_TEXT,
+    );
+    expect(el.textContent).toBe(PRINT_IMAGE_UNAVAILABLE_TEXT);
+    expect(el.textContent).not.toContain("image:");
+  });
+
+  it("renders an unresolved reference with alt and the unavailable text", () => {
+    const el = renderWith(`![a cat](image:${ID})\n`, [
+      [SECOND, "blob:other"],
+    ]);
+    expect(el.querySelector("img")).toBeNull();
+    expect(el.textContent).toBe("a cat (Image unavailable)");
+    expect(el.innerHTML).not.toContain("image:");
+  });
+
+  it("keeps a reference inside a fenced code block as code text", () => {
+    const md = `\`\`\`\n![x](image:${ID})\n\`\`\`\n`;
+    const el = renderWith(md, [[ID, "blob:resolved"]]);
+    expect(el.querySelector("img")).toBeNull();
+    expect(one(el, "pre").textContent).toContain(`![x](image:${ID})`);
+  });
+
+  it("keeps https and invalid image urls as before", () => {
+    const el = renderWith(
+      "![a](https://img.example/c.png)\n\n![b](image:short)\n",
+      [[ID, "blob:resolved"]],
+    );
+    expect(el.querySelector("img")).toBeNull();
+    expect(el.querySelector(".print-image-unavailable")).toBeNull();
+    const paragraphs = Array.from(el.querySelectorAll("p"));
+    expect(paragraphs.map((p) => p.textContent)).toEqual([
+      "a (https://img.example/c.png)",
+      "b (image:short)",
+    ]);
+  });
+
+  it("keeps text around an inline reference", () => {
+    const el = renderWith(`before ![alt](image:${ID}) after\n`, [
+      [ID, "blob:resolved"],
+    ]);
+    const p = one(el, "p");
+    expect(p.querySelector("img.print-note-image")).not.toBeNull();
+    expect(p.textContent).toBe("before  after");
   });
 });

@@ -763,11 +763,26 @@ textarea:focus-visible,
     overflow-wrap: anywhere;
   }
 
+  .print-view img.print-note-image {
+    display: block;
+    max-width: 100%;
+    max-height: 180mm;
+    width: auto;
+    height: auto;
+    margin: 0.5em 0;
+  }
+
+  .print-view .print-image-unavailable {
+    font-style: italic;
+    color: #444;
+  }
+
   .print-view pre,
   .print-view tr,
   .print-view li,
   .print-view blockquote,
-  .print-view .print-image {
+  .print-view .print-image,
+  .print-view img.print-note-image {
     break-inside: avoid;
   }
 }
