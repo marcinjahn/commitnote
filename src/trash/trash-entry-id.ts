@@ -1,3 +1,4 @@
+import { encodeBase32 } from "../crypto/base32";
 import { type RandomSource, secureRandom } from "../crypto/random";
 
 export interface ParsedTrashEntryId {
@@ -5,7 +6,6 @@ export interface ParsedTrashEntryId {
   readonly depth: number;
 }
 
-const BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
 const RANDOM_CHARS = 8;
 const RANDOM_BYTES = 5;
 
@@ -28,21 +28,6 @@ function formatTimestamp(ms: number): string {
     pad(date.getUTCSeconds(), 2) +
     "Z"
   );
-}
-
-function encodeBase32(bytes: Uint8Array): string {
-  let bits = 0;
-  let value = 0;
-  let output = "";
-  for (const byte of bytes) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      output += BASE32_ALPHABET[(value >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
-  }
-  return output;
 }
 
 export function createTrashEntryId(

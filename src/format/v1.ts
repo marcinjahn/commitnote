@@ -9,6 +9,8 @@ export const TRASH_DIR = ".commitnote/trash";
 export const ORDER_PATH = ".commitnote/order";
 export const TAGS_PATH = ".commitnote/tags";
 export const SHARES_PATH = ".commitnote/shares";
+export const IMAGES_DIR = ".commitnote/images";
+export const IMAGE_INDEX_PATH = ".commitnote/image-index";
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const CIPHER_ID = "AES-256-GCM";
@@ -16,6 +18,8 @@ export const NAME_SCHEME_ID = "AES-256-GCM-SIV-HMAC-SHA256/base64url";
 export const KDF_ALGORITHM = "argon2id";
 
 export const NOTE_AAD = "commitnote note v1";
+export const IMAGE_AAD_PREFIX = "commitnote image v1\n";
+export const IMAGE_ENVELOPE_MAGIC = Uint8Array.of(0x43, 0x4e, 0x49, 0x01);
 export const DEVICE_AAD = "commitnote device v1";
 export const NAME_AAD = "commitnote name v1";
 export const KEY_CHECK_MESSAGE = "commitnote key check v1";
