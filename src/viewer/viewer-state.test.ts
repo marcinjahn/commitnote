@@ -105,7 +105,7 @@ describe("viewer controller", () => {
     const seen: ViewerState["kind"][] = [];
     controller.subscribe((s) => seen.push(s.kind));
     await controller.start();
-    expect(controller.getState()).toEqual({ kind: "note", note: NOTE });
+    expect(controller.getState()).toEqual({ kind: "note", note: { ...NOTE, images: [] } });
     expect(seen).toEqual(["loading", "note"]);
     expect(read).toHaveBeenCalledWith(LOCATORS.gitlab);
   });
@@ -164,7 +164,7 @@ describe("viewer controller", () => {
     await controller.start();
     expect(controller.getState().kind).toBe("error");
     await controller.retry();
-    expect(controller.getState()).toEqual({ kind: "note", note: NOTE });
+    expect(controller.getState()).toEqual({ kind: "note", note: { ...NOTE, images: [] } });
     expect(read).toHaveBeenCalledTimes(2);
   });
 
@@ -215,7 +215,7 @@ describe("viewer controller", () => {
       expect(controller.getState()).toEqual({ kind: "password", busy: false, wrongPassword: true });
 
       await controller.unlock("hunter2");
-      expect(controller.getState()).toEqual({ kind: "note", note: NOTE });
+      expect(controller.getState()).toEqual({ kind: "note", note: { ...NOTE, images: [] } });
       expect(read).toHaveBeenCalledTimes(1);
     }, 60_000);
 

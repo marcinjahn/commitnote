@@ -117,12 +117,14 @@ describe("createShare", () => {
     const parsed = parseShareLink(hashOf(result.link));
     if (parsed.kind !== "valid") throw new Error("invalid link");
     expect(parsed.locator).toEqual(result.entry.locator);
-    const opened = await openShare(
+    const opened = (
+      await openShare(
       hostedEnvelope(h, hashOf(result.link)),
       parsed.linkSecret,
       undefined,
       argon2idDirect,
-    );
+      )
+    ).note;
     expect(opened.markdown).toBe(saved);
     expect(opened.name).toBe("Welcome");
     expect(result.password).toBeNull();
@@ -147,12 +149,14 @@ describe("createShare", () => {
     expect(hostedEnvelope(h, hash)).not.toContain("For Anna");
     const parsed = parseShareLink(hash);
     if (parsed.kind !== "valid") throw new Error("invalid link");
-    const opened = await openShare(
+    const opened = (
+      await openShare(
       hostedEnvelope(h, hash),
       parsed.linkSecret,
       undefined,
       argon2idDirect,
-    );
+      )
+    ).note;
     expect(opened.name).toBe("Welcome");
     expect(JSON.stringify(opened)).not.toContain("For Anna");
   });
@@ -282,12 +286,14 @@ describe("createShare", () => {
     await expect(
       openShare(envelope, result.entry.linkSecret, undefined, argon2idDirect),
     ).rejects.toBeInstanceOf(ShareOpenError);
-    const opened = await openShare(
+    const opened = (
+      await openShare(
       envelope,
       result.entry.linkSecret,
       "hunter2",
       argon2idDirect,
-    );
+      )
+    ).note;
     expect(opened.name).toBe("Welcome");
   });
 
@@ -389,7 +395,14 @@ describe("updateShare", () => {
     const hosted = await readers[parsed.locator.provider].read(
       parsed.locator,
     );
-    return openShare(hosted.envelope, parsed.linkSecret, password, argon2idDirect);
+    return (
+      await openShare(
+        hosted.envelope,
+        parsed.linkSecret,
+        password,
+        argon2idDirect,
+      )
+    ).note;
   }
 
   it("flushes pending edits and hosts them under the same link", async () => {

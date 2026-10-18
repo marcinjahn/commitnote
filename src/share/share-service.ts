@@ -252,6 +252,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       argon2id,
     });
     if (sealed.kind === "tooLarge") return fail({ kind: "tooLarge" });
+    if (sealed.kind === "imageTooLarge") return fail({ kind: "server" });
 
     const limited = rateLimitWait();
     if (limited !== null) return fail(limited);
@@ -374,6 +375,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       throw error;
     }
     if (sealed.kind === "tooLarge") return fail({ kind: "tooLarge" });
+    if (sealed.kind === "imageTooLarge") return fail({ kind: "server" });
 
     const limited = rateLimitWait();
     if (limited !== null) return fail(limited);

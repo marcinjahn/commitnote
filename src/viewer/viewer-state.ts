@@ -123,7 +123,7 @@ export function createViewerController(deps: ViewerDeps): ViewerController {
       return;
     }
     try {
-      const note = await openShare(
+      const { note } = await openShare(
         text,
         link.linkSecret,
         undefined,
@@ -148,7 +148,7 @@ export function createViewerController(deps: ViewerDeps): ViewerController {
     set({ kind: "password", busy: true, wrongPassword: state.wrongPassword });
     const provider = parseProvider();
     try {
-      const note = await openShare(
+      const { note } = await openShare(
         envelope,
         linkSecret,
         password,

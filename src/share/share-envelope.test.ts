@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { argon2idDirect, type Argon2idFunction } from "../crypto/argon2";
-import { fromBase64Url, toBase64Url } from "../crypto/base64";
+import { asBufferSource, fromBase64Url, toBase64Url, utf8Decode, utf8Encode } from "../crypto/base64";
+import type { ImagePayload } from "../crypto/image-cipher";
 import { KDF_LIMITS } from "../format/v1";
 import {
   SHARE_ENVELOPE_MAX_BYTES,
   ShareOpenError,
   envelopeNeedsPassword,
+  SHARE_IMAGE_FILE_MAX_BYTES,
+  SHARE_MAX_IMAGES,
   openShare,
+  openShareImage,
   sealShare,
   type ShareOpenErrorKind,
 } from "./share-envelope";
@@ -110,10 +114,10 @@ describe("share envelope", () => {
 
     it("opens envelopes sealed before updatedAt existed with updatedAt null", async () => {
       const secret = toBase64Url(Uint8Array.from({ length: 32 }, (_, i) => i));
-      await expect(openShare(LEGACY_PLAIN, secret, undefined, argon2.fn)).resolves.toEqual(NOTE);
+      await expect(openShare(LEGACY_PLAIN, secret, undefined, argon2.fn)).resolves.toEqual({ note: { ...NOTE, images: [] }, shareKey: expect.anything() });
       await expect(
         openShare(LEGACY_WITH_PASSWORD, secret, "correct horse", argon2.fn),
-      ).resolves.toEqual(NOTE);
+      ).resolves.toEqual({ note: { ...NOTE, images: [] }, shareKey: expect.anything() });
     });
 
     it("seals and opens a share without a password", async () => {
@@ -121,7 +125,7 @@ describe("share envelope", () => {
       expect(sealed.envelope).toBe(PLAIN);
       expect(sealed.linkSecret).toBe(toBase64Url(Uint8Array.from({ length: 32 }, (_, i) => i)));
       expect(sealed.linkSecret).toHaveLength(43);
-      await expect(openShare(PLAIN, sealed.linkSecret, undefined, argon2.fn)).resolves.toEqual(NOTE);
+      await expect(openShare(PLAIN, sealed.linkSecret, undefined, argon2.fn)).resolves.toEqual({ note: { ...NOTE, images: [] }, shareKey: expect.anything() });
     });
 
     it("seals and opens a share with a password", async () => {
@@ -129,7 +133,7 @@ describe("share envelope", () => {
       expect(sealed.envelope).toBe(WITH_PASSWORD);
       await expect(
         openShare(WITH_PASSWORD, sealed.linkSecret, "correct horse", argon2.fn),
-      ).resolves.toEqual(NOTE);
+      ).resolves.toEqual({ note: { ...NOTE, images: [] }, shareKey: expect.anything() });
     });
   });
 
@@ -141,12 +145,12 @@ describe("share envelope", () => {
         throw new Error("expected sealed");
       }
       await expect(openShare(result.envelope, result.linkSecret, undefined, argon2.fn)).resolves.toEqual({
-        ...NOTE,
-        updatedAt,
+        note: { ...NOTE, updatedAt, images: [] },
+        shareKey: expect.anything(),
       });
       const first = await seal();
       await expect(openShare(first.envelope, first.linkSecret, undefined, argon2.fn)).resolves.toMatchObject({
-        updatedAt: null,
+        note: { updatedAt: null },
       });
     });
 
@@ -165,7 +169,7 @@ describe("share envelope", () => {
       expect(second.linkSecret).toBe(first.linkSecret);
       await expect(
         openShare(second.envelope, first.linkSecret, "correct horse", argon2.fn),
-      ).resolves.toEqual(updated);
+      ).resolves.toEqual({ note: { ...updated, images: [] }, shareKey: expect.anything() });
       const a = JSON.parse(first.envelope) as { salt: string; iv: string };
       const b = JSON.parse(second.envelope) as { salt: string; iv: string };
       expect(b.salt).not.toBe(a.salt);
@@ -180,7 +184,7 @@ describe("share envelope", () => {
       }
       expect(second.linkSecret).toBe(first.linkSecret);
       expect(envelopeNeedsPassword(second.envelope)).toBe(false);
-      await expect(openShare(second.envelope, first.linkSecret, undefined, argon2.fn)).resolves.toEqual(NOTE);
+      await expect(openShare(second.envelope, first.linkSecret, undefined, argon2.fn)).resolves.toEqual({ note: { ...NOTE, images: [] }, shareKey: expect.anything() });
     });
 
     it("treats an empty password as no password", async () => {
@@ -190,7 +194,7 @@ describe("share envelope", () => {
 
     it("opens a share without a password and ignores a given password", async () => {
       const sealed = await seal();
-      await expect(openShare(sealed.envelope, sealed.linkSecret, "ignored", argon2.fn)).resolves.toEqual(NOTE);
+      await expect(openShare(sealed.envelope, sealed.linkSecret, "ignored", argon2.fn)).resolves.toEqual({ note: { ...NOTE, images: [] }, shareKey: expect.anything() });
     });
 
     it("opens NFC and NFD equivalent non-ASCII passwords to the same share", async () => {
@@ -198,14 +202,14 @@ describe("share envelope", () => {
       const nfd = nfc.normalize("NFD");
       expect(nfd).not.toBe(nfc);
       const sealed = await seal(nfc);
-      await expect(openShare(sealed.envelope, sealed.linkSecret, nfd, argon2.fn)).resolves.toEqual(NOTE);
+      await expect(openShare(sealed.envelope, sealed.linkSecret, nfd, argon2.fn)).resolves.toEqual({ note: { ...NOTE, images: [] }, shareKey: expect.anything() });
     });
 
     it("preserves non-ASCII note content", async () => {
       const note = { name: "ä中😀", markdown: "a\r\nb\u0000c", sharedAt: "x", updatedAt: null };
       const sealed = await sealShare({ ...note, argon2id: argon2.fn });
       if (sealed.kind !== "sealed") throw new Error("expected sealed");
-      await expect(openShare(sealed.envelope, sealed.linkSecret, undefined, argon2.fn)).resolves.toEqual(note);
+      await expect(openShare(sealed.envelope, sealed.linkSecret, undefined, argon2.fn)).resolves.toEqual({ note: { ...note, images: [] }, shareKey: expect.anything() });
     });
   });
 
@@ -389,6 +393,152 @@ describe("share envelope", () => {
       expect(under.envelope.length).toBeGreaterThan(SHARE_ENVELOPE_MAX_BYTES - 16);
 
       expect((await sealWithMarkdown(maxMarkdown + 8)).kind).toBe("tooLarge");
+    });
+  });
+
+  describe("images", () => {
+    const IDS = ["a".repeat(26), "b".repeat(26), "c".repeat(26)];
+
+    function payload(length: number, fill: number): ImagePayload {
+      return { type: "image/webp", width: 3, height: 2, bytes: new Uint8Array(length).fill(fill) };
+    }
+
+    const twoImages = [
+      { imageId: IDS[0], payload: payload(100, 1) },
+      { imageId: IDS[1], payload: payload(200, 2) },
+    ];
+
+    async function sealImages(
+      images: NonNullable<Parameters<typeof sealShare>[0]["images"]>,
+      password?: string,
+    ) {
+      const result = await sealShare({ ...NOTE, images, password, argon2id: argon2.fn });
+      if (result.kind !== "sealed") throw new Error("expected sealed");
+      return result;
+    }
+
+    async function forgeWithImages(sealed: { envelope: string; linkSecret: string }, images: unknown) {
+      const envelope = JSON.parse(sealed.envelope) as Record<string, string>;
+      const salt = asBufferSource(fromBase64Url(envelope.salt));
+      const ikm = await crypto.subtle.importKey("raw", asBufferSource(fromBase64Url(sealed.linkSecret)), "HKDF", false, [
+        "deriveBits",
+      ]);
+      const bits = await crypto.subtle.deriveBits(
+        { name: "HKDF", hash: "SHA-256", salt, info: asBufferSource(utf8Encode("commitnote share v1 key")) },
+        ikm,
+        256,
+      );
+      const key = await crypto.subtle.importKey("raw", bits, "AES-GCM", false, ["encrypt", "decrypt"]);
+      const aad = asBufferSource(utf8Encode(`commitnote share v1\n${JSON.stringify({ v: 1, kdf: null, salt: envelope.salt })}`));
+      const iv = asBufferSource(fromBase64Url(envelope.iv));
+      const opened = JSON.parse(
+        utf8Decode(new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: aad }, key, asBufferSource(fromBase64Url(envelope.ct))))),
+      ) as Record<string, unknown>;
+      const ct = new Uint8Array(
+        await crypto.subtle.encrypt(
+          { name: "AES-GCM", iv, additionalData: aad },
+          key,
+          asBufferSource(utf8Encode(JSON.stringify({ ...opened, images }))),
+        ),
+      );
+      return JSON.stringify({ ...envelope, ct: toBase64Url(ct) });
+    }
+
+    it.each([
+      ["without a password", undefined],
+      ["with a password", "correct horse"],
+    ])("round-trips two images %s", async (_label, password) => {
+      const sealed = await sealImages(twoImages, password);
+      expect(sealed.images).toHaveLength(2);
+      const opened = await openShare(sealed.envelope, sealed.linkSecret, password, argon2.fn);
+      expect(opened.note.images).toEqual([
+        { imageId: IDS[0], file: "commitnote-image-0.json" },
+        { imageId: IDS[1], file: "commitnote-image-1.json" },
+      ]);
+      for (const [index, image] of twoImages.entries()) {
+        const result = await openShareImage(opened.shareKey, index, sealed.images[index]);
+        expect(result).toEqual(image.payload);
+      }
+    });
+
+    it("seals a note without images exactly as before", async () => {
+      const sealed = await seal();
+      expect(sealed.images).toEqual([]);
+      const opened = await openShare(sealed.envelope, sealed.linkSecret, undefined, argon2.fn);
+      expect(opened.note.images).toEqual([]);
+      const explicit = await sealShare({
+        ...NOTE,
+        images: [],
+        random: sequentialRandom(),
+        argon2id: argon2.fn,
+      });
+      expect(explicit).toMatchObject({ kind: "sealed", envelope: sealed.envelope });
+    });
+
+    it("pads image plaintext and keeps files within the limit", async () => {
+      const sealed = await sealImages([twoImages[0]]);
+      const file = JSON.parse(sealed.images[0]) as Record<string, unknown>;
+      expect(file).toMatchObject({ commitnote: "share image", v: 1 });
+      expect(Object.keys(file).sort()).toEqual(["commitnote", "ct", "iv", "v"]);
+      expect(sealed.images[0].length).toBeLessThanOrEqual(SHARE_IMAGE_FILE_MAX_BYTES);
+    });
+
+    it("returns imageTooLarge for an oversized image and seals one just under the limit", async () => {
+      const over = await sealShare({ ...NOTE, images: [{ imageId: IDS[0], payload: payload(700_000, 7) }], argon2id: argon2.fn });
+      expect(over.kind).toBe("imageTooLarge");
+      const under = await sealImages([{ imageId: IDS[0], payload: payload(660_000, 7) }]);
+      expect(under.images[0].length).toBeLessThanOrEqual(SHARE_IMAGE_FILE_MAX_BYTES);
+      expect(under.images[0].length).toBeGreaterThan(890_000);
+    });
+
+    it("rejects an image file opened at another index", async () => {
+      const sealed = await sealImages(twoImages);
+      const opened = await openShare(sealed.envelope, sealed.linkSecret, undefined, argon2.fn);
+      await expect(openShareImage(opened.shareKey, 1, sealed.images[0])).rejects.toMatchObject({
+        kind: "damaged",
+      });
+    });
+
+    it("rejects a tampered image file", async () => {
+      const sealed = await sealImages(twoImages);
+      const opened = await openShare(sealed.envelope, sealed.linkSecret, undefined, argon2.fn);
+      const tampered = mutate(sealed.images[0], (value) => {
+        value.ct = flipFirstByte(value.ct as string);
+      });
+      await expect(openShareImage(opened.shareKey, 0, tampered)).rejects.toBeInstanceOf(ShareOpenError);
+      await expect(openShareImage(opened.shareKey, 0, "not json")).rejects.toMatchObject({ kind: "damaged" });
+      await expect(
+        openShareImage(opened.shareKey, 0, mutate(sealed.images[0], (value) => (value.v = 2))),
+      ).rejects.toMatchObject({ kind: "damaged" });
+    });
+
+    it("rejects malformed image lists in the plaintext", async () => {
+      const sealed = await sealImages([twoImages[0]]);
+      const entry = (imageId: string, index: number) => ({ imageId, file: `commitnote-image-${index}.json` });
+      const bad: unknown[] = [
+        [{ imageId: IDS[0], file: "commitnote-image-1.json" }],
+        [entry("NOT-AN-ID", 0)],
+        [entry(IDS[0], 0), entry(IDS[0], 1)],
+        Array.from({ length: SHARE_MAX_IMAGES + 1 }, (_, i) => entry(String.fromCharCode(97 + i).repeat(26), i)),
+        "images",
+        [null],
+      ];
+      for (const images of bad) {
+        expect(await openKind(await forgeWithImages(sealed, images), sealed.linkSecret)).toBe("damaged");
+      }
+      const good = Array.from({ length: SHARE_MAX_IMAGES }, (_, i) => entry(String.fromCharCode(97 + i).repeat(26), i));
+      expect(await openKind(await forgeWithImages(sealed, good), sealed.linkSecret)).toBe("opened");
+    });
+
+    it("throws when sealing too many or duplicate images", async () => {
+      const many = Array.from({ length: SHARE_MAX_IMAGES + 1 }, (_, i) => ({
+        imageId: String.fromCharCode(97 + i).repeat(26),
+        payload: payload(1, 0),
+      }));
+      await expect(sealShare({ ...NOTE, images: many, argon2id: argon2.fn })).rejects.toThrow();
+      await expect(
+        sealShare({ ...NOTE, images: [twoImages[0], twoImages[0]], argon2id: argon2.fn }),
+      ).rejects.toThrow();
     });
   });
 });
