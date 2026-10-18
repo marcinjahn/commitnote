@@ -254,6 +254,8 @@ test("the header Insert image button downscales a large image", async ({ page })
   await (await chooser).setFiles(file);
 
   await expect(loadedWidgets(page)).toHaveCount(1);
+  await editorContent(page).focus();
+  await page.keyboard.press("ArrowUp");
   await expect(editorContent(page)).toContainText("#2560x1707");
 });
 

@@ -139,14 +139,15 @@ function insertReferences(
       height: image.height,
     }),
   );
+  const main = state.selection.main;
+  const caretAtAnchor = main.empty && main.head === pos;
   const insert =
     (pos === line.from ? "" : "\n") +
     references.join("\n") +
-    (pos === line.to ? "" : "\n");
+    (pos !== line.to || caretAtAnchor ? "\n" : "");
   const changes = state.changes({ from: pos, insert });
-  const main = state.selection.main;
   let selection = state.selection.map(changes);
-  if (main.empty && main.head === pos) {
+  if (caretAtAnchor) {
     selection = selection.replaceRange(
       EditorSelection.cursor(pos + insert.length),
       selection.mainIndex,

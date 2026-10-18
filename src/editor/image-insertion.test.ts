@@ -226,7 +226,7 @@ describe("image paste", () => {
     const outcome = prepared([IMAGE_A], 2);
     await fake.resolve(outcome);
 
-    expect(docOf(view)).toBe(`intro\n${REF_A}`);
+    expect(docOf(view)).toBe(`intro\n${REF_A}\n`);
     expect(view.state.selection.main.head).toBe(view.state.doc.length);
     expect(fake.onOutcome).toHaveBeenCalledWith(outcome);
   });
@@ -238,7 +238,7 @@ describe("image paste", () => {
     view.dispatch({ changes: { from: 0, insert: "abc " } });
     await fake.resolve(prepared([IMAGE_A]));
 
-    expect(docOf(view)).toBe(`abc hello\n${REF_A}`);
+    expect(docOf(view)).toBe(`abc hello\n${REF_A}\n`);
   });
 
   it("splits the line when inserting mid-line and puts the caret after the insert", async () => {
@@ -250,12 +250,53 @@ describe("image paste", () => {
     expect(view.state.selection.main.head).toBe(`ab\n${REF_A}\n`.length);
   });
 
-  it("inserts a newline before the reference at the end of a line only", async () => {
+  it("puts the caret on a new empty line after a reference inserted at the end of a line", async () => {
     const { view, fake } = setup("ab\nnext", { caret: 2 });
     paste(view, { files: [imageFile()] });
     await fake.resolve(prepared([IMAGE_A]));
 
-    expect(docOf(view)).toBe(`ab\n${REF_A}\nnext`);
+    expect(docOf(view)).toBe(`ab\n${REF_A}\n\nnext`);
+    expect(view.state.selection.main.head).toBe(`ab\n${REF_A}\n`.length);
+
+    view.dispatch({
+      ...view.state.replaceSelection("x"),
+      userEvent: "input.type",
+    });
+    expect(docOf(view)).toBe(`ab\n${REF_A}\nx\nnext`);
+
+    undo(view);
+    undo(view);
+    expect(docOf(view)).toBe("ab\nnext");
+  });
+
+  it("puts the caret on a new empty line after a reference inserted on an empty line", async () => {
+    const { view, fake } = setup("ab\n\ncd", { caret: 3 });
+    paste(view, { files: [imageFile()] });
+    await fake.resolve(prepared([IMAGE_A]));
+
+    expect(docOf(view)).toBe(`ab\n${REF_A}\n\ncd`);
+    expect(view.state.selection.main.head).toBe(`ab\n${REF_A}\n`.length);
+
+    view.dispatch({
+      ...view.state.replaceSelection("x"),
+      userEvent: "input.type",
+    });
+    expect(docOf(view)).toBe(`ab\n${REF_A}\nx\ncd`);
+  });
+
+  it("puts the caret on a new empty line after a reference inserted at the end of the document", async () => {
+    const { view, fake } = setup("ab", { caret: 2 });
+    paste(view, { files: [imageFile()] });
+    await fake.resolve(prepared([IMAGE_A]));
+
+    expect(docOf(view)).toBe(`ab\n${REF_A}\n`);
+    expect(view.state.selection.main.head).toBe(view.state.doc.length);
+
+    view.dispatch({
+      ...view.state.replaceSelection("x"),
+      userEvent: "input.type",
+    });
+    expect(docOf(view)).toBe(`ab\n${REF_A}\nx`);
   });
 
   it("keeps the selection when the caret moved away from the anchor", async () => {
@@ -278,7 +319,7 @@ describe("image paste", () => {
     paste(view, { files: [imageFile(), imageFile()] });
     await fake.resolve(prepared([IMAGE_A, IMAGE_B]));
 
-    expect(docOf(view)).toBe(`${REF_A}\n${REF_B}`);
+    expect(docOf(view)).toBe(`${REF_A}\n${REF_B}\n`);
     expect(fake.register.mock.calls.map(([image]) => image)).toEqual([
       IMAGE_A,
       IMAGE_B,
@@ -364,7 +405,7 @@ describe("image paste", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(fake.prepare).toHaveBeenCalledTimes(1);
     await fake.resolve(prepared([IMAGE_A]));
-    expect(docOf(view)).toBe(REF_A);
+    expect(docOf(view)).toBe(`${REF_A}\n`);
   });
 
   it.each([
