@@ -53,7 +53,14 @@ function setup(options: {
   sealed?: Sealed;
 }) {
   const read = vi.fn(options.read);
-  const readers: ShareReaders = { github: { read }, gitlab: { read } };
+  const hosted = {
+    read: (...args: Parameters<typeof read>) =>
+      read(...args).then((envelope) => ({
+        envelope,
+        readImageFile: () => Promise.reject(new Error("unused")),
+      })),
+  };
+  const readers: ShareReaders = { github: hosted, gitlab: hosted };
   const controller = createViewerController({
     hash: options.hash ?? hashFor(options.provider ?? "github", options.sealed ?? plain),
     readers,

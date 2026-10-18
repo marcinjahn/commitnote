@@ -26,6 +26,7 @@ export function createLazyForgeAdapter(
       resolved().then((a) => a.readBlobBytes(...args)),
     commit: (...args) => resolved().then((a) => a.commit(...args)),
     shareHost: {
+      maxImages: 20,
       create: (...args) => resolved().then((a) => a.shareHost.create(...args)),
       update: (...args) => resolved().then((a) => a.shareHost.update(...args)),
       delete: (...args) => resolved().then((a) => a.shareHost.delete(...args)),

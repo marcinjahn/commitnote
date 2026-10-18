@@ -17,6 +17,7 @@ import type {
   TreeEntry,
   ObservedRateLimit,
 } from "../forge-adapter";
+import { shareContentFiles } from "../share-files";
 import type { ShareHost, ShareLocator } from "../share-host";
 import { createFakeShareStore, type FakeShareStore } from "./fake-share-store";
 import {
@@ -51,6 +52,14 @@ export type FailableOperation =
   | "createShare"
   | "updateShare"
   | "deleteShare";
+
+function persistShare<T>(write: () => T): T {
+  try {
+    return write();
+  } catch {
+    throw new ForgeError("Server");
+  }
+}
 
 function toCommitSummary(sha: string, commit: StoredCommit): CommitSummary {
   return {
@@ -109,18 +118,25 @@ export class FakeForgeAdapter implements ForgeAdapter {
     const store = options?.shares?.store ?? createFakeShareStore();
     const provider = options?.shares?.provider ?? "github";
     this.shareHost = {
-      create: async (envelope) => {
+      maxImages: provider === "github" ? 20 : 9,
+      create: async (content) => {
         if (!this.canWrite) {
           throw new ForgeError("Forbidden");
         }
         this.throwIfFailing("createShare");
         this.report({ operation: "createShare" });
-        return store.create(provider, envelope);
+        return persistShare(() =>
+          store.create(provider, shareContentFiles(content)),
+        );
       },
-      update: async (locator, envelope) => {
+      update: async (locator, content) => {
         this.throwIfFailing("updateShare");
         this.report({ operation: "updateShare" });
-        if (!store.update(locator, envelope)) {
+        if (
+          !persistShare(() =>
+            store.update(locator, shareContentFiles(content)),
+          )
+        ) {
           throw new ForgeError("NotFound");
         }
       },

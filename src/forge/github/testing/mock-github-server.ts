@@ -8,6 +8,7 @@ import {
 } from "../../../crypto/base64";
 import type { CommitFileChange, TreeEntry } from "../../forge-adapter";
 import { InMemoryGitRepo } from "../../fake/in-memory-git-repo";
+import { SHARE_FILE } from "../../share-files";
 import { MockFaults } from "../../fake/mock-faults";
 import type { FailureMatch, MockFailure } from "../../fake/mock-faults";
 
@@ -25,6 +26,27 @@ interface StoredCommitShape {
   readonly tree: string;
   readonly parent: string | null;
   readonly message: string;
+}
+
+interface GistRequestBody {
+  files?: Record<string, { content?: unknown } | null>;
+}
+
+function applyGistFiles(
+  existing: Record<string, string>,
+  patch: GistRequestBody["files"],
+): Record<string, string> | null {
+  const result = { ...existing };
+  for (const [name, file] of Object.entries(patch ?? {})) {
+    if (file === null) {
+      delete result[name];
+    } else if (typeof file?.content === "string") {
+      result[name] = file.content;
+    } else {
+      return null;
+    }
+  }
+  return result;
 }
 
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
@@ -96,7 +118,7 @@ export class MockGitHubRepo {
   private readonly canWrite: boolean;
   private readonly defaultBranch: string;
   private readonly faults = new MockFaults(jsonResponse);
-  private readonly gists = new Map<string, string>();
+  private readonly gists = new Map<string, Record<string, string>>();
   private nextGist = 1;
 
   constructor(options: MockGitHubRepoOptions) {
@@ -117,7 +139,13 @@ export class MockGitHubRepo {
 
   /** The envelope stored in a gist, or null when it does not exist. */
   gistContent(gistId: string): string | null {
-    return this.gists.get(gistId) ?? null;
+    return this.gists.get(gistId)?.[SHARE_FILE] ?? null;
+  }
+
+  /** All files stored in a gist, or null when it does not exist. */
+  gistFiles(gistId: string): Record<string, string> | null {
+    const files = this.gists.get(gistId);
+    return files === undefined ? null : { ...files };
   }
 
   handlers(): HttpHandler[] {
@@ -193,30 +221,40 @@ export class MockGitHubRepo {
     request: Request,
   ): Promise<Response> {
     if (method === "POST" && pathname === "/gists") {
-      const body = (await request.json()) as {
-        files?: Record<string, { content?: string }>;
-      };
-      const content = Object.values(body.files ?? {})[0]?.content;
-      if (typeof content !== "string") {
+      const body = (await request.json()) as GistRequestBody;
+      const files = applyGistFiles({}, body.files);
+      if (files === null || typeof files[SHARE_FILE] !== "string") {
         return jsonResponse({ message: "Validation Failed" }, 422);
       }
       const id = `gist${this.nextGist++}`;
-      this.gists.set(id, content);
+      this.gists.set(id, files);
       return jsonResponse({ id }, 201);
     }
     const idMatch = /^\/gists\/([^/]+)$/.exec(pathname);
+    const stored = idMatch === null ? undefined : this.gists.get(idMatch[1]);
+    if (method === "GET" && idMatch !== null) {
+      if (stored === undefined) return jsonResponse({ message: "Not Found" }, 404);
+      return jsonResponse(
+        {
+          id: idMatch[1],
+          files: Object.fromEntries(
+            Object.entries(stored).map(([name, content]) => [
+              name,
+              { filename: name, content, truncated: false },
+            ]),
+          ),
+        },
+        200,
+      );
+    }
     if (method === "PATCH" && idMatch !== null) {
-      if (!this.gists.has(idMatch[1])) {
-        return jsonResponse({ message: "Not Found" }, 404);
-      }
-      const body = (await request.json()) as {
-        files?: Record<string, { content?: string }>;
-      };
-      const content = body.files?.["commitnote-share.json"]?.content;
-      if (typeof content !== "string") {
+      if (stored === undefined) return jsonResponse({ message: "Not Found" }, 404);
+      const body = (await request.json()) as GistRequestBody;
+      const files = applyGistFiles(stored, body.files);
+      if (files === null || typeof files[SHARE_FILE] !== "string") {
         return jsonResponse({ message: "Validation Failed" }, 422);
       }
-      this.gists.set(idMatch[1], content);
+      this.gists.set(idMatch[1], files);
       return jsonResponse({ id: idMatch[1] }, 200);
     }
     if (method === "DELETE" && idMatch !== null) {

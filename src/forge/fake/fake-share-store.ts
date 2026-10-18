@@ -1,20 +1,24 @@
+import { SHARE_FILE, isShareImageFileName } from "../share-files";
 import { ShareReadError } from "../share-host";
-import type { ShareLocator, ShareReaders } from "../share-host";
+import type { HostedShare, ShareLocator, ShareReaders } from "../share-host";
 
 export const FAKE_SHARE_STORE_KEY = "__commitNoteFakeShares";
 
 const FIRST_SNIPPET_ID = 1000;
 
 export interface FakeShareStore {
-  create(provider: ShareLocator["provider"], envelope: string): ShareLocator;
-  update(locator: ShareLocator, envelope: string): boolean;
+  create(
+    provider: ShareLocator["provider"],
+    files: Readonly<Record<string, string>>,
+  ): ShareLocator;
+  update(locator: ShareLocator, files: Readonly<Record<string, string>>): boolean;
   delete(locator: ShareLocator): boolean;
-  read(locator: ShareLocator): string | null;
+  read(locator: ShareLocator): Readonly<Record<string, string>> | null;
 }
 
 interface StoredShares {
   nextSnippetId: number;
-  shares: Record<string, string>;
+  shares: Record<string, Record<string, string>>;
 }
 
 function inMemoryStorage(): Pick<Storage, "getItem" | "setItem"> {
@@ -46,7 +50,13 @@ export function createFakeShareStore(
     if (text === null) {
       return { nextSnippetId: FIRST_SNIPPET_ID, shares: {} };
     }
-    return JSON.parse(text) as StoredShares;
+    const state = JSON.parse(text) as StoredShares;
+    state.shares = Object.fromEntries(
+      Object.entries(state.shares ?? {}).filter(
+        ([, files]) => typeof files === "object" && files !== null,
+      ),
+    );
+    return state;
   }
 
   function save(state: StoredShares): void {
@@ -54,7 +64,7 @@ export function createFakeShareStore(
   }
 
   return {
-    create(provider, envelope) {
+    create(provider, files) {
       const state = load();
       let locator: ShareLocator;
       if (provider === "github") {
@@ -63,17 +73,17 @@ export function createFakeShareStore(
         locator = { provider, snippetId: String(state.nextSnippetId) };
         state.nextSnippetId += 1;
       }
-      state.shares[shareKey(locator)] = envelope;
+      state.shares[shareKey(locator)] = { ...files };
       save(state);
       return locator;
     },
-    update(locator, envelope) {
+    update(locator, files) {
       const state = load();
       const key = shareKey(locator);
       if (!(key in state.shares)) {
         return false;
       }
-      state.shares[key] = envelope;
+      state.shares[key] = { ...files };
       save(state);
       return true;
     },
@@ -95,11 +105,22 @@ export function createFakeShareStore(
 
 export function createFakeShareReaders(store: FakeShareStore): ShareReaders {
   const reader = {
-    read(locator: ShareLocator): Promise<string> {
-      const envelope = store.read(locator);
-      return envelope === null
-        ? Promise.reject(new ShareReadError("notFound"))
-        : Promise.resolve(envelope);
+    read(locator: ShareLocator): Promise<HostedShare> {
+      const envelope = store.read(locator)?.[SHARE_FILE];
+      if (envelope === undefined) {
+        return Promise.reject(new ShareReadError("notFound"));
+      }
+      return Promise.resolve({
+        envelope,
+        readImageFile(file: string): Promise<string> {
+          const content = isShareImageFileName(file)
+            ? store.read(locator)?.[file]
+            : undefined;
+          return content === undefined
+            ? Promise.reject(new ShareReadError("damaged"))
+            : Promise.resolve(content);
+        },
+      });
     },
   };
   return { github: reader, gitlab: reader };

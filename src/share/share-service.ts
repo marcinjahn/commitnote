@@ -258,7 +258,10 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
 
     let locator;
     try {
-      locator = await shareHost.create(sealed.envelope);
+      locator = await shareHost.create({
+        envelope: sealed.envelope,
+        images: [],
+      });
     } catch (error) {
       return fail(shareErrorOf(error, "create"));
     }
@@ -376,7 +379,10 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     if (limited !== null) return fail(limited);
 
     try {
-      await shareHost.update(entry.locator, sealed.envelope);
+      await shareHost.update(entry.locator, {
+        envelope: sealed.envelope,
+        images: [],
+      });
     } catch (error) {
       return fail(shareErrorOf(error, "update"));
     }

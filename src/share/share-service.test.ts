@@ -5,6 +5,7 @@ import { encryptPath } from "../crypto/name-cipher";
 import { encryptNote } from "../crypto/note-cipher";
 import type { NotePath } from "../changes/change";
 import { ForgeError } from "../forge/errors";
+import { SHARE_FILE } from "../forge/share-files";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
 import {
   createFakeShareReaders,
@@ -81,8 +82,8 @@ async function setup(fake?: FakeForgeAdapter, store?: FakeShareStore) {
 function hostedEnvelope(h: Harness, hash: string): string {
   const parsed = parseShareLink(hash);
   if (parsed.kind !== "valid") throw new Error("invalid link");
-  const envelope = h.store.read(parsed.locator);
-  if (envelope === null) throw new Error("not hosted");
+  const envelope = h.store.read(parsed.locator)?.[SHARE_FILE];
+  if (envelope === undefined) throw new Error("not hosted");
   return envelope;
 }
 
@@ -174,9 +175,9 @@ describe("createShare", () => {
     const h = await setup();
     let calls = 0;
     const create = h.fake.shareHost.create;
-    h.fake.shareHost.create = async (envelope) => {
+    h.fake.shareHost.create = async (content) => {
       calls++;
-      return create(envelope);
+      return create(content);
     };
 
     const result = await h.service.createShare({
@@ -295,9 +296,9 @@ describe("createShare", () => {
     for (let i = 0; i < h.fake.limits.perMinute; i++) h.budget.record();
     let calls = 0;
     const create = h.fake.shareHost.create;
-    h.fake.shareHost.create = async (envelope) => {
+    h.fake.shareHost.create = async (content) => {
       calls++;
-      return create(envelope);
+      return create(content);
     };
 
     const result = await h.service.createShare({ path: WELCOME, password: "" });
@@ -385,10 +386,10 @@ describe("updateShare", () => {
     const parsed = parseShareLink(hash);
     if (parsed.kind !== "valid") throw new Error("invalid link");
     const readers = createFakeShareReaders(h.store);
-    const envelope = await readers[parsed.locator.provider].read(
+    const hosted = await readers[parsed.locator.provider].read(
       parsed.locator,
     );
-    return openShare(envelope, parsed.linkSecret, password, argon2idDirect);
+    return openShare(hosted.envelope, parsed.linkSecret, password, argon2idDirect);
   }
 
   it("flushes pending edits and hosts them under the same link", async () => {
@@ -450,9 +451,9 @@ describe("updateShare", () => {
     if (!first.ok) throw new Error("failed");
     let calls = 0;
     const update = h.fake.shareHost.update;
-    h.fake.shareHost.update = async (locator, envelope) => {
+    h.fake.shareHost.update = async (locator, content) => {
       calls++;
-      return update(locator, envelope);
+      return update(locator, content);
     };
 
     const second = await h.service.updateShare(created.entry.id);

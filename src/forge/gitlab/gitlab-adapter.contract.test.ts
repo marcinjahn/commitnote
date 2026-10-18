@@ -77,7 +77,7 @@ const SHARE_FAILURE_MATCH: Record<
   { method: string; pathPattern: RegExp }
 > = {
   createShare: { method: "POST", pathPattern: /\/snippets$/ },
-  updateShare: { method: "PUT", pathPattern: /\/snippets\// },
+  updateShare: { method: "PUT", pathPattern: /\/snippets\/\d+$/ },
   deleteShare: { method: "DELETE", pathPattern: /\/snippets\// },
 };
 
@@ -121,7 +121,7 @@ function buildSubject(mock: MockGitLabRepo): ContractSubject {
 const harness: ForgeContractHarness = {
   async readShare(subject, locator) {
     if (locator.provider !== "gitlab") throw new Error("unexpected provider");
-    return mocks.get(subject)?.snippetContent(locator.snippetId) ?? null;
+    return mocks.get(subject)?.snippetFiles(locator.snippetId) ?? null;
   },
 
   async createEmpty(options) {

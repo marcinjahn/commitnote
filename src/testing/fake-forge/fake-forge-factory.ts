@@ -139,7 +139,7 @@ function createRejectingAdapter(makeError: () => ForgeError): ForgeAdapter {
     readBlob: reject,
     readBlobBytes: reject,
     commit: reject,
-    shareHost: { create: reject, update: reject, delete: reject },
+    shareHost: { maxImages: 20, create: reject, update: reject, delete: reject },
   };
 }
 

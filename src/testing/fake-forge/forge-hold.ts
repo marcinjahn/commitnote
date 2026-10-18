@@ -64,6 +64,7 @@ export function createForgeHolds(): ForgeHolds {
         readFileAt: (...args) =>
           gated(repoKey, "readFileAt", () => adapter.readFileAt(...args)),
         shareHost: {
+          maxImages: shareHost.maxImages,
           create: (...args) =>
             gated(repoKey, "createShare", () => shareHost.create(...args)),
           update: (...args) =>

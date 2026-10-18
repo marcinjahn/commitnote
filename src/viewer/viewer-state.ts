@@ -103,7 +103,7 @@ export function createViewerController(deps: ViewerDeps): ViewerController {
 
     let text: string;
     try {
-      text = await deps.readers[locator.provider].read(locator);
+      text = (await deps.readers[locator.provider].read(locator)).envelope;
     } catch (error) {
       fail(readErrorKind(error), locator.provider);
       return;

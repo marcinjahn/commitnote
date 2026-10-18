@@ -3,6 +3,7 @@ import { REPO_CONFIG_PATH } from "../../format/v1";
 import { ForgeError } from "../errors";
 import type { ContentCreatingRequest } from "../forge-adapter";
 import { FakeForgeAdapter } from "./fake-forge-adapter";
+import { createFakeShareStore } from "./fake-share-store";
 
 describe("FakeForgeAdapter.inspect", () => {
   it("reports empty for a repo with no commits", async () => {
@@ -325,5 +326,43 @@ describe("FakeForgeAdapter.readBlob", () => {
     await expect(adapter.readBlob("unknown-sha")).rejects.toMatchObject({
       kind: "Network",
     });
+  });
+});
+
+describe("FakeForgeAdapter.shareHost", () => {
+  it("fails with Server when the share storage rejects the write", async () => {
+    const values = new Map<string, string>();
+    let full = false;
+    const store = createFakeShareStore({
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => {
+        if (full) throw new DOMException("quota", "QuotaExceededError");
+        values.set(key, value);
+      },
+    });
+    const adapter = new FakeForgeAdapter({
+      shares: { store, provider: "github" },
+    });
+    const locator = await adapter.shareHost.create({
+      envelope: "e",
+      images: [],
+    });
+    full = true;
+
+    await expect(
+      adapter.shareHost.create({ envelope: "e", images: ["i"] }),
+    ).rejects.toMatchObject({ kind: "Server" });
+    await expect(
+      adapter.shareHost.update(locator, { envelope: "e", images: ["i"] }),
+    ).rejects.toMatchObject({ kind: "Server" });
+  });
+
+  it("limits images per provider", () => {
+    const shares = (provider: "github" | "gitlab") =>
+      new FakeForgeAdapter({
+        shares: { store: createFakeShareStore(), provider },
+      }).shareHost.maxImages;
+    expect(shares("github")).toBe(20);
+    expect(shares("gitlab")).toBe(9);
   });
 });

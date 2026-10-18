@@ -53,6 +53,13 @@ interface CommitBody {
 }
 
 const API_PREFIX = "/api/v4";
+const MAX_SNIPPET_FILES = 10;
+
+interface SnippetFileAction {
+  readonly action?: string;
+  readonly file_path: string;
+  readonly content?: string;
+}
 const DEVELOPER_ACCESS_LEVEL = 30;
 const MAINTAINER_ACCESS_LEVEL = 40;
 const REPORTER_ACCESS_LEVEL = 20;
@@ -122,7 +129,7 @@ export class MockGitLabRepo {
     { reads: number; source: string; removeSource: boolean }
   >();
   private nextIid = 1;
-  private readonly snippets = new Map<number, string>();
+  private readonly snippets = new Map<number, Map<string, string>>();
   private nextSnippetId = 1;
 
   constructor(options: MockGitLabRepoOptions) {
@@ -148,9 +155,16 @@ export class MockGitLabRepo {
     this.commitDates.set(sha, date.toISOString());
   }
 
-  /** The envelope stored in a snippet, or null when it does not exist. */
+  /** The first file's content of a snippet, or null when it does not exist. */
   snippetContent(snippetId: string): string | null {
-    return this.snippets.get(Number(snippetId)) ?? null;
+    const files = this.snippets.get(Number(snippetId));
+    return files?.values().next().value ?? null;
+  }
+
+  /** All files of a snippet by name, or null when it does not exist. */
+  snippetFiles(snippetId: string): Record<string, string> | null {
+    const files = this.snippets.get(Number(snippetId));
+    return files === undefined ? null : Object.fromEntries(files);
   }
 
   handlers(): HttpHandler[] {
@@ -208,38 +222,85 @@ export class MockGitLabRepo {
     const injected = this.faults.takeFailure(method, path);
     if (injected !== null) return injected;
 
-    if (request.headers.get("authorization") !== `Bearer ${this.token}`) {
-      return jsonResponse({ message: "401 Unauthorized" }, 401);
-    }
-
-    if (method === "POST" && url.pathname === `${API_PREFIX}/snippets`) {
-      const body = (await request.json()) as {
-        files?: readonly { content?: string }[];
-      };
-      const content = body.files?.[0]?.content;
-      if (typeof content !== "string") {
-        return jsonResponse({ message: "400 Bad request" }, 400);
-      }
-      const id = this.nextSnippetId++;
-      this.snippets.set(id, content);
-      return jsonResponse({ id }, 201);
-    }
+    const rawMatch = new RegExp(
+      `^${API_PREFIX}/snippets/(\\d+)/files/([^/]+)/([^/]+)/raw$`,
+    ).exec(url.pathname);
     const idMatch = new RegExp(`^${API_PREFIX}/snippets/(\\d+)$`).exec(
       url.pathname,
     );
-    if (method === "PUT" && idMatch !== null) {
+    const publicRead =
+      method === "GET" && (rawMatch !== null || idMatch !== null);
+    if (
+      !publicRead &&
+      request.headers.get("authorization") !== `Bearer ${this.token}`
+    ) {
+      return jsonResponse({ message: "401 Unauthorized" }, 401);
+    }
+
+    if (method === "GET" && rawMatch !== null) {
+      const content = this.snippets
+        .get(Number(rawMatch[1]))
+        ?.get(decodeURIComponent(rawMatch[3]));
+      return content === undefined
+        ? jsonResponse({ message: "404 File Not Found" }, 404)
+        : new HttpResponse(content, {
+            headers: { "content-type": "text/plain; charset=utf-8" },
+          });
+    }
+    if (method === "GET" && idMatch !== null) {
       const id = Number(idMatch[1]);
-      if (!this.snippets.has(id)) {
+      const files = this.snippets.get(id);
+      if (files === undefined) {
         return jsonResponse({ message: "404 Snippet Not Found" }, 404);
       }
-      const body = (await request.json()) as {
-        files?: readonly { content?: string }[];
-      };
-      const content = body.files?.[0]?.content;
-      if (typeof content !== "string") {
+      return jsonResponse({
+        id,
+        files: [...files.keys()].map((path) => ({
+          path,
+          raw_url: `https://gitlab.com/-/snippets/${id}/raw/main/${encodeURIComponent(path)}`,
+        })),
+      }, 200);
+    }
+    if (method === "POST" && url.pathname === `${API_PREFIX}/snippets`) {
+      const body = (await request.json()) as { files?: readonly SnippetFileAction[] };
+      const files = new Map<string, string>();
+      for (const file of body.files ?? []) {
+        if (typeof file.file_path !== "string" || typeof file.content !== "string") {
+          return jsonResponse({ message: "400 Bad request" }, 400);
+        }
+        files.set(file.file_path, file.content);
+      }
+      if (files.size === 0 || files.size > MAX_SNIPPET_FILES) {
         return jsonResponse({ message: "400 Bad request" }, 400);
       }
-      this.snippets.set(id, content);
+      const id = this.nextSnippetId++;
+      this.snippets.set(id, files);
+      return jsonResponse({ id }, 201);
+    }
+    if (method === "PUT" && idMatch !== null) {
+      const id = Number(idMatch[1]);
+      const current = this.snippets.get(id);
+      if (current === undefined) {
+        return jsonResponse({ message: "404 Snippet Not Found" }, 404);
+      }
+      const body = (await request.json()) as { files?: readonly SnippetFileAction[] };
+      const next = new Map(current);
+      for (const file of body.files ?? []) {
+        const exists = next.has(file.file_path);
+        if (file.action === "create" && !exists && typeof file.content === "string") {
+          next.set(file.file_path, file.content);
+        } else if (file.action === "update" && exists && typeof file.content === "string") {
+          next.set(file.file_path, file.content);
+        } else if (file.action === "delete" && exists) {
+          next.delete(file.file_path);
+        } else {
+          return jsonResponse({ message: "400 Bad request" }, 400);
+        }
+      }
+      if (next.size === 0 || next.size > MAX_SNIPPET_FILES) {
+        return jsonResponse({ message: "400 Bad request" }, 400);
+      }
+      this.snippets.set(id, next);
       return jsonResponse({ id }, 200);
     }
     if (method === "DELETE" && idMatch !== null) {

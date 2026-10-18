@@ -1,8 +1,8 @@
 import { defaultFetch } from "../forge-http";
+import { isShareImageFileName, SHARE_FILE } from "../share-files";
 import { ShareReadError, type ShareReader } from "../share-host";
 import { API_BASE } from "./github-api";
 
-const SHARE_FILE = "commitnote-share.json";
 
 async function isRateLimited(response: Response): Promise<boolean> {
   if (response.status === 429) return true;
@@ -59,21 +59,33 @@ export function createGitHubShareReader(
           typeof body === "object" && body !== null
             ? (body as { files?: unknown }).files
             : undefined;
-        const file =
-          typeof files === "object" && files !== null
-            ? (files as Record<string, unknown>)[SHARE_FILE]
-            : undefined;
-        if (typeof file !== "object" || file === null) {
-          throw new ShareReadError("damaged");
-        }
-        const { content, truncated } = file as {
-          content?: unknown;
-          truncated?: unknown;
+        const fileContent = (name: string): string => {
+          const file =
+            typeof files === "object" && files !== null
+              ? (files as Record<string, unknown>)[name]
+              : undefined;
+          if (typeof file !== "object" || file === null) {
+            throw new ShareReadError("damaged");
+          }
+          const { content, truncated } = file as {
+            content?: unknown;
+            truncated?: unknown;
+          };
+          if (truncated === true || typeof content !== "string") {
+            throw new ShareReadError("damaged");
+          }
+          return content;
         };
-        if (truncated === true || typeof content !== "string") {
-          throw new ShareReadError("damaged");
-        }
-        return content;
+        const envelope = fileContent(SHARE_FILE);
+        return {
+          envelope,
+          async readImageFile(file) {
+            if (!isShareImageFileName(file)) {
+              throw new ShareReadError("damaged");
+            }
+            return fileContent(file);
+          },
+        };
       }
       if (response.status === 404) throw new ShareReadError("notFound");
       if (await isRateLimited(response)) throw new ShareReadError("rateLimited");

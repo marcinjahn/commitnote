@@ -11,7 +11,7 @@ interface Recorded {
   readonly body: unknown;
 }
 
-function setup(respond: () => Response) {
+function setup(respond: (method: string | undefined) => Response) {
   const calls: Recorded[] = [];
   const reports: ContentCreatingRequest[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {
@@ -22,7 +22,7 @@ function setup(respond: () => Response) {
       authorization: headers.get("authorization"),
       body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
     });
-    return respond();
+    return respond(init?.method);
   };
   const adapter = createGitLabAdapter(
     { owner: "acme", repo: "notes" },
@@ -44,7 +44,7 @@ describe("GitLab share host", () => {
     it("posts a public snippet and returns its locator", async () => {
       const { host, calls, reports } = setup(() => json({ id: 4711 }, 201));
 
-      const locator = await host.create("envelope-text");
+      const locator = await host.create({ envelope: "envelope-text", images: [] });
 
       expect(locator).toEqual({ provider: "gitlab", snippetId: "4711" });
       expect(calls).toEqual([
@@ -66,14 +66,30 @@ describe("GitLab share host", () => {
 
     it.each([403, 404])("maps %i to Forbidden", async (status) => {
       const { host } = setup(() => json({ message: "nope" }, status));
-      await expect(host.create("x")).rejects.toMatchObject({
+      await expect(host.create({ envelope: "x", images: [] })).rejects.toMatchObject({
         kind: "Forbidden",
+      });
+    });
+
+    it("posts the envelope first, then every image file", async () => {
+      const { host, calls } = setup(() => json({ id: 1 }, 201));
+
+      await host.create({ envelope: "env", images: ["img-a", "img-b"] });
+
+      expect(calls[0]?.body).toEqual({
+        title: "Encrypted commitnote share",
+        visibility: "public",
+        files: [
+          { file_path: "commitnote-share.json", content: "env" },
+          { file_path: "commitnote-image-0.json", content: "img-a" },
+          { file_path: "commitnote-image-1.json", content: "img-b" },
+        ],
       });
     });
 
     it("maps 401 to Unauthorized", async () => {
       const { host } = setup(() => json({ message: "Bad" }, 401));
-      await expect(host.create("x")).rejects.toMatchObject({
+      await expect(host.create({ envelope: "x", images: [] })).rejects.toMatchObject({
         kind: "Unauthorized",
       });
     });
@@ -82,7 +98,7 @@ describe("GitLab share host", () => {
       const { host } = setup(() =>
         json({ message: "slow down" }, 429, { "retry-after": "30" }),
       );
-      await expect(host.create("x")).rejects.toMatchObject({
+      await expect(host.create({ envelope: "x", images: [] })).rejects.toMatchObject({
         kind: "RateLimited",
         retryAfterMs: 30_000,
       });
@@ -92,7 +108,7 @@ describe("GitLab share host", () => {
       const { host } = setup(() =>
         json({ message: "x" }, 403, { "retry-after": "5" }),
       );
-      await expect(host.create("x")).rejects.toMatchObject({
+      await expect(host.create({ envelope: "x", images: [] })).rejects.toMatchObject({
         kind: "RateLimited",
       });
     });
@@ -100,7 +116,7 @@ describe("GitLab share host", () => {
     it("rejects a response without a numeric id with Server", async () => {
       for (const body of [{}, { id: "12" }]) {
         const { host } = setup(() => json(body, 201));
-        await expect(host.create("x")).rejects.toMatchObject({
+        await expect(host.create({ envelope: "x", images: [] })).rejects.toMatchObject({
           kind: "Server",
         });
       }
@@ -110,12 +126,23 @@ describe("GitLab share host", () => {
   describe("update", () => {
     const locator = { provider: "gitlab", snippetId: "4711" } as const;
 
-    it("puts an update action for the share file", async () => {
-      const { host, calls, reports } = setup(() => json({ id: 4711 }, 200));
+    const snippet = (...paths: string[]) =>
+      json({ id: 4711, files: paths.map((path) => ({ path, raw_url: "" })) }, 200);
 
-      await host.update(locator, "new-envelope");
+    it("reads the snippet, then puts an update action for the share file", async () => {
+      const { host, calls, reports } = setup((method) =>
+        method === "GET" ? snippet("commitnote-share.json") : json({ id: 4711 }, 200),
+      );
+
+      await host.update(locator, { envelope: "new-envelope", images: [] });
 
       expect(calls).toEqual([
+        {
+          url: "https://gitlab.com/api/v4/snippets/4711",
+          method: "GET",
+          authorization: `Bearer ${TOKEN}`,
+          body: undefined,
+        },
         {
           url: "https://gitlab.com/api/v4/snippets/4711",
           method: "PUT",
@@ -134,17 +161,61 @@ describe("GitLab share host", () => {
       expect(reports).toEqual([{ operation: "updateShare" }]);
     });
 
-    it("maps 404 to NotFound", async () => {
-      const { host } = setup(() => json({ message: "404 Not found" }, 404));
-      await expect(host.update(locator, "x")).rejects.toMatchObject({
-        kind: "NotFound",
+    it("updates existing files, creates new images and deletes unused ones", async () => {
+      const { host, calls } = setup((method) =>
+        method === "GET"
+          ? snippet(
+              "commitnote-share.json",
+              "commitnote-image-0.json",
+              "commitnote-image-1.json",
+              "commitnote-image-2.json",
+              "other.txt",
+            )
+          : json({ id: 4711 }, 200),
+      );
+
+      await host.update(locator, { envelope: "env", images: ["a", "b"] });
+
+      expect(calls[1]?.body).toEqual({
+        files: [
+          { action: "update", file_path: "commitnote-share.json", content: "env" },
+          { action: "update", file_path: "commitnote-image-0.json", content: "a" },
+          { action: "update", file_path: "commitnote-image-1.json", content: "b" },
+          { action: "delete", file_path: "commitnote-image-2.json" },
+        ],
       });
+    });
+
+    it("creates image files the snippet does not have yet", async () => {
+      const { host, calls } = setup((method) =>
+        method === "GET" ? snippet("commitnote-share.json") : json({ id: 4711 }, 200),
+      );
+
+      await host.update(locator, { envelope: "env", images: ["a"] });
+
+      expect(calls[1]?.body).toEqual({
+        files: [
+          { action: "update", file_path: "commitnote-share.json", content: "env" },
+          { action: "create", file_path: "commitnote-image-0.json", content: "a" },
+        ],
+      });
+    });
+
+    it("maps 404 to NotFound without sending a PUT", async () => {
+      const { host, calls } = setup(() => json({ message: "404 Not found" }, 404));
+      await expect(
+        host.update(locator, { envelope: "x", images: [] }),
+      ).rejects.toMatchObject({ kind: "NotFound" });
+      expect(calls.map((call) => call.method)).toEqual(["GET"]);
     });
 
     it("rejects a github locator without sending a request", async () => {
       const { host, calls, reports } = setup(() => json({}, 200));
       await expect(
-        host.update({ provider: "github", gistId: "a" }, "x"),
+        host.update(
+          { provider: "github", gistId: "a" },
+          { envelope: "x", images: [] },
+        ),
       ).rejects.toMatchObject({ kind: "Server" });
       expect(calls).toEqual([]);
       expect(reports).toEqual([]);
