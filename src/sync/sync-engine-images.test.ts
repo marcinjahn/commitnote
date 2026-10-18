@@ -222,6 +222,29 @@ describe("sync engine images", () => {
     expect((await indexAtHead(h)).tombstones.has(image.imageId)).toBe(false);
   });
 
+  it("an image added and removed within one save stays pending and is stored when referenced again", async () => {
+    const h = await setup();
+    const original = await welcomeText(h.fake);
+    const image = await newImage();
+    h.engine.addPendingImage(image);
+    h.engine.editNote(WELCOME, withReference(original, image.imageId));
+    h.engine.setColorTag(WELCOME, "red");
+    h.engine.editNote(WELCOME, original);
+
+    expect(await h.engine.flush()).toEqual({ kind: "saved" });
+
+    expect((await indexAtHead(h)).tombstones.has(image.imageId)).toBe(false);
+    expect(h.engine.getPendingImage(image.imageId)).toBeDefined();
+
+    h.engine.editNote(WELCOME, withReference(original, image.imageId));
+    expect(await h.engine.flush()).toEqual({ kind: "saved" });
+
+    expect(imageFileAtHead(h, image.imageId)).toBe(image.blobSha);
+    expect((await indexAtHead(h)).images.get(image.imageId)?.owners).toEqual([
+      { state: "active", path: WELCOME },
+    ]);
+  });
+
   it("keeps the image when another device adds an owner while a local edit removes one", async () => {
     const h = await setup();
     const { image, original } = await committedImage(h);

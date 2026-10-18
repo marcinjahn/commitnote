@@ -55,6 +55,7 @@ import {
   type ImageFileChange,
   type ImageIndex,
   type ImageIndexUpdate,
+  type ImageTombstone,
 } from "../images/image-index";
 import { referencedImageIds } from "../images/image-reference";
 import type { Change, ChangeSet, NotePath } from "./change";
@@ -407,24 +408,67 @@ async function applyChange(
   }
 }
 
+type EnvelopeImage = Extract<AvailableImage, { kind: "envelope" }>;
+
 function applyImageFileChanges(
   working: Map<string, WorkingEntry>,
   fileChanges: readonly ImageFileChange[],
+  available: ReadonlyMap<ImageId, AvailableImage>,
+  writtenEnvelopes: Map<ImageId, EnvelopeImage>,
 ): void {
   for (const fileChange of fileChanges) {
     const path = imageFilePath(fileChange.imageId);
     switch (fileChange.kind) {
-      case "write":
+      case "write": {
+        const candidate = available.get(fileChange.imageId);
+        if (candidate?.kind === "envelope") {
+          writtenEnvelopes.set(fileChange.imageId, candidate);
+        }
         working.set(path, { kind: "bytes", bytes: fileChange.envelope });
         break;
-      case "revive":
-        working.set(path, { kind: "blob", blobSha: fileChange.blobSha });
+      }
+      case "revive": {
+        const written = writtenEnvelopes.get(fileChange.imageId);
+        working.set(
+          path,
+          written?.blobSha === fileChange.blobSha
+            ? { kind: "bytes", bytes: written.envelope }
+            : { kind: "blob", blobSha: fileChange.blobSha },
+        );
         break;
+      }
       case "delete":
         working.delete(path);
         break;
     }
   }
+}
+
+/**
+ * An image written from its envelope and then left without owners in the same
+ * change set was never stored, so it must leave no tombstone behind and stay
+ * available for a later save.
+ */
+function dropUnstoredImages(
+  images: ImageIndex,
+  writtenEnvelopes: ReadonlyMap<ImageId, EnvelopeImage>,
+  originalBlobShas: ReadonlyMap<string, string>,
+  consumedImages: Set<ImageId>,
+): ImageIndex {
+  let tombstones: Map<ImageId, ImageTombstone> | null = null;
+  for (const [id, written] of writtenEnvelopes) {
+    if (
+      originalBlobShas.has(imageFilePath(id)) ||
+      images.images.has(id) ||
+      images.tombstones.get(id)?.blobSha !== written.blobSha
+    ) {
+      continue;
+    }
+    tombstones ??= new Map(images.tombstones);
+    tombstones.delete(id);
+    consumedImages.delete(id);
+  }
+  return tombstones === null ? images : { ...images, tombstones };
 }
 
 function assertNever(value: never): never {
@@ -482,6 +526,7 @@ export async function encodeChangeSet(
   const available = input.available ?? new Map<ImageId, AvailableImage>();
   const now = input.now ?? Date.now();
   const consumedImages = new Set<ImageId>();
+  const writtenEnvelopes = new Map<ImageId, EnvelopeImage>();
 
   if (changeSet.length === 0 && input.imageSweep === undefined) {
     throw new InvalidChangeSetError("Change set must not be empty");
@@ -531,9 +576,20 @@ export async function encodeChangeSet(
           )
         : applyChangeToImages(images, change, now);
     images = update.index;
-    applyImageFileChanges(working, update.fileChanges);
+    applyImageFileChanges(
+      working,
+      update.fileChanges,
+      available,
+      writtenEnvelopes,
+    );
     for (const id of update.consumed) consumedImages.add(id);
   }
+  images = dropUnstoredImages(
+    images,
+    writtenEnvelopes,
+    originalBlobShas,
+    consumedImages,
+  );
 
   const inputImagesText = serializeImageIndex(inputImages);
   if (input.imageSweep !== undefined) {

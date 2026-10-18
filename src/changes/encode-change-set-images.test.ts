@@ -241,6 +241,66 @@ describe("encodeChangeSet: images", () => {
     );
   });
 
+  describe("an image written and unowned again in one change set", () => {
+    const pending = () =>
+      new Map<ImageId, AvailableImage>([
+        [ID_A, { kind: "envelope", envelope, blobSha: sha }],
+      ]);
+
+    it.each<[string, ChangeSet]>([
+      [
+        "a later edit drops the reference",
+        [
+          { kind: "update-note", path: ["Note"], content: ref(ID_A) },
+          { kind: "set-color-tag", path: ["Note"], color: "red" },
+          { kind: "update-note", path: ["Note"], content: "gone" },
+        ],
+      ],
+      [
+        "the note is deleted",
+        [
+          { kind: "update-note", path: ["Note"], content: ref(ID_A) },
+          { kind: "delete-note", path: ["Note"] },
+        ],
+      ],
+    ])("leaves no trace when %s", async (_, changeSet) => {
+      const result = await encode({
+        listing: await noteListing(["Note"]),
+        changeSet,
+        images: EMPTY_IMAGES,
+        available: pending(),
+      });
+
+      expect(imageChanges(result)).toEqual([]);
+      expect(result.consumedImages).toEqual([]);
+    });
+
+    it("stores the envelope when the reference comes back", async () => {
+      const result = await encode({
+        listing: await noteListing(["Note"]),
+        changeSet: [
+          { kind: "update-note", path: ["Note"], content: ref(ID_A) },
+          { kind: "set-color-tag", path: ["Note"], color: "red" },
+          { kind: "update-note", path: ["Note"], content: "gone" },
+          { kind: "set-color-tag", path: ["Note"], color: "blue" },
+          { kind: "update-note", path: ["Note"], content: ref(ID_A) },
+        ],
+        images: EMPTY_IMAGES,
+        available: pending(),
+      });
+
+      expect(result.changes).toContainEqual({
+        kind: "upsert-bytes",
+        path: imageFilePath(ID_A),
+        bytes: envelope,
+      });
+      expect(await writtenIndex(result)).toEqual(
+        index([[ID_A, sha, [active("Note")]]]),
+      );
+      expect(result.consumedImages).toEqual([ID_A]);
+    });
+  });
+
   describe("structural changes", () => {
     async function folderListing(): Promise<TreeEntry[]> {
       const folder = await encryptPath(keyring, ["F"]);
