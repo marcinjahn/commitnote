@@ -973,7 +973,7 @@
       );
       earlyDraftBacking = backing;
       if (stored !== null && (earlyDraft === null || isUntouched(earlyDraft))) {
-        earlyDraft = stored;
+        earlyDraft = stored.draft;
         earlyDraftOpen = true;
       }
       earlyDraftOffered = true;
