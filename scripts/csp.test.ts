@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildCsp, inlineScriptHashes } from "./csp.ts";
 
 const TAIL =
-  "img-src 'self' https: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'";
+  "img-src 'self' https: data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'";
 
 describe("buildCsp", () => {
   it("builds the web policy with one hash", () => {
@@ -58,13 +58,19 @@ describe("buildCsp landing", () => {
     `default-src 'self'; script-src 'self' ${hashes}; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
 
   it("builds the landing policy with one hash", () => {
-    expect(buildCsp("landing", ["'sha256-AAA'"], null)).toBe(policy("'sha256-AAA'"));
+    expect(buildCsp("landing", ["'sha256-AAA'"], null)).toBe(
+      policy("'sha256-AAA'"),
+    );
   });
 
   it("builds the landing policy with two hashes", () => {
     expect(buildCsp("landing", ["'sha256-AAA'", "'sha256-BBB'"], null)).toBe(
       policy("'sha256-AAA' 'sha256-BBB'"),
     );
+  });
+
+  it("keeps blob images out of the landing img-src", () => {
+    expect(buildCsp("landing", ["'sha256-AAA'"], null)).not.toContain("blob:");
   });
 });
 
