@@ -2,6 +2,7 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vitest/config";
 import { buildModeFacts } from "./scripts/build-mode.ts";
 import { commitNoteCsp } from "./scripts/csp-plugin.ts";
+import { dropUnusedWasmAsset } from "./scripts/drop-unused-wasm-asset.ts";
 import { serviceWorker } from "./scripts/service-worker-plugin.ts";
 
 const OUT_DIRS: Record<string, string> = {
@@ -24,8 +25,13 @@ export default defineConfig(({ mode, command }) => {
       ),
     },
     plugins: desktopShell
-      ? [svelte(), commitNoteCsp("desktop", facts.analyticsEndpoint)]
-      : [svelte(), commitNoteCsp("web", facts.analyticsEndpoint), serviceWorker()],
+      ? [svelte(), commitNoteCsp("desktop", facts.analyticsEndpoint), dropUnusedWasmAsset()]
+      : [
+          svelte(),
+          commitNoteCsp("web", facts.analyticsEndpoint),
+          dropUnusedWasmAsset(),
+          serviceWorker(),
+        ],
     optimizeDeps: {
       include: [
         "@replit/codemirror-vim",

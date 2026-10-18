@@ -11,9 +11,18 @@
     type ImageOpenRequest,
   } from "../../editor/image-widgets";
   import type { ImageSource } from "../../images/image-source";
+  import type { ImageId } from "../../images/image-id";
   import { loadImageLightbox } from "../images/load-image-lightbox";
   import { isNarrowLayout } from "../browse/drag-motion";
   import { Compartment } from "@codemirror/state";
+  import {
+    cancelImageInsertions,
+    imageFileHandlers,
+    imageInsertion,
+    insertImageFiles as insertImageFilesIntoView,
+    type ImageInsertionConfig,
+  } from "../../editor/image-insertion";
+  import { imageCloneOnInsert, imageCloning } from "../../editor/image-clone-on-insert";
   import type { HeldConflict, OpenNoteState, SyncEngine } from "../../sync/sync-engine";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
   import { describeSyncError } from "../browse/sync-messages";
@@ -23,7 +32,7 @@
   import { createNoteSwitchMotion } from "./note-switch-motion";
   import { playLeaveFade, playSwitchEnter } from "./switch-motion-driver";
   import { clampNotePosition, createNotePositions, type NotePosition } from "./note-position";
-  import type { NotePath } from "../../changes/change";
+  import { notePathEquals, type NotePath } from "../../changes/change";
   import VimStatusBar from "./VimStatusBar.svelte";
   import { createVimWiring, type VimInitialMode } from "./vim-wiring.svelte";
 
@@ -33,6 +42,7 @@
     engine: SyncEngine;
     forgeName: string;
     imageSource: ImageSource;
+    imageInsertion: ImageInsertionConfig;
     openNote: OpenNoteState | null;
     noteSwitch: number;
     conflict: HeldConflict | undefined;
@@ -51,12 +61,14 @@
     vimMode?: boolean;
     onVimWrite?: () => Promise<void>;
     onVimQuit?: () => void;
+    onVimInsertImage?: () => void;
   }
 
   const {
     engine,
     forgeName,
     imageSource,
+    imageInsertion: imageInsertionConfig,
     openNote,
     noteSwitch,
     conflict,
@@ -75,6 +87,7 @@
     vimMode = false,
     onVimWrite = async () => {},
     onVimQuit = () => {},
+    onVimInsertImage,
   }: Props = $props();
 
   const caretCompartment = new Compartment();
@@ -129,13 +142,35 @@
     initialMode: () => vimEntryMode,
     onWrite: () => onVimWrite(),
     onQuit: () => onVimQuit(),
+    onInsertImage: () => onVimInsertImage?.(),
   });
+
+  const imageInsertionBridge: ImageInsertionConfig = {
+    prepare: (files) => imageInsertionConfig.prepare(files),
+    register: (image) => imageInsertionConfig.register(image),
+    enabled: () => imageInsertionConfig.enabled(),
+    onBusy: (busy, count) => imageInsertionConfig.onBusy(busy, count),
+    onOutcome: (outcome) => imageInsertionConfig.onOutcome(outcome),
+  };
+
+  function ownsImage(id: ImageId): boolean {
+    const current = shown.openNote;
+    if (shown.draft || current?.kind !== "loaded") return false;
+    const owners = engine.getState().synced?.images.images.get(id)?.owners ?? [];
+    return owners.some((owner) => owner.state === "active" && notePathEquals(owner.path, current.path));
+  }
+
+
 
   const editorExtensions = $derived([
     livePreview(),
     imageWidgets(),
     imageSourceFacet.of((id) => imageSource(id)),
     imageOpenHandler.of(openImage),
+    imageFileHandlers(),
+    imageInsertion.of(imageInsertionBridge),
+    imageCloneOnInsert(),
+    imageCloning.of({ owns: ownsImage, clone: (id) => engine.cloneImage(id) }),
     linkOpen(),
     caretCompartment.of(caretExtension(animatedCaret)),
     vim.extension,
@@ -274,6 +309,14 @@
 
   let vimResetSwitch = untrack(() => shown.noteSwitch);
 
+  let cancelledSwitch = untrack(() => noteSwitch);
+
+  $effect.pre(() => {
+    if (noteSwitch === cancelledSwitch) return;
+    cancelledSwitch = noteSwitch;
+    untrack(() => editor?.withView(cancelImageInsertions));
+  });
+
   $effect(() => {
     const presented = shown.noteSwitch;
     if (presented === vimResetSwitch) return;
@@ -340,6 +383,14 @@
     const selection = editor?.getSelection();
     if (presentedPath === null || selection === undefined || contentEl === undefined) return null;
     return { ...selection, scrollTop: trackedScrollTop };
+  }
+
+  export function imageInsertionPosition(): number | null {
+    return editor?.getSelection()?.head ?? null;
+  }
+
+  export function insertImageFiles(files: readonly File[], position?: number): void {
+    editor?.withView((view) => insertImageFilesIntoView(view, files, position));
   }
 
   export function seedPosition(path: NotePath, position: NotePosition): void {

@@ -40,6 +40,9 @@
     onShare?: () => void;
     /** Shows the color tag button. */
     onColorTag?: (color: ColorTag | null) => void;
+    /** Shows the insert image button. */
+    onInsertImage?: () => void;
+    insertImageDisabled?: boolean;
   }
 
   const {
@@ -66,6 +69,8 @@
     shared = false,
     onShare,
     onColorTag,
+    onInsertImage,
+    insertImageDisabled = false,
   }: Props = $props();
 
   const descId = $props.id();
@@ -140,6 +145,22 @@
       <SyncStateIcon state={syncState} />
       <span class="sync-status-label">{describeSyncState(syncState)}</span>
     </span>
+  {/if}
+  {#if onInsertImage !== undefined}
+    <button
+      type="button"
+      class="button button-ghost button-icon insert-image-button"
+      aria-label="Insert image"
+      title="Insert image"
+      disabled={insertImageDisabled}
+      onclick={onInsertImage}
+    >
+      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        {#each noteIcons.image as d (d)}
+          <path {d} />
+        {/each}
+      </svg>
+    </button>
   {/if}
   {#if !draft && onShare !== undefined}
     <button
