@@ -26,7 +26,13 @@ export default defineConfig(({ mode, command }) => {
     plugins: desktopShell
       ? [svelte(), commitNoteCsp("desktop", facts.analyticsEndpoint)]
       : [svelte(), commitNoteCsp("web", facts.analyticsEndpoint), serviceWorker()],
-    optimizeDeps: { include: ["@replit/codemirror-vim"] },
+    optimizeDeps: {
+      include: [
+        "@replit/codemirror-vim",
+        "@jsquash/webp/codec/enc/webp_enc.js",
+        "@jsquash/webp/meta.js",
+      ],
+    },
     build: {
       ...(OUT_DIRS[mode] ? { outDir: OUT_DIRS[mode] } : {}),
       assetsInlineLimit: (filePath: string) =>
