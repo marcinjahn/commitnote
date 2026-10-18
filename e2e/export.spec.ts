@@ -23,6 +23,7 @@ test("exporting downloads a zip of all notes and folders", async ({ page }) => {
       "Journal/2026/",
       "Journal/2026/January.md",
       "Journal/2026/Whiteboard.md",
+      "Journal/2026/_images/s4u5q5zr4xaec3jewbaixgwlou.webp",
       "Projects/",
       "Projects/commitnote/",
       "Projects/commitnote/Ideas.md",
@@ -32,6 +33,12 @@ test("exporting downloads a zip of all notes and folders", async ({ page }) => {
     ].sort(),
   );
   expect(strFromU8(files["Welcome.md"])).toContain("# Welcome");
+  const whiteboard = strFromU8(files["Journal/2026/Whiteboard.md"]);
+  expect(whiteboard).toContain("![](_images/s4u5q5zr4xaec3jewbaixgwlou.webp)");
+  expect(whiteboard).not.toContain("image:");
+  const image = files["Journal/2026/_images/s4u5q5zr4xaec3jewbaixgwlou.webp"];
+  expect(strFromU8(image.subarray(0, 4))).toBe("RIFF");
+  expect(strFromU8(image.subarray(8, 12))).toBe("WEBP");
 });
 
 test("the commands menu opens from the keyboard and closes on Escape", async ({

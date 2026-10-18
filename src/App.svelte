@@ -1209,6 +1209,7 @@
       passphraseChange={phase.passphraseChange}
       noteHistory={phase.noteHistory}
       imageSource={phase.imageResolver.resolve}
+      readImage={phase.imageResolver.readPayload}
       shareService={phase.shareService}
       forgeId={phase.session.coordinates.forge}
       noteDatesResolver={phase.noteDatesResolver}

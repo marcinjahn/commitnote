@@ -124,6 +124,7 @@
   } from "../import/import-messages";
   import type { ImportOutcome } from "../import/import-outcome";
   import type { Keyring } from "../../crypto/keyring";
+  import type { ReadImagePayload } from "../../images/image-resolver";
   import type { ImageSource } from "../../images/image-source";
   import type {
     HistoryOutcome,
@@ -266,6 +267,7 @@
     passphraseChange: PassphraseChange;
     noteHistory: NoteHistory;
     imageSource: ImageSource;
+    readImage: ReadImagePayload;
     shareService: ShareService;
     forgeId: ForgeId;
     noteDatesResolver: NoteDatesResolver;
@@ -304,6 +306,7 @@
     passphraseChange,
     noteHistory,
     imageSource,
+    readImage,
     shareService,
     forgeId,
     noteDatesResolver,
@@ -1894,7 +1897,7 @@
     exporting = true;
     clearToast("export");
     try {
-      await exportNotesArchive(snapshot, { download });
+      await exportNotesArchive(snapshot, { download, readImage });
     } catch {
       showToast("export", "error", "Export failed. Try again later.");
     } finally {

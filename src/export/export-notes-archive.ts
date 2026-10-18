@@ -4,6 +4,7 @@ import {
   type ArchiveDownload,
   deliverArchive,
 } from "./deliver-archive";
+import type { ReadImagePayload } from "../images/image-resolver";
 import { buildNotesArchive } from "./notes-archive";
 
 function exportFileName(now: Date): string {
@@ -25,13 +26,14 @@ async function browserDownload(file: File): ReturnType<ArchiveDownload> {
 
 export async function exportNotesArchive(
   snapshot: NotesSnapshot,
-  options: { download?: ArchiveDownload } = {},
+  options: { download?: ArchiveDownload; readImage?: ReadImagePayload } = {},
 ): Promise<ArchiveDelivery> {
   const now = new Date();
   const archive = await buildNotesArchive(
     snapshot.tree.root,
     snapshot.readNote,
     now,
+    options.readImage,
   );
   const file = new File([archive], exportFileName(now), {
     type: "application/zip",
