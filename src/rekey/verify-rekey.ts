@@ -113,6 +113,8 @@ async function runChecks(input: VerifyRekeyInput): Promise<void> {
       case "upsert-text":
         result.set(change.path, { kind: "text", text: change.text });
         break;
+      case "upsert-bytes":
+        throw new VerificationError("content");
     }
   }
   check(result.size === original.size, "count");

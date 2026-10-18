@@ -174,6 +174,47 @@ describe("GitLabAdapter", () => {
     expect(copy?.sha).toBe(sourceSha);
   });
 
+  it("commits upsert-bytes as base64 actions, updating existing paths", async () => {
+    const mock = useMock();
+    const parent = await seed(mock, { "old.dat": "x" });
+    const adapter = makeAdapter();
+    const bodies = captureCommitBodies();
+    const bytes = new Uint8Array([0, 255, 128, 1]);
+
+    const result = await adapter.commit({
+      parent,
+      changes: [
+        { kind: "upsert-bytes", path: "new.dat", bytes },
+        { kind: "upsert-bytes", path: "old.dat", bytes },
+      ],
+      message: "bytes",
+    });
+
+    expect(bodies).toMatchObject([
+      {
+        actions: [
+          {
+            action: "create",
+            file_path: "new.dat",
+            content: "AP+AAQ==",
+            encoding: "base64",
+          },
+          {
+            action: "update",
+            file_path: "old.dat",
+            content: "AP+AAQ==",
+            encoding: "base64",
+          },
+        ],
+      },
+    ]);
+    const head = result.kind === "ok" ? result.head : "";
+    const entry = (await adapter.listTree(head)).find(
+      (item) => item.path === "new.dat",
+    );
+    expect(await adapter.readBlobBytes(entry?.sha ?? "")).toEqual(bytes);
+  });
+
   it("reports canWrite false when main is protected against the user's pushes", async () => {
     const mock = useMock();
     const head = await seed(mock);

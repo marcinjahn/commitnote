@@ -22,6 +22,57 @@ describe("InMemoryGitRepo blobs", () => {
   });
 });
 
+describe("InMemoryGitRepo bytes blobs", () => {
+  const bytes = Uint8Array.from([0xff, 0xfe, 0x00, 0x80, 0x41]);
+
+  it("round-trips bytes that are not valid UTF-8", async () => {
+    const repo = new InMemoryGitRepo();
+    const sha = await repo.putBlobBytes(bytes);
+    expect(repo.getBlobBytes(sha)).toEqual(bytes);
+    expect(repo.getBlob(sha)).toContain("\uFFFD");
+  });
+
+  it("returns UTF-8 bytes for a text blob", async () => {
+    const repo = new InMemoryGitRepo();
+    const sha = await repo.putBlob("héllo");
+    expect(repo.getBlobBytes(sha)).toEqual(new TextEncoder().encode("héllo"));
+  });
+
+  it("keeps a text blob as text when the same content is added as bytes", async () => {
+    const repo = new InMemoryGitRepo();
+    const sha = await repo.putBlob("same");
+    await repo.putBlobBytes(new TextEncoder().encode("same"));
+    const snapshot = repo.exportObjects();
+    expect(snapshot.blobs).toEqual([[sha, "same"]]);
+    expect(snapshot.binaryBlobs).toBeUndefined();
+  });
+
+  it("restores bytes blobs from a snapshot", async () => {
+    const source = new InMemoryGitRepo();
+    const textSha = await source.putBlob("text");
+    const sha = await source.putBlobBytes(bytes);
+    const snapshot = JSON.parse(JSON.stringify(source.exportObjects()));
+
+    const target = new InMemoryGitRepo();
+    target.importObjects(snapshot);
+    expect(target.getBlobBytes(sha)).toEqual(bytes);
+    expect(target.getBlob(textSha)).toBe("text");
+  });
+
+  it("commits binary files alongside text files", async () => {
+    const repo = new InMemoryGitRepo();
+    const commitSha = await commitFiles(repo, {
+      parent: null,
+      files: { "a.txt": "one" },
+      binaryFiles: { "b.bin": bytes },
+      message: "seed",
+    });
+    const files = repo.getTree(repo.getCommit(commitSha)?.tree ?? "");
+    expect(repo.getBlobBytes(files?.get("b.bin") ?? "")).toEqual(bytes);
+    expect(repo.getBlob(files?.get("a.txt") ?? "")).toBe("one");
+  });
+});
+
 describe("InMemoryGitRepo trees and commits", () => {
   it("round-trips trees and commits", async () => {
     const repo = new InMemoryGitRepo({ now: () => 1_000 });

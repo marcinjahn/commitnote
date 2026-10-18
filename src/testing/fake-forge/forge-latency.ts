@@ -64,6 +64,8 @@ export function withLatency(
       delayed(latency.listTreeMs, () => adapter.listTree(...args)),
     readBlob: (...args) =>
       delayed(latency.readBlobMs, () => adapter.readBlob(...args)),
+    readBlobBytes: (...args) =>
+      delayed(latency.readBlobMs, () => adapter.readBlobBytes(...args)),
     commit: (...args) =>
       delayed(latency.commitMs, () => adapter.commit(...args)),
     listCommits: (...args) =>

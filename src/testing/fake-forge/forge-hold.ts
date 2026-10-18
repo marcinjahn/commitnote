@@ -53,6 +53,8 @@ export function createForgeHolds(): ForgeHolds {
           gated(repoKey, "listTree", () => adapter.listTree(...args)),
         readBlob: (...args) =>
           gated(repoKey, "readBlob", () => adapter.readBlob(...args)),
+        readBlobBytes: (...args) =>
+          gated(repoKey, "readBlob", () => adapter.readBlobBytes(...args)),
         commit: (...args) =>
           gated(repoKey, "commit", () => adapter.commit(...args)),
         listCommits: (...args) =>

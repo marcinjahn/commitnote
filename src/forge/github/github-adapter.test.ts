@@ -5,6 +5,7 @@ import type {
   CommitFileChange,
   ContentCreatingRequest,
 } from "../forge-adapter";
+import { gitBlobShaOfBytes } from "../git-blob-sha";
 import { commitFiles } from "../fake/in-memory-git-repo";
 import {
   createGitHubAdapter,
@@ -171,6 +172,43 @@ describe("GitHubAdapter", () => {
           request.method === "POST" && request.path.endsWith("/git/blobs"),
       ),
     ).toBe(false);
+  });
+
+  it("creates a blob for each bytes change before the first tree request and references its sha", async () => {
+    const mock = useMock();
+    const parent = await seedConfig(mock);
+    const { fetch: capturingFetch, treeBodies } = captureTreeRequests();
+    const { adapter, reports } = makeAdapter({ fetch: capturingFetch });
+    const bytes = new Uint8Array([0, 255, 1, 128, 10]);
+
+    const result = await adapter.commit({
+      parent,
+      changes: [
+        { kind: "upsert-text", path: "note.md", text: "hi" },
+        { kind: "upsert-bytes", path: "img/a.bin", bytes },
+      ],
+      message: "save",
+    });
+
+    expect(result.kind).toBe("ok");
+    const writes = mock.requests
+      .filter((request) => request.method === "POST")
+      .map((request) => request.path.slice(`/repos/${OWNER}/${REPO}`.length));
+    expect(writes.slice(0, 2)).toEqual(["/git/blobs", "/git/trees"]);
+    expect(reports.map((report) => report.operation)).toEqual([
+      "createBlob",
+      "createTree",
+      "createCommit",
+      "updateRef",
+    ]);
+    const sha = await gitBlobShaOfBytes(bytes);
+    expect(treeBodies[0].tree).toContainEqual({
+      path: "img/a.bin",
+      mode: "100644",
+      type: "blob",
+      sha,
+    });
+    expect(await adapter.readBlobBytes(sha)).toEqual(bytes);
   });
 
   it("splits a large change set into chained tree requests that end in one commit", async () => {

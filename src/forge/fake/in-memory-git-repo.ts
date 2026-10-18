@@ -1,12 +1,15 @@
 import { MAIN_BRANCH } from "../../format/v1";
 import { ForgeError } from "../errors";
 import { byPath } from "../forge-http";
-import { gitBlobSha } from "../git-blob-sha";
+import { fromBase64, toBase64, utf8Encode } from "../../crypto/base64";
+import { gitBlobSha, gitBlobShaOfBytes } from "../git-blob-sha";
 import type { CommitFileChange, TreeEntry } from "../forge-adapter";
 
 /** Every object of a repo, in a JSON-serializable form. */
 export interface GitObjectsSnapshot {
   readonly blobs: readonly (readonly [string, string])[];
+  /** `[sha, base64]` of blobs stored as bytes. */
+  readonly binaryBlobs?: readonly (readonly [string, string])[];
   readonly trees: readonly (readonly [string, readonly (readonly [string, string])[]])[];
   readonly commits: readonly (readonly [string, SnapshotCommit])[];
 }
@@ -50,7 +53,7 @@ function canonicalTree(files: ReadonlyMap<string, string>): string {
  * branch refs. Also backs the mock GitHub and GitLab servers.
  */
 export class InMemoryGitRepo {
-  private readonly blobs = new Map<string, string>();
+  private readonly blobs = new Map<string, string | Uint8Array>();
   private readonly trees = new Map<string, ReadonlyMap<string, string>>();
   private readonly commits = new Map<string, StoredCommit>();
   private readonly refs = new Map<string, string>();
@@ -67,8 +70,23 @@ export class InMemoryGitRepo {
     return sha;
   }
 
+  async putBlobBytes(bytes: Uint8Array): Promise<string> {
+    const sha = await gitBlobShaOfBytes(bytes);
+    if (!this.blobs.has(sha)) this.blobs.set(sha, bytes.slice());
+    return sha;
+  }
+
   getBlob(sha: string): string | undefined {
-    return this.blobs.get(sha);
+    const blob = this.blobs.get(sha);
+    return blob instanceof Uint8Array
+      ? new TextDecoder().decode(blob)
+      : blob;
+  }
+
+  getBlobBytes(sha: string): Uint8Array | undefined {
+    const blob = this.blobs.get(sha);
+    if (blob === undefined) return undefined;
+    return typeof blob === "string" ? utf8Encode(blob) : blob.slice();
   }
 
   async putTree(files: ReadonlyMap<string, string>): Promise<string> {
@@ -131,8 +149,15 @@ export class InMemoryGitRepo {
   }
 
   exportObjects(): GitObjectsSnapshot {
+    const blobs: (readonly [string, string])[] = [];
+    const binaryBlobs: (readonly [string, string])[] = [];
+    for (const [sha, blob] of this.blobs) {
+      if (typeof blob === "string") blobs.push([sha, blob]);
+      else binaryBlobs.push([sha, toBase64(blob)]);
+    }
     return {
-      blobs: [...this.blobs],
+      blobs,
+      ...(binaryBlobs.length > 0 ? { binaryBlobs } : {}),
       trees: [...this.trees].map(([sha, files]) => [sha, [...files]] as const),
       commits: [...this.commits],
     };
@@ -141,6 +166,9 @@ export class InMemoryGitRepo {
   /** Adds objects of another repo, as a fetch would; refs stay as they are. */
   importObjects(snapshot: GitObjectsSnapshot): void {
     for (const [sha, text] of snapshot.blobs) this.blobs.set(sha, text);
+    for (const [sha, base64] of snapshot.binaryBlobs ?? []) {
+      this.blobs.set(sha, fromBase64(base64));
+    }
     for (const [sha, files] of snapshot.trees) this.trees.set(sha, new Map(files));
     for (const [sha, commit] of snapshot.commits) {
       this.commits.set(sha, { ...commit, committedAt: commit.committedAt ?? 0 });
@@ -237,6 +265,8 @@ export class InMemoryGitRepo {
       if (change.kind === "upsert-text") {
         const blobSha = await this.putBlob(change.text);
         files.set(change.path, blobSha);
+      } else if (change.kind === "upsert-bytes") {
+        files.set(change.path, await this.putBlobBytes(change.bytes));
       } else if (change.kind === "upsert-blob") {
         if (!this.blobs.has(change.blobSha)) {
           throw new ForgeError("NotFound", {
@@ -258,6 +288,7 @@ export async function commitFiles(
   input: {
     parent: string | null;
     files: Record<string, string>;
+    binaryFiles?: Readonly<Record<string, Uint8Array>>;
     message: string;
     branch?: string;
     committedAt?: number;
@@ -271,7 +302,15 @@ export async function commitFiles(
       ],
     ),
   );
-  const treeSha = await repo.putTree(new Map(entries));
+  const binaryEntries = await Promise.all(
+    Object.entries(input.binaryFiles ?? {}).map(
+      async ([path, bytes]): Promise<[string, string]> => [
+        path,
+        await repo.putBlobBytes(bytes),
+      ],
+    ),
+  );
+  const treeSha = await repo.putTree(new Map([...entries, ...binaryEntries]));
   const commitSha = await repo.putCommit({
     tree: treeSha,
     parent: input.parent,
@@ -305,6 +344,7 @@ export async function seedCommits(
   commits: readonly {
     readonly message: string;
     readonly files: Readonly<Record<string, string>>;
+    readonly binaryFiles?: Readonly<Record<string, Uint8Array>>;
     readonly committedAt?: number;
   }[],
   branch: string = MAIN_BRANCH,
@@ -314,6 +354,7 @@ export async function seedCommits(
     parent = await commitFiles(repo, {
       parent,
       files: { ...commit.files },
+      binaryFiles: { ...commit.binaryFiles },
       message: commit.message,
       committedAt: commit.committedAt,
       branch: index === commits.length - 1 ? branch : undefined,

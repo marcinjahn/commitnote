@@ -41,6 +41,7 @@ export type FailableOperation =
   | "getHead"
   | "listTree"
   | "readBlob"
+  | "readBlobBytes"
   | "commit"
   | "replaceHistory"
   | "listCommits"
@@ -338,6 +339,17 @@ export class FakeForgeAdapter implements ForgeAdapter {
     return text;
   }
 
+  async readBlobBytes(sha: string): Promise<Uint8Array> {
+    this.blobReadLog.push(sha);
+    this.throwIfFailing("readBlobBytes");
+
+    const bytes = this.repo.getBlobBytes(sha);
+    if (bytes === undefined) {
+      throw new ForgeError("NotFound", { message: `unknown blob ${sha}` });
+    }
+    return bytes;
+  }
+
   async listCommits(request: ListCommitsRequest): Promise<CommitSummary[]> {
     this.throwIfFailing("listCommits");
 
@@ -392,6 +404,9 @@ export class FakeForgeAdapter implements ForgeAdapter {
       return { kind: "stale" };
     }
 
+    for (const change of request.changes) {
+      if (change.kind === "upsert-bytes") this.report({ operation: "createBlob" });
+    }
     for (let i = gitHubTreeRequestCount(request.changes); i > 0; i--) {
       this.report({ operation: "createTree" });
     }

@@ -135,6 +135,7 @@ function createRejectingAdapter(makeError: () => ForgeError): ForgeAdapter {
     findOldestCommit: reject,
     readFileAt: reject,
     readBlob: reject,
+    readBlobBytes: reject,
     commit: reject,
     shareHost: { create: reject, update: reject, delete: reject },
   };

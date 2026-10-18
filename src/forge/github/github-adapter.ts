@@ -67,7 +67,12 @@ type GitHubTreeEntryBody = {
   readonly type: "blob";
 } & ({ readonly sha: string | null } | { readonly content: string });
 
-function treeEntryFor(change: CommitFileChange): GitHubTreeEntryBody {
+const GIT_SHA_HEX_LENGTH = 40;
+
+function treeEntryFor(
+  change: CommitFileChange,
+  createdBlobShas: ReadonlyMap<string, string>,
+): GitHubTreeEntryBody {
   const base = { path: change.path, mode: "100644", type: "blob" } as const;
   switch (change.kind) {
     case "delete":
@@ -76,6 +81,12 @@ function treeEntryFor(change: CommitFileChange): GitHubTreeEntryBody {
       return { ...base, sha: change.blobSha };
     case "upsert-text":
       return { ...base, content: change.text };
+    case "upsert-bytes":
+      return {
+        ...base,
+        sha:
+          createdBlobShas.get(change.path) ?? "0".repeat(GIT_SHA_HEX_LENGTH),
+      };
   }
 }
 
@@ -108,11 +119,15 @@ function chunkTreeEntries(
 export function gitHubTreeRequestCount(
   changes: readonly CommitFileChange[],
 ): number {
-  return chunkTreeEntries(changes.map(treeEntryFor)).length;
+  const entries = changes.map((change) => treeEntryFor(change, new Map()));
+  return chunkTreeEntries(entries).length;
 }
 
 export function gitHubCommitCost(changes: readonly CommitFileChange[]): number {
-  return gitHubTreeRequestCount(changes) + 2;
+  const blobCount = changes.filter(
+    (change) => change.kind === "upsert-bytes",
+  ).length;
+  return gitHubTreeRequestCount(changes) + 2 + blobCount;
 }
 
 const MAX_COMMITS_PER_PAGE = 100;
@@ -449,6 +464,30 @@ class GitHubAdapter implements ForgeAdapter {
     return this.cacheText(sha, body.content);
   }
 
+  async readBlobBytes(sha: string): Promise<Uint8Array> {
+    const response = await this.send(`/git/blobs/${sha}`, { method: "GET" });
+    if (response.status === 404 || response.status === 409) {
+      throw new ForgeError("NotFound", { status: response.status });
+    }
+    if (!response.ok) {
+      throw await this.errorFor(response);
+    }
+    const body = (await response.json()) as { content: string };
+    return decodeBase64Content(body.content);
+  }
+
+  private async createBlob(bytes: Uint8Array): Promise<string> {
+    this.report("createBlob");
+    const response = await this.send("/git/blobs", {
+      method: "POST",
+      body: { content: toBase64(bytes), encoding: "base64" },
+    });
+    if (!response.ok) {
+      throw await this.errorFor(response);
+    }
+    return ((await response.json()) as { sha: string }).sha;
+  }
+
   private cacheText(sha: string, base64: string): string {
     const text = decodeBase64Text(base64);
     this.blobCache.set(sha, text);
@@ -647,7 +686,16 @@ class GitHubAdapter implements ForgeAdapter {
 
   private async createCommitObject(request: CommitRequest): Promise<string> {
     let tree = await this.treeOf(request.parent);
-    for (const chunk of chunkTreeEntries(request.changes.map(treeEntryFor))) {
+    const createdBlobShas = new Map<string, string>();
+    for (const change of request.changes) {
+      if (change.kind === "upsert-bytes") {
+        createdBlobShas.set(change.path, await this.createBlob(change.bytes));
+      }
+    }
+    const entries = request.changes.map((change) =>
+      treeEntryFor(change, createdBlobShas),
+    );
+    for (const chunk of chunkTreeEntries(entries)) {
       this.report("createTree");
       const treeResponse = await this.send("/git/trees", {
         method: "POST",
