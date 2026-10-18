@@ -205,6 +205,11 @@ export interface ForgeAdapter {
    * moved on. Absent when the forge can't create a parentless commit.
    */
   replaceHistory?(request: ReplaceHistoryRequest): Promise<CommitResult>;
+  /**
+   * Stores `bytes` as a git blob without moving any ref and resolves to its
+   * sha. Sends one `createBlob` content-creating request.
+   */
+  createBlob?(bytes: Uint8Array): Promise<string>;
   /** Removes leftovers of interrupted atomic commits. Best-effort. */
   sweepAbandoned?(): Promise<void>;
   /** The latest rate limit the forge reported, or null before any report. */

@@ -476,7 +476,7 @@ class GitHubAdapter implements ForgeAdapter {
     return decodeBase64Content(body.content);
   }
 
-  private async createBlob(bytes: Uint8Array): Promise<string> {
+  async createBlob(bytes: Uint8Array): Promise<string> {
     this.report("createBlob");
     const response = await this.send("/git/blobs", {
       method: "POST",

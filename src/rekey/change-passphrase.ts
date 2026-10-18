@@ -23,6 +23,7 @@ import type {
   ForgeAdapter,
 } from "../forge/forge-adapter";
 import { REPLACE_HISTORY_COST } from "../forge/forge-adapter";
+import { gitBlobShaOfBytes } from "../forge/git-blob-sha";
 import { IMAGES_DIR } from "../format/v1";
 import type { Clock } from "../sync/clock";
 import type { RateBudget } from "../sync/rate-budget";
@@ -459,6 +460,32 @@ const UNSETTLED: CommitPassphraseChangeResult = {
   unsettled: true,
 };
 
+// Uploads each image file as its own paced request, so the commit itself
+// only refers to blobs and never bursts past the write budget.
+async function uploadBlobs(
+  deps: PassphraseChangeDeps,
+  changes: readonly CommitFileChange[],
+  onStep: (step: PassphraseChangeStep) => void,
+): Promise<readonly CommitFileChange[]> {
+  const { adapter } = deps;
+  if (adapter.createBlob === undefined) return changes;
+  onStep({ kind: "uploading" });
+  const uploaded: CommitFileChange[] = [];
+  for (const change of changes) {
+    if (change.kind !== "upsert-bytes") {
+      uploaded.push(change);
+      continue;
+    }
+    await waitForBudget(deps, 1, onStep);
+    const sha = await adapter.createBlob(change.bytes);
+    if (sha !== (await gitBlobShaOfBytes(change.bytes))) {
+      fail({ kind: "verificationFailed" });
+    }
+    uploaded.push({ kind: "upsert-blob", path: change.path, blobSha: sha });
+  }
+  return uploaded;
+}
+
 /**
  * Commits a prepared change as one atomic commit. On success the old
  * engine must not be used again; on a failure that left main as it was it
@@ -470,10 +497,12 @@ export async function commitPassphraseChange(
   onStep: (step: PassphraseChangeStep) => void = () => {},
 ): Promise<CommitPassphraseChangeResult> {
   const { adapter } = deps;
+  let changes = prepared.changes;
   try {
+    changes = await uploadBlobs(deps, prepared.changes, onStep);
     await waitForBudget(
       deps,
-      adapter.commitCost(prepared.changes, { atomic: true }),
+      adapter.commitCost(changes, { atomic: true }),
       onStep,
     );
   } catch (error) {
@@ -487,7 +516,7 @@ export async function commitPassphraseChange(
   try {
     result = await adapter.commit({
       parent: prepared.parent,
-      changes: prepared.changes,
+      changes,
       message: await encodeChangePassphraseMessage(deviceStamp(deps, prepared)),
       atomic: true,
     });

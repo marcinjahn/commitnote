@@ -44,6 +44,7 @@ export type FailableOperation =
   | "readBlobBytes"
   | "commit"
   | "replaceHistory"
+  | "createBlob"
   | "listCommits"
   | "findOldestCommit"
   | "readFileAt"
@@ -429,6 +430,15 @@ export class FakeForgeAdapter implements ForgeAdapter {
     }
     this.repo.setRef(MAIN_BRANCH, commitSha);
     return { kind: "ok", head: commitSha };
+  }
+
+  async createBlob(bytes: Uint8Array): Promise<string> {
+    if (!this.canWrite) {
+      throw new ForgeError("Forbidden");
+    }
+    this.throwIfFailing("createBlob");
+    this.report({ operation: "createBlob" });
+    return await this.repo.putBlobBytes(bytes);
   }
 
   async replaceHistory(request: ReplaceHistoryRequest): Promise<CommitResult> {

@@ -41,6 +41,7 @@ export function createForgeHolds(): ForgeHolds {
     },
     wrap(repoKey, adapter) {
       const replaceHistory = adapter.replaceHistory?.bind(adapter);
+      const createBlob = adapter.createBlob?.bind(adapter);
       const shareHost = adapter.shareHost;
       const observedRateLimit = adapter.observedRateLimit?.bind(adapter);
       return {
@@ -75,6 +76,12 @@ export function createForgeHolds(): ForgeHolds {
           : {
               replaceHistory: (...args) =>
                 gated(repoKey, "replaceHistory", () => replaceHistory(...args)),
+            }),
+        ...(createBlob === undefined
+          ? {}
+          : {
+              createBlob: (...args) =>
+                gated(repoKey, "commit", () => createBlob(...args)),
             }),
         ...(observedRateLimit === undefined ? {} : { observedRateLimit }),
       };

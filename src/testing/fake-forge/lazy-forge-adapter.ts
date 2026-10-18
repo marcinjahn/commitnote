@@ -37,5 +37,12 @@ export function createLazyForgeAdapter(
         }
         return a.replaceHistory(...args);
       }),
+    createBlob: (...args) =>
+      resolved().then((a) => {
+        if (a.createBlob === undefined) {
+          throw new Error("createBlob is not supported");
+        }
+        return a.createBlob(...args);
+      }),
   };
 }

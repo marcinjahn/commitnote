@@ -1,19 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { readDeviceTrailer } from "../changes/device-trailer";
-import { decryptImage } from "../crypto/image-cipher";
+import { decryptImage, encryptImage } from "../crypto/image-cipher";
 import { parseRepoConfig, serializeRepoConfig } from "../crypto/repo-config";
 import { encryptPath } from "../crypto/name-cipher";
 import type { Keyring } from "../crypto/keyring";
 import { encryptNote } from "../crypto/note-cipher";
 import { ForgeError, type ForgeErrorKind } from "../forge/errors";
 import type { FakeForgeAdapter } from "../forge/fake/fake-forge-adapter";
-import type { AtomicCommitSupport, ForgeAdapter } from "../forge/forge-adapter";
+import type {
+  AtomicCommitSupport,
+  CommitFileChange,
+  ForgeAdapter,
+} from "../forge/forge-adapter";
+import { gitBlobShaOfBytes } from "../forge/git-blob-sha";
+import { GITHUB_WRITE_LIMITS } from "../forge/github/github-adapter";
 import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { FakeForgeAdapter as FakeAdapter } from "../forge/fake/fake-forge-adapter";
-import {
-  commitFiles,
-  InMemoryGitRepo,
-} from "../forge/fake/in-memory-git-repo";
+import { commitFiles, InMemoryGitRepo } from "../forge/fake/in-memory-git-repo";
 import {
   CHANGE_PASSPHRASE_SUBJECT,
   IMAGE_INDEX_PATH,
@@ -21,8 +24,12 @@ import {
   REPO_CONFIG_PATH,
   SHARES_PATH,
 } from "../format/v1";
-import { imageFilePath } from "../images/image-id";
-import { decryptImageIndex } from "../images/image-index";
+import { type ImageId, imageFilePath } from "../images/image-id";
+import {
+  decryptImageIndex,
+  encryptImageIndex,
+  type ImageRecord,
+} from "../images/image-index";
 import { decryptShareIndex, encryptShareIndex } from "../share/share-index";
 import { createRateBudget } from "../sync/rate-budget";
 import { createSyncEngine, type SyncEngine } from "../sync/sync-engine";
@@ -186,7 +193,11 @@ describe("changing the passphrase keeps settings", () => {
     await expect(keyringFor(NEW_PASSPHRASE, text)).resolves.toBeDefined();
     const files = (await readTree(h.fixture.adapter)).files;
     expect(
-      await keyStateOf(files, h.fixture.oldKeyring, await keyringFor(NEW_PASSPHRASE, text)),
+      await keyStateOf(
+        files,
+        h.fixture.oldKeyring,
+        await keyringFor(NEW_PASSPHRASE, text),
+      ),
     ).toBe("new");
   });
 
@@ -277,7 +288,10 @@ describe("changing the passphrase", () => {
     if (!result.ok) throw new Error(result.failure.kind);
 
     const { files } = await readTree(h.fixture.adapter);
-    const shares = await decryptShareIndex(result.keyring, files.get(SHARES_PATH)!);
+    const shares = await decryptShareIndex(
+      result.keyring,
+      files.get(SHARES_PATH)!,
+    );
     expect(shares.writable).toBe(true);
     expect([...shares.entries.values()]).toMatchObject([
       { id: "a", name: "Welcome", source: null },
@@ -312,6 +326,38 @@ describe("changing the passphrase", () => {
     );
     expect(index).toMatchObject({ writable: true, tombstones: new Map() });
     expect([...index.images.keys()]).toEqual([OWNED_IMAGE_ID]);
+  });
+
+  it("re-encrypts images as plain bytes changes when the forge cannot create blobs", async () => {
+    let committed: readonly CommitFileChange[] = [];
+    const h = await setup({
+      fixture: await createRekeyFixture({ extraFiles: fixtureImages }),
+      adapter: (fake) =>
+        delegateAdapter(fake, {
+          commit: (request) => {
+            committed = request.changes;
+            return fake.commit(request);
+          },
+        }),
+    });
+
+    const result = await changePassphrase(h);
+    if (!result.ok) throw new Error(result.failure.kind);
+
+    expect(result.check).toBe("matched");
+    expect(
+      committed.filter(
+        (change) => change.path === imageFilePath(OWNED_IMAGE_ID),
+      ),
+    ).toMatchObject([{ kind: "upsert-bytes" }]);
+    const { images } = await readTree(h.fixture.adapter);
+    expect(
+      await decryptImage(
+        result.keyring,
+        OWNED_IMAGE_ID,
+        images.get(imageFilePath(OWNED_IMAGE_ID))!,
+      ),
+    ).toEqual(IMAGE_PAYLOAD);
   });
 
   it("stamps the commit with the device name, readable only with the new keyring", async () => {
@@ -634,7 +680,8 @@ describe("changing the passphrase", () => {
           fake.commit({
             ...request,
             changes: request.changes.filter(
-              (change) => change.path !== "README.md" && change.kind !== "delete",
+              (change) =>
+                change.path !== "README.md" && change.kind !== "delete",
             ),
           }),
       }),
@@ -693,7 +740,10 @@ describe("changing the passphrase", () => {
 describe("changing the passphrase and removing the history", () => {
   const REMOVING = { ...INPUT, removeHistory: true };
 
-  async function changeAndRemove(h: Harness, onStep?: (step: PassphraseChangeStep) => void) {
+  async function changeAndRemove(
+    h: Harness,
+    onStep?: (step: PassphraseChangeStep) => void,
+  ) {
     const prepared = await preparePassphraseChange(h.deps, REMOVING, onStep);
     if (!prepared.ok) throw new Error(prepared.failure.kind);
     return commitPassphraseChange(h.deps, prepared.prepared, onStep);
@@ -909,7 +959,8 @@ describe("changing the passphrase with a failure at any forge call", () => {
           );
           expect(result.ok).toBe(false);
           if (!result.ok) {
-            const unsettled = "unsettled" in result && result.unsettled === true;
+            const unsettled =
+              "unsettled" in result && result.unsettled === true;
             expect(h.engine.getState().suspended).toBe(unsettled);
             expect(unsettled).toBe(result.failure.kind === "outcomeUnknown");
           }
@@ -926,4 +977,109 @@ describe("changing the passphrase with a failure at any forge call", () => {
       }
     });
   }
+});
+
+const MANY_IMAGES = GITHUB_WRITE_LIMITS.perMinute + 10;
+const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
+
+function manyImageIds(): ImageId[] {
+  return Array.from(
+    { length: MANY_IMAGES },
+    (_, i) => "c".repeat(24) + BASE32[Math.floor(i / 32)] + BASE32[i % 32],
+  );
+}
+
+async function manyImages(
+  keyring: Keyring,
+): Promise<Record<string, string | Uint8Array>> {
+  const files: Record<string, string | Uint8Array> = {};
+  const images = new Map<ImageId, ImageRecord>();
+  for (const id of manyImageIds()) {
+    const envelope = await encryptImage(keyring, id, IMAGE_PAYLOAD);
+    files[imageFilePath(id)] = envelope;
+    images.set(id, {
+      blobSha: await gitBlobShaOfBytes(envelope),
+      owners: [{ state: "active", path: ["Welcome"] }],
+    });
+  }
+  files[IMAGE_INDEX_PATH] = await encryptImageIndex(keyring, {
+    writable: true,
+    images,
+    tombstones: new Map(),
+  });
+  return files;
+}
+
+async function setupPaced(): Promise<
+  Harness & { readonly requestTimes: number[] }
+> {
+  const seeded = await createRekeyFixture({ extraFiles: manyImages });
+  let onRequest = () => {};
+  const fixture: RekeyFixture = {
+    ...seeded,
+    adapter: new FakeAdapter({
+      repo: seeded.adapter.repo,
+      onContentCreatingRequest: () => onRequest(),
+    }),
+  };
+  const h = await setup({ fixture });
+  const requestTimes: number[] = [];
+  onRequest = () => {
+    h.deps.rateBudget.record();
+    requestTimes.push(h.clock.now());
+  };
+  return {
+    ...h,
+    deps: {
+      ...h.deps,
+      sleep: async (ms) => h.clock.advance(ms),
+    },
+    requestTimes,
+  };
+}
+
+describe("changing the passphrase with more images than the per-minute budget", () => {
+  it("paces the image uploads and lands one commit readable with the new key", async () => {
+    const h = await setupPaced();
+    expect(h.deps.adapter.limits).toEqual(GITHUB_WRITE_LIMITS);
+
+    const result = await changePassphrase(h);
+    if (!result.ok) throw new Error(result.failure.kind);
+
+    expect(result.check).toBe("matched");
+    const { head, files, images } = await readTree(h.fixture.adapter);
+    expect(h.fixture.adapter.repo.getCommit(head)!.parent).toBe(h.fixture.head);
+    expect(h.requestTimes.length).toBeGreaterThan(GITHUB_WRITE_LIMITS.perMinute);
+    for (const start of h.requestTimes) {
+      expect(
+        h.requestTimes.filter((t) => t >= start && t < start + 60_000).length,
+      ).toBeLessThanOrEqual(GITHUB_WRITE_LIMITS.perMinute);
+    }
+    expect(images.size).toBe(MANY_IMAGES);
+    for (const id of manyImageIds()) {
+      expect(
+        await decryptImage(result.keyring, id, images.get(imageFilePath(id))!),
+      ).toEqual(IMAGE_PAYLOAD);
+    }
+    const index = await decryptImageIndex(
+      result.keyring,
+      files.get(IMAGE_INDEX_PATH)!,
+    );
+    expect(index.images.size).toBe(MANY_IMAGES);
+  });
+
+  it("leaves main unchanged and resumes the engine when an image upload fails", async () => {
+    const h = await setupPaced();
+    const prepared = await preparePassphraseChange(h.deps, INPUT);
+    if (!prepared.ok) throw new Error(prepared.failure.kind);
+    h.fixture.adapter.failNext("createBlob", new ForgeError("Server"));
+
+    const result = await commitPassphraseChange(h.deps, prepared.prepared);
+
+    expect(result).toEqual({
+      ok: false,
+      failure: { kind: "forge", error: { kind: "server" } },
+    });
+    await expectUnchanged(h);
+  });
 });
