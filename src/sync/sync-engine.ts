@@ -9,7 +9,7 @@ import {
   parseRepoConfig,
   type RepoConfig,
 } from "../crypto/repo-config";
-import { FOLDER_MARKER } from "../format/v1";
+import { FOLDER_MARKER, IMAGES_DIR } from "../format/v1";
 import {
   applySettingsEdits,
   rawSettingsOf,
@@ -62,6 +62,8 @@ import {
   decryptImageIndex,
   EMPTY_IMAGES,
   findImageIndexEntry,
+  planImageSweep,
+  serializeImageIndex,
   type AvailableImage,
   type ImageIndex,
 } from "../images/image-index";
@@ -105,6 +107,8 @@ import {
 import {
   AUTOSAVE_DEBOUNCE_MS,
   AUTOSAVE_MAX_WAIT_MS,
+  IMAGE_SWEEP_HEADROOM,
+  MAX_IMAGE_SWEEP_FILES_PER_COMMIT,
   MAX_IMMEDIATE_STALE_RETRIES,
   TRASH_PURGE_HEADROOM,
 } from "./tuning";
@@ -370,6 +374,8 @@ export interface SyncEngine {
   deleteFromTrash(entryIds: readonly string[]): void;
   emptyTrash(): void;
   purgeExpiredTrash(): void;
+  /** Best effort, once per engine: deletes image files nothing accounts for. */
+  sweepOrphanImages(): void;
   flush(): Promise<FlushResult>;
   retryNow(): void;
   hasLocalWork(): boolean;
@@ -635,6 +641,11 @@ export function createSyncEngine(options: {
   // Entries purged by the startup purge; changes purging only these are
   // best-effort and dropped instead of retried.
   const autoPurgedIds = new Set<string>();
+  let imageSweepAttempted = false;
+  // The orphan image sweep rides along with the next commit attempt but is
+  // never part of `pending`, so it never counts as unsaved work.
+  let imageSweepRequested = false;
+  let imageSweepInFlight = false;
   // Whether imported changes are in `pending` / `inFlight`; a commit holding
   // them is requested as atomic.
   let importPending = false;
@@ -1473,7 +1484,11 @@ export function createSyncEngine(options: {
       return Promise.resolve();
     }
     cancelRetry();
-    if (state.pending.length === 0 && committedHead === null) {
+    if (
+      state.pending.length === 0 &&
+      committedHead === null &&
+      !imageSweepRequested
+    ) {
       if (state.save.kind === "waiting") {
         update((current) => ({ ...current, save: { kind: "idle" } }));
       }
@@ -1491,7 +1506,7 @@ export function createSyncEngine(options: {
       saveAgain = false;
       await runOneSave();
       if (disposed || !saveAgain || state.save.kind !== "idle") return;
-      if (state.pending.length === 0) return;
+      if (state.pending.length === 0 && !imageSweepRequested) return;
     }
   }
 
@@ -1534,11 +1549,13 @@ export function createSyncEngine(options: {
       if (committedHead !== null) {
         await adoptCommittedHead(committedHead);
       }
-      if (state.pending.length === 0) {
+      if (state.pending.length === 0 && !imageSweepRequested) {
         saveSucceeded();
         return;
       }
 
+      imageSweepInFlight = imageSweepRequested;
+      imageSweepRequested = false;
       importInFlight = importPending;
       importPending = false;
       update((current) => ({
@@ -1562,7 +1579,16 @@ export function createSyncEngine(options: {
           now: clock.now(),
           keyring,
           device: options.deviceName?.() ?? null,
+          ...(imageSweepInFlight
+            ? { imageSweep: { maxFiles: MAX_IMAGE_SWEEP_FILES_PER_COMMIT } }
+            : {}),
         });
+        // A sweep requested while this attempt was encoding joins its commit.
+        if (imageSweepRequested) {
+          imageSweepInFlight = true;
+          imageSweepRequested = false;
+          continue;
+        }
         if (encoded.changes.length === 0) {
           endImportAttempt();
           update((current) => ({ ...current, inFlight: EMPTY_CHANGES }));
@@ -1606,7 +1632,9 @@ export function createSyncEngine(options: {
         }
 
         const committed = await mergeWithRemote(attemptSynced);
+        if (!committed && imageSweepInFlight) continue;
         if (!committed) {
+          clearImageSweep();
           endImportAttempt();
           update((current) => ({ ...current, inFlight: EMPTY_CHANGES }));
           saveSucceeded();
@@ -1632,7 +1660,28 @@ export function createSyncEngine(options: {
       }
       console.error("Save failed", error);
       failAttempt({ kind: "server" });
+    } finally {
+      imageSweepInFlight = false;
     }
+  }
+
+  function clearImageSweep(): void {
+    imageSweepRequested = false;
+    imageSweepInFlight = false;
+  }
+
+  // A sweep with no changes alongside it is dropped like the startup purge.
+  function dropSweepOnly(): boolean {
+    if (
+      state.inFlight.length > 0 ||
+      state.pending.length > 0 ||
+      committedHead !== null
+    ) {
+      return false;
+    }
+    consecutiveFailures = 0;
+    update((current) => ({ ...current, save: { kind: "idle" } }));
+    return true;
   }
 
   // Changes already committed stay in flight so a retry only loads their
@@ -1674,7 +1723,9 @@ export function createSyncEngine(options: {
   }
 
   function failAttempt(error: SyncError): void {
+    clearImageSweep();
     if (dropAutoPurge(error)) return;
+    if (dropSweepOnly()) return;
     if (isOffline()) {
       returnUncommitted();
       update((current) => ({ ...current, save: OFFLINE_WAIT }));
@@ -1714,7 +1765,9 @@ export function createSyncEngine(options: {
   }
 
   function waitForBudget(retryAt: number): void {
+    clearImageSweep();
     if (dropAutoPurge(null)) return;
+    if (dropSweepOnly()) return;
     returnUncommitted();
     update((current) => ({
       ...current,
@@ -2797,6 +2850,42 @@ export function createSyncEngine(options: {
     autosave.saveNow();
   }
 
+  function sweepOrphanImages(): void {
+    if (disposed || stopped || suspended || imageSweepAttempted) return;
+    imageSweepAttempted = true;
+    const { synced } = state;
+    if (
+      synced === null ||
+      state.refresh.lastError !== null ||
+      !synced.images.writable
+    ) {
+      return;
+    }
+    const imagePrefix = `${IMAGES_DIR}/`;
+    const sweep = planImageSweep(
+      synced.images,
+      synced.listing
+        .filter(
+          (entry) => entry.type === "blob" && entry.path.startsWith(imagePrefix),
+        )
+        .map((entry) => entry.path),
+      clock.now(),
+      MAX_IMAGE_SWEEP_FILES_PER_COMMIT,
+    );
+    if (
+      sweep.deletes.length === 0 &&
+      serializeImageIndex(sweep.index) === serializeImageIndex(synced.images)
+    ) {
+      return;
+    }
+    const budgetAt = rateBudget.availableAt(
+      adapter.commitCost([]) + IMAGE_SWEEP_HEADROOM,
+    );
+    if (budgetAt > clock.now()) return;
+    imageSweepRequested = true;
+    autosave.saveNow();
+  }
+
   function flushResult(): FlushResult {
     const count = state.syncStates.unsavedCount;
     return count === 0 ? { kind: "saved" } : { kind: "unsaved", count };
@@ -3016,6 +3105,7 @@ export function createSyncEngine(options: {
     deleteFromTrash: purge,
     emptyTrash,
     purgeExpiredTrash,
+    sweepOrphanImages,
     flush,
     retryNow,
     hasLocalWork: () => hasLocalWork() || saveLoop !== null,
