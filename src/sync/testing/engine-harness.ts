@@ -7,6 +7,11 @@ import type { Keyring } from "../../crypto/keyring";
 import { decryptNote } from "../../crypto/note-cipher";
 import type { FakeForgeAdapter } from "../../forge/fake/fake-forge-adapter";
 import { GITHUB_WRITE_LIMITS } from "../../forge/github/github-adapter";
+import type { ImageId } from "../../images/image-id";
+import {
+  readImageIndex,
+  type AvailableImage,
+} from "../../images/image-index";
 import { readOrderIndex } from "../../order/order-index";
 import { readShareIndex } from "../../share/share-index";
 import { readTagIndex } from "../../tags/tag-index";
@@ -91,6 +96,10 @@ export async function pushRemote(
   fake: FakeForgeAdapter,
   changeSet: ChangeSet,
   deviceName?: string,
+  options?: {
+    now?: number;
+    available?: ReadonlyMap<ImageId, AvailableImage>;
+  },
 ): Promise<string> {
   const keyring = await sampleNotesRepoKeyring();
   const listing = await fake.listTree(await fake.getHead());
@@ -103,14 +112,20 @@ export async function pushRemote(
   const shares = await readShareIndex(listing, keyring, (sha) =>
     fake.readBlob(sha),
   );
+  const images = await readImageIndex(listing, keyring, (sha) =>
+    fake.readBlob(sha),
+  );
   const encoded = await encodeChangeSet({
     listing,
     changeSet,
     order,
     tags,
     shares,
+    images,
     keyring,
     device: deviceName ?? null,
+    now: options?.now,
+    available: options?.available,
   });
   return fake.pushFromAnotherDevice(encoded.changes, encoded.message);
 }
