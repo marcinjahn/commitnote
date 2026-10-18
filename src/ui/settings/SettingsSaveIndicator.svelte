@@ -43,8 +43,10 @@
     font-weight: inherit;
   }
 
-  .settings-save-indicator:hover {
-    color: var(--color-text);
+  @media (hover: hover) {
+    .settings-save-indicator:hover {
+      color: var(--color-text);
+    }
   }
 
   .settings-save-indicator.failed {

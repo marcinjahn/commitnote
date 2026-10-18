@@ -106,8 +106,10 @@
     background: var(--color-selected);
   }
 
-  .setting-option:hover {
-    background: var(--color-hover);
+  @media (hover: hover) {
+    .setting-option:hover {
+      background: var(--color-hover);
+    }
   }
 
   .setting-option-text {

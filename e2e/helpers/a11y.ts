@@ -69,6 +69,8 @@ async function scan(page: Page, state: A11yState, scheme: Scheme) {
   const results = await new AxeBuilder({ page })
     .exclude(".test-mode-banner")
     .options(axeOptions(scheme))
+    // Page zoom is disabled on purpose via the viewport meta.
+    .disableRules(["meta-viewport"])
     .analyze();
   const lines: string[] = [];
   for (const violation of results.violations) {

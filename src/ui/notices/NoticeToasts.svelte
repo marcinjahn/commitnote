@@ -331,13 +331,15 @@
     }
   }
 
-  .dismiss:hover {
-    color: var(--color-text);
-    background: color-mix(
-      in srgb,
-      var(--color-text) 14%,
-      var(--color-surface-raised)
-    );
+  @media (hover: hover) {
+    .dismiss:hover {
+      color: var(--color-text);
+      background: color-mix(
+        in srgb,
+        var(--color-text) 14%,
+        var(--color-surface-raised)
+      );
+    }
   }
 
   .dismiss .icon {
@@ -359,12 +361,14 @@
     line-height: var(--line-height);
   }
 
-  .actions .button:hover {
-    background: color-mix(
-      in srgb,
-      var(--color-text) 14%,
-      var(--color-surface-raised)
-    );
+  @media (hover: hover) {
+    .actions .button:hover {
+      background: color-mix(
+        in srgb,
+        var(--color-text) 14%,
+        var(--color-surface-raised)
+      );
+    }
   }
 
   @media (min-width: 768px) {

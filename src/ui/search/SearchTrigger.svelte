@@ -55,9 +55,11 @@
     transition: background-color var(--motion-duration) var(--motion-easing), border-color var(--motion-duration) var(--motion-easing);
   }
 
-  .search-trigger:hover {
-    background: var(--color-hover);
-    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+  @media (hover: hover) {
+    .search-trigger:hover {
+      background: var(--color-hover);
+      border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+    }
   }
 
   .icon {

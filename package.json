@@ -16,7 +16,8 @@
     "check:bundle": "npm run build && npm run build:fake && tsx scripts/check-bundle.ts",
     "fixture:sample-notes-repo": "tsx scripts/generate-sample-notes-repo.ts",
     "generate:brand": "tsx scripts/generate-brand-svgs.ts",
-    "generate:pwa-screenshots": "npm run build:fake && tsx scripts/generate-pwa-screenshots.ts"
+    "generate:pwa-screenshots": "npm run build:fake && tsx scripts/generate-pwa-screenshots.ts",
+    "profile:tree-scroll": "tsx scripts/profile-tree-scroll.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

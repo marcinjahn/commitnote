@@ -76,9 +76,14 @@
     text-underline-offset: 3px;
   }
 
-  .data-security .action:hover:not(:disabled),
   .data-security .action:focus-visible {
     text-decoration: underline;
+  }
+
+  @media (hover: hover) {
+    .data-security .action:hover:not(:disabled) {
+      text-decoration: underline;
+    }
   }
 
   .data-security .action:disabled {

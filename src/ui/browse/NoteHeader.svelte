@@ -275,15 +275,20 @@
     fill: color-mix(in srgb, var(--tag-color) 20%, transparent);
   }
 
-  .share-button.is-shared,
-  .share-button.is-shared:hover:not(:disabled) {
+  .share-button.is-shared {
     color: var(--color-accent);
   }
 
-  .history-button:hover:not(:disabled),
-  .share-button:hover:not(:disabled),
-  .color-tag-button:hover:not(:disabled) {
-    color: var(--color-text);
+  @media (hover: hover) {
+    .share-button.is-shared:hover:not(:disabled) {
+      color: var(--color-accent);
+    }
+
+    .history-button:hover:not(:disabled),
+    .share-button:hover:not(:disabled),
+    .color-tag-button:hover:not(:disabled) {
+      color: var(--color-text);
+    }
   }
 
   .sync-status {

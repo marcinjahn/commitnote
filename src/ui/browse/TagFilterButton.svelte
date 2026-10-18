@@ -105,11 +105,18 @@
       color var(--motion-duration) var(--motion-easing);
   }
 
-  .tag-filter-button:hover,
   .tag-filter-button[aria-expanded="true"] {
     background: var(--color-hover);
     border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
     color: var(--color-text);
+  }
+
+  @media (hover: hover) {
+    .tag-filter-button:hover {
+      background: var(--color-hover);
+      border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+      color: var(--color-text);
+    }
   }
 
   .tag-filter-button.filtering {
@@ -118,9 +125,14 @@
     color: var(--color-text);
   }
 
-  .tag-filter-button.filtering:hover,
   .tag-filter-button.filtering[aria-expanded="true"] {
     background: color-mix(in srgb, var(--tag-color) 22%, transparent);
+  }
+
+  @media (hover: hover) {
+    .tag-filter-button.filtering:hover {
+      background: color-mix(in srgb, var(--tag-color) 22%, transparent);
+    }
   }
 
   .tag-filter-dot {

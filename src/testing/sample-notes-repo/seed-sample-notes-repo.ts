@@ -43,7 +43,7 @@ interface SampleRepoAdapterOptions {
   readonly shares?: FakeForgeAdapterShares;
 }
 
-async function createAdapterFor(
+export async function createAdapterFor(
   fixture: SampleNotesRepo,
   options?: SampleRepoAdapterOptions,
 ): Promise<FakeForgeAdapter> {

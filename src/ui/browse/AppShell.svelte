@@ -938,6 +938,16 @@
 
   const importing = $derived(engineState.importing || importStarted !== null);
   const commands: readonly Command[] = $derived([
+    ...(narrow && trashEntries.length > 0
+      ? [
+          {
+            id: "trash",
+            label: `Trash (${trashEntries.length})`,
+            icon: commandIcons.trash,
+            run: openTrash,
+          },
+        ]
+      : []),
     {
       id: "settings",
       label: "Settings",
@@ -2409,7 +2419,7 @@
         {describeUndecryptableFiles(engineState.synced?.undecryptableFiles ?? 0)}
       </p>
     {/if}
-    {#if trashEntries.length > 0 || treeDragActive}
+    {#if narrow ? treeDragActive : trashEntries.length > 0 || treeDragActive}
       <div class="trash-slot" transition:trashReveal>
         <button
           bind:this={trashButtonEl}
@@ -2430,34 +2440,42 @@
         </button>
       </div>
     {/if}
-    <div class="sidebar-footer">
-      <a
-        class="repo-link"
-        href={repoUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={repoLabelTruncated ? repoLabel : undefined}
-      >
-        <span class="repo-label" bind:this={repoLabelEl}>{repoLabel}</span>
-        {#if head !== null}
-          <CommitSha sha={head} />
-        {/if}
-      </a>
-      <SettingsSaveIndicator state={settingsSave} onOpen={openSettings} />
-      <button
-        type="button"
-        class="button button-icon button-ghost log-out"
-        aria-label="Log out"
-        title="Log out"
-        onclick={handleLogOut}
-      >
-        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-          {#each commandIcons.logOut as d (d)}
-            <path {d} />
-          {/each}
-        </svg>
-      </button>
-    </div>
+    {#if narrow}
+      {#if settingsSave.kind !== "synced"}
+        <div class="sidebar-footer">
+          <SettingsSaveIndicator state={settingsSave} onOpen={openSettings} />
+        </div>
+      {/if}
+    {:else}
+      <div class="sidebar-footer">
+        <a
+          class="repo-link"
+          href={repoUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={repoLabelTruncated ? repoLabel : undefined}
+        >
+          <span class="repo-label" bind:this={repoLabelEl}>{repoLabel}</span>
+          {#if head !== null}
+            <CommitSha sha={head} />
+          {/if}
+        </a>
+        <SettingsSaveIndicator state={settingsSave} onOpen={openSettings} />
+        <button
+          type="button"
+          class="button button-icon button-ghost log-out"
+          aria-label="Log out"
+          title="Log out"
+          onclick={handleLogOut}
+        >
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            {#each commandIcons.logOut as d (d)}
+              <path {d} />
+            {/each}
+          </svg>
+        </button>
+      </div>
+    {/if}
     <SidebarResizeHandle
       width={sidebarWidth}
       min={sidebarMinWidth}
@@ -2985,9 +3003,11 @@
       box-shadow 200ms var(--motion-easing);
   }
 
-  .trash-row:hover {
-    background: var(--color-hover);
-    color: var(--color-text);
+  @media (hover: hover) {
+    .trash-row:hover {
+      background: var(--color-hover);
+      color: var(--color-text);
+    }
   }
 
   .trash-row:global([data-trash-drop]) {
@@ -3037,8 +3057,10 @@
     mask-image: linear-gradient(to right, #000 calc(100% - var(--space-4)), transparent);
   }
 
-  .repo-link:hover {
-    color: var(--color-text);
+  @media (hover: hover) {
+    .repo-link:hover {
+      color: var(--color-text);
+    }
   }
 
   .repo-label {
@@ -3049,8 +3071,10 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .repo-link:hover .repo-label {
-    text-decoration: underline;
+  @media (hover: hover) {
+    .repo-link:hover .repo-label {
+      text-decoration: underline;
+    }
   }
 
   .log-out {
@@ -3058,8 +3082,10 @@
     color: var(--color-text-muted);
   }
 
-  .log-out:hover:not(:disabled) {
-    color: var(--color-text);
+  @media (hover: hover) {
+    .log-out:hover:not(:disabled) {
+      color: var(--color-text);
+    }
   }
 
   .tree-header-actions {
@@ -3073,8 +3099,10 @@
     color: var(--color-text-muted);
   }
 
-  .tree-header-actions :global(.button:hover:not(:disabled)) {
-    color: var(--color-text);
+  @media (hover: hover) {
+    .tree-header-actions :global(.button:hover:not(:disabled)) {
+      color: var(--color-text);
+    }
   }
 
   .alert-error {

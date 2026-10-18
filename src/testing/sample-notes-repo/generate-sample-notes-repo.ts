@@ -4,9 +4,8 @@ import {
   encodeChangeSet,
   encodeInitializeMessage,
 } from "../../changes/encode-change-set";
-import { argon2idDirect } from "../../crypto/argon2";
+import { argon2idDirect, type Argon2idFunction } from "../../crypto/argon2";
 import { createRepoConfig } from "../../crypto/keyring";
-import type { RandomSource } from "../../crypto/random";
 import { InMemoryGitRepo } from "../../forge/fake/in-memory-git-repo";
 import { REPO_CONFIG_PATH } from "../../format/v1";
 import {
@@ -21,6 +20,8 @@ import {
   type OrderIndex,
 } from "../../order/order-index";
 import { createTrashEntryId } from "../../trash/trash-entry-id";
+import { largeTreeSource } from "./large-tree-source";
+import { createSeededRandom } from "./seeded-random";
 import {
   SAMPLE_NOTES_REPO_PASSPHRASE,
   sampleNotesRepoOrder,
@@ -46,34 +47,10 @@ export interface SampleNotesRepo {
 }
 
 const SEED = 0x676e6f74;
+const LARGE_TREE_SEED = 0x6c617267;
 const TRASH_SEED = 0x74726173;
 const SEARCH_SEED = 0x73656172;
 const README_TEXT = "# Notes\n\nThis repository is managed by commitnote.\n";
-
-/** mulberry32: a small, deterministic 32-bit PRNG, used only to make the fixture reproducible. */
-export function createSeededRandom(seed: number): RandomSource {
-  let state = seed >>> 0;
-
-  function nextUint32(): number {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return (t ^ (t >>> 14)) >>> 0;
-  }
-
-  return (length: number): Uint8Array => {
-    const bytes = new Uint8Array(length);
-    for (let i = 0; i < length; i += 4) {
-      const value = nextUint32();
-      bytes[i] = value & 0xff;
-      if (i + 1 < length) bytes[i + 1] = (value >>> 8) & 0xff;
-      if (i + 2 < length) bytes[i + 2] = (value >>> 16) & 0xff;
-      if (i + 3 < length) bytes[i + 3] = (value >>> 24) & 0xff;
-    }
-    return bytes;
-  };
-}
 
 function buildChangeSet(source: readonly SampleEntry[]): ChangeSet {
   const changes: Change[] = [];
@@ -123,6 +100,7 @@ export function generateSampleNotesRepo(): Promise<SampleNotesRepo> {
     [],
     sampleNotesRepoOrder,
     sampleNotesRepoTags,
+    argon2idDirect,
   );
 }
 
@@ -133,6 +111,7 @@ export function generateSampleTrashRepo(): Promise<SampleNotesRepo> {
     sampleTrashRepoTrashed,
     [],
     [],
+    argon2idDirect,
   );
 }
 
@@ -143,7 +122,14 @@ export function generateSampleSearchRepo(): Promise<SampleNotesRepo> {
     sampleSearchRepoTrashed,
     [],
     sampleSearchRepoTags,
+    argon2idDirect,
   );
+}
+
+export function generateLargeTreeRepo(
+  argon2id: Argon2idFunction,
+): Promise<SampleNotesRepo> {
+  return generateRepo(LARGE_TREE_SEED, largeTreeSource(), [], [], [], argon2id);
 }
 
 async function generateRepo(
@@ -152,6 +138,7 @@ async function generateRepo(
   trashed: readonly SampleTrashEntry[],
   order: readonly SampleFolderOrder[],
   tags: readonly SampleTag[],
+  argon2id: Argon2idFunction,
 ): Promise<SampleNotesRepo> {
   const random = createSeededRandom(seed);
   const { configText, keyring } = await createRepoConfig(
@@ -159,7 +146,7 @@ async function generateRepo(
     {
       random,
       now: () => new Date("2026-01-01T00:00:00.000Z"),
-      argon2id: argon2idDirect,
+      argon2id,
     },
   );
 

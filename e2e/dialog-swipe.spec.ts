@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { TouchFinger, type TouchPoint, openNotes, fakeForge } from "./helpers";
-import { chooseAccent, openSettings } from "./helpers/settings";
+import { chooseAccent, openDataSecurityAction, openSettings } from "./helpers/settings";
 import { moveToTrash, openHistory, openTrash } from "./helpers/tree";
 
 
@@ -336,6 +336,131 @@ test.describe("swipe to close on mobile", { tag: "@mobile-only" }, () => {
   });
 });
 
+async function installFakeKeyboard(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    let keyboard = 0;
+    const fake = new EventTarget();
+    Object.defineProperties(fake, {
+      offsetTop: { value: 0 },
+      offsetLeft: { value: 0 },
+      pageTop: { value: 0 },
+      pageLeft: { value: 0 },
+      scale: { value: 1 },
+      height: {
+        get: () => document.documentElement.clientHeight - keyboard,
+      },
+      width: { get: () => window.innerWidth },
+    });
+    Object.defineProperty(window, "visualViewport", {
+      value: fake,
+      configurable: true,
+    });
+    Object.defineProperty(window, "__setFakeKeyboard", {
+      value: (px: number) => {
+        keyboard = px;
+        fake.dispatchEvent(new Event("resize"));
+      },
+    });
+  });
+}
+
+async function setKeyboard(page: Page, px: number): Promise<void> {
+  await page.evaluate(
+    (value) =>
+      (window as unknown as { __setFakeKeyboard(px: number): void }).__setFakeKeyboard(
+        value,
+      ),
+    px,
+  );
+}
+
+async function openNewFolder(page: Page): Promise<Locator> {
+  await page.getByRole("button", { name: "New folder" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Folder name")).toBeVisible();
+  return dialog;
+}
+
+async function cardBottom(dialog: Locator): Promise<number> {
+  const box = (await dialog.locator(".dialog-card").boundingBox())!;
+  return box.y + box.height;
+}
+
+function innerHeight(page: Page): Promise<number> {
+  return page.evaluate(() => window.innerHeight);
+}
+
+test.describe("bottom sheet above the on-screen keyboard", { tag: "@mobile-only" }, () => {
+  test.beforeEach(async ({ page }) => {
+    await installFakeKeyboard(page);
+    await openNotes(page);
+  });
+
+  test("the sheet rides above the keyboard with its input visible and returns when it closes", async ({
+    page,
+  }) => {
+    const dialog = await openNewFolder(page);
+    const height = await innerHeight(page);
+    await setKeyboard(page, 340);
+    await expect
+      .poll(async () => Math.abs((await cardBottom(dialog)) - (height - 340)))
+      .toBeLessThanOrEqual(1);
+    await expect
+      .poll(async () => {
+        const box = (await dialog.getByLabel("Folder name").boundingBox())!;
+        return box.y >= 0 && box.y + box.height <= height - 340;
+      })
+      .toBe(true);
+    await setKeyboard(page, 0);
+    await expect
+      .poll(async () => Math.abs((await cardBottom(dialog)) - height))
+      .toBeLessThanOrEqual(1);
+  });
+
+  test("swiping the grab handle down closes the sheet while the keyboard is open", async ({
+    page,
+  }) => {
+    const dialog = await openNewFolder(page);
+    await setKeyboard(page, 340);
+    const height = await innerHeight(page);
+    await expect
+      .poll(async () => Math.abs((await cardBottom(dialog)) - (height - 340)))
+      .toBeLessThanOrEqual(1);
+    const card = await settledBox(dialog.locator(".dialog-card"));
+    const handle = (await dialog.getByTestId("dialog-grab-handle").boundingBox())!;
+    await swipeDownFrom(
+      dialog,
+      { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 },
+      card.height,
+    );
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test("a tall keyboard caps the sheet above it and keeps the focused input visible", async ({
+    page,
+  }) => {
+    await openDataSecurityAction(page, "Change passphrase");
+    const dialog = page.getByRole("dialog", { name: "Change passphrase" });
+    await expect(dialog).toBeVisible();
+    const height = await innerHeight(page);
+    await setKeyboard(page, 600);
+    const input = dialog.getByLabel("Current passphrase");
+    await input.focus();
+    await expect
+      .poll(async () => {
+        const card = (await dialog.locator(".dialog-card").boundingBox())!;
+        const box = (await input.boundingBox())!;
+        return (
+          card.height <= height - 600 + 1 &&
+          card.y >= 0 &&
+          box.y >= 0 &&
+          box.y + box.height <= height - 600
+        );
+      })
+      .toBe(true);
+  });
+});
+
 test.describe("dialog grab handle on desktop", () => {
   test.beforeEach(async ({ page }) => {
     await openNotes(page);
@@ -367,4 +492,19 @@ test.describe("dialog grab handle on desktop", () => {
       expect(header.x - card.x).toBeCloseTo(inset.left, 0);
     });
   }
+});
+
+test.describe("centred dialog on desktop", () => {
+  test("the on-screen keyboard does not move it", async ({ page }) => {
+    await installFakeKeyboard(page);
+    await openNotes(page);
+    const dialog = await openSettings(page);
+    const card = dialog.locator(".dialog-card");
+    const before = await settledBox(card);
+    await setKeyboard(page, 340);
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue("--keyboard-inset")))
+      .toBe("340px");
+    expect(await card.boundingBox()).toEqual(before);
+  });
 });

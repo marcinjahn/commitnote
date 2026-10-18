@@ -270,8 +270,10 @@
       opacity var(--motion-duration) var(--motion-easing);
   }
 
-  .share-row-actions:hover:not([aria-disabled="true"]) {
-    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  @media (hover: hover) {
+    .share-row-actions:hover:not([aria-disabled="true"]) {
+      background: color-mix(in srgb, var(--color-text) 8%, transparent);
+    }
   }
 
   .share-row-actions[aria-disabled="true"] {
@@ -284,14 +286,22 @@
       opacity: 0;
     }
 
-    .share-item:hover .share-row-actions,
     .share-item:focus-within .share-row-actions,
     .share-row-actions.menu-open {
       opacity: 1;
     }
 
-    .share-item:hover .share-row-actions[aria-disabled="true"],
     .share-item:focus-within .share-row-actions[aria-disabled="true"] {
+      opacity: 0.5;
+    }
+  }
+
+  @media (pointer: fine) and (min-width: 768px) and (hover: hover) {
+    .share-item:hover .share-row-actions {
+      opacity: 1;
+    }
+
+    .share-item:hover .share-row-actions[aria-disabled="true"] {
       opacity: 0.5;
     }
   }

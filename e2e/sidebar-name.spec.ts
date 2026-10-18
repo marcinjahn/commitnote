@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { SAMPLE, openNotes, flushPendingSaves } from "./helpers";
 
-test("sidebar wordmark and repo label are not clipped", { tag: "@mobile" }, async ({ page }) => {
+test("sidebar wordmark and repo label are not clipped", async ({ page }) => {
   await openNotes(page);
 
   const header = page.locator(".tree-header");
@@ -89,4 +89,37 @@ test("the sidebar links to the repository, shows the current commit and follows 
     timeout: 15_000,
   });
   await expect(sha).toHaveAttribute("data-sha", /^[0-9a-f]{40}$/);
+});
+
+test("the narrow sidebar has no footer and keeps Log out in the command menu", { tag: "@mobile-only" }, async ({
+  page,
+}) => {
+  await openNotes(page);
+
+  const wordmark = page.locator(".tree-header .wordmark");
+  await expect(wordmark).toHaveAttribute("data-typing", "done", {
+    timeout: 15_000,
+  });
+  expect(
+    await wordmark.evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ).toBe(true);
+
+  await expect(page.locator(".sidebar-footer")).toHaveCount(0);
+  await expect(page.locator(".repo-link")).toHaveCount(0);
+  await expect(page.locator(".commit-sha")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Log out" })).toHaveCount(0);
+
+  expect(
+    await page.locator(".sidebar").evaluate((el) => {
+      const limit = el.getBoundingClientRect().right;
+      return [...el.querySelectorAll("*")]
+        .filter((child) => !child.closest(".sidebar-resize-handle"))
+        .every((child) => child.getBoundingClientRect().right <= limit + 0.5);
+    }),
+  ).toBe(true);
+
+  await page.getByRole("button", { name: "More commands" }).click();
+  await expect(
+    page.getByRole("menu", { name: "Commands" }).getByRole("menuitem", { name: "Log out" }),
+  ).toBeVisible();
 });

@@ -64,8 +64,10 @@
     color: var(--color-text-muted);
   }
 
-  .folder-option:not(.disabled):hover {
-    background: var(--color-hover);
+  @media (hover: hover) {
+    .folder-option:not(.disabled):hover {
+      background: var(--color-hover);
+    }
   }
 
   .folder-option input {

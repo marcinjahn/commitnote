@@ -6,7 +6,7 @@ import { moveToTrash, openRowMenu, openTrash, openWelcome, restoreTo, treeItem }
 const TRASH_REPO = "https://github.com/sample/trash";
 const SAMPLE_TRASH_NOW = new Date("2026-09-30T12:00:00Z");
 
-test("the Trash row sits below the tree and leaves the repo link visible", { tag: "@mobile" }, async ({
+test("the Trash row sits below the tree and leaves the repo link visible", async ({
   page,
 }) => {
   await openNotes(page);
@@ -31,6 +31,30 @@ test("the Trash row sits below the tree and leaves the repo link visible", { tag
     true,
   );
   await expect(page.locator(".sidebar-footer").getByTestId("open-trash")).toHaveCount(0);
+});
+
+test("on narrow layouts Trash opens from the Command menu", { tag: "@mobile-only" }, async ({
+  page,
+}) => {
+  await openNotes(page);
+  await moveToTrash(page, "Welcome");
+
+  await expect(page.getByTestId("open-trash")).toHaveCount(0);
+  await page.getByRole("button", { name: "More commands" }).click();
+  await expect(page.getByRole("menuitem").first()).toHaveText("Trash (1)");
+  await page.getByRole("menuitem", { name: "Trash (1)" }).click();
+
+  await expect(page.getByRole("dialog", { name: "Trash" })).toBeVisible();
+});
+
+test("the Command menu has no Trash item while the trash is empty", { tag: "@mobile-only" }, async ({
+  page,
+}) => {
+  await openNotes(page);
+
+  await page.getByRole("button", { name: "More commands" }).click();
+  await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /^Trash/ })).toHaveCount(0);
 });
 
 test("a deleted note shows up in the trash and can be restored into a folder", async ({

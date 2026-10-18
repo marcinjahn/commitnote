@@ -155,16 +155,27 @@
     background: transparent;
   }
 
-  .sidebar-resize-handle:hover::after,
   .sidebar-resize-handle.dragging::after,
   .sidebar-resize-handle:focus-visible::after {
     background: var(--color-accent);
   }
 
+  @media (hover: hover) {
+    .sidebar-resize-handle:hover::after {
+      background: var(--color-accent);
+    }
+  }
+
   @media (forced-colors: active) {
-    .sidebar-resize-handle:hover::after,
     .sidebar-resize-handle.dragging::after,
     .sidebar-resize-handle:focus-visible::after {
+      forced-color-adjust: none;
+      background: Highlight;
+    }
+  }
+
+  @media (forced-colors: active) and (hover: hover) {
+    .sidebar-resize-handle:hover::after {
       forced-color-adjust: none;
       background: Highlight;
     }

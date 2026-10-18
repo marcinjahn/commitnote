@@ -102,3 +102,28 @@ test("a failed settings save stays visible in the sidebar after closing Settings
     page.getByRole("button", { name: /^Saving settings failed, will retry/ }),
   ).toBeVisible({ timeout: 10_000 });
 });
+
+test("on the narrow layout a failed settings save shows only the indicator in the sidebar footer", { tag: "@mobile-only" }, async ({
+  page,
+}) => {
+  await fakeForge(page).failNext("commit", "Server");
+  await openSettings(page);
+  await chooseAccent(page, "Teal");
+  await page.keyboard.press("Escape");
+
+  const footer = page.locator(".sidebar-footer");
+  const indicator = footer.getByRole("button", {
+    name: /^Saving settings failed, will retry/,
+  });
+  await expect(indicator).toBeVisible({ timeout: 10_000 });
+  await expect(footer.locator(".repo-link")).toHaveCount(0);
+  await expect(footer.getByRole("button", { name: "Log out" })).toHaveCount(0);
+
+  const box = await indicator.boundingBox();
+  const viewport = page.viewportSize()!;
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+});

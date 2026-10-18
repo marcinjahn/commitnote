@@ -283,8 +283,10 @@
     transition: background-color var(--motion-duration) var(--motion-easing);
   }
 
-  .tree-row-container:hover {
-    background: var(--color-hover-accent);
+  @media (hover: hover) {
+    .tree-row-container:hover {
+      background: var(--color-hover-accent);
+    }
   }
 
   .tree-row-container.selected {
@@ -351,8 +353,9 @@
 
   /*
    * The saving sweep is a masked copy of the name laid over it, because a
-   * gradient clipped to the text breaks the ellipsis. The permanent layer and
-   * zero skew keep the glyphs from shifting when the slant starts or ends.
+   * gradient clipped to the text breaks the ellipsis. Idle labels get neither
+   * the copy nor a layer of their own: per row, both made scrolling a long
+   * tree expensive.
    */
   .tree-row-label {
     --sync-label-fade: 450ms;
@@ -364,9 +367,7 @@
     white-space: nowrap;
     font-size: var(--font-size-sm);
     color: var(--color-text);
-    transform: skewX(0deg);
     transform-origin: left bottom;
-    will-change: transform;
     transition:
       color var(--sync-label-fade) ease,
       transform var(--sync-label-fade) ease;
@@ -383,7 +384,7 @@
   }
 
   .tree-row-label::after {
-    content: attr(data-name) / "";
+    content: none;
     position: absolute;
     inset: 0;
     overflow: hidden;
@@ -409,8 +410,24 @@
     transform: skewX(-10deg);
   }
 
+  .tree-row-label.unsynced,
+  .tree-row-label.sweeping {
+    will-change: transform;
+  }
+
+  .tree-row-label.saving::after,
+  .tree-row-label.sweeping::after {
+    content: attr(data-name) / "";
+  }
+
   .tree-row-label.saving::after {
     opacity: 1;
+  }
+
+  @starting-style {
+    .tree-row-label.saving::after {
+      opacity: 0;
+    }
   }
 
   .tree-row-label.sweeping::after {
@@ -456,8 +473,10 @@
       opacity var(--motion-duration) var(--motion-easing);
   }
 
-  .row-actions:hover {
-    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  @media (hover: hover) {
+    .row-actions:hover {
+      background: color-mix(in srgb, var(--color-text) 8%, transparent);
+    }
   }
 
   @media (pointer: fine) {
@@ -471,9 +490,14 @@
       opacity: 0;
     }
 
-    .tree-row-container:hover .row-actions,
     .tree-row-container:focus-within .row-actions,
     .row-actions.menu-open {
+      opacity: 1;
+    }
+  }
+
+  @media (pointer: fine) and (min-width: 768px) and (hover: hover) {
+    .tree-row-container:hover .row-actions {
       opacity: 1;
     }
   }

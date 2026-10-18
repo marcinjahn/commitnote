@@ -210,6 +210,8 @@
     background: none;
     color: var(--color-text);
     font: inherit;
+    font-size: var(--font-size-base);
+    line-height: 1;
   }
 
   .trailing {

@@ -239,6 +239,19 @@ test("Escape cancels a lifted drag and the release does nothing", async ({
   expect(await fakeForge(page).commitCount()).toBe(commits);
 });
 
+test("hovering a row highlights it until the mouse leaves", async ({ page }) => {
+  const container = treeItem(page, "Welcome").locator("xpath=ancestor::*[contains(@class, 'tree-row-container')][1]");
+  const background = () =>
+    container.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await expect.poll(background).toBe("rgba(0, 0, 0, 0)");
+
+  await treeItem(page, "Welcome").hover();
+  await expect.poll(background).not.toBe("rgba(0, 0, 0, 0)");
+
+  await page.mouse.move(0, 0);
+  await expect.poll(background).toBe("rgba(0, 0, 0, 0)");
+});
+
 test("a click still opens a note and a drag doesn't", async ({ page }) => {
   await dragRow(page, treeItem(page, "Welcome"), treeItem(page, "Welcome"), {
     y: 0.5,

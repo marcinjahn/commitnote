@@ -22,6 +22,8 @@ test("the viewport covers the screen and resizes with the keyboard", MOBILE, asy
     .getAttribute("content");
   expect(content).toContain("viewport-fit=cover");
   expect(content).toContain("interactive-widget=resizes-content");
+  expect(content).toContain("user-scalable=no");
+  expect(content).toContain("maximum-scale=1");
 });
 
 test("the tree header stays below the top inset", MOBILE, async ({ page }) => {

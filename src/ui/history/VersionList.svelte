@@ -356,8 +356,10 @@
       box-shadow var(--motion-duration) var(--motion-easing);
   }
 
-  .version-row:hover {
-    background: var(--color-hover-accent);
+  @media (hover: hover) {
+    .version-row:hover {
+      background: var(--color-hover-accent);
+    }
   }
 
   .version-row:focus-visible {
@@ -427,8 +429,10 @@
     color: var(--color-text-muted);
   }
 
-  .session-toggle:hover {
-    color: var(--color-text);
+  @media (hover: hover) {
+    .session-toggle:hover {
+      color: var(--color-text);
+    }
   }
 
   .chevron {
