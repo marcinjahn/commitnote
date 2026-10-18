@@ -1,10 +1,14 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { decryptImage, encryptImage } from "../crypto/image-cipher";
 import type { Keyring } from "../crypto/keyring";
 import { encryptPath } from "../crypto/name-cipher";
 import { decryptNote, encryptNote } from "../crypto/note-cipher";
 import { commitFiles } from "../forge/fake/in-memory-git-repo";
 import type { CommitFileChange, TreeEntry } from "../forge/forge-adapter";
+import { gitBlobShaOfBytes } from "../forge/git-blob-sha";
 import {
+  IMAGE_INDEX_PATH,
+  IMAGES_DIR,
   MAIN_BRANCH,
   ORDER_PATH,
   REPO_CONFIG_PATH,
@@ -12,6 +16,8 @@ import {
   TAGS_PATH,
   TRASH_DIR,
 } from "../format/v1";
+import { imageFilePath } from "../images/image-id";
+import { decryptImageIndex } from "../images/image-index";
 import {
   decryptShareIndex,
   encryptShareIndex,
@@ -24,10 +30,13 @@ import {
   createRekeyFixture,
   decryptTree,
   FIXTURE_NOTES,
+  fixtureImages,
   FOREIGN_TRASH_ID,
+  IMAGE_PAYLOAD,
   keyStateOf,
   NEW_PASSPHRASE,
   newRepoConfig,
+  OWNED_IMAGE_ID,
   README_TEXT,
   TRASH_ID,
   TRASHED_NOTE,
@@ -45,23 +54,34 @@ interface Loaded {
   readonly fixture: RekeyFixture;
   readonly listing: TreeEntry[];
   readonly contents: Map<string, string>;
+  readonly imageContents: Map<string, Uint8Array>;
 }
+
+const isImageFile = (path: string) => path.startsWith(`${IMAGES_DIR}/`);
 
 async function load(fixture: RekeyFixture): Promise<Loaded> {
   const listing = await fixture.adapter.listTree(fixture.head);
   const contents = new Map<string, string>();
+  const imageContents = new Map<string, Uint8Array>();
   for (const entry of listing) {
-    if (entry.type === "blob") {
+    if (entry.type !== "blob") continue;
+    if (isImageFile(entry.path)) {
+      imageContents.set(
+        entry.sha,
+        await fixture.adapter.readBlobBytes(entry.sha),
+      );
+    } else {
       contents.set(entry.sha, await fixture.adapter.readBlob(entry.sha));
     }
   }
-  return { fixture, listing, contents };
+  return { fixture, listing, contents, imageContents };
 }
 
 function plan(loaded: Loaded): Promise<RekeyPlan> {
   return planRekey({
     listing: loaded.listing,
     contents: loaded.contents,
+    imageContents: loaded.imageContents,
     oldKeyring: loaded.fixture.oldKeyring,
     newKeyring: next.keyring,
     newConfigText: next.configText,
@@ -72,6 +92,7 @@ function verify(loaded: Loaded, changes: readonly CommitFileChange[]) {
   return verifyRekey({
     listing: loaded.listing,
     contents: loaded.contents,
+    imageContents: loaded.imageContents,
     changes,
     oldKeyring: loaded.fixture.oldKeyring,
     newKeyring: next.keyring,
@@ -79,24 +100,42 @@ function verify(loaded: Loaded, changes: readonly CommitFileChange[]) {
   });
 }
 
-async function applied(
+async function appliedTree(
   loaded: Loaded,
   changes: readonly CommitFileChange[],
-): Promise<Map<string, string>> {
-  const result = await loaded.fixture.adapter.commit({
+): Promise<{
+  readonly files: Map<string, string>;
+  readonly images: Map<string, Uint8Array>;
+  readonly shas: Map<string, string>;
+}> {
+  const { adapter } = loaded.fixture;
+  const result = await adapter.commit({
     parent: loaded.fixture.head,
     changes,
     message: "rekey",
   });
   if (result.kind !== "ok") throw new Error("commit failed");
-  const listing = await loaded.fixture.adapter.listTree(result.head);
+  const listing = await adapter.listTree(result.head);
   const files = new Map<string, string>();
+  const images = new Map<string, Uint8Array>();
+  const shas = new Map<string, string>();
   for (const entry of listing) {
-    if (entry.type === "blob") {
-      files.set(entry.path, await loaded.fixture.adapter.readBlob(entry.sha));
+    if (entry.type !== "blob") continue;
+    shas.set(entry.path, entry.sha);
+    if (isImageFile(entry.path)) {
+      images.set(entry.path, await adapter.readBlobBytes(entry.sha));
+    } else {
+      files.set(entry.path, await adapter.readBlob(entry.sha));
     }
   }
-  return files;
+  return { files, images, shas };
+}
+
+async function applied(
+  loaded: Loaded,
+  changes: readonly CommitFileChange[],
+): Promise<Map<string, string>> {
+  return (await appliedTree(loaded, changes)).files;
 }
 
 function shareEntry(id: string, source: ShareEntry["source"]): ShareEntry {
@@ -155,7 +194,24 @@ describe("planRekey", () => {
       trashEntries: 1,
       carriedTrashEntries: 1,
       carriedFiles: 1,
+      images: 0,
     });
+  });
+
+  it("plans nothing for images in a repo without any", async () => {
+    const loaded = await load(await createRekeyFixture());
+
+    const result = await plan(loaded);
+
+    expect(result.changes.map((change) => change.kind)).not.toContain(
+      "upsert-bytes",
+    );
+    expect(
+      result.changes.filter(
+        (change) =>
+          change.path === IMAGE_INDEX_PATH || isImageFile(change.path),
+      ),
+    ).toEqual([]);
   });
 
   it("re-encrypts the note order file in place without counting it as a carried file", async () => {
@@ -377,6 +433,189 @@ describe("planRekey", () => {
   });
 });
 
+describe("planRekey with images", () => {
+  const foreignKeyring = () =>
+    newRepoConfig("someone else").then((config) => config.keyring);
+  const STRAY_ID = "cccccccccccccccccccccccccc";
+
+  it("re-encrypts every image under its id and records the new files in the index without tombstones", async () => {
+    const loaded = await load(
+      await createRekeyFixture({ extraFiles: fixtureImages }),
+    );
+
+    const result = await plan(loaded);
+    const after = await appliedTree(loaded, result.changes);
+
+    expect(result.summary.images).toBe(1);
+    expect(result.summary.carriedFiles).toBe(1);
+    const imagePath = imageFilePath(OWNED_IMAGE_ID);
+    const envelope = after.images.get(imagePath)!;
+    expect(await decryptImage(next.keyring, OWNED_IMAGE_ID, envelope)).toEqual(
+      IMAGE_PAYLOAD,
+    );
+    await expect(
+      decryptImage(loaded.fixture.oldKeyring, OWNED_IMAGE_ID, envelope),
+    ).rejects.toThrow();
+    const index = await decryptImageIndex(
+      next.keyring,
+      after.files.get(IMAGE_INDEX_PATH)!,
+    );
+    expect(index.writable).toBe(true);
+    expect(index.tombstones.size).toBe(0);
+    expect([...index.images.keys()]).toEqual([OWNED_IMAGE_ID]);
+    expect(index.images.get(OWNED_IMAGE_ID)).toEqual({
+      blobSha: after.shas.get(imagePath),
+      owners: [{ state: "active", path: ["Welcome"] }],
+    });
+    expect(
+      await keyStateOf(
+        after.files,
+        loaded.fixture.oldKeyring,
+        next.keyring,
+        after.images,
+      ),
+    ).toBe("new");
+    expect(await verify(loaded, result.changes)).toEqual({ ok: true });
+  });
+
+  it("carries an image that does not decrypt under the old key", async () => {
+    const foreign = await foreignKeyring();
+    const loaded = await load(
+      await createRekeyFixture({
+        extraFiles: async (keyring) => ({
+          ...(await fixtureImages(keyring)),
+          [imageFilePath(STRAY_ID)]: await encryptImage(
+            foreign,
+            STRAY_ID,
+            IMAGE_PAYLOAD,
+          ),
+        }),
+      }),
+    );
+    const strayPath = imageFilePath(STRAY_ID);
+    const straySha = loaded.listing.find(
+      (entry) => entry.path === strayPath,
+    )!.sha;
+
+    const result = await plan(loaded);
+    const after = await appliedTree(loaded, result.changes);
+
+    expect(result.summary).toMatchObject({ images: 1, carriedFiles: 2 });
+    expect(result.changes.some((change) => change.path === strayPath)).toBe(
+      false,
+    );
+    expect(after.shas.get(strayPath)).toBe(straySha);
+    expect(await verify(loaded, result.changes)).toEqual({ ok: true });
+  });
+
+  it("carries a file with an invalid name under the images directory as bytes", async () => {
+    const path = `${IMAGES_DIR}/not-an-image-id`;
+    const bytes = Uint8Array.of(0xff, 0xfe, 0x00, 0x80);
+    const loaded = await load(
+      await createRekeyFixture({ extraFiles: async () => ({ [path]: bytes }) }),
+    );
+
+    const result = await plan(loaded);
+    const after = await appliedTree(loaded, result.changes);
+
+    expect(result.summary).toMatchObject({ images: 0, carriedFiles: 2 });
+    expect(result.changes.some((change) => change.path === path)).toBe(false);
+    expect(after.images.get(path)).toEqual(bytes);
+    expect(await verify(loaded, result.changes)).toEqual({ ok: true });
+  });
+
+  it("carries an image index that does not decrypt under the old key", async () => {
+    const foreign = await foreignKeyring();
+    const loaded = await load(
+      await createRekeyFixture({
+        extraFiles: async (keyring) => ({
+          ...(await fixtureImages(keyring)),
+          [IMAGE_INDEX_PATH]: (await fixtureImages(foreign))[
+            IMAGE_INDEX_PATH
+          ] as string,
+        }),
+      }),
+    );
+
+    const result = await plan(loaded);
+
+    expect(result.summary).toMatchObject({ images: 1, carriedFiles: 2 });
+    expect(
+      result.changes.some((change) => change.path === IMAGE_INDEX_PATH),
+    ).toBe(false);
+    expect(await verify(loaded, result.changes)).toEqual({ ok: true });
+  });
+
+  it("rejects an image left on the old key", async () => {
+    const loaded = await load(
+      await createRekeyFixture({ extraFiles: fixtureImages }),
+    );
+    const result = await plan(loaded);
+    const changes = result.changes.filter(
+      (change) => change.path !== imageFilePath(OWNED_IMAGE_ID),
+    );
+
+    expect(await verify(loaded, changes)).toEqual({
+      ok: false,
+      failure: "content",
+    });
+  });
+
+  it("rejects an image that decrypts to a different payload", async () => {
+    const loaded = await load(
+      await createRekeyFixture({ extraFiles: fixtureImages }),
+    );
+    const result = await plan(loaded);
+    const tampered = await Promise.all(
+      result.changes.map(async (change) =>
+        change.kind === "upsert-bytes"
+          ? {
+              ...change,
+              bytes: await encryptImage(next.keyring, OWNED_IMAGE_ID, {
+                ...IMAGE_PAYLOAD,
+                width: 4,
+              }),
+            }
+          : change,
+      ),
+    );
+
+    expect(await verify(loaded, tampered)).toEqual({
+      ok: false,
+      failure: "content",
+    });
+  });
+
+  it("rejects an index whose record does not point at the re-encrypted file", async () => {
+    const loaded = await load(
+      await createRekeyFixture({ extraFiles: fixtureImages }),
+    );
+    const result = await plan(loaded);
+    const reencrypted = await encryptImage(
+      next.keyring,
+      OWNED_IMAGE_ID,
+      IMAGE_PAYLOAD,
+    );
+    expect(await gitBlobShaOfBytes(reencrypted)).not.toBe(
+      await gitBlobShaOfBytes(
+        (
+          result.changes.find((change) => change.kind === "upsert-bytes") as {
+            bytes: Uint8Array;
+          }
+        ).bytes,
+      ),
+    );
+    const changes = result.changes.map((change) =>
+      change.kind === "upsert-bytes" ? { ...change, bytes: reencrypted } : change,
+    );
+
+    expect(await verify(loaded, changes)).toEqual({
+      ok: false,
+      failure: "content",
+    });
+  });
+});
+
 describe("verifyRekey", () => {
   it("accepts the planned changes", async () => {
     const loaded = await load(await createRekeyFixture());
@@ -478,6 +717,7 @@ describe("verifyRekey", () => {
     const outcome = await verifyRekey({
       listing: loaded.listing,
       contents: loaded.contents,
+      imageContents: loaded.imageContents,
       changes,
       oldKeyring: loaded.fixture.oldKeyring,
       newKeyring: next.keyring,
@@ -493,6 +733,7 @@ describe("verifyRekey", () => {
     const outcome = await verifyRekey({
       listing: loaded.listing,
       contents: loaded.contents,
+      imageContents: loaded.imageContents,
       changes: [],
       oldKeyring: loaded.fixture.oldKeyring,
       newKeyring: loaded.fixture.oldKeyring,

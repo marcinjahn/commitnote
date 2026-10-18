@@ -1,10 +1,18 @@
+import {
+  decryptImage,
+  encryptImage,
+  ImageDecryptionError,
+} from "../crypto/image-cipher";
 import type { Keyring } from "../crypto/keyring";
 import { decryptName, encryptName } from "../crypto/name-cipher";
 import { decryptNote, encryptNote } from "../crypto/note-cipher";
 import type { RandomSource } from "../crypto/random";
 import type { CommitFileChange, TreeEntry } from "../forge/forge-adapter";
+import { gitBlobShaOfBytes } from "../forge/git-blob-sha";
 import {
   FOLDER_MARKER,
+  IMAGE_INDEX_PATH,
+  IMAGES_DIR,
   NOTE_PREFIX,
   ORDER_PATH,
   REPO_CONFIG_DIR,
@@ -13,6 +21,12 @@ import {
   TAGS_PATH,
   TRASH_DIR,
 } from "../format/v1";
+import { type ImageId, imageIdOfPath } from "../images/image-id";
+import {
+  decryptImageIndex,
+  encryptImageIndex,
+  type ImageRecord,
+} from "../images/image-index";
 import { decryptShareIndex, encryptShareIndex } from "../share/share-index";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
 
@@ -23,10 +37,20 @@ import { parseTrashEntryId } from "../trash/trash-entry-id";
  * re-encrypted only if they decrypt under the old key. So nothing readable
  * with the old key is left behind.
  */
-type RekeyFileKind = "config" | "order" | "tags" | "shares" | "note" | "folder" | "other";
+type RekeyFileKind =
+  | "config"
+  | "order"
+  | "tags"
+  | "shares"
+  | "imageIndex"
+  | "image"
+  | "note"
+  | "folder"
+  | "other";
 
 type RekeyFileContent =
   | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "bytes"; readonly bytes: Uint8Array }
   | { readonly kind: "unchanged"; readonly blobSha: string };
 
 interface RekeyFile {
@@ -46,6 +70,7 @@ export interface RekeySummary {
   readonly carriedTrashEntries: number;
   /** Files outside the trash kept as they are (a README, for example). */
   readonly carriedFiles: number;
+  readonly images: number;
 }
 
 export interface RekeyPlan {
@@ -71,6 +96,8 @@ export interface PlanRekeyInput {
   readonly listing: readonly TreeEntry[];
   /** Text of every blob in `listing`, by blob SHA. */
   readonly contents: ReadonlyMap<string, string>;
+  /** Bytes of every blob under the images directory, by blob SHA. */
+  readonly imageContents: ReadonlyMap<string, Uint8Array>;
   readonly oldKeyring: Keyring;
   readonly newKeyring: Keyring;
   readonly newConfigText: string;
@@ -80,6 +107,7 @@ export interface PlanRekeyInput {
 
 const TRASH_PREFIX = `${TRASH_DIR}/`;
 const CONFIG_DIR_PREFIX = `${REPO_CONFIG_DIR}/`;
+const IMAGES_PREFIX = `${IMAGES_DIR}/`;
 
 interface SplitPath {
   readonly prefix: readonly string[];
@@ -117,6 +145,12 @@ function rekeyChanges(files: readonly RekeyFile[]): CommitFileChange[] {
         kind: "upsert-text",
         path: file.newPath,
         text: file.content.text,
+      });
+    } else if (file.content.kind === "bytes") {
+      changes.push({
+        kind: "upsert-bytes",
+        path: file.newPath,
+        bytes: file.content.bytes,
       });
     } else if (moved) {
       changes.push({
@@ -161,6 +195,79 @@ export async function planRekey(input: PlanRekeyInput): Promise<RekeyPlan> {
     return text;
   }
 
+  function bytesOf(sha: string): Uint8Array {
+    const bytes = input.imageContents.get(sha);
+    if (bytes === undefined) throw new Error("Blob contents were not read");
+    return bytes;
+  }
+
+  function carried(entry: TreeEntry): RekeyFile {
+    return {
+      oldPath: entry.path,
+      newPath: entry.path,
+      kind: "other",
+      trashEntryId: null,
+      content: { kind: "unchanged", blobSha: entry.sha },
+    };
+  }
+
+  const reencryptedImageShas = new Map<ImageId, string>();
+
+  async function rekeyImage(entry: TreeEntry): Promise<RekeyFile> {
+    const id = imageIdOfPath(entry.path);
+    if (id === null) return carried(entry);
+    let payload;
+    try {
+      payload = await decryptImage(oldKeyring, id, bytesOf(entry.sha));
+    } catch (error) {
+      if (error instanceof ImageDecryptionError) return carried(entry);
+      throw error;
+    }
+    const bytes = await encryptImage(newKeyring, id, payload, random);
+    reencryptedImageShas.set(id, await gitBlobShaOfBytes(bytes));
+    return {
+      oldPath: entry.path,
+      newPath: entry.path,
+      kind: "image",
+      trashEntryId: null,
+      content: { kind: "bytes", bytes },
+    };
+  }
+
+  async function rekeyImageIndex(entry: TreeEntry): Promise<RekeyFile> {
+    const index = await decryptImageIndex(oldKeyring, textOf(entry.sha));
+    if (!index.writable) {
+      return {
+        ...carried(entry),
+        content: (await reencryptIfOldKey(entry.sha)) ?? {
+          kind: "unchanged",
+          blobSha: entry.sha,
+        },
+      };
+    }
+    const images = new Map<ImageId, ImageRecord>();
+    for (const [id, record] of index.images) {
+      images.set(id, {
+        blobSha: reencryptedImageShas.get(id) ?? record.blobSha,
+        owners: record.owners,
+      });
+    }
+    return {
+      oldPath: entry.path,
+      newPath: entry.path,
+      kind: "imageIndex",
+      trashEntryId: null,
+      content: {
+        kind: "text",
+        text: await encryptImageIndex(
+          newKeyring,
+          { writable: true, images, tombstones: new Map() },
+          random,
+        ),
+      },
+    };
+  }
+
   async function reencryptIfOldKey(
     sha: string,
   ): Promise<RekeyFileContent | null> {
@@ -184,6 +291,8 @@ export async function planRekey(input: PlanRekeyInput): Promise<RekeyPlan> {
   const carriedTrash = new Set<string>();
   let notes = 0;
   let carriedFiles = 0;
+  let images = 0;
+  let indexEntry: TreeEntry | null = null;
 
   for (let index = 0; index < blobs.length; index++) {
     input.onProgress?.(index, blobs.length);
@@ -211,6 +320,19 @@ export async function planRekey(input: PlanRekeyInput): Promise<RekeyPlan> {
           blobSha: entry.sha,
         },
       });
+      continue;
+    }
+
+    if (entry.path === IMAGE_INDEX_PATH) {
+      indexEntry = entry;
+      continue;
+    }
+
+    if (entry.path.startsWith(IMAGES_PREFIX)) {
+      const file = await rekeyImage(entry);
+      if (file.kind === "image") images++;
+      else carriedFiles++;
+      files.push(file);
       continue;
     }
 
@@ -301,6 +423,11 @@ export async function planRekey(input: PlanRekeyInput): Promise<RekeyPlan> {
 
     files.push({ oldPath: entry.path, newPath, kind, trashEntryId, content });
   }
+  if (indexEntry !== null) {
+    const file = await rekeyImageIndex(indexEntry);
+    if (file.kind === "other") carriedFiles++;
+    files.push(file);
+  }
   input.onProgress?.(blobs.length, blobs.length);
 
   for (const id of carriedTrash) readableTrash.delete(id);
@@ -314,6 +441,7 @@ export async function planRekey(input: PlanRekeyInput): Promise<RekeyPlan> {
       trashEntries: readableTrash.size,
       carriedTrashEntries: carriedTrash.size,
       carriedFiles,
+      images,
     },
   };
 }

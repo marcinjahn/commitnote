@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readDeviceTrailer } from "../changes/device-trailer";
+import { decryptImage } from "../crypto/image-cipher";
 import { parseRepoConfig, serializeRepoConfig } from "../crypto/repo-config";
 import { encryptPath } from "../crypto/name-cipher";
 import type { Keyring } from "../crypto/keyring";
@@ -15,10 +16,13 @@ import {
 } from "../forge/fake/in-memory-git-repo";
 import {
   CHANGE_PASSPHRASE_SUBJECT,
+  IMAGE_INDEX_PATH,
   MAIN_BRANCH,
   REPO_CONFIG_PATH,
   SHARES_PATH,
 } from "../format/v1";
+import { imageFilePath } from "../images/image-id";
+import { decryptImageIndex } from "../images/image-index";
 import { decryptShareIndex, encryptShareIndex } from "../share/share-index";
 import { createRateBudget } from "../sync/rate-budget";
 import { createSyncEngine, type SyncEngine } from "../sync/sync-engine";
@@ -37,10 +41,13 @@ import {
   createRekeyFixtureFiles,
   decryptTree,
   FIXTURE_NOTES,
+  fixtureImages,
+  IMAGE_PAYLOAD,
   keyringFor,
   keyStateOf,
   NEW_PASSPHRASE,
   OLD_PASSPHRASE,
+  OWNED_IMAGE_ID,
   readTree,
   type RekeyFixture,
 } from "./testing/rekey-fixture";
@@ -275,6 +282,36 @@ describe("changing the passphrase", () => {
     expect([...shares.entries.values()]).toMatchObject([
       { id: "a", name: "Welcome", source: null },
     ]);
+  });
+
+  it("re-encrypts every image and the image index under the new key", async () => {
+    const h = await setup({
+      fixture: await createRekeyFixture({ extraFiles: fixtureImages }),
+    });
+
+    const prepared = await preparePassphraseChange(h.deps, INPUT);
+    if (!prepared.ok) throw new Error(prepared.failure.kind);
+    expect(prepared.prepared.summary.images).toBe(1);
+    const result = await commitPassphraseChange(h.deps, prepared.prepared);
+    if (!result.ok) throw new Error(result.failure.kind);
+
+    expect(result.check).toBe("matched");
+    const { files, images } = await readTree(h.fixture.adapter);
+    expect([...images.keys()]).toEqual([imageFilePath(OWNED_IMAGE_ID)]);
+    for (const [path, envelope] of images) {
+      expect(
+        await decryptImage(result.keyring, path.split("/").at(-1)!, envelope),
+      ).toEqual(IMAGE_PAYLOAD);
+    }
+    expect(
+      await keyStateOf(files, h.fixture.oldKeyring, result.keyring, images),
+    ).toBe("new");
+    const index = await decryptImageIndex(
+      result.keyring,
+      files.get(IMAGE_INDEX_PATH)!,
+    );
+    expect(index).toMatchObject({ writable: true, tombstones: new Map() });
+    expect([...index.images.keys()]).toEqual([OWNED_IMAGE_ID]);
   });
 
   it("stamps the commit with the device name, readable only with the new keyring", async () => {

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ForgeError } from "../forge/errors";
-import { MAX_RATE_LIMIT_WAIT_MS, readBlobs } from "./read-blobs";
+import {
+  MAX_RATE_LIMIT_WAIT_MS,
+  readBlobBytes,
+  readBlobs,
+} from "./read-blobs";
 
 function adapterWith(failures: Map<string, ForgeError[]>) {
   const reads: string[] = [];
@@ -100,5 +104,36 @@ describe("readBlobs", () => {
       readBlobs(adapter, ["a"], { sleep: async () => {} }),
     ).rejects.toMatchObject({ kind: "NotFound" });
     expect(adapter.reads).toEqual(["a"]);
+  });
+});
+
+describe("readBlobBytes", () => {
+  it("reads each distinct blob once as bytes, retrying transient failures", async () => {
+    const reads: string[] = [];
+    const failures = new Map([["b", [new ForgeError("Server")]]]);
+    const adapter = {
+      async readBlobBytes(sha: string): Promise<Uint8Array> {
+        reads.push(sha);
+        const failure = failures.get(sha)?.shift();
+        if (failure !== undefined) throw failure;
+        return Uint8Array.of(sha.charCodeAt(0), 0xff);
+      },
+    };
+    const progress: number[] = [];
+
+    const contents = await readBlobBytes(adapter, ["a", "b", "a"], {
+      sleep: async () => {},
+      concurrency: 1,
+      onProgress: (done) => progress.push(done),
+    });
+
+    expect(contents).toEqual(
+      new Map([
+        ["a", Uint8Array.of(0x61, 0xff)],
+        ["b", Uint8Array.of(0x62, 0xff)],
+      ]),
+    );
+    expect(reads).toEqual(["a", "b", "b"]);
+    expect(progress).toEqual([0, 1, 2]);
   });
 });

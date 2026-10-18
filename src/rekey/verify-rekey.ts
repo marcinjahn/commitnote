@@ -1,3 +1,4 @@
+import { decryptImage, type ImagePayload } from "../crypto/image-cipher";
 import { verifyKeyCheck, type Keyring } from "../crypto/keyring";
 import { decryptName, encryptName } from "../crypto/name-cipher";
 import { decryptNote } from "../crypto/note-cipher";
@@ -7,7 +8,20 @@ import {
   type CommitFileChange,
   type TreeEntry,
 } from "../forge/forge-adapter";
-import { NOTE_PREFIX, REPO_CONFIG_PATH, SHARES_PATH } from "../format/v1";
+import { gitBlobShaOfBytes } from "../forge/git-blob-sha";
+import {
+  IMAGE_INDEX_PATH,
+  IMAGES_DIR,
+  NOTE_PREFIX,
+  REPO_CONFIG_PATH,
+  SHARES_PATH,
+} from "../format/v1";
+import { type ImageId, imageFilePath, imageIdOfPath } from "../images/image-id";
+import {
+  decryptImageIndex,
+  serializeImageIndex,
+  type ImageIndex,
+} from "../images/image-index";
 import {
   decryptShareIndex,
   serializeShareIndex,
@@ -31,6 +45,8 @@ export interface VerifyRekeyInput {
   readonly listing: readonly TreeEntry[];
   /** Text of every blob in `listing`, by blob SHA. */
   readonly contents: ReadonlyMap<string, string>;
+  /** Bytes of every blob under the images directory, by blob SHA. */
+  readonly imageContents: ReadonlyMap<string, Uint8Array>;
   readonly changes: readonly CommitFileChange[];
   readonly oldKeyring: Keyring;
   readonly newKeyring: Keyring;
@@ -39,7 +55,8 @@ export interface VerifyRekeyInput {
 
 type ResultContent =
   | { readonly kind: "blob"; readonly sha: string }
-  | { readonly kind: "text"; readonly text: string };
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "bytes"; readonly bytes: Uint8Array };
 
 class VerificationError extends Error {
   constructor(readonly failure: RekeyVerificationFailure) {
@@ -66,6 +83,43 @@ async function tryDecryptNote(
   }
 }
 
+async function tryDecryptImage(
+  keyring: Keyring,
+  imageId: ImageId,
+  envelope: Uint8Array,
+): Promise<ImagePayload | null> {
+  try {
+    return await decryptImage(keyring, imageId, envelope);
+  } catch {
+    return null;
+  }
+}
+
+function samePayload(a: ImagePayload, b: ImagePayload): boolean {
+  return (
+    a.type === b.type &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.bytes.length === b.bytes.length &&
+    a.bytes.every((byte, i) => byte === b.bytes[i])
+  );
+}
+
+function ownersOnly(index: ImageIndex): string {
+  return serializeImageIndex({
+    writable: true,
+    images: new Map(
+      [...index.images].map(([id, record]) => [
+        id,
+        { blobSha: "", owners: record.owners },
+      ]),
+    ),
+    tombstones: new Map(),
+  });
+}
+
+const IMAGES_PREFIX = `${IMAGES_DIR}/`;
+
 /**
  * Checks the tree that `changes` produce from scratch, without trusting the
  * plan that made them: every resulting file is traced back to exactly one
@@ -87,7 +141,7 @@ export async function verifyRekey(
 }
 
 async function runChecks(input: VerifyRekeyInput): Promise<void> {
-  const { contents, oldKeyring, newKeyring } = input;
+  const { contents, imageContents, oldKeyring, newKeyring } = input;
 
   const parsed = parseRepoConfig(input.newConfigText);
   check(parsed.kind === "valid", "config");
@@ -107,14 +161,18 @@ async function runChecks(input: VerifyRekeyInput): Promise<void> {
         check(result.delete(change.path), "unmapped");
         break;
       case "upsert-blob":
-        check(contents.has(change.blobSha), "unmapped");
+        check(
+          contents.has(change.blobSha) || imageContents.has(change.blobSha),
+          "unmapped",
+        );
         result.set(change.path, { kind: "blob", sha: change.blobSha });
         break;
       case "upsert-text":
         result.set(change.path, { kind: "text", text: change.text });
         break;
       case "upsert-bytes":
-        throw new VerificationError("content");
+        result.set(change.path, { kind: "bytes", bytes: change.bytes });
+        break;
     }
   }
   check(result.size === original.size, "count");
@@ -171,6 +229,30 @@ async function runChecks(input: VerifyRekeyInput): Promise<void> {
     check(sourceSha !== undefined && !mapped.has(sourcePath), "unmapped");
     mapped.add(sourcePath);
 
+    if (path.startsWith(IMAGES_PREFIX)) {
+      const oldBytes = imageContents.get(sourceSha);
+      check(oldBytes !== undefined, "content");
+      const id = imageIdOfPath(path);
+      const oldPayload =
+        id === null ? null : await tryDecryptImage(oldKeyring, id, oldBytes);
+      if (id === null || oldPayload === null) {
+        check(content.kind === "blob" && content.sha === sourceSha, "content");
+        continue;
+      }
+      check(content.kind === "bytes", "content");
+      check(
+        (await tryDecryptImage(oldKeyring, id, content.bytes)) === null,
+        "content",
+      );
+      const newPayload = await tryDecryptImage(newKeyring, id, content.bytes);
+      check(
+        newPayload !== null && samePayload(newPayload, oldPayload),
+        "content",
+      );
+      continue;
+    }
+    check(content.kind !== "bytes", "content");
+
     const newText =
       content.kind === "text" ? content.text : contents.get(content.sha);
     const oldText = contents.get(sourceSha);
@@ -201,6 +283,34 @@ async function runChecks(input: VerifyRekeyInput): Promise<void> {
         "content",
       );
       continue;
+    }
+
+    if (path === IMAGE_INDEX_PATH) {
+      const oldIndex = await decryptImageIndex(oldKeyring, oldText);
+      if (oldIndex.writable) {
+        check(
+          !(await decryptImageIndex(oldKeyring, newText)).writable,
+          "content",
+        );
+        const newIndex = await decryptImageIndex(newKeyring, newText);
+        check(
+          newIndex.writable &&
+            newIndex.tombstones.size === 0 &&
+            ownersOnly(newIndex) === ownersOnly(oldIndex),
+          "content",
+        );
+        for (const [id, record] of newIndex.images) {
+          const file = result.get(imageFilePath(id));
+          check(
+            record.blobSha ===
+              (file?.kind === "bytes"
+                ? await gitBlobShaOfBytes(file.bytes)
+                : oldIndex.images.get(id)?.blobSha),
+            "content",
+          );
+        }
+        continue;
+      }
     }
 
     const plaintext = await tryDecryptNote(oldKeyring, oldText);

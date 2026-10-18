@@ -23,6 +23,7 @@ import type {
   ForgeAdapter,
 } from "../forge/forge-adapter";
 import { REPLACE_HISTORY_COST } from "../forge/forge-adapter";
+import { IMAGES_DIR } from "../format/v1";
 import type { Clock } from "../sync/clock";
 import type { RateBudget } from "../sync/rate-budget";
 import {
@@ -32,7 +33,7 @@ import {
 } from "../sync/sync-engine";
 import { planRekey, RekeyPlanError, type RekeySummary } from "./plan-rekey";
 import { expectedTree, sameTree } from "./expected-tree";
-import { readBlobs } from "./read-blobs";
+import { readBlobBytes, readBlobs } from "./read-blobs";
 import { verifyRekey } from "./verify-rekey";
 
 /** Longer rate-budget waits fail the change instead of stalling it. */
@@ -281,17 +282,29 @@ async function buildChange(
   });
   const newKeyring = created.keyring;
 
-  const blobShas = listing
-    .filter((entry) => entry.type === "blob")
-    .map((entry) => entry.sha);
-  const contents = await readBlobs(adapter, blobShas, {
+  const blobs = listing.filter((entry) => entry.type === "blob");
+  const isImageFile = (path: string) => path.startsWith(`${IMAGES_DIR}/`);
+  const textShas = new Set(
+    blobs.filter((entry) => !isImageFile(entry.path)).map((entry) => entry.sha),
+  );
+  const imageShas = new Set(
+    blobs.filter((entry) => isImageFile(entry.path)).map((entry) => entry.sha),
+  );
+  const readTotal = textShas.size + imageShas.size;
+  const contents = await readBlobs(adapter, textShas, {
     sleep: sleepFor(deps),
-    onProgress: (done, total) => onStep({ kind: "reading", done, total }),
+    onProgress: (done) => onStep({ kind: "reading", done, total: readTotal }),
+  });
+  const imageContents = await readBlobBytes(adapter, imageShas, {
+    sleep: sleepFor(deps),
+    onProgress: (done) =>
+      onStep({ kind: "reading", done: textShas.size + done, total: readTotal }),
   });
 
   const plan = await planRekey({
     listing,
     contents,
+    imageContents,
     oldKeyring,
     newKeyring,
     newConfigText,
@@ -303,6 +316,7 @@ async function buildChange(
   const verification = await verifyRekey({
     listing,
     contents,
+    imageContents,
     changes: plan.changes,
     oldKeyring,
     newKeyring,

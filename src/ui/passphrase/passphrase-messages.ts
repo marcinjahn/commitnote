@@ -106,6 +106,9 @@ export function describeRekeySummary(summary: RekeySummary): string {
       plural(summary.trashEntries, "item in the trash", "items in the trash"),
     );
   }
+  if (summary.images > 0) {
+    parts.push(plural(summary.images, "image", "images"));
+  }
   const last = parts.pop();
   return `Re-encrypts ${parts.join(", ")} and ${last} with the new passphrase, saved as a single commit.`;
 }

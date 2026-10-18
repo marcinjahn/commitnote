@@ -28,21 +28,20 @@ function retryDelay(error: unknown, attempt: number): number | null {
   }
 }
 
-/** Reads each distinct blob once, a few at a time, retrying transient failures. */
-export async function readBlobs(
-  adapter: Pick<ForgeAdapter, "readBlob">,
+async function readEach<T>(
+  read: (sha: string) => Promise<T>,
   shas: Iterable<string>,
   options: ReadBlobsOptions,
-): Promise<Map<string, string>> {
+): Promise<Map<string, T>> {
   const queue = [...new Set(shas)];
   const total = queue.length;
-  const contents = new Map<string, string>();
+  const contents = new Map<string, T>();
   let failure: { readonly error: unknown } | null = null;
 
-  async function readOne(sha: string): Promise<string> {
+  async function readOne(sha: string): Promise<T> {
     for (let attempt = 1; ; attempt++) {
       try {
-        return await adapter.readBlob(sha);
+        return await read(sha);
       } catch (error) {
         const delay = retryDelay(error, attempt);
         if (delay === null || failure !== null) throw error;
@@ -73,4 +72,22 @@ export async function readBlobs(
   await Promise.all(Array.from({ length: workers }, worker));
   if (failure !== null) throw (failure as { readonly error: unknown }).error;
   return contents;
+}
+
+/** Reads each distinct blob once, a few at a time, retrying transient failures. */
+export function readBlobs(
+  adapter: Pick<ForgeAdapter, "readBlob">,
+  shas: Iterable<string>,
+  options: ReadBlobsOptions,
+): Promise<Map<string, string>> {
+  return readEach((sha) => adapter.readBlob(sha), shas, options);
+}
+
+/** Like `readBlobs`, for blobs that hold bytes rather than text. */
+export function readBlobBytes(
+  adapter: Pick<ForgeAdapter, "readBlobBytes">,
+  shas: Iterable<string>,
+  options: ReadBlobsOptions,
+): Promise<Map<string, Uint8Array>> {
+  return readEach((sha) => adapter.readBlobBytes(sha), shas, options);
 }
