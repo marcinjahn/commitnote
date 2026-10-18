@@ -87,6 +87,8 @@ export function describeShareError(
       ];
     case "tooLarge":
       return [text("This note is too large to share.")];
+    case "tooManyImages":
+      return [text("This note has too many images to share.")];
     case "shareMissing":
       return [
         text(

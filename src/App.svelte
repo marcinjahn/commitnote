@@ -74,6 +74,7 @@
   import { referencedImageIds } from "./images/image-reference";
   import { prepareImages } from "./images/prepare-images";
   import { loadImagePipeline } from "./images/load-image-pipeline";
+  import { SHARE_IMAGE_PROFILE } from "./images/pipeline/image-profile";
   import type { ImageInsertionConfig } from "./editor/image-insertion";
   import {
     IMAGE_COUNT_LIMIT_MESSAGE,
@@ -515,6 +516,14 @@
         engine,
         shareHost: adapter.shareHost,
         noteHistory,
+        images: {
+          read: (id) => imageResolver.readPayload(id),
+          reencode: async (p) =>
+            (await loadImagePipeline()).processImageInBrowser(
+              new Blob([p.bytes as BlobPart], { type: p.type }),
+              SHARE_IMAGE_PROFILE,
+            ),
+        },
         rateBudget,
         clock: systemClock,
         argon2id: argon2id ?? argon2idInWorker,

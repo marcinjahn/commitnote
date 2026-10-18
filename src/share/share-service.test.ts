@@ -26,11 +26,19 @@ import {
 import { createTestClock } from "../sync/testing/test-clock";
 import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { openShare, ShareOpenError } from "./share-envelope";
+import type { ImagePayload } from "../crypto/image-cipher";
+import { formatImageReference } from "../images/image-reference";
+import { shareImageFileName } from "../forge/share-files";
+import {
+  openShare,
+  openShareImage,
+  ShareOpenError,
+} from "./share-envelope";
 import { parseShareLink } from "./share-link";
 import {
   createShareService,
   shareErrorOf,
+  type ShareImages,
   type ShareService,
 } from "./share-service";
 
@@ -51,7 +59,16 @@ interface Harness {
   readonly budget: ReturnType<typeof createRateBudget>;
 }
 
-async function setup(fake?: FakeForgeAdapter, store?: FakeShareStore) {
+const NO_IMAGES: ShareImages = {
+  read: () => Promise.resolve(null),
+  reencode: (payload) => Promise.resolve({ ok: true, payload }),
+};
+
+async function setup(
+  fake?: FakeForgeAdapter,
+  store?: FakeShareStore,
+  options: { images?: ShareImages; maxImages?: number } = {},
+) {
   const shares = store ?? createFakeShareStore();
   const adapter =
     fake ??
@@ -69,7 +86,11 @@ async function setup(fake?: FakeForgeAdapter, store?: FakeShareStore) {
   await engine.refresh();
   const service = createShareService({
     engine,
-    shareHost: adapter.shareHost,
+    shareHost:
+      options.maxImages === undefined
+        ? adapter.shareHost
+        : { ...adapter.shareHost, maxImages: options.maxImages },
+    images: options.images ?? NO_IMAGES,
     noteHistory: createNoteHistory({ adapter, keyring }),
     rateBudget: budget,
     clock,
@@ -666,6 +687,7 @@ describe("updateShare", () => {
         updateShare: () => ({ ok: false, error: { kind: "notFound" } }),
       },
       shareHost: h.fake.shareHost,
+      images: NO_IMAGES,
       noteHistory: createNoteHistory({ adapter: h.fake, keyring }),
       rateBudget: h.budget,
       clock: h.clock,
@@ -678,6 +700,256 @@ describe("updateShare", () => {
       error: { kind: "notSaved" },
     });
     expect((await openHosted(h, hash)).markdown).toBe("# Fresh\n\nnew text");
+  });
+});
+
+describe("share images", () => {
+  const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
+  const imageIdOf = (n: number) => "a".repeat(25) + ALPHABET[n];
+  const numberOf = (id: string) => ALPHABET.indexOf(id.slice(-1));
+
+  function payloadOf(n: number, size = 10): ImagePayload {
+    return {
+      type: "image/webp",
+      width: 1,
+      height: 1,
+      bytes: new Uint8Array(size).fill(n % 256),
+    };
+  }
+
+  function noteWith(ids: readonly string[]): string {
+    return ids
+      .map((id) => formatImageReference({ imageId: id, alt: "pic", width: 10, height: 10 }))
+      .join("\n\n");
+  }
+
+  function fakeImages(overrides: Partial<ShareImages> = {}) {
+    const reads: string[] = [];
+    const images: ShareImages = {
+      read: (id) => {
+        reads.push(id);
+        return Promise.resolve(payloadOf(numberOf(id)));
+      },
+      reencode: (payload) => Promise.resolve({ ok: true, payload }),
+      ...overrides,
+    };
+    return { images, reads };
+  }
+
+  async function hostedImages(
+    h: Harness,
+    link: string,
+  ): Promise<{ imageId: string; bytes: Uint8Array }[]> {
+    const parsed = parseShareLink(hashOf(link));
+    if (parsed.kind !== "valid") throw new Error("invalid link");
+    const opened = await openShare(
+      hostedEnvelope(h, hashOf(link)),
+      parsed.linkSecret,
+      undefined,
+      argon2idDirect,
+    );
+    const files = h.store.read(parsed.locator) ?? {};
+    return Promise.all(
+      opened.note.images.map(async (image, index) => {
+        const content = files[shareImageFileName(index)];
+        if (content === undefined) throw new Error("missing image file");
+        const payload = await openShareImage(opened.shareKey, index, content);
+        return { imageId: image.imageId, bytes: payload.bytes };
+      }),
+    );
+  }
+
+  function hostedFileCount(h: Harness, link: string): number {
+    const parsed = parseShareLink(hashOf(link));
+    if (parsed.kind !== "valid") throw new Error("invalid link");
+    return Object.keys(h.store.read(parsed.locator) ?? {}).length;
+  }
+
+  async function createWith(
+    ids: readonly string[],
+    options: { images?: ShareImages; maxImages?: number } = {},
+  ) {
+    const { images, reads } = fakeImages();
+    const h = await setup(undefined, undefined, {
+      images,
+      ...options,
+    });
+    h.engine.editNote(WELCOME, noteWith(ids));
+    const result = await h.service.createShare({ path: WELCOME, password: "" });
+    return { h, result, reads };
+  }
+
+  it("hosts each referenced image once, in reference order", async () => {
+    const [a, b] = [imageIdOf(1), imageIdOf(2)];
+    const { h, result, reads } = await createWith([b, a, b]);
+
+    if (!result.ok) throw new Error(`failed: ${result.error.kind}`);
+    expect(reads).toEqual([b, a]);
+    const hosted = await hostedImages(h, result.link);
+    expect(hosted.map((image) => image.imageId)).toEqual([b, a]);
+    expect(hosted[0]?.bytes).toEqual(payloadOf(2).bytes);
+    expect(hosted[1]?.bytes).toEqual(payloadOf(1).bytes);
+  });
+
+  it("hosts no image files for a note without images", async () => {
+    const { h, result } = await createWith([]);
+
+    if (!result.ok) throw new Error(`failed: ${result.error.kind}`);
+    expect(hostedFileCount(h, result.link)).toBe(1);
+  });
+
+  it("refuses more than 20 images before reading any", async () => {
+    const ids = Array.from({ length: 21 }, (_, i) => imageIdOf(i + 1));
+    const { result, reads } = await createWith(ids);
+
+    expect(result).toEqual({ ok: false, error: { kind: "tooManyImages" } });
+    expect(reads).toEqual([]);
+  });
+
+  it("accepts exactly 20 images", async () => {
+    const ids = Array.from({ length: 20 }, (_, i) => imageIdOf(i + 1));
+    const { h, result } = await createWith(ids);
+
+    if (!result.ok) throw new Error(`failed: ${result.error.kind}`);
+    expect(await hostedImages(h, result.link)).toHaveLength(20);
+  });
+
+  it("limits images to what the host accepts", async () => {
+    const ids = Array.from({ length: 10 }, (_, i) => imageIdOf(i + 1));
+    const tooMany = await createWith(ids, { maxImages: 9 });
+    expect(tooMany.result).toEqual({
+      ok: false,
+      error: { kind: "tooManyImages" },
+    });
+    expect(tooMany.reads).toEqual([]);
+
+    const fits = await createWith(ids.slice(0, 9), { maxImages: 9 });
+    if (!fits.result.ok) throw new Error("failed");
+    expect(await hostedImages(fits.h, fits.result.link)).toHaveLength(9);
+  });
+
+  it("skips an image that no longer exists", async () => {
+    const [a, b] = [imageIdOf(1), imageIdOf(2)];
+    const { images } = fakeImages({
+      read: (id) => Promise.resolve(id === a ? null : payloadOf(2)),
+    });
+    const { h, result } = await createWith([a, b], { images });
+
+    if (!result.ok) throw new Error(`failed: ${result.error.kind}`);
+    expect((await hostedImages(h, result.link)).map((i) => i.imageId)).toEqual([
+      b,
+    ]);
+  });
+
+  it("skips an image the pipeline cannot process", async () => {
+    const [a, b] = [imageIdOf(1), imageIdOf(2)];
+    const { images } = fakeImages({
+      reencode: (payload) =>
+        Promise.resolve(
+          payload.bytes[0] === 1
+            ? { ok: false, rejection: { kind: "unsupported" } }
+            : { ok: true, payload },
+        ),
+    });
+    const { h, result } = await createWith([a, b], { images });
+
+    if (!result.ok) throw new Error(`failed: ${result.error.kind}`);
+    expect((await hostedImages(h, result.link)).map((i) => i.imageId)).toEqual([
+      b,
+    ]);
+  });
+
+  it("refuses an image that stays too large after compression", async () => {
+    const { images } = fakeImages({
+      reencode: () =>
+        Promise.resolve({
+          ok: false,
+          rejection: { kind: "tooLargeAfterCompression" },
+        }),
+    });
+    const { result } = await createWith([imageIdOf(1)], { images });
+
+    expect(result).toEqual({ ok: false, error: { kind: "tooManyImages" } });
+  });
+
+  it("refuses an image that does not fit in a share file", async () => {
+    const { images } = fakeImages({
+      reencode: () =>
+        Promise.resolve({
+          ok: true,
+          payload: {
+            type: "image/gif",
+            width: 1,
+            height: 1,
+            bytes: new Uint8Array(700_000),
+          },
+        }),
+    });
+    const { result } = await createWith([imageIdOf(1)], { images });
+
+    expect(result).toEqual({ ok: false, error: { kind: "tooManyImages" } });
+  });
+
+  it("keeps the forge error kind when reading an image fails", async () => {
+    const { images } = fakeImages({
+      read: () => Promise.reject(new ForgeError("Network")),
+    });
+    const { result } = await createWith([imageIdOf(1)], { images });
+
+    expect(result).toEqual({ ok: false, error: { kind: "network" } });
+  });
+
+  it("fails with server when re-encoding throws", async () => {
+    const { images } = fakeImages({
+      reencode: () => Promise.reject(new Error("boom")),
+    });
+    const { result } = await createWith([imageIdOf(1)], { images });
+
+    expect(result).toEqual({ ok: false, error: { kind: "server" } });
+  });
+
+  describe("on update", () => {
+    it("rewrites the image files and removes unused ones", async () => {
+      const [a, b] = [imageIdOf(1), imageIdOf(2)];
+      const { h, result } = await createWith([a, b]);
+      if (!result.ok) throw new Error("failed");
+      await settle(h.engine);
+      h.engine.editNote(WELCOME, noteWith([b]));
+
+      const updated = await h.service.updateShare(result.entry.id);
+
+      if (!updated.ok) throw new Error(`failed: ${updated.error.kind}`);
+      const hosted = await hostedImages(h, result.link);
+      expect(hosted.map((image) => image.imageId)).toEqual([b]);
+      expect(hostedFileCount(h, result.link)).toBe(2);
+    });
+
+    it("makes no image reads when nothing changed", async () => {
+      const { h, result, reads } = await createWith([imageIdOf(1)]);
+      if (!result.ok) throw new Error("failed");
+      await settle(h.engine);
+      reads.length = 0;
+
+      const updated = await h.service.updateShare(result.entry.id);
+
+      expect(updated).toMatchObject({ ok: true, unchanged: true });
+      expect(reads).toEqual([]);
+    });
+
+    it("refuses a note that gained too many images", async () => {
+      const { h, result } = await createWith([imageIdOf(1)]);
+      if (!result.ok) throw new Error("failed");
+      await settle(h.engine);
+      h.engine.editNote(
+        WELCOME,
+        noteWith(Array.from({ length: 21 }, (_, i) => imageIdOf(i + 1))),
+      );
+
+      expect(await h.service.updateShare(result.entry.id)).toEqual({
+        ok: false,
+        error: { kind: "tooManyImages" },
+      });
+    });
   });
 });
 

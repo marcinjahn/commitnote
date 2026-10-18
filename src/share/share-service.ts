@@ -1,8 +1,12 @@
 import { notePathEquals, type NotePath } from "../changes/change";
 import type { Argon2idFunction } from "../crypto/argon2";
 import { secureRandom, type RandomSource } from "../crypto/random";
+import type { ImagePayload } from "../crypto/image-cipher";
 import { isForgeError } from "../forge/errors";
 import type { ShareHost } from "../forge/share-host";
+import type { ImageId } from "../images/image-id";
+import { parseImageReferences } from "../images/image-reference";
+import type { ImagePipelineResult } from "../images/pipeline/image-pipeline";
 import type { NoteHistory, NoteVersion } from "../history/note-history";
 import type { Clock } from "../sync/clock";
 import type { RateBudget } from "../sync/rate-budget";
@@ -13,7 +17,7 @@ import type {
 } from "../sync/sync-engine";
 import { findWorkingNode } from "../sync/working-tree";
 import { findNode } from "../tree/note-tree";
-import { sealShare, ShareOpenError } from "./share-envelope";
+import { SHARE_MAX_IMAGES, sealShare, ShareOpenError } from "./share-envelope";
 import { formatShareLink } from "./share-link";
 import { normalizeShareLabel } from "./share-label";
 import {
@@ -31,6 +35,7 @@ export type ShareError =
         | "unauthorized"
         | "notSaved"
         | "tooLarge"
+        | "tooManyImages"
         | "sharesUnavailable"
         | "shareMissing"
         | "labelTooLong"
@@ -89,7 +94,13 @@ export interface ShareService {
   revokeShares(path: NotePath): Promise<RevokeSharesResult>;
 }
 
+export interface ShareImages {
+  read(imageId: ImageId): Promise<ImagePayload | null>;
+  reencode(payload: ImagePayload): Promise<ImagePipelineResult>;
+}
+
 export interface ShareServiceDeps {
+  readonly images: ShareImages;
   readonly engine: SyncEngine;
   readonly shareHost: ShareHost;
   readonly noteHistory: NoteHistory;
@@ -139,6 +150,55 @@ function structureErrorOf(kind: string): ShareError {
 export function createShareService(deps: ShareServiceDeps): ShareService {
   const { engine, shareHost, noteHistory, rateBudget, clock, argon2id } = deps;
   const random = deps.random ?? secureRandom;
+  const { images } = deps;
+
+  async function collectImages(
+    markdown: string,
+    operation: "create" | "update",
+  ): Promise<
+    | {
+        readonly ok: true;
+        readonly images: { imageId: ImageId; payload: ImagePayload }[];
+      }
+    | { readonly ok: false; readonly error: ShareError }
+  > {
+    const tooMany = { ok: false, error: { kind: "tooManyImages" } } as const;
+    const ids = [
+      ...new Set(parseImageReferences(markdown).map((ref) => ref.imageId)),
+    ];
+    if (ids.length > Math.min(SHARE_MAX_IMAGES, shareHost.maxImages)) {
+      return tooMany;
+    }
+    const kept: { imageId: ImageId; payload: ImagePayload }[] = [];
+    for (const imageId of ids) {
+      let payload: ImagePayload | null;
+      try {
+        payload = await images.read(imageId);
+      } catch (error) {
+        return { ok: false, error: shareErrorOf(error, operation) };
+      }
+      if (payload === null) continue;
+      let result: ImagePipelineResult;
+      try {
+        result = await images.reencode(payload);
+      } catch (error) {
+        console.error(
+          "Share failed",
+          error instanceof Error ? error.name : typeof error,
+        );
+        return { ok: false, error: { kind: "server" } };
+      }
+      if (result.ok) {
+        kept.push({ imageId, payload: result.payload });
+      } else if (
+        result.rejection.kind !== "notImage" &&
+        result.rejection.kind !== "unsupported"
+      ) {
+        return tooMany;
+      }
+    }
+    return { ok: true, images: kept };
+  }
 
   function rateLimitWait(): ShareError | null {
     const wait = rateBudget.availableAt(1) - clock.now();
@@ -240,6 +300,8 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     const { version, blobSha } = located;
     const read = await readContent(version);
     if (!read.ok) return fail(read.error);
+    const collected = await collectImages(read.content, "create");
+    if (!collected.ok) return fail(collected.error);
 
     const sharedAt = new Date(clock.now()).toISOString();
     const sealed = await sealShare({
@@ -248,11 +310,12 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       sharedAt,
       updatedAt: null,
       password: password || undefined,
+      images: collected.images,
       random,
       argon2id,
     });
     if (sealed.kind === "tooLarge") return fail({ kind: "tooLarge" });
-    if (sealed.kind === "imageTooLarge") return fail({ kind: "server" });
+    if (sealed.kind === "imageTooLarge") return fail({ kind: "tooManyImages" });
 
     const limited = rateLimitWait();
     if (limited !== null) return fail(limited);
@@ -261,7 +324,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     try {
       locator = await shareHost.create({
         envelope: sealed.envelope,
-        images: [],
+        images: sealed.images,
       });
     } catch (error) {
       return fail(shareErrorOf(error, "create"));
@@ -355,6 +418,8 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     }
     const read = await readContent(version);
     if (!read.ok) return fail(read.error);
+    const collected = await collectImages(read.content, "update");
+    if (!collected.ok) return fail(collected.error);
 
     const name = saved.working.name;
     const updatedAt = new Date(clock.now()).toISOString();
@@ -366,6 +431,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
         sharedAt: entry.sharedAt,
         updatedAt,
         password: entry.password ?? undefined,
+        images: collected.images,
         linkSecret: entry.linkSecret,
         random,
         argon2id,
@@ -375,7 +441,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
       throw error;
     }
     if (sealed.kind === "tooLarge") return fail({ kind: "tooLarge" });
-    if (sealed.kind === "imageTooLarge") return fail({ kind: "server" });
+    if (sealed.kind === "imageTooLarge") return fail({ kind: "tooManyImages" });
 
     const limited = rateLimitWait();
     if (limited !== null) return fail(limited);
@@ -383,7 +449,7 @@ export function createShareService(deps: ShareServiceDeps): ShareService {
     try {
       await shareHost.update(entry.locator, {
         envelope: sealed.envelope,
-        images: [],
+        images: sealed.images,
       });
     } catch (error) {
       return fail(shareErrorOf(error, "update"));
