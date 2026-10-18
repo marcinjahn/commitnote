@@ -4,6 +4,13 @@
   import { accentCaret } from "../../editor/accent-caret";
   import { linkOpen } from "../../editor/link-open";
   import { livePreview } from "../../editor/live-preview";
+  import { imageSource as imageSourceFacet, imageWidgets } from "../../editor/image-widgets";
+  import {
+    imageFileHandlers,
+    imageInsertion as imageInsertionFacet,
+    type ImageInsertionConfig,
+  } from "../../editor/image-insertion";
+  import type { ImageSource } from "../../images/image-source";
   import {
     confirmEarlyDraftName,
     withEarlyDraftBody,
@@ -24,6 +31,9 @@
     animatedCaret: boolean;
     showBack?: boolean;
     status: Snippet;
+    imageInsertion?: ImageInsertionConfig | null;
+    imageSource?: ImageSource | null;
+    imageNotice?: string | null;
   }
 
   const {
@@ -34,6 +44,9 @@
     animatedCaret,
     showBack = true,
     status,
+    imageInsertion = null,
+    imageSource = null,
+    imageNotice = null,
   }: Props = $props();
 
   const initial = untrack(() => draft);
@@ -42,8 +55,22 @@
   let nameEl: HTMLDivElement | undefined = $state();
   let editor: ReturnType<typeof MarkdownEditor> | undefined = $state();
 
+  const imageInsertionBridge: ImageInsertionConfig = {
+    prepare: (files) =>
+      imageInsertion?.prepare(files) ??
+      Promise.resolve({ kind: "prepared", images: [], rejections: [], total: files.length }),
+    register: (image) => imageInsertion?.register(image),
+    enabled: () => imageInsertion?.enabled() ?? false,
+    onBusy: (busy, count) => imageInsertion?.onBusy(busy, count),
+    onOutcome: (outcome) => imageInsertion?.onOutcome(outcome),
+  };
+
   const extensions = [
     livePreview(),
+    imageWidgets(),
+    imageSourceFacet.of((id) => (imageSource ? imageSource(id) : Promise.resolve({ unavailable: true }))),
+    imageFileHandlers(),
+    imageInsertionFacet.of(imageInsertionBridge),
     linkOpen(),
     ...(untrack(() => animatedCaret) ? [accentCaret()] : []),
     EditorView.updateListener.of((update) => {
@@ -170,7 +197,12 @@
       />
     </div>
   </header>
-  <div class="early-draft-status">{@render status()}</div>
+  <div class="early-draft-status">
+    {@render status()}
+    {#if imageNotice !== null}
+      <p class="early-draft-image-notice" role="status">{imageNotice}</p>
+    {/if}
+  </div>
   <div class="early-draft-content">
     <MarkdownEditor
       bind:this={editor}
@@ -243,6 +275,13 @@
 
   .early-draft-header :global(.name-input) {
     font-size: 1.0625rem;
+  }
+
+  .early-draft-image-notice {
+    margin: 0;
+    padding: var(--space-2) var(--space-3) 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
   }
 
   .early-draft-content {

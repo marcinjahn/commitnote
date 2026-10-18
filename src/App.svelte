@@ -69,6 +69,17 @@
     type PassphraseChange,
   } from "./rekey/change-passphrase";
   import { createImageResolver, type ImageResolver } from "./images/image-resolver";
+  import type { ImageId } from "./images/image-id";
+  import type { PendingImage } from "./images/pending-image";
+  import { referencedImageIds } from "./images/image-reference";
+  import { prepareImages } from "./images/prepare-images";
+  import { loadImagePipeline } from "./images/load-image-pipeline";
+  import type { ImageInsertionConfig } from "./editor/image-insertion";
+  import {
+    IMAGE_COUNT_LIMIT_MESSAGE,
+    describeAddingImages,
+    describeImageRejections,
+  } from "./ui/images/image-messages";
   import { createNoteHistory, type NoteHistory } from "./history/note-history";
   import { createNoteDates, type NoteDatesResolver } from "./history/note-dates";
   import type { ToastMessage } from "./ui/notices/notice-messages";
@@ -337,6 +348,7 @@
           keyring: session.keyring,
         }
       : null;
+    useEarlyDraftKeyring(session.keyring);
     if (remembered && (!resumed || standalone)) {
       void requestPersistentStorage(navigator.storage);
     }
@@ -365,7 +377,11 @@
     const imageResolver = createImageResolver({
       keyring: session.keyring,
       adapter: cachedAdapter,
-      engine,
+      engine: {
+        getPendingImage: (id) => engine.getPendingImage(id),
+        getRestoredImageSha: (id) => engine.getRestoredImageSha(id),
+        getImageIndex: () => engine.getState().synced?.images ?? null,
+      },
     });
     const contentIndexer = createContentIndexer({
       engine,
@@ -571,6 +587,7 @@
     settingsSaver.dispose();
     contentIndexer.dispose();
     imageResolver.dispose();
+    clearEarlyDraftImages();
     engine.dispose();
     if (blobCache === null) return Promise.resolve();
     return clearBlobCache ? blobCache.clear() : blobCache.dispose();
@@ -732,8 +749,72 @@
     return result;
   }
 
+  let earlyDraftKeyring = $state.raw<Keyring | null>(null);
+  let earlyDraftImages = $state.raw<ReadonlyMap<ImageId, PendingImage>>(new Map());
+  let earlyDraftResolver = $state.raw<ImageResolver | null>(null);
+  let earlyDraftImageNotice = $state<string | null>(null);
+  let earlyDraftImageNoticeTimer: ReturnType<typeof setTimeout> | undefined;
+  const EARLY_DRAFT_IMAGE_NOTICE_MS = 10_000;
+
+  function showEarlyDraftImageNotice(text: string | null): void {
+    clearTimeout(earlyDraftImageNoticeTimer);
+    earlyDraftImageNotice = text;
+    if (text !== null) {
+      earlyDraftImageNoticeTimer = setTimeout(
+        () => (earlyDraftImageNotice = null),
+        EARLY_DRAFT_IMAGE_NOTICE_MS,
+      );
+    }
+  }
+
+  function useEarlyDraftKeyring(keyring: Keyring): void {
+    earlyDraftKeyring = keyring;
+    if (earlyDraftResolver !== null) return;
+    earlyDraftResolver = createImageResolver({
+      keyring,
+      adapter: { readBlobBytes: () => Promise.reject(new Error("unavailable")) },
+      engine: {
+        getPendingImage: (id) => earlyDraftImages.get(id),
+        getRestoredImageSha: () => undefined,
+        getImageIndex: () => null,
+      },
+    });
+  }
+
+  const handoffImages = $derived([...earlyDraftImages.values()]);
+
+  function clearEarlyDraftImages(): void {
+    earlyDraftResolver?.dispose();
+    earlyDraftResolver = null;
+    earlyDraftKeyring = null;
+    earlyDraftImages = new Map();
+    showEarlyDraftImageNotice(null);
+  }
+
+  const earlyDraftImageInsertion: ImageInsertionConfig = {
+    prepare: (files) =>
+      prepareImages(files, {
+        keyring: earlyDraftKeyring!,
+        process: async () => (await loadImagePipeline()).processImageInBrowser,
+      }),
+    register: (image) => {
+      earlyDraftImages = new Map(earlyDraftImages).set(image.imageId, image);
+    },
+    enabled: () => earlyDraftKeyring !== null,
+    onBusy: (busy, count) =>
+      showEarlyDraftImageNotice(busy ? describeAddingImages(count) : null),
+    onOutcome: (outcome) => {
+      if (outcome.kind === "tooMany") {
+        showEarlyDraftImageNotice(IMAGE_COUNT_LIMIT_MESSAGE);
+        return;
+      }
+      showEarlyDraftImageNotice(describeImageRejections(outcome.rejections, outcome.total));
+    },
+  };
+
   async function discardEarlyDraftData(): Promise<void> {
     earlyDraftBacking = null;
+    clearEarlyDraftImages();
     await queueEarlyDraftStore(async () => {
       await deleteEarlyDraftDatabase();
       earlyDraftStore = createEarlyDraftStore();
@@ -743,15 +824,19 @@
   $effect(() => {
     const backing = earlyDraftBacking;
     const draft = earlyDraft;
+    const images = earlyDraftImages;
     if (backing === null) return;
     if (draft === null || isUntouched(draft)) {
       void queueEarlyDraftStore(() => earlyDraftStore.remove(backing.repoKey));
       return;
     }
-    const save = () =>
+    const save = () => {
+      const referenced = referencedImageIds(draft.body);
+      const kept = [...images.values()].filter((image) => referenced.has(image.imageId));
       void queueEarlyDraftStore(() =>
-        earlyDraftStore.save(backing.repoKey, backing.keyring, draft),
+        earlyDraftStore.save(backing.repoKey, backing.keyring, draft, kept),
       );
+    };
     let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
       timer = null;
       save();
@@ -807,6 +892,7 @@
     if (backing !== null) {
       void queueEarlyDraftStore(() => earlyDraftStore.remove(backing.repoKey));
     }
+    clearEarlyDraftImages();
     earlyDraftHandingOff = true;
     flushSync();
     // The view stays mounted until the app has moved focus into its own draft.
@@ -972,7 +1058,9 @@
         earlyDraftStore.load(backing.repoKey, backing.keyring),
       );
       earlyDraftBacking = backing;
+      useEarlyDraftKeyring(session.keyring);
       if (stored !== null && (earlyDraft === null || isUntouched(earlyDraft))) {
+        earlyDraftImages = new Map(stored.images.map((image) => [image.imageId, image]));
         earlyDraft = stored.draft;
         earlyDraftOpen = true;
       }
@@ -1120,6 +1208,7 @@
       sessionRemembered={phase.remembered}
       initialMessage={phase.initialMessage}
       {earlyDraft}
+      earlyDraftImages={handoffImages}
       onEarlyDraftHandedOff={handleEarlyDraftHandedOff}
       onPassphraseChanged={(keyring, check, history) =>
         void handlePassphraseChanged(keyring, check, history)}
@@ -1144,6 +1233,9 @@
       isUntouched(earlyDraft)}
     noteFont={deviceScopedSetting("noteFont") ?? SETTINGS_SCHEMA.noteFont.default}
     animatedCaret={deviceScopedSetting("animatedCaret") ?? SETTINGS_SCHEMA.animatedCaret.default}
+    imageInsertion={earlyDraftKeyring === null ? null : earlyDraftImageInsertion}
+    imageSource={earlyDraftResolver?.resolve ?? null}
+    imageNotice={earlyDraftImageNotice}
   >
     {#snippet status()}
       {#if earlyDraftStatus.kind === "failed"}

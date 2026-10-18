@@ -22,7 +22,7 @@
     insertImageFiles as insertImageFilesIntoView,
     type ImageInsertionConfig,
   } from "../../editor/image-insertion";
-  import { imageCloneOnInsert, imageCloning } from "../../editor/image-clone-on-insert";
+  import { imageCloneExempt, imageCloneOnInsert, imageCloning } from "../../editor/image-clone-on-insert";
   import type { HeldConflict, OpenNoteState, SyncEngine } from "../../sync/sync-engine";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
   import { describeSyncError } from "../browse/sync-messages";
@@ -371,8 +371,16 @@
     return !!editor;
   }
 
-  export function insertEditorText(text: string, focus = true): void {
-    editor?.insertText(text, focus);
+  export function insertEditorText(
+    text: string,
+    focus = true,
+    options?: { imageCloneExempt?: boolean },
+  ): void {
+    editor?.insertText(
+      text,
+      focus,
+      options?.imageCloneExempt === true ? [imageCloneExempt.of(true)] : [],
+    );
   }
 
   export function setEditorSelection(anchor: number, head: number): void {

@@ -137,6 +137,9 @@
   import { createRecentNotes } from "../search/recent-notes";
   import SearchPalette from "../search/SearchPalette.svelte";
   import SearchTrigger from "../search/SearchTrigger.svelte";
+  import { decryptImage } from "../../crypto/image-cipher";
+  import { referencedImageIds } from "../../images/image-reference";
+  import type { PendingImage } from "../../images/pending-image";
   import { prepareImages } from "../../images/prepare-images";
   import { loadImagePipeline } from "../../images/load-image-pipeline";
   import type { ImageInsertionConfig } from "../../editor/image-insertion";
@@ -271,6 +274,7 @@
     sessionRemembered: boolean;
     initialMessage?: Pick<ToastMessage, "tone" | "text"> | null;
     earlyDraft: EarlyDraft | null;
+    earlyDraftImages: readonly PendingImage[];
     onEarlyDraftHandedOff: () => void;
     onPassphraseChanged: (
       keyring: Keyring,
@@ -308,6 +312,7 @@
     sessionRemembered,
     initialMessage = null,
     earlyDraft,
+    earlyDraftImages,
     onEarlyDraftHandedOff,
     onPassphraseChanged,
     onLogOut,
@@ -999,6 +1004,25 @@
     void handOffEarlyDraft();
   });
 
+  async function registerEarlyDraftImages(
+    body: string,
+    images: readonly PendingImage[],
+  ): Promise<void> {
+    const referenced = referencedImageIds(body);
+    await Promise.all(
+      images
+        .filter((image) => referenced.has(image.imageId))
+        .map(async (image) => {
+          try {
+            await decryptImage(keyring, image.imageId, image.envelope);
+          } catch {
+            return;
+          }
+          engine.addPendingImage(image);
+        }),
+    );
+  }
+
   async function handOffEarlyDraft(): Promise<void> {
     await waitForEditor();
     if (shellDestroyed) return;
@@ -1007,7 +1031,10 @@
       earlyDraftHandoffStarted = false;
       return;
     }
-    const early = untrack(() => earlyDraft);
+    const { early, earlyImages } = untrack(() => ({
+      early: earlyDraft,
+      earlyImages: earlyDraftImages,
+    }));
     onEarlyDraftHandedOff();
     if (early === null) return;
     const plan = planEarlyDraftHandoff(early);
@@ -1017,9 +1044,10 @@
     if (plan.kind === "content") {
       const now = new Date(plan.contentStartedAt ?? Date.now());
       if (notePane?.hasEditor() === true) {
+        await registerEarlyDraftImages(plan.body, earlyImages);
         earlyContentTime = now;
         try {
-          notePane.insertEditorText(plan.body, false);
+          notePane.insertEditorText(plan.body, false, { imageCloneExempt: true });
         } finally {
           earlyContentTime = undefined;
         }
