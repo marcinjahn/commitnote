@@ -1,4 +1,5 @@
 import { markdownLanguage } from "@codemirror/lang-markdown";
+import { stripImageReferences } from "../../images/image-reference";
 import { dayKey } from "./history-messages";
 
 export const NOT_SAVED_YET_LABEL = "Not saved yet";
@@ -74,7 +75,7 @@ export function countWords(text: string, locale?: string): number {
     segmenters.set(locale, segmenter);
   }
   let count = 0;
-  for (const segment of segmenter.segment(text)) {
+  for (const segment of segmenter.segment(stripImageReferences(text, "remove"))) {
     if (segment.isWordLike) count++;
   }
   return count;

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   formatImageReference,
+  imageAltText,
   parseImageReferences,
+  parseImageUrl,
   referencedImageIds,
   rewriteImageReferences,
   stripImageReferences,
@@ -162,6 +164,62 @@ describe("rewriteImageReferences", () => {
   it("returns the text unchanged for an empty map", () => {
     const text = `![x](image:${A}#1x1)`;
     expect(rewriteImageReferences(text, new Map())).toBe(text);
+  });
+});
+
+describe("parseImageUrl", () => {
+  it("parses an id with dimensions", () => {
+    expect(parseImageUrl(`image:${A}#640x480`)).toEqual({
+      imageId: A,
+      width: 640,
+      height: 480,
+    });
+  });
+
+  it("omits dimensions when there is no suffix", () => {
+    expect(parseImageUrl(`image:${A}`)).toEqual({ imageId: A });
+  });
+
+  it("rejects anything that is not a strict reference url", () => {
+    expect(parseImageUrl("https://example.com/a.png")).toBeNull();
+    expect(parseImageUrl(`image:${A.slice(1)}`)).toBeNull();
+    expect(parseImageUrl(`image:${A}#0x5`)).toBeNull();
+    expect(parseImageUrl(`image:${A}#5x`)).toBeNull();
+    expect(parseImageUrl(`image:${A}#5x5 extra`)).toBeNull();
+  });
+});
+
+describe("imageAltText", () => {
+  it("unescapes backslash-escaped punctuation", () => {
+    expect(imageAltText("a \\[b\\] \\\\ c")).toBe("a [b] \\ c");
+  });
+
+  it("keeps a backslash before a non-punctuation character", () => {
+    expect(imageAltText("a\\b \\n")).toBe("a\\b \\n");
+  });
+
+  it("inverts the escaping of formatImageReference", () => {
+    const alt = "a [b] \\ c \\[ ]\\";
+    const formatted = formatImageReference({
+      imageId: A,
+      alt,
+      width: 1,
+      height: 1,
+    });
+    expect(imageAltText(parseImageReferences(formatted)[0].alt)).toBe(alt);
+  });
+});
+
+describe("stripImageReferences alt text and fast path", () => {
+  it("unescapes the alt text in alt mode", () => {
+    const text = `x ![a \\[b\\]](image:${A}#1x1) y`;
+    expect(stripImageReferences(text, "alt")).toBe("x a [b] y");
+  });
+
+  it("returns text without an image scheme unchanged", () => {
+    const text = "![x](https://example.com/a.png) and \\[y\\]";
+    expect(stripImageReferences(text, "alt")).toBe(text);
+    expect(stripImageReferences(text, "remove")).toBe(text);
   });
 });
 

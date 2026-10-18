@@ -103,6 +103,7 @@ export function createContentIndexer(deps: {
   const timers = new Set<unknown>();
 
   const index = new Map<string, IndexedContent>();
+  const localRawText = new Map<string, string>();
   let indexBytes = 0;
   let currentSources: readonly SearchSource[] = [];
   let currentShas = new Set<string>();
@@ -162,6 +163,7 @@ export function createContentIndexer(deps: {
     if (previous === undefined) return;
     indexBytes -= sizeOf(previous);
     index.delete(key);
+    localRawText.delete(key);
   }
 
   function computeStatus(): IndexStatus {
@@ -346,6 +348,7 @@ export function createContentIndexer(deps: {
       return false;
     }
     setEntry(sha, indexContent(text));
+    localRawText.delete(sha);
     return true;
   }
 
@@ -432,9 +435,12 @@ export function createContentIndexer(deps: {
       const key = sourceKey(source);
       keys.add(key);
       if (source.content.kind === "local") {
-        const existing = index.get(key);
-        if (existing === undefined || existing.text !== source.content.text) {
+        if (
+          !index.has(key) ||
+          localRawText.get(key) !== source.content.text
+        ) {
           setEntry(key, indexContent(source.content.text));
+          localRawText.set(key, source.content.text);
         }
       } else if (!shas.has(key)) {
         shas.add(key);
@@ -553,6 +559,7 @@ export function createContentIndexer(deps: {
       pauseTimer = undefined;
       throttleTimer = undefined;
       index.clear();
+      localRawText.clear();
       indexBytes = 0;
       queue = [];
       lookupQueue = [];
