@@ -164,6 +164,9 @@ access to that browser profile can then read your notes. The passphrase itself i
 Without Remember me, only the repo URL is kept, so you re-enter the access token and passphrase
 next time.
 
+In the installed app there is no Remember me option: logging in always keeps you logged in on that
+device, the same as checking it, until you log out. Log out works the same in both.
+
 ## Editing and saving
 
 - Each note has one view: an editable name field on top and the live-preview markdown editor below.
@@ -230,16 +233,22 @@ Security Policy applied via a `<meta>` tag; it is not present in the dev server.
 - **Desktop window:** the installed app draws its headers into the title bar, next to the window
   controls. Drag the window by an empty part of a header. Use the title-bar toggle (the chevron
   next to the window controls) to switch back to a classic title bar; both work the same.
-- **Shortcuts:** the installed app's icon offers **New note** and **Search notes** (long press on
-  Android, right-click or the jump list on desktop). If you need to log in first, the shortcut runs
-  right after. Launching the app again focuses the window that is already open instead of opening
-  a second one.
+- **Shortcuts:** the installed app's icon offers **New note** and **Search notes**. If you need to
+  log in first, the shortcut runs right after. Launching the app again focuses the window that is
+  already open instead of opening a second one. Where they appear:
+  - Android, installed from Chrome, Edge or Samsung Internet: long press the app icon.
+  - Desktop Chrome and Edge (Windows, macOS, Linux): right-click the app in the dock or taskbar, or
+    use the jump list.
+  - iPhone and iPad: not available. iOS does not show app shortcuts for Home Screen web apps, and
+    there is no way for a web app to add them.
+  - Firefox and desktop Safari web apps: not available.
 - Dismissing the install bar is remembered on that device (localStorage
   `commitnote.installBarDismissed`); **Install app** in the command menu still works afterwards.
   The bar never appears in the installed app, on desktop, in the note view or in the shared-note
   viewer.
-- The installed app keeps its own storage, separate from the browser tab, so you log in again
-  there.
+- On iPhone and iPad the installed app keeps its own storage, separate from Safari, so you log in
+  again there. On Android and desktop, the installed app shares storage with the browser it was
+  installed from, so logging in or out in one also applies to the other.
 
 ### What is cached
 

@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { chooseRepository, expectTree, logIn, SAMPLE, openNotes, logOut, showTree, fakeForge, expectFamily, expectedFamily, flushPendingSaves, expectSettingsIdle, MONO_STACK, SERIF_STACK } from "./helpers";
 import { chooseAccent, chooseOption, closeSettings, openDataSecurityAction, openSettings, rootAccent, settingsDialog, collectFontFiles } from "./helpers/settings";
+import { emulateStandalone } from "./helpers/install";
 import { openWelcome } from "./helpers/tree";
 
 
@@ -165,6 +166,26 @@ test("Settings is the first command and opens a dialog with the accent color opt
   await expect(settingsDialog(page)).toHaveCount(0);
 
   expect(await fakeForge(page).commitMessages()).toEqual(commitsBefore);
+});
+
+test("the installed app's settings don't mention a browser", async ({ page }) => {
+  await emulateStandalone(page);
+  await page.addInitScript(() => {
+    const supports = CSS.supports.bind(CSS);
+    CSS.supports = ((...args: [string, string?]) =>
+      /accentcolor/i.test(args.join(" "))
+        ? false
+        : supports(...(args as [string, string]))) as typeof CSS.supports;
+  });
+  await openNotes(page);
+
+  const dialog = await openSettings(page);
+
+  await expect(dialog.locator(".accent-caption")).toHaveText(
+    /^System · \w+, because the OS accent color isn't available here$/,
+  );
+  await expect(dialog.getByText("Turn it off for the standard caret.")).toBeVisible();
+  await expect(dialog).not.toContainText(/browser/i);
 });
 
 test("clicking the backdrop closes the Settings dialog", async ({

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { KEY_DERIVATION_TIMEOUT, SAMPLE, expectTree, logIn, openNotes } from "./helpers";
+import { emulateStandalone } from "./helpers/install";
 import { createLink } from "./helpers/sharing";
 import { openSettings } from "./helpers/settings";
 import { treeItem } from "./helpers/tree";
@@ -88,6 +89,30 @@ test("an action is held through the login", async ({ page }) => {
   await expectTree(page);
 
   await expect(nameField(page)).toBeFocused();
+});
+
+test.describe("in the installed app", () => {
+  test("new-note opens a draft", async ({ page }) => {
+    await emulateStandalone(page);
+    await page.goto(`/?${SESSION}&action=new-note`);
+
+    await expect(nameField(page)).toBeFocused({
+      timeout: KEY_DERIVATION_TIMEOUT,
+    });
+    await expectCleanAddress(page);
+  });
+
+  test("new-note is held through the login", async ({ page }) => {
+    await emulateStandalone(page);
+    await page.goto("/?action=new-note");
+    await expect(page.getByLabel("Access token")).toBeVisible();
+    await expect(page.getByText("Remember me")).toHaveCount(0);
+
+    await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
+    await expectTree(page);
+
+    await expect(nameField(page)).toBeFocused();
+  });
 });
 
 test("an unknown action is removed and ignored", async ({ page }) => {

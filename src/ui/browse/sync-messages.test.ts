@@ -138,30 +138,44 @@ describe("describeUndecryptableFiles", () => {
 
 describe("describeOffline", () => {
   it("tells the user to keep the tab open when changes are unsaved", () => {
-    expect(describeOffline(true)).toBe(
+    expect(describeOffline(true, false)).toBe(
       "Offline. Changes will save when you're back online. Keep this tab open.",
     );
   });
 
   it("is just Offline when everything is saved", () => {
-    expect(describeOffline(false)).toBe("Offline");
+    expect(describeOffline(false, false)).toBe("Offline");
+    expect(describeOffline(false, true)).toBe("Offline");
+  });
+
+  it("tells the installed app to keep the app open when changes are unsaved", () => {
+    expect(describeOffline(true, true)).toBe(
+      "Offline. Changes will save when you're back online. Keep the app open.",
+    );
   });
 });
 
 describe("describeSyncStatus", () => {
   it("prefers the offline copy over the sync state", () => {
     const state: SyncState = { kind: "out-of-sync", reason: "failed" };
-    expect(describeSyncStatus({ state, offline: true, hasUnsaved: true })).toBe(
-      describeOffline(true),
+    expect(describeSyncStatus({ state, offline: true, hasUnsaved: true, standalone: false })).toBe(
+      describeOffline(true, false),
     );
-    expect(describeSyncStatus({ state, offline: true, hasUnsaved: false })).toBe(
+    expect(describeSyncStatus({ state, offline: true, hasUnsaved: false, standalone: false })).toBe(
       "Offline",
     );
   });
 
+  it("tells the installed app to keep the app open", () => {
+    const state: SyncState = { kind: "synced" };
+    expect(
+      describeSyncStatus({ state, offline: true, hasUnsaved: true, standalone: true }),
+    ).toBe("Offline. Changes will save when you're back online. Keep the app open.");
+  });
+
   it("describes the sync state when online", () => {
     const state: SyncState = { kind: "out-of-sync", reason: "pending" };
-    expect(describeSyncStatus({ state, offline: false, hasUnsaved: true })).toBe(
+    expect(describeSyncStatus({ state, offline: false, hasUnsaved: true, standalone: false })).toBe(
       "Out of sync: waiting to save",
     );
   });
@@ -175,6 +189,7 @@ describe("describeSaveShortcutResult", () => {
     settingsPending: false,
     offline: false,
     waitingForRateBudget: false,
+    standalone: false,
   };
 
   it("says nothing when sync is stopped", () => {
@@ -200,13 +215,24 @@ describe("describeSaveShortcutResult", () => {
   it("describes unsaved changes offline", () => {
     expect(
       describeSaveShortcutResult({ ...settled, unsavedCount: 2, offline: true }),
-    ).toBe(describeOffline(true));
+    ).toBe(describeOffline(true, false));
+  });
+
+  it("tells the installed app to keep the app open offline", () => {
+    expect(
+      describeSaveShortcutResult({
+        ...settled,
+        unsavedCount: 2,
+        offline: true,
+        standalone: true,
+      }),
+    ).toBe("Offline. Changes will save when you're back online. Keep the app open.");
   });
 
   it("describes pending settings offline", () => {
     expect(
       describeSaveShortcutResult({ ...settled, settingsPending: true, offline: true }),
-    ).toBe(describeOffline(true));
+    ).toBe(describeOffline(true, false));
   });
 
   it("describes waiting for the rate budget", () => {
@@ -227,7 +253,7 @@ describe("describeSaveShortcutResult", () => {
         offline: true,
         waitingForRateBudget: true,
       }),
-    ).toBe(describeOffline(true));
+    ).toBe(describeOffline(true, false));
   });
 
   it("says nothing for unsaved changes that remain after the attempt", () => {

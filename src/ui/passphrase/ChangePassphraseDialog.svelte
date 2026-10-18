@@ -12,6 +12,7 @@
   } from "../../rekey/change-passphrase";
   import Dialog from "../dialogs/Dialog.svelte";
   import { ENABLE_ATOMIC_LABEL } from "../import/import-messages";
+  import { getStandalone } from "../standalone-context";
   import PassphraseStrength from "./PassphraseStrength.svelte";
   import { warningReveal } from "./warning-reveal";
   import {
@@ -25,12 +26,14 @@
     ENTER_CURRENT_PASSPHRASE,
     HISTORY_WARNING,
     NEW_PASSPHRASE_HINT,
-    OTHER_DEVICES_WARNING,
+    otherDevicesWarning,
     PASSPHRASES_DIFFER,
     REMOVE_HISTORY_LABEL,
     REMOVE_HISTORY_REVIEW,
     VERSION_HISTORY_NOTICE,
   } from "./passphrase-messages";
+
+  const standalone = getStandalone();
 
   interface Props {
     forgeName: string;
@@ -271,12 +274,12 @@
         {#each describeCarriedOver(stage.prepared.summary) as line (line)}
           <p class="field-hint">{line}</p>
         {/each}
-        <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
+        <p class="field-hint">{otherDevicesWarning(standalone)}</p>
       </div>
     {:else if stage.kind === "setup"}
       <p>{describeChangeAtomicSetup(forgeName, stage.canConfigure)}</p>
     {:else if stage.kind === "unsettled"}
-      <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
+      <p class="field-hint">{otherDevicesWarning(standalone)}</p>
     {:else}
       <form id={formId} class="passphrase-form" onsubmit={handleSubmit}>
         <p>{CHANGE_PASSPHRASE_INTRO}</p>
@@ -310,7 +313,7 @@
           {:else}
             <p role="note" class="alert-warning">{HISTORY_WARNING}</p>
           {/if}
-          <p class="field-hint">{OTHER_DEVICES_WARNING}</p>
+          <p class="field-hint">{otherDevicesWarning(standalone)}</p>
           {#if formError !== null}
             <p role="alert" class="alert-error">{formError}</p>
           {/if}

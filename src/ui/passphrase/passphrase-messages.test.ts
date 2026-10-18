@@ -8,6 +8,7 @@ import {
   HISTORY_NOT_REMOVED_MESSAGE,
   HISTORY_REMOVED_MESSAGE,
   HISTORY_WARNING,
+  otherDevicesWarning,
   VERSION_HISTORY_NOTICE,
   PASSPHRASE_CHANGED_MESSAGE,
   PASSPHRASE_CHANGED_MISMATCH_MESSAGE,
@@ -105,5 +106,19 @@ describe("passphrase change messages", () => {
   it("says version history can't reach back past the change", () => {
     expect(VERSION_HISTORY_NOTICE).toMatch(/can't show or restore versions/);
     expect(HISTORY_WARNING).toMatch(/no longer restore them/);
+  });
+});
+
+describe("otherDevicesWarning", () => {
+  it("names the tabs in the browser", () => {
+    expect(otherDevicesWarning(false)).toBe(
+      "Other devices are signed out and must log in with the new passphrase. Reload commitnote in any other open tabs.",
+    );
+  });
+
+  it("does not mention tabs in the installed app", () => {
+    expect(otherDevicesWarning(true)).toBe(
+      "Other devices are signed out and must log in with the new passphrase. Reload commitnote wherever else it's open.",
+    );
   });
 });

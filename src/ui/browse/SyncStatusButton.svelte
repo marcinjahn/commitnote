@@ -5,6 +5,7 @@
   import SyncStateIcon from "./SyncStateIcon.svelte";
   import type { MenuAnchor } from "./row-menu-types";
   import { syncIndicatorFade } from "./sync-indicator-fade";
+  import { getStandalone } from "../standalone-context";
   import { describeSyncStatus } from "./sync-messages";
   import { buildSyncStatusMenu } from "./sync-status-menu";
 
@@ -22,11 +23,13 @@
   const { state: syncState, offline, hasUnsaved, notes, others, canRetry, onOpenNote, onRetry }: Props =
     $props();
 
+  const standalone = getStandalone();
+
   let button: HTMLButtonElement | undefined = $state();
   let anchor = $state<MenuAnchor | null>(null);
 
   const visible = $derived(offline || syncState.kind === "out-of-sync");
-  const label = $derived(describeSyncStatus({ state: syncState, offline, hasUnsaved }));
+  const label = $derived(describeSyncStatus({ state: syncState, offline, hasUnsaved, standalone }));
   const failed = $derived(
     !offline && syncState.kind === "out-of-sync" && syncState.reason === "failed",
   );

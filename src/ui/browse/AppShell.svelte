@@ -211,6 +211,7 @@
   } from "./drag-motion";
   import { playViewSlide } from "../note/switch-motion-driver";
   import { trashReveal } from "./trash-reveal";
+  import { getStandalone } from "../standalone-context";
   import { createTreeExpansion } from "./tree-expansion.svelte";
   import { createNoteNavigation, type NavigationEntry } from "../../app/note-navigation";
   import {
@@ -282,6 +283,8 @@
     onNoteFont,
     onPrintNote,
   }: Props = $props();
+
+  const standalone = getStandalone();
 
   let engineState = $state<SyncEngineState>(untrack(() => engine.getState()));
   const syncStatus = $derived(engineState.syncStates.stateOf([]));
@@ -670,6 +673,7 @@
         (state.save.kind === "waiting" && state.save.reason === "offline"),
       waitingForRateBudget:
         state.save.kind === "waiting" && state.save.reason === "rateBudget",
+      standalone,
     });
     if (text === null) clearToast("save");
     else showToast("save", "info", text);
@@ -744,6 +748,7 @@
       allSaved: root.kind === "synced" && !syncStates.hasUnsaved,
       hasUnsaved: syncStates.hasUnsaved,
       notices: engineState.notices,
+      standalone,
     });
     announcerState = result.state;
     if (result.message !== null) announce(result.message);

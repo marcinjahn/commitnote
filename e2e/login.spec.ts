@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
+import { emulateStandalone } from "./helpers/install";
 import {
   KEY_DERIVATION_TIMEOUT,
   chooseRepository,
@@ -8,6 +9,7 @@ import {
   expectLoginAlert,
   expectTree,
   logIn,
+  logOut,
   setUpNotesRepo,
   SAMPLE,
   openNotes,
@@ -288,6 +290,44 @@ test("Remember me across reload", async ({ page }) => {
   await expect(page.getByLabel("Repository", { exact: true })).toHaveValue(
     SAMPLE.repo,
   );
+});
+
+test.describe("in the installed app", () => {
+  for (const platform of ["display-mode", "ios"] as const) {
+    test(
+      `stays logged in without a Remember me option (${platform})`,
+      platform === "ios" ? { tag: "@mobile" } : {},
+      async ({ page }) => {
+        await emulateStandalone(page, platform);
+        await page.goto("/");
+        await chooseRepository(page, { repo: SAMPLE.repo });
+        await expect(
+          page.getByRole("checkbox", { name: "Remember me" }),
+        ).toHaveCount(0);
+        await expect(
+          page.getByText("You stay logged in on this device until you log out."),
+        ).toBeVisible();
+
+        await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
+        await expectTree(page);
+
+        await page.reload();
+        await expectTree(page);
+        await expect(
+          page.getByRole("button", { name: "Continue" }),
+        ).toHaveCount(0);
+
+        await logOut(page);
+        await expect(
+          page.getByRole("button", { name: "Continue" }),
+        ).toBeVisible();
+        await page.reload();
+        await expect(
+          page.getByRole("button", { name: "Continue" }),
+        ).toBeVisible();
+      },
+    );
+  }
 });
 
 async function rememberSession(page: Page): Promise<void> {

@@ -44,8 +44,9 @@ export async function logIn(page: Page, options: LogInOptions): Promise<void> {
   const passphrase = page.getByLabel("Passphrase", { exact: true });
   await expect(passphrase).toBeVisible();
   await passphrase.fill(options.passphrase);
-  if (options.rememberMe) {
-    await page.getByRole("checkbox", { name: "Remember me" }).check();
+  const rememberMe = page.getByRole("checkbox", { name: "Remember me" });
+  if (options.rememberMe && (await rememberMe.count()) > 0) {
+    await rememberMe.check();
   }
   await page.getByRole("button", { name: "Log in" }).click();
 }
@@ -57,8 +58,9 @@ export async function setUpNotesRepo(
   await chooseRepository(page, options);
   await page.getByLabel("Create passphrase").fill(options.passphrase);
   await page.getByLabel("Repeat passphrase").fill(options.passphrase);
-  if (options.rememberMe) {
-    await page.getByRole("checkbox", { name: "Remember me" }).check();
+  const rememberMe = page.getByRole("checkbox", { name: "Remember me" });
+  if (options.rememberMe && (await rememberMe.count()) > 0) {
+    await rememberMe.check();
   }
   await page.getByRole("button", { name: "Set up notes repo" }).click();
 }

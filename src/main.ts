@@ -15,6 +15,7 @@ import { captureInstallEvents } from "./app/install-events";
 import { createBrowserInstallController } from "./app/install-controller";
 import { type LaunchQueueLike, startLaunchActions } from "./app/launch-action";
 import { clearLaunchAction } from "./app/note-navigation";
+import { isStandalone } from "./app/display-mode";
 import { startKeyboardInset } from "./ui/dialogs/keyboard-inset";
 import "./note-fonts.css";
 
@@ -83,8 +84,16 @@ async function mountViewer(target: HTMLElement): Promise<void> {
     supported:
       window.isSecureContext && typeof crypto?.subtle?.importKey === "function",
   });
-  mount(SharedNoteViewer, { target, props: { controller, testModeBanner } });
+  mount(SharedNoteViewer, {
+    target,
+    props: { controller, testModeBanner, standalone },
+  });
 }
+
+const standalone = isStandalone({
+  matchMedia: (q) => window.matchMedia(q),
+  navigator: navigator as { standalone?: boolean },
+});
 
 const appUpdates = import.meta.env.DEV ? null : startBrowserAppUpdates();
 
@@ -159,6 +168,7 @@ if (import.meta.env.MODE === "fake-forge") {
       appUpdates,
       install,
       launchActions,
+      standalone,
     },
   });
 }

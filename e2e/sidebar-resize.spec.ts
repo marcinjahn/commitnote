@@ -264,10 +264,13 @@ test.describe("on desktop", () => {
     await page.keyboard.press("Shift+Tab");
     await page.keyboard.press("Tab");
     await expect(handle(page)).toBeFocused();
-    const background = await handle(page).evaluate(
-      (el) => getComputedStyle(el, "::after").backgroundColor,
-    );
-    expect(background).not.toBe("rgba(0, 0, 0, 0)");
+    await expect
+      .poll(() =>
+        handle(page).evaluate(
+          (el) => getComputedStyle(el, "::after").backgroundColor,
+        ),
+      )
+      .not.toBe("rgba(0, 0, 0, 0)");
   });
 
   test("typing with the handle focused starts no note", async ({ page }) => {

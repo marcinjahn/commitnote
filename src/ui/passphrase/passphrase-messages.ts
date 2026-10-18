@@ -61,8 +61,11 @@ export function describeRemoveHistory(forgeName: string): string {
 export const REMOVE_HISTORY_REVIEW =
   "Afterwards, the repository's history is replaced with just that commit. All earlier versions of your notes are deleted for good.";
 
-export const OTHER_DEVICES_WARNING =
-  "Other devices are signed out and must log in with the new passphrase. Reload commitnote in any other open tabs.";
+export function otherDevicesWarning(standalone: boolean): string {
+  return standalone
+    ? "Other devices are signed out and must log in with the new passphrase. Reload commitnote wherever else it's open."
+    : "Other devices are signed out and must log in with the new passphrase. Reload commitnote in any other open tabs.";
+}
 export const NEW_PASSPHRASE_HINT =
   "Use a long passphrase, for example several random words. It cannot be recovered.";
 

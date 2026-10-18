@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
+  import { setStandalone } from "../ui/standalone-context";
   import MarkdownEditor from "../ui/editor/MarkdownEditor.svelte";
   import Wordmark from "../ui/wordmark/Wordmark.svelte";
   import { livePreview } from "../editor/live-preview";
@@ -8,7 +9,7 @@
   import type { ViewerController, ViewerState } from "./viewer-state";
   import {
     describeViewerError,
-    FOOTER_TEXT,
+    footerText,
     LOADING_TEXT,
     PASSWORD_HEADING,
     UNLOCK_LABEL,
@@ -20,9 +21,12 @@
   interface Props {
     controller: ViewerController;
     testModeBanner: string | null;
+    standalone: boolean;
   }
 
-  const { controller, testModeBanner }: Props = $props();
+  const { controller, testModeBanner, standalone }: Props = $props();
+
+  setStandalone(untrack(() => standalone));
 
   let view = $state<ViewerState>({ kind: "loading" });
   let password = $state("");
@@ -133,7 +137,7 @@
     {:else}
       <h1 class="visually-hidden">Shared note</h1>
       <div class="error-block" role="alert">
-        <p>{describeViewerError(view.error, view.provider)}</p>
+        <p>{describeViewerError(view.error, view.provider, standalone)}</p>
         {#if view.retryable}
           <button class="button" type="button" onclick={() => controller.retry()}>
             Try again
@@ -144,7 +148,7 @@
   </main>
 
   {#if view.kind === "note"}
-    <footer class="footer">{FOOTER_TEXT}</footer>
+    <footer class="footer">{footerText(standalone)}</footer>
   {/if}
 </div>
 
