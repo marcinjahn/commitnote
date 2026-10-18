@@ -32,6 +32,8 @@ export interface ImageResolver {
   dispose(): void;
 }
 
+export type ReadImagePayload = ImageResolver["readPayload"];
+
 const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
 const DEFAULT_MAX_ENTRIES = 100;
 
