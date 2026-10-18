@@ -98,9 +98,22 @@ export function createImageResolver(deps: ImageResolverDeps): ImageResolver {
     revokeObjectUrl,
   );
   const inFlight = new Map<ImageId, Promise<ImageSourceResult>>();
+  const payloadsInFlight = new Map<ImageId, Promise<ImagePayload | null>>();
   let disposed = false;
 
-  async function loadPayload(imageId: ImageId): Promise<ImagePayload | null> {
+  function loadPayload(imageId: ImageId): Promise<ImagePayload | null> {
+    const running = payloadsInFlight.get(imageId);
+    if (running) return running;
+    const request = readAndDecrypt(imageId).finally(() =>
+      payloadsInFlight.delete(imageId),
+    );
+    payloadsInFlight.set(imageId, request);
+    return request;
+  }
+
+  async function readAndDecrypt(
+    imageId: ImageId,
+  ): Promise<ImagePayload | null> {
     const pending = deps.engine.getPendingImage(imageId);
     if (pending) return decryptImage(deps.keyring, imageId, pending.envelope);
     const images = deps.engine.getImageIndex();

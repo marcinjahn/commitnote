@@ -1290,7 +1290,10 @@
   onClose={() => install.closeHowTo()}
 />
 
-<PrintView note={phase.kind === "app" && keyChanged === null ? reportedPrintNote : null} />
+<PrintView
+  note={phase.kind === "app" && keyChanged === null ? reportedPrintNote : null}
+  readImage={phase.kind === "app" && keyChanged === null ? phase.imageResolver.readPayload : null}
+/>
 
 <style>
   .test-mode-banner {
