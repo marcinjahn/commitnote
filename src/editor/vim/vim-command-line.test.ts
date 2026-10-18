@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import {
   afterEach,
-  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -93,12 +92,6 @@ async function runCommand(
 }
 
 const cursorOf = (view: EditorView) => view.state.selection.main.head;
-
-beforeAll(() => {
-  Range.prototype.getClientRects = () =>
-    Object.assign([], { item: () => null }) as unknown as DOMRectList;
-  Range.prototype.getBoundingClientRect = () => new DOMRect();
-});
 
 beforeEach(() => {
   Vim.resetVimGlobalState_();

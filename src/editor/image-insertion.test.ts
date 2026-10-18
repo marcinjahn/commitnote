@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import {
   afterEach,
-  beforeAll,
   describe,
   expect,
   it,
@@ -113,12 +112,6 @@ function fakeConfig(): Fake {
   };
   return fake;
 }
-
-beforeAll(() => {
-  Range.prototype.getClientRects = () =>
-    Object.assign([], { item: () => null }) as unknown as DOMRectList;
-  Range.prototype.getBoundingClientRect = () => new DOMRect();
-});
 
 const editors: MarkdownEditor[] = [];
 const views: EditorView[] = [];
