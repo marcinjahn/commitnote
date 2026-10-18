@@ -1,20 +1,16 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { TouchFinger, fakeForge, flushPendingSaves, openNotes } from "./helpers";
+import { WHITEBOARD_IMAGE_ID, openWhiteboardNote } from "./helpers/images";
 import { moveToTrash, openTrash, treeItem } from "./helpers/tree";
 
-const IMAGE_ID = "s4u5q5zr4xaec3jewbaixgwlou";
+const IMAGE_ID = WHITEBOARD_IMAGE_ID;
 const IMAGE_PATH = `.commitnote/images/${IMAGE_ID}`;
 const NOTES = "sample/notes";
 
 async function openWhiteboard(page: Page): Promise<void> {
   await openNotes(page);
-  await treeItem(page, "Journal").click();
-  await treeItem(page, "2026").click();
-  await treeItem(page, "Whiteboard").click();
-  await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
-    "Whiteboard",
-  );
+  await openWhiteboardNote(page);
 }
 
 function widget(page: Page): Locator {
