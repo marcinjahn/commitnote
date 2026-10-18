@@ -65,7 +65,14 @@ import {
   type AvailableImage,
   type ImageIndex,
 } from "../images/image-index";
-import type { PendingImage } from "../images/pending-image";
+import {
+  cloneImage as clonePendingImage,
+  type PendingImage,
+} from "../images/pending-image";
+import {
+  referencedImageIds,
+  rewriteImageReferences,
+} from "../images/image-reference";
 import { insertionIndex, placementPositions } from "../order/placement";
 import { isExpired, selectExpired, type PurgeCaps } from "../trash/expiry";
 import { createTrashEntryId } from "../trash/trash-entry-id";
@@ -380,6 +387,11 @@ export interface SyncEngine {
   getPendingImage(imageId: ImageId): PendingImage | undefined;
   /** Image blobs reachable in history that note changes may revive. */
   addRestoredImages(shas: ReadonlyMap<ImageId, string>): void;
+  /**
+   * Registers a pending copy of an image under a new id. Null when the source
+   * is unknown or cannot be read or decrypted.
+   */
+  cloneImage(sourceId: ImageId): Promise<ImageId | null>;
   snapshotNotes(): NotesSnapshot | null;
   /** One source per live note in sidebar order. Reads current state only. */
   searchSources(): readonly SearchSource[];
@@ -900,6 +912,61 @@ export function createSyncEngine(options: {
 
   function addRestoredImages(shas: ReadonlyMap<ImageId, string>): void {
     for (const [imageId, blobSha] of shas) restoredImages.set(imageId, blobSha);
+  }
+
+  async function cloneImageFrom(
+    sourceId: ImageId,
+    index: ImageIndex,
+  ): Promise<ImageId | null> {
+    try {
+      let envelope = pendingImages.get(sourceId)?.envelope;
+      if (envelope === undefined) {
+        const record = index.images.get(sourceId);
+        if (record === undefined) return null;
+        envelope = await adapter.readBlobBytes(record.blobSha);
+      }
+      const clone = await clonePendingImage(keyring, {
+        imageId: sourceId,
+        envelope,
+      });
+      addPendingImage(clone);
+      return clone.imageId;
+    } catch {
+      return null;
+    }
+  }
+
+  async function cloneImage(sourceId: ImageId): Promise<ImageId | null> {
+    return cloneImageFrom(sourceId, state.synced?.images ?? EMPTY_IMAGES);
+  }
+
+  async function cloneRelocatedCopyImages(
+    changeSet: ChangeSet,
+    notices: readonly MergeNotice[],
+    index: ImageIndex,
+  ): Promise<ChangeSet> {
+    let result = changeSet;
+    for (const notice of notices) {
+      if (notice.kind !== "relocated" || notice.target !== "note") continue;
+      const at = result.findIndex(
+        (change) =>
+          change.kind === "create-note" && notePathEquals(change.path, notice.to),
+      );
+      const change = result[at];
+      if (change?.kind !== "create-note") continue;
+      const replacements = new Map<ImageId, ImageId>();
+      for (const imageId of referencedImageIds(change.content)) {
+        if (!index.images.has(imageId)) continue;
+        const cloneId = await cloneImageFrom(imageId, index);
+        if (cloneId !== null) replacements.set(imageId, cloneId);
+      }
+      if (replacements.size === 0) continue;
+      result = result.with(at, {
+        ...change,
+        content: rewriteImageReferences(change.content, replacements),
+      });
+    }
+    return result;
   }
 
   type NoteResolution =
@@ -1704,7 +1771,7 @@ export function createSyncEngine(options: {
       pending: EMPTY_CHANGES,
     }));
 
-    const merged = await mergeChangeSet({
+    const mergeResult = await mergeChangeSet({
       base: base.tree,
       remote: remote.tree,
       changeSet: state.inFlight,
@@ -1714,6 +1781,14 @@ export function createSyncEngine(options: {
       readBaseContent: (path) => readNoteText(base.tree, path),
       readRemoteContent: (path) => readNoteText(remote.tree, path),
     });
+    const merged = {
+      ...mergeResult,
+      changeSet: await cloneRelocatedCopyImages(
+        mergeResult.changeSet,
+        mergeResult.notices,
+        remote.images,
+      ),
+    };
 
     const mergedTree = buildWorkingTree(
       remote.tree,
@@ -2951,6 +3026,7 @@ export function createSyncEngine(options: {
     addPendingImage,
     getPendingImage: (imageId) => pendingImages.get(imageId),
     addRestoredImages,
+    cloneImage,
     snapshotNotes,
     searchSources,
     readNoteText: readNoteBlob,
