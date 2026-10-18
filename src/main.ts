@@ -15,7 +15,7 @@ import { captureInstallEvents } from "./app/install-events";
 import { createBrowserInstallController } from "./app/install-controller";
 import { type LaunchQueueLike, startLaunchActions } from "./app/launch-action";
 import { clearLaunchAction } from "./app/note-navigation";
-import { isStandalone } from "./app/display-mode";
+import { resolveStandalone } from "./app/display-mode";
 import { startKeyboardInset } from "./ui/dialogs/keyboard-inset";
 import "./note-fonts.css";
 
@@ -47,7 +47,7 @@ async function mountViewer(target: HTMLElement): Promise<void> {
   let readers: ShareReaders;
   let testModeBanner: string | null = null;
   let argon2id: Argon2idFunction = argon2idInWorker;
-  if (import.meta.env.MODE === "fake-forge") {
+  if (__FAKE_FORGE__) {
     const { FAKE_FORGE_BANNER } = await import(
       "./testing/fake-forge/fake-forge-factory"
     );
@@ -90,12 +90,14 @@ async function mountViewer(target: HTMLElement): Promise<void> {
   });
 }
 
-const standalone = isStandalone({
+const standalone = resolveStandalone(__DESKTOP_SHELL__, {
   matchMedia: (q) => window.matchMedia(q),
   navigator: navigator as { standalone?: boolean },
 });
 
-const appUpdates = import.meta.env.DEV ? null : startBrowserAppUpdates();
+const appUpdates = import.meta.env.DEV || __DESKTOP_SHELL__
+  ? null
+  : startBrowserAppUpdates();
 
 if (isShareHash(location.hash)) {
   await mountViewer(target);
@@ -103,7 +105,7 @@ if (isShareHash(location.hash)) {
 let registry: ForgeRegistry = forgeRegistry;
 let testModeBanner: string | null = null;
 let argon2id: Argon2idFunction | undefined;
-if (import.meta.env.MODE === "fake-forge") {
+if (__FAKE_FORGE__) {
   const fake = await import("./testing/fake-forge/fake-forge-factory");
   const {
     FAKE_FORGE_ARGON2_BINDING,
@@ -153,7 +155,7 @@ if (import.meta.env.MODE === "fake-forge") {
   }
 }
 
-  const install = createBrowserInstallController(installEvents);
+  const install = createBrowserInstallController(installEvents, standalone);
   const launchActions = startLaunchActions({
     bootHref,
     launchQueue: (window as { launchQueue?: LaunchQueueLike }).launchQueue,

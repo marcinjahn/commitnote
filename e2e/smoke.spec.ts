@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { test, expect } from "./fixtures";
+import { buildCsp } from "../scripts/csp.ts";
 
 // Playwright's own module loader can't import this straight from
 // src/testing/fake-forge/fake-forge-factory.ts: that file pulls in
@@ -7,8 +8,6 @@ import { test, expect } from "./fixtures";
 // import attribute for JSON that the source doesn't use.
 const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
 
-const csp = (scriptHash: string) =>
-  `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-${scriptHash}'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com; img-src 'self' https: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'`;
 
 test("login screen renders under the production CSP", async ({ page }) => {
   const consoleErrors: string[] = [];
@@ -33,7 +32,7 @@ test("login screen renders under the production CSP", async ({ page }) => {
   const bootScriptHash = createHash("sha256")
     .update(bootScript ?? "")
     .digest("base64");
-  await expect(cspMeta).toHaveAttribute("content", csp(bootScriptHash));
+  await expect(cspMeta).toHaveAttribute("content", buildCsp("web", [`'sha256-${bootScriptHash}'`]));
 
   await expect(page.getByText(FAKE_FORGE_BANNER)).toBeVisible();
 

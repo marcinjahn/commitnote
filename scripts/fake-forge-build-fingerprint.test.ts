@@ -86,6 +86,11 @@ describe("fake-forge build fingerprint", () => {
   it.each([
     "dist/index.html",
     "dist-fake/index.html",
+    "dist-desktop/index.html",
+    "dist-desktop-fake/index.html",
+    "dist-appimage/app.AppImage",
+    "src-tauri/target/debug/app",
+    "src-tauri/gen/schemas.json",
     "test-results/a.txt",
     "playwright-report/index.html",
     "blob-report/r.zip",

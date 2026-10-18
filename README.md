@@ -210,8 +210,6 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
   Restoring it from the trash doesn't bring them back.
 - After a passphrase change, existing links keep working, but "View shared version" can no longer
   show the old version.
-- GitLab sharing is blocked by the production Content Security Policy like the rest of GitLab
-  (known issue).
 
 ## Production build
 

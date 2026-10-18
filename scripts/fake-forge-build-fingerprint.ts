@@ -7,6 +7,11 @@ export const FAKE_FORGE_BUILD_FINGERPRINT_FILE = ".fake-forge-build-fingerprint"
 const EXCLUDED_PATHS = new Set([
   "dist",
   "dist-fake",
+  "dist-desktop",
+  "dist-desktop-fake",
+  "dist-appimage",
+  "src-tauri/target",
+  "src-tauri/gen",
   "test-results",
   "playwright-report",
   "blob-report",
