@@ -22,6 +22,7 @@ test("exporting downloads a zip of all notes and folders", async ({ page }) => {
       "Journal/",
       "Journal/2026/",
       "Journal/2026/January.md",
+      "Journal/2026/Whiteboard.md",
       "Projects/",
       "Projects/commitnote/",
       "Projects/commitnote/Ideas.md",

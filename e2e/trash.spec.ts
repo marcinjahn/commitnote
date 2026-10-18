@@ -123,7 +123,7 @@ test("a trashed folder expands and a sub-item can be restored on its own", async
   await page.getByRole("button", { name: /^Journal/ }).click();
   await expect(rows).toHaveCount(2);
   await page.getByRole("button", { name: /^2026/ }).click();
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(4);
   await expect(rows.nth(2)).toContainText("January");
 
   await restoreTo(page, "January", "Notes (top level)");

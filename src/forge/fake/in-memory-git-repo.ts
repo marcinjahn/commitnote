@@ -83,6 +83,10 @@ export class InMemoryGitRepo {
       : blob;
   }
 
+  isBytesBlob(sha: string): boolean {
+    return this.blobs.get(sha) instanceof Uint8Array;
+  }
+
   getBlobBytes(sha: string): Uint8Array | undefined {
     const blob = this.blobs.get(sha);
     if (blob === undefined) return undefined;

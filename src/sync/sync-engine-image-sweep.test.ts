@@ -118,7 +118,7 @@ async function setup(options?: {
   readonly beforeCommit?: (fake: FakeForgeAdapter) => Promise<void>;
 }): Promise<Harness> {
   const clock = createTestClock(START);
-  const fake = options?.fake ?? (await createSampleNotesRepoAdapter());
+  const fake = options?.fake ?? (await createSampleNotesRepoAdapter({ withoutImageFiles: true }));
   if (options?.trash !== undefined) await pushRemote(fake, options.trash);
   if (options?.seed !== undefined) await seedImages(fake, options.seed);
   const commits: CommitRequest[] = [];
@@ -286,7 +286,7 @@ describe("sync engine orphan image sweep", () => {
   });
 
   it("is skipped while the image index is unreadable", async () => {
-    const fake = await createSampleNotesRepoAdapter();
+    const fake = await createSampleNotesRepoAdapter({ withoutImageFiles: true });
     await fake.pushFromAnotherDevice([
       { kind: "upsert-text", path: IMAGE_INDEX_PATH, text: "not an index" },
       {

@@ -146,21 +146,21 @@ test("dragging a note left below its folder moves it to the top level", async ({
 }) => {
   await treeItem(page, "Journal").click();
   await treeItem(page, "2026").click();
-  await expect(treeItem(page, "January")).toBeVisible();
+  await expect(treeItem(page, "Whiteboard")).toBeVisible();
 
-  await dragRow(page, treeItem(page, "January"), treeItem(page, "January"), {
+  await dragRow(page, treeItem(page, "Whiteboard"), treeItem(page, "Whiteboard"), {
     y: 0.9,
     x: 4,
   });
 
   await expect(movedToast(page)).toContainText(
-    "“January” moved to the top level",
+    "“Whiteboard” moved to the top level",
   );
   await treeItem(page, "Journal").click();
   await expect(treeRows(page)).toHaveText([
     "Empty folder",
     "Journal",
-    "January",
+    "Whiteboard",
     "Projects",
     "Welcome",
     "Zażółć gęślą jaźń",

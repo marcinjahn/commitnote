@@ -1,3 +1,4 @@
+import { fromBase64 } from "../../crypto/base64";
 import {
   FakeForgeAdapter,
   type FakeForgeAdapterShares,
@@ -6,6 +7,7 @@ import {
   InMemoryGitRepo,
   seedCommits,
 } from "../../forge/fake/in-memory-git-repo";
+import { IMAGE_INDEX_PATH } from "../../format/v1";
 import type { ForgeAdapterOptions } from "../../forge/forge-adapter";
 import type { SampleNotesRepo } from "./generate-sample-notes-repo";
 import sampleNotesRepoJson from "./sample-notes-repo.json";
@@ -39,6 +41,7 @@ export function createSampleSearchRepoAdapter(options?: SampleRepoAdapterOptions
 
 interface SampleRepoAdapterOptions {
   readonly canWrite?: boolean;
+  readonly withoutImageFiles?: boolean;
   readonly onContentCreatingRequest?: ForgeAdapterOptions["onContentCreatingRequest"];
   readonly shares?: FakeForgeAdapterShares;
 }
@@ -48,7 +51,27 @@ export async function createAdapterFor(
   options?: SampleRepoAdapterOptions,
 ): Promise<FakeForgeAdapter> {
   const repo = new InMemoryGitRepo();
-  await seedCommits(repo, fixture.commits);
+  await seedCommits(
+    repo,
+    fixture.commits.map((commit) => ({
+      message: commit.message,
+      files: options?.withoutImageFiles
+        ? Object.fromEntries(
+            Object.entries(commit.files).filter(
+              ([path]) => path !== IMAGE_INDEX_PATH,
+            ),
+          )
+        : commit.files,
+      binaryFiles: options?.withoutImageFiles
+        ? {}
+        : Object.fromEntries(
+            Object.entries(commit.binaryFiles ?? {}).map(([path, base64]) => [
+              path,
+              fromBase64(base64),
+            ]),
+          ),
+    })),
+  );
 
   return new FakeForgeAdapter({
     repo,

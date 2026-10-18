@@ -8,7 +8,12 @@ import {
   type Keyring,
 } from "../../crypto/keyring";
 import { encryptPath } from "../../crypto/name-cipher";
+import { decryptImage } from "../../crypto/image-cipher";
+import { fromBase64 } from "../../crypto/base64";
 import { decryptNote } from "../../crypto/note-cipher";
+import { IMAGES_DIR, IMAGE_INDEX_PATH } from "../../format/v1";
+import { decryptImageIndex } from "../../images/image-index";
+import { parseImageReferences } from "../../images/image-reference";
 import { parseRepoConfig } from "../../crypto/repo-config";
 import type { FakeForgeAdapter } from "../../forge/fake/fake-forge-adapter";
 import {
@@ -40,6 +45,12 @@ import {
   sampleTrashRepo,
 } from "./seed-sample-notes-repo";
 import {
+  SAMPLE_IMAGE_HEIGHT,
+  SAMPLE_IMAGE_WEBP_BASE64,
+  SAMPLE_IMAGE_WIDTH,
+} from "./sample-image";
+import {
+  sampleImageNote,
   sampleNotesRepoOrder,
   sampleNotesRepoSource,
   sampleNotesRepoTags,
@@ -86,6 +97,27 @@ function flattenMarkdown(entries: readonly SampleEntry[]): string[] {
     }
   }
   return markdowns;
+}
+
+function withImageNote(
+  entries: readonly SampleEntry[],
+  markdown: string,
+  parent: readonly string[] = [],
+): SampleEntry[] {
+  return entries.map((entry): SampleEntry => {
+    if (entry.kind !== "folder") return entry;
+    const path = [...parent, entry.name];
+    if (path.join("/") === sampleImageNote.folder.join("/")) {
+      return {
+        ...entry,
+        children: [
+          ...entry.children,
+          { kind: "note", name: sampleImageNote.name, markdown },
+        ],
+      };
+    }
+    return { ...entry, children: withImageNote(entry.children, markdown, path) };
+  });
 }
 
 function sortedSource(entries: readonly SampleEntry[]): SampleEntry[] {
@@ -231,15 +263,22 @@ describe("sample notes repo fixture", () => {
     const entries = await adapter.listTree(head);
     const tree = await buildNoteTree(entries, keyring);
 
+    const imageNote = listNotes(tree).find(
+      (note) => note.name === sampleImageNote.name,
+    );
+    if (imageNote === undefined) throw new Error("expected the image note");
     await assertTreeMatchesSource(
       tree.root,
-      sampleNotesRepoSource,
+      withImageNote(
+        sampleNotesRepoSource,
+        await decryptNote(keyring, await adapter.readBlob(imageNote.blobSha)),
+      ),
       adapter,
       keyring,
     );
 
     const notes = listNotes(tree);
-    expect(notes).toHaveLength(5);
+    expect(notes).toHaveLength(6);
     expect(notes.some((note) => note.name === "README.md")).toBe(false);
   });
 });
@@ -321,7 +360,77 @@ describe("sample notes repo fixture tags", () => {
   it("adds the tag file in the save commit without adding a commit", () => {
     const save = sampleNotesRepo.commits[2];
     expect(Object.keys(save.files)).toContain(TAGS_PATH);
-    expect(sampleNotesRepo.commits).toHaveLength(4);
+    expect(sampleNotesRepo.commits).toHaveLength(5);
+  });
+});
+
+describe("sample notes repo fixture image", () => {
+  async function open() {
+    const adapter = await createSampleNotesRepoAdapter();
+    const keyring = await sampleNotesRepoKeyring();
+    const listing = await adapter.listTree(await adapter.getHead());
+    const tree = await buildNoteTree(listing, keyring);
+    const note = listNotes(tree).find(
+      (candidate) => candidate.name === sampleImageNote.name,
+    );
+    if (note === undefined) throw new Error("expected the image note");
+    const text = await decryptNote(keyring, await adapter.readBlob(note.blobSha));
+    return { adapter, keyring, listing, text };
+  }
+
+  it("stores one encrypted image that decrypts to the sample bytes", async () => {
+    const { adapter, keyring, listing, text } = await open();
+    const [reference, ...rest] = parseImageReferences(text);
+    expect(rest).toEqual([]);
+    expect(reference.width).toBe(SAMPLE_IMAGE_WIDTH);
+    expect(reference.height).toBe(SAMPLE_IMAGE_HEIGHT);
+
+    const files = listing.filter((entry) =>
+      entry.path.startsWith(`${IMAGES_DIR}/`),
+    );
+    expect(files.map((entry) => entry.path)).toEqual([
+      `${IMAGES_DIR}/${reference.imageId}`,
+    ]);
+
+    const payload = await decryptImage(
+      keyring,
+      reference.imageId,
+      await adapter.readBlobBytes(files[0].sha),
+    );
+    expect(payload.type).toBe("image/webp");
+    expect(payload.width).toBe(SAMPLE_IMAGE_WIDTH);
+    expect(payload.height).toBe(SAMPLE_IMAGE_HEIGHT);
+    expect(payload.bytes).toEqual(fromBase64(SAMPLE_IMAGE_WEBP_BASE64));
+  });
+
+  it("indexes the image under the note's path without tombstones", async () => {
+    const { adapter, keyring, listing, text } = await open();
+    const entry = listing.find((candidate) => candidate.path === IMAGE_INDEX_PATH);
+    if (entry === undefined) throw new Error("expected an image index");
+    const index = await decryptImageIndex(
+      keyring,
+      await adapter.readBlob(entry.sha),
+    );
+
+    const [reference] = parseImageReferences(text);
+    expect(index.writable).toBe(true);
+    expect(index.tombstones.size).toBe(0);
+    expect([...index.images.keys()]).toEqual([reference.imageId]);
+    expect(index.images.get(reference.imageId)?.owners).toEqual([
+      {
+        state: "active",
+        path: [...sampleImageNote.folder, sampleImageNote.name],
+      },
+    ]);
+  });
+
+  it("leaks neither the note name nor the image id into any commit message", async () => {
+    const { text } = await open();
+    const [reference] = parseImageReferences(text);
+    for (const commit of sampleNotesRepo.commits) {
+      expect(commit.message).not.toContain(sampleImageNote.name);
+      expect(commit.message).not.toContain(reference.imageId);
+    }
   });
 });
 

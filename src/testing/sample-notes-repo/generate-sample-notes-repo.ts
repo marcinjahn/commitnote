@@ -19,11 +19,21 @@ import {
   EMPTY_ORDER,
   type OrderIndex,
 } from "../../order/order-index";
+import { fromBase64, toBase64 } from "../../crypto/base64";
+import { EMPTY_IMAGES } from "../../images/image-index";
+import { createPendingImage } from "../../images/pending-image";
 import { createTrashEntryId } from "../../trash/trash-entry-id";
 import { largeTreeSource } from "./large-tree-source";
+import {
+  SAMPLE_IMAGE_HEIGHT,
+  SAMPLE_IMAGE_WEBP_BASE64,
+  SAMPLE_IMAGE_WIDTH,
+} from "./sample-image";
 import { createSeededRandom } from "./seeded-random";
 import {
   SAMPLE_NOTES_REPO_PASSPHRASE,
+  sampleImageNote,
+  sampleImageNoteMarkdown,
   sampleNotesRepoOrder,
   sampleNotesRepoSource,
   sampleNotesRepoTags,
@@ -43,6 +53,7 @@ export interface SampleNotesRepo {
   readonly commits: readonly {
     readonly message: string;
     readonly files: Readonly<Record<string, string>>;
+    readonly binaryFiles?: Readonly<Record<string, string>>;
   }[];
 }
 
@@ -51,6 +62,8 @@ const SEED = 0x676e6f74;
 const LARGE_TREE_SEED = 0x6c617267;
 const TRASH_SEED = 0x74726173;
 const SEARCH_SEED = 0x73656172;
+const IMAGE_SEED = 0x696d6167;
+const IMAGE_COMMIT_TIME = Date.parse("2026-01-15T12:00:00.000Z");
 const README_TEXT = "# Notes\n\nThis repository is managed by commitnote.\n";
 
 function buildChangeSet(source: readonly SampleEntry[]): ChangeSet {
@@ -78,20 +91,32 @@ function buildChangeSet(source: readonly SampleEntry[]): ChangeSet {
 async function snapshotFiles(
   repo: InMemoryGitRepo,
   treeSha: string,
-): Promise<Record<string, string>> {
+): Promise<{
+  files: Record<string, string>;
+  binaryFiles?: Record<string, string>;
+}> {
   const blobs = (await repo.listTreeEntries(treeSha))
     .filter((entry) => entry.type === "blob")
     .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
   const files: Record<string, string> = {};
+  const binaryFiles: Record<string, string> = {};
   for (const { path, sha } of blobs) {
+    if (repo.isBytesBlob(sha)) {
+      const bytes = repo.getBlobBytes(sha);
+      if (bytes === undefined) throw new Error(`missing blob ${sha} for ${path}`);
+      binaryFiles[path] = toBase64(bytes);
+      continue;
+    }
     const text = repo.getBlob(sha);
     if (text === undefined) {
       throw new Error(`missing blob ${sha} for ${path}`);
     }
     files[path] = text;
   }
-  return files;
+  return Object.keys(binaryFiles).length > 0
+    ? { files, binaryFiles }
+    : { files };
 }
 
 export function generateSampleNotesRepo(): Promise<SampleNotesRepo> {
@@ -102,6 +127,7 @@ export function generateSampleNotesRepo(): Promise<SampleNotesRepo> {
     sampleNotesRepoOrder,
     sampleNotesRepoTags,
     argon2idDirect,
+    true,
   );
 }
 
@@ -140,6 +166,7 @@ async function generateRepo(
   order: readonly SampleFolderOrder[],
   tags: readonly SampleTag[],
   argon2id: Argon2idFunction,
+  withImage = false,
 ): Promise<SampleNotesRepo> {
   const random = createSeededRandom(seed);
   const { configText, keyring } = await createRepoConfig(
@@ -228,6 +255,55 @@ async function generateRepo(
     ]);
   }
 
+  if (withImage) {
+    const imageRandom = createSeededRandom(IMAGE_SEED);
+    const image = await createPendingImage(
+      keyring,
+      {
+        type: "image/webp",
+        width: SAMPLE_IMAGE_WIDTH,
+        height: SAMPLE_IMAGE_HEIGHT,
+        bytes: fromBase64(SAMPLE_IMAGE_WEBP_BASE64),
+      },
+      imageRandom,
+    );
+    const encoded = await encodeChangeSet({
+      listing: await repo.listTreeEntries(parentTree),
+      changeSet: [
+        {
+          kind: "create-note",
+          path: [...sampleImageNote.folder, sampleImageNote.name],
+          content: sampleImageNoteMarkdown(image.imageId),
+        },
+      ],
+      order: orderIndex,
+      tags: tagIndex,
+      shares: EMPTY_SHARES,
+      images: EMPTY_IMAGES,
+      available: new Map([
+        [
+          image.imageId,
+          {
+            kind: "envelope",
+            envelope: image.envelope,
+            blobSha: image.blobSha,
+          },
+        ],
+      ]),
+      now: IMAGE_COMMIT_TIME,
+      keyring,
+      random: imageRandom,
+      device: SAMPLE_DEVICE_NAME,
+    });
+    parentTree = await repo.applyChanges(parentTree, encoded.changes);
+    parentSha = await repo.putCommit({
+      tree: parentTree,
+      parent: parentSha,
+      message: encoded.message,
+    });
+    commits.push({ message: encoded.message, tree: parentTree });
+  }
+
   const readmeMessage = "Add README";
   const readmeTree = await repo.applyChanges(parentTree, [
     { kind: "upsert-text", path: "README.md", text: README_TEXT },
@@ -244,7 +320,7 @@ async function generateRepo(
     commits: await Promise.all(
       commits.map(async ({ message, tree }) => ({
         message,
-        files: await snapshotFiles(repo, tree),
+        ...(await snapshotFiles(repo, tree)),
       })),
     ),
   };

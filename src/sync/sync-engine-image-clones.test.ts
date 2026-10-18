@@ -45,7 +45,7 @@ interface Harness {
 }
 
 async function setup(): Promise<Harness> {
-  const fake = await createSampleNotesRepoAdapter();
+  const fake = await createSampleNotesRepoAdapter({ withoutImageFiles: true });
   const clock = createTestClock(1_000_000);
   const engine = createSyncEngine({ adapter: fake, keyring, clock });
   await engine.refresh();

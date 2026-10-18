@@ -1,4 +1,7 @@
+import type { ImageId } from "../../images/image-id";
+import { formatImageReference } from "../../images/image-reference";
 import type { ColorTag } from "../../tags/color-tag";
+import { SAMPLE_IMAGE_HEIGHT, SAMPLE_IMAGE_WIDTH } from "./sample-image";
 
 export const SAMPLE_NOTES_REPO_PASSPHRASE = "sample notes repo passphrase";
 
@@ -100,6 +103,22 @@ export const sampleNotesRepoSource: readonly SampleEntry[] = [
   { kind: "folder", name: "Empty folder", children: [] },
   { kind: "note", name: "Zażółć gęślą jaźń", markdown: ZAZOLC_MARKDOWN },
 ];
+
+export const sampleImageNote = {
+  folder: ["Journal", "2026"],
+  name: "Whiteboard",
+  alt: "",
+} as const;
+
+export function sampleImageNoteMarkdown(imageId: ImageId): string {
+  const reference = formatImageReference({
+    imageId,
+    alt: sampleImageNote.alt,
+    width: SAMPLE_IMAGE_WIDTH,
+    height: SAMPLE_IMAGE_HEIGHT,
+  });
+  return `Sketch from the planning session.\n\n${reference}\n`;
+}
 
 export interface SampleTrashEntry {
   readonly path: readonly string[];

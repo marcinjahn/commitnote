@@ -60,7 +60,7 @@ test("collapsed folders show their recursive note count without changing the row
 
   await expect(count("Empty folder")).toBeVisible();
   await expect(count("Empty folder")).toHaveAttribute("data-count", "0");
-  await expect(count("Journal")).toHaveAttribute("data-count", "1");
+  await expect(count("Journal")).toHaveAttribute("data-count", "2");
   await expect(count("Projects")).toHaveAttribute("data-count", "2");
 
   await treeItem(page, "Projects").click();
