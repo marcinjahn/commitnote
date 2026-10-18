@@ -57,6 +57,15 @@ import {
   type ShareIndex,
 } from "../share/share-index";
 import type { ColorTag } from "../tags/color-tag";
+import type { ImageId } from "../images/image-id";
+import {
+  decryptImageIndex,
+  EMPTY_IMAGES,
+  findImageIndexEntry,
+  type AvailableImage,
+  type ImageIndex,
+} from "../images/image-index";
+import type { PendingImage } from "../images/pending-image";
 import { insertionIndex, placementPositions } from "../order/placement";
 import { isExpired, selectExpired, type PurgeCaps } from "../trash/expiry";
 import { createTrashEntryId } from "../trash/trash-entry-id";
@@ -135,6 +144,7 @@ interface SyncedState {
   readonly order: OrderIndex;
   readonly tags: TagIndex;
   readonly shares: ShareIndex;
+  readonly images: ImageIndex;
   readonly config: RepoConfig;
   readonly settings: Settings;
   /** Files left out of `tree` because their names don't decrypt. */
@@ -362,6 +372,14 @@ export interface SyncEngine {
   /** Records settings edits and saves them like any other change. */
   changeSettings(edits: SettingsEdits): void;
   dismissNotice(id: number): void;
+  /**
+   * Holds an encrypted image until a saved note change references it. Does
+   * not save by itself.
+   */
+  addPendingImage(image: PendingImage): void;
+  getPendingImage(imageId: ImageId): PendingImage | undefined;
+  /** Image blobs reachable in history that note changes may revive. */
+  addRestoredImages(shas: ReadonlyMap<ImageId, string>): void;
   snapshotNotes(): NotesSnapshot | null;
   /** One source per live note in sidebar order. Reads current state only. */
   searchSources(): readonly SearchSource[];
@@ -597,6 +615,8 @@ export function createSyncEngine(options: {
   // A head whose commit already holds `inFlight` but whose tree could not be
   // loaded yet; the next save loads it instead of committing again.
   let committedHead: string | null = null;
+  const pendingImages = new Map<ImageId, PendingImage>();
+  const restoredImages = new Map<ImageId, string>();
   let consecutiveFailures = 0;
   let retryTimer: unknown = undefined;
   let purgeAttempted = false;
@@ -772,6 +792,7 @@ export function createSyncEngine(options: {
     const order = await loadOrder(listing);
     const tags = await loadTags(listing);
     const shares = await loadShares(listing);
+    const images = await loadImages(listing);
     const undecryptableFiles = await countUndecryptableFiles(listing, keyring);
     return {
       head,
@@ -781,6 +802,7 @@ export function createSyncEngine(options: {
       order,
       tags,
       shares,
+      images,
       config,
       settings: resolveSettings(SETTINGS_SCHEMA, config.settings),
       undecryptableFiles,
@@ -834,6 +856,50 @@ export function createSyncEngine(options: {
     );
     loadedShares = { sha: entry.sha, shares };
     return shares;
+  }
+
+  let loadedImages: {
+    readonly sha: string;
+    readonly images: ImageIndex;
+  } | null = null;
+
+  async function loadImages(
+    listing: readonly TreeEntry[],
+  ): Promise<ImageIndex> {
+    const entry = findImageIndexEntry(listing);
+    if (entry === undefined) return EMPTY_IMAGES;
+    if (loadedImages?.sha === entry.sha) return loadedImages.images;
+    const images = await decryptImageIndex(
+      keyring,
+      await adapter.readBlob(entry.sha),
+    );
+    loadedImages = { sha: entry.sha, images };
+    return images;
+  }
+
+  function availableImages(): ReadonlyMap<ImageId, AvailableImage> {
+    const available = new Map<ImageId, AvailableImage>();
+    for (const image of pendingImages.values()) {
+      available.set(image.imageId, {
+        kind: "envelope",
+        envelope: image.envelope,
+        blobSha: image.blobSha,
+      });
+    }
+    for (const [imageId, blobSha] of restoredImages) {
+      if (!available.has(imageId)) {
+        available.set(imageId, { kind: "sha", blobSha });
+      }
+    }
+    return available;
+  }
+
+  function addPendingImage(image: PendingImage): void {
+    pendingImages.set(image.imageId, image);
+  }
+
+  function addRestoredImages(shas: ReadonlyMap<ImageId, string>): void {
+    for (const [imageId, blobSha] of shas) restoredImages.set(imageId, blobSha);
   }
 
   type NoteResolution =
@@ -1424,6 +1490,9 @@ export function createSyncEngine(options: {
           tags: attemptSynced.tags,
           shares: attemptSynced.shares,
           config: attemptSynced.config,
+          images: attemptSynced.images,
+          available: availableImages(),
+          now: clock.now(),
           keyring,
           device: options.deviceName?.() ?? null,
         });
@@ -1453,6 +1522,10 @@ export function createSyncEngine(options: {
 
         if (result.kind === "ok") {
           committedHead = result.head;
+          for (const imageId of encoded.consumedImages) {
+            pendingImages.delete(imageId);
+            restoredImages.delete(imageId);
+          }
           endImportAttempt();
           await adoptCommittedHead(result.head);
           saveSucceeded();
@@ -2830,6 +2903,8 @@ export function createSyncEngine(options: {
   function dispose(): void {
     disposed = true;
     noteContentCache.clear();
+    pendingImages.clear();
+    restoredImages.clear();
     autosave.dispose();
     cancelRetry();
     subscribers.clear();
@@ -2873,6 +2948,9 @@ export function createSyncEngine(options: {
     resolveConflict,
     changeSettings,
     dismissNotice,
+    addPendingImage,
+    getPendingImage: (imageId) => pendingImages.get(imageId),
+    addRestoredImages,
     snapshotNotes,
     searchSources,
     readNoteText: readNoteBlob,
