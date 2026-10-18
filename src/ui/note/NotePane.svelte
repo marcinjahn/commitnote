@@ -173,10 +173,17 @@
     if (!isNarrowLayout()) editor?.focus();
   }
 
+  const shownNoteKey = $derived(
+    shown.draft
+      ? "draft"
+      : shown.openNote?.kind === "loaded"
+        ? JSON.stringify(shown.openNote.path)
+        : "",
+  );
+
   $effect(() => {
     void noteSwitch;
-    void (shown.draft ? null : shown.openNote?.kind === "loaded" ? JSON.stringify(shown.openNote.path) : null);
-    void shown.draft;
+    void shownNoteKey;
     untrack(() => {
       lightbox = null;
     });

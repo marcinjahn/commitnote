@@ -80,6 +80,26 @@ test("the lightbox closes with Escape and with Back", async ({ page }) => {
   );
 });
 
+test("the lightbox stays open while the shown note saves", async ({ page }) => {
+  await openWhiteboard(page);
+  await expectLoaded(page);
+
+  await editorContent(page).getByText("Sketch from the planning session.").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" more");
+  await openLightbox(page);
+
+  const commitsBefore = await fakeForge(page, NOTES).commitCount();
+  await flushPendingSaves(page);
+  await expect
+    .poll(() => fakeForge(page, NOTES).commitCount())
+    .toBeGreaterThan(commitsBefore);
+
+  await expect(lightbox(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(lightbox(page)).toHaveCount(0);
+});
+
 test("removing an image from the note deletes its file and undo revives it", async ({
   page,
 }) => {
