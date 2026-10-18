@@ -78,6 +78,23 @@ test("log out anyway discards unsaved changes", async ({ page }) => {
   });
 });
 
+test("a passphrase change during logout leaves the key-changed screen usable", async ({
+  page,
+}) => {
+  await openNotes(page, { via: "login" });
+  await openWelcomeAndType(page, " unsaved");
+  await fakeForge(page).changeRepoKey();
+  await logOut(page);
+
+  await expect(
+    page.getByRole("heading", { name: "Passphrase changed" }),
+  ).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Export unsaved notes" })
+    .click({ trial: true });
+});
+
 test("logging out leaves no note fragment in the URL", async ({ page }) => {
   await openNotes(page);
   await page.getByRole("treeitem", { name: "Welcome" }).click();

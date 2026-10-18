@@ -83,6 +83,7 @@
   import LogoutDialog from "./ui/session/LogoutDialog.svelte";
   import LoginScreen from "./ui/login/LoginScreen.svelte";
   import AppShell from "./ui/browse/AppShell.svelte";
+  import ScreenScope from "./ui/dialogs/ScreenScope.svelte";
   import PrintView from "./ui/print/PrintView.svelte";
   import type { PrintNote } from "./ui/print/print-note";
   import Wordmark from "./ui/wordmark/Wordmark.svelte";
@@ -705,44 +706,47 @@
     onLogInAgain={() => void logInAfterKeyChange()}
   />
 {:else if phase.kind === "app"}
-  <AppShell
-    engine={phase.engine}
-    autoRefresh={phase.autoRefresh}
-    settingsSaver={phase.settingsSaver}
-    {deviceSettingsStore}
-    updateGate={phase.updateGate}
-    {appUpdates}
-    {install}
-    {launchActions}
-    contentIndexer={phase.contentIndexer}
-    repoLabel={phase.repoLabel}
-    repoUrl={phase.repoUrl}
-    forgeName={phase.forgeName}
-    passphraseChange={phase.passphraseChange}
-    noteHistory={phase.noteHistory}
-    shareService={phase.shareService}
-    forgeId={phase.session.coordinates.forge}
-    noteDatesResolver={phase.noteDatesResolver}
-    keyring={phase.session.keyring}
-    repoKey={repoKeyOf(phase.session.coordinates)}
-    sessionRemembered={phase.remembered}
-    initialMessage={phase.initialMessage}
-    onPassphraseChanged={(keyring, check, history) =>
-      void handlePassphraseChanged(keyring, check, history)}
-    onLogOut={logOut}
-    onAccentColor={(id) => (reportedAccentColor = id)}
+  <ScreenScope current={() => phase.kind === "app" && keyChanged === null}>
+    <AppShell
+      engine={phase.engine}
+      autoRefresh={phase.autoRefresh}
+      settingsSaver={phase.settingsSaver}
+      {deviceSettingsStore}
+      updateGate={phase.updateGate}
+      {appUpdates}
+      {install}
+      {launchActions}
+      contentIndexer={phase.contentIndexer}
+      repoLabel={phase.repoLabel}
+      repoUrl={phase.repoUrl}
+      forgeName={phase.forgeName}
+      passphraseChange={phase.passphraseChange}
+      noteHistory={phase.noteHistory}
+      shareService={phase.shareService}
+      forgeId={phase.session.coordinates.forge}
+      noteDatesResolver={phase.noteDatesResolver}
+      keyring={phase.session.keyring}
+      repoKey={repoKeyOf(phase.session.coordinates)}
+      sessionRemembered={phase.remembered}
+      initialMessage={phase.initialMessage}
+      onPassphraseChanged={(keyring, check, history) =>
+        void handlePassphraseChanged(keyring, check, history)}
+      onLogOut={logOut}
+      onAccentColor={(id) => (reportedAccentColor = id)}
       onColorMode={(id) => (reportedColorMode = id)}
-    onNoteFont={(id) => (reportedNoteFont = id)}
-    onPrintNote={(note) => (reportedPrintNote = note)}
-  />
-  <LogoutDialog
-    open={logout !== null}
-    saving={logout?.kind !== "unsaved"}
-    unsavedCount={logout?.kind === "unsaved" ? logout.count : 0}
-    onKeepTrying={attemptLogOut}
-    onLogOutAnyway={finishLogOut}
-  />
+      onNoteFont={(id) => (reportedNoteFont = id)}
+      onPrintNote={(note) => (reportedPrintNote = note)}
+    />
+  </ScreenScope>
 {/if}
+
+<LogoutDialog
+  open={logout !== null && phase.kind === "app" && keyChanged === null}
+  saving={logout?.kind !== "unsaved"}
+  unsavedCount={logout?.kind === "unsaved" ? logout.count : 0}
+  onKeepTrying={attemptLogOut}
+  onLogOutAnyway={finishLogOut}
+/>
 
 <InstallHowToDialog
   open={installState.howToOpen}
