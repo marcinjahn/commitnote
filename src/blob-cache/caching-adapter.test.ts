@@ -8,7 +8,7 @@ import type {
   CommitResult,
   ForgeAdapter,
 } from "../forge/forge-adapter";
-import { gitBlobSha } from "../forge/git-blob-sha";
+import { gitBlobSha, gitBlobShaOfBytes } from "../forge/git-blob-sha";
 import { createTestClock } from "../sync/testing/test-clock";
 import { createBlobCache } from "./blob-cache";
 import { createBlobStore } from "./blob-store";
@@ -33,6 +33,8 @@ function commitRequest(changes: CommitRequest["changes"]): CommitRequest {
 describe("withBlobCache", () => {
   let factory: IDBFactory;
   let blobs: Map<string, string>;
+  let byteBlobs: Map<string, Uint8Array>;
+  let readBlobBytesCalls: string[];
   let readBlobCalls: string[];
   let commitResult: CommitResult | ForgeError;
   let inner: ForgeAdapter;
@@ -44,6 +46,8 @@ describe("withBlobCache", () => {
   beforeEach(() => {
     factory = new IDBFactory();
     blobs = new Map();
+    byteBlobs = new Map();
+    readBlobBytesCalls = [];
     readBlobCalls = [];
     commitResult = { kind: "ok", head: "head" };
     inner = delegateAdapter(new FakeForgeAdapter(), {
@@ -52,6 +56,12 @@ describe("withBlobCache", () => {
         const text = blobs.get(sha);
         if (text === undefined) throw new ForgeError("NotFound");
         return text;
+      },
+      readBlobBytes: async (sha) => {
+        readBlobBytesCalls.push(sha);
+        const bytes = byteBlobs.get(sha);
+        if (bytes === undefined) throw new ForgeError("NotFound");
+        return bytes;
       },
       commit: async () => {
         if (commitResult instanceof ForgeError) throw commitResult;
@@ -151,7 +161,31 @@ describe("withBlobCache", () => {
     await expect(adapter.readBlob("kept-sha")).rejects.toBeInstanceOf(
       ForgeError,
     );
-    expect(await store.get(REPO, sha)).toMatchObject({ text: "v1:committed" });
+    expect(await store.get(REPO, sha)).toMatchObject({ content: "v1:committed" });
+  });
+
+  it("serves a repeated byte read from the cache", async () => {
+    const bytes = new Uint8Array([3, 1, 4]);
+    const sha = await gitBlobShaOfBytes(bytes);
+    byteBlobs.set(sha, bytes);
+    const { adapter } = cached();
+
+    expect([...(await adapter.readBlobBytes(sha))]).toEqual([3, 1, 4]);
+    expect([...(await adapter.readBlobBytes(sha))]).toEqual([3, 1, 4]);
+
+    expect(readBlobBytesCalls).toEqual([sha]);
+  });
+
+  it("fills upsert-bytes changes of a successful commit, readable immediately", async () => {
+    const { adapter } = cached();
+    const bytes = new Uint8Array([8, 6]);
+    await adapter.commit(
+      commitRequest([{ kind: "upsert-bytes", path: "a", bytes }]),
+    );
+
+    const sha = await gitBlobShaOfBytes(bytes);
+    expect([...(await adapter.readBlobBytes(sha))]).toEqual([8, 6]);
+    expect(readBlobBytesCalls).toEqual([]);
   });
 
   it("fills nothing for stale or rejected commits", async () => {

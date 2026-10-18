@@ -1,6 +1,7 @@
 import type { CommitFileChange } from "../forge/forge-adapter";
-import { gitBlobSha } from "../forge/git-blob-sha";
+import { gitBlobSha, gitBlobShaOfBytes } from "../forge/git-blob-sha";
 import type { RepoCoordinates } from "../forge/repo-coordinates";
+import { utf8Encode } from "../crypto/base64";
 import type { Clock } from "../sync/clock";
 import type { BlobStore } from "./blob-store";
 
@@ -10,15 +11,21 @@ export function repoKeyOf(coordinates: RepoCoordinates): string {
 
 export interface BlobCache {
   read(blobSha: string): Promise<string | null>;
+  readBytes(blobSha: string): Promise<Uint8Array | null>;
   fill(blobSha: string, text: string): void;
+  fillBytes(blobSha: string, bytes: Uint8Array): void;
   fillCommit(changes: readonly CommitFileChange[]): void;
   purge(referenced: ReadonlySet<string>, snapshot: number): Promise<void>;
   dispose(): Promise<void>;
   clear(): Promise<void>;
 }
 
+function toBytes(content: string | Uint8Array): Uint8Array {
+  return typeof content === "string" ? utf8Encode(content) : content;
+}
+
 interface PendingWrite {
-  readonly text: string;
+  readonly content: string | Uint8Array;
 }
 
 export function createBlobCache(options: {
@@ -39,12 +46,12 @@ export function createBlobCache(options: {
     void promise.then(() => inFlight.delete(promise));
   }
 
-  function startFill(blobSha: string, text: string): void {
+  function startFill(blobSha: string, content: string | Uint8Array): void {
     try {
-      const write: PendingWrite = { text };
+      const write: PendingWrite = { content };
       pendingFills.set(blobSha, write);
       const settled = store
-        .put(repoKey, blobSha, text, clock.now())
+        .put(repoKey, blobSha, content, clock.now())
         .catch(() => undefined)
         .then(() => {
           if (pendingFills.get(blobSha) === write) pendingFills.delete(blobSha);
@@ -73,14 +80,38 @@ export function createBlobCache(options: {
       try {
         await Promise.all([...hashing]);
         const pending = pendingFills.get(blobSha);
-        if (pending) return pending.text;
+        if (pending) {
+          return typeof pending.content === "string" ? pending.content : null;
+        }
         const entry = await store.get(repoKey, blobSha);
-        if (!entry) return null;
-        if ((await gitBlobSha(entry.text)) === blobSha) {
+        if (!entry || typeof entry.content !== "string") return null;
+        if ((await gitBlobSha(entry.content)) === blobSha) {
           void store
             .touch(repoKey, blobSha, clock.now())
             .catch(() => undefined);
-          return entry.text;
+          return entry.content;
+        }
+        void store.delete(repoKey, blobSha).catch(() => undefined);
+        return null;
+      } catch {
+        return null;
+      }
+    },
+
+    async readBytes(blobSha) {
+      if (closing) return null;
+      try {
+        await Promise.all([...hashing]);
+        const pending = pendingFills.get(blobSha);
+        if (pending) return toBytes(pending.content);
+        const entry = await store.get(repoKey, blobSha);
+        if (!entry) return null;
+        const bytes = toBytes(entry.content);
+        if ((await gitBlobShaOfBytes(bytes)) === blobSha) {
+          void store
+            .touch(repoKey, blobSha, clock.now())
+            .catch(() => undefined);
+          return bytes;
         }
         void store.delete(repoKey, blobSha).catch(() => undefined);
         return null;
@@ -94,13 +125,27 @@ export function createBlobCache(options: {
       startFill(blobSha, text);
     },
 
+    fillBytes(blobSha, bytes) {
+      if (closing) return;
+      startFill(blobSha, bytes);
+    },
+
     fillCommit(changes) {
       if (closing) return;
       for (const change of changes) {
-        if (change.kind !== "upsert-text") continue;
-        const { text } = change;
-        const hashed = gitBlobSha(text).then(
-          (blobSha) => startFill(blobSha, text),
+        let content: string | Uint8Array;
+        let digest: Promise<string>;
+        if (change.kind === "upsert-text") {
+          content = change.text;
+          digest = gitBlobSha(change.text);
+        } else if (change.kind === "upsert-bytes") {
+          content = change.bytes;
+          digest = gitBlobShaOfBytes(change.bytes);
+        } else {
+          continue;
+        }
+        const hashed = digest.then(
+          (blobSha) => startFill(blobSha, content),
           () => undefined,
         );
         hashing.add(hashed);

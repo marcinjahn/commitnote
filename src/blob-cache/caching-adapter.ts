@@ -20,7 +20,13 @@ export function withBlobCache(
       cache.fill(sha, text);
       return text;
     },
-    readBlobBytes: inner.readBlobBytes.bind(inner),
+    async readBlobBytes(sha) {
+      const hit = await cache.readBytes(sha);
+      if (hit !== null) return hit;
+      const bytes = await inner.readBlobBytes(sha);
+      cache.fillBytes(sha, bytes);
+      return bytes;
+    },
     async commit(request) {
       const result = await inner.commit(request);
       if (result.kind === "ok") cache.fillCommit(request.changes);

@@ -1,6 +1,6 @@
 import { IDBFactory, IDBKeyRange as FakeIDBKeyRange } from "fake-indexeddb";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { gitBlobSha } from "../forge/git-blob-sha";
+import { gitBlobSha, gitBlobShaOfBytes } from "../forge/git-blob-sha";
 import { createTestClock } from "../sync/testing/test-clock";
 import { createBlobCache, repoKeyOf } from "./blob-cache";
 import { createBlobStore } from "./blob-store";
@@ -49,6 +49,51 @@ describe("blob cache", () => {
     expect(await store.get(OTHER_REPO, "elsewhere")).not.toBeNull();
   });
 
+  it("round-trips bytes, including commit fills", async () => {
+    const { cache } = newCache();
+    const bytes = new Uint8Array([9, 8, 7]);
+    const sha = await gitBlobShaOfBytes(bytes);
+    cache.fillBytes(sha, bytes);
+    expect([...((await cache.readBytes(sha)) ?? [])]).toEqual([9, 8, 7]);
+    await cache.dispose();
+
+    const second = newCache();
+    expect([...((await second.cache.readBytes(sha)) ?? [])]).toEqual([9, 8, 7]);
+
+    const committed = new Uint8Array([1, 2]);
+    second.cache.fillCommit([{ kind: "upsert-bytes", path: "p", bytes: committed }]);
+    const committedSha = await gitBlobShaOfBytes(committed);
+    expect([...((await second.cache.readBytes(committedSha)) ?? [])]).toEqual([1, 2]);
+    await second.cache.dispose();
+    const third = newCache();
+    expect(await third.store.get(REPO, committedSha)).toMatchObject({ size: 2 });
+  });
+
+  it("treats a bytes entry as a miss for read and a text entry as bytes for readBytes", async () => {
+    const { store, cache } = newCache();
+    const bytes = new Uint8Array([5, 6]);
+    const bytesSha = await gitBlobShaOfBytes(bytes);
+    const textSha = await gitBlobSha("v1:hé");
+    await store.put(REPO, bytesSha, bytes, 1);
+    await store.put(REPO, textSha, "v1:hé", 1);
+
+    expect(await cache.read(bytesSha)).toBeNull();
+    expect(await store.get(REPO, bytesSha)).not.toBeNull();
+    expect(Array.from((await cache.readBytes(textSha)) ?? [])).toEqual(
+      Array.from(new TextEncoder().encode("v1:hé")),
+    );
+  });
+
+  it("deletes a bytes entry whose content does not match its sha", async () => {
+    const { store, cache } = newCache();
+    await store.put(REPO, "wrong-sha", new Uint8Array([1]), 1);
+
+    expect(await cache.readBytes("wrong-sha")).toBeNull();
+    await vi.waitFor(async () =>
+      expect(await store.get(REPO, "wrong-sha")).toBeNull(),
+    );
+  });
+
   it("returns the running purge to a concurrent caller", () => {
     const { cache } = newCache();
     const first = cache.purge(new Set(), 2000);
@@ -66,12 +111,12 @@ describe("blob cache", () => {
 
     const reopened = newCache().store;
     expect(await reopened.get(REPO, "sha-plain")).toMatchObject({
-      text: "v1:plain",
+      content: "v1:plain",
     });
     expect(
       await reopened.get(REPO, await gitBlobSha("v1:committed")),
     ).toMatchObject({
-      text: "v1:committed",
+      content: "v1:committed",
     });
   });
 
