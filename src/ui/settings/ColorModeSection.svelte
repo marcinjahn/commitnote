@@ -4,9 +4,12 @@
     colorScheme,
     type ColorModeId,
   } from "../../settings/color-mode";
+  import SegmentedControl from "./SegmentedControl.svelte";
+  import ScopeToggle from "./ScopeToggle.svelte";
+  import SettingRow from "./SettingRow.svelte";
   import type { SettingsSectionProps } from "./settings-sections";
 
-  const { settings, changeSettings }: SettingsSectionProps = $props();
+  const { settings, changeSettings, scopes, changeSettingScope }: SettingsSectionProps = $props();
 
   const descriptionId = $props.id();
 
@@ -50,22 +53,30 @@
   </span>
 {/snippet}
 
-<div class="color-modes" role="radiogroup" aria-label="Color mode">
-  {#each COLOR_MODE_OPTIONS as option (option.id)}
-    {@const system = option.id === "system"}
-    <label class="color-mode" title={option.label}>
-      <input
-        type="radio"
-        class="visually-hidden"
-        name="color-mode"
-        value={option.id}
-        aria-label={option.label}
-        aria-describedby={system ? descriptionId : undefined}
-        checked={settings.colorMode === option.id}
-        onchange={() => changeSettings({ colorMode: option.id as ColorModeId })}
-      />
+<SettingRow stacked>
+  {#snippet label()}Color mode{/snippet}
+  {#snippet aside()}
+    <ScopeToggle
+      label="Color mode"
+      scope={scopes.colorMode}
+      onToggle={() =>
+        changeSettingScope(
+          "colorMode",
+          scopes.colorMode === "device" ? "synced" : "device",
+        )}
+    />
+  {/snippet}
+  <SegmentedControl
+    label="Color mode"
+    name="color-mode"
+    options={COLOR_MODE_OPTIONS}
+    value={settings.colorMode}
+    describedBy={(option) => (option.id === "system" ? descriptionId : undefined)}
+    onSelect={(id) => changeSettings({ colorMode: id as ColorModeId })}
+  >
+    {#snippet segment(option)}
       <span class="preview-card" aria-hidden="true">
-        {#if system}
+        {#if option.id === "system"}
           {@render mock("light", "start")}
           {@render mock("dark", "end")}
           <span class="system-badge">
@@ -79,68 +90,26 @@
         {/if}
       </span>
       <span class="color-mode-label">{option.label}</span>
-    </label>
-  {/each}
-</div>
-<span id={descriptionId} class="visually-hidden">{systemDescription}</span>
-<p class="field-hint color-mode-caption" aria-hidden="true">
-  {#if selected.id === "system"}
-    <strong>{selected.label}</strong> · {systemDescription}
-  {:else}
-    <strong>{selected.label}</strong>
-  {/if}
-</p>
+    {/snippet}
+  </SegmentedControl>
+  <span id={descriptionId} class="visually-hidden">{systemDescription}</span>
+  <p class="field-hint color-mode-caption" aria-hidden="true">
+    {#if selected.id === "system"}
+      <strong>{selected.label}</strong> · {systemDescription}
+    {:else}
+      <strong>{selected.label}</strong>
+    {/if}
+  </p>
+</SettingRow>
 
 <style>
-  .color-modes {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-3);
-  }
-
-  .color-mode {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    cursor: pointer;
-  }
-
   .preview-card {
     position: relative;
     display: block;
+    align-self: stretch;
     aspect-ratio: 4 / 3;
     overflow: hidden;
     border: var(--hairline) solid var(--color-border-strong);
-    transition:
-      transform var(--motion-duration) var(--motion-easing),
-      box-shadow var(--motion-duration) var(--motion-easing);
-  }
-
-  @media (hover: hover) {
-    .color-mode:hover .preview-card {
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-2);
-    }
-  }
-
-  input:checked + .preview-card {
-    box-shadow:
-      0 0 0 2px var(--color-background),
-      0 0 0 4px var(--color-text);
-  }
-
-  @media (hover: hover) {
-    .color-mode:hover input:checked + .preview-card {
-      box-shadow:
-        0 0 0 2px var(--color-background),
-        0 0 0 4px var(--color-text),
-        var(--shadow-2);
-    }
-  }
-
-  input:focus-visible + .preview-card {
-    outline: 2px solid var(--color-focus);
-    outline-offset: 6px;
   }
 
   .mock {
@@ -229,7 +198,6 @@
     place-items: center;
     width: 22px;
     height: 22px;
-    border-radius: 50%;
     background: var(--color-ink);
   }
 
@@ -239,11 +207,6 @@
     stroke-width: 1.5;
     stroke-linecap: round;
     stroke-linejoin: round;
-  }
-
-  .color-mode-label {
-    font-size: var(--font-size-sm);
-    color: var(--color-text);
   }
 
   .color-mode-caption {
@@ -263,24 +226,6 @@
 
     .preview-card {
       box-shadow: 0 0 0 1px CanvasText;
-    }
-
-    input:checked + .preview-card {
-      box-shadow:
-        0 0 0 2px Canvas,
-        0 0 0 4px Highlight;
-    }
-  }
-
-  @media (forced-colors: active) and (hover: hover) {
-    .color-mode:hover .preview-card {
-      box-shadow: 0 0 0 1px CanvasText;
-    }
-
-    .color-mode:hover input:checked + .preview-card {
-      box-shadow:
-        0 0 0 2px Canvas,
-        0 0 0 4px Highlight;
     }
   }
 </style>

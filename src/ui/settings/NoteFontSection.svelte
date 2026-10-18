@@ -4,10 +4,12 @@
     noteFontFamily,
     type NoteFont,
   } from "../../settings/note-font";
+  import ScopeToggle from "./ScopeToggle.svelte";
+  import SettingRow from "./SettingRow.svelte";
   import SettingOptionList from "./SettingOptionList.svelte";
   import type { SettingsSectionProps } from "./settings-sections";
 
-  const { settings, changeSettings }: SettingsSectionProps = $props();
+  const { settings, changeSettings, scopes, changeSettingScope }: SettingsSectionProps = $props();
 
   let hovered = $state<NoteFont | null>(null);
   let focused = $state<NoteFont | null>(null);
@@ -21,31 +23,45 @@
   }
 </script>
 
-<div class="font-picker">
-  <div
-    class="font-preview"
-    data-testid="font-preview"
-    aria-hidden="true"
-    style:font-family={previewedFamily}
-  >
-    <p class="font-preview-heading">Weekly notes</p>
-    <p>A <strong>clear</strong> list keeps a week <em>calm</em>.</p>
-    <p class="font-preview-code">Run <code>cargo clippy</code> before you push.</p>
+<SettingRow stacked>
+  {#snippet label()}Note font{/snippet}
+  {#snippet aside()}
+    <ScopeToggle
+      label="Note font"
+      scope={scopes.noteFont}
+      onToggle={() =>
+        changeSettingScope(
+          "noteFont",
+          scopes.noteFont === "device" ? "synced" : "device",
+        )}
+    />
+  {/snippet}
+  <div class="font-picker">
+    <div
+      class="font-preview"
+      data-testid="font-preview"
+      aria-hidden="true"
+      style:font-family={previewedFamily}
+    >
+      <p class="font-preview-heading">Weekly notes</p>
+      <p>A <strong>clear</strong> list keeps a week <em>calm</em>.</p>
+      <p class="font-preview-code">Run <code>cargo clippy</code> before you push.</p>
+    </div>
+    <SettingOptionList
+      label="Note font"
+      name="note-font"
+      options={NOTE_FONT_OPTIONS}
+      value={settings.noteFont}
+      columns={2}
+      {onhighlight}
+      onSelect={(id) => changeSettings({ noteFont: id })}
+    >
+      {#snippet optionLabel(option)}
+        <span class="font-label" style:font-family={option.family}>{option.label}</span>
+      {/snippet}
+    </SettingOptionList>
   </div>
-  <SettingOptionList
-    label="Note font"
-    name="note-font"
-    options={NOTE_FONT_OPTIONS}
-    value={settings.noteFont}
-    columns={2}
-    {onhighlight}
-    onSelect={(id) => changeSettings({ noteFont: id })}
-  >
-    {#snippet optionLabel(option)}
-      <span class="font-label" style:font-family={option.family}>{option.label}</span>
-    {/snippet}
-  </SettingOptionList>
-</div>
+</SettingRow>
 
 <style>
   .font-picker {

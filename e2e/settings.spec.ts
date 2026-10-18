@@ -108,6 +108,13 @@ test("Settings is the first command and opens a dialog with the accent color opt
 
   const dialog = settingsDialog(page);
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("heading", { level: 3 })).toHaveText([
+    "Appearance",
+    "Editor",
+    "Notes",
+    "This device",
+    "Data & security",
+  ]);
   const colorModes = dialog.getByRole("radiogroup", { name: "Color mode" });
   await expect(colorModes.getByRole("radio")).toHaveCount(3);
   const systemMode = colorModes.getByRole("radio", { name: "System" });
@@ -390,11 +397,42 @@ test("arrow keys move the note placement selection", async ({ page }) => {
   const group = settingsDialog(page).getByRole("radiogroup", {
     name: "New notes",
   });
-  await group.getByRole("radio", { name: "At the beginning" }).focus();
+  const foldersGroup = settingsDialog(page).getByRole("radiogroup", {
+    name: "New folders",
+  });
+  const notesBox = await group.boundingBox();
+  const foldersBox = await foldersGroup.boundingBox();
+  expect(notesBox).not.toBeNull();
+  expect(foldersBox).not.toBeNull();
+  expect(Math.abs(notesBox!.x - foldersBox!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(notesBox!.width - foldersBox!.width)).toBeLessThanOrEqual(1);
+
+  const beginning = group.getByRole("radio", { name: "At the beginning" });
+  await beginning.focus();
+
+  const segmentBackground = (name: string) =>
+    group
+      .locator("label.segment")
+      .filter({ has: page.getByRole("radio", { name }) })
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+  const ink = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.backgroundColor = "var(--color-ink)";
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  expect(await segmentBackground("At the beginning")).toBe(ink);
+  expect(await segmentBackground("At the end")).not.toBe(ink);
 
   await page.keyboard.press("ArrowDown");
 
   await expect(group.getByRole("radio", { name: "At the end" })).toBeChecked();
+  await expect.poll(() => segmentBackground("At the end")).toBe(ink);
+  await expect
+    .poll(() => segmentBackground("At the beginning"))
+    .not.toBe(ink);
 });
 
 const SYSTEM_STACK =
@@ -528,6 +566,12 @@ test("the Note font section lists eleven options with Inter checked, each label 
   const group = noteFontGroup(page);
 
   await expect(group.getByRole("radio")).toHaveCount(11);
+  await expect(group).toHaveCSS("border-top-style", "solid");
+  await expect(noteFontRow(page, "Inter")).toHaveCSS("border-bottom-style", "solid");
+  await expect(noteFontRow(page, "Inter").locator(".setting-option-label")).toHaveCSS(
+    "font-size",
+    "16px",
+  );
   await expect(group.getByRole("radio").nth(6)).toHaveAccessibleName("Literata");
   await expect(group.getByRole("radio").nth(6)).toHaveAccessibleDescription(
     NOTE_FONTS.Literata.description,
@@ -1150,23 +1194,44 @@ test("the commands menu lists only Settings, Shared links and Log out", async ({
   ).toHaveText(["Settings", "Shared links", "Log out"]);
 });
 
-test("Data & security is the last Settings section with export, import and passphrase links", { tag: "@mobile" }, async ({
+test("Data & security is the last Settings section with export, import and passphrase buttons", { tag: "@mobile" }, async ({
   page,
 }) => {
   const dialog = await openSettings(page);
+  const mobile = (page.viewportSize()?.width ?? 0) < 768;
+  if (mobile) {
+    for (const name of [
+      "Animated caret",
+      "Vim mode",
+      "Start a note by typing",
+      "Reopen the last note and folders",
+    ]) {
+      const checkbox = dialog.getByRole("checkbox", { name, exact: true });
+      await checkbox.scrollIntoViewIfNeeded();
+      const box = await checkbox
+        .locator("xpath=ancestor::label[contains(@class, 'setting-checkbox')]")
+        .boundingBox();
+      expect(box?.width).toBeGreaterThanOrEqual(44);
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+    }
+    const vim = dialog.getByRole("checkbox", { name: "Vim mode", exact: true });
+    const wrapper = vim.locator("xpath=ancestor::label[contains(@class, 'setting-checkbox')]");
+    const before = await vim.isChecked();
+    await wrapper.click({ position: { x: 2, y: 2 } });
+    expect(await vim.isChecked()).toBe(!before);
+    await wrapper.click({ position: { x: 2, y: 2 } });
+    expect(await vim.isChecked()).toBe(before);
+  }
   const headings = dialog.getByRole("heading", { level: 3 });
   await expect(headings.last()).toHaveText("Data & security");
   await expect(headings.nth(-2)).toHaveText("This device");
-  const lefts: number[] = [];
   for (const name of ["Export notes", "Import notes", "Change passphrase"]) {
     const button = dialog.getByRole("button", { name, exact: true });
     await button.scrollIntoViewIfNeeded();
     await expect(button).toBeVisible();
     await expect(button).toBeEnabled();
-    await expect(button).toHaveCSS("border-style", "none");
-    lefts.push((await button.boundingBox())!.x);
+    await expect(button).toHaveCSS("border-top-style", "solid");
   }
-  expect(new Set(lefts).size).toBe(1);
 });
 
 test("closing Change passphrase with Escape keeps Settings open and refocuses its button", async ({
@@ -1185,6 +1250,113 @@ test("closing Change passphrase with Escape keeps Settings open and refocuses it
   ).toBeFocused();
 });
 
+test.describe("setting scope", () => {
+  function scopeToggle(dialog: Locator, label: string): Locator {
+    return dialog.getByRole("button", { name: `${label} only on this device` });
+  }
+
+  function storedDevice(page: Page) {
+    return page.evaluate(() =>
+      JSON.parse(localStorage.getItem("commitnote.deviceSettings") ?? "{}"),
+    );
+  }
+
+  test("shows the scopes by default and the toggles are reachable by keyboard", async ({
+    page,
+  }) => {
+    const dialog = await openSettings(page);
+
+    await expect(
+      dialog.getByText("Settings apply to all your devices unless marked This device."),
+    ).toBeVisible();
+    for (const label of ["Vim mode", "Start a note by typing"]) {
+      const toggle = scopeToggle(dialog, label);
+      await expect(toggle).toHaveAttribute("aria-pressed", "true");
+      await expect(toggle).toHaveText("This device");
+    }
+    const accent = scopeToggle(dialog, "Accent color");
+    await expect(accent).toHaveAttribute("aria-pressed", "false");
+    await expect(accent).toHaveText("All devices");
+    await expect(dialog.getByRole("button", { name: /New notes only/ })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: /New folders only/ })).toHaveCount(0);
+
+    await dialog.getByRole("checkbox", { name: "Vim mode" }).focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(scopeToggle(dialog, "Vim mode")).toBeFocused();
+  });
+
+  test("switching scope keeps the value and only commits when switching back", async ({
+    page,
+  }) => {
+    const dialog = await openSettings(page);
+    const before = await fakeForge(page).commitMessages();
+    await chooseAccent(page, "Teal");
+    await expectSettingsCommits(page, before.length + 1);
+    const afterTeal = await fakeForge(page).commitMessages();
+
+    await scopeToggle(dialog, "Accent color").click();
+
+    await expect(scopeToggle(dialog, "Accent color")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(
+      dialog
+        .getByRole("radiogroup", { name: "Accent color" })
+        .getByRole("radio", { name: "Teal", exact: true }),
+    ).toBeChecked();
+    await expect
+      .poll(() => storedDevice(page))
+      .toMatchObject({
+        scopes: { accentColor: "device" },
+        values: { accentColor: "teal" },
+      });
+    await flushPendingSaves(page);
+    expect(await fakeForge(page).commitCount()).toBe(afterTeal.length);
+
+    await chooseAccent(page, "Violet");
+    await expectRootAccent(page, VIOLET);
+    await flushPendingSaves(page);
+    expect(await fakeForge(page).commitCount()).toBe(afterTeal.length);
+
+    await scopeToggle(dialog, "Accent color").click();
+    await flushPendingSaves(page);
+    await expectSettingsCommits(page, afterTeal.length + 1);
+    const [latest] = await fakeForge(page).commitMessages();
+    const trailers = latest.split("\n").filter((l) => l.startsWith("Commitnote-Settings"));
+    expect(trailers).toEqual(["Commitnote-Settings: accentColor"]);
+    await expectRootAccent(page, VIOLET);
+
+    const afterBack = await fakeForge(page).commitMessages();
+    await scopeToggle(dialog, "Animated caret").click();
+    await scopeToggle(dialog, "Animated caret").click();
+    await expect(scopeToggle(dialog, "Animated caret")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await flushPendingSaves(page);
+    expect(await fakeForge(page).commitCount()).toBe(afterBack.length);
+  });
+
+  test("a device color mode applies on the passphrase step", async ({ page }) => {
+    const dialog = await openSettings(page);
+    await scopeToggle(dialog, "Color mode").click();
+    await chooseOption(page, "Color mode", "Dark");
+    await closeSettings(page);
+
+    await logOut(page);
+    await expect(page.getByLabel("Access token")).toBeVisible({ timeout: 10_000 });
+    await chooseRepository(page, { repo: SAMPLE.repo });
+    await expect(page.getByLabel("Passphrase", { exact: true })).toBeVisible();
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.documentElement.dataset.colorMode),
+      )
+      .toBe("dark");
+  });
+});
+
 test.describe("forced colours", () => {
   test.skip(({ isMobile }) => isMobile, "desktop only");
 
@@ -1197,7 +1369,7 @@ test.describe("forced colours", () => {
       .getByRole("radiogroup", { name: "Accent color" })
       .locator("label")
       .filter({ has: page.getByRole("radio", { name: "Violet", exact: true }) })
-      .locator(".accent-circle");
+      .locator(".accent-square");
     await expect(circle).toBeVisible();
     const background = await circle.evaluate(
       (el) => getComputedStyle(el).backgroundColor,

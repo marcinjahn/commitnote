@@ -1,6 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { expectSettingsIdle, flushPendingSaves } from "../helpers";
 
 export function settingsDialog(page: Page): Locator {
   return page.getByRole("dialog", { name: "Settings" });
@@ -34,8 +33,6 @@ export async function closeSettings(page: Page): Promise<void> {
 export async function enableVimMode(page: Page): Promise<void> {
   const dialog = await openSettings(page);
   await dialog.getByRole("checkbox", { name: "Vim mode" }).check();
-  await flushPendingSaves(page);
-  await expectSettingsIdle(page);
   await closeSettings(page);
 }
 

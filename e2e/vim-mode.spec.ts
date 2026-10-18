@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { expectSettingsIdle, flushPendingSaves, openNotes } from "./helpers";
+import { fakeForge, flushPendingSaves, openNotes } from "./helpers";
 import {
   closeSettings,
   enableVimMode,
@@ -58,25 +58,45 @@ test("vim mode is off by default and loads nothing", async ({ page }) => {
   expect(requested.filter((url) => url.includes("vim-extension"))).toEqual([]);
 });
 
-test("toggling the setting applies live to the open note", async ({ page }) => {
+test("toggling the setting applies live to the open note and stays on this device", async ({
+  page,
+  openSecondDevice,
+}) => {
   await openNotes(page);
   await openWelcome(page);
   await expect(bar(page)).toHaveCount(0);
+  const commitsBefore = await fakeForge(page).commitCount();
 
   const dialog = await openSettings(page);
   await dialog.getByRole("checkbox", { name: "Vim mode" }).check();
-  await flushPendingSaves(page);
-  await expectSettingsIdle(page);
   await closeSettings(page);
 
   await expect(modeText(page)).toHaveText("NORMAL");
   await expect(gutter(page)).toBeVisible();
   await expect(editor(page)).toHaveAccessibleDescription(VIM_DESCRIPTION);
+  await flushPendingSaves(page);
+  expect(await fakeForge(page).commitCount()).toBe(commitsBefore);
+  expect(
+    await page.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("commitnote.deviceSettings") ?? "null")
+          ?.values?.vimMode,
+    ),
+  ).toBe(true);
+
+  await page.reload();
+  await openNotes(page);
+  await openWelcome(page);
+  await expect(modeText(page)).toHaveText("NORMAL");
+
+  const { page: other } = await openSecondDevice();
+  await openNotes(other);
+  await openWelcome(other);
+  await expect(editor(other)).toHaveAccessibleDescription(DEFAULT_DESCRIPTION);
+  await expect(bar(other)).toHaveCount(0);
 
   const again = await openSettings(page);
   await again.getByRole("checkbox", { name: "Vim mode" }).uncheck();
-  await flushPendingSaves(page);
-  await expectSettingsIdle(page);
   await closeSettings(page);
 
   await expect(bar(page)).toHaveCount(0);

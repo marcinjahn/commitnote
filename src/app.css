@@ -120,6 +120,7 @@
   --font-weight-semibold: 600;
   --letter-spacing-tight: -0.011em;
   --letter-spacing-tighter: -0.022em;
+  --letter-spacing-caps: 0.08em;
   --line-height: 1.55;
 
   --motion-duration: 140ms;
@@ -127,6 +128,8 @@
   --hairline: 1px;
 
   --touch-target: 44px;
+  --control-height-compact: 32px;
+  --option-row-height: 40px;
   --icon-size: 16px;
   --icon-stroke: 1.5;
   --checkbox-size: 20px;
@@ -425,6 +428,36 @@ button,
 .checkbox-field input[type="checkbox"] {
   width: var(--checkbox-size);
   height: var(--checkbox-size);
+}
+
+.setting-checkbox {
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+@media (max-width: 767px) {
+  .setting-checkbox {
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+  }
+}
+
+.setting-checkbox:has(input:disabled) {
+  cursor: default;
+}
+
+.setting-checkbox > input[type="checkbox"] {
+  display: block;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
+  margin: 0;
+  border-radius: var(--radius);
+  accent-color: var(--color-ink);
+}
+
+.setting-row-label > label {
+  cursor: pointer;
 }
 
 .alert-error {

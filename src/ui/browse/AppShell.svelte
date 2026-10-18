@@ -22,6 +22,14 @@
     type SyncEngineState,
   } from "../../sync/sync-engine";
   import type { SettingsSaver } from "../../settings/settings-saver";
+  import type { DeviceSettingsStore } from "../../settings/device-settings-store";
+  import {
+    resolveEffectiveSettings,
+    routeSettingsEdits,
+    switchSettingScope,
+    type SettingScope,
+    type SwitchableSettingKey,
+  } from "../../settings/setting-scope";
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
   import { installSaveShortcut } from "../../app/save-shortcut";
@@ -215,6 +223,7 @@
     engine: SyncEngine;
     autoRefresh: AutoRefresh;
     settingsSaver: SettingsSaver;
+    deviceSettingsStore: DeviceSettingsStore;
     updateGate: UpdateGate;
     appUpdates: AppUpdates | null;
     install: InstallController;
@@ -248,6 +257,7 @@
     engine,
     autoRefresh,
     settingsSaver,
+    deviceSettingsStore,
     updateGate,
     appUpdates,
     install,
@@ -293,6 +303,7 @@
         }),
   );
   let pendingSettingsEdits = $state(untrack(() => settingsSaver.pending));
+  let deviceSettings = $state.raw(untrack(() => deviceSettingsStore.read()));
   let mobileView = $state<"tree" | "note">("tree");
   let repoLabelEl = $state<HTMLSpanElement | null>(null);
   let repoLabelTruncated = $state(false);
@@ -757,25 +768,37 @@
   });
 
   $effect(() => {
+    deviceSettings = deviceSettingsStore.read();
+    return deviceSettingsStore.subscribe(() => {
+      deviceSettings = deviceSettingsStore.read();
+    });
+  });
+
+  $effect(() => {
     tabTitle.setUnsaved(
       engineState.syncStates.hasUnsaved || Object.keys(pendingSettingsEdits).length > 0,
     );
     return () => tabTitle.setUnsaved(false);
   });
 
-  const settings: Settings = $derived(
-    resolveSettings(
-      SETTINGS_SCHEMA,
-      applySettingsEdits(engineState.rawSettings, pendingSettingsEdits),
-    ),
+  const syncedRawSettings = $derived(
+    applySettingsEdits(engineState.rawSettings, pendingSettingsEdits),
   );
+  const effectiveSettings = $derived(
+    resolveEffectiveSettings(syncedRawSettings, deviceSettings),
+  );
+  const settings: Settings = $derived(effectiveSettings.settings);
 
   $effect(() => {
     onAccentColor(settings.accentColor);
   });
 
   $effect(() => {
-    if (engineState.synced !== null || pendingSettingsEdits.colorMode !== undefined)
+    if (
+      engineState.synced !== null ||
+      pendingSettingsEdits.colorMode !== undefined ||
+      effectiveSettings.scopes.colorMode === "device"
+    )
       onColorMode(settings.colorMode);
   });
 
@@ -808,7 +831,24 @@
   );
 
   function changeSettings(edits: Partial<Settings>): void {
-    settingsSaver.change(edits);
+    const { device, synced } = routeSettingsEdits(edits, effectiveSettings.scopes);
+    if (Object.keys(device).length > 0) deviceSettingsStore.writeValues(device);
+    if (Object.keys(synced).length > 0) settingsSaver.change(synced);
+  }
+
+  function changeSettingScope(
+    key: SwitchableSettingKey,
+    to: SettingScope,
+  ): void {
+    const syncedResolved = resolveSettings(SETTINGS_SCHEMA, syncedRawSettings);
+    const { deviceValue, syncedEdits } = switchSettingScope(
+      key,
+      to,
+      settings,
+      syncedResolved,
+    );
+    if (Object.keys(syncedEdits).length > 0) settingsSaver.change(syncedEdits);
+    deviceSettingsStore.setScope(key, to, deviceValue);
   }
 
   function openSettings(): void {
@@ -2674,6 +2714,8 @@
   <SettingsDialog
     {settings}
     {changeSettings}
+    scopes={effectiveSettings.scopes}
+    {changeSettingScope}
     saveState={settingsSave}
     device={{
       reopenLastView,

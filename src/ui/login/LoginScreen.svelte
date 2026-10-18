@@ -29,7 +29,9 @@
     GENERIC_LOGIN_ERROR,
     PUBLIC_REPOSITORY_WARNING,
   } from "./login-messages";
-  import { resolveSettings, SETTINGS_SCHEMA } from "../../settings/settings";
+  import { rawSettingsOf } from "../../settings/settings";
+  import { resolveEffectiveSettings } from "../../settings/setting-scope";
+  import type { DeviceSettingsStore } from "../../settings/device-settings-store";
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { ColorModeId } from "../../settings/color-mode";
   import UnlockForm from "./UnlockForm.svelte";
@@ -63,6 +65,7 @@
     }) => void;
     onAccentColor: (id: AccentColorId) => void;
     onColorMode: (id: ColorModeId) => void;
+    deviceSettingsStore: DeviceSettingsStore;
     belowInstallBar?: boolean;
   }
 
@@ -78,6 +81,7 @@
     onLoggedIn,
     onAccentColor,
     onColorMode,
+    deviceSettingsStore,
   }: Props = $props();
 
   type TokenError =
@@ -118,13 +122,24 @@
 
   let inspection = $state.raw<Inspection | null>(null);
 
+  let deviceRecord = $state.raw(untrack(() => deviceSettingsStore.read()));
+
   $effect(() => {
-    const settings =
+    deviceRecord = deviceSettingsStore.read();
+    return deviceSettingsStore.subscribe(() => {
+      deviceRecord = deviceSettingsStore.read();
+    });
+  });
+
+  $effect(() => {
+    const repoSettings =
       inspection?.kind === "notesRepo"
-        ? resolveSettings(SETTINGS_SCHEMA, inspection.target.config.settings)
+        ? rawSettingsOf(inspection.target.config.settings)
         : null;
-    onAccentColor(settings?.accentColor ?? "system");
-    if (settings) onColorMode(settings.colorMode);
+    const effective = resolveEffectiveSettings(repoSettings ?? {}, deviceRecord);
+    onAccentColor(effective.settings.accentColor);
+    if (repoSettings !== null || effective.scopes.colorMode === "device")
+      onColorMode(effective.settings.colorMode);
   });
   let inspectedRepository = $state.raw<RepositorySummary | null>(null);
   let inspectionRun = 0;

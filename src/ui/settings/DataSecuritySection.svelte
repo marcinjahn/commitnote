@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingRow from "./SettingRow.svelte";
   import type { DataSecurityActions } from "./data-security-actions";
 
   const {
@@ -22,78 +23,61 @@
   }
 </script>
 
-<div class="data-security">
-  <button
-    type="button"
-    class="link-button action"
-    disabled={exportDisabled}
-    onclick={onExport}
-  >
-    {exporting ? "Exporting…" : "Export notes"}
-  </button>
-  <button
-    type="button"
-    class="link-button action"
-    disabled={importDisabled}
-    onclick={() => importInput?.click()}
-  >
-    {importing ? "Importing…" : "Import notes"}
-  </button>
-  <button
-    type="button"
-    class="link-button action"
-    disabled={changePassphraseDisabled}
-    onclick={onChangePassphrase}
-  >
-    Change passphrase
-  </button>
-  <input
-    bind:this={importInput}
-    type="file"
-    accept=".zip,application/zip,.md,.markdown,.txt"
-    multiple
-    class="visually-hidden"
-    tabindex="-1"
-    aria-hidden="true"
-    data-testid="import-file"
-    onchange={onImportChange}
-  />
-</div>
+<SettingRow stacked>
+  {#snippet label()}
+    <span class="visually-hidden">Data &amp; security actions</span>
+  {/snippet}
+  <div class="data-security">
+    <button
+      type="button"
+      class="button"
+      disabled={exportDisabled}
+      onclick={onExport}
+    >
+      {exporting ? "Exporting…" : "Export notes"}
+    </button>
+    <button
+      type="button"
+      class="button"
+      disabled={importDisabled}
+      onclick={() => importInput?.click()}
+    >
+      {importing ? "Importing…" : "Import notes"}
+    </button>
+    <button
+      type="button"
+      class="button"
+      disabled={changePassphraseDisabled}
+      onclick={onChangePassphrase}
+    >
+      Change passphrase
+    </button>
+    <input
+      bind:this={importInput}
+      type="file"
+      accept=".zip,application/zip,.md,.markdown,.txt"
+      multiple
+      class="visually-hidden"
+      tabindex="-1"
+      aria-hidden="true"
+      data-testid="import-file"
+      onchange={onImportChange}
+    />
+  </div>
+</SettingRow>
 
 <style>
   .data-security {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: var(--space-2);
   }
 
-  .data-security .action {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--touch-target);
-    text-align: left;
-    text-decoration: none;
-    text-underline-offset: 3px;
-  }
-
-  .data-security .action:focus-visible {
-    text-decoration: underline;
-  }
-
-  @media (hover: hover) {
-    .data-security .action:hover:not(:disabled) {
-      text-decoration: underline;
-    }
-  }
-
-  .data-security .action:disabled {
+  .data-security .button:disabled {
+    background: transparent;
     color: var(--color-text-muted);
+    border-color: var(--color-text-muted);
+    opacity: 1;
     cursor: default;
-  }
-
-  @media (min-width: 768px) {
-    .data-security .action {
-      min-height: 32px;
-    }
   }
 </style>
