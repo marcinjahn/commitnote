@@ -112,6 +112,28 @@ test("note-vim @mobile", async ({ page }) => {
   await expectNoA11yViolations(page, "note-vim");
 });
 
+async function openWhiteboardImage(page: Page): Promise<void> {
+  await openNotes(page);
+  await treeItem(page, "Journal").click();
+  await treeItem(page, "2026").click();
+  await treeItem(page, "Whiteboard").click();
+  await expect(
+    page.locator('button.cm-image[data-state="loaded"]'),
+  ).toBeVisible();
+}
+
+test("image-note @mobile", async ({ page }) => {
+  await openWhiteboardImage(page);
+  await expectNoA11yViolations(page, "image-note");
+});
+
+test("image-lightbox @mobile", async ({ page }) => {
+  await openWhiteboardImage(page);
+  await page.locator("button.cm-image").click();
+  await expect(page.locator("dialog.image-lightbox")).toBeVisible();
+  await expectNoA11yViolations(page, "image-lightbox");
+});
+
 test("commands-menu @mobile", async ({ page }) => {
   await openNotes(page);
   await openCommandsMenu(page);

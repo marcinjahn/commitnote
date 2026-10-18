@@ -10,6 +10,8 @@ export type A11yState =
   | "tree"
   | "note"
   | "note-vim"
+  | "image-note"
+  | "image-lightbox"
   | "commands-menu"
   | "row-menu"
   | "error-toast"

@@ -88,6 +88,8 @@ export interface FakeForgeControls {
    * change on another device would.
    */
   changeRepoKey(repoKey: string): Promise<void>;
+  /** Paths of all files in the tree of main's head commit of `repoKey`. */
+  headPaths(repoKey: string): Promise<string[]>;
   /** Objects and main head of `repoKey`, to hand to another browser context. */
   exportRepo(repoKey: string): string;
   /**
@@ -345,6 +347,16 @@ export async function createFakeForge(options?: {
         ],
         SAVE_SUBJECT,
       );
+    },
+    async headPaths(repoKey) {
+      const { repo } = fixtureAdapter(repoKey);
+      const head = repo.getRef(MAIN_BRANCH);
+      const commit = head === undefined ? undefined : repo.getCommit(head);
+      if (commit === undefined) return [];
+      const entries = await repo.listTreeEntries(commit.tree);
+      return entries
+        .filter((entry) => entry.type === "blob")
+        .map((entry) => entry.path);
     },
     exportRepo(repoKey) {
       const { repo } = fixtureAdapter(repoKey);
