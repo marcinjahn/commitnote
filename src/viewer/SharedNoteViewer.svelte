@@ -1,10 +1,21 @@
 <script lang="ts">
-  import { onMount, tick, untrack } from "svelte";
+  import { onDestroy, onMount, tick, untrack } from "svelte";
   import { setStandalone } from "../ui/standalone-context";
   import MarkdownEditor from "../ui/editor/MarkdownEditor.svelte";
   import Wordmark from "../ui/wordmark/Wordmark.svelte";
   import { livePreview } from "../editor/live-preview";
   import { linkOpen } from "../editor/link-open";
+  import {
+    imageOpenHandler,
+    imageSource as imageSourceFacet,
+    imageWidgets,
+    type ImageOpenRequest,
+  } from "../editor/image-widgets";
+  import type { ImageSource } from "../images/image-source";
+  import { loadImageLightbox } from "../ui/images/load-image-lightbox";
+  import { createDialogEntries } from "../ui/dialogs/dialog-entries";
+  import { bindDialogHistory } from "../ui/dialogs/dialog-history";
+  import { dialogStack } from "../ui/dialogs/dialog-stack";
   import { describeShareDate } from "../ui/share/share-messages";
   import type { ViewerController, ViewerState } from "./viewer-state";
   import {
@@ -33,7 +44,66 @@
   let copyResult = $state<"copied" | "failed" | null>(null);
   let passwordInput = $state<HTMLInputElement>();
 
-  const editorExtensions = [livePreview(), linkOpen()];
+  const currentImageSource = $derived<ImageSource | null>(
+    view.kind === "note" ? view.imageSource : null,
+  );
+
+  const editorExtensions = $derived([
+    livePreview(),
+    imageWidgets(),
+    imageSourceFacet.of((id) =>
+      currentImageSource === null
+        ? Promise.resolve({ unavailable: true as const })
+        : currentImageSource(id),
+    ),
+    imageOpenHandler.of(openImage),
+    linkOpen(),
+  ]);
+
+  type LightboxComponent = Awaited<ReturnType<typeof loadImageLightbox>>;
+
+  let lightbox = $state.raw<{
+    component: LightboxComponent;
+    url: string;
+    request: ImageOpenRequest;
+  } | null>(null);
+  let opening = false;
+
+  async function openImage(request: ImageOpenRequest): Promise<void> {
+    const source = currentImageSource;
+    if (opening || lightbox !== null || source === null) return;
+    opening = true;
+    try {
+      const [component, result] = await Promise.all([
+        loadImageLightbox(),
+        source(request.imageId),
+      ]);
+      if ("unavailable" in result) return;
+      lightbox = { component, url: result.url, request };
+    } catch {
+      return;
+    } finally {
+      opening = false;
+    }
+  }
+
+  let binding: ReturnType<typeof bindDialogHistory> | null = null;
+  const entries = createDialogEntries({
+    history: window.history,
+    events: window,
+    onBack: (count) => void binding?.closeFromBack(count),
+  });
+  binding = bindDialogHistory({
+    stack: dialogStack,
+    navigation: entries,
+    requestClose: (el) =>
+      el.dispatchEvent(new Event("cancel", { cancelable: true })),
+    settle: tick,
+  });
+  onDestroy(() => {
+    binding?.dispose();
+    entries.dispose();
+  });
 
   onMount(() => {
     document.title = VIEWER_TITLE;
@@ -146,6 +216,18 @@
       </div>
     {/if}
   </main>
+
+  {#if lightbox}
+    {@const request = lightbox.request}
+    <lightbox.component.default
+      url={lightbox.url}
+      alt={request.alt}
+      width={request.width}
+      height={request.height}
+      origin={request.thumbnail}
+      onClose={() => (lightbox = null)}
+    />
+  {/if}
 
   {#if view.kind === "note"}
     <footer class="footer">{footerText(standalone)}</footer>

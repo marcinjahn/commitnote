@@ -22,13 +22,34 @@ const stubArgon2: Argon2idFunction = async (input) =>
 interface Sealed {
   envelope: string;
   linkSecret: string;
+  images?: readonly string[];
 }
 
 let plain: Sealed;
 let protectedShare: Sealed;
+let withImage: Sealed;
+let protectedWithImage: Sealed;
 
-async function seal(password?: string, argon2id: Argon2idFunction = stubArgon2): Promise<Sealed> {
-  const result = await sealShare({ ...NOTE, password, argon2id });
+const IMAGE_ID = "a".repeat(26);
+const IMAGE_BYTES = new Uint8Array([1, 2, 3, 4]);
+const IMAGE_FILE = "commitnote-image-0.json";
+
+async function seal(password?: string, argon2id: Argon2idFunction = stubArgon2,
+  images = false,
+): Promise<Sealed> {
+  const result = await sealShare({
+    ...NOTE,
+    password,
+    argon2id,
+    images: images
+      ? [
+          {
+            imageId: IMAGE_ID,
+            payload: { type: "image/webp", width: 1, height: 1, bytes: IMAGE_BYTES },
+          },
+        ]
+      : undefined,
+  });
   if (result.kind !== "sealed") {
     throw new Error("expected sealed");
   }
@@ -38,6 +59,8 @@ async function seal(password?: string, argon2id: Argon2idFunction = stubArgon2):
 beforeAll(async () => {
   plain = await seal();
   protectedShare = await seal("hunter2", argon2idDirect);
+  withImage = await seal(undefined, stubArgon2, true);
+  protectedWithImage = await seal("hunter2", argon2idDirect, true);
 }, 60_000);
 
 function hashFor(provider: "github" | "gitlab", sealed: Sealed): string {
@@ -57,7 +80,13 @@ function setup(options: {
     read: (...args: Parameters<typeof read>) =>
       read(...args).then((envelope) => ({
         envelope,
-        readImageFile: () => Promise.reject(new Error("unused")),
+        readImageFile: async (file: string) => {
+          const content = options.sealed?.images?.[0];
+          if (file !== IMAGE_FILE || content === undefined) {
+            throw new Error("unused");
+          }
+          return content;
+        },
       })),
   };
   const readers: ShareReaders = { github: hosted, gitlab: hosted };
@@ -105,7 +134,7 @@ describe("viewer controller", () => {
     const seen: ViewerState["kind"][] = [];
     controller.subscribe((s) => seen.push(s.kind));
     await controller.start();
-    expect(controller.getState()).toEqual({ kind: "note", note: { ...NOTE, images: [] } });
+    expect(controller.getState()).toMatchObject({ kind: "note", note: { ...NOTE, images: [] } });
     expect(seen).toEqual(["loading", "note"]);
     expect(read).toHaveBeenCalledWith(LOCATORS.gitlab);
   });
@@ -164,7 +193,7 @@ describe("viewer controller", () => {
     await controller.start();
     expect(controller.getState().kind).toBe("error");
     await controller.retry();
-    expect(controller.getState()).toEqual({ kind: "note", note: { ...NOTE, images: [] } });
+    expect(controller.getState()).toMatchObject({ kind: "note", note: { ...NOTE, images: [] } });
     expect(read).toHaveBeenCalledTimes(2);
   });
 
@@ -199,6 +228,34 @@ describe("viewer controller", () => {
     expect(controller.getState()).toMatchObject({ kind: "error", error: "damaged" });
   });
 
+  describe("shared images", () => {
+    async function expectBytes(state: ViewerState) {
+      if (state.kind !== "note") throw new Error("expected note");
+      const result = await state.imageSource(IMAGE_ID);
+      if (!("url" in result)) throw new Error("expected url");
+      const blob = await (await fetch(result.url)).blob();
+      expect(blob.type).toBe("image/webp");
+      expect(new Uint8Array(await blob.arrayBuffer())).toEqual(IMAGE_BYTES);
+    }
+
+    it("serves images of a share without a password", async () => {
+      const { controller } = setup({ read: async () => withImage.envelope, sealed: withImage });
+      await controller.start();
+      await expectBytes(controller.getState());
+    });
+
+    it("serves images of a password-protected share after unlocking", async () => {
+      const { controller } = setup({
+        read: async () => protectedWithImage.envelope,
+        sealed: protectedWithImage,
+        argon2id: argon2idDirect,
+      });
+      await controller.start();
+      await controller.unlock("hunter2");
+      await expectBytes(controller.getState());
+    }, 60_000);
+  });
+
   describe("password-protected share", () => {
     it("prompts, tolerates wrong passwords, then opens the note without refetching", async () => {
       const { controller, read } = setup({
@@ -215,7 +272,7 @@ describe("viewer controller", () => {
       expect(controller.getState()).toEqual({ kind: "password", busy: false, wrongPassword: true });
 
       await controller.unlock("hunter2");
-      expect(controller.getState()).toEqual({ kind: "note", note: { ...NOTE, images: [] } });
+      expect(controller.getState()).toMatchObject({ kind: "note", note: { ...NOTE, images: [] } });
       expect(read).toHaveBeenCalledTimes(1);
     }, 60_000);
 

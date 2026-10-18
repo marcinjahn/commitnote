@@ -1,16 +1,20 @@
 import type { Argon2idFunction } from "../crypto/argon2";
 import {
   ShareReadError,
+  type HostedShare,
   type ShareLocator,
   type ShareReaders,
 } from "../forge/share-host";
 import {
   envelopeNeedsPassword,
   openShare,
+  type OpenedShare,
   ShareOpenError,
   type SharedNote,
 } from "../share/share-envelope";
 import { parseShareLink } from "../share/share-link";
+import type { ImageSource } from "../images/image-source";
+import { createSharedImageSource } from "./shared-image-source";
 
 export type ViewerErrorKind =
   | "invalid"
@@ -28,7 +32,11 @@ export type ViewerState =
       readonly busy: boolean;
       readonly wrongPassword: boolean;
     }
-  | { readonly kind: "note"; readonly note: SharedNote }
+  | {
+      readonly kind: "note";
+      readonly note: SharedNote;
+      readonly imageSource: ImageSource;
+    }
   | {
       readonly kind: "error";
       readonly error: ViewerErrorKind;
@@ -63,6 +71,7 @@ function readErrorKind(error: unknown): ViewerErrorKind {
 
 export function createViewerController(deps: ViewerDeps): ViewerController {
   let state: ViewerState = { kind: "loading" };
+  let hosted: HostedShare | null = null;
   let envelope: string | null = null;
   let linkSecret: string | null = null;
   const listeners = new Set<(state: ViewerState) => void>();
@@ -72,6 +81,18 @@ export function createViewerController(deps: ViewerDeps): ViewerController {
     for (const listener of [...listeners]) {
       listener(state);
     }
+  }
+
+  function setNote(opened: OpenedShare, source: HostedShare): void {
+    set({
+      kind: "note",
+      note: opened.note,
+      imageSource: createSharedImageSource({
+        images: opened.note.images,
+        hosted: source,
+        shareKey: opened.shareKey,
+      }),
+    });
   }
 
   function fail(
@@ -87,6 +108,7 @@ export function createViewerController(deps: ViewerDeps): ViewerController {
   }
 
   async function start(): Promise<void> {
+    hosted = null;
     envelope = null;
     linkSecret = null;
     if (!deps.supported) {
@@ -101,14 +123,15 @@ export function createViewerController(deps: ViewerDeps): ViewerController {
     const { locator } = link;
     set({ kind: "loading" });
 
-    let text: string;
+    let read: HostedShare;
     try {
-      text = (await deps.readers[locator.provider].read(locator)).envelope;
+      read = await deps.readers[locator.provider].read(locator);
     } catch (error) {
       fail(readErrorKind(error), locator.provider);
       return;
     }
 
+    const text = read.envelope;
     let needsPassword: boolean;
     try {
       needsPassword = envelopeNeedsPassword(text);
@@ -116,6 +139,7 @@ export function createViewerController(deps: ViewerDeps): ViewerController {
       fail("damaged", locator.provider);
       return;
     }
+    hosted = read;
     envelope = text;
     linkSecret = link.linkSecret;
     if (needsPassword) {
@@ -123,13 +147,13 @@ export function createViewerController(deps: ViewerDeps): ViewerController {
       return;
     }
     try {
-      const { note } = await openShare(
+      const opened = await openShare(
         text,
         link.linkSecret,
         undefined,
         deps.argon2id,
       );
-      set({ kind: "note", note });
+      setNote(opened, read);
     } catch {
       fail("damaged", locator.provider);
     }
@@ -141,6 +165,7 @@ export function createViewerController(deps: ViewerDeps): ViewerController {
       state.busy ||
       password === "" ||
       envelope === null ||
+      hosted === null ||
       linkSecret === null
     ) {
       return;
@@ -148,13 +173,13 @@ export function createViewerController(deps: ViewerDeps): ViewerController {
     set({ kind: "password", busy: true, wrongPassword: state.wrongPassword });
     const provider = parseProvider();
     try {
-      const { note } = await openShare(
+      const opened = await openShare(
         envelope,
         linkSecret,
         password,
         deps.argon2id,
       );
-      set({ kind: "note", note });
+      setNote(opened, hosted);
     } catch (error) {
       if (
         error instanceof ShareOpenError &&
