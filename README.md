@@ -318,6 +318,18 @@ is none, so Forward still reaches the notes it skipped.
   encrypted in commits, and is shown only when resolving a conflict.
 - Notices report failures, retries, and other sync events as they happen.
 
+### Images
+
+- Add an image by pasting or dropping it into a note, with "Insert image" in the note header or
+  the command menu, or with the Vim `:image` command. Up to 10 images can be added at a time.
+- Images are converted on your device to WebP (GIFs stay GIFs, so animation is kept), metadata and
+  file names are removed, and they are downscaled to at most 2560 px. Inputs are limited to 25 MB
+  and 50 megapixels.
+- Images are stored encrypted in the notes repository and committed with the note's next save.
+- Removing an image reference removes the image from the repository's current files at the next
+  save, but its encrypted copy stays in the git history. Only changing the passphrase with "Also
+  delete the old history" removes it from the history.
+
 ## Sharing notes
 
 A share is a fixed, encrypted copy of the note's saved version, uploaded as a secret gist (GitHub) or public

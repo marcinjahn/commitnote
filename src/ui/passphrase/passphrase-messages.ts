@@ -55,7 +55,7 @@ export const HISTORY_WARNING =
 export const REMOVE_HISTORY_LABEL = "Also delete the old history";
 
 export function describeRemoveHistory(forgeName: string): string {
-  return `Every earlier version of your notes stays in the repository's history, encrypted with the passphrase that was current back then. Selecting this replaces the whole history with the one commit of re-encrypted notes, so earlier versions and older passphrases no longer unlock anything in it. It can't be undone and the notes' change history is lost. Copies made before, such as clones or forks, keep the old history, and ${forgeName} may keep old commits reachable by their direct link for a while.`;
+  return `Every earlier version of your notes and images stays in the repository's history, encrypted with the passphrase that was current back then. Selecting this replaces the whole history with the one commit of re-encrypted notes, so earlier versions and older passphrases no longer unlock anything in it. It can't be undone and the notes' change history is lost. Copies made before, such as clones or forks, keep the old history, and ${forgeName} may keep old commits reachable by their direct link for a while.`;
 }
 
 export const REMOVE_HISTORY_REVIEW =
