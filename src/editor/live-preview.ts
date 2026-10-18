@@ -249,7 +249,7 @@ class HorizontalRuleWidget extends WidgetType {
   }
 }
 
-function lineHasSelection(
+export function lineHasSelection(
   state: EditorState,
   from: number,
   to: number,
