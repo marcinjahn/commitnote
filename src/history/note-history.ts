@@ -3,7 +3,11 @@ import type { Keyring } from "../crypto/keyring";
 import { decryptName, encryptPath } from "../crypto/name-cipher";
 import { decryptNote, NoteDecryptionError } from "../crypto/note-cipher";
 import { isForgeError } from "../forge/errors";
-import type { CommitSummary, ForgeAdapter } from "../forge/forge-adapter";
+import type {
+  CommitSummary,
+  ForgeAdapter,
+  TreeEntry,
+} from "../forge/forge-adapter";
 import { mapForgeError, type SyncError } from "../sync/sync-engine";
 import { createChainStep, lastSegment, type VersionEvent } from "./chain-step";
 import { Lru } from "./lru";
@@ -77,6 +81,7 @@ export interface NoteHistory {
   /** The newest version of the note at `notePath` on `head`. */
   newestVersion(notePath: NotePath, head: string): Promise<NewestVersion>;
   readVersion(version: NoteVersion): Promise<VersionContent>;
+  listVersionTree(commitSha: string): Promise<readonly TreeEntry[]>;
 }
 
 export interface NoteHistoryDeps {
@@ -297,6 +302,8 @@ export function createNoteHistory(deps: NoteHistoryDeps): NoteHistory {
         if (end !== null) return { kind: "none" };
       }
     },
+
+    listVersionTree: (commitSha) => adapter.listTree(commitSha),
 
     async readVersion(version) {
       const name = await nameOf(version.storedPath);
