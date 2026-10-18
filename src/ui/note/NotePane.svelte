@@ -4,6 +4,15 @@
   import { livePreview } from "../../editor/live-preview";
   import { linkOpen } from "../../editor/link-open";
   import { accentCaret } from "../../editor/accent-caret";
+  import {
+    imageOpenHandler,
+    imageSource as imageSourceFacet,
+    imageWidgets,
+    type ImageOpenRequest,
+  } from "../../editor/image-widgets";
+  import type { ImageSource } from "../../images/image-source";
+  import { loadImageLightbox } from "../images/load-image-lightbox";
+  import { isNarrowLayout } from "../browse/drag-motion";
   import { Compartment } from "@codemirror/state";
   import type { HeldConflict, OpenNoteState, SyncEngine } from "../../sync/sync-engine";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
@@ -23,6 +32,7 @@
   interface Props {
     engine: SyncEngine;
     forgeName: string;
+    imageSource: ImageSource;
     openNote: OpenNoteState | null;
     noteSwitch: number;
     conflict: HeldConflict | undefined;
@@ -46,6 +56,7 @@
   const {
     engine,
     forgeName,
+    imageSource,
     openNote,
     noteSwitch,
     conflict,
@@ -122,10 +133,54 @@
 
   const editorExtensions = $derived([
     livePreview(),
+    imageWidgets(),
+    imageSourceFacet.of((id) => imageSource(id)),
+    imageOpenHandler.of(openImage),
     linkOpen(),
     caretCompartment.of(caretExtension(animatedCaret)),
     vim.extension,
   ]);
+
+  type LightboxComponent = Awaited<ReturnType<typeof loadImageLightbox>>;
+
+  let lightbox = $state.raw<{
+    component: LightboxComponent;
+    url: string;
+    request: ImageOpenRequest;
+  } | null>(null);
+  let opening = false;
+
+  async function openImage(request: ImageOpenRequest): Promise<void> {
+    if (opening || lightbox !== null) return;
+    opening = true;
+    const switchAtOpen = noteSwitch;
+    try {
+      const [component, source] = await Promise.all([
+        loadImageLightbox(),
+        imageSource(request.imageId),
+      ]);
+      if ("unavailable" in source || noteSwitch !== switchAtOpen) return;
+      lightbox = { component, url: source.url, request };
+    } catch {
+      return;
+    } finally {
+      opening = false;
+    }
+  }
+
+  function removeFromNote(request: ImageOpenRequest): void {
+    request.remove?.();
+    if (!isNarrowLayout()) editor?.focus();
+  }
+
+  $effect(() => {
+    void noteSwitch;
+    void (shown.draft ? null : shown.openNote?.kind === "loaded" ? JSON.stringify(shown.openNote.path) : null);
+    void shown.draft;
+    untrack(() => {
+      lightbox = null;
+    });
+  });
 
   let contentEl: HTMLDivElement | undefined = $state();
   let seenSwitch = untrack(() => noteSwitch);
@@ -364,6 +419,18 @@
     <p class="note-status note-loading" role="status">Loading…</p>
   {/if}
 </div>
+{#if lightbox}
+  {@const request = lightbox.request}
+  <lightbox.component.default
+    url={lightbox.url}
+    alt={request.alt}
+    width={request.width}
+    height={request.height}
+    origin={request.thumbnail}
+    onRemove={request.remove ? () => removeFromNote(request) : undefined}
+    onClose={() => (lightbox = null)}
+  />
+{/if}
 {#if vimMode && vim.status !== null && editorText !== null}
   <VimStatusBar status={vim.status} commands={vim.commands} />
 {/if}

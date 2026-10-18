@@ -124,6 +124,7 @@
   } from "../import/import-messages";
   import type { ImportOutcome } from "../import/import-outcome";
   import type { Keyring } from "../../crypto/keyring";
+  import type { ImageSource } from "../../images/image-source";
   import type {
     HistoryOutcome,
     LandedCheck,
@@ -253,6 +254,7 @@
     forgeName: string;
     passphraseChange: PassphraseChange;
     noteHistory: NoteHistory;
+    imageSource: ImageSource;
     shareService: ShareService;
     forgeId: ForgeId;
     noteDatesResolver: NoteDatesResolver;
@@ -289,6 +291,7 @@
     forgeName,
     passphraseChange,
     noteHistory,
+    imageSource,
     shareService,
     forgeId,
     noteDatesResolver,
@@ -2800,6 +2803,7 @@
       bind:this={notePane}
       {engine}
       {forgeName}
+      {imageSource}
       openNote={engineState.openNote}
       {noteSwitch}
       conflict={openConflict}
