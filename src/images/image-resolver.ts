@@ -1,4 +1,8 @@
-import { decryptImage, type ImagePayload } from "../crypto/image-cipher";
+import {
+  decryptImage,
+  ImageDecryptionError,
+  type ImagePayload,
+} from "../crypto/image-cipher";
 import type { Keyring } from "../crypto/keyring";
 import type { ForgeAdapter } from "../forge/forge-adapter";
 import { type ImageId, isImageId } from "./image-id";
@@ -24,6 +28,7 @@ export interface ImageResolverDeps {
 
 export interface ImageResolver {
   readonly resolve: ImageSource;
+  readPayload(imageId: ImageId): Promise<ImagePayload | null>;
   dispose(): void;
 }
 
@@ -106,6 +111,15 @@ export function createImageResolver(deps: ImageResolverDeps): ImageResolver {
     return decryptImage(deps.keyring, imageId, bytes);
   }
 
+  async function readPayload(imageId: ImageId): Promise<ImagePayload | null> {
+    try {
+      return await loadPayload(imageId);
+    } catch (error) {
+      if (error instanceof ImageDecryptionError) return null;
+      throw error;
+    }
+  }
+
   async function load(imageId: ImageId): Promise<ImageSourceResult> {
     try {
       const payload = await loadPayload(imageId);
@@ -137,6 +151,7 @@ export function createImageResolver(deps: ImageResolverDeps): ImageResolver {
 
   return {
     resolve,
+    readPayload,
     dispose() {
       disposed = true;
       cache.clear();

@@ -21,3 +21,13 @@ export const NOTE_IMAGE_PROFILE: ImageProfile = {
   maxBytes: 2 * 1024 * 1024,
   maxGifBytes: 5 * 1024 * 1024,
 };
+
+export const SHARE_IMAGE_PROFILE: ImageProfile = {
+  attempts: [
+    { maxLongEdge: 1600, quality: 0.75 },
+    { maxLongEdge: 1280, quality: 0.75 },
+    { maxLongEdge: 1024, quality: 0.6 },
+  ],
+  maxBytes: 600 * 1024,
+  maxGifBytes: 5 * 1024 * 1024,
+};
