@@ -4,6 +4,7 @@ import {
   defaultImportFolderName,
   describeAtomicSetup,
   describeImportConflicts,
+  describeImportDone,
   describeDropSkipped,
   describeFileDropDone,
   describeImportCounts,
@@ -98,6 +99,27 @@ describe("file drop messages", () => {
     expect(describeNothingDropped(none)).toBe("No notes imported.");
     expect(describeNothingDropped({ ...none, tooMany: 3 })).toBe(
       "No notes imported. Skipped 3 files: 3 over the 100-file limit.",
+    );
+  });
+
+  it("describes a finished import with images", () => {
+    const base = "Imported 2 notes and 1 folder.";
+    expect(describeImportDone(2, 1)).toBe(base);
+    expect(describeImportDone(2, 1, { added: 0, failed: 0 })).toBe(base);
+    expect(describeImportDone(2, 1, { added: 1, failed: 0 })).toBe(
+      `${base} Added 1 image.`,
+    );
+    expect(describeImportDone(2, 1, { added: 3, failed: 0 })).toBe(
+      `${base} Added 3 images.`,
+    );
+    expect(describeImportDone(2, 1, { added: 0, failed: 1 })).toBe(
+      `${base} 1 image could not be imported and stays as a link.`,
+    );
+    expect(describeImportDone(2, 1, { added: 0, failed: 2 })).toBe(
+      `${base} 2 images could not be imported and stay as links.`,
+    );
+    expect(describeImportDone(2, 1, { added: 2, failed: 1 })).toBe(
+      `${base} Added 2 images. 1 image could not be imported and stays as a link.`,
     );
   });
 });
