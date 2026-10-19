@@ -128,6 +128,30 @@ describe("prepareImportImages", () => {
     expect(result.entries.map(contentOf)).toEqual([content, content]);
   });
 
+  it("leaves the reference as written when the image dimensions are out of range", async () => {
+    const content = "![x](a.png)";
+    const process: ProcessImage = async () => ({
+      ok: true,
+      payload: {
+        type: "image/webp",
+        width: 100000,
+        height: 30,
+        bytes: BYTES_A,
+      },
+    });
+
+    const result = await prepareImportImages(
+      [note(content)],
+      new Map([["a.png", BYTES_A]]),
+      deps(process),
+    );
+
+    expect(result.images).toEqual([]);
+    expect(result.added).toBe(0);
+    expect(result.failed).toBe(1);
+    expect(result.entries.map(contentOf)).toEqual([content]);
+  });
+
   it("stops at the image cap and leaves later references as written", async () => {
     const archive = new Map<string, Uint8Array>();
     let content = "";
