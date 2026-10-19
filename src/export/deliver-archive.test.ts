@@ -7,10 +7,11 @@ function setup(
     canShare?: boolean;
     share?: () => Promise<void>;
     withShareApi?: boolean;
+    download?: () => Promise<"downloaded" | "cancelled">;
   } = {},
 ) {
   const file = new File(["zip"], "export.zip", { type: "application/zip" });
-  const download = vi.fn();
+  const download = vi.fn(options.download ?? (async () => "downloaded" as const));
   const share = vi.fn(options.share ?? (async () => {}));
   const canShare = vi.fn(() => options.canShare ?? true);
   const withShareApi = options.withShareApi ?? true;
@@ -67,5 +68,21 @@ describe("deliverArchive", () => {
     });
     expect(await run()).toBe("downloaded");
     expect(download).toHaveBeenCalledWith(file);
+  });
+
+  it("returns a cancelled download as is", async () => {
+    const { run } = setup({
+      coarsePointer: false,
+      download: async () => "cancelled",
+    });
+    expect(await run()).toBe("cancelled");
+  });
+
+  it("propagates a rejected download", async () => {
+    const { run } = setup({
+      coarsePointer: false,
+      download: () => Promise.reject(new Error("disk full")),
+    });
+    await expect(run()).rejects.toThrow("disk full");
   });
 });

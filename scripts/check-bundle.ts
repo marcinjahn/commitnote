@@ -312,6 +312,18 @@ async function main(): Promise<void> {
     return;
   }
 
+  const tauriInDesktop = new Set(
+    (await findForbidden(desktopDistDir, TAURI_NEEDLES)).map((hit) => hit.needle),
+  );
+  const missingTauri = TAURI_NEEDLES.filter((needle) => !tauriInDesktop.has(needle));
+  if (missingTauri.length > 0) {
+    console.error(
+      `dist-desktop/ does not contain ${missingTauri.map((needle) => `"${needle}"`).join(", ")}; the check cannot prove it can detect a Tauri leak`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   if (await exists(join(desktopDistDir, "sw.js"))) {
     console.error(
       "dist-desktop/sw.js exists; the desktop build must not ship a service worker",
@@ -341,7 +353,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `Bundle check passed: production build never ships fake forge fixtures or desktop shell code and ships a complete web app manifest, service worker (${serviceWorkers.join("; ")}); desktop build ships no fake forge fixtures or service worker and its CSP allows https://gitlab.com and ipc:.`,
+    `Bundle check passed: production build never ships fake forge fixtures or desktop shell code and ships a complete web app manifest, service worker (${serviceWorkers.join("; ")}); desktop build ships the desktop shell but no fake forge fixtures or service worker, and its CSP allows https://gitlab.com and ipc:.`,
   );
 }
 

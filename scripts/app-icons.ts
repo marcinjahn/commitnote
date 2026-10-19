@@ -39,6 +39,14 @@ export const APP_ICONS: readonly AppIcon[] = [
   },
 ];
 
+export const DESKTOP_ICONS: readonly AppIcon[] = [
+  { path: "src-tauri/icons/32x32.png", size: 32, purpose: "any" },
+  { path: "src-tauri/icons/64x64.png", size: 64, purpose: "any" },
+  { path: "src-tauri/icons/128x128.png", size: 128, purpose: "any" },
+  { path: "src-tauri/icons/128x128@2x.png", size: 256, purpose: "any" },
+  { path: "src-tauri/icons/icon.png", size: 512, purpose: "any" },
+];
+
 export const MASKABLE_SAFE_ZONE_RADIUS = 0.4;
 
 export const TILE = "#0a0a0a";
@@ -103,12 +111,28 @@ export async function buildAppIcons(
   );
 }
 
+export async function buildDesktopIcons(
+  font: Font,
+): Promise<{ path: string; contents: Uint8Array }[]> {
+  return Promise.all(
+    DESKTOP_ICONS.map(async (icon) => ({
+      path: icon.path,
+      contents: await rasterise(buildAppIconSvg(font, icon)),
+    })),
+  );
+}
+
 export async function buildIconContactSheet(font: Font): Promise<Uint8Array> {
   const icons: readonly { path: string; size: number; purpose?: AppIconPurpose }[] = [
     ...APP_ICONS,
+    ...DESKTOP_ICONS,
     ...SHORTCUT_ICONS,
   ];
-  const pngs = [...(await buildAppIcons(font)), ...(await buildShortcutIcons())];
+  const pngs = [
+    ...(await buildAppIcons(font)),
+    ...(await buildDesktopIcons(font)),
+    ...(await buildShortcutIcons()),
+  ];
   const rowHeight = Math.max(...icons.map((icon) => icon.size));
   const width =
     icons.reduce((sum, icon) => sum + icon.size + SHEET_GAP, SHEET_GAP);

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.marcinjahn.commitnote</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>commitnote</name>
+  <summary>Encrypted markdown notes, stored in a Git repository you own</summary>
+  <description>
+    <p>commitnote is a markdown note-taking app that encrypts every note on your device before it leaves it.</p>
+    <p>Notes are synced to a GitHub or GitLab repository that you own, so your data stays under your control.</p>
+    <p>Encryption keys never leave the device.</p>
+  </description>
+  <developer_name>Marcin Jahn</developer_name>
+  <url type="homepage">https://commitnote.eu</url>
+  <launchable type="desktop-id">io.github.marcinjahn.commitnote.desktop</launchable>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>Utility</category>
+    <category>TextEditor</category>
+  </categories>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/marcinjahn/commitnote/main/public/screenshots/wide.png</image>
+      <caption>Editing a note on desktop</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/marcinjahn/commitnote/main/public/screenshots/narrow.png</image>
+      <caption>Notes tree on a phone</caption>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <!-- release -->
+  </releases>
+</component>

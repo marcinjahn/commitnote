@@ -156,9 +156,10 @@
     caret-color: var(--color-accent);
   }
 
+  /* The note pane is the scroller; containing overscroll on this unscrollable
+     box stops WebKit from chaining wheel scrolls to the pane. */
   .markdown-editor :global(.cm-scroller) {
     font-family: var(--font-note);
-    overscroll-behavior-y: contain;
     scroll-padding-bottom: var(--toast-stack-height, 0px);
   }
 

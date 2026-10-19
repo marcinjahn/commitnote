@@ -71,6 +71,7 @@
     type HistoryPhase,
   } from "../history/NoteHistoryDialog.svelte";
   import type { WorkingNode } from "../../sync/working-tree";
+  import type { ArchiveDownload } from "../../export/deliver-archive";
   import { exportNotesArchive } from "../../export/export-notes-archive";
   import {
     planImport,
@@ -252,6 +253,7 @@
     onColorMode: (id: ColorModeId) => void;
     onNoteFont: (id: NoteFont) => void;
     onPrintNote: (note: PrintNote | null) => void;
+    download?: ArchiveDownload;
   }
 
   const {
@@ -282,6 +284,7 @@
     onColorMode,
     onNoteFont,
     onPrintNote,
+    download,
   }: Props = $props();
 
   const standalone = getStandalone();
@@ -363,7 +366,7 @@
     | { readonly kind: "deleteEntry"; readonly entry: ReadableWorkingTrashEntry }
     | { readonly kind: "empty" };
 
-  const linkBase = shareLinkBase(location);
+  const linkBase = shareLinkBase(location, __DESKTOP_SHELL__);
   let sharedLinksOpen = $state(false);
   let sharePath = $state<NotePath | null>(null);
   let sharedVersionEntry = $state<ShareEntry | null>(null);
@@ -1617,7 +1620,7 @@
     exporting = true;
     clearToast("export");
     try {
-      await exportNotesArchive(snapshot);
+      await exportNotesArchive(snapshot, { download });
     } catch {
       showToast("export", "error", "Export failed. Try again later.");
     } finally {
@@ -3219,6 +3222,13 @@
 
     .note-pane {
       flex: 1;
+    }
+
+    /* WebKit cannot resolve 100% against the shell's flexed height and falls
+       back to content height; stretching gives both panes the full row. */
+    .sidebar,
+    .note-pane {
+      height: auto;
     }
 
     /* The 300px sidebar can't fit the wordmark plus five 36px-wide buttons. */

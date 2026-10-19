@@ -13,10 +13,13 @@ export function isShareHash(hash: string): boolean {
   return hash.startsWith(SHARE_HASH_PREFIX);
 }
 
+export const WEB_APP_URL = "https://commitnote.eu/";
+
 export function shareLinkBase(
   location: Pick<Location, "origin" | "pathname">,
+  desktopShell: boolean,
 ): string {
-  return location.origin + location.pathname;
+  return desktopShell ? WEB_APP_URL : location.origin + location.pathname;
 }
 
 export function formatShareLink(

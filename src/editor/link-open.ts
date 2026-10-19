@@ -1,3 +1,4 @@
+import { openExternal } from "../app/external-open";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import {
   Prec,
@@ -161,11 +162,7 @@ function setArmed(view: EditorView, armed: boolean): boolean {
 }
 
 export function linkOpen(options: LinkOpenOptions = {}): Extension {
-  const open =
-    options.open ??
-    ((url: string) => {
-      window.open(url, "_blank", "noopener,noreferrer");
-    });
+  const open = options.open ?? openExternal;
 
   const openLinkAtCaret = (view: EditorView): boolean => {
     const { main } = view.state.selection;

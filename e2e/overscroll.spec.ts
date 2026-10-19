@@ -19,5 +19,6 @@ test("inner scrollers contain overscroll", MOBILE, async ({ page }) => {
   await openNotes(page);
   expect(await overscrollY(page, ".tree-container")).toBe("contain");
   await openWelcome(page);
-  expect(await overscrollY(page, ".cm-scroller")).toBe("contain");
+  expect(await overscrollY(page, ".note-content")).toBe("contain");
+  expect(await overscrollY(page, ".cm-scroller")).toBe("auto");
 });
