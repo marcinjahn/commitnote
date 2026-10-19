@@ -940,6 +940,25 @@ function pickerLayout(page: Page): Promise<PickerLayout> {
   });
 }
 
+async function settledPickerLayout(page: Page): Promise<PickerLayout> {
+  let previous = await pickerLayout(page);
+  await expect
+    .poll(async () => {
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      const current = await pickerLayout(page);
+      const settled = JSON.stringify(current) === JSON.stringify(previous);
+      previous = current;
+      return settled;
+    })
+    .toBe(true);
+  return previous;
+}
+
 async function openUnscrolledSettings(page: Page): Promise<void> {
   const viewport = page.viewportSize();
   if (!viewport) throw new Error("no viewport");
@@ -967,7 +986,7 @@ test("hovering across the font options moves nothing around the font picker", as
   await openUnscrolledSettings(page);
   await waitForAllNoteFonts(page);
   const preview = fontPreview(page);
-  const before = await pickerLayout(page);
+  const before = await settledPickerLayout(page);
 
   for (const [name, { stack }] of Object.entries(NOTE_FONTS)) {
     await noteFontRow(page, name).hover();
@@ -984,7 +1003,7 @@ test("moving keyboard focus across the font options moves nothing around the fon
   await openUnscrolledSettings(page);
   await waitForAllNoteFonts(page);
   const preview = fontPreview(page);
-  const before = await pickerLayout(page);
+  const before = await settledPickerLayout(page);
   await noteFontGroup(page).getByRole("radio", { name: "Inter", exact: true }).focus();
 
   for (const [index, [name, { stack }]] of Object.entries(NOTE_FONTS).entries()) {
@@ -1008,7 +1027,7 @@ test("on a 360 px wide phone, previewing each font moves nothing around the font
   await openUnscrolledSettings(page);
   await waitForAllNoteFonts(page);
   const preview = fontPreview(page);
-  const before = await pickerLayout(page);
+  const before = await settledPickerLayout(page);
   await noteFontGroup(page).getByRole("radio", { name: "Inter", exact: true }).focus();
 
   for (const [index, [name, { stack }]] of Object.entries(NOTE_FONTS).entries()) {
@@ -1049,7 +1068,7 @@ test("hovering font rows under the stuck preview moves nothing and keeps the scr
     return el.scrollTop;
   });
   expect(scrollTop).toBeGreaterThan(0);
-  const before = await pickerLayout(page);
+  const before = await settledPickerLayout(page);
   const previewBox = await preview.boundingBox();
   const bodyBox = await body.boundingBox();
   if (!previewBox || !bodyBox) throw new Error("dialog not measurable");
@@ -1087,7 +1106,7 @@ test("the font picker keeps its layout while the fonts are still downloading", {
     },
   );
   await openUnscrolledSettings(page);
-  const before = await pickerLayout(page);
+  const before = await settledPickerLayout(page);
 
   for (const [name, { family }] of Object.entries(NOTE_FONTS)) {
     const radio = noteFontGroup(page).getByRole("radio", { name, exact: true });
