@@ -85,7 +85,7 @@ export function buildAppIconSvg(font: Font, icon: AppIcon): string {
 
 let wasmReady: Promise<void> | undefined;
 
-function ensureWasm(): Promise<void> {
+export function ensureWasm(): Promise<void> {
   wasmReady ??= (async () => {
     const wasmPath = createRequire(import.meta.url).resolve(
       "@resvg/resvg-wasm/index_bg.wasm",

@@ -1,0 +1,115 @@
+import SwiftUI
+
+struct RootView: View {
+    let model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        content
+            .onChange(of: scenePhase, initial: true) { _, phase in
+                model.scenePhaseChanged(phase)
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.screen {
+        case .starting, .loading(.inProgress):
+            LoadingView(model: model, failure: nil)
+        case .loading(.failed(let message, let canRetry)):
+            LoadingView(model: model, failure: LoadingFailure(message: message, canRetry: canRetry))
+        case .login(let entry):
+            LoginFlowView(model: model, entry: entry)
+        case .keyChanged(let info):
+            KeyChangedView(model: model, info: info)
+        case .notes:
+            NotesRootView(model: model)
+        case .fatal(let message):
+            FatalView(message: message)
+        }
+    }
+}
+
+struct LoadingFailure {
+    let message: String
+    let canRetry: Bool
+}
+
+private struct LoadingView: View {
+    let model: AppModel
+    let failure: LoadingFailure?
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Wordmark()
+            if let failure {
+                Text(failure.message)
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("loading-error")
+                VStack(spacing: 12) {
+                    if failure.canRetry {
+                        Button("Try again") {
+                            Task { await model.resume() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("loading-try-again-button")
+                    }
+                    Button("Log in") {
+                        model.showLogin()
+                    }
+                    .accessibilityIdentifier("loading-log-in-button")
+                }
+            } else {
+                ProgressView()
+                Text("Loading…")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("loading-screen")
+    }
+}
+
+private struct KeyChangedView: View {
+    let model: AppModel
+    let info: KeyChangedInfo
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Passphrase changed")
+                .font(.title2.weight(.semibold))
+            Text(info.message)
+                .multilineTextAlignment(.center)
+            Text(info.detail)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Button("Log in again") {
+                Task { await model.logInAgain() }
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("key-changed-log-in-again-button")
+        }
+        .padding()
+        .frame(maxWidth: 480)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("key-changed-screen")
+    }
+}
+
+private struct FatalView: View {
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Wordmark()
+            Text(message)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("fatal-error")
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
