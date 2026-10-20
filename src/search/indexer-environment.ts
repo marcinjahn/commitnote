@@ -1,23 +1,28 @@
+import { createBrowserPlatformPorts, type PlatformPorts } from "../app/platform-ports";
+
 export interface IndexerEnvironment {
   isHidden(): boolean;
   isOnline(): boolean;
   subscribe(listener: () => void): () => void;
 }
 
-export function createBrowserIndexerEnvironment(): IndexerEnvironment {
+export function createIndexerEnvironment(
+  ports: Pick<PlatformPorts, "connectivity" | "visibility">,
+): IndexerEnvironment {
   return {
-    isHidden: () => document.visibilityState === "hidden",
-    isOnline: () => navigator.onLine,
+    isHidden: () => !ports.visibility.isVisible(),
+    isOnline: () => ports.connectivity.isOnline(),
     subscribe(listener: () => void): () => void {
-      const handler = (): void => listener();
-      document.addEventListener("visibilitychange", handler);
-      window.addEventListener("online", handler);
-      window.addEventListener("offline", handler);
+      const unsubscribeVisibility = ports.visibility.subscribe(() => listener());
+      const unsubscribeConnectivity = ports.connectivity.subscribe(() => listener());
       return () => {
-        document.removeEventListener("visibilitychange", handler);
-        window.removeEventListener("online", handler);
-        window.removeEventListener("offline", handler);
+        unsubscribeVisibility();
+        unsubscribeConnectivity();
       };
     },
   };
+}
+
+export function createBrowserIndexerEnvironment(): IndexerEnvironment {
+  return createIndexerEnvironment(createBrowserPlatformPorts());
 }
