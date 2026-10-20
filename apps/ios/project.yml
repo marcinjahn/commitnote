@@ -97,6 +97,8 @@ targets:
         product: NativeCoreAPI
       - package: CommitnoteCrypto
         product: CommitnoteCrypto
+      - package: EditorText
+        product: EditorText
     settings:
       base:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/commitnote.app/commitnote"

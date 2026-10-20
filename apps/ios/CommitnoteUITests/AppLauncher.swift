@@ -82,6 +82,11 @@ extension XCTestCase {
         file: StaticString = #filePath, line: UInt = #line
     ) {
         typeInto(field, String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing) + text, in: app)
+        for _ in 0..<2 where (field.value as? String)?.count != text.count {
+            let current = (field.value as? String)?.count ?? 0
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current) + text)
+        }
         XCTAssertEqual((field.value as? String)?.count, text.count, "Typed passphrase length", file: file, line: line)
     }
 }

@@ -11,6 +11,7 @@ struct ReadBackScenario: Encodable {
     struct Expectation: Encodable {
         var initialized: Bool
         var notes: [Note]
+        var folders: [[String]]? = nil
         var deviceName: String
     }
 
@@ -116,5 +117,102 @@ final class ReadBackTests: RuntimeTestCase {
             exported: exported,
             expect: .init(initialized: false, notes: [], deviceName: runtime.deviceModel))
         try ReadBackOutput.write(scenario, fileName: "housekeeping.json", to: self)
+    }
+
+    func testEditedNoteReadsBack() async throws {
+        let runtime = try await makeRuntime()
+        try await runtime.logIn(repo: "sample/notes", passphrase: sampleNotesPassphrase)
+        _ = try await runtime.openNoteLoaded(["Welcome"])
+
+        _ = try await runtime.send(NoteEdit(path: ["Welcome"], text: Self.editedText))
+        let flushed = try await runtime.send(SyncFlush()).result
+        XCTAssertEqual(flushed, .saved)
+
+        let scenario = ReadBackScenario(
+            name: "ios edit",
+            passphrase: sampleNotesPassphrase,
+            exported: try await runtime.exportRepo("sample/notes"),
+            expect: .init(
+                initialized: false,
+                notes: [.init(path: ["Welcome"], text: Self.editedText)],
+                deviceName: runtime.deviceModel))
+        try ReadBackOutput.write(scenario, fileName: "edit.json", to: self)
+    }
+
+    func testCreatedNotesAndFolderReadBack() async throws {
+        let runtime = try await makeRuntime()
+        try await runtime.logIn(repo: "sample/notes", passphrase: sampleNotesPassphrase)
+        let firstText = "First thought: żółć 🙂\n"
+        let planText = "Plan for Q3 – naïve café\n"
+
+        _ = try await runtime.send(DraftStart(parent: []))
+        let first = try await runtime.send(DraftContent(name: "", content: firstText)).outcome
+        guard case .created(let firstPath, _) = first else {
+            return XCTFail("The draft was not created: \(first)")
+        }
+
+        let folder = try await runtime.send(FolderCreate(parent: [], name: "Quarterly")).outcome
+        XCTAssertEqual(folder, .created(path: ["Quarterly"]))
+
+        _ = try await runtime.send(DraftStart(parent: ["Quarterly"]))
+        let named = try await runtime.send(DraftCommitName(name: "Plan")).outcome
+        guard case .created(let planPath, _) = named else {
+            return XCTFail("The named draft was not created: \(named)")
+        }
+        XCTAssertEqual(planPath, ["Quarterly", "Plan"])
+        _ = try await runtime.send(NoteEdit(path: planPath, text: planText))
+
+        let flushed = try await runtime.send(SyncFlush()).result
+        XCTAssertEqual(flushed, .saved)
+
+        let scenario = ReadBackScenario(
+            name: "ios create",
+            passphrase: sampleNotesPassphrase,
+            exported: try await runtime.exportRepo("sample/notes"),
+            expect: .init(
+                initialized: false,
+                notes: [.init(path: firstPath, text: firstText), .init(path: planPath, text: planText)],
+                folders: [["Quarterly"]],
+                deviceName: runtime.deviceModel))
+        try ReadBackOutput.write(scenario, fileName: "create.json", to: self)
+    }
+
+    func testResolvedConflictReadsBack() async throws {
+        let runtime = try await makeRuntime()
+        try await runtime.logIn(repo: "sample/notes", passphrase: sampleNotesPassphrase)
+        let original = try await runtime.openNoteLoaded(["Welcome"])
+        let rest = original.split(separator: "\n", omittingEmptySubsequences: false).dropFirst()
+        let remoteText = (["# Remote title"] + rest).joined(separator: "\n")
+        let localText = (["# Local title"] + rest).joined(separator: "\n")
+
+        _ = try await runtime.send(
+            FakeRemoteEdit(
+                repo: "sample/notes", path: ["Welcome"], text: remoteText, device: "Other iPhone"))
+        let index = await runtime.events.count
+        _ = try await runtime.send(NoteEdit(path: ["Welcome"], text: localText))
+        _ = try await runtime.send(SyncFlush())
+
+        let event = try await runtime.events.wait(after: index, description: "the conflict") {
+            guard case .noteChanged(let changed) = $0, case .loaded(_, _, let conflict)? = changed.note
+            else { return false }
+            return conflict?.otherDevice != nil
+        }
+        guard case .noteChanged(let changed) = event, case .loaded(_, _, let conflict)? = changed.note
+        else { return XCTFail("The conflict event carried no loaded note") }
+        XCTAssertEqual(conflict?.otherDevice, "Other iPhone")
+
+        _ = try await runtime.send(ConflictResolve(path: ["Welcome"], resolution: .keepMine))
+        let flushed = try await runtime.send(SyncFlush()).result
+        XCTAssertEqual(flushed, .saved)
+
+        let scenario = ReadBackScenario(
+            name: "ios conflict",
+            passphrase: sampleNotesPassphrase,
+            exported: try await runtime.exportRepo("sample/notes"),
+            expect: .init(
+                initialized: false,
+                notes: [.init(path: ["Welcome"], text: localText)],
+                deviceName: runtime.deviceModel))
+        try ReadBackOutput.write(scenario, fileName: "conflict.json", to: self)
     }
 }

@@ -28,7 +28,7 @@ jobs:
 
   macos:
     runs-on: macos-26
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       XCODE_VERSION: "26.6"
     steps:

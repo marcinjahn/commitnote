@@ -14,7 +14,7 @@ final class LoginFlowTests: XCTestCase {
         let welcome = note("Welcome", in: app)
         waitFor(welcome)
         welcome.tap()
-        waitFor(app.element("note-content"))
+        waitFor(app.element("note-editor"))
 
         if !isPad {
             app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -62,7 +62,9 @@ final class LoginFlowTests: XCTestCase {
 
         typeNewPassphrase(repeatField, "short passphrase", replacing: "different".count, in: app)
         tapRevealed(app.buttons["init-submit-button"], in: app)
-        waitFor(app.element("notes-empty"))
+        let empty = app.element("notes-empty")
+        waitFor(empty)
+        XCTAssertEqual(empty.label, "No notes yet, create one")
     }
 
     func testNewerFormatIsRefused() {

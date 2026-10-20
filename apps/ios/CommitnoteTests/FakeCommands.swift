@@ -8,6 +8,37 @@ struct FakeSaveNote: NativeCoreCommand {
     var text: String
 }
 
+struct FakeRemoteEdit: NativeCoreCommand {
+    static let name = "fake.remoteEdit"
+    typealias Result = Empty
+    var repo: String
+    var path: [String]
+    var text: String
+    var device: String
+}
+
+struct FakeChangeRepoKey: NativeCoreCommand {
+    static let name = "fake.changeRepoKey"
+    typealias Result = Empty
+    var repo: String
+}
+
+struct FakeFailNext: NativeCoreCommand {
+    static let name = "fake.failNext"
+    typealias Result = Empty
+    var repo: String
+    var operation: String
+    var kind: String
+    var count: Int
+}
+
+struct FakeClearFailures: NativeCoreCommand {
+    static let name = "fake.clearFailures"
+    typealias Result = Empty
+    var repo: String
+    var operation: String
+}
+
 struct FakeExportRepo: NativeCoreCommand {
     static let name = "fake.exportRepo"
     struct Result: Decodable, Sendable {
