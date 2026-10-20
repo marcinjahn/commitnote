@@ -27,7 +27,10 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(try params(ForgesList()), empty)
         XCTAssertEqual(try params(LoginLastRepository()), empty)
         XCTAssertEqual(try params(SessionResume()), empty)
-        XCTAssertEqual(try params(SessionLogout()), empty)
+        XCTAssertEqual(try params(SyncRetry()), empty)
+        XCTAssertEqual(try params(SyncFlush()), empty)
+        XCTAssertEqual(try params(DraftLeave()), empty)
+        XCTAssertEqual(try params(ExportNotes()), empty)
         XCTAssertEqual(try params(TreeGet()), empty)
         XCTAssertEqual(try params(SyncRefresh()), empty)
         XCTAssertEqual(try params(DeviceName()), empty)
@@ -55,6 +58,29 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(
             try params(LifecycleSetOnline(online: true)), try json(#"{"online":true}"#))
         XCTAssertEqual(try params(NoticesDismiss(id: "refresh")), try json(#"{"id":"refresh"}"#))
+        XCTAssertEqual(
+            try params(SessionLogout(anyway: true)), try json(#"{"anyway":true}"#))
+        XCTAssertEqual(
+            try params(NoteEdit(path: ["a"], text: "t")), try json(#"{"path":["a"],"text":"t"}"#))
+        XCTAssertEqual(
+            try params(ConflictResolve(path: ["a"], resolution: .keepMine)),
+            try json(#"{"path":["a"],"resolution":"keepMine"}"#))
+        XCTAssertEqual(
+            try params(ConflictResolve(path: ["a"], resolution: .keepTheirs)),
+            try json(#"{"path":["a"],"resolution":"keepTheirs"}"#))
+        XCTAssertEqual(
+            try params(ConflictResolve(path: [], resolution: .editMerged)),
+            try json(#"{"path":[],"resolution":"editMerged"}"#))
+        XCTAssertEqual(
+            try params(DraftStart(parent: [])), try json(#"{"parent":[]}"#))
+        XCTAssertEqual(
+            try params(DraftCommitName(name: "n")), try json(#"{"name":"n"}"#))
+        XCTAssertEqual(
+            try params(DraftContent(name: "n", content: "c")),
+            try json(#"{"name":"n","content":"c"}"#))
+        XCTAssertEqual(
+            try params(FolderCreate(parent: ["a"], name: "n")),
+            try json(#"{"parent":["a"],"name":"n"}"#))
     }
 
     func testRequestEncoding() throws {
@@ -164,7 +190,10 @@ final class CommandTests: XCTestCase {
     }
 
     func testEmptyResults() throws {
-        XCTAssertEqual(try result(SessionLogout.self, "{}"), Empty())
+        XCTAssertEqual(try result(NoteEdit.self, "{}"), Empty())
+        XCTAssertEqual(try result(SyncRetry.self, "{}"), Empty())
+        XCTAssertEqual(try result(ConflictResolve.self, "{}"), Empty())
+        XCTAssertEqual(try result(DraftLeave.self, "{}"), Empty())
         XCTAssertEqual(try result(SyncRefresh.self, "{}"), Empty())
         XCTAssertEqual(try result(LifecycleSetVisible.self, "{}"), Empty())
         XCTAssertEqual(try result(LifecycleSetOnline.self, "{}"), Empty())
@@ -198,8 +227,8 @@ final class CommandTests: XCTestCase {
             try result(NoteOpen.self, #"{"note":{"state":"loading",\#(path)}}"#).note,
             .loading(path: ["a", "b"]))
         XCTAssertEqual(
-            try result(NoteOpen.self, ##"{"note":{"state":"loaded",\##(path),"content":"# hi"}}"##).note,
-            .loaded(path: ["a", "b"], content: "# hi"))
+            try result(NoteOpen.self, ##"{"note":{"state":"loaded",\##(path),"content":"# hi","conflict":null}}"##).note,
+            .loaded(path: ["a", "b"], content: "# hi", conflict: nil))
         XCTAssertEqual(
             try result(NoteOpen.self, #"{"note":{"state":"missing",\#(path),"message":"gone"}}"#).note,
             .missing(path: ["a", "b"], message: "gone"))
@@ -219,10 +248,15 @@ final class CommandTests: XCTestCase {
                 error: CoreError(kind: CoreError.Kind.undecryptable, message: "m", transient: false)))
     }
 
+    private let conflict = OpenNoteConflict(
+        otherDevice: "Other", heading: "h", text: "t", keepThisLabel: "k1", keepOtherLabel: "k2",
+        editMergedLabel: "Edit merged", editHint: "hint", merged: "<<<<<<<", editing: false)
+
     func testOpenNoteRoundTrip() throws {
         let notes: [OpenNote] = [
             .loading(path: ["a"]),
-            .loaded(path: ["a"], content: "x"),
+            .loaded(path: ["a"], content: "x", conflict: nil),
+            .loaded(path: ["a"], content: "x", conflict: conflict),
             .missing(path: ["a"], message: "m"),
             .trashed(path: ["a"], message: "m"),
             .failed(
@@ -237,5 +271,90 @@ final class CommandTests: XCTestCase {
 
     func testCommandResultDecodingFailsOnWrongShape() throws {
         XCTAssertThrowsError(try result(DeviceName.self, #"{"nombre":"x"}"#))
+    }
+
+    func testEditingResults() throws {
+        XCTAssertEqual(
+            try result(SyncFlush.self, #"{"result":{"kind":"saved"}}"#).result, .saved)
+        XCTAssertEqual(
+            try result(SyncFlush.self, #"{"result":{"kind":"unsaved","count":2}}"#).result,
+            .unsaved(count: 2))
+        XCTAssertEqual(
+            try result(DraftStart.self, #"{"draft":{"parent":["a"],"name":""}}"#).draft,
+            NoteDraft(parent: ["a"], name: ""))
+        XCTAssertEqual(
+            try result(DraftCommitName.self, #"{"outcome":{"kind":"none"}}"#).outcome, .none)
+        XCTAssertEqual(
+            try result(DraftCommitName.self, #"{"outcome":{"kind":"error","message":"m"}}"#).outcome,
+            .error(message: "m"))
+        XCTAssertEqual(
+            try result(
+                DraftContent.self,
+                #"{"outcome":{"kind":"created","path":["a","n"],"fieldError":null}}"#
+            ).outcome,
+            .created(path: ["a", "n"], fieldError: nil))
+        XCTAssertEqual(
+            try result(
+                DraftContent.self,
+                #"{"outcome":{"kind":"created","path":["n"],"fieldError":"bad"}}"#
+            ).outcome,
+            .created(path: ["n"], fieldError: "bad"))
+        XCTAssertEqual(
+            try result(FolderCreate.self, #"{"outcome":{"kind":"created","path":["a","f"]}}"#)
+                .outcome,
+            .created(path: ["a", "f"]))
+        XCTAssertEqual(
+            try result(FolderCreate.self, #"{"outcome":{"kind":"error","message":"m"}}"#).outcome,
+            .error(message: "m"))
+        XCTAssertEqual(
+            try result(SessionLogout.self, #"{"outcome":{"kind":"loggedOut"}}"#).outcome,
+            .loggedOut)
+        XCTAssertEqual(
+            try result(
+                SessionLogout.self, #"{"outcome":{"kind":"unsaved","count":3,"message":"m"}}"#
+            ).outcome,
+            .unsaved(count: 3, message: "m"))
+        XCTAssertEqual(
+            try result(
+                ExportNotes.self,
+                #"{"fileName":"commitnote-export-2026-01-02.zip","mimeType":"application/zip","base64":"UEs="}"#
+            ),
+            ExportedArchive(fileName: "commitnote-export-2026-01-02.zip", base64: "UEs="))
+    }
+
+    func testNewShapesRoundTrip() throws {
+        func roundTrip<T: Codable & Equatable>(_ value: T) throws {
+            let data = try JSONEncoder().encode(value)
+            XCTAssertEqual(try JSONDecoder().decode(T.self, from: data), value)
+        }
+        try roundTrip(FlushOutcome.saved)
+        try roundTrip(FlushOutcome.unsaved(count: 1))
+        try roundTrip(LogoutOutcome.loggedOut)
+        try roundTrip(LogoutOutcome.unsaved(count: 1, message: "m"))
+        try roundTrip(NoteDraft(parent: [], name: "x"))
+        try roundTrip(NoteDraftOutcome.none)
+        try roundTrip(NoteDraftOutcome.error(message: "m"))
+        try roundTrip(NoteDraftOutcome.created(path: ["a"], fieldError: nil))
+        try roundTrip(NoteDraftOutcome.created(path: ["a"], fieldError: "e"))
+        try roundTrip(FolderCreateOutcome.created(path: ["a"]))
+        try roundTrip(FolderCreateOutcome.error(message: "m"))
+        try roundTrip(ExportedArchive(fileName: "f.zip", base64: "UEs="))
+        try roundTrip(RemoteTextEdit(from: 1, to: 2, insert: "x"))
+        try roundTrip(conflict)
+        try roundTrip(NoticeAction(kind: .openNote, label: "Open note", path: ["a"]))
+        try roundTrip(SyncStatusMenuItem(id: "retry", label: "Retry now", path: nil))
+        try roundTrip(SyncStatusMenuItem(id: "note-0", label: "W", path: ["W"]))
+        for state: SyncState in [
+            .synced, .syncing, .outOfSync(.pending), .outOfSync(.failed), .outOfSync(.conflict),
+        ] {
+            try roundTrip(state)
+        }
+        XCTAssertEqual(
+            try JSONDecoder().decode(
+                SyncState.self, from: Data(#"{"kind":"out-of-sync","reason":"failed"}"#.utf8)),
+            .outOfSync(.failed))
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                ConflictResolution.self, from: Data(#""keepBoth""#.utf8)))
     }
 }

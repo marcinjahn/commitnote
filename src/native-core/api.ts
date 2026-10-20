@@ -1,7 +1,7 @@
 import type { LoginStep } from "../login/login";
 import type { HostServices } from "./host-services";
 
-export const NATIVE_CORE_API_VERSION = 1;
+export const NATIVE_CORE_API_VERSION = 2;
 export const NATIVE_CORE_MARKER = "commitnote-native-core";
 
 type ForgeKind = "github" | "gitlab";
@@ -49,9 +49,76 @@ export type TreeNode =
 
 export type OpenNote =
   | { state: "loading"; path: string[] }
-  | { state: "loaded"; path: string[]; content: string }
+  | {
+      state: "loaded";
+      path: string[];
+      content: string;
+      conflict: OpenNoteConflict | null;
+    }
   | { state: "missing" | "trashed"; path: string[]; message: string }
   | { state: "failed"; path: string[]; message: string; error: CoreError };
+
+export interface OpenNoteConflict {
+  otherDevice: string | null;
+  heading: string;
+  text: string;
+  keepThisLabel: string;
+  keepOtherLabel: string;
+  editMergedLabel: string;
+  editHint: string;
+  merged: string;
+  editing: boolean;
+}
+
+export interface RemoteTextEdit {
+  from: number;
+  to: number;
+  insert: string;
+}
+
+export type SyncState =
+  | { kind: "synced" }
+  | { kind: "syncing" }
+  | { kind: "out-of-sync"; reason: "pending" | "failed" | "conflict" };
+
+export interface SyncStatusMenuItem {
+  id: string;
+  label: string;
+  path: string[] | null;
+}
+
+export type NoticeAction = {
+  kind: "openNote";
+  label: "Open note";
+  path: string[];
+};
+
+export type FlushOutcome =
+  { kind: "saved" } | { kind: "unsaved"; count: number };
+
+export type ConflictResolution = "keepMine" | "keepTheirs" | "editMerged";
+
+export type LogoutOutcome =
+  { kind: "loggedOut" } | { kind: "unsaved"; count: number; message: string };
+
+export interface NoteDraft {
+  parent: string[];
+  name: string;
+}
+
+export type NoteDraftOutcome =
+  | { kind: "none" }
+  | { kind: "error"; message: string }
+  | { kind: "created"; path: string[]; fieldError: string | null };
+
+export type FolderCreateOutcome =
+  { kind: "created"; path: string[] } | { kind: "error"; message: string };
+
+export interface ExportedArchive {
+  fileName: string;
+  mimeType: "application/zip";
+  base64: string;
+}
 
 export interface RepositoryView {
   label: string;
@@ -78,7 +145,10 @@ export type CoreResponse<Result = unknown> =
   | { kind: "response"; id: number; ok: true; result: Result }
   | { kind: "response"; id: number; ok: false; error: CoreError };
 
-export interface CoreEventMessage<Name extends string = string, Payload = unknown> {
+export interface CoreEventMessage<
+  Name extends string = string,
+  Payload = unknown,
+> {
   kind: "event";
   event: Name;
   payload: Payload;
@@ -134,13 +204,38 @@ export type CoreCommands = {
       | { kind: "resumed" }
       | { kind: "failed"; error: CoreError; canRetry: boolean };
   };
-  "session.logout": { params: {}; result: {} };
+  "session.logout": {
+    params: { anyway: boolean };
+    result: { outcome: LogoutOutcome };
+  };
   "tree.get": { params: {}; result: { tree: TreeNode[] | null } };
   "note.open": {
     params: { path: string[] | null };
     result: { note: OpenNote | null };
   };
   "sync.refresh": { params: {}; result: {} };
+  "note.edit": { params: { path: string[]; text: string }; result: {} };
+  "sync.flush": { params: {}; result: { result: FlushOutcome } };
+  "sync.retry": { params: {}; result: {} };
+  "conflict.resolve": {
+    params: { path: string[]; resolution: ConflictResolution };
+    result: {};
+  };
+  "export.notes": { params: {}; result: ExportedArchive };
+  "draft.start": { params: { parent: string[] }; result: { draft: NoteDraft } };
+  "draft.commitName": {
+    params: { name: string };
+    result: { outcome: NoteDraftOutcome };
+  };
+  "draft.content": {
+    params: { name: string; content: string };
+    result: { outcome: NoteDraftOutcome };
+  };
+  "draft.leave": { params: {}; result: {} };
+  "folder.create": {
+    params: { parent: string[]; name: string };
+    result: { outcome: FolderCreateOutcome };
+  };
   "lifecycle.setVisible": { params: { visible: boolean }; result: {} };
   "lifecycle.setOnline": { params: { online: boolean }; result: {} };
   "device.name": { params: {}; result: { name: string } };
@@ -178,12 +273,25 @@ export type FakeCoreCommands = {
     params: { delaysMs: number[]; cancelIndex: number | null };
     result: { fired: number[] };
   };
+  "fake.remoteEdit": {
+    params: { repo: string; path: string[]; text: string; device: string };
+    result: {};
+  };
+  "fake.changeRepoKey": { params: { repo: string }; result: {} };
+  "fake.failNext": {
+    params: { repo: string; operation: string; kind: string; count: number };
+    result: {};
+  };
+  "fake.clearFailures": {
+    params: { repo: string; operation: string };
+    result: {};
+  };
 };
 
 export type CoreEvents = {
   loadingProgress: { step: LoginStep; message: string };
   treeChanged: { tree: TreeNode[] | null };
-  noteChanged: { note: OpenNote | null };
+  noteChanged: { note: OpenNote | null; edits: RemoteTextEdit[] | null };
   noteContentChangedRemotely: {
     change: "updated" | "relocated" | "trashed";
     message: string;
@@ -193,15 +301,27 @@ export type CoreEvents = {
     refreshing: boolean;
     treeLoaded: boolean;
     lastRefreshError: CoreError | null;
+    state: SyncState;
+    label: string;
+    status: string | null;
+    unsavedCount: number;
+    canRetry: boolean;
+    unsavedMenu: SyncStatusMenuItem[];
   };
   notice: {
     id: string;
     tone: "info" | "warning" | "error" | "success";
     message: string;
     persistent: boolean;
+    action: NoticeAction | null;
   };
   noticeCleared: { id: string };
-  keyChanged: { unsavedCount: number; message: string; detail: string };
+  keyChanged: {
+    unsavedCount: number;
+    message: string;
+    detail: string;
+    exportLabel: string;
+  };
   sessionEnded: { reason: "loggedOut" };
 };
 
@@ -218,6 +338,16 @@ export const CORE_COMMAND_NAMES = [
   "tree.get",
   "note.open",
   "sync.refresh",
+  "note.edit",
+  "sync.flush",
+  "sync.retry",
+  "conflict.resolve",
+  "export.notes",
+  "draft.start",
+  "draft.commitName",
+  "draft.content",
+  "draft.leave",
+  "folder.create",
   "lifecycle.setVisible",
   "lifecycle.setOnline",
   "device.name",
@@ -243,6 +373,10 @@ export const FAKE_CORE_COMMAND_NAMES = [
   "fake.checkVectors",
   "fake.httpRequest",
   "fake.timerProbe",
+  "fake.remoteEdit",
+  "fake.changeRepoKey",
+  "fake.failNext",
+  "fake.clearFailures",
 ] as const satisfies readonly (keyof FakeCoreCommands)[];
 
 export interface NativeCoreStartOptions {

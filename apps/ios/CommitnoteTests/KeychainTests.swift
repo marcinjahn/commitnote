@@ -46,7 +46,8 @@ final class KeychainTests: RuntimeTestCase {
         let tree = try await second.waitForTree()
         XCTAssertFalse(tree.isEmpty)
 
-        _ = try await second.send(SessionLogout())
+        let logout = try await second.send(SessionLogout(anyway: true))
+        XCTAssertEqual(logout.outcome, .loggedOut)
         XCTAssertNil(try services.rememberedSession.load())
     }
 

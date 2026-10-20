@@ -31,7 +31,7 @@ struct NoteView: View {
         case .loading:
             Text("Loading…")
                 .foregroundStyle(.secondary)
-        case .loaded(_, let content):
+        case .loaded(_, let content, _):
             Text(content)
                 .font(.body)
                 .textSelection(.enabled)

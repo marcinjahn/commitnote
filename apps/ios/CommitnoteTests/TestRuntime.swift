@@ -231,7 +231,7 @@ final class TestRuntime: @unchecked Sendable {
         } else {
             throw TestTimeout(description: "note.open returned no note")
         }
-        guard case .loaded(_, let content) = note else {
+        guard case .loaded(_, let content, _) = note else {
             throw TestTimeout(description: "A note did not load")
         }
         return content

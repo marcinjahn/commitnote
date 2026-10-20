@@ -1,9 +1,13 @@
+import { flushBeforeLogOut } from "../../app/log-out";
+import type { RunningApp } from "../../app/start-app";
 import { resumeRemembered } from "../../app/resume-remembered";
 import type { ForgeId } from "../../forge/repo-coordinates";
 import { describeLoginStep } from "../../ui/login/login-messages";
+import { describeLogoutUnsaved } from "../../ui/session/session-messages";
 import type { CoreCommands } from "../api";
 import type { AppSession } from "../app-session";
 import { toCoreError } from "../core-errors";
+import type { DraftCommands } from "./draft-commands";
 import {
   booleanParam,
   notReady,
@@ -13,11 +17,21 @@ import {
 
 type Result<Name extends keyof CoreCommands> = CoreCommands[Name]["result"];
 
+async function unsavedCountAfterFlush(running: RunningApp): Promise<number> {
+  try {
+    const result = await flushBeforeLogOut(running);
+    return result.kind === "unsaved" ? result.count : 0;
+  } catch {
+    return running.engine.getState().syncStates.unsavedCount;
+  }
+}
+
 export function createSessionCommands(context: {
   readonly app: AppSession;
   readonly emit: EmitCoreEvent;
+  readonly drafts: Pick<DraftCommands, "discard">;
 }): Record<string, CommandHandler> {
-  const { app, emit } = context;
+  const { app, emit, drafts } = context;
 
   return {
     async "session.resume"(): Promise<Result<"session.resume">> {
@@ -61,24 +75,31 @@ export function createSessionCommands(context: {
       }
     },
 
-    async "session.logout"(): Promise<Result<"session.logout">> {
+    async "session.logout"(params): Promise<Result<"session.logout">> {
+      const anyway = booleanParam(params, "anyway");
       const running = app.current();
       if (running === null) {
         await app.blobStore.deleteAll();
       } else {
-        running.settingsSaver.flush();
-        try {
-          await running.engine.flush();
-        } catch {
-          // Logging out does not wait for unsaved changes.
+        if (!anyway) {
+          const count = await unsavedCountAfterFlush(running);
+          if (count > 0) {
+            return {
+              outcome: {
+                kind: "unsaved",
+                count,
+                message: describeLogoutUnsaved(count),
+              },
+            };
+          }
         }
+        drafts.discard();
         await app.stop({ clearBlobCache: true });
       }
       await app.store.clear();
       emit("sessionEnded", { reason: "loggedOut" });
-      return {};
+      return { outcome: { kind: "loggedOut" } };
     },
-
     async "lifecycle.setVisible"(
       params,
     ): Promise<Result<"lifecycle.setVisible">> {

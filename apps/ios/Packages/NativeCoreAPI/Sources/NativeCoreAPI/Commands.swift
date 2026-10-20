@@ -1,5 +1,5 @@
 public enum NativeCoreAPIVersion {
-    public static let current = 1
+    public static let current = 2
 }
 
 public protocol NativeCoreCommand: Encodable, Sendable {
@@ -99,8 +99,11 @@ public struct SessionResume: NativeCoreCommand {
 
 public struct SessionLogout: NativeCoreCommand {
     public static let name = "session.logout"
-    public typealias Result = Empty
-    public init() {}
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: LogoutOutcome
+    }
+    public var anyway: Bool
+    public init(anyway: Bool) { self.anyway = anyway }
 }
 
 public struct TreeGet: NativeCoreCommand {
@@ -163,6 +166,98 @@ public struct SyncRefresh: NativeCoreCommand {
     public init() {}
 }
 
+public struct NoteEdit: NativeCoreCommand {
+    public static let name = "note.edit"
+    public typealias Result = Empty
+    public var path: [String]
+    public var text: String
+    public init(path: [String], text: String) {
+        self.path = path
+        self.text = text
+    }
+}
+
+public struct SyncFlush: NativeCoreCommand {
+    public static let name = "sync.flush"
+    public struct Result: Codable, Equatable, Sendable {
+        public var result: FlushOutcome
+    }
+    public init() {}
+}
+
+public struct SyncRetry: NativeCoreCommand {
+    public static let name = "sync.retry"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct ConflictResolve: NativeCoreCommand {
+    public static let name = "conflict.resolve"
+    public typealias Result = Empty
+    public var path: [String]
+    public var resolution: ConflictResolution
+    public init(path: [String], resolution: ConflictResolution) {
+        self.path = path
+        self.resolution = resolution
+    }
+}
+
+public struct DraftStart: NativeCoreCommand {
+    public static let name = "draft.start"
+    public struct Result: Codable, Equatable, Sendable {
+        public var draft: NoteDraft
+    }
+    public var parent: [String]
+    public init(parent: [String]) { self.parent = parent }
+}
+
+public struct DraftCommitName: NativeCoreCommand {
+    public static let name = "draft.commitName"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: NoteDraftOutcome
+    }
+    public var name: String
+    public init(name: String) { self.name = name }
+}
+
+public struct DraftContent: NativeCoreCommand {
+    public static let name = "draft.content"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: NoteDraftOutcome
+    }
+    public var name: String
+    public var content: String
+    public init(name: String, content: String) {
+        self.name = name
+        self.content = content
+    }
+}
+
+public struct DraftLeave: NativeCoreCommand {
+    public static let name = "draft.leave"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct FolderCreate: NativeCoreCommand {
+    public static let name = "folder.create"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: FolderCreateOutcome
+    }
+    public var parent: [String]
+    public var name: String
+    public init(parent: [String], name: String) {
+        self.parent = parent
+        self.name = name
+    }
+}
+
+public struct ExportNotes: NativeCoreCommand {
+    public static let name = "export.notes"
+    public typealias Result = ExportedArchive
+    public init() {}
+}
+
 public struct LifecycleSetVisible: NativeCoreCommand {
     public static let name = "lifecycle.setVisible"
     public typealias Result = Empty
@@ -206,6 +301,16 @@ public enum NativeCoreCommands {
         TreeGet.name,
         NoteOpen.name,
         SyncRefresh.name,
+        NoteEdit.name,
+        SyncFlush.name,
+        SyncRetry.name,
+        ConflictResolve.name,
+        ExportNotes.name,
+        DraftStart.name,
+        DraftCommitName.name,
+        DraftContent.name,
+        DraftLeave.name,
+        FolderCreate.name,
         LifecycleSetVisible.name,
         LifecycleSetOnline.name,
         DeviceName.name,

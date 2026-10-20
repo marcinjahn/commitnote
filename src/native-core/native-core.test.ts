@@ -1,19 +1,7 @@
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ForgeRegistry } from "../forge/registry";
-import { createTestClock } from "../sync/testing/test-clock";
 import { AUTO_REFRESH_THROTTLE_MS } from "../sync/tuning";
 import {
-  createFakeForge,
   FAKE_FORGE_INVALID_TOKEN,
   FAKE_FORGE_NO_REPOSITORIES_TOKEN,
   type FakeForgeControls,
@@ -29,163 +17,46 @@ import {
   FOREIGN_REPOSITORY_HINT,
   PUBLIC_REPOSITORY_WARNING,
 } from "../ui/login/login-messages";
+import { CORE_COMMAND_NAMES, type NativeCoreHandle } from "./api";
+import { UNKNOWN_REQUEST_ID } from "./native-core";
 import {
-  CORE_COMMAND_NAMES,
-  type CoreEventMessage,
-  type CoreResponse,
-  type NativeCoreHandle,
-} from "./api";
-import { createNativeCore, UNKNOWN_REQUEST_ID } from "./native-core";
-import { createCryptoShim } from "./runtime/crypto-shim";
-import {
-  createNodeHostServices,
-  type NodeHostServices,
-} from "./testing/node-host-services";
+  createCoreTestContext,
+  type CoreTestContext,
+} from "./testing/core-test-harness";
+import type { NodeHostServices } from "./testing/node-host-services";
 
 const TOKEN = "test-token";
 const SAMPLE_URL = "https://github.com/sample/notes";
 
+let ctx: CoreTestContext;
 let host: NodeHostServices;
-let clock: ReturnType<typeof createTestClock>;
+let clock: CoreTestContext["clock"];
 let registry: ForgeRegistry;
 let controls: FakeForgeControls;
 let cores: NativeCoreHandle[];
-let nextId = 1;
-
-beforeAll(() => {
-  const shim = createCryptoShim(() => host);
-  vi.stubGlobal("crypto", shim.crypto);
-  vi.stubGlobal("CryptoKey", shim.CryptoKey);
-});
-
-afterAll(() => {
-  vi.unstubAllGlobals();
-});
-
-function createHost(): NodeHostServices {
-  const base = createNodeHostServices({
-    clock: {
-      now: () => clock.now(),
-      setTimeout: (callback, ms) => clock.setTimeout(callback, ms) as number,
-      clearTimeout: (id) => clock.clearTimeout(id),
-    },
-  });
-  return {
-    ...base,
-    crypto: {
-      ...base.crypto,
-      argon2id: (input) => sharedMemoizedArgon2id(input),
-    },
-  };
-}
 
 beforeEach(async () => {
-  clock = createTestClock(Date.UTC(2026, 9, 1, 12));
-  host = createHost();
-  ({ registry, controls } = await createFakeForge({
-    argon2id: sharedMemoizedArgon2id,
-    shareStorage: new Map<string, string>() as unknown as Storage,
-  }));
-  cores = [];
-});
-
-afterEach(() => {
-  for (const core of cores) core.stop();
-});
-
-function startCore(forges: ForgeRegistry = registry): NativeCoreHandle {
-  const core = createNativeCore({
-    host,
-    deviceModel: "iPhone",
-    registry: () => Promise.resolve(forges),
+  ctx = await createCoreTestContext({
     extraCommands: {
       "test.throw": () => Promise.reject(new TypeError("boom")),
     },
   });
-  cores.push(core);
-  return core;
-}
+  ({ host, clock, registry, controls, cores } = ctx);
+});
 
-function postedMessages(): (CoreResponse | CoreEventMessage)[] {
-  return host.posted.map(
-    (message) => JSON.parse(message) as CoreResponse | CoreEventMessage,
-  );
-}
+afterEach(() => {
+  ctx.dispose();
+});
 
-function events(name: string): unknown[] {
-  return postedMessages()
-    .filter(
-      (message): message is CoreEventMessage =>
-        message.kind === "event" && message.event === name,
-    )
-    .map((message) => message.payload);
-}
-
-function responsesTo(id: number): CoreResponse[] {
-  return postedMessages().filter(
-    (message): message is CoreResponse =>
-      message.kind === "response" && message.id === id,
-  );
-}
-
-async function sendRaw(
-  core: NativeCoreHandle,
-  message: string,
-  id: number,
-): Promise<CoreResponse> {
-  core.send(message);
-  return vi.waitFor(
-    () => {
-      const [response] = responsesTo(id);
-      if (response === undefined) throw new Error("No response yet");
-      return response;
-    },
-    { timeout: 20_000, interval: 2 },
-  );
-}
-
-function send(
-  core: NativeCoreHandle,
-  command: string,
-  params: Record<string, unknown> = {},
-): Promise<CoreResponse> {
-  const id = nextId++;
-  return sendRaw(core, JSON.stringify({ id, command, params }), id);
-}
-
-async function call(
-  core: NativeCoreHandle,
-  command: string,
-  params: Record<string, unknown> = {},
-): Promise<any> {
-  const response = await send(core, command, params);
-  if (!response.ok)
-    throw new Error(`${command} failed: ${response.error.kind}`);
-  return response.result;
-}
-
-async function inspect(core: NativeCoreHandle, repo: string): Promise<any> {
-  await call(core, "login.listRepositories", {
-    forge: "github",
-    accessToken: TOKEN,
-  });
-  return call(core, "login.inspectRepository", {
-    forge: "github",
-    accessToken: TOKEN,
-    repositoryUrl: `https://github.com/${repo}`,
-  });
-}
-
-async function logIn(core: NativeCoreHandle): Promise<void> {
-  await inspect(core, "sample/notes");
-  expect(
-    await call(core, "login.unlock", {
-      passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
-    }),
-  ).toEqual({
-    kind: "loggedIn",
-  });
-}
+const startCore: CoreTestContext["startCore"] = (...args) =>
+  ctx.startCore(...args);
+const events: CoreTestContext["events"] = (name) => ctx.events(name);
+const responsesTo: CoreTestContext["responsesTo"] = (id) => ctx.responsesTo(id);
+const sendRaw: CoreTestContext["sendRaw"] = (...args) => ctx.sendRaw(...args);
+const send: CoreTestContext["send"] = (...args) => ctx.send(...args);
+const call: CoreTestContext["call"] = (...args) => ctx.call(...args);
+const inspect: CoreTestContext["inspect"] = (...args) => ctx.inspect(...args);
+const logIn: CoreTestContext["logIn"] = (...args) => ctx.logIn(...args);
 
 describe("native core requests", () => {
   it("answers malformed JSON with invalidParams under the unknown request id", async () => {
@@ -481,7 +352,11 @@ describe("login commands", () => {
         "login.inspectRepository",
         inspectParams("sample/empty"),
       );
-      await call(core, "login.inspectRepository", inspectParams("sample/notes"));
+      await call(
+        core,
+        "login.inspectRepository",
+        inspectParams("sample/notes"),
+      );
       controls.release("sample/empty", "inspect");
       await abandoned;
     } finally {
@@ -575,7 +450,9 @@ describe("session commands", () => {
     const core = startCore();
     await logIn(core);
     expect(await host.blobCache.listRepos()).not.toEqual([]);
-    expect(await call(core, "session.logout")).toEqual({});
+    expect(await call(core, "session.logout", { anyway: true })).toEqual({
+      outcome: { kind: "loggedOut" },
+    });
     expect(events("sessionEnded")).toEqual([{ reason: "loggedOut" }]);
     expect(await host.rememberedSession.load()).toBeNull();
     expect(await host.blobCache.listRepos()).toEqual([]);
@@ -583,7 +460,9 @@ describe("session commands", () => {
   });
 
   it("logs out without a running app", async () => {
-    expect(await call(startCore(), "session.logout")).toEqual({});
+    expect(await call(startCore(), "session.logout", { anyway: true })).toEqual(
+      { outcome: { kind: "loggedOut" } },
+    );
     expect(events("sessionEnded")).toEqual([{ reason: "loggedOut" }]);
   });
 
@@ -600,6 +479,7 @@ describe("session commands", () => {
         unsavedCount: 0,
         message: KEY_CHANGED_MESSAGE,
         detail: "All your changes were saved before this happened.",
+        exportLabel: "Export notes",
       },
     ]);
   });
@@ -617,7 +497,6 @@ describe("session commands", () => {
     );
   });
 });
-
 
 describe("notes commands", () => {
   const WELCOME = sampleNotesRepoSource.find(
@@ -645,6 +524,12 @@ describe("notes commands", () => {
       ["tree.get", {}],
       ["note.open", { path: null }],
       ["sync.refresh", {}],
+      ["note.edit", { path: ["Welcome"], text: "x" }],
+      ["sync.retry", {}],
+      ["conflict.resolve", { path: ["Welcome"], resolution: "keepMine" }],
+      ["export.notes", {}],
+      ["draft.start", { parent: [] }],
+      ["folder.create", { parent: [], name: "x" }],
     ] as const) {
       expect(await send(core, command, params)).toMatchObject({
         ok: false,
@@ -669,16 +554,28 @@ describe("notes commands", () => {
       ["Welcome", undefined],
       ["Zażółć gęślą jaźń", undefined],
     ]);
-    expect(tree).toContainEqual({ kind: "note", name: "Welcome", path: ["Welcome"] });
-    const projects = tree.find((node: { name: string }) => node.name === "Projects");
-    expect(projects).toMatchObject({ kind: "folder", noteCount: 2, path: ["Projects"] });
+    expect(tree).toContainEqual({
+      kind: "note",
+      name: "Welcome",
+      path: ["Welcome"],
+    });
+    const projects = tree.find(
+      (node: { name: string }) => node.name === "Projects",
+    );
+    expect(projects).toMatchObject({
+      kind: "folder",
+      noteCount: 2,
+      path: ["Projects"],
+    });
     expect(projects.children[0]).toMatchObject({
       kind: "folder",
       name: "commitnote",
       noteCount: 2,
       path: ["Projects", "commitnote"],
     });
-    expect(tree.find((node: { name: string }) => node.name === "Empty folder")).toMatchObject({
+    expect(
+      tree.find((node: { name: string }) => node.name === "Empty folder"),
+    ).toMatchObject({
       noteCount: 0,
       children: [],
     });
@@ -688,21 +585,31 @@ describe("notes commands", () => {
   it("opens a note with its exact text and reports it as changed", async () => {
     const core = startCore();
     await logIn(core);
+    const loaded = {
+      state: "loaded",
+      path: ["Welcome"],
+      content: WELCOME.markdown,
+      conflict: null,
+    };
     expect(await call(core, "note.open", { path: ["Welcome"] })).toEqual({
-      note: { state: "loaded", path: ["Welcome"], content: WELCOME.markdown },
+      note: loaded,
     });
-    expect(events("noteChanged").at(-1)).toEqual({
-      note: { state: "loaded", path: ["Welcome"], content: WELCOME.markdown },
+    expect(events("noteChanged").at(-1)).toEqual({ note: loaded, edits: null });
+    expect(await call(core, "note.open", { path: null })).toEqual({
+      note: null,
     });
-    expect(await call(core, "note.open", { path: null })).toEqual({ note: null });
-    expect(events("noteChanged").at(-1)).toEqual({ note: null });
+    expect(events("noteChanged").at(-1)).toEqual({ note: null, edits: null });
   });
 
   it("reports a note missing from the tree", async () => {
     const core = startCore();
     await logIn(core);
     expect(await call(core, "note.open", { path: ["Nope"] })).toEqual({
-      note: { state: "missing", path: ["Nope"], message: "This note no longer exists." },
+      note: {
+        state: "missing",
+        path: ["Nope"],
+        message: "This note no longer exists.",
+      },
     });
   });
 
@@ -722,7 +629,15 @@ describe("notes commands", () => {
     await controls.editNote("sample/notes", ["Welcome"], "Edited elsewhere");
     expect(await call(core, "sync.refresh")).toEqual({});
     expect(events("noteChanged").at(-1)).toEqual({
-      note: { state: "loaded", path: ["Welcome"], content: "Edited elsewhere" },
+      note: {
+        state: "loaded",
+        path: ["Welcome"],
+        content: "Edited elsewhere",
+        conflict: null,
+      },
+      edits: [
+        { from: 0, to: WELCOME.markdown.length, insert: "Edited elsewhere" },
+      ],
     });
     expect(events("noteContentChangedRemotely")).toEqual([
       { change: "updated", message: "Updated on another device." },
@@ -763,7 +678,9 @@ describe("notes commands", () => {
       ok: false,
       error: { kind: "invalidParams" },
     });
-    expect(await call(core, "notices.dismiss", { id: "engine-999" })).toEqual({});
+    expect(await call(core, "notices.dismiss", { id: "engine-999" })).toEqual(
+      {},
+    );
   });
 
   it("falls back to the device model for the device name", async () => {
@@ -776,7 +693,9 @@ describe("notes commands", () => {
     await logIn(core);
     await call(core, "lifecycle.setOnline", { online: false });
     await vi.waitFor(() =>
-      expect(events("syncStateChanged").at(-1)).toMatchObject({ online: false }),
+      expect(events("syncStateChanged").at(-1)).toMatchObject({
+        online: false,
+      }),
     );
     const count = events("syncStateChanged").length;
     await call(core, "lifecycle.setOnline", { online: false });
@@ -786,6 +705,12 @@ describe("notes commands", () => {
       refreshing: false,
       treeLoaded: true,
       lastRefreshError: null,
+      state: { kind: "synced" },
+      label: "Synced",
+      status: "Offline",
+      unsavedCount: 0,
+      canRetry: false,
+      unsavedMenu: [{ id: "none", label: "No unsaved changes", path: null }],
     });
   });
 });

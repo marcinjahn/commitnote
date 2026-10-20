@@ -68,7 +68,7 @@ final class MessageTests: XCTestCase {
     func testEmptyResultObject() throws {
         let message = try CoreMessage.decode(#"{"kind":"response","id":1,"ok":true,"result":{}}"#)
         guard case .response(_, let result) = message else { return XCTFail("response") }
-        XCTAssertEqual(try decodeResult(SessionLogout.self, from: try result.get()), Empty())
+        XCTAssertEqual(try decodeResult(SyncRetry.self, from: try result.get()), Empty())
     }
 
     func testEvents() throws {
@@ -93,10 +93,30 @@ final class MessageTests: XCTestCase {
             "noteChanged")
         guard
             case .noteChanged(let changed) = try event(
-                #"{"kind":"event","event":"noteChanged","payload":{"note":{"state":"loaded","path":["A"],"content":"c"}}}"#
+                #"{"kind":"event","event":"noteChanged","payload":{"note":{"state":"loaded","path":["A"],"content":"c","conflict":null},"edits":null}}"#
             )
         else { return XCTFail("noteChanged") }
-        XCTAssertEqual(changed.note, .loaded(path: ["A"], content: "c"))
+        XCTAssertEqual(changed.note, .loaded(path: ["A"], content: "c", conflict: nil))
+        XCTAssertNil(changed.edits)
+        guard
+            case .noteChanged(let withEdits) = try event(
+                #"""
+                {"kind":"event","event":"noteChanged","payload":{"note":{"state":"loaded","path":["A"],
+                "content":"Hi there","conflict":{"otherDevice":"Other device",
+                "heading":"This note was also changed on Other device","text":"t",
+                "keepThisLabel":"Keep this device's version (iPhone)",
+                "keepOtherLabel":"Keep other device's version (Other device)",
+                "editMergedLabel":"Edit merged","editHint":"hint","merged":"<<<<<<< x","editing":true}},
+                "edits":[{"from":2,"to":2,"insert":" there"}]}}
+                """#)
+        else { return XCTFail("noteChanged with edits") }
+        XCTAssertEqual(withEdits.edits, [RemoteTextEdit(from: 2, to: 2, insert: " there")])
+        guard case .loaded(_, _, let conflict?) = withEdits.note else {
+            return XCTFail("conflict")
+        }
+        XCTAssertEqual(conflict.otherDevice, "Other device")
+        XCTAssertEqual(conflict.keepOtherLabel, "Keep other device's version (Other device)")
+        XCTAssertTrue(conflict.editing)
         XCTAssertEqual(
             try event(
                 #"{"kind":"event","event":"noteContentChangedRemotely","payload":{"change":"relocated","message":"m"}}"#
@@ -106,32 +126,60 @@ final class MessageTests: XCTestCase {
             case .syncStateChanged(let sync) = try event(
                 #"""
                 {"kind":"event","event":"syncStateChanged","payload":{"online":true,"refreshing":false,
-                "treeLoaded":true,"lastRefreshError":{"kind":"network","message":"m","transient":true}}}
+                "treeLoaded":true,"lastRefreshError":{"kind":"network","message":"m","transient":true},
+                "state":{"kind":"out-of-sync","reason":"failed"},"label":"Out of sync: failed to save",
+                "status":"Out of sync: failed to save","unsavedCount":1,"canRetry":true,
+                "unsavedMenu":[{"id":"note-0","label":"Welcome","path":["Welcome"]},
+                {"id":"retry","label":"Retry now","path":null}]}}
                 """#)
         else { return XCTFail("syncStateChanged") }
         XCTAssertTrue(sync.online)
         XCTAssertFalse(sync.refreshing)
         XCTAssertTrue(sync.treeLoaded)
         XCTAssertEqual(sync.lastRefreshError?.kind, "network")
+        XCTAssertEqual(sync.state, .outOfSync(.failed))
+        XCTAssertEqual(sync.label, "Out of sync: failed to save")
+        XCTAssertEqual(sync.status, "Out of sync: failed to save")
+        XCTAssertEqual(sync.unsavedCount, 1)
+        XCTAssertTrue(sync.canRetry)
+        XCTAssertEqual(
+            sync.unsavedMenu,
+            [
+                SyncStatusMenuItem(id: "note-0", label: "Welcome", path: ["Welcome"]),
+                SyncStatusMenuItem(id: "retry", label: "Retry now", path: nil),
+            ])
         guard
             case .syncStateChanged(let clean) = try event(
-                #"{"kind":"event","event":"syncStateChanged","payload":{"online":false,"refreshing":true,"treeLoaded":false,"lastRefreshError":null}}"#
+                #"{"kind":"event","event":"syncStateChanged","payload":{"online":false,"refreshing":true,"treeLoaded":false,"lastRefreshError":null,"state":{"kind":"synced"},"label":"Synced","status":null,"unsavedCount":0,"canRetry":false,"unsavedMenu":[{"id":"none","label":"No unsaved changes","path":null}]}}"#
             )
         else { return XCTFail("syncStateChanged") }
         XCTAssertNil(clean.lastRefreshError)
+        XCTAssertEqual(clean.state, .synced)
+        XCTAssertNil(clean.status)
+        XCTAssertFalse(clean.canRetry)
         XCTAssertEqual(
             try event(
-                #"{"kind":"event","event":"notice","payload":{"id":"engine-1","tone":"warning","message":"m","persistent":true}}"#
+                #"{"kind":"event","event":"notice","payload":{"id":"engine-1","tone":"warning","message":"m","persistent":true,"action":{"kind":"openNote","label":"Open note","path":["A"]}}}"#
             ),
-            .notice(Notice(id: "engine-1", tone: .warning, message: "m", persistent: true)))
+            .notice(
+                Notice(
+                    id: "engine-1", tone: .warning, message: "m", persistent: true,
+                    action: NoticeAction(kind: .openNote, label: "Open note", path: ["A"]))))
+        XCTAssertEqual(
+            try event(
+                #"{"kind":"event","event":"notice","payload":{"id":"x","tone":"info","message":"m","persistent":false,"action":null}}"#
+            ),
+            .notice(Notice(id: "x", tone: .info, message: "m", persistent: false, action: nil)))
         XCTAssertEqual(
             try event(#"{"kind":"event","event":"noticeCleared","payload":{"id":"refresh"}}"#),
             .noticeCleared(NoticeCleared(id: "refresh")))
         XCTAssertEqual(
             try event(
-                #"{"kind":"event","event":"keyChanged","payload":{"unsavedCount":2,"message":"m","detail":"d"}}"#
+                #"{"kind":"event","event":"keyChanged","payload":{"unsavedCount":2,"message":"m","detail":"d","exportLabel":"Export unsaved notes"}}"#
             ),
-            .keyChanged(KeyChanged(unsavedCount: 2, message: "m", detail: "d")))
+            .keyChanged(
+                KeyChanged(
+                    unsavedCount: 2, message: "m", detail: "d", exportLabel: "Export unsaved notes")))
         XCTAssertEqual(
             try event(#"{"kind":"event","event":"sessionEnded","payload":{"reason":"loggedOut"}}"#),
             .sessionEnded(SessionEnded(reason: .loggedOut)))

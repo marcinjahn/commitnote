@@ -80,4 +80,18 @@ describe("readBackNativeRepo", () => {
       "save: the initialize commit was written by a different device",
     ]);
   });
+
+  it("checks that expected folders exist as folders", async () => {
+    expect(await readBack({ folders: [["Journal", "2026"], ["Projects"]] })).toEqual(
+      [],
+    );
+    expect(
+      await readBack({
+        folders: [["Nowhere"], notePath, ["Journal", "2026"]],
+      }),
+    ).toEqual([
+      "save: expected folder 1 is not in the head tree",
+      "save: expected folder 2 is not in the head tree",
+    ]);
+  });
 });

@@ -23,19 +23,22 @@ public struct TreeChanged: Codable, Equatable, Sendable {
 
 public struct NoteChanged: Codable, Equatable, Sendable {
     public var note: OpenNote?
+    public var edits: [RemoteTextEdit]?
 
     private enum CodingKeys: String, CodingKey {
-        case note
+        case note, edits
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         note = try container.decodeIfPresent(OpenNote.self, forKey: .note)
+        edits = try container.decodeIfPresent([RemoteTextEdit].self, forKey: .edits)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(note, forKey: .note)
+        try container.encode(edits, forKey: .edits)
     }
 }
 
@@ -49,9 +52,16 @@ public struct SyncStateChanged: Codable, Equatable, Sendable {
     public var refreshing: Bool
     public var treeLoaded: Bool
     public var lastRefreshError: CoreError?
+    public var state: SyncState
+    public var label: String
+    public var status: String?
+    public var unsavedCount: Int
+    public var canRetry: Bool
+    public var unsavedMenu: [SyncStatusMenuItem]
 
     private enum CodingKeys: String, CodingKey {
-        case online, refreshing, treeLoaded, lastRefreshError
+        case online, refreshing, treeLoaded, lastRefreshError, state, label, status, unsavedCount,
+            canRetry, unsavedMenu
     }
 
     public init(from decoder: Decoder) throws {
@@ -60,6 +70,12 @@ public struct SyncStateChanged: Codable, Equatable, Sendable {
         refreshing = try container.decode(Bool.self, forKey: .refreshing)
         treeLoaded = try container.decode(Bool.self, forKey: .treeLoaded)
         lastRefreshError = try container.decodeIfPresent(CoreError.self, forKey: .lastRefreshError)
+        state = try container.decode(SyncState.self, forKey: .state)
+        label = try container.decode(String.self, forKey: .label)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        unsavedCount = try container.decode(Int.self, forKey: .unsavedCount)
+        canRetry = try container.decode(Bool.self, forKey: .canRetry)
+        unsavedMenu = try container.decode([SyncStatusMenuItem].self, forKey: .unsavedMenu)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -68,6 +84,12 @@ public struct SyncStateChanged: Codable, Equatable, Sendable {
         try container.encode(refreshing, forKey: .refreshing)
         try container.encode(treeLoaded, forKey: .treeLoaded)
         try container.encode(lastRefreshError, forKey: .lastRefreshError)
+        try container.encode(state, forKey: .state)
+        try container.encode(label, forKey: .label)
+        try container.encode(status, forKey: .status)
+        try container.encode(unsavedCount, forKey: .unsavedCount)
+        try container.encode(canRetry, forKey: .canRetry)
+        try container.encode(unsavedMenu, forKey: .unsavedMenu)
     }
 }
 
@@ -76,6 +98,39 @@ public struct Notice: Codable, Equatable, Sendable {
     public var tone: NoticeTone
     public var message: String
     public var persistent: Bool
+    public var action: NoticeAction?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, tone, message, persistent, action
+    }
+
+    public init(
+        id: String, tone: NoticeTone, message: String, persistent: Bool, action: NoticeAction?
+    ) {
+        self.id = id
+        self.tone = tone
+        self.message = message
+        self.persistent = persistent
+        self.action = action
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        tone = try container.decode(NoticeTone.self, forKey: .tone)
+        message = try container.decode(String.self, forKey: .message)
+        persistent = try container.decode(Bool.self, forKey: .persistent)
+        action = try container.decodeIfPresent(NoticeAction.self, forKey: .action)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(tone, forKey: .tone)
+        try container.encode(message, forKey: .message)
+        try container.encode(persistent, forKey: .persistent)
+        try container.encode(action, forKey: .action)
+    }
 }
 
 public struct NoticeCleared: Codable, Equatable, Sendable {
@@ -86,6 +141,7 @@ public struct KeyChanged: Codable, Equatable, Sendable {
     public var unsavedCount: Int
     public var message: String
     public var detail: String
+    public var exportLabel: String
 }
 
 public enum SessionEndReason: String, Codable, Equatable, Sendable {

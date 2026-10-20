@@ -50,18 +50,18 @@ public indirect enum TreeNode: Codable, Equatable, Sendable {
 
 public enum OpenNote: Codable, Equatable, Sendable {
     case loading(path: [String])
-    case loaded(path: [String], content: String)
+    case loaded(path: [String], content: String, conflict: OpenNoteConflict?)
     case missing(path: [String], message: String)
     case trashed(path: [String], message: String)
     case failed(path: [String], message: String, error: CoreError)
 
     private enum CodingKeys: String, CodingKey {
-        case state, path, content, message, error
+        case state, path, content, conflict, message, error
     }
 
     public var path: [String] {
         switch self {
-        case .loading(let path), .loaded(let path, _), .missing(let path, _),
+        case .loading(let path), .loaded(let path, _, _), .missing(let path, _),
             .trashed(let path, _), .failed(let path, _, _):
             return path
         }
@@ -74,7 +74,10 @@ public enum OpenNote: Codable, Equatable, Sendable {
         case "loading":
             self = .loading(path: path)
         case "loaded":
-            self = .loaded(path: path, content: try container.decode(String.self, forKey: .content))
+            self = .loaded(
+                path: path,
+                content: try container.decode(String.self, forKey: .content),
+                conflict: try container.decodeIfPresent(OpenNoteConflict.self, forKey: .conflict))
         case "missing":
             self = .missing(path: path, message: try container.decode(String.self, forKey: .message))
         case "trashed":
@@ -97,10 +100,11 @@ public enum OpenNote: Codable, Equatable, Sendable {
         case .loading(let path):
             try container.encode("loading", forKey: .state)
             try container.encode(path, forKey: .path)
-        case .loaded(let path, let content):
+        case .loaded(let path, let content, let conflict):
             try container.encode("loaded", forKey: .state)
             try container.encode(path, forKey: .path)
             try container.encode(content, forKey: .content)
+            try container.encode(conflict, forKey: .conflict)
         case .missing(let path, let message):
             try container.encode("missing", forKey: .state)
             try container.encode(path, forKey: .path)
@@ -293,4 +297,339 @@ public enum RemoteChange: String, Codable, Equatable, Sendable {
     case updated
     case relocated
     case trashed
+}
+
+public struct OpenNoteConflict: Codable, Equatable, Sendable {
+    public var otherDevice: String?
+    public var heading: String
+    public var text: String
+    public var keepThisLabel: String
+    public var keepOtherLabel: String
+    public var editMergedLabel: String
+    public var editHint: String
+    public var merged: String
+    public var editing: Bool
+
+    public init(
+        otherDevice: String?, heading: String, text: String, keepThisLabel: String,
+        keepOtherLabel: String, editMergedLabel: String, editHint: String, merged: String,
+        editing: Bool
+    ) {
+        self.otherDevice = otherDevice
+        self.heading = heading
+        self.text = text
+        self.keepThisLabel = keepThisLabel
+        self.keepOtherLabel = keepOtherLabel
+        self.editMergedLabel = editMergedLabel
+        self.editHint = editHint
+        self.merged = merged
+        self.editing = editing
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case otherDevice, heading, text, keepThisLabel, keepOtherLabel, editMergedLabel, editHint,
+            merged, editing
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        otherDevice = try container.decodeIfPresent(String.self, forKey: .otherDevice)
+        heading = try container.decode(String.self, forKey: .heading)
+        text = try container.decode(String.self, forKey: .text)
+        keepThisLabel = try container.decode(String.self, forKey: .keepThisLabel)
+        keepOtherLabel = try container.decode(String.self, forKey: .keepOtherLabel)
+        editMergedLabel = try container.decode(String.self, forKey: .editMergedLabel)
+        editHint = try container.decode(String.self, forKey: .editHint)
+        merged = try container.decode(String.self, forKey: .merged)
+        editing = try container.decode(Bool.self, forKey: .editing)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(otherDevice, forKey: .otherDevice)
+        try container.encode(heading, forKey: .heading)
+        try container.encode(text, forKey: .text)
+        try container.encode(keepThisLabel, forKey: .keepThisLabel)
+        try container.encode(keepOtherLabel, forKey: .keepOtherLabel)
+        try container.encode(editMergedLabel, forKey: .editMergedLabel)
+        try container.encode(editHint, forKey: .editHint)
+        try container.encode(merged, forKey: .merged)
+        try container.encode(editing, forKey: .editing)
+    }
+}
+
+public struct RemoteTextEdit: Codable, Equatable, Sendable {
+    public var from: Int
+    public var to: Int
+    public var insert: String
+
+    public init(from: Int, to: Int, insert: String) {
+        self.from = from
+        self.to = to
+        self.insert = insert
+    }
+}
+
+public enum OutOfSyncReason: String, Codable, Equatable, Sendable {
+    case pending
+    case failed
+    case conflict
+}
+
+public enum SyncState: Codable, Equatable, Sendable {
+    case synced
+    case syncing
+    case outOfSync(OutOfSyncReason)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, reason
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .kind) {
+        case "synced":
+            self = .synced
+        case "syncing":
+            self = .syncing
+        case "out-of-sync":
+            self = .outOfSync(try container.decode(OutOfSyncReason.self, forKey: .reason))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: container, debugDescription: "Unknown sync state kind \(other)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .synced:
+            try container.encode("synced", forKey: .kind)
+        case .syncing:
+            try container.encode("syncing", forKey: .kind)
+        case .outOfSync(let reason):
+            try container.encode("out-of-sync", forKey: .kind)
+            try container.encode(reason, forKey: .reason)
+        }
+    }
+}
+
+public struct SyncStatusMenuItem: Codable, Equatable, Sendable {
+    public var id: String
+    public var label: String
+    public var path: [String]?
+
+    public init(id: String, label: String, path: [String]?) {
+        self.id = id
+        self.label = label
+        self.path = path
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, label, path
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        label = try container.decode(String.self, forKey: .label)
+        path = try container.decodeIfPresent([String].self, forKey: .path)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(label, forKey: .label)
+        try container.encode(path, forKey: .path)
+    }
+}
+
+public struct NoticeAction: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Equatable, Sendable {
+        case openNote
+    }
+
+    public var kind: Kind
+    public var label: String
+    public var path: [String]
+
+    public init(kind: Kind, label: String, path: [String]) {
+        self.kind = kind
+        self.label = label
+        self.path = path
+    }
+}
+
+public enum FlushOutcome: Codable, Equatable, Sendable {
+    case saved
+    case unsaved(count: Int)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, count
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .kind) {
+        case "saved":
+            self = .saved
+        case "unsaved":
+            self = .unsaved(count: try container.decode(Int.self, forKey: .count))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: container, debugDescription: "Unknown flush outcome \(other)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .saved:
+            try container.encode("saved", forKey: .kind)
+        case .unsaved(let count):
+            try container.encode("unsaved", forKey: .kind)
+            try container.encode(count, forKey: .count)
+        }
+    }
+}
+
+public enum ConflictResolution: String, Codable, Equatable, Sendable {
+    case keepMine
+    case keepTheirs
+    case editMerged
+}
+
+public enum LogoutOutcome: Codable, Equatable, Sendable {
+    case loggedOut
+    case unsaved(count: Int, message: String)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, count, message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .kind) {
+        case "loggedOut":
+            self = .loggedOut
+        case "unsaved":
+            self = .unsaved(
+                count: try container.decode(Int.self, forKey: .count),
+                message: try container.decode(String.self, forKey: .message))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: container, debugDescription: "Unknown logout outcome \(other)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .loggedOut:
+            try container.encode("loggedOut", forKey: .kind)
+        case .unsaved(let count, let message):
+            try container.encode("unsaved", forKey: .kind)
+            try container.encode(count, forKey: .count)
+            try container.encode(message, forKey: .message)
+        }
+    }
+}
+
+public struct NoteDraft: Codable, Equatable, Sendable {
+    public var parent: [String]
+    public var name: String
+
+    public init(parent: [String], name: String) {
+        self.parent = parent
+        self.name = name
+    }
+}
+
+public enum NoteDraftOutcome: Codable, Equatable, Sendable {
+    case none
+    case error(message: String)
+    case created(path: [String], fieldError: String?)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, message, path, fieldError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .kind) {
+        case "none":
+            self = .none
+        case "error":
+            self = .error(message: try container.decode(String.self, forKey: .message))
+        case "created":
+            self = .created(
+                path: try container.decode([String].self, forKey: .path),
+                fieldError: try container.decodeIfPresent(String.self, forKey: .fieldError))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: container, debugDescription: "Unknown draft outcome \(other)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .none:
+            try container.encode("none", forKey: .kind)
+        case .error(let message):
+            try container.encode("error", forKey: .kind)
+            try container.encode(message, forKey: .message)
+        case .created(let path, let fieldError):
+            try container.encode("created", forKey: .kind)
+            try container.encode(path, forKey: .path)
+            try container.encode(fieldError, forKey: .fieldError)
+        }
+    }
+}
+
+public enum FolderCreateOutcome: Codable, Equatable, Sendable {
+    case created(path: [String])
+    case error(message: String)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, path, message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .kind) {
+        case "created":
+            self = .created(path: try container.decode([String].self, forKey: .path))
+        case "error":
+            self = .error(message: try container.decode(String.self, forKey: .message))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: container,
+                debugDescription: "Unknown folder create outcome \(other)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .created(let path):
+            try container.encode("created", forKey: .kind)
+            try container.encode(path, forKey: .path)
+        case .error(let message):
+            try container.encode("error", forKey: .kind)
+            try container.encode(message, forKey: .message)
+        }
+    }
+}
+
+public struct ExportedArchive: Codable, Equatable, Sendable {
+    public var fileName: String
+    public var mimeType: String
+    public var base64: String
+
+    public init(fileName: String, mimeType: String = "application/zip", base64: String) {
+        self.fileName = fileName
+        self.mimeType = mimeType
+        self.base64 = base64
+    }
 }

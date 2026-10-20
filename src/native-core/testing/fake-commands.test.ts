@@ -1,3 +1,4 @@
+import { strFromU8, unzipSync } from "fflate";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { sharedMemoizedArgon2id } from "../../crypto/testing/shared-argon2id";
 import {
@@ -81,7 +82,38 @@ async function setUp() {
       { timeout: 20_000, interval: 2 },
     );
   }
-  return { core, send };
+  function events(name: string): any[] {
+    return host.posted
+      .map((message) => JSON.parse(message))
+      .filter((message) => message.kind === "event" && message.event === name)
+      .map((message) => message.payload);
+  }
+  async function openSampleSession() {
+    await ok(
+      send("login.listRepositories", { forge: "github", accessToken: "t" }),
+    );
+    await ok(
+      send("login.inspectRepository", {
+        forge: "github",
+        accessToken: "t",
+        repositoryUrl: "https://github.com/sample/notes",
+      }),
+    );
+    await ok(
+      send("login.unlock", { passphrase: SAMPLE_NOTES_REPO_PASSPHRASE }),
+    );
+  }
+  async function openLoaded(path: string[]) {
+    return vi.waitFor(
+      async () => {
+        const { note } = await ok(send("note.open", { path }));
+        if (note?.state !== "loaded") throw new Error("not loaded yet");
+        return note;
+      },
+      { timeout: 20_000, interval: 20 },
+    );
+  }
+  return { core, send, events, openSampleSession, openLoaded };
 }
 
 async function ok(response: Promise<CoreResponse>): Promise<any> {
@@ -201,6 +233,112 @@ describe("fake core commands", () => {
     expect(
       await ok(send("fake.timerProbe", { delaysMs: [], cancelIndex: null })),
     ).toEqual({ fired: [] });
+    core.stop();
+  });
+
+  it("reaches a conflict with a remote edit of the same line", async () => {
+    const { core, send, events, openSampleSession, openLoaded } = await setUp();
+    await openSampleSession();
+    const note = await openLoaded(["Welcome"]);
+    const lines = note.content.split("\n");
+
+    await ok(
+      send("fake.remoteEdit", {
+        repo: "sample/notes",
+        path: ["Welcome"],
+        text: ["# Remote title", ...lines.slice(1)].join("\n"),
+        device: "Other iPhone",
+      }),
+    );
+    await ok(
+      send("note.edit", {
+        path: ["Welcome"],
+        text: ["# Local title", ...lines.slice(1)].join("\n"),
+      }),
+    );
+    await ok(send("sync.flush"));
+
+    await vi.waitFor(() => {
+      const latest = events("noteChanged").at(-1)?.note;
+      expect(latest?.conflict).toMatchObject({ otherDevice: "Other iPhone" });
+    });
+    expect(
+      events("notice").some(
+        (notice) =>
+          notice.action?.kind === "openNote" &&
+          notice.action.path.join() === "Welcome",
+      ),
+    ).toBe(true);
+    core.stop();
+  });
+
+  it("fails saves until the failures are cleared, then saves on retry", async () => {
+    const { core, send, events, openSampleSession, openLoaded } = await setUp();
+    await openSampleSession();
+    await openLoaded(["Welcome"]);
+    const before = controls.commitMessages("sample/notes").length;
+
+    await ok(
+      send("fake.failNext", {
+        repo: "sample/notes",
+        operation: "commit",
+        kind: "Network",
+        count: 50,
+      }),
+    );
+    await ok(send("note.edit", { path: ["Welcome"], text: "Edited offline" }));
+    expect(await ok(send("sync.flush"))).toEqual({
+      result: { kind: "unsaved", count: 1 },
+    });
+    await vi.waitFor(() => {
+      const latest = events("syncStateChanged").at(-1);
+      expect(latest).toMatchObject({
+        canRetry: true,
+        state: { kind: "out-of-sync", reason: "failed" },
+      });
+    });
+
+    await ok(send("sync.retry"));
+    await vi.waitFor(() => {
+      expect(events("syncStateChanged").length).toBeGreaterThan(0);
+    });
+    expect(await ok(send("sync.flush"))).toMatchObject({
+      result: { kind: "unsaved" },
+    });
+    expect(controls.commitMessages("sample/notes")).toHaveLength(before);
+
+    await ok(
+      send("fake.clearFailures", { repo: "sample/notes", operation: "commit" }),
+    );
+    await ok(send("sync.retry"));
+    await vi.waitFor(() => {
+      expect(controls.commitMessages("sample/notes")).toHaveLength(before + 1);
+    });
+    expect(await ok(send("sync.flush"))).toEqual({
+      result: { kind: "saved" },
+    });
+    core.stop();
+  });
+
+  it("reports a changed key with the unsaved edit and exports it", async () => {
+    const { core, send, events, openSampleSession, openLoaded } = await setUp();
+    await openSampleSession();
+    await openLoaded(["Welcome"]);
+
+    await ok(send("fake.changeRepoKey", { repo: "sample/notes" }));
+    await ok(send("note.edit", { path: ["Welcome"], text: "Unsaved words" }));
+    await ok(send("sync.flush"));
+
+    await vi.waitFor(() => {
+      expect(events("keyChanged").at(-1)).toMatchObject({ unsavedCount: 1 });
+    });
+    expect(events("keyChanged").at(-1).exportLabel).toBe(
+      "Export unsaved notes",
+    );
+    const archive = await ok(send("export.notes"));
+    expect(archive.mimeType).toBe("application/zip");
+    const files = unzipSync(new Uint8Array(Buffer.from(archive.base64, "base64")));
+    expect(strFromU8(files["Welcome.md"]!)).toBe("Unsaved words");
     core.stop();
   });
 });

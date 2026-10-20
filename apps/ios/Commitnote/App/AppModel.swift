@@ -174,7 +174,7 @@ final class AppModel {
     }
 
     func logOut() async {
-        _ = try? await send(SessionLogout())
+        _ = try? await send(SessionLogout(anyway: true))
         resetSessionState()
         screen = .login(LoginEntry())
     }

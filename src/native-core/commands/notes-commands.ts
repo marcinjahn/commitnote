@@ -6,6 +6,7 @@ import {
   REFRESH_REJECTED_MESSAGE,
   type EngineEvents,
 } from "../engine-events";
+import type { DraftCommands } from "./draft-commands";
 import { toOpenNote } from "../open-note-view";
 import { toTreeNodes } from "../tree-view";
 import {
@@ -33,8 +34,9 @@ function pathParam(params: CommandParams): string[] | null {
 export function createNotesCommands(context: {
   readonly app: AppSession;
   readonly events: EngineEvents;
+  readonly drafts: Pick<DraftCommands, "discard">;
 }): Record<string, CommandHandler> {
-  const { app, events } = context;
+  const { app, events, drafts } = context;
 
   function running() {
     const current = app.current();
@@ -51,9 +53,14 @@ export function createNotesCommands(context: {
     async "note.open"(params): Promise<Result<"note.open">> {
       const path = pathParam(params);
       const { engine } = running();
+      drafts.discard();
+      events.noteSwitched();
       await engine.openNote(path);
       return {
-        note: toOpenNote(engine.getState().openNote, app.activeForgeName()),
+        note: toOpenNote(engine.getState(), {
+          forgeName: app.activeForgeName(),
+          deviceName: app.deviceName,
+        }),
       };
     },
 

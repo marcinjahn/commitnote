@@ -166,6 +166,10 @@ export class FakeForgeAdapter implements ForgeAdapter {
     this.pendingFailures.set(operation, queue);
   }
 
+  clearFailures(operation: FailableOperation): void {
+    this.pendingFailures.delete(operation);
+  }
+
   private takeFailure(
     operation: FailableOperation,
   ): ForgeError | "stale" | undefined {

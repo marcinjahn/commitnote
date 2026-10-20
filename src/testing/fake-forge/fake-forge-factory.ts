@@ -115,6 +115,8 @@ export interface FakeForgeControls {
     operation: HoldableOperation,
     kind: ForgeErrorKind | "stale",
   ): void;
+  /** Drop the failures queued by `failNext` for `operation` on that fixture. */
+  clearFailures(repoKey: string, operation: HoldableOperation): void;
   /**
    * Make every call of `operation` on that fixture wait until `release`. A
    * `failNext` registered before the release applies to the released call.
@@ -389,6 +391,9 @@ export async function createFakeForge(options?: {
         operation,
         kind === "stale" ? "stale" : new ForgeError(kind),
       );
+    },
+    clearFailures(repoKey, operation) {
+      fixtureAdapter(repoKey).clearFailures(operation);
     },
     hold(repoKey, operation) {
       holds.hold(repoKey, operation);
