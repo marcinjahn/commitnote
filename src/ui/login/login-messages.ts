@@ -49,6 +49,13 @@ export function describeLoginStep(step: LoginStep): string {
   }
 }
 
+export const DEFAULT_ACCESS_TOKEN_HINT =
+  "An access token for your notes repository only, with read and write access to its contents.";
+
+export const FOREIGN_REPOSITORY_HINT_LINK = "create an empty private repository";
+
+export const FOREIGN_REPOSITORY_HINT = `To start a new notes repo, ${FOREIGN_REPOSITORY_HINT_LINK} and give the token access to it.`;
+
 export const PUBLIC_REPOSITORY_WARNING =
   "This repository is not private. Your notes stay encrypted, but anyone who can see the repository can see when you save, how many files there are, their sizes and how often you write.";
 

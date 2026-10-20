@@ -23,9 +23,12 @@
   } from "../../forge/forge-provider";
   import { tick, untrack } from "svelte";
   import {
+    DEFAULT_ACCESS_TOKEN_HINT,
     describeLoginError,
     describeLoginStep,
     describeSetUp,
+    FOREIGN_REPOSITORY_HINT,
+    FOREIGN_REPOSITORY_HINT_LINK,
     GENERIC_LOGIN_ERROR,
     PUBLIC_REPOSITORY_WARNING,
   } from "./login-messages";
@@ -449,8 +452,7 @@
             : "login-access-token-hint"}
         />
         <p id="login-access-token-hint" class="field-hint">
-          {provider.accessTokenHint ??
-            "An access token for your notes repository only, with read and write access to its contents."}
+          {provider.accessTokenHint ?? DEFAULT_ACCESS_TOKEN_HINT}
           <a href={tokenCreationUrl} target="_blank" rel="noopener noreferrer"
             >Create a token on {provider.name}</a
           > with these settings filled in, then choose the repository there.
@@ -524,13 +526,15 @@
             : describeLoginError(inspection.error, provider.name)}
         </p>
         {#if inspection.error?.kind === "foreign"}
+          {@const [beforeLink, afterLink] = FOREIGN_REPOSITORY_HINT.split(
+            FOREIGN_REPOSITORY_HINT_LINK,
+          )}
           <p class="field-hint">
-            To start a new notes repo,
-            <a
+            {beforeLink}<a
               href={repositoryCreationUrl}
               target="_blank"
-              rel="noopener noreferrer">create an empty private repository</a
-            > and give the token access to it.
+              rel="noopener noreferrer">{FOREIGN_REPOSITORY_HINT_LINK}</a
+            >{afterLink}
           </p>
         {/if}
         {#if canCheckAgain(inspection.error)}

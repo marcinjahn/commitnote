@@ -2,7 +2,10 @@
   import type { ArchiveDownload } from "../../export/deliver-archive";
   import { exportNotesArchive } from "../../export/export-notes-archive";
   import type { SyncEngine } from "../../sync/sync-engine";
-  import { KEY_CHANGED_MESSAGE } from "../browse/sync-messages";
+  import {
+    describeKeyChangedUnsaved,
+    KEY_CHANGED_MESSAGE,
+  } from "../browse/sync-messages";
   import Wordmark from "../wordmark/Wordmark.svelte";
 
   interface Props {
@@ -17,11 +20,7 @@
   let exporting = $state(false);
   let exportFailed = $state(false);
 
-  const unsavedMessage = $derived(
-    unsavedCount === 0
-      ? "All your changes were saved before this happened."
-      : `${unsavedCount} ${unsavedCount === 1 ? "note or folder was" : "notes or folders were"} not saved and are lost when you log in again. Export your notes first to keep them.`,
-  );
+  const unsavedMessage = $derived(describeKeyChangedUnsaved(unsavedCount));
 
   async function handleExport(): Promise<void> {
     const snapshot = engine.snapshotNotes();
