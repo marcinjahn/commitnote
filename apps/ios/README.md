@@ -54,18 +54,20 @@ Apple builds run only in the iOS workflow (`.github/workflows/ios.yml`). It runs
 and to `ios-ci/**` branches, and manually. To prove a change on macOS before it reaches `main`, push
 it to a branch named `ios-ci/<something>`.
 
-The workflow has a Linux job (native core check, Swift package tests) and a macOS job (generate the
-project, package tests, runtime tests, read-back of the produced repos with TypeScript, iPhone and
-iPad UI tests, unsigned IPA build and check). The UI tests expect password AutoFill to be off, so
-iOS never shows its save-password or strong-password sheets over the app; the workflow turns it off in
-both simulators with `scripts/disable-password-autofill.sh`. Do the same before running them locally.
+The workflow has three parallel jobs. `linux` runs the native core check and Swift package tests.
+`macos` generates the project, runs package tests and runtime tests, reads the produced repos back
+with TypeScript, then builds and checks the unsigned IPA. `UI tests (iphone)` and `UI tests (ipad)`
+each build for testing and run the UI tests on their own simulator. The UI tests expect password AutoFill to be off, so
+iOS never shows its save-password or strong-password sheets over the app; the workflow turns it off on
+every simulator with `scripts/disable-password-autofill.sh`. Do the same before running them locally.
 Artifacts, kept for 30 days:
 
 | Artifact | Contents |
 | --- | --- |
 | `commitnote-unsigned-ipa` | `commitnote-unsigned.ipa` |
-| `ios-screenshots` | iPhone and iPad screenshots, light and dark |
-| `ios-xcresults` | Xcode result bundles |
+| `ios-screenshots-iphone`, `ios-screenshots-ipad` | screenshots per device, light and dark |
+| `ios-xcresults-runtime` | Xcode result bundle of the runtime tests |
+| `ios-xcresults-ui-iphone`, `ios-xcresults-ui-ipad` | Xcode result bundles of the UI tests |
 | `ios-test-output` | repos written by the runtime tests, and performance timings (`perf/perf.json`) |
 
 Download from a run:
