@@ -36,6 +36,18 @@ async function search(page: Page, query: string): Promise<void> {
   await searchInput(page).fill(query);
 }
 
+async function expectFullScreenSheet(page: Page): Promise<void> {
+  const viewport = page.viewportSize()!;
+  await expect
+    .poll(async () => {
+      const box = await palette(page).locator(".dialog-card").boundingBox();
+      return box === null
+        ? null
+        : [box.x, box.y, box.width, box.height].map(Math.round);
+    })
+    .toEqual([0, 0, viewport.width, viewport.height]);
+}
+
 async function expectEditorFocused(page: Page): Promise<void> {
   await expect(page.locator(".cm-content")).toBeFocused();
 }
@@ -283,15 +295,7 @@ test("the palette is a full-screen sheet that opens a result and closes by swipe
   await page.getByRole("button", { name: "Search notes" }).tap();
   const dialog = palette(page);
   await expect(searchInput(page)).toBeFocused();
-  const viewport = page.viewportSize()!;
-  await expect
-    .poll(async () => {
-      const box = await dialog.locator(".dialog-card").boundingBox();
-      return box === null
-        ? null
-        : [box.x, box.y, box.width, box.height].map(Math.round);
-    })
-    .toEqual([0, 0, viewport.width, viewport.height]);
+  await expectFullScreenSheet(page);
 
   await search(page, "pierogi");
   await results(page).getByRole("option", { name: /Pierogi/ }).tap();
@@ -303,7 +307,7 @@ test("the palette is a full-screen sheet that opens a result and closes by swipe
 
   await showTree(page);
   await page.getByRole("button", { name: "Search notes" }).tap();
-  await expect(dialog).toBeVisible();
+  await expectFullScreenSheet(page);
   const header = (await dialog.locator(".dialog-header").boundingBox())!;
   const title = (await dialog.locator(".dialog-title").boundingBox())!;
   const card = (await dialog.locator(".dialog-card").boundingBox())!;
