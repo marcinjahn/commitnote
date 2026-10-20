@@ -186,7 +186,7 @@
     void readContent(selected);
   }
 
-  // The newest version that differs from the note as it is now. On narrow
+  // The newest version whose content differs from the note as it is now. On narrow
   // screens the list comes first and nothing is selected for the user.
   $effect(() => {
     if (history === null || selectedSha !== null || preselecting) return;
@@ -199,9 +199,7 @@
     void readContent(newest).then((content) => {
       if (selectedSha !== null) return;
       const same =
-        content.kind === "readable" &&
-        content.content === current &&
-        content.name === currentName;
+        content.kind === "readable" && content.content === current;
       const pick = same && older !== undefined ? older : newest;
       selectedSha = pick.sha;
       void readContent(pick);

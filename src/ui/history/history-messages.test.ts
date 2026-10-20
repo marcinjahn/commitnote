@@ -71,9 +71,10 @@ describe("describeSession", () => {
 });
 
 describe("describeEvent", () => {
-  it("names the previous title of a renamed note when known", () => {
-    expect(describeEvent("renamed", "Draft")).toBe("Renamed from “Draft”");
-    expect(describeEvent("renamed", null)).toBe("Renamed");
+  it("labels each version event", () => {
+    expect(describeEvent("created")).toBe("Created");
+    expect(describeEvent("passphraseChanged")).toBe("Passphrase changed");
+    expect(describeEvent("external")).toBe("Changed outside commitnote");
   });
 });
 

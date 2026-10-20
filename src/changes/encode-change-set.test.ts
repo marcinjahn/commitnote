@@ -620,6 +620,26 @@ describe("encodeChangeSet: trash", () => {
     expect(result.message).toContain(`Commitnote-Restore: ${ID1} -> ${to}`);
   });
 
+  it("restore-trash: an update of the restored note is encoded after the Restore trailer", async () => {
+    const keyring = await testKeyring();
+    const note = await encryptPath(keyring, ["Old"]);
+    const to = await encryptPath(keyring, ["Back"]);
+    const result = await encodeChangeSet({
+      listing: [blob(trashed(ID1, note), "sha-n")],
+      changeSet: [
+        { kind: "restore-trash", entryId: ID1, subPath: [], target: "note", to: ["Back"] },
+        { kind: "update-note", path: ["Back"], content: "edited" },
+      ],
+      order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
+      keyring,
+    });
+
+    const restore = result.message.indexOf(`Commitnote-Restore: ${ID1} -> ${to}`);
+    const update = result.message.indexOf(`Commitnote-Update: ${to}`);
+    expect(restore).toBeGreaterThan(-1);
+    expect(update).toBeGreaterThan(restore);
+  });
+
   it("restore-trash: rejects a missing target folder", async () => {
     const keyring = await testKeyring();
     const note = await encryptPath(keyring, ["Old"]);

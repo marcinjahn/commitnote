@@ -16,6 +16,8 @@ export type RewindStep =
       readonly before: string;
       readonly renamed: boolean;
       readonly moved: boolean;
+      /** The commit also wrote the note's content. */
+      readonly edited: boolean;
     }
   /** Moved into the trash; the content is the one before the commit. */
   | { readonly kind: "trashed"; readonly before: string }
@@ -29,6 +31,8 @@ export type RewindStep =
       readonly to: string;
       /** The note's stored path right after the restore. */
       readonly path: string;
+      /** The commit also wrote the note's content after the restore. */
+      readonly edited: boolean;
       /** Trailers applied before the restore, still to rewind through. */
       readonly earlier: readonly CommitTrailer[];
     }
@@ -113,6 +117,7 @@ export function rewindPath(
             entryId: pair[0],
             to: pair[1],
             path,
+            edited: mentioned,
             earlier: trailers.slice(0, index),
           };
         }
@@ -135,5 +140,6 @@ export function rewindPath(
     before: path,
     renamed: lastSegment(path) !== lastSegment(pathAfter),
     moved: parentOf(path) !== parentOf(pathAfter),
+    edited: mentioned,
   };
 }

@@ -44,19 +44,62 @@ describe("rewindPath", () => {
       "a rename",
       save([TRAILER.rename, "f/old -> f/n"]),
       "f/n",
-      { kind: "moved", before: "f/old", renamed: true, moved: false },
+      { kind: "moved", before: "f/old", renamed: true, moved: false, edited: false },
     ],
     [
       "a move",
       save([TRAILER.rename, "g/n -> f/n"]),
       "f/n",
-      { kind: "moved", before: "g/n", renamed: false, moved: true },
+      { kind: "moved", before: "g/n", renamed: false, moved: true, edited: false },
     ],
     [
       "a rename of an ancestor folder",
       save([TRAILER.rename, "a/old -> a/f"]),
       "a/f/n",
-      { kind: "moved", before: "a/old/n", renamed: false, moved: true },
+      { kind: "moved", before: "a/old/n", renamed: false, moved: true, edited: false },
+    ],
+    [
+      "an edit before a rename of the note",
+      save([TRAILER.update, "f/old"], [TRAILER.rename, "f/old -> f/n"]),
+      "f/n",
+      { kind: "moved", before: "f/old", renamed: true, moved: false, edited: true },
+    ],
+    [
+      "an edit after a rename of the note",
+      save([TRAILER.rename, "f/old -> f/n"], [TRAILER.update, "f/n"]),
+      "f/n",
+      { kind: "moved", before: "f/old", renamed: true, moved: false, edited: true },
+    ],
+    [
+      "an edit of another note with a rename of this one",
+      save([TRAILER.update, "f/m"], [TRAILER.rename, "f/old -> f/n"]),
+      "f/n",
+      { kind: "moved", before: "f/old", renamed: true, moved: false, edited: false },
+    ],
+    [
+      "a restore",
+      save([TRAILER.restore, `${ID} -> f/n`]),
+      "f/n",
+      { kind: "restored", entryId: ID, to: "f/n", path: "f/n", edited: false, earlier: [] },
+    ],
+    [
+      "a restore followed by an edit of the restored note",
+      save([TRAILER.restore, `${ID} -> f/n`], [TRAILER.update, "f/n"]),
+      "f/n",
+      { kind: "restored", entryId: ID, to: "f/n", path: "f/n", edited: true, earlier: [] },
+    ],
+    [
+      "an edit before a restore of the note",
+      save([TRAILER.update, "f/n"], [TRAILER.restore, `${ID} -> f/n`]),
+      "f/n",
+      {
+        kind: "restored",
+        entryId: ID,
+        to: "f/n",
+        path: "f/n",
+        edited: false,
+        earlier: [{ key: TRAILER.update, value: "f/n" }],
+      },
     ],
     [
       "a rename of a sibling sharing a name prefix",
@@ -91,7 +134,7 @@ describe("rewindPath", () => {
         [TRAILER.rename, "f -> g"],
       ),
       "g/n",
-      { kind: "moved", before: "f/a", renamed: true, moved: true },
+      { kind: "moved", before: "f/a", renamed: true, moved: true, edited: true },
     ],
     [
       "a deletion of its folder",
@@ -123,6 +166,7 @@ describe("rewindPath", () => {
       entryId: ID,
       to: "f",
       path: "f/a",
+      edited: false,
       earlier: [{ key: TRAILER.update, value: "x" }],
     });
   });
