@@ -64,6 +64,7 @@ jobs:
           set -eu
           (cd apps/ios/Packages/CommitnoteCrypto && swift test)
           (cd apps/ios/Packages/NativeCoreAPI && swift test)
+          (cd apps/ios/Packages/EditorText && swift test)
 
       - name: Boot simulators
         run: |
