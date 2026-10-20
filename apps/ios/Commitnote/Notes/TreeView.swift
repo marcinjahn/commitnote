@@ -5,13 +5,36 @@ struct TreeView: View {
     let model: AppModel
     @Binding var selection: [String]?
     @Binding var expanded: Set<[String]>
+    @State private var folderSheet: FolderSheetTarget?
 
     var body: some View {
         content
             .navigationTitle("Notes")
+            .sheet(item: $folderSheet) { target in
+                NewFolderSheet(model: model, parent: target.parent) {
+                    if !target.parent.isEmpty {
+                        for length in 1...target.parent.count {
+                            expanded.insert(Array(target.parent.prefix(length)))
+                        }
+                    }
+                }
+            }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    SyncStatusButton(model: model)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("New note", systemImage: "square.and.pencil") {
+                        Task { await model.startDraft(parent: []) }
+                    }
+                    .accessibilityIdentifier("new-note-button")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Button("New folder", systemImage: "folder.badge.plus") {
+                            folderSheet = FolderSheetTarget(parent: [])
+                        }
+                        .accessibilityIdentifier("new-folder-button")
                         Button("Refresh", systemImage: "arrow.clockwise") {
                             Task { try? await model.refresh() }
                         }
@@ -33,10 +56,10 @@ struct TreeView: View {
     private var content: some View {
         if let tree = model.tree {
             if tree.isEmpty {
-                placeholder("No notes yet.", identifier: "notes-empty")
+                placeholder("No notes yet, create one", identifier: "notes-empty")
             } else {
                 List(selection: $selection) {
-                    TreeRows(nodes: tree, expanded: $expanded)
+                    TreeRows(model: model, nodes: tree, expanded: $expanded, folderSheet: $folderSheet)
                 }
                 .listStyle(.sidebar)
                 .refreshable { try? await model.refresh() }
@@ -67,16 +90,23 @@ struct TreeView: View {
     }
 }
 
+private struct FolderSheetTarget: Identifiable {
+    let parent: [String]
+    var id: [String] { parent }
+}
+
 private struct TreeRows: View {
+    let model: AppModel
     let nodes: [TreeNode]
     @Binding var expanded: Set<[String]>
+    @Binding var folderSheet: FolderSheetTarget?
 
     var body: some View {
         ForEach(nodes, id: \.path) { node in
             switch node {
             case .folder(let name, let path, let noteCount, let children):
                 DisclosureGroup(isExpanded: isExpanded(path)) {
-                    TreeRows(nodes: children, expanded: $expanded)
+                    TreeRows(model: model, nodes: children, expanded: $expanded, folderSheet: $folderSheet)
                 } label: {
                     HStack {
                         Label {
@@ -97,6 +127,16 @@ private struct TreeRows: View {
                     .contentShape(Rectangle())
                     .onTapGesture {
                         withAnimation { toggle(path) }
+                    }
+                    .contextMenu {
+                        Button("New note", systemImage: "square.and.pencil") {
+                            Task { await model.startDraft(parent: path) }
+                        }
+                        .accessibilityIdentifier("folder-new-note")
+                        Button("New folder", systemImage: "folder.badge.plus") {
+                            folderSheet = FolderSheetTarget(parent: path)
+                        }
+                        .accessibilityIdentifier("folder-new-folder")
                     }
                 }
             case .note(let name, let path):

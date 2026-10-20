@@ -1,7 +1,8 @@
 # commitnote for iOS
 
-A native iPhone and iPad client for the same encrypted notes repo the web app uses. This first
-version is read-only: log in, unlock with the passphrase, browse the note tree, open notes, Refresh.
+A native iPhone and iPad client for the same encrypted notes repo the web app uses. It is a notes
+app you can edit with: log in, unlock with the passphrase, browse the note tree, create and edit
+notes and folders, and keep them in sync with the other devices.
 
 ## Overview
 
@@ -12,8 +13,26 @@ Three layers:
   the host services it needs (crypto, network, Keychain-backed remembered session, blob cache, device settings).
 - **Core bundle** (`commitnote-core.js`) — the native core, built from `src/native-core/`. It reuses
   the web app's format, crypto, forge adapters, `NoteTree` and `SyncEngine`, so the iOS app reads
-  exactly what the web app writes. The `Testing` configuration bundles the fake core bundle instead,
+  exactly what the web app writes and syncs the same way. The `Testing` configuration bundles the fake core bundle instead,
   which serves the sample notes repo from a fake forge.
+
+What the app does:
+
+- Create notes and folders (New note, New folder). Placement follows the synced `newNotePlacement`
+  and `newFolderPlacement` settings, which are edited on the web for now. A new note has a focused
+  name field; if you type the body first, the name is an automatic `YYYY-MM-DD HH:mm:ss`. Name
+  clashes get a ` (2)` suffix, and drafts left untouched vanish.
+- Edit notes in a plain-text editor; the stored text is exactly what was typed. Autosave runs 2 s
+  after typing stops and at least every 30 s. Structure changes, note switches, going to the
+  background (inside a background task) and Log out save immediately.
+- Remote edits to the open note are merged in without losing the caret or Undo. Remote renames and
+  moves are followed.
+- The sync status shows synced, syncing, pending, failed, conflict or offline, with the unsaved
+  notes and Retry now. On a conflict, the conflict view offers "Keep this device's version", "Keep
+  other device's version" and "Edit merged". Notices come with actions.
+- Log out saves first and offers "Keep trying" or "Log out anyway". After a passphrase change on
+  another device, the key-changed screen exports the notes, including unsaved edits, as a zip
+  through the share sheet.
 
 ## Layout
 
@@ -21,6 +40,7 @@ Three layers:
 - `Commitnote/` — app sources. `CommitnoteTests/`, `CommitnoteUITests/` — unit and UI tests.
 - `Packages/CommitnoteCrypto` — Swift crypto primitives, checked against the test vectors.
 - `Packages/NativeCoreAPI` — Swift types for the native core API and native core API version.
+- `Packages/EditorText` — pure Swift text-edit mapping and undo history, tested on Linux.
 - `Packages/CoreRuntime` — the core runtime (Apple platforms only).
 - `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `disable-password-autofill.sh`,
   `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
@@ -109,6 +129,18 @@ can rewrite it. The app has no entitlements and no extensions.
 Alternatives: SideStore (refreshes the signature on the device) and Sideloader/AltServer-Linux.
 
 ## Limits
+
+Data:
+
+- Notes need the network; there is no offline copy. Edits made offline stay in memory and are saved
+  on reconnect, and the app tries to save when it goes to the background, but if iOS terminates the
+  suspended app before they are saved, those edits are lost.
+- Images are shown as their raw `image:<id>#WxH` reference text in this version. Deleting a
+  reference removes the image from the note on save; it comes back only if the reference text is put
+  back (for example with Undo). Removed images are kept for 30 days as image tombstones. They are not
+  in the trash.
+
+Signing and sideloading:
 
 - A free Apple ID is not the paid Apple Developer Program, but it is still an Apple account. Nothing
   in this repository creates one.

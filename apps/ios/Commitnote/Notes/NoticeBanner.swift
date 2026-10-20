@@ -9,8 +9,17 @@ struct NoticeBanner: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
                 .foregroundStyle(color)
-            Text(notice.message)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(notice.message)
+                if let action = notice.action {
+                    Button(action.label) {
+                        Task { await model.performNoticeAction(id: notice.id) }
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("notice-action-button")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Button {
                 Task { await model.dismissNotice(id: notice.id) }
             } label: {
@@ -30,7 +39,7 @@ struct NoticeBanner: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("notice-banner")
         .task(id: notice) {
-            guard !notice.persistent else { return }
+            guard !notice.persistent, notice.action == nil else { return }
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             await model.dismissNotice(id: notice.id)

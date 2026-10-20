@@ -193,6 +193,14 @@ final class HostServicesObject {
             resolve: resolve)
     }
 
+    func flushBlobCache() async throws {
+        let storage = configuration.blobCache
+        let storageQueue = self.storageQueue
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            storageQueue.async { continuation.resume(with: Result { try storage.flush() }) }
+        }
+    }
+
     private func undefined() -> JSValue {
         JSValue(undefinedIn: context)
     }

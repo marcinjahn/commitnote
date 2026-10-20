@@ -27,9 +27,11 @@ for marker in "fake.saveNote" "sample/large-tree" "sample notes repo passphrase"
   fi
 done
 
-if grep -rlF "fake.saveNote" "$APP" | grep -q .; then
-  fail "app contains fake.saveNote"
-fi
+for marker in "fake.saveNote" "fake.remoteEdit" "fake.failNext" "testing-menu"; do
+  if grep -rlF "$marker" "$APP" | grep -q .; then
+    fail "app contains $marker"
+  fi
+done
 
 [ -z "$(find "$APP" -name embedded.mobileprovision)" ] || fail "app contains embedded.mobileprovision"
 [ -z "$(find "$APP" -name '*.entitlements')" ] || fail "app contains an entitlements file"

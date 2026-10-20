@@ -116,6 +116,15 @@ public actor CoreRuntime {
         return try decodeResult(C.self, from: value)
     }
 
+    public func flushHostStorage() async {
+        guard let host else { return }
+        do {
+            try await host.flushBlobCache()
+        } catch {
+            logger.error("Blob cache flush failed")
+        }
+    }
+
     /// The native core posts nothing after its `stop()`, so requests still in flight fail with `.stopped`.
     public func stop() {
         guard !stopped else { return }

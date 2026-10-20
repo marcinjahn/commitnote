@@ -80,6 +80,7 @@ public protocol BlobCacheStorage: Sendable {
     func list(repoKey: String) throws -> [BlobCacheListing]
     func listRepos() throws -> [String]
     func deleteRepo(repoKey: String) throws
+    func flush() throws
 }
 
 public protocol DeviceSettingsStorage: Sendable {
@@ -175,6 +176,8 @@ public final class InMemoryBlobCacheStorage: BlobCacheStorage {
     public func deleteRepo(repoKey: String) {
         repos.withLock { _ = $0.removeValue(forKey: repoKey) }
     }
+
+    public func flush() {}
 }
 
 public final class InMemoryDeviceSettingsStorage: DeviceSettingsStorage {

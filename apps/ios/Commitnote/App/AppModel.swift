@@ -14,6 +14,37 @@ struct KeyChangedInfo: Equatable {
     var unsavedCount: Int
     var message: String
     var detail: String
+    var exportLabel: String
+}
+
+enum LogoutState: Equatable {
+    case idle
+    case saving
+    case unsaved(count: Int, message: String)
+}
+
+enum ExportState: Equatable {
+    case idle
+    case exporting
+    case failed
+}
+
+@MainActor
+private final class BackgroundTaskToken {
+    private var identifier = UIBackgroundTaskIdentifier.invalid
+
+    func begin(name: String) {
+        identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [self] in
+            MainActor.assumeIsolated { end() }
+        }
+    }
+
+    func end() {
+        guard identifier != .invalid else { return }
+        let current = identifier
+        identifier = .invalid
+        UIApplication.shared.endBackgroundTask(current)
+    }
 }
 
 enum LoadingState: Equatable {
@@ -27,6 +58,7 @@ struct AppNotice: Identifiable, Equatable {
     var message: String
     var persistent: Bool
     var isLocal: Bool
+    var action: NoticeAction?
 }
 
 struct RefreshStatus: Equatable {
@@ -58,13 +90,36 @@ final class AppModel {
     private(set) var refreshStatus = RefreshStatus()
     private(set) var notices: [AppNotice] = []
     private(set) var deviceName = ""
+    private(set) var editorTarget: EditorTarget = .none
+    private(set) var editorSwitch = 0
+    private(set) var noteUpdate: NoteContentUpdate?
+    private(set) var syncStatus: SyncStateChanged?
+    var draftName = ""
+    private(set) var draftError: String?
+    private(set) var logoutState: LogoutState = .idle
+    private(set) var exportState: ExportState = .idle
 
+    @ObservationIgnored private var editSender: EditSender?
+    private var noteUpdateSerial = 0
     private var runtime: CoreRuntime?
     private var eventsTask: Task<Void, Never>?
     private var pathMonitor: NWPathMonitor?
     private var visible: Bool?
     private var online: Bool?
     private var localNoticeCounter = 0
+    #if FAKE_CORE
+    private(set) var forcedOffline = false
+    #endif
+
+    init() {
+        editSender = EditSender(
+            editNote: { [weak self] path, text in
+                await self?.sendNoteEdit(path: path, text: text)
+            },
+            draftContent: { [weak self] text in
+                await self?.sendDraftContent(text)
+            })
+    }
 
     var treeLoadError: String? {
         guard tree == nil else { return nil }
@@ -162,6 +217,122 @@ final class AppModel {
     }
 
     func open(path: [String]?) async {
+        await flushEdits()
+        if let path, editorTarget == .note(path) {
+            await sendNoteOpen(path: path)
+            return
+        }
+        editorTarget = path.map { .note($0) } ?? .none
+        editorSwitch += 1
+        draftError = nil
+        await sendNoteOpen(path: path)
+    }
+
+    func edit(text: String) {
+        switch editorTarget {
+        case .none:
+            return
+        case .note(let path):
+            editSender?.submit(text, to: .note(path))
+        case .draft:
+            editSender?.submit(text, to: .draft)
+        }
+    }
+
+    func flushEdits() async {
+        await editSender?.flush()
+    }
+
+    func startDraft(parent: [String]) async {
+        await flushEdits()
+        do {
+            let draft = try await send(DraftStart(parent: parent)).draft
+            editorTarget = .draft(draft)
+            draftName = ""
+            draftError = nil
+            editorSwitch += 1
+        } catch {
+            showError(error)
+        }
+    }
+
+    func commitDraftName() async {
+        await flushEdits()
+        guard editorTarget.isDraft else { return }
+        do {
+            switch try await send(DraftCommitName(name: draftName)).outcome {
+            case .none:
+                break
+            case .error(let message):
+                draftError = message
+            case .created(let path, let fieldError):
+                editorTarget = .note(path)
+                draftError = fieldError
+                editorSwitch += 1
+            }
+        } catch {
+            showError(error)
+        }
+    }
+
+    func leaveDraft() async {
+        await flushEdits()
+        guard editorTarget.isDraft else { return }
+        do {
+            _ = try await send(DraftLeave())
+        } catch {
+            showError(error)
+        }
+        if editorTarget.isDraft {
+            editorTarget = .none
+            draftError = nil
+        }
+    }
+
+    func createFolder(parent: [String], name: String) async -> String? {
+        do {
+            switch try await send(FolderCreate(parent: parent, name: name)).outcome {
+            case .created:
+                return nil
+            case .error(let message):
+                return message
+            }
+        } catch {
+            return Self.message(for: error)
+        }
+    }
+
+    func resolveConflict(_ resolution: ConflictResolution) async {
+        await flushEdits()
+        guard case .loaded(let path, _, _?)? = openNote else { return }
+        do {
+            _ = try await send(ConflictResolve(path: path, resolution: resolution))
+            if resolution == .editMerged {
+                editorSwitch += 1
+            }
+        } catch {
+            showError(error)
+        }
+    }
+
+    func retrySync() async {
+        do {
+            _ = try await send(SyncRetry())
+        } catch {
+            showError(error)
+        }
+    }
+
+    func performNoticeAction(id: String) async {
+        guard let action = notices.first(where: { $0.id == id })?.action else { return }
+        switch action.kind {
+        case .openNote:
+            await open(path: action.path)
+        }
+        await dismissNotice(id: id)
+    }
+
+    private func sendNoteOpen(path: [String]?) async {
         if let note = try? await send(NoteOpen(path: path)).note {
             openNote = note
         } else if path == nil {
@@ -174,13 +345,66 @@ final class AppModel {
     }
 
     func logOut() async {
+        await flushEdits()
+        logoutState = .saving
+        do {
+            switch try await send(SessionLogout(anyway: false)).outcome {
+            case .loggedOut:
+                finishLogOut()
+            case .unsaved(let count, let message):
+                logoutState = .unsaved(count: count, message: message)
+            }
+        } catch {
+            logoutState = .idle
+            showError(error)
+        }
+    }
+
+    func keepTryingLogOut() async {
+        await logOut()
+    }
+
+    func logOutAnyway() async {
         _ = try? await send(SessionLogout(anyway: true))
-        resetSessionState()
-        screen = .login(LoginEntry())
+        finishLogOut()
+    }
+
+    func cancelLogOut() {
+        logoutState = .idle
     }
 
     func logInAgain() async {
-        await logOut()
+        _ = try? await send(SessionLogout(anyway: true))
+        finishLogOut()
+    }
+
+    func exportNotes() async -> URL? {
+        exportState = .exporting
+        do {
+            let archive = try await send(ExportNotes())
+            guard let data = Data(base64Encoded: archive.base64) else {
+                exportState = .failed
+                return nil
+            }
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent(
+                (archive.fileName as NSString).lastPathComponent)
+            try data.write(to: url, options: .atomic)
+            exportState = .idle
+            return url
+        } catch {
+            exportState = .failed
+            return nil
+        }
+    }
+
+    private func finishLogOut() {
+        logoutState = .idle
+        resetSessionState()
+        screen = .login(LoginEntry())
     }
 
     func dismissNotice(id: String) async {
@@ -194,7 +418,7 @@ final class AppModel {
     func scenePhaseChanged(_ phase: ScenePhase) {
         switch phase {
         case .active: setVisible(true)
-        case .background: setVisible(false)
+        case .background: saveInBackground()
         default: break
         }
     }
@@ -214,6 +438,47 @@ final class AppModel {
         return try await runtime.send(command)
     }
 
+    private func sendNoteEdit(path: [String], text: String) async {
+        do {
+            _ = try await send(NoteEdit(path: path, text: text))
+        } catch {
+            showError(error)
+        }
+    }
+
+    private func sendDraftContent(_ text: String) async -> NoteDraftOutcome? {
+        do {
+            let outcome = try await send(DraftContent(name: draftName, content: text)).outcome
+            switch outcome {
+            case .none:
+                break
+            case .error(let message):
+                draftError = message
+            case .created(let path, let fieldError):
+                if editorTarget.isDraft {
+                    editorTarget = .note(path)
+                }
+                draftError = fieldError
+            }
+            return outcome
+        } catch {
+            showError(error)
+            return nil
+        }
+    }
+
+    private func showError(_ error: Error) {
+        appendLocalNotice(tone: .error, message: Self.message(for: error))
+    }
+
+    private func appendLocalNotice(tone: NoticeTone, message: String) {
+        localNoticeCounter += 1
+        notices.append(
+            AppNotice(
+                id: "local-\(localNoticeCounter)", tone: tone, message: message,
+                persistent: false, isLocal: true, action: nil))
+    }
+
     private func didLogIn() {
         loadingStep = nil
         screen = .notes
@@ -222,6 +487,12 @@ final class AppModel {
     private func resetSessionState() {
         tree = nil
         openNote = nil
+        editorTarget = .none
+        noteUpdate = nil
+        syncStatus = nil
+        draftName = ""
+        draftError = nil
+        exportState = .idle
         notices = []
         refreshStatus = RefreshStatus()
         loadingStep = nil
@@ -233,12 +504,43 @@ final class AppModel {
         Task { _ = try? await send(LifecycleSetVisible(visible: value)) }
     }
 
+    private func saveInBackground() {
+        visible = false
+        guard let runtime else { return }
+        let token = BackgroundTaskToken()
+        token.begin(name: "Save notes")
+        Task {
+            await flushEdits()
+            if visible == false {
+                _ = try? await send(LifecycleSetVisible(visible: false))
+            }
+            _ = try? await send(SyncFlush())
+            await runtime.flushHostStorage()
+            token.end()
+        }
+    }
+
     private func setOnline(_ value: Bool) {
+        #if FAKE_CORE
+        if forcedOffline { return }
+        #endif
         guard online != value else { return }
         online = value
         guard runtime != nil else { return }
         Task { _ = try? await send(LifecycleSetOnline(online: value)) }
     }
+
+    #if FAKE_CORE
+    func sendTesting<C: NativeCoreCommand>(_ command: C) async {
+        _ = try? await send(command)
+    }
+
+    func setForcedOffline(_ value: Bool) async {
+        forcedOffline = value
+        online = !value
+        _ = try? await send(LifecycleSetOnline(online: !value))
+    }
+    #endif
 
     private func sendPendingLifecycle() async {
         if let visible {
@@ -266,21 +568,18 @@ final class AppModel {
         case .treeChanged(let change):
             tree = change.tree
         case .noteChanged(let change):
-            openNote = change.note
+            handleNoteChanged(change)
         case .noteContentChangedRemotely(let change):
-            localNoticeCounter += 1
-            notices.append(
-                AppNotice(
-                    id: "local-\(localNoticeCounter)", tone: .info, message: change.message,
-                    persistent: false, isLocal: true))
+            appendLocalNotice(tone: .info, message: change.message)
         case .syncStateChanged(let state):
+            syncStatus = state
             refreshStatus = RefreshStatus(
                 online: state.online, refreshing: state.refreshing,
                 treeLoaded: state.treeLoaded, lastRefreshError: state.lastRefreshError)
         case .notice(let notice):
             let value = AppNotice(
                 id: notice.id, tone: notice.tone, message: notice.message,
-                persistent: notice.persistent, isLocal: false)
+                persistent: notice.persistent, isLocal: false, action: notice.action)
             if let index = notices.firstIndex(where: { $0.id == notice.id }) {
                 notices[index] = value
             } else {
@@ -291,12 +590,27 @@ final class AppModel {
         case .keyChanged(let info):
             screen = .keyChanged(
                 KeyChangedInfo(
-                    unsavedCount: info.unsavedCount, message: info.message, detail: info.detail))
+                    unsavedCount: info.unsavedCount, message: info.message, detail: info.detail,
+                    exportLabel: info.exportLabel))
         case .sessionEnded:
             resetSessionState()
             screen = .login(LoginEntry())
         case .unknown:
             break
         }
+    }
+
+    private func handleNoteChanged(_ change: NoteChanged) {
+        let previousPath = openNote?.path
+        openNote = change.note
+        guard case .loaded(let path, let content, _)? = change.note else { return }
+        if let targetPath = editorTarget.notePath, targetPath != path, change.edits != nil,
+            previousPath == targetPath
+        {
+            editorTarget = .note(path)
+        }
+        noteUpdateSerial += 1
+        noteUpdate = NoteContentUpdate(
+            serial: noteUpdateSerial, path: path, content: content, edits: change.edits)
     }
 }

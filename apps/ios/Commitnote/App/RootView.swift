@@ -75,6 +75,7 @@ private struct LoadingView: View {
 private struct KeyChangedView: View {
     let model: AppModel
     let info: KeyChangedInfo
+    @State private var exportButtonFrame: CGRect?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -85,6 +86,21 @@ private struct KeyChangedView: View {
             Text(info.detail)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
+            Button(model.exportState == .exporting ? "Exporting…" : info.exportLabel) {
+                Task {
+                    if let url = await model.exportNotes() {
+                        ShareSheet.present(url: url, sourceRect: exportButtonFrame)
+                    }
+                }
+            }
+            .disabled(model.exportState == .exporting)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { exportButtonFrame = $0 }
+            .accessibilityIdentifier("key-changed-export-button")
+            if model.exportState == .failed {
+                Text("Export failed. Try again.")
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("key-changed-export-error")
+            }
             Button("Log in again") {
                 Task { await model.logInAgain() }
             }
