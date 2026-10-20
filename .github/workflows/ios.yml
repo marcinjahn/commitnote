@@ -1,0 +1,183 @@
+name: iOS
+
+on:
+  push:
+    branches: [main, "ios-ci/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "ios-${{ github.ref }}"
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run check:native-core
+      - run: apps/ios/scripts/swift-linux-test.sh
+
+  macos:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      XCODE_VERSION: "26.6"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run build:native-core
+
+      - name: Select Xcode
+        run: |
+          set -eu
+          APP="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ ! -d "$APP" ]; then
+            echo "$APP is not installed. Installed Xcodes:" >&2
+            ls -d /Applications/Xcode*.app >&2
+            exit 1
+          fi
+          sudo xcode-select -s "$APP"
+          xcodebuild -version
+
+      - name: Generate project
+        run: |
+          set -eu
+          brew install xcodegen
+          cd apps/ios
+          xcodegen generate
+
+      - name: Swift package tests
+        run: |
+          set -eu
+          (cd apps/ios/Packages/CommitnoteCrypto && swift test)
+          (cd apps/ios/Packages/NativeCoreAPI && swift test)
+
+      - name: Boot simulators
+        run: |
+          set -eu
+          IPHONE_ID=$(apps/ios/scripts/pick-simulator.sh iphone)
+          IPAD_ID=$(apps/ios/scripts/pick-simulator.sh ipad)
+          echo "IPHONE_ID=$IPHONE_ID" >> "$GITHUB_ENV"
+          echo "IPAD_ID=$IPAD_ID" >> "$GITHUB_ENV"
+          mkdir -p out/boot
+          nohup xcrun simctl bootstatus "$IPHONE_ID" -b > out/boot/iphone.log 2>&1 &
+          nohup xcrun simctl bootstatus "$IPAD_ID" -b > out/boot/ipad.log 2>&1 &
+
+      - name: Build for testing
+        run: |
+          set -eu -o pipefail
+          xcodebuild build-for-testing \
+            -project apps/ios/Commitnote.xcodeproj \
+            -scheme Commitnote \
+            -configuration Testing \
+            -destination "id=$IPHONE_ID" \
+            -derivedDataPath out/dd
+
+      - name: Prepare simulators
+        run: |
+          set -eu
+          apps/ios/scripts/disable-password-autofill.sh "$IPHONE_ID"
+          apps/ios/scripts/disable-password-autofill.sh "$IPAD_ID"
+
+      - name: Core runtime tests
+        run: |
+          set -eu -o pipefail
+          mkdir -p out/test-output out/xcresults
+          TEST_RUNNER_COMMITNOTE_READBACK_DIR="$PWD/out/test-output" \
+          xcodebuild test-without-building \
+            -project apps/ios/Commitnote.xcodeproj \
+            -scheme Commitnote \
+            -configuration Testing \
+            -destination "id=$IPHONE_ID" \
+            -derivedDataPath out/dd \
+            -only-testing:CommitnoteTests \
+            -resultBundlePath out/xcresults/runtime.xcresult
+
+      - name: Read back with TypeScript
+        run: npx tsx scripts/read-back-native-repo.ts out/test-output
+
+      - name: UI tests (iPhone)
+        run: |
+          set -eu -o pipefail
+          xcodebuild test-without-building \
+            -project apps/ios/Commitnote.xcodeproj \
+            -scheme Commitnote \
+            -configuration Testing \
+            -destination "id=$IPHONE_ID" \
+            -derivedDataPath out/dd \
+            -only-testing:CommitnoteUITests \
+            -parallel-testing-enabled NO \
+            -resultBundlePath out/xcresults/ui-iphone.xcresult
+
+      - name: UI tests (iPad)
+        run: |
+          set -eu -o pipefail
+          xcrun simctl shutdown "$IPHONE_ID"
+          xcodebuild test-without-building \
+            -project apps/ios/Commitnote.xcodeproj \
+            -scheme Commitnote \
+            -configuration Testing \
+            -destination "id=$IPAD_ID" \
+            -derivedDataPath out/dd \
+            -only-testing:CommitnoteUITests \
+            -parallel-testing-enabled NO \
+            -resultBundlePath out/xcresults/ui-ipad.xcresult
+
+      - name: Export screenshots
+        if: always()
+        run: |
+          set -eu
+          for device in iphone ipad; do
+            if [ -d "out/xcresults/ui-$device.xcresult" ]; then
+              apps/ios/scripts/export-screenshots.sh "out/xcresults/ui-$device.xcresult" out/screenshots
+            fi
+          done
+
+      - name: Build unsigned IPA
+        run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
+
+      - name: Check IPA
+        run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: commitnote-unsigned-ipa
+          path: out/ipa/commitnote-unsigned.ipa
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-screenshots
+          path: out/screenshots
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-xcresults
+          path: out/xcresults
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-test-output
+          path: out/test-output
+          if-no-files-found: ignore
+          retention-days: 30
