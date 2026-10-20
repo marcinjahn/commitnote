@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "keyring": "A",
+  "trailers": [
+    {
+      "name": "Chrome on Linux",
+      "randomHex": "c9205e9ee35c247fbe8e0113",
+      "value": "ySBenuNcJH--jgETSPA8OtV9pQjdz5vhLThGHoAmhCOCLqVcTBE4i4BfNQ"
+    },
+    {
+      "name": "iPhone",
+      "randomHex": "16841958af332dc2bf882671",
+      "value": "FoQZWK8zLcK_iCZxQkj0BGQEDwWdabf0-VdTW0eWjh4-CQ"
+    },
+    {
+      "name": "Zażółć",
+      "randomHex": "379d516a21be05cf5ede005c",
+      "value": "N51RaiG-Bc9e3gBcGrDGXOW0a_hBBzLJaq7_avlipId6M1NE0LI"
+    }
+  ]
+}

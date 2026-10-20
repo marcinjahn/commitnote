@@ -18,6 +18,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.sw.json",
     "check:bundle": "npm run build && npm run build:fake && npm run build:desktop && tsx scripts/check-bundle.ts",
     "fixture:sample-notes-repo": "tsx scripts/generate-sample-notes-repo.ts",
+    "fixture:test-vectors": "tsx scripts/generate-test-vectors.ts",
     "generate:brand": "tsx scripts/generate-brand-svgs.ts",
     "generate:landing-screenshots": "npm run build:fake && tsx scripts/generate-landing-screenshots.ts",
     "generate:pwa-screenshots": "npm run build:fake && npm run build:desktop && tsx scripts/generate-pwa-screenshots.ts",

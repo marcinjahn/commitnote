@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "vectors": [
+    {
+      "name": "A",
+      "passphrase": "commitnote known answer",
+      "kdf": {
+        "memoryKiB": 1024,
+        "iterations": 1,
+        "parallelism": 1,
+        "saltHex": "000102030405060708090a0b0c0d0e0f"
+      },
+      "masterSecretHex": "9b5016fb46c16ac41d746c303612a6c300f2cef41628f10d2a08710b78e9b344",
+      "contentKeyHex": "cd2becd1d8a05694ca8d994d66498a9771d3c9efc784c600693d36eb7096aa16",
+      "nameKeyHex": "10bfa13fbebe2b69e6bba5d703b3bde58d271bdbe844e938ab103c27a6860067",
+      "nameIvKeyHex": "8ea1d67a659544082adaf65f72fd36945d8d35057a884b10b9b3e2dbbb68babe",
+      "keyCheckKeyHex": "eedfddf65cd5d6800dace134b7339c0201e170e03e369f4ed3bfea7c3c655d06",
+      "keyCheck": "Fwgxw4kavCNV6MMT02X5Wx8gjuC5vuoOCV9+6uo7Fbc="
+    },
+    {
+      "name": "B",
+      "passphrase": "commitnote known answer",
+      "kdf": {
+        "memoryKiB": 65536,
+        "iterations": 3,
+        "parallelism": 1,
+        "saltHex": "000102030405060708090a0b0c0d0e0f"
+      },
+      "masterSecretHex": "1a91b418191bc872b5cc7c0aa0811e3ef2651e785bb9ac7aa068bb7b4c7f6c40",
+      "contentKeyHex": "66a996c2fbd40112108edb7861efc49cb74cdc384800c5cf9186e69ca7af7c10",
+      "nameKeyHex": "d7b93833a9b0ebe9964b76bbd1a139983bb9d92ea6895afc696528afb9e7f38c",
+      "nameIvKeyHex": "dcd12e4502b3e2a5a25d70b3a0c4ef6af47b7fcd3d51427340b90d7745270ff9",
+      "keyCheckKeyHex": "8eb6d2bb89b43fe4ea456a014d20f29b859b883bc28f7d51281eb3db55c75f04",
+      "keyCheck": "WgUuEkO4WJjQFMU5eGhGmNL9wAuFfycTjIbYTbIYsX0="
+    }
+  ]
+}

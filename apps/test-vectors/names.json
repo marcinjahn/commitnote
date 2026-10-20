@@ -1,0 +1,48 @@
+{
+  "format": 1,
+  "keyring": "A",
+  "segments": [
+    {
+      "name": "Projects",
+      "segment": "yPLu39QkVKbk49JHrV-ynCW3SVRZxK7zkHve0ofoHzy1WXyy"
+    },
+    {
+      "name": "Zażółć gęślą jaźń",
+      "segment": "9s-OyrV4-2oilTBQn2cgM0agia7r3Xp18bPbwJjCTS6y0L33sFZzD5RbuJt4dZvGM9vIfpQe"
+    },
+    {
+      "name": "a",
+      "segment": "S0DSgcqfRufgyDTz5LThZZDkVlZZhZ9jqQ5yTbc"
+    },
+    {
+      "name": "📝 Ideas",
+      "segment": "71o_zzHHGOBMaq08Oe7Tqmpl1S034VioskHNZxEFb3U1zNRX4rg"
+    },
+    {
+      "name": "żżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżżż",
+      "segment": "JdkD-Wj7z8adqySKOY8RTmx4Tnw7XChcXr8rp_WORKYsEcUlOywn_091Gt9oM1q59klxgup7e_l4O7pQJcE-PkIJESY5iLwF15wGbAnFtx-Rk0laC8xv5r9YJmLm6Yvzg80q-w8bJ1_6lbQOSX6CbpmsBDEp-dDc5awwy1xC38eES4bK2zfPsx_W8wYzf4leTFaahV3-r--4zrntaoDS-3FgV9BJw77laaQoITcGNIvBmA"
+    },
+    {
+      "name": "é",
+      "segment": "Xo7FoMv_XTqKdRp704KNh2TlMy13YrqlrqJlM2qe"
+    }
+  ],
+  "paths": [
+    {
+      "path": [
+        "Projects",
+        "commitnote",
+        "Ideas"
+      ],
+      "storedPath": "yPLu39QkVKbk49JHrV-ynCW3SVRZxK7zkHve0ofoHzy1WXyy/cYt9sdtJT8xAhnnKzS_kpiIBj7n4oAGLCM6QhhZsbugPgLl_mAU/3SutLemgp6ja5VtAeZljHBPySNOHH02pO5OVgzqpcXM9"
+    },
+    {
+      "path": [
+        "Zażółć",
+        "gęślą",
+        "📝 Ideas"
+      ],
+      "storedPath": "kdUT7_v2LD909IA2VQRUaXYrp2wgcHJpfkHLUJNIcQa8BqhyMhs/zksB5RLdDohifdZAWw98uYC8AhgmeHDRsIN6uBe7u1w4WI4u/71o_zzHHGOBMaq08Oe7Tqmpl1S034VioskHNZxEFb3U1zNRX4rg"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "vectors": [
+    {
+      "name": "reduced-ascii",
+      "password": "commitnote known answer",
+      "saltHex": "000102030405060708090a0b0c0d0e0f",
+      "memoryKiB": 1024,
+      "iterations": 1,
+      "parallelism": 1,
+      "hashLength": 32,
+      "outputHex": "9b5016fb46c16ac41d746c303612a6c300f2cef41628f10d2a08710b78e9b344"
+    },
+    {
+      "name": "reduced-non-ascii",
+      "password": "Zażółć gęślą jaźń",
+      "saltHex": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+      "memoryKiB": 64,
+      "iterations": 1,
+      "parallelism": 1,
+      "hashLength": 32,
+      "outputHex": "3233e2e33176d84391194d91b5c8eab3d7e88b1887d6a804474b1454e6378ebe"
+    },
+    {
+      "name": "default",
+      "password": "commitnote known answer",
+      "saltHex": "000102030405060708090a0b0c0d0e0f",
+      "memoryKiB": 65536,
+      "iterations": 3,
+      "parallelism": 1,
+      "hashLength": 32,
+      "outputHex": "1a91b418191bc872b5cc7c0aa0811e3ef2651e785bb9ac7aa068bb7b4c7f6c40"
+    }
+  ]
+}
