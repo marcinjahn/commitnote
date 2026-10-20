@@ -9,6 +9,8 @@ playwright/.cache
 .fake-forge-build-fingerprint
 dist-desktop
 dist-desktop-fake
+dist-native-core
+dist-native-core-fake
 dist-appimage
 src-tauri/target
 src-tauri/gen
