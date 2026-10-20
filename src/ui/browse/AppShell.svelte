@@ -162,6 +162,11 @@
   import SettingsDialog from "../dialogs/SettingsDialog.svelte";
   import { decideNameCommit } from "../note/name-field-commit";
   import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
+  import {
+    commitNoteDraftContent,
+    commitNoteDraftName,
+    draftSiblingNames,
+  } from "../../app/note-draft-actions";
   import NotePane from "../note/NotePane.svelte";
   import { createNoteDatesView, type ShownNoteDates } from "../note/note-dates-view";
   import { derivePrintNote, type PrintNote } from "../print/print-note";
@@ -1780,29 +1785,21 @@
   function handleDraftNameCommit(edited: string): void {
     if (draft === null) return;
     draft = { ...draft, name: edited };
-    const action = resolveNoteDraft(
+    const parent = draft.parent;
+    const outcome = commitNoteDraftName(
+      engine,
       draft,
-      { kind: "nameConfirmed" },
-      siblingNamesOf(draft.parent),
+      draftSiblingNames(tree, parent),
     );
-    switch (action.kind) {
-      case "showError":
-        draftError = action.message;
-        break;
-      case "create": {
-        const result = engine.createNote(action.parent, action.name);
-        if (!result.ok) {
-          draftError = describeStructureError(result.error);
-          break;
-        }
-        tagFilter = null;
-        draft = null;
-        draftError = null;
-        focusEditorOnEnter = true;
-        expandFolder(action.parent);
-        void engine.openNote(result.path);
-        break;
-      }
+    if (outcome.kind === "error") {
+      draftError = outcome.message;
+    } else if (outcome.kind === "created") {
+      tagFilter = null;
+      draft = null;
+      draftError = null;
+      focusEditorOnEnter = true;
+      expandFolder(parent);
+      void engine.openNote(outcome.path);
     }
   }
 
@@ -1810,27 +1807,28 @@
 
   function handleDraftContent(content: string, now: Date = new Date()): void {
     if (draft === null) return;
-    const action = resolveNoteDraft(
+    const parent = draft.parent;
+    const outcome = commitNoteDraftContent(
+      engine,
       draft,
-      { kind: "contentChanged", content, now },
-      siblingNamesOf(draft.parent),
+      content,
+      now,
+      draftSiblingNames(tree, parent),
     );
-    if (action.kind !== "createWithContent") return;
-    const result = engine.createNote(action.parent, action.name);
-    if (!result.ok) {
-      draftError = describeStructureError(result.error);
+    if (outcome.kind === "error") {
+      draftError = outcome.message;
       return;
     }
+    if (outcome.kind !== "created") return;
     tagFilter = null;
-    engine.editNote(result.path, action.content);
-    if (action.fieldError !== null) {
+    if (outcome.fieldError !== null) {
       pendingFieldText = draft.name;
-      nameError = action.fieldError;
+      nameError = outcome.fieldError;
       // Keeps the open-path effect from clearing the carried-over field error.
-      previousOpenPath = result.path;
+      previousOpenPath = outcome.path;
     }
-    void engine.openNote(result.path);
-    expandFolder(action.parent);
+    void engine.openNote(outcome.path);
+    expandFolder(parent);
     draft = null;
     draftError = null;
   }
@@ -2229,12 +2227,10 @@
   }
 
   function siblingNamesOf(parent: NotePath, exclude?: string): string[] {
-    if (tree === null) return [];
-    const folder = findWorkingNode(tree, parent);
-    if (folder === undefined || folder.kind !== "folder") return [];
-    return folder.children
-      .map((child) => child.name)
-      .filter((childName) => childName !== exclude);
+    const names = draftSiblingNames(tree, parent);
+    return exclude === undefined
+      ? names
+      : names.filter((childName) => childName !== exclude);
   }
 
   function closeDialog(): void {

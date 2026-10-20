@@ -5,12 +5,8 @@ import {
   deliverArchive,
 } from "./deliver-archive";
 import type { ReadImagePayload } from "../images/image-resolver";
+import { exportFileName } from "./export-file-name";
 import { buildNotesArchive } from "./notes-archive";
-
-function exportFileName(now: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `commitnote-export-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.zip`;
-}
 
 async function browserDownload(file: File): ReturnType<ArchiveDownload> {
   const url = URL.createObjectURL(file);
