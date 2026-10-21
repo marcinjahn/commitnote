@@ -6,6 +6,7 @@ import { toBase64 } from "../../crypto/base64";
 import { encryptPath } from "../../crypto/name-cipher";
 import { encryptNote } from "../../crypto/note-cipher";
 import { parseRepoConfig } from "../../crypto/repo-config";
+import { encodeDeviceTrailer } from "../../changes/device-trailer";
 import type { ForgeErrorKind } from "../../forge/errors";
 import { ForgeError } from "../../forge/errors";
 import {
@@ -41,7 +42,9 @@ import {
   INITIALIZE_SUBJECT,
   MAIN_BRANCH,
   REPO_CONFIG_PATH,
+  FORMAT_VERSION,
   SAVE_SUBJECT,
+  TRAILER,
 } from "../../format/v1";
 import { generateLargeTreeRepo } from "../sample-notes-repo/generate-sample-notes-repo";
 import { LARGE_TREE_REPO_KEY } from "../sample-notes-repo/large-tree-source";
@@ -76,6 +79,7 @@ export interface FakeForgeControls {
     notePath: readonly string[],
     markdown: string,
     passphrase?: string,
+    deviceName?: string,
   ): Promise<void>;
   /** Messages of the commits on main of `repoKey`, newest first. */
   commitMessages(repoKey: string): string[];
@@ -286,7 +290,7 @@ export async function createFakeForge(options?: {
   }
 
   const controls: FakeForgeControls = {
-    async editNote(repoKey, notePath, markdown, passphrase) {
+    async editNote(repoKey, notePath, markdown, passphrase, deviceName) {
       const adapter = fixtureAdapter(repoKey);
       const keyring = await keyringFor(
         repoKey,
@@ -297,7 +301,9 @@ export async function createFakeForge(options?: {
       const text = await encryptNote(keyring, markdown);
       await adapter.pushFromAnotherDevice(
         [{ kind: "upsert-text", path: storedPath, text }],
-        SAVE_SUBJECT,
+        deviceName === undefined
+          ? SAVE_SUBJECT
+          : `${SAVE_SUBJECT}\n\n${TRAILER.format}: ${FORMAT_VERSION}\n${TRAILER.device}: ${await encodeDeviceTrailer(deviceName, keyring.contentKey)}`,
       );
     },
     commitMessages(repoKey) {

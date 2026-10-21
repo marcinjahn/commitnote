@@ -2,75 +2,75 @@
   "passphrase": "sample notes repo passphrase",
   "commits": [
     {
-      "message": "commitnote: initialize\n\nCommitnote-Format: 1",
+      "message": "commitnote: initialize\n\nCommitnote-Format: 1\nCommitnote-Device: 4Q2ZP7gfI6xIbiut004Vui3_i5aHVk9KrpWy1j440GrigF6vEq3w6e0",
       "files": {
         ".commitnote/config.json": "{\n  \"formatVersion\": 1,\n  \"app\": \"commitnote\",\n  \"cipher\": \"AES-256-GCM\",\n  \"nameScheme\": \"AES-256-GCM-SIV-HMAC-SHA256/base64url\",\n  \"kdf\": {\n    \"algorithm\": \"argon2id\",\n    \"memoryKiB\": 65536,\n    \"iterations\": 3,\n    \"parallelism\": 1,\n    \"salt\": \"vHs8j6pJRYpV/GZLTAzaag==\"\n  },\n  \"keyCheck\": \"0iW/BA39/waSr5h+moIabSNtQ7547kEHDxs8prl+GBk=\",\n  \"createdAt\": \"2026-01-01T00:00:00.000Z\"\n}\n"
       }
     },
     {
-      "message": "commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Create: XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw\nCommitnote-Create: zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90\nCommitnote-Create: zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ\nCommitnote-Create: zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ\nCommitnote-Create: _t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ\nCommitnote-Create: _t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s\nCommitnote-Create: F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk",
+      "message": "commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Create: XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw\nCommitnote-Create: zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90\nCommitnote-Create: zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ\nCommitnote-Create: zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ\nCommitnote-Create: _t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ\nCommitnote-Create: _t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s\nCommitnote-Create: F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk\nCommitnote-Device: qCo7ZtAA5Ov2waMoPG7xG0aXkO0_jSJfJsNtZaXaLFh4u1k2iSMT8xQ",
       "files": {
         ".commitnote/config.json": "{\n  \"formatVersion\": 1,\n  \"app\": \"commitnote\",\n  \"cipher\": \"AES-256-GCM\",\n  \"nameScheme\": \"AES-256-GCM-SIV-HMAC-SHA256/base64url\",\n  \"kdf\": {\n    \"algorithm\": \"argon2id\",\n    \"memoryKiB\": 65536,\n    \"iterations\": 3,\n    \"parallelism\": 1,\n    \"salt\": \"vHs8j6pJRYpV/GZLTAzaag==\"\n  },\n  \"keyCheck\": \"0iW/BA39/waSr5h+moIabSNtQ7547kEHDxs8prl+GBk=\",\n  \"createdAt\": \"2026-01-01T00:00:00.000Z\"\n}\n",
-        "F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk": "v1:4SgU3hCpnI0m7QA5KL9IYWhCPWiYsfgPNKrvkapmhVEi4iIzK1rtSWGN+NRgiD8GSpL9iJB/+eXN8I4rx/pUow==",
-        "XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw": "v1:4Q2ZP7gfI6xIbiutow8vry35xJ+HKixo6xOiVMbIzb7zSZg6Z0JnZ19MsjhLg9FNpJaOCncAudGr1HJEVOokPRfi0Jewe2evpef5hw==",
+        "F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk": "v1:vILSrCvPU2NeO1S7Qby4IZxkeuvSoZwrEUChmayjS7UF+DD7DeT7/jJTr4tJGWHlttile5v5LLHnhCABEA7nYg==",
+        "XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw": "v1:/L4puk93xd8HHph5URuD5fB9W1gTgr8raQEHHd4prK2umRSZ/+RRscFQbVaQjd7p9gSvkbIr12sDwHCbKowTn3TH12HRtjHqZkys8A==",
         "_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/.keep": "",
-        "_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s": "v1:+8U/omsP9Mm6Zi7or4wra2B0YAg9WMb5DVma8LwM3ltuqtOxsWhwBI2aJmkPpRcs/fh0HyacPzc5XZKMIjySxnGGjcsnv5KKEA==",
+        "_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s": "v1:4SgU3hCpnI0m7QA5KL9Ud25PIGWVsfgHI7zonO4ohEozp2s0ZQ7kQmGc8sV6knRoZDiEYopXopLxHvKD20/39UMPASn3YNAorw==",
         "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/.keep": "",
-        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ": "v1:/L4puk93xd8HHph5URuf5exqFFsZ/NBgQzwcCMIprLalyQ/R7a1Rq4RUYywQ9l6HPDhEbKZWAqPPhnFe",
-        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ": "v1:qk1/qh7VmMaSthCGq2AS4zS7n+TjpWl3yHdsYFUazX97ygrFrtELDNXtpMrKAjxfnWgfsgWvpGr2vJa14PIiIXXjwguFug=="
+        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ": "v1:qk1/qh7VmMaSthCGq2AW6iDv0u/ppWUTpS4SRFQZhGRwjl7DpIUaXtnmqrR48LVck8GmZFTkJf85mbFZ",
+        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ": "v1:+8U/omsP9Mm6Zi7or4wrcnA4ZAM9JqXZDyDk0KBc2UZ/q9O2sDx0SsSRfm0OslI8r/9oG2zzM0ymGGpiRewMp2kRI6+Y4w=="
       }
     },
     {
-      "message": "commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Trash: zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ -> 20260105T090000Z-2-xsbnflbl",
+      "message": "commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Trash: zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ -> 20260105T090000Z-2-emxx7utd\nCommitnote-Device: qc4l1RH9qrJgHQgcR4v6rsVAoIqMivDY8Rzh74elA4vi2HNlYP5HeUs",
       "files": {
         ".commitnote/config.json": "{\n  \"formatVersion\": 1,\n  \"app\": \"commitnote\",\n  \"cipher\": \"AES-256-GCM\",\n  \"nameScheme\": \"AES-256-GCM-SIV-HMAC-SHA256/base64url\",\n  \"kdf\": {\n    \"algorithm\": \"argon2id\",\n    \"memoryKiB\": 65536,\n    \"iterations\": 3,\n    \"parallelism\": 1,\n    \"salt\": \"vHs8j6pJRYpV/GZLTAzaag==\"\n  },\n  \"keyCheck\": \"0iW/BA39/waSr5h+moIabSNtQ7547kEHDxs8prl+GBk=\",\n  \"createdAt\": \"2026-01-01T00:00:00.000Z\"\n}\n",
-        ".commitnote/trash/20260105T090000Z-2-xsbnflbl/zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ": "v1:qk1/qh7VmMaSthCGq2AS4zS7n+TjpWl3yHdsYFUazX97ygrFrtELDNXtpMrKAjxfnWgfsgWvpGr2vJa14PIiIXXjwguFug==",
-        "F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk": "v1:4SgU3hCpnI0m7QA5KL9IYWhCPWiYsfgPNKrvkapmhVEi4iIzK1rtSWGN+NRgiD8GSpL9iJB/+eXN8I4rx/pUow==",
-        "XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw": "v1:4Q2ZP7gfI6xIbiutow8vry35xJ+HKixo6xOiVMbIzb7zSZg6Z0JnZ19MsjhLg9FNpJaOCncAudGr1HJEVOokPRfi0Jewe2evpef5hw==",
+        ".commitnote/trash/20260105T090000Z-2-emxx7utd/zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ": "v1:+8U/omsP9Mm6Zi7or4wrcnA4ZAM9JqXZDyDk0KBc2UZ/q9O2sDx0SsSRfm0OslI8r/9oG2zzM0ymGGpiRewMp2kRI6+Y4w==",
+        "F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk": "v1:vILSrCvPU2NeO1S7Qby4IZxkeuvSoZwrEUChmayjS7UF+DD7DeT7/jJTr4tJGWHlttile5v5LLHnhCABEA7nYg==",
+        "XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw": "v1:/L4puk93xd8HHph5URuD5fB9W1gTgr8raQEHHd4prK2umRSZ/+RRscFQbVaQjd7p9gSvkbIr12sDwHCbKowTn3TH12HRtjHqZkys8A==",
         "_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/.keep": "",
-        "_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s": "v1:+8U/omsP9Mm6Zi7or4wra2B0YAg9WMb5DVma8LwM3ltuqtOxsWhwBI2aJmkPpRcs/fh0HyacPzc5XZKMIjySxnGGjcsnv5KKEA==",
+        "_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s": "v1:4SgU3hCpnI0m7QA5KL9Ud25PIGWVsfgHI7zonO4ohEozp2s0ZQ7kQmGc8sV6knRoZDiEYopXopLxHvKD20/39UMPASn3YNAorw==",
         "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/.keep": "",
-        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ": "v1:/L4puk93xd8HHph5URuf5exqFFsZ/NBgQzwcCMIprLalyQ/R7a1Rq4RUYywQ9l6HPDhEbKZWAqPPhnFe"
+        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ": "v1:qk1/qh7VmMaSthCGq2AW6iDv0u/ppWUTpS4SRFQZhGRwjl7DpIUaXtnmqrR48LVck8GmZFTkJf85mbFZ"
       }
     },
     {
-      "message": "commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Trash: _t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ -> 20260112T103000Z-1-ly5vjo5i",
+      "message": "commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Trash: _t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ -> 20260112T103000Z-1-eslo64bs\nCommitnote-Device: FSUlzFPRWSKcrTZLuSMwGZkMPIhOEeQfjWQAaCzvc9FAocb5iX9SjSQ",
       "files": {
         ".commitnote/config.json": "{\n  \"formatVersion\": 1,\n  \"app\": \"commitnote\",\n  \"cipher\": \"AES-256-GCM\",\n  \"nameScheme\": \"AES-256-GCM-SIV-HMAC-SHA256/base64url\",\n  \"kdf\": {\n    \"algorithm\": \"argon2id\",\n    \"memoryKiB\": 65536,\n    \"iterations\": 3,\n    \"parallelism\": 1,\n    \"salt\": \"vHs8j6pJRYpV/GZLTAzaag==\"\n  },\n  \"keyCheck\": \"0iW/BA39/waSr5h+moIabSNtQ7547kEHDxs8prl+GBk=\",\n  \"createdAt\": \"2026-01-01T00:00:00.000Z\"\n}\n",
-        ".commitnote/trash/20260105T090000Z-2-xsbnflbl/zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ": "v1:qk1/qh7VmMaSthCGq2AS4zS7n+TjpWl3yHdsYFUazX97ygrFrtELDNXtpMrKAjxfnWgfsgWvpGr2vJa14PIiIXXjwguFug==",
-        ".commitnote/trash/20260112T103000Z-1-ly5vjo5i/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/.keep": "",
-        ".commitnote/trash/20260112T103000Z-1-ly5vjo5i/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s": "v1:+8U/omsP9Mm6Zi7or4wra2B0YAg9WMb5DVma8LwM3ltuqtOxsWhwBI2aJmkPpRcs/fh0HyacPzc5XZKMIjySxnGGjcsnv5KKEA==",
-        "F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk": "v1:4SgU3hCpnI0m7QA5KL9IYWhCPWiYsfgPNKrvkapmhVEi4iIzK1rtSWGN+NRgiD8GSpL9iJB/+eXN8I4rx/pUow==",
-        "XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw": "v1:4Q2ZP7gfI6xIbiutow8vry35xJ+HKixo6xOiVMbIzb7zSZg6Z0JnZ19MsjhLg9FNpJaOCncAudGr1HJEVOokPRfi0Jewe2evpef5hw==",
+        ".commitnote/trash/20260105T090000Z-2-emxx7utd/zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ": "v1:+8U/omsP9Mm6Zi7or4wrcnA4ZAM9JqXZDyDk0KBc2UZ/q9O2sDx0SsSRfm0OslI8r/9oG2zzM0ymGGpiRewMp2kRI6+Y4w==",
+        ".commitnote/trash/20260112T103000Z-1-eslo64bs/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/.keep": "",
+        ".commitnote/trash/20260112T103000Z-1-eslo64bs/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s": "v1:4SgU3hCpnI0m7QA5KL9Ud25PIGWVsfgHI7zonO4ohEozp2s0ZQ7kQmGc8sV6knRoZDiEYopXopLxHvKD20/39UMPASn3YNAorw==",
+        "F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk": "v1:vILSrCvPU2NeO1S7Qby4IZxkeuvSoZwrEUChmayjS7UF+DD7DeT7/jJTr4tJGWHlttile5v5LLHnhCABEA7nYg==",
+        "XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw": "v1:/L4puk93xd8HHph5URuD5fB9W1gTgr8raQEHHd4prK2umRSZ/+RRscFQbVaQjd7p9gSvkbIr12sDwHCbKowTn3TH12HRtjHqZkys8A==",
         "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/.keep": "",
-        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ": "v1:/L4puk93xd8HHph5URuf5exqFFsZ/NBgQzwcCMIprLalyQ/R7a1Rq4RUYywQ9l6HPDhEbKZWAqPPhnFe"
+        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ": "v1:qk1/qh7VmMaSthCGq2AW6iDv0u/ppWUTpS4SRFQZhGRwjl7DpIUaXtnmqrR48LVck8GmZFTkJf85mbFZ"
       }
     },
     {
-      "message": "commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Trash: F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk -> 20260927T081500Z-1-2aaoj27w",
+      "message": "commitnote: save\n\nCommitnote-Format: 1\nCommitnote-Trash: F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk -> 20260927T081500Z-1-3qpx4naf\nCommitnote-Device: D9WJxNtqHFl8Nxfkc4-Kn24wg6ev7K-iIZdq3xTnn2ogtnC-WT3oc1Q",
       "files": {
         ".commitnote/config.json": "{\n  \"formatVersion\": 1,\n  \"app\": \"commitnote\",\n  \"cipher\": \"AES-256-GCM\",\n  \"nameScheme\": \"AES-256-GCM-SIV-HMAC-SHA256/base64url\",\n  \"kdf\": {\n    \"algorithm\": \"argon2id\",\n    \"memoryKiB\": 65536,\n    \"iterations\": 3,\n    \"parallelism\": 1,\n    \"salt\": \"vHs8j6pJRYpV/GZLTAzaag==\"\n  },\n  \"keyCheck\": \"0iW/BA39/waSr5h+moIabSNtQ7547kEHDxs8prl+GBk=\",\n  \"createdAt\": \"2026-01-01T00:00:00.000Z\"\n}\n",
-        ".commitnote/trash/20260105T090000Z-2-xsbnflbl/zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ": "v1:qk1/qh7VmMaSthCGq2AS4zS7n+TjpWl3yHdsYFUazX97ygrFrtELDNXtpMrKAjxfnWgfsgWvpGr2vJa14PIiIXXjwguFug==",
-        ".commitnote/trash/20260112T103000Z-1-ly5vjo5i/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/.keep": "",
-        ".commitnote/trash/20260112T103000Z-1-ly5vjo5i/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s": "v1:+8U/omsP9Mm6Zi7or4wra2B0YAg9WMb5DVma8LwM3ltuqtOxsWhwBI2aJmkPpRcs/fh0HyacPzc5XZKMIjySxnGGjcsnv5KKEA==",
-        ".commitnote/trash/20260927T081500Z-1-2aaoj27w/F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk": "v1:4SgU3hCpnI0m7QA5KL9IYWhCPWiYsfgPNKrvkapmhVEi4iIzK1rtSWGN+NRgiD8GSpL9iJB/+eXN8I4rx/pUow==",
-        "XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw": "v1:4Q2ZP7gfI6xIbiutow8vry35xJ+HKixo6xOiVMbIzb7zSZg6Z0JnZ19MsjhLg9FNpJaOCncAudGr1HJEVOokPRfi0Jewe2evpef5hw==",
+        ".commitnote/trash/20260105T090000Z-2-emxx7utd/zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ": "v1:+8U/omsP9Mm6Zi7or4wrcnA4ZAM9JqXZDyDk0KBc2UZ/q9O2sDx0SsSRfm0OslI8r/9oG2zzM0ymGGpiRewMp2kRI6+Y4w==",
+        ".commitnote/trash/20260112T103000Z-1-eslo64bs/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/.keep": "",
+        ".commitnote/trash/20260112T103000Z-1-eslo64bs/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s": "v1:4SgU3hCpnI0m7QA5KL9Ud25PIGWVsfgHI7zonO4ohEozp2s0ZQ7kQmGc8sV6knRoZDiEYopXopLxHvKD20/39UMPASn3YNAorw==",
+        ".commitnote/trash/20260927T081500Z-1-3qpx4naf/F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk": "v1:vILSrCvPU2NeO1S7Qby4IZxkeuvSoZwrEUChmayjS7UF+DD7DeT7/jJTr4tJGWHlttile5v5LLHnhCABEA7nYg==",
+        "XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw": "v1:/L4puk93xd8HHph5URuD5fB9W1gTgr8raQEHHd4prK2umRSZ/+RRscFQbVaQjd7p9gSvkbIr12sDwHCbKowTn3TH12HRtjHqZkys8A==",
         "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/.keep": "",
-        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ": "v1:/L4puk93xd8HHph5URuf5exqFFsZ/NBgQzwcCMIprLalyQ/R7a1Rq4RUYywQ9l6HPDhEbKZWAqPPhnFe"
+        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ": "v1:qk1/qh7VmMaSthCGq2AW6iDv0u/ppWUTpS4SRFQZhGRwjl7DpIUaXtnmqrR48LVck8GmZFTkJf85mbFZ"
       }
     },
     {
       "message": "Add README",
       "files": {
         ".commitnote/config.json": "{\n  \"formatVersion\": 1,\n  \"app\": \"commitnote\",\n  \"cipher\": \"AES-256-GCM\",\n  \"nameScheme\": \"AES-256-GCM-SIV-HMAC-SHA256/base64url\",\n  \"kdf\": {\n    \"algorithm\": \"argon2id\",\n    \"memoryKiB\": 65536,\n    \"iterations\": 3,\n    \"parallelism\": 1,\n    \"salt\": \"vHs8j6pJRYpV/GZLTAzaag==\"\n  },\n  \"keyCheck\": \"0iW/BA39/waSr5h+moIabSNtQ7547kEHDxs8prl+GBk=\",\n  \"createdAt\": \"2026-01-01T00:00:00.000Z\"\n}\n",
-        ".commitnote/trash/20260105T090000Z-2-xsbnflbl/zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ": "v1:qk1/qh7VmMaSthCGq2AS4zS7n+TjpWl3yHdsYFUazX97ygrFrtELDNXtpMrKAjxfnWgfsgWvpGr2vJa14PIiIXXjwguFug==",
-        ".commitnote/trash/20260112T103000Z-1-ly5vjo5i/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/.keep": "",
-        ".commitnote/trash/20260112T103000Z-1-ly5vjo5i/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s": "v1:+8U/omsP9Mm6Zi7or4wra2B0YAg9WMb5DVma8LwM3ltuqtOxsWhwBI2aJmkPpRcs/fh0HyacPzc5XZKMIjySxnGGjcsnv5KKEA==",
-        ".commitnote/trash/20260927T081500Z-1-2aaoj27w/F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk": "v1:4SgU3hCpnI0m7QA5KL9IYWhCPWiYsfgPNKrvkapmhVEi4iIzK1rtSWGN+NRgiD8GSpL9iJB/+eXN8I4rx/pUow==",
+        ".commitnote/trash/20260105T090000Z-2-emxx7utd/zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/V1iUnDj6SoeJkRKb0An-CqAcU6HMrlKycJ11H9097-V3qUwat1BQ": "v1:+8U/omsP9Mm6Zi7or4wrcnA4ZAM9JqXZDyDk0KBc2UZ/q9O2sDx0SsSRfm0OslI8r/9oG2zzM0ymGGpiRewMp2kRI6+Y4w==",
+        ".commitnote/trash/20260112T103000Z-1-eslo64bs/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/.keep": "",
+        ".commitnote/trash/20260112T103000Z-1-eslo64bs/_t3Se1qxKswlZoWOAENOhu2dcFjsffXB9De-uauvZmznhQ/atuT_R0hR3sMh-WwezlABygG9j5QJAcGQq4a_1YcVEaCa0s": "v1:4SgU3hCpnI0m7QA5KL9Ud25PIGWVsfgHI7zonO4ohEozp2s0ZQ7kQmGc8sV6knRoZDiEYopXopLxHvKD20/39UMPASn3YNAorw==",
+        ".commitnote/trash/20260927T081500Z-1-3qpx4naf/F_FN0eYrR5Ac_TUdGpiXaHqHyiO790_SJ88KFJ8mRF8R4mk": "v1:vILSrCvPU2NeO1S7Qby4IZxkeuvSoZwrEUChmayjS7UF+DD7DeT7/jJTr4tJGWHlttile5v5LLHnhCABEA7nYg==",
         "README.md": "# Notes\n\nThis repository is managed by commitnote.\n",
-        "XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw": "v1:4Q2ZP7gfI6xIbiutow8vry35xJ+HKixo6xOiVMbIzb7zSZg6Z0JnZ19MsjhLg9FNpJaOCncAudGr1HJEVOokPRfi0Jewe2evpef5hw==",
+        "XU46ov037yGKoihEolKt-x46HiNE3I5WWt7rzwn7UMjQ7hw": "v1:/L4puk93xd8HHph5URuD5fB9W1gTgr8raQEHHd4prK2umRSZ/+RRscFQbVaQjd7p9gSvkbIr12sDwHCbKowTn3TH12HRtjHqZkys8A==",
         "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/.keep": "",
-        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ": "v1:/L4puk93xd8HHph5URuf5exqFFsZ/NBgQzwcCMIprLalyQ/R7a1Rq4RUYywQ9l6HPDhEbKZWAqPPhnFe"
+        "zcFD_DUDDeKQvODjBCiErYeZNLu_b8htmco3o6fvaXFyA90/OS68S6UiZv4C88USvweGnol65w-1hba5tHrTPGtzuP8aWQrZIQ": "v1:qk1/qh7VmMaSthCGq2AW6iDv0u/ppWUTpS4SRFQZhGRwjl7DpIUaXtnmqrR48LVck8GmZFTkJf85mbFZ"
       }
     }
   ]

@@ -7,7 +7,7 @@ function loaded(path: string[], content: string): OpenNoteState {
 }
 
 function conflict(path: string[], merged: string, editing: string | null): HeldConflict {
-  return { path, base: "", mine: "", theirs: "", theirsBlobSha: "", merged, editing };
+  return { path, base: "", mine: "", theirs: "", theirsBlobSha: "", theirsDevice: null, merged, editing };
 }
 
 describe("derivePrintNote", () => {

@@ -1118,6 +1118,29 @@ function lastViewKeys(page: Page): Promise<string[]> {
 }
 
 test.describe("this device", () => {
+  test("device name is stored on this device only", async ({ page, openSecondDevice }) => {
+    const storedName = () => page.evaluate(() => localStorage.getItem("commitnote.deviceName"));
+    let dialog = await openSettings(page);
+    const field = dialog.getByRole("textbox", { name: "Device name" });
+    await expect(field).toHaveAttribute("placeholder", "Chrome on Windows");
+
+    await field.fill("  Work   laptop ");
+    await field.blur();
+    await expect.poll(storedName).toBe("Work laptop");
+    await expect(field).toHaveValue("Work laptop");
+
+    await closeSettings(page);
+    dialog = await openSettings(page);
+    await expect(dialog.getByRole("textbox", { name: "Device name" })).toHaveValue("Work laptop");
+
+    const { page: other } = await openSecondDevice();
+    expect(await other.evaluate(() => localStorage.getItem("commitnote.deviceName"))).toBeNull();
+
+    await dialog.getByRole("textbox", { name: "Device name" }).fill("");
+    await dialog.getByRole("textbox", { name: "Device name" }).blur();
+    await expect.poll(storedName).toBeNull();
+  });
+
   test("is listed with an enabled, unchecked checkbox in a remembered session", async ({ page }) => {
     const dialog = await openSettings(page);
 

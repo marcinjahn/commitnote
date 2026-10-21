@@ -223,8 +223,11 @@ device, the same as checking it, until you log out. Log out works the same in bo
 - If the access token is revoked or rejected mid-session, saving shows the failed state and keeps
   retrying, and the edits stay unsaved. The unload warning and the logout choice still protect
   them.
-- A conflicting change opens the conflict view, where you choose Keep mine, Keep theirs, or Edit
-  merged.
+- A conflicting change opens the conflict view, where you choose "Keep this device's version",
+  "Keep other device's version" (each with the device's name when known), or "Edit merged".
+- Each device has a name, set as Device name under Settings → This device. If left empty, an
+  automatic name such as "Firefox on Linux" is used. The name stays on that device, is stored
+  encrypted in commits, and is shown only when resolving a conflict.
 - Notices report failures, retries, and other sync events as they happen.
 
 ## Sharing notes

@@ -16,6 +16,7 @@ export const NAME_SCHEME_ID = "AES-256-GCM-SIV-HMAC-SHA256/base64url";
 export const KDF_ALGORITHM = "argon2id";
 
 export const NOTE_AAD = "commitnote note v1";
+export const DEVICE_AAD = "commitnote device v1";
 export const NAME_AAD = "commitnote name v1";
 export const KEY_CHECK_MESSAGE = "commitnote key check v1";
 export const NOTE_PREFIX = "v1:";
@@ -61,4 +62,5 @@ export const TRAILER = {
   order: "Commitnote-Order",
   settings: "Commitnote-Settings",
   share: "Commitnote-Share",
+  device: "Commitnote-Device",
 } as const;

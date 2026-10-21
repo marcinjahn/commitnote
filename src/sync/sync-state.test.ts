@@ -545,6 +545,33 @@ describe("hasConflictMarkers", () => {
   });
 });
 
+describe("labelled conflict markers", () => {
+  const text = [
+    "before",
+    "<<<<<<< This device · <Ünï=cødé> 日本",
+    "my side",
+    "=======",
+    "their side",
+    ">>>>>>> Other device · >>>>>>> ======= <<<<<<<",
+    "after",
+  ].join("\n");
+
+  it("are detected by hasConflictMarkers", () => {
+    expect(hasConflictMarkers(text)).toBe(true);
+  });
+
+  it("are removed by removeConflictMarkerLines", () => {
+    expect(removeConflictMarkerLines(text)).toBe(
+      ["before", "my side", "their side", "after"].join("\n"),
+    );
+  });
+
+  it("are not matched when the prefix is longer than seven characters", () => {
+    expect(hasConflictMarkers("<<<<<<<< This device")).toBe(false);
+    expect(hasConflictMarkers(">>>>>>>Other device")).toBe(false);
+  });
+});
+
 describe("removeConflictMarkerLines", () => {
   it("drops the marker lines and keeps both hunk sides and surrounding lines in order", () => {
     const text = [

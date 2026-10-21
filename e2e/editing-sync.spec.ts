@@ -1,15 +1,19 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { rowSyncState, openNotes, showTree, fakeForge, flushPendingSaves } from "./helpers";
+import {
+  editRemotely,
+  openNote,
+  startConflictOnWelcome,
+} from "./helpers/conflict";
 import { headerSyncIcon, openRowMenu, openWelcome } from "./helpers/tree";
-
-
+import { closeSettings, openSettings } from "./helpers/settings";
 
 const WAITING = "Out of sync: waiting to save";
 const FAILED = "Out of sync: saving failed, will retry";
-const CONFLICT = "Out of sync: conflict, needs your decision";
 
-const CONFLICT_KEEP_THEIRS_LABEL = "Keep theirs";
+
+const CONFLICT_KEEP_OTHER_LABEL = "Keep other device's version";
 const CONFLICT_EDIT_MERGED_LABEL = "Edit merged";
 
 const IDEAS_MARKDOWN = [
@@ -19,50 +23,6 @@ const IDEAS_MARKDOWN = [
   "- Support multiple repos",
   "",
 ].join("\n");
-
-const WELCOME_TAIL = [
-  "",
-  "This is your **notes** repo, encrypted end to end. Some *emphasis*, ~~strikethrough~~, and `inline code`.",
-  "",
-  "```js",
-  'console.log("hello");',
-  "```",
-  "",
-  "See the [commitnote project](https://github.com/example/commitnote) for details.",
-  "",
-  "> Notes stay private even to the forge that hosts them.",
-  "",
-  "- First bullet",
-  "- Second bullet",
-  "",
-  "1. First step",
-  "2. Second step",
-  "",
-  "- [x] Done task",
-  "- [ ] Open task",
-  "",
-  "| Column A | Column B |",
-  "| --- | --- |",
-  "| 1 | 2 |",
-  "",
-];
-
-function welcomeWithHeading(heading: string): string {
-  return [heading, ...WELCOME_TAIL].join("\n");
-}
-
-async function openNote(page: Page, path: readonly string[]): Promise<void> {
-  for (const [index, name] of path.entries()) {
-    const item = page.getByRole("treeitem", { name, exact: true });
-    const isNote = index === path.length - 1;
-    if (isNote || (await item.getAttribute("aria-expanded")) !== "true") {
-      await item.click();
-    }
-  }
-  await expect(
-    page.getByRole("textbox", { name: "Note editor" }),
-  ).toBeVisible();
-}
 
 async function recordHeaderIconLabels(page: Page): Promise<void> {
   await page.evaluate(() => {
@@ -91,14 +51,6 @@ async function recordedHeaderIconLabels(page: Page): Promise<string[]> {
   );
 }
 
-async function editRemotely(
-  page: Page,
-  notePath: readonly string[],
-  markdown: string,
-): Promise<void> {
-  await fakeForge(page).editNote(notePath, markdown);
-}
-
 async function createNoteThroughRowMenu(
   page: Page,
   folderName: string,
@@ -112,45 +64,6 @@ async function createNoteThroughRowMenu(
   await expect(
     page.getByRole("textbox", { name: "Note editor" }),
   ).toBeVisible();
-}
-
-async function startConflictOnWelcome(page: Page): Promise<void> {
-  await openNotes(page);
-  await openNote(page, ["Welcome"]);
-
-  const editor = page.getByRole("textbox", { name: "Note editor" });
-  await editor.click();
-  await page.keyboard.press("ControlOrMeta+Home");
-  await page.keyboard.press("Shift+End");
-  await page.keyboard.type("# Welcome from here");
-  await editRemotely(
-    page,
-    ["Welcome"],
-    welcomeWithHeading("# Welcome from elsewhere"),
-  );
-
-  await expect(headerSyncIcon(page)).toHaveAccessibleName(CONFLICT, {
-    timeout: 10_000,
-  });
-  await expect(
-    page.getByText(
-      /was changed on another device too\. Open it to resolve the conflict\./,
-    ),
-  ).toBeVisible();
-  const region = page.getByRole("region", { name: "Conflict" });
-  await expect(region).toBeVisible();
-  await expect(
-    region.getByText("This note was changed on another device too"),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("textbox", { name: "Merged text" }),
-  ).toContainText("<<<<<<< mine");
-
-  const tree = page.getByRole("tree", { name: "Notes" });
-  await expect(tree.getByRole("treeitem", { name: "Welcome" })).toHaveAccessibleDescription(
-    new RegExp(CONFLICT),
-  );
-  await expect(tree.getByRole("img")).toHaveCount(0);
 }
 
 test.describe("with GitHub-like forge latency", () => {
@@ -199,6 +112,31 @@ test.describe("with GitHub-like forge latency", () => {
 
     await showTree(page);
     await expect(rowSyncState(page, "Work", { exact: true })).toHaveCount(0);
+  });
+
+  test("keeping this device's version is saved visibly", async ({ page }) => {
+    await startConflictOnWelcome(page);
+    const commitsBefore = await fakeForge(page).commitCount();
+    await recordHeaderIconLabels(page);
+
+    await page
+      .getByRole("region", { name: "Conflict" })
+      .getByRole("button", { name: "Keep this device's version" })
+      .click();
+
+    const note = page.getByRole("textbox", { name: "Note editor" });
+    await expect(note).toContainText("# Welcome from here");
+    await expect(page.getByRole("region", { name: "Conflict" })).toHaveCount(0);
+    await expect(headerSyncIcon(page)).toHaveCount(0, { timeout: 15_000 });
+    await expect
+      .poll(() => fakeForge(page).commitCount())
+      .toBe(commitsBefore + 1);
+
+    const labels = await recordedHeaderIconLabels(page);
+    const waitingAt = labels.indexOf(WAITING);
+    expect(waitingAt).toBeGreaterThanOrEqual(0);
+    expect(labels.indexOf("Saving")).toBeGreaterThan(waitingAt);
+    expect(labels.at(-1)).toBe("(no status)");
   });
 
   test("a saving row shows a steady cue under reduced motion", async ({
@@ -269,7 +207,7 @@ test("a conflict is resolved by editing the merged text", async ({ page }) => {
     .getByRole("button", { name: CONFLICT_EDIT_MERGED_LABEL })
     .click();
 
-  const editor = page.getByRole("textbox", { name: "Note editor" });
+  const editor = page.getByRole("textbox", { name: "Merged text" });
   await expect(editor).toBeVisible();
   await expect(
     page.getByRole("status").getByText(/conflict marker/),
@@ -298,12 +236,12 @@ test("a conflict is resolved by editing the merged text", async ({ page }) => {
   await expect(note).not.toContainText("Welcome from elsewhere");
 });
 
-test("a conflict is resolved by keeping theirs", async ({ page }) => {
+test("a conflict is resolved by keeping the other device's version", async ({ page }) => {
   await startConflictOnWelcome(page);
 
   await page
     .getByRole("region", { name: "Conflict" })
-    .getByRole("button", { name: CONFLICT_KEEP_THEIRS_LABEL })
+    .getByRole("button", { name: CONFLICT_KEEP_OTHER_LABEL })
     .click();
 
   await expect(headerSyncIcon(page)).toHaveCount(0, {
@@ -339,4 +277,76 @@ test("the sync status button lists the unsaved note and retries a failed save", 
   await expect
     .poll(() => fakeForge(page).commitCount())
     .toBe(commitsBefore + 1);
+});
+
+test("a conflict names both devices, using the renamed device", async ({
+  page,
+}) => {
+  await openNotes(page);
+  const settings = await openSettings(page);
+  const nameField = settings.getByRole("textbox", { name: "Device name" });
+  await nameField.fill("Work laptop");
+  await nameField.press("Enter");
+  await closeSettings(page);
+
+  await startConflictOnWelcome(page, { remoteDevice: "Pixel app" });
+
+  const region = page.getByRole("region", { name: "Conflict" });
+  const legend = region.getByRole("list", { name: "Legend" });
+  await expect(legend).toContainText("This device · Work laptop");
+  await expect(legend).toContainText("Other device · Pixel app");
+  await expect(
+    region.getByRole("button", { name: "Keep this device's version (Work laptop)" }),
+  ).toBeVisible();
+  await expect(
+    region.getByRole("button", { name: "Keep other device's version (Pixel app)" }),
+  ).toBeVisible();
+  const merged = page.getByRole("textbox", { name: "Merged text" });
+  await expect(merged).toContainText("<<<<<<< This device · Work laptop");
+  await expect(merged).toContainText(">>>>>>> Other device · Pixel app");
+});
+
+test("keeping the other device's version shows a notice and saves nothing", async ({
+  page,
+}) => {
+  await startConflictOnWelcome(page, { remoteDevice: "Pixel app" });
+  const commitsBefore = await fakeForge(page).commitCount();
+
+  await page
+    .getByRole("region", { name: "Conflict" })
+    .getByRole("button", { name: "Keep other device's version (Pixel app)" })
+    .click();
+
+  await expect(
+    page.getByText("Kept the other device's version (Pixel app). It's already saved."),
+  ).toBeVisible();
+  const note = page.getByRole("textbox", { name: "Note editor" });
+  await expect(note).toContainText("Welcome from elsewhere");
+  await flushPendingSaves(page);
+  expect(await fakeForge(page).commitCount()).toBe(commitsBefore);
+});
+
+test("the conflict banner fits a phone screen", { tag: "@mobile" }, async ({
+  page,
+}) => {
+  await startConflictOnWelcome(page, { remoteDevice: "Pixel app" });
+
+  const region = page.getByRole("region", { name: "Conflict" });
+  const buttons = [
+    region.getByRole("button", { name: "Keep this device's version" }),
+    region.getByRole("button", { name: "Keep other device's version (Pixel app)" }),
+    region.getByRole("button", { name: "Edit merged" }),
+  ];
+  const viewportWidth = page.viewportSize()!.width;
+  for (const button of buttons) {
+    await expect(button).toBeVisible();
+    const box = (await button.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewportWidth);
+  }
+  const overflow = await region.evaluate((element) => ({
+    scroll: element.scrollWidth,
+    client: element.clientWidth,
+  }));
+  expect(overflow.scroll).toBeLessThanOrEqual(overflow.client);
 });

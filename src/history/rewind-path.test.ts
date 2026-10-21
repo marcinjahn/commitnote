@@ -154,6 +154,16 @@ describe("rewindPath", () => {
     expect(rewindPath(parsed, after)).toEqual(expected);
   });
 
+  it("ignores a device trailer", () => {
+    const plain = save([TRAILER.rename, "f/a -> f/n"]);
+    const stamped = save(
+      [TRAILER.rename, "f/a -> f/n"],
+      [TRAILER.device, "opaque"],
+    );
+
+    expect(rewindPath(stamped, "f/n")).toEqual(rewindPath(plain, "f/n"));
+  });
+
   it("stops at a restore with the trailers applied before it", () => {
     const parsed = save(
       [TRAILER.update, "x"],

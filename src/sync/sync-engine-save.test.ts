@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { readDeviceTrailer } from "../changes/device-trailer";
 import { encodeInitializeMessage } from "../changes/encode-change-set";
 import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
 import { sampleNotesRepoKeyring } from "../testing/sample-notes-repo/sample-notes-repo-keyring";
@@ -12,20 +13,27 @@ import type { CommitRequest, ForgeAdapter } from "../forge/forge-adapter";
 import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import { FOLDER_MARKER, TRAILER } from "../format/v1";
 import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-sample-notes-repo";
-import { CONFLICT_MARKERS } from "../merge/merge-text";
+import { PLAIN_CONFLICT_LABELS } from "../merge/conflict-labels";
+import { CONFLICT_MARKER_PREFIX } from "../merge/merge-text";
 import { findNode, type NoteTree } from "../tree/note-tree";
 import { hasConflictMarkers } from "./sync-state";
 import { createTestClock } from "./testing/test-clock";
+
+const MINE_MARKER = `${CONFLICT_MARKER_PREFIX.mine} ${PLAIN_CONFLICT_LABELS.mine}`;
+const THEIRS_MARKER = `${CONFLICT_MARKER_PREFIX.theirs} ${PLAIN_CONFLICT_LABELS.theirs}`;
 import {
   IDEAS,
   WELCOME,
   ZAZOLC,
   drainAsync,
+  heldWelcomeConflict,
   mainContent,
   mainTree,
   okCommitCount,
   pushRemote,
+  replaceLine,
   waitIdle,
+  welcomeText,
 } from "./testing/engine-harness";
 import { createSyncEngine, type SyncEngine } from "./sync-engine";
 
@@ -68,6 +76,7 @@ function wrap(
 async function setup(
   fake?: FakeForgeAdapter,
   engineKeyring?: Keyring,
+  deviceName?: () => string,
 ): Promise<Harness> {
   const forge = fake ?? (await createSampleNotesRepoAdapter());
   const commits: CommitRequest[] = [];
@@ -78,6 +87,7 @@ async function setup(
     adapter: wrap(forge, commits, gate, readGate),
     keyring: engineKeyring ?? keyring,
     clock,
+    ...(deviceName === undefined ? {} : { deviceName }),
   });
   await engine.refresh();
   return {
@@ -112,9 +122,9 @@ function withoutTheirsSide(text: string): string {
   const lines: string[] = [];
   let skipping = false;
   for (const line of text.split("\n")) {
-    if (line === CONFLICT_MARKERS.mine) continue;
-    if (line === CONFLICT_MARKERS.separator) skipping = true;
-    else if (line === CONFLICT_MARKERS.theirs) skipping = false;
+    if (line === MINE_MARKER) continue;
+    if (line === CONFLICT_MARKER_PREFIX.separator) skipping = true;
+    else if (line === THEIRS_MARKER) skipping = false;
     else if (!skipping) lines.push(line);
   }
   return lines.join("\n");
@@ -124,35 +134,6 @@ function messageOf(fake: FakeForgeAdapter, head: string): string {
   const commit = fake.repo.getCommit(head);
   if (commit === undefined) throw new Error("unknown commit");
   return commit.message;
-}
-
-
-async function welcomeText(fake: FakeForgeAdapter): Promise<string> {
-  const text = await mainContent(fake, WELCOME);
-  if (text === undefined) throw new Error("expected Welcome");
-  return text;
-}
-
-function replaceLine(text: string, from: string, to: string): string {
-  if (!text.includes(from)) throw new Error(`missing line ${from}`);
-  return text.replace(from, to);
-}
-
-// Leaves a held conflict on Welcome: mine and theirs both rewrite its title.
-async function heldWelcomeConflict(h: Harness): Promise<{
-  readonly mine: string;
-  readonly theirs: string;
-  readonly remoteHead: string;
-}> {
-  const original = await welcomeText(h.fake);
-  const mine = replaceLine(original, "# Welcome", "# Welcome (mine)");
-  const theirs = replaceLine(original, "# Welcome", "# Welcome (theirs)");
-  const remoteHead = await pushRemote(h.fake, [
-    { kind: "update-note", path: WELCOME, content: theirs },
-  ]);
-  h.engine.editNote(WELCOME, mine);
-  await h.engine.flush();
-  return { mine, theirs, remoteHead };
 }
 
 describe("sync engine saves", () => {
@@ -215,6 +196,30 @@ describe("sync engine saves", () => {
     expect(await mainContent(h.fake, WELCOME)).toBe("welcome secret text");
     expect(await mainContent(h.fake, ZAZOLC)).toBe("zazolc secret text");
     expect(h.engine.getState().synced?.head).toBe(head);
+  });
+
+  it("stamps each save with the current device name, encrypted", async () => {
+    let name = "Phone";
+    const h = await setup(undefined, undefined, () => name);
+
+    h.engine.editNote(WELCOME, "first");
+    h.clock.advance(30_000);
+    await waitIdle(h.engine);
+    const first = messageOf(h.fake, await h.fake.getHead());
+    name = "Renamed tablet";
+    h.engine.editNote(WELCOME, "second");
+    h.clock.advance(30_000);
+    await waitIdle(h.engine);
+    const second = messageOf(h.fake, await h.fake.getHead());
+
+    expect(await readDeviceTrailer(first, keyring.contentKey)).toBe("Phone");
+    expect(await readDeviceTrailer(second, keyring.contentKey)).toBe(
+      "Renamed tablet",
+    );
+    for (const message of [first, second]) {
+      expect(message).not.toContain("Phone");
+      expect(message).not.toContain("Renamed tablet");
+    }
   });
 
   it("commits each structure operation immediately with its trailer", async () => {
@@ -455,8 +460,8 @@ describe("sync engine saves", () => {
     expect(conflict.path).toEqual(WELCOME);
     expect(conflict.mine).toBe(mine);
     expect(conflict.theirs).toBe(theirs);
-    expect(conflict.merged).toContain("<<<<<<< mine");
-    expect(conflict.merged).toContain(">>>>>>> theirs");
+    expect(conflict.merged).toContain(MINE_MARKER);
+    expect(conflict.merged).toContain(THEIRS_MARKER);
     expect(conflict.editing).toBeNull();
     expect(
       state.notices.filter((notice) => notice.kind === "conflict"),
@@ -530,16 +535,73 @@ describe("sync engine saves", () => {
   });
 
   describe("resolving a conflict", () => {
-    it("keepMine commits mine", async () => {
+    it("keepMine saves mine through the debounced edit path", async () => {
       const h = await setup();
-      const { mine } = await heldWelcomeConflict(h);
+      const { mine, remoteHead } = await heldWelcomeConflict(h);
 
       h.engine.resolveConflict(WELCOME, "keepMine");
+
+      expect(h.engine.getState().conflicts).toEqual([]);
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "out-of-sync",
+        reason: "pending",
+      });
+      expect(await h.fake.getHead()).toBe(remoteHead);
+
+      h.clock.advance(1_999);
+      expect(await h.fake.getHead()).toBe(remoteHead);
+      h.clock.advance(1);
       await waitIdle(h.engine);
 
+      expect(okCommitCount(h.fake, remoteHead)).toBe(1);
       expect(await welcomeText(h.fake)).toBe(mine);
-      expect(h.engine.getState().conflicts).toEqual([]);
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "synced",
+      });
       expect(h.engine.getState().syncStates.hasUnsaved).toBe(false);
+    });
+
+    it("keepMine shows the normal failed state when the save fails", async () => {
+      const h = await setup();
+      const { mine } = await heldWelcomeConflict(h);
+      h.fake.failNext("commit", new ForgeError("Network"));
+
+      h.engine.resolveConflict(WELCOME, "keepMine");
+      h.clock.advance(2_000);
+      await waitIdle(h.engine);
+
+      expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
+        kind: "out-of-sync",
+        reason: "failed",
+      });
+
+      h.clock.advance(5_000);
+      await waitIdle(h.engine);
+      expect(await welcomeText(h.fake)).toBe(mine);
+    });
+
+    it("keepTheirs announces which device's version was kept", async () => {
+      const h = await setup();
+      const { remoteHead } = await heldWelcomeConflict(h, "Pixel app");
+      await vi.waitFor(() =>
+        expect(h.engine.getState().conflicts[0].theirsDevice).toBe("Pixel app"),
+      );
+
+      h.engine.resolveConflict(WELCOME, "keepTheirs");
+      await waitIdle(h.engine);
+
+      const kept = h.engine
+        .getState()
+        .notices.filter((notice) => notice.kind === "kept-other-version");
+      expect(kept).toEqual([
+        {
+          id: expect.any(Number),
+          kind: "kept-other-version",
+          path: WELCOME,
+          device: "Pixel app",
+        },
+      ]);
+      expect(await h.fake.getHead()).toBe(remoteHead);
     });
 
     it("keepTheirs leaves the remote content and the note synced", async () => {
@@ -678,7 +740,7 @@ describe("sync engine saves", () => {
       const after = h.engine.getState().conflicts[0].editing;
       expect(after).not.toBe(editing);
       expect(after).toContain("- First!");
-      expect(after).toContain(CONFLICT_MARKERS.mine);
+      expect(after).toContain(MINE_MARKER);
       expect(h.engine.getState().syncStates.stateOf(WELCOME)).toEqual({
         kind: "out-of-sync",
         reason: "conflict",
@@ -706,7 +768,7 @@ describe("sync engine saves", () => {
 
       const editing = h.engine.getState().conflicts[0].editing ?? "";
       expect(editing).toContain("- First!");
-      expect(editing).toContain(CONFLICT_MARKERS.mine);
+      expect(editing).toContain(MINE_MARKER);
       expect(await h.fake.getHead()).toBe(remoteHead);
       expect(h.engine.getState().pending).toEqual([]);
       expect(
@@ -741,7 +803,7 @@ describe("sync engine saves", () => {
       await vi.waitFor(() => {
         expect(h.engine.getState().synced?.head).toBe(remoteHead);
       });
-      const typed = `${h.engine.getState().conflicts[0].editing}\nmy own line\n${CONFLICT_MARKERS.mine}`;
+      const typed = `${h.engine.getState().conflicts[0].editing}\nmy own line\n${MINE_MARKER}`;
       h.engine.editNote(WELCOME, typed);
       release();
       await refreshing;
@@ -1146,7 +1208,7 @@ describe("sync engine saves", () => {
     const created = await createRepoConfig("fresh passphrase", {
       argon2id: sharedMemoizedArgon2id,
     });
-    await fake.initialize(created.configText, encodeInitializeMessage());
+    await fake.initialize(created.configText, await encodeInitializeMessage(null));
     const h = await setup(fake, created.keyring);
 
     expect(h.engine.createFolder([], "Notes")).toEqual({

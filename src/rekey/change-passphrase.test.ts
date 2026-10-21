@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readDeviceTrailer } from "../changes/device-trailer";
 import { parseRepoConfig, serializeRepoConfig } from "../crypto/repo-config";
 import { encryptPath } from "../crypto/name-cipher";
 import type { Keyring } from "../crypto/keyring";
@@ -274,6 +275,25 @@ describe("changing the passphrase", () => {
     expect([...shares.entries.values()]).toMatchObject([
       { id: "a", name: "Welcome", source: null },
     ]);
+  });
+
+  it("stamps the commit with the device name, readable only with the new keyring", async () => {
+    const h = await setup();
+    const result = await changePassphrase({
+      ...h,
+      deps: { ...h.deps, deviceName: () => "Desk laptop" },
+    });
+    if (!result.ok) throw new Error(result.failure.kind);
+
+    const { head } = await readTree(h.fixture.adapter);
+    const message = h.fixture.adapter.repo.getCommit(head)!.message;
+    expect(message).not.toContain("Desk laptop");
+    expect(await readDeviceTrailer(message, result.keyring.contentKey)).toBe(
+      "Desk laptop",
+    );
+    expect(
+      await readDeviceTrailer(message, h.fixture.oldKeyring.contentKey),
+    ).toBeNull();
   });
 
   it("keeps the engine suspended between preparing and committing", async () => {

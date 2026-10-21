@@ -14,6 +14,7 @@ import {
   type TagIndex,
 } from "../tags/tag-index";
 import type { Keyring } from "../crypto/keyring";
+import { readDeviceTrailer } from "./device-trailer";
 import { decryptNote } from "../crypto/note-cipher";
 import { encryptPath } from "../crypto/name-cipher";
 import { testKeyring as sharedTestKeyring } from "../crypto/testing/test-keyring";
@@ -65,7 +66,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       { kind: "create-note", path: ["Note"], content: "hello world" },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
+    const result = await encodeChangeSet({ device: null, listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(1);
     expect(result.changes[0].kind).toBe("upsert-text");
@@ -83,7 +84,7 @@ describe("encodeChangeSet: one test per operation type", () => {
     const storedFolder = await encryptPath(keyring, ["Folder"]);
     const changeSet: ChangeSet = [{ kind: "create-folder", path: ["Folder"] }];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
+    const result = await encodeChangeSet({ device: null, listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toEqual([
       {
@@ -105,7 +106,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       { kind: "update-note", path: ["Note"], content: "updated body" },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
+    const result = await encodeChangeSet({ device: null, listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(1);
     expect(result.changes[0]).toMatchObject({
@@ -126,7 +127,7 @@ describe("encodeChangeSet: one test per operation type", () => {
     const listing = [blob(storedNote, "some-sha")];
     const changeSet: ChangeSet = [{ kind: "delete-note", path: ["Note"] }];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
+    const result = await encodeChangeSet({ device: null, listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toEqual([{ kind: "delete", path: storedNote }]);
     expect(result.message).toBe(
@@ -146,7 +147,7 @@ describe("encodeChangeSet: one test per operation type", () => {
     ];
     const changeSet: ChangeSet = [{ kind: "delete-folder", path: ["Folder"] }];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
+    const result = await encodeChangeSet({ device: null, listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(3);
     expect(result.changes).toContainEqual({
@@ -180,7 +181,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
+    const result = await encodeChangeSet({ device: null, listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(2);
     expect(result.changes).toContainEqual({ kind: "delete", path: storedNote });
@@ -214,7 +215,7 @@ describe("encodeChangeSet: one test per operation type", () => {
       { kind: "rename-folder", from: ["From"], to: ["To"] },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
+    const result = await encodeChangeSet({ device: null, listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     const renamed = (originalPath: string): string =>
       `${storedTo}${originalPath.slice(storedFrom.length)}`;
@@ -253,7 +254,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       { kind: "create-note", path: ["Folder", "Note"], content: "nested body" },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
+    const result = await encodeChangeSet({ device: null, listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(2);
     expect(result.changes).toContainEqual({
@@ -283,7 +284,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       { kind: "rename-note", from: ["Note"], to: ["Renamed"] },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
+    const result = await encodeChangeSet({ device: null, listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.changes).toHaveLength(1);
     expect(result.changes[0].kind).toBe("upsert-text");
@@ -326,7 +327,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       },
     ];
 
-    const result = await encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
+    const result = await encodeChangeSet({ device: null, listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.message).toBe(
       `commitnote: save\n\n` +
@@ -354,7 +355,7 @@ describe("encodeChangeSet: multi-change scenarios", () => {
       },
     ];
 
-    const result = await encodeChangeSet({ listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
+    const result = await encodeChangeSet({ device: null, listing: [], changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring });
 
     expect(result.message).not.toContain("PlaintextFolderName");
     expect(result.message).not.toContain("PlaintextNoteName");
@@ -372,6 +373,7 @@ describe("encodeChangeSet: invalid change sets", () => {
     const keyring = await testKeyring();
     await expect(
       encodeChangeSet({
+        device: null,
         listing: [],
         changeSet: [],
         order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
@@ -504,15 +506,15 @@ describe("encodeChangeSet: invalid change sets", () => {
       const keyring = await testKeyring();
       const { listing, changeSet } = await build(keyring);
       await expect(
-        encodeChangeSet({ listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring }),
+        encodeChangeSet({ device: null, listing, changeSet, order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES, keyring }),
       ).rejects.toThrow(InvalidChangeSetError);
     },
   );
 });
 
 describe("encodeInitializeMessage", () => {
-  it("equals the pinned literal", () => {
-    expect(encodeInitializeMessage()).toBe(
+  it("equals the pinned literal without a device", async () => {
+    await expect(encodeInitializeMessage(null)).resolves.toBe(
       "commitnote: initialize\n\nCommitnote-Format: 1",
     );
   });
@@ -524,13 +526,70 @@ describe("encodeUndoOutdatedSaveMessage", () => {
       "commitnote: undo save with outdated passphrase\n\nCommitnote-Format: 1",
     );
   });
+
+  it("never carries a device trailer", () => {
+    expect(encodeUndoOutdatedSaveMessage()).not.toContain("Commitnote-Device");
+  });
 });
 
 describe("encodeChangePassphraseMessage", () => {
-  it("equals the pinned literal", () => {
-    expect(encodeChangePassphraseMessage()).toBe(
+  it("equals the pinned literal without a device", async () => {
+    await expect(encodeChangePassphraseMessage(null)).resolves.toBe(
       "commitnote: change passphrase\n\nCommitnote-Format: 1",
     );
+  });
+});
+
+describe("device trailer", () => {
+  const NAME = "Work laptop";
+
+  async function expectStamped(message: string, keyring: Keyring) {
+    const lines = message.split("\n");
+    expect(
+      lines.filter((line) => line.startsWith("Commitnote-Device: ")),
+    ).toHaveLength(1);
+    expect(lines[lines.length - 1]).toMatch(/^Commitnote-Device: /);
+    expect(message).not.toContain(NAME);
+    await expect(readDeviceTrailer(message, keyring.contentKey)).resolves.toBe(
+      NAME,
+    );
+  }
+
+  it("save: is the last trailer and decodes to the name", async () => {
+    const keyring = await testKeyring();
+    const { message } = await encodeChangeSet({
+      device: NAME,
+      listing: [],
+      changeSet: [
+        { kind: "create-note", path: ["A"], content: "x" },
+        { kind: "update-note", path: ["A"], content: "y" },
+      ],
+      order: EMPTY_ORDER,
+      tags: EMPTY_TAGS,
+      shares: EMPTY_SHARES,
+      keyring,
+    });
+    await expectStamped(message, keyring);
+  });
+
+  it("initialize: carries the trailer", async () => {
+    const keyring = await testKeyring();
+    const message = await encodeInitializeMessage({
+      name: NAME,
+      contentKey: keyring.contentKey,
+    });
+    expect(message.startsWith("commitnote: initialize\n\nCommitnote-Format: 1\n")).toBe(true);
+    await expectStamped(message, keyring);
+  });
+
+  it("change passphrase: carries the trailer", async () => {
+    const keyring = await testKeyring();
+    const message = await encodeChangePassphraseMessage({
+      name: NAME,
+      contentKey: keyring.contentKey,
+    });
+    expect(message.startsWith("commitnote: change passphrase\n\nCommitnote-Format: 1\n")).toBe(true);
+    await expectStamped(message, keyring);
   });
 });
 
@@ -546,6 +605,7 @@ describe("encodeChangeSet: trash", () => {
     const folder = await encryptPath(keyring, ["Secret folder"]);
     const note = await encryptPath(keyring, ["Secret folder", "Secret note"]);
     const result = await encodeChangeSet({
+      device: null,
       listing: [blob(note, "sha-n")],
       changeSet: [{ kind: "trash-note", path: ["Secret folder", "Secret note"], entryId: ID2 }],
       order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
@@ -577,6 +637,7 @@ describe("encodeChangeSet: trash", () => {
       blob(note, "sha-n"),
     ];
     const result = await encodeChangeSet({
+      device: null,
       listing,
       changeSet: [{ kind: "trash-folder", path: ["F"], entryId: ID1 }],
       order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
@@ -606,6 +667,7 @@ describe("encodeChangeSet: trash", () => {
     const target = await encryptPath(keyring, ["Target"]);
     const to = await encryptPath(keyring, ["Target", "Renamed"]);
     const result = await encodeChangeSet({
+      device: null,
       listing: [keepBlob(target, "sha-k"), blob(trashed(ID1, note), "sha-n")],
       changeSet: [
         { kind: "restore-trash", entryId: ID1, subPath: [], target: "note", to: ["Target", "Renamed"] },
@@ -625,6 +687,7 @@ describe("encodeChangeSet: trash", () => {
     const note = await encryptPath(keyring, ["Old"]);
     const to = await encryptPath(keyring, ["Back"]);
     const result = await encodeChangeSet({
+      device: null,
       listing: [blob(trashed(ID1, note), "sha-n")],
       changeSet: [
         { kind: "restore-trash", entryId: ID1, subPath: [], target: "note", to: ["Back"] },
@@ -645,6 +708,7 @@ describe("encodeChangeSet: trash", () => {
     const note = await encryptPath(keyring, ["Old"]);
     await expect(
       encodeChangeSet({
+        device: null,
         listing: [blob(trashed(ID1, note), "sha-n")],
         changeSet: [
           { kind: "restore-trash", entryId: ID1, subPath: [], target: "note", to: ["Nope", "X"] },
@@ -660,6 +724,7 @@ describe("encodeChangeSet: trash", () => {
     const folder = await encryptPath(keyring, ["F"]);
     const note = await encryptPath(keyring, ["F", "Sub", "N"]);
     const result = await encodeChangeSet({
+      device: null,
       listing: [blob(trashed(ID3, note), "sha-n")],
       changeSet: [
         {
@@ -692,6 +757,7 @@ describe("encodeChangeSet: trash", () => {
     const b = await encryptPath(keyring, ["F", "A", "Deep", "N2"]);
     const other = await encryptPath(keyring, ["F", "Other"]);
     const result = await encodeChangeSet({
+      device: null,
       listing: [
         blob(trashed(ID3, a), "s1"),
         blob(trashed(ID3, b), "s2"),
@@ -717,6 +783,7 @@ describe("encodeChangeSet: trash", () => {
     const keep = await encryptPath(keyring, ["Keep"]);
     const unknown = "20260105T000000Z-1-dddddddd";
     const result = await encodeChangeSet({
+      device: null,
       listing: [
         blob(trashed(ID1, n1), "s1"),
         blob(trashed(ID2, n2), "s2"),
@@ -781,6 +848,7 @@ describe("encodeChangeSet: order", () => {
   it("writes the positions of a set-order with one trailer per item, naming only stored paths", async () => {
     const keyring = await testKeyring();
     const result = await encodeChangeSet({
+      device: null,
       listing: await sampleListing(keyring),
       changeSet: [
         {
@@ -814,6 +882,7 @@ describe("encodeChangeSet: order", () => {
   it("keeps an item's position when it is renamed in place", async () => {
     const keyring = await testKeyring();
     const result = await encodeChangeSet({
+      device: null,
       listing: await sampleListing(keyring),
       changeSet: [{ kind: "rename-note", from: ["Beta"], to: ["Gamma"] }],
       order: SAMPLE_ORDER,
@@ -832,6 +901,7 @@ describe("encodeChangeSet: order", () => {
   it("drops the position of an item moved to another folder", async () => {
     const keyring = await testKeyring();
     const result = await encodeChangeSet({
+      device: null,
       listing: await sampleListing(keyring),
       changeSet: [{ kind: "rename-note", from: ["Beta"], to: ["Docs", "Beta"] }],
       order: SAMPLE_ORDER,
@@ -847,6 +917,7 @@ describe("encodeChangeSet: order", () => {
   it("moves the positions inside a folder along with it", async () => {
     const keyring = await testKeyring();
     const result = await encodeChangeSet({
+      device: null,
       listing: await sampleListing(keyring),
       changeSet: [
         { kind: "create-folder", path: ["Archive"] },
@@ -867,6 +938,7 @@ describe("encodeChangeSet: order", () => {
   it("drops the positions of a trashed folder and everything in it", async () => {
     const keyring = await testKeyring();
     const result = await encodeChangeSet({
+      device: null,
       listing: await sampleListing(keyring),
       changeSet: [
         {
@@ -888,6 +960,7 @@ describe("encodeChangeSet: order", () => {
   it("leaves the order file alone when no position changes", async () => {
     const keyring = await testKeyring();
     const result = await encodeChangeSet({
+      device: null,
       listing: await sampleListing(keyring),
       changeSet: [
         { kind: "update-note", path: ["Alpha"], content: "edited" },
@@ -904,6 +977,7 @@ describe("encodeChangeSet: order", () => {
   it("writes nothing for positions when the stored order can't be read", async () => {
     const keyring = await testKeyring();
     const result = await encodeChangeSet({
+      device: null,
       listing: await sampleListing(keyring),
       changeSet: [
         {
@@ -926,6 +1000,7 @@ describe("encodeChangeSet: order", () => {
     const keyring = await testKeyring();
     await expect(
       encodeChangeSet({
+        device: null,
         listing: await sampleListing(keyring),
         changeSet: [
           {
@@ -971,6 +1046,7 @@ describe("encodeChangeSet: set-settings", () => {
     listing: TreeEntry[] = [],
   ): Promise<EncodedChangeSet> {
     return encodeChangeSet({
+      device: null,
       listing,
       changeSet,
       order: EMPTY_ORDER, tags: EMPTY_TAGS, shares: EMPTY_SHARES,
@@ -1114,6 +1190,7 @@ describe("encodeChangeSet: color tags", () => {
   it("writes only an encrypted tags upsert for a set-color-tag", async () => {
     const { keyring, listing } = await setup();
     const result = await encodeChangeSet({
+      device: null,
       listing,
       changeSet: [{ kind: "set-color-tag", path: ["Beta"], color: "blue" }],
       order: EMPTY_ORDER,
@@ -1131,6 +1208,7 @@ describe("encodeChangeSet: color tags", () => {
   it("commits a rename of a tagged note together with the updated tags", async () => {
     const { keyring, listing } = await setup();
     const result = await encodeChangeSet({
+      device: null,
       listing,
       changeSet: [{ kind: "rename-note", from: ["Alpha"], to: ["Gamma"] }],
       order: EMPTY_ORDER,
@@ -1148,6 +1226,7 @@ describe("encodeChangeSet: color tags", () => {
   it("leaves the tags file alone when renaming an untagged note", async () => {
     const { keyring, listing } = await setup();
     const result = await encodeChangeSet({
+      device: null,
       listing,
       changeSet: [{ kind: "rename-note", from: ["Beta"], to: ["Gamma"] }],
       order: EMPTY_ORDER,
@@ -1162,6 +1241,7 @@ describe("encodeChangeSet: color tags", () => {
   it("leaves the tags file alone when the tag already has that value", async () => {
     const { keyring, listing } = await setup();
     const result = await encodeChangeSet({
+      device: null,
       listing,
       changeSet: [
         { kind: "set-color-tag", path: ["Alpha"], color: "red" },
@@ -1179,6 +1259,7 @@ describe("encodeChangeSet: color tags", () => {
   it("adds no tag data and no trailer to the commit message", async () => {
     const { keyring, listing } = await setup();
     const withTag = await encodeChangeSet({
+      device: null,
       listing,
       changeSet: [
         { kind: "set-color-tag", path: ["Alpha"], color: "green" },
@@ -1190,6 +1271,7 @@ describe("encodeChangeSet: color tags", () => {
       keyring,
     });
     const without = await encodeChangeSet({
+      device: null,
       listing,
       changeSet: [{ kind: "update-note", path: ["Beta"], content: "x" }],
       order: EMPTY_ORDER,
@@ -1207,6 +1289,7 @@ describe("encodeChangeSet: color tags", () => {
     const unreadable = parseTagIndex("unreadable");
     expect(unreadable.writable).toBe(false);
     const result = await encodeChangeSet({
+      device: null,
       listing,
       changeSet: [
         { kind: "set-color-tag", path: ["Beta"], color: "blue" },
@@ -1225,6 +1308,7 @@ describe("encodeChangeSet: color tags", () => {
     const { keyring, listing } = await setup();
     await expect(
       encodeChangeSet({
+        device: null,
         listing,
         changeSet: [{ kind: "set-color-tag", path: ["Missing"], color: "red" }],
         order: EMPTY_ORDER,
@@ -1281,6 +1365,7 @@ describe("encodeChangeSet: shares", () => {
   ) {
     const { keyring, listing } = await setup();
     const result = await encodeChangeSet({
+      device: null,
       listing,
       changeSet,
       order: EMPTY_ORDER,

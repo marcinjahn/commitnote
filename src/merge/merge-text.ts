@@ -1,4 +1,8 @@
 import { diff3Merge } from "node-diff3";
+import {
+  type ConflictMarkerLabels,
+  PLAIN_CONFLICT_LABELS,
+} from "./conflict-labels";
 
 export interface ConflictHunk {
   readonly mine: string;
@@ -14,11 +18,33 @@ export type TextMergeResult =
       readonly hunks: readonly ConflictHunk[];
     };
 
-export const CONFLICT_MARKERS = {
-  mine: "<<<<<<< mine",
+export const CONFLICT_MARKER_PREFIX = {
+  mine: "<<<<<<<",
   separator: "=======",
-  theirs: ">>>>>>> theirs",
+  theirs: ">>>>>>>",
 } as const;
+
+export type ConflictMarkerKind = keyof typeof CONFLICT_MARKER_PREFIX;
+
+const MARKER_KINDS: readonly ConflictMarkerKind[] = [
+  "mine",
+  "separator",
+  "theirs",
+];
+
+export function conflictMarkerKind(line: string): ConflictMarkerKind | null {
+  const text = line.endsWith("\r") ? line.slice(0, -1) : line;
+  for (const kind of MARKER_KINDS) {
+    const prefix = CONFLICT_MARKER_PREFIX[kind];
+    if (
+      text.startsWith(prefix) &&
+      (text.length === prefix.length || text[prefix.length] === " ")
+    ) {
+      return kind;
+    }
+  }
+  return null;
+}
 
 function splitLines(text: string): string[] {
   return text.split("\n");
@@ -28,6 +54,7 @@ export function mergeText(
   base: string,
   mine: string,
   theirs: string,
+  labels: ConflictMarkerLabels = PLAIN_CONFLICT_LABELS,
 ): TextMergeResult {
   if (mine === theirs) {
     return { kind: "clean", text: mine };
@@ -55,11 +82,11 @@ export function mergeText(
       outLines.push(...region.ok);
     } else if (region.conflict) {
       const { a: mineHunk, b: theirsHunk, o: baseHunk } = region.conflict;
-      outLines.push(CONFLICT_MARKERS.mine);
+      outLines.push(`${CONFLICT_MARKER_PREFIX.mine} ${labels.mine}`);
       outLines.push(...mineHunk);
-      outLines.push(CONFLICT_MARKERS.separator);
+      outLines.push(CONFLICT_MARKER_PREFIX.separator);
       outLines.push(...theirsHunk);
-      outLines.push(CONFLICT_MARKERS.theirs);
+      outLines.push(`${CONFLICT_MARKER_PREFIX.theirs} ${labels.theirs}`);
       hunks.push({
         mine: mineHunk.join("\n"),
         base: baseHunk.join("\n"),

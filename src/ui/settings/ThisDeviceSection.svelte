@@ -1,4 +1,10 @@
 <script lang="ts">
+  import { DEVICE_NAME_MAX_LENGTH, normalizeDeviceName } from "../../settings/device-name";
+  import {
+    DEVICE_NAME_HINT,
+    DEVICE_NAME_LABEL,
+    type DeviceNameOption,
+  } from "./device-name-option";
   import {
     describeReopenLastViewUnavailable,
     REOPEN_LAST_VIEW_LABEL,
@@ -7,13 +13,44 @@
   import SettingRow from "./SettingRow.svelte";
   import { getStandalone } from "../standalone-context";
 
-  const { reopenLastView, remembered, onReopenLastViewChange }: ReopenLastViewOption =
-    $props();
+  const {
+    reopenLastView,
+    remembered,
+    onReopenLastViewChange,
+    deviceName,
+    automaticDeviceName,
+    onDeviceNameChange,
+  }: ReopenLastViewOption & DeviceNameOption = $props();
 
   const standalone = getStandalone();
   const hintId = "reopen-last-view-hint";
   const inputId = $props.id();
+  const deviceNameId = `${inputId}-device-name`;
+  const deviceNameHintId = `${inputId}-device-name-hint`;
+
+  function commitDeviceName(input: HTMLInputElement) {
+    onDeviceNameChange(input.value);
+    input.value = normalizeDeviceName(input.value) ?? "";
+  }
 </script>
+
+<SettingRow stacked hint={DEVICE_NAME_HINT} hintId={deviceNameHintId}>
+  {#snippet label()}
+    <label for={deviceNameId}>{DEVICE_NAME_LABEL}</label>
+  {/snippet}
+  <input
+    id={deviceNameId}
+    class="device-name-input"
+    type="text"
+    maxlength={DEVICE_NAME_MAX_LENGTH}
+    autocomplete="off"
+    spellcheck="false"
+    placeholder={automaticDeviceName}
+    value={deviceName ?? ""}
+    aria-describedby={deviceNameHintId}
+    onchange={(event) => commitDeviceName(event.currentTarget)}
+  />
+</SettingRow>
 
 <SettingRow
   {hintId}
@@ -33,3 +70,28 @@
     />
   </label>
 </SettingRow>
+
+<style>
+  .device-name-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--touch-target);
+    padding: 0 var(--space-2);
+    border: var(--hairline) solid var(--color-border-strong);
+    border-radius: var(--radius);
+    background: var(--color-surface-raised);
+    color: var(--color-text);
+    font: inherit;
+    transition: border-color var(--motion-duration) var(--motion-easing);
+  }
+
+  .device-name-input:focus {
+    border-color: var(--color-text);
+  }
+
+  @media (hover: hover) {
+    .device-name-input:hover {
+      border-color: var(--color-text);
+    }
+  }
+</style>

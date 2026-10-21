@@ -1,6 +1,6 @@
 import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { parentPath } from "../changes/change";
-import { CONFLICT_MARKERS } from "../merge/merge-text";
+import { conflictMarkerKind } from "../merge/merge-text";
 
 type OutOfSyncReason = "pending" | "failed" | "conflict";
 
@@ -160,21 +160,12 @@ export function computeSyncStates(input: {
 }
 
 export function removeConflictMarkerLines(text: string): string {
-  const markers: readonly string[] = Object.values(CONFLICT_MARKERS);
   return text
     .split("\n")
-    .filter((rawLine) => {
-      const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
-      return !markers.includes(line);
-    })
+    .filter((line) => conflictMarkerKind(line) === null)
     .join("\n");
 }
 
 export function hasConflictMarkers(text: string): boolean {
-  const markers: readonly string[] = Object.values(CONFLICT_MARKERS);
-  for (const rawLine of text.split("\n")) {
-    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
-    if (markers.includes(line)) return true;
-  }
-  return false;
+  return text.split("\n").some((line) => conflictMarkerKind(line) !== null);
 }

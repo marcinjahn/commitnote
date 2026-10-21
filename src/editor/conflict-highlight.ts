@@ -6,7 +6,7 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from "@codemirror/view";
-import { CONFLICT_MARKERS } from "../merge/merge-text";
+import { conflictMarkerKind } from "../merge/merge-text";
 
 const conflictHighlightBaseTheme = EditorView.baseTheme({
   ".cm-conflict-marker": {
@@ -31,17 +31,19 @@ export function buildConflictDecorations(state: EditorState): DecorationSet {
   for (let lineNumber = 1; lineNumber <= state.doc.lines; lineNumber++) {
     const line = state.doc.line(lineNumber);
 
-    if (line.text === CONFLICT_MARKERS.mine) {
+    const kind = conflictMarkerKind(line.text);
+
+    if (kind === "mine") {
       decorations.push(
         Decoration.line({ class: "cm-conflict-marker" }).range(line.from),
       );
       region = "mine";
-    } else if (line.text === CONFLICT_MARKERS.separator) {
+    } else if (kind === "separator") {
       decorations.push(
         Decoration.line({ class: "cm-conflict-marker" }).range(line.from),
       );
       region = region === "mine" ? "theirs" : "none";
-    } else if (line.text === CONFLICT_MARKERS.theirs) {
+    } else if (kind === "theirs") {
       decorations.push(
         Decoration.line({ class: "cm-conflict-marker" }).range(line.from),
       );

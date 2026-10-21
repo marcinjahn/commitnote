@@ -46,6 +46,7 @@ export interface SampleNotesRepo {
   }[];
 }
 
+export const SAMPLE_DEVICE_NAME = "Sample device";
 const SEED = 0x676e6f74;
 const LARGE_TREE_SEED = 0x6c617267;
 const TRASH_SEED = 0x74726173;
@@ -152,7 +153,11 @@ async function generateRepo(
 
   const repo = new InMemoryGitRepo();
 
-  const commit1Message = encodeInitializeMessage();
+  const commit1Message = await encodeInitializeMessage({
+    name: SAMPLE_DEVICE_NAME,
+    contentKey: keyring.contentKey,
+    random,
+  });
   const commit1Tree = await repo.putTree(
     new Map([[REPO_CONFIG_PATH, await repo.putBlob(configText)]]),
   );
@@ -177,6 +182,7 @@ async function generateRepo(
       shares: EMPTY_SHARES,
       keyring,
       random,
+      device: SAMPLE_DEVICE_NAME,
     });
     orderIndex = changeSet.reduce(applyChangeToOrder, orderIndex);
     tagIndex = changeSet.reduce(applyChangeToTags, tagIndex);

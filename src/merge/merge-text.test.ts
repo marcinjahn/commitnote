@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { CONFLICT_MARKERS, mergeText } from "./merge-text";
+import { PLAIN_CONFLICT_LABELS } from "./conflict-labels";
+import {
+  CONFLICT_MARKER_PREFIX,
+  conflictMarkerKind,
+  mergeText,
+} from "./merge-text";
+
+const MINE_MARKER = `${CONFLICT_MARKER_PREFIX.mine} ${PLAIN_CONFLICT_LABELS.mine}`;
+const SEPARATOR_MARKER = CONFLICT_MARKER_PREFIX.separator;
+const THEIRS_MARKER = `${CONFLICT_MARKER_PREFIX.theirs} ${PLAIN_CONFLICT_LABELS.theirs}`;
 
 describe("mergeText", () => {
   it("merges non-overlapping edits on different lines cleanly", () => {
@@ -31,7 +40,7 @@ describe("mergeText", () => {
 
     expect(result).toEqual({
       kind: "conflict",
-      text: `a\n${CONFLICT_MARKERS.mine}\nB1\n${CONFLICT_MARKERS.separator}\nB2\n${CONFLICT_MARKERS.theirs}\nc`,
+      text: `a\n${MINE_MARKER}\nB1\n${SEPARATOR_MARKER}\nB2\n${THEIRS_MARKER}\nc`,
       hunks: [{ mine: "B1", base: "b", theirs: "B2" }],
     });
   });
@@ -45,7 +54,7 @@ describe("mergeText", () => {
 
     expect(result).toEqual({
       kind: "conflict",
-      text: `Before\nunchanged\n${CONFLICT_MARKERS.mine}\nB1\n${CONFLICT_MARKERS.separator}\nB2\n${CONFLICT_MARKERS.theirs}\nafter`,
+      text: `Before\nunchanged\n${MINE_MARKER}\nB1\n${SEPARATOR_MARKER}\nB2\n${THEIRS_MARKER}\nafter`,
       hunks: [{ mine: "B1", base: "conflict", theirs: "B2" }],
     });
   });
@@ -79,7 +88,7 @@ describe("mergeText", () => {
 
     expect(result).toEqual({
       kind: "conflict",
-      text: `${CONFLICT_MARKERS.mine}\nmine content\n${CONFLICT_MARKERS.separator}\ntheirs content\n${CONFLICT_MARKERS.theirs}`,
+      text: `${MINE_MARKER}\nmine content\n${SEPARATOR_MARKER}\ntheirs content\n${THEIRS_MARKER}`,
       hunks: [{ mine: "mine content", base: "", theirs: "theirs content" }],
     });
   });
@@ -112,5 +121,70 @@ describe("mergeText", () => {
     const result = mergeText(base, mine, theirs);
 
     expect(result).toEqual({ kind: "clean", text: "a\nanchor\nC" });
+  });
+});
+
+describe("mergeText labels", () => {
+  it("emits custom labels, including odd characters, on the marker lines", () => {
+    const result = mergeText("a\nb\nc", "a\nB1\nc", "a\nB2\nc", {
+      mine: "This device · <é=ü> 日本",
+      theirs: "Other device · >>>> ===",
+    });
+
+    expect(result).toEqual({
+      kind: "conflict",
+      text: "a\n<<<<<<< This device · <é=ü> 日本\nB1\n=======\nB2\n>>>>>>> Other device · >>>> ===\nc",
+      hunks: [{ mine: "B1", base: "b", theirs: "B2" }],
+    });
+  });
+
+  it("recognises every emitted marker line by prefix", () => {
+    const result = mergeText("a\nb\nc", "a\nB1\nc", "a\nB2\nc", {
+      mine: "x · <<<<<<<",
+      theirs: "y · =======",
+    });
+
+    expect(result.text.split("\n").map(conflictMarkerKind)).toEqual([
+      null,
+      "mine",
+      null,
+      "separator",
+      null,
+      "theirs",
+      null,
+    ]);
+  });
+});
+
+describe("conflictMarkerKind", () => {
+  it.each([
+    ["<<<<<<< This device", "mine"],
+    ["<<<<<<< This device · Pixel app", "mine"],
+    ["<<<<<<< mine", "mine"],
+    ["<<<<<<<", "mine"],
+    ["<<<<<<< mine\r", "mine"],
+    ["=======", "separator"],
+    ["=======\r", "separator"],
+    [">>>>>>> Other device · Laptop", "theirs"],
+    [">>>>>>> theirs", "theirs"],
+    [">>>>>>>", "theirs"],
+    [">>>>>>>\r", "theirs"],
+  ] as const)("classifies %j as %s", (line, kind) => {
+    expect(conflictMarkerKind(line)).toBe(kind);
+  });
+
+  it.each([
+    "<<<<<<<<",
+    "<<<<<<<x",
+    "<<<<<<",
+    "========",
+    "=======x",
+    ">>>>>>>>",
+    ">>>>>>>x",
+    " <<<<<<< mine",
+    "text <<<<<<< mine",
+    "",
+  ])("rejects %j", (line) => {
+    expect(conflictMarkerKind(line)).toBeNull();
   });
 });
