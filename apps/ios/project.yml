@@ -24,6 +24,8 @@ packages:
     path: Packages/NativeCoreAPI
   EditorText:
     path: Packages/EditorText
+  MarkdownStyling:
+    path: Packages/MarkdownStyling
   CoreRuntime:
     path: Packages/CoreRuntime
 targets:
@@ -41,6 +43,8 @@ targets:
         product: NativeCoreAPI
       - package: EditorText
         product: EditorText
+      - package: MarkdownStyling
+        product: MarkdownStyling
     settings:
       base:
         PRODUCT_NAME: commitnote

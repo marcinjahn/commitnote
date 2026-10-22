@@ -41,6 +41,8 @@ What the app does:
 - `Packages/CommitnoteCrypto` — Swift crypto primitives, checked against the test vectors.
 - `Packages/NativeCoreAPI` — Swift types for the native core API and native core API version.
 - `Packages/EditorText` — pure Swift text-edit mapping and undo history, tested on Linux.
+- `Packages/MarkdownStyling` — pure Swift, tested on Linux: the markdown syntax scanner, the
+  live-preview style runs and the editing commands. Depends on `EditorText`.
 - `Packages/CoreRuntime` — the core runtime (Apple platforms only).
 - `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `disable-password-autofill.sh`,
   `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.

@@ -42,6 +42,7 @@ jobs:
           (cd apps/ios/Packages/CommitnoteCrypto && swift test)
           (cd apps/ios/Packages/NativeCoreAPI && swift test)
           (cd apps/ios/Packages/EditorText && swift test)
+          (cd apps/ios/Packages/MarkdownStyling && swift test)
 
       - name: Boot simulator
         run: |
