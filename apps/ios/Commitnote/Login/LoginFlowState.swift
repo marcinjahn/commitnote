@@ -84,8 +84,10 @@ final class LoginFlowState {
         tokenError = nil
         listing = true
         defer { listing = false }
+        let requested = token
         do {
-            let listed = try await model.listRepositories(forge: forgeID, token: token)
+            let listed = try await model.listRepositories(forge: forgeID, token: requested)
+            guard token == requested else { return }
             guard !listed.isEmpty else {
                 tokenError = .noRepositories
                 return
@@ -97,6 +99,7 @@ final class LoginFlowState {
             }
             path = [.repositories]
         } catch {
+            guard token == requested else { return }
             tokenError = .message(Self.message(for: error))
         }
     }

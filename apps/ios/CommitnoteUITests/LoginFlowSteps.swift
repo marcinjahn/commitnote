@@ -1,8 +1,12 @@
 import XCTest
 
 extension XCTestCase {
-    func submitToken(_ token: String, in app: XCUIApplication) {
-        typeInto(app.secureTextFields["login-token-field"], token, in: app)
+    func submitToken(_ token: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let field = app.secureTextFields["login-token-field"]
+        typeInto(field, token, in: app)
+        XCTAssertTrue(
+            poll(timeout: 20) { (field.value as? String)?.count == token.count },
+            "Typed token length", file: file, line: line)
         app.buttons["login-continue-button"].tap()
     }
 
