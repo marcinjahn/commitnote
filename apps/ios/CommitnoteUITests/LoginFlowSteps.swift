@@ -9,6 +9,7 @@ extension XCTestCase {
     func pickRepository(_ label: String, in app: XCUIApplication) {
         let row = app.element("login-repository-row", labelEndingWith: label)
         waitFor(row)
+        waitUntilSettled(row)
         row.tap()
     }
 
@@ -43,10 +44,8 @@ extension XCTestCase {
         waitFor(folder, file: file, line: line)
         XCTAssertTrue(hasCount(beside: folder, in: app), "Collapsed folder shows its note count", file: file, line: line)
         folder.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        let countGone = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in !self.hasCount(beside: folder, in: app) }, object: nil)
-        XCTAssertEqual(
-            XCTWaiter().wait(for: [countGone], timeout: 20), .completed, "Expanded folder hides its note count",
+        XCTAssertTrue(
+            poll(timeout: 20) { !self.hasCount(beside: folder, in: app) }, "Expanded folder hides its note count",
             file: file, line: line)
     }
 }

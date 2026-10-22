@@ -9,16 +9,7 @@ enum SampleNote {
 
 extension XCTestCase {
     func resumeNotes(appearance: Appearance = .light) -> XCUIApplication {
-        let app = launchApp(reset: false, appearance: appearance)
-        let tree = app.element("notes-tree")
-        let tokenField = app.secureTextFields["login-token-field"]
-        let ready = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in tree.exists || tokenField.exists }, object: nil)
-        XCTAssertEqual(XCTWaiter().wait(for: [ready], timeout: 30), .completed, "Notes or login screen appears")
-        if !tree.exists {
-            logInToNotes(in: app)
-        }
-        return app
+        resumeAtTree(appearance: appearance)
     }
 
     func waitUntil(
@@ -64,7 +55,12 @@ extension XCTestCase {
 
     func hittable(_ query: XCUIElementQuery, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
         waitFor(query.firstMatch, file: file, line: line)
-        return query.allElementsBoundByIndex.first { $0.exists && $0.isHittable } ?? query.firstMatch
+        var found: XCUIElement?
+        poll(timeout: 10) {
+            found = query.allElementsBoundByIndex.first { $0.exists && $0.isHittable }
+            return found != nil
+        }
+        return found ?? query.firstMatch
     }
 
     func syncStatus(in app: XCUIApplication) -> XCUIElement {
@@ -76,8 +72,12 @@ extension XCTestCase {
     }
 
     func useTestingMenu(_ item: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        hittable(app.buttons.matching(identifier: "testing-menu"), file: file, line: line).tap()
         let button = app.buttons[item]
+        // A tap while another menu is still closing finds no hit point and opens nothing.
+        for _ in 0..<3 {
+            hittable(app.buttons.matching(identifier: "testing-menu"), file: file, line: line).tap()
+            if appears(button, within: 5) { break }
+        }
         waitFor(button, file: file, line: line)
         button.tap()
         waitUntilGone(button, file: file, line: line)
@@ -117,7 +117,7 @@ extension XCTestCase {
     func focusEditor(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
         let editor = self.editor(in: app)
         waitFor(editor, file: file, line: line)
-        if !((editor.value(forKey: "hasKeyboardFocus") as? Bool) ?? false) {
+        if !hasKeyboardFocus(editor) {
             editor.tap()
         }
         waitForFocus(editor, file: file, line: line)
@@ -142,11 +142,12 @@ extension XCTestCase {
         selectFirstLine(in: app).typeText(text)
     }
 
-    /// The simulator drops the first hardware key after a tap brings up the keyboard, so the
-    /// idempotent move to the start or end of the text is sent twice.
+    /// The simulator drops hardware keys for a moment after a tap brings up the keyboard, so the
+    /// idempotent move to the start or end of the text is sent three times.
     private func moveCaret(_ key: XCUIKeyboardKey, in editor: XCUIElement) {
-        editor.typeKey(key, modifierFlags: .command)
-        editor.typeKey(key, modifierFlags: .command)
+        for _ in 0..<3 {
+            editor.typeKey(key, modifierFlags: .command)
+        }
     }
 
     /// Leaves an unsaved edit of Welcome behind a passphrase change made on another device. Going
@@ -202,7 +203,7 @@ extension XCTestCase {
         let close = app.buttons["Close"]
         if dismissRegion.exists {
             dismissRegion.tap()
-        } else if close.waitForExistence(timeout: 5), close.isHittable {
+        } else if appears(close, within: 5), close.isHittable {
             close.tap()
         } else {
             sheet.swipeDown(velocity: .fast)

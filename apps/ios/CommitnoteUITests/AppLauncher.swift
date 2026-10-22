@@ -19,12 +19,16 @@ var isPad: Bool {
     UIDevice.current.userInterfaceIdiom == .pad
 }
 
-func launchApp(reset: Bool, appearance: Appearance = .light) -> XCUIApplication {
+func launchApp(reset: Bool, appearance: Appearance = .light, holdLoading: Bool = false) -> XCUIApplication {
     let app = XCUIApplication()
     if reset {
         app.launchEnvironment["COMMITNOTE_UI_TEST_RESET"] = "1"
     }
     app.launchEnvironment["COMMITNOTE_UI_APPEARANCE"] = appearance.rawValue
+    if holdLoading {
+        app.launchEnvironment["COMMITNOTE_UI_HOLD_LOADING"] = "1"
+    }
+    prepareAnimationIdleForLaunch()
     app.launch()
     return app
 }
@@ -51,9 +55,26 @@ extension XCUIElement {
 }
 
 extension XCTestCase {
+    /// XCTest's own waits first look a second after they start and then once a second, which adds
+    /// up to minutes over a suite, so conditions are checked at once and then every quarter second.
+    @discardableResult
+    func poll(timeout: TimeInterval, until condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() >= deadline {
+                return false
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return true
+    }
+
+    func appears(_ element: XCUIElement, within timeout: TimeInterval) -> Bool {
+        poll(timeout: timeout) { element.exists }
+    }
+
     func waitFor(_ element: XCUIElement, timeout: TimeInterval = 20, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(
-            element.waitForExistence(timeout: timeout), "Expected \(element) to exist", file: file, line: line)
+        XCTAssertTrue(appears(element, within: timeout), "Expected \(element) to exist", file: file, line: line)
     }
 
     func scrollToReveal(_ element: XCUIElement, in app: XCUIApplication) {

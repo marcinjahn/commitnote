@@ -8,10 +8,38 @@ struct ReadBackScenario: Encodable {
         var text: String
     }
 
+    struct Order: Encodable {
+        var parent: [String]
+        var names: [String]
+    }
+
+    struct Tag: Encodable {
+        var path: [String]
+        var tag: ColorTag?
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(path, forKey: .path)
+            try container.encode(tag, forKey: .tag)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case path, tag
+        }
+    }
+
+    struct Trash: Encodable {
+        var count: Int
+        var names: [String]
+    }
+
     struct Expectation: Encodable {
         var initialized: Bool
         var notes: [Note]
         var folders: [[String]]? = nil
+        var order: [Order]? = nil
+        var tags: [Tag]? = nil
+        var trash: Trash? = nil
         var deviceName: String
     }
 
@@ -54,6 +82,16 @@ enum ReadBackOutput {
         }
     }
 }
+
+protocol StructureResult {
+    var outcome: StructureOutcome { get }
+}
+
+extension NodeRename.Result: StructureResult {}
+extension NodeMove.Result: StructureResult {}
+extension NodePlace.Result: StructureResult {}
+extension NodeSetColorTag.Result: StructureResult {}
+extension TrashRestore.Result: StructureResult {}
 
 final class ReadBackTests: RuntimeTestCase {
     private static let initializePassphrase = "native read-back passphrase"
@@ -214,5 +252,75 @@ final class ReadBackTests: RuntimeTestCase {
                 notes: [.init(path: ["Welcome"], text: localText)],
                 deviceName: runtime.deviceModel))
         try ReadBackOutput.write(scenario, fileName: "conflict.json", to: self)
+    }
+
+    func testOrganisedRepoReadsBack() async throws {
+        let runtime = try await makeRuntime()
+        try await runtime.logIn(repo: "sample/notes", passphrase: sampleNotesPassphrase)
+        let sampleNotes = try await runtime.send(FakeExpectedSampleNotes()).notes
+        func textOf(_ path: [String]) throws -> String {
+            try XCTUnwrap(sampleNotes.first { $0.path == path }).text
+        }
+        func structure<C: NativeCoreCommand>(_ command: C) async throws -> [String]
+        where C.Result: StructureResult {
+            let outcome = try await runtime.send(command).outcome
+            guard case .ok(let path) = outcome else {
+                throw TestTimeout(description: "\(C.name) returned \(outcome)")
+            }
+            return path
+        }
+        func trash(_ path: [String]) async throws -> String {
+            let outcome = try await runtime.send(NodeTrash(path: path, shareCount: 0)).outcome
+            guard case .trashed(let entryId) = outcome else {
+                throw TestTimeout(description: "node.trash returned \(outcome)")
+            }
+            return entryId
+        }
+
+        let welcome = ["Welcome"]
+        let polish = ["Zażółć gęślą jaźń"]
+        let roadmap = ["Projects", "commitnote", "Roadmap"]
+        let welcomeText = try textOf(welcome)
+        let polishText = try textOf(polish)
+        let roadmapText = try textOf(roadmap)
+
+        let renamed = try await structure(NodeRename(path: welcome, name: "Hello"))
+        let moved = try await structure(NodeMove(path: polish, parent: ["Projects"]))
+        _ = try await structure(NodePlace(path: renamed, parent: [], before: "Empty folder"))
+        _ = try await structure(NodeSetColorTag(path: renamed, tag: .yellow))
+        _ = try await trash(["Journal", "2026", "Whiteboard"])
+        let folderEntry = try await trash(["Projects", "commitnote"])
+        let restored = try await structure(
+            TrashRestore(entryId: folderEntry, subPath: ["Roadmap"], parent: []))
+
+        let flushed = try await runtime.send(SyncFlush()).result
+        XCTAssertEqual(flushed, .saved)
+
+        let scenario = ReadBackScenario(
+            name: "ios organise",
+            passphrase: sampleNotesPassphrase,
+            exported: try await runtime.exportRepo("sample/notes"),
+            expect: .init(
+                initialized: false,
+                notes: [
+                    .init(path: renamed, text: welcomeText),
+                    .init(path: moved, text: polishText),
+                    .init(path: restored, text: roadmapText),
+                ],
+                folders: [["Projects"], ["Journal", "2026"]],
+                order: [
+                    .init(
+                        parent: [],
+                        names: ["Hello", "Empty folder", "Journal", "Projects", "Roadmap"])
+                ],
+                tags: [
+                    .init(path: renamed, tag: .yellow),
+                    .init(path: moved, tag: .purple),
+                    .init(path: restored, tag: .blue),
+                    .init(path: ["Journal", "2026", "January"], tag: .orange),
+                ],
+                trash: .init(count: 2, names: ["Whiteboard", "commitnote"]),
+                deviceName: runtime.deviceModel))
+        try ReadBackOutput.write(scenario, fileName: "organise.json", to: self)
     }
 }

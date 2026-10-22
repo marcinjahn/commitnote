@@ -98,3 +98,19 @@ struct FakeTimerProbe: NativeCoreCommand {
         try container.encode(cancelIndex, forKey: .cancelIndex)
     }
 }
+
+struct FakeShareNote: NativeCoreCommand {
+    static let name = "fake.shareNote"
+    typealias Result = Empty
+    var path: [String]
+}
+
+struct FakeHoldLoading: NativeCoreCommand {
+    static let name = "fake.holdLoading"
+    typealias Result = Empty
+}
+
+struct FakeReleaseLoading: NativeCoreCommand {
+    static let name = "fake.releaseLoading"
+    typealias Result = Empty
+}

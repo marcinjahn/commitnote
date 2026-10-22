@@ -110,7 +110,7 @@ final class EditingFlowTests: XCTestCase {
         leaveNote(in: app)
         waitFor(timestamped)
 
-        let labelsBefore = treeNoteLabels(in: app)
+        let labelsBefore = sortedTreeNoteLabels(in: app)
         hittable(newNote).tap()
         waitForFocus(nameField)
         if isPad {
@@ -119,7 +119,7 @@ final class EditingFlowTests: XCTestCase {
             leaveNote(in: app)
         }
         waitUntilGone(nameField)
-        XCTAssertEqual(treeNoteLabels(in: app), labelsBefore, "An untouched draft leaves no note")
+        XCTAssertEqual(sortedTreeNoteLabels(in: app), labelsBefore, "An untouched draft leaves no note")
 
         hittable(newNote).tap()
         waitForFocus(nameField)
@@ -277,7 +277,7 @@ final class EditingFlowTests: XCTestCase {
         XCTAssertFalse(app.element("key-changed-export-error").exists)
     }
 
-    private func treeNoteLabels(in app: XCUIApplication) -> [String] {
+    private func sortedTreeNoteLabels(in app: XCUIApplication) -> [String] {
         app.elements("tree-note").allElementsBoundByIndex.map(\.label).sorted()
     }
 }
