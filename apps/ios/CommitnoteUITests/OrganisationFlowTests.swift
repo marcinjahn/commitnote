@@ -3,6 +3,9 @@ import XCTest
 final class OrganisationFlowTests: XCTestCase {
     private static var loggedIn = false
     private static let timestampName = "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}.*"
+    /// Loading the tree and then saving the early draft as a note takes over 20 seconds on a slow
+    /// simulator.
+    private static let loadingTimeout: TimeInterval = 45
 
     override func setUp() {
         continueAfterFailure = false
@@ -290,7 +293,7 @@ final class OrganisationFlowTests: XCTestCase {
         waitForValue(body, "Milk and eggs")
 
         tapRevealed(app.buttons["testing-finish-loading"], in: app)
-        waitForText(editor(in: app), startingWith: "Milk and eggs")
+        waitForText(editor(in: app), startingWith: "Milk and eggs", timeout: Self.loadingTimeout)
         waitForValue(app.textFields["note-title-field"], "Groceries")
         waitForValue(syncStatus(in: app), "synced")
     }
@@ -307,7 +310,7 @@ final class OrganisationFlowTests: XCTestCase {
 
         tapRevealed(app.buttons["testing-stop-failing-loading"], in: app)
         tapRevealed(app.buttons["loading-try-again-button"], in: app)
-        waitForText(editor(in: app), startingWith: "Written while loading")
+        waitForText(editor(in: app), startingWith: "Written while loading", timeout: Self.loadingTimeout)
         waitUntil(
             app.textFields["note-title-field"], NSPredicate(format: "value MATCHES %@", Self.timestampName))
     }

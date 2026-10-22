@@ -38,15 +38,22 @@ extension XCTestCase {
     }
 
     func waitForText(
-        _ editor: XCUIElement, startingWith text: String, file: StaticString = #filePath, line: UInt = #line
+        _ editor: XCUIElement, startingWith text: String, timeout: TimeInterval? = nil,
+        file: StaticString = #filePath, line: UInt = #line
     ) {
-        waitFor(editor, file: file, line: line)
-        waitUntil(editor, NSPredicate(format: "value BEGINSWITH %@", text), file: file, line: line)
+        waitFor(editor, timeout: timeout ?? 20, file: file, line: line)
+        waitUntil(
+            editor, NSPredicate(format: "value BEGINSWITH %@", text), timeout: timeout ?? 30, file: file, line: line)
     }
 
-    func waitForFocus(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+    /// On a slow simulator a single focus check can take several seconds, and focus the app moves
+    /// itself, as from a draft's name to its editor, follows a save.
+    func waitForFocus(
+        _ element: XCUIElement, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line
+    ) {
         waitFor(element, file: file, line: line)
-        waitUntil(element, NSPredicate(format: "hasKeyboardFocus == true"), timeout: 10, file: file, line: line)
+        waitUntil(
+            element, NSPredicate(format: "hasKeyboardFocus == true"), timeout: timeout, file: file, line: line)
     }
 
     func waitUntilGone(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
@@ -129,8 +136,10 @@ extension XCTestCase {
     func focusEditor(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
         let editor = self.editor(in: app)
         waitFor(editor, file: file, line: line)
-        if !hasKeyboardFocus(editor) {
+        // A tap that lands while the editor is still being set up does not focus it.
+        for _ in 0..<2 where !hasKeyboardFocus(editor) {
             editor.tap()
+            if poll(timeout: 15, until: { self.hasKeyboardFocus(editor) }) { break }
         }
         waitForFocus(editor, file: file, line: line)
         return editor

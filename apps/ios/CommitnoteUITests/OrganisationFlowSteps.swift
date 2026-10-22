@@ -224,24 +224,40 @@ extension XCTestCase {
     }
 
     /// Tree rows also open a context menu on a long press, which can swallow a synthesized drag,
-    /// so a few press timings are tried, closing the menu in between.
+    /// so a few press timings are tried. A menu left open by an attempt would take the next press,
+    /// so it is closed first, and the row has to stand still, since a press that comes late on a
+    /// slow simulator scrolls the list instead of lifting the row.
     func drag(
         _ source: XCUIElement, onto target: XCUIElement, in app: XCUIApplication,
         until dropped: @escaping () -> Bool, file: StaticString = #filePath, line: UInt = #line
     ) {
         let attempts: [(press: TimeInterval, velocity: XCUIGestureVelocity)] = [
-            (0.5, .fast), (0.8, .default), (1.2, .slow),
+            (0.5, .fast), (0.8, .default), (1.2, .slow), (0.5, .fast),
         ]
-        for attempt in attempts {
-            let start = source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            let end = target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            start.press(
-                forDuration: attempt.press, thenDragTo: end, withVelocity: attempt.velocity,
-                thenHoldForDuration: 1.0)
-            if poll(timeout: 5, until: dropped) { return }
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.01)).tap()
+        whileMenuIsOpen {
+            for attempt in attempts {
+                closeTreeMenu(in: app, file: file, line: line)
+                waitFullyBeforeNextMenuEvent()
+                waitUntilSettled(source, file: file, line: line)
+                let start = source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                let end = target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                start.press(
+                    forDuration: attempt.press, thenDragTo: end, withVelocity: attempt.velocity,
+                    thenHoldForDuration: 1.0)
+                if poll(timeout: 5, until: dropped) { return }
+            }
+            XCTFail("The drag was not dropped", file: file, line: line)
         }
-        XCTFail("The drag was not dropped", file: file, line: line)
+    }
+
+    /// A tap on the status bar does not reach a context menu, while a tap on its dimmed backdrop
+    /// closes it without reaching the view below.
+    func closeTreeMenu(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let item = actionButtons("tree-action-rename", label: "Rename…", in: app).firstMatch
+        guard item.exists else { return }
+        let menuInUpperHalf = item.frame.midY < app.frame.midY
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: menuInUpperHalf ? 0.9 : 0.15)).tap()
+        waitUntilGone(item, file: file, line: line)
     }
 
     /// A selection made with keys reaches the editor a moment after the key event, while toolbar
@@ -281,6 +297,23 @@ extension XCTestCase {
     func selectAll(in field: XCUIElement) {
         field.typeKey("a", modifierFlags: .command)
         field.typeKey("a", modifierFlags: .command)
+    }
+
+    /// A hardware key can hide the keyboard and take the editor's focus for a while before the
+    /// selection shows up, so typing waits for both, and the key is sent again if it was dropped.
+    func selectAllText(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let selection = app.element("testing-editor-selection")
+        for _ in 0..<3 {
+            let editor = focusEditor(in: app, file: file, line: line)
+            editor.typeKey("a", modifierFlags: .command)
+            let selectedAll = poll(timeout: 20) {
+                let length = ((editor.value as? String) ?? "").utf16.count
+                return length > 0 && selection.exists && (selection.value as? String) == "\(length)"
+                    && self.hasKeyboardFocus(editor)
+            }
+            if selectedAll { return }
+        }
+        XCTFail("Expected the editor to select all its text", file: file, line: line)
     }
 
     /// Keys sent while the keyboard is still coming up can all be dropped, so the text is typed

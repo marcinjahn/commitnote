@@ -221,8 +221,7 @@ final class EditingFlowTests: XCTestCase {
         let editor = self.editor(in: app)
         waitForText(editor, containing: "<<<<<<<")
 
-        focusEditor(in: app)
-        editor.typeKey("a", modifierFlags: .command)
+        selectAllText(in: app)
         editor.typeText("Merged by hand")
         waitForValue(syncStatus(in: app), "synced")
         waitUntilGone(app.element("conflict-edit-hint"))
