@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openNotes } from "./helpers";
-import { openWelcome } from "./helpers/tree";
+import { openWelcome, treeItem } from "./helpers/tree";
 
 const MOBILE = { tag: "@mobile-only" } as const;
 
@@ -72,3 +72,42 @@ test("the login screen stays below the top inset", MOBILE, async ({ page }) => {
     .poll(async () => (await card.boundingBox())?.y)
     .toBeGreaterThanOrEqual(48);
 });
+
+test(
+  "the floating New note button clears the bottom inset and the last row",
+  MOBILE,
+  async ({ page }) => {
+    await page.setViewportSize({ width: 412, height: 560 });
+    await overrideInsets(page, { top: 0, bottom: 34, left: 0, right: 0 });
+    await openNotes(page);
+    await treeItem(page, "Journal").click();
+    await treeItem(page, "Projects").click();
+
+    const container = page.locator(".tree-container");
+    await expect
+      .poll(() =>
+        container.evaluate((el) => el.scrollHeight > el.clientHeight),
+      )
+      .toBe(true);
+
+    const button = page.getByRole("button", { name: "New note", exact: true });
+    const viewportHeight = page.viewportSize()!.height;
+    await expect
+      .poll(async () => {
+        const box = (await button.boundingBox())!;
+        return box.y + box.height;
+      })
+      .toBeLessThanOrEqual(viewportHeight - 34);
+
+    await container.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect
+      .poll(async () => {
+        const last = (await treeItem(page, /./).last().boundingBox())!;
+        const top = (await button.boundingBox())!.y;
+        return last.y + last.height <= top;
+      })
+      .toBe(true);
+  },
+);

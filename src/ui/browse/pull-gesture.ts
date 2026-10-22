@@ -18,7 +18,7 @@ export interface PullClock {
 export interface PullGestureOptions {
   enabled: boolean;
   atTop: () => boolean;
-  canStart?: () => boolean;
+  canStart?: (event: TouchEvent) => boolean;
   content: () => HTMLElement | null;
   indicator: () => HTMLElement | null;
   onChange: (phase: PullPhase) => void;
@@ -243,7 +243,7 @@ export function pullGesture(
       state.phase !== "idle" ||
       event.touches.length !== 1 ||
       !options.atTop() ||
-      !(options.canStart?.() ?? true)
+      !(options.canStart?.(event) ?? true)
     ) {
       return;
     }

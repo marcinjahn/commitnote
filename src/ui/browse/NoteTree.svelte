@@ -412,6 +412,14 @@
     scroll-padding-bottom: var(--toast-stack-height, 0px);
   }
 
+  @media (max-width: 767px) {
+    .tree-container {
+      padding-bottom: calc(
+        56px + var(--space-4) + var(--space-4) + env(safe-area-inset-bottom, 0px)
+      );
+    }
+  }
+
   @media (max-height: 480px) {
     .tree-container {
       flex: 1 0 auto;
