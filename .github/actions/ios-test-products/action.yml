@@ -1,0 +1,33 @@
+name: iOS test products
+description: Unpacks the build job's products into out/products and sets XCTESTRUN for test-without-building.
+
+runs:
+  using: composite
+  steps:
+    - name: Download and unpack test products
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -eu
+        # A download now and then unpacks into a truncated archive, so a broken one is fetched again.
+        for attempt in 1 2 3; do
+          rm -rf out/download out/products
+          mkdir -p out/download out/products
+          if gh run download "$GITHUB_RUN_ID" -R "$GITHUB_REPOSITORY" -n ios-test-products -D out/download \
+            && tar -C out/products -xf out/download/test-products.tar; then
+            break
+          fi
+          if [ "$attempt" = 3 ]; then
+            echo "could not download the test products" >&2
+            exit 1
+          fi
+          echo "test products attempt $attempt failed, downloading again" >&2
+        done
+        rm -rf out/download
+        XCTESTRUN=$(find "$PWD/out/products" -maxdepth 1 -name '*.xctestrun' | head -n 1)
+        if [ -z "$XCTESTRUN" ]; then
+          echo "no .xctestrun in the test products" >&2
+          exit 1
+        fi
+        echo "XCTESTRUN=$XCTESTRUN" >> "$GITHUB_ENV"

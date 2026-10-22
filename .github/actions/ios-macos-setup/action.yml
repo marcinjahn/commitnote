@@ -1,5 +1,5 @@
 name: iOS macOS setup
-description: Node, native core build, Xcode selection and project generation for the macOS jobs.
+description: Node, native core build, Xcode selection and project generation for the macOS jobs that build.
 
 runs:
   using: composite
@@ -15,18 +15,7 @@ runs:
     - run: npm run build:native-core
       shell: bash
 
-    - name: Select Xcode
-      shell: bash
-      run: |
-        set -eu
-        APP="/Applications/Xcode_${XCODE_VERSION}.app"
-        if [ ! -d "$APP" ]; then
-          echo "$APP is not installed. Installed Xcodes:" >&2
-          ls -d /Applications/Xcode*.app >&2
-          exit 1
-        fi
-        sudo xcode-select -s "$APP"
-        xcodebuild -version
+    - uses: ./.github/actions/ios-select-xcode
 
     - name: Generate project
       shell: bash

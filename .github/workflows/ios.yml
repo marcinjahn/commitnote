@@ -3,10 +3,23 @@ name: iOS
 on:
   push:
     branches: [main, "ios-ci/**"]
+    paths:
+      - "apps/**"
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "analytics.config.ts"
+      - "svelte.config.js"
+      - "tsconfig*.json"
+      - ".github/workflows/ios.yml"
+      - ".github/actions/ios-*/**"
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   XCODE_VERSION: "26.6"
@@ -29,28 +42,13 @@ jobs:
       - run: npm run check:native-core
       - run: apps/ios/scripts/swift-linux-test.sh
 
-  macos:
+  build:
+    name: Build for testing
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/ios-macos-setup
-
-      - name: Swift package tests
-        run: |
-          set -eu
-          (cd apps/ios/Packages/CommitnoteCrypto && swift test)
-          (cd apps/ios/Packages/NativeCoreAPI && swift test)
-          (cd apps/ios/Packages/EditorText && swift test)
-          (cd apps/ios/Packages/MarkdownStyling && swift test)
-
-      - name: Boot simulator
-        run: |
-          set -eu
-          IPHONE_ID=$(apps/ios/scripts/pick-simulator.sh iphone)
-          echo "IPHONE_ID=$IPHONE_ID" >> "$GITHUB_ENV"
-          mkdir -p out/boot
-          nohup xcrun simctl bootstatus "$IPHONE_ID" -b > out/boot/iphone.log 2>&1 &
 
       - name: Build for testing
         run: |
@@ -59,11 +57,44 @@ jobs:
             -project apps/ios/Commitnote.xcodeproj \
             -scheme Commitnote \
             -configuration Testing \
-            -destination "id=$IPHONE_ID" \
-            -derivedDataPath out/dd
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath out/dd \
+            ARCHS=arm64
+          tar -C out/dd/Build/Products -cf out/test-products.tar .
+          ls -l out/test-products.tar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-products
+          path: out/test-products.tar
+          compression-level: 1
+          retention-days: 1
+
+  macos:
+    name: Runtime tests and IPA
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ios-macos-setup
+      - uses: ./.github/actions/ios-test-products
+
+      - name: Build unsigned IPA
+        run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
+
+      - name: Check IPA
+        run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
+
+      - name: Boot simulator
+        run: |
+          set -eu
+          SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh iphone)
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
 
       - name: Prepare simulator
-        run: apps/ios/scripts/disable-password-autofill.sh "$IPHONE_ID"
+        run: apps/ios/scripts/disable-password-autofill.sh "$SIMULATOR_ID"
 
       - name: Core runtime tests
         run: |
@@ -71,22 +102,13 @@ jobs:
           mkdir -p out/test-output out/xcresults
           TEST_RUNNER_COMMITNOTE_READBACK_DIR="$PWD/out/test-output" \
           xcodebuild test-without-building \
-            -project apps/ios/Commitnote.xcodeproj \
-            -scheme Commitnote \
-            -configuration Testing \
-            -destination "id=$IPHONE_ID" \
-            -derivedDataPath out/dd \
+            -xctestrun "$XCTESTRUN" \
+            -destination "id=$SIMULATOR_ID" \
             -only-testing:CommitnoteTests \
             -resultBundlePath out/xcresults/runtime.xcresult
 
       - name: Read back with TypeScript
         run: npx tsx scripts/read-back-native-repo.ts out/test-output
-
-      - name: Build unsigned IPA
-        run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
-
-      - name: Check IPA
-        run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
 
       - uses: actions/upload-artifact@v4
         with:
@@ -111,34 +133,27 @@ jobs:
           retention-days: 30
 
   ui-tests:
-    name: UI tests (${{ matrix.device }})
+    name: UI tests (${{ matrix.device }}, ${{ matrix.suite }})
+    needs: build
     runs-on: macos-26
-    timeout-minutes: 75
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         device: [iphone, ipad]
+        suite: [flows, screens]
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/ios-macos-setup
+      - uses: ./.github/actions/ios-select-xcode
+
+      - uses: ./.github/actions/ios-test-products
 
       - name: Boot simulator
         run: |
           set -eu
           SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ${{ matrix.device }})
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
-          mkdir -p out/boot
-          nohup xcrun simctl bootstatus "$SIMULATOR_ID" -b > out/boot/${{ matrix.device }}.log 2>&1 &
-
-      - name: Build for testing
-        run: |
-          set -eu -o pipefail
-          xcodebuild build-for-testing \
-            -project apps/ios/Commitnote.xcodeproj \
-            -scheme Commitnote \
-            -configuration Testing \
-            -destination "id=$SIMULATOR_ID" \
-            -derivedDataPath out/dd
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
 
       - name: Prepare simulator
         run: apps/ios/scripts/disable-password-autofill.sh "$SIMULATOR_ID"
@@ -146,9 +161,8 @@ jobs:
       - name: Warm up simulator
         run: |
           set -eu
-          APP=$(find out/dd/Build/Products -maxdepth 2 -name commitnote.app -type d | head -n 1)
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
-          xcrun simctl install "$SIMULATOR_ID" "$APP"
+          xcrun simctl install "$SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
           xcrun simctl launch "$SIMULATOR_ID" io.github.marcinjahn.commitnote
           sleep 30
           xcrun simctl terminate "$SIMULATOR_ID" io.github.marcinjahn.commitnote
@@ -156,26 +170,31 @@ jobs:
       - name: UI tests
         run: |
           set -eu -o pipefail
+          case "${{ matrix.suite }}" in
+            flows)
+              SELECTED="-only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests"
+              ;;
+            screens)
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests"
+              ;;
+          esac
           xcodebuild test-without-building \
-            -project apps/ios/Commitnote.xcodeproj \
-            -scheme Commitnote \
-            -configuration Testing \
+            -xctestrun "$XCTESTRUN" \
             -destination "id=$SIMULATOR_ID" \
-            -derivedDataPath out/dd \
-            -only-testing:CommitnoteUITests \
+            $SELECTED \
             -parallel-testing-enabled NO \
-            -resultBundlePath out/xcresults/ui-${{ matrix.device }}.xcresult
+            -resultBundlePath out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}.xcresult
 
       - name: Export screenshots
-        if: always()
+        if: always() && matrix.suite == 'screens'
         run: |
           set -eu
-          if [ -d "out/xcresults/ui-${{ matrix.device }}.xcresult" ]; then
-            apps/ios/scripts/export-screenshots.sh "out/xcresults/ui-${{ matrix.device }}.xcresult" out/screenshots
+          if [ -d "out/xcresults/ui-${{ matrix.device }}-screens.xcresult" ]; then
+            apps/ios/scripts/export-screenshots.sh "out/xcresults/ui-${{ matrix.device }}-screens.xcresult" out/screenshots
           fi
 
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && matrix.suite == 'screens'
         with:
           name: ios-screenshots-${{ matrix.device }}
           path: out/screenshots
@@ -185,7 +204,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ios-xcresults-ui-${{ matrix.device }}
+          name: ios-xcresults-ui-${{ matrix.device }}-${{ matrix.suite }}
           path: out/xcresults
           if-no-files-found: ignore
           retention-days: 30

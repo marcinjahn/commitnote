@@ -70,10 +70,25 @@ Apple builds run only in the iOS workflow (`.github/workflows/ios.yml`). It runs
 and to `ios-ci/**` branches, and manually. To prove a change on macOS before it reaches `main`, push
 it to a branch named `ios-ci/<something>`.
 
-The workflow has three parallel jobs. `linux` runs the native core check and Swift package tests.
-`macos` generates the project, runs package tests and runtime tests, reads the produced repos back
-with TypeScript, then builds and checks the unsigned IPA. `UI tests (iphone)` and `UI tests (ipad)`
-each build for testing and run the UI tests on their own simulator. The UI tests expect password AutoFill to be off, so
+The workflow runs only when something it builds or tests changes: `apps/**`, `src/**`, `scripts/**`,
+`package.json`, `package-lock.json`, `vite.config.ts`, `analytics.config.ts`, `svelte.config.js`,
+`tsconfig*.json`, the workflow itself and its `.github/actions/ios-*` actions. Manual runs always work.
+
+- `linux` runs the native core check and the Swift package tests (every package except
+  `CoreRuntime`). They run only here: the packages are pure Swift, and the Apple crypto backend is
+  still exercised on the Simulator by the runtime tests' test vector check.
+- `Build for testing` generates the project and builds the app and both test bundles once, for the
+  Simulator, and hands them to the jobs below as the `ios-test-products` artifact.
+- `Runtime tests and IPA` builds and checks the unsigned IPA, runs the runtime tests on an iPhone
+  Simulator from the shared build, and reads the produced repos back with TypeScript.
+- `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
+  shared build:
+  - `flows` — login, editing and organisation flows.
+  - `screens` — every screenshot and the editor flows.
+
+The `Testing` configuration (fake core bundle only) adds test hooks: a Testing menu entry "Share
+Welcome", and the launch variable `COMMITNOTE_UI_HOLD_LOADING=1`, which holds loading and shows a
+loading testing bar. The UI tests expect password AutoFill to be off, so
 iOS never shows its save-password or strong-password sheets over the app; the workflow turns it off on
 every simulator with `scripts/disable-password-autofill.sh`. Do the same before running them locally.
 Artifacts, kept for 30 days:
@@ -81,10 +96,12 @@ Artifacts, kept for 30 days:
 | Artifact | Contents |
 | --- | --- |
 | `commitnote-unsigned-ipa` | `commitnote-unsigned.ipa` |
-| `ios-screenshots-iphone`, `ios-screenshots-ipad` | screenshots per device, light and dark |
+| `ios-screenshots-<device>` | screenshots per device, light and dark |
 | `ios-xcresults-runtime` | Xcode result bundle of the runtime tests |
-| `ios-xcresults-ui-iphone`, `ios-xcresults-ui-ipad` | Xcode result bundles of the UI tests |
+| `ios-xcresults-ui-<device>-<suite>` | Xcode result bundles of the UI tests |
 | `ios-test-output` | repos written by the runtime tests, and performance timings (`perf/perf.json`) |
+
+The shared build, `ios-test-products`, is kept for a day.
 
 Download from a run:
 
