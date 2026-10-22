@@ -87,6 +87,18 @@ extension XCTestCase {
         hittable(app.elements("sync-status-button")).tap()
     }
 
+    func openStatusMenuWithRetry(
+        in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line
+    ) -> XCUIElement {
+        let retry = app.buttons["sync-status-retry"]
+        for _ in 0..<3 {
+            openStatusMenu(in: app)
+            if appears(retry, within: 5) { break }
+        }
+        waitFor(retry, file: file, line: line)
+        return retry
+    }
+
     @discardableResult
     func openNote(
         _ name: String, startingWith firstLine: String, in app: XCUIApplication,

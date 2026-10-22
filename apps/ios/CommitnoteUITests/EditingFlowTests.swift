@@ -151,18 +151,20 @@ final class EditingFlowTests: XCTestCase {
         let status = syncStatus(in: app)
         waitForValue(status, "failed")
 
-        // A failed manual retry lengthens the back-off, so no automatic retry beats the next one.
-        openStatusMenu(in: app)
+        let retry = openStatusMenuWithRetry(in: app)
         waitFor(app.element("sync-status-note-0"))
-        let retry = app.buttons["sync-status-retry"]
-        waitFor(retry)
         retry.tap()
         waitForValue(status, "failed")
 
+        // Each failed save doubles the back-off. After four failures the automatic retry waits
+        // 40 s, so it cannot save before the manual retry once saves stop failing.
+        for _ in 0..<2 {
+            openStatusMenuWithRetry(in: app).tap()
+            waitForValue(status, "failed")
+        }
+
         useTestingMenu("testing-stop-failing", in: app)
-        openStatusMenu(in: app)
-        waitFor(retry)
-        retry.tap()
+        openStatusMenuWithRetry(in: app).tap()
         waitForValue(status, "synced")
     }
 
