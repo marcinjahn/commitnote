@@ -13,6 +13,10 @@ enum TestingHooks {
         }
     }
 
+    static var holdLoadingRequested: Bool {
+        ProcessInfo.processInfo.environment["COMMITNOTE_UI_HOLD_LOADING"] == "1"
+    }
+
     static var requestedColorScheme: ColorScheme? {
         switch ProcessInfo.processInfo.environment["COMMITNOTE_UI_APPEARANCE"] {
         case "light": .light
@@ -51,6 +55,57 @@ struct FakeClearFailures: NativeCoreCommand {
     typealias Result = Empty
     var repo: String
     var operation: String
+}
+
+struct FakeShareNote: NativeCoreCommand {
+    static let name = "fake.shareNote"
+    typealias Result = Empty
+    var path: [String]
+}
+
+struct FakeHoldLoading: NativeCoreCommand {
+    static let name = "fake.holdLoading"
+    typealias Result = Empty
+}
+
+struct FakeReleaseLoading: NativeCoreCommand {
+    static let name = "fake.releaseLoading"
+    typealias Result = Empty
+}
+
+struct TestingLoadingBar: View {
+    let model: AppModel
+
+    private static let repo = "sample/notes"
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button("Finish loading") {
+                Task { await model.sendTesting(FakeReleaseLoading()) }
+            }
+            .accessibilityIdentifier("testing-finish-loading")
+            Button("Fail loading") {
+                Task {
+                    await model.sendTesting(
+                        FakeFailNext(
+                            repo: Self.repo, operation: "inspect", kind: "Network", count: 1000))
+                    await model.sendTesting(FakeReleaseLoading())
+                }
+            }
+            .accessibilityIdentifier("testing-fail-loading")
+            Button("Stop failing") {
+                Task {
+                    await model.sendTesting(
+                        FakeClearFailures(repo: Self.repo, operation: "inspect"))
+                }
+            }
+            .accessibilityIdentifier("testing-stop-failing-loading")
+        }
+        .buttonStyle(.bordered)
+        .font(.footnote)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("testing-loading-bar")
+    }
 }
 
 struct TestingMenu: View {
@@ -118,6 +173,10 @@ struct TestingMenu: View {
                 }
             }
             .accessibilityIdentifier("testing-stop-failing")
+            Button("Share Welcome") {
+                Task { await model.sendTesting(FakeShareNote(path: ["Welcome"])) }
+            }
+            .accessibilityIdentifier("testing-share-note")
             Button(model.forcedOffline ? "Go online" : "Go offline") {
                 Task { await model.setForcedOffline(!model.forcedOffline) }
             }

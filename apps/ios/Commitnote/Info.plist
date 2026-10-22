@@ -44,5 +44,18 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>commitnote tree item</string>
+			<key>UTTypeIdentifier</key>
+			<string>io.github.marcinjahn.commitnote.tree-node</string>
+		</dict>
+	</array>
 </dict>
 </plist>

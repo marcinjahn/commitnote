@@ -27,7 +27,7 @@ for marker in "fake.saveNote" "sample/large-tree" "sample notes repo passphrase"
   fi
 done
 
-for marker in "fake.saveNote" "fake.remoteEdit" "fake.failNext" "testing-menu"; do
+for marker in "fake.saveNote" "fake.remoteEdit" "fake.failNext" "fake.shareNote" "fake.holdLoading" "testing-menu" "testing-share-note" "testing-loading-bar"; do
   if grep -rlF "$marker" "$APP" | grep -q .; then
     fail "app contains $marker"
   fi

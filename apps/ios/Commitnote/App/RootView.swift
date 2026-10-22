@@ -30,48 +30,6 @@ struct RootView: View {
     }
 }
 
-struct LoadingFailure {
-    let message: String
-    let canRetry: Bool
-}
-
-private struct LoadingView: View {
-    let model: AppModel
-    let failure: LoadingFailure?
-
-    var body: some View {
-        VStack(spacing: 24) {
-            Wordmark()
-            if let failure {
-                Text(failure.message)
-                    .multilineTextAlignment(.center)
-                    .accessibilityIdentifier("loading-error")
-                VStack(spacing: 12) {
-                    if failure.canRetry {
-                        Button("Try again") {
-                            Task { await model.resume() }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("loading-try-again-button")
-                    }
-                    Button("Log in") {
-                        model.showLogin()
-                    }
-                    .accessibilityIdentifier("loading-log-in-button")
-                }
-            } else {
-                ProgressView()
-                Text("Loading…")
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("loading-screen")
-    }
-}
-
 private struct KeyChangedView: View {
     let model: AppModel
     let info: KeyChangedInfo

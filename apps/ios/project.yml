@@ -69,6 +69,11 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIRequiresFullScreen: false
         ITSAppUsesNonExemptEncryption: false
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: io.github.marcinjahn.commitnote.tree-node
+            UTTypeDescription: commitnote tree item
+            UTTypeConformsTo:
+              - public.data
     preBuildScripts:
       - name: Copy core bundle
         basedOnDependencyAnalysis: false

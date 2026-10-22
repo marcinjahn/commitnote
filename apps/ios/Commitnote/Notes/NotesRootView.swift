@@ -4,7 +4,6 @@ import SwiftUI
 struct NotesRootView: View {
     let model: AppModel
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @State private var expanded: Set<[String]> = []
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var dismissing = false
 
@@ -13,7 +12,7 @@ struct NotesRootView: View {
             .onChange(of: model.editorTarget, initial: true) { _, target in
                 dismissing = false
                 if let path = target.notePath {
-                    expandAncestors(of: path)
+                    model.expandAncestors(of: path)
                 }
             }
             .overlay(alignment: .bottom) {
@@ -28,6 +27,9 @@ struct NotesRootView: View {
                 if model.logoutState == .saving {
                     LogoutSavingOverlay()
                 }
+            }
+            .sheet(isPresented: trashPresented) {
+                TrashView(model: model)
             }
             .alert("Some changes are not saved", isPresented: unsavedAlertPresented) {
                 Button("Keep trying") {
@@ -48,12 +50,7 @@ struct NotesRootView: View {
     private var layout: some View {
         if sizeClass == .regular {
             NavigationSplitView(columnVisibility: $columnVisibility) {
-                TreeView(model: model, selection: selection, expanded: $expanded)
-                    #if FAKE_CORE
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) { TestingMenu(model: model) }
-                    }
-                    #endif
+                treeColumn(placement: .navigationBarDrawer(displayMode: .always))
             } detail: {
                 if model.editorTarget != .none {
                     NavigationStack {
@@ -67,16 +64,25 @@ struct NotesRootView: View {
                             #endif
                     }
                 } else {
-                    Text("Select a note")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .accessibilityIdentifier("note-placeholder")
+                    NavigationStack {
+                        Text("Select a note")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .accessibilityIdentifier("note-placeholder")
+                            #if FAKE_CORE
+                            .toolbar {
+                                ToolbarItem(placement: .topBarTrailing) {
+                                    TestingMenu(model: model)
+                                }
+                            }
+                            #endif
+                    }
                 }
             }
             .navigationSplitViewStyle(.balanced)
         } else {
             NavigationStack {
-                TreeView(model: model, selection: selection, expanded: $expanded)
+                treeColumn(placement: .navigationBarDrawer(displayMode: .always))
                     #if FAKE_CORE
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) { TestingMenu(model: model) }
@@ -99,6 +105,40 @@ struct NotesRootView: View {
         }
     }
 
+    @ViewBuilder
+    private func treeColumn(placement: SearchFieldPlacement) -> some View {
+        Group {
+            if model.isSearchActive {
+                SearchResultsView(model: model)
+            } else {
+                TreeView(model: model, selection: selection, expanded: expanded)
+            }
+        }
+        .searchable(
+            text: searchText, isPresented: searchPresented, placement: placement,
+            prompt: SearchCopy.prompt)
+    }
+
+    private var searchText: Binding<String> {
+        Binding(
+            get: { model.searchQuery },
+            set: { model.setSearchQuery($0) })
+    }
+
+    private var searchPresented: Binding<Bool> {
+        Binding(
+            get: { model.isSearchActive },
+            set: { presented in
+                Task {
+                    if presented {
+                        await model.activateSearch()
+                    } else {
+                        await model.deactivateSearch()
+                    }
+                }
+            })
+    }
+
     private var unsavedAlertPresented: Binding<Bool> {
         Binding(
             get: {
@@ -108,9 +148,21 @@ struct NotesRootView: View {
             set: { _ in })
     }
 
+    private var trashPresented: Binding<Bool> {
+        Binding(
+            get: { model.isTrashPresented },
+            set: { model.isTrashPresented = $0 })
+    }
+
     private var unsavedMessage: String {
         if case .unsaved(_, let message) = model.logoutState { return message }
         return ""
+    }
+
+    private var expanded: Binding<Set<[String]>> {
+        Binding(
+            get: { model.expandedFolders },
+            set: { model.setExpandedFolders($0) })
     }
 
     private var selection: Binding<[String]?> {
@@ -140,13 +192,6 @@ struct NotesRootView: View {
             await model.open(path: nil)
         }
         dismissing = false
-    }
-
-    private func expandAncestors(of path: [String]) {
-        guard path.count > 1 else { return }
-        for length in 1..<path.count {
-            expanded.insert(Array(path.prefix(length)))
-        }
     }
 }
 

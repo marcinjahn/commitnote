@@ -1,8 +1,8 @@
 # commitnote for iOS
 
 A native iPhone and iPad client for the same encrypted notes repo the web app uses. It is a notes
-app you can edit with: log in, unlock with the passphrase, browse the note tree, create and edit
-notes and folders, and keep them in sync with the other devices.
+app you can edit with: log in, unlock with the passphrase, browse and organise the note tree, create
+and edit notes and folders, and keep them in sync with the other devices.
 
 ## Overview
 
@@ -22,9 +22,23 @@ What the app does:
   and `newFolderPlacement` settings, which are edited on the web for now. A new note has a focused
   name field; if you type the body first, the name is an automatic `YYYY-MM-DD HH:mm:ss`. Name
   clashes get a ` (2)` suffix, and drafts left untouched vanish.
-- Edit notes in a plain-text editor; the stored text is exactly what was typed. Autosave runs 2 s
-  after typing stops and at least every 30 s. Structure changes, note switches, going to the
-  background (inside a background task) and Log out save immediately.
+- Edit notes in a TextKit 2 live-preview editor: headings, lists, quotes, emphasis, strikethrough,
+  inline and fenced code, links and rules are styled, and the markers are hidden off the active line.
+  The stored text is exactly what was typed. Task checkboxes are tappable. Links open on tap when
+  not editing and from the edit menu while editing; pasting a URL over a selection makes a link. A
+  keyboard toolbar offers Bold, Italic, Strikethrough, Link and Task. The caret and scroll position
+  are restored per note while the app runs. Images render inline and read-only; an unknown
+  reference shows "Image unavailable". Inserting images, the viewer and history come later.
+- Autosave runs 2 s after typing stops and at least every 30 s. Structure changes, note switches,
+  going to the background (inside a background task) and Log out save immediately.
+- Organise notes with context menus and swipe actions (Rename, Move to, Move up, Move down, Delete,
+  Color tag) and with drag and drop, which has Undo. Delete moves a note to the trash with Undo; the
+  Trash screen offers Restore, Delete permanently and Empty trash, and items older than 30 days are
+  purged. Deleting a shared note warns first, because it revokes its links.
+- Color tags (`ColorTag`) can be filtered with the tag filter. Search is native, with recent notes
+  and indexing progress. A note has a details view.
+- The last view is reopened on launch (on by default; the toggle comes with Settings later). While
+  the app loads, the loading screen offers an early draft, kept in memory while the app runs.
 - Remote edits to the open note are merged in without losing the caret or Undo. Remote renames and
   moves are followed.
 - The sync status shows synced, syncing, pending, failed, conflict or offline, with the unsaved
@@ -139,10 +153,10 @@ Data:
 - Notes need the network; there is no offline copy. Edits made offline stay in memory and are saved
   on reconnect, and the app tries to save when it goes to the background, but if iOS terminates the
   suspended app before they are saved, those edits are lost.
-- Images are shown as their raw `image:<id>#WxH` reference text in this version. Deleting a
-  reference removes the image from the note on save; it comes back only if the reference text is put
-  back (for example with Undo). Removed images are kept for 30 days as image tombstones. They are not
-  in the trash.
+- Images render inline and read-only. Images cannot be inserted yet, and an unknown reference shows
+  "Image unavailable". Deleting a reference removes the image from the note on save; it comes back
+  only if the reference text is put back (for example with Undo). Removed images are kept for 30
+  days as image tombstones. They are not in the trash.
 
 Signing and sideloading:
 

@@ -61,6 +61,13 @@ struct AppNotice: Identifiable, Equatable {
     var action: NoticeAction?
 }
 
+enum TrashResult: Equatable {
+    case trashed
+    case deleted
+    case confirm(TrashPreview)
+    case error(String)
+}
+
 struct RefreshStatus: Equatable {
     var online = true
     var refreshing = false
@@ -98,8 +105,34 @@ final class AppModel {
     private(set) var draftError: String?
     private(set) var logoutState: LogoutState = .idle
     private(set) var exportState: ExportState = .idle
+    private(set) var tagFilter: ColorTag?
+    private(set) var usedTags: [ColorTag] = []
+    private(set) var tagsWritable = false
+    private(set) var tagOptions: [TagOption] = []
+    private(set) var trashEntries: [TrashEntryView] = []
+    private(set) var trashDeleteConfirmation: TrashConfirmationText?
+    private(set) var trashEmptyConfirmation: TrashConfirmationText?
+    var isTrashPresented = false
+    private(set) var expandedFolders: Set<[String]> = []
+    var earlyDraft = EarlyDraftState()
+    private(set) var editorFocusAtEnd: [String]?
+    private(set) var noteNameError: String?
+    private(set) var noteDetails: NoteDetails?
+    private(set) var isSearchActive = false
+    private(set) var searchQuery = ""
+    private(set) var searchResults: SearchResults?
+    private(set) var searchStatus: SearchStatusChanged?
+    @ObservationIgnored private(set) var notePositions: [[String]: NotePosition] = [:]
 
     @ObservationIgnored private var editSender: EditSender?
+    @ObservationIgnored private var imageLoader: ImageLoader?
+    @ObservationIgnored private var lastViewRestorePending = false
+    @ObservationIgnored private var lastViewTracking = false
+    @ObservationIgnored private var detailsPath: [String]?
+    @ObservationIgnored private var statsTask: Task<Void, Never>?
+    @ObservationIgnored private var datesTimer: Task<Void, Never>?
+    @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored private var searchRefreshTask: Task<Void, Never>?
     private var noteUpdateSerial = 0
     private var runtime: CoreRuntime?
     private var eventsTask: Task<Void, Never>?
@@ -119,6 +152,9 @@ final class AppModel {
             draftContent: { [weak self] text in
                 await self?.sendDraftContent(text)
             })
+        imageLoader = ImageLoader(fetch: { [weak self] imageId in
+            try? await self?.send(ImageRead(imageId: imageId)).image
+        })
     }
 
     var treeLoadError: String? {
@@ -161,6 +197,11 @@ final class AppModel {
         forges = (try? await runtime.send(ForgesList()).forges) ?? []
         lastRepository = try? await runtime.send(LoginLastRepository())
         deviceName = (try? await runtime.send(DeviceName()).name) ?? ""
+        #if FAKE_CORE
+        if TestingHooks.holdLoadingRequested {
+            _ = try? await runtime.send(FakeHoldLoading())
+        }
+        #endif
         await resume()
     }
 
@@ -172,7 +213,7 @@ final class AppModel {
             case .none:
                 screen = .login(LoginEntry())
             case .resumed:
-                screen = .notes
+                await enterNotes(restoringLastView: true)
             case .failed(let error, let canRetry):
                 if canRetry {
                     screen = .loading(.failed(message: error.message, canRetry: true))
@@ -203,12 +244,12 @@ final class AppModel {
 
     func unlock(passphrase: String) async throws {
         _ = try await send(LoginUnlock(passphrase: passphrase))
-        didLogIn()
+        await didLogIn()
     }
 
     func initialize(passphrase: String) async throws {
         _ = try await send(LoginInitialize(passphrase: passphrase))
-        didLogIn()
+        await didLogIn()
     }
 
     func strength(passphrase: String, repositoryLabel: String) async throws -> PassphraseStrength {
@@ -222,7 +263,7 @@ final class AppModel {
             await sendNoteOpen(path: path)
             return
         }
-        editorTarget = path.map { .note($0) } ?? .none
+        setEditorTarget(path.map { .note($0) } ?? .none)
         editorSwitch += 1
         draftError = nil
         await sendNoteOpen(path: path)
@@ -234,6 +275,7 @@ final class AppModel {
             return
         case .note(let path):
             editSender?.submit(text, to: .note(path))
+            scheduleStatsRefresh()
         case .draft:
             editSender?.submit(text, to: .draft)
         }
@@ -247,8 +289,8 @@ final class AppModel {
         await flushEdits()
         do {
             let draft = try await send(DraftStart(parent: parent)).draft
-            editorTarget = .draft(draft)
             draftName = ""
+            setEditorTarget(.draft(draft))
             draftError = nil
             editorSwitch += 1
         } catch {
@@ -266,7 +308,7 @@ final class AppModel {
             case .error(let message):
                 draftError = message
             case .created(let path, let fieldError):
-                editorTarget = .note(path)
+                setEditorTarget(.note(path))
                 draftError = fieldError
                 editorSwitch += 1
             }
@@ -284,7 +326,7 @@ final class AppModel {
             showError(error)
         }
         if editorTarget.isDraft {
-            editorTarget = .none
+            setEditorTarget(.none)
             draftError = nil
         }
     }
@@ -341,12 +383,454 @@ final class AppModel {
         }
     }
 
+    func rename(path: [String], name: String) async -> String? {
+        await flushEdits()
+        do {
+            switch try await send(NodeRename(path: path, name: name)).outcome {
+            case .ok:
+                return nil
+            case .error(let message):
+                return message
+            }
+        } catch {
+            return Self.message(for: error)
+        }
+    }
+
+    func move(path: [String], to parent: [String]) async -> String? {
+        await flushEdits()
+        do {
+            switch try await send(NodeMove(path: path, parent: parent)).outcome {
+            case .ok:
+                return nil
+            case .error(let message):
+                return message
+            }
+        } catch {
+            return Self.message(for: error)
+        }
+    }
+
+    func place(path: [String], parent: [String], before: String?) async -> String? {
+        await flushEdits()
+        do {
+            switch try await send(NodePlace(path: path, parent: parent, before: before)).outcome {
+            case .ok:
+                return nil
+            case .error(let message):
+                appendLocalNotice(tone: .error, message: message)
+                return message
+            }
+        } catch {
+            showError(error)
+            return Self.message(for: error)
+        }
+    }
+
+    func moveSibling(path: [String], direction: SiblingDirection) async {
+        await flushEdits()
+        do {
+            switch try await send(NodeMoveSibling(path: path, direction: direction)).outcome {
+            case .none, .ok:
+                break
+            case .error(let message):
+                appendLocalNotice(tone: .error, message: message)
+            }
+        } catch {
+            showError(error)
+        }
+    }
+
+    func moveTargets(for path: [String]) async -> [MoveTargetView] {
+        (try? await send(NodeMoveTargets(path: path)).targets) ?? []
+    }
+
+    func trashPreview(for path: [String]) async -> TrashPreview? {
+        try? await send(NodeTrashPreview(path: path)).preview
+    }
+
+    func trash(path: [String], shareCount: Int) async -> TrashResult {
+        await flushEdits()
+        do {
+            switch try await send(NodeTrash(path: path, shareCount: shareCount)).outcome {
+            case .trashed:
+                return .trashed
+            case .deleted:
+                return .deleted
+            case .confirm(let preview):
+                return .confirm(preview)
+            case .error(let message):
+                return .error(message)
+            }
+        } catch {
+            return .error(Self.message(for: error))
+        }
+    }
+
+    func setColorTag(_ tag: ColorTag?, for path: [String]) async {
+        do {
+            switch try await send(NodeSetColorTag(path: path, tag: tag)).outcome {
+            case .ok:
+                break
+            case .error(let message):
+                appendLocalNotice(tone: .error, message: message)
+            }
+        } catch {
+            showError(error)
+        }
+    }
+
+    func setTagFilter(_ tag: ColorTag?) async {
+        do {
+            _ = try await send(TagsSetFilter(tag: tag))
+        } catch {
+            showError(error)
+        }
+    }
+
+    func restoreTargets(entryId: String, subPath: [String]) async -> [MoveTargetView] {
+        (try? await send(TrashRestoreTargets(entryId: entryId, subPath: subPath)).targets) ?? []
+    }
+
+    func restore(entryId: String, subPath: [String], to parent: [String]) async -> String? {
+        do {
+            switch try await send(
+                TrashRestore(entryId: entryId, subPath: subPath, parent: parent)
+            ).outcome {
+            case .ok:
+                return nil
+            case .error(let message):
+                return message
+            }
+        } catch {
+            return Self.message(for: error)
+        }
+    }
+
+    func deleteFromTrash(entryId: String) async {
+        do {
+            _ = try await send(TrashDelete(entryId: entryId))
+        } catch {
+            showError(error)
+        }
+    }
+
+    func emptyTrash() async {
+        do {
+            _ = try await send(TrashEmpty())
+        } catch {
+            showError(error)
+        }
+    }
+
+    func setExpandedFolders(_ folders: Set<[String]>) {
+        guard folders != expandedFolders else { return }
+        expandedFolders = folders
+        saveLastView()
+    }
+
+    func expandAncestors(of path: [String]) {
+        guard path.count > 1 else { return }
+        var folders = expandedFolders
+        for length in 1..<path.count {
+            folders.insert(Array(path.prefix(length)))
+        }
+        setExpandedFolders(folders)
+    }
+
+    func clearEditorFocusAtEnd() {
+        editorFocusAtEnd = nil
+    }
+
+    func renameOpenNote(to name: String) async -> NoteRenameResult {
+        guard let path = editorTarget.notePath else { return .none }
+        await flushEdits()
+        do {
+            switch try await send(NoteRename(path: path, name: name)).outcome {
+            case .none:
+                noteNameError = nil
+                return .none
+            case .restore:
+                noteNameError = nil
+                return .restore
+            case .error(let message):
+                noteNameError = message
+                return .error(message)
+            case .ok(let renamed):
+                if editorTarget.notePath == path, renamed != path {
+                    relocateOpenNote(from: path, to: renamed)
+                }
+                noteNameError = nil
+                return .renamed
+            }
+        } catch {
+            let message = Self.message(for: error)
+            noteNameError = message
+            return .error(message)
+        }
+    }
+
+    func activateSearch() async {
+        guard !isSearchActive else { return }
+        isSearchActive = true
+        searchResults = nil
+        do {
+            _ = try await send(SearchOpen())
+        } catch {
+            showError(error)
+        }
+        guard isSearchActive else { return }
+        await runSearch(query: searchQuery)
+    }
+
+    func setSearchQuery(_ query: String) {
+        guard query != searchQuery else { return }
+        searchQuery = query
+        guard isSearchActive else { return }
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(150))
+            } catch {
+                return
+            }
+            await self?.runSearch(query: query)
+        }
+    }
+
+    func deactivateSearch() async {
+        guard isSearchActive else { return }
+        isSearchActive = false
+        searchTask?.cancel()
+        searchTask = nil
+        searchRefreshTask?.cancel()
+        searchRefreshTask = nil
+        searchQuery = ""
+        searchResults = nil
+        searchStatus = nil
+        _ = try? await send(SearchClose())
+    }
+
+    /// Opens before closing search: on iPhone a push started while the search bar is still
+    /// dismissing is dropped.
+    func openSearchResult(path: [String]) async {
+        await open(path: path)
+        await deactivateSearch()
+    }
+
+    func image(for imageId: String) async -> UIImage? {
+        await imageLoader?.image(for: imageId)
+    }
+
+    func savePosition(_ position: NotePosition, for path: [String]) {
+        notePositions[path] = position
+    }
+
+    func position(for path: [String]) -> NotePosition? {
+        notePositions[path]
+    }
+
+    private func runSearch(query: String) async {
+        guard let results = try? await send(SearchQuery(query: query)).results,
+            isSearchActive, searchQuery == query
+        else { return }
+        searchResults = results
+    }
+
+    private func scheduleSearchRefresh() {
+        guard isSearchActive, searchRefreshTask == nil else { return }
+        searchRefreshTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(150))
+            } catch {
+                return
+            }
+            guard let self else { return }
+            searchRefreshTask = nil
+            await runSearch(query: searchQuery)
+        }
+    }
+
+    private func enterNotes(restoringLastView: Bool) async {
+        screen = .notes
+        startDatesTimer()
+        let handedOff = await handOffEarlyDraft()
+        guard restoringLastView, screen == .notes else { return }
+        if handedOff {
+            lastViewTracking = true
+        } else {
+            lastViewRestorePending = true
+            await restoreLastViewIfReady()
+        }
+    }
+
+    private func handOffEarlyDraft() async -> Bool {
+        guard !earlyDraft.isEmpty else { return false }
+        let draft = earlyDraft
+        let outcome: EarlyDraftOutcome
+        do {
+            outcome = try await send(
+                EarlyDraftHandOff(
+                    name: draft.name, body: draft.body, nameConfirmed: draft.nameConfirmed)
+            ).outcome
+        } catch {
+            showError(error)
+            return false
+        }
+        earlyDraft = EarlyDraftState()
+        switch outcome {
+        case .none:
+            return false
+        case .draft(let name, let error):
+            draftName = name
+            setEditorTarget(.draft(NoteDraft(parent: [], name: name)))
+            draftError = error
+            editorSwitch += 1
+        case .created(let path, let fieldError):
+            setEditorTarget(.note(path))
+            draftError = fieldError
+            editorFocusAtEnd = path
+            editorSwitch += 1
+        }
+        return true
+    }
+
+    private func restoreLastViewIfReady() async {
+        guard lastViewRestorePending, tree != nil, screen == .notes else { return }
+        lastViewRestorePending = false
+        let view = try? await send(LastViewLoad()).view
+        guard screen == .notes else { return }
+        if let view {
+            expandedFolders.formUnion(view.folders)
+            if let note = view.note, editorTarget == .none {
+                await open(path: note)
+            }
+        }
+        lastViewTracking = true
+    }
+
+    private func saveLastView() {
+        guard lastViewTracking else { return }
+        let note = editorTarget.notePath
+        let folders = expandedFolders.sorted { $0.lexicographicallyPrecedes($1) }
+        Task { _ = try? await send(LastViewSave(note: note, folders: folders)) }
+    }
+
+    private func setEditorTarget(_ target: EditorTarget) {
+        let previousPath = editorTarget.notePath
+        editorTarget = target
+        if target.notePath != previousPath {
+            noteNameError = nil
+            saveLastView()
+        }
+        updateNoteDetailsTarget()
+    }
+
+    private func relocateOpenNote(from oldPath: [String], to newPath: [String]) {
+        if let position = notePositions.removeValue(forKey: oldPath) {
+            notePositions[newPath] = position
+        }
+        setEditorTarget(.note(newPath))
+    }
+
+    private func updateNoteDetailsTarget() {
+        switch editorTarget {
+        case .none:
+            detailsPath = nil
+            noteDetails = nil
+            statsTask?.cancel()
+        case .draft:
+            detailsPath = nil
+            noteDetails = .draft
+            statsTask?.cancel()
+        case .note(let path):
+            guard case .loaded(let loadedPath, _, _, _, let shared)? = openNote, loadedPath == path else {
+                if detailsPath != path {
+                    detailsPath = nil
+                    noteDetails = nil
+                    statsTask?.cancel()
+                }
+                return
+            }
+            if detailsPath == path {
+                noteDetails?.shared = shared
+                return
+            }
+            detailsPath = path
+            var details = NoteDetails()
+            details.shared = shared
+            noteDetails = details
+            statsTask?.cancel()
+            Task {
+                await refreshStats(for: path)
+                await refreshDates(for: path)
+            }
+        }
+    }
+
+    private func scheduleStatsRefresh() {
+        statsTask?.cancel()
+        statsTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(300))
+            } catch {
+                return
+            }
+            guard let self, let path = self.detailsPath else { return }
+            await self.refreshStats(for: path)
+        }
+    }
+
+    private func refreshStats(for path: [String]) async {
+        await flushEdits()
+        guard detailsPath == path,
+            let stats = try? await send(NoteStats(path: path)),
+            detailsPath == path
+        else { return }
+        noteDetails?.words = stats.words
+        noteDetails?.tasks = stats.tasks
+    }
+
+    private func refreshDates(for path: [String]) async {
+        guard detailsPath == path,
+            let dates = try? await send(NoteDates(path: path)),
+            detailsPath == path
+        else { return }
+        noteDetails?.notSaved = dates.notSaved
+        noteDetails?.created = dates.created
+        noteDetails?.updated = dates.updated
+    }
+
+    private func startDatesTimer() {
+        datesTimer?.cancel()
+        datesTimer = Task { [weak self] in
+            while true {
+                do {
+                    try await Task.sleep(for: .seconds(60))
+                } catch {
+                    return
+                }
+                guard let self else { return }
+                if self.screen == .notes, self.visible != false, let path = self.detailsPath {
+                    await self.refreshDates(for: path)
+                }
+            }
+        }
+    }
+
+    func openNoteColorTag(for path: [String]) -> ColorTag? {
+        guard case .loaded(let loadedPath, _, _, let colorTag, _)? = openNote, loadedPath == path
+        else { return nil }
+        return colorTag
+    }
+
     private func sendNoteOpen(path: [String]?) async {
         if let note = try? await send(NoteOpen(path: path)).note {
             openNote = note
         } else if path == nil {
             openNote = nil
         }
+        updateNoteDetailsTarget()
     }
 
     func refresh() async throws {
@@ -465,7 +949,7 @@ final class AppModel {
                 draftError = message
             case .created(let path, let fieldError):
                 if editorTarget.isDraft {
-                    editorTarget = .note(path)
+                    setEditorTarget(.note(path))
                 }
                 draftError = fieldError
             }
@@ -474,6 +958,10 @@ final class AppModel {
             showError(error)
             return nil
         }
+    }
+
+    func showErrorNotice(_ message: String) {
+        appendLocalNotice(tone: .error, message: message)
     }
 
     private func showError(_ error: Error) {
@@ -488,20 +976,49 @@ final class AppModel {
                 persistent: false, isLocal: true, action: nil))
     }
 
-    private func didLogIn() {
+    private func didLogIn() async {
         loadingStep = nil
-        screen = .notes
+        await enterNotes(restoringLastView: true)
     }
 
     private func resetSessionState() {
         tree = nil
         openNote = nil
         editorTarget = .none
+        editorFocusAtEnd = nil
+        expandedFolders = []
+        lastViewRestorePending = false
+        lastViewTracking = false
+        noteNameError = nil
+        noteDetails = nil
+        detailsPath = nil
+        statsTask?.cancel()
+        statsTask = nil
+        datesTimer?.cancel()
+        datesTimer = nil
+        searchTask?.cancel()
+        searchTask = nil
+        searchRefreshTask?.cancel()
+        searchRefreshTask = nil
+        isSearchActive = false
+        searchQuery = ""
+        searchResults = nil
+        searchStatus = nil
+        notePositions = [:]
+        imageLoader?.clear()
         noteUpdate = nil
         syncStatus = nil
         draftName = ""
         draftError = nil
         exportState = .idle
+        tagFilter = nil
+        usedTags = []
+        tagsWritable = false
+        tagOptions = []
+        trashEntries = []
+        trashDeleteConfirmation = nil
+        trashEmptyConfirmation = nil
+        isTrashPresented = false
         notices = []
         refreshStatus = RefreshStatus()
         loadingStep = nil
@@ -576,12 +1093,28 @@ final class AppModel {
             loadingStep = progress.message
         case .treeChanged(let change):
             tree = change.tree
+            tagFilter = change.tagFilter
+            usedTags = change.usedTags
+            tagsWritable = change.tagsWritable
+            tagOptions = change.tagOptions
+            if lastViewRestorePending {
+                Task { await restoreLastViewIfReady() }
+            }
+            scheduleSearchRefresh()
+        case .trashChanged(let change):
+            trashEntries = change.entries
+            trashDeleteConfirmation = change.deleteConfirmation
+            trashEmptyConfirmation = change.emptyConfirmation
         case .noteChanged(let change):
             handleNoteChanged(change)
         case .noteContentChangedRemotely(let change):
             appendLocalNotice(tone: .info, message: change.message)
         case .syncStateChanged(let state):
+            let wasSynced = syncStatus?.state == .synced
             syncStatus = state
+            if !wasSynced, state.state == .synced, let detailsPath {
+                Task { await refreshDates(for: detailsPath) }
+            }
             refreshStatus = RefreshStatus(
                 online: state.online, refreshing: state.refreshing,
                 treeLoaded: state.treeLoaded, lastRefreshError: state.lastRefreshError)
@@ -601,10 +1134,13 @@ final class AppModel {
                 KeyChangedInfo(
                     unsavedCount: info.unsavedCount, message: info.message, detail: info.detail,
                     exportLabel: info.exportLabel))
+        case .searchStatusChanged(let status):
+            searchStatus = status
+            scheduleSearchRefresh()
         case .sessionEnded:
             resetSessionState()
             screen = .login(LoginEntry())
-        case .trashChanged, .searchStatusChanged, .unknown:
+        case .unknown:
             break
         }
     }
@@ -612,11 +1148,19 @@ final class AppModel {
     private func handleNoteChanged(_ change: NoteChanged) {
         let previousPath = openNote?.path
         openNote = change.note
+        defer { updateNoteDetailsTarget() }
         guard case .loaded(let path, let content, _, _, _)? = change.note else { return }
+        // Compared with the last update the editor received, not `openNote`: a NoteOpen response
+        // can mark the note loaded before its first `noteChanged` arrives.
+        if let delivered = noteUpdate, delivered.path == path, delivered.content == content,
+            change.edits?.isEmpty ?? true
+        {
+            return
+        }
         if let targetPath = editorTarget.notePath, targetPath != path, change.edits != nil,
             previousPath == targetPath
         {
-            editorTarget = .note(path)
+            relocateOpenNote(from: targetPath, to: path)
         }
         noteUpdateSerial += 1
         noteUpdate = NoteContentUpdate(
