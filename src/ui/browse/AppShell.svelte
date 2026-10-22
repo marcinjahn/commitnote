@@ -147,7 +147,7 @@
   import NoteTree from "./NoteTree.svelte";
   import PullIndicator from "./PullIndicator.svelte";
   import { pullGesture } from "./pull-gesture";
-  import { INITIAL_PULL, type PullState } from "./pull-to-refresh";
+  import type { PullPhase } from "./pull-to-refresh";
   import { ancestorFolders, shouldFollowFocus } from "./relocation-follow";
   import SidebarResizeHandle from "./SidebarResizeHandle.svelte";
   import {
@@ -986,10 +986,14 @@
   let refreshFeedback = $state<"success" | "error" | null>(null);
   let refreshFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
   onDestroy(() => clearTimeout(refreshFeedbackTimer));
-  const pullEnabled = $derived(
-    narrow && mobileView === "tree" && !anyDialogOpen && !manualRefreshing,
-  );
-  let pull = $state<PullState>(INITIAL_PULL);
+  let treePullContent = $state<HTMLElement | null>(null);
+  let treePullPhase = $state<PullPhase>("idle");
+  let treePullChip = $state<HTMLElement | null>(null);
+  function treeAtTop(): boolean {
+    if (!sidebarEl || sidebarEl.scrollTop > 0) return false;
+    const container = treePullContent?.querySelector<HTMLElement>(".tree-container");
+    return (container?.scrollTop ?? 0) <= 0;
+  }
   const head = $derived(engineState.synced?.head ?? null);
 
   const importing = $derived(engineState.importing || importStarted !== null);
@@ -1385,6 +1389,14 @@
 
   let trashButtonEl = $state<HTMLButtonElement | null>(null);
   let treeDragActive = $state(false);
+  let notePullPhase = $state<PullPhase>("idle");
+  let notePullChip = $state<HTMLElement | null>(null);
+  const notePullEnabled = $derived(
+    narrow && mobileView === "note" && !anyDialogOpen && !manualRefreshing && !openConflicted,
+  );
+  const treePullEnabled = $derived(
+    narrow && mobileView === "tree" && !anyDialogOpen && !manualRefreshing && !treeDragActive,
+  );
 
   function trashDropArea(): HTMLElement | null {
     return trashButtonEl;
@@ -2362,6 +2374,14 @@
     inert={narrow && mobileView !== "tree"}
     style:--sidebar-width="{sidebarWidth}px"
     bind:this={sidebarEl}
+    use:pullGesture={{
+      enabled: treePullEnabled,
+      atTop: treeAtTop,
+      content: () => treePullContent,
+      indicator: () => treePullChip,
+      onChange: (phase) => (treePullPhase = phase),
+      onRefresh: handleRefresh,
+    }}
   >
     {#if installState.bar !== "none"}
       <InstallBar
@@ -2370,14 +2390,7 @@
         onDismiss={() => install.dismiss()}
       />
     {/if}
-    <div
-      class="tree-header"
-      use:pullGesture={{
-        enabled: pullEnabled,
-        onChange: (next) => (pull = next),
-        onRefresh: handleRefresh,
-      }}
-    >
+    <div class="tree-header">
       <Wordmark typed />
       <div class="tree-header-actions">
         <SyncStatusButton
@@ -2424,9 +2437,10 @@
         <CommandMenu {commands} />
       </div>
       {#if narrow}
-        <PullIndicator state={pull} />
+        <PullIndicator phase={treePullPhase} bind:chip={treePullChip} />
       {/if}
     </div>
+    <div class="tree-pull-content" bind:this={treePullContent}>
     <SearchTrigger onOpen={openSearch}>
       {#snippet trailing()}
         {#if tagsWritable && usedTags.length > 0}
@@ -2532,6 +2546,7 @@
         </button>
       </div>
     {/if}
+    </div>
     <SidebarResizeHandle
       width={sidebarWidth}
       min={sidebarMinWidth}
@@ -2554,6 +2569,15 @@
     class:mobile-hidden={mobileView !== "note"}
     inert={narrow && mobileView !== "note"}
     bind:this={notePaneEl}
+    use:pullGesture={{
+      enabled: notePullEnabled,
+      atTop: () => (notePane?.contentElement()?.scrollTop ?? 0) <= 0,
+      canStart: () => !(notePane?.hasSelection() ?? false),
+      content: () => notePane?.contentElement() ?? null,
+      indicator: () => notePullChip,
+      onChange: (phase) => (notePullPhase = phase),
+      onRefresh: handleRefresh,
+    }}
   >
     {#key draftSession}
       {#if draft !== null}
@@ -2605,6 +2629,11 @@
         />
       {/if}
     {/key}
+    {#if narrow}
+      <div class="note-pull-anchor">
+        <PullIndicator phase={notePullPhase} bind:chip={notePullChip} />
+      </div>
+    {/if}
     <NotePane
       bind:this={notePane}
       {engine}
@@ -3000,6 +3029,13 @@
     background: var(--color-background);
   }
 
+  .note-pull-anchor {
+    position: relative;
+    height: 0;
+    flex-shrink: 0;
+    z-index: 1;
+  }
+
   .tree-header {
     position: relative;
     -webkit-user-select: none;
@@ -3020,6 +3056,13 @@
   .sidebar.with-install-bar .tree-header {
     min-height: calc(var(--touch-target) + var(--space-2) * 2);
     padding-top: var(--space-2);
+  }
+
+  .tree-pull-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .sidebar-footer {
@@ -3178,6 +3221,10 @@
   }
 
   @media (max-height: 480px) {
+    .tree-pull-content {
+      flex: 1 0 auto;
+    }
+
     .sidebar {
       overflow-x: hidden;
       overflow-y: auto;

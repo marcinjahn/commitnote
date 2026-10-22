@@ -1,42 +1,49 @@
+import { LONG_PRESS_MS } from "./touch-thresholds";
+
 export type PullPhase = "idle" | "pulling" | "armed" | "refreshing";
 
 export interface PullThresholds {
   slop: number;
   arm: number;
-  resistance: number;
   max: number;
+  rest: number;
+  longPress: number;
 }
 
 export const PULL_THRESHOLDS: PullThresholds = {
   slop: 10,
-  arm: 64,
-  resistance: 0.5,
-  max: 96,
+  arm: 56,
+  max: 128,
+  rest: 48,
+  longPress: LONG_PRESS_MS,
 };
 
 export interface PullState {
   phase: PullPhase;
   origin: number | null;
+  startedAt: number | null;
   distance: number;
 }
 
 export type PullEvent =
-  | { type: "down"; y: number }
-  | { type: "move"; y: number }
+  | { type: "down"; y: number; t: number; atTop: boolean }
+  | { type: "move"; y: number; t: number }
   | { type: "up" }
   | { type: "cancel" }
   | { type: "refreshed" };
 
-export type PullEffect = "capture" | "refresh" | null;
+export type PullEffect = "engage" | "release" | "refresh" | null;
 
 export const INITIAL_PULL: PullState = {
   phase: "idle",
   origin: null,
+  startedAt: null,
   distance: 0,
 };
 
-function resistedDistance(dy: number, t: PullThresholds): number {
-  return Math.min(t.max, Math.max(0, (dy - t.slop) * t.resistance));
+function rubberBand(dy: number, t: PullThresholds): number {
+  const travel = Math.max(0, dy - t.slop);
+  return t.max * (1 - 1 / (1 + travel / t.max));
 }
 
 export function pullStep(
@@ -49,28 +56,32 @@ export function pullStep(
 
   switch (event.type) {
     case "down":
-      if (state.phase !== "idle" || state.origin !== null) return ignored;
-      return { state: { ...state, origin: event.y }, effect: null };
+      if (state.phase !== "idle" || state.origin !== null || !event.atTop)
+        return ignored;
+      return {
+        state: { ...state, origin: event.y, startedAt: event.t },
+        effect: null,
+      };
 
     case "move": {
       if (state.origin === null || state.phase === "refreshing") return ignored;
       const dy = event.y - state.origin;
-      if (state.phase === "idle") {
-        if (dy > thresholds.slop) {
-          const distance = resistedDistance(dy, thresholds);
-          const phase = distance >= thresholds.arm ? "armed" : "pulling";
-          return {
-            state: { phase, origin: state.origin, distance },
-            effect: "capture",
-          };
-        }
-        if (dy < -thresholds.slop)
-          return { state: { ...INITIAL_PULL }, effect: null };
-        return ignored;
+      const idle = state.phase === "idle";
+      if (idle) {
+        if (dy < -thresholds.slop) return reset;
+        if (dy <= thresholds.slop) return ignored;
+        if (
+          state.startedAt !== null &&
+          event.t - state.startedAt >= thresholds.longPress
+        )
+          return reset;
       }
-      const distance = resistedDistance(dy, thresholds);
+      const distance = rubberBand(dy, thresholds);
       const phase = distance >= thresholds.arm ? "armed" : "pulling";
-      return { state: { phase, origin: state.origin, distance }, effect: null };
+      return {
+        state: { ...state, phase, distance },
+        effect: idle ? "engage" : null,
+      };
     }
 
     case "up":
@@ -80,11 +91,14 @@ export function pullStep(
           state: {
             phase: "refreshing",
             origin: null,
-            distance: thresholds.arm,
+            startedAt: null,
+            distance: thresholds.rest,
           },
           effect: "refresh",
         };
       }
+      if (state.phase === "pulling")
+        return { state: { ...INITIAL_PULL }, effect: "release" };
       return reset;
 
     case "cancel":
@@ -99,5 +113,6 @@ export function pullProgress(
   state: PullState,
   thresholds: PullThresholds = PULL_THRESHOLDS,
 ): number {
+  if (state.phase === "refreshing") return 1;
   return Math.min(1, Math.max(0, state.distance / thresholds.arm));
 }

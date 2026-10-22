@@ -17,6 +17,7 @@ import {
   type DropScene,
   type DropTarget,
 } from "./tree-drop";
+import { LONG_PRESS_MS, TOUCH_SLOP } from "./touch-thresholds";
 
 /**
  * Rows are `[data-tree-row]` elements carrying `data-tree-path` (the JSON
@@ -58,8 +59,6 @@ interface DragSession {
 }
 
 const MOUSE_DRAG_THRESHOLD = 4;
-const LONG_PRESS_MS = 400;
-const TOUCH_SLOP = 8;
 const SCROLL_EDGE = 40;
 const MAX_SCROLL_STEP = 14;
 const DEFAULT_INDENT_STEP = 24;
@@ -206,7 +205,8 @@ function startDrag(
     let into: HTMLElement | null = null;
     if (hit.kind === "drop" && hit.into) {
       const parent = hit.target.parent;
-      into = elements[rows.findIndex((r) => notePathEquals(r.path, parent))] ?? null;
+      into =
+        elements[rows.findIndex((r) => notePathEquals(r.path, parent))] ?? null;
     }
     if (into !== intoRow) {
       if (intoRow !== null) delete intoRow.dataset.dropInto;
