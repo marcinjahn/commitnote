@@ -1,5 +1,5 @@
 public enum NativeCoreAPIVersion {
-    public static let current = 2
+    public static let current = 3
 }
 
 public protocol NativeCoreCommand: Encodable, Sendable {
@@ -287,6 +287,336 @@ public struct NoticesDismiss: NativeCoreCommand {
     public init(id: String) { self.id = id }
 }
 
+public struct NodeRename: NativeCoreCommand {
+    public static let name = "node.rename"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: StructureOutcome
+    }
+    public var path: [String]
+    public var name: String
+    public init(path: [String], name: String) {
+        self.path = path
+        self.name = name
+    }
+}
+
+public struct NodeMove: NativeCoreCommand {
+    public static let name = "node.move"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: StructureOutcome
+    }
+    public var path: [String]
+    public var parent: [String]
+    public init(path: [String], parent: [String]) {
+        self.path = path
+        self.parent = parent
+    }
+}
+
+public struct NodePlace: NativeCoreCommand {
+    public static let name = "node.place"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: StructureOutcome
+    }
+    public var path: [String]
+    public var parent: [String]
+    public var before: String?
+    public init(path: [String], parent: [String], before: String?) {
+        self.path = path
+        self.parent = parent
+        self.before = before
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path, parent, before
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path, forKey: .path)
+        try container.encode(parent, forKey: .parent)
+        try container.encode(before, forKey: .before)
+    }
+}
+
+public struct NodeMoveSibling: NativeCoreCommand {
+    public static let name = "node.moveSibling"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: SiblingMoveOutcome
+    }
+    public var path: [String]
+    public var direction: SiblingDirection
+    public init(path: [String], direction: SiblingDirection) {
+        self.path = path
+        self.direction = direction
+    }
+}
+
+public struct NodeMoveTargets: NativeCoreCommand {
+    public static let name = "node.moveTargets"
+    public struct Result: Codable, Equatable, Sendable {
+        public var targets: [MoveTargetView]
+    }
+    public var path: [String]
+    public init(path: [String]) {
+        self.path = path
+    }
+}
+
+public struct NodeTrashPreview: NativeCoreCommand {
+    public static let name = "node.trashPreview"
+    public struct Result: Codable, Equatable, Sendable {
+        public var preview: TrashPreview
+    }
+    public var path: [String]
+    public init(path: [String]) {
+        self.path = path
+    }
+}
+
+public struct NodeTrash: NativeCoreCommand {
+    public static let name = "node.trash"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: TrashOutcome
+    }
+    public var path: [String]
+    public var shareCount: Int
+    public init(path: [String], shareCount: Int) {
+        self.path = path
+        self.shareCount = shareCount
+    }
+}
+
+public struct NodeSetColorTag: NativeCoreCommand {
+    public static let name = "node.setColorTag"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: StructureOutcome
+    }
+    public var path: [String]
+    public var tag: ColorTag?
+    public init(path: [String], tag: ColorTag?) {
+        self.path = path
+        self.tag = tag
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path, tag
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path, forKey: .path)
+        try container.encode(tag, forKey: .tag)
+    }
+}
+
+public struct NoticesPerform: NativeCoreCommand {
+    public static let name = "notices.perform"
+    public typealias Result = Empty
+    public var id: String
+    public init(id: String) {
+        self.id = id
+    }
+}
+
+public struct TrashRestoreTargets: NativeCoreCommand {
+    public static let name = "trash.restoreTargets"
+    public struct Result: Codable, Equatable, Sendable {
+        public var targets: [MoveTargetView]
+    }
+    public var entryId: String
+    public var subPath: [String]
+    public init(entryId: String, subPath: [String]) {
+        self.entryId = entryId
+        self.subPath = subPath
+    }
+}
+
+public struct TrashRestore: NativeCoreCommand {
+    public static let name = "trash.restore"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: StructureOutcome
+    }
+    public var entryId: String
+    public var subPath: [String]
+    public var parent: [String]
+    public init(entryId: String, subPath: [String], parent: [String]) {
+        self.entryId = entryId
+        self.subPath = subPath
+        self.parent = parent
+    }
+}
+
+public struct TrashDelete: NativeCoreCommand {
+    public static let name = "trash.delete"
+    public typealias Result = Empty
+    public var entryId: String
+    public init(entryId: String) {
+        self.entryId = entryId
+    }
+}
+
+public struct TrashEmpty: NativeCoreCommand {
+    public static let name = "trash.empty"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct TagsSetFilter: NativeCoreCommand {
+    public static let name = "tags.setFilter"
+    public typealias Result = Empty
+    public var tag: ColorTag?
+    public init(tag: ColorTag?) {
+        self.tag = tag
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case tag
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(tag, forKey: .tag)
+    }
+}
+
+public struct SearchOpen: NativeCoreCommand {
+    public static let name = "search.open"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct SearchClose: NativeCoreCommand {
+    public static let name = "search.close"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct SearchQuery: NativeCoreCommand {
+    public static let name = "search.query"
+    public struct Result: Codable, Equatable, Sendable {
+        public var results: SearchResults
+    }
+    public var query: String
+    public init(query: String) {
+        self.query = query
+    }
+}
+
+public struct NoteRename: NativeCoreCommand {
+    public static let name = "note.rename"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: NameCommitOutcome
+    }
+    public var path: [String]
+    public var name: String
+    public init(path: [String], name: String) {
+        self.path = path
+        self.name = name
+    }
+}
+
+public struct NoteStats: NativeCoreCommand {
+    public static let name = "note.stats"
+    public typealias Result = NoteStatsResult
+    public var path: [String]
+    public init(path: [String]) {
+        self.path = path
+    }
+}
+
+public struct NoteDates: NativeCoreCommand {
+    public static let name = "note.dates"
+    public typealias Result = NoteDatesResult
+    public var path: [String]
+    public init(path: [String]) {
+        self.path = path
+    }
+}
+
+public struct ImageRead: NativeCoreCommand {
+    public static let name = "image.read"
+    public struct Result: Codable, Equatable, Sendable {
+        public var image: ImagePayload?
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            image = try container.decodeIfPresent(ImagePayload.self, forKey: .image)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case image
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(image, forKey: .image)
+        }
+    }
+    public var imageId: String
+    public init(imageId: String) {
+        self.imageId = imageId
+    }
+}
+
+public struct LastViewLoad: NativeCoreCommand {
+    public static let name = "lastView.load"
+    public struct Result: Codable, Equatable, Sendable {
+        public var view: LastView?
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            view = try container.decodeIfPresent(LastView.self, forKey: .view)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case view
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(view, forKey: .view)
+        }
+    }
+    public init() {}
+}
+
+public struct LastViewSave: NativeCoreCommand {
+    public static let name = "lastView.save"
+    public typealias Result = Empty
+    public var note: [String]?
+    public var folders: [[String]]
+    public init(note: [String]?, folders: [[String]]) {
+        self.note = note
+        self.folders = folders
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case note, folders
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(note, forKey: .note)
+        try container.encode(folders, forKey: .folders)
+    }
+}
+
+public struct EarlyDraftHandOff: NativeCoreCommand {
+    public static let name = "earlyDraft.handOff"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: EarlyDraftOutcome
+    }
+    public var name: String
+    public var body: String
+    public var nameConfirmed: Bool
+    public init(name: String, body: String, nameConfirmed: Bool) {
+        self.name = name
+        self.body = body
+        self.nameConfirmed = nameConfirmed
+    }
+}
+
 public enum NativeCoreCommands {
     public static let names: [String] = [
         ForgesList.name,
@@ -315,5 +645,29 @@ public enum NativeCoreCommands {
         LifecycleSetOnline.name,
         DeviceName.name,
         NoticesDismiss.name,
+        NoticesPerform.name,
+        NodeRename.name,
+        NodeMove.name,
+        NodePlace.name,
+        NodeMoveSibling.name,
+        NodeMoveTargets.name,
+        NodeTrashPreview.name,
+        NodeTrash.name,
+        NodeSetColorTag.name,
+        TrashRestoreTargets.name,
+        TrashRestore.name,
+        TrashDelete.name,
+        TrashEmpty.name,
+        TagsSetFilter.name,
+        SearchOpen.name,
+        SearchClose.name,
+        SearchQuery.name,
+        NoteRename.name,
+        NoteStats.name,
+        NoteDates.name,
+        ImageRead.name,
+        LastViewLoad.name,
+        LastViewSave.name,
+        EarlyDraftHandOff.name,
     ]
 }

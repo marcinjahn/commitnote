@@ -206,16 +206,18 @@ final class CommandTests: XCTestCase {
             TreeGet.self,
             #"""
             {"tree":[{"kind":"folder","name":"Work","path":["Work"],"noteCount":1,"children":[
-            {"kind":"note","name":"Plan","path":["Work","Plan"]}]},
-            {"kind":"note","name":"Inbox","path":["Inbox"]}]}
+            {"kind":"note","name":"Plan","path":["Work","Plan"],"colorTag":"red","shared":true}]},
+            {"kind":"note","name":"Inbox","path":["Inbox"],"colorTag":null,"shared":false}]}
             """#)
         XCTAssertEqual(
             tree.tree,
             [
                 .folder(
                     name: "Work", path: ["Work"], noteCount: 1,
-                    children: [.note(name: "Plan", path: ["Work", "Plan"])]),
-                .note(name: "Inbox", path: ["Inbox"]),
+                    children: [
+                        .note(name: "Plan", path: ["Work", "Plan"], colorTag: .red, shared: true)
+                    ]),
+                .note(name: "Inbox", path: ["Inbox"], colorTag: nil, shared: false),
             ])
         XCTAssertNil(try result(TreeGet.self, #"{"tree":null}"#).tree)
     }
@@ -227,8 +229,8 @@ final class CommandTests: XCTestCase {
             try result(NoteOpen.self, #"{"note":{"state":"loading",\#(path)}}"#).note,
             .loading(path: ["a", "b"]))
         XCTAssertEqual(
-            try result(NoteOpen.self, ##"{"note":{"state":"loaded",\##(path),"content":"# hi","conflict":null}}"##).note,
-            .loaded(path: ["a", "b"], content: "# hi", conflict: nil))
+            try result(NoteOpen.self, ##"{"note":{"state":"loaded",\##(path),"content":"# hi","conflict":null,"colorTag":"blue","shared":true}}"##).note,
+            .loaded(path: ["a", "b"], content: "# hi", conflict: nil, colorTag: .blue, shared: true))
         XCTAssertEqual(
             try result(NoteOpen.self, #"{"note":{"state":"missing",\#(path),"message":"gone"}}"#).note,
             .missing(path: ["a", "b"], message: "gone"))
@@ -255,8 +257,8 @@ final class CommandTests: XCTestCase {
     func testOpenNoteRoundTrip() throws {
         let notes: [OpenNote] = [
             .loading(path: ["a"]),
-            .loaded(path: ["a"], content: "x", conflict: nil),
-            .loaded(path: ["a"], content: "x", conflict: conflict),
+            .loaded(path: ["a"], content: "x", conflict: nil, colorTag: nil, shared: false),
+            .loaded(path: ["a"], content: "x", conflict: conflict, colorTag: .red, shared: true),
             .missing(path: ["a"], message: "m"),
             .trashed(path: ["a"], message: "m"),
             .failed(
@@ -342,6 +344,7 @@ final class CommandTests: XCTestCase {
         try roundTrip(RemoteTextEdit(from: 1, to: 2, insert: "x"))
         try roundTrip(conflict)
         try roundTrip(NoticeAction(kind: .openNote, label: "Open note", path: ["a"]))
+        try roundTrip(NoticeAction(kind: .undo, label: "Undo"))
         try roundTrip(SyncStatusMenuItem(id: "retry", label: "Retry now", path: nil))
         try roundTrip(SyncStatusMenuItem(id: "note-0", label: "W", path: ["W"]))
         for state: SyncState in [
@@ -356,5 +359,265 @@ final class CommandTests: XCTestCase {
         XCTAssertThrowsError(
             try JSONDecoder().decode(
                 ConflictResolution.self, from: Data(#""keepBoth""#.utf8)))
+    }
+
+    func testVersion3CommandParams() throws {
+        XCTAssertEqual(NativeCoreAPIVersion.current, 3)
+        XCTAssertEqual(
+            try params(NodeRename(path: ["a"], name: "b")), try json(#"{"path":["a"],"name":"b"}"#))
+        XCTAssertEqual(
+            try params(NodeMove(path: ["a"], parent: ["f"])),
+            try json(#"{"path":["a"],"parent":["f"]}"#))
+        XCTAssertEqual(
+            try params(NodePlace(path: ["a"], parent: [], before: nil)),
+            try json(#"{"path":["a"],"parent":[],"before":null}"#))
+        XCTAssertEqual(
+            try params(NodePlace(path: ["a"], parent: ["f"], before: "b")),
+            try json(#"{"path":["a"],"parent":["f"],"before":"b"}"#))
+        XCTAssertEqual(
+            try params(NodeMoveSibling(path: ["a"], direction: .up)),
+            try json(#"{"path":["a"],"direction":"up"}"#))
+        XCTAssertEqual(
+            try params(NodeMoveTargets(path: ["a"])), try json(#"{"path":["a"]}"#))
+        XCTAssertEqual(
+            try params(NodeTrashPreview(path: ["a"])), try json(#"{"path":["a"]}"#))
+        XCTAssertEqual(
+            try params(NodeTrash(path: ["a"], shareCount: 2)),
+            try json(#"{"path":["a"],"shareCount":2}"#))
+        XCTAssertEqual(
+            try params(NodeSetColorTag(path: ["a"], tag: .purple)),
+            try json(#"{"path":["a"],"tag":"purple"}"#))
+        XCTAssertEqual(
+            try params(NodeSetColorTag(path: ["a"], tag: nil)),
+            try json(#"{"path":["a"],"tag":null}"#))
+        XCTAssertEqual(try params(NoticesPerform(id: "n1")), try json(#"{"id":"n1"}"#))
+        XCTAssertEqual(
+            try params(TrashRestoreTargets(entryId: "e", subPath: ["x"])),
+            try json(#"{"entryId":"e","subPath":["x"]}"#))
+        XCTAssertEqual(
+            try params(TrashRestore(entryId: "e", subPath: [], parent: ["f"])),
+            try json(#"{"entryId":"e","subPath":[],"parent":["f"]}"#))
+        XCTAssertEqual(try params(TrashDelete(entryId: "e")), try json(#"{"entryId":"e"}"#))
+        XCTAssertEqual(try params(TrashEmpty()), try json("{}"))
+        XCTAssertEqual(try params(TagsSetFilter(tag: .blue)), try json(#"{"tag":"blue"}"#))
+        XCTAssertEqual(try params(TagsSetFilter(tag: nil)), try json(#"{"tag":null}"#))
+        XCTAssertEqual(try params(SearchOpen()), try json("{}"))
+        XCTAssertEqual(try params(SearchClose()), try json("{}"))
+        XCTAssertEqual(try params(SearchQuery(query: "q")), try json(#"{"query":"q"}"#))
+        XCTAssertEqual(
+            try params(NoteRename(path: ["a"], name: "b")), try json(#"{"path":["a"],"name":"b"}"#))
+        XCTAssertEqual(try params(NoteStats(path: ["a"])), try json(#"{"path":["a"]}"#))
+        XCTAssertEqual(try params(NoteDates(path: ["a"])), try json(#"{"path":["a"]}"#))
+        XCTAssertEqual(try params(ImageRead(imageId: "i")), try json(#"{"imageId":"i"}"#))
+        XCTAssertEqual(try params(LastViewLoad()), try json("{}"))
+        XCTAssertEqual(
+            try params(LastViewSave(note: nil, folders: [["a"], ["a", "b"]])),
+            try json(#"{"note":null,"folders":[["a"],["a","b"]]}"#))
+        XCTAssertEqual(
+            try params(LastViewSave(note: ["a", "n"], folders: [])),
+            try json(#"{"note":["a","n"],"folders":[]}"#))
+        XCTAssertEqual(
+            try params(EarlyDraftHandOff(name: "n", body: "b", nameConfirmed: true)),
+            try json(#"{"name":"n","body":"b","nameConfirmed":true}"#))
+    }
+
+    func testStructureResults() throws {
+        let ok = #"{"outcome":{"kind":"ok","path":["a","b"]}}"#
+        let error = #"{"outcome":{"kind":"error","message":"m"}}"#
+        XCTAssertEqual(try result(NodeRename.self, ok).outcome, .ok(path: ["a", "b"]))
+        XCTAssertEqual(try result(NodeMove.self, error).outcome, .error(message: "m"))
+        XCTAssertEqual(try result(NodePlace.self, ok).outcome, .ok(path: ["a", "b"]))
+        XCTAssertEqual(try result(NodeSetColorTag.self, ok).outcome, .ok(path: ["a", "b"]))
+        XCTAssertEqual(try result(TrashRestore.self, error).outcome, .error(message: "m"))
+        XCTAssertEqual(
+            try result(NodeMoveSibling.self, #"{"outcome":{"kind":"none"}}"#).outcome, .none)
+        XCTAssertEqual(
+            try result(NodeMoveSibling.self, ok).outcome, .ok(path: ["a", "b"]))
+        XCTAssertEqual(
+            try result(NodeMoveSibling.self, error).outcome, .error(message: "m"))
+        let targets =
+            #"{"targets":[{"path":[],"label":"Top level","depth":0,"disabled":false},{"path":["a"],"label":"a","depth":1,"disabled":true}]}"#
+        let expected = [
+            MoveTargetView(path: [], label: "Top level", depth: 0, disabled: false),
+            MoveTargetView(path: ["a"], label: "a", depth: 1, disabled: true),
+        ]
+        XCTAssertEqual(try result(NodeMoveTargets.self, targets).targets, expected)
+        XCTAssertEqual(try result(TrashRestoreTargets.self, targets).targets, expected)
+    }
+
+    func testTrashResults() throws {
+        let preview = TrashPreview(
+            title: "Move to trash?", message: "m\n\ns", confirmLabel: "Revoke links and move to trash",
+            itemCount: 3, shareCount: 1)
+        let previewJSON =
+            #"{"title":"Move to trash?","message":"m\n\ns","confirmLabel":"Revoke links and move to trash","itemCount":3,"shareCount":1}"#
+        XCTAssertEqual(
+            try result(NodeTrashPreview.self, #"{"preview":\#(previewJSON)}"#).preview, preview)
+        XCTAssertEqual(
+            try result(NodeTrash.self, #"{"outcome":{"kind":"trashed","entryId":"e1"}}"#).outcome,
+            .trashed(entryId: "e1"))
+        XCTAssertEqual(
+            try result(NodeTrash.self, #"{"outcome":{"kind":"deleted"}}"#).outcome, .deleted)
+        XCTAssertEqual(
+            try result(
+                NodeTrash.self, #"{"outcome":{"kind":"confirm","preview":\#(previewJSON)}}"#
+            ).outcome, .confirm(preview: preview))
+        XCTAssertEqual(
+            try result(NodeTrash.self, #"{"outcome":{"kind":"error","message":"m"}}"#).outcome,
+            .error(message: "m"))
+        XCTAssertEqual(try result(TrashDelete.self, "{}"), Empty())
+        XCTAssertEqual(try result(TrashEmpty.self, "{}"), Empty())
+        XCTAssertEqual(try result(NoticesPerform.self, "{}"), Empty())
+        XCTAssertEqual(try result(TagsSetFilter.self, "{}"), Empty())
+        XCTAssertEqual(try result(SearchOpen.self, "{}"), Empty())
+        XCTAssertEqual(try result(SearchClose.self, "{}"), Empty())
+        XCTAssertEqual(try result(LastViewSave.self, "{}"), Empty())
+    }
+
+    func testSearchResults() throws {
+        let value = try result(
+            SearchQuery.self,
+            #"""
+            {"results":{"recent":[],"names":[
+            {"path":["a","Plan"],"name":"Plan","folder":"a","nameRanges":[[0,2],[3,4]],"snippet":null,"colorTag":"green"}],
+            "contents":[{"path":["Inbox"],"name":"Inbox","folder":null,"nameRanges":[],
+            "snippet":[{"text":"see ","match":false},{"text":"plan","match":true}],"colorTag":null}],
+            "countText":"2 results","namesMore":null,"contentsMore":"Showing first 50",
+            "copy":{"recentHeading":"Recent","namesHeading":"Titles","contentsHeading":"Contents (partial)",
+            "noMatches":"No notes match “plan”","stillReading":"Still reading notes…","hint":"Search note titles and contents"}}}
+            """#
+        ).results
+        XCTAssertEqual(
+            value.names,
+            [
+                SearchRow(
+                    path: ["a", "Plan"], name: "Plan", folder: "a",
+                    nameRanges: [SearchRange(start: 0, end: 2), SearchRange(start: 3, end: 4)],
+                    snippet: nil, colorTag: .green)
+            ])
+        XCTAssertEqual(
+            value.contents,
+            [
+                SearchRow(
+                    path: ["Inbox"], name: "Inbox", folder: nil, nameRanges: [],
+                    snippet: [
+                        SnippetPart(text: "see ", match: false),
+                        SnippetPart(text: "plan", match: true),
+                    ], colorTag: nil)
+            ])
+        XCTAssertEqual(value.countText, "2 results")
+        XCTAssertNil(value.namesMore)
+        XCTAssertEqual(value.contentsMore, "Showing first 50")
+        XCTAssertEqual(
+            value.copy,
+            SearchCopy(
+                recentHeading: "Recent", namesHeading: "Titles",
+                contentsHeading: "Contents (partial)", noMatches: "No notes match “plan”",
+                stillReading: "Still reading notes…", hint: "Search note titles and contents"))
+        XCTAssertTrue(value.recent.isEmpty)
+        let data = try JSONEncoder().encode(value)
+        XCTAssertEqual(try JSONDecoder().decode(SearchResults.self, from: data), value)
+    }
+
+    func testNoteDetailResults() throws {
+        XCTAssertEqual(
+            try result(
+                NoteStats.self,
+                #"{"words":{"label":"Words","value":"12"},"tasks":{"label":"Tasks","value":"1 of 2 done"}}"#),
+            NoteStatsResult(
+                words: DetailItemText(label: "Words", value: "12"),
+                tasks: DetailItemText(label: "Tasks", value: "1 of 2 done")))
+        XCTAssertNil(
+            try result(NoteStats.self, #"{"words":{"label":"Words","value":"0"},"tasks":null}"#).tasks)
+        XCTAssertEqual(
+            try result(
+                NoteDates.self,
+                #"{"notSaved":false,"created":{"label":"Created","value":"c"},"updated":{"label":"Updated","value":"u"}}"#
+            ),
+            NoteDatesResult(
+                notSaved: false, created: DetailItemText(label: "Created", value: "c"),
+                updated: DetailItemText(label: "Updated", value: "u")))
+        XCTAssertEqual(
+            try result(NoteDates.self, #"{"notSaved":true,"created":null,"updated":null}"#),
+            NoteDatesResult(notSaved: true, created: nil, updated: nil))
+    }
+
+    func testNoteRenameAndEarlyDraftResults() throws {
+        XCTAssertEqual(
+            try result(NoteRename.self, #"{"outcome":{"kind":"none"}}"#).outcome, .none)
+        XCTAssertEqual(
+            try result(NoteRename.self, #"{"outcome":{"kind":"restore"}}"#).outcome, .restore)
+        XCTAssertEqual(
+            try result(NoteRename.self, #"{"outcome":{"kind":"error","message":"m"}}"#).outcome,
+            .error(message: "m"))
+        XCTAssertEqual(
+            try result(NoteRename.self, #"{"outcome":{"kind":"ok","path":["n"]}}"#).outcome,
+            .ok(path: ["n"]))
+        XCTAssertEqual(
+            try result(EarlyDraftHandOff.self, #"{"outcome":{"kind":"none"}}"#).outcome, .none)
+        XCTAssertEqual(
+            try result(
+                EarlyDraftHandOff.self, #"{"outcome":{"kind":"draft","name":"n","error":null}}"#
+            ).outcome, .draft(name: "n", error: nil))
+        XCTAssertEqual(
+            try result(
+                EarlyDraftHandOff.self, #"{"outcome":{"kind":"draft","name":"n","error":"e"}}"#
+            ).outcome, .draft(name: "n", error: "e"))
+        XCTAssertEqual(
+            try result(
+                EarlyDraftHandOff.self,
+                #"{"outcome":{"kind":"created","path":["n"],"fieldError":null}}"#
+            ).outcome, .created(path: ["n"], fieldError: nil))
+    }
+
+    func testImageAndLastViewResults() throws {
+        XCTAssertEqual(
+            try result(ImageRead.self, #"{"image":{"type":"image/webp","base64":"AA=="}}"#).image,
+            ImagePayload(type: .webp, base64: "AA=="))
+        XCTAssertEqual(
+            try result(ImageRead.self, #"{"image":{"type":"image/gif","base64":"AA=="}}"#).image?.type,
+            .gif)
+        XCTAssertNil(try result(ImageRead.self, #"{"image":null}"#).image)
+        XCTAssertNil(try result(LastViewLoad.self, #"{"view":null}"#).view)
+        XCTAssertEqual(
+            try result(LastViewLoad.self, #"{"view":{"note":["a","n"],"folders":[["a"]]}}"#).view,
+            LastView(note: ["a", "n"], folders: [["a"]]))
+        XCTAssertEqual(
+            try result(LastViewLoad.self, #"{"view":{"note":null,"folders":[]}}"#).view,
+            LastView(note: nil, folders: []))
+    }
+
+    func testVersion3ShapesRoundTrip() throws {
+        func roundTrip<T: Codable & Equatable>(_ value: T) throws {
+            let data = try JSONEncoder().encode(value)
+            XCTAssertEqual(try JSONDecoder().decode(T.self, from: data), value)
+        }
+        for tag in ColorTag.allCases { try roundTrip(tag) }
+        try roundTrip(TagOption(tag: .orange, label: "Orange"))
+        try roundTrip(StructureOutcome.ok(path: ["a"]))
+        try roundTrip(StructureOutcome.error(message: "m"))
+        try roundTrip(SiblingMoveOutcome.none)
+        try roundTrip(TrashOutcome.deleted)
+        try roundTrip(TrashOutcome.trashed(entryId: "e"))
+        try roundTrip(NameCommitOutcome.restore)
+        try roundTrip(EarlyDraftOutcome.draft(name: "n", error: nil))
+        try roundTrip(EarlyDraftOutcome.created(path: ["n"], fieldError: "e"))
+        try roundTrip(
+            TreeNode.note(name: "n", path: ["n"], colorTag: .yellow, shared: true))
+        try roundTrip(
+            TrashEntryView(
+                id: "e", kind: .folder, name: "F", originalFolder: "Top level", daysLeft: "30 days left",
+                colorTag: nil,
+                children: [
+                    TrashItemView(
+                        kind: .folder, name: "S", subPath: ["S"],
+                        children: [
+                            TrashItemView(kind: .note, name: "N", subPath: ["S", "N"], children: [])
+                        ])
+                ]))
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(ColorTag.self, from: Data(#""pink""#.utf8)))
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(StructureOutcome.self, from: Data(#"{"kind":"none"}"#.utf8)))
     }
 }

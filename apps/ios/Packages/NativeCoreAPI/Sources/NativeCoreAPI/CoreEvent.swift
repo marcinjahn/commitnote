@@ -5,19 +5,87 @@ public struct LoadingProgress: Codable, Equatable, Sendable {
 
 public struct TreeChanged: Codable, Equatable, Sendable {
     public var tree: [TreeNode]?
+    public var tagFilter: ColorTag?
+    public var usedTags: [ColorTag]
+    public var tagsWritable: Bool
+    public var tagOptions: [TagOption]
+
+    public init(
+        tree: [TreeNode]?, tagFilter: ColorTag?, usedTags: [ColorTag], tagsWritable: Bool,
+        tagOptions: [TagOption]
+    ) {
+        self.tree = tree
+        self.tagFilter = tagFilter
+        self.usedTags = usedTags
+        self.tagsWritable = tagsWritable
+        self.tagOptions = tagOptions
+    }
 
     private enum CodingKeys: String, CodingKey {
-        case tree
+        case tree, tagFilter, usedTags, tagsWritable, tagOptions
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         tree = try container.decodeIfPresent([TreeNode].self, forKey: .tree)
+        tagFilter = try container.decodeIfPresent(ColorTag.self, forKey: .tagFilter)
+        usedTags = try container.decode([ColorTag].self, forKey: .usedTags)
+        tagsWritable = try container.decode(Bool.self, forKey: .tagsWritable)
+        tagOptions = try container.decode([TagOption].self, forKey: .tagOptions)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(tree, forKey: .tree)
+        try container.encode(tagFilter, forKey: .tagFilter)
+        try container.encode(usedTags, forKey: .usedTags)
+        try container.encode(tagsWritable, forKey: .tagsWritable)
+        try container.encode(tagOptions, forKey: .tagOptions)
+    }
+}
+
+public struct TrashChanged: Codable, Equatable, Sendable {
+    public var entries: [TrashEntryView]
+    public var deleteConfirmation: TrashConfirmationText
+    public var emptyConfirmation: TrashConfirmationText
+
+    public init(
+        entries: [TrashEntryView], deleteConfirmation: TrashConfirmationText,
+        emptyConfirmation: TrashConfirmationText
+    ) {
+        self.entries = entries
+        self.deleteConfirmation = deleteConfirmation
+        self.emptyConfirmation = emptyConfirmation
+    }
+}
+
+public struct SearchStatusChanged: Codable, Equatable, Sendable {
+    public var status: String?
+    public var progress: Double?
+    public var partial: Bool
+
+    public init(status: String?, progress: Double?, partial: Bool) {
+        self.status = status
+        self.progress = progress
+        self.partial = partial
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status, progress, partial
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        progress = try container.decodeIfPresent(Double.self, forKey: .progress)
+        partial = try container.decode(Bool.self, forKey: .partial)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(status, forKey: .status)
+        try container.encode(progress, forKey: .progress)
+        try container.encode(partial, forKey: .partial)
     }
 }
 
@@ -155,6 +223,8 @@ public struct SessionEnded: Codable, Equatable, Sendable {
 public enum CoreEvent: Decodable, Equatable, Sendable {
     case loadingProgress(LoadingProgress)
     case treeChanged(TreeChanged)
+    case trashChanged(TrashChanged)
+    case searchStatusChanged(SearchStatusChanged)
     case noteChanged(NoteChanged)
     case noteContentChangedRemotely(RemoteNoteChange)
     case syncStateChanged(SyncStateChanged)
@@ -165,14 +235,17 @@ public enum CoreEvent: Decodable, Equatable, Sendable {
     case unknown(name: String)
 
     public static let knownNames: [String] = [
-        "loadingProgress", "treeChanged", "noteChanged", "noteContentChangedRemotely",
-        "syncStateChanged", "notice", "noticeCleared", "keyChanged", "sessionEnded",
+        "loadingProgress", "treeChanged", "trashChanged", "searchStatusChanged", "noteChanged",
+        "noteContentChangedRemotely", "syncStateChanged", "notice", "noticeCleared", "keyChanged",
+        "sessionEnded",
     ]
 
     public var name: String {
         switch self {
         case .loadingProgress: "loadingProgress"
         case .treeChanged: "treeChanged"
+        case .trashChanged: "trashChanged"
+        case .searchStatusChanged: "searchStatusChanged"
         case .noteChanged: "noteChanged"
         case .noteContentChangedRemotely: "noteContentChangedRemotely"
         case .syncStateChanged: "syncStateChanged"
@@ -196,6 +269,11 @@ public enum CoreEvent: Decodable, Equatable, Sendable {
             self = .loadingProgress(try container.decode(LoadingProgress.self, forKey: .payload))
         case "treeChanged":
             self = .treeChanged(try container.decode(TreeChanged.self, forKey: .payload))
+        case "trashChanged":
+            self = .trashChanged(try container.decode(TrashChanged.self, forKey: .payload))
+        case "searchStatusChanged":
+            self = .searchStatusChanged(
+                try container.decode(SearchStatusChanged.self, forKey: .payload))
         case "noteChanged":
             self = .noteChanged(try container.decode(NoteChanged.self, forKey: .payload))
         case "noteContentChangedRemotely":

@@ -94,7 +94,7 @@ func timed<T>(_ body: () async throws -> T) async rethrows -> (value: T, millise
 func notePaths(in nodes: [TreeNode]) -> [[String]] {
     nodes.flatMap { node -> [[String]] in
         switch node {
-        case .note(_, let path): [path]
+        case .note(_, let path, _, _): [path]
         case .folder(_, _, _, let children): notePaths(in: children)
         }
     }
@@ -231,7 +231,7 @@ final class TestRuntime: @unchecked Sendable {
         } else {
             throw TestTimeout(description: "note.open returned no note")
         }
-        guard case .loaded(_, let content, _) = note else {
+        guard case .loaded(_, let content, _, _, _) = note else {
             throw TestTimeout(description: "A note did not load")
         }
         return content

@@ -4,7 +4,13 @@ import type { TreeNode } from "./api";
 
 function toNode(node: WorkingNode): TreeNode {
   if (node.kind === "note") {
-    return { kind: "note", name: node.name, path: [...node.path] };
+    return {
+      kind: "note",
+      name: node.name,
+      path: [...node.path],
+      colorTag: node.colorTag,
+      shared: node.shared,
+    };
   }
   return {
     kind: "folder",

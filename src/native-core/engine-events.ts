@@ -1,7 +1,6 @@
 import type { AutoRefresh } from "../app/auto-refresh";
 import { notePathEquals } from "../changes/change";
 import { minimalChanges } from "../editor/minimal-changes";
-import type { RunningApp } from "../app/start-app";
 import {
   isRemoteChangeNotice,
   type RemoteChangeNotice,
@@ -21,6 +20,14 @@ import {
   describeSyncState,
   describeSyncStatus,
 } from "../ui/browse/sync-messages";
+import { buildTagFilter, resolveTagFilter } from "../ui/browse/tag-filter";
+import { COLOR_TAG_PALETTE, type ColorTag } from "../tags/color-tag";
+import {
+  DELETE_PERMANENTLY_MESSAGE,
+  DELETE_PERMANENTLY_TITLE,
+  describeEmptyTrash,
+  EMPTY_TRASH_TITLE,
+} from "../ui/trash/trash-messages";
 import { buildSyncStatusMenu } from "../ui/browse/sync-status-menu";
 import { remoteChangeMessage } from "../ui/browse/status-announcer";
 import {
@@ -28,7 +35,7 @@ import {
   isPersistentToast,
   noticeTone,
 } from "../ui/notices/notice-messages";
-import type { AppSession } from "./app-session";
+import type { AppSession, NativeRunningApp } from "./app-session";
 import type {
   CoreEvents,
   NoticeAction,
@@ -38,6 +45,7 @@ import type {
 import type { EmitCoreEvent } from "./commands/command-context";
 import { toCoreError } from "./core-errors";
 import { toOpenNote } from "./open-note-view";
+import { toTrashEntries } from "./trash-view";
 import { toTreeNodes } from "./tree-view";
 
 export const REFRESH_NOTICE_ID = "refresh";
@@ -53,11 +61,13 @@ const REMOTE_CHANGES: Record<
 };
 
 export interface EngineEvents {
-  attach(app: RunningApp): void;
+  attach(app: NativeRunningApp): void;
   refreshSucceeded(): void;
   refreshFailed(error: SyncError | null): void;
   clearRefreshNotice(): void;
   noteSwitched(): void;
+  setTagFilter(tag: ColorTag | null): void;
+  clearTagFilter(): void;
   dispose(): void;
 }
 
@@ -186,8 +196,9 @@ function keepSurrogatePairs(
 export function createEngineEvents(options: {
   readonly app: AppSession;
   readonly emit: EmitCoreEvent;
+  readonly now: () => number;
 }): EngineEvents {
-  const { app, emit } = options;
+  const { app, emit, now } = options;
 
   let hooked: AutoRefresh | null = null;
   let unhook: (() => void) | null = null;
@@ -196,6 +207,11 @@ export function createEngineEvents(options: {
   let refreshNoticeShown = false;
 
   let tree: SyncEngineState["workingTree"] = null;
+  let tagFilter: ColorTag | null = null;
+  let shownFilter: ColorTag | null = null;
+  let tagsWritable = false;
+  let trash = "null";
+  let openPath = "null";
   let note = "null";
   let lastNote: OpenNote | null = null;
   let switched = false;
@@ -210,6 +226,11 @@ export function createEngineEvents(options: {
     failureReport = INITIAL_AUTO_REFRESH_FAILURE_STATE;
     refreshNoticeShown = false;
     tree = null;
+    tagFilter = null;
+    shownFilter = null;
+    tagsWritable = false;
+    trash = "null";
+    openPath = "null";
     note = "null";
     lastNote = null;
     switched = false;
@@ -235,7 +256,7 @@ export function createEngineEvents(options: {
     emit("noticeCleared", { id: REFRESH_NOTICE_ID });
   }
 
-  function attach(running: RunningApp): void {
+  function attach(running: NativeRunningApp): void {
     activeEngine = running.engine;
     if (hooked === running.autoRefresh) return;
     unhook?.();
@@ -254,14 +275,78 @@ export function createEngineEvents(options: {
     });
   }
 
+  function emitTree(state: SyncEngineState): void {
+    const writable = state.synced?.tags.writable ?? false;
+    let view =
+      state.workingTree === null
+        ? null
+        : buildTagFilter(state.workingTree, tagFilter);
+    const resolved = resolveTagFilter(
+      tagFilter,
+      { usedTags: view?.usedTags ?? [] },
+      writable,
+    );
+    if (resolved !== tagFilter && state.workingTree !== null) {
+      view = buildTagFilter(state.workingTree, resolved);
+    }
+    const unchanged =
+      state.workingTree === tree &&
+      resolved === shownFilter &&
+      writable === tagsWritable;
+    tagFilter = resolved;
+    if (unchanged) return;
+    tree = state.workingTree;
+    shownFilter = resolved;
+    tagsWritable = writable;
+    emit("treeChanged", {
+      tree: toTreeNodes(view?.tree ?? null),
+      tagFilter,
+      usedTags: [...(view?.usedTags ?? [])],
+      tagsWritable: writable,
+      tagOptions: COLOR_TAG_PALETTE.map((option) => ({
+        tag: option.id,
+        label: option.label,
+      })),
+    });
+  }
+
+  function emitTrash(state: SyncEngineState): void {
+    if (state.visibleTrash === null) return;
+    const entries = toTrashEntries(state.visibleTrash, now());
+    const payload: CoreEvents["trashChanged"] = {
+      entries,
+      deleteConfirmation: {
+        title: DELETE_PERMANENTLY_TITLE,
+        message: DELETE_PERMANENTLY_MESSAGE,
+      },
+      emptyConfirmation: {
+        title: EMPTY_TRASH_TITLE,
+        message: describeEmptyTrash(entries.length),
+      },
+    };
+    const key = JSON.stringify(payload);
+    if (key === trash) return;
+    trash = key;
+    emit("trashChanged", payload);
+  }
+
+  function recordOpenNote(engine: SyncEngine, state: SyncEngineState): void {
+    const running = app.current();
+    if (running === null || running.engine !== engine) return;
+    const path = state.openNote?.path ?? null;
+    const key = JSON.stringify(path);
+    if (key === openPath) return;
+    openPath = key;
+    if (path !== null) running.services.recentNotes.record([...path]);
+  }
+
   function onState(engine: SyncEngine): void {
     const state = engine.getState();
     const forgeName = app.activeForgeName();
 
-    if (state.workingTree !== tree) {
-      tree = state.workingTree;
-      emit("treeChanged", { tree: toTreeNodes(tree) });
-    }
+    emitTree(state);
+    emitTrash(state);
+    recordOpenNote(engine, state);
 
     const view = toOpenNote(state, {
       forgeName,
@@ -344,6 +429,15 @@ export function createEngineEvents(options: {
     clearRefreshNotice,
     noteSwitched() {
       switched = true;
+    },
+    setTagFilter(tag) {
+      tagFilter = tag;
+      if (activeEngine !== null) onState(activeEngine);
+    },
+    clearTagFilter() {
+      if (tagFilter === null) return;
+      tagFilter = null;
+      if (activeEngine !== null) onState(activeEngine);
     },
     dispose() {
       stopListening();

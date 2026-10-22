@@ -5,10 +5,10 @@ public enum ForgeID: String, Codable, Equatable, Sendable {
 
 public indirect enum TreeNode: Codable, Equatable, Sendable {
     case folder(name: String, path: [String], noteCount: Int, children: [TreeNode])
-    case note(name: String, path: [String])
+    case note(name: String, path: [String], colorTag: ColorTag?, shared: Bool)
 
     private enum CodingKeys: String, CodingKey {
-        case kind, name, path, noteCount, children
+        case kind, name, path, noteCount, children, colorTag, shared
     }
 
     public init(from decoder: Decoder) throws {
@@ -24,7 +24,12 @@ public indirect enum TreeNode: Codable, Equatable, Sendable {
                 children: try container.decode([TreeNode].self, forKey: .children)
             )
         case "note":
-            self = .note(name: name, path: path)
+            self = .note(
+                name: name,
+                path: path,
+                colorTag: try container.decodeIfPresent(ColorTag.self, forKey: .colorTag),
+                shared: try container.decode(Bool.self, forKey: .shared)
+            )
         case let other:
             throw DecodingError.dataCorruptedError(
                 forKey: .kind, in: container, debugDescription: "Unknown tree node kind \(other)")
@@ -40,28 +45,31 @@ public indirect enum TreeNode: Codable, Equatable, Sendable {
             try container.encode(path, forKey: .path)
             try container.encode(noteCount, forKey: .noteCount)
             try container.encode(children, forKey: .children)
-        case .note(let name, let path):
+        case .note(let name, let path, let colorTag, let shared):
             try container.encode("note", forKey: .kind)
             try container.encode(name, forKey: .name)
             try container.encode(path, forKey: .path)
+            try container.encode(colorTag, forKey: .colorTag)
+            try container.encode(shared, forKey: .shared)
         }
     }
 }
 
 public enum OpenNote: Codable, Equatable, Sendable {
     case loading(path: [String])
-    case loaded(path: [String], content: String, conflict: OpenNoteConflict?)
+    case loaded(
+        path: [String], content: String, conflict: OpenNoteConflict?, colorTag: ColorTag?, shared: Bool)
     case missing(path: [String], message: String)
     case trashed(path: [String], message: String)
     case failed(path: [String], message: String, error: CoreError)
 
     private enum CodingKeys: String, CodingKey {
-        case state, path, content, conflict, message, error
+        case state, path, content, conflict, colorTag, shared, message, error
     }
 
     public var path: [String] {
         switch self {
-        case .loading(let path), .loaded(let path, _, _), .missing(let path, _),
+        case .loading(let path), .loaded(let path, _, _, _, _), .missing(let path, _),
             .trashed(let path, _), .failed(let path, _, _):
             return path
         }
@@ -77,7 +85,9 @@ public enum OpenNote: Codable, Equatable, Sendable {
             self = .loaded(
                 path: path,
                 content: try container.decode(String.self, forKey: .content),
-                conflict: try container.decodeIfPresent(OpenNoteConflict.self, forKey: .conflict))
+                conflict: try container.decodeIfPresent(OpenNoteConflict.self, forKey: .conflict),
+                colorTag: try container.decodeIfPresent(ColorTag.self, forKey: .colorTag),
+                shared: try container.decode(Bool.self, forKey: .shared))
         case "missing":
             self = .missing(path: path, message: try container.decode(String.self, forKey: .message))
         case "trashed":
@@ -100,11 +110,13 @@ public enum OpenNote: Codable, Equatable, Sendable {
         case .loading(let path):
             try container.encode("loading", forKey: .state)
             try container.encode(path, forKey: .path)
-        case .loaded(let path, let content, let conflict):
+        case .loaded(let path, let content, let conflict, let colorTag, let shared):
             try container.encode("loaded", forKey: .state)
             try container.encode(path, forKey: .path)
             try container.encode(content, forKey: .content)
             try container.encode(conflict, forKey: .conflict)
+            try container.encode(colorTag, forKey: .colorTag)
+            try container.encode(shared, forKey: .shared)
         case .missing(let path, let message):
             try container.encode("missing", forKey: .state)
             try container.encode(path, forKey: .path)
@@ -447,13 +459,14 @@ public struct SyncStatusMenuItem: Codable, Equatable, Sendable {
 public struct NoticeAction: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Equatable, Sendable {
         case openNote
+        case undo
     }
 
     public var kind: Kind
     public var label: String
-    public var path: [String]
+    public var path: [String]?
 
-    public init(kind: Kind, label: String, path: [String]) {
+    public init(kind: Kind, label: String, path: [String]? = nil) {
         self.kind = kind
         self.label = label
         self.path = path
@@ -631,5 +644,600 @@ public struct ExportedArchive: Codable, Equatable, Sendable {
         self.fileName = fileName
         self.mimeType = mimeType
         self.base64 = base64
+    }
+}
+
+public enum ColorTag: String, Codable, Equatable, Sendable, CaseIterable {
+    case red
+    case orange
+    case yellow
+    case green
+    case blue
+    case purple
+}
+
+public struct TagOption: Codable, Equatable, Sendable {
+    public var tag: ColorTag
+    public var label: String
+
+    public init(tag: ColorTag, label: String) {
+        self.tag = tag
+        self.label = label
+    }
+}
+
+public enum StructureOutcome: Codable, Equatable, Sendable {
+    case ok(path: [String])
+    case error(message: String)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, path, message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .kind) {
+        case "ok":
+            self = .ok(path: try container.decode([String].self, forKey: .path))
+        case "error":
+            self = .error(message: try container.decode(String.self, forKey: .message))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: container, debugDescription: "Unknown structure outcome \(other)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .ok(let path):
+            try container.encode("ok", forKey: .kind)
+            try container.encode(path, forKey: .path)
+        case .error(let message):
+            try container.encode("error", forKey: .kind)
+            try container.encode(message, forKey: .message)
+        }
+    }
+}
+
+public enum SiblingMoveOutcome: Codable, Equatable, Sendable {
+    case none
+    case ok(path: [String])
+    case error(message: String)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, path, message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .kind) {
+        case "none":
+            self = .none
+        case "ok":
+            self = .ok(path: try container.decode([String].self, forKey: .path))
+        case "error":
+            self = .error(message: try container.decode(String.self, forKey: .message))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: container, debugDescription: "Unknown sibling move outcome \(other)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .none:
+            try container.encode("none", forKey: .kind)
+        case .ok(let path):
+            try container.encode("ok", forKey: .kind)
+            try container.encode(path, forKey: .path)
+        case .error(let message):
+            try container.encode("error", forKey: .kind)
+            try container.encode(message, forKey: .message)
+        }
+    }
+}
+
+public enum SiblingDirection: String, Codable, Equatable, Sendable {
+    case up
+    case down
+}
+
+public struct MoveTargetView: Codable, Equatable, Sendable {
+    public var path: [String]
+    public var label: String
+    public var depth: Int
+    public var disabled: Bool
+
+    public init(path: [String], label: String, depth: Int, disabled: Bool) {
+        self.path = path
+        self.label = label
+        self.depth = depth
+        self.disabled = disabled
+    }
+}
+
+public struct TrashPreview: Codable, Equatable, Sendable {
+    public var title: String
+    public var message: String
+    public var confirmLabel: String
+    public var itemCount: Int
+    public var shareCount: Int
+
+    public init(
+        title: String, message: String, confirmLabel: String, itemCount: Int, shareCount: Int
+    ) {
+        self.title = title
+        self.message = message
+        self.confirmLabel = confirmLabel
+        self.itemCount = itemCount
+        self.shareCount = shareCount
+    }
+}
+
+public enum TrashOutcome: Codable, Equatable, Sendable {
+    case trashed(entryId: String)
+    case deleted
+    case confirm(preview: TrashPreview)
+    case error(message: String)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, entryId, preview, message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .kind) {
+        case "trashed":
+            self = .trashed(entryId: try container.decode(String.self, forKey: .entryId))
+        case "deleted":
+            self = .deleted
+        case "confirm":
+            self = .confirm(preview: try container.decode(TrashPreview.self, forKey: .preview))
+        case "error":
+            self = .error(message: try container.decode(String.self, forKey: .message))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: container, debugDescription: "Unknown trash outcome \(other)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .trashed(let entryId):
+            try container.encode("trashed", forKey: .kind)
+            try container.encode(entryId, forKey: .entryId)
+        case .deleted:
+            try container.encode("deleted", forKey: .kind)
+        case .confirm(let preview):
+            try container.encode("confirm", forKey: .kind)
+            try container.encode(preview, forKey: .preview)
+        case .error(let message):
+            try container.encode("error", forKey: .kind)
+            try container.encode(message, forKey: .message)
+        }
+    }
+}
+
+public enum TrashNodeKind: String, Codable, Equatable, Sendable {
+    case note
+    case folder
+}
+
+public struct TrashItemView: Codable, Equatable, Sendable {
+    public var kind: TrashNodeKind
+    public var name: String
+    public var subPath: [String]
+    public var children: [TrashItemView]
+
+    public init(kind: TrashNodeKind, name: String, subPath: [String], children: [TrashItemView]) {
+        self.kind = kind
+        self.name = name
+        self.subPath = subPath
+        self.children = children
+    }
+}
+
+public struct TrashEntryView: Codable, Equatable, Sendable {
+    public var id: String
+    public var kind: TrashNodeKind
+    public var name: String
+    public var originalFolder: String
+    public var daysLeft: String
+    public var colorTag: ColorTag?
+    public var children: [TrashItemView]
+
+    public init(
+        id: String, kind: TrashNodeKind, name: String, originalFolder: String, daysLeft: String,
+        colorTag: ColorTag?, children: [TrashItemView]
+    ) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.originalFolder = originalFolder
+        self.daysLeft = daysLeft
+        self.colorTag = colorTag
+        self.children = children
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, name, originalFolder, daysLeft, colorTag, children
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        kind = try container.decode(TrashNodeKind.self, forKey: .kind)
+        name = try container.decode(String.self, forKey: .name)
+        originalFolder = try container.decode(String.self, forKey: .originalFolder)
+        daysLeft = try container.decode(String.self, forKey: .daysLeft)
+        colorTag = try container.decodeIfPresent(ColorTag.self, forKey: .colorTag)
+        children = try container.decode([TrashItemView].self, forKey: .children)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(name, forKey: .name)
+        try container.encode(originalFolder, forKey: .originalFolder)
+        try container.encode(daysLeft, forKey: .daysLeft)
+        try container.encode(colorTag, forKey: .colorTag)
+        try container.encode(children, forKey: .children)
+    }
+}
+
+public struct TrashConfirmationText: Codable, Equatable, Sendable {
+    public var title: String
+    public var message: String
+
+    public init(title: String, message: String) {
+        self.title = title
+        self.message = message
+    }
+}
+
+public struct SearchRange: Codable, Equatable, Sendable {
+    public var start: Int
+    public var end: Int
+
+    public init(start: Int, end: Int) {
+        self.start = start
+        self.end = end
+    }
+
+    public init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        start = try container.decode(Int.self)
+        end = try container.decode(Int.self)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        try container.encode(start)
+        try container.encode(end)
+    }
+}
+
+public struct SnippetPart: Codable, Equatable, Sendable {
+    public var text: String
+    public var match: Bool
+
+    public init(text: String, match: Bool) {
+        self.text = text
+        self.match = match
+    }
+}
+
+public struct SearchRow: Codable, Equatable, Sendable {
+    public var path: [String]
+    public var name: String
+    public var folder: String?
+    public var nameRanges: [SearchRange]
+    public var snippet: [SnippetPart]?
+    public var colorTag: ColorTag?
+
+    public init(
+        path: [String], name: String, folder: String?, nameRanges: [SearchRange],
+        snippet: [SnippetPart]?, colorTag: ColorTag?
+    ) {
+        self.path = path
+        self.name = name
+        self.folder = folder
+        self.nameRanges = nameRanges
+        self.snippet = snippet
+        self.colorTag = colorTag
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path, name, folder, nameRanges, snippet, colorTag
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode([String].self, forKey: .path)
+        name = try container.decode(String.self, forKey: .name)
+        folder = try container.decodeIfPresent(String.self, forKey: .folder)
+        nameRanges = try container.decode([SearchRange].self, forKey: .nameRanges)
+        snippet = try container.decodeIfPresent([SnippetPart].self, forKey: .snippet)
+        colorTag = try container.decodeIfPresent(ColorTag.self, forKey: .colorTag)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path, forKey: .path)
+        try container.encode(name, forKey: .name)
+        try container.encode(folder, forKey: .folder)
+        try container.encode(nameRanges, forKey: .nameRanges)
+        try container.encode(snippet, forKey: .snippet)
+        try container.encode(colorTag, forKey: .colorTag)
+    }
+}
+
+public struct SearchCopy: Codable, Equatable, Sendable {
+    public var recentHeading: String
+    public var namesHeading: String
+    public var contentsHeading: String
+    public var noMatches: String
+    public var stillReading: String
+    public var hint: String
+
+    public init(
+        recentHeading: String, namesHeading: String, contentsHeading: String, noMatches: String,
+        stillReading: String, hint: String
+    ) {
+        self.recentHeading = recentHeading
+        self.namesHeading = namesHeading
+        self.contentsHeading = contentsHeading
+        self.noMatches = noMatches
+        self.stillReading = stillReading
+        self.hint = hint
+    }
+}
+
+public struct SearchResults: Codable, Equatable, Sendable {
+    public var recent: [SearchRow]
+    public var names: [SearchRow]
+    public var contents: [SearchRow]
+    public var countText: String?
+    public var namesMore: String?
+    public var contentsMore: String?
+    public var copy: SearchCopy
+
+    public init(
+        recent: [SearchRow], names: [SearchRow], contents: [SearchRow], countText: String?,
+        namesMore: String?, contentsMore: String?, copy: SearchCopy
+    ) {
+        self.recent = recent
+        self.names = names
+        self.contents = contents
+        self.countText = countText
+        self.namesMore = namesMore
+        self.contentsMore = contentsMore
+        self.copy = copy
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case recent, names, contents, countText, namesMore, contentsMore, copy
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        recent = try container.decode([SearchRow].self, forKey: .recent)
+        names = try container.decode([SearchRow].self, forKey: .names)
+        contents = try container.decode([SearchRow].self, forKey: .contents)
+        countText = try container.decodeIfPresent(String.self, forKey: .countText)
+        namesMore = try container.decodeIfPresent(String.self, forKey: .namesMore)
+        contentsMore = try container.decodeIfPresent(String.self, forKey: .contentsMore)
+        copy = try container.decode(SearchCopy.self, forKey: .copy)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(recent, forKey: .recent)
+        try container.encode(names, forKey: .names)
+        try container.encode(contents, forKey: .contents)
+        try container.encode(countText, forKey: .countText)
+        try container.encode(namesMore, forKey: .namesMore)
+        try container.encode(contentsMore, forKey: .contentsMore)
+        try container.encode(copy, forKey: .copy)
+    }
+}
+
+public struct DetailItemText: Codable, Equatable, Sendable {
+    public var label: String
+    public var value: String
+
+    public init(label: String, value: String) {
+        self.label = label
+        self.value = value
+    }
+}
+
+public enum NameCommitOutcome: Codable, Equatable, Sendable {
+    case none
+    case restore
+    case error(message: String)
+    case ok(path: [String])
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, message, path
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .kind) {
+        case "none":
+            self = .none
+        case "restore":
+            self = .restore
+        case "error":
+            self = .error(message: try container.decode(String.self, forKey: .message))
+        case "ok":
+            self = .ok(path: try container.decode([String].self, forKey: .path))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: container, debugDescription: "Unknown name commit outcome \(other)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .none:
+            try container.encode("none", forKey: .kind)
+        case .restore:
+            try container.encode("restore", forKey: .kind)
+        case .error(let message):
+            try container.encode("error", forKey: .kind)
+            try container.encode(message, forKey: .message)
+        case .ok(let path):
+            try container.encode("ok", forKey: .kind)
+            try container.encode(path, forKey: .path)
+        }
+    }
+}
+
+public struct ImagePayload: Codable, Equatable, Sendable {
+    public enum MediaType: String, Codable, Equatable, Sendable {
+        case webp = "image/webp"
+        case gif = "image/gif"
+    }
+
+    public var type: MediaType
+    public var base64: String
+
+    public init(type: MediaType, base64: String) {
+        self.type = type
+        self.base64 = base64
+    }
+}
+
+public struct LastView: Codable, Equatable, Sendable {
+    public var note: [String]?
+    public var folders: [[String]]
+
+    public init(note: [String]?, folders: [[String]]) {
+        self.note = note
+        self.folders = folders
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case note, folders
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        note = try container.decodeIfPresent([String].self, forKey: .note)
+        folders = try container.decode([[String]].self, forKey: .folders)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(note, forKey: .note)
+        try container.encode(folders, forKey: .folders)
+    }
+}
+
+public enum EarlyDraftOutcome: Codable, Equatable, Sendable {
+    case none
+    case draft(name: String, error: String?)
+    case created(path: [String], fieldError: String?)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, name, error, path, fieldError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .kind) {
+        case "none":
+            self = .none
+        case "draft":
+            self = .draft(
+                name: try container.decode(String.self, forKey: .name),
+                error: try container.decodeIfPresent(String.self, forKey: .error))
+        case "created":
+            self = .created(
+                path: try container.decode([String].self, forKey: .path),
+                fieldError: try container.decodeIfPresent(String.self, forKey: .fieldError))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind, in: container, debugDescription: "Unknown early draft outcome \(other)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .none:
+            try container.encode("none", forKey: .kind)
+        case .draft(let name, let error):
+            try container.encode("draft", forKey: .kind)
+            try container.encode(name, forKey: .name)
+            try container.encode(error, forKey: .error)
+        case .created(let path, let fieldError):
+            try container.encode("created", forKey: .kind)
+            try container.encode(path, forKey: .path)
+            try container.encode(fieldError, forKey: .fieldError)
+        }
+    }
+}
+
+public struct NoteStatsResult: Codable, Equatable, Sendable {
+    public var words: DetailItemText
+    public var tasks: DetailItemText?
+
+    public init(words: DetailItemText, tasks: DetailItemText?) {
+        self.words = words
+        self.tasks = tasks
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case words, tasks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        words = try container.decode(DetailItemText.self, forKey: .words)
+        tasks = try container.decodeIfPresent(DetailItemText.self, forKey: .tasks)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(words, forKey: .words)
+        try container.encode(tasks, forKey: .tasks)
+    }
+}
+
+public struct NoteDatesResult: Codable, Equatable, Sendable {
+    public var notSaved: Bool
+    public var created: DetailItemText?
+    public var updated: DetailItemText?
+
+    public init(notSaved: Bool, created: DetailItemText?, updated: DetailItemText?) {
+        self.notSaved = notSaved
+        self.created = created
+        self.updated = updated
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case notSaved, created, updated
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        notSaved = try container.decode(Bool.self, forKey: .notSaved)
+        created = try container.decodeIfPresent(DetailItemText.self, forKey: .created)
+        updated = try container.decodeIfPresent(DetailItemText.self, forKey: .updated)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(notSaved, forKey: .notSaved)
+        try container.encode(created, forKey: .created)
+        try container.encode(updated, forKey: .updated)
     }
 }

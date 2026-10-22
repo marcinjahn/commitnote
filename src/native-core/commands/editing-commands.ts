@@ -2,6 +2,7 @@ import { buildNotesArchive } from "../../export/notes-archive";
 import { exportFileName } from "../../export/export-file-name";
 import type { CoreCommands, ConflictResolution } from "../api";
 import type { AppSession } from "../app-session";
+import { toBase64 } from "../base64";
 import type { EngineEvents } from "../engine-events";
 import type { HostServices } from "../host-services";
 import {
@@ -19,7 +20,6 @@ const RESOLUTIONS: readonly ConflictResolution[] = [
   "keepTheirs",
   "editMerged",
 ];
-const BASE64_CHUNK_BYTES = 0x6000;
 
 function notePath(params: CommandParams): string[] {
   const value = params.path;
@@ -34,14 +34,6 @@ function resolutionParam(params: CommandParams): ConflictResolution {
   const found = RESOLUTIONS.find((resolution) => resolution === value);
   if (found === undefined) throw invalidParams();
   return found;
-}
-
-function toBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += BASE64_CHUNK_BYTES) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + BASE64_CHUNK_BYTES));
-  }
-  return btoa(binary);
 }
 
 export function createEditingCommands(context: {

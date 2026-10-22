@@ -108,7 +108,7 @@ struct NoteView: View {
 
     private var openConflict: OpenNoteConflict? {
         guard case .note(let path) = model.editorTarget,
-            case .loaded(let notePath, _, let conflict)? = model.openNote, notePath == path
+            case .loaded(let notePath, _, let conflict, _, _)? = model.openNote, notePath == path
         else { return nil }
         return conflict
     }
@@ -126,7 +126,7 @@ struct NoteView: View {
             switch note {
             case .loading:
                 return .message("Loading…")
-            case .loaded(_, _, let conflict?) where !conflict.editing:
+            case .loaded(_, _, let conflict?, _, _) where !conflict.editing:
                 return .conflict
             case .loaded:
                 return .editor

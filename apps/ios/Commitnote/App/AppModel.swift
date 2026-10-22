@@ -304,7 +304,7 @@ final class AppModel {
 
     func resolveConflict(_ resolution: ConflictResolution) async {
         await flushEdits()
-        guard case .loaded(let path, _, _?)? = openNote else { return }
+        guard case .loaded(let path, _, _?, _, _)? = openNote else { return }
         do {
             _ = try await send(ConflictResolve(path: path, resolution: resolution))
             if resolution == .editMerged {
@@ -327,9 +327,18 @@ final class AppModel {
         guard let action = notices.first(where: { $0.id == id })?.action else { return }
         switch action.kind {
         case .openNote:
-            await open(path: action.path)
+            if let path = action.path {
+                await open(path: path)
+            }
+            await dismissNotice(id: id)
+        case .undo:
+            await flushEdits()
+            do {
+                _ = try await send(NoticesPerform(id: id))
+            } catch {
+                showError(error)
+            }
         }
-        await dismissNotice(id: id)
     }
 
     private func sendNoteOpen(path: [String]?) async {
@@ -595,7 +604,7 @@ final class AppModel {
         case .sessionEnded:
             resetSessionState()
             screen = .login(LoginEntry())
-        case .unknown:
+        case .trashChanged, .searchStatusChanged, .unknown:
             break
         }
     }
@@ -603,7 +612,7 @@ final class AppModel {
     private func handleNoteChanged(_ change: NoteChanged) {
         let previousPath = openNote?.path
         openNote = change.note
-        guard case .loaded(let path, let content, _)? = change.note else { return }
+        guard case .loaded(let path, let content, _, _, _)? = change.note else { return }
         if let targetPath = editorTarget.notePath, targetPath != path, change.edits != nil,
             previousPath == targetPath
         {

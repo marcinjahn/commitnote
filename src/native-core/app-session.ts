@@ -6,6 +6,8 @@ import {
   type RunningApp,
   type StartAppDeps,
 } from "../app/start-app";
+import { createLastViewStore, type LastViewStore } from "../app/last-view";
+import { repoKeyOf } from "../blob-cache/blob-cache";
 import type { ForgeAdapter } from "../forge/forge-adapter";
 import {
   adapterFactoryFor,
@@ -35,7 +37,14 @@ import {
 import { createHostSessionStore } from "./host-session-store";
 import type { HostServices } from "./host-services";
 import { createNativeLifecycle } from "./native-lifecycle";
+import {
+  createNativeServices,
+  disposeNativeServices,
+  type NativeServices,
+} from "./native-services";
 import { hostArgon2id } from "./runtime/host-argon2";
+
+export type NativeRunningApp = RunningApp<NativeServices>;
 
 export interface AppSession {
   readonly store: SessionStore;
@@ -53,7 +62,8 @@ export interface AppSession {
     readonly knownHead?: string;
   }): Promise<void>;
   stop(options: { readonly clearBlobCache: boolean }): Promise<void>;
-  current(): RunningApp | null;
+  current(): NativeRunningApp | null;
+  lastView(): LastViewStore | null;
   onEngineState(listener: (engine: SyncEngine | null) => void): () => void;
   setVisible(visible: boolean): void;
   setOnline(online: boolean): void;
@@ -159,7 +169,11 @@ export function createAppSession(options: {
     };
   }
 
-  let running: RunningApp | null = null;
+  let running: NativeRunningApp | null = null;
+  let lastViewStore: {
+    readonly owner: NativeRunningApp;
+    readonly store: LastViewStore;
+  } | null = null;
   let activeForge: ForgeId | null = null;
   let disposed = false;
   let keyChanged: number | null = null;
@@ -169,7 +183,7 @@ export function createAppSession(options: {
     for (const listener of [...engineListeners]) listener(engine);
   }
 
-  const deps: StartAppDeps = {
+  const deps: StartAppDeps<NativeServices> = {
     store,
     ports,
     clock,
@@ -178,6 +192,9 @@ export function createAppSession(options: {
     requestPersistentStorageOnResume: false,
     blobStore,
     installLifecycle: (handlers) => lifecycle.install(handlers),
+    createServices: (context) =>
+      createNativeServices(context, host, ports.navigation.shareLinkBase()),
+    disposeServices: disposeNativeServices,
     afterStart({ engine }) {
       const unsubscribe = engine.subscribe(() => notifyEngine(engine));
       return () => {
@@ -206,6 +223,8 @@ export function createAppSession(options: {
     const app = running;
     if (app === null) return;
     running = null;
+    lastViewStore?.store.dispose();
+    lastViewStore = null;
     await stopApp(app, stopOptions);
   }
 
@@ -243,6 +262,24 @@ export function createAppSession(options: {
     },
     stop,
     current: () => running,
+    lastView() {
+      if (running === null || !running.remembered) return null;
+      if (lastViewStore?.owner !== running) {
+        lastViewStore = {
+          owner: running,
+          store: createLastViewStore({
+            repoKey: repoKeyOf(running.session.coordinates),
+            keyring: running.session.keyring,
+            storage: host.deviceSettings,
+            setTimer: (run, ms) => host.clock.setTimeout(run, ms),
+            clearTimer: (handle) => {
+              if (typeof handle === "number") host.clock.clearTimeout(handle);
+            },
+          }),
+        };
+      }
+      return lastViewStore.store;
+    },
     onEngineState(listener) {
       engineListeners.add(listener);
       return () => engineListeners.delete(listener);

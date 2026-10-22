@@ -4,11 +4,10 @@ import {
   draftSiblingNames,
 } from "../../app/note-draft-actions";
 import type { NoteDraftOutcome as DraftOutcome } from "../../app/note-draft-actions";
-import type { RunningApp } from "../../app/start-app";
 import { findWorkingFolder } from "../../sync/working-tree";
 import { describeStructureError } from "../../ui/browse/structure-messages";
 import type { CoreCommands, NoteDraft } from "../api";
-import type { AppSession } from "../app-session";
+import type { AppSession, NativeRunningApp } from "../app-session";
 import type { EngineEvents } from "../engine-events";
 import type { HostServices } from "../host-services";
 import {
@@ -40,16 +39,16 @@ export function createDraftCommands(context: {
   readonly events: EngineEvents;
 }): DraftCommands {
   const { host, app, events } = context;
-  let active: { readonly owner: RunningApp; draft: NoteDraft } | null = null;
+  let active: { readonly owner: NativeRunningApp; draft: NoteDraft } | null = null;
 
-  function running(): RunningApp {
+  function running(): NativeRunningApp {
     const current = app.current();
     if (current === null) throw notReady();
     events.attach(current);
     return current;
   }
 
-  function activeDraft(current: RunningApp): NoteDraft | null {
+  function activeDraft(current: NativeRunningApp): NoteDraft | null {
     if (active === null) return null;
     if (active.owner !== current) {
       active = null;
@@ -59,13 +58,14 @@ export function createDraftCommands(context: {
   }
 
   async function settle(
-    current: RunningApp,
+    current: NativeRunningApp,
     draft: NoteDraft,
     outcome: DraftOutcome,
   ): Promise<Result<"draft.commitName">> {
     switch (outcome.kind) {
       case "created":
         active = null;
+        events.clearTagFilter();
         await current.engine.openNote(outcome.path);
         return {
           outcome: {
@@ -95,6 +95,7 @@ export function createDraftCommands(context: {
           throw invalidParams();
         }
         active = null;
+        events.clearTagFilter();
         events.noteSwitched();
         await current.engine.openNote(null);
         const draft = { parent, name: "" };
@@ -155,6 +156,7 @@ export function createDraftCommands(context: {
             },
           };
         }
+        events.clearTagFilter();
         return { outcome: { kind: "created", path: [...result.path] } };
       },
     },

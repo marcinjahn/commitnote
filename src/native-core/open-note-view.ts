@@ -9,6 +9,7 @@ import {
   keepThisDeviceLabel,
 } from "../ui/note/conflict-copy";
 import type { OpenNote, OpenNoteConflict } from "./api";
+import { findWorkingNode } from "../sync/working-tree";
 import { toCoreError } from "./core-errors";
 
 export const MISSING_NOTE_MESSAGE = "This note no longer exists.";
@@ -33,7 +34,7 @@ function toConflict(
 }
 
 export function toOpenNote(
-  state: Pick<SyncEngineState, "openNote" | "conflicts">,
+  state: Pick<SyncEngineState, "openNote" | "conflicts" | "workingTree">,
   context: { readonly forgeName: string; readonly deviceName: () => string },
 ): OpenNote | null {
   const open = state.openNote;
@@ -44,12 +45,18 @@ export function toOpenNote(
       return { state: "loading", path };
     case "loaded": {
       const held = state.conflicts.find((c) => notePathEquals(c.path, open.path));
+      const node =
+        state.workingTree === null
+          ? undefined
+          : findWorkingNode(state.workingTree, open.path);
       return {
         state: "loaded",
         path,
         content: open.content,
         conflict:
           held === undefined ? null : toConflict(held, context.deviceName()),
+        colorTag: node?.kind === "note" ? node.colorTag : null,
+        shared: node?.kind === "note" ? node.shared : false,
       };
     }
     case "missing":

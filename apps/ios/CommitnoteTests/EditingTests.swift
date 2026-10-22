@@ -110,7 +110,7 @@ final class EditingTests: RuntimeTestCase {
             return changed.edits != nil
         }
         guard case .noteChanged(let changed) = event,
-            case .loaded(_, let content, _)? = changed.note,
+            case .loaded(_, let content, _, _, _)? = changed.note,
             let edits = changed.edits
         else { return XCTFail("The event carried no edits") }
 

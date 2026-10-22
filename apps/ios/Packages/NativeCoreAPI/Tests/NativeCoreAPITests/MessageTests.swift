@@ -81,22 +81,64 @@ final class MessageTests: XCTestCase {
             try event(
                 #"""
                 {"kind":"event","event":"treeChanged","payload":{"tree":[
-                {"kind":"note","name":"A","path":["A"]}]}}
+                {"kind":"note","name":"A","path":["A"],"colorTag":"blue","shared":true}],
+                "tagFilter":"blue","usedTags":["blue","red"],"tagsWritable":true,
+                "tagOptions":[{"tag":"red","label":"Red"},{"tag":"blue","label":"Blue"}]}}
                 """#),
-            .treeChanged(try JSONDecoder().decode(
-                TreeChanged.self, from: Data(#"{"tree":[{"kind":"note","name":"A","path":["A"]}]}"#.utf8))))
+            .treeChanged(
+                TreeChanged(
+                    tree: [.note(name: "A", path: ["A"], colorTag: .blue, shared: true)],
+                    tagFilter: .blue, usedTags: [.blue, .red], tagsWritable: true,
+                    tagOptions: [
+                        TagOption(tag: .red, label: "Red"), TagOption(tag: .blue, label: "Blue"),
+                    ])))
         XCTAssertEqual(
-            try event(#"{"kind":"event","event":"treeChanged","payload":{"tree":null}}"#),
-            .treeChanged(try JSONDecoder().decode(TreeChanged.self, from: Data(#"{"tree":null}"#.utf8))))
+            try event(
+                #"{"kind":"event","event":"treeChanged","payload":{"tree":null,"tagFilter":null,"usedTags":[],"tagsWritable":false,"tagOptions":[]}}"#
+            ),
+            .treeChanged(
+                TreeChanged(
+                    tree: nil, tagFilter: nil, usedTags: [], tagsWritable: false, tagOptions: [])))
+        XCTAssertEqual(
+            try event(
+                #"""
+                {"kind":"event","event":"trashChanged","payload":{"entries":[
+                {"id":"e1","kind":"folder","name":"F","originalFolder":"Top level","daysLeft":"29 days left","colorTag":null,
+                "children":[{"kind":"note","name":"N","subPath":["N"],"children":[]}]}],
+                "deleteConfirmation":{"title":"Delete permanently?","message":"d"},
+                "emptyConfirmation":{"title":"Empty trash?","message":"e"}}}
+                """#),
+            .trashChanged(
+                TrashChanged(
+                    entries: [
+                        TrashEntryView(
+                            id: "e1", kind: .folder, name: "F", originalFolder: "Top level",
+                            daysLeft: "29 days left", colorTag: nil,
+                            children: [
+                                TrashItemView(kind: .note, name: "N", subPath: ["N"], children: [])
+                            ])
+                    ],
+                    deleteConfirmation: TrashConfirmationText(title: "Delete permanently?", message: "d"),
+                    emptyConfirmation: TrashConfirmationText(title: "Empty trash?", message: "e"))))
+        XCTAssertEqual(
+            try event(
+                #"{"kind":"event","event":"searchStatusChanged","payload":{"status":"Indexing","progress":0.5,"partial":true}}"#
+            ),
+            .searchStatusChanged(SearchStatusChanged(status: "Indexing", progress: 0.5, partial: true)))
+        XCTAssertEqual(
+            try event(
+                #"{"kind":"event","event":"searchStatusChanged","payload":{"status":null,"progress":null,"partial":false}}"#
+            ),
+            .searchStatusChanged(SearchStatusChanged(status: nil, progress: nil, partial: false)))
         XCTAssertEqual(
             try event(#"{"kind":"event","event":"noteChanged","payload":{"note":null}}"#).name,
             "noteChanged")
         guard
             case .noteChanged(let changed) = try event(
-                #"{"kind":"event","event":"noteChanged","payload":{"note":{"state":"loaded","path":["A"],"content":"c","conflict":null},"edits":null}}"#
+                #"{"kind":"event","event":"noteChanged","payload":{"note":{"state":"loaded","path":["A"],"content":"c","conflict":null,"colorTag":"green","shared":true},"edits":null}}"#
             )
         else { return XCTFail("noteChanged") }
-        XCTAssertEqual(changed.note, .loaded(path: ["A"], content: "c", conflict: nil))
+        XCTAssertEqual(changed.note, .loaded(path: ["A"], content: "c", conflict: nil, colorTag: .green, shared: true))
         XCTAssertNil(changed.edits)
         guard
             case .noteChanged(let withEdits) = try event(
@@ -106,12 +148,12 @@ final class MessageTests: XCTestCase {
                 "heading":"This note was also changed on Other device","text":"t",
                 "keepThisLabel":"Keep this device's version (iPhone)",
                 "keepOtherLabel":"Keep other device's version (Other device)",
-                "editMergedLabel":"Edit merged","editHint":"hint","merged":"<<<<<<< x","editing":true}},
+                "editMergedLabel":"Edit merged","editHint":"hint","merged":"<<<<<<< x","editing":true},"colorTag":null,"shared":false},
                 "edits":[{"from":2,"to":2,"insert":" there"}]}}
                 """#)
         else { return XCTFail("noteChanged with edits") }
         XCTAssertEqual(withEdits.edits, [RemoteTextEdit(from: 2, to: 2, insert: " there")])
-        guard case .loaded(_, _, let conflict?) = withEdits.note else {
+        guard case .loaded(_, _, let conflict?, _, _) = withEdits.note else {
             return XCTFail("conflict")
         }
         XCTAssertEqual(conflict.otherDevice, "Other device")
@@ -167,6 +209,14 @@ final class MessageTests: XCTestCase {
                     action: NoticeAction(kind: .openNote, label: "Open note", path: ["A"]))))
         XCTAssertEqual(
             try event(
+                #"{"kind":"event","event":"notice","payload":{"id":"u","tone":"success","message":"m","persistent":false,"action":{"kind":"undo","label":"Undo"}}}"#
+            ),
+            .notice(
+                Notice(
+                    id: "u", tone: .success, message: "m", persistent: false,
+                    action: NoticeAction(kind: .undo, label: "Undo"))))
+        XCTAssertEqual(
+            try event(
                 #"{"kind":"event","event":"notice","payload":{"id":"x","tone":"info","message":"m","persistent":false,"action":null}}"#
             ),
             .notice(Notice(id: "x", tone: .info, message: "m", persistent: false, action: nil)))
@@ -201,7 +251,7 @@ final class MessageTests: XCTestCase {
     }
 
     func testEventNameMatchesCase() throws {
-        XCTAssertEqual(CoreEvent.knownNames.count, 9)
+        XCTAssertEqual(CoreEvent.knownNames.count, 11)
         XCTAssertEqual(
             CoreEvent.noticeCleared(NoticeCleared(id: "x")).name, "noticeCleared")
     }

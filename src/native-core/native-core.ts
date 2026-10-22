@@ -5,6 +5,7 @@ import type {
   CoreResponse,
   NativeCoreHandle,
 } from "./api";
+import { createActionNotices } from "./action-notices";
 import { createAppSession, type AppSession } from "./app-session";
 import {
   CoreCommandError,
@@ -15,8 +16,13 @@ import {
 import { createDraftCommands } from "./commands/draft-commands";
 import { createEditingCommands } from "./commands/editing-commands";
 import { createLoginCommands } from "./commands/login-commands";
+import { createNoteViewCommands } from "./commands/note-view-commands";
 import { createNotesCommands } from "./commands/notes-commands";
 import { createSessionCommands } from "./commands/session-commands";
+import { createSessionViewCommands } from "./commands/session-view-commands";
+import { createSearchCommands } from "./commands/search-commands";
+import { createStructureCommands } from "./commands/structure-commands";
+import { createTrashCommands } from "./commands/trash-commands";
 import { coreLevelError } from "./core-errors";
 import { createEngineEvents } from "./engine-events";
 import type { HostServices } from "./host-services";
@@ -87,7 +93,12 @@ export function createNativeCore(options: {
     emit,
   });
 
-  const engineEvents = createEngineEvents({ app, emit });
+  const engineEvents = createEngineEvents({
+    app,
+    emit,
+    now: () => host.clock.now(),
+  });
+  const notices = createActionNotices({ app, emit });
 
   const drafts = createDraftCommands({
     host,
@@ -101,10 +112,20 @@ export function createNativeCore(options: {
         ? options.extraCommands(app)
         : options.extraCommands),
       ...createLoginCommands({ host, app, emit }),
-      ...createSessionCommands({ app, emit, drafts }),
-      ...createNotesCommands({ app, events: engineEvents, drafts }),
+      ...createSessionCommands({ host, app, emit, drafts }),
+      ...createNotesCommands({ app, events: engineEvents, drafts, notices }),
       ...createEditingCommands({ host, app, events: engineEvents }),
       ...drafts.handlers,
+      ...createStructureCommands({ app, events: engineEvents, notices }),
+      ...createTrashCommands({ app, events: engineEvents }),
+      ...createSearchCommands({ host, app, events: engineEvents, emit }),
+      ...createNoteViewCommands({ host, app, events: engineEvents }),
+      ...createSessionViewCommands({
+        host,
+        app,
+        events: engineEvents,
+        drafts,
+      }),
     }),
   );
 
@@ -160,6 +181,7 @@ export function createNativeCore(options: {
       if (stopped) return;
       stopped = true;
       engineEvents.dispose();
+      notices.dispose();
       void app.dispose().catch(() => undefined);
     },
   };

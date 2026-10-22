@@ -50,20 +50,25 @@ async function setUp() {
   };
   const forge = await createFakeForge({
     argon2id: sharedMemoizedArgon2id,
-    shareStorage: new Map<string, string>() as unknown as Storage,
   });
   controls = forge.controls;
-  const core = createNativeCore({
-    host,
-    deviceModel: "iPhone",
-    registry: () => Promise.resolve(forge.registry),
-    extraCommands: (app) =>
-      createFakeCommands({
-        getApp: () => app,
-        controls: () => Promise.resolve(forge.controls),
-        host,
-      }),
-  });
+  const start = () =>
+    createNativeCore({
+      host,
+      deviceModel: "iPhone",
+      registry: () => Promise.resolve(forge.registry),
+      extraCommands: (app) =>
+        createFakeCommands({
+          getApp: () => app,
+          controls: () => Promise.resolve(forge.controls),
+          host,
+        }),
+    });
+  let core = start();
+  const restart = () => {
+    core.stop();
+    core = start();
+  };
   let nextId = 1;
   async function send(
     command: string,
@@ -113,7 +118,16 @@ async function setUp() {
       { timeout: 20_000, interval: 20 },
     );
   }
-  return { core, send, events, openSampleSession, openLoaded };
+  return {
+    get core() {
+      return core;
+    },
+    restart,
+    send,
+    events,
+    openSampleSession,
+    openLoaded,
+  };
 }
 
 async function ok(response: Promise<CoreResponse>): Promise<any> {
@@ -340,5 +354,48 @@ describe("fake core commands", () => {
     const files = unzipSync(new Uint8Array(Buffer.from(archive.base64, "base64")));
     expect(strFromU8(files["Welcome.md"]!)).toBe("Unsaved words");
     core.stop();
+  });
+
+  it("shares a saved note and refuses a missing one", async () => {
+    const { core, send, events, openSampleSession } = await setUp();
+    await openSampleSession();
+    await vi.waitFor(() => {
+      expect(events("treeChanged").at(-1)?.tree).not.toBeNull();
+    });
+
+    expect(await ok(send("fake.shareNote", { path: ["Welcome"] }))).toEqual({});
+    await vi.waitFor(() => {
+      const welcome = events("treeChanged")
+        .at(-1)
+        .tree.find((node: { name: string }) => node.name === "Welcome");
+      expect(welcome.shared).toBe(true);
+    });
+    expect(
+      await send("fake.shareNote", { path: ["Nothing here"] }),
+    ).toMatchObject({ ok: false, error: { kind: "invalidParams" } });
+    core.stop();
+  });
+
+  it("keeps a remembered-session resume pending until loading is released", async () => {
+    const ctx = await setUp();
+    await ctx.openSampleSession();
+    ctx.restart();
+
+    await ok(ctx.send("fake.holdLoading"));
+    await ok(ctx.send("fake.holdLoading"));
+    let settled: CoreResponse | null = null;
+    const resumed = ctx.send("session.resume").then((response) => {
+      settled = response;
+      return response;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(settled).toBeNull();
+
+    await ok(ctx.send("fake.releaseLoading"));
+    expect(await resumed).toMatchObject({
+      ok: true,
+      result: { kind: "resumed" },
+    });
+    ctx.core.stop();
   });
 });

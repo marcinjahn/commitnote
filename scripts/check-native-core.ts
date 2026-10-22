@@ -64,6 +64,7 @@ const PROD_CORE_NEEDLES: readonly string[] = [
 
 const FAKE_CORE_CONTROLS: readonly string[] = [
   "fake.saveNote",
+  "fake.shareNote",
   LARGE_TREE_REPO_KEY,
   SAMPLE_NOTES_REPO_PASSPHRASE,
 ];
@@ -577,6 +578,118 @@ async function housekeepingCheck(bundle: vm.Script): Promise<string> {
   }
 }
 
+async function organiseCheck(bundle: vm.Script): Promise<string> {
+  const core = new BareHostCore(bundle, createNodeHostServices());
+  try {
+    const kind = await core.logIn("sample/notes");
+    if (kind !== "notesRepo")
+      throw new Error(`sample/notes inspected as ${kind}`);
+    await core.send("login.unlock", {
+      passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
+    });
+    await core.poll(
+      "loading the tree",
+      async () =>
+        (await core.send<{ tree: TreeNode[] | null }>("tree.get")).tree,
+      100,
+      RESPONSE_TIMEOUT_MS,
+    );
+    const { notes: sampleNotes } = await core.send<{
+      notes: { path: string[]; text: string }[];
+    }>("fake.expectedSampleNotes");
+    const textOf = (path: string[]): string => {
+      const note = sampleNotes.find(
+        (candidate) => candidate.path.join("/") === path.join("/"),
+      );
+      if (note === undefined) throw new Error("a sample note is missing");
+      return note.text;
+    };
+
+    const structure = async (
+      command: string,
+      params: object,
+    ): Promise<string[]> => {
+      const { outcome } = await core.send<{
+        outcome: { kind: string; path?: string[] };
+      }>(command, params);
+      if (outcome.kind !== "ok" || outcome.path === undefined) {
+        throw new Error(`${command} returned ${outcome.kind}`);
+      }
+      return outcome.path;
+    };
+    const trash = async (path: string[]): Promise<string> => {
+      const { outcome } = await core.send<{
+        outcome: { kind: string; entryId?: string };
+      }>("node.trash", { path, shareCount: 0 });
+      if (outcome.kind !== "trashed" || outcome.entryId === undefined) {
+        throw new Error(`node.trash returned ${outcome.kind}`);
+      }
+      return outcome.entryId;
+    };
+
+    const welcome = ["Welcome"];
+    const polish = ["Zażółć gęślą jaźń"];
+    const roadmap = ["Projects", "commitnote", "Roadmap"];
+    const renamed = await structure("node.rename", {
+      path: welcome,
+      name: "Hello",
+    });
+    const moved = await structure("node.move", {
+      path: polish,
+      parent: ["Projects"],
+    });
+    await structure("node.place", {
+      path: renamed,
+      parent: [],
+      before: "Empty folder",
+    });
+    await structure("node.setColorTag", { path: renamed, tag: "yellow" });
+    await trash(["Journal", "2026", "Whiteboard"]);
+    const folderEntry = await trash(["Projects", "commitnote"]);
+    const restored = await structure("trash.restore", {
+      entryId: folderEntry,
+      subPath: ["Roadmap"],
+      parent: [],
+    });
+
+    const flushed = await core.send<{ result: { kind: string } }>("sync.flush");
+    if (flushed.result.kind !== "saved") {
+      throw new Error(`sync.flush returned ${flushed.result.kind}`);
+    }
+    await expectReadBack({
+      name: "bare host organise",
+      passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
+      exported: await core.exportRepo("sample/notes"),
+      expect: {
+        initialized: false,
+        notes: [
+          { path: renamed, text: textOf(welcome) },
+          { path: moved, text: textOf(polish) },
+          { path: restored, text: textOf(roadmap) },
+        ],
+        folders: [["Projects"], ["Journal", "2026"]],
+        order: [
+          {
+            parent: [],
+            names: ["Hello", "Empty folder", "Journal", "Projects", "Roadmap"],
+          },
+        ],
+        tags: [
+          { path: renamed, tag: "yellow" },
+          { path: moved, tag: "purple" },
+          { path: restored, tag: "blue" },
+          { path: ["Journal", "2026", "January"], tag: "orange" },
+        ],
+        trash: { count: 2, names: ["Whiteboard", "commitnote"] },
+        deviceName: DEVICE_MODEL,
+      },
+    });
+  } finally {
+    core.stop();
+  }
+  return "renamed, moved, placed and tagged notes, trashed a note and a folder, restored one note from the folder, and read order, tags and trash back";
+}
+
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -615,6 +728,7 @@ async function main(): Promise<void> {
     ["test vectors", vectorsCheck],
     ["bare-host check", smokeCheck],
     ["bare-host editing", editingCheck],
+    ["bare-host organise", organiseCheck],
     ["bare-host initialize", initializeCheck],
     ["bare-host housekeeping", housekeepingCheck],
   ] as const) {

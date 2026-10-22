@@ -139,7 +139,7 @@ private struct TreeRows: View {
                         .accessibilityIdentifier("folder-new-folder")
                     }
                 }
-            case .note(let name, let path):
+            case .note(let name, let path, _, _):
                 Label(name, systemImage: "doc.text")
                     .tag(Optional(path))
                     .accessibilityElement(children: .combine)
@@ -173,7 +173,7 @@ private struct TreeRows: View {
 private extension TreeNode {
     var path: [String] {
         switch self {
-        case .folder(_, let path, _, _), .note(_, let path):
+        case .folder(_, let path, _, _), .note(_, let path, _, _):
             return path
         }
     }

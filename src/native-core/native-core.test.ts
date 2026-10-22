@@ -558,6 +558,8 @@ describe("notes commands", () => {
       kind: "note",
       name: "Welcome",
       path: ["Welcome"],
+      colorTag: null,
+      shared: false,
     });
     const projects = tree.find(
       (node: { name: string }) => node.name === "Projects",
@@ -579,7 +581,10 @@ describe("notes commands", () => {
       noteCount: 0,
       children: [],
     });
-    expect(events("treeChanged").at(-1)).toEqual({ tree });
+    expect(events("treeChanged").at(-1)).toMatchObject({
+      tree,
+      tagFilter: null,
+    });
   });
 
   it("opens a note with its exact text and reports it as changed", async () => {
@@ -590,6 +595,8 @@ describe("notes commands", () => {
       path: ["Welcome"],
       content: WELCOME.markdown,
       conflict: null,
+      colorTag: null,
+      shared: false,
     };
     expect(await call(core, "note.open", { path: ["Welcome"] })).toEqual({
       note: loaded,
@@ -634,6 +641,8 @@ describe("notes commands", () => {
         path: ["Welcome"],
         content: "Edited elsewhere",
         conflict: null,
+        colorTag: null,
+        shared: false,
       },
       edits: [
         { from: 0, to: WELCOME.markdown.length, insert: "Edited elsewhere" },

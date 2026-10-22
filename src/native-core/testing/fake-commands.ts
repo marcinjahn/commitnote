@@ -15,6 +15,9 @@ import {
 import type { FakeForgeControls } from "../../testing/fake-forge/fake-forge-factory";
 import type { HoldableOperation } from "../../testing/fake-forge/forge-hold";
 import type { ForgeErrorKind } from "../../forge/errors";
+import { LARGE_TREE_REPO_KEY } from "../../testing/sample-notes-repo/large-tree-source";
+import type { ShareService } from "../../share/share-service";
+import { findWorkingNode } from "../../sync/working-tree";
 import { buildNoteTree, listNotes } from "../../tree/note-tree";
 import type { SyncEngine } from "../../sync/sync-engine";
 import {
@@ -29,7 +32,10 @@ import { hostArgon2id } from "../runtime/host-argon2";
 import { checkTestVectors } from "./check-vectors";
 
 export interface FakeCommandsApp {
-  current(): { readonly engine: SyncEngine } | null;
+  current(): {
+    readonly engine: SyncEngine;
+    readonly services: { readonly shareService: ShareService };
+  } | null;
 }
 
 type Params = Readonly<Record<string, unknown>>;
@@ -68,6 +74,17 @@ const FAILABLE_OPERATIONS: readonly HoldableOperation[] = [
   "createShare",
   "updateShare",
   "deleteShare",
+];
+
+const LOADING_REPOS: readonly string[] = [
+  "sample/notes",
+  "sample/read-only",
+  "sample/search",
+  "sample/trash",
+  "sample/newer",
+  "sample/foreign",
+  "sample/almost-empty",
+  LARGE_TREE_REPO_KEY,
 ];
 
 function failableOperation(params: Params): HoldableOperation {
@@ -261,6 +278,37 @@ export function createFakeCommands(options: {
       const operation = failableOperation(params);
       const controls = await options.controls();
       await fixtureCall(async () => controls.clearFailures(repo, operation));
+      return {};
+    },
+
+    async "fake.shareNote"(raw) {
+      const path = stringArrayParam(asParams(raw).path);
+      const running = options.getApp().current();
+      if (running === null) throw notReady();
+      const { workingTree } = running.engine.getState();
+      if (
+        workingTree === null ||
+        findWorkingNode(workingTree, path)?.kind !== "note"
+      ) {
+        throw invalidParams();
+      }
+      const result = await running.services.shareService.createShare({
+        path,
+        password: "",
+      });
+      if (!result.ok) throw new CoreCommandError(coreLevelError("internal"));
+      return {};
+    },
+
+    async "fake.holdLoading"() {
+      const controls = await options.controls();
+      for (const repo of LOADING_REPOS) controls.hold(repo, "inspect");
+      return {};
+    },
+
+    async "fake.releaseLoading"() {
+      const controls = await options.controls();
+      for (const repo of LOADING_REPOS) controls.release(repo, "inspect");
       return {};
     },
 

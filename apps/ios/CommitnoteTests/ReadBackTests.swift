@@ -193,11 +193,11 @@ final class ReadBackTests: RuntimeTestCase {
         _ = try await runtime.send(SyncFlush())
 
         let event = try await runtime.events.wait(after: index, description: "the conflict") {
-            guard case .noteChanged(let changed) = $0, case .loaded(_, _, let conflict)? = changed.note
+            guard case .noteChanged(let changed) = $0, case .loaded(_, _, let conflict, _, _)? = changed.note
             else { return false }
             return conflict?.otherDevice != nil
         }
-        guard case .noteChanged(let changed) = event, case .loaded(_, _, let conflict)? = changed.note
+        guard case .noteChanged(let changed) = event, case .loaded(_, _, let conflict, _, _)? = changed.note
         else { return XCTFail("The conflict event carried no loaded note") }
         XCTAssertEqual(conflict?.otherDevice, "Other iPhone")
 
