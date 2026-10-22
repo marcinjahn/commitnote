@@ -3,6 +3,7 @@ import { TRASH_RETENTION_MS } from "../../format/v1";
 import {
   describeDaysLeft,
   describeEmptyTrash,
+  describeTrashConfirmation,
   describeMovedNotesToTrash,
   describeOriginalFolder,
   describeRevokeFailed,
@@ -99,5 +100,69 @@ describe("describeUndoneFileDrop", () => {
   it("reports only the kept notes when nothing was trashed", () => {
     expect(describeUndoneFileDrop(0, 1)).toBe("1 shared note kept.");
     expect(describeUndoneFileDrop(0, 2)).toBe("2 shared notes kept.");
+  });
+});
+
+describe("describeTrashConfirmation", () => {
+  const base = {
+    name: "Plan",
+    kind: "note",
+    itemCount: 0,
+    shareCount: 0,
+    revoking: false,
+  } as const;
+
+  it("confirms moving a note to the trash", () => {
+    expect(describeTrashConfirmation(base)).toEqual({
+      title: "Move to trash?",
+      body: "“Plan” will be moved to the trash.",
+      shareWarning: null,
+      retentionNote:
+        "Items in the trash are deleted permanently after 30 days.",
+      confirmLabel: "Move to trash",
+    });
+  });
+
+  it("counts the items of a non-empty folder", () => {
+    const one = describeTrashConfirmation({ ...base, kind: "folder", itemCount: 1 });
+    expect(one.body).toBe(
+      "“Plan” and everything in it (1 item) will be moved to the trash.",
+    );
+    const many = describeTrashConfirmation({ ...base, kind: "folder", itemCount: 3 });
+    expect(many.body).toBe(
+      "“Plan” and everything in it (3 items) will be moved to the trash.",
+    );
+    expect(many.title).toBe("Move to trash?");
+    expect(many.retentionNote).not.toBeNull();
+  });
+
+  it("deletes an empty folder outright", () => {
+    expect(describeTrashConfirmation({ ...base, kind: "folder" })).toEqual({
+      title: "Delete folder?",
+      body: "“Plan” will be deleted.",
+      shareWarning: null,
+      retentionNote: null,
+      confirmLabel: "Delete",
+    });
+  });
+
+  it("warns that shares are revoked and relabels the button", () => {
+    const copy = describeTrashConfirmation({ ...base, shareCount: 2 });
+    expect(copy.shareWarning).toBe(describeSharesRevokedOnTrash(2, "note"));
+    expect(copy.confirmLabel).toBe("Revoke links and move to trash");
+    const folder = describeTrashConfirmation({
+      ...base,
+      kind: "folder",
+      itemCount: 2,
+      shareCount: 1,
+    });
+    expect(folder.shareWarning).toBe(describeSharesRevokedOnTrash(1, "folder"));
+  });
+
+  it("shows progress while revoking", () => {
+    expect(
+      describeTrashConfirmation({ ...base, shareCount: 1, revoking: true })
+        .confirmLabel,
+    ).toBe("Revoking links…");
   });
 });

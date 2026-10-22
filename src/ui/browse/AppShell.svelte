@@ -50,7 +50,9 @@
   import { captureFocusReturn } from "../dialogs/focus-return";
   import {
     createLastViewStore,
+    lastViewOf,
     removeLastView,
+    restorableLastView,
     type LastView,
   } from "../../app/last-view";
   import {
@@ -78,7 +80,6 @@
     UNSAVED_BEFORE_RESTORE_MESSAGE,
   } from "../history/history-messages";
   import {
-    findWorkingFolder,
     findWorkingNode,
     type WorkingFolder,
   } from "../../sync/working-tree";
@@ -155,13 +156,28 @@
   } from "../images/image-messages";
   import CommandMenu from "./CommandMenu.svelte";
   import CommitSha from "./CommitSha.svelte";
-  import { countDescendants } from "../dialogs/folder-options";
+  import {
+    commitNoteName,
+    deleteFromTrash as deleteEntryFromTrash,
+    emptyTrash as emptyEntireTrash,
+    moveAmongSiblings as moveNodeAmongSiblings,
+    moveNode,
+    placeNode,
+    renameNode,
+    restoreFromTrash,
+    setNodeColorTag,
+    trashNode,
+    trashPreview,
+    undoPlace,
+    undoTrash as undoTrashEntry,
+    type PlaceOutcome,
+    type PlaceUndo,
+  } from "../../app/structure-actions";
   import MoveDialog from "../dialogs/MoveDialog.svelte";
   import ConfirmDialog from "../dialogs/ConfirmDialog.svelte";
   import NameDialog from "../dialogs/NameDialog.svelte";
   import SettingsDialog from "../dialogs/SettingsDialog.svelte";
-  import { decideNameCommit } from "../note/name-field-commit";
-  import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
+    import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
   import {
     commitNoteDraftContent,
     commitNoteDraftName,
@@ -225,27 +241,21 @@
   import type { ForgeId } from "../../forge/repo-coordinates";
   import TrashDialog from "../trash/TrashDialog.svelte";
   import {
+    DELETE_PERMANENTLY_MESSAGE,
+    DELETE_PERMANENTLY_TITLE,
+    EMPTY_TRASH_TITLE,
     describeEmptyTrash,
     describeUndoneFileDrop,
-    describeMovedToTrash,
-    describeRevokeFailed,
-    describeUndoError,
   } from "../trash/trash-messages";
   import type { ReadableWorkingTrashEntry } from "../../sync/working-trash";
   import Wordmark from "../wordmark/Wordmark.svelte";
   import type { Command, RowAction } from "./row-menu-types";
   import type { ColorTag } from "../../tags/color-tag";
-  import { buildTagFilter } from "./tag-filter";
+  import { buildTagFilter, resolveTagFilter } from "./tag-filter";
   import TagFilterButton from "./TagFilterButton.svelte";
   import TagFilterChip from "./TagFilterChip.svelte";
-  import {
-    describeMovedDown,
-    describeMovedTo,
-    describeMovedUp,
-    describeStructureError,
-  } from "./structure-messages";
-  import { siblingMoveBefore } from "./sibling-move";
-  import type { DropTarget } from "./tree-drop";
+  import { describeStructureError } from "./structure-messages";
+    import type { DropTarget } from "./tree-drop";
   import {
     DESKTOP_MEDIA_QUERY,
     isNarrowLayout,
@@ -899,9 +909,8 @@
   const usedTags = $derived(tagFilterView?.usedTags ?? []);
 
   $effect(() => {
-    if (tagFilter !== null && (!tagsWritable || !usedTags.includes(tagFilter))) {
-      tagFilter = null;
-    }
+    const resolved = resolveTagFilter(tagFilter, { usedTags }, tagsWritable);
+    if (resolved !== tagFilter) tagFilter = resolved;
   });
 
   let tagFilterButton: TagFilterButton | undefined = $state();
@@ -928,13 +937,11 @@
   function currentLastView(): LastView {
     const kind = engineState.openNote?.kind;
     const note = kind === "loaded" || kind === "loading" ? openPath : null;
-    const folders =
-      tree === null
-        ? []
-        : treeExpansion
-            .expandedPaths()
-            .filter((path) => findWorkingFolder(tree, path) !== undefined);
-    return { note, folders };
+    const expanded = tree === null ? [] : restorableLastView(
+      lastViewOf(null, treeExpansion.expandedPaths()),
+      tree,
+    ).folders;
+    return lastViewOf(note, expanded);
   }
 
   function handleReopenLastViewChange(on: boolean): void {
@@ -978,11 +985,11 @@
       sessionRemembered && reopenLastView ? await lastViewStore.load() : null;
     const current = tree;
     if (current === null) return;
-    for (const folder of resume?.folders ?? view?.folders ?? []) {
-      if (findWorkingFolder(current, folder) !== undefined) {
-        treeExpansion.setExpanded(folder, true);
-      }
-    }
+    const restorable = restorableLastView(
+      lastViewOf(view?.note ?? null, resume?.folders ?? view?.folders ?? []),
+      current,
+    );
+    for (const folder of restorable.folders) treeExpansion.setExpanded(folder, true);
     if (resume?.treeScrollTop != null) {
       const treeScrollTop = resume.treeScrollTop;
       void tick().then(() => {
@@ -999,8 +1006,8 @@
       }
       return;
     }
-    const note = view?.note ?? null;
-    if (note !== null && findWorkingNode(current, note)?.kind === "note") {
+    const note = restorable.note;
+    if (note !== null) {
       navigation.replace({ kind: "note", path: note });
       await openRestoredNote(note);
     }
@@ -2303,9 +2310,9 @@
 
   function handleRenameSubmit(newName: string): void {
     if (dialog.kind !== "rename") return;
-    const result = engine.rename(dialog.node.path, newName);
-    if (!result.ok) {
-      dialog = { ...dialog, error: describeStructureError(result.error) };
+    const outcome = renameNode(engine, dialog.node.path, newName);
+    if (outcome.kind === "error") {
+      dialog = { ...dialog, error: outcome.message };
       return;
     }
     closeDialog();
@@ -2318,15 +2325,15 @@
       return;
     }
     if (openPath === null) return;
-    const currentName = noteName(openPath);
-    const decision = decideNameCommit({
-      currentName,
-      edited,
-      siblingNames: siblingNamesOf(parentPath(openPath), currentName),
+    const outcome = commitNoteName(engine, {
+      path: openPath,
       conflicted: openConflicted,
+      currentName: noteName(openPath),
+      value: edited,
     });
-    switch (decision.kind) {
-      case "noop":
+    switch (outcome.kind) {
+      case "none":
+      case "ok":
         nameError = null;
         break;
       case "restore":
@@ -2334,13 +2341,8 @@
         nameResetKey += 1;
         break;
       case "error":
-        nameError = decision.message;
+        nameError = outcome.message;
         break;
-      case "commit": {
-        const result = engine.rename(openPath, decision.name);
-        nameError = result.ok ? null : describeStructureError(result.error);
-        break;
-      }
     }
   }
 
@@ -2354,75 +2356,55 @@
 
   function handleMoveSubmit(newParent: NotePath): void {
     if (dialog.kind !== "move") return;
-    const result = engine.move(dialog.node.path, newParent);
-    if (!result.ok) {
-      dialog = { ...dialog, error: describeStructureError(result.error) };
+    const outcome = moveNode(engine, dialog.node.path, newParent);
+    if (outcome.kind === "error") {
+      dialog = { ...dialog, error: outcome.message };
       return;
     }
     closeDialog();
   }
 
-  function handlePlace(path: NotePath, target: DropTarget): NotePath | null {
-    const from = parentPath(path);
-    const name = noteName(path);
-    const siblings = siblingNamesOf(from);
-    const previousBefore = siblings[siblings.indexOf(name) + 1] ?? null;
+  function showPlaced(outcome: Extract<PlaceOutcome, { kind: "placed" }>): void {
+    if (outcome.notice === null) {
+      clearToast("place");
+      return;
+    }
+    showToast("place", "success", outcome.notice, {
+      action: {
+        label: "Undo",
+        run: () => handleUndoPlace(outcome.undo),
+      },
+    });
+  }
 
-    const result = engine.place(path, target);
-    if (!result.ok) {
-      showToast("place", "error", describeStructureError(result.error));
+  function handlePlace(path: NotePath, target: DropTarget): NotePath | null {
+    const outcome = placeNode(engine, path, target);
+    if (outcome.kind === "error") {
+      showToast("place", "error", outcome.message);
       return null;
     }
-    const placed = result.path;
-    if (notePathEquals(from, target.parent)) {
-      clearToast("place");
-    } else {
-      showToast("place", "success", describeMovedTo(name, target.parent), {
-        action: {
-          label: "Undo",
-          run: () =>
-            handleUndoPlace(placed, { parent: from, before: previousBefore }),
-        },
-      });
-    }
-    return placed;
+    showPlaced(outcome);
+    return outcome.path;
   }
 
   function handleColorTag(path: NotePath, color: ColorTag | null): void {
-    const result = engine.setColorTag(path, color);
-    if (!result.ok) showToast("tag", "error", describeStructureError(result.error));
+    const outcome = setNodeColorTag(engine, path, color);
+    if (outcome.kind === "error") showToast("tag", "error", outcome.message);
   }
 
   async function moveAmongSiblings(
     path: NotePath,
     direction: "up" | "down",
   ): Promise<void> {
-    const parent = parentPath(path);
-    const name = noteName(path);
-    const siblings = siblingNamesOf(parent);
-    const target = siblingMoveBefore(siblings, name, direction);
-    if (target === null) return;
-    const previousBefore = siblings[siblings.indexOf(name) + 1] ?? null;
-
-    const result = engine.place(path, { parent, before: target.before });
-    if (!result.ok) {
-      showToast("place", "error", describeStructureError(result.error));
+    const outcome = moveNodeAmongSiblings(engine, path, direction);
+    if (outcome.kind === "none") return;
+    if (outcome.kind === "error") {
+      showToast("place", "error", outcome.message);
       return;
     }
-    const placed = result.path;
-    showToast(
-      "place",
-      "success",
-      direction === "up" ? describeMovedUp(name) : describeMovedDown(name),
-      {
-        action: {
-          label: "Undo",
-          run: () => handleUndoPlace(placed, { parent, before: previousBefore }),
-        },
-      },
-    );
+    showPlaced(outcome);
     await tick();
-    focusTreeItem(placed);
+    focusTreeItem(outcome.path);
   }
 
   function focusTreeItem(path: NotePath): void {
@@ -2435,10 +2417,10 @@
     }
   }
 
-  function handleUndoPlace(path: NotePath, target: DropTarget): void {
-    const result = engine.place(path, target);
-    if (result.ok) clearToast("place");
-    else showToast("place", "error", describeStructureError(result.error));
+  function handleUndoPlace(undo: PlaceUndo): void {
+    const outcome = undoPlace(engine, undo);
+    if (outcome.kind === "ok") clearToast("place");
+    else showToast("place", "error", outcome.message);
   }
 
   function dismissMessage(id: number): void {
@@ -2514,13 +2496,14 @@
   function handleTrashRestoreSubmit(newParent: NotePath): void {
     if (trashDialog.kind !== "restore") return;
     const { entry, node } = trashDialog;
-    const result = engine.moveFromTrash(
+    const outcome = restoreFromTrash(
+      engine,
       entry.id,
       node.path.slice(entry.originalPath.length),
       newParent,
     );
-    if (!result.ok) {
-      trashDialog = { ...trashDialog, error: describeStructureError(result.error) };
+    if (outcome.kind === "error") {
+      trashDialog = { ...trashDialog, error: outcome.message };
       return;
     }
     closeTrashDialog();
@@ -2533,115 +2516,83 @@
 
   function handleTrashDeleteConfirm(): void {
     if (trashDialog.kind === "deleteEntry") {
-      engine.deleteFromTrash([trashDialog.entry.id]);
+      deleteEntryFromTrash(engine, trashDialog.entry.id);
     } else if (trashDialog.kind === "empty") {
-      engine.emptyTrash();
+      emptyEntireTrash(engine);
     }
     closeTrashDialog();
   }
 
-  function handleUndoTrash(entryId: string, reopen: NotePath | null): void {
-    const result = engine.undoTrash(entryId);
-    if (!result.ok) {
-      showToast("trash", "error", describeUndoError(result.error));
+  function handleUndoTrash(entryId: string, reopenCandidate: NotePath | null): void {
+    const outcome = undoTrashEntry(engine, entryId, reopenCandidate);
+    if (outcome.kind === "error") {
+      showToast("trash", "error", outcome.message);
       return;
     }
-    const open = engine.getState().openNote;
-    if (
-      reopen !== null &&
-      (open?.kind === "missing" || open?.kind === "trashed") &&
-      notePathEquals(open.path, reopen)
-    ) {
+    if (outcome.reopen !== null) {
       noteSwitch += 1;
-      void engine.openNote(reopen);
+      void engine.openNote(outcome.reopen);
     }
-  }
-
-  function isConflictedWithin(path: NotePath): boolean {
-    return engine
-      .getState()
-      .conflicts.some((held) => isAtOrWithin(held.path, path));
   }
 
   function requestTrash(node: WorkingNode): void {
     dialog = {
       kind: "delete",
       node,
-      itemCount: node.kind === "folder" ? countDescendants(node) : 0,
-      shareCount: shareCountWithin(node.path),
+      ...trashPreview(engine.getState(), node.path),
       revoking: false,
       error: null,
     };
   }
 
-  // Shares are revoked before the item is trashed, so a failure leaves the
-  // item in place and no trashed note keeps a live link.
   async function handleDeleteConfirm(): Promise<void> {
     if (dialog.kind !== "delete" || dialog.revoking) return;
     const current = dialog;
     const path = current.node.path;
-    const shareCount = shareCountWithin(path);
-    if (shareCount > 0) {
-      if (current.shareCount === 0) {
-        dialog = { ...current, shareCount };
+    const affectsOpenNote = openPath !== null && isAtOrWithin(openPath, path);
+    const reopen = affectsOpenNote ? openPath : null;
+    const outcome = await trashNode(
+      {
+        engine,
+        revokeShares: (target) => shareService.revokeShares(target),
+        forgeId,
+        onRevoking: (shareCount) => {
+          dialog = { ...current, shareCount, revoking: true, error: null };
+        },
+        proceed: () =>
+          dialog.kind === "delete" && notePathEquals(dialog.node.path, path),
+      },
+      path,
+      current.shareCount,
+    );
+    if (dialog.kind !== "delete") return;
+    switch (outcome.kind) {
+      case "abandoned":
         return;
-      }
-      if (isConflictedWithin(path)) {
-        dialog = {
-          ...current,
-          shareCount,
-          error: describeStructureError({ kind: "conflicted" }),
-        };
+      case "sharesChanged":
+        dialog = { ...dialog, shareCount: outcome.shareCount, revoking: false };
         return;
-      }
-      dialog = { ...current, shareCount, revoking: true, error: null };
-      const result = await shareService.revokeShares(path);
-      if (dialog.kind !== "delete" || !notePathEquals(dialog.node.path, path)) {
-        return;
-      }
-      const remaining = shareCountWithin(path);
-      if (!result.ok) {
+      case "error":
         dialog = {
           ...dialog,
-          shareCount: remaining,
+          shareCount: outcome.shareCount ?? dialog.shareCount,
           revoking: false,
-          error: describeRevokeFailed(
-            messageText(describeShareError(result.error, forgeId)),
-            result.revoked,
-          ),
+          error: outcome.message,
         };
         return;
-      }
-      if (remaining > 0) {
-        dialog = { ...dialog, shareCount: remaining, revoking: false };
-        return;
-      }
-    }
-    trashItem(path, current.node.name);
-  }
-
-  function trashItem(path: NotePath, name: string): void {
-    if (dialog.kind !== "delete") return;
-    const affectsOpenNote =
-      openPath !== null &&
-      isAtOrWithin(openPath, path);
-    const result = engine.delete(path);
-    if (!result.ok) {
-      dialog = { ...dialog, error: describeStructureError(result.error) };
-      return;
-    }
-    closeDialog();
-    const { trashEntryId } = result;
-    const reopen = affectsOpenNote ? openPath : null;
-    if (trashEntryId !== undefined) {
-      showToast("trash", "success", describeMovedToTrash(name), {
-        action: {
-          label: "Undo",
-          run: () => handleUndoTrash(trashEntryId, reopen),
-        },
-      });
-    } else {
-      clearToast("trash");
+      case "deleted":
+        closeDialog();
+        clearToast("trash");
+        break;
+      case "trashed":
+        closeDialog();
+        showToast("trash", "success", outcome.notice, {
+          action: {
+            label: "Undo",
+            run: () => handleUndoTrash(outcome.entryId, reopen),
+          },
+        });
+        break;
     }
     if (affectsOpenNote) {
       mobileView = "tree";
@@ -3268,15 +3219,15 @@
   />
 {:else if trashDialog.kind === "deleteEntry"}
   <ConfirmDialog
-    title="Delete permanently?"
-    body="This can't be undone."
+    title={DELETE_PERMANENTLY_TITLE}
+    body={DELETE_PERMANENTLY_MESSAGE}
     confirmLabel="Delete permanently"
     onConfirm={handleTrashDeleteConfirm}
     onClose={closeTrashDialog}
   />
 {:else if trashDialog.kind === "empty"}
   <ConfirmDialog
-    title="Empty trash?"
+    title={EMPTY_TRASH_TITLE}
     body={describeEmptyTrash(trashEntries.length)}
     confirmLabel="Empty trash"
     onConfirm={handleTrashDeleteConfirm}

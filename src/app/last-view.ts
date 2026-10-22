@@ -2,10 +2,28 @@ import type { NotePath } from "../changes/change";
 import type { Keyring } from "../crypto/keyring";
 import { decryptPath, encryptPath } from "../crypto/name-cipher";
 import type { StorageLike } from "../session/session-store";
+import { findWorkingFolder, findWorkingNode, type WorkingTree } from "../sync/working-tree";
 
 export interface LastView {
   readonly note: NotePath | null;
   readonly folders: readonly NotePath[];
+}
+
+export function lastViewOf(
+  openNote: NotePath | null,
+  expanded: readonly NotePath[],
+): LastView {
+  return { note: openNote, folders: expanded };
+}
+
+export function restorableLastView(view: LastView, tree: WorkingTree): LastView {
+  return {
+    note:
+      view.note !== null && findWorkingNode(tree, view.note)?.kind === "note"
+        ? view.note
+        : null,
+    folders: view.folders.filter((path) => findWorkingFolder(tree, path) !== undefined),
+  };
 }
 
 export const LAST_VIEW_SAVE_DELAY_MS = 500;

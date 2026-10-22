@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Keyring } from "../crypto/keyring";
 import { testKeyring } from "../crypto/testing/test-keyring";
 import type { StorageLike } from "../session/session-store";
+import type { WorkingNode, WorkingTree } from "../sync/working-tree";
 import {
   createLastViewStore,
   LAST_VIEW_SAVE_DELAY_MS,
+  lastViewOf,
   lastViewStorageKey,
   removeLastView,
+  restorableLastView,
   type LastView,
 } from "./last-view";
 
@@ -377,5 +380,51 @@ describe("last view store", () => {
     expect(store.isEnabled()).toBe(false);
     expect(() => store.setEnabled(true, view)).not.toThrow();
     expect(await store.load()).toBeNull();
+  });
+});
+
+describe("lastViewOf", () => {
+  it("pairs the open note with the expanded folders", () => {
+    expect(lastViewOf(["a"], [["F"]])).toEqual({ note: ["a"], folders: [["F"]] });
+    expect(lastViewOf(null, [])).toEqual({ note: null, folders: [] });
+  });
+});
+
+describe("restorableLastView", () => {
+  const note = (path: string[]): WorkingNode => ({
+    kind: "note",
+    name: path[path.length - 1]!,
+    path,
+    syncedPath: null,
+    colorTag: null,
+    shared: false,
+  });
+  const tree: WorkingTree = {
+    root: {
+      kind: "folder",
+      name: "",
+      path: [],
+      children: [
+        note(["a"]),
+        { kind: "folder", name: "F", path: ["F"], children: [note(["F", "b"])] },
+      ],
+    },
+  };
+
+  it("keeps an existing note and existing folders", () => {
+    const view = { note: ["F", "b"], folders: [["F"], ["Gone"]] };
+    expect(restorableLastView(view, tree)).toEqual({ note: ["F", "b"], folders: [["F"]] });
+  });
+
+  it("drops a missing note and a folder path that names a note", () => {
+    expect(restorableLastView({ note: ["F"], folders: [["a"]] }, tree)).toEqual({
+      note: null,
+      folders: [],
+    });
+    expect(restorableLastView({ note: ["x"], folders: [] }, tree).note).toBeNull();
+  });
+
+  it("keeps a null note", () => {
+    expect(restorableLastView({ note: null, folders: [] }, tree)).toEqual({ note: null, folders: [] });
   });
 });
