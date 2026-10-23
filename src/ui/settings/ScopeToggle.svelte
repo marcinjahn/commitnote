@@ -1,6 +1,12 @@
 <script lang="ts">
   import type { SettingScope } from "../../settings/setting-scope";
 
+  import {
+    SCOPE_DEVICE_LABEL,
+    SCOPE_SYNCED_LABEL,
+    scopeToggleLabel,
+  } from "./settings-messages";
+
   interface Props {
     label: string;
     scope: SettingScope;
@@ -14,10 +20,10 @@
   type="button"
   class="scope-toggle"
   aria-pressed={scope === "device"}
-  aria-label="{label} only on this device"
+  aria-label={scopeToggleLabel(label)}
   onclick={onToggle}
 >
-  {scope === "device" ? "This device" : "All devices"}
+  {scope === "device" ? SCOPE_DEVICE_LABEL : SCOPE_SYNCED_LABEL}
 </button>
 
 <style>

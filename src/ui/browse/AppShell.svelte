@@ -168,6 +168,7 @@
   import ConfirmDialog from "../dialogs/ConfirmDialog.svelte";
   import NameDialog from "../dialogs/NameDialog.svelte";
   import SettingsDialog from "../dialogs/SettingsDialog.svelte";
+  import { SETTINGS_EXPORT_FAILED_MESSAGE } from "../settings/settings-messages";
     import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
   import {
     commitNoteDraftContent,
@@ -1784,7 +1785,7 @@
     try {
       await exportNotesArchive(snapshot, { download, readImage });
     } catch {
-      showToast("export", "error", "Export failed. Try again later.");
+      showToast("export", "error", SETTINGS_EXPORT_FAILED_MESSAGE);
     } finally {
       exporting = false;
     }

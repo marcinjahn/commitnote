@@ -1,5 +1,12 @@
 <script lang="ts">
   import SettingRow from "./SettingRow.svelte";
+  import { IMPORTING_LABEL } from "../import/import-messages";
+  import {
+    CHANGE_PASSPHRASE_LABEL,
+    EXPORT_NOTES_LABEL,
+    EXPORTING_LABEL,
+    IMPORT_NOTES_LABEL,
+  } from "./settings-messages";
   import type { DataSecurityActions } from "./data-security-actions";
 
   const {
@@ -34,7 +41,7 @@
       disabled={exportDisabled}
       onclick={onExport}
     >
-      {exporting ? "Exporting…" : "Export notes"}
+      {exporting ? EXPORTING_LABEL : EXPORT_NOTES_LABEL}
     </button>
     <button
       type="button"
@@ -42,7 +49,7 @@
       disabled={importDisabled}
       onclick={() => importInput?.click()}
     >
-      {importing ? "Importing…" : "Import notes"}
+      {importing ? IMPORTING_LABEL : IMPORT_NOTES_LABEL}
     </button>
     <button
       type="button"
@@ -50,7 +57,7 @@
       disabled={changePassphraseDisabled}
       onclick={onChangePassphrase}
     >
-      Change passphrase
+      {CHANGE_PASSPHRASE_LABEL}
     </button>
     <input
       bind:this={importInput}
