@@ -81,8 +81,8 @@ What the app does:
   `Commitnote/App/PrintRenderer.swift` renders the print PDF.
 - `Packages/CoreRuntime/Sources/CoreRuntime/IOSVisit.swift` — the iOS visit (see Usage statistics).
 - `Commitnote/Fonts/` — the bundled note fonts (see Fonts below).
-- `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `disable-password-autofill.sh`,
-  `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
+- `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `sibling-simulator.sh`,
+  `disable-password-autofill.sh`, `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
 - `../test-vectors/` — JSON test vectors shared by the TypeScript and Swift tests.
 
 The Xcode project is generated and not committed.
@@ -209,10 +209,11 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   Simulator, and hands them to the jobs below as the `ios-test-products` artifact.
 - `Runtime tests and IPA` builds and checks the unsigned IPA, runs the runtime tests (including
   `IOSVisitTests`, `NoteFontTests` and the `data` read-back scenario) on an iPhone
-  Simulator from the shared build, reads the produced repos back with TypeScript, and also boots an
-  iPad Simulator to run the iPad `EditorFlowTests`, `SettingsFlowTests` and `DataFlowTests`.
-- `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
-  shared build:
+  Simulator from the shared build, reads the produced repos back with TypeScript, and also runs the
+  iPad `EditorFlowTests`, `SettingsFlowTests` and `DataFlowTests` on an iPad Simulator. Both
+  simulators are prepared while the IPA builds.
+- `UI tests (<device>, <suite>)` runs for `iphone` and `ipad` from the shared build, splitting its
+  classes over two simulators of the same model that run at once:
   - `flows` — editing, organisation and media flows, plus the login, settings and data flows on
     iPhone.
   - `screens` — every screenshot, plus the editor flows on iPhone and the login flows on iPad.
