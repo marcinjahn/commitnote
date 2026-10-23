@@ -43,6 +43,9 @@ const SERIALISED_COMMANDS: ReadonlySet<string> = new Set([
   "login.initialize",
   "session.resume",
   "session.logout",
+  "passphrase.prepareChange",
+  "passphrase.commitChange",
+  "passphrase.settle",
 ]);
 
 type ParsedRequest =
@@ -170,7 +173,13 @@ export function createNativeCore(options: {
       }),
       ...createPrintCommands({ host, app, events: engineEvents, notices }),
       ...imports.handlers,
-      ...createPassphraseCommands({ host, app, events: engineEvents, notices }),
+      ...createPassphraseCommands({
+        host,
+        app,
+        events: engineEvents,
+        notices,
+        emit,
+      }),
       ...createSessionViewCommands({
         host,
         app,

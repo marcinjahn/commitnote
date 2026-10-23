@@ -63,11 +63,14 @@ export interface AppSession {
   forgeName(forge: ForgeId): Promise<string>;
   activeForgeName(): string;
   loginDeps(): Promise<LoginDependencies>;
+  readonly clock: Clock;
+  rateBudgetFor(forge: ForgeId, adapter: ForgeAdapter): RateBudget;
   start(input: {
     readonly session: Session;
     readonly adapter: ForgeAdapter;
     readonly resumed: boolean;
     readonly knownHead?: string;
+    readonly purgeBlobCache?: boolean;
   }): Promise<void>;
   stop(options: { readonly clearBlobCache: boolean }): Promise<void>;
   current(): NativeRunningApp | null;
@@ -257,6 +260,8 @@ export function createAppSession(options: {
     activeForgeName: () =>
       activeForge === null ? "" : (loadedRegistry?.[activeForge].name ?? ""),
     loginDeps,
+    clock,
+    rateBudgetFor,
     async start(input) {
       if (disposed) return;
       await stop({ clearBlobCache: false });
@@ -266,7 +271,7 @@ export function createAppSession(options: {
         adapter: input.adapter,
         rememberMe: true,
         resumed: input.resumed,
-        purgeBlobCache: false,
+        purgeBlobCache: input.purgeBlobCache ?? false,
         ...(input.knownHead === undefined
           ? {}
           : { knownHead: input.knownHead }),
