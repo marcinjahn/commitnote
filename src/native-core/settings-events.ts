@@ -1,6 +1,7 @@
 import type { AppSession, StartedApp } from "./app-session";
 import type { EmitCoreEvent } from "./commands/command-context";
 import type { HostServices } from "./host-services";
+import { onImportStateChanged } from "./import-state";
 import { settingsSaveViewOf, settingsViewOf } from "./settings-view";
 
 export interface SettingsEvents {
@@ -51,12 +52,14 @@ export function createSettingsEvents(options: {
     };
   });
   const stopDevice = app.deviceSettings.subscribe(refresh);
+  const stopImport = onImportStateChanged(app, refresh);
 
   return {
     refresh,
     dispose() {
       stopStarts();
       stopDevice();
+      stopImport();
       active = null;
     },
   };

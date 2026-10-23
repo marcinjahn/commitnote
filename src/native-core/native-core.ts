@@ -125,6 +125,14 @@ export function createNativeCore(options: {
     emit,
   });
 
+  const imports = createImportCommands({
+    host,
+    app,
+    events: engineEvents,
+    notices,
+    emit,
+  });
+
   const commands = new Map<string, CommandHandler>(
     Object.entries({
       ...(typeof options.extraCommands === "function"
@@ -161,7 +169,7 @@ export function createNativeCore(options: {
         analyticsEndpoint: options.analyticsEndpoint,
       }),
       ...createPrintCommands({ host, app, events: engineEvents, notices }),
-      ...createImportCommands({ host, app, events: engineEvents, notices }),
+      ...imports.handlers,
       ...createPassphraseCommands({ host, app, events: engineEvents, notices }),
       ...createSessionViewCommands({
         host,
@@ -226,6 +234,7 @@ export function createNativeCore(options: {
       engineEvents.dispose();
       settingsEvents.dispose();
       history.dispose();
+      imports.dispose();
       notices.dispose();
       void app.dispose().catch(() => undefined);
     },

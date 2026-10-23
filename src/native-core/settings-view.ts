@@ -8,11 +8,12 @@ import {
 import type { SettingsSaveView, SettingsView } from "./api";
 import type { AppSession, StartedApp } from "./app-session";
 import type { HostServices } from "./host-services";
+import { importBusy } from "./import-view";
 import { isReopenLastViewOff } from "./reopen-last-view";
 
 export interface SettingsViewDeps {
   readonly host: HostServices;
-  readonly app: Pick<AppSession, "deviceSettings" | "deviceModel">;
+  readonly app: AppSession;
 }
 
 export function settingsViewOf(
@@ -27,7 +28,7 @@ export function settingsViewOf(
     app.deviceSettings.read(),
   );
   const ready = state.workingTree !== null && state.stopped === null;
-  const canImport = ready && !state.importing;
+  const canImport = ready && !state.importing && !importBusy(app);
   return {
     values: {
       colorMode: settings.colorMode,
