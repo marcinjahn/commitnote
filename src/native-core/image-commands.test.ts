@@ -383,3 +383,51 @@ describe("removing an image reference", () => {
     expect(revived.tombstones).not.toContain(id);
   });
 });
+
+describe("image.insert while a draft is saved", () => {
+  async function insertDuringFirstSave(
+    firstSave: (core: NativeCoreHandle) => Promise<string[]>,
+    content: (reference: string) => string,
+  ) {
+    const core = await started();
+    await ctx.call(core, "draft.start", { parent: [] });
+    const pending = insert(core, [stagePng(40, 30)]);
+    const path = await firstSave(core);
+    const references = await pending;
+    expect(references).toHaveLength(1);
+    const reference = references[0]!;
+    await save(core, path, content(reference));
+    const id = idOf(reference);
+    expect(await ctx.controls.headPaths(REPO)).toContain(imageFilePath(id));
+    expect((await probe(core, [id])).images[id]!.owners).toEqual([
+      { state: "active", path },
+    ]);
+  }
+
+  it("keeps the references when the name is committed first", async () => {
+    await insertDuringFirstSave(
+      async (core) => {
+        const { outcome } = await ctx.call(core, "draft.commitName", {
+          name: "Plans",
+        });
+        expect(outcome).toMatchObject({ kind: "created", path: ["Plans"] });
+        return ["Plans"];
+      },
+      (reference) => `Intro\n${reference}\n`,
+    );
+  });
+
+  it("keeps the references when the first save is the content under an auto name", async () => {
+    await insertDuringFirstSave(
+      async (core) => {
+        const { outcome } = await ctx.call(core, "draft.content", {
+          name: "",
+          content: "Intro",
+        });
+        expect(outcome).toMatchObject({ kind: "created" });
+        return (outcome as { path: string[] }).path;
+      },
+      (reference) => `Intro\n${reference}\n`,
+    );
+  });
+});
