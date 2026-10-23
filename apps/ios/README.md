@@ -295,8 +295,8 @@ The Impactor README documents only this UI flow; the `plumesign` command lines a
 Check the tool's own documentation for them.
 
 The bundle ID is `io.github.marcinjahn.commitnote`. If Apple refuses it for your free team, Impactor
-can rewrite it. The app has no entitlements and no extensions; Info.plist has only the camera usage
-string.
+can rewrite it. The app has no entitlements and no extensions; besides the standard keys, Info.plist
+adds only the camera usage string and the bundled note fonts (`UIAppFonts`).
 
 Alternatives: SideStore (refreshes the signature on the device) and Sideloader/AltServer-Linux.
 
