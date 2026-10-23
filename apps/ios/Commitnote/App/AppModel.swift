@@ -121,6 +121,9 @@ final class AppModel {
     var atomicBlocked: AtomicBlockedView?
     var isImportPickerPresented = false
     var dropSetup: DropSetupState?
+    var passphraseChange: PassphraseChangeState?
+    var isChangePassphrasePresented = false
+    var printState: PrintState = .idle
     private(set) var tagFilter: ColorTag?
     private(set) var usedTags: [ColorTag] = []
     private(set) var tagsWritable = false
@@ -165,6 +168,7 @@ final class AppModel {
     @ObservationIgnored var importPreviewRequest = 0
     @ObservationIgnored var queuedImportPreview: ImportDestinationView?
     @ObservationIgnored var importPreviewRunning = false
+    @ObservationIgnored var draftText = ""
     private var noteUpdateSerial = 0
     private(set) var runtime: CoreRuntime?
     private var eventsTask: Task<Void, Never>?
@@ -321,6 +325,7 @@ final class AppModel {
             editSender?.submit(text, to: .note(path))
             scheduleStatsRefresh()
         case .draft:
+            draftText = text
             editSender?.submit(text, to: .draft)
         }
     }
@@ -334,6 +339,7 @@ final class AppModel {
         do {
             let draft = try await send(DraftStart(parent: parent)).draft
             draftName = ""
+            draftText = ""
             setEditorTarget(.draft(draft))
             draftError = nil
             editorSwitch += 1
@@ -728,6 +734,7 @@ final class AppModel {
             return false
         case .draft(let name, let error):
             draftName = name
+            draftText = draft.body
             setEditorTarget(.draft(NoteDraft(parent: [], name: name)))
             draftError = error
             editorSwitch += 1
@@ -1039,9 +1046,12 @@ final class AppModel {
         noteUpdate = nil
         syncStatus = nil
         draftName = ""
+        draftText = ""
         draftError = nil
         exportState = .idle
+        printState = .idle
         resetImportState()
+        resetPassphraseState()
         tagFilter = nil
         usedTags = []
         tagsWritable = false
@@ -1174,6 +1184,7 @@ final class AppModel {
             notices.removeAll { $0.id == cleared.id }
         case .keyChanged(let info):
             resetImportState()
+            resetPassphraseState()
             screen = .keyChanged(
                 KeyChangedInfo(
                     unsavedCount: info.unsavedCount, message: info.message, detail: info.detail,
@@ -1201,6 +1212,8 @@ final class AppModel {
         case .importStatusChanged(let status):
             isImporting = status.importing
             atomicBlocked = status.atomicBlocked
+        case .passphraseChangeProgress(let progress):
+            handlePassphraseProgress(progress)
         case .unknown:
             break
         }
