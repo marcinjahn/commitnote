@@ -1,3 +1,4 @@
+import { strToU8, zipSync, zlibSync } from "fflate";
 import { fromBase64 } from "../../crypto/base64";
 import { deriveKeyring } from "../../crypto/keyring";
 import { decryptNote } from "../../crypto/note-cipher";
@@ -21,28 +22,84 @@ import {
   SHARE_IMAGE_PROFILE,
 } from "../../images/pipeline/image-profile";
 import { LARGE_TREE_REPO_KEY } from "../../testing/sample-notes-repo/large-tree-source";
-import type { ShareService } from "../../share/share-service";
 import { findWorkingNode } from "../../sync/working-tree";
 import { buildNoteTree, listNotes } from "../../tree/note-tree";
-import type { SyncEngine } from "../../sync/sync-engine";
 import {
   CoreCommandError,
   invalidParams,
   notReady,
 } from "../commands/command-context";
+import type { AppSession } from "../app-session";
 import { toBase64 } from "../base64";
 import { coreLevelError } from "../core-errors";
 import { processHostImage } from "../host-image-codec";
 import type { HostServices } from "../host-services";
+import { openImportArchive } from "../import-state";
 import { createHostFetch } from "../runtime/fetch";
 import { hostArgon2id } from "../runtime/host-argon2";
 import { checkTestVectors } from "./check-vectors";
 
-export interface FakeCommandsApp {
-  current(): {
-    readonly engine: SyncEngine;
-    readonly services: { readonly shareService: ShareService };
-  } | null;
+const SAMPLE_IMPORT_FILE_NAME = "sample-import.zip";
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) {
+      crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const chunk = new Uint8Array(12 + data.length);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0, data.length);
+  chunk.set(strToU8(type), 4);
+  chunk.set(data, 8);
+  view.setUint32(8 + data.length, crc32(chunk.subarray(4, 8 + data.length)));
+  return chunk;
+}
+
+function samplePng(): Uint8Array {
+  const ihdr = new Uint8Array(13);
+  const view = new DataView(ihdr.buffer);
+  view.setUint32(0, 2);
+  view.setUint32(4, 2);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  const pixels = [
+    [200, 40, 40, 40, 160, 60],
+    [40, 80, 200, 240, 200, 40],
+  ];
+  const raw = Uint8Array.from(pixels.flatMap((row) => [0, ...row]));
+  const parts = [
+    Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", zlibSync(raw)),
+    pngChunk("IEND", new Uint8Array(0)),
+  ];
+  const png = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let offset = 0;
+  for (const part of parts) {
+    png.set(part, offset);
+    offset += part.length;
+  }
+  return png;
+}
+
+function sampleImportArchive(): Uint8Array {
+  return zipSync(
+    {
+      "Imported plan.md": strToU8(
+        "# Imported plan\n\n- [ ] Review the chart\n- [x] Import the archive\n\n![chart](_images/chart.png)\n",
+      ),
+      "Welcome.md": strToU8("# Welcome\n\nA note that clashes with an existing one.\n"),
+      "Ideas/Later.md": strToU8("# Later\n\nIdeas for later.\n"),
+      "_images/chart.png": samplePng(),
+    },
+    { level: 0, mtime: new Date(2026, 0, 1, 12) },
+  );
 }
 
 type Params = Readonly<Record<string, unknown>>;
@@ -165,7 +222,7 @@ async function readSampleImageNote(
 }
 
 export function createFakeCommands(options: {
-  readonly getApp: () => FakeCommandsApp;
+  readonly getApp: () => AppSession;
   readonly controls: () => Promise<FakeForgeControls>;
   readonly host: HostServices;
 }): Record<string, (params: unknown) => Promise<unknown>> {
@@ -321,7 +378,12 @@ export function createFakeCommands(options: {
     },
 
     async "fake.importArchive"() {
-      throw notReady();
+      return openImportArchive(
+        options.getApp(),
+        host,
+        sampleImportArchive(),
+        SAMPLE_IMPORT_FILE_NAME,
+      );
     },
 
     async "fake.processImage"(raw) {

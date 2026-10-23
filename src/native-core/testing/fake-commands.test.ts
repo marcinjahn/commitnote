@@ -206,6 +206,30 @@ describe("fake core commands", () => {
     core.stop();
   });
 
+  it("opens the sample archive and reports one name conflict under stop", async () => {
+    const { core, send, openSampleSession } = await setUp();
+    expect(await send("fake.importArchive")).toMatchObject({
+      ok: false,
+      error: { kind: "notReady" },
+    });
+    await openSampleSession();
+    await vi.waitFor(async () => {
+      const { tree } = await ok(send("tree.get"));
+      if (tree === null) throw new Error("tree not loaded");
+    });
+
+    const archive = await ok(send("fake.importArchive"));
+    expect(archive.kind).toBe("ready");
+    const { outcome } = await ok(
+      send("import.commit", {
+        destination: { kind: "root" },
+        policy: "stop",
+      }),
+    );
+    expect(outcome).toMatchObject({ kind: "conflicts", count: 1 });
+    core.stop();
+  });
+
   it("lists every sample note with its exact text", async () => {
     const { core, send } = await setUp();
     const { notes } = await ok(send("fake.expectedSampleNotes"));
