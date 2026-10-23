@@ -178,6 +178,7 @@ final class AppModel {
     private var localNoticeCounter = 0
     #if FAKE_CORE
     private(set) var forcedOffline = false
+    var pendingTestingImportForm: ImportForm?
     #endif
 
     init() {
@@ -1112,6 +1113,20 @@ final class AppModel {
     #if FAKE_CORE
     func sendTesting<C: NativeCoreCommand>(_ command: C) async {
         _ = try? await send(command)
+    }
+
+    func importSampleArchive() async {
+        do {
+            switch try await send(FakeImportArchive()) {
+            case .ready(let form):
+                pendingTestingImportForm = form
+                await openSettings()
+            case .error(let message):
+                showErrorNotice(message)
+            }
+        } catch {
+            showErrorNotice(error.localizedDescription)
+        }
     }
 
     func setForcedOffline(_ value: Bool) async {

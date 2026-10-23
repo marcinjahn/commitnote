@@ -70,6 +70,11 @@ struct FakeShareNote: NativeCoreCommand {
     var path: [String]
 }
 
+struct FakeImportArchive: NativeCoreCommand {
+    static let name = "fake.importArchive"
+    typealias Result = ImportArchiveOutcome
+}
+
 struct FakeHoldLoading: NativeCoreCommand {
     static let name = "fake.holdLoading"
     typealias Result = Empty
@@ -192,6 +197,10 @@ struct TestingMenu: View {
                 }
             }
             .accessibilityIdentifier("testing-share-permission")
+            Button("Import sample archive") {
+                Task { await model.importSampleArchive() }
+            }
+            .accessibilityIdentifier("testing-import-archive")
             Button(model.forcedOffline ? "Go online" : "Go offline") {
                 Task { await model.setForcedOffline(!model.forcedOffline) }
             }

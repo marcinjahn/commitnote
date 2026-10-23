@@ -26,6 +26,14 @@ struct SettingsScreen: View {
         }
         .presentationDetents([.large])
         .modifier(ImportPresenter(model: model))
+        #if FAKE_CORE
+        .task {
+            if let form = model.pendingTestingImportForm {
+                model.pendingTestingImportForm = nil
+                model.importForm = form
+            }
+        }
+        #endif
     }
 
     @ViewBuilder
