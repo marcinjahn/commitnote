@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 
 struct SettingsScreen: View {
-    let model: AppModel
+    @Bindable var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -11,6 +11,12 @@ struct SettingsScreen: View {
             content
                 .navigationTitle(model.settingsCopy?.title ?? "")
                 .navigationBarTitleDisplayMode(.inline)
+                .navigationDestination(isPresented: $model.isChangePassphrasePresented) {
+                    ChangePassphraseScreen(model: model)
+                }
+                .onChange(of: model.passphraseChange?.stage == .done) { _, finished in
+                    if finished { dismiss() }
+                }
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { dismiss() }
