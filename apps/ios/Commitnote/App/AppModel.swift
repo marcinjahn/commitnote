@@ -96,7 +96,12 @@ final class AppModel {
     private(set) var openNote: OpenNote?
     private(set) var refreshStatus = RefreshStatus()
     private(set) var notices: [AppNotice] = []
-    private(set) var deviceName = ""
+    var deviceName = ""
+    var settingsCopy: SettingsCopy?
+    var settingsView: SettingsView?
+    var settingsSave: SettingsSaveView?
+    var appearance = AppAppearance.standard
+    var isSettingsPresented = false
     private(set) var editorTarget: EditorTarget = .none
     private(set) var editorSwitch = 0
     private(set) var editorLineage = 0
@@ -141,6 +146,7 @@ final class AppModel {
     @ObservationIgnored private let visitSender = IOSVisitSender()
     @ObservationIgnored private var lastViewRestorePending = false
     @ObservationIgnored private var lastViewTracking = false
+    @ObservationIgnored var settingsCopyRequested = false
     @ObservationIgnored private var detailsPath: [String]?
     @ObservationIgnored private var statsTask: Task<Void, Never>?
     @ObservationIgnored private var datesTimer: Task<Void, Never>?
@@ -158,6 +164,12 @@ final class AppModel {
     #endif
 
     init() {
+        #if FAKE_CORE
+        TestingHooks.resetStoredStateIfRequested()
+        #endif
+        if let cached = AppAppearance.loadCached() {
+            appearance = cached
+        }
         editSender = EditSender(
             editNote: { [weak self] path, text in
                 await self?.sendNoteEdit(path: path, text: text)
@@ -733,9 +745,14 @@ final class AppModel {
 
     private func saveLastView() {
         guard lastViewTracking else { return }
-        let note = editorTarget.notePath
-        let folders = expandedFolders.sorted { $0.lexicographicallyPrecedes($1) }
-        Task { _ = try? await send(LastViewSave(note: note, folders: folders)) }
+        let view = currentLastView()
+        Task { _ = try? await send(LastViewSave(note: view.note, folders: view.folders)) }
+    }
+
+    func currentLastView() -> LastView {
+        LastView(
+            note: editorTarget.notePath,
+            folders: expandedFolders.sorted { $0.lexicographicallyPrecedes($1) })
     }
 
     private func setEditorTarget(_ target: EditorTarget) {
@@ -861,6 +878,7 @@ final class AppModel {
 
     func logOut() async {
         await flushEdits()
+        await flushSettings()
         logoutState = .saving
         do {
             switch try await send(SessionLogout(anyway: false)).outcome {
@@ -1074,6 +1092,7 @@ final class AppModel {
                 _ = try? await send(LifecycleSetVisible(visible: false))
             }
             _ = try? await send(SyncFlush())
+            await flushSettings()
             await runtime.flushHostStorage()
             token.end()
         }
@@ -1183,6 +1202,10 @@ final class AppModel {
             sharesUnreadable = change.unreadable
             updatingShareId = change.updatingId
             shareCopy = change.copy
+        case .settingsChanged(let change):
+            handleSettingsChanged(change.view)
+        case .settingsSaveChanged(let change):
+            settingsSave = change.save
         case .unknown:
             break
         }

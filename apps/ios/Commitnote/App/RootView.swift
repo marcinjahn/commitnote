@@ -8,6 +8,13 @@ struct RootView: View {
         content
             .onChange(of: scenePhase, initial: true) { _, phase in
                 model.scenePhaseChanged(phase)
+                if phase == .active {
+                    AppearanceApplier.apply(model.appearance)
+                }
+            }
+            .onAppear { AppearanceApplier.apply(model.appearance) }
+            .onChange(of: model.appearance) { _, appearance in
+                AppearanceApplier.apply(appearance)
             }
     }
 

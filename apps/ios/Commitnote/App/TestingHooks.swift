@@ -5,10 +5,13 @@ import NativeCoreAPI
 import SwiftUI
 
 enum TestingHooks {
+    private nonisolated(unsafe) static var storedStateWasReset = false
+
     static func resetStoredStateIfRequested(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
-        if environment["COMMITNOTE_UI_TEST_RESET"] == "1" {
+        if environment["COMMITNOTE_UI_TEST_RESET"] == "1", !storedStateWasReset {
+            storedStateWasReset = true
             CoreRuntimeConfiguration.resetStoredState()
         }
     }
