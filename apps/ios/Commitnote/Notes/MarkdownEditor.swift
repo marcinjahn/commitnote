@@ -173,9 +173,10 @@ struct MarkdownEditor: UIViewRepresentable {
         }
 
         private func applyNoteFont(to textView: UITextView) {
-            guard appliedNoteFont != currentNoteFont, textView.markedTextRange == nil else { return }
-            appliedNoteFont = currentNoteFont
-            styler.noteFont = currentNoteFont
+            guard let noteFont = currentNoteFont, appliedNoteFont != noteFont, textView.markedTextRange == nil
+            else { return }
+            appliedNoteFont = noteFont
+            styler.noteFont = noteFont
             textView.font = styler.baseAttributes[.font] as? UIFont
             textView.typingAttributes = styler.baseAttributes
             (textView as? MarkdownTextView)?.previewBodyFont = styler.baseAttributes[.font] as? UIFont

@@ -77,12 +77,14 @@ enum PrintRenderer {
     }
 
     private nonisolated static func fontFaces(regular: URL?, italic: URL?) -> String {
-        [(regular, "normal"), (italic, "italic")].compactMap { url, style in
+        let faces: [(URL?, String)] = [(regular, "normal"), (italic, "italic")]
+        return faces.compactMap { face -> String? in
+            let (url, style) = face
             guard let url, let data = try? Data(contentsOf: url) else { return nil }
             return
                 "@font-face{font-family:\"commitnote-note\";src:url(data:font/ttf;base64,\(data.base64EncodedString())) format(\"truetype\");font-style:\(style);font-weight:100 900}"
         }
-        .map { "<style>\($0)</style>" }
+        .map { (face: String) in "<style>\(face)</style>" }
         .joined()
     }
 
