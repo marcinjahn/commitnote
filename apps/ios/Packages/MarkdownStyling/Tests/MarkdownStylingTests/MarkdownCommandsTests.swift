@@ -295,4 +295,89 @@ final class MarkdownCommandsTests: XCTestCase {
     func testPasteAllowedAdjacentToCode() {
         XCTAssertEqual(paste("`c` word", "word", "https://a.b")?.0, "`c` [word](https://a.b)")
     }
+
+    private func insertImages(
+        _ text: String, at position: Int, _ selection: TextSelection, _ references: [String] = ["![a](image:x)"]
+    ) -> (String, TextSelection)? {
+        guard
+            let result = MarkdownCommands.insertImageReferences(
+                text: text, at: position, selection: selection, references: references)
+        else { return nil }
+        return (TextEdits.apply(result.edits, to: text), result.selection)
+    }
+
+    func testInsertImageReferencesMidLineCaret() {
+        let result = insertImages("hello world", at: 5, caret(5))
+        XCTAssertEqual(result?.0, "hello\n![a](image:x)\n world")
+        XCTAssertEqual(result?.1, caret(5 + 15))
+    }
+
+    func testInsertImageReferencesAtLineStart() {
+        let result = insertImages("one\ntwo", at: 4, caret(4))
+        XCTAssertEqual(result?.0, "one\n![a](image:x)\ntwo")
+        XCTAssertEqual(result?.1, caret(4 + 14))
+    }
+
+    func testInsertImageReferencesAtEndOfLastLine() {
+        let result = insertImages("one", at: 3, caret(3))
+        XCTAssertEqual(result?.0, "one\n![a](image:x)\n")
+        XCTAssertEqual(result?.1, caret(3 + 15))
+    }
+
+    func testInsertImageReferencesAtEndWithoutCaretAnchor() {
+        let result = insertImages("one", at: 3, caret(0))
+        XCTAssertEqual(result?.0, "one\n![a](image:x)")
+        XCTAssertEqual(result?.1, caret(0))
+    }
+
+    func testInsertImageReferencesIntoEmptyDocument() {
+        let result = insertImages("", at: 0, caret(0))
+        XCTAssertEqual(result?.0, "![a](image:x)\n")
+        XCTAssertEqual(result?.1, caret(14))
+    }
+
+    func testInsertImageReferencesJoinsMultiple() {
+        let result = insertImages("ab", at: 1, caret(1), ["R1", "R2"])
+        XCTAssertEqual(result?.0, "a\nR1\nR2\nb")
+        XCTAssertEqual(result?.1, caret(1 + 7))
+    }
+
+    func testInsertImageReferencesMapsSelectionElsewhere() {
+        let result = insertImages("hello world", at: 0, TextSelection(location: 6, length: 5), ["R"])
+        XCTAssertEqual(result?.0, "R\nhello world")
+        XCTAssertEqual(result?.1, TextSelection(location: 8, length: 5))
+    }
+
+    func testInsertImageReferencesKeepsSelectionBeforeAnchor() {
+        let result = insertImages("hello world", at: 8, TextSelection(location: 1, length: 3), ["R"])
+        XCTAssertEqual(result?.0, "hello wo\nR\nrld")
+        XCTAssertEqual(result?.1, TextSelection(location: 1, length: 3))
+    }
+
+    func testInsertImageReferencesSelectionEndingAtAnchorStays() {
+        let result = insertImages("hello world", at: 5, TextSelection(location: 1, length: 4), ["R"])
+        XCTAssertEqual(result?.1, TextSelection(location: 1, length: 4))
+    }
+
+    func testInsertImageReferencesSelectionStartingAtAnchorShifts() {
+        let result = insertImages("hello world", at: 5, TextSelection(location: 5, length: 3), ["R"])
+        XCTAssertEqual(result?.1, TextSelection(location: 5 + 3, length: 3))
+    }
+
+    func testInsertImageReferencesSelectionSpanningAnchorGrows() {
+        let result = insertImages("hello world", at: 5, TextSelection(location: 2, length: 6), ["R"])
+        XCTAssertEqual(result?.1, TextSelection(location: 2, length: 6 + 3))
+    }
+
+    func testInsertImageReferencesEmptyReferences() {
+        XCTAssertNil(insertImages("abc", at: 1, caret(1), []))
+    }
+
+    func testInsertImageReferencesUsesUTF16Offsets() {
+        let text = "😀é\nline two"
+        let position = "😀é\nline".utf16.count
+        let result = insertImages(text, at: position, caret(position), ["R"])
+        XCTAssertEqual(result?.0, "😀é\nline\nR\n two")
+        XCTAssertEqual(result?.1, caret(position + 3))
+    }
 }

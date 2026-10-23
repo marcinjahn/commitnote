@@ -79,6 +79,12 @@ public struct ImageReference: Sendable, Equatable {
             || (123...126).contains(unit)
     }
 
+    public static func containsReference(in text: String) -> Bool {
+        guard text.contains("image:") else { return false }
+        let document = MarkdownParser.parse(text)
+        return document.nodes.contains { reference(for: $0, in: document) != nil }
+    }
+
     /// The reference described by an `image` node, or nil when its destination is not an image reference.
     public static func reference(for node: SyntaxNode, in document: MarkdownDocument) -> ImageReference? {
         guard node.kind == .image else { return nil }

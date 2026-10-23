@@ -52,4 +52,12 @@ final class ImageReferenceTests: XCTestCase {
         XCTAssertEqual(reference?.alt, "")
         XCTAssertNil(reference?.width)
     }
+
+    func testContainsReference() {
+        XCTAssertTrue(ImageReference.containsReference(in: "a\n![x](image:\(id)#2x3)\nb"))
+        XCTAssertTrue(ImageReference.containsReference(in: "![](image:\(id))"))
+        XCTAssertFalse(ImageReference.containsReference(in: "![x](image:short) ![y](https://a.b/c.png)"))
+        XCTAssertFalse(ImageReference.containsReference(in: "plain image:\(id) text"))
+        XCTAssertFalse(ImageReference.containsReference(in: ""))
+    }
 }
