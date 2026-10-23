@@ -152,7 +152,7 @@ jobs:
           xcrun simctl bootstatus "$IPAD_SIMULATOR_ID" -b
           xcrun simctl install "$IPAD_SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
           xcrun simctl launch "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
-          sleep 10
+          sleep 30
           xcrun simctl terminate "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
 
       - name: iPad UI tests
@@ -220,7 +220,7 @@ jobs:
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
           xcrun simctl install "$SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
           xcrun simctl launch "$SIMULATOR_ID" io.github.marcinjahn.commitnote
-          sleep 10
+          sleep 30
           xcrun simctl terminate "$SIMULATOR_ID" io.github.marcinjahn.commitnote
 
       - name: UI tests
