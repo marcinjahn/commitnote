@@ -19,6 +19,7 @@ struct SettingsScreen: View {
                 }
         }
         .presentationDetents([.large])
+        .modifier(ImportPresenter(model: model))
     }
 
     @ViewBuilder

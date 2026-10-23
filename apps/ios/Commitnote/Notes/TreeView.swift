@@ -528,16 +528,21 @@ private final class TreeDropHandler: NSObject, UIDropInteractionDelegate {
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, canHandle session: UIDropSession) -> Bool {
-        session.localDragSession != nil
-            && session.hasItemsConforming(toTypeIdentifiers: [UTType.commitnoteTreeNode.identifier])
+        if session.localDragSession != nil {
+            return session.hasItemsConforming(toTypeIdentifiers: [UTType.commitnoteTreeNode.identifier])
+        }
+        return session.hasItemsConforming(toTypeIdentifiers: UTType.importableNotes.map(\.identifier))
     }
 
     func dropInteraction(
         _ interaction: UIDropInteraction, sessionDidUpdate session: UIDropSession
     ) -> UIDropProposal {
         let target = target(of: interaction)
-        setHighlighted(target != nil, interaction)
-        return UIDropProposal(operation: target == nil ? .forbidden : .move)
+        let external = session.localDragSession == nil
+        let allowed = target != nil && !(external && model?.isImporting == true)
+        setHighlighted(allowed, interaction)
+        guard allowed else { return UIDropProposal(operation: .forbidden) }
+        return UIDropProposal(operation: external ? .copy : .move)
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, sessionDidExit session: UIDropSession) {
@@ -550,9 +555,14 @@ private final class TreeDropHandler: NSObject, UIDropInteractionDelegate {
 
     func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
         setHighlighted(false, interaction)
-        guard let target = target(of: interaction), let model,
-            let provider = session.items.first?.itemProvider
-        else { return }
+        guard let target = target(of: interaction), let model else { return }
+        if session.localDragSession == nil {
+            let providers = session.items.map(\.itemProvider)
+            let parent = target.parent.isEmpty ? nil : target.parent
+            Task { await model.dropFiles(providers, parent: parent) }
+            return
+        }
+        guard let provider = session.items.first?.itemProvider else { return }
         TreeDrop.load(provider) { path in
             TreeDrop.place(path, at: target, model: model)
         }
