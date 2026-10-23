@@ -24,6 +24,7 @@ import {
 } from "../src/native-core/testing/node-host-services";
 import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree-source";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
+import { FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
 import { PROD_LEAK_NEEDLES, TAURI_NEEDLES } from "./bundle-needles";
 import {
   readBackNativeRepo,
@@ -69,6 +70,8 @@ const FAKE_CORE_CONTROLS: readonly string[] = [
   "fake.saveNote",
   "fake.shareNote",
   "fake.processImage",
+  "/app/ios",
+  new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
   LARGE_TREE_REPO_KEY,
   SAMPLE_NOTES_REPO_PASSPHRASE,
 ];

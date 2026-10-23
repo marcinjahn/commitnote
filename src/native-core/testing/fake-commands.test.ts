@@ -71,6 +71,7 @@ async function setUp() {
     createNativeCore({
       host,
       deviceModel: "iPhone",
+      analyticsEndpoint: null,
       registry: () => Promise.resolve(forge.registry),
       extraCommands: (app) =>
         createFakeCommands({

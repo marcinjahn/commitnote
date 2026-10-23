@@ -79,6 +79,7 @@ type ExtraCommands = Record<string, (params: unknown) => Promise<unknown>>;
 export function createNativeCore(options: {
   readonly host: HostServices;
   readonly deviceModel: string;
+  readonly analyticsEndpoint: string | null;
   readonly registry: () => Promise<ForgeRegistry>;
   readonly extraCommands?: ExtraCommands | ((app: AppSession) => ExtraCommands);
 }): NativeCoreHandle {
@@ -144,7 +145,13 @@ export function createNativeCore(options: {
         notices,
       }),
       ...createSettingsCommands({ host, app, events: engineEvents, notices }),
-      ...createAnalyticsCommands({ host, app, events: engineEvents, notices }),
+      ...createAnalyticsCommands({
+        host,
+        app,
+        events: engineEvents,
+        notices,
+        analyticsEndpoint: options.analyticsEndpoint,
+      }),
       ...createPrintCommands({ host, app, events: engineEvents, notices }),
       ...createImportCommands({ host, app, events: engineEvents, notices }),
       ...createPassphraseCommands({ host, app, events: engineEvents, notices }),

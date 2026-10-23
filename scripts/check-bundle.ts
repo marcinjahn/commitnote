@@ -11,6 +11,7 @@ import {
 } from "./precache-manifest";
 import { buildModeFacts, FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
 import {
+  IOS_VISIT_NEEDLES,
   NATIVE_CORE_NEEDLES,
   PROD_LEAK_NEEDLES,
   TAURI_NEEDLES,
@@ -438,6 +439,21 @@ async function main(): Promise<void> {
     for (const hit of tauriInWeb) {
       console.error(
         `dist/ ships desktop shell code: "${hit.needle}" found in ${hit.file}`,
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  const iosVisitInWeb = [
+    ...(await findForbidden(distDir, IOS_VISIT_NEEDLES)),
+    ...(await findForbidden(fakeDistDir, IOS_VISIT_NEEDLES)),
+    ...(await findForbidden(desktopDistDir, IOS_VISIT_NEEDLES)),
+  ];
+  if (iosVisitInWeb.length > 0) {
+    for (const hit of iosVisitInWeb) {
+      console.error(
+        `A web bundle ships the iOS visit: "${hit.needle}" found in ${hit.file}`,
       );
     }
     process.exitCode = 1;
