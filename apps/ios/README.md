@@ -20,7 +20,7 @@ Three layers:
 What the app does:
 
 - Create notes and folders (New note, New folder). Placement follows the synced `newNotePlacement`
-  and `newFolderPlacement` settings, which are edited on the web for now. A new note has a focused
+  and `newFolderPlacement` settings, which are edited on the web for now (see Settings and data). A new note has a focused
   name field; if you type the body first, the name is an automatic `YYYY-MM-DD HH:mm:ss`. Name
   clashes get a ` (2)` suffix, and drafts left untouched vanish.
 - Edit notes in a TextKit 2 live-preview editor: headings, lists, quotes, emphasis, strikethrough,
@@ -52,7 +52,7 @@ What the app does:
   purged. Deleting a shared note warns first, because it revokes its links.
 - Color tags (`ColorTag`) can be filtered with the tag filter. Search is native, with recent notes
   and indexing progress. A note has a details view.
-- The last view is reopened on launch (on by default; the toggle comes with Settings later). While
+- The last view is reopened on launch (on by default; Settings has the toggle). While
   the app loads, the loading screen offers an early draft, kept in memory while the app runs.
 - Remote edits to the open note are merged in without losing the caret or Undo. Remote renames and
   moves are followed.
@@ -75,12 +75,62 @@ What the app does:
 - `Packages/ImageCodec` — libwebp 1.5.0 vendored unmodified as a C target (BSD-3-Clause, its licence
   file is kept with the sources) and a Swift WebP encoder, tested on Linux.
 - `Packages/CoreRuntime` — the core runtime (Apple platforms only).
+- `Commitnote/Settings/` — the Settings screen and its data screens (Export, Import notes, Change
+  passphrase, note font list). `Commitnote/App/AppModel+Settings.swift`, `AppModel+Data.swift`,
+  `AppModel+Passphrase.swift` and `AppModel+Print.swift` hold their model side;
+  `Commitnote/App/PrintRenderer.swift` renders the print PDF.
+- `Packages/CoreRuntime/Sources/CoreRuntime/IOSVisit.swift` — the iOS visit (see Usage statistics).
 - `Commitnote/Fonts/` — the bundled note fonts (see Fonts below).
 - `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `disable-password-autofill.sh`,
   `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
 - `../test-vectors/` — JSON test vectors shared by the TypeScript and Swift tests.
 
 The Xcode project is generated and not committed.
+
+## Usage statistics
+
+The app counts launches with one anonymous request, the iOS visit:
+
+- One `GET` per cold launch to the GoatCounter `count` endpoint with exactly `p=%2Fapp%2Fios` and
+  `t=App%20(iOS)`. It uses its own ephemeral session: no cookies, cache, `Referer`, body,
+  identifiers or other parameters. It is never awaited or retried, and returning from the
+  background sends nothing.
+- The endpoint comes from `GOATCOUNTER_SITE_CODE` in `analytics.config.ts` through `buildModeFacts`:
+  the `native-core` mode uses GoatCounter and `native-core-fake` uses `https://analytics.invalid/count`.
+  While the site code is `null`, nothing is sent. Setting it enables iOS counting on the next app
+  build.
+- Opt out in Settings › This device › "Anonymous usage statistics". The choice is stored as
+  `commitnote.analyticsOptOut = "1"` in the device settings storage. iOS has no DNT or GPC signal, so
+  this switch is the only opt-out.
+- The landing page's privacy copy and the root README intentionally do not list the `/app/ios` path
+  until the app is released. `npm run check:bundle` fails if `/app/ios` or `App (iOS)` reaches the
+  landing or web bundles.
+
+## Settings and data
+
+Settings has the same sections as the web app. The differences:
+
+- Color mode, accent color and note font have a scope toggle ("All devices" / "This device").
+- Vim mode and the animated caret are not offered, and their synced values are never rewritten
+  (settings are written per key).
+- Reopening the last view is on by default; turning it off is stored as
+  `commitnote.reopenLastViewOff`.
+- There is no type-to-start toggle yet.
+- The note fonts are the bundled ones (see Fonts).
+
+Data:
+
+- Export writes the same zip as the web, images included, and offers the share sheet or Save to
+  Files.
+- Import notes takes a zip or `.md`/text files from Files, or files dropped onto a tree folder.
+  The conflict and rename rules are the web's.
+- Change passphrase has a review step, a strength check and "Also delete the old history". The
+  remembered session is re-saved with the new key material; the passphrase is never stored.
+- Print renders the note as a PDF, black on white, with its images, in the note font, and hands it to
+  the share sheet.
+
+Security: there is no app lock, Face ID or passcode prompt, by design. The remembered session is a
+plain Keychain item with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
 
 ## Fonts
 
@@ -157,7 +207,8 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   still exercised on the Simulator by the runtime tests' test vector check.
 - `Build for testing` generates the project and builds the app and both test bundles once, for the
   Simulator, and hands them to the jobs below as the `ios-test-products` artifact.
-- `Runtime tests and IPA` builds and checks the unsigned IPA, runs the runtime tests on an iPhone
+- `Runtime tests and IPA` builds and checks the unsigned IPA, runs the runtime tests (including
+  `IOSVisitTests`, `NoteFontTests` and the `data` read-back scenario) on an iPhone
   Simulator from the shared build, reads the produced repos back with TypeScript, and also boots an
   iPad Simulator to run the iPad `EditorFlowTests`, `SettingsFlowTests` and `DataFlowTests`.
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
@@ -170,7 +221,7 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   The class lists of the suites differ per device, so every UI class runs on both devices.
 
 The `Testing` configuration (fake core bundle only) adds test hooks: a Testing menu entry "Share
-Welcome" and "Fail next share" (the next share fails), and the launch variable `COMMITNOTE_UI_HOLD_LOADING=1`, which holds loading and shows a
+Welcome" and "Fail next share" (the next share fails), and "Import sample archive" (`testing-import-archive`, opens the Import notes form for a sample zip), and the launch variable `COMMITNOTE_UI_HOLD_LOADING=1`, which holds loading and shows a
 loading testing bar. The UI tests expect password AutoFill to be off, so
 iOS never shows its save-password or strong-password sheets over the app; the workflow turns it off on
 every simulator with `scripts/disable-password-autofill.sh`. Do the same before running them locally.
