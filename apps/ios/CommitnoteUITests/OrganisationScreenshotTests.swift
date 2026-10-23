@@ -47,9 +47,18 @@ final class OrganisationScreenshotTests: XCTestCase {
             .firstMatch
         waitFor(projects)
         waitUntilSettled(projects)
-        snapshotBothAppearances("move-to")
+        snapshot("move-to", appearance: .light)
         app.buttons["folder-picker-cancel-button"].tap()
         waitUntilGone(app.elements("folder-picker-row").firstMatch)
+        // The picker sheet keeps the appearance it was presented with, so it is opened again in dark.
+        switchAppearance(.dark)
+        chooseFromContextMenu(on: welcome, "tree-action-move", label: "Move to…", in: app)
+        waitFor(projects)
+        waitUntilSettled(projects)
+        snapshot("move-to", appearance: .dark)
+        app.buttons["folder-picker-cancel-button"].tap()
+        waitUntilGone(app.elements("folder-picker-row").firstMatch)
+        switchAppearance(.light)
 
         useTestingMenu("testing-share-note", in: app)
         waitFor(app.element("tree-note-shared"))
