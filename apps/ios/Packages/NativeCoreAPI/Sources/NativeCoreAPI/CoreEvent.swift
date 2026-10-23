@@ -220,6 +220,25 @@ public struct SessionEnded: Codable, Equatable, Sendable {
     public var reason: SessionEndReason
 }
 
+public struct SettingsChanged: Decodable, Equatable, Sendable {
+    public var view: SettingsView
+}
+
+public struct SettingsSaveChanged: Decodable, Equatable, Sendable {
+    public var save: SettingsSaveView
+}
+
+public struct ImportStatusChanged: Decodable, Equatable, Sendable {
+    public var importing: Bool
+    public var atomicBlocked: AtomicBlockedView?
+}
+
+public struct PassphraseChangeProgress: Decodable, Equatable, Sendable {
+    public var message: String
+    public var done: Int?
+    public var total: Int?
+}
+
 public enum CoreEvent: Decodable, Equatable, Sendable {
     case loadingProgress(LoadingProgress)
     case treeChanged(TreeChanged)
@@ -234,12 +253,17 @@ public enum CoreEvent: Decodable, Equatable, Sendable {
     case sessionEnded(SessionEnded)
     case historyChanged(HistoryChanged)
     case sharesChanged(SharesChanged)
+    case settingsChanged(SettingsChanged)
+    case settingsSaveChanged(SettingsSaveChanged)
+    case importStatusChanged(ImportStatusChanged)
+    case passphraseChangeProgress(PassphraseChangeProgress)
     case unknown(name: String)
 
     public static let knownNames: [String] = [
         "loadingProgress", "treeChanged", "trashChanged", "searchStatusChanged", "noteChanged",
         "noteContentChangedRemotely", "syncStateChanged", "notice", "noticeCleared", "keyChanged",
-        "sessionEnded", "historyChanged", "sharesChanged",
+        "sessionEnded", "historyChanged", "sharesChanged", "settingsChanged", "settingsSaveChanged",
+        "importStatusChanged", "passphraseChangeProgress",
     ]
 
     public var name: String {
@@ -257,6 +281,10 @@ public enum CoreEvent: Decodable, Equatable, Sendable {
         case .sessionEnded: "sessionEnded"
         case .historyChanged: "historyChanged"
         case .sharesChanged: "sharesChanged"
+        case .settingsChanged: "settingsChanged"
+        case .settingsSaveChanged: "settingsSaveChanged"
+        case .importStatusChanged: "importStatusChanged"
+        case .passphraseChangeProgress: "passphraseChangeProgress"
         case .unknown(let name): name
         }
     }
@@ -297,6 +325,17 @@ public enum CoreEvent: Decodable, Equatable, Sendable {
             self = .historyChanged(try container.decode(HistoryChanged.self, forKey: .payload))
         case "sharesChanged":
             self = .sharesChanged(try container.decode(SharesChanged.self, forKey: .payload))
+        case "settingsChanged":
+            self = .settingsChanged(try container.decode(SettingsChanged.self, forKey: .payload))
+        case "settingsSaveChanged":
+            self = .settingsSaveChanged(
+                try container.decode(SettingsSaveChanged.self, forKey: .payload))
+        case "importStatusChanged":
+            self = .importStatusChanged(
+                try container.decode(ImportStatusChanged.self, forKey: .payload))
+        case "passphraseChangeProgress":
+            self = .passphraseChangeProgress(
+                try container.decode(PassphraseChangeProgress.self, forKey: .payload))
         default:
             self = .unknown(name: name)
         }

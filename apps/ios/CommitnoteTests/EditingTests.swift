@@ -84,7 +84,7 @@ final class EditingTests: RuntimeTestCase {
         XCTAssertEqual(changed.unsavedCount, 1)
         XCTAssertEqual(changed.exportLabel, "Export unsaved notes")
 
-        let archive = try await runtime.send(ExportNotes())
+        let archive = try await runtime.send(ExportNotes(includeImages: false))
         XCTAssertEqual(archive.mimeType, "application/zip")
         XCTAssertNotNil(
             archive.fileName.range(

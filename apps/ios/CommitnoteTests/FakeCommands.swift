@@ -136,3 +136,8 @@ struct FakeProcessImage: NativeCoreCommand {
     var type: String
     var profile: Profile
 }
+
+struct FakeImportArchive: NativeCoreCommand {
+    static let name = "fake.importArchive"
+    typealias Result = ImportArchiveOutcome
+}

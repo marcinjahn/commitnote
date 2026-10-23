@@ -885,7 +885,7 @@ final class AppModel {
     func exportNotes() async -> URL? {
         exportState = .exporting
         do {
-            let archive = try await send(ExportNotes())
+            let archive = try await send(ExportNotes(includeImages: false))
             guard let data = Data(base64Encoded: archive.base64) else {
                 exportState = .failed
                 return nil
