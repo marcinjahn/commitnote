@@ -10,10 +10,11 @@ Three layers:
 
 - **SwiftUI app** (`Commitnote/`) — screens and navigation. It only talks to the core runtime.
 - **Core runtime** (`Packages/CoreRuntime`) — loads the core bundle into JavaScriptCore and provides
-  the host services it needs (crypto, network, Keychain-backed remembered session, blob cache, device settings).
+  the host services it needs (crypto, network, Keychain-backed remembered session, blob cache, device
+  settings, image codec). It decodes images with ImageIO and encodes them through `ImageCodec`.
 - **Core bundle** (`commitnote-core.js`) — the native core, built from `src/native-core/`. It reuses
   the web app's format, crypto, forge adapters, `NoteTree` and `SyncEngine`, so the iOS app reads
-  exactly what the web app writes and syncs the same way. The `Testing` configuration bundles the fake core bundle instead,
+  exactly what the web app writes and syncs the same way. The native core API version is 4. The `Testing` configuration bundles the fake core bundle instead,
   which serves the sample notes repo from a fake forge.
 
 What the app does:
@@ -27,8 +28,22 @@ What the app does:
   The stored text is exactly what was typed. Task checkboxes are tappable. Links open on tap when
   not editing and from the edit menu while editing; pasting a URL over a selection makes a link. A
   keyboard toolbar offers Bold, Italic, Strikethrough, Link and Task. The caret and scroll position
-  are restored per note while the app runs. Images render inline and read-only; an unknown
-  reference shows "Image unavailable". Inserting images, the viewer and history come later.
+  are restored per note while the app runs.
+- Insert images from the photo library (up to 10 at a time), the camera, Files, paste and drag and
+  drop. The app decodes them (HEIC, JPEG, PNG and the other formats iOS reads, with the orientation
+  applied) and encodes WebP with libwebp under the same image profile as the web; GIFs stay GIF, with
+  metadata stripped. Images are encrypted like on the web. Images render inline; tap one to open a
+  zoomable full-screen viewer. Pasting another note's image reference copies the image. Removing a
+  reference deletes the image on save, and Undo brings it back. An unknown reference shows "Image
+  unavailable".
+- "Version history" in a note's actions menu lists versions grouped by day and editing session, with
+  "Current" and "Shared" badges. A preview shows what restoring would change; restore the content and
+  optionally the title, with Undo.
+- "Share" in a note's actions menu creates a secret link (GitHub gist or GitLab snippet) with an
+  optional share password and share label. "Share link" and "Share password" open the share sheet.
+  The Shared links screen (from the notes "…" menu) offers Update to current version, View shared
+  version, Rename, Open note, Copy link, Copy password and Revoke. Links open the web viewer. Clear
+  errors explain a missing gist permission or a missing GitLab `api` scope.
 - Autosave runs 2 s after typing stops and at least every 30 s. Structure changes, note switches,
   going to the background (inside a background task) and Log out save immediately.
 - Organise notes with context menus and swipe actions (Rename, Move to, Move up, Move down, Delete,
@@ -57,6 +72,8 @@ What the app does:
 - `Packages/EditorText` — pure Swift text-edit mapping and undo history, tested on Linux.
 - `Packages/MarkdownStyling` — pure Swift, tested on Linux: the markdown syntax scanner, the
   live-preview style runs and the editing commands. Depends on `EditorText`.
+- `Packages/ImageCodec` — libwebp 1.5.0 vendored unmodified as a C target (BSD-3-Clause, its licence
+  file is kept with the sources) and a Swift WebP encoder, tested on Linux.
 - `Packages/CoreRuntime` — the core runtime (Apple platforms only).
 - `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `disable-password-autofill.sh`,
   `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
@@ -80,14 +97,17 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
 - `Build for testing` generates the project and builds the app and both test bundles once, for the
   Simulator, and hands them to the jobs below as the `ios-test-products` artifact.
 - `Runtime tests and IPA` builds and checks the unsigned IPA, runs the runtime tests on an iPhone
-  Simulator from the shared build, and reads the produced repos back with TypeScript.
+  Simulator from the shared build, reads the produced repos back with TypeScript, and also boots an
+  iPad Simulator to run the iPad `EditorFlowTests`.
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
   shared build:
-  - `flows` — login, editing and organisation flows.
-  - `screens` — every screenshot and the editor flows.
+  - `flows` — editing, organisation and media flows, plus the login flows on iPhone.
+  - `screens` — every screenshot, plus the editor flows on iPhone and the login flows on iPad.
+
+  The class lists of the suites differ per device, so every UI class runs on both devices.
 
 The `Testing` configuration (fake core bundle only) adds test hooks: a Testing menu entry "Share
-Welcome", and the launch variable `COMMITNOTE_UI_HOLD_LOADING=1`, which holds loading and shows a
+Welcome" and "Fail next share" (the next share fails), and the launch variable `COMMITNOTE_UI_HOLD_LOADING=1`, which holds loading and shows a
 loading testing bar. The UI tests expect password AutoFill to be off, so
 iOS never shows its save-password or strong-password sheets over the app; the workflow turns it off on
 every simulator with `scripts/disable-password-autofill.sh`. Do the same before running them locally.
@@ -96,8 +116,9 @@ Artifacts, kept for 30 days:
 | Artifact | Contents |
 | --- | --- |
 | `commitnote-unsigned-ipa` | `commitnote-unsigned.ipa` |
-| `ios-screenshots-<device>` | screenshots per device, light and dark |
+| `ios-screenshots-<device>` | screenshots per device, light and dark, including `image-viewer`, `insert-image-menu`, `history`, `history-preview`, `share`, `share-created`, `shared-links` and `shared-version` |
 | `ios-xcresults-runtime` | Xcode result bundle of the runtime tests |
+| `ios-xcresults-ui-ipad-runtime` | Xcode result bundle of the iPad tests run in the runtime job |
 | `ios-xcresults-ui-<device>-<suite>` | Xcode result bundles of the UI tests |
 | `ios-test-output` | repos written by the runtime tests, and performance timings (`perf/perf.json`) |
 
@@ -116,8 +137,8 @@ No Xcode, macOS or Simulator is needed for these:
 
 - `npm run check:native-core` — builds the core bundle and the fake core bundle and runs them in a
   bare host (the bare-host check).
-- `apps/ios/scripts/swift-linux-test.sh` — runs the Swift package tests in the `swift:6.2` Docker
-  image. Run it from a path under `~/code`; it skips `CoreRuntime`, which needs Apple frameworks.
+- `apps/ios/scripts/swift-linux-test.sh` — runs the Swift package tests, `ImageCodec` included, in the
+  `swift:6.2` Docker image. Run it from a path under `~/code`; it skips `CoreRuntime`, which needs Apple frameworks.
 - `npm run fixture:test-vectors` — regenerates `apps/test-vectors/`. A diff afterwards means the
   format or the generator changed.
 
@@ -159,7 +180,8 @@ The Impactor README documents only this UI flow; the `plumesign` command lines a
 Check the tool's own documentation for them.
 
 The bundle ID is `io.github.marcinjahn.commitnote`. If Apple refuses it for your free team, Impactor
-can rewrite it. The app has no entitlements and no extensions.
+can rewrite it. The app has no entitlements and no extensions; Info.plist has only the camera usage
+string.
 
 Alternatives: SideStore (refreshes the signature on the device) and Sideloader/AltServer-Linux.
 
@@ -170,10 +192,12 @@ Data:
 - Notes need the network; there is no offline copy. Edits made offline stay in memory and are saved
   on reconnect, and the app tries to save when it goes to the background, but if iOS terminates the
   suspended app before they are saved, those edits are lost.
-- Images render inline and read-only. Images cannot be inserted yet, and an unknown reference shows
-  "Image unavailable". Deleting a reference removes the image from the note on save; it comes back
-  only if the reference text is put back (for example with Undo). Removed images are kept for 30
-  days as image tombstones. They are not in the trash.
+- Deleting an image reference removes the image from the note on save; it comes back only if the
+  reference text is put back (for example with Undo). Removed images are kept for 30 days as image
+  tombstones. They are not in the trash.
+- The camera is unavailable in the Simulator; use the photo library, Files, paste or drag and drop
+  there.
+- Sharing needs the gist permission on GitHub or the `api` scope on GitLab.
 
 Signing and sideloading:
 

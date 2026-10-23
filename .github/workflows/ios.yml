@@ -74,11 +74,23 @@ jobs:
     name: Runtime tests and IPA
     needs: build
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/ios-macos-setup
       - uses: ./.github/actions/ios-test-products
+
+      - name: Start iPad simulator
+        run: |
+          set -eu
+          IPAD_SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ipad)
+          echo "IPAD_SIMULATOR_ID=$IPAD_SIMULATOR_ID" >> "$GITHUB_ENV"
+          if ! BOOT_OUTPUT=$(xcrun simctl boot "$IPAD_SIMULATOR_ID" 2>&1); then
+            case "$BOOT_OUTPUT" in
+              *"current state: Booted"*) ;;
+              *) echo "$BOOT_OUTPUT" >&2; exit 1 ;;
+            esac
+          fi
 
       - name: Build unsigned IPA
         run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
@@ -132,6 +144,37 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+      - name: Prepare iPad simulator
+        run: |
+          set -eu
+          xcrun simctl shutdown "$SIMULATOR_ID"
+          xcrun simctl bootstatus "$IPAD_SIMULATOR_ID" -b
+          apps/ios/scripts/disable-password-autofill.sh "$IPAD_SIMULATOR_ID"
+          xcrun simctl bootstatus "$IPAD_SIMULATOR_ID" -b
+          xcrun simctl install "$IPAD_SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
+          xcrun simctl launch "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
+          sleep 30
+          xcrun simctl terminate "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
+
+      - name: iPad UI tests
+        run: |
+          set -eu -o pipefail
+          mkdir -p out/xcresults-ui
+          xcodebuild test-without-building \
+            -xctestrun "$XCTESTRUN" \
+            -destination "id=$IPAD_SIMULATOR_ID" \
+            -only-testing:CommitnoteUITests/EditorFlowTests \
+            -parallel-testing-enabled NO \
+            -resultBundlePath out/xcresults-ui/ui-ipad-runtime.xcresult
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-xcresults-ui-ipad-runtime
+          path: out/xcresults-ui
+          if-no-files-found: ignore
+          retention-days: 30
+
   ui-tests:
     name: UI tests (${{ matrix.device }}, ${{ matrix.suite }})
     needs: build
@@ -170,12 +213,18 @@ jobs:
       - name: UI tests
         run: |
           set -eu -o pipefail
-          case "${{ matrix.suite }}" in
-            flows)
-              SELECTED="-only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests"
+          case "${{ matrix.device }}-${{ matrix.suite }}" in
+            iphone-flows)
+              SELECTED="-only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests"
               ;;
-            screens)
-              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests"
+            iphone-screens)
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests"
+              ;;
+            ipad-flows)
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests"
+              ;;
+            ipad-screens)
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/LoginFlowTests"
               ;;
           esac
           xcodebuild test-without-building \
