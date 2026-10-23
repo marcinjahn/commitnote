@@ -110,7 +110,17 @@ final class AppModel {
     var draftName = ""
     private(set) var draftError: String?
     private(set) var logoutState: LogoutState = .idle
-    private(set) var exportState: ExportState = .idle
+    var exportState: ExportState = .idle
+    var importForm: ImportForm?
+    var importPreview: String?
+    var importOutcomeMessage: String?
+    var importOffersRename = false
+    var importSetup: ImportSetupState?
+    var importBusy = false
+    var isImporting = false
+    var atomicBlocked: AtomicBlockedView?
+    var isImportPickerPresented = false
+    var dropSetup: DropSetupState?
     private(set) var tagFilter: ColorTag?
     private(set) var usedTags: [ColorTag] = []
     private(set) var tagsWritable = false
@@ -152,6 +162,9 @@ final class AppModel {
     @ObservationIgnored private var datesTimer: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private var searchRefreshTask: Task<Void, Never>?
+    @ObservationIgnored var importPreviewRequest = 0
+    @ObservationIgnored var queuedImportPreview: ImportDestinationView?
+    @ObservationIgnored var importPreviewRunning = false
     private var noteUpdateSerial = 0
     private(set) var runtime: CoreRuntime?
     private var eventsTask: Task<Void, Never>?
@@ -911,29 +924,6 @@ final class AppModel {
         finishLogOut()
     }
 
-    func exportNotes() async -> URL? {
-        exportState = .exporting
-        do {
-            let archive = try await send(ExportNotes(includeImages: false))
-            guard let data = Data(base64Encoded: archive.base64) else {
-                exportState = .failed
-                return nil
-            }
-            let directory = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            try FileManager.default.createDirectory(
-                at: directory, withIntermediateDirectories: true)
-            let url = directory.appendingPathComponent(
-                (archive.fileName as NSString).lastPathComponent)
-            try data.write(to: url, options: .atomic)
-            exportState = .idle
-            return url
-        } catch {
-            exportState = .failed
-            return nil
-        }
-    }
-
     private func finishLogOut() {
         logoutState = .idle
         resetSessionState()
@@ -1051,6 +1041,7 @@ final class AppModel {
         draftName = ""
         draftError = nil
         exportState = .idle
+        resetImportState()
         tagFilter = nil
         usedTags = []
         tagsWritable = false
@@ -1182,6 +1173,7 @@ final class AppModel {
         case .noticeCleared(let cleared):
             notices.removeAll { $0.id == cleared.id }
         case .keyChanged(let info):
+            resetImportState()
             screen = .keyChanged(
                 KeyChangedInfo(
                     unsavedCount: info.unsavedCount, message: info.message, detail: info.detail,
@@ -1206,6 +1198,9 @@ final class AppModel {
             handleSettingsChanged(change.view)
         case .settingsSaveChanged(let change):
             settingsSave = change.save
+        case .importStatusChanged(let status):
+            isImporting = status.importing
+            atomicBlocked = status.atomicBlocked
         case .unknown:
             break
         }
