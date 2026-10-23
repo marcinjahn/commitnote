@@ -57,7 +57,7 @@ struct SharedVersionScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
                     .padding(.vertical, 8)
-                    MarkdownEditor(model: model, readOnlyText: content)
+                    MarkdownEditor(model: model, readOnlyText: content, appearance: model.appearance)
                 }
             case .message(let message):
                 messageView(message)

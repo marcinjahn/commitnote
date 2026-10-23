@@ -5,7 +5,7 @@ import UIKit
 struct AppAppearance: Codable, Equatable {
     static let cacheKey = "commitnote.appearance"
     static let standard = AppAppearance(
-        colorMode: "system", accentLight: nil, accentDark: nil, noteFont: "sans")
+        colorMode: "system", accentLight: nil, accentDark: nil, noteFont: "inter")
 
     var colorMode: String
     var accentLight: String?

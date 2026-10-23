@@ -49,6 +49,7 @@ enum PreviewDecoration: Equatable {
 final class PreviewLayoutDelegate: NSObject, NSTextLayoutManagerDelegate {
     var tint: UIColor = .tintColor
     var hairline: CGFloat = 1
+    var bodyFont = UIFont.preferredFont(forTextStyle: .body)
     weak var images: EditorImageStore?
 
     func textLayoutManager(
@@ -64,7 +65,7 @@ final class PreviewLayoutDelegate: NSObject, NSTextLayoutManagerDelegate {
         }
         return PreviewLayoutFragment(
             textElement: textElement, range: textElement.elementRange, decorations: decorations,
-            tint: tint, hairline: hairline, images: images)
+            tint: tint, hairline: hairline, bodyFont: bodyFont, images: images)
     }
 }
 
@@ -73,12 +74,13 @@ final class PreviewLayoutFragment: NSTextLayoutFragment {
     private let tint: UIColor
     private let hairline: CGFloat
     private weak var images: EditorImageStore?
-    private let font = UIFont.preferredFont(forTextStyle: .body)
+    private let font: UIFont
 
     init(
         textElement: NSTextElement, range: NSTextRange?, decorations: [PreviewDecoration], tint: UIColor,
-        hairline: CGFloat, images: EditorImageStore?
+        hairline: CGFloat, bodyFont: UIFont, images: EditorImageStore?
     ) {
+        self.font = bodyFont
         self.decorations = decorations
         self.tint = tint
         self.hairline = hairline
