@@ -45,11 +45,14 @@ extension XCTestCase {
         waitFor(form, file: file, line: line)
         // A row still under the navigation bar or the keyboard counts as hittable, but a tap on it lands on them.
         let underBar: () -> Bool = { element.exists && element.frame.minY < form.frame.minY + 56 }
+        // A row cut off at the bottom of a sheet also counts as hittable, but on iPad a tap there
+        // lands outside the sheet and closes it.
+        let cutOff: () -> Bool = { element.exists && element.frame.maxY > form.frame.maxY - 4 }
         let keyboard = app.keyboards.firstMatch
         let underKeyboard: () -> Bool = { keyboard.exists && keyboard.frame.intersects(element.frame) }
         let revealed: () -> Bool = {
             guard element.exists else { return false }
-            if tappable { return element.isHittable && !underBar() && !underKeyboard() }
+            if tappable { return element.isHittable && !underBar() && !underKeyboard() && !cutOff() }
             let frame = element.frame
             return form.frame.contains(CGPoint(x: frame.midX, y: frame.midY))
         }
@@ -64,7 +67,7 @@ extension XCTestCase {
                 lower.press(forDuration: 0.05, thenDragTo: upper)
             }
         }
-        if tappable, element.exists, element.isHittable { return element }
+        if tappable, element.exists, element.isHittable, !cutOff() { return element }
         XCTAssertTrue(revealed(), "Expected \(element) in Settings", file: file, line: line)
         return element
     }
