@@ -80,26 +80,33 @@ jobs:
       - uses: ./.github/actions/ios-macos-setup
       - uses: ./.github/actions/ios-test-products
 
-      - name: Build unsigned IPA
+      - name: Start iPad simulator
         run: |
           set -eu
-          SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh iphone)
           IPAD_SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ipad)
-          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           echo "IPAD_SIMULATOR_ID=$IPAD_SIMULATOR_ID" >> "$GITHUB_ENV"
-          mkdir -p out
-          # Both simulators boot and get prepared while the IPA builds.
-          (apps/ios/scripts/disable-password-autofill.sh "$SIMULATOR_ID" \
-            && apps/ios/scripts/disable-password-autofill.sh "$IPAD_SIMULATOR_ID") > out/simulator-prep.log 2>&1 &
-          PREP=$!
-          apps/ios/scripts/build-unsigned-ipa.sh out/ipa
-          PREP_STATUS=0
-          wait "$PREP" || PREP_STATUS=$?
-          cat out/simulator-prep.log
-          exit "$PREP_STATUS"
+          if ! BOOT_OUTPUT=$(xcrun simctl boot "$IPAD_SIMULATOR_ID" 2>&1); then
+            case "$BOOT_OUTPUT" in
+              *"current state: Booted"*) ;;
+              *) echo "$BOOT_OUTPUT" >&2; exit 1 ;;
+            esac
+          fi
+
+      - name: Build unsigned IPA
+        run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
 
       - name: Check IPA
         run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
+
+      - name: Boot simulator
+        run: |
+          set -eu
+          SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh iphone)
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+
+      - name: Prepare simulator
+        run: apps/ios/scripts/disable-password-autofill.sh "$SIMULATOR_ID"
 
       - name: Core runtime tests
         run: |
@@ -141,6 +148,8 @@ jobs:
         run: |
           set -eu
           xcrun simctl shutdown "$SIMULATOR_ID"
+          xcrun simctl bootstatus "$IPAD_SIMULATOR_ID" -b
+          apps/ios/scripts/disable-password-autofill.sh "$IPAD_SIMULATOR_ID"
           xcrun simctl bootstatus "$IPAD_SIMULATOR_ID" -b
           xcrun simctl install "$IPAD_SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
           xcrun simctl launch "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
@@ -184,91 +193,60 @@ jobs:
 
       - uses: ./.github/actions/ios-test-products
 
-      - name: Boot simulators
+      - name: Boot simulator
         run: |
           set -eu
           SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ${{ matrix.device }})
-          SECOND_SIMULATOR_ID=$(apps/ios/scripts/sibling-simulator.sh "$SIMULATOR_ID")
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
-          echo "SECOND_SIMULATOR_ID=$SECOND_SIMULATOR_ID" >> "$GITHUB_ENV"
-          xcrun simctl boot "$SECOND_SIMULATOR_ID"
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
-          xcrun simctl bootstatus "$SECOND_SIMULATOR_ID" -b
 
-      - name: Prepare simulators
+      - name: Prepare simulator
+        run: apps/ios/scripts/disable-password-autofill.sh "$SIMULATOR_ID"
+
+      - name: Warm up simulator
         run: |
           set -eu
-          apps/ios/scripts/disable-password-autofill.sh "$SIMULATOR_ID" &
-          FIRST=$!
-          apps/ios/scripts/disable-password-autofill.sh "$SECOND_SIMULATOR_ID"
-          wait "$FIRST"
-
-      - name: Warm up simulators
-        run: |
-          set -eu
-          for ID in "$SIMULATOR_ID" "$SECOND_SIMULATOR_ID"; do
-            xcrun simctl bootstatus "$ID" -b
-            xcrun simctl install "$ID" out/products/Testing-iphonesimulator/commitnote.app
-            xcrun simctl launch "$ID" io.github.marcinjahn.commitnote
-          done
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          xcrun simctl install "$SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
+          xcrun simctl launch "$SIMULATOR_ID" io.github.marcinjahn.commitnote
           sleep 30
-          for ID in "$SIMULATOR_ID" "$SECOND_SIMULATOR_ID"; do
-            xcrun simctl terminate "$ID" io.github.marcinjahn.commitnote
-          done
+          xcrun simctl terminate "$SIMULATOR_ID" io.github.marcinjahn.commitnote
 
       - name: UI tests
         run: |
           set -eu -o pipefail
-          # Each line is one simulator's share of the suite; both run at once.
           case "${{ matrix.device }}-${{ matrix.suite }}" in
             iphone-flows)
-              FIRST="EditingFlowTests LoginFlowTests SettingsFlowTests"
-              SECOND="OrganisationFlowTests MediaFlowTests DataFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/SettingsFlowTests -only-testing:CommitnoteUITests/DataFlowTests"
               ;;
             iphone-screens)
-              FIRST="ScreenshotTests SettingsScreenshotTests"
-              SECOND="EditorFlowTests OrganisationScreenshotTests MediaScreenshotTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
               ;;
             ipad-flows)
-              FIRST="EditingFlowTests"
-              SECOND="OrganisationFlowTests MediaFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests"
               ;;
             ipad-screens)
-              FIRST="ScreenshotTests LoginFlowTests"
-              SECOND="OrganisationScreenshotTests MediaScreenshotTests SettingsScreenshotTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
               ;;
           esac
-          run_share() {
-            SELECTED=""
-            for CLASS in $3; do SELECTED="$SELECTED -only-testing:CommitnoteUITests/$CLASS"; done
-            xcodebuild test-without-building \
-              -xctestrun "$XCTESTRUN" \
-              -destination "id=$1" \
-              $SELECTED \
-              -parallel-testing-enabled NO \
-              -resultBundlePath "out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}-$2.xcresult" 2>&1 \
-              | sed "s/^/[$2] /"
-          }
-          run_share "$SIMULATOR_ID" 1 "$FIRST" &
-          FIRST_PID=$!
-          STATUS=0
-          run_share "$SECOND_SIMULATOR_ID" 2 "$SECOND" || STATUS=$?
-          wait "$FIRST_PID" || STATUS=$?
-          exit "$STATUS"
+          xcodebuild test-without-building \
+            -xctestrun "$XCTESTRUN" \
+            -destination "id=$SIMULATOR_ID" \
+            $SELECTED \
+            -parallel-testing-enabled NO \
+            -resultBundlePath out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}.xcresult
 
       - name: Export screenshots
         if: always()
         run: |
           set -eu
-          for SHARE in 1 2; do
-            RESULT="out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}-$SHARE.xcresult"
-            if [ -d "$RESULT" ]; then
+          RESULT="out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}.xcresult"
+          if [ -d "$RESULT" ]; then
+            if [ "${{ matrix.suite }}" = screens ]; then
+              apps/ios/scripts/export-screenshots.sh "$RESULT" out/screenshots
+            else
               apps/ios/scripts/export-screenshots.sh "$RESULT" out/screenshots --allow-empty
             fi
-          done
-          if [ "${{ matrix.suite }}" = screens ] && [ -z "$(ls -A out/screenshots 2>/dev/null)" ]; then
-            echo "no screenshots exported" >&2
-            exit 1
           fi
 
       - uses: actions/upload-artifact@v4

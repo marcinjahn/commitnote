@@ -27,6 +27,7 @@ func launchApp(
         app.launchEnvironment["COMMITNOTE_UI_TEST_RESET"] = "1"
     }
     app.launchEnvironment["COMMITNOTE_UI_APPEARANCE"] = appearance.rawValue
+    app.launchEnvironment["COMMITNOTE_UI_ANIMATION_SPEED"] = "5"
     if holdLoading {
         app.launchEnvironment["COMMITNOTE_UI_HOLD_LOADING"] = "1"
     }

@@ -81,8 +81,8 @@ What the app does:
   `Commitnote/App/PrintRenderer.swift` renders the print PDF.
 - `Packages/CoreRuntime/Sources/CoreRuntime/IOSVisit.swift` — the iOS visit (see Usage statistics).
 - `Commitnote/Fonts/` — the bundled note fonts (see Fonts below).
-- `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `sibling-simulator.sh`,
-  `disable-password-autofill.sh`, `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
+- `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `disable-password-autofill.sh`,
+  `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
 - `../test-vectors/` — JSON test vectors shared by the TypeScript and Swift tests.
 
 The Xcode project is generated and not committed.
@@ -209,11 +209,10 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   Simulator, and hands them to the jobs below as the `ios-test-products` artifact.
 - `Runtime tests and IPA` builds and checks the unsigned IPA, runs the runtime tests (including
   `IOSVisitTests`, `NoteFontTests` and the `data` read-back scenario) on an iPhone
-  Simulator from the shared build, reads the produced repos back with TypeScript, and also runs the
-  iPad `EditorFlowTests`, `SettingsFlowTests` and `DataFlowTests` on an iPad Simulator. Both
-  simulators are prepared while the IPA builds.
-- `UI tests (<device>, <suite>)` runs for `iphone` and `ipad` from the shared build, splitting its
-  classes over two simulators of the same model that run at once:
+  Simulator from the shared build, reads the produced repos back with TypeScript, and also boots an
+  iPad Simulator to run the iPad `EditorFlowTests`, `SettingsFlowTests` and `DataFlowTests`.
+- `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
+  shared build:
   - `flows` — editing, organisation and media flows, plus the login, settings and data flows on
     iPhone.
   - `screens` — every screenshot, plus the editor flows on iPhone and the login flows on iPad.
@@ -221,8 +220,9 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   The class lists of the suites differ per device, so every UI class runs on both devices.
 
 The `Testing` configuration (fake core bundle only) adds test hooks: a Testing menu entry "Share
-Welcome" and "Fail next share" (the next share fails), and "Import sample archive" (`testing-import-archive`, opens the Import notes form for a sample zip), and the launch variable `COMMITNOTE_UI_HOLD_LOADING=1`, which holds loading and shows a
-loading testing bar. The UI tests expect password AutoFill to be off, so
+Welcome" and "Fail next share" (the next share fails), and "Import sample archive" (`testing-import-archive`, opens the Import notes form for a sample zip), the launch variable `COMMITNOTE_UI_HOLD_LOADING=1`, which holds loading and shows a
+loading testing bar, and `COMMITNOTE_UI_ANIMATION_SPEED`, which the UI tests set to run the app's
+animations faster. The UI tests expect password AutoFill to be off, so
 iOS never shows its save-password or strong-password sheets over the app; the workflow turns it off on
 every simulator with `scripts/disable-password-autofill.sh`. Do the same before running them locally.
 Artifacts, kept for 30 days:

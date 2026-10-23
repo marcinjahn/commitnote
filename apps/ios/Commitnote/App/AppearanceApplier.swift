@@ -17,6 +17,11 @@ enum AppearanceApplier {
             for window in windowScene.windows {
                 window.overrideUserInterfaceStyle = style
                 window.tintColor = tint
+                #if FAKE_CORE
+                if let speed = TestingHooks.animationSpeed {
+                    window.layer.speed = speed
+                }
+                #endif
             }
         }
     }

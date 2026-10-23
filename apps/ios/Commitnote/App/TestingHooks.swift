@@ -24,6 +24,11 @@ enum TestingHooks {
         ProcessInfo.processInfo.environment["COMMITNOTE_UI_EDITOR_HOOKS"] == "1"
     }
 
+    /// UI tests run the app's own animations faster, so XCTest's waits for them end sooner.
+    static var animationSpeed: Float? {
+        ProcessInfo.processInfo.environment["COMMITNOTE_UI_ANIMATION_SPEED"].flatMap { Float($0) }
+    }
+
     static var requestedColorScheme: ColorScheme? {
         switch ProcessInfo.processInfo.environment["COMMITNOTE_UI_APPEARANCE"] {
         case "light": .light
