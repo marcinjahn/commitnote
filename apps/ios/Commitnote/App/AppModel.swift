@@ -122,6 +122,17 @@ final class AppModel {
     private(set) var searchQuery = ""
     private(set) var searchResults: SearchResults?
     private(set) var searchStatus: SearchStatusChanged?
+    private(set) var history: HistoryView?
+    var isHistoryPresented = false
+    private(set) var shares: [ShareRowView] = []
+    private(set) var sharesUnreadable: String?
+    private(set) var updatingShareId: String?
+    private(set) var shareCopy: ShareCopy?
+    var sharePath: [String]?
+    var isSharedLinksPresented = false
+    var imageSourceRequest: ImageSourceKind?
+    private(set) var pickedImages: PickedImages?
+    var viewerImageId: String?
     @ObservationIgnored private(set) var notePositions: [[String]: NotePosition] = [:]
 
     @ObservationIgnored private var editSender: EditSender?
@@ -134,7 +145,7 @@ final class AppModel {
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private var searchRefreshTask: Task<Void, Never>?
     private var noteUpdateSerial = 0
-    private var runtime: CoreRuntime?
+    private(set) var runtime: CoreRuntime?
     private var eventsTask: Task<Void, Never>?
     private var pathMonitor: NWPathMonitor?
     private var visible: Bool?
@@ -919,11 +930,11 @@ final class AppModel {
     private static let inconsistentBuildMessage =
         "This build of commitnote is inconsistent. Reinstall the app."
 
-    private static func message(for error: Error) -> String {
+    static func message(for error: Error) -> String {
         (error as? CoreError)?.message ?? genericErrorMessage
     }
 
-    private func send<C: NativeCoreCommand>(_ command: C) async throws -> C.Result {
+    func send<C: NativeCoreCommand>(_ command: C) async throws -> C.Result {
         guard let runtime else {
             throw CoreError(
                 kind: CoreError.Kind.notReady, message: Self.genericErrorMessage, transient: false)
@@ -964,11 +975,11 @@ final class AppModel {
         appendLocalNotice(tone: .error, message: message)
     }
 
-    private func showError(_ error: Error) {
+    func showError(_ error: Error) {
         appendLocalNotice(tone: .error, message: Self.message(for: error))
     }
 
-    private func appendLocalNotice(tone: NoticeTone, message: String) {
+    func appendLocalNotice(tone: NoticeTone, message: String) {
         localNoticeCounter += 1
         notices.append(
             AppNotice(
@@ -981,7 +992,7 @@ final class AppModel {
         await enterNotes(restoringLastView: true)
     }
 
-    private func resetSessionState() {
+    func resetSessionState() {
         tree = nil
         openNote = nil
         editorTarget = .none
@@ -1019,6 +1030,17 @@ final class AppModel {
         trashDeleteConfirmation = nil
         trashEmptyConfirmation = nil
         isTrashPresented = false
+        history = nil
+        isHistoryPresented = false
+        shares = []
+        sharesUnreadable = nil
+        updatingShareId = nil
+        shareCopy = nil
+        sharePath = nil
+        isSharedLinksPresented = false
+        imageSourceRequest = nil
+        pickedImages = nil
+        viewerImageId = nil
         notices = []
         refreshStatus = RefreshStatus()
         loadingStep = nil
@@ -1140,8 +1162,16 @@ final class AppModel {
         case .sessionEnded:
             resetSessionState()
             screen = .login(LoginEntry())
-        case .historyChanged, .sharesChanged:
-            break
+        case .historyChanged(let change):
+            history = change.history
+            if change.history == nil {
+                isHistoryPresented = false
+            }
+        case .sharesChanged(let change):
+            shares = change.shares
+            sharesUnreadable = change.unreadable
+            updatingShareId = change.updatingId
+            shareCopy = change.copy
         case .unknown:
             break
         }
@@ -1167,5 +1197,18 @@ final class AppModel {
         noteUpdateSerial += 1
         noteUpdate = NoteContentUpdate(
             serial: noteUpdateSerial, path: path, content: content, edits: change.edits)
+    }
+}
+
+extension AppModel {
+    func deliverPickedImages(_ inputs: [ImageInput]) {
+        guard !inputs.isEmpty else { return }
+        pickedImages = PickedImages(inputs: inputs)
+    }
+
+    func takePickedImages(id: UUID) -> [ImageInput]? {
+        guard let picked = pickedImages, picked.id == id else { return nil }
+        pickedImages = nil
+        return picked.inputs
     }
 }

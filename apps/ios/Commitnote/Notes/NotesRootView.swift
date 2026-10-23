@@ -31,6 +31,18 @@ struct NotesRootView: View {
             .sheet(isPresented: trashPresented) {
                 TrashView(model: model)
             }
+            .sheet(isPresented: historyPresented) {
+                HistoryScreen(model: model)
+                    .presentationDetents([.large])
+            }
+            .sheet(item: sharePresented) { item in
+                ShareScreen(model: model, path: item.path)
+            }
+            .sheet(isPresented: sharedLinksPresented) {
+                SharedLinksScreen(model: model)
+            }
+            .modifier(ImageSourcePresenter(model: model))
+            .imageViewer(model: model)
             .alert("Some changes are not saved", isPresented: unsavedAlertPresented) {
                 Button("Keep trying") {
                     Task { await model.keepTryingLogOut() }
@@ -55,13 +67,16 @@ struct NotesRootView: View {
                 if model.editorTarget != .none {
                     NavigationStack {
                         NoteView(model: model)
-                            #if FAKE_CORE
                             .toolbar {
+                                ToolbarItem(placement: .topBarTrailing) {
+                                    NoteActionsMenu(model: model)
+                                }
+                                #if FAKE_CORE
                                 ToolbarItem(placement: .topBarTrailing) {
                                     TestingMenu(model: model)
                                 }
+                                #endif
                             }
-                            #endif
                     }
                 } else {
                     NavigationStack {
@@ -91,6 +106,9 @@ struct NotesRootView: View {
                     .navigationDestination(isPresented: editorPresented) {
                         NoteView(model: model)
                             .toolbar {
+                                ToolbarItem(placement: .topBarTrailing) {
+                                    NoteActionsMenu(model: model)
+                                }
                                 ToolbarItem(placement: .topBarTrailing) {
                                     SyncStatusButton(model: model)
                                 }
@@ -152,6 +170,24 @@ struct NotesRootView: View {
         Binding(
             get: { model.isTrashPresented },
             set: { model.isTrashPresented = $0 })
+    }
+
+    private var sharedLinksPresented: Binding<Bool> {
+        Binding(
+            get: { model.isSharedLinksPresented },
+            set: { model.isSharedLinksPresented = $0 })
+    }
+
+    private var historyPresented: Binding<Bool> {
+        Binding(
+            get: { model.isHistoryPresented },
+            set: { if !$0 { model.closeHistory() } })
+    }
+
+    private var sharePresented: Binding<SharePathItem?> {
+        Binding(
+            get: { model.sharePath.map(SharePathItem.init) },
+            set: { if $0 == nil { model.sharePath = nil } })
     }
 
     private var unsavedMessage: String {

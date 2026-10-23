@@ -10,9 +10,11 @@ struct MarkdownEditor: UIViewRepresentable {
     let editorSwitch: Int
     let update: NoteContentUpdate?
     @Binding var focusRequested: Bool
+    /// Shows this text read-only: no edit ever reaches the model, and the editor target is never read or changed.
+    var readOnlyText: String? = nil
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(readOnly: readOnlyText != nil)
     }
 
     func makeUIView(context: Context) -> MarkdownEditorContainer {
@@ -23,29 +25,52 @@ struct MarkdownEditor: UIViewRepresentable {
         coordinator.textView = textView
         textView.editorUndoManager = coordinator.undoManager
         textView.delegate = coordinator
+        textView.linkURLProvider = { [weak coordinator] offset in
+            coordinator?.linkURL(at: offset)
+        }
+        textView.imageStore = coordinator.images
+        textView.imageTapHandler = { [weak coordinator] imageId in
+            coordinator?.tapImage(imageId)
+        }
+        textView.imageLayoutHandler = { [weak coordinator] in
+            coordinator?.imageLayoutDidChange()
+        }
+        textView.contentSizeCategoryHandler = { [weak coordinator] in
+            coordinator?.contentSizeCategoryDidChange()
+        }
+        configure(textView)
+        if coordinator.readOnly {
+            textView.isEditable = false
+            textView.isSelectable = true
+            textView.inputAccessoryView = nil
+            textView.accessibilityIdentifier = "shared-version-content"
+            return MarkdownEditorContainer(textView: textView)
+        }
+
         textView.pasteHandler = { [weak coordinator] string in
             coordinator?.paste(string) ?? false
         }
         textView.formatHandler = { [weak coordinator] command in
             coordinator?.format(command)
         }
-        textView.contentSizeCategoryHandler = { [weak coordinator] in
-            coordinator?.contentSizeCategoryDidChange()
-        }
         textView.checkboxHandler = { [weak coordinator] range in
             coordinator?.toggleCheckbox(range)
         }
-        textView.linkURLProvider = { [weak coordinator] offset in
-            coordinator?.linkURL(at: offset)
+        textView.imagePasteHandler = { [weak coordinator] providers in
+            coordinator?.pasteImages(providers) ?? false
         }
-        textView.imageStore = coordinator.images
-        textView.imageTapHandler = { [weak coordinator] imageId in
-            coordinator?.retryImage(imageId)
+        textView.imageDropHandler = { [weak coordinator] offset, providers in
+            coordinator?.dropImages(providers, at: offset)
         }
-        textView.imageLayoutHandler = { [weak coordinator] in
-            coordinator?.imageLayoutDidChange()
+        textView.imageSourceHandler = { [weak coordinator] source in
+            coordinator?.model?.imageSourceRequest = source
         }
+        textView.keyboardDismissMode = .interactive
+        textView.accessibilityIdentifier = "note-editor"
+        return MarkdownEditorContainer(textView: textView)
+    }
 
+    private func configure(_ textView: MarkdownTextView) {
         textView.font = UIFont.preferredFont(forTextStyle: .body)
         textView.adjustsFontForContentSizeCategory = true
         textView.textColor = .label
@@ -58,15 +83,19 @@ struct MarkdownEditor: UIViewRepresentable {
         textView.dataDetectorTypes = []
         textView.allowsEditingTextAttributes = false
         textView.alwaysBounceVertical = true
-        textView.keyboardDismissMode = .interactive
-        textView.accessibilityIdentifier = "note-editor"
-        return MarkdownEditorContainer(textView: textView)
     }
 
     func updateUIView(_ container: MarkdownEditorContainer, context: Context) {
         let coordinator = context.coordinator
         coordinator.model = model
+        if let readOnlyText {
+            coordinator.show(readOnlyText)
+            return
+        }
         coordinator.sync(target: target, editorSwitch: editorSwitch, update: update)
+        if let picked = model.pickedImages {
+            coordinator.receivePickedImages(id: picked.id)
+        }
         if focusRequested {
             Task { @MainActor in
                 container.textView.becomeFirstResponder()
@@ -89,6 +118,7 @@ struct MarkdownEditor: UIViewRepresentable {
 
         weak var model: AppModel?
         weak var textView: MarkdownTextView?
+        let readOnly: Bool
         let undoManager = EditorUndoManager()
         let images = EditorImageStore()
 
@@ -103,11 +133,20 @@ struct MarkdownEditor: UIViewRepresentable {
         private var syncedKey: SyncKey?
         private var applying = false
         private var composing = false
+        private var receivedPickedId: UUID?
 
-        override init() {
+        private struct InsertionAnchor {
+            let editorSwitch: Int
+            let text: String
+            let selection: EditorText.TextSelection
+        }
+
+        init(readOnly: Bool) {
+            self.readOnly = readOnly
             super.init()
             undoManager.coordinator = self
             styler.images = images
+            styler.revealsSelectedLines = !readOnly
             images.load = { [weak self] imageId in
                 await self?.model?.image(for: imageId)
             }
@@ -131,8 +170,15 @@ struct MarkdownEditor: UIViewRepresentable {
             textView.previewLayoutHandler?()
         }
 
-        func retryImage(_ imageId: String) {
-            images.retry(imageId)
+        func tapImage(_ imageId: String) {
+            switch images.state(for: imageId) {
+            case .loaded:
+                model?.viewerImageId = imageId
+            case .unavailable:
+                images.retry(imageId)
+            case .loading:
+                break
+            }
         }
 
         func imageLayoutDidChange() {
@@ -173,8 +219,14 @@ struct MarkdownEditor: UIViewRepresentable {
             }
         }
 
+        func show(_ text: String) {
+            guard let textView, !isReady || lastText != text else { return }
+            replaceAll(with: text, in: textView)
+            appliedSwitch = currentSwitch
+        }
+
         func savePosition() {
-            guard let appliedPath, let textView, let model else { return }
+            guard !readOnly, let appliedPath, let textView, let model else { return }
             model.savePosition(
                 NotePosition(
                     selection: Self.selection(of: textView),
@@ -292,7 +344,12 @@ struct MarkdownEditor: UIViewRepresentable {
             composing = false
             restyle(textView)
             textView.scrollRangeToVisible(textView.selectedRange)
-            model?.edit(text: lastText)
+            sendEdit(lastText)
+        }
+
+        private func sendEdit(_ text: String) {
+            guard !readOnly else { return }
+            model?.edit(text: text)
         }
 
         private func replace(_ edit: TextEdit, in textView: MarkdownTextView) {
@@ -319,11 +376,99 @@ struct MarkdownEditor: UIViewRepresentable {
         }
 
         func paste(_ string: String) -> Bool {
-            guard isReady, let textView, textView.markedTextRange == nil,
-                let result = MarkdownCommands.pasteLink(lastText, Self.selection(of: textView), string)
-            else { return false }
+            guard isReady, let textView, textView.markedTextRange == nil else { return false }
+            let selection = Self.selection(of: textView)
+            if ImageReference.containsReference(in: string), let model {
+                let anchor = InsertionAnchor(editorSwitch: currentSwitch, text: lastText, selection: selection)
+                Task { @MainActor [weak self] in
+                    let text = await model.clonePastedImages(string, current: anchor.text)
+                    self?.finishPaste(text, anchor: anchor)
+                }
+                return true
+            }
+            guard let result = MarkdownCommands.pasteLink(lastText, selection, string) else { return false }
             applyCommand(result, in: textView)
             return true
+        }
+
+        private func finishPaste(_ pasted: String, anchor: InsertionAnchor) {
+            guard let textView, let edits = editsSince(anchor, in: textView) else { return }
+            let selection = TextEdits.mapSelection(anchor.selection, through: edits)
+            let result =
+                MarkdownCommands.pasteLink(lastText, selection, pasted)
+                ?? CommandResult(
+                    edits: [TextEdit(from: selection.location, to: selection.location + selection.length, insert: pasted)],
+                    selection: EditorText.TextSelection(location: selection.location + pasted.utf16.count, length: 0))
+            applyCommand(result, in: textView)
+        }
+
+        func pasteImages(_ providers: [NSItemProvider]) -> Bool {
+            guard isReady, let textView, textView.markedTextRange == nil else { return false }
+            let selection = Self.selection(of: textView)
+            insertImages(
+                from: providers,
+                anchor: InsertionAnchor(
+                    editorSwitch: currentSwitch, text: lastText,
+                    selection: EditorText.TextSelection(location: selection.location + selection.length, length: 0)))
+            return true
+        }
+
+        func dropImages(_ providers: [NSItemProvider], at offset: Int) {
+            guard isReady else { return }
+            insertImages(
+                from: providers,
+                anchor: InsertionAnchor(
+                    editorSwitch: currentSwitch, text: lastText,
+                    selection: EditorText.TextSelection(location: offset, length: 0)))
+        }
+
+        func receivePickedImages(id: UUID) {
+            guard id != receivedPickedId else { return }
+            receivedPickedId = id
+            Task { @MainActor [weak self] in
+                guard let self, let inputs = self.model?.takePickedImages(id: id), self.isReady else { return }
+                let selection = self.lastSelection
+                let anchor = InsertionAnchor(
+                    editorSwitch: self.currentSwitch, text: self.lastText,
+                    selection: EditorText.TextSelection(location: selection.location + selection.length, length: 0))
+                self.insertImages(inputs, anchor: anchor)
+            }
+        }
+
+        private func insertImages(from providers: [NSItemProvider], anchor: InsertionAnchor) {
+            guard !providers.isEmpty else { return }
+            Task { @MainActor [weak self] in
+                let inputs = await EditorImageItems.load(providers)
+                self?.insertImages(inputs, anchor: anchor)
+            }
+        }
+
+        private func insertImages(_ inputs: [ImageInput], anchor: InsertionAnchor) {
+            guard !inputs.isEmpty, let model else { return }
+            Task { @MainActor [weak self] in
+                let references = await model.insertImages(inputs)
+                guard let self, let textView = self.textView, !references.isEmpty,
+                    let edits = self.editsSince(anchor, in: textView)
+                else { return }
+                let position = TextEdits.mapPosition(anchor.selection.location, through: edits, assoc: .before)
+                guard
+                    let result = MarkdownCommands.insertImageReferences(
+                        text: self.lastText, at: position, selection: self.lastSelection, references: references)
+                else { return }
+                self.applyCommand(result, in: textView)
+            }
+        }
+
+        /// The edits made since `anchor` was taken, or nil when the editor moved to another note or draft.
+        private func editsSince(_ anchor: InsertionAnchor, in textView: MarkdownTextView) -> [TextEdit]? {
+            guard anchor.editorSwitch == currentSwitch, isReady else { return nil }
+            if textView.markedTextRange != nil {
+                textView.unmarkText()
+                if (textView.text ?? "") != lastText {
+                    textViewDidChange(textView)
+                }
+            }
+            return TextEdits.diff(old: anchor.text, new: lastText)
         }
 
         func format(_ command: FormatCommand) {
@@ -342,7 +487,7 @@ struct MarkdownEditor: UIViewRepresentable {
         }
 
         func toggleCheckbox(_ markerRange: Range<Int>) {
-            guard isReady, let textView, textView.markedTextRange == nil else { return }
+            guard !readOnly, isReady, let textView, textView.markedTextRange == nil else { return }
             let current = lastText as NSString
             guard markerRange.lowerBound >= 0, markerRange.upperBound <= current.length,
                 ["[ ]", "[x]", "[X]"].contains(
@@ -369,7 +514,7 @@ struct MarkdownEditor: UIViewRepresentable {
             lastSelection = Self.selection(of: textView)
             composing = false
             restyle(textView)
-            model?.edit(text: lastText)
+            sendEdit(lastText)
         }
 
         func linkURL(at offset: Int) -> URL? {
@@ -413,7 +558,7 @@ struct MarkdownEditor: UIViewRepresentable {
         func textView(
             _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
         ) -> Bool {
-            isReady
+            isReady && !readOnly
         }
 
         func textViewDidChange(_ textView: UITextView) {
@@ -437,7 +582,7 @@ struct MarkdownEditor: UIViewRepresentable {
             lastSelection = selection
             restyle(textView)
             if !edits.isEmpty {
-                model?.edit(text: text)
+                sendEdit(text)
             }
         }
 
@@ -460,6 +605,14 @@ struct MarkdownEditor: UIViewRepresentable {
             return NSRange(
                 location: location, length: min(max(0, selection.length), length - location))
         }
+    }
+}
+
+extension MarkdownEditor {
+    init(model: AppModel, readOnlyText: String) {
+        self.init(
+            model: model, target: .none, editorSwitch: 0, update: nil, focusRequested: .constant(false),
+            readOnlyText: readOnlyText)
     }
 }
 
@@ -572,7 +725,7 @@ final class MarkdownEditorContainer: UIView {
                 element.accessibilityIdentifier = "editor-image"
                 element.accessibilityLabel = label
                 element.accessibilityValue = state
-                if state == EditorImageState.unavailable.accessibilityValue {
+                if state != EditorImageState.loading.accessibilityValue {
                     element.accessibilityTraits = [.image, .button]
                     element.action = { [weak textView] in
                         textView?.imageTapHandler?(imageId)
@@ -605,9 +758,13 @@ final class MarkdownTextView: UITextView {
     var linkURLProvider: ((Int) -> URL?)?
     var previewLayoutHandler: (() -> Void)?
     var imageTapHandler: ((String) -> Void)?
+    var imagePasteHandler: (([NSItemProvider]) -> Bool)?
+    var imageDropHandler: ((Int, [NSItemProvider]) -> Void)?
+    var imageSourceHandler: ((ImageSourceKind) -> Void)?
     var imageLayoutHandler: (() -> Void)?
     private let previewLayout = PreviewLayoutDelegate()
     private let previewTapDelegate = PreviewTapDelegate()
+    private let imageDropDelegate = EditorImageDropDelegate()
     private var imageLayoutKey: [CGFloat] = []
 
     var imageStore: EditorImageStore? {
@@ -625,6 +782,9 @@ final class MarkdownTextView: UITextView {
         inputAccessoryView = makeFormatToolbar()
         textLayoutManager?.delegate = previewLayout
         previewTapDelegate.textView = self
+        imageDropDelegate.textView = self
+        textDropDelegate = imageDropDelegate
+        pasteDelegate = imageDropDelegate
         let tap = UITapGestureRecognizer(target: self, action: #selector(handlePreviewTap(_:)))
         tap.delegate = previewTapDelegate
         addGestureRecognizer(tap)
@@ -644,12 +804,23 @@ final class MarkdownTextView: UITextView {
     }
 
     override func paste(_ sender: Any?) {
-        if UIPasteboard.general.hasStrings, let string = UIPasteboard.general.string,
-            pasteHandler?(string) == true
-        {
+        imageDropDelegate.reset()
+        let pasteboard = UIPasteboard.general
+        if pasteboard.hasStrings {
+            if let string = pasteboard.string, pasteHandler?(string) == true {
+                return
+            }
+        } else if pasteboard.hasImages, imagePasteHandler?(pasteboard.itemProviders) == true {
             return
         }
         super.paste(sender)
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)), isEditable, UIPasteboard.general.hasImages {
+            return true
+        }
+        return super.canPerformAction(action, withSender: sender)
     }
 
     override func tintColorDidChange() {
@@ -721,9 +892,32 @@ final class MarkdownTextView: UITextView {
             }
             items.append(item)
         }
+        items.append(.flexibleSpace())
+        items.append(makeImageToolbarItem())
         toolbar.items = items
         toolbar.sizeToFit()
         return toolbar
+    }
+
+    private func makeImageToolbarItem() -> UIBarButtonItem {
+        var sources: [(String, String, String, ImageSourceKind)] = [
+            ("Photo Library", "photo.on.rectangle", "insert-image-photos", .photos)
+        ]
+        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+            sources.append(("Take Photo", "camera", "insert-image-camera", .camera))
+        }
+        sources.append(("Choose File", "folder", "insert-image-files", .files))
+        let actions = sources.map { title, symbol, identifier, source in
+            UIAction(
+                title: title, image: UIImage(systemName: symbol), identifier: UIAction.Identifier(identifier)
+            ) { [weak self] _ in
+                self?.imageSourceHandler?(source)
+            }
+        }
+        let item = UIBarButtonItem(image: UIImage(systemName: "photo"), menu: UIMenu(children: actions))
+        item.accessibilityLabel = "Insert image"
+        item.accessibilityIdentifier = "format-image"
+        return item
     }
 }
 

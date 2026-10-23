@@ -69,6 +69,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIRequiresFullScreen: false
         ITSAppUsesNonExemptEncryption: false
+        NSCameraUsageDescription: commitnote uses the camera to add photos to your notes.
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: io.github.marcinjahn.commitnote.tree-node
             UTTypeDescription: commitnote tree item

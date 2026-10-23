@@ -38,6 +38,7 @@ final class MarkdownStyler {
     private var fonts: [FontKey: UIFont] = [:]
     private(set) var placements: [Placement] = []
     weak var images: EditorImageStore?
+    var revealsSelectedLines = true
 
     nonisolated init() {}
 
@@ -65,7 +66,8 @@ final class MarkdownStyler {
         let selected = textView.selectedRange
         let rendered = LivePreview.render(
             document,
-            selection: [EditorText.TextSelection(location: selected.location, length: selected.length)])
+            selection: revealsSelectedLines
+                ? [EditorText.TextSelection(location: selected.location, length: selected.length)] : [])
         placements = rendered.placements
         let imageBox = imageBoxMaker(textView)
         let newLines = Self.lineStyles(

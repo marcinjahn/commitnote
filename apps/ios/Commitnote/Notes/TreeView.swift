@@ -77,6 +77,10 @@ struct TreeView: View {
                             model.isTrashPresented = true
                         }
                         .accessibilityIdentifier("trash-button")
+                        Button(model.shareCopy?.sharedLinksTitle ?? "Shared links", systemImage: "link") {
+                            model.isSharedLinksPresented = true
+                        }
+                        .accessibilityIdentifier("shared-links-button")
                         Button("Refresh", systemImage: "arrow.clockwise") {
                             Task { try? await model.refresh() }
                         }
