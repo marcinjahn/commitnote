@@ -229,8 +229,9 @@ final class AppModel {
         }
         self.runtime = runtime
 
+        // Not at background priority: core work queued behind the visit would inherit it and starve.
         let visitSender = visitSender
-        Task.detached(priority: .background) {
+        Task {
             await IOSVisit.run(runtime: runtime, sender: visitSender)
         }
 
