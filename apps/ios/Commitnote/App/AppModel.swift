@@ -169,6 +169,7 @@ final class AppModel {
     @ObservationIgnored var queuedImportPreview: ImportDestinationView?
     @ObservationIgnored var importPreviewRunning = false
     @ObservationIgnored var draftText = ""
+    @ObservationIgnored private var noteEventCounts: [[String]: Int] = [:]
     private var noteUpdateSerial = 0
     private(set) var runtime: CoreRuntime?
     private var eventsTask: Task<Void, Never>?
@@ -885,8 +886,14 @@ final class AppModel {
     }
 
     private func sendNoteOpen(path: [String]?) async {
+        let eventsBefore = path.map { noteEventCounts[$0, default: 0] }
         if let note = try? await send(NoteOpen(path: path)).note {
-            openNote = note
+            // The response and the note's events travel separately, so an event that overtook the
+            // response is newer than it.
+            let overtaken = note.path == path && noteEventCounts[note.path, default: 0] != eventsBefore
+            if !overtaken {
+                openNote = note
+            }
         } else if path == nil {
             openNote = nil
         }
@@ -1235,6 +1242,9 @@ final class AppModel {
     }
 
     private func handleNoteChanged(_ change: NoteChanged) {
+        if let path = change.note?.path {
+            noteEventCounts[path, default: 0] += 1
+        }
         let previousPath = openNote?.path
         openNote = change.note
         defer { updateNoteDetailsTarget() }

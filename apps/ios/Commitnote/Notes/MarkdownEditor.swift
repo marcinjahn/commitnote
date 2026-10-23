@@ -916,7 +916,7 @@ final class MarkdownTextView: UITextView {
         }
     }
 
-    private func makeFormatToolbar() -> UIToolbar {
+    private func makeFormatToolbar() -> UIView {
         let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
         var items: [UIBarButtonItem] = []
         for command in FormatCommand.allCases {
@@ -932,17 +932,30 @@ final class MarkdownTextView: UITextView {
         }
         items.append(.flexibleSpace())
         items.append(makeImageToolbarItem())
-        #if FAKE_CORE
-        if TestingHooks.editorHooksRequested {
-            items.append(contentsOf: makeTestingToolbarItems())
-        }
-        #endif
         toolbar.items = items
         toolbar.sizeToFit()
+        #if FAKE_CORE
+        if TestingHooks.editorHooksRequested {
+            return withTestingToolbar(above: toolbar)
+        }
+        #endif
         return toolbar
     }
 
     #if FAKE_CORE
+    /// The hooks get a row of their own so the format buttons keep their places on narrow screens.
+    private func withTestingToolbar(above toolbar: UIToolbar) -> UIView {
+        let testing = UIToolbar(frame: toolbar.frame)
+        testing.items = [.flexibleSpace()] + makeTestingToolbarItems()
+        testing.sizeToFit()
+        let stack = UIStackView(arrangedSubviews: [testing, toolbar])
+        stack.axis = .vertical
+        stack.frame = CGRect(
+            x: 0, y: 0, width: toolbar.frame.width, height: testing.frame.height + toolbar.frame.height)
+        stack.autoresizingMask = [.flexibleWidth]
+        return stack
+    }
+
     private func makeTestingToolbarItems() -> [UIBarButtonItem] {
         let hooks: [(String, String, () -> Void)] = [
             ("testing-select-word", "W", { [weak self] in self?.selectWordBeforeCaret() }),

@@ -36,20 +36,23 @@ extension XCTestCase {
     ) -> XCUIElement {
         let form = app.element(container)
         waitFor(form, file: file, line: line)
+        // A row that still sits under the navigation bar counts as hittable, but a tap on it lands on the bar.
+        let underBar: () -> Bool = { element.exists && element.frame.minY < form.frame.minY + 56 }
         let revealed: () -> Bool = {
             guard element.exists else { return false }
-            if tappable { return element.isHittable }
+            if tappable { return element.isHittable && !underBar() }
             let frame = element.frame
             return form.frame.contains(CGPoint(x: frame.midX, y: frame.midY))
         }
         for _ in 0..<8 {
             if poll(timeout: 1, until: revealed) { return element }
-            if upward {
-                form.swipeDown()
+            if upward || underBar() {
+                form.swipeDown(velocity: .slow)
             } else {
                 form.swipeUp()
             }
         }
+        if tappable, element.exists, element.isHittable { return element }
         XCTAssertTrue(revealed(), "Expected \(element) in Settings", file: file, line: line)
         return element
     }

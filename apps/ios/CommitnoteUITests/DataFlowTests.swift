@@ -84,17 +84,17 @@ final class DataFlowTests: XCTestCase {
 
         let newPassphrase = "a much longer replacement passphrase"
         let mismatch = "a different passphrase"
-        typeNewPassphrase(app.secureTextFields["change-passphrase-current"], Fixture.passphrase, in: app)
-        typeNewPassphrase(app.secureTextFields["change-passphrase-new"], newPassphrase, in: app)
-        let repeated = app.secureTextFields["change-passphrase-repeat"]
-        typeNewPassphrase(repeated, mismatch, in: app)
+        typeNewPassphrase(passphraseField("change-passphrase-current", in: app), Fixture.passphrase, in: app)
+        typeNewPassphrase(passphraseField("change-passphrase-new", in: app), newPassphrase, in: app)
+        typeNewPassphrase(passphraseField("change-passphrase-repeat", in: app), mismatch, in: app)
         let continueButton = app.buttons["change-passphrase-continue"]
         revealInSettings(continueButton, within: "change-passphrase-screen", in: app).tap()
         let error = app.element("change-passphrase-error")
         waitFor(error)
         waitUntil(error, NSPredicate(format: "label CONTAINS %@", "do not match"))
 
-        typeNewPassphrase(repeated, newPassphrase, replacing: mismatch.count, in: app)
+        typeNewPassphrase(
+            passphraseField("change-passphrase-repeat", in: app), newPassphrase, replacing: mismatch.count, in: app)
         waitFor(app.element("change-passphrase-strength"))
         revealInSettings(continueButton, within: "change-passphrase-screen", in: app).tap()
         waitFor(app.element("change-passphrase-summary"), timeout: 120)
@@ -108,5 +108,9 @@ final class DataFlowTests: XCTestCase {
         openWelcome(in: app)
         typeAtEnd("\nWritten with the new key", in: app)
         waitForSaved(in: app)
+    }
+
+    private func passphraseField(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        revealInSettings(app.secureTextFields[identifier], within: "change-passphrase-screen", in: app)
     }
 }
