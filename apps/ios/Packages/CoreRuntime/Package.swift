@@ -9,6 +9,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../CommitnoteCrypto"),
+        .package(path: "../ImageCodec"),
         .package(path: "../NativeCoreAPI"),
     ],
     targets: [
@@ -16,6 +17,7 @@ let package = Package(
             name: "CoreRuntime",
             dependencies: [
                 .product(name: "CommitnoteCrypto", package: "CommitnoteCrypto"),
+                .product(name: "ImageCodec", package: "ImageCodec"),
                 .product(name: "NativeCoreAPI", package: "NativeCoreAPI"),
             ]
         )

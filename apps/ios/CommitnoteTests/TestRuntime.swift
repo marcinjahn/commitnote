@@ -128,16 +128,20 @@ struct TestServices {
         KeychainRememberedSessionStorage(service: keychainService)
     }
 
-    func configuration(bundleURL: URL, deviceModel: String, http: any HTTPClient)
-        -> CoreRuntimeConfiguration
-    {
+    func configuration(
+        bundleURL: URL,
+        deviceModel: String,
+        http: any HTTPClient,
+        imageCodec: any ImageCodecService = SystemImageCodec()
+    ) -> CoreRuntimeConfiguration {
         CoreRuntimeConfiguration(
             bundleURL: bundleURL,
             deviceModel: deviceModel,
             rememberedSession: rememberedSession,
             blobCache: FileBlobCacheStorage(root: blobCacheRoot),
             deviceSettings: UserDefaultsDeviceSettingsStorage(defaults: defaults),
-            http: http)
+            http: http,
+            imageCodec: imageCodec)
     }
 
     func reset() {

@@ -14,12 +14,13 @@ struct HostArguments {
 }
 
 /// Builds the JavaScript `host` object. Every method, including the callbacks of the JS functions
-/// it creates, runs on `queue`; only Argon2id, storage and HTTP work leave it, and their results
+/// it creates, runs on `queue`; only Argon2id, storage, HTTP and image codec work leave it, and their results
 /// come back to it before touching JavaScript.
 final class HostServicesObject {
     private static let maxRandomBytes = 65_536
     private static let maxHkdfBytes = 255 * 32
     private static let maxTimerDelayMs = 2_147_483_647.0
+    private static let maxImageDimension = 16_383
 
     let context: JSContext
     private let queue: DispatchQueue
@@ -28,6 +29,8 @@ final class HostServicesObject {
     private let logger: Logger
     private let onPost: (String) -> Void
     private let keyStore = KeyStore()
+    private let imageInputs: HandleStore<StagedImageInput>
+    private let decodedImages = HandleStore<DecodedImage>()
     private var timers: [Int: DispatchWorkItem] = [:]
     private var nextTimerId = 1
     private var stopped = false
@@ -36,12 +39,14 @@ final class HostServicesObject {
         context: JSContext,
         queue: DispatchQueue,
         configuration: CoreRuntimeConfiguration,
+        imageInputs: HandleStore<StagedImageInput>,
         logger: Logger,
         onPost: @escaping (String) -> Void
     ) {
         self.context = context
         self.queue = queue
         self.configuration = configuration
+        self.imageInputs = imageInputs
         self.logger = logger
         self.onPost = onPost
     }
@@ -53,6 +58,7 @@ final class HostServicesObject {
         }
         timers.removeAll()
         keyStore.removeAll()
+        decodedImages.close()
     }
 
     func makeObject() -> JSValue {
@@ -108,6 +114,14 @@ final class HostServicesObject {
         let log = JSBridge.newObject(
             in: context,
             [("log", function { try $0.log($1) })])
+        let imageCodec = JSBridge.newObject(
+            in: context,
+            [
+                ("takeInput", function { try $0.takeImageInput($1) }),
+                ("decode", function { try $0.decodeImage($1) }),
+                ("encodeWebp", function { try $0.encodeWebp($1) }),
+                ("release", function { try $0.releaseImage($1) }),
+            ])
 
         return JSBridge.newObject(
             in: context,
@@ -120,6 +134,7 @@ final class HostServicesObject {
                 ("blobCache", blobCache),
                 ("deviceSettings", deviceSettings),
                 ("log", log),
+                ("imageCodec", imageCodec),
                 ("post", function { try $0.post($1) }),
             ])
     }
@@ -584,6 +599,68 @@ final class HostServicesObject {
 
     private func settingsRemoveItem(_ arguments: HostArguments) throws -> JSValue {
         configuration.deviceSettings.removeItem(try JSBridge.string(arguments[0]))
+        return undefined()
+    }
+
+    // MARK: - imageCodec
+
+    private func takeImageInput(_ arguments: HostArguments) throws -> JSValue {
+        guard let input = imageInputs.remove(try JSBridge.string(arguments[0])) else { return null() }
+        return JSBridge.newObject(
+            in: context,
+            [
+                ("bytes", try JSBridge.uint8Array(input.data, in: context)),
+                ("type", input.type),
+            ])
+    }
+
+    private func decodeImage(_ arguments: HostArguments) throws -> JSValue {
+        let data = try JSBridge.data(arguments[0])
+        let codec = configuration.imageCodec
+        return try promise(
+            failure: "Could not decode the image",
+            { complete in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    complete(Result { try codec.decode(data) })
+                }
+            },
+            resolve: { host, image in
+                JSBridge.newObject(
+                    in: host.context,
+                    [
+                        ("handle", host.decodedImages.insert(image)),
+                        ("width", image.width),
+                        ("height", image.height),
+                    ])
+            })
+    }
+
+    private func encodeWebp(_ arguments: HostArguments) throws -> JSValue {
+        let handle = try JSBridge.string(arguments[0])
+        let width = try JSBridge.integer(arguments[1], in: 1...Self.maxImageDimension)
+        let height = try JSBridge.integer(arguments[2], in: 1...Self.maxImageDimension)
+        let quality = try JSBridge.number(arguments[3])
+        let image = decodedImages.value(handle)
+        let codec = configuration.imageCodec
+        return try promise(
+            failure: "Could not encode the image",
+            { complete in
+                guard let image else {
+                    complete(.failure(HostCallError("Unknown image handle")))
+                    return
+                }
+                DispatchQueue.global(qos: .userInitiated).async {
+                    complete(
+                        Result {
+                            try codec.encodeWebP(image, width: width, height: height, quality: quality)
+                        })
+                }
+            },
+            resolve: { host, bytes in try JSBridge.uint8Array(bytes, in: host.context) })
+    }
+
+    private func releaseImage(_ arguments: HostArguments) throws -> JSValue {
+        decodedImages.remove(try JSBridge.string(arguments[0]))
         return undefined()
     }
 

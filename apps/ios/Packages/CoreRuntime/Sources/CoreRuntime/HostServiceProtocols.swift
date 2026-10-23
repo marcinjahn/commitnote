@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import NativeCoreAPI
 import Synchronization
 
@@ -118,6 +119,25 @@ public struct HostHTTPResponse: Equatable, Sendable {
 /// Throws only on transport failure; every HTTP status is a response.
 public protocol HTTPClient: Sendable {
     func send(_ request: HostHTTPRequest) async throws -> HostHTTPResponse
+}
+
+/// Holds the undecoded source and its upright size; pixels are decoded only when encoding.
+public struct DecodedImage: @unchecked Sendable {
+    public let source: CGImageSource
+    public let width: Int
+    public let height: Int
+
+    public init(source: CGImageSource, width: Int, height: Int) {
+        self.source = source
+        self.width = width
+        self.height = height
+    }
+}
+
+public protocol ImageCodecService: Sendable {
+    func decode(_ data: Data) throws -> DecodedImage
+    /// `quality` is 0…1.
+    func encodeWebP(_ image: DecodedImage, width: Int, height: Int, quality: Double) throws -> Data
 }
 
 public final class InMemoryRememberedSessionStorage: RememberedSessionStorage {
