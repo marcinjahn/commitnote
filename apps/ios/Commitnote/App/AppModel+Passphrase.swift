@@ -76,7 +76,7 @@ extension AppModel {
     func commitPassphraseChange() async {
         guard let state = passphraseChange, case .review = state.stage else { return }
         startPassphraseWork()
-        await runPassphraseOutcome(from: .review) {
+        await runPassphraseOutcome(from: state.stage) {
             try await self.send(PassphraseCommitChange()).outcome
         }
     }
