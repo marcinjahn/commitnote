@@ -2,7 +2,12 @@
   import { sortedShares, type ShareEntry, type ShareIndex } from "../../share/share-index";
   import type { WorkingTree } from "../../sync/working-tree";
   import Dialog from "../dialogs/Dialog.svelte";
-  import { describeShareError, messageText } from "./share-messages";
+  import {
+    describeShareError,
+    messageText,
+    SHARED_LINKS_EMPTY,
+    SHARED_LINKS_TITLE,
+  } from "./share-messages";
   import ShareList from "./ShareList.svelte";
 
   interface Props {
@@ -40,7 +45,7 @@
   const unreadable = $derived(shares !== null && !shares.writable);
 </script>
 
-<Dialog {open} title="Shared links" large closeButton {onClose}>
+<Dialog {open} title={SHARED_LINKS_TITLE} large closeButton {onClose}>
   {#snippet children()}
     {#if unreadable}
       <p class="alert-error" role="alert">
@@ -49,7 +54,7 @@
     {/if}
     {#if shares === null || shares.entries.size === 0}
       {#if !unreadable}
-        <p class="empty">No shared links yet. Share a note from its menu.</p>
+        <p class="empty">{SHARED_LINKS_EMPTY}</p>
       {/if}
     {:else}
       <ShareList

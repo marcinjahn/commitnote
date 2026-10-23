@@ -68,17 +68,13 @@
   import type { NoteDatesResolver } from "../../history/note-dates";
   import type { RestorePlan } from "../../history/plan-restore";
   import {
-    findRestorableImages,
-    needsImageLookup,
-  } from "../../history/restorable-images";
-  import type { TreeEntry } from "../../forge/forge-adapter";
-  import { validateName } from "../../tree/note-names";
-  import { describeNameError } from "../dialogs/name-messages";
-  import {
-    describeRestoreBlock,
-    describeRestored,
-    UNSAVED_BEFORE_RESTORE_MESSAGE,
-  } from "../history/history-messages";
+    historyTarget,
+    restoreVersion,
+    undoRestore,
+    undoRestoreApplies,
+    type RestoreGuard,
+    type RestoreUndo,
+  } from "../../app/history-actions";
   import {
     findWorkingNode,
     type WorkingFolder,
@@ -150,9 +146,8 @@
   import { loadImagePipeline } from "../../images/load-image-pipeline";
   import type { ImageInsertionConfig } from "../../editor/image-insertion";
   import {
-    IMAGE_COUNT_LIMIT_MESSAGE,
     describeAddingImages,
-    describeImageRejections,
+    describeImageOutcome,
   } from "../images/image-messages";
   import CommandMenu from "./CommandMenu.svelte";
   import CommitSha from "./CommitSha.svelte";
@@ -223,10 +218,19 @@
   import SharedVersionDialog from "../share/SharedVersionDialog.svelte";
   import { copyText } from "../share/copy-text";
   import {
+    COPY_FAILED_TEXT,
     describeShareError,
+    describeShareUpdate,
+    LINK_COPIED_TEXT,
+    LINK_REVOKED_TEXT,
     messageText,
-    SHARE_UNCHANGED_TEXT,
-    SHARE_UPDATED_TEXT,
+    PASSWORD_COPIED_TEXT,
+    RENAME_LINK_CONFIRM,
+    RENAME_LINK_FIELD,
+    RENAME_LINK_TITLE,
+    REVOKE_LINK_CONFIRM,
+    REVOKE_LINK_MESSAGE,
+    REVOKE_LINK_TITLE,
   } from "../share/share-messages";
   import { MAX_SHARE_LABEL_LENGTH, normalizeShareLabel } from "../../share/share-label";
   import { shareNoteName } from "../share/share-row-title";
@@ -670,10 +674,8 @@
     readonly path: NotePath;
     readonly phase: HistoryPhase;
   } | null>(null);
-  interface UndoGuard {
+  interface UndoGuard extends RestoreGuard {
     readonly id: number;
-    readonly path: NotePath;
-    readonly content: string;
   }
   let undoGuard = $state<UndoGuard | null>(null);
 
@@ -1148,11 +1150,7 @@
       }
     },
     onOutcome: (outcome) => {
-      if (outcome.kind === "tooMany") {
-        showToast("image", "error", IMAGE_COUNT_LIMIT_MESSAGE);
-        return;
-      }
-      const text = describeImageRejections(outcome.rejections, outcome.total);
+      const text = describeImageOutcome(outcome);
       if (text !== null) showToast("image", "error", text);
     },
   };
@@ -1321,59 +1319,17 @@
     const path = openPath;
     if (path === null) return;
     historyDialog = { path, phase: { kind: "saving" } };
-    try {
-      await engine.flush();
-    } catch {
-      // Best effort: the history of what is saved can still be shown.
-    }
+    const target = await historyTarget(engine, path);
     if (historyDialog === null || !notePathEquals(historyDialog.path, path)) {
       return;
     }
-    const synced = engine.getState().synced;
-    const node = synced === null ? undefined : findNode(synced.tree, path);
     historyDialog = {
       path,
       phase:
-        synced === null || node?.kind !== "note"
+        target.kind === "unsaved"
           ? { kind: "unsaved" }
-          : { kind: "ready", cursor: noteHistory.open(path, synced.head) },
+          : { kind: "ready", cursor: noteHistory.open(path, target.head) },
     };
-  }
-
-  type NoteStateResult =
-    | { readonly ok: true; readonly path: NotePath }
-    | { readonly ok: false; readonly message: string };
-
-  // The name is checked up front so a failed rename leaves the content alone,
-  // and the edit goes first so the rename's save commits both together.
-  function setNoteState(
-    path: NotePath,
-    content: string | null,
-    name: string | null,
-  ): NoteStateResult {
-    if (
-      engineState.conflicts.some((held) => notePathEquals(held.path, path))
-    ) {
-      return {
-        ok: false,
-        message: describeStructureError({ kind: "conflicted" }),
-      };
-    }
-    if (name !== null) {
-      const validation = validateName(
-        name,
-        siblingNamesOf(parentPath(path), noteName(path)),
-      );
-      if (!validation.ok) {
-        return { ok: false, message: describeNameError(validation.error) };
-      }
-    }
-    if (content !== null) engine.editNote(path, content);
-    if (name === null) return { ok: true, path };
-    const result = engine.rename(path, name);
-    return result.ok
-      ? { ok: true, path: result.path }
-      : { ok: false, message: describeStructureError(result.error) };
   }
 
   async function handleHistoryRestore(
@@ -1382,96 +1338,28 @@
   ): Promise<string | null> {
     const path = historyDialog?.path;
     if (path === undefined) return null;
-    try {
-      await engine.flush();
-    } catch {
-      // The note's sync state below tells whether its changes were saved.
-    }
-    const isPending = (imageId: string) =>
-      engine.getPendingImage(imageId) !== undefined;
-    let versionListing: readonly TreeEntry[] = [];
-    const lookupImages = engine.getState().synced?.images;
-    if (
-      plan.content !== null &&
-      lookupImages !== undefined &&
-      needsImageLookup(plan.content, lookupImages, isPending)
-    ) {
-      try {
-        versionListing = await noteHistory.listVersionTree(version.sha);
-      } catch {
-        versionListing = [];
-      }
-    }
-    const state = engine.getState();
-    const open = state.openNote;
-    if (
-      historyDialog === null ||
-      !notePathEquals(historyDialog.path, path) ||
-      open?.kind !== "loaded" ||
-      !notePathEquals(open.path, path)
-    ) {
-      return null;
-    }
-    if (state.stopped !== null || state.suspended) {
-      return describeRestoreBlock("unavailable");
-    }
-    if (state.syncStates.stateOf(path).kind !== "synced") {
-      return UNSAVED_BEFORE_RESTORE_MESSAGE;
-    }
-    const previous = { content: open.content, name: noteName(path) };
-    const currentImages = state.synced?.images;
-    if (
-      plan.content !== null &&
-      currentImages !== undefined &&
-      versionListing.length > 0
-    ) {
-      engine.addRestoredImages(
-        findRestorableImages({
-          content: plan.content,
-          images: currentImages,
-          isPending,
-          versionListing,
-        }),
-      );
-    }
-    const result = setNoteState(path, plan.content, plan.name);
-    if (!result.ok) return result.message;
-    historyDialog = null;
-    const restoredPath = result.path;
-    const restored = engine.getState().openNote;
-    const id = showToast(
-      "history",
-      "success",
-      describeRestored(version.committedAt, Date.now()),
+    const outcome = await restoreVersion(
+      { engine, noteHistory, siblingNames: siblingNamesOf },
       {
-        action: {
-          label: "Undo",
-          run: () =>
-            handleUndoRestore(
-              id,
-              restoredPath,
-              plan.content === null ? null : previous.content,
-              plan.name === null ? null : previous.name,
-            ),
-        },
+        path,
+        plan,
+        version,
+        isCurrent: () =>
+          historyDialog !== null && notePathEquals(historyDialog.path, path),
+        now: () => Date.now(),
       },
     );
-    undoGuard =
-      restored?.kind === "loaded"
-        ? { id, path: restored.path, content: restored.content }
-        : null;
+    if (outcome.kind === "stale") return null;
+    if (outcome.kind === "error") return outcome.message;
+    historyDialog = null;
+    const id = showToast("history", "success", outcome.message, {
+      action: {
+        label: "Undo",
+        run: () => handleUndoRestore(id, outcome.undo),
+      },
+    });
+    undoGuard = outcome.guard === null ? null : { id, ...outcome.guard };
     return null;
-  }
-
-  function undoApplies(
-    guard: UndoGuard,
-    open: SyncEngineState["openNote"],
-  ): boolean {
-    return (
-      open?.kind === "loaded" &&
-      notePathEquals(open.path, guard.path) &&
-      open.content === guard.content
-    );
   }
 
   function dismissUndo(id: number): void {
@@ -1481,28 +1369,26 @@
 
   $effect(() => {
     const guard = undoGuard;
-    if (guard !== null && !undoApplies(guard, engineState.openNote)) {
+    if (guard !== null && !undoRestoreApplies(guard, engineState.openNote)) {
       dismissUndo(guard.id);
     }
   });
 
-  function handleUndoRestore(
-    id: number,
-    path: NotePath,
-    content: string | null,
-    name: string | null,
-  ): void {
+  function handleUndoRestore(id: number, undo: RestoreUndo): void {
     const guard = undoGuard;
     if (
       guard === null ||
       guard.id !== id ||
-      !undoApplies(guard, engine.getState().openNote)
+      !undoRestoreApplies(guard, engine.getState().openNote)
     ) {
       dismissUndo(id);
       return;
     }
     undoGuard = null;
-    const result = setNoteState(path, content, name);
+    const result = undoRestore(
+      { engine, siblingNames: siblingNamesOf },
+      undo,
+    );
     if (result.ok) clearToast("history");
     else showToast("history", "error", result.message);
   }
@@ -2430,7 +2316,7 @@
   async function copyShareText(text: string, copied: string): Promise<boolean> {
     const ok = await copyText(text);
     if (ok) showToast("share", "success", copied);
-    else showToast("share", "error", "Couldn't copy. Select the text and copy it.");
+    else showToast("share", "error", COPY_FAILED_TEXT);
     return ok;
   }
 
@@ -2447,15 +2333,8 @@
     updatingShareId = entry.id;
     try {
       const result = await shareService.updateShare(entry.id);
-      if (!result.ok) {
-        showToast("share", "error", messageText(describeShareError(result.error, forgeId)));
-      } else {
-        showToast(
-          "share",
-          result.unchanged ? "info" : "success",
-          result.unchanged ? SHARE_UNCHANGED_TEXT : SHARE_UPDATED_TEXT,
-        );
-      }
+      const { tone, text } = describeShareUpdate(result, forgeId);
+      showToast("share", tone, text);
     } finally {
       updatingShareId = null;
     }
@@ -2480,7 +2359,7 @@
     const { id } = revokeEntry;
     revokeEntry = null;
     const result = await shareService.revokeShare(id);
-    if (result.ok) showToast("share", "success", "Link revoked");
+    if (result.ok) showToast("share", "success", LINK_REVOKED_TEXT);
     else showToast("share", "error", messageText(describeShareError(result.error, forgeId)));
   }
 
@@ -3124,10 +3003,10 @@
     onCopyLink={(entry) =>
       void copyShareText(
         formatShareLink(linkBase, entry.locator, entry.linkSecret),
-        "Link copied",
+        LINK_COPIED_TEXT,
       )}
     onCopyPassword={(entry) =>
-      void copyShareText(entry.password ?? "", "Password copied")}
+      void copyShareText(entry.password ?? "", PASSWORD_COPIED_TEXT)}
     onCopyText={copyShareText}
     onViewVersion={(entry) => (sharedVersionEntry = entry)}
     updatingId={updatingShareId}
@@ -3146,10 +3025,10 @@
   onCopyLink={(entry) =>
     void copyShareText(
       formatShareLink(linkBase, entry.locator, entry.linkSecret),
-      "Link copied",
+      LINK_COPIED_TEXT,
     )}
   onCopyPassword={(entry) =>
-    void copyShareText(entry.password ?? "", "Password copied")}
+    void copyShareText(entry.password ?? "", PASSWORD_COPIED_TEXT)}
   onViewVersion={(entry) => (sharedVersionEntry = entry)}
   updatingId={updatingShareId}
   onUpdate={(entry) => void handleUpdateShare(entry)}
@@ -3172,9 +3051,9 @@
 
 {#if renameShare !== null}
   <NameDialog
-    title="Rename link"
-    label="Name"
-    submitLabel="Rename"
+    title={RENAME_LINK_TITLE}
+    label={RENAME_LINK_FIELD}
+    submitLabel={RENAME_LINK_CONFIRM}
     initialName={renameShare.entry.label ?? ""}
     placeholder={shareNoteName(renameShare.entry)}
     maxLength={MAX_SHARE_LABEL_LENGTH}
@@ -3187,9 +3066,9 @@
 
 {#if revokeEntry !== null}
   <ConfirmDialog
-    title="Revoke link?"
-    body="The link will stop working. People who already opened it may have kept a copy."
-    confirmLabel="Revoke"
+    title={REVOKE_LINK_TITLE}
+    body={REVOKE_LINK_MESSAGE}
+    confirmLabel={REVOKE_LINK_CONFIRM}
     onConfirm={() => void handleRevokeConfirm()}
     onClose={() => (revokeEntry = null)}
   />

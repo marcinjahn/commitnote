@@ -1,10 +1,17 @@
 <script lang="ts">
   import type { ShareEntry } from "../../share/share-index";
-  import { findWorkingNode, type WorkingTree } from "../../sync/working-tree";
+  import type { WorkingTree } from "../../sync/working-tree";
   import { noteIcons } from "../browse/action-icons";
   import MenuPopup from "../browse/MenuPopup.svelte";
   import type { MenuAnchor } from "../browse/row-menu-types";
-  import { compactShareDate, describeShareDate } from "./share-messages";
+  import {
+    compactShareDate,
+    describeShareDate,
+    PASSWORD_PROTECTED_LABEL,
+    shareActionsLabel,
+    UPDATING_LABEL,
+  } from "./share-messages";
+  import { canOpenShare, latestShareDate } from "./share-rows";
   import { shareRowTitle } from "./share-row-title";
   import { shareMenuItems, type ShareMenuId } from "./share-menu";
 
@@ -47,21 +54,11 @@
   const triggers = new Map<string, HTMLButtonElement>();
 
   function menuLabelOf(entry: ShareEntry): string {
-    return `Share actions for ${shareRowTitle(entry).title}`;
+    return shareActionsLabel(shareRowTitle(entry).title);
   }
 
   function canOpen(entry: ShareEntry): boolean {
-    return (
-      onOpenNote !== undefined &&
-      entry.note.state === "active" &&
-      (tree === null || findWorkingNode(tree, entry.note.path) !== undefined)
-    );
-  }
-
-  function latestDate(entry: ShareEntry): string {
-    return entry.updatedAt !== null && entry.updatedAt > entry.sharedAt
-      ? entry.updatedAt
-      : entry.sharedAt;
+    return onOpenNote !== undefined && canOpenShare(entry, tree);
   }
 
   function trackTrigger(node: HTMLButtonElement, id: string) {
@@ -152,13 +149,13 @@
             <path {d} />
           {/each}
         </svg>
-        <span class="visually-hidden">Password protected</span>
+        <span class="visually-hidden">{PASSWORD_PROTECTED_LABEL}</span>
       {/if}
       {#if updating}
-        <span class="share-date" role="status">Updating…</span>
+        <span class="share-date" role="status">{UPDATING_LABEL}</span>
       {:else}
-        <time class="share-date" datetime={latestDate(entry)} title={describeShareDate(entry)}>
-          <span aria-hidden="true">{compactShareDate(latestDate(entry), new Date())}</span>
+        <time class="share-date" datetime={latestShareDate(entry)} title={describeShareDate(entry)}>
+          <span aria-hidden="true">{compactShareDate(latestShareDate(entry), new Date())}</span>
           <span class="visually-hidden">{describeShareDate(entry)}</span>
         </time>
       {/if}

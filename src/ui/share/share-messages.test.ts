@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { ShareError } from "../../share/share-service";
+import type { ShareError, UpdateShareResult } from "../../share/share-service";
 import {
   describeShareDate,
   describeShareError,
+  describeShareUpdate,
+  shareActionsLabel,
+  shareDialogTitle,
+  shareExplanation,
   messageText,
   SHARE_UNCHANGED_TEXT,
   SHARE_UPDATED_TEXT,
@@ -180,5 +184,48 @@ describe("compactShareDate", () => {
     }).format(new Date(iso));
     expect(compactShareDate(iso, now)).toBe(expected);
     expect(compactShareDate(iso, now)).toContain("2025");
+  });
+});
+
+describe("describeShareUpdate", () => {
+  const entry = {} as never;
+
+  it("reports an updated link as success", () => {
+    const result: UpdateShareResult = { ok: true, entry, unchanged: false };
+    expect(describeShareUpdate(result, "github")).toEqual({
+      tone: "success",
+      text: SHARE_UPDATED_TEXT,
+    });
+  });
+
+  it("reports an unchanged link as info", () => {
+    const result: UpdateShareResult = { ok: true, entry, unchanged: true };
+    expect(describeShareUpdate(result, "github")).toEqual({
+      tone: "info",
+      text: SHARE_UNCHANGED_TEXT,
+    });
+  });
+
+  it("reports a failure as an error with the forge-specific text", () => {
+    const result: UpdateShareResult = { ok: false, error: { kind: "server" } };
+    expect(describeShareUpdate(result, "gitlab")).toEqual({
+      tone: "error",
+      text: "GitLab had a problem. Try again later.",
+    });
+  });
+});
+
+describe("share dialog copy", () => {
+  it("titles the dialog with the note name", () => {
+    expect(shareDialogTitle("Ideas")).toBe("Share “Ideas”");
+  });
+
+  it("explains sharing per forge", () => {
+    expect(shareExplanation("github")).toContain("secret gist on your GitHub account");
+    expect(shareExplanation("gitlab")).toContain("public snippet on your GitLab account");
+  });
+
+  it("labels the row actions", () => {
+    expect(shareActionsLabel("For Anna")).toBe("Share actions for For Anna");
   });
 });

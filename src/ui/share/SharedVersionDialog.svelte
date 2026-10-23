@@ -7,15 +7,21 @@
   } from "../../editor/image-widgets";
   import { livePreview } from "../../editor/live-preview";
   import { linkOpen } from "../../editor/link-open";
-  import type { NoteHistory, VersionContent } from "../../history/note-history";
+  import { readSharedVersion, type SharedVersionOutcome } from "../../app/shared-version";
+  import type { NoteHistory } from "../../history/note-history";
   import type { ImageSource } from "../../images/image-source";
   import type { NoteFont } from "../../settings/note-font";
   import type { ShareEntry } from "../../share/share-index";
-  import { describeSyncError } from "../browse/sync-messages";
   import Dialog from "../dialogs/Dialog.svelte";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
   import { loadImageLightbox } from "../images/load-image-lightbox";
-  import { describeShareDate } from "./share-messages";
+  import {
+    describeShareDate,
+    LOADING_SHARED_VERSION_TEXT,
+    SHARED_VERSION_PASSPHRASE_CHANGED_MESSAGE,
+    SHARED_VERSION_TITLE,
+    TRY_AGAIN_LABEL,
+  } from "./share-messages";
 
   interface Props {
     entry: ShareEntry;
@@ -62,67 +68,52 @@
     }
   }
 
-  const GONE_MESSAGE =
-    "The shared version is no longer in your history. The link still works.";
-  const PASSPHRASE_CHANGED_MESSAGE =
-    "The shared version is no longer in your history. Your passphrase was changed after this note was shared. The link still works.";
-
-  let content = $state<VersionContent | null>(null);
+  let outcome = $state<SharedVersionOutcome | null>(null);
   let attempt = $state(0);
 
   $effect(() => {
     void attempt;
-    const { source } = entry;
-    if (source === null) return;
-    content = null;
+    if (entry.source === null) return;
+    outcome = null;
     let current = true;
-    noteHistory
-      .readVersion({
-        sha: source.commit,
-        storedPath: source.storedPath,
-        committedAt: 0,
-        name: null,
-        events: [],
-      })
-      .catch((): VersionContent => ({ kind: "failed", error: { kind: "server" } }))
-      .then((result) => {
-        if (current) content = result;
-      });
+    void readSharedVersion({ noteHistory, forgeName }, entry).then((result) => {
+      if (current) outcome = result;
+    });
     return () => {
       current = false;
     };
   });
 </script>
 
-<Dialog open={true} wide closeButton title="Shared version" {onClose}>
+<Dialog open={true} wide closeButton title={SHARED_VERSION_TITLE} {onClose}>
   {#snippet children()}
     <p class="version-date">{describeShareDate(entry)}</p>
     {#if entry.source === null}
-      <p class="version-message">{PASSPHRASE_CHANGED_MESSAGE}</p>
-    {:else if content === null}
+      <p class="version-message">{SHARED_VERSION_PASSPHRASE_CHANGED_MESSAGE}</p>
+    {:else if outcome === null}
       <div class="skeleton" aria-hidden="true">
         <span class="skeleton-bar short"></span>
         {#each [0, 1, 2, 3, 4, 5] as i (i)}
           <span class="skeleton-bar" style="--i: {i}"></span>
         {/each}
       </div>
-      <span class="visually-hidden" role="status">Loading shared version…</span>
-    {:else if content.kind === "readable"}
+      <span class="visually-hidden" role="status">{LOADING_SHARED_VERSION_TEXT}</span>
+    {:else if outcome.kind === "readable"}
       <MarkdownEditor
-        text={content.content}
+        text={outcome.content}
         noteSwitch={0}
         readOnly={true}
         onChange={() => {}}
         extensions={editorExtensions}
-        ariaLabel="Shared version"
+        ariaLabel={SHARED_VERSION_TITLE}
         {noteFont}
       />
-    {:else if content.kind === "undecryptable" || (content.kind === "failed" && content.error.kind === "notFound")}
-      <p class="version-message">{GONE_MESSAGE}</p>
+    {:else if outcome.kind === "message"}
+      <p class="version-message">{outcome.message}</p>
     {:else}
       <div class="version-message version-error" role="alert">
-        <span>{describeSyncError(content.error, forgeName)}</span>
-        <button type="button" class="button" onclick={() => attempt++}>Try again</button>
+        <span>{outcome.message}</span>
+        <button type="button" class="button" onclick={() => attempt++}>{TRY_AGAIN_LABEL}</button>
       </div>
     {/if}
   {/snippet}
