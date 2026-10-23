@@ -59,7 +59,6 @@ function fakeHostCodec(
   } = {},
 ) {
   const codec = {
-    takeInput: vi.fn<HostImageCodec["takeInput"]>(() => null),
     decode: vi.fn<HostImageCodec["decode"]>(async () => ({
       handle: "handle-1",
       width: options.width ?? 3000,

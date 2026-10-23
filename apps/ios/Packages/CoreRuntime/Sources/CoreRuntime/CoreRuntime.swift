@@ -13,7 +13,7 @@ public actor CoreRuntime {
     private let logger: Logger
     private let router: ResponseRouter
     private let exceptions = ExceptionRecorder()
-    private nonisolated let imageInputs = HandleStore<StagedImageInput>()
+    private nonisolated let stagedInputs = HandleStore<StagedInput>()
     private var virtualMachine: JSVirtualMachine?
     private var context: JSContext?
     private var host: HostServicesObject?
@@ -77,7 +77,7 @@ public actor CoreRuntime {
             context: context,
             queue: queue,
             configuration: configuration,
-            imageInputs: imageInputs,
+            stagedInputs: stagedInputs,
             logger: logger,
             onPost: { message in router.receive(message) })
         let options = JSBridge.newObject(in: context, [("deviceModel", configuration.deviceModel)])
@@ -118,13 +118,13 @@ public actor CoreRuntime {
         return try decodeResult(C.self, from: value)
     }
 
-    /// The returned id is what the core's image commands take as an input; each can be taken once.
-    public nonisolated func stageImageInput(_ data: Data, type: String) -> String {
-        imageInputs.insert(StagedImageInput(data: data, type: type))
+    /// The returned id is what the core's core takes as an input; each can be taken once.
+    public nonisolated func stageInput(_ data: Data, type: String) -> String {
+        stagedInputs.insert(StagedInput(data: data, type: type))
     }
 
-    public nonisolated func discardImageInputs(_ ids: [String]) {
-        imageInputs.remove(ids)
+    public nonisolated func discardStagedInputs(_ ids: [String]) {
+        stagedInputs.remove(ids)
     }
 
     public func flushHostStorage() async {
@@ -146,7 +146,7 @@ public actor CoreRuntime {
             _ = exceptions.take()
         }
         host?.stop()
-        imageInputs.close()
+        stagedInputs.close()
         router.finish()
         handle = nil
         host = nil

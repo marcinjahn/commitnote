@@ -29,7 +29,7 @@ final class HostServicesObject {
     private let logger: Logger
     private let onPost: (String) -> Void
     private let keyStore = KeyStore()
-    private let imageInputs: HandleStore<StagedImageInput>
+    private let stagedInputs: HandleStore<StagedInput>
     private let decodedImages = HandleStore<DecodedImage>()
     private var timers: [Int: DispatchWorkItem] = [:]
     private var nextTimerId = 1
@@ -39,14 +39,14 @@ final class HostServicesObject {
         context: JSContext,
         queue: DispatchQueue,
         configuration: CoreRuntimeConfiguration,
-        imageInputs: HandleStore<StagedImageInput>,
+        stagedInputs: HandleStore<StagedInput>,
         logger: Logger,
         onPost: @escaping (String) -> Void
     ) {
         self.context = context
         self.queue = queue
         self.configuration = configuration
-        self.imageInputs = imageInputs
+        self.stagedInputs = stagedInputs
         self.logger = logger
         self.onPost = onPost
     }
@@ -114,10 +114,12 @@ final class HostServicesObject {
         let log = JSBridge.newObject(
             in: context,
             [("log", function { try $0.log($1) })])
+        let stagedInputs = JSBridge.newObject(
+            in: context,
+            [("take", function { try $0.takeStagedInput($1) })])
         let imageCodec = JSBridge.newObject(
             in: context,
             [
-                ("takeInput", function { try $0.takeImageInput($1) }),
                 ("decode", function { try $0.decodeImage($1) }),
                 ("encodeWebp", function { try $0.encodeWebp($1) }),
                 ("release", function { try $0.releaseImage($1) }),
@@ -134,6 +136,7 @@ final class HostServicesObject {
                 ("blobCache", blobCache),
                 ("deviceSettings", deviceSettings),
                 ("log", log),
+                ("stagedInputs", stagedInputs),
                 ("imageCodec", imageCodec),
                 ("post", function { try $0.post($1) }),
             ])
@@ -602,10 +605,10 @@ final class HostServicesObject {
         return undefined()
     }
 
-    // MARK: - imageCodec
+    // MARK: - stagedInputs
 
-    private func takeImageInput(_ arguments: HostArguments) throws -> JSValue {
-        guard let input = imageInputs.remove(try JSBridge.string(arguments[0])) else { return null() }
+    private func takeStagedInput(_ arguments: HostArguments) throws -> JSValue {
+        guard let input = stagedInputs.remove(try JSBridge.string(arguments[0])) else { return null() }
         return JSBridge.newObject(
             in: context,
             [

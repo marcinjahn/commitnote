@@ -18,12 +18,13 @@ import type {
   HostClock,
   HostCrypto,
   HostImageCodec,
-  HostImageInput,
+  HostStagedInputs,
   HostKeyAlgorithm,
   HostLogLevel,
   HostServices,
   KeyHandle,
   RememberedSessionRecord,
+  StagedInput,
 } from "../host-services";
 
 export interface NodeHostServices extends HostServices {
@@ -164,17 +165,22 @@ function fakeLossyWebp(width: number, height: number, quality: number): Uint8Arr
   return out;
 }
 
-function createNodeImageCodec(
-  inputs: Map<string, HostImageInput>,
-): HostImageCodec {
-  const images = new Map<string, { width: number; height: number }>();
+function createNodeStagedInputs(
+  inputs: Map<string, StagedInput>,
+): HostStagedInputs {
   return {
-    takeInput(input) {
-      const staged = inputs.get(input);
+    take(id) {
+      const staged = inputs.get(id);
       if (staged === undefined) return null;
-      inputs.delete(input);
+      inputs.delete(id);
       return staged;
     },
+  };
+}
+
+function createNodeImageCodec(): HostImageCodec {
+  const images = new Map<string, { width: number; height: number }>();
+  return {
     async decode(bytes) {
       const format = sniffImageFormat(bytes);
       const dimensions =
@@ -258,7 +264,7 @@ export function createNodeHostServices(
   const blobs = new Map<string, Map<string, HostBlobCacheEntry>>();
   const settings = new Map<string, string>();
   let session: StoredSession | null = null;
-  const imageInputs = new Map<string, HostImageInput>();
+  const stagedInputs = new Map<string, StagedInput>();
 
   function storedKey(handle: KeyHandle): StoredKey {
     const key = keys.get(handle);
@@ -273,7 +279,7 @@ export function createNodeHostServices(
     logs,
     stageInput(bytes, type) {
       const input = randomUUID();
-      imageInputs.set(input, { bytes: plain(bytes), type });
+      stagedInputs.set(input, { bytes: plain(bytes), type });
       return input;
     },
     crypto,
@@ -390,7 +396,8 @@ export function createNodeHostServices(
         logs.push({ level, message });
       },
     },
-    imageCodec: createNodeImageCodec(imageInputs),
+    stagedInputs: createNodeStagedInputs(stagedInputs),
+    imageCodec: createNodeImageCodec(),
     post(message) {
       posted.push(message);
     },

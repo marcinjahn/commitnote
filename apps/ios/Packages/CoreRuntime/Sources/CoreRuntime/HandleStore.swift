@@ -1,7 +1,7 @@
 import Foundation
 import Synchronization
 
-struct StagedImageInput: Sendable {
+struct StagedInput: Sendable {
     let data: Data
     let type: String
 }

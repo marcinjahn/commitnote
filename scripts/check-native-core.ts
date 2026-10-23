@@ -212,6 +212,7 @@ function crossRealmHost(
     blobCache: wrapService(host.blobCache),
     deviceSettings: wrapService(host.deviceSettings),
     log: wrapService(host.log),
+    stagedInputs: wrapService(host.stagedInputs),
     imageCodec: wrapService(host.imageCodec),
     post(message) {
       host.post(message);
