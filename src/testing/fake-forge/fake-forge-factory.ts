@@ -10,7 +10,6 @@ import { encodeDeviceTrailer } from "../../changes/device-trailer";
 import type { ForgeErrorKind } from "../../forge/errors";
 import { ForgeError } from "../../forge/errors";
 import {
-  type FailableOperation,
   FakeForgeAdapter,
   type FakeForgeAdapterShares,
 } from "../../forge/fake/fake-forge-adapter";
@@ -57,6 +56,7 @@ import {
   sampleNotesRepo,
 } from "../sample-notes-repo/seed-sample-notes-repo";
 import { delay, type ForgeLatency, withLatency } from "./forge-latency";
+import { createForgeHolds, type HoldableOperation } from "./forge-hold";
 import { createLazyForgeAdapter } from "./lazy-forge-adapter";
 
 export const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
@@ -110,9 +110,16 @@ export interface FakeForgeControls {
    */
   failNext(
     repoKey: string,
-    operation: Exclude<FailableOperation, "initialize" | "findOldestCommit">,
+    operation: HoldableOperation,
     kind: ForgeErrorKind | "stale",
   ): void;
+  /**
+   * Make every call of `operation` on that fixture wait until `release`. A
+   * `failNext` registered before the release applies to the released call.
+   */
+  hold(repoKey: string, operation: HoldableOperation): void;
+  /** Resume the calls held on `operation`, in call order, and stop holding. */
+  release(repoKey: string, operation: HoldableOperation): void;
 }
 
 function createRejectingAdapter(makeError: () => ForgeError): ForgeAdapter {
@@ -212,8 +219,12 @@ export async function createFakeForge(options?: {
   const shareStore = createFakeShareStore(options?.shareStorage);
   const githubShares = { store: shareStore, provider: "github" } as const;
   const gitlabShares = { store: shareStore, provider: "gitlab" } as const;
-  const slowed = (adapter: ForgeAdapter): ForgeAdapter =>
-    latency === undefined ? adapter : withLatency(adapter, latency);
+  const holds = createForgeHolds();
+  const slowed = (repoKey: string, adapter: ForgeAdapter): ForgeAdapter =>
+    holds.wrap(
+      repoKey,
+      latency === undefined ? adapter : withLatency(adapter, latency),
+    );
 
   const fixtures = new Map<string, ForgeAdapter>([
     ["sample/notes", await createSampleNotesRepoAdapter({ shares: githubShares })],
@@ -366,16 +377,33 @@ export async function createFakeForge(options?: {
         kind === "stale" ? "stale" : new ForgeError(kind),
       );
     },
+    hold(repoKey, operation) {
+      holds.hold(repoKey, operation);
+    },
+    release(repoKey, operation) {
+      holds.release(repoKey, operation);
+    },
   };
 
+  const wrappedFixtures = new WeakMap<ForgeAdapter, ForgeAdapter>();
   const fixtureFactory =
     (fixtureMap: ReadonlyMap<string, ForgeAdapter>): ForgeAdapterFactory =>
     (coordinates, factoryOptions) => {
       if (factoryOptions.accessToken === FAKE_FORGE_INVALID_TOKEN) {
-        return slowed(unauthorizedAdapter());
+        return slowed(
+          `${coordinates.owner}/${coordinates.repo}`,
+          unauthorizedAdapter(),
+        );
       }
       const key = `${coordinates.owner}/${coordinates.repo}`.toLowerCase();
-      return slowed(fixtureMap.get(key) ?? notFoundAdapter());
+      const fixture = fixtureMap.get(key);
+      if (fixture === undefined) return slowed(key, notFoundAdapter());
+      let wrapped = wrappedFixtures.get(fixture);
+      if (wrapped === undefined) {
+        wrapped = slowed(key, fixture);
+        wrappedFixtures.set(fixture, wrapped);
+      }
+      return wrapped;
     };
   const factory = fixtureFactory(fixtures);
 

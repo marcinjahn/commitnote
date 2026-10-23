@@ -30,27 +30,34 @@ export interface LaunchQueueLike {
 
 export interface LaunchActions {
   deliver(action: LaunchAction): void;
-  attach(run: (action: LaunchAction) => void): () => void;
+  attach(
+    run: (action: LaunchAction) => void,
+    accepts?: (action: LaunchAction) => boolean,
+  ): () => void;
 }
 
 export function createLaunchActions(): LaunchActions {
   let pending: LaunchAction | null = null;
-  let handler: ((action: LaunchAction) => void) | null = null;
+  let handler: {
+    run: (action: LaunchAction) => void;
+    accepts: (action: LaunchAction) => boolean;
+  } | null = null;
 
   return {
     deliver(action) {
-      if (handler) handler(action);
+      if (handler?.accepts(action)) handler.run(action);
       else pending = action;
     },
-    attach(run) {
-      handler = run;
-      if (pending !== null) {
+    attach(run, accepts = () => true) {
+      const attached = { run, accepts };
+      handler = attached;
+      if (pending !== null && accepts(pending)) {
         const action = pending;
         pending = null;
         run(action);
       }
       return () => {
-        if (handler === run) handler = null;
+        if (handler === attached) handler = null;
       };
     },
   };

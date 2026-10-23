@@ -29,8 +29,7 @@ export interface NoteNavigation {
   current(): NavigationEntry;
   push(entry: NavigationEntry): void;
   replace(entry: NavigationEntry): void;
-  canGoBack(): boolean;
-  back(): void;
+  backToTree(): void;
   pushDialog(): void;
   consumeDialog(): void;
   openDialogs(): number;
@@ -113,7 +112,7 @@ export function createNoteNavigation(
   let baseDepth = 0;
   let writtenDialogs = 0;
   let openDialogs = 0;
-  let pendingPushes = 0;
+  const treeAt: boolean[] = [];
   let generation = 0;
   let disposed = false;
   let stale: StaleEntries | null = null;
@@ -183,6 +182,7 @@ export function createNoteNavigation(
       "",
       urlOf(location, stored),
     );
+    treeAt[depth] = stored.kind === "none";
     if (depth === stale.from) stale = null;
     return entry;
   }
@@ -267,6 +267,7 @@ export function createNoteNavigation(
     }
     if (ours) entry = refreshStale(depth) ?? entry;
 
+    treeAt[depth] = entry.kind === "none";
     currentEntry = entry;
     onPopState(entry);
   }
@@ -308,6 +309,8 @@ export function createNoteNavigation(
         baseDepth = 0;
         writtenDialogs = 0;
         history.replaceState(stateOf(stored, stamp(0)), "", url);
+        treeAt.length = 0;
+        treeAt[0] = stored.kind === "none";
         if (generation === startedAt) currentEntry = entry;
         return entry;
       }, NONE);
@@ -321,29 +324,26 @@ export function createNoteNavigation(
       if (entriesEqual(entry, currentEntry)) return;
       currentEntry = entry;
       generation++;
-      pendingPushes++;
       openDialogs = 0;
       void enqueue(async () => {
-        try {
-          const stored = await storedOf(entry);
+        const stored = await storedOf(entry);
+        if (disposed) return;
+        if (writtenDialogs > 0) {
+          const landed = await travel(() => history.go(-writtenDialogs));
           if (disposed) return;
-          if (writtenDialogs > 0) {
-            const landed = await travel(() => history.go(-writtenDialogs));
-            if (disposed) return;
-            landQuietly(landed);
-          }
-          const depth = baseDepth + writtenDialogs + 1;
-          history.pushState(
-            stateOf(stored, stamp(depth)),
-            "",
-            urlOf(location, stored),
-          );
-          if (stale !== null && stale.from >= depth) stale = null;
-          baseDepth = depth;
-          writtenDialogs = 0;
-        } finally {
-          pendingPushes--;
+          landQuietly(landed);
         }
+        const depth = baseDepth + writtenDialogs + 1;
+        history.pushState(
+          stateOf(stored, stamp(depth)),
+          "",
+          urlOf(location, stored),
+        );
+        treeAt.length = depth;
+        treeAt[depth] = stored.kind === "none";
+        if (stale !== null && stale.from >= depth) stale = null;
+        baseDepth = depth;
+        writtenDialogs = 0;
       }, undefined);
     },
 
@@ -359,6 +359,7 @@ export function createNoteNavigation(
           "",
           urlOf(location, stored),
         );
+        treeAt[baseDepth] = stored.kind === "none";
         if (writtenDialogs > 0) {
           stale = {
             stored,
@@ -373,13 +374,29 @@ export function createNoteNavigation(
       }, undefined);
     },
 
-    canGoBack() {
-      return baseDepth + pendingPushes > 0;
-    },
-
-    back() {
+    backToTree() {
+      currentEntry = NONE;
+      generation++;
       void enqueue(async () => {
-        history.back();
+        const top = baseDepth + writtenDialogs;
+        let target = baseDepth;
+        while (target > 0 && !treeAt[target]) target--;
+        if (target < top) {
+          await travel(() => history.go(target - top));
+          if (disposed) return;
+        }
+        const passed = writtenDialogs;
+        baseDepth = target;
+        writtenDialogs = 0;
+        if (stale !== null && target >= stale.from && target <= stale.to)
+          stale = null;
+        history.replaceState(
+          stateOf({ kind: "none" }, stamp(target)),
+          "",
+          baseUrl(location),
+        );
+        treeAt[target] = true;
+        closeDialogs(passed);
       }, undefined);
     },
 
@@ -394,6 +411,8 @@ export function createNoteNavigation(
           "",
           baseUrl(location) + location.hash,
         );
+        treeAt.length = depth;
+        treeAt[depth] = false;
         writtenDialogs++;
       }, undefined);
     },

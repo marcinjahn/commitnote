@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick, untrack } from "svelte";
+  import { flushSync, onMount, tick, untrack } from "svelte";
   import { removeLastView } from "./app/last-view";
   import { createAutoRefresh, type AutoRefresh } from "./app/auto-refresh";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
@@ -15,6 +15,10 @@
   import type { BlobCache } from "./blob-cache/blob-cache";
   import { deleteBlobCacheDatabase } from "./blob-cache/blob-store";
   import { repoKeyOf } from "./blob-cache/blob-cache";
+  import {
+    createEarlyDraftStore,
+    deleteEarlyDraftDatabase,
+  } from "./session/early-draft-store";
   import { withBlobCache } from "./blob-cache/caching-adapter";
   import type {
     LoginError,
@@ -88,6 +92,17 @@
   import Wordmark from "./ui/wordmark/Wordmark.svelte";
   import type { InstallController } from "./app/install-controller";
   import type { LaunchActions } from "./app/launch-action";
+  import { emptyEarlyDraft, isUntouched, type EarlyDraft } from "./app/early-draft";
+  import { earlyDraftLoadStatus } from "./app/early-draft-load-status";
+  import type { SyncError } from "./sync/sync-engine";
+  import { installTypeToStart } from "./ui/browse/type-to-start";
+  import FloatingNewNoteButton from "./ui/browse/FloatingNewNoteButton.svelte";
+  import EarlyDraftView from "./ui/note/EarlyDraftView.svelte";
+  import {
+    DEFAULT_SETTING_SCOPES,
+    type SwitchableSettingKey,
+  } from "./settings/setting-scope";
+  import { SETTINGS_SCHEMA, type Settings } from "./settings/settings";
   import InstallBar from "./ui/install/InstallBar.svelte";
   import InstallHowToDialog from "./ui/install/InstallHowToDialog.svelte";
   import { createDialogEntries } from "./ui/dialogs/dialog-entries";
@@ -189,6 +204,8 @@
   let uninstallBlobCachePurge: (() => void) | null = null;
   let unsubscribeStopped: (() => void) | null = null;
   let keyChanged = $state<{ readonly unsavedCount: number } | null>(null);
+  let appRefreshError = $state.raw<SyncError | null>(null);
+  let appTreeLoaded = $state(false);
 
   const deviceSettingsStore = createDeviceSettingsStore();
   onMount(() => () => deviceSettingsStore.dispose());
@@ -301,9 +318,16 @@
     initialMessage: Pick<ToastMessage, "tone" | "text"> | null = null,
     purgeBlobCache = false,
     resumed = false,
+    knownHead?: string,
   ): Promise<void> {
     phase = { kind: "restoring" };
     const { remembered } = await store.start(session, { rememberMe });
+    earlyDraftBacking = remembered
+      ? {
+          repoKey: repoKeyOf(session.coordinates),
+          keyring: session.keyring,
+        }
+      : null;
     if (remembered && (!resumed || standalone)) {
       void requestPersistentStorage(navigator.storage);
     }
@@ -350,6 +374,8 @@
       save: (edits) => engine.changeSettings(edits),
     });
     unsubscribeStopped = engine.subscribe((state) => {
+      appRefreshError = state.refresh.lastError;
+      appTreeLoaded = state.workingTree !== null;
       if (state.stopped?.kind === "keyChanged") {
         keyChanged = { unsavedCount: state.syncStates.unsavedCount };
         resetReported();
@@ -358,7 +384,9 @@
       }
     });
     const hasUnsaved = () =>
-      settingsSaver.hasPending || engine.getState().syncStates.hasUnsaved;
+      settingsSaver.hasPending ||
+      engine.getState().syncStates.hasUnsaved ||
+      earlyDraftNeedsGuard();
     const flush = () => {
       settingsSaver.flush();
       void engine.flush();
@@ -413,7 +441,7 @@
     // Forge errors resolve with `refresh.lastError` set, which the shell shows.
     let refreshed = true;
     try {
-      await engine.refresh();
+      await engine.refresh({ knownHead });
     } catch (e) {
       console.error(e);
       refreshed = false;
@@ -500,7 +528,10 @@
     adapter: ForgeAdapter;
     rememberMe: boolean;
   }): Promise<void> {
-    await startApp(result.session, result.adapter, result.rememberMe);
+    const carried = earlyDraft !== null && !isUntouched(earlyDraft);
+    const started = startApp(result.session, result.adapter, result.rememberMe);
+    if (carried) earlyDraftOpen = true;
+    await started;
   }
 
   function stopApp(
@@ -525,6 +556,8 @@
     unsubscribeStopped?.();
     unsubscribeStopped = null;
     keyChanged = null;
+    appRefreshError = null;
+    appTreeLoaded = false;
     settingsSaver.dispose();
     contentIndexer.dispose();
     engine.dispose();
@@ -561,7 +594,11 @@
     if (phase.kind !== "app") return;
     const { engine, settingsSaver, contentIndexer, blobCache, session } = phase;
     await stopApp(engine, settingsSaver, contentIndexer, blobCache, true);
-    if (clearStore) await store.clear();
+    earlyDraftBacking = null;
+    if (clearStore) {
+      await store.clear();
+      await discardEarlyDraftData();
+    }
     removeLastView(repoKeyOf(session.coordinates));
     logout = null;
     clearNoteFragment(window.history, window.location);
@@ -591,7 +628,15 @@
     const result = await resumeSession(remembered, loginDeps());
     if (result.kind === "loggedIn") {
       await stopApp(engine, settingsSaver, contentIndexer, blobCache, true);
-      await startApp(result.session, result.adapter, true);
+      await startApp(
+        result.session,
+        result.adapter,
+        true,
+        null,
+        false,
+        false,
+        result.head,
+      );
       return;
     }
     await finishLogOut(!isTransient(result.error));
@@ -657,42 +702,263 @@
     };
   });
 
-  onMount(() => {
-    void (async () => {
-      try {
-        const session = await store.loadRememberedSession();
-        if (session === null) {
-          await deleteBlobCacheDatabase();
-          showLogin(null);
-          return;
-        }
+  let earlyDraft = $state<EarlyDraft | null>(null);
+  let earlyDraftOpen = $state(false);
+  let earlyDraftOffered = $state(false);
+  let earlyDraftView = $state<ReturnType<typeof EarlyDraftView> | undefined>();
+  let earlyDraftHandingOff = $state(false);
+  let earlyDraftBacking = $state.raw<{
+    readonly repoKey: string;
+    readonly keyring: Keyring;
+  } | null>(null);
+  let earlyDraftStore = createEarlyDraftStore();
+  let earlyDraftStoreQueue: Promise<unknown> = Promise.resolve();
 
-        const result = await resumeSession(session, loginDeps());
-        switch (result.kind) {
-          case "loggedIn":
-            await startApp(
-              result.session,
-              result.adapter,
-              true,
-              null,
-              false,
-              true,
-            );
-            return;
-          case "failed": {
-            if (!isTransient(result.error)) {
-              await store.clear();
-              removeLastView(repoKeyOf(session.coordinates));
-              await deleteBlobCacheDatabase();
-            }
-            showLogin(result.error);
-          }
-        }
-      } catch (e) {
-        console.error(e);
-        showLogin(null);
+  function queueEarlyDraftStore<T>(task: () => Promise<T>): Promise<T> {
+    const result = earlyDraftStoreQueue.then(task, task);
+    earlyDraftStoreQueue = result.catch(() => undefined);
+    return result;
+  }
+
+  async function discardEarlyDraftData(): Promise<void> {
+    earlyDraftBacking = null;
+    await queueEarlyDraftStore(async () => {
+      await deleteEarlyDraftDatabase();
+      earlyDraftStore = createEarlyDraftStore();
+    });
+  }
+
+  $effect(() => {
+    const backing = earlyDraftBacking;
+    const draft = earlyDraft;
+    if (backing === null) return;
+    if (draft === null || isUntouched(draft)) {
+      void queueEarlyDraftStore(() => earlyDraftStore.remove(backing.repoKey));
+      return;
+    }
+    const save = () =>
+      void queueEarlyDraftStore(() =>
+        earlyDraftStore.save(backing.repoKey, backing.keyring, draft),
+      );
+    let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      timer = null;
+      save();
+    }, EARLY_DRAFT_SAVE_DEBOUNCE_MS);
+    const flush = () => {
+      if (timer === null) return;
+      clearTimeout(timer);
+      timer = null;
+      save();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flush);
+    };
+  });
+
+  const earlyDraftShown = $derived(
+    earlyDraft !== null && earlyDraftOpen && !earlyDraftHandingOff,
+  );
+
+  $effect(() => {
+    if (phase.kind !== "restoring") earlyDraftOffered = false;
+  });
+
+  function deviceScopedSetting<K extends SwitchableSettingKey>(
+    key: K,
+  ): Settings[K] | undefined {
+    const record = deviceSettingsStore.read();
+    const scope = record.scopes[key] ?? DEFAULT_SETTING_SCOPES[key];
+    return scope === "device" ? record.values[key] : undefined;
+  }
+
+  function typeToStartDeviceEnabled(): boolean {
+    const record = deviceSettingsStore.read();
+    const scope = record.scopes.typeToStart ?? DEFAULT_SETTING_SCOPES.typeToStart;
+    if (scope !== "device") return false;
+    return record.values.typeToStart ?? SETTINGS_SCHEMA.typeToStart.default;
+  }
+
+  function openEarlyDraft(): void {
+    if (earlyDraft === null) earlyDraft = emptyEarlyDraft("name");
+    earlyDraftOpen = true;
+  }
+
+  function handleEarlyDraftHandedOff(): void {
+    const backing = earlyDraftBacking;
+    if (backing !== null) {
+      void queueEarlyDraftStore(() => earlyDraftStore.remove(backing.repoKey));
+    }
+    earlyDraftHandingOff = true;
+    flushSync();
+    // The view stays mounted until the app has moved focus into its own draft.
+    queueMicrotask(() => {
+      earlyDraft = null;
+      earlyDraftOpen = false;
+      earlyDraftHandingOff = false;
+    });
+  }
+
+  function earlyDraftNeedsGuard(): boolean {
+    return (
+      earlyDraft !== null &&
+      !isUntouched(earlyDraft) &&
+      earlyDraftBacking === null
+    );
+  }
+
+  onMount(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!earlyDraftNeedsGuard()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  });
+
+  function closeEarlyDraft(): void {
+    if (earlyDraft !== null && isUntouched(earlyDraft)) earlyDraft = null;
+    earlyDraftOpen = false;
+  }
+
+  $effect(() => {
+    if (!earlyDraftOffered) return;
+    return launchActions.attach(openEarlyDraft, (action) => action === "new-note");
+  });
+
+  $effect(() => {
+    if (!earlyDraftOffered) return;
+    const typeToStart = installTypeToStart(window, {
+      scene: () => ({
+        enabled:
+          typeToStartDeviceEnabled() &&
+          !earlyDraftOpen &&
+          (earlyDraft === null || isUntouched(earlyDraft)),
+        placeholderVisible: true,
+        engineStopped: false,
+        dialogOpen: false,
+        menuOpen: false,
+        body: document.body,
+        notePane: null,
+      }),
+      start: () => {
+        earlyDraft = emptyEarlyDraft("body");
+        earlyDraftOpen = true;
+        void tick().then(() => earlyDraftView?.insertBodyText(typeToStart.drain()));
+      },
+    });
+    return () => typeToStart.dispose();
+  });
+
+  const EARLY_DRAFT_SAVE_DEBOUNCE_MS = 300;
+
+  let resumeError = $state.raw<LoginError | null>(null);
+  let resumeForgeName = $state("");
+
+  const earlyDraftStatus = $derived(
+    earlyDraftLoadStatus({
+      resumeError,
+      phase: phase.kind,
+      refreshError: appRefreshError,
+      treeLoaded: appTreeLoaded,
+      keyChanged: keyChanged !== null,
+      sessionRemembered: phase.kind === "app" ? phase.remembered : true,
+      forgeName: phase.kind === "app" ? phase.forgeName : resumeForgeName,
+    }),
+  );
+
+  function leaveToLogin(error: LoginError | null): void {
+    earlyDraftOffered = false;
+    closeEarlyDraft();
+    showLogin(error);
+  }
+
+  async function resumeRemembered(): Promise<void> {
+    try {
+      const session = await store.loadRememberedSession();
+      if (session === null) {
+        await deleteBlobCacheDatabase();
+        await discardEarlyDraftData();
+        leaveToLogin(null);
+        return;
       }
-    })();
+
+      const backing = {
+        repoKey: repoKeyOf(session.coordinates),
+        keyring: session.keyring,
+      };
+      const stored = await queueEarlyDraftStore(() =>
+        earlyDraftStore.load(backing.repoKey, backing.keyring),
+      );
+      earlyDraftBacking = backing;
+      if (stored !== null && (earlyDraft === null || isUntouched(earlyDraft))) {
+        earlyDraft = stored;
+        earlyDraftOpen = true;
+      }
+      earlyDraftOffered = true;
+      resumeForgeName = registry[session.coordinates.forge].name;
+      const result = await resumeSession(session, loginDeps());
+      switch (result.kind) {
+        case "loggedIn":
+          await startApp(
+            result.session,
+            result.adapter,
+            true,
+            null,
+            false,
+            true,
+            result.head,
+          );
+          return;
+        case "failed": {
+          const transient = isTransient(result.error);
+          if (!transient) {
+            await store.clear();
+            removeLastView(repoKeyOf(session.coordinates));
+            await deleteBlobCacheDatabase();
+            await discardEarlyDraftData();
+          }
+          if (earlyDraft === null || isUntouched(earlyDraft)) {
+            leaveToLogin(result.error);
+            return;
+          }
+          resumeError = result.error;
+          earlyDraftOpen = true;
+          if (!transient) showLogin(result.error);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      leaveToLogin(null);
+    }
+  }
+
+  function retryResume(): void {
+    resumeError = null;
+    void resumeRemembered();
+  }
+
+  async function logInFromEarlyDraft(): Promise<void> {
+    if (keyChanged !== null) {
+      await logInAfterKeyChange();
+      if (phase.kind === "login") earlyDraftOpen = false;
+      return;
+    }
+    const error = resumeError;
+    resumeError = null;
+    earlyDraftOpen = false;
+    if (phase.kind !== "login") showLogin(error);
+  }
+
+  onMount(() => {
+    void resumeRemembered();
   });
 </script>
 
@@ -700,11 +966,23 @@
   <p class="notice test-mode-banner" role="note">{testModeBanner}</p>
 {/if}
 
+<div
+  class="phase-content"
+  inert={earlyDraftShown}
+  aria-hidden={earlyDraftShown ? "true" : undefined}
+>
 {#if phase.kind === "restoring"}
   <main class="restoring window-drag">
     <Wordmark element="h1" />
     <p class="restoring-text">Loading…</p>
   </main>
+  {#if earlyDraftOffered && !earlyDraftOpen}
+    <FloatingNewNoteButton
+      state="extended"
+      aboveFooter={false}
+      onNewNote={openEarlyDraft}
+    />
+  {/if}
 {:else if phase.kind === "login"}
   {#if installState.bar !== "none"}
     <InstallBar
@@ -725,6 +1003,11 @@
       unlock={boundUnlock}
       initialize={boundInitialize}
       onLoggedIn={handleLoggedIn}
+      unsavedNote={earlyDraft !== null &&
+      !isUntouched(earlyDraft) &&
+      !earlyDraftOpen
+        ? { name: earlyDraft.name, body: earlyDraft.body }
+        : null}
       {deviceSettingsStore}
       onAccentColor={(id) => (reportedAccentColor = id)}
       onColorMode={(id) => (reportedColorMode = id)}
@@ -762,6 +1045,8 @@
       repoKey={repoKeyOf(phase.session.coordinates)}
       sessionRemembered={phase.remembered}
       initialMessage={phase.initialMessage}
+      {earlyDraft}
+      onEarlyDraftHandedOff={handleEarlyDraftHandedOff}
       onPassphraseChanged={(keyring, check, history) =>
         void handlePassphraseChanged(keyring, check, history)}
       onLogOut={logOut}
@@ -771,6 +1056,50 @@
       onPrintNote={(note) => (reportedPrintNote = note)}
     />
   </ScreenScope>
+{/if}
+</div>
+
+{#if earlyDraft !== null && earlyDraftOpen}
+  <EarlyDraftView
+    bind:this={earlyDraftView}
+    draft={earlyDraft}
+    onChange={(next) => (earlyDraft = next)}
+    onBack={closeEarlyDraft}
+    showBack={earlyDraftStatus.kind !== "failed" ||
+      earlyDraftStatus.actions.length === 0 ||
+      isUntouched(earlyDraft)}
+    noteFont={deviceScopedSetting("noteFont") ?? SETTINGS_SCHEMA.noteFont.default}
+    animatedCaret={deviceScopedSetting("animatedCaret") ?? SETTINGS_SCHEMA.animatedCaret.default}
+  >
+    {#snippet status()}
+      {#if earlyDraftStatus.kind === "failed"}
+        <div class="early-draft-failure" role="alert">
+          <p>{earlyDraftStatus.message}</p>
+          {#if earlyDraftStatus.notSavedYet}
+            <p>This note is not saved yet.</p>
+          {/if}
+          {#if earlyDraftStatus.actions.length > 0}
+            <div class="early-draft-actions">
+              {#if earlyDraftStatus.actions.includes("tryAgain")}
+                <button type="button" class="button" onclick={retryResume}>Try again</button>
+              {/if}
+              {#if earlyDraftStatus.actions.includes("logIn")}
+                <button
+                  type="button"
+                  class="button"
+                  onclick={() => void logInFromEarlyDraft()}
+                >
+                  Log in
+                </button>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <p class="early-draft-loading" role="status">Loading notes…</p>
+      {/if}
+    {/snippet}
+  </EarlyDraftView>
 {/if}
 
 <LogoutDialog
@@ -797,6 +1126,10 @@
     padding: var(--space-1) var(--space-3);
   }
 
+  .phase-content {
+    display: contents;
+  }
+
   .restoring {
     flex: 1 0 auto;
     display: grid;
@@ -806,6 +1139,31 @@
     padding: calc(var(--space-4) + env(safe-area-inset-top))
       calc(var(--space-4) + env(safe-area-inset-right)) var(--space-4)
       calc(var(--space-4) + env(safe-area-inset-left));
+  }
+
+  .early-draft-loading {
+    margin: 0;
+    padding: var(--space-2) var(--space-3) 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+  }
+
+  .early-draft-failure {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-bottom: var(--hairline) solid var(--color-border);
+    font-size: var(--font-size-sm);
+  }
+
+  .early-draft-failure p {
+    margin: 0;
+  }
+
+  .early-draft-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
   }
 
   .restoring-text {

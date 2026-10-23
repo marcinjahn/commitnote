@@ -138,6 +138,19 @@ describe("createSyncEngine", () => {
     expect(counts.listTree).toBe(1);
   });
 
+  it("skips getHead on a refresh given the known head, and asks again on the next one", async () => {
+    const { fake, counts, engine } = await setup();
+
+    await engine.refresh({ knownHead: await fake.getHead() });
+    expect(counts.getHead).toBe(0);
+    expect(counts.listTree).toBe(1);
+    expect(engine.getState().synced?.tree).not.toBeUndefined();
+
+    await engine.refresh();
+    expect(counts.getHead).toBe(1);
+    expect(counts.listTree).toBe(1);
+  });
+
   it("reloads the tree after another device pushes a note, ignoring an unencrypted stray file", async () => {
     const { fake, engine } = await setup();
     await engine.refresh();

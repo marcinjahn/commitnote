@@ -175,7 +175,6 @@ describe("initial", () => {
     expect(fake.entries).toEqual([
       { state: { nav: { session: SESSION, depth: 0 } }, url: "/app/?x=1" },
     ]);
-    expect(navigation.canGoBack()).toBe(false);
   });
 
   it("decodes a valid fragment and keeps it", async () => {
@@ -225,7 +224,6 @@ describe("push and replace", () => {
     await navigation.initial();
     navigation.push(note("a.md"));
     expect(navigation.current()).toEqual(note("a.md"));
-    expect(navigation.canGoBack()).toBe(true);
     await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
     const stored = await storedOf(["a.md"]);
     expect(fake.entry).toEqual({
@@ -332,28 +330,27 @@ describe("popstate", () => {
     await navigation.initial();
     navigation.push(note("a.md"));
     navigation.push(note("b.md"));
-    navigation.back();
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(3), WAIT);
+    fake.history.back();
     await vi.waitFor(() => expect(popped).toEqual([note("a.md")]), WAIT);
     expect(navigation.current()).toEqual(note("a.md"));
-    expect(navigation.canGoBack()).toBe(true);
     expect(fake.index).toBe(1);
 
-    navigation.back();
+    fake.history.back();
     await vi.waitFor(() => expect(popped).toHaveLength(2), WAIT);
     expect(popped[1]).toEqual({ kind: "none" });
-    expect(navigation.canGoBack()).toBe(false);
     expect(fake.writes).toHaveLength(3);
   });
 
   it("reports a draft entry as draft", async () => {
-    const { navigation, popped } = setup("/app/");
+    const { fake, navigation, popped } = setup("/app/");
     await navigation.initial();
     navigation.push({ kind: "draft" });
     navigation.push(note("a.md"));
-    navigation.back();
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(3), WAIT);
+    fake.history.back();
     await vi.waitFor(() => expect(popped).toEqual([{ kind: "draft" }]), WAIT);
     expect(navigation.current()).toEqual({ kind: "draft" });
-    expect(navigation.canGoBack()).toBe(true);
   });
 
   it("re-stamps a foreign entry at depth 0 and keeps its URL", async () => {
@@ -368,13 +365,12 @@ describe("popstate", () => {
     });
     fake.index = 1;
     await navigation.initial();
-    navigation.back();
+    fake.history.back();
     await vi.waitFor(() => expect(popped).toEqual([note("old.md")]), WAIT);
     expect(fake.entries[0]).toEqual({
       state: { note: fragment.slice(3), nav: { session: SESSION, depth: 0 } },
       url: `/app/${fragment}`,
     });
-    expect(navigation.canGoBack()).toBe(false);
   });
 
   it("decodes a hand-edited hash from the URL", async () => {
@@ -390,7 +386,6 @@ describe("popstate", () => {
       state: { note: fragment.slice(3), nav: { session: SESSION, depth: 0 } },
       url: `/app/${fragment}`,
     });
-    expect(navigation.canGoBack()).toBe(false);
   });
 
   it("reports an undecodable note as none and replaces it", async () => {
@@ -420,10 +415,11 @@ describe("popstate", () => {
     });
     await navigation.initial();
     navigation.push(note("a.md"));
-    navigation.back();
-    navigation.push(note("b.md"));
     await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
-    expect(fake.index).toBe(1);
+    fake.history.back();
+    navigation.push(note("b.md"));
+    await vi.waitFor(() => expect(fake.index).toBe(1), WAIT);
+    expect(fake.entries).toHaveLength(2);
   });
 
   it("stops listening after dispose", async () => {
@@ -460,13 +456,11 @@ describe("dialog entries", () => {
     await navigation.initial();
     navigation.pushDialog();
     expect(navigation.openDialogs()).toBe(1);
-    expect(navigation.canGoBack()).toBe(false);
     await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
     expect(fake.entry).toEqual({
       state: { dialog: true, nav: nav(1) },
       url: "/app/?x=1",
     });
-    expect(navigation.canGoBack()).toBe(false);
 
     const { fake: other, stored } = await withDialogOver(["a.md"]);
     expect(other.entry).toEqual({
@@ -480,7 +474,6 @@ describe("dialog entries", () => {
     const { fake, navigation, popped, dialogBacks } = await withDialogOver([
       "a.md",
     ]);
-    expect(navigation.canGoBack()).toBe(true);
     navigation.consumeDialog();
     expect(navigation.openDialogs()).toBe(0);
     await vi.waitFor(() => expect(fake.index).toBe(1), WAIT);
@@ -512,7 +505,6 @@ describe("dialog entries", () => {
     expect(fake.entry.url).toBe(`/app/#n=${stored}`);
     expect(navigation.openDialogs()).toBe(0);
     expect(navigation.current()).toEqual(note("a.md"));
-    expect(navigation.canGoBack()).toBe(true);
   });
 
   it("closes nested dialogs one Back at a time before leaving the note", async () => {
@@ -549,7 +541,6 @@ describe("dialog entries", () => {
     await vi.waitFor(() => expect(popped).toEqual([note("a.md")]), WAIT);
     expect(dialogBacks).toEqual([2]);
     expect(navigation.openDialogs()).toBe(0);
-    expect(navigation.canGoBack()).toBe(true);
   });
 
   it("rewinds open dialog entries before a push", async () => {
@@ -716,6 +707,93 @@ describe("dialog entries", () => {
   });
 });
 
+describe("backToTree", () => {
+  const treeAt = (depth: number) => ({
+    state: { nav: { session: SESSION, depth } },
+    url: "/app/",
+  });
+
+  it("goes straight to the tree past every note opened after it", async () => {
+    const { fake, navigation, popped } = setup("/app/");
+    await navigation.initial();
+    navigation.push(note("a.md"));
+    navigation.push(note("b.md"));
+    navigation.push(note("c.md"));
+    navigation.backToTree();
+    expect(navigation.current()).toEqual({ kind: "none" });
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(4), WAIT);
+    await vi.waitFor(() => expect(fake.entry).toEqual(treeAt(0)), WAIT);
+    expect(fake.index).toBe(0);
+    expect(popped).toEqual([]);
+  });
+
+  it("stops at the latest tree entry", async () => {
+    const { fake, navigation, popped } = setup("/app/");
+    await navigation.initial();
+    navigation.push(note("a.md"));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
+    fake.history.back();
+    await vi.waitFor(() => expect(popped).toEqual([{ kind: "none" }]), WAIT);
+    navigation.push(note("b.md"));
+    navigation.replace({ kind: "none" });
+    navigation.push(note("c.md"));
+    navigation.push(note("d.md"));
+    navigation.backToTree();
+    await vi.waitFor(() => expect(fake.index).toBe(1), WAIT);
+    await vi.waitFor(() => expect(fake.entry).toEqual(treeAt(1)), WAIT);
+    expect(popped).toEqual([{ kind: "none" }]);
+  });
+
+  it("turns the first entry into the tree when no tree entry precedes the note", async () => {
+    const fragment = await fragmentOf(["a.md"]);
+    const { fake, navigation } = setup(`/app/${fragment}`);
+    await navigation.initial();
+    navigation.push(note("b.md"));
+    navigation.backToTree();
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
+    await vi.waitFor(() => expect(fake.entry).toEqual(treeAt(0)), WAIT);
+    expect(fake.index).toBe(0);
+  });
+
+  it("stays in place on the tree entry", async () => {
+    const { fake, navigation } = setup("/app/");
+    await navigation.initial();
+    navigation.backToTree();
+    navigation.push(note("a.md"));
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
+    expect(fake.entries[0]).toEqual(treeAt(0));
+    expect(fake.index).toBe(1);
+  });
+
+  it("writes a note opened right after it above the tree entry", async () => {
+    const { fake, navigation, popped } = setup("/app/");
+    await navigation.initial();
+    navigation.push(note("a.md"));
+    navigation.push(note("b.md"));
+    navigation.backToTree();
+    navigation.push(note("c.md"));
+    expect(navigation.current()).toEqual(note("c.md"));
+    const stored = await storedOf(["c.md"]);
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
+    expect(fake.entries[0]).toEqual(treeAt(0));
+    expect(fake.entry.url).toBe(`/app/#n=${stored}`);
+    expect(popped).toEqual([]);
+  });
+
+  it("reports the dialog entries it passes", async () => {
+    const { fake, navigation, popped, dialogBacks } = setup("/app/");
+    await navigation.initial();
+    navigation.push(note("a.md"));
+    navigation.pushDialog();
+    await vi.waitFor(() => expect(fake.entries).toHaveLength(3), WAIT);
+    navigation.backToTree();
+    await vi.waitFor(() => expect(dialogBacks).toEqual([1]), WAIT);
+    expect(fake.index).toBe(0);
+    expect(fake.entry).toEqual(treeAt(0));
+    expect(popped).toEqual([]);
+  });
+});
+
 describe("clearNoteFragment", () => {
   it("removes a note fragment", () => {
     const fake = new FakeBrowser("/app/?x=1#n=abc");
@@ -775,7 +853,8 @@ describe("plaintext", () => {
     navigation.push(note(names[2]));
     navigation.push({ kind: "draft" });
     navigation.replace(note(names[0], names[2]));
-    navigation.back();
+    await vi.waitFor(() => expect(fake.writes).toHaveLength(4), WAIT);
+    fake.history.back();
     await vi.waitFor(() => expect(popped).toHaveLength(1), WAIT);
     const written = JSON.stringify([fake.writes, fake.entries]);
     for (const name of [...names, "Tajny", "plan"]) {
