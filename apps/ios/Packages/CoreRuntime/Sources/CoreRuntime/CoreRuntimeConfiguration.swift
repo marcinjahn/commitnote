@@ -8,6 +8,8 @@ public struct CoreRuntimeConfiguration: Sendable {
     public var deviceSettings: any DeviceSettingsStorage
     public var http: any HTTPClient
     public var imageCodec: any ImageCodecService
+    /// Logs requests the core leaves unanswered and stalls of its queue, by command name only.
+    public var stallDiagnostics = false
 
     public init(
         bundleURL: URL,

@@ -181,10 +181,15 @@ final class OrganisationFlowTests: XCTestCase {
         }
         waitFor(tagDot("Red", in: app))
 
-        openNote(SampleNote.other, startingWith: "# \(SampleNote.other)", in: app)
-        hittable(app.buttons.matching(identifier: "note-color-tag-menu")).tap()
-        tapButton(labeled: "Blue", in: app)
-        backToTree(in: app)
+        // A menu tap that lands while the menu is still settling is ignored, so the choice is
+        // repeated until the tree shows it.
+        for _ in 0..<3 where tagDot("Purple", in: app).exists {
+            openNote(SampleNote.other, startingWith: "# \(SampleNote.other)", in: app)
+            hittable(app.buttons.matching(identifier: "note-color-tag-menu")).tap()
+            tapButton(labeled: "Blue", in: app)
+            backToTree(in: app)
+            if poll(timeout: 10, until: { !self.tagDot("Purple", in: app).exists }) { break }
+        }
         waitUntilGone(tagDot("Purple", in: app))
 
         hittable(app.buttons.matching(identifier: "tag-filter-menu")).tap()

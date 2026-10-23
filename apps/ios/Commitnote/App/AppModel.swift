@@ -216,8 +216,12 @@ final class AppModel {
             screen = .fatal(Self.inconsistentBuildMessage)
             return
         }
-        let runtime = CoreRuntime(
-            configuration: .production(bundleURL: bundleURL, deviceModel: UIDevice.current.model))
+        var configuration = CoreRuntimeConfiguration.production(
+            bundleURL: bundleURL, deviceModel: UIDevice.current.model)
+        #if FAKE_CORE
+        configuration.stallDiagnostics = true
+        #endif
+        let runtime = CoreRuntime(configuration: configuration)
         do {
             try await runtime.start()
         } catch CoreRuntimeError.apiVersionMismatch {
