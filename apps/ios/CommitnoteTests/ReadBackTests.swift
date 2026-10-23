@@ -366,4 +366,77 @@ final class ReadBackTests: RuntimeTestCase {
                 deviceName: runtime.deviceModel))
         try ReadBackOutput.write(scenario, fileName: "images.json", to: self)
     }
+
+    func testExportImportAndPassphraseChangeReadBack() async throws {
+        let runtime = try await makeRuntime()
+        try await runtime.logIn(repo: "sample/notes", passphrase: sampleNotesPassphrase)
+        let nextPassphrase = "round trip passphrase 2"
+        let folderName = "Round trip"
+        let welcome = ["Welcome"]
+        let original = try await runtime.openNoteLoaded(welcome)
+        let image = try TestImages.encode(TestImages.photo(width: 160, height: 120), as: .png)
+        let references = try await runtime.send(
+            ImageInsert(inputs: [runtime.core.stageInput(image, type: "image/png")])
+        ).references
+        let originalReference = try XCTUnwrap(references.first)
+        let edited = "\(original)\n\(originalReference)\n"
+        _ = try await runtime.send(NoteEdit(path: welcome, text: edited))
+        var flushed = try await runtime.send(SyncFlush()).result
+        XCTAssertEqual(flushed, .saved)
+
+        let archive = try await runtime.send(ExportNotes(includeImages: true))
+        let archiveData = try XCTUnwrap(Data(base64Encoded: archive.base64))
+        let input = runtime.core.stageInput(archiveData, type: "application/zip")
+        let read = try await runtime.send(
+            ImportReadArchive(input: input, fileName: "round-trip.zip"))
+        guard case .ready = read else {
+            return XCTFail("import.readArchive returned \(read)")
+        }
+        let imported = try await runtime.send(
+            ImportCommit(
+                destination: .newFolder(parent: [], name: folderName), policy: .rename)
+        ).outcome
+        guard case .queued = imported else {
+            return XCTFail("import.commit returned \(imported)")
+        }
+        flushed = try await runtime.send(SyncFlush()).result
+        XCTAssertEqual(flushed, .saved)
+
+        let importedPath = [folderName] + welcome
+        let importedText = try await runtime.openNoteLoaded(importedPath)
+        let importedReference = try XCTUnwrap(
+            importedText.split(separator: "\n").last.map(String.init))
+        XCTAssertTrue(importedReference.contains("image:"))
+
+        let html = try await runtime.send(PrintRender(name: "Welcome", text: edited)).html
+        XCTAssertTrue(html.contains("data:image/"))
+
+        let prepared = try await runtime.send(
+            PassphrasePrepareChange(
+                current: sampleNotesPassphrase, next: nextPassphrase, removeHistory: false)
+        ).outcome
+        guard case .review = prepared else {
+            return XCTFail("passphrase.prepareChange returned \(prepared)")
+        }
+        let changed = try await runtime.send(PassphraseCommitChange()).outcome
+        XCTAssertEqual(changed, .changed)
+
+        let scenario = ReadBackScenario(
+            name: "ios data",
+            passphrase: nextPassphrase,
+            exported: try await runtime.exportRepo("sample/notes"),
+            expect: .init(
+                initialized: false,
+                notes: [
+                    .init(path: welcome, text: edited),
+                    .init(path: importedPath, text: importedText),
+                ],
+                folders: [[folderName]],
+                images: [
+                    .init(reference: originalReference, type: "image/webp"),
+                    .init(reference: importedReference, type: "image/webp"),
+                ],
+                deviceName: runtime.deviceModel))
+        try ReadBackOutput.write(scenario, fileName: "data.json", to: self)
+    }
 }
