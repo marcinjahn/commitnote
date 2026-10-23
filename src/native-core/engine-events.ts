@@ -45,6 +45,7 @@ import type {
 import type { EmitCoreEvent } from "./commands/command-context";
 import { toCoreError } from "./core-errors";
 import { toOpenNote } from "./open-note-view";
+import { buildSharesView } from "./share-view";
 import { toTrashEntries } from "./trash-view";
 import { toTreeNodes } from "./tree-view";
 
@@ -66,6 +67,8 @@ export interface EngineEvents {
   refreshFailed(error: SyncError | null): void;
   clearRefreshNotice(): void;
   noteSwitched(): void;
+  updatingShare(): string | null;
+  setUpdatingShare(id: string | null): void;
   setTagFilter(tag: ColorTag | null): void;
   clearTagFilter(): void;
   dispose(): void;
@@ -216,6 +219,8 @@ export function createEngineEvents(options: {
   let lastNote: OpenNote | null = null;
   let switched = false;
   let syncState: string | null = null;
+  let shares: string | null = null;
+  let updatingShareId: string | null = null;
   let seenNotices = new Set<number>();
 
   function reset(): void {
@@ -235,6 +240,8 @@ export function createEngineEvents(options: {
     lastNote = null;
     switched = false;
     syncState = null;
+    shares = null;
+    updatingShareId = null;
     seenNotices = new Set();
   }
 
@@ -256,9 +263,24 @@ export function createEngineEvents(options: {
     emit("noticeCleared", { id: REFRESH_NOTICE_ID });
   }
 
+  function emitShares(running: NativeRunningApp, state: SyncEngineState): void {
+    const payload = buildSharesView({
+      shares: state.shares,
+      tree: state.workingTree,
+      updatingId: updatingShareId,
+      forgeId: running.session.coordinates.forge,
+      linkBase: app.ports.navigation.shareLinkBase(),
+    });
+    const key = JSON.stringify(payload);
+    if (key === shares) return;
+    shares = key;
+    emit("sharesChanged", payload);
+  }
+
   function attach(running: NativeRunningApp): void {
     activeEngine = running.engine;
     if (hooked === running.autoRefresh) return;
+    emitShares(running, running.engine.getState());
     unhook?.();
     hooked = running.autoRefresh;
     unhook = running.autoRefresh.onRefreshed((error) => {
@@ -347,6 +369,10 @@ export function createEngineEvents(options: {
     emitTree(state);
     emitTrash(state);
     recordOpenNote(engine, state);
+    const running = app.current();
+    if (running !== null && running.engine === engine) {
+      emitShares(running, state);
+    }
 
     const view = toOpenNote(state, {
       forgeName,
@@ -429,6 +455,15 @@ export function createEngineEvents(options: {
     clearRefreshNotice,
     noteSwitched() {
       switched = true;
+    },
+    updatingShare: () => updatingShareId,
+    setUpdatingShare(id) {
+      if (updatingShareId === id) return;
+      updatingShareId = id;
+      const running = app.current();
+      if (running !== null && running.engine === activeEngine) {
+        emitShares(running, running.engine.getState());
+      }
     },
     setTagFilter(tag) {
       tagFilter = tag;

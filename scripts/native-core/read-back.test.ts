@@ -1,6 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { decryptNote } from "../../src/crypto/note-cipher";
 import { sharedMemoizedArgon2id } from "../../src/crypto/testing/shared-argon2id";
 import { MAIN_BRANCH } from "../../src/format/v1";
+import { parseImageReferences } from "../../src/images/image-reference";
+import { buildNoteTree, findNode } from "../../src/tree/note-tree";
 import { createSyncEngine } from "../../src/sync/sync-engine";
 import { createTestClock } from "../../src/sync/testing/test-clock";
 import { sampleNotesRepoKeyring } from "../../src/testing/sample-notes-repo/sample-notes-repo-keyring";
@@ -20,7 +23,10 @@ const notePath = [
   sampleNotesRepoSource.find((entry) => entry.kind === "note")!.name,
 ];
 
+const WHITEBOARD = ["Journal", "2026", "Whiteboard"];
+
 let scenario: ReadBackScenario;
+let whiteboardReference: string;
 let organised: ReadBackScenario;
 
 beforeAll(async () => {
@@ -36,6 +42,19 @@ beforeAll(async () => {
   const flushed = await engine.flush();
   engine.dispose();
   if (flushed.kind !== "saved") throw new Error(`save failed: ${flushed.kind}`);
+
+  const keyring = await sampleNotesRepoKeyring();
+  const whiteboard = findNode(
+    await buildNoteTree(await adapter.listTree(await adapter.getHead()), keyring),
+    WHITEBOARD,
+  );
+  if (whiteboard?.kind !== "note") throw new Error("no whiteboard note");
+  const whiteboardText = await decryptNote(
+    keyring,
+    await adapter.readBlob(whiteboard.blobSha),
+  );
+  const found = parseImageReferences(whiteboardText)[0]!;
+  whiteboardReference = whiteboardText.slice(found.from, found.to);
 
   const organiseAdapter = await createSampleNotesRepoAdapter();
   const organiseEngine = createSyncEngine({
@@ -173,5 +192,33 @@ describe("readBackNativeRepo", () => {
         { argon2id: sharedMemoizedArgon2id },
       ),
     ).toEqual(["organise: the trash holds a different number of entries"]);
+  });
+
+  it("reads back an image through its index, file and reference", async () => {
+    expect(
+      await readBack({
+        images: [{ reference: whiteboardReference, type: "image/webp" }],
+      }),
+    ).toEqual([]);
+  });
+
+  it("fails image checks without naming the image", async () => {
+    const wrongSize = whiteboardReference.replace(/#\d+x\d+/, "#65x48");
+    const failures = await readBack({
+      images: [
+        { reference: whiteboardReference, type: "image/gif" },
+        { reference: wrongSize, type: "image/webp" },
+      ],
+    });
+
+    expect(failures).toEqual([
+      "save: image 1 has a different type",
+      "save: image 1 has bytes of a different format than its type",
+      "save: image 2 has no active owner whose text references it",
+      "save: image 2 has a different size than its reference",
+      "save: image 2 has a different size in its bytes than its reference",
+    ]);
+    const id = parseImageReferences(whiteboardReference)[0]!.imageId;
+    expect(failures.join()).not.toContain(id);
   });
 });

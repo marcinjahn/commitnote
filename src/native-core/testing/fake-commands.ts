@@ -1,3 +1,4 @@
+import { fromBase64 } from "../../crypto/base64";
 import { deriveKeyring } from "../../crypto/keyring";
 import { decryptNote } from "../../crypto/note-cipher";
 import { parseRepoConfig } from "../../crypto/repo-config";
@@ -15,6 +16,10 @@ import {
 import type { FakeForgeControls } from "../../testing/fake-forge/fake-forge-factory";
 import type { HoldableOperation } from "../../testing/fake-forge/forge-hold";
 import type { ForgeErrorKind } from "../../forge/errors";
+import {
+  NOTE_IMAGE_PROFILE,
+  SHARE_IMAGE_PROFILE,
+} from "../../images/pipeline/image-profile";
 import { LARGE_TREE_REPO_KEY } from "../../testing/sample-notes-repo/large-tree-source";
 import type { ShareService } from "../../share/share-service";
 import { findWorkingNode } from "../../sync/working-tree";
@@ -25,7 +30,9 @@ import {
   invalidParams,
   notReady,
 } from "../commands/command-context";
+import { toBase64 } from "../base64";
 import { coreLevelError } from "../core-errors";
+import { processHostImage } from "../host-image-codec";
 import type { HostServices } from "../host-services";
 import { createHostFetch } from "../runtime/fetch";
 import { hostArgon2id } from "../runtime/host-argon2";
@@ -311,6 +318,32 @@ export function createFakeCommands(options: {
       const controls = await options.controls();
       for (const repo of LOADING_REPOS) controls.release(repo, "inspect");
       return {};
+    },
+
+    async "fake.processImage"(raw) {
+      const params = asParams(raw);
+      const profile = params.profile;
+      if (profile !== "note" && profile !== "share") throw invalidParams();
+      let bytes: Uint8Array;
+      try {
+        bytes = fromBase64(stringParam(params, "base64"));
+      } catch {
+        throw invalidParams();
+      }
+      const result = await processHostImage(
+        host.imageCodec,
+        new Blob([bytes as Uint8Array<ArrayBuffer>], {
+          type: stringParam(params, "type"),
+        }),
+        profile === "note" ? NOTE_IMAGE_PROFILE : SHARE_IMAGE_PROFILE,
+      );
+      if (!result.ok) {
+        return { result: { ok: false, rejection: result.rejection.kind } };
+      }
+      const { type, width, height, bytes: encoded } = result.payload;
+      return {
+        result: { ok: true, type, width, height, base64: toBase64(encoded) },
+      };
     },
 
     async "fake.timerProbe"(raw) {

@@ -1140,6 +1140,8 @@ final class AppModel {
         case .sessionEnded:
             resetSessionState()
             screen = .login(LoginEntry())
+        case .historyChanged, .sharesChanged:
+            break
         case .unknown:
             break
         }

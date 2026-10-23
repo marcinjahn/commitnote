@@ -1,10 +1,11 @@
 import type { LoginStep } from "../login/login";
 import type { ColorTag } from "../tags/color-tag";
+import type { MessagePart } from "../ui/share/share-messages";
 import type { HostServices } from "./host-services";
 
-export type { ColorTag };
+export type { ColorTag, MessagePart };
 
-export const NATIVE_CORE_API_VERSION = 3;
+export const NATIVE_CORE_API_VERSION = 4;
 export const NATIVE_CORE_MARKER = "commitnote-native-core";
 
 type ForgeKind = "github" | "gitlab";
@@ -244,6 +245,133 @@ export interface ForgeView {
   repositoryCreationUrl: string;
 }
 
+export interface HistoryVersionView {
+  sha: string;
+  time: string;
+  dateTime: string;
+  current: boolean;
+  shared: boolean;
+  events: string[];
+  name: string | null;
+}
+
+export type HistoryRow =
+  | { kind: "single"; version: HistoryVersionView }
+  | {
+      kind: "session";
+      title: string;
+      shared: boolean;
+      versions: HistoryVersionView[];
+    };
+
+export interface HistorySection {
+  title: string;
+  rows: HistoryRow[];
+}
+
+export interface HistoryView {
+  path: string[];
+  phase: "saving" | "unsaved" | "ready";
+  message: string | null;
+  sections: HistorySection[];
+  loading: boolean;
+  error: string | null;
+  end: string | null;
+  canLoadMore: boolean;
+}
+
+export type DiffLineView =
+  | { kind: "same"; text: string }
+  | {
+      kind: "added" | "removed";
+      segments: { text: string; changed: boolean }[];
+    };
+
+export type DiffItemView =
+  | { kind: "line"; line: DiffLineView }
+  | { kind: "fold"; label: string; lines: DiffLineView[] };
+
+export type PreviewBody =
+  | { kind: "tooLarge"; message: string }
+  | { kind: "unchanged"; message: string }
+  | { kind: "diff"; items: DiffItemView[]; finalNewline: string | null };
+
+export type VersionPreview =
+  | { kind: "failed"; message: string }
+  | { kind: "undecryptable"; message: string }
+  | { kind: "closed"; message: string }
+  | {
+      kind: "version";
+      titleChange: string | null;
+      body: PreviewBody;
+      restoreTitle: string | null;
+      restore: { label: string; enabled: boolean; reason: string | null };
+    };
+
+export type RestoreVersionOutcome =
+  | { kind: "restored" }
+  | { kind: "blocked"; message: string }
+  | { kind: "error"; message: string }
+  | { kind: "closed" };
+
+export interface ShareActionView {
+  id:
+    | "copy-link"
+    | "copy-password"
+    | "update"
+    | "view"
+    | "open"
+    | "rename"
+    | "revoke";
+  label: string;
+  disabled: boolean;
+  destructive: boolean;
+}
+
+export interface ShareRowView {
+  id: string;
+  title: string;
+  label: string | null;
+  date: string;
+  passwordProtected: boolean;
+  link: string;
+  password: string | null;
+  notePath: string[] | null;
+  menuLabel: string;
+  actions: ShareActionView[];
+}
+
+export interface ShareCopy {
+  explanation: string;
+  labelField: string;
+  passwordField: string;
+  passwordHint: string;
+  create: string;
+  creating: string;
+  createAnother: string;
+  shareLink: string;
+  sharePassword: string;
+  sharedLinksTitle: string;
+  sharedLinksEmpty: string;
+  passwordProtected: string;
+  updating: string;
+  linkCopied: string;
+  passwordCopied: string;
+  revoke: { title: string; message: string; confirmLabel: string };
+  rename: { title: string; fieldLabel: string; confirmLabel: string };
+  sharedVersionTitle: string;
+  loadingSharedVersion: string;
+}
+
+export type ShareCreateOutcome =
+  | { kind: "created"; link: string; password: string | null }
+  | { kind: "error"; parts: MessagePart[] };
+
+export type SharedVersionOutcome =
+  | { kind: "readable"; name: string | null; content: string; date: string }
+  | { kind: "message"; message: string }
+  | { kind: "failed"; message: string };
+
 export interface CoreRequest<Name extends string = string, Params = unknown> {
   id: number;
   command: Name;
@@ -421,6 +549,41 @@ export type CoreCommands = {
       image: { type: "image/webp" | "image/gif"; base64: string } | null;
     };
   };
+  "image.insert": {
+    params: { inputs: string[] };
+    result: { references: string[] };
+  };
+  "image.clonePasted": {
+    params: { path: string[] | null; current: string; pasted: string };
+    result: { text: string };
+  };
+  "history.open": { params: { path: string[] }; result: {} };
+  "history.close": { params: {}; result: {} };
+  "history.loadMore": { params: {}; result: {} };
+  "history.retry": { params: {}; result: {} };
+  "history.preview": {
+    params: { sha: string; restoreTitle: boolean };
+    result: { preview: VersionPreview };
+  };
+  "history.restore": {
+    params: { sha: string; restoreTitle: boolean };
+    result: { outcome: RestoreVersionOutcome };
+  };
+  "share.form": { params: { path: string[] }; result: { title: string } };
+  "share.create": {
+    params: { path: string[]; password: string; label: string };
+    result: { outcome: ShareCreateOutcome };
+  };
+  "share.update": { params: { id: string }; result: {} };
+  "share.rename": {
+    params: { id: string; label: string };
+    result: { outcome: { kind: "ok" } | { kind: "error"; message: string } };
+  };
+  "share.revoke": { params: { id: string }; result: {} };
+  "share.sharedVersion": {
+    params: { id: string };
+    result: { outcome: SharedVersionOutcome };
+  };
   "lastView.load": { params: {}; result: { view: LastViewState | null } };
   "lastView.save": { params: LastViewState; result: {} };
   "earlyDraft.handOff": {
@@ -476,6 +639,20 @@ export type FakeCoreCommands = {
   "fake.shareNote": { params: { path: string[] }; result: {} };
   "fake.holdLoading": { params: {}; result: {} };
   "fake.releaseLoading": { params: {}; result: {} };
+  "fake.processImage": {
+    params: { base64: string; type: string; profile: "note" | "share" };
+    result: {
+      result:
+        | {
+            ok: true;
+            type: "image/webp" | "image/gif";
+            width: number;
+            height: number;
+            base64: string;
+          }
+        | { ok: false; rejection: string };
+    };
+  };
 };
 
 export type CoreEvents = {
@@ -529,6 +706,13 @@ export type CoreEvents = {
     exportLabel: string;
   };
   sessionEnded: { reason: "loggedOut" };
+  historyChanged: { history: HistoryView | null };
+  sharesChanged: {
+    shares: ShareRowView[];
+    unreadable: string | null;
+    updatingId: string | null;
+    copy: ShareCopy;
+  };
 };
 
 export const CORE_COMMAND_NAMES = [
@@ -579,6 +763,20 @@ export const CORE_COMMAND_NAMES = [
   "note.stats",
   "note.dates",
   "image.read",
+  "image.insert",
+  "image.clonePasted",
+  "history.open",
+  "history.close",
+  "history.loadMore",
+  "history.retry",
+  "history.preview",
+  "history.restore",
+  "share.form",
+  "share.create",
+  "share.update",
+  "share.rename",
+  "share.revoke",
+  "share.sharedVersion",
   "lastView.load",
   "lastView.save",
   "earlyDraft.handOff",
@@ -596,6 +794,8 @@ export const CORE_EVENT_NAMES = [
   "noticeCleared",
   "keyChanged",
   "sessionEnded",
+  "historyChanged",
+  "sharesChanged",
 ] as const satisfies readonly (keyof CoreEvents)[];
 
 export const FAKE_CORE_COMMAND_NAMES = [
@@ -612,6 +812,7 @@ export const FAKE_CORE_COMMAND_NAMES = [
   "fake.shareNote",
   "fake.holdLoading",
   "fake.releaseLoading",
+  "fake.processImage",
 ] as const satisfies readonly (keyof FakeCoreCommands)[];
 
 export interface NativeCoreStartOptions {

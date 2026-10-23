@@ -235,6 +235,60 @@ final class MessageTests: XCTestCase {
             .sessionEnded(SessionEnded(reason: .loggedOut)))
     }
 
+    func testHistoryChangedEvents() throws {
+        XCTAssertEqual(
+            try event(#"{"kind":"event","event":"historyChanged","payload":{"history":null}}"#),
+            .historyChanged(HistoryChanged(history: nil)))
+        let text =
+            #"""
+            {"kind":"event","event":"historyChanged","payload":{"history":{"path":["a","n"],"phase":"ready","message":null,
+            "sections":[{"title":"Today","rows":[
+            {"kind":"single","version":{"sha":"s1","time":"10:00","dateTime":"1 Jan 2026, 10:00","current":true,"shared":false,"events":["Edited"],"name":null}},
+            {"kind":"session","title":"3 edits","shared":true,"versions":[{"sha":"s2","time":"09:00","dateTime":"1 Jan 2026, 09:00","current":false,"shared":true,"events":[],"name":"Old"}]}]}],
+            "loading":false,"error":null,"end":"That is the start of this note.","canLoadMore":false}}}
+            """#
+        guard case .historyChanged(let changed) = try event(text), let history = changed.history
+        else { return XCTFail("history") }
+        XCTAssertEqual(history.path, ["a", "n"])
+        XCTAssertEqual(history.phase, .ready)
+        XCTAssertNil(history.message)
+        XCTAssertEqual(history.end, "That is the start of this note.")
+        XCTAssertEqual(history.sections.count, 1)
+        XCTAssertEqual(history.sections[0].rows.count, 2)
+        guard case .session(let title, let shared, let versions) = history.sections[0].rows[1]
+        else { return XCTFail("session") }
+        XCTAssertEqual(title, "3 edits")
+        XCTAssertTrue(shared)
+        XCTAssertEqual(versions.map(\.id), ["s2"])
+        XCTAssertEqual(versions[0].name, "Old")
+    }
+
+    func testSharesChangedEvent() throws {
+        let copy =
+            #"{"explanation":"e","labelField":"lf","passwordField":"pf","passwordHint":"ph","create":"c","creating":"cg","createAnother":"ca","shareLink":"sl","sharePassword":"sp","sharedLinksTitle":"st","sharedLinksEmpty":"se","passwordProtected":"pp","updating":"u","linkCopied":"lc","passwordCopied":"pc","revoke":{"title":"rt","message":"rm","confirmLabel":"rc"},"rename":{"title":"nt","fieldLabel":"nf","confirmLabel":"nc"},"sharedVersionTitle":"sv","loadingSharedVersion":"ls"}"#
+        let text =
+            #"""
+            {"kind":"event","event":"sharesChanged","payload":{"shares":[{"id":"i","title":"n","label":null,"date":"1 Jan 2026","passwordProtected":true,"link":"https://e.test/#x","password":"p","notePath":["n"],"menuLabel":"Actions for n","actions":[{"id":"copy-link","label":"Copy link","disabled":false,"destructive":false},{"id":"revoke","label":"Revoke","disabled":true,"destructive":true}]}],"unreadable":null,"updatingId":"i","copy":\#(copy)}}
+            """#
+        guard case .sharesChanged(let changed) = try event(text) else { return XCTFail("shares") }
+        XCTAssertEqual(changed.updatingId, "i")
+        XCTAssertNil(changed.unreadable)
+        XCTAssertEqual(changed.shares.count, 1)
+        XCTAssertEqual(changed.shares[0].notePath, ["n"])
+        XCTAssertNil(changed.shares[0].label)
+        XCTAssertEqual(changed.shares[0].actions.map(\.id), [.copyLink, .revoke])
+        XCTAssertEqual(changed.shares[0].actions[1].destructive, true)
+        XCTAssertEqual(changed.copy.revoke, ShareCopy.RevokeCopy(title: "rt", message: "rm", confirmLabel: "rc"))
+        XCTAssertEqual(changed.copy.rename.fieldLabel, "nf")
+        XCTAssertEqual(changed.copy.loadingSharedVersion, "ls")
+        let data = try JSONEncoder().encode(changed)
+        XCTAssertEqual(try JSONDecoder().decode(SharesChanged.self, from: data), changed)
+        XCTAssertEqual(
+            try event(
+                #"{"kind":"event","event":"sharesChanged","payload":{"shares":[],"unreadable":"u","updatingId":null,"copy":\#(copy)}}"#
+            ).name, "sharesChanged")
+    }
+
     func testAllLoadingStepsAndTonesDecode() throws {
         for step in ["listingRepositories", "checkingRepository", "derivingKeys", "initializing"] {
             XCTAssertNotNil(LoadingStep(rawValue: step))
@@ -251,7 +305,7 @@ final class MessageTests: XCTestCase {
     }
 
     func testEventNameMatchesCase() throws {
-        XCTAssertEqual(CoreEvent.knownNames.count, 11)
+        XCTAssertEqual(CoreEvent.knownNames.count, 13)
         XCTAssertEqual(
             CoreEvent.noticeCleared(NoticeCleared(id: "x")).name, "noticeCleared")
     }

@@ -1,4 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
+import { crc32, deflateSync } from "node:zlib";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
@@ -8,12 +9,14 @@ import {
   NATIVE_CORE_MARKER,
   type CoreError,
   type CoreEventMessage,
+  type CoreEvents,
   type CoreResponse,
   type NativeCoreGlobal,
   type NativeCoreHandle,
   type OpenNote,
   type TreeNode,
 } from "../src/native-core/api";
+import { parseImageReferences } from "../src/images/image-reference";
 import type { HostServices } from "../src/native-core/host-services";
 import {
   createNodeHostServices,
@@ -65,6 +68,7 @@ const PROD_CORE_NEEDLES: readonly string[] = [
 const FAKE_CORE_CONTROLS: readonly string[] = [
   "fake.saveNote",
   "fake.shareNote",
+  "fake.processImage",
   LARGE_TREE_REPO_KEY,
   SAMPLE_NOTES_REPO_PASSPHRASE,
 ];
@@ -691,6 +695,200 @@ async function organiseCheck(bundle: vm.Script): Promise<string> {
   return "renamed, moved, placed and tagged notes, trashed a note and a folder, restored one note from the folder, and read order, tags and trash back";
 }
 
+function buildPng(
+  width: number,
+  height: number,
+  pixel: (x: number, y: number) => number[],
+): Uint8Array {
+  const stride = width * 3 + 1;
+  const raw = Buffer.alloc(stride * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      Buffer.from(pixel(x, y)).copy(raw, y * stride + 1 + x * 3);
+    }
+  }
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body), out.length - 4);
+    return out;
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+async function imagesCheck(bundle: vm.Script): Promise<string> {
+  const host = createNodeHostServices();
+  const core = new BareHostCore(bundle, host);
+  try {
+    const kind = await core.logIn("sample/notes");
+    if (kind !== "notesRepo")
+      throw new Error(`sample/notes inspected as ${kind}`);
+    await core.send("login.unlock", {
+      passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
+    });
+    await core.poll(
+      "loading the tree",
+      async () =>
+        (await core.send<{ tree: TreeNode[] | null }>("tree.get")).tree,
+      100,
+      RESPONSE_TIMEOUT_MS,
+    );
+
+    const welcome = ["Welcome"];
+    const whiteboard = ["Journal", "2026", "Whiteboard"];
+    const opened = await core.poll(
+      "opening the note",
+      async () => {
+        const { note } = await core.send<{ note: OpenNote | null }>(
+          "note.open",
+          { path: welcome },
+        );
+        return note === null || note.state === "loading" ? null : note;
+      },
+      100,
+      RESPONSE_TIMEOUT_MS,
+    );
+    if (opened.state !== "loaded") {
+      throw new Error(`note.open ended in state ${opened.state}`);
+    }
+    const original = opened.content;
+
+    const { notes: sampleNotes } = await core.send<{
+      notes: { path: string[]; text: string }[];
+    }>("fake.expectedSampleNotes");
+    const whiteboardText = sampleNotes.find(
+      (note) => note.path.join("/") === whiteboard.join("/"),
+    )?.text;
+    const sampleReference = parseImageReferences(whiteboardText ?? "")[0];
+    if (whiteboardText === undefined || sampleReference === undefined) {
+      throw new Error("the sample note with an image is missing");
+    }
+    const pasted = whiteboardText.slice(
+      sampleReference.from,
+      sampleReference.to,
+    );
+
+    const inputs = [
+      host.stageInput(
+        buildPng(300, 200, (x, y) => [x % 256, y % 256, 128]),
+        "image/png",
+      ),
+      host.stageInput(
+        buildPng(120, 90, (x, y) => [255 - (x % 256), y % 256, 64]),
+        "image/png",
+      ),
+    ];
+    const { references } = await core.send<{ references: string[] }>(
+      "image.insert",
+      { inputs },
+    );
+    if (references.length !== 2) {
+      throw new Error(`image.insert returned ${references.length} references`);
+    }
+    const withInserted = `${original}\n${references.join("\n")}\n`;
+    const { text: withCloned } = await core.send<{ text: string }>(
+      "image.clonePasted",
+      { path: welcome, current: withInserted, pasted },
+    );
+    const clone = parseImageReferences(withCloned)[0];
+    if (clone === undefined || withCloned === pasted) {
+      throw new Error("image.clonePasted did not clone the pasted image");
+    }
+    const cloneReference = withCloned.slice(clone.from, clone.to);
+    if (cloneReference === pasted) {
+      throw new Error("image.clonePasted kept the pasted image id");
+    }
+    const edited = `${withInserted}${withCloned}\n`;
+    await core.send("note.edit", { path: welcome, text: edited });
+    const flushed = async (): Promise<void> => {
+      const { result } = await core.send<{ result: { kind: string } }>(
+        "sync.flush",
+      );
+      if (result.kind !== "saved") {
+        throw new Error(`sync.flush returned ${result.kind}`);
+      }
+    };
+    await flushed();
+
+    const { outcome: shared } = await core.send<{
+      outcome: { kind: string };
+    }>("share.create", { path: whiteboard, password: "", label: "" });
+    if (shared.kind !== "created") {
+      throw new Error(`share.create returned ${shared.kind}`);
+    }
+
+    await core.send("history.open", { path: welcome });
+    const history = await core.poll(
+      "loading the history",
+      async () => {
+        const latest = core.events
+          .filter((event) => event.event === "historyChanged")
+          .at(-1)?.payload as CoreEvents["historyChanged"] | undefined;
+        const view = latest?.history;
+        return view?.phase === "ready" && !view.loading ? view : null;
+      },
+      50,
+      RESPONSE_TIMEOUT_MS,
+    );
+    const versions = history.sections.flatMap((section) =>
+      section.rows.flatMap((row) =>
+        row.kind === "single" ? [row.version] : row.versions,
+      ),
+    );
+    const before = versions[1];
+    if (before === undefined) throw new Error("the history has one version");
+    const { outcome: restored } = await core.send<{
+      outcome: { kind: string };
+    }>("history.restore", { sha: before.sha, restoreTitle: false });
+    if (restored.kind !== "restored") {
+      throw new Error(`history.restore returned ${restored.kind}`);
+    }
+    const undo = core.events
+      .filter((event) => event.event === "notice")
+      .map((event) => event.payload as CoreEvents["notice"])
+      .findLast((notice) => notice.action?.kind === "undo");
+    if (undo === undefined) throw new Error("restoring offered no Undo");
+    await core.send("notices.perform", { id: undo.id });
+    const { note: undone } = await core.send<{ note: OpenNote | null }>(
+      "note.open",
+      { path: welcome },
+    );
+    if (undone?.state !== "loaded" || undone.content !== edited) {
+      throw new Error("Undo did not bring the images back");
+    }
+    await flushed();
+
+    await expectReadBack({
+      name: "bare host images",
+      passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
+      exported: await core.exportRepo("sample/notes"),
+      expect: {
+        initialized: false,
+        notes: [{ path: welcome, text: edited }],
+        images: [...references, cloneReference].map((reference) => ({
+          reference,
+          type: "image/webp" as const,
+        })),
+        deviceName: DEVICE_MODEL,
+      },
+    });
+  } finally {
+    core.stop();
+  }
+  return "inserted two images, cloned a pasted one, saved, shared a note with an image, restored a version and undid it, and read the three images back";
+}
+
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -730,6 +928,7 @@ async function main(): Promise<void> {
     ["bare-host check", smokeCheck],
     ["bare-host editing", editingCheck],
     ["bare-host organise", organiseCheck],
+    ["bare-host images", imagesCheck],
     ["bare-host initialize", initializeCheck],
     ["bare-host housekeeping", housekeepingCheck],
   ] as const) {

@@ -232,12 +232,14 @@ public enum CoreEvent: Decodable, Equatable, Sendable {
     case noticeCleared(NoticeCleared)
     case keyChanged(KeyChanged)
     case sessionEnded(SessionEnded)
+    case historyChanged(HistoryChanged)
+    case sharesChanged(SharesChanged)
     case unknown(name: String)
 
     public static let knownNames: [String] = [
         "loadingProgress", "treeChanged", "trashChanged", "searchStatusChanged", "noteChanged",
         "noteContentChangedRemotely", "syncStateChanged", "notice", "noticeCleared", "keyChanged",
-        "sessionEnded",
+        "sessionEnded", "historyChanged", "sharesChanged",
     ]
 
     public var name: String {
@@ -253,6 +255,8 @@ public enum CoreEvent: Decodable, Equatable, Sendable {
         case .noticeCleared: "noticeCleared"
         case .keyChanged: "keyChanged"
         case .sessionEnded: "sessionEnded"
+        case .historyChanged: "historyChanged"
+        case .sharesChanged: "sharesChanged"
         case .unknown(let name): name
         }
     }
@@ -289,6 +293,10 @@ public enum CoreEvent: Decodable, Equatable, Sendable {
             self = .keyChanged(try container.decode(KeyChanged.self, forKey: .payload))
         case "sessionEnded":
             self = .sessionEnded(try container.decode(SessionEnded.self, forKey: .payload))
+        case "historyChanged":
+            self = .historyChanged(try container.decode(HistoryChanged.self, forKey: .payload))
+        case "sharesChanged":
+            self = .sharesChanged(try container.decode(SharesChanged.self, forKey: .payload))
         default:
             self = .unknown(name: name)
         }

@@ -114,3 +114,25 @@ struct FakeReleaseLoading: NativeCoreCommand {
     static let name = "fake.releaseLoading"
     typealias Result = Empty
 }
+
+struct FakeProcessImage: NativeCoreCommand {
+    static let name = "fake.processImage"
+    enum Profile: String, Encodable {
+        case note
+        case share
+    }
+    struct Processed: Decodable, Equatable, Sendable {
+        var ok: Bool
+        var type: String?
+        var width: Int?
+        var height: Int?
+        var base64: String?
+        var rejection: String?
+    }
+    struct Result: Decodable, Sendable {
+        var result: Processed
+    }
+    var base64: String
+    var type: String
+    var profile: Profile
+}

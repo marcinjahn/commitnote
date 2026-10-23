@@ -15,9 +15,12 @@ import {
 } from "./commands/command-context";
 import { createDraftCommands } from "./commands/draft-commands";
 import { createEditingCommands } from "./commands/editing-commands";
+import { createHistoryCommands } from "./commands/history-commands";
+import { createImageCommands } from "./commands/image-commands";
 import { createLoginCommands } from "./commands/login-commands";
 import { createNoteViewCommands } from "./commands/note-view-commands";
 import { createNotesCommands } from "./commands/notes-commands";
+import { createShareCommands } from "./commands/share-commands";
 import { createSessionCommands } from "./commands/session-commands";
 import { createSessionViewCommands } from "./commands/session-view-commands";
 import { createSearchCommands } from "./commands/search-commands";
@@ -106,6 +109,14 @@ export function createNativeCore(options: {
     events: engineEvents,
   });
 
+  const history = createHistoryCommands({
+    host,
+    app,
+    events: engineEvents,
+    notices,
+    emit,
+  });
+
   const commands = new Map<string, CommandHandler>(
     Object.entries({
       ...(typeof options.extraCommands === "function"
@@ -120,6 +131,13 @@ export function createNativeCore(options: {
       ...createTrashCommands({ app, events: engineEvents }),
       ...createSearchCommands({ host, app, events: engineEvents, emit }),
       ...createNoteViewCommands({ host, app, events: engineEvents }),
+      ...createImageCommands({ host, app, events: engineEvents, notices }),
+      ...history.handlers,
+      ...createShareCommands({
+        app,
+        events: engineEvents,
+        notices,
+      }),
       ...createSessionViewCommands({
         host,
         app,
@@ -181,6 +199,7 @@ export function createNativeCore(options: {
       if (stopped) return;
       stopped = true;
       engineEvents.dispose();
+      history.dispose();
       notices.dispose();
       void app.dispose().catch(() => undefined);
     },

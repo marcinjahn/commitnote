@@ -1,5 +1,5 @@
 public enum NativeCoreAPIVersion {
-    public static let current = 3
+    public static let current = 4
 }
 
 public protocol NativeCoreCommand: Encodable, Sendable {
@@ -559,6 +559,164 @@ public struct ImageRead: NativeCoreCommand {
     }
 }
 
+public struct ImageInsert: NativeCoreCommand {
+    public static let name = "image.insert"
+    public struct Result: Codable, Equatable, Sendable {
+        public var references: [String]
+    }
+    public var inputs: [String]
+    public init(inputs: [String]) {
+        self.inputs = inputs
+    }
+}
+
+public struct ImageClonePasted: NativeCoreCommand {
+    public static let name = "image.clonePasted"
+    public struct Result: Codable, Equatable, Sendable {
+        public var text: String
+    }
+    public var path: [String]?
+    public var current: String
+    public var pasted: String
+    public init(path: [String]?, current: String, pasted: String) {
+        self.path = path
+        self.current = current
+        self.pasted = pasted
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path, current, pasted
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path, forKey: .path)
+        try container.encode(current, forKey: .current)
+        try container.encode(pasted, forKey: .pasted)
+    }
+}
+
+public struct HistoryOpen: NativeCoreCommand {
+    public static let name = "history.open"
+    public typealias Result = Empty
+    public var path: [String]
+    public init(path: [String]) {
+        self.path = path
+    }
+}
+
+public struct HistoryClose: NativeCoreCommand {
+    public static let name = "history.close"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct HistoryLoadMore: NativeCoreCommand {
+    public static let name = "history.loadMore"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct HistoryRetry: NativeCoreCommand {
+    public static let name = "history.retry"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct HistoryPreview: NativeCoreCommand {
+    public static let name = "history.preview"
+    public struct Result: Codable, Equatable, Sendable {
+        public var preview: VersionPreview
+    }
+    public var sha: String
+    public var restoreTitle: Bool
+    public init(sha: String, restoreTitle: Bool) {
+        self.sha = sha
+        self.restoreTitle = restoreTitle
+    }
+}
+
+public struct HistoryRestore: NativeCoreCommand {
+    public static let name = "history.restore"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: HistoryRestoreOutcome
+    }
+    public var sha: String
+    public var restoreTitle: Bool
+    public init(sha: String, restoreTitle: Bool) {
+        self.sha = sha
+        self.restoreTitle = restoreTitle
+    }
+}
+
+public struct ShareForm: NativeCoreCommand {
+    public static let name = "share.form"
+    public struct Result: Codable, Equatable, Sendable {
+        public var title: String
+    }
+    public var path: [String]
+    public init(path: [String]) {
+        self.path = path
+    }
+}
+
+public struct ShareCreate: NativeCoreCommand {
+    public static let name = "share.create"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: ShareCreateOutcome
+    }
+    public var path: [String]
+    public var password: String
+    public var label: String
+    public init(path: [String], password: String, label: String) {
+        self.path = path
+        self.password = password
+        self.label = label
+    }
+}
+
+public struct ShareUpdate: NativeCoreCommand {
+    public static let name = "share.update"
+    public typealias Result = Empty
+    public var id: String
+    public init(id: String) {
+        self.id = id
+    }
+}
+
+public struct ShareRename: NativeCoreCommand {
+    public static let name = "share.rename"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: ShareRenameOutcome
+    }
+    public var id: String
+    public var label: String
+    public init(id: String, label: String) {
+        self.id = id
+        self.label = label
+    }
+}
+
+public struct ShareRevoke: NativeCoreCommand {
+    public static let name = "share.revoke"
+    public typealias Result = Empty
+    public var id: String
+    public init(id: String) {
+        self.id = id
+    }
+}
+
+public struct ShareSharedVersion: NativeCoreCommand {
+    public static let name = "share.sharedVersion"
+    public struct Result: Codable, Equatable, Sendable {
+        public var outcome: SharedVersionOutcome
+    }
+    public var id: String
+    public init(id: String) {
+        self.id = id
+    }
+}
+
 public struct LastViewLoad: NativeCoreCommand {
     public static let name = "lastView.load"
     public struct Result: Codable, Equatable, Sendable {
@@ -666,6 +824,20 @@ public enum NativeCoreCommands {
         NoteStats.name,
         NoteDates.name,
         ImageRead.name,
+        ImageInsert.name,
+        ImageClonePasted.name,
+        HistoryOpen.name,
+        HistoryClose.name,
+        HistoryLoadMore.name,
+        HistoryRetry.name,
+        HistoryPreview.name,
+        HistoryRestore.name,
+        ShareForm.name,
+        ShareCreate.name,
+        ShareUpdate.name,
+        ShareRename.name,
+        ShareRevoke.name,
+        ShareSharedVersion.name,
         LastViewLoad.name,
         LastViewSave.name,
         EarlyDraftHandOff.name,

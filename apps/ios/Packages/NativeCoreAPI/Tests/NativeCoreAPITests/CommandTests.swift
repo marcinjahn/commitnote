@@ -362,7 +362,7 @@ final class CommandTests: XCTestCase {
     }
 
     func testVersion3CommandParams() throws {
-        XCTAssertEqual(NativeCoreAPIVersion.current, 3)
+        XCTAssertEqual(NativeCoreAPIVersion.current, 4)
         XCTAssertEqual(
             try params(NodeRename(path: ["a"], name: "b")), try json(#"{"path":["a"],"name":"b"}"#))
         XCTAssertEqual(
@@ -619,5 +619,175 @@ final class CommandTests: XCTestCase {
             try JSONDecoder().decode(ColorTag.self, from: Data(#""pink""#.utf8)))
         XCTAssertThrowsError(
             try JSONDecoder().decode(StructureOutcome.self, from: Data(#"{"kind":"none"}"#.utf8)))
+    }
+
+    func testVersion4Params() throws {
+        XCTAssertEqual(try params(ImageInsert(inputs: ["a", "b"])), try json(#"{"inputs":["a","b"]}"#))
+        XCTAssertEqual(
+            try params(ImageClonePasted(path: ["n"], current: "c", pasted: "p")),
+            try json(#"{"path":["n"],"current":"c","pasted":"p"}"#))
+        XCTAssertEqual(
+            try params(ImageClonePasted(path: nil, current: "c", pasted: "p")),
+            try json(#"{"path":null,"current":"c","pasted":"p"}"#))
+        XCTAssertEqual(try params(HistoryOpen(path: ["a", "n"])), try json(#"{"path":["a","n"]}"#))
+        let empty = try json("{}")
+        XCTAssertEqual(try params(HistoryClose()), empty)
+        XCTAssertEqual(try params(HistoryLoadMore()), empty)
+        XCTAssertEqual(try params(HistoryRetry()), empty)
+        XCTAssertEqual(
+            try params(HistoryPreview(sha: "s", restoreTitle: true)),
+            try json(#"{"sha":"s","restoreTitle":true}"#))
+        XCTAssertEqual(
+            try params(HistoryRestore(sha: "s", restoreTitle: false)),
+            try json(#"{"sha":"s","restoreTitle":false}"#))
+        XCTAssertEqual(try params(ShareForm(path: ["n"])), try json(#"{"path":["n"]}"#))
+        XCTAssertEqual(
+            try params(ShareCreate(path: ["n"], password: "", label: "L")),
+            try json(#"{"path":["n"],"password":"","label":"L"}"#))
+        XCTAssertEqual(try params(ShareUpdate(id: "i")), try json(#"{"id":"i"}"#))
+        XCTAssertEqual(
+            try params(ShareRename(id: "i", label: "L")), try json(#"{"id":"i","label":"L"}"#))
+        XCTAssertEqual(try params(ShareRevoke(id: "i")), try json(#"{"id":"i"}"#))
+        XCTAssertEqual(try params(ShareSharedVersion(id: "i")), try json(#"{"id":"i"}"#))
+    }
+
+    func testImageResults() throws {
+        XCTAssertEqual(
+            try result(ImageInsert.self, #"{"references":["image:abc#4x3"]}"#).references,
+            ["image:abc#4x3"])
+        XCTAssertEqual(try result(ImageInsert.self, #"{"references":[]}"#).references, [])
+        XCTAssertEqual(try result(ImageClonePasted.self, #"{"text":"t"}"#).text, "t")
+    }
+
+    func testHistoryResults() throws {
+        _ = try result(HistoryOpen.self, "{}")
+        _ = try result(HistoryClose.self, "{}")
+        let version =
+            #"{"kind":"version","titleChange":"Renamed from \u201cA\u201d","body":{"kind":"diff","items":[{"kind":"line","line":{"kind":"same","text":"x"}},{"kind":"fold","label":"3 unchanged lines","lines":[{"kind":"same","text":"y"}]},{"kind":"line","line":{"kind":"added","segments":[{"text":"a","changed":false},{"text":"b","changed":true}]}},{"kind":"line","line":{"kind":"removed","segments":[{"text":"c","changed":true}]}}],"finalNewline":"No newline at end of file"},"restoreTitle":null,"restore":{"label":"Restore this version","enabled":false,"reason":"r"}}"#
+        XCTAssertEqual(
+            try result(HistoryPreview.self, #"{"preview":\#(version)}"#).preview,
+            .version(
+                titleChange: "Renamed from \u{201C}A\u{201D}",
+                body: .diff(
+                    items: [
+                        .line(.same(text: "x")),
+                        .fold(label: "3 unchanged lines", lines: [.same(text: "y")]),
+                        .line(
+                            .added(segments: [
+                                DiffSegment(text: "a", changed: false),
+                                DiffSegment(text: "b", changed: true),
+                            ])),
+                        .line(.removed(segments: [DiffSegment(text: "c", changed: true)])),
+                    ], finalNewline: "No newline at end of file"),
+                restoreTitle: nil,
+                restore: RestoreAvailability(
+                    label: "Restore this version", enabled: false, reason: "r")))
+        XCTAssertEqual(
+            try result(HistoryPreview.self, #"{"preview":{"kind":"failed","message":"m"}}"#).preview,
+            .failed(message: "m"))
+        XCTAssertEqual(
+            try result(HistoryPreview.self, #"{"preview":{"kind":"undecryptable","message":"m"}}"#)
+                .preview, .undecryptable(message: "m"))
+        XCTAssertEqual(
+            try result(HistoryPreview.self, #"{"preview":{"kind":"closed","message":"m"}}"#).preview,
+            .closed(message: "m"))
+        XCTAssertEqual(
+            try result(
+                HistoryPreview.self,
+                #"{"preview":{"kind":"version","titleChange":null,"body":{"kind":"tooLarge","message":"m"},"restoreTitle":"t","restore":{"label":"l","enabled":true,"reason":null}}}"#
+            ).preview,
+            .version(
+                titleChange: nil, body: .tooLarge(message: "m"), restoreTitle: "t",
+                restore: RestoreAvailability(label: "l", enabled: true, reason: nil)))
+        XCTAssertEqual(
+            try result(
+                HistoryPreview.self,
+                #"{"preview":{"kind":"version","titleChange":null,"body":{"kind":"unchanged","message":"m"},"restoreTitle":null,"restore":{"label":"l","enabled":true,"reason":null}}}"#
+            ).preview,
+            .version(
+                titleChange: nil, body: .unchanged(message: "m"), restoreTitle: nil,
+                restore: RestoreAvailability(label: "l", enabled: true, reason: nil)))
+        XCTAssertEqual(
+            try result(HistoryRestore.self, #"{"outcome":{"kind":"restored"}}"#).outcome, .restored)
+        XCTAssertEqual(
+            try result(HistoryRestore.self, #"{"outcome":{"kind":"blocked","message":"m"}}"#).outcome,
+            .blocked(message: "m"))
+        XCTAssertEqual(
+            try result(HistoryRestore.self, #"{"outcome":{"kind":"error","message":"m"}}"#).outcome,
+            .error(message: "m"))
+        XCTAssertEqual(
+            try result(HistoryRestore.self, #"{"outcome":{"kind":"closed"}}"#).outcome, .closed)
+    }
+
+    func testShareResults() throws {
+        XCTAssertEqual(try result(ShareForm.self, #"{"title":"Share \u201cn\u201d"}"#).title, "Share \u{201C}n\u{201D}")
+        XCTAssertEqual(
+            try result(ShareCreate.self, #"{"outcome":{"kind":"created","link":"l","password":null}}"#)
+                .outcome, .created(link: "l", password: nil))
+        XCTAssertEqual(
+            try result(ShareCreate.self, #"{"outcome":{"kind":"created","link":"l","password":"p"}}"#)
+                .outcome, .created(link: "l", password: "p"))
+        XCTAssertEqual(
+            try result(
+                ShareCreate.self,
+                #"{"outcome":{"kind":"error","parts":[{"kind":"text","text":"t"},{"kind":"link","text":"x","href":"https://e.test"}]}}"#
+            ).outcome,
+            .error(parts: [.text("t"), .link(text: "x", href: "https://e.test")]))
+        _ = try result(ShareUpdate.self, "{}")
+        _ = try result(ShareRevoke.self, "{}")
+        XCTAssertEqual(
+            try result(ShareRename.self, #"{"outcome":{"kind":"ok"}}"#).outcome, .ok)
+        XCTAssertEqual(
+            try result(ShareRename.self, #"{"outcome":{"kind":"error","message":"m"}}"#).outcome,
+            .error(message: "m"))
+        XCTAssertEqual(
+            try result(
+                ShareSharedVersion.self,
+                #"{"outcome":{"kind":"readable","name":null,"content":"c","date":"d"}}"#
+            ).outcome, .readable(name: nil, content: "c", date: "d"))
+        XCTAssertEqual(
+            try result(
+                ShareSharedVersion.self,
+                #"{"outcome":{"kind":"readable","name":"n","content":"c","date":"d"}}"#
+            ).outcome, .readable(name: "n", content: "c", date: "d"))
+        XCTAssertEqual(
+            try result(ShareSharedVersion.self, #"{"outcome":{"kind":"message","message":"m"}}"#)
+                .outcome, .message("m"))
+        XCTAssertEqual(
+            try result(ShareSharedVersion.self, #"{"outcome":{"kind":"failed","message":"m"}}"#)
+                .outcome, .failed(message: "m"))
+    }
+
+    func testVersion4ShapesRoundTrip() throws {
+        func roundTrip<T: Codable & Equatable>(_ value: T) throws {
+            let data = try JSONEncoder().encode(value)
+            XCTAssertEqual(try JSONDecoder().decode(T.self, from: data), value)
+        }
+        let version = HistoryVersionView(
+            sha: "s", time: "t", dateTime: "dt", current: true, shared: false, events: ["e"],
+            name: nil)
+        XCTAssertEqual(version.id, "s")
+        try roundTrip(version)
+        try roundTrip(HistoryRow.single(version))
+        try roundTrip(HistoryRow.session(title: "t", shared: true, versions: [version]))
+        try roundTrip(
+            HistoryView(
+                path: ["n"], phase: .ready, message: nil,
+                sections: [HistorySection(title: "Today", rows: [.single(version)])], loading: false,
+                error: nil, end: "e", canLoadMore: false))
+        try roundTrip(PreviewBody.diff(items: [.line(.same(text: "x"))], finalNewline: nil))
+        try roundTrip(HistoryRestoreOutcome.closed)
+        try roundTrip(MessagePart.link(text: "t", href: "h"))
+        try roundTrip(ShareActionView(id: .copyLink, label: "l", disabled: false, destructive: false))
+        try roundTrip(ShareCreateOutcome.created(link: "l", password: "p"))
+        try roundTrip(ShareRenameOutcome.error(message: "m"))
+        try roundTrip(SharedVersionOutcome.readable(name: "n", content: "c", date: "d"))
+        for id in ["copy-link", "copy-password", "update", "view", "open", "rename", "revoke"] {
+            XCTAssertNotNil(ShareActionID(rawValue: id))
+        }
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(MessagePart.self, from: Data(#"{"kind":"x","text":"t"}"#.utf8)))
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(HistoryRestoreOutcome.self, from: Data(#"{"kind":"x"}"#.utf8)))
     }
 }
