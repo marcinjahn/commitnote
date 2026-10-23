@@ -88,17 +88,18 @@ final class DataFlowTests: XCTestCase {
         typeNewPassphrase(app.secureTextFields["change-passphrase-new"], newPassphrase, in: app)
         let repeated = app.secureTextFields["change-passphrase-repeat"]
         typeNewPassphrase(repeated, mismatch, in: app)
-        tapRevealed(app.buttons["change-passphrase-continue"], in: app)
+        let continueButton = app.buttons["change-passphrase-continue"]
+        revealInSettings(continueButton, within: "change-passphrase-screen", in: app).tap()
         let error = app.element("change-passphrase-error")
         waitFor(error)
         waitUntil(error, NSPredicate(format: "label CONTAINS %@", "do not match"))
 
         typeNewPassphrase(repeated, newPassphrase, replacing: mismatch.count, in: app)
         waitFor(app.element("change-passphrase-strength"))
-        tapRevealed(app.buttons["change-passphrase-continue"], in: app)
+        revealInSettings(continueButton, within: "change-passphrase-screen", in: app).tap()
+        waitFor(app.element("change-passphrase-summary"), timeout: 120)
         let confirm = app.buttons["change-passphrase-confirm"]
-        waitFor(confirm, timeout: 120)
-        tapRevealed(confirm, in: app)
+        revealInSettings(confirm, within: "change-passphrase-screen", in: app).tap()
 
         let notice = text(containing: "Passphrase changed", in: app)
         waitForCondition("The change is reported", timeout: 120) { notice.exists }

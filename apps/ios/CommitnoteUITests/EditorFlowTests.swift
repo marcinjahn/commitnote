@@ -14,7 +14,7 @@ final class EditorFlowTests: XCTestCase {
             Self.loggedIn = true
             return app
         }
-        return resumeAtTree()
+        return resumeAtTree(editorHooks: true)
     }
 
     func testLivePreviewKeepsTextAndTogglesCheckbox() {

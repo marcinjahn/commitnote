@@ -42,7 +42,7 @@ final class SettingsFlowTests: XCTestCase {
         font.tap()
         waitFor(app.element("settings-font-list"))
         let literata = app.element("settings-font-literata")
-        tapRevealed(literata, in: app)
+        revealInSettings(literata, within: "settings-font-list", in: app).tap()
         waitForCondition("The checkmark moves to Literata") {
             self.isSelected(literata) && !self.isSelected(app.element("settings-font-inter"))
         }

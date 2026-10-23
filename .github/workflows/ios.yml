@@ -169,6 +169,13 @@ jobs:
             -parallel-testing-enabled NO \
             -resultBundlePath out/xcresults-ui/ui-ipad-runtime.xcresult
 
+      - name: Collect app log
+        if: failure()
+        run: |
+          xcrun simctl spawn "$IPAD_SIMULATOR_ID" log show --last 60m --info --debug --style compact \
+            --predicate 'subsystem == "io.github.marcinjahn.commitnote" OR (process == "commitnote" AND messageType == error)' \
+            > out/xcresults-ui/app.log || true
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -235,6 +242,13 @@ jobs:
             $SELECTED \
             -parallel-testing-enabled NO \
             -resultBundlePath out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}.xcresult
+
+      - name: Collect app log
+        if: failure()
+        run: |
+          xcrun simctl spawn "$SIMULATOR_ID" log show --last 60m --info --debug --style compact \
+            --predicate 'subsystem == "io.github.marcinjahn.commitnote" OR (process == "commitnote" AND messageType == error)' \
+            > out/xcresults/app.log || true
 
       - name: Export screenshots
         if: always()

@@ -26,15 +26,15 @@ extension XCTestCase {
         waitUntilGone(app.element("settings-screen"), file: file, line: line)
     }
 
-    /// Form rows exist only once scrolled into view, so the form is swiped until the row can be
+    /// Form and list rows exist only once scrolled into view, so the form is swiped until the row can be
     /// tapped, towards the end unless the row lies above the ones looked for before it. A row that
     /// only groups text is never hittable, so for it being on screen is enough.
     @discardableResult
     func revealInSettings(
-        _ element: XCUIElement, upward: Bool = false, tappable: Bool = true, in app: XCUIApplication,
-        file: StaticString = #filePath, line: UInt = #line
+        _ element: XCUIElement, upward: Bool = false, tappable: Bool = true, within container: String = "settings-screen",
+        in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line
     ) -> XCUIElement {
-        let form = app.element("settings-screen")
+        let form = app.element(container)
         waitFor(form, file: file, line: line)
         let revealed: () -> Bool = {
             guard element.exists else { return false }

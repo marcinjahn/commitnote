@@ -80,6 +80,8 @@ struct DataSection: View {
             .accessibilityIdentifier("settings-export-files")
         } label: {
             Text(exporting ? copy.data.exportingLabel : copy.data.exportLabel)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
         }
         .disabled(!view.canExport || exporting)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
