@@ -9,7 +9,7 @@ final class EditorFlowTests: XCTestCase {
 
     private func openNotes() -> XCUIApplication {
         guard Self.loggedIn else {
-            let app = launchApp(reset: true)
+            let app = launchApp(reset: true, editorHooks: true)
             logInToNotes(in: app)
             Self.loggedIn = true
             return app
@@ -52,16 +52,16 @@ final class EditorFlowTests: XCTestCase {
         typeAtEnd("\nword", in: app)
         waitUntil(editor, NSPredicate(format: "value ENDSWITH %@", "\nword"))
 
-        editor.typeKey(.leftArrow, modifierFlags: [.shift, .option])
+        hittable(app.buttons.matching(identifier: "testing-select-word")).tap()
         waitForSelection(length: 4, in: app)
         hittable(app.buttons.matching(identifier: "format-bold")).tap()
         waitUntil(editor, NSPredicate(format: "value ENDSWITH %@", "\n**word**"))
 
-        editor.typeKey("z", modifierFlags: .command)
+        hittable(app.buttons.matching(identifier: "testing-undo")).tap()
         waitUntil(editor, NSPredicate(format: "value ENDSWITH %@", "\nword"))
         XCTAssertFalse(((editor.value as? String) ?? "").contains("**word**"), "One undo removes the bold markers")
 
-        editor.typeKey(.downArrow, modifierFlags: .command)
+        hittable(app.buttons.matching(identifier: "testing-caret-end")).tap()
         editor.typeText("\n")
         waitUntil(editor, NSPredicate(format: "value ENDSWITH %@", "\nword\n"))
         hittable(app.buttons.matching(identifier: "format-task")).tap()
@@ -69,7 +69,7 @@ final class EditorFlowTests: XCTestCase {
 
         editor.typeText("link")
         waitUntil(editor, NSPredicate(format: "value ENDSWITH %@", "- [ ] link"))
-        editor.typeKey(.leftArrow, modifierFlags: [.shift, .option])
+        hittable(app.buttons.matching(identifier: "testing-select-word")).tap()
         waitForSelection(length: 4, in: app)
         hittable(app.buttons.matching(identifier: "format-link")).tap()
         waitUntil(editor, NSPredicate(format: "value ENDSWITH %@", "- [ ] [link]()"))

@@ -899,10 +899,55 @@ final class MarkdownTextView: UITextView {
         }
         items.append(.flexibleSpace())
         items.append(makeImageToolbarItem())
+        #if FAKE_CORE
+        if TestingHooks.editorHooksRequested {
+            items.append(contentsOf: makeTestingToolbarItems())
+        }
+        #endif
         toolbar.items = items
         toolbar.sizeToFit()
         return toolbar
     }
+
+    #if FAKE_CORE
+    private func makeTestingToolbarItems() -> [UIBarButtonItem] {
+        let hooks: [(String, String, () -> Void)] = [
+            ("testing-select-word", "W", { [weak self] in self?.selectWordBeforeCaret() }),
+            ("testing-caret-end", "E", { [weak self] in self?.moveCaretToEnd() }),
+            ("testing-undo", "U", { [weak self] in self?.undoManager?.undo() }),
+        ]
+        return hooks.map { identifier, title, action in
+            let item = UIBarButtonItem(
+                title: title, primaryAction: UIAction { _ in action() })
+            item.accessibilityIdentifier = identifier
+            return item
+        }
+    }
+
+    private func selectWordBeforeCaret() {
+        let text = self.text as NSString
+        func isWordCharacter(_ index: Int) -> Bool {
+            CharacterSet.alphanumerics.contains(Unicode.Scalar(text.character(at: index)) ?? " ")
+        }
+        var end = selectedRange.location
+        if end == 0 || !isWordCharacter(end - 1) {
+            end = text.length
+            while end > 0 && !isWordCharacter(end - 1) {
+                end -= 1
+            }
+        }
+        var start = end
+        while start > 0 && isWordCharacter(start - 1) {
+            start -= 1
+        }
+        selectedRange = NSRange(location: start, length: end - start)
+    }
+
+    private func moveCaretToEnd() {
+        selectedRange = NSRange(location: (text as NSString).length, length: 0)
+        scrollRangeToVisible(selectedRange)
+    }
+    #endif
 
     private func makeImageToolbarItem() -> UIBarButtonItem {
         var sources: [(String, String, String, ImageSourceKind)] = [
