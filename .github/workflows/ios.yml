@@ -166,33 +166,8 @@ jobs:
             -only-testing:CommitnoteUITests/EditorFlowTests \
             -only-testing:CommitnoteUITests/SettingsFlowTests \
             -only-testing:CommitnoteUITests/DataFlowTests \
-            -only-testing:CommitnoteUITests/MediaFlowTests \
-            -only-testing:CommitnoteUITests/SettingsScreenshotTests \
             -parallel-testing-enabled NO \
             -resultBundlePath out/xcresults-ui/ui-ipad-runtime.xcresult
-
-      - name: Collect app log
-        if: failure()
-        run: |
-          xcrun simctl spawn "$IPAD_SIMULATOR_ID" log show --last 60m --info --debug --style compact \
-            --predicate 'subsystem == "io.github.marcinjahn.commitnote" OR (process == "commitnote" AND messageType == error)' \
-            > out/xcresults-ui/app.log || true
-
-      - name: Export iPad screenshots
-        if: always()
-        run: |
-          set -eu
-          if [ -d out/xcresults-ui/ui-ipad-runtime.xcresult ]; then
-            apps/ios/scripts/export-screenshots.sh out/xcresults-ui/ui-ipad-runtime.xcresult out/screenshots-ipad --allow-empty
-          fi
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ios-screenshots-ipad-runtime
-          path: out/screenshots-ipad
-          if-no-files-found: ignore
-          retention-days: 30
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -242,16 +217,16 @@ jobs:
           set -eu -o pipefail
           case "${{ matrix.device }}-${{ matrix.suite }}" in
             iphone-flows)
-              SELECTED="-only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/DataFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/SettingsFlowTests -only-testing:CommitnoteUITests/DataFlowTests"
               ;;
             iphone-screens)
-              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/SettingsScreenshotTests -only-testing:CommitnoteUITests/SettingsFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
               ;;
             ipad-flows)
-              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests"
               ;;
             ipad-screens)
-              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/LoginFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
               ;;
           esac
           xcodebuild test-without-building \
@@ -260,13 +235,6 @@ jobs:
             $SELECTED \
             -parallel-testing-enabled NO \
             -resultBundlePath out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}.xcresult
-
-      - name: Collect app log
-        if: failure()
-        run: |
-          xcrun simctl spawn "$SIMULATOR_ID" log show --last 60m --info --debug --style compact \
-            --predicate 'subsystem == "io.github.marcinjahn.commitnote" OR (process == "commitnote" AND messageType == error)' \
-            > out/xcresults/app.log || true
 
       - name: Export screenshots
         if: always()

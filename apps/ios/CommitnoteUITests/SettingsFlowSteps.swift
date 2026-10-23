@@ -44,12 +44,15 @@ extension XCTestCase {
             let frame = element.frame
             return form.frame.contains(CGPoint(x: frame.midX, y: frame.midY))
         }
+        // Drags stay in the form's upper part, which the keyboard never covers.
+        let upper = form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+        let lower = form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
         for _ in 0..<8 {
             if poll(timeout: 1, until: revealed) { return element }
             if upward || underBar() {
-                form.swipeDown(velocity: .slow)
+                upper.press(forDuration: 0.05, thenDragTo: lower)
             } else {
-                form.swipeUp()
+                lower.press(forDuration: 0.05, thenDragTo: upper)
             }
         }
         if tappable, element.exists, element.isHittable { return element }

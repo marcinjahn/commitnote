@@ -8,7 +8,7 @@ public actor CoreRuntime {
 
     public nonisolated let events: AsyncStream<CoreEvent>
 
-    private let queue = DispatchSerialQueue(label: "io.github.marcinjahn.commitnote.core-runtime")
+    private let queue = DispatchSerialQueue(label: "io.github.marcinjahn.commitnote.core-runtime", qos: .userInitiated)
     private let configuration: CoreRuntimeConfiguration
     private let logger: Logger
     private let router: ResponseRouter

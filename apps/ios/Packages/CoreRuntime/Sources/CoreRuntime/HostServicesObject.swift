@@ -24,7 +24,8 @@ final class HostServicesObject {
 
     let context: JSContext
     private let queue: DispatchQueue
-    private let storageQueue = DispatchQueue(label: "io.github.marcinjahn.commitnote.core-runtime.storage")
+    private let storageQueue = DispatchQueue(
+        label: "io.github.marcinjahn.commitnote.core-runtime.storage", qos: .userInitiated)
     private let configuration: CoreRuntimeConfiguration
     private let logger: Logger
     private let onPost: (String) -> Void

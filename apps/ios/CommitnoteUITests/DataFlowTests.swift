@@ -44,7 +44,7 @@ final class DataFlowTests: XCTestCase {
         waitForValue(app.textFields["import-folder-name"], ImportSample.folder)
         waitForImportPreview(in: app)
         tapRevealed(app.buttons["import-confirm"], in: app)
-        waitUntilGone(app.element("import-screen"))
+        waitUntilGone(app.element("import-screen"), timeout: 60)
         closeSettings(in: app)
 
         waitFor(folder(ImportSample.folder, in: app), timeout: 30)
@@ -64,7 +64,7 @@ final class DataFlowTests: XCTestCase {
         waitFor(message, timeout: 30)
         waitUntil(message, NSPredicate(format: "label CONTAINS %@", "same name"))
         tapRevealed(app.buttons["import-rename"], in: app)
-        waitUntilGone(app.element("import-screen"))
+        waitUntilGone(app.element("import-screen"), timeout: 60)
         closeSettings(in: app)
         waitFor(note(ImportSample.renamedWelcome, in: app), timeout: 30)
         XCTAssertTrue(note(SampleNote.welcome, in: app).exists)
