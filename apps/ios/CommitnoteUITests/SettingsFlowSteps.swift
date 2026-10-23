@@ -21,9 +21,16 @@ extension XCTestCase {
         waitFor(app.element("settings-screen"), timeout: 30, file: file, line: line)
     }
 
+    /// A tap on Done while a sheet over Settings is still going away is ignored, so it is repeated.
     func closeSettings(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        hittable(app.buttons.matching(identifier: "settings-done"), file: file, line: line).tap()
-        waitUntilGone(app.element("settings-screen"), file: file, line: line)
+        let screen = app.element("settings-screen")
+        for _ in 0..<3 where screen.exists {
+            let done = app.buttons.matching(identifier: "settings-done")
+            guard done.firstMatch.exists else { break }
+            hittable(done, file: file, line: line).tap()
+            if poll(timeout: 10, until: { !screen.exists }) { break }
+        }
+        waitUntilGone(screen, file: file, line: line)
     }
 
     /// Form and list rows exist only once scrolled into view, so the form is swiped until the row can be

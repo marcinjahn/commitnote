@@ -164,7 +164,6 @@ jobs:
             -xctestrun "$XCTESTRUN" \
             -destination "id=$IPAD_SIMULATOR_ID" \
             -only-testing:CommitnoteUITests/EditorFlowTests \
-            -only-testing:CommitnoteUITests/SettingsFlowTests \
             -only-testing:CommitnoteUITests/DataFlowTests \
             -parallel-testing-enabled NO \
             -resultBundlePath out/xcresults-ui/ui-ipad-runtime.xcresult
@@ -217,16 +216,16 @@ jobs:
           set -eu -o pipefail
           case "${{ matrix.device }}-${{ matrix.suite }}" in
             iphone-flows)
-              SELECTED="-only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/SettingsFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests"
               ;;
             iphone-screens)
-              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/SettingsScreenshotTests -only-testing:CommitnoteUITests/DataFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/SettingsScreenshotTests -only-testing:CommitnoteUITests/DataFlowTests -only-testing:CommitnoteUITests/SettingsFlowTests -only-testing:CommitnoteUITests/LoginFlowTests"
               ;;
             ipad-flows)
-              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/LoginFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests"
               ;;
             ipad-screens)
-              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/SettingsScreenshotTests -only-testing:CommitnoteUITests/OrganisationFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/SettingsScreenshotTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/SettingsFlowTests"
               ;;
           esac
           xcodebuild test-without-building \
