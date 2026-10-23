@@ -137,6 +137,7 @@ final class AppModel {
 
     @ObservationIgnored private var editSender: EditSender?
     @ObservationIgnored private var imageLoader: ImageLoader?
+    @ObservationIgnored private let visitSender = IOSVisitSender()
     @ObservationIgnored private var lastViewRestorePending = false
     @ObservationIgnored private var lastViewTracking = false
     @ObservationIgnored private var detailsPath: [String]?
@@ -195,6 +196,11 @@ final class AppModel {
             return
         }
         self.runtime = runtime
+
+        let visitSender = visitSender
+        Task.detached(priority: .background) {
+            await IOSVisit.run(runtime: runtime, sender: visitSender)
+        }
 
         eventsTask = Task { [weak self] in
             for await event in runtime.events {
