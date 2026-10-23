@@ -99,3 +99,36 @@ test("the search palette hides the button", MOBILE, async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(newNoteButton(page)).toBeVisible();
 });
+
+test.describe("on a narrow desktop window", () => {
+  test.use({ viewport: { width: 400, height: 800 } });
+
+  async function expectDesktopPointer(page: Page): Promise<void> {
+    expect(
+      await page.evaluate(() => ({
+        fine: matchMedia("(pointer: fine)").matches,
+        touch: navigator.maxTouchPoints,
+      })),
+    ).toEqual({ fine: true, touch: 0 });
+  }
+
+  test("shows the button with a mouse and no touch", async ({ page }) => {
+    await openNotes(page);
+    await expectDesktopPointer(page);
+    await expect(newNoteButton(page)).toBeVisible();
+  });
+
+  test("shows the button when the visual viewport is a few pixels short", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(VisualViewport.prototype, "height", {
+        configurable: true,
+        get: () => document.documentElement.clientHeight - 3,
+      });
+    });
+    await openNotes(page);
+    await expectDesktopPointer(page);
+    await expect(newNoteButton(page)).toBeVisible();
+  });
+});

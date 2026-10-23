@@ -76,9 +76,14 @@ test("shows created and updated dates and the word count above the editor", { ta
   await treeItem(page, "Welcome").click();
 
   const line = details(page);
-  await expect(line).toHaveText(
-    /^Created 12 Mar 2026 · Updated just now · \d+ words · 1\/2 done\s*$/,
-  );
+  const list = line.getByRole("list", { name: "Note details" });
+  await expect(list).toHaveCount(1);
+  await expect(list.getByRole("listitem")).toHaveText([
+    "Created 12 Mar 2026",
+    "Updated just now",
+    /^\d+ words$/,
+    "1/2 tasks done",
+  ]);
   await expect
     .poll(() =>
       page
@@ -99,7 +104,7 @@ test("shows created and updated dates and the word count above the editor", { ta
   expect(lineBox!.y + lineBox!.height).toBeLessThanOrEqual(editorBox!.y);
   await expect(page.locator(".note-content .note-details")).toHaveCount(1);
 
-  const times = line.locator("span.note-dates time");
+  const times = line.locator(".note-dates time");
   await expect(times).toHaveCount(2);
   for (const time of await times.all()) {
     const datetime = await time.getAttribute("datetime");
@@ -110,6 +115,188 @@ test("shows created and updated dates and the word count above the editor", { ta
   const before = await wordCount(page);
   await typeAtEnd(page, " alpha beta");
   await expect(line).toContainText(`${before + 2} words`);
+});
+
+function channelToLinear(channel: number): number {
+  const c = channel / 255;
+  return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+function parseRgb(color: string): [number, number, number] {
+  const match = /rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)/.exec(color);
+  expect(match, `unparsed colour ${color}`).not.toBeNull();
+  return [Number(match![1]), Number(match![2]), Number(match![3])];
+}
+
+function luminance(color: string): number {
+  const [r, g, b] = parseRgb(color).map(channelToLinear);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const [light, dark] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+test("note details show unbreakable, evenly spaced items in dates and stats groups split by a divider", { tag: "@mobile" }, async ({
+  page,
+}) => {
+  await startSession(page);
+  await treeItem(page, "Welcome").click();
+
+  const items = details(page).getByRole("listitem");
+  await expect(items).toHaveCount(4);
+  await expect
+    .poll(() =>
+      page
+        .locator(".note-content")
+        .evaluate(
+          (el) =>
+            el
+              .getAnimations({ subtree: true })
+              .filter((animation) => !(animation instanceof CSSAnimation)).length,
+        ),
+    )
+    .toBe(0);
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const row = document.querySelector(".note-details")!;
+        const lineHeight = parseFloat(getComputedStyle(row).lineHeight);
+        return [...row.querySelectorAll("[role=listitem]")].every(
+          (item) => item.getBoundingClientRect().height <= lineHeight + 1,
+        );
+      }),
+    )
+    .toBe(true);
+
+  const narrow = page.viewportSize()!.width < 600;
+  await expect
+    .poll(async () => {
+      const layout = await page.evaluate(() => {
+        const form = document.querySelector(".note-details .details-form")!;
+        const [dates, stats] = [...form.querySelectorAll(".details-group")];
+        const items = [...form.querySelectorAll("[role=listitem]")].map((item) =>
+          item.getBoundingClientRect(),
+        );
+        const separator = (group: Element) => {
+          const style = getComputedStyle(group, "::before");
+          return style.content === "none"
+            ? null
+            : {
+                left: group.getBoundingClientRect().left + parseFloat(style.left),
+                width: parseFloat(style.borderInlineStartWidth),
+              };
+        };
+        return {
+          formLeft: form.getBoundingClientRect().left,
+          clipped: getComputedStyle(form).clipPath !== "none",
+          datesLast: form.querySelectorAll(".details-group")[0].children.length - 1,
+          items: items.map(({ top, left, right }) => ({ top, left, right })),
+          datesSeparator: separator(dates),
+          statsSeparator: separator(stats),
+        };
+      });
+      const { items, datesLast, formLeft } = layout;
+      const sameLine = (a: { top: number }, b: { top: number }) => Math.abs(a.top - b.top) < 1;
+      const gaps = items.slice(1).flatMap((item, i) =>
+        sameLine(items[i], item) && i !== datesLast ? [Math.round(item.left - items[i].right)] : [],
+      );
+      const lastDate = items[datesLast];
+      const firstStat = items[datesLast + 1];
+      const sep = layout.statsSeparator;
+      return {
+        itemGaps: [...new Set(gaps)],
+        stacked: !sameLine(lastDate, firstStat),
+        flushLeft: Math.abs(firstStat.left - formLeft) <= 1,
+        datesSeparator: layout.datesSeparator,
+        boundaryGaps:
+          sep !== null && sameLine(lastDate, firstStat)
+            ? [Math.round(sep.left - lastDate.right), Math.round(firstStat.left - sep.left - sep.width)]
+            : null,
+        separatorHidden: sep !== null && layout.clipped && sep.left + sep.width < formLeft - 4,
+      };
+    })
+    .toEqual({
+      itemGaps: [16],
+      stacked: narrow,
+      flushLeft: narrow,
+      datesSeparator: null,
+      boundaryGaps: narrow ? null : [16, 16],
+      separatorHidden: narrow,
+    });
+
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await expect
+      .poll(() =>
+        page.evaluate(() => getComputedStyle(document.documentElement).colorScheme),
+      )
+      .toContain(scheme);
+    await expect
+      .poll(async () => {
+        const { value, label, separator, background } = await page.evaluate(() => {
+          const pixel = (color: string): number[] => {
+            const canvas = document.createElement("canvas");
+            canvas.width = 1;
+            canvas.height = 1;
+            const context = canvas.getContext("2d")!;
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return [...context.getImageData(0, 0, 1, 1).data];
+          };
+          const toRgb = (color: string): string => {
+            const [r, g, b] = pixel(color);
+            return `rgb(${r}, ${g}, ${b})`;
+          };
+          const valueEl = document.querySelector(".note-details .detail-value")!;
+          const labelEl = document.querySelector(".note-details .detail-label")!;
+          let backgroundEl: Element = document.body;
+          for (let el: Element | null = labelEl; el; el = el.parentElement) {
+            if (pixel(getComputedStyle(el).backgroundColor)[3] > 0) {
+              backgroundEl = el;
+              break;
+            }
+          }
+          const background = getComputedStyle(backgroundEl).backgroundColor;
+          return {
+            value: toRgb(getComputedStyle(valueEl).color),
+            label: toRgb(getComputedStyle(labelEl).color),
+            separator: toRgb(
+              getComputedStyle(
+                document.querySelector(".note-details .details-group + .details-group")!,
+                "::before",
+              ).borderInlineStartColor,
+            ),
+            background: toRgb(background),
+          };
+        });
+        return {
+          differ: value !== label,
+          readable: contrastRatio(label, background) >= 4.5,
+          separatorVisible: contrastRatio(separator, background) >= 3,
+        };
+      })
+      .toEqual({ differ: true, readable: true, separatorVisible: true });
+  }
+
+  await page.setViewportSize({ width: 140, height: page.viewportSize()!.height });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const row = document.querySelector(".note-details")!;
+        const lineHeight = parseFloat(getComputedStyle(row).lineHeight);
+        const rects = [...row.querySelectorAll("[role=listitem]")].map((item) =>
+          item.getBoundingClientRect(),
+        );
+        return {
+          singleLine: rects.every((rect) => rect.height <= lineHeight + 1),
+          ownLines: new Set(rects.map((rect) => Math.round(rect.top))).size,
+        };
+      }),
+    )
+    .toEqual({ singleLine: true, ownLines: 4 });
 });
 
 test("shows task progress only when the note has tasks", async ({ page }) => {
@@ -125,7 +312,7 @@ test("shows task progress only when the note has tasks", async ({ page }) => {
   await expect(details(page)).not.toContainText("done");
 
   await typeAtEnd(page, "\n- [x] a\nb");
-  await expect(details(page)).toContainText("1/2 done");
+  await expect(details(page)).toContainText("1/2 tasks done");
 });
 
 test("saving an edit keeps the cached dates until they refresh", async ({
@@ -165,7 +352,7 @@ test("saving an edit keeps the cached dates until they refresh", async ({
   const cachedShown = texts.findIndex(
     (text, index) =>
       index > lastUnsaved &&
-      text.includes("Created 12 Mar 2026 · Updated 3 days ago"),
+      text.includes("Created 12 Mar 2026 Updated 3 days ago"),
   );
   expect(cachedShown).toBeGreaterThan(lastUnsaved);
   const refreshed = texts.findIndex((text) =>
@@ -206,7 +393,7 @@ test("the updated time settles after a save", async ({ page }) => {
 
   await typeAndSave(page, " more");
   await expect.poll(() => settleCount(page), { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
-  await expect(details(page).locator("span.note-dates time").nth(1)).not.toHaveAttribute(
+  await expect(details(page).locator(".note-dates time").nth(1)).not.toHaveAttribute(
     "data-settle",
   );
 });
@@ -220,7 +407,7 @@ test("switching notes does not settle the updated time", async ({ page }) => {
   await treeItem(page, "Projects").click();
   await treeItem(page, "commitnote").click();
   await treeItem(page, "Roadmap").click();
-  await expect(details(page).locator("span.note-dates")).toBeVisible();
+  await expect(details(page).locator(".note-dates")).toBeVisible();
   expect(await settleCount(page)).toBe(0);
 });
 
@@ -230,7 +417,10 @@ test("a new note shows it is not saved yet until it is saved", async ({
   await startSession(page);
   await page.getByRole("button", { name: "New note", exact: true }).click();
 
-  await expect(details(page)).toHaveText("Not saved yet · 0 words");
+  await expect(details(page).getByRole("listitem")).toHaveText([
+    "Not saved yet",
+    "0 words",
+  ]);
 
   await page.getByRole("textbox", { name: "Note name" }).fill("Fresh idea");
   await page.getByRole("textbox", { name: "Note name" }).press("Enter");
@@ -257,7 +447,7 @@ test("reopening a note shows its dates immediately", async ({
 }) => {
   await startSession(page);
   await treeItem(page, "Welcome").click();
-  await expect(details(page).locator("span.note-dates")).toBeVisible();
+  await expect(details(page).locator(".note-dates")).toBeVisible();
 
   await showTree(page);
   await treeItem(page, "Zażółć gęślą jaźń").click();
@@ -265,7 +455,7 @@ test("reopening a note shows its dates immediately", async ({
   await showTree(page);
   await treeItem(page, "Welcome").click();
 
-  await expect(details(page).locator("span.note-dates")).toBeVisible({
+  await expect(details(page).locator(".note-dates")).toBeVisible({
     timeout: 1_000,
   });
 });

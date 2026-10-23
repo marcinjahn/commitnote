@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  KEYBOARD_OPEN_MIN_INSET,
   floatingNewNoteState,
+  isKeyboardOpen,
   isTextEntry,
   type FloatingNewNoteInputs,
 } from "./floating-new-note";
@@ -70,5 +72,27 @@ describe("isTextEntry", () => {
     ["select", { tagName: "SELECT" }, false],
   ] as const)("%s", (_label, element, expected) => {
     expect(isTextEntry(element)).toBe(expected);
+  });
+});
+
+describe("isKeyboardOpen", () => {
+  const viewport = (height: number, offsetTop = 0, scale = 1) => ({ height, offsetTop, scale });
+
+  it.each([
+    ["the visual viewport fills the layout", viewport(800)],
+    ["a sub-pixel gap from fractional scaling", viewport(799.5)],
+    ["a few pixels short", viewport(797)],
+    ["just under the threshold", viewport(800 - KEYBOARD_OPEN_MIN_INSET + 1)],
+    ["pinch-zoomed in", viewport(400, 100, 2)],
+  ])("is closed when %s", (_label, visual) => {
+    expect(isKeyboardOpen(800, visual)).toBe(false);
+  });
+
+  it.each([
+    ["at the threshold", viewport(800 - KEYBOARD_OPEN_MIN_INSET)],
+    ["a phone keyboard covers the bottom", viewport(480)],
+    ["the visual viewport is scrolled while the keyboard is up", viewport(400, 50)],
+  ])("is open %s", (_label, visual) => {
+    expect(isKeyboardOpen(800, visual)).toBe(true);
   });
 });
