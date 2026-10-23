@@ -19,6 +19,7 @@ import type { LoginDependencies } from "../login/login";
 import type { SessionStore } from "../session/session-store";
 import type { Session } from "../session/session";
 import type { DeviceSettingsStore } from "../settings/device-settings-store";
+import type { SettingsSaver } from "../settings/settings-saver";
 import { shareLinkBase } from "../share/share-link";
 import type { Clock } from "../sync/clock";
 import { createRateBudget, type RateBudget } from "../sync/rate-budget";
@@ -46,10 +47,17 @@ import { hostArgon2id } from "./runtime/host-argon2";
 
 export type NativeRunningApp = RunningApp<NativeServices>;
 
+export interface StartedApp {
+  readonly engine: SyncEngine;
+  readonly settingsSaver: SettingsSaver;
+}
+
 export interface AppSession {
   readonly store: SessionStore;
   readonly ports: PlatformPorts;
   readonly blobStore: BlobStoreProvider;
+  readonly deviceSettings: DeviceSettingsStore;
+  readonly deviceModel: string;
   deviceName(): string;
   registry(): Promise<ForgeRegistry>;
   forgeName(forge: ForgeId): Promise<string>;
@@ -65,6 +73,8 @@ export interface AppSession {
   current(): NativeRunningApp | null;
   lastView(): LastViewStore | null;
   onEngineState(listener: (engine: SyncEngine | null) => void): () => void;
+  /** The listener's result runs when that app stops. */
+  onAppStarted(listener: (started: StartedApp) => () => void): () => void;
   setVisible(visible: boolean): void;
   setOnline(online: boolean): void;
   dispose(): Promise<void>;
@@ -178,6 +188,7 @@ export function createAppSession(options: {
   let disposed = false;
   let keyChanged: number | null = null;
   const engineListeners = new Set<(engine: SyncEngine | null) => void>();
+  const startListeners = new Set<(started: StartedApp) => () => void>();
 
   function notifyEngine(engine: SyncEngine | null): void {
     for (const listener of [...engineListeners]) listener(engine);
@@ -195,10 +206,14 @@ export function createAppSession(options: {
     createServices: (context) =>
       createNativeServices(context, host, ports.navigation.shareLinkBase()),
     disposeServices: disposeNativeServices,
-    afterStart({ engine }) {
+    afterStart({ engine, settingsSaver }) {
       const unsubscribe = engine.subscribe(() => notifyEngine(engine));
+      const stopListeners = [...startListeners].map((listener) =>
+        listener({ engine, settingsSaver }),
+      );
       return () => {
         unsubscribe();
+        for (const stopListener of stopListeners) stopListener();
         notifyEngine(null);
       };
     },
@@ -232,6 +247,8 @@ export function createAppSession(options: {
     store,
     ports,
     blobStore,
+    deviceSettings,
+    deviceModel: options.deviceModel,
     deviceName,
     registry,
     async forgeName(forge) {
@@ -283,6 +300,10 @@ export function createAppSession(options: {
     onEngineState(listener) {
       engineListeners.add(listener);
       return () => engineListeners.delete(listener);
+    },
+    onAppStarted(listener) {
+      startListeners.add(listener);
+      return () => startListeners.delete(listener);
     },
     setVisible: (visible) => lifecycle.setVisible(visible),
     setOnline: (online) => lifecycle.setOnline(online),

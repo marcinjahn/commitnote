@@ -33,6 +33,7 @@ import { createStructureCommands } from "./commands/structure-commands";
 import { createTrashCommands } from "./commands/trash-commands";
 import { coreLevelError } from "./core-errors";
 import { createEngineEvents } from "./engine-events";
+import { createSettingsEvents } from "./settings-events";
 import type { HostServices } from "./host-services";
 
 export const UNKNOWN_REQUEST_ID = -1;
@@ -108,6 +109,7 @@ export function createNativeCore(options: {
     now: () => host.clock.now(),
   });
   const notices = createActionNotices({ app, emit });
+  const settingsEvents = createSettingsEvents({ host, app, emit });
 
   const drafts = createDraftCommands({
     host,
@@ -144,7 +146,13 @@ export function createNativeCore(options: {
         events: engineEvents,
         notices,
       }),
-      ...createSettingsCommands({ host, app, events: engineEvents, notices }),
+      ...createSettingsCommands({
+        host,
+        app,
+        events: engineEvents,
+        notices,
+        settings: settingsEvents,
+      }),
       ...createAnalyticsCommands({
         host,
         app,
@@ -216,6 +224,7 @@ export function createNativeCore(options: {
       if (stopped) return;
       stopped = true;
       engineEvents.dispose();
+      settingsEvents.dispose();
       history.dispose();
       notices.dispose();
       void app.dispose().catch(() => undefined);
