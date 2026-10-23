@@ -70,12 +70,17 @@ final class TestingAppearance {
         let style: UIUserInterfaceStyle = scheme == .dark ? .dark : .light
         let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
         // Sheets, popovers and alerts that are already up keep the style they were presented with.
-        for window in windows {
-            var presented = window.rootViewController?.presentedViewController
-            while let controller = presented {
+        func override(_ controller: UIViewController) {
+            if controller.presentingViewController != nil {
                 controller.overrideUserInterfaceStyle = style
-                presented = controller.presentedViewController
             }
+            controller.children.forEach(override)
+            if let presented = controller.presentedViewController, presented.presentingViewController === controller {
+                override(presented)
+            }
+        }
+        for window in windows {
+            if let root = window.rootViewController { override(root) }
         }
         let name = Self.appliedPrefix + (scheme == .dark ? "dark" : "light")
         DispatchQueue.main.async {
@@ -83,7 +88,7 @@ final class TestingAppearance {
             // The keyboard runs in another process and picks up the new style only once reloaded.
             UIApplication.shared.sendAction(#selector(UIResponder.reloadInputViews), to: nil, from: nil, for: nil)
             CATransaction.flush()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                 CFNotificationCenterPostNotification(
                     CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName(name as CFString), nil, nil,
                     true)
