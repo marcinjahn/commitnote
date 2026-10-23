@@ -28,7 +28,15 @@ extension XCTestCase {
         if appears(noteView, within: 3) {
             backToTree(in: app, file: file, line: line)
         }
-        waitFor(tree, file: file, line: line)
+        // The last view can be reopened only once the tree has loaded, so the note may still slide in.
+        waitForCondition("The notes tree is shown", timeout: 30, file: file, line: line) {
+            if !isPad, noteView.exists {
+                let back = app.navigationBars.buttons["BackButton"]
+                if back.exists, back.isHittable { back.tap() }
+                return false
+            }
+            return tree.exists
+        }
         return app
     }
 

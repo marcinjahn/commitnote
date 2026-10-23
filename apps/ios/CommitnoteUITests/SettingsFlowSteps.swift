@@ -63,7 +63,7 @@ extension XCTestCase {
     }
 
     func isOn(_ toggle: XCUIElement) -> Bool {
-        ["on", "1"].contains((toggle.value as? String) ?? "")
+        toggle.exists && ["on", "1"].contains((toggle.value as? String) ?? "")
     }
 
     /// The switch follows the core's answer rather than the tap, so a tap is repeated only once
@@ -71,16 +71,19 @@ extension XCTestCase {
     func setToggle(
         _ identifier: String, on: Bool, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line
     ) {
-        let toggle = revealInSettings(app.switches[identifier], in: app, file: file, line: line)
-        for _ in 0..<3 where isOn(toggle) != on {
+        // The form can rebuild the row after a tap, so the switch is found again before each read.
+        let toggle = app.switches[identifier]
+        for _ in 0..<3 where !(toggle.exists && isOn(toggle) == on) {
+            revealInSettings(toggle, in: app, file: file, line: line)
             let knob = toggle.switches.firstMatch
             if knob.exists {
                 knob.tap()
             } else {
                 toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
             }
-            if poll(timeout: 10, until: { self.isOn(toggle) == on }) { break }
+            if poll(timeout: 10, until: { toggle.exists && self.isOn(toggle) == on }) { break }
         }
+        revealInSettings(toggle, in: app, file: file, line: line)
         XCTAssertEqual(isOn(toggle), on, "\(identifier) is \(on ? "on" : "off")", file: file, line: line)
     }
 
