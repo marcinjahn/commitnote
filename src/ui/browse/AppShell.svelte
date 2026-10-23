@@ -34,13 +34,17 @@
   import { automaticDeviceName, effectiveDeviceName } from "../../settings/device-name";
   import { readPlatformInputs } from "../../app/platform-inputs";
   import type { DeviceSettingsStore } from "../../settings/device-settings-store";
-  import {
-    resolveEffectiveSettings,
-    routeSettingsEdits,
-    switchSettingScope,
-    type SettingScope,
-    type SwitchableSettingKey,
+  import type {
+    SettingScope,
+    SwitchableSettingKey,
   } from "../../settings/setting-scope";
+  import {
+    changeSettingScope as applySettingScope,
+    changeSettings as applySettingsChange,
+    effectiveSettingsOf,
+    shouldApplyColorMode,
+    syncedRawSettings as syncedRawSettingsOf,
+  } from "../../app/settings-actions";
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
   import { installSaveShortcut } from "../../app/save-shortcut";
@@ -55,12 +59,7 @@
     restorableLastView,
     type LastView,
   } from "../../app/last-view";
-  import {
-    applySettingsEdits,
-    resolveSettings,
-    SETTINGS_SCHEMA,
-    type Settings,
-  } from "../../settings/settings";
+  import type { Settings } from "../../settings/settings";
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { ColorModeId } from "../../settings/color-mode";
   import type { NoteFont } from "../../settings/note-font";
@@ -828,10 +827,10 @@
   });
 
   const syncedRawSettings = $derived(
-    applySettingsEdits(engineState.rawSettings, pendingSettingsEdits),
+    syncedRawSettingsOf(engineState.rawSettings, pendingSettingsEdits),
   );
   const effectiveSettings = $derived(
-    resolveEffectiveSettings(syncedRawSettings, deviceSettings),
+    effectiveSettingsOf(engineState.rawSettings, pendingSettingsEdits, deviceSettings),
   );
   const settings: Settings = $derived(effectiveSettings.settings);
 
@@ -841,9 +840,11 @@
 
   $effect(() => {
     if (
-      engineState.synced !== null ||
-      pendingSettingsEdits.colorMode !== undefined ||
-      effectiveSettings.scopes.colorMode === "device"
+      shouldApplyColorMode({
+        settingsLoaded: engineState.synced !== null,
+        colorModePending: pendingSettingsEdits.colorMode !== undefined,
+        colorModeScope: effectiveSettings.scopes.colorMode,
+      })
     )
       onColorMode(settings.colorMode);
   });
@@ -876,25 +877,25 @@
     }),
   );
 
+  function settingsActionsDeps() {
+    return { saver: settingsSaver, deviceStore: deviceSettingsStore };
+  }
+
   function changeSettings(edits: Partial<Settings>): void {
-    const { device, synced } = routeSettingsEdits(edits, effectiveSettings.scopes);
-    if (Object.keys(device).length > 0) deviceSettingsStore.writeValues(device);
-    if (Object.keys(synced).length > 0) settingsSaver.change(synced);
+    applySettingsChange(settingsActionsDeps(), edits, effectiveSettings.scopes);
   }
 
   function changeSettingScope(
     key: SwitchableSettingKey,
     to: SettingScope,
   ): void {
-    const syncedResolved = resolveSettings(SETTINGS_SCHEMA, syncedRawSettings);
-    const { deviceValue, syncedEdits } = switchSettingScope(
+    applySettingScope(
+      settingsActionsDeps(),
       key,
       to,
-      settings,
-      syncedResolved,
+      effectiveSettings,
+      syncedRawSettings,
     );
-    if (Object.keys(syncedEdits).length > 0) settingsSaver.change(syncedEdits);
-    deviceSettingsStore.setScope(key, to, deviceValue);
   }
 
   function openSettings(): void {
