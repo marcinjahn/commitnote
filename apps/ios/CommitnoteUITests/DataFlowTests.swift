@@ -43,7 +43,7 @@ final class DataFlowTests: XCTestCase {
         openSampleImport(in: app)
         waitForValue(app.textFields["import-folder-name"], ImportSample.folder)
         waitForImportPreview(in: app)
-        tapRevealed(app.buttons["import-confirm"], in: app)
+        confirmImport(in: app)
         waitUntilGone(app.element("import-screen"), timeout: 60)
         closeSettings(in: app)
 
@@ -59,7 +59,7 @@ final class DataFlowTests: XCTestCase {
         tapRevealed(root, in: app)
         waitForCondition("The root folder is the destination") { self.isSelected(root) }
         waitForImportPreview(in: app)
-        tapRevealed(app.buttons["import-confirm"], in: app)
+        confirmImport(in: app)
         let message = app.element("import-message")
         waitFor(message, timeout: 30)
         waitUntil(message, NSPredicate(format: "label CONTAINS %@", "same name"))
@@ -108,6 +108,20 @@ final class DataFlowTests: XCTestCase {
         openWelcome(in: app)
         typeAtEnd("\nWritten with the new key", in: app)
         waitForSaved(in: app)
+    }
+
+    /// A tap that lands while the runner is overloaded is sometimes lost, so it is repeated until
+    /// the import starts; the button is disabled while one runs, so a repeat never imports twice.
+    private func confirmImport(in app: XCUIApplication) {
+        let screen = app.element("import-screen")
+        let confirm = app.buttons["import-confirm"]
+        let message = app.element("import-message")
+        for _ in 0..<3 {
+            tapRevealed(confirm, in: app)
+            if poll(timeout: 10, until: { !screen.exists || message.exists || (confirm.exists && !confirm.isEnabled) }) {
+                break
+            }
+        }
     }
 
     private func passphraseField(_ identifier: String, in app: XCUIApplication) -> XCUIElement {

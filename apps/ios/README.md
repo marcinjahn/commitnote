@@ -213,8 +213,8 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   iPad Simulator to run the iPad `EditorFlowTests`, `DataFlowTests` and `SettingsFlowTests`.
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
   shared build:
-  - `flows` — editing, media and login flows, plus the organisation and settings flows and the
-    settings screenshots on iPhone and the media and organisation screenshots on iPad.
+  - `flows` — editing, media and login flows, plus the organisation and settings flows on iPhone
+    and the organisation screenshots on iPad.
   - `screens` — the other screenshots, plus the editor and data flows on iPhone and the
     organisation flows on iPad.
 
@@ -239,7 +239,7 @@ Artifacts, kept for 30 days:
 | --- | --- |
 | `commitnote-unsigned-ipa` | `commitnote-unsigned.ipa` |
 | `ios-screenshots-<device>` | the screenshots taken by the classes in that device's `screens` suite, light and dark |
-| `ios-screenshots-<device>-flows` | the screenshots taken by the classes in that device's `flows` suite: the iPhone settings screenshots and the iPad media and organisation screenshots, light and dark |
+| `ios-screenshots-<device>-flows` | the screenshots taken by the classes in that device's `flows` suite (the iPad organisation screenshots), light and dark |
 | `ios-xcresults-runtime` | Xcode result bundle of the runtime tests |
 | `ios-xcresults-ui-ipad-runtime` | Xcode result bundle of the iPad tests run in the runtime job |
 | `ios-xcresults-ui-<device>-<suite>` | Xcode result bundles of the UI tests |
