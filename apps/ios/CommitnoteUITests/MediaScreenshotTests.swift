@@ -8,13 +8,11 @@ final class MediaScreenshotTests: XCTestCase {
     func testCaptureScreens() {
         let app = launchApp(reset: true)
         logInToNotes(in: app)
-        for appearance in [Appearance.light, Appearance.dark] {
-            captureScreens(appearance)
-        }
+        captureScreens()
     }
 
-    private func captureScreens(_ appearance: Appearance) {
-        let app = resumeAtTree(appearance: appearance)
+    private func captureScreens() {
+        let app = resumeAtTree()
         openWelcome(in: app)
         whileMenuIsOpen {
             openMenu(
@@ -24,7 +22,7 @@ final class MediaScreenshotTests: XCTestCase {
             let files = menuItems("insert-image-files", label: "Choose File", in: app).firstMatch
             waitFor(files)
             waitUntilSettled(files)
-            snapshot("insert-image-menu", appearance: appearance)
+            snapshotBothAppearances("insert-image-menu")
             closeMenu(showing: files, in: app)
         }
 
@@ -34,30 +32,30 @@ final class MediaScreenshotTests: XCTestCase {
         if let newest = historyRows(in: app).first {
             waitUntilSettled(newest)
         }
-        snapshot("history", appearance: appearance)
+        snapshotBothAppearances("history")
         openOldestVersion(in: app)
         waitUntilSettled(app.element("history-preview"))
-        snapshot("history-preview", appearance: appearance)
+        snapshotBothAppearances("history-preview")
         tapBack(in: app)
         hittable(app.buttons.matching(identifier: "history-done")).tap()
         waitUntilGone(app.element("history-screen"))
 
         openShareScreen(in: app)
         waitUntilSettled(app.buttons["share-create-button"])
-        snapshot("share", appearance: appearance)
+        snapshotBothAppearances("share")
         let link = createShare(label: "Team notes", password: "pw-1234", in: app)
         waitUntilSettled(link)
-        snapshot("share-created", appearance: appearance)
+        snapshotBothAppearances("share-created")
         closeShareScreen(in: app)
 
         openSharedLinks(in: app)
         let row = shareRow(containing: "Team notes", in: app)
         waitFor(row, timeout: 30)
         waitUntilSettled(row)
-        snapshot("shared-links", appearance: appearance)
+        snapshotBothAppearances("shared-links")
         let content = viewSharedVersion(of: row, in: app)
         waitUntilSettled(content)
-        snapshot("shared-version", appearance: appearance)
+        snapshotBothAppearances("shared-version")
         tapBack(in: app)
         waitUntilGone(app.element("shared-version-screen"))
         hittable(app.buttons.matching(identifier: "shared-links-done")).tap()
@@ -70,7 +68,7 @@ final class MediaScreenshotTests: XCTestCase {
         let image = loadedEditorImages(in: app).firstMatch
         waitFor(image, timeout: 30)
         openImageViewer(hittable(loadedEditorImages(in: app)), in: app)
-        snapshot("image-viewer", appearance: appearance)
+        snapshotBothAppearances("image-viewer")
         closeImageViewer(in: app)
     }
 }

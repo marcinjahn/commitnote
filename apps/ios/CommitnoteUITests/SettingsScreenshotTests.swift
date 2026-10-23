@@ -8,16 +8,15 @@ final class SettingsScreenshotTests: XCTestCase {
     func testCaptureScreens() {
         let app = launchApp(reset: true, appearance: .light)
         logInToNotes(in: app)
-        captureScreens(app, .light)
-        captureScreens(resumeAtTree(appearance: .dark), .dark)
+        captureScreens(app)
     }
 
-    private func captureScreens(_ app: XCUIApplication, _ appearance: Appearance) {
+    private func captureScreens(_ app: XCUIApplication) {
         openSettings(in: app)
         let save = app.element("settings-save-status")
         waitFor(save)
         waitUntilSettled(save)
-        snapshot("settings", appearance: appearance)
+        snapshotBothAppearances("settings")
 
         let font = app.element("settings-note-font")
         waitFor(font)
@@ -25,20 +24,20 @@ final class SettingsScreenshotTests: XCTestCase {
         let preview = app.element("settings-font-preview")
         waitFor(preview)
         waitUntilSettled(preview)
-        snapshot("settings-fonts", appearance: appearance)
+        snapshotBothAppearances("settings-fonts")
         tapBack(in: app)
         waitUntilGone(app.element("settings-font-list"))
 
         let passphrase = revealInSettings(app.buttons["settings-change-passphrase-button"], in: app)
         waitUntilSettled(passphrase)
-        snapshot("settings-data", appearance: appearance)
+        snapshotBothAppearances("settings-data")
 
         openChangePassphrase(in: app)
         typeNewPassphrase(app.secureTextFields["change-passphrase-new"], "short passphrase", in: app)
         let strength = app.element("change-passphrase-strength")
         waitFor(strength)
         waitUntilSettled(strength)
-        snapshot("change-passphrase", appearance: appearance)
+        snapshotBothAppearances("change-passphrase")
         tapBack(in: app)
         waitUntilGone(app.element("change-passphrase-screen"))
         closeSettings(in: app)
@@ -46,7 +45,7 @@ final class SettingsScreenshotTests: XCTestCase {
         openSampleImport(in: app)
         waitForImportPreview(in: app)
         waitUntilSettled(app.element("import-preview"))
-        snapshot("import", appearance: appearance)
+        snapshotBothAppearances("import")
         hittable(app.buttons.matching(identifier: "import-cancel")).tap()
         waitUntilGone(app.element("import-screen"))
         closeSettings(in: app)

@@ -213,9 +213,12 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   iPad Simulator to run the iPad `EditorFlowTests`, `SettingsFlowTests` and `DataFlowTests`.
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
   shared build:
-  - `flows` — editing, organisation and media flows, plus the login, settings and data flows on
-    iPhone.
-  - `screens` — every screenshot, plus the editor flows on iPhone and the login flows on iPad.
+  - `flows` — editing, media and login flows, plus the organisation and settings flows on iPhone.
+  - `screens` — every screenshot, plus the editor and data flows on iPhone and the organisation
+    flows on iPad.
+
+  The screenshot tests reach each screen once and capture it in light and dark, switching the
+  running app's appearance through a FAKE_CORE testing hook.
 
   The class lists of the suites differ per device, so every UI class runs on both devices.
 

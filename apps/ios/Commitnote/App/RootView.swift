@@ -16,6 +16,10 @@ struct RootView: View {
             .onChange(of: model.appearance) { _, appearance in
                 AppearanceApplier.apply(appearance)
             }
+            #if FAKE_CORE
+            .preferredColorScheme(TestingAppearance.shared.scheme)
+            .onAppear { TestingAppearance.shared.startListening() }
+            #endif
     }
 
     @ViewBuilder

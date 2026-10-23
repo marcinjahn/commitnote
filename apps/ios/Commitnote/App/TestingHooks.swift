@@ -3,6 +3,7 @@ import CoreRuntime
 import Foundation
 import NativeCoreAPI
 import SwiftUI
+import UIKit
 
 enum TestingHooks {
     private nonisolated(unsafe) static var storedStateWasReset = false
@@ -35,6 +36,55 @@ enum TestingHooks {
         case "dark": .dark
         default: nil
         }
+    }
+}
+
+/// Screenshot tests switch between light and dark on the screen they show instead of walking
+/// every flow twice. The request and its acknowledgement are Darwin notifications, which the
+/// test runner and the app on one simulator both see.
+@MainActor
+@Observable
+final class TestingAppearance {
+    static let shared = TestingAppearance()
+    static let requestPrefix = "io.github.marcinjahn.commitnote.testing.appearance."
+    static let appliedPrefix = "io.github.marcinjahn.commitnote.testing.appearance-applied."
+
+    private(set) var scheme = TestingHooks.requestedColorScheme
+    @ObservationIgnored var lastAppearance = AppAppearance.standard
+    @ObservationIgnored private var listening = false
+
+    func startListening() {
+        guard !listening else { return }
+        listening = true
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        for name in ["light", "dark"] {
+            CFNotificationCenterAddObserver(
+                center, nil, testingAppearanceRequested, (Self.requestPrefix + name) as CFString, nil,
+                .deliverImmediately)
+        }
+    }
+
+    fileprivate func apply(_ scheme: ColorScheme) {
+        self.scheme = scheme
+        AppearanceApplier.apply(lastAppearance)
+        UIApplication.shared.sendAction(#selector(UIResponder.reloadInputViews), to: nil, from: nil, for: nil)
+        let name = Self.appliedPrefix + (scheme == .dark ? "dark" : "light")
+        DispatchQueue.main.async {
+            CATransaction.flush()
+            DispatchQueue.main.async {
+                CFNotificationCenterPostNotification(
+                    CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName(name as CFString), nil, nil,
+                    true)
+            }
+        }
+    }
+}
+
+private let testingAppearanceRequested: CFNotificationCallback = { _, _, name, _, _ in
+    guard let raw = name.map({ $0.rawValue as String }) else { return }
+    let scheme: ColorScheme = raw.hasSuffix("dark") ? .dark : .light
+    DispatchQueue.main.async {
+        MainActor.assumeIsolated { TestingAppearance.shared.apply(scheme) }
     }
 }
 

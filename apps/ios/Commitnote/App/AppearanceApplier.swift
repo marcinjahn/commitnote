@@ -5,7 +5,8 @@ enum AppearanceApplier {
     static func apply(_ appearance: AppAppearance) {
         var style = appearance.interfaceStyle
         #if FAKE_CORE
-        switch TestingHooks.requestedColorScheme {
+        TestingAppearance.shared.lastAppearance = appearance
+        switch TestingAppearance.shared.scheme {
         case .light: style = .light
         case .dark: style = .dark
         default: break

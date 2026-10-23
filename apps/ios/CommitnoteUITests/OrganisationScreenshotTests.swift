@@ -8,33 +8,31 @@ final class OrganisationScreenshotTests: XCTestCase {
     func testCaptureScreens() {
         let app = launchApp(reset: true)
         logInToNotes(in: app)
-        for appearance in [Appearance.light, Appearance.dark] {
-            captureScreens(appearance)
-        }
+        captureScreens()
     }
 
-    private func captureScreens(_ appearance: Appearance) {
-        var app = resumeAtTree(appearance: appearance)
+    private func captureScreens() {
+        var app = resumeAtTree()
         let editor = openWelcome(in: app)
         XCTAssertFalse(hasKeyboardFocus(editor))
-        snapshot("live-preview", appearance: appearance)
+        snapshotBothAppearances("live-preview")
 
         focusEditor(in: app)
         waitFor(app.buttons["format-bold"])
-        snapshot("keyboard-toolbar", appearance: appearance)
+        snapshotBothAppearances("keyboard-toolbar")
 
         backToTree(in: app)
         setFolder("Journal", expanded: true, in: app)
         setFolder("2026", expanded: true, in: app)
         openNote("Whiteboard", startingWith: "Sketch from the planning session.", in: app)
         waitForValue(app.elements("editor-image").firstMatch, "loaded")
-        snapshot("inline-image", appearance: appearance)
+        snapshotBothAppearances("inline-image")
 
         backToTree(in: app)
         openNote(SampleNote.other, startingWith: "# \(SampleNote.other)", in: app)
         waitFor(noteDetailsText(containing: "words", in: app))
         waitFor(app.buttons["note-color-tag-menu"])
-        snapshot("note-details", appearance: appearance)
+        snapshotBothAppearances("note-details")
 
         backToTree(in: app)
         let welcome = note(SampleNote.welcome, in: app)
@@ -42,14 +40,14 @@ final class OrganisationScreenshotTests: XCTestCase {
         whileMenuIsOpen {
             openContextMenu(on: welcome, expecting: "tree-action-move", label: "Move to…", in: app)
             waitUntilSettled(actionButton("tree-action-move", label: "Move to…", in: app))
-            snapshot("tree-actions", appearance: appearance)
+            snapshotBothAppearances("tree-actions")
             tapMenuAction("tree-action-move", label: "Move to…", reopening: welcome, in: app)
         }
         let projects = app.elements("folder-picker-row").matching(NSPredicate(format: "label == %@", "Projects"))
             .firstMatch
         waitFor(projects)
         waitUntilSettled(projects)
-        snapshot("move-to", appearance: appearance)
+        snapshotBothAppearances("move-to")
         app.buttons["folder-picker-cancel-button"].tap()
         waitUntilGone(app.elements("folder-picker-row").firstMatch)
 
@@ -59,7 +57,7 @@ final class OrganisationScreenshotTests: XCTestCase {
         let warning = text(containing: "active share link", in: app)
         waitFor(warning)
         waitUntilSettled(warning)
-        snapshot("delete-shared", appearance: appearance)
+        snapshotBothAppearances("delete-shared")
         // The dialog is a popover without a Cancel button, dismissed by tapping outside it; a tap
         // that lands while it is still appearing is ignored.
         for _ in 0..<3 where warning.exists {
@@ -75,7 +73,7 @@ final class OrganisationScreenshotTests: XCTestCase {
         dismissNotice(in: app)
         openTrash(in: app)
         waitFor(app.elements("trash-entry").matching(NSPredicate(format: "label == %@", "Projects")).firstMatch)
-        snapshot("trash", appearance: appearance)
+        snapshotBothAppearances("trash")
         app.buttons["trash-done"].tap()
         waitUntilGone(app.element("trash-done"))
 
@@ -84,7 +82,7 @@ final class OrganisationScreenshotTests: XCTestCase {
         waitForCondition("The filter shows only the orange note") {
             self.treeNoteLabels(in: app) == ["January"]
         }
-        snapshot("tag-filter", appearance: appearance)
+        snapshotBothAppearances("tag-filter")
         hittable(app.buttons.matching(identifier: "tag-filter-menu")).tap()
         tapButton(labeled: "All notes", in: app)
         waitFor(note(SampleNote.welcome, in: app))
@@ -94,14 +92,14 @@ final class OrganisationScreenshotTests: XCTestCase {
         field.tap()
         field.typeText("encrypted")
         waitFor(app.elements("search-content-row").firstMatch, timeout: 30)
-        snapshot("search", appearance: appearance)
+        snapshotBothAppearances("search")
 
-        app = launchApp(reset: false, appearance: appearance, holdLoading: true)
+        app = launchApp(reset: false, holdLoading: true)
         typeInto(app.element("early-draft-name"), "Shopping list\n", in: app)
         let body = app.element("early-draft-body")
         waitForFocus(body)
         body.typeText("Milk, eggs and bread")
         waitForValue(body, "Milk, eggs and bread")
-        snapshot("early-draft", appearance: appearance)
+        snapshotBothAppearances("early-draft")
     }
 }
