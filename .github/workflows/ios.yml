@@ -164,6 +164,8 @@ jobs:
             -xctestrun "$XCTESTRUN" \
             -destination "id=$IPAD_SIMULATOR_ID" \
             -only-testing:CommitnoteUITests/EditorFlowTests \
+            -only-testing:CommitnoteUITests/SettingsFlowTests \
+            -only-testing:CommitnoteUITests/DataFlowTests \
             -parallel-testing-enabled NO \
             -resultBundlePath out/xcresults-ui/ui-ipad-runtime.xcresult
 
@@ -215,13 +217,13 @@ jobs:
           set -eu -o pipefail
           case "${{ matrix.device }}-${{ matrix.suite }}" in
             iphone-flows)
-              SELECTED="-only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/SettingsFlowTests -only-testing:CommitnoteUITests/DataFlowTests"
               ;;
             iphone-screens)
-              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
               ;;
             ipad-flows)
-              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
               ;;
             ipad-screens)
               SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/LoginFlowTests"
@@ -235,17 +237,22 @@ jobs:
             -resultBundlePath out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}.xcresult
 
       - name: Export screenshots
-        if: always() && matrix.suite == 'screens'
+        if: always()
         run: |
           set -eu
-          if [ -d "out/xcresults/ui-${{ matrix.device }}-screens.xcresult" ]; then
-            apps/ios/scripts/export-screenshots.sh "out/xcresults/ui-${{ matrix.device }}-screens.xcresult" out/screenshots
+          RESULT="out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}.xcresult"
+          if [ -d "$RESULT" ]; then
+            if [ "${{ matrix.suite }}" = screens ]; then
+              apps/ios/scripts/export-screenshots.sh "$RESULT" out/screenshots
+            else
+              apps/ios/scripts/export-screenshots.sh "$RESULT" out/screenshots --allow-empty
+            fi
           fi
 
       - uses: actions/upload-artifact@v4
-        if: always() && matrix.suite == 'screens'
+        if: always()
         with:
-          name: ios-screenshots-${{ matrix.device }}
+          name: ios-screenshots-${{ matrix.device }}${{ matrix.suite == 'flows' && '-flows' || '' }}
           path: out/screenshots
           if-no-files-found: ignore
           retention-days: 30

@@ -20,7 +20,11 @@ python3 - "$EXPORT_DIR" "$OUT" "$ALLOW_EMPTY" <<'PY'
 import json, os, re, shutil, sys
 
 export_dir, out_dir, allow_empty = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
-with open(os.path.join(export_dir, "manifest.json")) as handle:
+manifest_path = os.path.join(export_dir, "manifest.json")
+if allow_empty and not os.path.exists(manifest_path):
+    print("exported 0 screenshots")
+    sys.exit(0)
+with open(manifest_path) as handle:
     manifest = json.load(handle)
 
 pattern = re.compile(r"^(iphone|ipad)-(light|dark)-[a-z-]+")

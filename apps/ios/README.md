@@ -159,11 +159,13 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   Simulator, and hands them to the jobs below as the `ios-test-products` artifact.
 - `Runtime tests and IPA` builds and checks the unsigned IPA, runs the runtime tests on an iPhone
   Simulator from the shared build, reads the produced repos back with TypeScript, and also boots an
-  iPad Simulator to run the iPad `EditorFlowTests`.
+  iPad Simulator to run the iPad `EditorFlowTests`, `SettingsFlowTests` and `DataFlowTests`.
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
   shared build:
-  - `flows` — editing, organisation and media flows, plus the login flows on iPhone.
-  - `screens` — every screenshot, plus the editor flows on iPhone and the login flows on iPad.
+  - `flows` — editing, organisation and media flows, plus the login, settings and data flows on
+    iPhone and the settings screenshots on iPad.
+  - `screens` — every other screenshot, plus the editor flows and settings screenshots on iPhone and
+    the login flows on iPad.
 
   The class lists of the suites differ per device, so every UI class runs on both devices.
 
@@ -177,7 +179,8 @@ Artifacts, kept for 30 days:
 | Artifact | Contents |
 | --- | --- |
 | `commitnote-unsigned-ipa` | `commitnote-unsigned.ipa` |
-| `ios-screenshots-<device>` | screenshots per device, light and dark, including `image-viewer`, `insert-image-menu`, `history`, `history-preview`, `share`, `share-created`, `shared-links` and `shared-version` |
+| `ios-screenshots-<device>` | screenshots per device, light and dark, including `image-viewer`, `insert-image-menu`, `history`, `history-preview`, `share`, `share-created`, `shared-links` and `shared-version`; on iPhone also `settings`, `settings-fonts`, `settings-data`, `import` and `change-passphrase` |
+| `ios-screenshots-ipad-flows` | the iPad `settings`, `settings-fonts`, `settings-data`, `import` and `change-passphrase` screenshots, light and dark |
 | `ios-xcresults-runtime` | Xcode result bundle of the runtime tests |
 | `ios-xcresults-ui-ipad-runtime` | Xcode result bundle of the iPad tests run in the runtime job |
 | `ios-xcresults-ui-<device>-<suite>` | Xcode result bundles of the UI tests |
