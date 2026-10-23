@@ -142,6 +142,11 @@ extension XCTestCase {
             if poll(timeout: 15, until: { self.hasKeyboardFocus(editor) }) { break }
         }
         waitForFocus(editor, file: file, line: line)
+        // Key events sent while the keyboard is still sliding in can time out in XCTest.
+        let keyboard = app.keyboards.firstMatch
+        if keyboard.exists {
+            waitUntilSettled(keyboard, file: file, line: line)
+        }
         return editor
     }
 

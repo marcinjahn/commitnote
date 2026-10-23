@@ -94,7 +94,10 @@ extension XCTestCase {
     func typeInto(_ field: XCUIElement, _ text: String, in app: XCUIApplication) {
         waitFor(field)
         scrollToReveal(field, in: app)
-        field.tap()
+        for _ in 0..<3 {
+            field.tap()
+            if poll(timeout: 5, until: { hasKeyboardFocus(field) }) { break }
+        }
         field.typeText(text)
     }
 

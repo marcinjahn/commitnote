@@ -27,7 +27,8 @@ extension XCTestCase {
         submitToken(Fixture.token, in: app)
         pickRepository(Fixture.notes, in: app)
         unlock(in: app)
-        waitFor(app.element("notes-tree"))
+        // Deriving the keys can take most of a minute on a freshly booted CI simulator.
+        waitFor(app.element("notes-tree"), timeout: 60)
     }
 
     func folder(_ name: String, in app: XCUIApplication) -> XCUIElement {

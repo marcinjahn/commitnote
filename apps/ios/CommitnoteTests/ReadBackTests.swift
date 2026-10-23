@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import NativeCoreAPI
 import XCTest
 
@@ -33,6 +34,11 @@ struct ReadBackScenario: Encodable {
         var names: [String]
     }
 
+    struct Image: Encodable {
+        var reference: String
+        var type: String
+    }
+
     struct Expectation: Encodable {
         var initialized: Bool
         var notes: [Note]
@@ -40,6 +46,7 @@ struct ReadBackScenario: Encodable {
         var order: [Order]? = nil
         var tags: [Tag]? = nil
         var trash: Trash? = nil
+        var images: [Image]? = nil
         var deviceName: String
     }
 
@@ -322,5 +329,41 @@ final class ReadBackTests: RuntimeTestCase {
                 trash: .init(count: 2, names: ["Whiteboard", "commitnote"]),
                 deviceName: runtime.deviceModel))
         try ReadBackOutput.write(scenario, fileName: "organise.json", to: self)
+    }
+
+    func testImagesReadBack() async throws {
+        let runtime = try await makeRuntime()
+        try await runtime.logIn(repo: "sample/notes", passphrase: sampleNotesPassphrase)
+        let original = try await runtime.openNoteLoaded(["Welcome"])
+        let photo = try TestImages.encode(
+            TestImages.photo(width: 3000, height: 2000), as: .jpeg,
+            properties: [kCGImageDestinationLossyCompressionQuality: 0.9])
+        let gif = try TestImages.encode(TestImages.photo(width: 48, height: 32), as: .gif)
+
+        let inputs = [
+            runtime.core.stageImageInput(photo, type: "image/jpeg"),
+            runtime.core.stageImageInput(gif, type: "image/gif"),
+        ]
+        let references = try await runtime.send(ImageInsert(inputs: inputs)).references
+        XCTAssertEqual(references.count, 2)
+
+        let text = "\(original)\n\(references.joined(separator: "\n"))\n"
+        _ = try await runtime.send(NoteEdit(path: ["Welcome"], text: text))
+        let flushed = try await runtime.send(SyncFlush()).result
+        XCTAssertEqual(flushed, .saved)
+
+        let scenario = ReadBackScenario(
+            name: "ios images",
+            passphrase: sampleNotesPassphrase,
+            exported: try await runtime.exportRepo("sample/notes"),
+            expect: .init(
+                initialized: false,
+                notes: [.init(path: ["Welcome"], text: text)],
+                images: [
+                    .init(reference: references[0], type: "image/webp"),
+                    .init(reference: references[1], type: "image/gif"),
+                ],
+                deviceName: runtime.deviceModel))
+        try ReadBackOutput.write(scenario, fileName: "images.json", to: self)
     }
 }

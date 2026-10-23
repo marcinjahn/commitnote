@@ -177,6 +177,14 @@ struct TestingMenu: View {
                 Task { await model.sendTesting(FakeShareNote(path: ["Welcome"])) }
             }
             .accessibilityIdentifier("testing-share-note")
+            Button("Fail next share") {
+                Task {
+                    await model.sendTesting(
+                        FakeFailNext(
+                            repo: Self.repo, operation: "createShare", kind: "Forbidden", count: 1))
+                }
+            }
+            .accessibilityIdentifier("testing-share-permission")
             Button(model.forcedOffline ? "Go online" : "Go offline") {
                 Task { await model.setForcedOffline(!model.forcedOffline) }
             }

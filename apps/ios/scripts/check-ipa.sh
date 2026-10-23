@@ -21,13 +21,13 @@ fail() {
 [ -f "$CORE" ] || fail "commitnote-core.js is missing"
 grep -q "commitnote-native-core" "$CORE" || fail "core bundle is not the production one"
 
-for marker in "fake.saveNote" "sample/large-tree" "sample notes repo passphrase"; do
+for marker in "fake.saveNote" "fake.processImage" "sample/large-tree" "sample notes repo passphrase"; do
   if grep -qF "$marker" "$CORE"; then
     fail "core bundle contains fake core bundle marker: $marker"
   fi
 done
 
-for marker in "fake.saveNote" "fake.remoteEdit" "fake.failNext" "fake.shareNote" "fake.holdLoading" "testing-menu" "testing-share-note" "testing-loading-bar"; do
+for marker in "fake.saveNote" "fake.remoteEdit" "fake.failNext" "fake.shareNote" "fake.holdLoading" "fake.processImage" "testing-menu" "testing-share-note" "testing-share-permission" "testing-loading-bar"; do
   if grep -rlF "$marker" "$APP" | grep -q .; then
     fail "app contains $marker"
   fi
