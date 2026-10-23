@@ -59,6 +59,7 @@ const FILES = [
   "names.json",
   "notes.json",
   "images.json",
+  "image-pipeline.json",
   "device-trailer.json",
   "shares.json",
   "git-blob-sha1.json",

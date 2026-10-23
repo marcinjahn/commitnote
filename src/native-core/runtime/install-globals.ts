@@ -1,5 +1,6 @@
 import type { HostServices } from "../host-services";
 import { atob, btoa } from "./base64-globals";
+import { Blob } from "./blob";
 import { createConsole } from "./console";
 import { Headers, Response, createHostFetch } from "./fetch";
 import { TextDecoder, TextEncoder } from "./text-codec";
@@ -26,5 +27,6 @@ export function installBareHostGlobals(
     fetch: createHostFetch(getHost),
     console: createConsole(getHost),
   });
+  if (target.Blob === undefined) target.Blob = Blob;
   if (target.globalThis === undefined) target.globalThis = target;
 }

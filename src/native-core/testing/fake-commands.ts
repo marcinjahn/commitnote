@@ -207,6 +207,7 @@ export function createFakeCommands(options: {
       return checkTestVectors(
         files as Record<string, unknown>,
         hostArgon2id(host.crypto),
+        host.imageCodec,
       );
     },
 

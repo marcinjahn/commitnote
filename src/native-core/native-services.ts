@@ -8,8 +8,10 @@ import {
   createImageResolver,
   type ImageResolver,
 } from "../images/image-resolver";
+import { SHARE_IMAGE_PROFILE } from "../images/pipeline/image-profile";
 import { createShareService, type ShareService } from "../share/share-service";
 import { createRecentNotes, type RecentNotes } from "../ui/search/recent-notes";
+import { processHostImage } from "./host-image-codec";
 import type { HostServices } from "./host-services";
 import { hostArgon2id } from "./runtime/host-argon2";
 
@@ -47,8 +49,14 @@ export function createNativeServices(
       noteHistory,
       images: {
         read: (id) => imageResolver.readPayload(id),
-        reencode: () =>
-          Promise.reject(new Error("Image re-encoding is not available")),
+        reencode: (payload) =>
+          processHostImage(
+            host.imageCodec,
+            new Blob([payload.bytes as Uint8Array<ArrayBuffer>], {
+              type: payload.type,
+            }),
+            SHARE_IMAGE_PROFILE,
+          ),
       },
       rateBudget,
       clock,
