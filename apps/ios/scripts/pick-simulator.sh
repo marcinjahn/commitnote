@@ -8,7 +8,7 @@ fi
 
 case "$1" in
   iphone) PREFIX="iPhone"; PREFERRED="iPhone 17 Pro|iPhone 17|iPhone 16 Pro|iPhone 16" ;;
-  ipad) PREFIX="iPad"; PREFERRED="iPad Pro 13-inch (M5)|iPad Pro 13-inch (M4)|iPad Air 13-inch (M3)|iPad Air 13-inch (M2)" ;;
+  ipad) PREFIX="iPad"; PREFERRED="iPad Pro 11-inch (M5)|iPad Pro 11-inch (M4)|iPad Air 11-inch (M3)|iPad Air 11-inch (M2)|iPad Pro 13-inch (M5)|iPad Pro 13-inch (M4)" ;;
   *) echo "usage: pick-simulator.sh <iphone|ipad>" >&2; exit 2 ;;
 esac
 

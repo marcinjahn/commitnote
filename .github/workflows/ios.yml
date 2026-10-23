@@ -60,14 +60,6 @@ jobs:
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath out/dd \
             ARCHS=arm64
-          # Screenshots instead of a screen recording of every test, and no antipattern checker in
-          # the app: both cost the simulator CPU on every test, passing or not.
-          for XCTESTRUN in out/dd/Build/Products/*.xctestrun; do
-            for TARGET in CommitnoteTests CommitnoteUITests; do
-              plutil -replace "$TARGET.PreferredScreenCaptureFormat" -string screenshots "$XCTESTRUN"
-            done
-            plutil -replace CommitnoteUITests.UITargetAppPerformanceAntipatternCheckerEnabled -bool NO "$XCTESTRUN"
-          done
           tar -C out/dd/Build/Products -cf out/test-products.tar .
           ls -l out/test-products.tar
 
