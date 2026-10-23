@@ -85,6 +85,10 @@ struct TreeView: View {
                             Task { try? await model.refresh() }
                         }
                         .accessibilityIdentifier("refresh-button")
+                        Button("Settings", systemImage: "gearshape") {
+                            Task { await model.openSettings() }
+                        }
+                        .accessibilityIdentifier("settings-button")
                         Button("Log out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
                             Task { await model.logOut() }
                         }

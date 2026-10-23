@@ -59,7 +59,7 @@ struct AppAppearance: Codable, Equatable {
         defaults.set(data, forKey: Self.cacheKey)
     }
 
-    private static func color(hex: String) -> UIColor? {
+    static func color(hex: String) -> UIColor? {
         var digits = hex
         if digits.hasPrefix("#") { digits.removeFirst() }
         guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }

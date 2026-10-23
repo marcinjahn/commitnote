@@ -41,6 +41,9 @@ struct NotesRootView: View {
             .sheet(isPresented: sharedLinksPresented) {
                 SharedLinksScreen(model: model)
             }
+            .sheet(isPresented: settingsPresented) {
+                SettingsScreen(model: model)
+            }
             .modifier(ImageSourcePresenter(model: model))
             .imageViewer(model: model)
             .alert("Some changes are not saved", isPresented: unsavedAlertPresented) {
@@ -176,6 +179,12 @@ struct NotesRootView: View {
         Binding(
             get: { model.isSharedLinksPresented },
             set: { model.isSharedLinksPresented = $0 })
+    }
+
+    private var settingsPresented: Binding<Bool> {
+        Binding(
+            get: { model.isSettingsPresented },
+            set: { model.isSettingsPresented = $0 })
     }
 
     private var historyPresented: Binding<Bool> {
