@@ -219,7 +219,11 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
     organisation flows on iPad.
 
   The screenshot tests reach each screen once and capture it in light and dark, switching the
-  running app's appearance through a FAKE_CORE testing hook.
+  running app's appearance through a FAKE_CORE testing hook. Between tests the app is restarted in
+  its process through another such hook (a new model, core and fake forge, with stored state kept,
+  as a relaunch would) instead of being relaunched; tests about launching still relaunch it. The
+  Testing build also logs core requests left unanswered and stalls of the core's queue, and a failed
+  UI test run uploads that log as `app.log` with its result bundle.
 
   The class lists of the suites differ per device, so every UI class runs on both devices.
 

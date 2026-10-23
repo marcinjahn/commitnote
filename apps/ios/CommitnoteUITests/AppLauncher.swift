@@ -19,9 +19,29 @@ var isPad: Bool {
     UIDevice.current.userInterfaceIdiom == .pad
 }
 
+private struct LaunchOptions: Equatable {
+    let appearance: Appearance
+    let editorHooks: Bool
+}
+
+/// What the running app was launched with, while the tests can restart it in its process.
+private nonisolated(unsafe) var runningLaunch: LaunchOptions?
+private nonisolated(unsafe) var appReady = false
+
+private let appReadyCallback: CFNotificationCallback = { _, _, _, _, _ in
+    appReady = true
+}
+
+private let appReadyObserver: Void = {
+    CFNotificationCenterAddObserver(
+        CFNotificationCenterGetDarwinNotifyCenter(), nil, appReadyCallback,
+        "io.github.marcinjahn.commitnote.testing.ready" as CFString, nil, .deliverImmediately)
+}()
+
 func launchApp(
     reset: Bool, appearance: Appearance = .light, holdLoading: Bool = false, editorHooks: Bool = false
 ) -> XCUIApplication {
+    runningLaunch = holdLoading ? nil : LaunchOptions(appearance: appearance, editorHooks: editorHooks)
     let app = XCUIApplication()
     if reset {
         app.launchEnvironment["COMMITNOTE_UI_TEST_RESET"] = "1"
@@ -61,6 +81,23 @@ extension XCUIElement {
 }
 
 extension XCTestCase {
+    /// Restarts the running app's model and core in place, as a relaunch without a reset would,
+    /// and waits until it has settled. False when the app runs with other launch options or does
+    /// not settle, so the caller relaunches it instead.
+    func restartInProcess(appearance: Appearance, editorHooks: Bool) -> XCUIApplication? {
+        _ = appReadyObserver
+        let app = XCUIApplication()
+        guard runningLaunch == LaunchOptions(appearance: appearance, editorHooks: editorHooks),
+            app.state == .runningForeground
+        else { return nil }
+        appReady = false
+        prepareAnimationIdleForLaunch()
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName("io.github.marcinjahn.commitnote.testing.relaunch" as CFString), nil, nil, true)
+        return poll(timeout: 30, until: { appReady }) ? app : nil
+    }
+
     /// XCTest's own waits first look a second after they start and then once a second, which adds
     /// up to minutes over a suite, so conditions are checked at once and then every quarter second.
     @discardableResult

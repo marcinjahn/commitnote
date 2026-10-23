@@ -62,6 +62,8 @@ final class TestingAppearance {
                 center, nil, testingAppearanceRequested, (Self.requestPrefix + name) as CFString, nil,
                 .deliverImmediately)
         }
+        CFNotificationCenterAddObserver(
+            center, nil, testingRelaunchRequested, TestingRelaunch.request as CFString, nil, .deliverImmediately)
     }
 
     fileprivate func apply(_ scheme: ColorScheme) {
@@ -94,6 +96,39 @@ final class TestingAppearance {
                     true)
             }
         }
+    }
+}
+
+/// UI tests restart the app's model and core in the running process instead of relaunching it,
+/// which costs far less than a new process. Everything a relaunch resets is rebuilt: a new model, a
+/// new core with a fresh fake forge, and new views; stored state stays, as it does across launches.
+enum TestingRelaunch {
+    static let request = "io.github.marcinjahn.commitnote.testing.relaunch"
+    static let ready = "io.github.marcinjahn.commitnote.testing.ready"
+    static let notification = Notification.Name("CommitnoteTestingRelaunch")
+
+    /// Tells the tests the restarted app has settled: logged out, or showing notes with the last
+    /// view restored.
+    static func postReady() {
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName(ready as CFString), nil, nil, true)
+    }
+
+    @MainActor
+    static func dismissPresentations() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                window.endEditing(true)
+                window.rootViewController?.dismiss(animated: false)
+            }
+        }
+    }
+}
+
+private let testingRelaunchRequested: CFNotificationCallback = { _, _, _, _, _ in
+    DispatchQueue.main.async {
+        NotificationCenter.default.post(name: TestingRelaunch.notification, object: nil)
     }
 }
 

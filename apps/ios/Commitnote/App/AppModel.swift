@@ -266,6 +266,7 @@ final class AppModel {
             switch try await runtime.send(SessionResume()) {
             case .none:
                 screen = .login(LoginEntry())
+                postTestingReady()
             case .resumed:
                 await enterNotes(restoringLastView: true)
             case .failed(let error, let canRetry):
@@ -274,6 +275,7 @@ final class AppModel {
                 } else {
                     screen = .login(LoginEntry(errorMessage: error.message))
                 }
+                postTestingReady()
             }
         } catch {
             screen = .loading(.failed(message: Self.message(for: error), canRetry: true))
@@ -716,6 +718,7 @@ final class AppModel {
         guard restoringLastView, screen == .notes else { return }
         if handedOff {
             lastViewTracking = true
+            postTestingReady()
         } else {
             lastViewRestorePending = true
             await restoreLastViewIfReady()
@@ -768,7 +771,31 @@ final class AppModel {
             }
         }
         lastViewTracking = true
+        postTestingReady()
     }
+
+    private func postTestingReady() {
+        #if FAKE_CORE
+        TestingRelaunch.postReady()
+        #endif
+    }
+
+    #if FAKE_CORE
+    func stopForTesting() async {
+        eventsTask?.cancel()
+        eventsTask = nil
+        pathMonitor?.cancel()
+        pathMonitor = nil
+        statsTask?.cancel()
+        datesTimer?.cancel()
+        searchTask?.cancel()
+        searchRefreshTask?.cancel()
+        if let runtime {
+            await runtime.stop()
+        }
+        runtime = nil
+    }
+    #endif
 
     private func saveLastView() {
         guard lastViewTracking else { return }

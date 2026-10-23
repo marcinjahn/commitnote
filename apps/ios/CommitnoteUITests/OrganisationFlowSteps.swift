@@ -14,7 +14,8 @@ extension XCTestCase {
         appearance: Appearance = .light, editorHooks: Bool = false, file: StaticString = #filePath,
         line: UInt = #line
     ) -> XCUIApplication {
-        let app = launchApp(reset: false, appearance: appearance, editorHooks: editorHooks)
+        let restarted = restartInProcess(appearance: appearance, editorHooks: editorHooks)
+        let app = restarted ?? launchApp(reset: false, appearance: appearance, editorHooks: editorHooks)
         let tree = app.element("notes-tree")
         let noteView = app.element("note-view")
         let tokenField = app.secureTextFields["login-token-field"]
@@ -25,7 +26,9 @@ extension XCTestCase {
             logInToNotes(in: app)
             return app
         }
-        if appears(noteView, within: 3) {
+        // A restarted app reports once its last view is back; after a relaunch the note may still
+        // be on its way.
+        if restarted != nil ? noteView.exists : appears(noteView, within: 3) {
             backToTree(in: app, file: file, line: line)
         }
         // The last view can be reopened only once the tree has loaded, so the note may still slide in.
