@@ -320,6 +320,10 @@ export function createFakeCommands(options: {
       return {};
     },
 
+    async "fake.importArchive"() {
+      throw notReady();
+    },
+
     async "fake.processImage"(raw) {
       const params = asParams(raw);
       const profile = params.profile;

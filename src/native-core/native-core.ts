@@ -13,14 +13,19 @@ import {
   type CommandParams,
   type EmitCoreEvent,
 } from "./commands/command-context";
+import { createAnalyticsCommands } from "./commands/analytics-commands";
 import { createDraftCommands } from "./commands/draft-commands";
 import { createEditingCommands } from "./commands/editing-commands";
 import { createHistoryCommands } from "./commands/history-commands";
 import { createImageCommands } from "./commands/image-commands";
+import { createImportCommands } from "./commands/import-commands";
 import { createLoginCommands } from "./commands/login-commands";
 import { createNoteViewCommands } from "./commands/note-view-commands";
 import { createNotesCommands } from "./commands/notes-commands";
+import { createPassphraseCommands } from "./commands/passphrase-commands";
+import { createPrintCommands } from "./commands/print-commands";
 import { createShareCommands } from "./commands/share-commands";
+import { createSettingsCommands } from "./commands/settings-commands";
 import { createSessionCommands } from "./commands/session-commands";
 import { createSessionViewCommands } from "./commands/session-view-commands";
 import { createSearchCommands } from "./commands/search-commands";
@@ -138,6 +143,11 @@ export function createNativeCore(options: {
         events: engineEvents,
         notices,
       }),
+      ...createSettingsCommands({ host, app, events: engineEvents, notices }),
+      ...createAnalyticsCommands({ host, app, events: engineEvents, notices }),
+      ...createPrintCommands({ host, app, events: engineEvents, notices }),
+      ...createImportCommands({ host, app, events: engineEvents, notices }),
+      ...createPassphraseCommands({ host, app, events: engineEvents, notices }),
       ...createSessionViewCommands({
         host,
         app,

@@ -301,7 +301,7 @@ describe("export.notes", () => {
     await openWelcome(core);
     ctx.controls.failNext(REPO, "commit", "Network");
     await ctx.call(core, "note.edit", { path: WELCOME, text: "Unsaved text" });
-    const archive = await ctx.call(core, "export.notes");
+    const archive = await ctx.call(core, "export.notes", { includeImages: false });
     expect(archive.mimeType).toBe("application/zip");
     expect(archive.fileName).toMatch(
       /^commitnote-export-\d{4}-\d{2}-\d{2}\.zip$/,
@@ -321,7 +321,7 @@ describe("export.notes", () => {
     await ctx.controls.changeRepoKey(REPO);
     await ctx.send(core, "sync.refresh");
     await vi.waitFor(() => expect(ctx.events("keyChanged")).toHaveLength(1));
-    const archive = await ctx.call(core, "export.notes");
+    const archive = await ctx.call(core, "export.notes", { includeImages: false });
     const files = unzipSync(
       Uint8Array.from(Buffer.from(archive.base64, "base64")),
     );

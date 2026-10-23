@@ -403,7 +403,7 @@ describe("fake core commands", () => {
     expect(events("keyChanged").at(-1).exportLabel).toBe(
       "Export unsaved notes",
     );
-    const archive = await ok(send("export.notes"));
+    const archive = await ok(send("export.notes", { includeImages: false }));
     expect(archive.mimeType).toBe("application/zip");
     const files = unzipSync(new Uint8Array(Buffer.from(archive.base64, "base64")));
     expect(strFromU8(files["Welcome.md"]!)).toBe("Unsaved words");

@@ -1,11 +1,12 @@
 import type { LoginStep } from "../login/login";
+import type { SettingScope } from "../settings/setting-scope";
 import type { ColorTag } from "../tags/color-tag";
 import type { MessagePart } from "../ui/share/share-messages";
 import type { HostServices } from "./host-services";
 
-export type { ColorTag, MessagePart };
+export type { ColorTag, MessagePart, SettingScope };
 
-export const NATIVE_CORE_API_VERSION = 4;
+export const NATIVE_CORE_API_VERSION = 5;
 export const NATIVE_CORE_MARKER = "commitnote-native-core";
 
 type ForgeKind = "github" | "gitlab";
@@ -146,6 +147,191 @@ export interface LastViewState {
   note: string[] | null;
   folders: string[][];
 }
+
+export type SettingKeyView =
+  | "colorMode"
+  | "accentColor"
+  | "noteFont"
+  | "newNotePlacement"
+  | "newFolderPlacement";
+export type ScopedSettingKey = "colorMode" | "accentColor" | "noteFont";
+
+export interface SettingOptionView {
+  id: string;
+  label: string;
+  description: string | null;
+}
+export interface AccentOptionView {
+  id: string;
+  label: string;
+  light: string | null;
+  dark: string | null;
+}
+export interface SettingChoiceCopy {
+  label: string;
+  options: SettingOptionView[];
+}
+
+export interface SettingsCopy {
+  title: string;
+  intro: string;
+  sections: {
+    appearance: string;
+    editor: string;
+    notes: string;
+    thisDevice: string;
+    dataSecurity: string;
+  };
+  scopeLabels: { synced: string; device: string };
+  colorMode: SettingChoiceCopy;
+  accentColor: { label: string; options: AccentOptionView[] };
+  noteFont: {
+    label: string;
+    options: SettingOptionView[];
+    previewHeading: string;
+    previewBody: string;
+    previewCode: string;
+  };
+  editorUnavailable: string;
+  newNotePlacement: SettingChoiceCopy;
+  newFolderPlacement: SettingChoiceCopy;
+  deviceName: { label: string; hint: string; maxLength: number };
+  reopenLastView: { label: string };
+  analytics: { label: string; hint: string };
+  data: {
+    exportLabel: string;
+    exportingLabel: string;
+    exportShareLabel: string;
+    exportFilesLabel: string;
+    exportFailed: string;
+    importLabel: string;
+    importingLabel: string;
+    changePassphraseLabel: string;
+  };
+  retryLabel: string;
+}
+
+export interface SettingsView {
+  values: {
+    colorMode: string;
+    accentColor: string;
+    noteFont: string;
+    newNotePlacement: string;
+    newFolderPlacement: string;
+  };
+  scopes: {
+    colorMode: SettingScope;
+    accentColor: SettingScope;
+    noteFont: SettingScope;
+  };
+  deviceName: string;
+  automaticDeviceName: string;
+  reopenLastView: boolean;
+  analyticsCounted: boolean;
+  canExport: boolean;
+  canImport: boolean;
+  canChangePassphrase: boolean;
+}
+
+export interface SettingsSaveView {
+  state: "synced" | "syncing" | "pending" | "failed";
+  label: string;
+  detail: string;
+  canRetry: boolean;
+}
+
+export type ImportPolicy = "stop" | "rename";
+export type ImportDestinationView =
+  | { kind: "root" }
+  | { kind: "folder"; path: string[] }
+  | { kind: "newFolder"; parent: string[]; name: string };
+export interface ImportTargetView {
+  path: string[];
+  label: string;
+  depth: number;
+}
+export interface ImportFormCopy {
+  title: string;
+  conflictsTitle: string;
+  setupTitle: string;
+  intoLabel: string;
+  newFolderLabel: string;
+  folderNameLabel: string;
+  existingFolderLabel: string;
+  rootLabel: string;
+  emptyText: string;
+  importLabel: string;
+  importingLabel: string;
+  renameLabel: string;
+  enableAtomicLabel: string;
+  cancelLabel: string;
+}
+export interface ImportForm {
+  fileName: string;
+  defaultFolderName: string;
+  skipped: string | null;
+  empty: boolean;
+  targets: ImportTargetView[];
+  copy: ImportFormCopy;
+}
+export type ImportArchiveOutcome =
+  { kind: "ready"; form: ImportForm } | { kind: "error"; message: string };
+export type ImportOutcomeView =
+  | { kind: "queued"; expand: string[] | null }
+  | { kind: "conflicts"; count: number; message: string }
+  | {
+      kind: "needsSetup";
+      canConfigure: boolean;
+      message: string;
+      actionLabel: string;
+    }
+  | { kind: "error"; message: string };
+export interface AtomicBlockedView {
+  title: string;
+  message: string;
+  enableLabel: string;
+  saveWithoutLabel: string;
+  canConfigure: boolean;
+}
+
+export interface PassphraseChangeCopy {
+  title: string;
+  intro: string;
+  currentLabel: string;
+  newLabel: string;
+  repeatLabel: string;
+  newHint: string;
+  removeHistoryLabel: string;
+  removeHistoryDescription: string;
+  historyWarning: string;
+  otherDevicesWarning: string;
+  versionHistoryNotice: string;
+  continueLabel: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  checkAgainLabel: string;
+  checkingLabel: string;
+  startingLabel: string;
+  enableAtomicLabel: string;
+  passphrasesDiffer: string;
+  enterCurrentPassphrase: string;
+}
+export type PassphraseChangeOutcome =
+  | {
+      kind: "review";
+      summary: string;
+      carriedOver: string[];
+      historyWarning: string | null;
+    }
+  | { kind: "changed" }
+  | { kind: "failed"; message: string; clearCurrent: boolean }
+  | {
+      kind: "needsSetup";
+      canConfigure: boolean;
+      message: string;
+      actionLabel: string;
+    }
+  | { kind: "unsettled"; message: string };
 
 export type EarlyDraftOutcome =
   | { kind: "none" }
@@ -458,7 +644,10 @@ export type CoreCommands = {
     params: { path: string[]; resolution: ConflictResolution };
     result: {};
   };
-  "export.notes": { params: {}; result: ExportedArchive };
+  "export.notes": {
+    params: { includeImages: boolean };
+    result: ExportedArchive;
+  };
   "draft.start": { params: { parent: string[] }; result: { draft: NoteDraft } };
   "draft.commitName": {
     params: { name: string };
@@ -590,6 +779,82 @@ export type CoreCommands = {
     params: { name: string; body: string; nameConfirmed: boolean };
     result: { outcome: EarlyDraftOutcome };
   };
+  "settings.open": {
+    params: {};
+    result: { copy: SettingsCopy; view: SettingsView; save: SettingsSaveView };
+  };
+  "settings.change": {
+    params: { key: SettingKeyView; value: string };
+    result: {};
+  };
+  "settings.setScope": {
+    params: { key: ScopedSettingKey; scope: SettingScope };
+    result: {};
+  };
+  "settings.retry": { params: {}; result: {} };
+  "settings.flush": { params: {}; result: {} };
+  "device.setName": {
+    params: { name: string | null };
+    result: { name: string };
+  };
+  "lastView.setEnabled": {
+    params: { enabled: boolean; view: LastViewState };
+    result: {};
+  };
+  "analytics.visit": { params: {}; result: { url: string | null } };
+  "analytics.setCounted": { params: { counted: boolean }; result: {} };
+  "print.render": {
+    params: { name: string; text: string };
+    result: { html: string };
+  };
+  "import.readArchive": {
+    params: { input: string; fileName: string };
+    result: ImportArchiveOutcome;
+  };
+  "import.preview": {
+    params: { destination: ImportDestinationView };
+    result: { text: string | null };
+  };
+  "import.commit": {
+    params: { destination: ImportDestinationView; policy: ImportPolicy };
+    result: { outcome: ImportOutcomeView };
+  };
+  "import.cancel": { params: {}; result: {} };
+  "import.dropFiles": {
+    params: {
+      files: { input: string; name: string }[];
+      parent: string[] | null;
+      source: "picker" | "tree";
+    };
+    result: { outcome: ImportOutcomeView };
+  };
+  "import.enableAtomic": {
+    params: {};
+    result: { error: string | null; outcome: ImportOutcomeView | null };
+  };
+  "import.saveWithoutAtomic": { params: {}; result: {} };
+  "passphrase.changeForm": {
+    params: {};
+    result: {
+      copy: PassphraseChangeCopy;
+      canRemoveHistory: boolean;
+      repositoryLabel: string;
+    };
+  };
+  "passphrase.prepareChange": {
+    params: { current: string; next: string; removeHistory: boolean };
+    result: { outcome: PassphraseChangeOutcome };
+  };
+  "passphrase.commitChange": {
+    params: {};
+    result: { outcome: PassphraseChangeOutcome };
+  };
+  "passphrase.settle": {
+    params: {};
+    result: { outcome: PassphraseChangeOutcome };
+  };
+  "passphrase.cancelChange": { params: {}; result: {} };
+  "passphrase.enableAtomic": { params: {}; result: { error: string | null } };
 };
 
 export type FakeCoreCommands = {
@@ -653,6 +918,7 @@ export type FakeCoreCommands = {
         | { ok: false; rejection: string };
     };
   };
+  "fake.importArchive": { params: {}; result: ImportArchiveOutcome };
 };
 
 export type CoreEvents = {
@@ -712,6 +978,17 @@ export type CoreEvents = {
     unreadable: string | null;
     updatingId: string | null;
     copy: ShareCopy;
+  };
+  settingsChanged: { view: SettingsView };
+  settingsSaveChanged: { save: SettingsSaveView };
+  importStatusChanged: {
+    importing: boolean;
+    atomicBlocked: AtomicBlockedView | null;
+  };
+  passphraseChangeProgress: {
+    message: string;
+    done: number | null;
+    total: number | null;
   };
 };
 
@@ -780,6 +1057,29 @@ export const CORE_COMMAND_NAMES = [
   "lastView.load",
   "lastView.save",
   "earlyDraft.handOff",
+  "settings.open",
+  "settings.change",
+  "settings.setScope",
+  "settings.retry",
+  "settings.flush",
+  "device.setName",
+  "lastView.setEnabled",
+  "analytics.visit",
+  "analytics.setCounted",
+  "print.render",
+  "import.readArchive",
+  "import.preview",
+  "import.commit",
+  "import.cancel",
+  "import.dropFiles",
+  "import.enableAtomic",
+  "import.saveWithoutAtomic",
+  "passphrase.changeForm",
+  "passphrase.prepareChange",
+  "passphrase.commitChange",
+  "passphrase.settle",
+  "passphrase.cancelChange",
+  "passphrase.enableAtomic",
 ] as const satisfies readonly (keyof CoreCommands)[];
 
 export const CORE_EVENT_NAMES = [
@@ -796,6 +1096,10 @@ export const CORE_EVENT_NAMES = [
   "sessionEnded",
   "historyChanged",
   "sharesChanged",
+  "settingsChanged",
+  "settingsSaveChanged",
+  "importStatusChanged",
+  "passphraseChangeProgress",
 ] as const satisfies readonly (keyof CoreEvents)[];
 
 export const FAKE_CORE_COMMAND_NAMES = [
@@ -813,6 +1117,7 @@ export const FAKE_CORE_COMMAND_NAMES = [
   "fake.holdLoading",
   "fake.releaseLoading",
   "fake.processImage",
+  "fake.importArchive",
 ] as const satisfies readonly (keyof FakeCoreCommands)[];
 
 export interface NativeCoreStartOptions {
