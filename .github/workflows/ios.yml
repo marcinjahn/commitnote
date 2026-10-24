@@ -87,23 +87,32 @@ jobs:
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           echo "IPAD_SIMULATOR_ID=$IPAD_SIMULATOR_ID" >> "$GITHUB_ENV"
           mkdir -p out
-          # Boots and prepares the iPhone simulator while the test products download. The iPad one
-          # follows after the runtime tests: booting it next to a starting test run stalls the run.
+          # Boots and prepares both simulators while the test products download. Booting the iPad one
+          # next to a starting test run stalls the run, so it is shut down again before the runtime
+          # tests and booted once they are done.
           nohup sh -c 'apps/ios/scripts/disable-password-autofill.sh "$1"; echo $? > out/simulator-ready' \
             prepare "$SIMULATOR_ID" > out/simulator-prep.log 2>&1 &
+          nohup sh -c 'apps/ios/scripts/disable-password-autofill.sh "$1"; echo $? > out/ipad-simulator-ready' \
+            prepare "$IPAD_SIMULATOR_ID" > out/ipad-simulator-prep.log 2>&1 &
 
       - uses: ./.github/actions/ios-test-products
 
-      - name: Prepare simulator
+      - name: Prepare simulators
         run: |
           set -eu
-          for _ in $(seq 600); do
-            [ -s out/simulator-ready ] && break
+          for _ in $(seq 900); do
+            [ -s out/simulator-ready ] && [ -s out/ipad-simulator-ready ] && break
             sleep 1
           done
-          cat out/simulator-prep.log
+          cat out/simulator-prep.log out/ipad-simulator-prep.log
           [ "$(cat out/simulator-ready)" = 0 ]
+          [ "$(cat out/ipad-simulator-ready)" = 0 ]
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          xcrun simctl install "$IPAD_SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
+          xcrun simctl launch "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
+          sleep 30
+          xcrun simctl terminate "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
+          xcrun simctl shutdown "$IPAD_SIMULATOR_ID"
 
       - name: Core runtime tests
         run: |
@@ -139,11 +148,8 @@ jobs:
         run: |
           set -eu
           xcrun simctl shutdown "$SIMULATOR_ID"
-          apps/ios/scripts/disable-password-autofill.sh "$IPAD_SIMULATOR_ID"
-          xcrun simctl install "$IPAD_SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
-          xcrun simctl launch "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
-          sleep 30
-          xcrun simctl terminate "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
+          xcrun simctl boot "$IPAD_SIMULATOR_ID"
+          xcrun simctl bootstatus "$IPAD_SIMULATOR_ID" -b > /dev/null
 
       - name: iPad UI tests
         run: |
@@ -155,6 +161,7 @@ jobs:
             -only-testing:CommitnoteUITests/EditorFlowTests \
             -only-testing:CommitnoteUITests/SettingsFlowTests \
             -only-testing:CommitnoteUITests/LoginFlowTests \
+            -only-testing:CommitnoteUITests/DataFlowTests \
             -parallel-testing-enabled NO \
             -resultBundlePath out/xcresults-ui/ui-ipad-runtime.xcresult
 
@@ -218,16 +225,16 @@ jobs:
           set -eu -o pipefail
           case "${{ matrix.device }}-${{ matrix.suite }}" in
             iphone-flows)
-              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/SettingsScreenshotTests -only-testing:CommitnoteUITests/SettingsFlowTests"
               ;;
             iphone-screens)
-              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/DataFlowTests -only-testing:CommitnoteUITests/SettingsFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/DataFlowTests"
               ;;
             ipad-flows)
-              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/DataFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
               ;;
             ipad-screens)
-              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/SettingsScreenshotTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests"
               ;;
           esac
           xcodebuild test-without-building \
