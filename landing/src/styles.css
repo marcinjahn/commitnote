@@ -520,6 +520,36 @@ h3 {
   margin-bottom: var(--space-2);
 }
 
+.privacy-details {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40em;
+  color: var(--color-text-muted);
+}
+
+.privacy-details a {
+  color: var(--color-link);
+}
+
+.privacy-details code {
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.privacy-control {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  color: var(--color-text);
+}
+
+.privacy-control .button {
+  white-space: normal;
+  padding-block: var(--space-2);
+  text-align: left;
+}
+
 .privacy-list li {
   position: relative;
   padding: var(--space-3) 0 var(--space-3) var(--space-5);

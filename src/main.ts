@@ -15,7 +15,8 @@ import { captureInstallEvents } from "./app/install-events";
 import { createBrowserInstallController } from "./app/install-controller";
 import { type LaunchQueueLike, startLaunchActions } from "./app/launch-action";
 import { clearLaunchAction } from "./app/note-navigation";
-import { resolveStandalone } from "./app/display-mode";
+import { isStandalone, resolveStandalone } from "./app/display-mode";
+import { sendVisit } from "./analytics/analytics";
 import { startKeyboardInset } from "./ui/dialogs/keyboard-inset";
 import "./note-fonts.css";
 
@@ -90,10 +91,22 @@ async function mountViewer(target: HTMLElement): Promise<void> {
   });
 }
 
-const standalone = resolveStandalone(__DESKTOP_SHELL__, {
-  matchMedia: (q) => window.matchMedia(q),
+const displayEnvironment = {
+  matchMedia: (q: string) => window.matchMedia(q),
   navigator: navigator as { standalone?: boolean },
-});
+};
+const standalone = resolveStandalone(__DESKTOP_SHELL__, displayEnvironment);
+const browserStandalone = isStandalone(displayEnvironment);
+
+function countVisit(): void {
+  sendVisit("app", {
+    endpoint: __ANALYTICS_ENDPOINT__,
+    desktopShell: __DESKTOP_SHELL__,
+    standalone: browserStandalone,
+    navigator,
+    fetch: (url, init) => fetch(url, init),
+  });
+}
 
 const appUpdates = import.meta.env.DEV || __DESKTOP_SHELL__
   ? null
@@ -105,6 +118,7 @@ if (isShareHash(location.hash)) {
     await startDesktopShell({ launchActions: null });
   }
   await mountViewer(target);
+  countVisit();
 } else {
 let registry: ForgeRegistry = forgeRegistry;
 let testModeBanner: string | null = null;
@@ -183,4 +197,5 @@ if (__FAKE_FORGE__) {
       desktop,
     },
   });
+  countVisit();
 }

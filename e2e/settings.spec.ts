@@ -943,7 +943,7 @@ function pickerLayout(page: Page): Promise<PickerLayout> {
 async function openUnscrolledSettings(page: Page): Promise<void> {
   const viewport = page.viewportSize();
   if (!viewport) throw new Error("no viewport");
-  await page.setViewportSize({ width: viewport.width, height: 3000 });
+  await page.setViewportSize({ width: viewport.width, height: 3400 });
   await openSettings(page);
   await expect
     .poll(() =>

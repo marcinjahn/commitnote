@@ -17,6 +17,11 @@
   manualRefreshFailureState,
   } from "./auto-refresh-failure-report";
   import { MediaQuery } from "svelte/reactivity";
+  import {
+    browserOptsOut,
+    readAnalyticsOptOut,
+    writeAnalyticsOptOut,
+  } from "../../analytics/analytics";
   import type { NotePath } from "../../changes/change";
   import { isAtOrWithin, notePathEquals, parentPath } from "../../changes/change";
   import {
@@ -430,6 +435,8 @@
   let reopenLastView = $state(
     untrack(() => sessionRemembered && lastViewStore.isEnabled()),
   );
+  let analyticsCounted = $state(!readAnalyticsOptOut());
+  const analyticsBlockedByBrowser = browserOptsOut(navigator);
   let expandRequest = $state<{ readonly path: NotePath } | null>(null);
   let draft = $state<NoteDraft | null>(null);
   let draftError = $state<string | null>(null);
@@ -2890,6 +2897,12 @@
       deviceName,
       automaticDeviceName: automaticName,
       onDeviceNameChange: (raw) => deviceSettingsStore.writeDeviceName(raw),
+      analyticsCounted,
+      analyticsBlockedByBrowser,
+      onAnalyticsCountedChange: (counted) => {
+        writeAnalyticsOptOut(!counted);
+        analyticsCounted = counted;
+      },
     }}
     dataSecurity={{
       exporting,
