@@ -117,6 +117,11 @@ extension XCTestCase {
         }
     }
 
+    func hideKeyboardThroughHooks(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        hittable(app.buttons.matching(identifier: "testing-hide-keyboard"), file: file, line: line).tap()
+        waitUntilGone(app.keyboards.firstMatch, file: file, line: line)
+    }
+
     func moveCaretToEnd(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         hittable(app.buttons.matching(identifier: "testing-caret-end"), file: file, line: line).tap()
     }

@@ -26,11 +26,10 @@ final class MediaScreenshotTests: XCTestCase {
             closeMenu(showing: files, in: app)
         }
 
-        let editor = pasteAtEnd("Edited for the history screen", in: app)
+        pasteAtEnd("Edited for the history screen", in: app)
         waitForSaved(in: app)
         // The editor hooks above the keyboard are not part of the app's screens.
-        dismissKeyboard(over: editor, in: app)
-        waitUntilGone(app.keyboards.firstMatch)
+        hideKeyboardThroughHooks(in: app)
         openHistoryWithEdit(in: app)
         if let newest = historyRows(in: app).first {
             waitUntilSettled(newest)

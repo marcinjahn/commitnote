@@ -985,6 +985,7 @@ final class MarkdownTextView: UITextView {
             ("testing-select-word", "W", { [weak self] in self?.selectWordBeforeCaret() }),
             ("testing-caret-end", "E", { [weak self] in self?.moveCaretToEnd() }),
             ("testing-undo", "U", { [weak self] in self?.undoManager?.undo() }),
+            ("testing-hide-keyboard", "H", { [weak self] in _ = self?.resignFirstResponder() }),
         ]
         return hooks.map { identifier, title, action in
             let item = UIBarButtonItem(
