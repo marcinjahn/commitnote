@@ -265,20 +265,23 @@ private struct DeviceSection: View {
 
     var body: some View {
         Section {
-            TextField(copy.deviceName.label, text: $name, prompt: Text(view.automaticDeviceName))
-                .focused($nameFocused)
-                .submitLabel(.done)
-                .onSubmit(commitName)
-                .onChange(of: name) { _, value in
-                    if value.count > copy.deviceName.maxLength {
-                        name = String(value.prefix(copy.deviceName.maxLength))
+            LabeledContent(copy.deviceName.label) {
+                TextField(copy.deviceName.label, text: $name, prompt: Text(view.automaticDeviceName))
+                    .multilineTextAlignment(.trailing)
+                    .focused($nameFocused)
+                    .submitLabel(.done)
+                    .onSubmit(commitName)
+                    .onChange(of: name) { _, value in
+                        if value.count > copy.deviceName.maxLength {
+                            name = String(value.prefix(copy.deviceName.maxLength))
+                        }
                     }
-                }
-                .onChange(of: nameFocused) { _, focused in
-                    if !focused { commitName() }
-                }
-                .onAppear { name = view.deviceName }
-                .accessibilityIdentifier("settings-device-name")
+                    .onChange(of: nameFocused) { _, focused in
+                        if !focused { commitName() }
+                    }
+                    .onAppear { name = view.deviceName }
+                    .accessibilityIdentifier("settings-device-name")
+            }
             Toggle(
                 copy.reopenLastView.label,
                 isOn: Binding(
