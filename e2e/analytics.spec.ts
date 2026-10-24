@@ -94,13 +94,12 @@ test("the app counts loads and launch actions but not hash navigation", async ({
   await expectUrls(analyticsRequests, [APP_WEB, APP_WEB, APP_WEB]);
 });
 
-test("the installed app is counted as the PWA, not the landing page", async ({
+test("the installed app is counted as the PWA", async ({
   page,
   analyticsRequests,
 }) => {
   await emulateStandalone(page);
-  await page.goto("/");
-  await expect(page).toHaveURL(/\/app\//);
+  await page.goto("./");
   await expect(page.getByLabel("Access token")).toBeVisible();
   await settleIdle(page);
 

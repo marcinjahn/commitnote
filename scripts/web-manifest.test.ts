@@ -54,7 +54,7 @@ describe("web app manifest", () => {
     const manifest = await readManifest();
 
     expect(manifest).toMatchObject({
-      id: "/",
+      id: "./",
       start_url: "./",
       scope: "./",
       name: "commitnote",
@@ -130,7 +130,7 @@ describe("web app manifest", () => {
     expect(manifest.launch_handler?.client_mode).toBe("focus-existing");
 
     const base = "https://commitnote.eu/app/manifest.webmanifest";
-    expect(new URL(String(manifest.id), base).href).toBe("https://commitnote.eu/");
+    expect(new URL(String(manifest.id), base).href).toBe("https://commitnote.eu/app/");
     expect(new URL(String(manifest.start_url), base).href).toBe("https://commitnote.eu/app/");
     expect(new URL(String(manifest.scope), base).href).toBe("https://commitnote.eu/app/");
     const scope = new URL(String(manifest.scope), base);

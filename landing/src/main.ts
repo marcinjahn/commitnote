@@ -4,7 +4,6 @@ import {
   sendVisit,
   writeAnalyticsOptOut,
 } from "../../src/analytics/analytics";
-import { appForwardingTarget, runsInstalled } from "./forwarding";
 
 const root = document.documentElement;
 
@@ -68,12 +67,10 @@ function initAnalyticsOptOut(): void {
 
 initAnalyticsOptOut();
 
-if (appForwardingTarget(location, runsInstalled((q) => matchMedia(q))) === null) {
-  sendVisit("landing", {
-    endpoint: __ANALYTICS_ENDPOINT__,
-    desktopShell: false,
-    standalone: false,
-    navigator,
-    fetch: (url, init) => fetch(url, init),
-  });
-}
+sendVisit("landing", {
+  endpoint: __ANALYTICS_ENDPOINT__,
+  desktopShell: false,
+  standalone: false,
+  navigator,
+  fetch: (url, init) => fetch(url, init),
+});

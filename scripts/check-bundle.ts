@@ -297,18 +297,6 @@ async function findLandingProblems(
     problems.push(`${name}/social.png is missing`);
   }
 
-  const swPath = join(siteDir, "sw.js");
-  if (!(await exists(swPath))) {
-    problems.push(`${name}/sw.js (retirement worker) is missing`);
-  } else {
-    const source = await readFile(join(rootDir, "landing", "public", "sw.js"));
-    if (!(await readFile(swPath)).equals(source)) {
-      problems.push(
-        `${name}/sw.js differs from landing/public/sw.js, which must be shipped unchanged`,
-      );
-    }
-  }
-
   for (const leaked of ["manifest.webmanifest", "icons"]) {
     if (await exists(join(siteDir, leaked))) {
       problems.push(`${name}/${leaked} exists; app files belong under ${name}/app/`);
@@ -325,7 +313,7 @@ async function findLandingBudgetProblems(
   let textBytes = 0;
   for (const file of await collectFiles(siteDir)) {
     const rel = toPosix(relative(siteDir, file));
-    if (rel.startsWith("app/") || rel === "sw.js") {
+    if (rel.startsWith("app/")) {
       continue;
     }
     const { size } = await stat(file);

@@ -4,8 +4,6 @@ import {
   cp,
   mkdtemp,
   readFile,
-  readdir,
-  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -78,37 +76,6 @@ export async function checkForUpdate(page: Page): Promise<void> {
   await page.evaluate(async () => {
     await (await navigator.serviceWorker.getRegistration())?.update();
   });
-}
-
-/**
- * Playwright keeps DevTools attached to service workers, which turns off
- * Chrome's idle detection, so a worker that calls `skipWaiting()` can wait
- * forever for the worker it replaces to go idle. Stopping the outgoing worker
- * as soon as its replacement is waiting stands in for that idle termination.
- */
-export async function stopReplacedWorkers(page: Page): Promise<void> {
-  const cdp = await page.context().newCDPSession(page);
-  const versions = new Map<
-    string,
-    { registrationId: string; status: string; runningStatus: string }
-  >();
-  cdp.on("ServiceWorker.workerVersionUpdated", ({ versions: updates }) => {
-    for (const update of updates) versions.set(update.versionId, update);
-    for (const [versionId, version] of versions) {
-      const replaced =
-        version.status === "activated" &&
-        version.runningStatus === "running" &&
-        [...versions.values()].some(
-          (other) =>
-            other.registrationId === version.registrationId &&
-            other.status === "installed",
-        );
-      if (replaced) {
-        cdp.send("ServiceWorker.stopWorker", { versionId }).catch(() => undefined);
-      }
-    }
-  });
-  await cdp.send("ServiceWorker.enable");
 }
 
 export interface ShellServer {
@@ -198,71 +165,6 @@ export async function startShellServer(): Promise<ShellServer> {
           files: manifest.files.filter((file) => !drop.includes(file)),
         }) + body,
       );
-    },
-    async close() {
-      await server.close();
-      await rm(dir, { recursive: true, force: true });
-    },
-  };
-}
-
-export interface SiteServer {
-  readonly origin: string;
-  serveOldLayout(options?: { renameAssets?: boolean }): Promise<void>;
-  serveSite(options?: { keepOldAssets?: boolean }): Promise<void>;
-  close(): Promise<void>;
-}
-
-const OLD_ASSETS_DIR = "old-assets";
-
-/**
- * Serves a mutable directory that first holds the pre-move layout (the app at
- * the server root, its worker at `/sw.js` with scope `/`) and can later be
- * swapped to today's site, the way a deployment replaces one with the other.
- * `renameAssets` moves the old build's assets out of the way, as in
- * production, where the old hashed files do not exist under `/app/`.
- */
-export async function startSiteServer(): Promise<SiteServer> {
-  const dir = await mkdtemp(join(tmpdir(), "commitnote-site-"));
-  const { server, origin } = await servePreview(dir);
-
-  async function clear(): Promise<void> {
-    for (const entry of await readdir(dir)) {
-      await rm(join(dir, entry), { recursive: true, force: true });
-    }
-  }
-
-  async function renameOldAssets(): Promise<void> {
-    await rename(join(dir, "assets"), join(dir, OLD_ASSETS_DIR));
-    const texts = [
-      "index.html",
-      "sw.js",
-      ...(await readdir(join(dir, OLD_ASSETS_DIR)))
-        .filter((name) => /\.(js|css)$/.test(name))
-        .map((name) => join(OLD_ASSETS_DIR, name)),
-    ];
-    for (const file of texts) {
-      const path = join(dir, file);
-      const text = await readFile(path, "utf8");
-      await writeFile(path, text.replaceAll("assets/", `${OLD_ASSETS_DIR}/`));
-    }
-  }
-
-  return {
-    origin,
-    async serveOldLayout({ renameAssets = false } = {}) {
-      await clear();
-      await cp(join(FAKE_BUILD_DIR, "app"), dir, { recursive: true });
-      if (renameAssets) await renameOldAssets();
-    },
-    async serveSite({ keepOldAssets = false } = {}) {
-      await clear();
-      await cp(FAKE_BUILD_DIR, dir, { recursive: true });
-      if (keepOldAssets) {
-        await cp(join(FAKE_BUILD_DIR, "app", "assets"), join(dir, "assets"), {
-          recursive: true,
-        });
-      }
     },
     async close() {
       await server.close();

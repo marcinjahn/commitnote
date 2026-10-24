@@ -54,7 +54,7 @@ through a LAN IP address over plain HTTP does not work.
 - `test:e2e` — run end-to-end tests with Playwright under the e2e lock (see below)
 - `check` — type-check the app and the Node-side config/scripts
 - `check:bundle` — build `dist/`, `dist-fake/` and `dist-desktop/` and verify the site layout, the
-  landing page's CSP and retirement worker, and the landing size budget (see
+  landing page's CSP, and the landing size budget (see
   [Landing page](#landing-page)), and that the production build never ships test-mode fixture data or desktop shell code, that the web app manifest and every icon
   and screenshot it references are in the production build, that `app/sw.js` is present and its
   precache list equals the emitted files under `app/`, and that the desktop build ships the desktop shell but no fake-forge
@@ -99,9 +99,7 @@ config (`landing/vite.config.ts`). It imports only the dependency-free analytics
 
 - `npm run dev:landing` runs it, and `npm run build` builds it into the root of `dist/` before the app.
 - `landing/src/boot.ts` is a pre-render script bundled and inlined into `<head>`. It applies the saved
-  color mode and performs app forwarding: a share link, a note fragment, a launch action or an
-  installed display mode sends the visitor to `/app/` with the query and hash kept. The landing page's
-  own anchors never forward.
+  color mode and enables motion when the visitor allows it.
 - The page ships a strict CSP applied via a `<meta>` tag, which includes the hash of the inline boot
   script. Its `connect-src` is `'none'` unless analytics is enabled, then exactly the GoatCounter origin.
 - The landing stylesheet copies the app's design tokens; `landing/src/tokens.test.ts` fails when they
@@ -165,8 +163,7 @@ The dev server and unit tests always have no endpoint. Fake-forge builds use
 
 Every push to `main` runs `.github/workflows/pages.yml`: type-check, unit tests, the bundle check, then
 a publish of `dist/` to GitHub Pages. In the repository settings, set Pages > Source to "GitHub
-Actions" once. `dist/` is the whole site: the landing page at the root (with the retirement worker
-`sw.js` and `social.png`) and the app in `dist/app/`, served at `https://commitnote.eu/app/`. The
+Actions" once. `dist/` is the whole site: the landing page at the root (with `social.png`) and the app in `dist/app/`, served at `https://commitnote.eu/app/`. The
 build uses relative asset paths. Desktop builds stay app-only: `dist-desktop/` has no landing page.
 
 Every push to `main` also runs `.github/workflows/desktop-release.yml`, separate from `pages.yml`:
@@ -325,8 +322,7 @@ is none, so Forward still reaches the notes it skipped.
 
 A share is a fixed, encrypted copy of the note's saved version, uploaded as a secret gist (GitHub) or public
 snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu, or the Share button in its header, to create a share link
-(`https://commitnote.eu/app/#share=...` on the web; the desktop app uses the same app URL). Old
-`https://commitnote.eu/#share=...` links keep working through app forwarding.
+(`https://commitnote.eu/app/#share=...` on the web; the desktop app uses the same app URL).
 
 - The link's secret stays in the URL fragment, so it never reaches a server. An optional share
   password is then needed in addition to the link.
@@ -345,7 +341,7 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
 `npm run build` writes plain static files to `dist/`: the landing page at the root and the app in
 `dist/app/`. The app build ships with a strict Content
 Security Policy applied via a `<meta>` tag; its `connect-src` allows `https://api.github.com` and `https://gitlab.com` and, when analytics is enabled, the GoatCounter origin; it is not present in the dev server. The app build also ships a web app manifest
-(`public/manifest.webmanifest`, `id` `/`), so commitnote can be installed as an app.
+(`public/manifest.webmanifest`, `id`, `start_url` and `scope` all `/app/`), so commitnote can be installed as an app.
 
 ## Installing and updates
 
@@ -422,10 +418,7 @@ The remembered session's ciphertext blob cache in IndexedDB is unchanged and sta
 cache. The build id hashes the path and content of every precached file, so any change to the shell
 produces a new build id and a new service worker.
 
-The root `/sw.js` is the retirement worker: it only unregisters itself. Visitors who still have the old
-root service worker get it replaced and unregistered by it. Returning users may see the old app once
-until the new worker activates, and a first visit straight to `/app/` under the old worker may need one
-reload. The manifest `id` is `/`, so apps installed before the move remain the same app.
+The landing page at `/` has no service worker.
 
 ### Update flow
 
@@ -471,7 +464,7 @@ self.addEventListener("activate", (event) => {
 ```
 
 The app build ships it unchanged as `app/sw.js` in place of the generated worker, and `check:bundle`
-accepts it. It replaces only the app worker; the root `sw.js` is always the retirement worker. It
+accepts it. It replaces only the app worker. It
 has no `fetch` handler and never navigates clients: it deletes the commitnote caches and
 unregisters itself. Open pages reload once through their `controllerchange` handling. In Chromium they may stay
 controlled by the kill-switch worker until every commitnote page is closed; it has no `fetch`
