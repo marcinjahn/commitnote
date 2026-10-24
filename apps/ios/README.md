@@ -209,14 +209,14 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   Simulator, and hands them to the jobs below as the `ios-test-products` artifact.
 - `Runtime tests` runs the runtime tests (including `IOSVisitTests`, `NoteFontTests` and the `data`
   read-back scenario) on an iPhone Simulator from the shared build, reads the produced repos back
-  with TypeScript, and also boots an iPad Simulator to run the iPad `EditorFlowTests` and
-  `SettingsFlowTests`.
+  with TypeScript, and also boots an iPad Simulator to run the iPad `EditorFlowTests`, `SettingsFlowTests` and
+  `LoginFlowTests`.
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
   shared build:
-  - `flows` — editing, media and login flows, plus the organisation flows, settings screenshots
-    and settings flows on iPhone and the data flows on iPad.
-  - `screens` — the other screenshots, plus the editor and data flows on iPhone and the
-    organisation flows and screenshots on iPad.
+  - `flows` — editing and media flows, plus the login flows, organisation flows and settings
+    screenshots on iPhone and the organisation screenshots and data flows on iPad.
+  - `screens` — the other screenshots and the settings flows, plus the editor and data flows on
+    iPhone and the organisation flows on iPad.
 
   The screenshot tests reach each screen once and capture it in light and dark, switching the
   running app's appearance through a FAKE_CORE testing hook. Between tests the app is restarted in
@@ -241,7 +241,7 @@ Artifacts, kept for 30 days:
 | --- | --- |
 | `commitnote-unsigned-ipa` | `commitnote-unsigned.ipa` |
 | `ios-screenshots-<device>` | the screenshots taken by the classes in that device's `screens` suite, light and dark |
-| `ios-screenshots-<device>-flows` | the screenshots taken by the classes in that device's `flows` suite (the iPhone settings screenshots), light and dark |
+| `ios-screenshots-<device>-flows` | the screenshots taken by the classes in that device's `flows` suite (the iPhone settings and iPad organisation screenshots), light and dark |
 | `ios-xcresults-runtime` | Xcode result bundle of the runtime tests |
 | `ios-xcresults-ui-ipad-runtime` | Xcode result bundle of the iPad tests run in the runtime job |
 | `ios-xcresults-ui-<device>-<suite>` | Xcode result bundles of the UI tests |
