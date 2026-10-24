@@ -38,11 +38,12 @@ extension XCTestCase {
     func switchAppearance(_ appearance: Appearance, file: StaticString = #filePath, line: UInt = #line) {
         _ = appearanceObserver
         appliedAppearance = nil
-        CFNotificationCenterPostNotification(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            CFNotificationName((appearanceRequestPrefix + appearance.rawValue) as CFString), nil, nil, true)
-        XCTAssertTrue(
-            poll(timeout: 10) { appliedAppearance == appearanceAppliedPrefix + appearance.rawValue },
-            "The app switched to \(appearance.rawValue)", file: file, line: line)
+        let applied = (0..<3).contains { _ in
+            CFNotificationCenterPostNotification(
+                CFNotificationCenterGetDarwinNotifyCenter(),
+                CFNotificationName((appearanceRequestPrefix + appearance.rawValue) as CFString), nil, nil, true)
+            return poll(timeout: 5) { appliedAppearance == appearanceAppliedPrefix + appearance.rawValue }
+        }
+        XCTAssertTrue(applied, "The app switched to \(appearance.rawValue)", file: file, line: line)
     }
 }
