@@ -237,7 +237,8 @@ struct NoteView: View {
                 MarkdownEditor(
                     model: model, target: model.editorTarget, editorSwitch: model.editorSwitch,
                     editorLineage: model.editorLineage,
-                    update: model.noteUpdate, focusRequested: $editorFocusRequested)
+                    update: model.noteUpdate, focusRequested: $editorFocusRequested,
+                    appearance: model.appearance)
             }
         case .conflict:
             if let conflict = openConflict {

@@ -36,6 +36,13 @@ final class MarkdownStyler {
     private var lines: [LineStyle] = []
     private var needsFullRestyle = true
     private var fonts: [FontKey: UIFont] = [:]
+    var noteFont = AppAppearance.standard.noteFont {
+        didSet {
+            guard noteFont != oldValue else { return }
+            fonts = [:]
+            needsFullRestyle = true
+        }
+    }
     private(set) var placements: [Placement] = []
     weak var images: EditorImageStore?
     var revealsSelectedLines = true
@@ -341,8 +348,7 @@ final class MarkdownStyler {
 
     private func font(_ key: FontKey) -> UIFont {
         if let cached = fonts[key] { return cached }
-        let body = UIFont.preferredFont(forTextStyle: .body)
-        var font = body
+        var font = NoteFontCatalog.bodyFont(id: noteFont)
         if key != FontKey() {
             let scale: CGFloat =
                 switch key.level {
@@ -351,16 +357,18 @@ final class MarkdownStyler {
                 case 3: 1.125
                 default: 1
                 }
-            let size = body.pointSize * scale * (key.monospaced ? 0.875 : 1)
-            let weight: UIFont.Weight = key.semibold ? .semibold : .regular
-            font =
-                key.monospaced
-                ? .monospacedSystemFont(ofSize: size, weight: weight) : .systemFont(ofSize: size, weight: weight)
-            if key.italic,
-                let descriptor = font.fontDescriptor.withSymbolicTraits(
-                    font.fontDescriptor.symbolicTraits.union(.traitItalic))
-            {
-                font = UIFont(descriptor: descriptor, size: size)
+            if key.monospaced {
+                let size = font.pointSize * scale * 0.875
+                font = .monospacedSystemFont(ofSize: size, weight: key.semibold ? .semibold : .regular)
+                if key.italic,
+                    let descriptor = font.fontDescriptor.withSymbolicTraits(
+                        font.fontDescriptor.symbolicTraits.union(.traitItalic))
+                {
+                    font = UIFont(descriptor: descriptor, size: size)
+                }
+            } else {
+                font = NoteFontCatalog.bodyFont(
+                    id: noteFont, semibold: key.semibold, italic: key.italic, scale: scale)
             }
         }
         fonts[key] = font

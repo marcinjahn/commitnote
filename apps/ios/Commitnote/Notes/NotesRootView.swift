@@ -41,7 +41,42 @@ struct NotesRootView: View {
             .sheet(isPresented: sharedLinksPresented) {
                 SharedLinksScreen(model: model)
             }
+            .sheet(isPresented: settingsPresented) {
+                SettingsScreen(model: model)
+            }
             .modifier(ImageSourcePresenter(model: model))
+            .alert(
+                model.dropSetup?.message ?? "",
+                isPresented: Binding(
+                    get: { model.dropSetup != nil },
+                    set: { if !$0 { model.dropSetup = nil } }),
+                presenting: model.dropSetup
+            ) { setup in
+                if setup.canConfigure {
+                    Button(setup.actionLabel) {
+                        Task { await model.enableAtomicAndRetry() }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+            .alert(
+                model.atomicBlocked?.title ?? "",
+                isPresented: Binding(
+                    get: { model.atomicBlocked != nil },
+                    set: { if !$0 { model.atomicBlocked = nil } }),
+                presenting: model.atomicBlocked
+            ) { blocked in
+                if blocked.canConfigure {
+                    Button(blocked.enableLabel) {
+                        Task { await model.resolveAtomicBlocked(enable: true) }
+                    }
+                }
+                Button(blocked.saveWithoutLabel) {
+                    Task { await model.resolveAtomicBlocked(enable: false) }
+                }
+            } message: { blocked in
+                Text(blocked.message)
+            }
             .imageViewer(model: model)
             .alert("Some changes are not saved", isPresented: unsavedAlertPresented) {
                 Button("Keep trying") {
@@ -176,6 +211,12 @@ struct NotesRootView: View {
         Binding(
             get: { model.isSharedLinksPresented },
             set: { model.isSharedLinksPresented = $0 })
+    }
+
+    private var settingsPresented: Binding<Bool> {
+        Binding(
+            get: { model.isSettingsPresented },
+            set: { model.isSettingsPresented = $0 })
     }
 
     private var historyPresented: Binding<Bool> {

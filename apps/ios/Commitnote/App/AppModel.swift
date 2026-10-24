@@ -96,7 +96,12 @@ final class AppModel {
     private(set) var openNote: OpenNote?
     private(set) var refreshStatus = RefreshStatus()
     private(set) var notices: [AppNotice] = []
-    private(set) var deviceName = ""
+    var deviceName = ""
+    var settingsCopy: SettingsCopy?
+    var settingsView: SettingsView?
+    var settingsSave: SettingsSaveView?
+    var appearance = AppAppearance.standard
+    var isSettingsPresented = false
     private(set) var editorTarget: EditorTarget = .none
     private(set) var editorSwitch = 0
     private(set) var editorLineage = 0
@@ -105,7 +110,20 @@ final class AppModel {
     var draftName = ""
     private(set) var draftError: String?
     private(set) var logoutState: LogoutState = .idle
-    private(set) var exportState: ExportState = .idle
+    var exportState: ExportState = .idle
+    var importForm: ImportForm?
+    var importPreview: String?
+    var importOutcomeMessage: String?
+    var importOffersRename = false
+    var importSetup: ImportSetupState?
+    var importBusy = false
+    var isImporting = false
+    var atomicBlocked: AtomicBlockedView?
+    var isImportPickerPresented = false
+    var dropSetup: DropSetupState?
+    var passphraseChange: PassphraseChangeState?
+    var isChangePassphrasePresented = false
+    var printState: PrintState = .idle
     private(set) var tagFilter: ColorTag?
     private(set) var usedTags: [ColorTag] = []
     private(set) var tagsWritable = false
@@ -141,11 +159,16 @@ final class AppModel {
     @ObservationIgnored private let visitSender = IOSVisitSender()
     @ObservationIgnored private var lastViewRestorePending = false
     @ObservationIgnored private var lastViewTracking = false
+    @ObservationIgnored var settingsCopyRequested = false
     @ObservationIgnored private var detailsPath: [String]?
     @ObservationIgnored private var statsTask: Task<Void, Never>?
     @ObservationIgnored private var datesTimer: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private var searchRefreshTask: Task<Void, Never>?
+    @ObservationIgnored var importPreviewRequest = 0
+    @ObservationIgnored var queuedImportPreview: ImportDestinationView?
+    @ObservationIgnored var importPreviewRunning = false
+    @ObservationIgnored var draftText = ""
     private var noteUpdateSerial = 0
     private(set) var runtime: CoreRuntime?
     private var eventsTask: Task<Void, Never>?
@@ -158,6 +181,12 @@ final class AppModel {
     #endif
 
     init() {
+        #if FAKE_CORE
+        TestingHooks.resetStoredStateIfRequested()
+        #endif
+        if let cached = AppAppearance.loadCached() {
+            appearance = cached
+        }
         editSender = EditSender(
             editNote: { [weak self] path, text in
                 await self?.sendNoteEdit(path: path, text: text)
@@ -296,6 +325,7 @@ final class AppModel {
             editSender?.submit(text, to: .note(path))
             scheduleStatsRefresh()
         case .draft:
+            draftText = text
             editSender?.submit(text, to: .draft)
         }
     }
@@ -309,6 +339,7 @@ final class AppModel {
         do {
             let draft = try await send(DraftStart(parent: parent)).draft
             draftName = ""
+            draftText = ""
             setEditorTarget(.draft(draft))
             draftError = nil
             editorSwitch += 1
@@ -703,6 +734,7 @@ final class AppModel {
             return false
         case .draft(let name, let error):
             draftName = name
+            draftText = draft.body
             setEditorTarget(.draft(NoteDraft(parent: [], name: name)))
             draftError = error
             editorSwitch += 1
@@ -733,9 +765,14 @@ final class AppModel {
 
     private func saveLastView() {
         guard lastViewTracking else { return }
-        let note = editorTarget.notePath
-        let folders = expandedFolders.sorted { $0.lexicographicallyPrecedes($1) }
-        Task { _ = try? await send(LastViewSave(note: note, folders: folders)) }
+        let view = currentLastView()
+        Task { _ = try? await send(LastViewSave(note: view.note, folders: view.folders)) }
+    }
+
+    func currentLastView() -> LastView {
+        LastView(
+            note: editorTarget.notePath,
+            folders: expandedFolders.sorted { $0.lexicographicallyPrecedes($1) })
     }
 
     private func setEditorTarget(_ target: EditorTarget) {
@@ -861,6 +898,7 @@ final class AppModel {
 
     func logOut() async {
         await flushEdits()
+        await flushSettings()
         logoutState = .saving
         do {
             switch try await send(SessionLogout(anyway: false)).outcome {
@@ -891,29 +929,6 @@ final class AppModel {
     func logInAgain() async {
         _ = try? await send(SessionLogout(anyway: true))
         finishLogOut()
-    }
-
-    func exportNotes() async -> URL? {
-        exportState = .exporting
-        do {
-            let archive = try await send(ExportNotes(includeImages: false))
-            guard let data = Data(base64Encoded: archive.base64) else {
-                exportState = .failed
-                return nil
-            }
-            let directory = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            try FileManager.default.createDirectory(
-                at: directory, withIntermediateDirectories: true)
-            let url = directory.appendingPathComponent(
-                (archive.fileName as NSString).lastPathComponent)
-            try data.write(to: url, options: .atomic)
-            exportState = .idle
-            return url
-        } catch {
-            exportState = .failed
-            return nil
-        }
     }
 
     private func finishLogOut() {
@@ -1031,8 +1046,12 @@ final class AppModel {
         noteUpdate = nil
         syncStatus = nil
         draftName = ""
+        draftText = ""
         draftError = nil
         exportState = .idle
+        printState = .idle
+        resetImportState()
+        resetPassphraseState()
         tagFilter = nil
         usedTags = []
         tagsWritable = false
@@ -1074,6 +1093,7 @@ final class AppModel {
                 _ = try? await send(LifecycleSetVisible(visible: false))
             }
             _ = try? await send(SyncFlush())
+            await flushSettings()
             await runtime.flushHostStorage()
             token.end()
         }
@@ -1163,6 +1183,8 @@ final class AppModel {
         case .noticeCleared(let cleared):
             notices.removeAll { $0.id == cleared.id }
         case .keyChanged(let info):
+            resetImportState()
+            resetPassphraseState()
             screen = .keyChanged(
                 KeyChangedInfo(
                     unsavedCount: info.unsavedCount, message: info.message, detail: info.detail,
@@ -1183,6 +1205,15 @@ final class AppModel {
             sharesUnreadable = change.unreadable
             updatingShareId = change.updatingId
             shareCopy = change.copy
+        case .settingsChanged(let change):
+            handleSettingsChanged(change.view)
+        case .settingsSaveChanged(let change):
+            settingsSave = change.save
+        case .importStatusChanged(let status):
+            isImporting = status.importing
+            atomicBlocked = status.atomicBlocked
+        case .passphraseChangeProgress(let progress):
+            handlePassphraseProgress(progress)
         case .unknown:
             break
         }

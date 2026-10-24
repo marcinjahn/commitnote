@@ -3,6 +3,7 @@ import UIKit
 
 struct NoteActionsMenu: View {
     let model: AppModel
+    @State private var frame: CGRect?
 
     var body: some View {
         if model.editorTarget != .none {
@@ -24,6 +25,11 @@ struct NoteActionsMenu: View {
                     .accessibilityIdentifier("insert-image-files")
                 }
                 .accessibilityIdentifier("note-insert-image-menu")
+                Button("Print", systemImage: "printer") {
+                    Task { await model.printNote(sourceRect: frame) }
+                }
+                .disabled(model.printState == .rendering)
+                .accessibilityIdentifier("note-print-button")
                 if !model.editorTarget.isDraft {
                     Button("Version history", systemImage: "clock.arrow.circlepath") {
                         Task { await model.openHistory() }
@@ -37,6 +43,7 @@ struct NoteActionsMenu: View {
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
             .accessibilityLabel("Note actions")
             .accessibilityIdentifier("note-actions-menu")
         }

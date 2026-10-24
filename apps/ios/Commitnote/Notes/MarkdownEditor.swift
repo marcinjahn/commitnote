@@ -13,6 +13,7 @@ struct MarkdownEditor: UIViewRepresentable {
     @Binding var focusRequested: Bool
     /// Shows this text read-only: no edit ever reaches the model, and the editor target is never read or changed.
     var readOnlyText: String? = nil
+    let appearance: AppAppearance
 
     func makeCoordinator() -> Coordinator {
         Coordinator(readOnly: readOnlyText != nil)
@@ -40,6 +41,7 @@ struct MarkdownEditor: UIViewRepresentable {
             coordinator?.contentSizeCategoryDidChange()
         }
         configure(textView)
+        coordinator.setAppearance(appearance)
         if coordinator.readOnly {
             textView.isEditable = false
             textView.isSelectable = true
@@ -72,11 +74,9 @@ struct MarkdownEditor: UIViewRepresentable {
     }
 
     private func configure(_ textView: MarkdownTextView) {
-        textView.font = UIFont.preferredFont(forTextStyle: .body)
         textView.adjustsFontForContentSizeCategory = true
         textView.textColor = .label
         textView.backgroundColor = .systemBackground
-        textView.tintColor = UIColor(named: "AccentColor")
         textView.smartQuotesType = .no
         textView.smartDashesType = .no
         textView.smartInsertDeleteType = .no
@@ -89,6 +89,7 @@ struct MarkdownEditor: UIViewRepresentable {
     func updateUIView(_ container: MarkdownEditorContainer, context: Context) {
         let coordinator = context.coordinator
         coordinator.model = model
+        coordinator.setAppearance(appearance)
         if let readOnlyText {
             coordinator.show(readOnlyText)
             return
@@ -136,6 +137,9 @@ struct MarkdownEditor: UIViewRepresentable {
         private var applying = false
         private var composing = false
         private var receivedPickedId: UUID?
+        private var currentNoteFont: String?
+        private var appliedNoteFont: String?
+        private var tintKey: [String?]?
 
         private struct InsertionAnchor {
             let editorLineage: Int
@@ -157,7 +161,29 @@ struct MarkdownEditor: UIViewRepresentable {
             }
         }
 
+        func setAppearance(_ appearance: AppAppearance) {
+            guard let textView else { return }
+            if tintKey != [appearance.accentLight, appearance.accentDark] {
+                tintKey = [appearance.accentLight, appearance.accentDark]
+                textView.tintColor = appearance.tint
+            }
+            guard appearance.noteFont != currentNoteFont else { return }
+            currentNoteFont = appearance.noteFont
+            restyle(textView)
+        }
+
+        private func applyNoteFont(to textView: UITextView) {
+            guard let noteFont = currentNoteFont, appliedNoteFont != noteFont, textView.markedTextRange == nil
+            else { return }
+            appliedNoteFont = noteFont
+            styler.noteFont = noteFont
+            textView.font = styler.baseAttributes[.font] as? UIFont
+            textView.typingAttributes = styler.baseAttributes
+            (textView as? MarkdownTextView)?.previewBodyFont = styler.baseAttributes[.font] as? UIFont
+        }
+
         private func restyle(_ textView: UITextView) {
+            applyNoteFont(to: textView)
             styler.restyle(textView)
             images.request(
                 styler.placements.compactMap { placement in
@@ -543,6 +569,7 @@ struct MarkdownEditor: UIViewRepresentable {
             guard let textView else { return }
             styler.contentSizeCategoryDidChange()
             textView.typingAttributes = styler.baseAttributes
+            (textView as? MarkdownTextView)?.previewBodyFont = styler.baseAttributes[.font] as? UIFont
             restyle(textView)
         }
 
@@ -614,10 +641,10 @@ struct MarkdownEditor: UIViewRepresentable {
 }
 
 extension MarkdownEditor {
-    init(model: AppModel, readOnlyText: String) {
+    init(model: AppModel, readOnlyText: String, appearance: AppAppearance) {
         self.init(
             model: model, target: .none, editorSwitch: 0, editorLineage: 0, update: nil, focusRequested: .constant(false),
-            readOnlyText: readOnlyText)
+            readOnlyText: readOnlyText, appearance: appearance)
     }
 }
 
@@ -768,6 +795,12 @@ final class MarkdownTextView: UITextView {
     var imageSourceHandler: ((ImageSourceKind) -> Void)?
     var imageLayoutHandler: (() -> Void)?
     private let previewLayout = PreviewLayoutDelegate()
+    var previewBodyFont: UIFont? {
+        didSet {
+            guard let previewBodyFont else { return }
+            previewLayout.bodyFont = previewBodyFont
+        }
+    }
     private let previewTapDelegate = PreviewTapDelegate()
     private let imageDropDelegate = EditorImageDropDelegate()
     private var imageLayoutKey: [CGFloat] = []

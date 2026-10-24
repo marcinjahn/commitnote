@@ -14,6 +14,7 @@ struct CommitnoteApp: App {
         WindowGroup {
             RootView(model: model)
                 .task { await model.start() }
+                .tint(model.appearance.tint.map { Color(uiColor: $0) })
                 #if FAKE_CORE
                 .preferredColorScheme(TestingHooks.requestedColorScheme)
                 #endif
