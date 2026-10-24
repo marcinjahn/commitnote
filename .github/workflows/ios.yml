@@ -78,7 +78,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/ios-macos-setup
-      - uses: ./.github/actions/ios-test-products
 
       - name: Start simulators
         run: |
@@ -88,14 +87,12 @@ jobs:
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           echo "IPAD_SIMULATOR_ID=$IPAD_SIMULATOR_ID" >> "$GITHUB_ENV"
           mkdir -p out
-          # Boots and prepares both simulators, one after the other, while the iPhone one starts the
-          # runtime tests as soon as it is ready.
-          nohup sh -c '
-            apps/ios/scripts/disable-password-autofill.sh "$1" > out/simulator-prep.log 2>&1
-            echo $? > out/simulator-ready
-            apps/ios/scripts/disable-password-autofill.sh "$2" > out/ipad-simulator-prep.log 2>&1
-            echo $? > out/ipad-simulator-ready
-          ' prepare "$SIMULATOR_ID" "$IPAD_SIMULATOR_ID" > /dev/null 2>&1 &
+          # Boots and prepares the iPhone simulator while the test products download. The iPad one
+          # follows after the runtime tests: booting it next to a starting test run stalls the run.
+          nohup sh -c 'apps/ios/scripts/disable-password-autofill.sh "$1"; echo $? > out/simulator-ready' \
+            prepare "$SIMULATOR_ID" > out/simulator-prep.log 2>&1 &
+
+      - uses: ./.github/actions/ios-test-products
 
       - name: Prepare simulator
         run: |
@@ -142,13 +139,7 @@ jobs:
         run: |
           set -eu
           xcrun simctl shutdown "$SIMULATOR_ID"
-          for _ in $(seq 600); do
-            [ -s out/ipad-simulator-ready ] && break
-            sleep 1
-          done
-          cat out/ipad-simulator-prep.log
-          [ "$(cat out/ipad-simulator-ready)" = 0 ]
-          xcrun simctl bootstatus "$IPAD_SIMULATOR_ID" -b
+          apps/ios/scripts/disable-password-autofill.sh "$IPAD_SIMULATOR_ID"
           xcrun simctl install "$IPAD_SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
           xcrun simctl launch "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
           sleep 30
