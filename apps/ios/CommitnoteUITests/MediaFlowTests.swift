@@ -23,15 +23,20 @@ final class MediaFlowTests: XCTestCase {
         let editor = openWelcome(in: app)
         focusEditor(in: app)
         moveCaretToEnd(in: app)
-        // A hardware key can be dropped on a loaded runner, so the paste is repeated until it lands.
+        // A hardware key can be dropped on a loaded runner, so the paste is repeated until the editor
+        // has taken it. The image itself takes far longer to land in the text.
         let png = Self.largePNG()
-        let imageReference = NSPredicate(format: "value MATCHES %@", "(?s).*image:[a-z2-7]{26}#[0-9]+x[0-9]+.*")
+        let pastes = app.element("testing-editor-image-pastes")
+        waitFor(pastes)
+        let pastesBefore = Int((pastes.value as? String) ?? "") ?? 0
         for _ in 0..<3 {
             UIPasteboard.general.setData(png, forPasteboardType: "public.png")
             editor.typeKey("v", modifierFlags: .command)
-            if poll(timeout: 10, until: { imageReference.evaluate(with: editor) }) { break }
+            if poll(timeout: 10, until: { (Int((pastes.value as? String) ?? "") ?? 0) > pastesBefore }) { break }
         }
-        waitUntil(editor, imageReference, timeout: 60)
+        waitUntil(
+            editor, NSPredicate(format: "value MATCHES %@", "(?s).*image:[a-z2-7]{26}#[0-9]+x[0-9]+.*"),
+            timeout: 60)
         let image = app.elements("editor-image").firstMatch
         revealInEditor(image, editor: editor)
         waitForValue(image, "loaded", timeout: 60)

@@ -709,6 +709,11 @@ final class MarkdownEditorContainer: UIView {
             selection.accessibilityValue = "\(textView.selectedRange.length)"
             selection.accessibilityFrameInContainerSpace = CGRect(x: 0, y: 0, width: 1, height: 1)
             elements.append(selection)
+            let imagePastes = UIAccessibilityElement(accessibilityContainer: self)
+            imagePastes.accessibilityIdentifier = "testing-editor-image-pastes"
+            imagePastes.accessibilityValue = "\(textView.imagePastesTaken)"
+            imagePastes.accessibilityFrameInContainerSpace = CGRect(x: 0, y: 0, width: 1, height: 1)
+            elements.append(imagePastes)
             #endif
             return elements
         }
@@ -804,6 +809,9 @@ final class MarkdownTextView: UITextView {
     private let previewTapDelegate = PreviewTapDelegate()
     private let imageDropDelegate = EditorImageDropDelegate()
     private var imageLayoutKey: [CGFloat] = []
+    #if FAKE_CORE
+    private(set) var imagePastesTaken = 0
+    #endif
 
     var imageStore: EditorImageStore? {
         get { previewLayout.images }
@@ -873,6 +881,9 @@ final class MarkdownTextView: UITextView {
                 return
             }
         } else if pasteboard.hasImages, imagePasteHandler?(pasteboard.itemProviders) == true {
+            #if FAKE_CORE
+            imagePastesTaken += 1
+            #endif
             return
         }
         super.paste(sender)
