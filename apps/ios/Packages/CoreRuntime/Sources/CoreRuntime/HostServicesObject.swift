@@ -310,7 +310,9 @@ final class HostServicesObject {
         return try promise(
             failure: "Argon2id failed",
             { complete in
-                DispatchQueue.global(qos: .userInitiated).async {
+                // Its lanes take every core for seconds; below the UI's priority the app stays
+                // responsive meanwhile.
+                DispatchQueue.global(qos: .utility).async {
                     complete(
                         Result {
                             try Argon2id.hash(
