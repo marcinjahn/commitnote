@@ -883,7 +883,7 @@ final class MarkdownTextView: UITextView {
         }
     }
 
-    private func makeFormatToolbar() -> UIToolbar {
+    private func makeFormatToolbar() -> UIView {
         let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
         var items: [UIBarButtonItem] = []
         for command in FormatCommand.allCases {
@@ -901,8 +901,66 @@ final class MarkdownTextView: UITextView {
         items.append(makeImageToolbarItem())
         toolbar.items = items
         toolbar.sizeToFit()
+        #if FAKE_CORE
+        if TestingHooks.editorHooksRequested {
+            return withTestingToolbar(above: toolbar)
+        }
+        #endif
         return toolbar
     }
+
+    #if FAKE_CORE
+    /// The hooks get a row of their own so the format buttons keep their places on narrow screens.
+    private func withTestingToolbar(above toolbar: UIToolbar) -> UIView {
+        let testing = UIToolbar(frame: toolbar.frame)
+        testing.items = [.flexibleSpace()] + makeTestingToolbarItems()
+        testing.sizeToFit()
+        let stack = UIStackView(arrangedSubviews: [testing, toolbar])
+        stack.axis = .vertical
+        stack.frame = CGRect(
+            x: 0, y: 0, width: toolbar.frame.width, height: testing.frame.height + toolbar.frame.height)
+        stack.autoresizingMask = [.flexibleWidth]
+        return stack
+    }
+
+    private func makeTestingToolbarItems() -> [UIBarButtonItem] {
+        let hooks: [(String, String, () -> Void)] = [
+            ("testing-select-word", "W", { [weak self] in self?.selectWordBeforeCaret() }),
+            ("testing-caret-end", "E", { [weak self] in self?.moveCaretToEnd() }),
+            ("testing-undo", "U", { [weak self] in self?.undoManager?.undo() }),
+        ]
+        return hooks.map { identifier, title, action in
+            let item = UIBarButtonItem(
+                title: title, primaryAction: UIAction { _ in action() })
+            item.accessibilityIdentifier = identifier
+            return item
+        }
+    }
+
+    private func selectWordBeforeCaret() {
+        let text = self.text as NSString
+        func isWordCharacter(_ index: Int) -> Bool {
+            CharacterSet.alphanumerics.contains(Unicode.Scalar(text.character(at: index)) ?? " ")
+        }
+        var end = selectedRange.location
+        if end == 0 || !isWordCharacter(end - 1) {
+            end = text.length
+            while end > 0 && !isWordCharacter(end - 1) {
+                end -= 1
+            }
+        }
+        var start = end
+        while start > 0 && isWordCharacter(start - 1) {
+            start -= 1
+        }
+        selectedRange = NSRange(location: start, length: end - start)
+    }
+
+    private func moveCaretToEnd() {
+        selectedRange = NSRange(location: (text as NSString).length, length: 0)
+        scrollRangeToVisible(selectedRange)
+    }
+    #endif
 
     private func makeImageToolbarItem() -> UIBarButtonItem {
         var sources: [(String, String, String, ImageSourceKind)] = [

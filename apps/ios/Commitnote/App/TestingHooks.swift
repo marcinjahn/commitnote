@@ -17,6 +17,10 @@ enum TestingHooks {
         ProcessInfo.processInfo.environment["COMMITNOTE_UI_HOLD_LOADING"] == "1"
     }
 
+    static var editorHooksRequested: Bool {
+        ProcessInfo.processInfo.environment["COMMITNOTE_UI_EDITOR_HOOKS"] == "1"
+    }
+
     static var requestedColorScheme: ColorScheme? {
         switch ProcessInfo.processInfo.environment["COMMITNOTE_UI_APPEARANCE"] {
         case "light": .light

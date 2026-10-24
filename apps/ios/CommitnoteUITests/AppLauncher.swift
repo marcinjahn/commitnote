@@ -19,7 +19,9 @@ var isPad: Bool {
     UIDevice.current.userInterfaceIdiom == .pad
 }
 
-func launchApp(reset: Bool, appearance: Appearance = .light, holdLoading: Bool = false) -> XCUIApplication {
+func launchApp(
+    reset: Bool, appearance: Appearance = .light, holdLoading: Bool = false, editorHooks: Bool = false
+) -> XCUIApplication {
     let app = XCUIApplication()
     if reset {
         app.launchEnvironment["COMMITNOTE_UI_TEST_RESET"] = "1"
@@ -27,6 +29,9 @@ func launchApp(reset: Bool, appearance: Appearance = .light, holdLoading: Bool =
     app.launchEnvironment["COMMITNOTE_UI_APPEARANCE"] = appearance.rawValue
     if holdLoading {
         app.launchEnvironment["COMMITNOTE_UI_HOLD_LOADING"] = "1"
+    }
+    if editorHooks {
+        app.launchEnvironment["COMMITNOTE_UI_EDITOR_HOOKS"] = "1"
     }
     prepareAnimationIdleForLaunch()
     app.launch()
