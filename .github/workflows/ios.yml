@@ -71,7 +71,7 @@ jobs:
           retention-days: 1
 
   macos:
-    name: Runtime tests and IPA
+    name: Runtime tests
     needs: build
     runs-on: macos-26
     timeout-minutes: 60
@@ -88,19 +88,14 @@ jobs:
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           echo "IPAD_SIMULATOR_ID=$IPAD_SIMULATOR_ID" >> "$GITHUB_ENV"
           mkdir -p out
-          # Boots and prepares both simulators, one after the other, while the IPA builds.
+          # Boots and prepares both simulators, one after the other, while the iPhone one starts the
+          # runtime tests as soon as it is ready.
           nohup sh -c '
             apps/ios/scripts/disable-password-autofill.sh "$1" > out/simulator-prep.log 2>&1
             echo $? > out/simulator-ready
             apps/ios/scripts/disable-password-autofill.sh "$2" > out/ipad-simulator-prep.log 2>&1
             echo $? > out/ipad-simulator-ready
           ' prepare "$SIMULATOR_ID" "$IPAD_SIMULATOR_ID" > /dev/null 2>&1 &
-
-      - name: Build unsigned IPA
-        run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
-
-      - name: Check IPA
-        run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
 
       - name: Prepare simulator
         run: |
@@ -126,12 +121,6 @@ jobs:
 
       - name: Read back with TypeScript
         run: npx tsx scripts/read-back-native-repo.ts out/test-output
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: commitnote-unsigned-ipa
-          path: out/ipa/commitnote-unsigned.ipa
-          retention-days: 30
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -290,4 +279,23 @@ jobs:
           name: ios-xcresults-ui-${{ matrix.device }}-${{ matrix.suite }}
           path: out/xcresults
           if-no-files-found: ignore
+          retention-days: 30
+
+      # The IPA builds in the job that finishes its tests first, off the longest path.
+      - uses: ./.github/actions/ios-macos-setup
+        if: ${{ !cancelled() && matrix.device == 'iphone' && matrix.suite == 'screens' }}
+
+      - name: Build unsigned IPA
+        if: ${{ !cancelled() && matrix.device == 'iphone' && matrix.suite == 'screens' }}
+        run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
+
+      - name: Check IPA
+        if: ${{ !cancelled() && matrix.device == 'iphone' && matrix.suite == 'screens' }}
+        run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && matrix.device == 'iphone' && matrix.suite == 'screens' }}
+        with:
+          name: commitnote-unsigned-ipa
+          path: out/ipa/commitnote-unsigned.ipa
           retention-days: 30

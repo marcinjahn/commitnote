@@ -116,11 +116,12 @@ final class DataFlowTests: XCTestCase {
         let screen = app.element("import-screen")
         let confirm = app.buttons["import-confirm"]
         let message = app.element("import-message")
-        for _ in 0..<3 {
+        // A query, unlike a property of a vanished button, never fails the test.
+        let busy = app.buttons.matching(NSPredicate(format: "identifier == %@ AND enabled == false", "import-confirm"))
+            .firstMatch
+        for _ in 0..<3 where screen.exists && !message.exists {
             tapRevealed(confirm, in: app)
-            if poll(timeout: 10, until: { !screen.exists || message.exists || (confirm.exists && !confirm.isEnabled) }) {
-                break
-            }
+            if poll(timeout: 10, until: { !screen.exists || message.exists || busy.exists }) { break }
         }
     }
 

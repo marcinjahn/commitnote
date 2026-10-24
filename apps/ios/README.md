@@ -207,11 +207,10 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   still exercised on the Simulator by the runtime tests' test vector check.
 - `Build for testing` generates the project and builds the app and both test bundles once, for the
   Simulator, and hands them to the jobs below as the `ios-test-products` artifact.
-- `Runtime tests and IPA` builds and checks the unsigned IPA, runs the runtime tests (including
-  `IOSVisitTests`, `NoteFontTests` and the `data` read-back scenario) on an iPhone
-  Simulator from the shared build, reads the produced repos back with TypeScript, and also boots an
-  iPad Simulator to run the iPad `EditorFlowTests`, `DataFlowTests` and `SettingsFlowTests`. Both
-  simulators boot and are prepared while the IPA builds.
+- `Runtime tests` runs the runtime tests (including `IOSVisitTests`, `NoteFontTests` and the `data`
+  read-back scenario) on an iPhone Simulator from the shared build, reads the produced repos back
+  with TypeScript, and also boots an iPad Simulator to run the iPad `EditorFlowTests`,
+  `DataFlowTests` and `SettingsFlowTests`.
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
   shared build:
   - `flows` — editing, media and login flows, plus the organisation and settings flows on iPhone
@@ -226,7 +225,9 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   Testing build also logs core requests left unanswered and stalls of the core's queue, and a failed
   UI test run uploads that log as `app.log` with its result bundle.
 
-  The class lists of the suites differ per device, so every UI class runs on both devices.
+  The class lists of the suites differ per device, so every UI class runs on both devices. The
+  `iphone`/`screens` job, which finishes its tests first, then builds and checks the unsigned IPA
+  (`commitnote-unsigned-ipa`).
 
 The `Testing` configuration (fake core bundle only) adds test hooks: a Testing menu entry "Share
 Welcome" and "Fail next share" (the next share fails), and "Import sample archive" (`testing-import-archive`, opens the Import notes form for a sample zip), the launch variable `COMMITNOTE_UI_HOLD_LOADING=1`, which holds loading and shows a
