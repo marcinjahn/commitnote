@@ -24,7 +24,8 @@ final class HostServicesObject {
 
     let context: JSContext
     private let queue: DispatchQueue
-    private let storageQueue = DispatchQueue(label: "io.github.marcinjahn.commitnote.core-runtime.storage")
+    private let storageQueue = DispatchQueue(
+        label: "io.github.marcinjahn.commitnote.core-runtime.storage", qos: .userInitiated)
     private let configuration: CoreRuntimeConfiguration
     private let logger: Logger
     private let onPost: (String) -> Void
@@ -309,7 +310,9 @@ final class HostServicesObject {
         return try promise(
             failure: "Argon2id failed",
             { complete in
-                DispatchQueue.global(qos: .userInitiated).async {
+                // Its lanes take every core for seconds; below the UI's priority the app stays
+                // responsive meanwhile.
+                DispatchQueue.global(qos: .utility).async {
                     complete(
                         Result {
                             try Argon2id.hash(
