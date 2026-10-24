@@ -24,6 +24,7 @@ import {
 } from "../src/native-core/testing/node-host-services";
 import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree-source";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
+import { FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
 import { PROD_LEAK_NEEDLES, TAURI_NEEDLES } from "./bundle-needles";
 import {
   readBackNativeRepo,
@@ -42,6 +43,7 @@ const INITIALIZE_PASSPHRASE = "bare host initialize passphrase";
 const EDITED_TEXT = "# Bare host\n\nZażółć gęślą jaźń 🙂\nSecond line\n";
 const DRAFT_TEXT = "Drafted on the bare host\n";
 const CREATED_FOLDER = "Created folder";
+const ROUND_TRIP_FOLDER = "Round trip";
 const RESPONSE_TIMEOUT_MS = 60_000;
 const PURGE_POLL_MS = 200;
 const PURGE_DEADLINE_MS = 30_000;
@@ -63,12 +65,17 @@ const PROD_CORE_NEEDLES: readonly string[] = [
   "window.",
   "navigator.",
   ...FAKE_CORE_COMMAND_NAMES,
+  "sample-import.zip",
+  "Imported plan",
 ];
 
 const FAKE_CORE_CONTROLS: readonly string[] = [
   "fake.saveNote",
   "fake.shareNote",
   "fake.processImage",
+  "/app/ios",
+  "Imported plan",
+  new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
   LARGE_TREE_REPO_KEY,
   SAMPLE_NOTES_REPO_PASSPHRASE,
 ];
@@ -212,6 +219,7 @@ function crossRealmHost(
     blobCache: wrapService(host.blobCache),
     deviceSettings: wrapService(host.deviceSettings),
     log: wrapService(host.log),
+    stagedInputs: wrapService(host.stagedInputs),
     imageCodec: wrapService(host.imageCodec),
     post(message) {
       host.post(message);
@@ -889,6 +897,156 @@ async function imagesCheck(bundle: vm.Script): Promise<string> {
   return "inserted two images, cloned a pasted one, saved, shared a note with an image, restored a version and undid it, and read the three images back";
 }
 
+async function dataCheck(bundle: vm.Script): Promise<string> {
+  const host = createNodeHostServices();
+  const core = new BareHostCore(bundle, host);
+  const nextPassphrase = "round trip passphrase 2";
+  try {
+    const kind = await core.logIn("sample/notes");
+    if (kind !== "notesRepo")
+      throw new Error(`sample/notes inspected as ${kind}`);
+    await core.send("login.unlock", {
+      passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
+    });
+    await core.poll(
+      "loading the tree",
+      async () =>
+        (await core.send<{ tree: TreeNode[] | null }>("tree.get")).tree,
+      100,
+      RESPONSE_TIMEOUT_MS,
+    );
+
+    const openLoaded = (path: string[]) =>
+      core.poll(
+        "opening the note",
+        async () => {
+          const { note } = await core.send<{ note: OpenNote | null }>(
+            "note.open",
+            { path },
+          );
+          if (note === null || note.state === "loading") return null;
+          if (note.state !== "loaded") {
+            throw new Error(`note.open ended in state ${note.state}`);
+          }
+          return note;
+        },
+        100,
+        RESPONSE_TIMEOUT_MS,
+      );
+    const flushed = async (): Promise<void> => {
+      const { result } = await core.send<{ result: { kind: string } }>(
+        "sync.flush",
+      );
+      if (result.kind !== "saved") {
+        throw new Error(`sync.flush returned ${result.kind}`);
+      }
+    };
+
+    const welcome = ["Welcome"];
+    const original = (await openLoaded(welcome)).content;
+    const { references } = await core.send<{ references: string[] }>(
+      "image.insert",
+      {
+        inputs: [
+          host.stageInput(
+            buildPng(160, 120, (x, y) => [x % 256, y % 256, 200]),
+            "image/png",
+          ),
+        ],
+      },
+    );
+    const originalReference = references[0];
+    if (originalReference === undefined) {
+      throw new Error("image.insert returned no reference");
+    }
+    const edited = `${original}\n${originalReference}\n`;
+    await core.send("note.edit", { path: welcome, text: edited });
+    await flushed();
+
+    const exported = await core.send<{ base64: string }>("export.notes", {
+      includeImages: true,
+    });
+    const input = host.stageInput(
+      new Uint8Array(Buffer.from(exported.base64, "base64")),
+      "application/zip",
+    );
+    const read = await core.send<{ kind: string }>("import.readArchive", {
+      input,
+      fileName: "round-trip.zip",
+    });
+    if (read.kind !== "ready") {
+      throw new Error(`import.readArchive returned ${read.kind}`);
+    }
+    const { outcome: imported } = await core.send<{
+      outcome: { kind: string };
+    }>("import.commit", {
+      destination: { kind: "newFolder", parent: [], name: ROUND_TRIP_FOLDER },
+      policy: "rename",
+    });
+    if (imported.kind !== "queued") {
+      throw new Error(`import.commit returned ${imported.kind}`);
+    }
+    await flushed();
+
+    const importedPath = [ROUND_TRIP_FOLDER, ...welcome];
+    const importedText = (await openLoaded(importedPath)).content;
+    const importedReference = parseImageReferences(importedText).at(-1);
+    if (importedReference === undefined) {
+      throw new Error("the imported note lost its image");
+    }
+    const importedReferenceText = importedText.slice(
+      importedReference.from,
+      importedReference.to,
+    );
+
+    const { html } = await core.send<{ html: string }>("print.render", {
+      name: "Welcome",
+      text: edited,
+    });
+    if (!html.includes("data:image/webp;base64,")) {
+      throw new Error("print.render did not inline the image");
+    }
+
+    const { outcome: prepared } = await core.send<{
+      outcome: { kind: string };
+    }>("passphrase.prepareChange", {
+      current: SAMPLE_NOTES_REPO_PASSPHRASE,
+      next: nextPassphrase,
+      removeHistory: false,
+    });
+    if (prepared.kind !== "review") {
+      throw new Error(`passphrase.prepareChange returned ${prepared.kind}`);
+    }
+    const { outcome: changed } = await core.send<{
+      outcome: { kind: string };
+    }>("passphrase.commitChange");
+    if (changed.kind !== "changed") {
+      throw new Error(`passphrase.commitChange returned ${changed.kind}`);
+    }
+
+    await expectReadBack({
+      name: "bare host data",
+      passphrase: nextPassphrase,
+      exported: await core.exportRepo("sample/notes"),
+      expect: {
+        initialized: false,
+        notes: [
+          { path: welcome, text: edited },
+          { path: importedPath, text: importedText },
+        ],
+        folders: [[ROUND_TRIP_FOLDER]],
+        images: [originalReference, importedReferenceText].map(
+          (reference) => ({ reference, type: "image/webp" as const }),
+        ),
+        deviceName: DEVICE_MODEL,
+      },
+    });
+  } finally {
+    core.stop();
+  }
+  return "exported with images, imported into a new folder, rendered a print page with the image, changed the passphrase, and read the notes and both images back under the new passphrase";
+}
+
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -931,6 +1089,7 @@ async function main(): Promise<void> {
     ["bare-host images", imagesCheck],
     ["bare-host initialize", initializeCheck],
     ["bare-host housekeeping", housekeepingCheck],
+    ["bare-host data", dataCheck],
   ] as const) {
     try {
       report(label, [], await check(bundle));

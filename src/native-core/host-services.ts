@@ -123,11 +123,17 @@ export interface HostLog {
   log(level: HostLogLevel, message: string): void;
 }
 
-export type ImageHandle = string;
-export interface HostImageInput {
+export interface StagedInput {
   bytes: Uint8Array;
   type: string;
 }
+/** Bytes the app staged for the core to consume, such as picked photos or files. */
+export interface HostStagedInputs {
+  /** The bytes and MIME type ("" when unknown) the app staged under `id`. Each id can be taken once; null when unknown or already taken. */
+  take(id: string): StagedInput | null;
+}
+
+export type ImageHandle = string;
 export interface HostDecodedImage {
   handle: ImageHandle;
   width: number;
@@ -135,8 +141,6 @@ export interface HostDecodedImage {
 }
 /** The image profile stays in TS; the host only decodes and encodes. */
 export interface HostImageCodec {
-  /** The bytes and MIME type ("" when unknown) the app staged under `input`. Each input can be taken once; null when unknown or already taken. */
-  takeInput(input: string): HostImageInput | null;
   /** Decodes with the image's orientation applied. Rejects when the bytes are not a decodable image. Runs off the core runtime's executor. */
   decode(bytes: Uint8Array): Promise<HostDecodedImage>;
   /** Lossy WebP of the decoded image scaled to width x height, quality 0…1 as the web canvas encoder takes it. Runs off the core runtime's executor. */
@@ -158,6 +162,7 @@ export interface HostServices {
   blobCache: HostBlobCacheStorage;
   deviceSettings: HostDeviceSettingsStorage;
   log: HostLog;
+  stagedInputs: HostStagedInputs;
   imageCodec: HostImageCodec;
   /** The single outbound channel of the native core API: responses and core events as JSON text. */
   post(message: string): void;

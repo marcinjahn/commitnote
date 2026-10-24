@@ -10,10 +10,10 @@ extension AppModel {
         var ids: [String] = []
         if let runtime {
             while let input = remaining.popLast() {
-                ids.append(runtime.stageImageInput(input.data, type: input.mimeType))
+                ids.append(runtime.stageInput(input.data, type: input.mimeType))
             }
         }
-        defer { runtime?.discardImageInputs(ids) }
+        defer { runtime?.discardStagedInputs(ids) }
         do {
             return try await send(ImageInsert(inputs: ids)).references
         } catch {

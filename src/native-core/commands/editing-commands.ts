@@ -74,14 +74,20 @@ export function createEditingCommands(context: {
       running().engine.resolveConflict(path, resolution);
       return {};
     },
-    async "export.notes"(): Promise<Result<"export.notes">> {
-      const snapshot = running().engine.snapshotNotes();
+    async "export.notes"(params): Promise<Result<"export.notes">> {
+      if (typeof params.includeImages !== "boolean") throw invalidParams();
+      const { includeImages } = params;
+      const current = running();
+      const snapshot = current.engine.snapshotNotes();
       if (snapshot === null) throw notReady();
       const now = new Date(host.clock.now());
       const archive = await buildNotesArchive(
         snapshot.tree.root,
         snapshot.readNote,
         now,
+        includeImages
+          ? (id) => current.services.imageResolver.readPayload(id)
+          : undefined,
       );
       return {
         fileName: exportFileName(now),

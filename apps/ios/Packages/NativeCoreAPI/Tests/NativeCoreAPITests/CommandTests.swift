@@ -30,10 +30,21 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(try params(SyncRetry()), empty)
         XCTAssertEqual(try params(SyncFlush()), empty)
         XCTAssertEqual(try params(DraftLeave()), empty)
-        XCTAssertEqual(try params(ExportNotes()), empty)
         XCTAssertEqual(try params(TreeGet()), empty)
         XCTAssertEqual(try params(SyncRefresh()), empty)
         XCTAssertEqual(try params(DeviceName()), empty)
+        XCTAssertEqual(try params(SettingsOpen()), empty)
+        XCTAssertEqual(try params(SettingsRetry()), empty)
+        XCTAssertEqual(try params(SettingsFlush()), empty)
+        XCTAssertEqual(try params(AnalyticsVisit()), empty)
+        XCTAssertEqual(try params(ImportCancel()), empty)
+        XCTAssertEqual(try params(ImportEnableAtomic()), empty)
+        XCTAssertEqual(try params(ImportSaveWithoutAtomic()), empty)
+        XCTAssertEqual(try params(PassphraseChangeForm()), empty)
+        XCTAssertEqual(try params(PassphraseCommitChange()), empty)
+        XCTAssertEqual(try params(PassphraseSettle()), empty)
+        XCTAssertEqual(try params(PassphraseCancelChange()), empty)
+        XCTAssertEqual(try params(PassphraseEnableAtomic()), empty)
     }
 
     func testParams() throws {
@@ -362,7 +373,7 @@ final class CommandTests: XCTestCase {
     }
 
     func testVersion3CommandParams() throws {
-        XCTAssertEqual(NativeCoreAPIVersion.current, 4)
+        XCTAssertEqual(NativeCoreAPIVersion.current, 5)
         XCTAssertEqual(
             try params(NodeRename(path: ["a"], name: "b")), try json(#"{"path":["a"],"name":"b"}"#))
         XCTAssertEqual(
@@ -789,5 +800,253 @@ final class CommandTests: XCTestCase {
             try JSONDecoder().decode(MessagePart.self, from: Data(#"{"kind":"x","text":"t"}"#.utf8)))
         XCTAssertThrowsError(
             try JSONDecoder().decode(HistoryRestoreOutcome.self, from: Data(#"{"kind":"x"}"#.utf8)))
+    }
+
+    func testVersion5Params() throws {
+        XCTAssertEqual(
+            try params(ExportNotes(includeImages: true)), try json(#"{"includeImages":true}"#))
+        XCTAssertEqual(
+            try params(SettingsChange(key: .newFolderPlacement, value: "top")),
+            try json(#"{"key":"newFolderPlacement","value":"top"}"#))
+        XCTAssertEqual(
+            try params(SettingsSetScope(key: .noteFont, scope: .device)),
+            try json(#"{"key":"noteFont","scope":"device"}"#))
+        XCTAssertEqual(
+            try params(SettingsSetScope(key: .colorMode, scope: .synced)),
+            try json(#"{"key":"colorMode","scope":"synced"}"#))
+        XCTAssertEqual(
+            try params(DeviceSetName(name: "Phone")), try json(#"{"name":"Phone"}"#))
+        XCTAssertEqual(try params(DeviceSetName(name: nil)), try json(#"{"name":null}"#))
+        XCTAssertEqual(
+            try params(
+                LastViewSetEnabled(enabled: true, view: LastView(note: nil, folders: [["a"]]))),
+            try json(#"{"enabled":true,"view":{"note":null,"folders":[["a"]]}}"#))
+        XCTAssertEqual(
+            try params(AnalyticsSetCounted(counted: false)), try json(#"{"counted":false}"#))
+        XCTAssertEqual(
+            try params(PrintRender(name: "n", text: "t")), try json(#"{"name":"n","text":"t"}"#))
+        XCTAssertEqual(
+            try params(ImportReadArchive(input: "id", fileName: "a.zip")),
+            try json(#"{"input":"id","fileName":"a.zip"}"#))
+        XCTAssertEqual(
+            try params(ImportPreview(destination: .root)),
+            try json(#"{"destination":{"kind":"root"}}"#))
+        XCTAssertEqual(
+            try params(ImportPreview(destination: .folder(path: ["a", "b"]))),
+            try json(#"{"destination":{"kind":"folder","path":["a","b"]}}"#))
+        XCTAssertEqual(
+            try params(
+                ImportCommit(destination: .newFolder(parent: ["a"], name: "n"), policy: .rename)),
+            try json(
+                #"{"destination":{"kind":"newFolder","parent":["a"],"name":"n"},"policy":"rename"}"#
+            ))
+        XCTAssertEqual(
+            try params(ImportCommit(destination: .root, policy: .stop)),
+            try json(#"{"destination":{"kind":"root"},"policy":"stop"}"#))
+        XCTAssertEqual(
+            try params(
+                ImportDropFiles(
+                    files: [ImportDroppedFile(input: "i", name: "n.md")], parent: nil,
+                    source: .picker)),
+            try json(#"{"files":[{"input":"i","name":"n.md"}],"parent":null,"source":"picker"}"#))
+        XCTAssertEqual(
+            try params(ImportDropFiles(files: [], parent: ["a"], source: .tree)),
+            try json(#"{"files":[],"parent":["a"],"source":"tree"}"#))
+        XCTAssertEqual(
+            try params(PassphrasePrepareChange(current: "c", next: "n", removeHistory: true)),
+            try json(#"{"current":"c","next":"n","removeHistory":true}"#))
+    }
+
+    private let settingsViewJSON =
+        #"{"values":{"colorMode":"system","accentColor":"system","noteFont":"sans","newNotePlacement":"top","newFolderPlacement":"bottom"},"scopes":{"colorMode":"synced","accentColor":"device","noteFont":"synced"},"deviceName":"","automaticDeviceName":"iPhone","reopenLastView":true,"analyticsCounted":false,"canExport":true,"canImport":true,"canChangePassphrase":false}"#
+    private let saveViewJSON =
+        #"{"state":"failed","label":"Not saved","detail":"Settings not saved","canRetry":true}"#
+    private let choiceJSON =
+        #"{"label":"Mode","options":[{"id":"a","label":"A","description":null},{"id":"b","label":"B","description":"d"}]}"#
+
+    private var settingsCopyJSON: String {
+        ##"{"title":"Settings","intro":"i","sections":{"appearance":"a","editor":"e","notes":"n","thisDevice":"t","dataSecurity":"d"},"scopeLabels":{"synced":"All devices","device":"This device"},"colorMode":\##(choiceJSON),"accentColor":{"label":"Accent","options":[{"id":"system","label":"System","light":null,"dark":null},{"id":"blue","label":"Blue","light":"#0000ff","dark":"#8888ff"}]},"noteFont":{"label":"Font","options":[{"id":"sans","label":"Sans","description":null}],"previewHeading":"h","previewBody":"b","previewCode":"c"},"editorUnavailable":"u","newNotePlacement":\##(choiceJSON),"newFolderPlacement":\##(choiceJSON),"deviceName":{"label":"l","hint":"h","maxLength":40},"reopenLastView":{"label":"r"},"analytics":{"label":"l","hint":"h"},"data":{"exportLabel":"1","exportingLabel":"2","exportShareLabel":"3","exportFilesLabel":"4","exportFailed":"5","importLabel":"6","importingLabel":"7","changePassphraseLabel":"8"},"retryLabel":"Retry"}"##
+    }
+
+    func testVersion5SettingsResults() throws {
+        let value = try result(
+            SettingsOpen.self,
+            #"{"copy":\#(settingsCopyJSON),"view":\#(settingsViewJSON),"save":\#(saveViewJSON)}"#)
+        XCTAssertEqual(value.copy.title, "Settings")
+        XCTAssertEqual(value.copy.scopeLabels.device, "This device")
+        XCTAssertEqual(value.copy.colorMode.options[1].description, "d")
+        XCTAssertNil(value.copy.colorMode.options[0].description)
+        XCTAssertNil(value.copy.accentColor.options[0].light)
+        XCTAssertEqual(value.copy.accentColor.options[1].dark, "#8888ff")
+        XCTAssertEqual(value.copy.noteFont.previewCode, "c")
+        XCTAssertEqual(value.copy.deviceName.maxLength, 40)
+        XCTAssertEqual(value.copy.data.changePassphraseLabel, "8")
+        XCTAssertEqual(value.view.scopes.accentColor, .device)
+        XCTAssertEqual(value.view.values.newFolderPlacement, "bottom")
+        XCTAssertEqual(value.view.automaticDeviceName, "iPhone")
+        XCTAssertFalse(value.view.canChangePassphrase)
+        XCTAssertEqual(value.save.state, .failed)
+        XCTAssertTrue(value.save.canRetry)
+
+        XCTAssertEqual(try result(SettingsChange.self, "{}"), Empty())
+        XCTAssertEqual(try result(SettingsSetScope.self, "{}"), Empty())
+        XCTAssertEqual(try result(SettingsRetry.self, "{}"), Empty())
+        XCTAssertEqual(try result(SettingsFlush.self, "{}"), Empty())
+        XCTAssertEqual(try result(LastViewSetEnabled.self, "{}"), Empty())
+        XCTAssertEqual(try result(AnalyticsSetCounted.self, "{}"), Empty())
+        XCTAssertEqual(try result(DeviceSetName.self, #"{"name":"iPhone"}"#).name, "iPhone")
+        XCTAssertEqual(
+            try result(AnalyticsVisit.self, #"{"url":"https://example.test/"}"#).url,
+            "https://example.test/")
+        XCTAssertNil(try result(AnalyticsVisit.self, #"{"url":null}"#).url)
+        XCTAssertEqual(try result(PrintRender.self, #"{"html":"<p>x</p>"}"#).html, "<p>x</p>")
+
+        for state in ["synced", "syncing", "pending", "failed"] {
+            XCTAssertNotNil(SettingsSaveState(rawValue: state))
+        }
+    }
+
+    private let importFormJSON =
+        #"{"fileName":"a.zip","defaultFolderName":"a","skipped":null,"empty":false,"targets":[{"path":["x"],"label":"x","depth":0}],"copy":{"title":"1","conflictsTitle":"2","setupTitle":"3","intoLabel":"4","newFolderLabel":"5","folderNameLabel":"6","existingFolderLabel":"7","rootLabel":"8","emptyText":"9","importLabel":"10","importingLabel":"11","renameLabel":"12","enableAtomicLabel":"13","cancelLabel":"14"}}"#
+
+    func testVersion5ImportResults() throws {
+        let ready = try result(ImportReadArchive.self, #"{"kind":"ready","form":\#(importFormJSON)}"#)
+        guard case .ready(let form) = ready else { return XCTFail("expected ready") }
+        XCTAssertEqual(form.defaultFolderName, "a")
+        XCTAssertNil(form.skipped)
+        XCTAssertEqual(form.targets, [ImportTargetView(path: ["x"], label: "x", depth: 0)])
+        XCTAssertEqual(form.copy.cancelLabel, "14")
+        XCTAssertEqual(
+            try result(ImportReadArchive.self, #"{"kind":"error","message":"m"}"#),
+            .error(message: "m"))
+
+        XCTAssertEqual(try result(ImportPreview.self, #"{"text":null}"#).text, nil)
+        XCTAssertEqual(try result(ImportPreview.self, #"{"text":"t"}"#).text, "t")
+
+        let outcomes: [(String, ImportOutcomeView)] = [
+            (#"{"kind":"queued","expand":["a"]}"#, .queued(expand: ["a"])),
+            (#"{"kind":"queued","expand":null}"#, .queued(expand: nil)),
+            (#"{"kind":"conflicts","count":2,"message":"m"}"#, .conflicts(count: 2, message: "m")),
+            (
+                #"{"kind":"needsSetup","canConfigure":true,"message":"m","actionLabel":"a"}"#,
+                .needsSetup(canConfigure: true, message: "m", actionLabel: "a")
+            ),
+            (#"{"kind":"error","message":"m"}"#, .error(message: "m")),
+        ]
+        for (text, expected) in outcomes {
+            XCTAssertEqual(
+                try result(ImportCommit.self, #"{"outcome":\#(text)}"#).outcome, expected)
+            XCTAssertEqual(
+                try result(ImportDropFiles.self, #"{"outcome":\#(text)}"#).outcome, expected)
+        }
+
+        let enabled = try result(
+            ImportEnableAtomic.self,
+            #"{"error":null,"outcome":{"kind":"queued","expand":null}}"#)
+        XCTAssertNil(enabled.error)
+        XCTAssertEqual(enabled.outcome, .queued(expand: nil))
+        let failed = try result(ImportEnableAtomic.self, #"{"error":"e","outcome":null}"#)
+        XCTAssertEqual(failed.error, "e")
+        XCTAssertNil(failed.outcome)
+
+        XCTAssertEqual(try result(ImportCancel.self, "{}"), Empty())
+        XCTAssertEqual(try result(ImportSaveWithoutAtomic.self, "{}"), Empty())
+        XCTAssertThrowsError(try result(ImportReadArchive.self, #"{"kind":"x"}"#))
+        XCTAssertThrowsError(try result(ImportCommit.self, #"{"outcome":{"kind":"x"}}"#))
+    }
+
+    private let passphraseCopyJSON =
+        #"{"title":"1","intro":"2","currentLabel":"3","newLabel":"4","repeatLabel":"5","newHint":"6","removeHistoryLabel":"7","removeHistoryDescription":"8","historyWarning":"9","otherDevicesWarning":"10","versionHistoryNotice":"11","continueLabel":"12","confirmLabel":"13","cancelLabel":"14","checkAgainLabel":"15","checkingLabel":"16","logOutLabel":"21","startingLabel":"17","enableAtomicLabel":"18","passphrasesDiffer":"19","enterCurrentPassphrase":"20"}"#
+
+    func testVersion5PassphraseResults() throws {
+        let form = try result(
+            PassphraseChangeForm.self,
+            #"{"copy":\#(passphraseCopyJSON),"canRemoveHistory":true,"repositoryLabel":"a/b"}"#)
+        XCTAssertEqual(form.copy.enterCurrentPassphrase, "20")
+        XCTAssertEqual(form.copy.logOutLabel, "21")
+        XCTAssertTrue(form.canRemoveHistory)
+        XCTAssertEqual(form.repositoryLabel, "a/b")
+
+        let outcomes: [(String, PassphraseChangeOutcome)] = [
+            (
+                #"{"kind":"review","summary":"s","carriedOver":["a"],"historyWarning":"w"}"#,
+                .review(summary: "s", carriedOver: ["a"], historyWarning: "w")
+            ),
+            (
+                #"{"kind":"review","summary":"s","carriedOver":[],"historyWarning":null}"#,
+                .review(summary: "s", carriedOver: [], historyWarning: nil)
+            ),
+            (#"{"kind":"changed"}"#, .changed),
+            (
+                #"{"kind":"failed","message":"m","clearCurrent":true}"#,
+                .failed(message: "m", clearCurrent: true)
+            ),
+            (
+                #"{"kind":"needsSetup","canConfigure":false,"message":"m","actionLabel":"a"}"#,
+                .needsSetup(canConfigure: false, message: "m", actionLabel: "a")
+            ),
+            (#"{"kind":"unsettled","message":"m"}"#, .unsettled(message: "m")),
+        ]
+        for (text, expected) in outcomes {
+            XCTAssertEqual(
+                try result(PassphrasePrepareChange.self, #"{"outcome":\#(text)}"#).outcome, expected)
+            XCTAssertEqual(
+                try result(PassphraseCommitChange.self, #"{"outcome":\#(text)}"#).outcome, expected)
+            XCTAssertEqual(
+                try result(PassphraseSettle.self, #"{"outcome":\#(text)}"#).outcome, expected)
+        }
+        XCTAssertThrowsError(
+            try result(PassphraseSettle.self, #"{"outcome":{"kind":"x"}}"#))
+        XCTAssertEqual(try result(PassphraseCancelChange.self, "{}"), Empty())
+        XCTAssertNil(try result(PassphraseEnableAtomic.self, #"{"error":null}"#).error)
+        XCTAssertEqual(try result(PassphraseEnableAtomic.self, #"{"error":"e"}"#).error, "e")
+    }
+
+    func testVersion5Events() throws {
+        func event(_ name: String, _ payload: String) throws -> CoreEvent {
+            try JSONDecoder().decode(
+                CoreEvent.self, from: Data(#"{"event":"\#(name)","payload":\#(payload)}"#.utf8))
+        }
+        guard
+            case .settingsChanged(let changed) = try event(
+                "settingsChanged", #"{"view":\#(settingsViewJSON)}"#)
+        else { return XCTFail("expected settingsChanged") }
+        XCTAssertEqual(changed.view.automaticDeviceName, "iPhone")
+
+        guard
+            case .settingsSaveChanged(let save) = try event(
+                "settingsSaveChanged", #"{"save":\#(saveViewJSON)}"#)
+        else { return XCTFail("expected settingsSaveChanged") }
+        XCTAssertEqual(save.save.state, .failed)
+
+        guard
+            case .importStatusChanged(let idle) = try event(
+                "importStatusChanged", #"{"importing":false,"atomicBlocked":null}"#)
+        else { return XCTFail("expected importStatusChanged") }
+        XCTAssertFalse(idle.importing)
+        XCTAssertNil(idle.atomicBlocked)
+        guard
+            case .importStatusChanged(let blocked) = try event(
+                "importStatusChanged",
+                #"{"importing":true,"atomicBlocked":{"title":"t","message":"m","enableLabel":"e","saveWithoutLabel":"s","canConfigure":true}}"#
+            )
+        else { return XCTFail("expected importStatusChanged") }
+        XCTAssertEqual(
+            blocked.atomicBlocked,
+            AtomicBlockedView(
+                title: "t", message: "m", enableLabel: "e", saveWithoutLabel: "s",
+                canConfigure: true))
+
+        guard
+            case .passphraseChangeProgress(let progress) = try event(
+                "passphraseChangeProgress", #"{"message":"m","done":1,"total":5}"#)
+        else { return XCTFail("expected passphraseChangeProgress") }
+        XCTAssertEqual(progress, PassphraseChangeProgress(message: "m", done: 1, total: 5))
+        guard
+            case .passphraseChangeProgress(let open) = try event(
+                "passphraseChangeProgress", #"{"message":"m","done":null,"total":null}"#)
+        else { return XCTFail("expected passphraseChangeProgress") }
+        XCTAssertNil(open.done)
+        XCTAssertNil(open.total)
     }
 }

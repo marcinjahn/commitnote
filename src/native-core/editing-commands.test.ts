@@ -301,7 +301,9 @@ describe("export.notes", () => {
     await openWelcome(core);
     ctx.controls.failNext(REPO, "commit", "Network");
     await ctx.call(core, "note.edit", { path: WELCOME, text: "Unsaved text" });
-    const archive = await ctx.call(core, "export.notes");
+    const archive = await ctx.call(core, "export.notes", {
+      includeImages: false,
+    });
     expect(archive.mimeType).toBe("application/zip");
     expect(archive.fileName).toMatch(
       /^commitnote-export-\d{4}-\d{2}-\d{2}\.zip$/,
@@ -316,12 +318,68 @@ describe("export.notes", () => {
     expect(Object.keys(texts).length).toBeGreaterThan(2);
   });
 
+  describe("with an inserted image", () => {
+    function png(): Uint8Array {
+      const out = new Uint8Array(29);
+      out.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+      const view = new DataView(out.buffer);
+      view.setUint32(8, 13);
+      out.set([0x49, 0x48, 0x44, 0x52], 12);
+      view.setUint32(16, 40);
+      view.setUint32(20, 30);
+      out.set([8, 6, 0, 0, 0], 24);
+      return out;
+    }
+
+    async function exportWithImage(includeImages: boolean) {
+      const core = await started();
+      await openWelcome(core);
+      const { references } = await ctx.call(core, "image.insert", {
+        inputs: [ctx.host.stageInput(png(), "image/png")],
+      });
+      const id = /image:([a-z2-7]{26})/.exec(references[0]!)![1]!;
+      await ctx.call(core, "note.edit", {
+        path: WELCOME,
+        text: `Intro\n${references[0]}\n`,
+      });
+      const archive = await ctx.call(core, "export.notes", { includeImages });
+      const files = unzipSync(
+        Uint8Array.from(Buffer.from(archive.base64, "base64")),
+      );
+      return { id, files };
+    }
+
+    it("stores the image bytes and rewrites the reference when includeImages is true", async () => {
+      const { id, files } = await exportWithImage(true);
+      const note = Object.entries(files).find(([name]) =>
+        name.startsWith("Welcome"),
+      )!;
+      expect(strFromU8(note[1])).toContain(`_images/${id}.webp`);
+      const image = files[`_images/${id}.webp`];
+      expect(image).toBeDefined();
+      expect(image!.length).toBeGreaterThan(0);
+    });
+
+    it("keeps the reference and omits the images when includeImages is false", async () => {
+      const { id, files } = await exportWithImage(false);
+      const note = Object.entries(files).find(([name]) =>
+        name.startsWith("Welcome"),
+      )!;
+      expect(strFromU8(note[1])).toContain(`image:${id}`);
+      expect(Object.keys(files).some((name) => name.includes("_images"))).toBe(
+        false,
+      );
+    });
+  });
+
   it("still works after the key changed on another device", async () => {
     const core = await started();
     await ctx.controls.changeRepoKey(REPO);
     await ctx.send(core, "sync.refresh");
     await vi.waitFor(() => expect(ctx.events("keyChanged")).toHaveLength(1));
-    const archive = await ctx.call(core, "export.notes");
+    const archive = await ctx.call(core, "export.notes", {
+      includeImages: false,
+    });
     const files = unzipSync(
       Uint8Array.from(Buffer.from(archive.base64, "base64")),
     );

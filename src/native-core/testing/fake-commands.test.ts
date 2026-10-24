@@ -71,6 +71,7 @@ async function setUp() {
     createNativeCore({
       host,
       deviceModel: "iPhone",
+      analyticsEndpoint: null,
       registry: () => Promise.resolve(forge.registry),
       extraCommands: (app) =>
         createFakeCommands({
@@ -202,6 +203,30 @@ describe("fake core commands", () => {
     expect(
       await send("fake.exportRepo", { repoKey: "nobody/nothing" }),
     ).toMatchObject({ ok: false, error: { kind: "invalidParams" } });
+    core.stop();
+  });
+
+  it("opens the sample archive and reports one name conflict under stop", async () => {
+    const { core, send, openSampleSession } = await setUp();
+    expect(await send("fake.importArchive")).toMatchObject({
+      ok: false,
+      error: { kind: "notReady" },
+    });
+    await openSampleSession();
+    await vi.waitFor(async () => {
+      const { tree } = await ok(send("tree.get"));
+      if (tree === null) throw new Error("tree not loaded");
+    });
+
+    const archive = await ok(send("fake.importArchive"));
+    expect(archive.kind).toBe("ready");
+    const { outcome } = await ok(
+      send("import.commit", {
+        destination: { kind: "root" },
+        policy: "stop",
+      }),
+    );
+    expect(outcome).toMatchObject({ kind: "conflicts", count: 1 });
     core.stop();
   });
 
@@ -403,7 +428,7 @@ describe("fake core commands", () => {
     expect(events("keyChanged").at(-1).exportLabel).toBe(
       "Export unsaved notes",
     );
-    const archive = await ok(send("export.notes"));
+    const archive = await ok(send("export.notes", { includeImages: false }));
     expect(archive.mimeType).toBe("application/zip");
     const files = unzipSync(new Uint8Array(Buffer.from(archive.base64, "base64")));
     expect(strFromU8(files["Welcome.md"]!)).toBe("Unsaved words");

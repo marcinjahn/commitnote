@@ -246,7 +246,7 @@ final class ImageCodecTests: RuntimeTestCase {
         XCTAssertEqual(expected.width, 2560)
         XCTAssertEqual(expected.height, 1707)
 
-        let input = runtime.core.stageImageInput(png, type: "image/png")
+        let input = runtime.core.stageInput(png, type: "image/png")
         let references = try await runtime.send(ImageInsert(inputs: [input])).references
 
         let reference = try XCTUnwrap(references.first)

@@ -341,8 +341,8 @@ final class ReadBackTests: RuntimeTestCase {
         let gif = try TestImages.encode(TestImages.photo(width: 48, height: 32), as: .gif)
 
         let inputs = [
-            runtime.core.stageImageInput(photo, type: "image/jpeg"),
-            runtime.core.stageImageInput(gif, type: "image/gif"),
+            runtime.core.stageInput(photo, type: "image/jpeg"),
+            runtime.core.stageInput(gif, type: "image/gif"),
         ]
         let references = try await runtime.send(ImageInsert(inputs: inputs)).references
         XCTAssertEqual(references.count, 2)

@@ -1,5 +1,5 @@
 public enum NativeCoreAPIVersion {
-    public static let current = 4
+    public static let current = 5
 }
 
 public protocol NativeCoreCommand: Encodable, Sendable {
@@ -255,7 +255,8 @@ public struct FolderCreate: NativeCoreCommand {
 public struct ExportNotes: NativeCoreCommand {
     public static let name = "export.notes"
     public typealias Result = ExportedArchive
-    public init() {}
+    public var includeImages: Bool
+    public init(includeImages: Bool) { self.includeImages = includeImages }
 }
 
 public struct LifecycleSetVisible: NativeCoreCommand {
@@ -841,5 +842,264 @@ public enum NativeCoreCommands {
         LastViewLoad.name,
         LastViewSave.name,
         EarlyDraftHandOff.name,
+        SettingsOpen.name,
+        SettingsChange.name,
+        SettingsSetScope.name,
+        SettingsRetry.name,
+        SettingsFlush.name,
+        DeviceSetName.name,
+        LastViewSetEnabled.name,
+        AnalyticsVisit.name,
+        AnalyticsSetCounted.name,
+        PrintRender.name,
+        ImportReadArchive.name,
+        ImportPreview.name,
+        ImportCommit.name,
+        ImportCancel.name,
+        ImportDropFiles.name,
+        ImportEnableAtomic.name,
+        ImportSaveWithoutAtomic.name,
+        PassphraseChangeForm.name,
+        PassphrasePrepareChange.name,
+        PassphraseCommitChange.name,
+        PassphraseSettle.name,
+        PassphraseCancelChange.name,
+        PassphraseEnableAtomic.name,
     ]
+}
+
+public struct SettingsOpen: NativeCoreCommand {
+    public static let name = "settings.open"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var copy: SettingsCopy
+        public var view: SettingsView
+        public var save: SettingsSaveView
+    }
+    public init() {}
+}
+
+public struct SettingsChange: NativeCoreCommand {
+    public static let name = "settings.change"
+    public typealias Result = Empty
+    public var key: SettingKeyView
+    public var value: String
+    public init(key: SettingKeyView, value: String) {
+        self.key = key
+        self.value = value
+    }
+}
+
+public struct SettingsSetScope: NativeCoreCommand {
+    public static let name = "settings.setScope"
+    public typealias Result = Empty
+    public var key: ScopedSettingKey
+    public var scope: SettingScope
+    public init(key: ScopedSettingKey, scope: SettingScope) {
+        self.key = key
+        self.scope = scope
+    }
+}
+
+public struct SettingsRetry: NativeCoreCommand {
+    public static let name = "settings.retry"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct SettingsFlush: NativeCoreCommand {
+    public static let name = "settings.flush"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct DeviceSetName: NativeCoreCommand {
+    public static let name = "device.setName"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var name: String
+    }
+    public var name: String?
+    public init(name: String?) { self.name = name }
+
+    private enum CodingKeys: String, CodingKey {
+        case name
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+    }
+}
+
+public struct LastViewSetEnabled: NativeCoreCommand {
+    public static let name = "lastView.setEnabled"
+    public typealias Result = Empty
+    public var enabled: Bool
+    public var view: LastView
+    public init(enabled: Bool, view: LastView) {
+        self.enabled = enabled
+        self.view = view
+    }
+}
+
+public struct AnalyticsVisit: NativeCoreCommand {
+    public static let name = "analytics.visit"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var url: String?
+    }
+    public init() {}
+}
+
+public struct AnalyticsSetCounted: NativeCoreCommand {
+    public static let name = "analytics.setCounted"
+    public typealias Result = Empty
+    public var counted: Bool
+    public init(counted: Bool) { self.counted = counted }
+}
+
+public struct PrintRender: NativeCoreCommand {
+    public static let name = "print.render"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var html: String
+    }
+    public var name: String
+    public var text: String
+    public init(name: String, text: String) {
+        self.name = name
+        self.text = text
+    }
+}
+
+public struct ImportReadArchive: NativeCoreCommand {
+    public static let name = "import.readArchive"
+    public typealias Result = ImportArchiveOutcome
+    public var input: String
+    public var fileName: String
+    public init(input: String, fileName: String) {
+        self.input = input
+        self.fileName = fileName
+    }
+}
+
+public struct ImportPreview: NativeCoreCommand {
+    public static let name = "import.preview"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var text: String?
+    }
+    public var destination: ImportDestinationView
+    public init(destination: ImportDestinationView) { self.destination = destination }
+}
+
+public struct ImportCommit: NativeCoreCommand {
+    public static let name = "import.commit"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var outcome: ImportOutcomeView
+    }
+    public var destination: ImportDestinationView
+    public var policy: ImportPolicy
+    public init(destination: ImportDestinationView, policy: ImportPolicy) {
+        self.destination = destination
+        self.policy = policy
+    }
+}
+
+public struct ImportCancel: NativeCoreCommand {
+    public static let name = "import.cancel"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct ImportDropFiles: NativeCoreCommand {
+    public static let name = "import.dropFiles"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var outcome: ImportOutcomeView
+    }
+    public var files: [ImportDroppedFile]
+    public var parent: [String]?
+    public var source: ImportDropSource
+    public init(files: [ImportDroppedFile], parent: [String]?, source: ImportDropSource) {
+        self.files = files
+        self.parent = parent
+        self.source = source
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case files, parent, source
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(files, forKey: .files)
+        try container.encode(parent, forKey: .parent)
+        try container.encode(source, forKey: .source)
+    }
+}
+
+public struct ImportEnableAtomic: NativeCoreCommand {
+    public static let name = "import.enableAtomic"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var error: String?
+        public var outcome: ImportOutcomeView?
+    }
+    public init() {}
+}
+
+public struct ImportSaveWithoutAtomic: NativeCoreCommand {
+    public static let name = "import.saveWithoutAtomic"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct PassphraseChangeForm: NativeCoreCommand {
+    public static let name = "passphrase.changeForm"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var copy: PassphraseChangeCopy
+        public var canRemoveHistory: Bool
+        public var repositoryLabel: String
+    }
+    public init() {}
+}
+
+public struct PassphrasePrepareChange: NativeCoreCommand {
+    public static let name = "passphrase.prepareChange"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var outcome: PassphraseChangeOutcome
+    }
+    public var current: String
+    public var next: String
+    public var removeHistory: Bool
+    public init(current: String, next: String, removeHistory: Bool) {
+        self.current = current
+        self.next = next
+        self.removeHistory = removeHistory
+    }
+}
+
+public struct PassphraseCommitChange: NativeCoreCommand {
+    public static let name = "passphrase.commitChange"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var outcome: PassphraseChangeOutcome
+    }
+    public init() {}
+}
+
+public struct PassphraseSettle: NativeCoreCommand {
+    public static let name = "passphrase.settle"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var outcome: PassphraseChangeOutcome
+    }
+    public init() {}
+}
+
+public struct PassphraseCancelChange: NativeCoreCommand {
+    public static let name = "passphrase.cancelChange"
+    public typealias Result = Empty
+    public init() {}
+}
+
+public struct PassphraseEnableAtomic: NativeCoreCommand {
+    public static let name = "passphrase.enableAtomic"
+    public struct Result: Decodable, Equatable, Sendable {
+        public var error: String?
+    }
+    public init() {}
 }

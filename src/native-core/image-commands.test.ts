@@ -154,12 +154,12 @@ describe("image.insert", () => {
   it("refuses more than ten inputs without taking any", async () => {
     const core = await started();
     await openNote(core, WELCOME);
-    const takeInput = vi.spyOn(ctx.host.imageCodec, "takeInput");
+    const take = vi.spyOn(ctx.host.stagedInputs, "take");
     const inputs = Array.from({ length: 11 }, () => stagePng(10, 10));
 
     expect(await insert(core, inputs)).toEqual([]);
 
-    expect(takeInput).not.toHaveBeenCalled();
+    expect(take).not.toHaveBeenCalled();
     expect(notices()).toEqual([
       {
         id: expect.any(String),
@@ -176,12 +176,12 @@ describe("image.insert", () => {
     await ctx.controls.changeRepoKey(REPO);
     await ctx.send(core, "sync.refresh");
     await vi.waitFor(() => expect(ctx.events("keyChanged")).toHaveLength(1));
-    const takeInput = vi.spyOn(ctx.host.imageCodec, "takeInput");
+    const take = vi.spyOn(ctx.host.stagedInputs, "take");
     const before = notices().length;
 
     expect(await insert(core, [stagePng(10, 10)])).toEqual([]);
 
-    expect(takeInput).not.toHaveBeenCalled();
+    expect(take).not.toHaveBeenCalled();
     expect(notices()).toHaveLength(before);
   });
 
