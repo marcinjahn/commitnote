@@ -687,6 +687,19 @@ final class MarkdownEditorContainer: UIView {
     private var previewElements: [EditorActionElement] = []
     private var previewElementKeys: [String] = []
     private var previewElementsValid = false
+    #if FAKE_CORE
+    private lazy var testingSelection = testingElement("testing-editor-selection", x: 0)
+    private lazy var testingImagePastes = testingElement("testing-editor-image-pastes", x: 1)
+
+    /// Each element keeps its own frame and lives as long as the editor, as the preview elements
+    /// do, so UI test queries never take one of them for the other.
+    private func testingElement(_ identifier: String, x: CGFloat) -> UIAccessibilityElement {
+        let element = UIAccessibilityElement(accessibilityContainer: self)
+        element.accessibilityIdentifier = identifier
+        element.accessibilityFrameInContainerSpace = CGRect(x: x, y: 0, width: 1, height: 1)
+        return element
+    }
+    #endif
 
     init(textView: MarkdownTextView) {
         self.textView = textView
@@ -704,16 +717,9 @@ final class MarkdownEditorContainer: UIView {
             var elements: [Any] = [textView]
             elements.append(contentsOf: currentPreviewElements())
             #if FAKE_CORE
-            let selection = UIAccessibilityElement(accessibilityContainer: self)
-            selection.accessibilityIdentifier = "testing-editor-selection"
-            selection.accessibilityValue = "\(textView.selectedRange.length)"
-            selection.accessibilityFrameInContainerSpace = CGRect(x: 0, y: 0, width: 1, height: 1)
-            elements.append(selection)
-            let imagePastes = UIAccessibilityElement(accessibilityContainer: self)
-            imagePastes.accessibilityIdentifier = "testing-editor-image-pastes"
-            imagePastes.accessibilityValue = "\(textView.imagePastesTaken)"
-            imagePastes.accessibilityFrameInContainerSpace = CGRect(x: 0, y: 0, width: 1, height: 1)
-            elements.append(imagePastes)
+            testingSelection.accessibilityValue = "\(textView.selectedRange.length)"
+            testingImagePastes.accessibilityValue = "\(textView.imagePastesTaken)"
+            elements.append(contentsOf: [testingSelection, testingImagePastes])
             #endif
             return elements
         }
