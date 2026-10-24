@@ -210,13 +210,13 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
 - `Runtime tests` runs the runtime tests (including `IOSVisitTests`, `NoteFontTests` and the `data`
   read-back scenario) on an iPhone Simulator from the shared build, reads the produced repos back
   with TypeScript, and also boots an iPad Simulator to run the iPad `EditorFlowTests` and
-  `DataFlowTests`.
+  `SettingsFlowTests`.
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
   shared build:
-  - `flows` — editing, media and login flows, plus the organisation flows and settings screenshots
-    on iPhone and the organisation screenshots on iPad.
-  - `screens` — the other screenshots and the settings flows, plus the editor and data flows on
-    iPhone and the organisation flows on iPad.
+  - `flows` — editing, media and login flows, plus the organisation flows, settings screenshots
+    and settings flows on iPhone and the organisation screenshots and data flows on iPad.
+  - `screens` — the other screenshots, plus the editor and data flows on iPhone and the
+    organisation flows on iPad.
 
   The screenshot tests reach each screen once and capture it in light and dark, switching the
   running app's appearance through a FAKE_CORE testing hook. Between tests the app is restarted in
