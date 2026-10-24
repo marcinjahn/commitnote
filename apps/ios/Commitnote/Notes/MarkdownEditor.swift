@@ -830,6 +830,30 @@ final class MarkdownTextView: UITextView {
             (textView: MarkdownTextView, _: UITraitCollection) in
             textView.contentSizeCategoryHandler?()
         }
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (textView: MarkdownTextView, _: UITraitCollection) in
+            textView.matchKeyboardToStyle()
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        matchKeyboardToStyle()
+    }
+
+    /// The keyboard and this view's toolbar are shown in system windows, which do not take the
+    /// style the app sets on its own windows.
+    private func matchKeyboardToStyle() {
+        let style: UIUserInterfaceStyle = traitCollection.userInterfaceStyle == .dark ? .dark : .light
+        let appearance: UIKeyboardAppearance = style == .dark ? .dark : .light
+        guard keyboardAppearance != appearance || inputAccessoryView?.overrideUserInterfaceStyle != style else {
+            return
+        }
+        keyboardAppearance = appearance
+        inputAccessoryView?.overrideUserInterfaceStyle = style
+        guard isFirstResponder else { return }
+        DispatchQueue.main.async { [weak self] in
+            if self?.isFirstResponder == true { self?.reloadInputViews() }
+        }
     }
 
     @available(*, unavailable)

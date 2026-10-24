@@ -70,7 +70,7 @@ final class TestingAppearance {
         self.scheme = scheme
         AppearanceApplier.apply(lastAppearance)
         let style: UIUserInterfaceStyle = scheme == .dark ? .dark : .light
-        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+        let windows = AppearanceApplier.appWindows()
         // Sheets, popovers and alerts that are already up keep the style they were presented with.
         func override(_ controller: UIViewController) {
             if controller.presentingViewController != nil {
