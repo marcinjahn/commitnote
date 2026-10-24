@@ -105,7 +105,7 @@ extension XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition() {
             if Date() >= deadline {
-                return false
+                return condition()
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
