@@ -41,6 +41,7 @@ export function createForgeHolds(): ForgeHolds {
     },
     wrap(repoKey, adapter) {
       const replaceHistory = adapter.replaceHistory?.bind(adapter);
+      const createBlob = adapter.createBlob?.bind(adapter);
       const shareHost = adapter.shareHost;
       const observedRateLimit = adapter.observedRateLimit?.bind(adapter);
       return {
@@ -53,6 +54,8 @@ export function createForgeHolds(): ForgeHolds {
           gated(repoKey, "listTree", () => adapter.listTree(...args)),
         readBlob: (...args) =>
           gated(repoKey, "readBlob", () => adapter.readBlob(...args)),
+        readBlobBytes: (...args) =>
+          gated(repoKey, "readBlob", () => adapter.readBlobBytes(...args)),
         commit: (...args) =>
           gated(repoKey, "commit", () => adapter.commit(...args)),
         listCommits: (...args) =>
@@ -73,6 +76,12 @@ export function createForgeHolds(): ForgeHolds {
           : {
               replaceHistory: (...args) =>
                 gated(repoKey, "replaceHistory", () => replaceHistory(...args)),
+            }),
+        ...(createBlob === undefined
+          ? {}
+          : {
+              createBlob: (...args) =>
+                gated(repoKey, "commit", () => createBlob(...args)),
             }),
         ...(observedRateLimit === undefined ? {} : { observedRateLimit }),
       };

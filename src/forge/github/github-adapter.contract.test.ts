@@ -38,6 +38,7 @@ const FIRST_REQUEST_MATCH: Record<ContractOperation, FailureMatch> = {
   getHead: { method: "GET", pathPattern: /\/git\/ref\/heads\/main$/ },
   listTree: { method: "GET", pathPattern: /\/git\/commits\// },
   readBlob: { method: "GET", pathPattern: /\/git\/blobs\// },
+  readBlobBytes: { method: "GET", pathPattern: /\/git\/blobs\// },
   commit: { method: "GET", pathPattern: /\/git\/commits\// },
   listCommits: { method: "GET", pathPattern: /\/commits\?/ },
   findOldestCommit: { method: "GET", pathPattern: /\/commits\?/ },

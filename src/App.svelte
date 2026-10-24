@@ -512,6 +512,11 @@
       } catch {
         console.error("Trash purge failed");
       }
+      try {
+        engine.sweepOrphanImages();
+      } catch {
+        console.error("Image sweep failed");
+      }
       cachedAdapter.sweepAbandoned?.().catch(() => {
         console.error("Sweeping abandoned atomic commits failed");
       });

@@ -772,4 +772,15 @@ describe("note history", () => {
       });
     });
   });
+
+  it("lists the tree of a version's commit", async () => {
+    const repo = await createRepo();
+    const first = await repo.save(create(["Note"], "v1"));
+    await repo.save(create(["Other"], "o"));
+    const history = createNoteHistory(repo);
+
+    expect(await history.listVersionTree(first)).toEqual(
+      await repo.adapter.listTree(first),
+    );
+  });
 });

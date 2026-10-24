@@ -1,13 +1,13 @@
 export const BLOB_CACHE_DB_NAME = "commitnote-blobs";
-export const BLOB_CACHE_CAP_BYTES = 64 * 1024 * 1024;
+export const BLOB_CACHE_CAP_BYTES = 128 * 1024 * 1024;
 
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "blobs";
 const LAST_USED_INDEX = "lastUsedAt";
 
 export interface BlobStoreEntry {
-  readonly text: string;
-  readonly bytes: number;
+  readonly content: string | Uint8Array;
+  readonly size: number;
   readonly lastUsedAt: number;
 }
 
@@ -17,7 +17,7 @@ export interface BlobStore {
   put(
     repoKey: string,
     blobSha: string,
-    text: string,
+    content: string | Uint8Array,
     lastUsedAt: number,
   ): Promise<void>;
   delete(repoKey: string, blobSha: string): Promise<void>;
@@ -63,8 +63,9 @@ function isEntry(value: unknown): value is BlobStoreEntry {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return (
-    typeof record.text === "string" &&
-    typeof record.bytes === "number" &&
+    (typeof record.content === "string" ||
+      record.content instanceof Uint8Array) &&
+    typeof record.size === "number" &&
     typeof record.lastUsedAt === "number"
   );
 }
@@ -169,8 +170,11 @@ export function createBlobStore(options?: {
         resolve(null);
         return;
       }
-      request.onupgradeneeded = () => {
+      request.onupgradeneeded = (event) => {
         const db = request.result;
+        if (event.oldVersion < 2 && db.objectStoreNames.contains(STORE_NAME)) {
+          db.deleteObjectStore(STORE_NAME);
+        }
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           const store = db.createObjectStore(STORE_NAME);
           store.createIndex(LAST_USED_INDEX, "lastUsedAt", { unique: false });
@@ -220,7 +224,7 @@ export function createBlobStore(options?: {
           abort(new CorruptionError());
           return;
         }
-        running += cursor.value.bytes;
+        running += cursor.value.size;
         cursor.continue();
       });
     });
@@ -241,7 +245,7 @@ export function createBlobStore(options?: {
           abort(new CorruptionError());
           return;
         }
-        remaining -= cursor.value.bytes;
+        remaining -= cursor.value.size;
         cursor.delete();
         cursor.continue();
       });
@@ -298,8 +302,8 @@ export function createBlobStore(options?: {
           if (value === undefined) return;
           if (!isEntry(value)) throw new CorruptionError();
           entry = {
-            text: value.text,
-            bytes: value.bytes,
+            content: value.content,
+            size: value.size,
             lastUsedAt: value.lastUsedAt,
           };
         });
@@ -321,7 +325,7 @@ export function createBlobStore(options?: {
                 return;
               }
               store.put(
-                { text: value.text, bytes: value.bytes, lastUsedAt },
+                { content: value.content, size: value.size, lastUsedAt },
                 key,
               );
             });
@@ -330,11 +334,14 @@ export function createBlobStore(options?: {
       );
     },
 
-    put(repoKey, blobSha, text, lastUsedAt) {
+    put(repoKey, blobSha, content, lastUsedAt) {
       return enqueue(() =>
         run(async (db) => {
-          const bytes = encoder.encode(text).length;
-          if (bytes > capBytes) return;
+          const size =
+            typeof content === "string"
+              ? encoder.encode(content).length
+              : content.byteLength;
+          if (size > capBytes) return;
           const before = await ensureTotal(db);
           const key = [repoKey, blobSha];
           let after = before;
@@ -348,20 +355,20 @@ export function createBlobStore(options?: {
                   abort(new CorruptionError());
                   return;
                 }
-                projected -= old.bytes;
+                projected -= old.size;
               }
               const write = () => {
-                store.put({ text, bytes, lastUsedAt }, key);
-                after = projected + bytes;
+                store.put({ content, size, lastUsedAt }, key);
+                after = projected + size;
               };
-              if (projected + bytes <= capBytes) {
+              if (projected + size <= capBytes) {
                 write();
                 return;
               }
               const cursorRequest = store.index(LAST_USED_INDEX).openCursor();
               cursorRequest.onsuccess = guard(() => {
                 const cursor = cursorRequest.result;
-                if (!cursor || projected + bytes <= capBytes) {
+                if (!cursor || projected + size <= capBytes) {
                   write();
                   return;
                 }
@@ -374,7 +381,7 @@ export function createBlobStore(options?: {
                     abort(new CorruptionError());
                     return;
                   }
-                  projected -= cursor.value.bytes;
+                  projected -= cursor.value.size;
                   cursor.delete();
                 }
                 cursor.continue();
@@ -400,7 +407,7 @@ export function createBlobStore(options?: {
                 abort(new CorruptionError());
                 return;
               }
-              freed = value.bytes;
+              freed = value.size;
               store.delete(key);
             });
           });
@@ -424,7 +431,7 @@ export function createBlobStore(options?: {
               }
               const blobSha = (cursor.primaryKey as [string, string])[1];
               if (!referenced.has(blobSha) && cursor.value.lastUsedAt < before) {
-                freed += cursor.value.bytes;
+                freed += cursor.value.size;
                 cursor.delete();
               }
               cursor.continue();

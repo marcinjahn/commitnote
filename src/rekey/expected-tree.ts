@@ -3,7 +3,7 @@ import {
   type CommitFileChange,
   type TreeEntry,
 } from "../forge/forge-adapter";
-import { gitBlobSha } from "../forge/git-blob-sha";
+import { gitBlobSha, gitBlobShaOfBytes } from "../forge/git-blob-sha";
 
 /** Blob SHA of every file that `changes` leave on top of `listing`. */
 export async function expectedTree(
@@ -21,6 +21,9 @@ export async function expectedTree(
         break;
       case "upsert-text":
         files.set(change.path, await gitBlobSha(change.text));
+        break;
+      case "upsert-bytes":
+        files.set(change.path, await gitBlobShaOfBytes(change.bytes));
         break;
     }
   }

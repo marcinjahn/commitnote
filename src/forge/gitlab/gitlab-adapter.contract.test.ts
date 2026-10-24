@@ -33,6 +33,7 @@ const FAILURE_MATCH: Record<
   getHead: { method: "GET", pathPattern: /\/repository\/branches\/main$/ },
   listTree: { method: "GET", pathPattern: /\/repository\/tree\?/ },
   readBlob: { method: "GET", pathPattern: /\/repository\/blobs\// },
+  readBlobBytes: { method: "GET", pathPattern: /\/repository\/blobs\// },
   commit: { method: "POST", pathPattern: /\/repository\/commits$/ },
   listCommits: { method: "GET", pathPattern: /\/repository\/commits\?/ },
   findOldestCommit: { method: "GET", pathPattern: /\/repository\/commits\?/ },

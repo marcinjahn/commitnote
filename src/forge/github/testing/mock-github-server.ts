@@ -51,7 +51,11 @@ function wrapBase64(base64: string): string {
 }
 
 function encodeBlobContent(text: string): string {
-  return wrapBase64(toBase64(utf8Encode(text)));
+  return encodeBlobBytes(utf8Encode(text));
+}
+
+function encodeBlobBytes(bytes: Uint8Array): string {
+  return wrapBase64(toBase64(bytes));
 }
 
 function decodeBase64Content(content: string): string {
@@ -502,18 +506,46 @@ export class MockGitHubRepo {
         return jsonResponse({ message: EMPTY_REPO_MESSAGE }, 409);
       }
       const sha = blobMatch[1];
-      const text = this.git.getBlob(sha);
-      if (text === undefined) {
+      const bytes = this.git.getBlobBytes(sha);
+      if (bytes === undefined) {
         return jsonResponse({ message: "Not Found" }, 404);
       }
       return jsonResponse(
         {
           sha,
-          size: utf8Encode(text).length,
+          size: bytes.length,
           encoding: "base64",
-          content: encodeBlobContent(text),
+          content: encodeBlobBytes(bytes),
         },
         200,
+      );
+    }
+
+    if (method === "POST" && rest === "/git/blobs") {
+      if (!this.canWrite) {
+        return jsonResponse({ message: READ_ONLY_MESSAGE }, 403);
+      }
+      if (this.isEmpty()) {
+        return jsonResponse({ message: EMPTY_REPO_MESSAGE }, 409);
+      }
+      const body = (await request.json()) as {
+        content?: string;
+        encoding?: string;
+      };
+      if (typeof body.content !== "string") {
+        return jsonResponse({ message: "Validation Failed" }, 422);
+      }
+      const bytes =
+        body.encoding === "base64"
+          ? fromBase64(body.content.replace(/\s+/g, ""))
+          : utf8Encode(body.content);
+      const sha = await this.git.putBlobBytes(bytes);
+      return jsonResponse(
+        {
+          sha,
+          url: `https://api.github.com/repos/${this.owner}/${this.repoName}/git/blobs/${sha}`,
+        },
+        201,
       );
     }
 

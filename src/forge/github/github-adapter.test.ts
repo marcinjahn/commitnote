@@ -5,6 +5,7 @@ import type {
   CommitFileChange,
   ContentCreatingRequest,
 } from "../forge-adapter";
+import { gitBlobShaOfBytes } from "../git-blob-sha";
 import { commitFiles } from "../fake/in-memory-git-repo";
 import {
   createGitHubAdapter,
@@ -173,12 +174,74 @@ describe("GitHubAdapter", () => {
     ).toBe(false);
   });
 
+  it("creates a blob for each bytes change before the first tree request and references its sha", async () => {
+    const mock = useMock();
+    const parent = await seedConfig(mock);
+    const { fetch: capturingFetch, treeBodies } = captureTreeRequests();
+    const { adapter, reports } = makeAdapter({ fetch: capturingFetch });
+    const bytes = new Uint8Array([0, 255, 1, 128, 10]);
+
+    const result = await adapter.commit({
+      parent,
+      changes: [
+        { kind: "upsert-text", path: "note.md", text: "hi" },
+        { kind: "upsert-bytes", path: "img/a.bin", bytes },
+      ],
+      message: "save",
+    });
+
+    expect(result.kind).toBe("ok");
+    const writes = mock.requests
+      .filter((request) => request.method === "POST")
+      .map((request) => request.path.slice(`/repos/${OWNER}/${REPO}`.length));
+    expect(writes.slice(0, 2)).toEqual(["/git/blobs", "/git/trees"]);
+    expect(reports.map((report) => report.operation)).toEqual([
+      "createBlob",
+      "createTree",
+      "createCommit",
+      "updateRef",
+    ]);
+    const sha = await gitBlobShaOfBytes(bytes);
+    expect(treeBodies[0].tree).toContainEqual({
+      path: "img/a.bin",
+      mode: "100644",
+      type: "blob",
+      sha,
+    });
+    expect(await adapter.readBlobBytes(sha)).toEqual(bytes);
+  });
+
+  it("createBlob posts base64 content to /git/blobs and resolves to the returned sha without moving main", async () => {
+    const mock = useMock();
+    const parent = await seedConfig(mock);
+    const bodies: unknown[] = [];
+    const capturingFetch: typeof fetch = async (input, init) => {
+      if (init?.method === "POST" && String(input).endsWith("/git/blobs")) {
+        bodies.push(JSON.parse(String(init.body)));
+      }
+      return fetch(input, init);
+    };
+    const { adapter, reports } = makeAdapter({ fetch: capturingFetch });
+    const bytes = new Uint8Array([0, 255, 1, 128, 10]);
+
+    const sha = await adapter.createBlob!(bytes);
+
+    expect(bodies).toEqual([{ content: "AP8BgAo=", encoding: "base64" }]);
+    expect(sha).toBe(await gitBlobShaOfBytes(bytes));
+    expect(mock.git.getBlobBytes(sha)).toEqual(bytes);
+    expect(reports.map((report) => report.operation)).toEqual(["createBlob"]);
+    expect(mock.git.getRef(MAIN_BRANCH)).toBe(parent);
+  });
+
   it("splits a large change set into chained tree requests that end in one commit", async () => {
     const mock = useMock();
     const parent = await seedConfig(mock);
     const parentTree = mock.git.getCommit(parent)?.tree;
-    const { fetch: capturingFetch, treeBodies, treeShas } =
-      captureTreeRequests();
+    const {
+      fetch: capturingFetch,
+      treeBodies,
+      treeShas,
+    } = captureTreeRequests();
     const { adapter, reports } = makeAdapter({ fetch: capturingFetch });
     const text = "x".repeat(Math.ceil(MAX_TREE_REQUEST_BYTES / 3));
     const changes: CommitFileChange[] = [
@@ -246,11 +309,16 @@ describe("GitHubAdapter", () => {
   });
 
   describe("ref update outcome", () => {
-    const PATCH_REF = { method: "PATCH", pathPattern: /\/git\/refs\/heads\/main$/ };
+    const PATCH_REF = {
+      method: "PATCH",
+      pathPattern: /\/git\/refs\/heads\/main$/,
+    };
     const POST_COMMIT = { method: "POST", pathPattern: /\/git\/commits$/ };
     const request = (parent: string) => ({
       parent,
-      changes: [{ kind: "upsert-text", path: "note.md", text: "mine" }] as CommitFileChange[],
+      changes: [
+        { kind: "upsert-text", path: "note.md", text: "mine" },
+      ] as CommitFileChange[],
       message: "save",
     });
 
@@ -261,7 +329,10 @@ describe("GitHubAdapter", () => {
 
       const result = await makeAdapter().adapter.commit(request(parent));
 
-      expect(result).toEqual({ kind: "ok", head: mock.git.getRef(MAIN_BRANCH) });
+      expect(result).toEqual({
+        kind: "ok",
+        head: mock.git.getRef(MAIN_BRANCH),
+      });
       expect(mock.git.getRef(MAIN_BRANCH)).not.toBe(parent);
     });
 
@@ -844,8 +915,11 @@ describe("GitHubAdapter conditional getHead", () => {
   it("sends no validator first, then the memoised ETag, and reuses the head on 304", async () => {
     const mock = useMock();
     const head = await seedConfig(mock);
-    const { fetch: capturingFetch, ifNoneMatch, statuses } =
-      captureHeadRequests();
+    const {
+      fetch: capturingFetch,
+      ifNoneMatch,
+      statuses,
+    } = captureHeadRequests();
     const { adapter } = makeAdapter({ fetch: capturingFetch });
 
     expect(await adapter.getHead()).toBe(head);
@@ -859,8 +933,11 @@ describe("GitHubAdapter conditional getHead", () => {
   it("returns and memoises the new head after main moves", async () => {
     const mock = useMock();
     const first = await seedConfig(mock);
-    const { fetch: capturingFetch, ifNoneMatch, statuses } =
-      captureHeadRequests();
+    const {
+      fetch: capturingFetch,
+      ifNoneMatch,
+      statuses,
+    } = captureHeadRequests();
     const { adapter } = makeAdapter({ fetch: capturingFetch });
     await adapter.getHead();
 

@@ -65,6 +65,11 @@
   import type { NoteHistory, NoteVersion } from "../../history/note-history";
   import type { NoteDatesResolver } from "../../history/note-dates";
   import type { RestorePlan } from "../../history/plan-restore";
+  import {
+    findRestorableImages,
+    needsImageLookup,
+  } from "../../history/restorable-images";
+  import type { TreeEntry } from "../../forge/forge-adapter";
   import { validateName } from "../../tree/note-names";
   import { describeNameError } from "../dialogs/name-messages";
   import {
@@ -1257,6 +1262,21 @@
     } catch {
       // The note's sync state below tells whether its changes were saved.
     }
+    const isPending = (imageId: string) =>
+      engine.getPendingImage(imageId) !== undefined;
+    let versionListing: readonly TreeEntry[] = [];
+    const lookupImages = engine.getState().synced?.images;
+    if (
+      plan.content !== null &&
+      lookupImages !== undefined &&
+      needsImageLookup(plan.content, lookupImages, isPending)
+    ) {
+      try {
+        versionListing = await noteHistory.listVersionTree(version.sha);
+      } catch {
+        versionListing = [];
+      }
+    }
     const state = engine.getState();
     const open = state.openNote;
     if (
@@ -1274,6 +1294,21 @@
       return UNSAVED_BEFORE_RESTORE_MESSAGE;
     }
     const previous = { content: open.content, name: noteName(path) };
+    const currentImages = state.synced?.images;
+    if (
+      plan.content !== null &&
+      currentImages !== undefined &&
+      versionListing.length > 0
+    ) {
+      engine.addRestoredImages(
+        findRestorableImages({
+          content: plan.content,
+          images: currentImages,
+          isPending,
+          versionListing,
+        }),
+      );
+    }
     const result = setNoteState(path, plan.content, plan.name);
     if (!result.ok) return result.message;
     historyDialog = null;

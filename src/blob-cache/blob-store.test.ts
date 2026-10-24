@@ -26,7 +26,7 @@ const OTHER_REPO = "gitlab:bob/other";
 
 function openRaw(factory: IDBFactory): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = factory.open(BLOB_CACHE_DB_NAME, 1);
+    const request = factory.open(BLOB_CACHE_DB_NAME, 2);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
@@ -73,8 +73,8 @@ describe("blob store", () => {
     await store.put(REPO, "sha1", "v1:héllo", 1000);
 
     expect(await store.get(REPO, "sha1")).toEqual({
-      text: "v1:héllo",
-      bytes: 9,
+      content: "v1:héllo",
+      size: 9,
       lastUsedAt: 1000,
     });
 
@@ -86,7 +86,7 @@ describe("blob store", () => {
         .get([REPO, "sha1"]);
       request.onsuccess = () => resolve(request.result);
     });
-    expect(raw).toEqual({ text: "v1:héllo", bytes: 9, lastUsedAt: 1000 });
+    expect(raw).toEqual({ content: "v1:héllo", size: 9, lastUsedAt: 1000 });
     const store2 = db.transaction("blobs", "readonly").objectStore("blobs");
     expect(store2.indexNames.contains("lastUsedAt")).toBe(true);
     db.close();
@@ -109,8 +109,8 @@ describe("blob store", () => {
     await store.touch(REPO, "absent", 99);
 
     expect(await store.get(REPO, "a")).toEqual({
-      text: "v1:a",
-      bytes: 4,
+      content: "v1:a",
+      size: 4,
       lastUsedAt: 99,
     });
     expect(await store.get(REPO, "absent")).toBeNull();
@@ -122,19 +122,68 @@ describe("blob store", () => {
     await store.put(REPO, "same", "v1:one", 1);
     await store.put(OTHER_REPO, "same", "v1:two", 2);
 
-    expect((await store.get(REPO, "same"))?.text).toBe("v1:one");
-    expect((await store.get(OTHER_REPO, "same"))?.text).toBe("v1:two");
+    expect((await store.get(REPO, "same"))?.content).toBe("v1:one");
+    expect((await store.get(OTHER_REPO, "same"))?.content).toBe("v1:two");
     await store.delete(REPO, "same");
     expect(await store.get(REPO, "same")).toBeNull();
-    expect((await store.get(OTHER_REPO, "same"))?.text).toBe("v1:two");
+    expect((await store.get(OTHER_REPO, "same"))?.content).toBe("v1:two");
     store.close();
   });
 
-  it("exposes the 64 MiB cap constant", () => {
-    expect(BLOB_CACHE_CAP_BYTES).toBe(64 * 1024 * 1024);
+  it("exposes the 128 MiB cap constant", () => {
+    expect(BLOB_CACHE_CAP_BYTES).toBe(128 * 1024 * 1024);
+  });
+
+  it("round-trips bytes and sizes them by byte length", async () => {
+    const store = createBlobStore({ indexedDB: factory });
+    const bytes = new Uint8Array([0, 1, 2, 255]);
+    await store.put(REPO, "img", bytes, 7);
+
+    const entry = await store.get(REPO, "img");
+    expect(entry?.size).toBe(4);
+    expect(entry?.content).toBeInstanceOf(Uint8Array);
+    expect([...(entry?.content as Uint8Array)]).toEqual([0, 1, 2, 255]);
+    store.close();
+  });
+
+  it("drops a version 1 database's rows on upgrade", async () => {
+    const legacy = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = factory.open(BLOB_CACHE_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const created = request.result.createObjectStore("blobs");
+        created.createIndex("lastUsedAt", "lastUsedAt", { unique: false });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await rawPut(legacy, [REPO, "old"], { text: "v1:a", bytes: 4, lastUsedAt: 1 });
+    legacy.close();
+
+    const store = createBlobStore({ indexedDB: factory });
+    expect(await store.get(REPO, "old")).toBeNull();
+    await store.put(REPO, "new", "v1:b", 2);
+    expect(await store.get(REPO, "new")).toMatchObject({ content: "v1:b" });
+    store.close();
+
+    const db = await openRaw(factory);
+    expect(
+      db.transaction("blobs", "readonly").objectStore("blobs").indexNames.contains("lastUsedAt"),
+    ).toBe(true);
+    expect(await rawCount(db)).toBe(1);
+    db.close();
   });
 
   describe("LRU eviction", () => {
+    it("counts byte sizes when evicting", async () => {
+      const store = createBlobStore({ indexedDB: factory, capBytes: 10 });
+      await store.put(REPO, "old", new Uint8Array(6), 10);
+      await store.put(REPO, "new", new Uint8Array(6), 20);
+
+      expect(await store.get(REPO, "old")).toBeNull();
+      expect(await store.get(REPO, "new")).not.toBeNull();
+      store.close();
+    });
+
     it("evicts the oldest lastUsedAt first and keeps the new entry", async () => {
       const store = createBlobStore({ indexedDB: factory, capBytes: 10 });
       await store.put(REPO, "old", "1234", 10);
@@ -181,8 +230,8 @@ describe("blob store", () => {
       await store.put(REPO, "b", "1234", 3);
 
       expect(await store.get(REPO, "a")).toEqual({
-        text: "654321",
-        bytes: 6,
+        content: "654321",
+        size: 6,
         lastUsedAt: 2,
       });
       expect(await store.get(REPO, "b")).not.toBeNull();
@@ -273,7 +322,7 @@ describe("blob store", () => {
       seed.close();
 
       const db = await openRaw(factory);
-      await rawPut(db, [REPO, "bad"], { text: 42, bytes: "x" });
+      await rawPut(db, [REPO, "bad"], { content: 42, size: "x" });
       db.close();
 
       const store = createBlobStore({ indexedDB: factory });
@@ -315,7 +364,7 @@ describe("blob store", () => {
       const original = FakeIDBObjectStore.prototype.put;
       vi.spyOn(FakeIDBObjectStore.prototype, "put").mockImplementation(
         function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
-          if ((args[0] as { text?: string }).text === "quota!") {
+          if ((args[0] as { content?: string }).content === "quota!") {
             throw new DOMException("full", "QuotaExceededError");
           }
           return original.apply(this, args);
@@ -344,7 +393,7 @@ describe("blob store", () => {
       const original = FakeIDBObjectStore.prototype.put;
       vi.spyOn(FakeIDBObjectStore.prototype, "put").mockImplementation(
         function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
-          if ((args[0] as { text?: string }).text === "boom") {
+          if ((args[0] as { content?: string }).content === "boom") {
             throw new DOMException("bad", "DataError");
           }
           return original.apply(this, args);

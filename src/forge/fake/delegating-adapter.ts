@@ -18,6 +18,7 @@ export function delegateAdapter(
     getHead: () => inner.getHead(),
     listTree: (commitSha) => inner.listTree(commitSha),
     readBlob: (sha) => inner.readBlob(sha),
+    readBlobBytes: (sha) => inner.readBlobBytes(sha),
     commit: (request) => inner.commit(request),
     listCommits: (request) => inner.listCommits(request),
     findOldestCommit: (request) => inner.findOldestCommit(request),

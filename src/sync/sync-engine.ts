@@ -9,7 +9,7 @@ import {
   parseRepoConfig,
   type RepoConfig,
 } from "../crypto/repo-config";
-import { FOLDER_MARKER } from "../format/v1";
+import { FOLDER_MARKER, IMAGES_DIR } from "../format/v1";
 import {
   applySettingsEdits,
   rawSettingsOf,
@@ -57,6 +57,24 @@ import {
   type ShareIndex,
 } from "../share/share-index";
 import type { ColorTag } from "../tags/color-tag";
+import type { ImageId } from "../images/image-id";
+import {
+  decryptImageIndex,
+  EMPTY_IMAGES,
+  findImageIndexEntry,
+  planImageSweep,
+  serializeImageIndex,
+  type AvailableImage,
+  type ImageIndex,
+} from "../images/image-index";
+import {
+  cloneImage as clonePendingImage,
+  type PendingImage,
+} from "../images/pending-image";
+import {
+  referencedImageIds,
+  rewriteImageReferences,
+} from "../images/image-reference";
 import { insertionIndex, placementPositions } from "../order/placement";
 import { isExpired, selectExpired, type PurgeCaps } from "../trash/expiry";
 import { createTrashEntryId } from "../trash/trash-entry-id";
@@ -89,6 +107,8 @@ import {
 import {
   AUTOSAVE_DEBOUNCE_MS,
   AUTOSAVE_MAX_WAIT_MS,
+  IMAGE_SWEEP_HEADROOM,
+  MAX_IMAGE_SWEEP_FILES_PER_COMMIT,
   MAX_IMMEDIATE_STALE_RETRIES,
   TRASH_PURGE_HEADROOM,
 } from "./tuning";
@@ -135,6 +155,7 @@ interface SyncedState {
   readonly order: OrderIndex;
   readonly tags: TagIndex;
   readonly shares: ShareIndex;
+  readonly images: ImageIndex;
   readonly config: RepoConfig;
   readonly settings: Settings;
   /** Files left out of `tree` because their names don't decrypt. */
@@ -353,6 +374,8 @@ export interface SyncEngine {
   deleteFromTrash(entryIds: readonly string[]): void;
   emptyTrash(): void;
   purgeExpiredTrash(): void;
+  /** Best effort, once per engine: deletes image files nothing accounts for. */
+  sweepOrphanImages(): void;
   flush(): Promise<FlushResult>;
   retryNow(): void;
   hasLocalWork(): boolean;
@@ -362,6 +385,19 @@ export interface SyncEngine {
   /** Records settings edits and saves them like any other change. */
   changeSettings(edits: SettingsEdits): void;
   dismissNotice(id: number): void;
+  /**
+   * Holds an encrypted image until a saved note change references it. Does
+   * not save by itself.
+   */
+  addPendingImage(image: PendingImage): void;
+  getPendingImage(imageId: ImageId): PendingImage | undefined;
+  /** Image blobs reachable in history that note changes may revive. */
+  addRestoredImages(shas: ReadonlyMap<ImageId, string>): void;
+  /**
+   * Registers a pending copy of an image under a new id. Null when the source
+   * is unknown or cannot be read or decrypted.
+   */
+  cloneImage(sourceId: ImageId): Promise<ImageId | null>;
   snapshotNotes(): NotesSnapshot | null;
   /** One source per live note in sidebar order. Reads current state only. */
   searchSources(): readonly SearchSource[];
@@ -597,12 +633,19 @@ export function createSyncEngine(options: {
   // A head whose commit already holds `inFlight` but whose tree could not be
   // loaded yet; the next save loads it instead of committing again.
   let committedHead: string | null = null;
+  const pendingImages = new Map<ImageId, PendingImage>();
+  const restoredImages = new Map<ImageId, string>();
   let consecutiveFailures = 0;
   let retryTimer: unknown = undefined;
   let purgeAttempted = false;
   // Entries purged by the startup purge; changes purging only these are
   // best-effort and dropped instead of retried.
   const autoPurgedIds = new Set<string>();
+  let imageSweepAttempted = false;
+  // The orphan image sweep rides along with the next commit attempt but is
+  // never part of `pending`, so it never counts as unsaved work.
+  let imageSweepRequested = false;
+  let imageSweepInFlight = false;
   // Whether imported changes are in `pending` / `inFlight`; a commit holding
   // them is requested as atomic.
   let importPending = false;
@@ -772,6 +815,7 @@ export function createSyncEngine(options: {
     const order = await loadOrder(listing);
     const tags = await loadTags(listing);
     const shares = await loadShares(listing);
+    const images = await loadImages(listing);
     const undecryptableFiles = await countUndecryptableFiles(listing, keyring);
     return {
       head,
@@ -781,6 +825,7 @@ export function createSyncEngine(options: {
       order,
       tags,
       shares,
+      images,
       config,
       settings: resolveSettings(SETTINGS_SCHEMA, config.settings),
       undecryptableFiles,
@@ -834,6 +879,105 @@ export function createSyncEngine(options: {
     );
     loadedShares = { sha: entry.sha, shares };
     return shares;
+  }
+
+  let loadedImages: {
+    readonly sha: string;
+    readonly images: ImageIndex;
+  } | null = null;
+
+  async function loadImages(
+    listing: readonly TreeEntry[],
+  ): Promise<ImageIndex> {
+    const entry = findImageIndexEntry(listing);
+    if (entry === undefined) return EMPTY_IMAGES;
+    if (loadedImages?.sha === entry.sha) return loadedImages.images;
+    const images = await decryptImageIndex(
+      keyring,
+      await adapter.readBlob(entry.sha),
+    );
+    loadedImages = { sha: entry.sha, images };
+    return images;
+  }
+
+  function availableImages(): ReadonlyMap<ImageId, AvailableImage> {
+    const available = new Map<ImageId, AvailableImage>();
+    for (const image of pendingImages.values()) {
+      available.set(image.imageId, {
+        kind: "envelope",
+        envelope: image.envelope,
+        blobSha: image.blobSha,
+      });
+    }
+    for (const [imageId, blobSha] of restoredImages) {
+      if (!available.has(imageId)) {
+        available.set(imageId, { kind: "sha", blobSha });
+      }
+    }
+    return available;
+  }
+
+  function addPendingImage(image: PendingImage): void {
+    pendingImages.set(image.imageId, image);
+  }
+
+  function addRestoredImages(shas: ReadonlyMap<ImageId, string>): void {
+    for (const [imageId, blobSha] of shas) restoredImages.set(imageId, blobSha);
+  }
+
+  async function cloneImageFrom(
+    sourceId: ImageId,
+    index: ImageIndex,
+  ): Promise<ImageId | null> {
+    try {
+      let envelope = pendingImages.get(sourceId)?.envelope;
+      if (envelope === undefined) {
+        const record = index.images.get(sourceId);
+        if (record === undefined) return null;
+        envelope = await adapter.readBlobBytes(record.blobSha);
+      }
+      const clone = await clonePendingImage(keyring, {
+        imageId: sourceId,
+        envelope,
+      });
+      addPendingImage(clone);
+      return clone.imageId;
+    } catch {
+      return null;
+    }
+  }
+
+  async function cloneImage(sourceId: ImageId): Promise<ImageId | null> {
+    return cloneImageFrom(sourceId, state.synced?.images ?? EMPTY_IMAGES);
+  }
+
+  async function cloneRelocatedCopyImages(
+    changeSet: ChangeSet,
+    notices: readonly MergeNotice[],
+    index: ImageIndex,
+  ): Promise<ChangeSet> {
+    let result = changeSet;
+    for (const notice of notices) {
+      if (notice.kind !== "relocated" || notice.target !== "note") continue;
+      const at = result.findIndex(
+        (change) =>
+          change.kind === "create-note" && notePathEquals(change.path, notice.to),
+      );
+      const change = result[at];
+      if (change?.kind !== "create-note") continue;
+      const replacements = new Map<ImageId, ImageId>();
+      for (const imageId of referencedImageIds(change.content)) {
+        if (!index.images.has(imageId)) continue;
+        const cloneId = await cloneImageFrom(imageId, index);
+        if (cloneId !== null) replacements.set(imageId, cloneId);
+      }
+      if (replacements.size === 0) continue;
+      result = result.with(at, {
+        ...change,
+        content: rewriteImageReferences(change.content, replacements),
+      });
+    }
+    return result;
   }
 
   type NoteResolution =
@@ -1340,7 +1484,11 @@ export function createSyncEngine(options: {
       return Promise.resolve();
     }
     cancelRetry();
-    if (state.pending.length === 0 && committedHead === null) {
+    if (
+      state.pending.length === 0 &&
+      committedHead === null &&
+      !imageSweepRequested
+    ) {
       if (state.save.kind === "waiting") {
         update((current) => ({ ...current, save: { kind: "idle" } }));
       }
@@ -1358,7 +1506,7 @@ export function createSyncEngine(options: {
       saveAgain = false;
       await runOneSave();
       if (disposed || !saveAgain || state.save.kind !== "idle") return;
-      if (state.pending.length === 0) return;
+      if (state.pending.length === 0 && !imageSweepRequested) return;
     }
   }
 
@@ -1401,11 +1549,13 @@ export function createSyncEngine(options: {
       if (committedHead !== null) {
         await adoptCommittedHead(committedHead);
       }
-      if (state.pending.length === 0) {
+      if (state.pending.length === 0 && !imageSweepRequested) {
         saveSucceeded();
         return;
       }
 
+      imageSweepInFlight = imageSweepRequested;
+      imageSweepRequested = false;
       importInFlight = importPending;
       importPending = false;
       update((current) => ({
@@ -1424,9 +1574,21 @@ export function createSyncEngine(options: {
           tags: attemptSynced.tags,
           shares: attemptSynced.shares,
           config: attemptSynced.config,
+          images: attemptSynced.images,
+          available: availableImages(),
+          now: clock.now(),
           keyring,
           device: options.deviceName?.() ?? null,
+          ...(imageSweepInFlight
+            ? { imageSweep: { maxFiles: MAX_IMAGE_SWEEP_FILES_PER_COMMIT } }
+            : {}),
         });
+        // A sweep requested while this attempt was encoding joins its commit.
+        if (imageSweepRequested) {
+          imageSweepInFlight = true;
+          imageSweepRequested = false;
+          continue;
+        }
         if (encoded.changes.length === 0) {
           endImportAttempt();
           update((current) => ({ ...current, inFlight: EMPTY_CHANGES }));
@@ -1453,6 +1615,10 @@ export function createSyncEngine(options: {
 
         if (result.kind === "ok") {
           committedHead = result.head;
+          for (const imageId of encoded.consumedImages) {
+            pendingImages.delete(imageId);
+            restoredImages.delete(imageId);
+          }
           endImportAttempt();
           await adoptCommittedHead(result.head);
           saveSucceeded();
@@ -1466,7 +1632,9 @@ export function createSyncEngine(options: {
         }
 
         const committed = await mergeWithRemote(attemptSynced);
+        if (!committed && imageSweepInFlight) continue;
         if (!committed) {
+          clearImageSweep();
           endImportAttempt();
           update((current) => ({ ...current, inFlight: EMPTY_CHANGES }));
           saveSucceeded();
@@ -1492,7 +1660,28 @@ export function createSyncEngine(options: {
       }
       console.error("Save failed", error);
       failAttempt({ kind: "server" });
+    } finally {
+      imageSweepInFlight = false;
     }
+  }
+
+  function clearImageSweep(): void {
+    imageSweepRequested = false;
+    imageSweepInFlight = false;
+  }
+
+  // A sweep with no changes alongside it is dropped like the startup purge.
+  function dropSweepOnly(): boolean {
+    if (
+      state.inFlight.length > 0 ||
+      state.pending.length > 0 ||
+      committedHead !== null
+    ) {
+      return false;
+    }
+    consecutiveFailures = 0;
+    update((current) => ({ ...current, save: { kind: "idle" } }));
+    return true;
   }
 
   // Changes already committed stay in flight so a retry only loads their
@@ -1534,7 +1723,9 @@ export function createSyncEngine(options: {
   }
 
   function failAttempt(error: SyncError): void {
+    clearImageSweep();
     if (dropAutoPurge(error)) return;
+    if (dropSweepOnly()) return;
     if (isOffline()) {
       returnUncommitted();
       update((current) => ({ ...current, save: OFFLINE_WAIT }));
@@ -1574,7 +1765,9 @@ export function createSyncEngine(options: {
   }
 
   function waitForBudget(retryAt: number): void {
+    clearImageSweep();
     if (dropAutoPurge(null)) return;
+    if (dropSweepOnly()) return;
     returnUncommitted();
     update((current) => ({
       ...current,
@@ -1631,7 +1824,7 @@ export function createSyncEngine(options: {
       pending: EMPTY_CHANGES,
     }));
 
-    const merged = await mergeChangeSet({
+    const mergeResult = await mergeChangeSet({
       base: base.tree,
       remote: remote.tree,
       changeSet: state.inFlight,
@@ -1641,6 +1834,14 @@ export function createSyncEngine(options: {
       readBaseContent: (path) => readNoteText(base.tree, path),
       readRemoteContent: (path) => readNoteText(remote.tree, path),
     });
+    const merged = {
+      ...mergeResult,
+      changeSet: await cloneRelocatedCopyImages(
+        mergeResult.changeSet,
+        mergeResult.notices,
+        remote.images,
+      ),
+    };
 
     const mergedTree = buildWorkingTree(
       remote.tree,
@@ -2649,6 +2850,42 @@ export function createSyncEngine(options: {
     autosave.saveNow();
   }
 
+  function sweepOrphanImages(): void {
+    if (disposed || stopped || suspended || imageSweepAttempted) return;
+    imageSweepAttempted = true;
+    const { synced } = state;
+    if (
+      synced === null ||
+      state.refresh.lastError !== null ||
+      !synced.images.writable
+    ) {
+      return;
+    }
+    const imagePrefix = `${IMAGES_DIR}/`;
+    const sweep = planImageSweep(
+      synced.images,
+      synced.listing
+        .filter(
+          (entry) => entry.type === "blob" && entry.path.startsWith(imagePrefix),
+        )
+        .map((entry) => entry.path),
+      clock.now(),
+      MAX_IMAGE_SWEEP_FILES_PER_COMMIT,
+    );
+    if (
+      sweep.deletes.length === 0 &&
+      serializeImageIndex(sweep.index) === serializeImageIndex(synced.images)
+    ) {
+      return;
+    }
+    const budgetAt = rateBudget.availableAt(
+      adapter.commitCost([]) + IMAGE_SWEEP_HEADROOM,
+    );
+    if (budgetAt > clock.now()) return;
+    imageSweepRequested = true;
+    autosave.saveNow();
+  }
+
   function flushResult(): FlushResult {
     const count = state.syncStates.unsavedCount;
     return count === 0 ? { kind: "saved" } : { kind: "unsaved", count };
@@ -2830,6 +3067,8 @@ export function createSyncEngine(options: {
   function dispose(): void {
     disposed = true;
     noteContentCache.clear();
+    pendingImages.clear();
+    restoredImages.clear();
     autosave.dispose();
     cancelRetry();
     subscribers.clear();
@@ -2866,6 +3105,7 @@ export function createSyncEngine(options: {
     deleteFromTrash: purge,
     emptyTrash,
     purgeExpiredTrash,
+    sweepOrphanImages,
     flush,
     retryNow,
     hasLocalWork: () => hasLocalWork() || saveLoop !== null,
@@ -2873,6 +3113,10 @@ export function createSyncEngine(options: {
     resolveConflict,
     changeSettings,
     dismissNotice,
+    addPendingImage,
+    getPendingImage: (imageId) => pendingImages.get(imageId),
+    addRestoredImages,
+    cloneImage,
     snapshotNotes,
     searchSources,
     readNoteText: readNoteBlob,

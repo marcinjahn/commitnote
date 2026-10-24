@@ -5,6 +5,7 @@ export function withBlobCache(
   inner: ForgeAdapter,
   cache: BlobCache,
 ): ForgeAdapter {
+  const createBlob = inner.createBlob?.bind(inner);
   return {
     limits: inner.limits,
     shareHost: inner.shareHost,
@@ -19,6 +20,13 @@ export function withBlobCache(
       const text = await inner.readBlob(sha);
       cache.fill(sha, text);
       return text;
+    },
+    async readBlobBytes(sha) {
+      const hit = await cache.readBytes(sha);
+      if (hit !== null) return hit;
+      const bytes = await inner.readBlobBytes(sha);
+      cache.fillBytes(sha, bytes);
+      return bytes;
     },
     async commit(request) {
       const result = await inner.commit(request);
@@ -36,6 +44,15 @@ export function withBlobCache(
       : {}),
     ...(inner.replaceHistory
       ? { replaceHistory: inner.replaceHistory.bind(inner) }
+      : {}),
+    ...(createBlob
+      ? {
+          async createBlob(bytes: Uint8Array) {
+            const sha = await createBlob(bytes);
+            cache.fillBytes(sha, bytes);
+            return sha;
+          },
+        }
       : {}),
     ...(inner.sweepAbandoned
       ? { sweepAbandoned: inner.sweepAbandoned.bind(inner) }

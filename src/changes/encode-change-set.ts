@@ -8,6 +8,8 @@ import {
   CHANGE_PASSPHRASE_SUBJECT,
   FOLDER_MARKER,
   FORMAT_VERSION,
+  IMAGE_INDEX_PATH,
+  IMAGES_DIR,
   INITIALIZE_SUBJECT,
   ORDER_PATH,
   SHARES_PATH,
@@ -41,6 +43,21 @@ import {
   type SettingsEdits,
 } from "../settings/settings";
 import { parseTrashEntryId } from "../trash/trash-entry-id";
+import { type ImageId, imageFilePath } from "../images/image-id";
+import {
+  applyChangeToImages,
+  EMPTY_IMAGES,
+  planImageSweep,
+  pruneExpiredTombstones,
+  reconcileNoteImages,
+  serializeImageIndex,
+  type AvailableImage,
+  type ImageFileChange,
+  type ImageIndex,
+  type ImageIndexUpdate,
+  type ImageTombstone,
+} from "../images/image-index";
+import { referencedImageIds } from "../images/image-reference";
 import type { Change, ChangeSet, NotePath } from "./change";
 
 export class InvalidChangeSetError extends Error {}
@@ -60,15 +77,25 @@ export interface EncodeChangeSetInput {
   readonly device: string | null;
   /** The parsed config at the head of `listing`; required for `set-settings`. */
   readonly config?: RepoConfig;
+  /** The image index stored in `listing`. */
+  readonly images?: ImageIndex;
+  /** Image files not yet stored in `listing` that notes may start referencing. */
+  readonly available?: ReadonlyMap<ImageId, AvailableImage>;
+  readonly now?: number;
+  /** Also deletes up to `maxFiles` unindexed image files and prunes expired tombstones. */
+  readonly imageSweep?: { readonly maxFiles: number };
 }
 
 export interface EncodedChangeSet {
   readonly changes: readonly CommitFileChange[];
   readonly message: string;
+  /** Ids whose `available` entry this change set stored. */
+  readonly consumedImages: readonly ImageId[];
 }
 
 type WorkingEntry =
   | { readonly kind: "blob"; readonly blobSha: string }
+  | { readonly kind: "bytes"; readonly bytes: Uint8Array }
   | { readonly kind: "text"; readonly text: string; readonly encrypt: boolean };
 
 function createStoredPathEncoder(
@@ -381,6 +408,69 @@ async function applyChange(
   }
 }
 
+type EnvelopeImage = Extract<AvailableImage, { kind: "envelope" }>;
+
+function applyImageFileChanges(
+  working: Map<string, WorkingEntry>,
+  fileChanges: readonly ImageFileChange[],
+  available: ReadonlyMap<ImageId, AvailableImage>,
+  writtenEnvelopes: Map<ImageId, EnvelopeImage>,
+): void {
+  for (const fileChange of fileChanges) {
+    const path = imageFilePath(fileChange.imageId);
+    switch (fileChange.kind) {
+      case "write": {
+        const candidate = available.get(fileChange.imageId);
+        if (candidate?.kind === "envelope") {
+          writtenEnvelopes.set(fileChange.imageId, candidate);
+        }
+        working.set(path, { kind: "bytes", bytes: fileChange.envelope });
+        break;
+      }
+      case "revive": {
+        const written = writtenEnvelopes.get(fileChange.imageId);
+        working.set(
+          path,
+          written?.blobSha === fileChange.blobSha
+            ? { kind: "bytes", bytes: written.envelope }
+            : { kind: "blob", blobSha: fileChange.blobSha },
+        );
+        break;
+      }
+      case "delete":
+        working.delete(path);
+        break;
+    }
+  }
+}
+
+/**
+ * An image written from its envelope and then left without owners in the same
+ * change set was never stored, so it must leave no tombstone behind and stay
+ * available for a later save.
+ */
+function dropUnstoredImages(
+  images: ImageIndex,
+  writtenEnvelopes: ReadonlyMap<ImageId, EnvelopeImage>,
+  originalBlobShas: ReadonlyMap<string, string>,
+  consumedImages: Set<ImageId>,
+): ImageIndex {
+  let tombstones: Map<ImageId, ImageTombstone> | null = null;
+  for (const [id, written] of writtenEnvelopes) {
+    if (
+      originalBlobShas.has(imageFilePath(id)) ||
+      images.images.has(id) ||
+      images.tombstones.get(id)?.blobSha !== written.blobSha
+    ) {
+      continue;
+    }
+    tombstones ??= new Map(images.tombstones);
+    tombstones.delete(id);
+    consumedImages.delete(id);
+  }
+  return tombstones === null ? images : { ...images, tombstones };
+}
+
 function assertNever(value: never): never {
   throw new Error(`Unhandled change kind: ${(value as Change).kind}`);
 }
@@ -431,8 +521,14 @@ export async function encodeChangeSet(
   let order = input.order;
   let tags = input.tags;
   let shares = input.shares;
+  const inputImages = input.images ?? EMPTY_IMAGES;
+  let images = inputImages;
+  const available = input.available ?? new Map<ImageId, AvailableImage>();
+  const now = input.now ?? Date.now();
+  const consumedImages = new Set<ImageId>();
+  const writtenEnvelopes = new Map<ImageId, EnvelopeImage>();
 
-  if (changeSet.length === 0) {
+  if (changeSet.length === 0 && input.imageSweep === undefined) {
     throw new InvalidChangeSetError("Change set must not be empty");
   }
 
@@ -469,6 +565,45 @@ export async function encodeChangeSet(
     order = applyChangeToOrder(order, change);
     tags = applyChangeToTags(tags, change);
     shares = applyChangeToShares(shares, change);
+    const update: ImageIndexUpdate =
+      change.kind === "create-note" || change.kind === "update-note"
+        ? reconcileNoteImages(
+            images,
+            change.path,
+            referencedImageIds(change.content),
+            available,
+            now,
+          )
+        : applyChangeToImages(images, change, now);
+    images = update.index;
+    applyImageFileChanges(
+      working,
+      update.fileChanges,
+      available,
+      writtenEnvelopes,
+    );
+    for (const id of update.consumed) consumedImages.add(id);
+  }
+  images = dropUnstoredImages(
+    images,
+    writtenEnvelopes,
+    originalBlobShas,
+    consumedImages,
+  );
+
+  const inputImagesText = serializeImageIndex(inputImages);
+  if (input.imageSweep !== undefined) {
+    const imagePrefix = `${IMAGES_DIR}/`;
+    const sweep = planImageSweep(
+      images,
+      [...working.keys()].filter((path) => path.startsWith(imagePrefix)),
+      now,
+      input.imageSweep.maxFiles,
+    );
+    for (const path of sweep.deletes) working.delete(path);
+    images = sweep.index;
+  } else if (serializeImageIndex(images) !== inputImagesText) {
+    images = pruneExpiredTombstones(images, now);
   }
 
   if (settingsEdits !== undefined && config !== undefined) {
@@ -516,6 +651,14 @@ export async function encodeChangeSet(
     });
   }
 
+  if (images.writable && serializeImageIndex(images) !== inputImagesText) {
+    working.set(IMAGE_INDEX_PATH, {
+      kind: "text",
+      text: serializeImageIndex(images),
+      encrypt: true,
+    });
+  }
+
   const commitChanges: CommitFileChange[] = [];
 
   for (const path of originalBlobShas.keys()) {
@@ -528,6 +671,8 @@ export async function encodeChangeSet(
     if (entry.kind === "blob") {
       if (originalBlobShas.get(path) === entry.blobSha) continue;
       commitChanges.push({ kind: "upsert-blob", path, blobSha: entry.blobSha });
+    } else if (entry.kind === "bytes") {
+      commitChanges.push({ kind: "upsert-bytes", path, bytes: entry.bytes });
     } else {
       const text = entry.encrypt
         ? await encryptNote(keyring, entry.text, random)
@@ -552,5 +697,6 @@ export async function encodeChangeSet(
   return {
     changes: commitChanges,
     message: buildMessage(SAVE_SUBJECT, allTrailers),
+    consumedImages: [...consumedImages],
   };
 }

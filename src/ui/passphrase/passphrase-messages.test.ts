@@ -20,6 +20,7 @@ const SUMMARY = {
   trashEntries: 0,
   carriedTrashEntries: 0,
   carriedFiles: 0,
+  images: 0,
 };
 
 describe("passphrase change messages", () => {
@@ -31,6 +32,9 @@ describe("passphrase change messages", () => {
       describeRekeySummary({ ...SUMMARY, notes: 1, trashEntries: 2 }),
     ).toBe(
       "Re-encrypts 1 note, 1 folder and 2 items in the trash with the new passphrase, saved as a single commit.",
+    );
+    expect(describeRekeySummary({ ...SUMMARY, images: 2 })).toBe(
+      "Re-encrypts 3 notes, 1 folder and 2 images with the new passphrase, saved as a single commit.",
     );
   });
 

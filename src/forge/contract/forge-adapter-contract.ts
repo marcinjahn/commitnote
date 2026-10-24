@@ -20,6 +20,7 @@ export interface ContractSeed {
   readonly commits: readonly {
     readonly message: string;
     readonly files: Readonly<Record<string, string>>;
+    readonly binaryFiles?: Readonly<Record<string, Uint8Array>>;
     readonly committedAt?: number; // ms since epoch, whole seconds
   }[]; // full snapshots, oldest first, linear
   readonly branch?: string; // branch the last commit is on; default 'main'
@@ -39,6 +40,7 @@ export type ContractOperation =
   | "getHead"
   | "listTree"
   | "readBlob"
+  | "readBlobBytes"
   | "commit"
   | "listCommits"
   | "findOldestCommit"
@@ -56,6 +58,7 @@ export interface ContractSubject {
     failure: InjectedFailure,
   ): void;
   readFileAtMain(path: string): Promise<string | undefined>; // inspects backing state directly
+  readFileBytesAtMain(path: string): Promise<Uint8Array | undefined>;
   mainHead(): Promise<string | undefined>;
   commitParent(sha: string): Promise<string | null | undefined>;
 }
@@ -80,7 +83,11 @@ export function inMemorySubjectHooks(
   repo: InMemoryGitRepo,
 ): Pick<
   ContractSubject,
-  "pushFromAnotherDevice" | "readFileAtMain" | "mainHead" | "commitParent"
+  | "pushFromAnotherDevice"
+  | "readFileAtMain"
+  | "readFileBytesAtMain"
+  | "mainHead"
+  | "commitParent"
 > {
   return {
     pushFromAnotherDevice: (changes) =>
@@ -89,6 +96,11 @@ export function inMemorySubjectHooks(
       const head = repo.getRef(MAIN_BRANCH);
       const blobSha = head === undefined ? undefined : repo.fileAt(head, path);
       return blobSha === undefined ? undefined : repo.getBlob(blobSha);
+    },
+    async readFileBytesAtMain(path) {
+      const head = repo.getRef(MAIN_BRANCH);
+      const blobSha = head === undefined ? undefined : repo.fileAt(head, path);
+      return blobSha === undefined ? undefined : repo.getBlobBytes(blobSha);
     },
     mainHead: async () => repo.getRef(MAIN_BRANCH),
     commitParent: async (sha) => repo.getCommit(sha)?.parent,
@@ -120,7 +132,10 @@ export function toMockFailure(
 // Independently reproduces git's blob hashing so listTree/readBlob results can
 // be checked against a ground truth the harness under test did not compute.
 async function gitBlobSha(text: string): Promise<string> {
-  const contentBytes = new TextEncoder().encode(text);
+  return gitBlobShaOfBytes(new TextEncoder().encode(text));
+}
+
+async function gitBlobShaOfBytes(contentBytes: Uint8Array): Promise<string> {
   const header = new TextEncoder().encode(`blob ${contentBytes.byteLength}\0`);
   const full = new Uint8Array(header.byteLength + contentBytes.byteLength);
   full.set(header, 0);
@@ -392,6 +407,121 @@ export function describeForgeAdapterContract(
         await expect(
           subject.adapter.listTree("unknown-sha"),
         ).rejects.toMatchObject({ kind: "NotFound" });
+      });
+    });
+
+    describe("binary content", () => {
+      const allBytes = Uint8Array.from({ length: 256 }, (_, i) => i);
+
+      async function entryFor(
+        subject: ContractSubject,
+        commit: string,
+        path: string,
+      ) {
+        const entries = await subject.adapter.listTree(commit);
+        const entry = entries.find((candidate) => candidate.path === path);
+        if (entry === undefined) {
+          throw new Error(`expected an entry for ${path}`);
+        }
+        return entry;
+      }
+
+      it("commits upsert-bytes and reads the exact bytes back", async () => {
+        const subject = await harness.createPopulated(configSeed());
+        const parent = await requireMainHead(subject);
+
+        const result = await subject.adapter.commit({
+          parent,
+          changes: [{ kind: "upsert-bytes", path: "bin/all.dat", bytes: allBytes }],
+          message: "save",
+        });
+
+        expect(result.kind).toBe("ok");
+        const head = result.kind === "ok" ? result.head : "";
+        const entry = await entryFor(subject, head, "bin/all.dat");
+        expect(entry.sha).toBe(await gitBlobShaOfBytes(allBytes));
+        expect(await subject.adapter.readBlobBytes(entry.sha)).toEqual(allBytes);
+        expect(await subject.readFileBytesAtMain("bin/all.dat")).toEqual(
+          allBytes,
+        );
+      });
+
+      it("readBlobBytes of a text blob returns its UTF-8 bytes", async () => {
+        const text = "héllo 世界 🎉";
+        const subject = await harness.createPopulated({
+          commits: [{ message: "init", files: { "note.md": text } }],
+        });
+        const entry = await entryFor(
+          subject,
+          await requireMainHead(subject),
+          "note.md",
+        );
+
+        expect(await subject.adapter.readBlobBytes(entry.sha)).toEqual(
+          new TextEncoder().encode(text),
+        );
+      });
+
+      it("readBlobBytes rejects with NotFound for an unknown SHA", async () => {
+        const subject = await harness.createEmpty();
+        await expect(
+          subject.adapter.readBlobBytes("unknown-sha"),
+        ).rejects.toMatchObject({ kind: "NotFound" });
+      });
+
+      it("reads bytes of a seeded binary file", async () => {
+        const subject = await harness.createPopulated({
+          commits: [
+            {
+              message: "init",
+              files: { [REPO_CONFIG_PATH]: "{}" },
+              binaryFiles: { "bin/all.dat": allBytes },
+            },
+          ],
+        });
+        const entry = await entryFor(
+          subject,
+          await requireMainHead(subject),
+          "bin/all.dat",
+        );
+
+        expect(await subject.adapter.readBlobBytes(entry.sha)).toEqual(
+          allBytes,
+        );
+      });
+
+      it("reports exactly commitCost content-creating requests for bytes changes", async () => {
+        const subject = await harness.createPopulated(configSeed());
+        const parent = await requireMainHead(subject);
+        const changes: CommitFileChange[] = [
+          { kind: "upsert-text", path: "a.md", text: "one" },
+          { kind: "upsert-bytes", path: "b.dat", bytes: allBytes },
+          { kind: "upsert-bytes", path: "c.dat", bytes: allBytes.slice(1) },
+        ];
+
+        await subject.adapter.commit({ parent, changes, message: "save" });
+
+        expect(subject.contentCreatingRequests).toHaveLength(
+          subject.adapter.commitCost(changes),
+        );
+      });
+
+      it("recreates a file from a blob SHA only reachable from history", async () => {
+        const subject = await harness.createPopulated(HISTORY_SEED);
+        const [oldest] = await seededShas(subject);
+        const oldEntry = await entryFor(subject, oldest, "dir/n.md");
+        const parent = await requireMainHead(subject);
+
+        const result = await subject.adapter.commit({
+          parent,
+          changes: [
+            { kind: "upsert-blob", path: "back.md", blobSha: oldEntry.sha },
+          ],
+          message: "restore",
+        });
+
+        expect(result.kind).toBe("ok");
+        expect(await subject.readFileAtMain("back.md")).toBe("one");
       });
     });
 

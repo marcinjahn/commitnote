@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { argon2idDirect } from "./argon2";
+import { decryptImage, encryptImage } from "./image-cipher";
 import { computeKeyCheck, deriveKeyring } from "./keyring";
 import { decryptName, encryptName, encryptPath } from "./name-cipher";
 import { decryptNote, encryptNote } from "./note-cipher";
@@ -73,6 +74,27 @@ describe("known-answer vectors (format v1)", () => {
         "v1:EBESExQVFhcYGRobV0RqAJINWc4SuhnwwhVtVLgsDpxszl4twB0GmbWmbIlPN++j",
       );
       expect(await decryptNote(keyring, encrypted)).toBe(markdown);
+    });
+
+    it("matches the pinned encrypted image", async () => {
+      const keyring = await deriveKeyring(PASSPHRASE, kdfA, argon2idDirect);
+      const imageIv = Uint8Array.from({ length: 12 }, (_, i) => 0x20 + i); // 0x20..0x2b
+      const random = (length: number): Uint8Array => {
+        expect(length).toBe(imageIv.length);
+        return imageIv;
+      };
+      const imageId = "a".repeat(26);
+      const payload = {
+        type: "image/webp" as const,
+        width: 2,
+        height: 3,
+        bytes: Uint8Array.from({ length: 10 }, (_, i) => i + 1),
+      };
+      const envelope = await encryptImage(keyring, imageId, payload, random);
+      expect(Array.from(envelope, (b) => b.toString(16).padStart(2, "0")).join("")).toBe(
+        "434e4901202122232425262728292a2bd0eb529516c57207e97d8384790aeb6f6022ba081c547529bbc68a73a61331d5febd672aa9a8206fbb1a71afcaba560e78949e0b399add569a7deacc12c30e4e128d488cb3ed025a85926bbf75a2eb8379d265754c51a29ce7ccfd2b323cb8b9",
+      );
+      expect(await decryptImage(keyring, imageId, envelope)).toEqual(payload);
     });
   });
 

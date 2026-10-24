@@ -51,6 +51,7 @@ export function withLatency(
   latency: ForgeLatency,
 ): ForgeAdapter {
   const replaceHistory = adapter.replaceHistory?.bind(adapter);
+  const createBlob = adapter.createBlob?.bind(adapter);
   const shareHost = adapter.shareHost;
   const observedRateLimit = adapter.observedRateLimit?.bind(adapter);
   return {
@@ -64,6 +65,8 @@ export function withLatency(
       delayed(latency.listTreeMs, () => adapter.listTree(...args)),
     readBlob: (...args) =>
       delayed(latency.readBlobMs, () => adapter.readBlob(...args)),
+    readBlobBytes: (...args) =>
+      delayed(latency.readBlobMs, () => adapter.readBlobBytes(...args)),
     commit: (...args) =>
       delayed(latency.commitMs, () => adapter.commit(...args)),
     listCommits: (...args) =>
@@ -85,6 +88,12 @@ export function withLatency(
       : {
           replaceHistory: (...args) =>
             delayed(latency.commitMs, () => replaceHistory(...args)),
+        }),
+    ...(createBlob === undefined
+      ? {}
+      : {
+          createBlob: (...args) =>
+            delayed(latency.commitMs, () => createBlob(...args)),
         }),
     ...(observedRateLimit === undefined ? {} : { observedRateLimit }),
   };

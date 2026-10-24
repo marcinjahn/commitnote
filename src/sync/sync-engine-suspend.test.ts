@@ -91,6 +91,7 @@ describe("sync engine suspend", () => {
         findOldestCommit: () => Promise.reject(new Error()),
         readFileAt: () => Promise.reject(new Error()),
         readBlob: () => Promise.reject(new Error()),
+        readBlobBytes: () => Promise.reject(new Error()),
         commit: () => Promise.reject(new Error()),
         shareHost: {
           create: () => Promise.reject(new Error()),

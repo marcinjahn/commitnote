@@ -535,6 +535,11 @@ class GitLabAdapter implements ForgeAdapter {
     return text;
   }
 
+  async readBlobBytes(sha: string): Promise<Uint8Array> {
+    const response = await this.fetchBlob(sha);
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
   async listCommits(request: ListCommitsRequest): Promise<CommitSummary[]> {
     const limit = Math.max(0, request.limit);
     const perPage = Math.min(limit, MAX_COMMITS_PER_PAGE);
@@ -1302,21 +1307,28 @@ class GitLabAdapter implements ForgeAdapter {
         continue;
       }
       const action = existing.has(change.path) ? "update" : "create";
-      actions.push(
-        change.kind === "upsert-text"
-          ? {
-              action,
-              file_path: change.path,
-              content: change.text,
-              encoding: "text",
-            }
-          : {
-              action,
-              file_path: change.path,
-              content: blobContents.get(change.blobSha) ?? "",
-              encoding: "base64",
-            },
-      );
+      if (change.kind === "upsert-text") {
+        actions.push({
+          action,
+          file_path: change.path,
+          content: change.text,
+          encoding: "text",
+        });
+      } else if (change.kind === "upsert-bytes") {
+        actions.push({
+          action,
+          file_path: change.path,
+          content: toBase64(change.bytes),
+          encoding: "base64",
+        });
+      } else {
+        actions.push({
+          action,
+          file_path: change.path,
+          content: blobContents.get(change.blobSha) ?? "",
+          encoding: "base64",
+        });
+      }
       existing.add(change.path);
     }
     return actions;

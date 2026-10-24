@@ -72,6 +72,13 @@ function rawResponse(text: string): Response {
   });
 }
 
+function bytesResponse(bytes: Uint8Array): Response {
+  return new HttpResponse(bytes, {
+    status: 200,
+    headers: { "content-type": "application/octet-stream" },
+  });
+}
+
 class CommitRejected extends Error {}
 
 /**
@@ -620,11 +627,11 @@ export class MockGitLabRepo {
 
     const blobMatch = /^\/repository\/blobs\/([^/]+)\/raw$/.exec(rest);
     if (method === "GET" && blobMatch !== null) {
-      const text = this.git.getBlob(decodeURIComponent(blobMatch[1]));
-      if (text === undefined) {
+      const bytes = this.git.getBlobBytes(decodeURIComponent(blobMatch[1]));
+      if (bytes === undefined) {
         return jsonResponse({ message: "404 Blob Not Found" }, 404);
       }
-      return rawResponse(text);
+      return bytesResponse(bytes);
     }
 
     if (method === "GET" && rest === "/repository/commits") {
@@ -842,18 +849,28 @@ export class MockGitLabRepo {
         : action.content;
     };
 
+    const upsert = (): CommitFileChange => {
+      if (action.encoding !== "base64") {
+        return { kind: "upsert-text", path, text: text() };
+      }
+      if (action.content === undefined) {
+        throw new CommitRejected("content is missing");
+      }
+      return { kind: "upsert-bytes", path, bytes: fromBase64(action.content) };
+    };
+
     switch (action.action) {
       case "create":
         if (files.has(path)) {
           throw new CommitRejected("A file with this name already exists");
         }
         files.add(path);
-        return [{ kind: "upsert-text", path, text: text() }];
+        return [upsert()];
       case "update":
         if (!files.has(path)) {
           throw new CommitRejected("A file with this name doesn't exist");
         }
-        return [{ kind: "upsert-text", path, text: text() }];
+        return [upsert()];
       case "delete":
         if (!files.delete(path)) {
           throw new CommitRejected("A file with this name doesn't exist");

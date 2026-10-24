@@ -22,6 +22,8 @@ export function createLazyForgeAdapter(
       resolved().then((a) => a.findOldestCommit(...args)),
     readFileAt: (...args) => resolved().then((a) => a.readFileAt(...args)),
     readBlob: (...args) => resolved().then((a) => a.readBlob(...args)),
+    readBlobBytes: (...args) =>
+      resolved().then((a) => a.readBlobBytes(...args)),
     commit: (...args) => resolved().then((a) => a.commit(...args)),
     shareHost: {
       create: (...args) => resolved().then((a) => a.shareHost.create(...args)),
@@ -34,6 +36,13 @@ export function createLazyForgeAdapter(
           throw new Error("replaceHistory is not supported");
         }
         return a.replaceHistory(...args);
+      }),
+    createBlob: (...args) =>
+      resolved().then((a) => {
+        if (a.createBlob === undefined) {
+          throw new Error("createBlob is not supported");
+        }
+        return a.createBlob(...args);
       }),
   };
 }
