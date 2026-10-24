@@ -112,20 +112,6 @@ final class MediaFlowTests: XCTestCase {
         waitUntil(error, NSPredicate(format: "label CONTAINS %@", "permission to create gists"))
     }
 
-    /// The editor hides its keyboard when dragged down; iPad keyboards also offer a key for it.
-    private func dismissKeyboard(over editor: XCUIElement, in app: XCUIApplication) {
-        let keyboard = app.keyboards.firstMatch
-        for _ in 0..<3 where keyboard.exists {
-            let hide = keyboard.buttons["Hide keyboard"]
-            if hide.exists, hide.isHittable {
-                hide.tap()
-            } else {
-                editor.swipeDown(velocity: .fast)
-            }
-            poll(timeout: 5) { !keyboard.exists }
-        }
-    }
-
     /// The pasted photo is drawn far larger than the 64×48 clone below it.
     private func largestLoadedImage(editor: XCUIElement, in app: XCUIApplication) -> XCUIElement {
         let images = loadedEditorImages(in: app)
