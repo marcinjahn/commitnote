@@ -217,11 +217,8 @@ final class AppModel {
             screen = .fatal(Self.inconsistentBuildMessage)
             return
         }
-        var configuration = CoreRuntimeConfiguration.production(
+        let configuration = CoreRuntimeConfiguration.production(
             bundleURL: bundleURL, deviceModel: UIDevice.current.model)
-        #if FAKE_CORE
-        configuration.stallDiagnostics = true
-        #endif
         let runtime = CoreRuntime(configuration: configuration)
         do {
             try await runtime.start()

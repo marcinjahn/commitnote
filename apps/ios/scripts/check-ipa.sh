@@ -27,7 +27,7 @@ for marker in "fake.saveNote" "fake.processImage" "sample/large-tree" "sample no
   fi
 done
 
-for marker in "fake.saveNote" "fake.remoteEdit" "fake.failNext" "fake.shareNote" "fake.holdLoading" "fake.processImage" "testing-menu" "testing-share-note" "testing-share-permission" "testing-loading-bar" "testing-select-word" "testing-caret-end" "testing-undo" "testing-import-archive" "fake.importArchive" "sample-import.zip" "Imported plan"; do
+for marker in "fake.saveNote" "fake.remoteEdit" "fake.failNext" "fake.shareNote" "fake.holdLoading" "fake.processImage" "testing-menu" "testing-share-note" "testing-share-permission" "testing-loading-bar" "testing-select-word" "testing-caret-end" "testing-undo" "testing-import-archive" "fake.importArchive" "sample-import.zip" "Imported plan" "unanswered for" "Core queue has not run"; do
   if grep -rlF "$marker" "$APP" | grep -q .; then
     fail "app contains $marker"
   fi

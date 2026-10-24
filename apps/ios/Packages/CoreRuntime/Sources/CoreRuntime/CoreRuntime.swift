@@ -20,7 +20,6 @@ public actor CoreRuntime {
     private var handle: JSValue?
     private var nextRequestId = 1
     private var stopped = false
-    private var watchdog: DispatchSourceTimer?
 
     public nonisolated var unownedExecutor: UnownedSerialExecutor {
         queue.asUnownedSerialExecutor()
@@ -99,33 +98,6 @@ public actor CoreRuntime {
         self.context = context
         self.host = host
         self.handle = started
-        if configuration.stallDiagnostics {
-            watchdog = Self.startWatchdog(queue: queue, router: router, logger: logger)
-        }
-    }
-
-    private static func startWatchdog(
-        queue: DispatchSerialQueue, router: ResponseRouter, logger: Logger
-    ) -> DispatchSourceTimer {
-        let pings = PingState()
-        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
-        timer.schedule(deadline: .now() + 5, repeating: 5)
-        timer.setEventHandler {
-            if let waiting = pings.outstanding(), waiting > 4 {
-                logger.notice("Core queue has not run a block for \(Int(waiting), privacy: .public) s")
-            }
-            guard pings.send() else { return }
-            queue.async {
-                pings.answered()
-                for stalled in router.stalled(olderThan: 10) {
-                    logger.notice(
-                        "Core request \(stalled.id, privacy: .public) \(stalled.command, privacy: .public) unanswered for \(Int(stalled.age), privacy: .public) s"
-                    )
-                }
-            }
-        }
-        timer.resume()
-        return timer
     }
 
     public func send<C: NativeCoreCommand>(_ command: C) async throws -> C.Result {
@@ -136,7 +108,7 @@ public actor CoreRuntime {
         let router = self.router
         let exceptions = self.exceptions
         let value: JSONValue = try await withCheckedThrowingContinuation { continuation in
-            router.register(id, command: C.name, continuation)
+            router.register(id, continuation)
             exceptions.reset()
             handle.invokeMethod("send", withArguments: [json])
             if let name = exceptions.take() {
@@ -173,8 +145,6 @@ public actor CoreRuntime {
             handle.invokeMethod("stop", withArguments: [])
             _ = exceptions.take()
         }
-        watchdog?.cancel()
-        watchdog = nil
         host?.stop()
         stagedInputs.close()
         router.finish()
@@ -212,32 +182,9 @@ final class ExceptionRecorder {
     }
 }
 
-private final class PingState: @unchecked Sendable {
-    private let lock = NSLock()
-    private var sentAt: Date?
-
-    /// False while the previous ping is still waiting for the queue.
-    func send() -> Bool {
-        lock.withLock {
-            guard sentAt == nil else { return false }
-            sentAt = Date()
-            return true
-        }
-    }
-
-    func answered() {
-        lock.withLock { sentAt = nil }
-    }
-
-    func outstanding() -> TimeInterval? {
-        lock.withLock { sentAt.map { Date().timeIntervalSince($0) } }
-    }
-}
-
 /// Confined to the core runtime's queue.
-final class ResponseRouter: @unchecked Sendable {
+final class ResponseRouter {
     private var pending: [Int: CheckedContinuation<JSONValue, Error>] = [:]
-    private var started: [Int: (command: String, at: Date)] = [:]
     private let events: AsyncStream<CoreEvent>.Continuation
     private let logger: Logger
     private var finished = false
@@ -247,26 +194,16 @@ final class ResponseRouter: @unchecked Sendable {
         self.logger = logger
     }
 
-    func register(_ id: Int, command: String, _ continuation: CheckedContinuation<JSONValue, Error>) {
+    func register(_ id: Int, _ continuation: CheckedContinuation<JSONValue, Error>) {
         guard !finished else {
             continuation.resume(throwing: CoreRuntimeError.stopped)
             return
         }
         pending[id] = continuation
-        started[id] = (command, Date())
     }
 
     func fail(_ id: Int, _ error: Error) {
-        started.removeValue(forKey: id)
         pending.removeValue(forKey: id)?.resume(throwing: error)
-    }
-
-    func stalled(olderThan seconds: TimeInterval) -> [(id: Int, command: String, age: TimeInterval)] {
-        let now = Date()
-        return started.compactMap { id, entry in
-            let age = now.timeIntervalSince(entry.at)
-            return age > seconds ? (id, entry.command, age) : nil
-        }
     }
 
     func receive(_ text: String) {
@@ -280,7 +217,6 @@ final class ResponseRouter: @unchecked Sendable {
         }
         switch message {
         case .response(let id, let result):
-            started.removeValue(forKey: id)
             guard let continuation = pending.removeValue(forKey: id) else {
                 logger.error("Core response for no pending request: \(id, privacy: .public)")
                 return
@@ -296,7 +232,6 @@ final class ResponseRouter: @unchecked Sendable {
         finished = true
         let continuations = pending.values
         pending.removeAll()
-        started.removeAll()
         for continuation in continuations {
             continuation.resume(throwing: CoreRuntimeError.stopped)
         }
