@@ -182,9 +182,13 @@ extension XCTestCase {
             .containing(NSPredicate(format: "identifier == %@ AND label == %@", element.identifier, element.label))
             .firstMatch
         let row = cell.exists ? cell : element
-        switch edge {
-        case .leading: row.swipeRight()
-        case .trailing: row.swipeLeft()
+        // A swipe on a loaded runner sometimes ends too short to open the actions, so it is repeated.
+        for _ in 0..<3 {
+            switch edge {
+            case .leading: row.swipeRight()
+            case .trailing: row.swipeLeft()
+            }
+            if appears(actionButtons(identifier, label: label, in: app).firstMatch, within: 5) { break }
         }
         actionButton(identifier, label: label, in: app, file: file, line: line).tap()
     }
