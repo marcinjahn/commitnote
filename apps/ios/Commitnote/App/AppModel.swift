@@ -99,6 +99,7 @@ final class AppModel {
     private(set) var deviceName = ""
     private(set) var editorTarget: EditorTarget = .none
     private(set) var editorSwitch = 0
+    private(set) var editorLineage = 0
     private(set) var noteUpdate: NoteContentUpdate?
     private(set) var syncStatus: SyncStateChanged?
     var draftName = ""
@@ -282,6 +283,7 @@ final class AppModel {
         }
         setEditorTarget(path.map { .note($0) } ?? .none)
         editorSwitch += 1
+        editorLineage += 1
         draftError = nil
         await sendNoteOpen(path: path)
     }
@@ -310,6 +312,7 @@ final class AppModel {
             setEditorTarget(.draft(draft))
             draftError = nil
             editorSwitch += 1
+            editorLineage += 1
         } catch {
             showError(error)
         }
@@ -703,11 +706,13 @@ final class AppModel {
             setEditorTarget(.draft(NoteDraft(parent: [], name: name)))
             draftError = error
             editorSwitch += 1
+            editorLineage += 1
         case .created(let path, let fieldError):
             setEditorTarget(.note(path))
             draftError = fieldError
             editorFocusAtEnd = path
             editorSwitch += 1
+            editorLineage += 1
         }
         return true
     }

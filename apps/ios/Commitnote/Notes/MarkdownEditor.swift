@@ -8,6 +8,7 @@ struct MarkdownEditor: UIViewRepresentable {
     let model: AppModel
     let target: EditorTarget
     let editorSwitch: Int
+    let editorLineage: Int
     let update: NoteContentUpdate?
     @Binding var focusRequested: Bool
     /// Shows this text read-only: no edit ever reaches the model, and the editor target is never read or changed.
@@ -92,7 +93,7 @@ struct MarkdownEditor: UIViewRepresentable {
             coordinator.show(readOnlyText)
             return
         }
-        coordinator.sync(target: target, editorSwitch: editorSwitch, update: update)
+        coordinator.sync(target: target, editorSwitch: editorSwitch, editorLineage: editorLineage, update: update)
         if let picked = model.pickedImages {
             coordinator.receivePickedImages(id: picked.id)
         }
@@ -130,13 +131,14 @@ struct MarkdownEditor: UIViewRepresentable {
         private var appliedSwitch: Int?
         private var appliedPath: [String]?
         private var currentSwitch = 0
+        private var currentLineage = 0
         private var syncedKey: SyncKey?
         private var applying = false
         private var composing = false
         private var receivedPickedId: UUID?
 
         private struct InsertionAnchor {
-            let editorSwitch: Int
+            let editorLineage: Int
             let text: String
             let selection: EditorText.TextSelection
         }
@@ -191,8 +193,9 @@ struct MarkdownEditor: UIViewRepresentable {
         var canUndo: Bool { isReady && history.canUndo }
         var canRedo: Bool { isReady && history.canRedo }
 
-        func sync(target: EditorTarget, editorSwitch: Int, update: NoteContentUpdate?) {
+        func sync(target: EditorTarget, editorSwitch: Int, editorLineage: Int, update: NoteContentUpdate?) {
             currentSwitch = editorSwitch
+            currentLineage = editorLineage
             let key = SyncKey(serial: update?.serial, editorSwitch: editorSwitch, target: target)
             guard key != syncedKey, let textView else { return }
             syncedKey = key
@@ -379,7 +382,7 @@ struct MarkdownEditor: UIViewRepresentable {
             guard isReady, let textView, textView.markedTextRange == nil else { return false }
             let selection = Self.selection(of: textView)
             if ImageReference.containsReference(in: string), let model {
-                let anchor = InsertionAnchor(editorSwitch: currentSwitch, text: lastText, selection: selection)
+                let anchor = InsertionAnchor(editorLineage: currentLineage, text: lastText, selection: selection)
                 Task { @MainActor [weak self] in
                     let text = await model.clonePastedImages(string, current: anchor.text)
                     self?.finishPaste(text, anchor: anchor)
@@ -408,7 +411,7 @@ struct MarkdownEditor: UIViewRepresentable {
             insertImages(
                 from: providers,
                 anchor: InsertionAnchor(
-                    editorSwitch: currentSwitch, text: lastText,
+                    editorLineage: currentLineage, text: lastText,
                     selection: EditorText.TextSelection(location: selection.location + selection.length, length: 0)))
             return true
         }
@@ -418,7 +421,7 @@ struct MarkdownEditor: UIViewRepresentable {
             insertImages(
                 from: providers,
                 anchor: InsertionAnchor(
-                    editorSwitch: currentSwitch, text: lastText,
+                    editorLineage: currentLineage, text: lastText,
                     selection: EditorText.TextSelection(location: offset, length: 0)))
         }
 
@@ -429,7 +432,7 @@ struct MarkdownEditor: UIViewRepresentable {
                 guard let self, let inputs = self.model?.takePickedImages(id: id), self.isReady else { return }
                 let selection = self.lastSelection
                 let anchor = InsertionAnchor(
-                    editorSwitch: self.currentSwitch, text: self.lastText,
+                    editorLineage: self.currentLineage, text: self.lastText,
                     selection: EditorText.TextSelection(location: selection.location + selection.length, length: 0))
                 self.insertImages(inputs, anchor: anchor)
             }
@@ -461,14 +464,16 @@ struct MarkdownEditor: UIViewRepresentable {
 
         /// The edits made since `anchor` was taken, or nil when the editor moved to another note or draft.
         private func editsSince(_ anchor: InsertionAnchor, in textView: MarkdownTextView) -> [TextEdit]? {
-            guard anchor.editorSwitch == currentSwitch, isReady else { return nil }
+            guard isReady, anchor.editorLineage == currentLineage else { return nil }
             if textView.markedTextRange != nil {
                 textView.unmarkText()
                 if (textView.text ?? "") != lastText {
                     textViewDidChange(textView)
                 }
             }
-            return TextEdits.diff(old: anchor.text, new: lastText)
+            return InsertionAnchorRule.edits(
+                anchorLineage: anchor.editorLineage, currentLineage: currentLineage,
+                anchorText: anchor.text, currentText: lastText)
         }
 
         func format(_ command: FormatCommand) {
@@ -611,7 +616,7 @@ struct MarkdownEditor: UIViewRepresentable {
 extension MarkdownEditor {
     init(model: AppModel, readOnlyText: String) {
         self.init(
-            model: model, target: .none, editorSwitch: 0, update: nil, focusRequested: .constant(false),
+            model: model, target: .none, editorSwitch: 0, editorLineage: 0, update: nil, focusRequested: .constant(false),
             readOnlyText: readOnlyText)
     }
 }
