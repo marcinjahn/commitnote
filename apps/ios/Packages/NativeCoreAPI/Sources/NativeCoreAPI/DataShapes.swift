@@ -156,6 +156,7 @@ public struct PassphraseChangeCopy: Decodable, Equatable, Sendable {
     public var cancelLabel: String
     public var checkAgainLabel: String
     public var checkingLabel: String
+    public var logOutLabel: String
     public var startingLabel: String
     public var enableAtomicLabel: String
     public var passphrasesDiffer: String

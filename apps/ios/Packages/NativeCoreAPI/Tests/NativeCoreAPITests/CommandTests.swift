@@ -956,13 +956,14 @@ final class CommandTests: XCTestCase {
     }
 
     private let passphraseCopyJSON =
-        #"{"title":"1","intro":"2","currentLabel":"3","newLabel":"4","repeatLabel":"5","newHint":"6","removeHistoryLabel":"7","removeHistoryDescription":"8","historyWarning":"9","otherDevicesWarning":"10","versionHistoryNotice":"11","continueLabel":"12","confirmLabel":"13","cancelLabel":"14","checkAgainLabel":"15","checkingLabel":"16","startingLabel":"17","enableAtomicLabel":"18","passphrasesDiffer":"19","enterCurrentPassphrase":"20"}"#
+        #"{"title":"1","intro":"2","currentLabel":"3","newLabel":"4","repeatLabel":"5","newHint":"6","removeHistoryLabel":"7","removeHistoryDescription":"8","historyWarning":"9","otherDevicesWarning":"10","versionHistoryNotice":"11","continueLabel":"12","confirmLabel":"13","cancelLabel":"14","checkAgainLabel":"15","checkingLabel":"16","logOutLabel":"21","startingLabel":"17","enableAtomicLabel":"18","passphrasesDiffer":"19","enterCurrentPassphrase":"20"}"#
 
     func testVersion5PassphraseResults() throws {
         let form = try result(
             PassphraseChangeForm.self,
             #"{"copy":\#(passphraseCopyJSON),"canRemoveHistory":true,"repositoryLabel":"a/b"}"#)
         XCTAssertEqual(form.copy.enterCurrentPassphrase, "20")
+        XCTAssertEqual(form.copy.logOutLabel, "21")
         XCTAssertTrue(form.canRemoveHistory)
         XCTAssertEqual(form.repositoryLabel, "a/b")
 

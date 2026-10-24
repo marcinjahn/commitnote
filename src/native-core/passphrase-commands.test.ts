@@ -10,6 +10,7 @@ import {
   describeChangeStep,
   describeRemoveHistory,
   HISTORY_REMOVED_MESSAGE,
+  LOG_OUT_LABEL,
   PASSPHRASE_CHANGED_MESSAGE,
   REMOVE_HISTORY_REVIEW,
 } from "../ui/passphrase/passphrase-messages";
@@ -114,6 +115,7 @@ describe("passphrase change", () => {
         removeHistoryLabel: "Also delete the old history",
         removeHistoryDescription: describeRemoveHistory("GitHub"),
         enableAtomicLabel: ENABLE_ATOMIC_LABEL,
+        logOutLabel: LOG_OUT_LABEL,
       },
     });
 

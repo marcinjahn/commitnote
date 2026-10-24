@@ -311,6 +311,7 @@ export interface PassphraseChangeCopy {
   cancelLabel: string;
   checkAgainLabel: string;
   checkingLabel: string;
+  logOutLabel: string;
   startingLabel: string;
   enableAtomicLabel: string;
   passphrasesDiffer: string;

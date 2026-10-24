@@ -272,6 +272,13 @@ struct ChangePassphraseScreen: View {
                 }
                 .disabled(state.checking)
                 .accessibilityIdentifier("change-passphrase-check-again")
+                Button(state.copy.logOutLabel) {
+                    model.resetPassphraseState()
+                    model.isSettingsPresented = false
+                    Task { await model.logOut() }
+                }
+                .disabled(state.checking)
+                .accessibilityIdentifier("change-passphrase-log-out")
             }
         }
     }
