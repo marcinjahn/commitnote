@@ -71,42 +71,39 @@ jobs:
           retention-days: 1
 
   macos:
-    name: Runtime tests and IPA
+    name: Runtime tests
     needs: build
     runs-on: macos-26
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/ios-macos-setup
-      - uses: ./.github/actions/ios-test-products
 
-      - name: Start iPad simulator
-        run: |
-          set -eu
-          IPAD_SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ipad)
-          echo "IPAD_SIMULATOR_ID=$IPAD_SIMULATOR_ID" >> "$GITHUB_ENV"
-          if ! BOOT_OUTPUT=$(xcrun simctl boot "$IPAD_SIMULATOR_ID" 2>&1); then
-            case "$BOOT_OUTPUT" in
-              *"current state: Booted"*) ;;
-              *) echo "$BOOT_OUTPUT" >&2; exit 1 ;;
-            esac
-          fi
-
-      - name: Build unsigned IPA
-        run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
-
-      - name: Check IPA
-        run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
-
-      - name: Boot simulator
+      - name: Start simulators
         run: |
           set -eu
           SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh iphone)
+          IPAD_SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ipad)
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
-          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          echo "IPAD_SIMULATOR_ID=$IPAD_SIMULATOR_ID" >> "$GITHUB_ENV"
+          mkdir -p out
+          # Boots and prepares the iPhone simulator while the test products download. The iPad one
+          # follows after the runtime tests: booting it next to a starting test run stalls the run.
+          nohup sh -c 'apps/ios/scripts/disable-password-autofill.sh "$1"; echo $? > out/simulator-ready' \
+            prepare "$SIMULATOR_ID" > out/simulator-prep.log 2>&1 &
+
+      - uses: ./.github/actions/ios-test-products
 
       - name: Prepare simulator
-        run: apps/ios/scripts/disable-password-autofill.sh "$SIMULATOR_ID"
+        run: |
+          set -eu
+          for _ in $(seq 600); do
+            [ -s out/simulator-ready ] && break
+            sleep 1
+          done
+          cat out/simulator-prep.log
+          [ "$(cat out/simulator-ready)" = 0 ]
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
 
       - name: Core runtime tests
         run: |
@@ -121,12 +118,6 @@ jobs:
 
       - name: Read back with TypeScript
         run: npx tsx scripts/read-back-native-repo.ts out/test-output
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: commitnote-unsigned-ipa
-          path: out/ipa/commitnote-unsigned.ipa
-          retention-days: 30
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -148,9 +139,7 @@ jobs:
         run: |
           set -eu
           xcrun simctl shutdown "$SIMULATOR_ID"
-          xcrun simctl bootstatus "$IPAD_SIMULATOR_ID" -b
           apps/ios/scripts/disable-password-autofill.sh "$IPAD_SIMULATOR_ID"
-          xcrun simctl bootstatus "$IPAD_SIMULATOR_ID" -b
           xcrun simctl install "$IPAD_SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
           xcrun simctl launch "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
           sleep 30
@@ -164,8 +153,15 @@ jobs:
             -xctestrun "$XCTESTRUN" \
             -destination "id=$IPAD_SIMULATOR_ID" \
             -only-testing:CommitnoteUITests/EditorFlowTests \
+            -only-testing:CommitnoteUITests/DataFlowTests \
             -parallel-testing-enabled NO \
             -resultBundlePath out/xcresults-ui/ui-ipad-runtime.xcresult
+
+      - name: Collect app log
+        if: failure()
+        run: |
+          xcrun simctl spawn "$IPAD_SIMULATOR_ID" log show --last 90m --info --style compact \
+            --predicate 'subsystem == "io.github.marcinjahn.commitnote"' > out/xcresults-ui/app.log || true
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -189,21 +185,27 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/ios-select-xcode
 
-      - uses: ./.github/actions/ios-test-products
-
-      - name: Boot simulator
+      - name: Prepare simulator
         run: |
           set -eu
           SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ${{ matrix.device }})
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
-          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          mkdir -p out
+          # Boots and prepares the simulator while the test products download.
+          nohup sh -c 'apps/ios/scripts/disable-password-autofill.sh "$1"; echo $? > out/simulator-ready' \
+            prepare "$SIMULATOR_ID" > out/simulator-prep.log 2>&1 &
 
-      - name: Prepare simulator
-        run: apps/ios/scripts/disable-password-autofill.sh "$SIMULATOR_ID"
+      - uses: ./.github/actions/ios-test-products
 
       - name: Warm up simulator
         run: |
           set -eu
+          for _ in $(seq 600); do
+            [ -s out/simulator-ready ] && break
+            sleep 1
+          done
+          cat out/simulator-prep.log
+          [ "$(cat out/simulator-ready)" = 0 ]
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
           xcrun simctl install "$SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
           xcrun simctl launch "$SIMULATOR_ID" io.github.marcinjahn.commitnote
@@ -215,16 +217,16 @@ jobs:
           set -eu -o pipefail
           case "${{ matrix.device }}-${{ matrix.suite }}" in
             iphone-flows)
-              SELECTED="-only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
               ;;
             iphone-screens)
-              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/DataFlowTests -only-testing:CommitnoteUITests/SettingsFlowTests"
               ;;
             ipad-flows)
-              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests"
               ;;
             ipad-screens)
-              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/LoginFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/SettingsScreenshotTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/SettingsFlowTests"
               ;;
           esac
           xcodebuild test-without-building \
@@ -234,18 +236,29 @@ jobs:
             -parallel-testing-enabled NO \
             -resultBundlePath out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}.xcresult
 
+      - name: Collect app log
+        if: failure()
+        run: |
+          xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --info --style compact \
+            --predicate 'subsystem == "io.github.marcinjahn.commitnote"' > out/xcresults/app.log || true
+
       - name: Export screenshots
-        if: always() && matrix.suite == 'screens'
+        if: always()
         run: |
           set -eu
-          if [ -d "out/xcresults/ui-${{ matrix.device }}-screens.xcresult" ]; then
-            apps/ios/scripts/export-screenshots.sh "out/xcresults/ui-${{ matrix.device }}-screens.xcresult" out/screenshots
+          RESULT="out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}.xcresult"
+          if [ -d "$RESULT" ]; then
+            if [ "${{ matrix.suite }}" = screens ]; then
+              apps/ios/scripts/export-screenshots.sh "$RESULT" out/screenshots
+            else
+              apps/ios/scripts/export-screenshots.sh "$RESULT" out/screenshots --allow-empty
+            fi
           fi
 
       - uses: actions/upload-artifact@v4
-        if: always() && matrix.suite == 'screens'
+        if: always()
         with:
-          name: ios-screenshots-${{ matrix.device }}
+          name: ios-screenshots-${{ matrix.device }}${{ matrix.suite == 'flows' && '-flows' || '' }}
           path: out/screenshots
           if-no-files-found: ignore
           retention-days: 30
@@ -256,4 +269,23 @@ jobs:
           name: ios-xcresults-ui-${{ matrix.device }}-${{ matrix.suite }}
           path: out/xcresults
           if-no-files-found: ignore
+          retention-days: 30
+
+      # The IPA builds in the job that finishes its tests first, off the longest path.
+      - uses: ./.github/actions/ios-macos-setup
+        if: ${{ !cancelled() && matrix.device == 'iphone' && matrix.suite == 'screens' }}
+
+      - name: Build unsigned IPA
+        if: ${{ !cancelled() && matrix.device == 'iphone' && matrix.suite == 'screens' }}
+        run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
+
+      - name: Check IPA
+        if: ${{ !cancelled() && matrix.device == 'iphone' && matrix.suite == 'screens' }}
+        run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && matrix.device == 'iphone' && matrix.suite == 'screens' }}
+        with:
+          name: commitnote-unsigned-ipa
+          path: out/ipa/commitnote-unsigned.ipa
           retention-days: 30

@@ -8,8 +8,19 @@ fi
 
 # The restriction lives in profile files a simulator creates on first boot and reads only at boot.
 DEVICE="$HOME/Library/Developer/CoreSimulator/Devices/$1/data"
-xcrun simctl bootstatus "$1" -b > /dev/null
-xcrun simctl shutdown "$1"
+PROFILE="$DEVICE/Library/UserConfigurationProfiles/EffectiveUserSettings.plist"
+STATE=$(xcrun simctl list devices --json | python3 -c '
+import json, sys
+for devices in json.load(sys.stdin)["devices"].values():
+    for device in devices:
+        if device["udid"] == sys.argv[1]:
+            print(device["state"])
+' "$1")
+# A simulator that has booted before already has the files, so it needs only the one boot.
+if [ "$STATE" != "Shutdown" ] || [ ! -f "$PROFILE" ]; then
+  xcrun simctl bootstatus "$1" -b > /dev/null
+  xcrun simctl shutdown "$1"
+fi
 
 python3 -c '
 import os, plistlib, sys
@@ -26,7 +37,7 @@ for path in sys.argv[1:]:
         plistlib.dump(settings, file, fmt=plistlib.FMT_BINARY)
     print("password AutoFill disabled in", path)
 ' \
-  "$DEVICE/Library/UserConfigurationProfiles/EffectiveUserSettings.plist" \
+  "$PROFILE" \
   "$DEVICE/Containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles/UserSettings.plist"
 
 xcrun simctl boot "$1"
