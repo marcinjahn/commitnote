@@ -80,15 +80,21 @@ jobs:
       - uses: ./.github/actions/ios-macos-setup
       - uses: ./.github/actions/ios-test-products
 
-      - name: Start iPad simulator
+      - name: Start simulators
         run: |
           set -eu
+          SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh iphone)
           IPAD_SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ipad)
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           echo "IPAD_SIMULATOR_ID=$IPAD_SIMULATOR_ID" >> "$GITHUB_ENV"
           mkdir -p out
-          # Boots and prepares the iPad simulator while the IPA builds.
-          nohup sh -c 'apps/ios/scripts/disable-password-autofill.sh "$1"; echo $? > out/ipad-simulator-ready' \
-            prepare "$IPAD_SIMULATOR_ID" > out/ipad-simulator-prep.log 2>&1 &
+          # Boots and prepares both simulators, one after the other, while the IPA builds.
+          nohup sh -c '
+            apps/ios/scripts/disable-password-autofill.sh "$1" > out/simulator-prep.log 2>&1
+            echo $? > out/simulator-ready
+            apps/ios/scripts/disable-password-autofill.sh "$2" > out/ipad-simulator-prep.log 2>&1
+            echo $? > out/ipad-simulator-ready
+          ' prepare "$SIMULATOR_ID" "$IPAD_SIMULATOR_ID" > /dev/null 2>&1 &
 
       - name: Build unsigned IPA
         run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
@@ -99,9 +105,13 @@ jobs:
       - name: Prepare simulator
         run: |
           set -eu
-          SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh iphone)
-          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
-          apps/ios/scripts/disable-password-autofill.sh "$SIMULATOR_ID"
+          for _ in $(seq 600); do
+            [ -s out/simulator-ready ] && break
+            sleep 1
+          done
+          cat out/simulator-prep.log
+          [ "$(cat out/simulator-ready)" = 0 ]
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
 
       - name: Core runtime tests
         run: |

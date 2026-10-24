@@ -210,7 +210,8 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
 - `Runtime tests and IPA` builds and checks the unsigned IPA, runs the runtime tests (including
   `IOSVisitTests`, `NoteFontTests` and the `data` read-back scenario) on an iPhone
   Simulator from the shared build, reads the produced repos back with TypeScript, and also boots an
-  iPad Simulator to run the iPad `EditorFlowTests`, `DataFlowTests` and `SettingsFlowTests`.
+  iPad Simulator to run the iPad `EditorFlowTests`, `DataFlowTests` and `SettingsFlowTests`. Both
+  simulators boot and are prepared while the IPA builds.
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
   shared build:
   - `flows` — editing, media and login flows, plus the organisation and settings flows on iPhone
