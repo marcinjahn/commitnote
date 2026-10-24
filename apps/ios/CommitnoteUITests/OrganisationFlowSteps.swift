@@ -26,9 +26,9 @@ extension XCTestCase {
             logInToNotes(in: app)
             return app
         }
-        // A restarted app reports once its last view is back; after a relaunch the note may still
-        // be on its way.
-        if restarted != nil ? noteView.exists : appears(noteView, within: 3) {
+        // A restarted app reports once its last view is back, and the loop below closes it; after
+        // a relaunch the note may still be on its way.
+        if restarted == nil, appears(noteView, within: 3) {
             backToTree(in: app, file: file, line: line)
         }
         // The last view can be reopened only once the tree has loaded, so the note may still slide in.

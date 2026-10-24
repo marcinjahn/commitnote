@@ -180,6 +180,7 @@ final class AppModel {
     #if FAKE_CORE
     private(set) var forcedOffline = false
     var pendingTestingImportForm: ImportForm?
+    @ObservationIgnored private var stoppedForTesting = false
     #endif
 
     init() {
@@ -776,12 +777,14 @@ final class AppModel {
 
     private func postTestingReady() {
         #if FAKE_CORE
+        guard !stoppedForTesting else { return }
         TestingRelaunch.postReady()
         #endif
     }
 
     #if FAKE_CORE
     func stopForTesting() async {
+        stoppedForTesting = true
         eventsTask?.cancel()
         eventsTask = nil
         pathMonitor?.cancel()
