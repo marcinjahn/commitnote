@@ -214,9 +214,9 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
   shared build:
   - `flows` — editing, media and login flows, plus the organisation flows, settings screenshots
-    and settings flows on iPhone and the organisation screenshots and data flows on iPad.
+    and settings flows on iPhone and the data flows on iPad.
   - `screens` — the other screenshots, plus the editor and data flows on iPhone and the
-    organisation flows on iPad.
+    organisation flows and screenshots on iPad.
 
   The screenshot tests reach each screen once and capture it in light and dark, switching the
   running app's appearance through a FAKE_CORE testing hook. Between tests the app is restarted in
@@ -226,7 +226,7 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   UI test run uploads that log as `app.log` with its result bundle.
 
   The class lists of the suites differ per device, so every UI class runs on both devices. The
-  `iphone`/`screens` job, which finishes its tests first, then builds and checks the unsigned IPA
+  `ipad`/`screens` job, which finishes its tests first, then builds and checks the unsigned IPA
   (`commitnote-unsigned-ipa`).
 
 The `Testing` configuration (fake core bundle only) adds test hooks: a Testing menu entry "Share
@@ -241,7 +241,7 @@ Artifacts, kept for 30 days:
 | --- | --- |
 | `commitnote-unsigned-ipa` | `commitnote-unsigned.ipa` |
 | `ios-screenshots-<device>` | the screenshots taken by the classes in that device's `screens` suite, light and dark |
-| `ios-screenshots-<device>-flows` | the screenshots taken by the classes in that device's `flows` suite (the iPhone settings and iPad organisation screenshots), light and dark |
+| `ios-screenshots-<device>-flows` | the screenshots taken by the classes in that device's `flows` suite (the iPhone settings screenshots), light and dark |
 | `ios-xcresults-runtime` | Xcode result bundle of the runtime tests |
 | `ios-xcresults-ui-ipad-runtime` | Xcode result bundle of the iPad tests run in the runtime job |
 | `ios-xcresults-ui-<device>-<suite>` | Xcode result bundles of the UI tests |
