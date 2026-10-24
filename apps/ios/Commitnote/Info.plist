@@ -24,6 +24,33 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>commitnote uses the camera to add photos to your notes.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>AtkinsonHyperlegibleNext-Variable.ttf</string>
+		<string>AtkinsonHyperlegibleNext-VariableItalic.ttf</string>
+		<string>IBMPlexMono-Italic.ttf</string>
+		<string>IBMPlexMono-Regular.ttf</string>
+		<string>IBMPlexMono-SemiBold.ttf</string>
+		<string>IBMPlexMono-SemiBoldItalic.ttf</string>
+		<string>IBMPlexSans-Variable.ttf</string>
+		<string>IBMPlexSans-VariableItalic.ttf</string>
+		<string>Inter-Variable.ttf</string>
+		<string>Inter-VariableItalic.ttf</string>
+		<string>JetBrainsMono-Variable.ttf</string>
+		<string>JetBrainsMono-VariableItalic.ttf</string>
+		<string>Literata-Variable.ttf</string>
+		<string>Literata-VariableItalic.ttf</string>
+		<string>Lora-Variable.ttf</string>
+		<string>Lora-VariableItalic.ttf</string>
+		<string>Nunito-Variable.ttf</string>
+		<string>Nunito-VariableItalic.ttf</string>
+		<string>SourceSerif4-Variable.ttf</string>
+		<string>SourceSerif4-VariableItalic.ttf</string>
+		<string>iAWriterQuattroS-Bold.ttf</string>
+		<string>iAWriterQuattroS-BoldItalic.ttf</string>
+		<string>iAWriterQuattroS-Italic.ttf</string>
+		<string>iAWriterQuattroS-Regular.ttf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

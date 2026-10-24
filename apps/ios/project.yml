@@ -56,6 +56,31 @@ targets:
       properties:
         CFBundleDisplayName: commitnote
         UILaunchScreen: {}
+        UIAppFonts:
+          - AtkinsonHyperlegibleNext-Variable.ttf
+          - AtkinsonHyperlegibleNext-VariableItalic.ttf
+          - IBMPlexMono-Italic.ttf
+          - IBMPlexMono-Regular.ttf
+          - IBMPlexMono-SemiBold.ttf
+          - IBMPlexMono-SemiBoldItalic.ttf
+          - IBMPlexSans-Variable.ttf
+          - IBMPlexSans-VariableItalic.ttf
+          - Inter-Variable.ttf
+          - Inter-VariableItalic.ttf
+          - JetBrainsMono-Variable.ttf
+          - JetBrainsMono-VariableItalic.ttf
+          - Literata-Variable.ttf
+          - Literata-VariableItalic.ttf
+          - Lora-Variable.ttf
+          - Lora-VariableItalic.ttf
+          - Nunito-Variable.ttf
+          - Nunito-VariableItalic.ttf
+          - SourceSerif4-Variable.ttf
+          - SourceSerif4-VariableItalic.ttf
+          - iAWriterQuattroS-Bold.ttf
+          - iAWriterQuattroS-BoldItalic.ttf
+          - iAWriterQuattroS-Italic.ttf
+          - iAWriterQuattroS-Regular.ttf
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UISupportedInterfaceOrientations:
