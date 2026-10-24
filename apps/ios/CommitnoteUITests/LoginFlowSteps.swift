@@ -22,8 +22,9 @@ extension XCTestCase {
     }
 
     func unlock(in app: XCUIApplication) {
-        let field = app.secureTextFields["login-passphrase-field"]
-        typeInto(field, Fixture.passphrase, in: app)
+        // Keys typed while the keyboard comes up on a busy simulator can be dropped, which would
+        // read as a wrong passphrase, so the typed length is checked before unlocking.
+        typeNewPassphrase(app.secureTextFields["login-passphrase-field"], Fixture.passphrase, in: app)
         tapRevealed(app.buttons["login-unlock-button"], in: app)
     }
 
