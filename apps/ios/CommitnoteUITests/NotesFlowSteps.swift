@@ -224,17 +224,22 @@ extension XCTestCase {
         waitForValue(syncStatus(in: app), "conflict", file: file, line: line)
     }
 
+    /// A dismissal that lands while the sheet is still coming up is ignored, so it is repeated.
     func dismissShareSheet(in app: XCUIApplication) {
         let sheet = app.element("ActivityListView")
         waitFor(sheet)
+        waitUntilSettled(sheet)
         let dismissRegion = app.element("PopoverDismissRegion")
         let close = app.buttons["Close"]
-        if dismissRegion.exists {
-            dismissRegion.tap()
-        } else if appears(close, within: 5), close.isHittable {
-            close.tap()
-        } else {
-            sheet.swipeDown(velocity: .fast)
+        for _ in 0..<3 where sheet.exists {
+            if dismissRegion.exists {
+                dismissRegion.tap()
+            } else if appears(close, within: 5), close.isHittable {
+                close.tap()
+            } else {
+                sheet.swipeDown(velocity: .fast)
+            }
+            if poll(timeout: 5, until: { !sheet.exists }) { break }
         }
         waitUntilGone(sheet)
     }

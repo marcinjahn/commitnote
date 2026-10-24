@@ -6,13 +6,13 @@ final class MediaScreenshotTests: XCTestCase {
     }
 
     func testCaptureScreens() {
-        let app = launchApp(reset: true)
+        let app = launchApp(reset: true, editorHooks: true)
         logInToNotes(in: app)
         captureScreens()
     }
 
     private func captureScreens() {
-        let app = resumeAtTree()
+        let app = resumeAtTree(editorHooks: true)
         openWelcome(in: app)
         whileMenuIsOpen {
             openMenu(

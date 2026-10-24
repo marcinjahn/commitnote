@@ -87,14 +87,13 @@ extension XCTestCase {
     }
 
     /// Pastes `text` at the end of the open note as one edit, so an autosave never holds part of it.
+    /// The caret is moved through the editor hooks, so the app must run with them.
     @discardableResult
     func pasteAtEnd(_ text: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line)
         -> XCUIElement
     {
         let editor = focusEditor(in: app, file: file, line: line)
-        for _ in 0..<3 {
-            editor.typeKey(.downArrow, modifierFlags: .command)
-        }
+        moveCaretToEnd(in: app, file: file, line: line)
         pasteText(text, into: editor)
         let pasted = NSPredicate(format: "value CONTAINS %@", text)
         if !poll(timeout: 10, until: { pasted.evaluate(with: editor) }) {
@@ -102,6 +101,10 @@ extension XCTestCase {
         }
         waitUntil(editor, pasted, file: file, line: line)
         return editor
+    }
+
+    func moveCaretToEnd(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        hittable(app.buttons.matching(identifier: "testing-caret-end"), file: file, line: line).tap()
     }
 
     /// The edit is in the editor's text before the app marks it pending, so the pending state is

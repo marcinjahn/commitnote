@@ -10,27 +10,28 @@ final class MediaFlowTests: XCTestCase {
 
     private func openNotes() -> XCUIApplication {
         guard Self.loggedIn else {
-            let app = launchApp(reset: true)
+            let app = launchApp(reset: true, editorHooks: true)
             logInToNotes(in: app)
             Self.loggedIn = true
             return app
         }
-        return resumeAtTree()
+        return resumeAtTree(editorHooks: true)
     }
 
     func testPasteImageAndOpenViewer() {
         let app = openNotes()
         let editor = openWelcome(in: app)
         focusEditor(in: app)
+        moveCaretToEnd(in: app)
+        // A hardware key can be dropped on a loaded runner, so the paste is repeated until it lands.
+        let png = Self.largePNG()
+        let imageReference = NSPredicate(format: "value MATCHES %@", "(?s).*image:[a-z2-7]{26}#[0-9]+x[0-9]+.*")
         for _ in 0..<3 {
-            editor.typeKey(.downArrow, modifierFlags: .command)
+            UIPasteboard.general.setData(png, forPasteboardType: "public.png")
+            editor.typeKey("v", modifierFlags: .command)
+            if poll(timeout: 10, until: { imageReference.evaluate(with: editor) }) { break }
         }
-        UIPasteboard.general.setData(Self.largePNG(), forPasteboardType: "public.png")
-        editor.typeKey("v", modifierFlags: .command)
-
-        waitUntil(
-            editor, NSPredicate(format: "value MATCHES %@", "(?s).*image:[a-z2-7]{26}#[0-9]+x[0-9]+.*"),
-            timeout: 60)
+        waitUntil(editor, imageReference, timeout: 60)
         let image = app.elements("editor-image").firstMatch
         revealInEditor(image, editor: editor)
         waitForValue(image, "loaded", timeout: 60)
