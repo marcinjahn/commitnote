@@ -14,6 +14,12 @@
   import type { DataSecurityActions } from "../settings/data-security-actions";
   import ThisDeviceSection from "../settings/ThisDeviceSection.svelte";
   import { SETTINGS_GROUPS } from "../settings/settings-sections";
+  import {
+    DATA_SECURITY_SECTION,
+    SETTINGS_INTRO,
+    SETTINGS_TITLE,
+    THIS_DEVICE_SECTION,
+  } from "../settings/settings-messages";
   import Dialog from "./Dialog.svelte";
 
   interface Props {
@@ -41,13 +47,13 @@
   }: Props = $props();
 </script>
 
-<Dialog open={true} title="Settings" {onClose} closeButton accentBorder desktopLarge>
+<Dialog open={true} title={SETTINGS_TITLE} {onClose} closeButton accentBorder desktopLarge>
   {#snippet headerStatus()}
     <SettingsSaveStatus {saveState} {onRetry} />
   {/snippet}
   {#snippet children()}
     <p class="settings-intro">
-      Settings apply to all your devices unless marked This device.
+      {SETTINGS_INTRO}
     </p>
     {#each SETTINGS_GROUPS as group (group.id)}
       <section class="settings-group" aria-labelledby="settings-group-{group.id}">
@@ -60,11 +66,11 @@
       </section>
     {/each}
     <section class="settings-group" aria-labelledby="settings-group-device">
-      <h3 id="settings-group-device" class="settings-group-title">This device</h3>
+      <h3 id="settings-group-device" class="settings-group-title">{THIS_DEVICE_SECTION}</h3>
       <ThisDeviceSection {...device} />
     </section>
     <section class="settings-group" aria-labelledby="settings-group-data">
-      <h3 id="settings-group-data" class="settings-group-title">Data &amp; security</h3>
+      <h3 id="settings-group-data" class="settings-group-title">{DATA_SECURITY_SECTION}</h3>
       <DataSecuritySection {...dataSecurity} />
     </section>
   {/snippet}

@@ -18,9 +18,22 @@
     defaultImportFolderName,
     describeImportConflicts,
     describeAtomicSetup,
-    describeImportCounts,
+    describeImportPreview,
     describeSkipped,
     ENABLE_ATOMIC_LABEL,
+    IMPORT_BACK_LABEL,
+    IMPORT_CONFLICTS_HINT,
+    IMPORT_CONFLICTS_TITLE,
+    IMPORT_DIALOG_TITLE,
+    IMPORT_EMPTY_TEXT,
+    IMPORT_EXISTING_FOLDER_LABEL,
+    IMPORT_FOLDER_NAME_LABEL,
+    IMPORT_INTO_LABEL,
+    IMPORT_LABEL,
+    IMPORT_NEW_FOLDER_LABEL,
+    IMPORT_RENAME_LABEL,
+    IMPORT_SETUP_TITLE,
+    IMPORTING_LABEL,
   } from "./import-messages";
   import type { ImportOutcome } from "./import-outcome";
 
@@ -93,10 +106,10 @@
   const skippedText = $derived(describeSkipped(countSkipped(contents.skipped)));
   const title = $derived(
     setup !== null
-      ? "Project setting needed"
+      ? IMPORT_SETUP_TITLE
       : conflicts === null
-        ? "Import notes"
-        : "Name conflicts",
+        ? IMPORT_DIALOG_TITLE
+        : IMPORT_CONFLICTS_TITLE,
   );
 
   $effect(() => {
@@ -160,15 +173,12 @@
       <p>{describeAtomicSetup(forgeName, setup.canConfigure)}</p>
     {:else if conflicts !== null}
       <p>{describeImportConflicts(conflicts)}</p>
-      <p class="field-hint">
-        Rename the imported items to keep both, for example “Ideas (2)”, or
-        cancel the import.
-      </p>
+      <p class="field-hint">{IMPORT_CONFLICTS_HINT}</p>
     {:else}
       <form id={formId} class="import-form" onsubmit={handleSubmit}>
         <p class="file-name" title={fileName}>{fileName}</p>
         <fieldset class="targets" disabled={busy}>
-          <legend>Import into</legend>
+          <legend>{IMPORT_INTO_LABEL}</legend>
           <label class="target-option">
             <input
               type="radio"
@@ -176,11 +186,11 @@
               value="new-folder"
               bind:group={target}
             />
-            <span>A new folder</span>
+            <span>{IMPORT_NEW_FOLDER_LABEL}</span>
           </label>
           {#if target === "new-folder"}
             <div class="field target-detail">
-              <label for={nameId}>Folder name</label>
+              <label for={nameId}>{IMPORT_FOLDER_NAME_LABEL}</label>
               <input
                 id={nameId}
                 type="text"
@@ -202,7 +212,7 @@
               value="folder"
               bind:group={target}
             />
-            <span>An existing folder</span>
+            <span>{IMPORT_EXISTING_FOLDER_LABEL}</span>
           </label>
           {#if target === "folder"}
             <div class="target-detail">
@@ -217,9 +227,9 @@
         </fieldset>
         <div class="summary" aria-live="polite">
           {#if empty}
-            <p>The archive has no notes to import.</p>
+            <p>{IMPORT_EMPTY_TEXT}</p>
           {:else if preview !== null}
-            <p>Imports {describeImportCounts(preview.notes, preview.folders)}.</p>
+            <p>{describeImportPreview(preview)}</p>
           {/if}
           {#if skippedText !== null}
             <p class="field-hint">{skippedText}</p>
@@ -238,7 +248,7 @@
           disabled={busy}
           onclick={() => void enableAndImport()}
         >
-          {busy ? "Importing…" : ENABLE_ATOMIC_LABEL}
+          {busy ? IMPORTING_LABEL : ENABLE_ATOMIC_LABEL}
         </button>
       {/if}
       <button
@@ -251,7 +261,7 @@
           error = null;
         }}
       >
-        Back
+        {IMPORT_BACK_LABEL}
       </button>
     {:else if conflicts !== null}
       <button
@@ -261,7 +271,7 @@
         disabled={busy}
         onclick={() => void runImport("rename")}
       >
-        {busy ? "Importing…" : "Rename imported items"}
+        {busy ? IMPORTING_LABEL : IMPORT_RENAME_LABEL}
       </button>
       <button
         type="button"
@@ -272,7 +282,7 @@
           error = null;
         }}
       >
-        Back
+        {IMPORT_BACK_LABEL}
       </button>
     {:else}
       <button
@@ -281,7 +291,7 @@
         class="button button-primary"
         disabled={busy || empty || destination === null}
       >
-        {busy ? "Importing…" : "Import"}
+        {busy ? IMPORTING_LABEL : IMPORT_LABEL}
       </button>
     {/if}
   {/snippet}
