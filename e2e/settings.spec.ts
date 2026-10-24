@@ -1157,7 +1157,7 @@ test.describe("this device", () => {
     await dialog.getByRole("checkbox", { name: REOPEN, exact: true }).check();
     await closeSettings(page);
 
-    await page.goto("/");
+    await page.goto("./");
     await expectTree(page);
     dialog = await openSettings(page);
     await expect(dialog.getByRole("checkbox", { name: REOPEN, exact: true })).toBeChecked();

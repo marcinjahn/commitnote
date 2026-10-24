@@ -22,7 +22,7 @@ test("login screen renders under the production CSP", async ({ page }) => {
     pageErrors.push(error.message);
   });
 
-  await page.goto("/");
+  await page.goto("./");
 
   await expect(page.getByRole("heading", { name: "commitnote" })).toBeVisible();
   await expect(page).toHaveTitle("Log in · commitnote");
@@ -63,7 +63,7 @@ test("self-hosted font loads under a dark colour scheme", async ({
 
   const fontResponse = page.waitForResponse((r) => r.url().endsWith(".woff2"));
 
-  await page.goto("/");
+  await page.goto("./");
 
   await expect(page.getByRole("heading", { name: "commitnote" })).toBeVisible();
 

@@ -27,39 +27,46 @@ export interface AppUpdatesDeps {
   };
   scriptUrl: string;
   clock: Pick<Clock, "now">;
-  reload(): void;
 }
 
 export interface AppUpdates {
   readonly updateWaiting: boolean;
-  subscribe(listener: (updateWaiting: boolean) => void): () => void;
+  readonly controllerChanged: boolean;
+  subscribe(listener: () => void): () => void;
   checkForUpdate(): void;
   skipWaiting(): void;
-  attachGate(gate: { controllerChanged(): void }): () => void;
 }
 
 export function startAppUpdates(deps: AppUpdatesDeps): AppUpdates {
   const { container, clock } = deps;
-  const listeners = new Set<(updateWaiting: boolean) => void>();
+  const listeners = new Set<() => void>();
   let registration: RegistrationLike | null = null;
   let updateWaiting = false;
+  let controllerChanged = false;
   let lastCheckAt = 0;
-  let gate: { controllerChanged(): void } | null = null;
-  let reloaded = false;
+
+  function notify(): void {
+    for (const listener of [...listeners]) listener();
+  }
 
   function runUpdate(current: RegistrationLike): void {
     lastCheckAt = clock.now();
     current.update().catch(() => undefined);
   }
 
-  function recompute(): void {
-    const next =
+  function hasWaitingUpdate(): boolean {
+    return (
       registration !== null &&
       registration.waiting !== null &&
-      container.controller !== null;
+      container.controller !== null
+    );
+  }
+
+  function recompute(): void {
+    const next = hasWaitingUpdate();
     if (next === updateWaiting) return;
     updateWaiting = next;
-    for (const listener of [...listeners]) listener(next);
+    notify();
   }
 
   function onRegistered(current: RegistrationLike): void {
@@ -81,18 +88,17 @@ export function startAppUpdates(deps: AppUpdatesDeps): AppUpdates {
   );
 
   container.addEventListener("controllerchange", () => {
-    if (gate !== null) {
-      gate.controllerChanged();
-      return;
-    }
-    if (reloaded) return;
-    reloaded = true;
-    deps.reload();
+    controllerChanged = true;
+    updateWaiting = hasWaitingUpdate();
+    notify();
   });
 
   return {
     get updateWaiting() {
       return updateWaiting;
+    },
+    get controllerChanged() {
+      return controllerChanged;
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -108,12 +114,6 @@ export function startAppUpdates(deps: AppUpdatesDeps): AppUpdates {
     skipWaiting() {
       registration?.waiting?.postMessage({ type: "SKIP_WAITING" });
     },
-    attachGate(next) {
-      gate = next;
-      return () => {
-        if (gate === next) gate = null;
-      };
-    },
   };
 }
 
@@ -123,6 +123,5 @@ export function startBrowserAppUpdates(): AppUpdates | null {
     container: navigator.serviceWorker,
     scriptUrl: "./sw.js",
     clock: systemClock,
-    reload: () => location.reload(),
   });
 }

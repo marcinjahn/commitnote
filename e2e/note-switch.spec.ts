@@ -942,7 +942,7 @@ test.describe("note fragment and history", () => {
     page,
   }) => {
     await page.goto("about:blank");
-    await page.goto("/#n=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    await page.goto("./#n=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 
     await expect(page.getByText("Select a note to read it, or")).toBeVisible();
     await expect.poll(() => hashOf(page)).toBe("");

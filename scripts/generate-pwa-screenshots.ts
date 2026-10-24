@@ -48,7 +48,7 @@ async function main(): Promise<void> {
     preview: { port, strictPort: true },
   });
   try {
-    const baseURL = `http://localhost:${port}`;
+    const baseURL = `http://localhost:${port}/app/`;
     const browser = await chromium.launch({ channel: "chrome" });
     try {
       await capture(

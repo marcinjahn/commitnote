@@ -118,8 +118,9 @@ export async function isFakeForgeBuildFresh(
   fingerprint: string,
 ): Promise<boolean> {
   try {
-    const index = await stat(join(rootDir, "dist-fake", "index.html"));
-    if (!index.isFile()) return false;
+    for (const entry of [["dist-fake", "index.html"], ["dist-fake", "app", "index.html"]]) {
+      if (!(await stat(join(rootDir, ...entry))).isFile()) return false;
+    }
     const recorded = await readFile(join(rootDir, FAKE_FORGE_BUILD_FINGERPRINT_FILE), "utf8");
     return recorded.trim() === fingerprint;
   } catch {

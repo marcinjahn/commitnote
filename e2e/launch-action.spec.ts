@@ -44,7 +44,7 @@ async function relaunch(page: Page, path: string): Promise<void> {
   await page.evaluate(
     (target) =>
       (window as unknown as LaunchWindow).__launchConsumer!({
-        targetURL: location.origin + target,
+        targetURL: new URL(target, location.href).href,
       }),
     path,
   );
@@ -58,7 +58,7 @@ test(
   "new-note in the start URL opens a draft after auto-login",
   { tag: "@mobile" },
   async ({ page }, testInfo) => {
-    await page.goto(`/?${SESSION}&action=new-note`);
+    await page.goto(`./?${SESSION}&action=new-note`);
 
     await expect(nameField(page)).toBeFocused({
       timeout: KEY_DERIVATION_TIMEOUT,
@@ -74,7 +74,7 @@ test(
   "search in the start URL opens the palette after auto-login",
   { tag: "@mobile" },
   async ({ page }) => {
-    await page.goto(`/?${SESSION}&action=search`);
+    await page.goto(`./?${SESSION}&action=search`);
     await expectTree(page);
 
     await expect(searchPalette(page)).toBeVisible();
@@ -84,7 +84,7 @@ test(
 );
 
 test("an action is held through the login", async ({ page }) => {
-  await page.goto("/?action=new-note");
+  await page.goto("./?action=new-note");
   await expect(page.getByLabel("Access token")).toBeVisible();
   await expectCleanAddress(page);
 
@@ -97,7 +97,7 @@ test("an action is held through the login", async ({ page }) => {
 test.describe("in the installed app", () => {
   test("new-note opens a draft", async ({ page }) => {
     await emulateStandalone(page);
-    await page.goto(`/?${SESSION}&action=new-note`);
+    await page.goto(`./?${SESSION}&action=new-note`);
 
     await expect(nameField(page)).toBeFocused({
       timeout: KEY_DERIVATION_TIMEOUT,
@@ -107,7 +107,7 @@ test.describe("in the installed app", () => {
 
   test("new-note is held through the login", async ({ page }) => {
     await emulateStandalone(page);
-    await page.goto("/?action=new-note");
+    await page.goto("./?action=new-note");
     await expect(page.getByLabel("Access token")).toBeVisible();
     await expect(page.getByText("Remember me")).toHaveCount(0);
 
@@ -119,7 +119,7 @@ test.describe("in the installed app", () => {
 });
 
 test("an unknown action is removed and ignored", async ({ page }) => {
-  await page.goto(`/?${SESSION}&action=bogus`);
+  await page.goto(`./?${SESSION}&action=bogus`);
   await expectTree(page);
 
   await expectCleanAddress(page);
@@ -130,7 +130,7 @@ test("an unknown action is removed and ignored", async ({ page }) => {
 test("other parameters and the hash stay when the action is removed", async ({
   page,
 }) => {
-  await page.goto(`/?${SESSION}&action=bogus&keep=1#top`);
+  await page.goto(`./?${SESSION}&action=bogus&keep=1#top`);
   await expectTree(page);
 
   await expect
@@ -145,14 +145,14 @@ test("a relaunch runs search, then new note", async ({ page }) => {
   await stubLaunchQueue(page);
   await openNotes(page);
 
-  await relaunch(page, "/?action=search");
+  await relaunch(page, "./?action=search");
   await expect(searchPalette(page)).toBeVisible();
   await expect(searchInput(page)).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(searchPalette(page)).toHaveCount(0);
 
-  await relaunch(page, "/?action=new-note");
+  await relaunch(page, "./?action=new-note");
   await expect(nameField(page)).toBeFocused();
 });
 
@@ -160,10 +160,10 @@ test("a relaunch on the login screen is held through the login", async ({
   page,
 }) => {
   await stubLaunchQueue(page);
-  await page.goto("/");
+  await page.goto("./");
   await expect(page.getByLabel("Access token")).toBeVisible();
 
-  await relaunch(page, "/?action=search");
+  await relaunch(page, "./?action=search");
   await logIn(page, { repo: SAMPLE.repo, passphrase: SAMPLE.passphrase });
   await expectTree(page);
 
@@ -178,7 +178,7 @@ test("an action arriving while a dialog is open is dropped", async ({
   await openNotes(page);
   const settings = await openSettings(page);
 
-  await relaunch(page, "/?action=search");
+  await relaunch(page, "./?action=search");
 
   await expect(searchPalette(page)).toHaveCount(0);
   await expect(settings).toBeVisible();
@@ -200,7 +200,7 @@ test("the shared note viewer ignores launch actions", async ({ page }) => {
 });
 
 test("the manifest advertises the launch actions", async ({ page }) => {
-  const response = await page.request.get("/manifest.webmanifest");
+  const response = await page.request.get("./manifest.webmanifest");
   expect(response.ok()).toBe(true);
   const manifest = await response.json();
 

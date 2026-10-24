@@ -38,7 +38,7 @@ async function expectInstallCommand(page: Page, present: boolean) {
 }
 
 async function openLogin(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("./");
   await expect(page.getByLabel("Access token")).toBeVisible();
 }
 

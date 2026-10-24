@@ -16,7 +16,7 @@ async function overrideInsets(
 test("the viewport covers the screen and resizes with the keyboard", MOBILE, async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
   const content = await page
     .locator('meta[name="viewport"]')
     .getAttribute("content");
@@ -66,7 +66,7 @@ test("the tree header stays inside the side insets", MOBILE, async ({ page }) =>
 
 test("the login screen stays below the top inset", MOBILE, async ({ page }) => {
   await overrideInsets(page, { top: 48, bottom: 0, left: 0, right: 0 });
-  await page.goto("/");
+  await page.goto("./");
   const card = page.locator(".login-shell > *").first();
   await expect
     .poll(async () => (await card.boundingBox())?.y)

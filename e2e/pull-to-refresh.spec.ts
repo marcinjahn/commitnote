@@ -291,7 +291,7 @@ test("the spinner shows for at least half a second", MOBILE_ONLY, async ({
   page,
 }) => {
   await page.clock.install();
-  await page.goto("/?fake-forge-session=" + encodeURIComponent(SAMPLE.repo));
+  await page.goto("./?fake-forge-session=" + encodeURIComponent(SAMPLE.repo));
   await expect(treeItem(page, "Welcome")).toBeVisible();
 
   await fullPull(page);

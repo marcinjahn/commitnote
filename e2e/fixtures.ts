@@ -63,7 +63,7 @@ export const test = base.extend<
       contexts.push(context);
       await prepareContext(context);
       const page = await context.newPage();
-      await page.goto("/");
+      await page.goto("./");
       return { context, page };
     });
     await Promise.all(contexts.map((context) => context.close()));

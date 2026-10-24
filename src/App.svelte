@@ -5,7 +5,14 @@
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
   import { requestPersistentStorage } from "./app/persistent-storage";
   import type { AppUpdates } from "./app/app-updates";
-  import { createUpdateGate, type UpdateGate } from "./app/update-gate";
+  import {
+    createReloadGuard,
+    installAutoUpdate,
+    isEditableElement,
+    type AutoUpdate,
+    type UpdateView,
+  } from "./app/auto-update";
+  import { browserSessionStorage } from "./app/update-resume";
   import { clearNoteFragment } from "./app/note-navigation";
   import {
     openSessionBlobCache,
@@ -153,7 +160,6 @@
         readonly engine: SyncEngine;
         readonly autoRefresh: AutoRefresh;
         readonly settingsSaver: SettingsSaver;
-        readonly updateGate: UpdateGate;
         readonly contentIndexer: ContentIndexer;
         readonly session: Session;
         readonly adapter: ForgeAdapter;
@@ -198,8 +204,9 @@
   let loginKey = $state(0);
   let autoRefresh: AutoRefresh | null = null;
   let uninstallLifecycleTriggers: (() => void) | null = null;
-  let updateGate: UpdateGate | null = null;
-  let detachUpdateGate: (() => void) | null = null;
+  let autoUpdate: AutoUpdate | null = null;
+  let stopAutoUpdateWatch: (() => void) | null = null;
+  let updateView: UpdateView | null = null;
   let uninstallCloseGuard: (() => void) | null = null;
   let uninstallBlobCachePurge: (() => void) | null = null;
   let unsubscribeStopped: (() => void) | null = null;
@@ -413,15 +420,7 @@
         stopSaver();
       };
     };
-    const gate = createUpdateGate({
-      hasUnsaved,
-      flush,
-      onUnsavedChange,
-      skipWaiting: () => appUpdates?.skipWaiting(),
-      reload: () => location.reload(),
-    });
-    updateGate = gate;
-    detachUpdateGate = appUpdates?.attachGate(gate) ?? null;
+    stopAutoUpdateWatch = onUnsavedChange(() => autoUpdate?.evaluate());
     uninstallCloseGuard =
       desktop?.installCloseGuard({
         hasUnsaved,
@@ -473,7 +472,6 @@
       engine,
       autoRefresh: refreshScheduler,
       settingsSaver,
-      updateGate: gate,
       contentIndexer,
       session,
       adapter,
@@ -543,10 +541,8 @@
   ): Promise<void> {
     uninstallLifecycleTriggers?.();
     uninstallLifecycleTriggers = null;
-    detachUpdateGate?.();
-    detachUpdateGate = null;
-    updateGate?.dispose();
-    updateGate = null;
+    stopAutoUpdateWatch?.();
+    stopAutoUpdateWatch = null;
     uninstallCloseGuard?.();
     uninstallCloseGuard = null;
     autoRefresh?.dispose();
@@ -823,6 +819,68 @@
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   });
 
+  function registerUpdateView(view: UpdateView): () => void {
+    updateView = view;
+    autoUpdate?.evaluate();
+    return () => {
+      if (updateView === view) updateView = null;
+    };
+  }
+
+  function updateHasUnsaved(): boolean {
+    if (earlyDraftNeedsGuard()) return true;
+    if (phase.kind !== "app") return false;
+    return (
+      phase.settingsSaver.hasPending ||
+      phase.engine.getState().syncStates.hasUnsaved
+    );
+  }
+
+  function updateCanReload(): boolean {
+    if (phase.kind !== "app" || !phase.remembered || keyChanged !== null) {
+      return false;
+    }
+    const state = phase.engine.getState();
+    if (state.importing || state.suspended) return false;
+    return !(updateView?.busy() ?? false);
+  }
+
+  function updateOverlayOpen(): boolean {
+    return (
+      (earlyDraft !== null && earlyDraftOpen) ||
+      dialogStack.top() !== null ||
+      document.querySelector('[role="menu"]') !== null
+    );
+  }
+
+  onMount(() => {
+    if (appUpdates === null) return;
+    const auto = installAutoUpdate(
+      { window, document },
+      {
+        updates: appUpdates,
+        clock: systemClock,
+        reloadGuard: createReloadGuard(browserSessionStorage(), systemClock),
+        reload: () => location.reload(),
+        host: {
+          hasUnsaved: updateHasUnsaved,
+          canReload: updateCanReload,
+          overlayOpen: updateOverlayOpen,
+          editing: () => document.hasFocus() && isEditableElement(document.activeElement),
+          hidden: () => document.visibilityState === "hidden",
+          prepareReload: () => updateView?.saveResume() ?? Promise.resolve(),
+        },
+      },
+    );
+    autoUpdate = auto;
+    const stopDialogWatch = dialogStack.subscribe(() => auto.evaluate());
+    return () => {
+      stopDialogWatch();
+      auto.dispose();
+      autoUpdate = null;
+    };
+  });
+
   function closeEarlyDraft(): void {
     if (earlyDraft !== null && isUntouched(earlyDraft)) earlyDraft = null;
     earlyDraftOpen = false;
@@ -1027,8 +1085,7 @@
       autoRefresh={phase.autoRefresh}
       settingsSaver={phase.settingsSaver}
       {deviceSettingsStore}
-      updateGate={phase.updateGate}
-      {appUpdates}
+      {registerUpdateView}
       {install}
       {launchActions}
       download={desktop?.download}

@@ -357,7 +357,7 @@ test.describe("window controls overlay", () => {
       page,
     }) => {
       await page.setViewportSize({ width: 1280, height: 800 });
-      await page.goto("/");
+      await page.goto("./");
       await expect(page.getByLabel("Access token")).toBeVisible();
       await emulateWindowControlsOverlay(page, { platform });
 

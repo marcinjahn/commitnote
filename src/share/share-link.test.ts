@@ -32,7 +32,7 @@ describe("shareLinkBase", () => {
     expect(shareLinkBase(location, true)).toBe(WEB_APP_URL);
     expect(
       shareLinkBase({ origin: "tauri://localhost", pathname: "/" }, true),
-    ).toBe("https://commitnote.eu/");
+    ).toBe("https://commitnote.eu/app/");
   });
 });
 

@@ -274,6 +274,16 @@
     editor?.setSelection(anchor, head);
   }
 
+  export function currentPosition(): NotePosition | null {
+    const selection = editor?.getSelection();
+    if (presentedPath === null || selection === undefined || contentEl === undefined) return null;
+    return { ...selection, scrollTop: trackedScrollTop };
+  }
+
+  export function seedPosition(path: NotePath, position: NotePosition): void {
+    positions.save(path, position);
+  }
+
   export function contentElement(): HTMLElement | null {
     return contentEl ?? null;
   }

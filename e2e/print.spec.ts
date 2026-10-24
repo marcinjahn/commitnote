@@ -217,7 +217,7 @@ test.describe("with a note", () => {
 
 test.describe("without logging in", () => {
   test("the login screen prints an empty page", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("./");
     await page.emulateMedia({ media: "print" });
     await expect(printView(page)).toHaveText("");
     await expect(printView(page).locator(".print-body")).toBeEmpty();

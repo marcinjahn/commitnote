@@ -28,7 +28,8 @@ export type A11yState =
   | "install-bar"
   | "install-bar-login"
   | "install-bar-ios"
-  | "install-howto";
+  | "install-howto"
+  | "landing";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 const BEST_PRACTICE_RULES = [

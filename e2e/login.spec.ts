@@ -35,7 +35,7 @@ async function failNextOnLoad(
 }
 
 test("setting up an empty repo, then logging in to it", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   await expect(page).toHaveTitle("Log in · commitnote");
   await expect(page.getByRole("main")).toBeVisible();
 
@@ -98,7 +98,7 @@ test("setting up an empty repo, then logging in to it", async ({ page }) => {
 test("a weak passphrase shows a strength warning but does not block setup", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
   await chooseRepository(page, { repo: EMPTY_REPO });
 
   const strength = page.locator("#login-create-passphrase-strength");
@@ -127,7 +127,7 @@ test("a weak passphrase shows a strength warning but does not block setup", asyn
 });
 
 test("the log-in form has no strength meter", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   await chooseRepository(page, { repo: SAMPLE.repo });
   await expect(page.getByLabel("Passphrase", { exact: true })).toBeVisible();
   await page.getByLabel("Passphrase", { exact: true }).fill("password");
@@ -137,7 +137,7 @@ test("the log-in form has no strength meter", async ({ page }) => {
 test("setting up a repo holding only a README, LICENSE and .gitignore keeps them", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
 
   await chooseRepository(page, { repo: ALMOST_EMPTY_REPO });
   await expect(
@@ -166,7 +166,7 @@ test("a repo changed during setup can be checked again and set up", async ({
   page,
 }) => {
   await failNextOnLoad(page, "sample/almost-empty", "commit", "stale");
-  await page.goto("/");
+  await page.goto("./");
 
   await setUpNotesRepo(page, {
     repo: ALMOST_EMPTY_REPO,
@@ -191,7 +191,7 @@ test("a repository that could not be checked can be checked again", async ({
   page,
 }) => {
   await failNextOnLoad(page, "sample/notes", "inspect", "Network");
-  await page.goto("/");
+  await page.goto("./");
 
   await chooseRepository(page, { repo: SAMPLE.repo });
   await expect(page.getByRole("alert")).toHaveText(
@@ -208,7 +208,7 @@ test("a repository that could not be checked can be checked again", async ({
 });
 
 test("a repository that is not private shows a warning", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
 
   await chooseRepository(page, { repo: "https://github.com/sample/public-empty" });
   const warning = page.getByRole("note").filter({ hasText: "not private" });
@@ -227,7 +227,7 @@ test("a repository that is not private shows a warning", async ({ page }) => {
 test("passphrase forms name the repository for password managers", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
 
   await chooseRepository(page, { repo: SAMPLE.repo });
   const passphrase = page.getByLabel("Passphrase", { exact: true });
@@ -261,7 +261,7 @@ test.describe("with GitHub-like forge latency", () => {
   test("a wrong passphrase is refused, then progress is visible while the right one is checked", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("./");
 
     await logIn(page, {
       repo: SAMPLE.repo,
@@ -301,7 +301,7 @@ test.describe("in the installed app", () => {
       platform === "ios" ? { tag: "@mobile" } : {},
       async ({ page }) => {
         await emulateStandalone(page, platform);
-        await page.goto("/");
+        await page.goto("./");
         await chooseRepository(page, { repo: SAMPLE.repo });
         await expect(
           page.getByRole("checkbox", { name: "Remember me" }),
@@ -389,7 +389,7 @@ test("a remembered session whose notes fail to load shows the error", async ({
 });
 
 test("no Remember me", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
 
   await chooseRepository(page, { repo: SAMPLE.repo });
   await expect(
@@ -412,7 +412,7 @@ test("no Remember me", async ({ page }) => {
 test("the login screen links to creating a token and an empty private repository", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
 
   const tokenLink = page.getByRole("link", { name: "Create a token on GitHub" });
   const url = new URL((await tokenLink.getAttribute("href")) ?? "");
@@ -437,7 +437,7 @@ test("the login screen links to creating a token and an empty private repository
 test("a token without repositories says how to create one", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
 
   await continueWithToken(page, "no-repositories-token");
 
@@ -455,7 +455,7 @@ test("a token without repositories says how to create one", async ({
 });
 
 test("the repository list comes from the access token", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
 
   await continueWithToken(page);
   const repository = page.getByLabel("Repository", { exact: true });
@@ -486,7 +486,7 @@ test("the repository list comes from the access token", async ({ page }) => {
 });
 
 test("an empty access token is flagged on the field", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   const token = page.getByRole("textbox", { name: "Access token" });
   await expect(token).not.toHaveAttribute("aria-invalid", /.*/);
 
@@ -497,7 +497,7 @@ test("an empty access token is flagged on the field", async ({ page }) => {
 });
 
 test("refusal: an invalid access token", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
 
   await continueWithToken(page, "invalid-token");
 
@@ -540,7 +540,7 @@ const refusals: ReadonlyArray<{
 
 test("an inline alert keeps a rail in forced colours", async ({ page }) => {
   await page.emulateMedia({ forcedColors: "active" });
-  await page.goto("/");
+  await page.goto("./");
 
   await continueWithToken(page, "invalid-token");
 
@@ -550,7 +550,7 @@ test("an inline alert keeps a rail in forced colours", async ({ page }) => {
 });
 
 test("refusals name the problem and offer to check again", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
 
   for (const [index, refusal] of refusals.entries()) {
     await test.step(refusal.name, async () => {
@@ -574,7 +574,7 @@ test("refusals name the problem and offer to check again", async ({ page }) => {
 test("after a refusal another repository can be chosen with the same token", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
 
   await chooseRepository(page, { repo: "https://github.com/sample/foreign" });
   await expect(page.getByRole("alert")).toBeVisible();
@@ -602,7 +602,7 @@ test("after a refusal another repository can be chosen with the same token", asy
 test("a long repository name keeps the form inside the login card", { tag: "@mobile" }, async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("./");
 
   await continueWithToken(page, `github_pat_${"x".repeat(82)}`);
   const repository = page.getByLabel("Repository", { exact: true });
@@ -629,7 +629,7 @@ test.describe("several providers", () => {
   test("the provider picker lists every provider and defaults to the first", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("./");
 
     const github = page.getByRole("radio", { name: "GitHub" });
     const fakelab = page.getByRole("radio", { name: "Fakelab" });
@@ -640,7 +640,7 @@ test.describe("several providers", () => {
   test("switching provider updates the token help and link and clears the token", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("./");
 
     await page.getByLabel("Access token").fill("secret-token");
     await page.getByRole("radio", { name: "Fakelab" }).check();
@@ -663,7 +663,7 @@ test.describe("several providers", () => {
   test("switching provider drops the loaded repository list", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("./");
 
     await continueWithToken(page);
     await expect(page.getByLabel("Repository", { exact: true })).toBeVisible();
@@ -678,7 +678,7 @@ test.describe("several providers", () => {
   });
 
   test("setting up a repository on the second provider", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("./");
 
     await setUpNotesRepo(page, {
       provider: "Fakelab",
@@ -689,7 +689,7 @@ test.describe("several providers", () => {
   });
 
   test("errors name the selected provider", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("./");
 
     await page.getByRole("radio", { name: "Fakelab" }).check();
     await continueWithToken(page, "invalid-token");
@@ -711,7 +711,7 @@ test.describe("several providers", () => {
   });
 
   test("the provider picker stays inside the login card", { tag: "@mobile" }, async ({ page }) => {
-    await page.goto("/");
+    await page.goto("./");
 
     const card = (await page.locator(".login-card").boundingBox())!;
     for (const name of ["GitHub", "Fakelab"]) {

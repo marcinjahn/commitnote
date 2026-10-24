@@ -37,16 +37,14 @@ function setup(
   if (options.active ?? true) container.registration.active = new FakeWorker();
   if (options.waiting) container.registration.waiting = new FakeWorker();
   const clock = createTestClock(1_000_000);
-  const reload = vi.fn();
   const updates = startAppUpdates({
     container,
     scriptUrl: "./sw.js",
     clock,
-    reload,
   });
   const notifications: boolean[] = [];
-  updates.subscribe((value) => notifications.push(value));
-  return { container, registration: container.registration, clock, reload, updates, notifications };
+  updates.subscribe(() => notifications.push(updates.updateWaiting));
+  return { container, registration: container.registration, clock, updates, notifications };
 }
 
 afterEach(() => {
@@ -84,7 +82,6 @@ describe("registration", () => {
       container,
       scriptUrl: "./sw.js",
       clock: createTestClock(0),
-      reload: vi.fn(),
     });
     await flush();
     updates.checkForUpdate();
@@ -99,7 +96,6 @@ describe("registration", () => {
       container,
       scriptUrl: "./sw.js",
       clock: createTestClock(0),
-      reload: vi.fn(),
     });
     await flush();
     updates.checkForUpdate();
@@ -119,7 +115,6 @@ describe("registration", () => {
       container,
       scriptUrl: "./sw.js",
       clock,
-      reload: vi.fn(),
     });
     await flush();
     clock.advance(UPDATE_CHECK_INTERVAL_MS);
@@ -251,33 +246,14 @@ describe("skipWaiting", () => {
 });
 
 describe("controllerchange", () => {
-  it("is routed to an attached gate without reloading", async () => {
-    const { updates, container, reload } = setup();
+  it("is reported to subscribers", async () => {
+    const { updates, container, registration } = setup({ waiting: true });
     await flush();
-    const gate = { controllerChanged: vi.fn() };
-    updates.attachGate(gate);
+    const observed: Array<[boolean, boolean]> = [];
+    updates.subscribe(() => observed.push([updates.controllerChanged, updates.updateWaiting]));
+    expect(updates.controllerChanged).toBe(false);
+    registration.waiting = null;
     container.dispatchEvent(new Event("controllerchange"));
-    container.dispatchEvent(new Event("controllerchange"));
-    expect(gate.controllerChanged).toHaveBeenCalledTimes(2);
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it("reloads exactly once without a gate", async () => {
-    const { container, reload } = setup();
-    await flush();
-    container.dispatchEvent(new Event("controllerchange"));
-    container.dispatchEvent(new Event("controllerchange"));
-    expect(reload).toHaveBeenCalledTimes(1);
-  });
-
-  it("falls back to reloading after the gate is detached", async () => {
-    const { updates, container, reload } = setup();
-    await flush();
-    const gate = { controllerChanged: vi.fn() };
-    const detach = updates.attachGate(gate);
-    detach();
-    container.dispatchEvent(new Event("controllerchange"));
-    expect(gate.controllerChanged).not.toHaveBeenCalled();
-    expect(reload).toHaveBeenCalledTimes(1);
+    expect(observed).toEqual([[true, false]]);
   });
 });
