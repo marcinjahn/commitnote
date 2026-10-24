@@ -10,11 +10,15 @@ extension XCTestCase {
         app.buttons["login-continue-button"].tap()
     }
 
+    /// A tap lost on an overloaded runner leaves the list up, so it is repeated until the list goes.
     func pickRepository(_ label: String, in app: XCUIApplication) {
         let row = app.element("login-repository-row", labelEndingWith: label)
         waitFor(row)
         waitUntilSettled(row)
-        row.tap()
+        for _ in 0..<3 where row.exists {
+            row.tap()
+            if poll(timeout: 10, until: { !row.exists }) { break }
+        }
     }
 
     func unlock(in app: XCUIApplication) {

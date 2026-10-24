@@ -179,6 +179,8 @@ final class AppModel {
     private var localNoticeCounter = 0
     #if FAKE_CORE
     private(set) var forcedOffline = false
+    var pendingTestingImportForm: ImportForm?
+    @ObservationIgnored private var stoppedForTesting = false
     #endif
 
     init() {
@@ -215,8 +217,9 @@ final class AppModel {
             screen = .fatal(Self.inconsistentBuildMessage)
             return
         }
-        let runtime = CoreRuntime(
-            configuration: .production(bundleURL: bundleURL, deviceModel: UIDevice.current.model))
+        let configuration = CoreRuntimeConfiguration.production(
+            bundleURL: bundleURL, deviceModel: UIDevice.current.model)
+        let runtime = CoreRuntime(configuration: configuration)
         do {
             try await runtime.start()
         } catch CoreRuntimeError.apiVersionMismatch {
@@ -261,6 +264,7 @@ final class AppModel {
             switch try await runtime.send(SessionResume()) {
             case .none:
                 screen = .login(LoginEntry())
+                postTestingReady()
             case .resumed:
                 await enterNotes(restoringLastView: true)
             case .failed(let error, let canRetry):
@@ -269,6 +273,7 @@ final class AppModel {
                 } else {
                     screen = .login(LoginEntry(errorMessage: error.message))
                 }
+                postTestingReady()
             }
         } catch {
             screen = .loading(.failed(message: Self.message(for: error), canRetry: true))
@@ -711,6 +716,7 @@ final class AppModel {
         guard restoringLastView, screen == .notes else { return }
         if handedOff {
             lastViewTracking = true
+            postTestingReady()
         } else {
             lastViewRestorePending = true
             await restoreLastViewIfReady()
@@ -763,7 +769,33 @@ final class AppModel {
             }
         }
         lastViewTracking = true
+        postTestingReady()
     }
+
+    private func postTestingReady() {
+        #if FAKE_CORE
+        guard !stoppedForTesting else { return }
+        TestingRelaunch.postReady()
+        #endif
+    }
+
+    #if FAKE_CORE
+    func stopForTesting() async {
+        stoppedForTesting = true
+        eventsTask?.cancel()
+        eventsTask = nil
+        pathMonitor?.cancel()
+        pathMonitor = nil
+        statsTask?.cancel()
+        datesTimer?.cancel()
+        searchTask?.cancel()
+        searchRefreshTask?.cancel()
+        if let runtime {
+            await runtime.stop()
+        }
+        runtime = nil
+    }
+    #endif
 
     private func saveLastView() {
         guard lastViewTracking else { return }
@@ -1120,6 +1152,20 @@ final class AppModel {
     #if FAKE_CORE
     func sendTesting<C: NativeCoreCommand>(_ command: C) async {
         _ = try? await send(command)
+    }
+
+    func importSampleArchive() async {
+        do {
+            switch try await send(FakeImportArchive()) {
+            case .ready(let form):
+                pendingTestingImportForm = form
+                await openSettings()
+            case .error(let message):
+                showErrorNotice(message)
+            }
+        } catch {
+            showErrorNotice(error.localizedDescription)
+        }
     }
 
     func setForcedOffline(_ value: Bool) async {

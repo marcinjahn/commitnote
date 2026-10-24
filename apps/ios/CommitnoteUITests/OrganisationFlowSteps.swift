@@ -11,9 +11,11 @@ extension XCTestCase {
     /// The last view reopens the previously open note shortly after the tree loads, so a note
     /// that appears within a few seconds is closed again on iPhone.
     func resumeAtTree(
-        appearance: Appearance = .light, file: StaticString = #filePath, line: UInt = #line
+        appearance: Appearance = .light, editorHooks: Bool = false, file: StaticString = #filePath,
+        line: UInt = #line
     ) -> XCUIApplication {
-        let app = launchApp(reset: false, appearance: appearance)
+        let restarted = restartInProcess(appearance: appearance, editorHooks: editorHooks)
+        let app = restarted ?? launchApp(reset: false, appearance: appearance, editorHooks: editorHooks)
         let tree = app.element("notes-tree")
         let noteView = app.element("note-view")
         let tokenField = app.secureTextFields["login-token-field"]
@@ -24,10 +26,20 @@ extension XCTestCase {
             logInToNotes(in: app)
             return app
         }
-        if appears(noteView, within: 3) {
+        // A restarted app reports once its last view is back, and the loop below closes it; after
+        // a relaunch the note may still be on its way.
+        if restarted == nil, appears(noteView, within: 3) {
             backToTree(in: app, file: file, line: line)
         }
-        waitFor(tree, file: file, line: line)
+        // The last view can be reopened only once the tree has loaded, so the note may still slide in.
+        waitForCondition("The notes tree is shown", timeout: 30, file: file, line: line) {
+            if !isPad, noteView.exists {
+                let back = app.navigationBars.buttons["BackButton"]
+                if back.exists, back.isHittable { back.tap() }
+                return false
+            }
+            return tree.exists
+        }
         return app
     }
 
@@ -170,9 +182,13 @@ extension XCTestCase {
             .containing(NSPredicate(format: "identifier == %@ AND label == %@", element.identifier, element.label))
             .firstMatch
         let row = cell.exists ? cell : element
-        switch edge {
-        case .leading: row.swipeRight()
-        case .trailing: row.swipeLeft()
+        // A swipe on a loaded runner sometimes ends too short to open the actions, so it is repeated.
+        for _ in 0..<3 {
+            switch edge {
+            case .leading: row.swipeRight()
+            case .trailing: row.swipeLeft()
+            }
+            if appears(actionButtons(identifier, label: label, in: app).firstMatch, within: 5) { break }
         }
         actionButton(identifier, label: label, in: app, file: file, line: line).tap()
     }

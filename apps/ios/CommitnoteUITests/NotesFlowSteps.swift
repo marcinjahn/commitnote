@@ -56,8 +56,10 @@ extension XCTestCase {
             element, NSPredicate(format: "hasKeyboardFocus == true"), timeout: timeout, file: file, line: line)
     }
 
-    func waitUntilGone(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
-        waitUntil(element, NSPredicate(format: "exists == false"), timeout: 20, file: file, line: line)
+    func waitUntilGone(
+        _ element: XCUIElement, timeout: TimeInterval = 20, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        waitUntil(element, NSPredicate(format: "exists == false"), timeout: timeout, file: file, line: line)
     }
 
     func hittable(_ query: XCUIElementQuery, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {

@@ -13,10 +13,18 @@ struct CommitnoteApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(model: model)
-                .task { await model.start() }
+                .id(ObjectIdentifier(model))
+                .task(id: ObjectIdentifier(model)) { await model.start() }
                 .tint(model.appearance.tint.map { Color(uiColor: $0) })
                 #if FAKE_CORE
-                .preferredColorScheme(TestingHooks.requestedColorScheme)
+                .onReceive(NotificationCenter.default.publisher(for: TestingRelaunch.notification)) { _ in
+                    let previous = model
+                    Task {
+                        TestingRelaunch.dismissPresentations()
+                        await previous.stopForTesting()
+                        model = AppModel()
+                    }
+                }
                 #endif
         }
     }

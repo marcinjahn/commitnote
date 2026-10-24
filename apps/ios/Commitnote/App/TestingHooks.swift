@@ -3,6 +3,7 @@ import CoreRuntime
 import Foundation
 import NativeCoreAPI
 import SwiftUI
+import UIKit
 
 enum TestingHooks {
     private nonisolated(unsafe) static var storedStateWasReset = false
@@ -24,12 +25,118 @@ enum TestingHooks {
         ProcessInfo.processInfo.environment["COMMITNOTE_UI_EDITOR_HOOKS"] == "1"
     }
 
+    /// UI tests run the app's own animations faster, so XCTest's waits for them end sooner.
+    static var animationSpeed: Float? {
+        ProcessInfo.processInfo.environment["COMMITNOTE_UI_ANIMATION_SPEED"].flatMap { Float($0) }
+    }
+
     static var requestedColorScheme: ColorScheme? {
         switch ProcessInfo.processInfo.environment["COMMITNOTE_UI_APPEARANCE"] {
         case "light": .light
         case "dark": .dark
         default: nil
         }
+    }
+}
+
+/// Screenshot tests switch between light and dark on the screen they show instead of walking
+/// every flow twice. The request and its acknowledgement are Darwin notifications, which the
+/// test runner and the app on one simulator both see.
+@MainActor
+@Observable
+final class TestingAppearance {
+    static let shared = TestingAppearance()
+    static let requestPrefix = "io.github.marcinjahn.commitnote.testing.appearance."
+    static let appliedPrefix = "io.github.marcinjahn.commitnote.testing.appearance-applied."
+
+    private(set) var scheme = TestingHooks.requestedColorScheme
+    @ObservationIgnored var lastAppearance = AppAppearance.standard
+    @ObservationIgnored private var listening = false
+
+    func startListening() {
+        guard !listening else { return }
+        listening = true
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        for name in ["light", "dark"] {
+            CFNotificationCenterAddObserver(
+                center, nil, testingAppearanceRequested, (Self.requestPrefix + name) as CFString, nil,
+                .deliverImmediately)
+        }
+        CFNotificationCenterAddObserver(
+            center, nil, testingRelaunchRequested, TestingRelaunch.request as CFString, nil, .deliverImmediately)
+    }
+
+    fileprivate func apply(_ scheme: ColorScheme) {
+        self.scheme = scheme
+        AppearanceApplier.apply(lastAppearance)
+        let style: UIUserInterfaceStyle = scheme == .dark ? .dark : .light
+        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+        // Sheets, popovers and alerts that are already up keep the style they were presented with.
+        func override(_ controller: UIViewController) {
+            if controller.presentingViewController != nil {
+                controller.overrideUserInterfaceStyle = style
+            }
+            controller.children.forEach(override)
+            if let presented = controller.presentedViewController, presented.presentingViewController === controller {
+                override(presented)
+            }
+        }
+        for window in windows {
+            if let root = window.rootViewController { override(root) }
+        }
+        let name = Self.appliedPrefix + (scheme == .dark ? "dark" : "light")
+        DispatchQueue.main.async {
+            windows.forEach { $0.layoutIfNeeded() }
+            // The keyboard runs in another process and picks up the new style only once reloaded.
+            UIApplication.shared.sendAction(#selector(UIResponder.reloadInputViews), to: nil, from: nil, for: nil)
+            CATransaction.flush()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                CFNotificationCenterPostNotification(
+                    CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName(name as CFString), nil, nil,
+                    true)
+            }
+        }
+    }
+}
+
+/// UI tests restart the app's model and core in the running process instead of relaunching it,
+/// which costs far less than a new process. Everything a relaunch resets is rebuilt: a new model, a
+/// new core with a fresh fake forge, and new views; stored state stays, as it does across launches.
+enum TestingRelaunch {
+    static let request = "io.github.marcinjahn.commitnote.testing.relaunch"
+    static let ready = "io.github.marcinjahn.commitnote.testing.ready"
+    static let notification = Notification.Name("CommitnoteTestingRelaunch")
+
+    /// Tells the tests the restarted app has settled: logged out, or showing notes with the last
+    /// view restored.
+    static func postReady() {
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName(ready as CFString), nil, nil, true)
+    }
+
+    @MainActor
+    static func dismissPresentations() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                window.endEditing(true)
+                window.rootViewController?.dismiss(animated: false)
+            }
+        }
+    }
+}
+
+private let testingRelaunchRequested: CFNotificationCallback = { _, _, _, _, _ in
+    DispatchQueue.main.async {
+        NotificationCenter.default.post(name: TestingRelaunch.notification, object: nil)
+    }
+}
+
+private let testingAppearanceRequested: CFNotificationCallback = { _, _, name, _, _ in
+    guard let raw = name.map({ $0.rawValue as String }) else { return }
+    let scheme: ColorScheme = raw.hasSuffix("dark") ? .dark : .light
+    DispatchQueue.main.async {
+        MainActor.assumeIsolated { TestingAppearance.shared.apply(scheme) }
     }
 }
 
@@ -68,6 +175,11 @@ struct FakeShareNote: NativeCoreCommand {
     static let name = "fake.shareNote"
     typealias Result = Empty
     var path: [String]
+}
+
+struct FakeImportArchive: NativeCoreCommand {
+    static let name = "fake.importArchive"
+    typealias Result = ImportArchiveOutcome
 }
 
 struct FakeHoldLoading: NativeCoreCommand {
@@ -192,6 +304,10 @@ struct TestingMenu: View {
                 }
             }
             .accessibilityIdentifier("testing-share-permission")
+            Button("Import sample archive") {
+                Task { await model.importSampleArchive() }
+            }
+            .accessibilityIdentifier("testing-import-archive")
             Button(model.forcedOffline ? "Go online" : "Go offline") {
                 Task { await model.setForcedOffline(!model.forcedOffline) }
             }

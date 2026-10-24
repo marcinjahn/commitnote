@@ -6,38 +6,36 @@ final class ScreenshotTests: XCTestCase {
     }
 
     func testCaptureScreens() {
-        for appearance in [Appearance.light, Appearance.dark] {
-            captureScreens(appearance)
-        }
+        captureScreens()
     }
 
-    private func captureScreens(_ appearance: Appearance) {
-        var app = launchApp(reset: true, appearance: appearance)
+    private func captureScreens() {
+        var app = launchApp(reset: true)
         waitFor(app.secureTextFields["login-token-field"])
-        snapshot("login", appearance: appearance)
+        snapshotBothAppearances("login")
 
         submitToken(Fixture.token, in: app)
         waitFor(app.element("login-repository-list"))
         waitFor(app.element("login-repository-row"))
-        snapshot("repositories", appearance: appearance)
+        snapshotBothAppearances("repositories")
 
         pickRepository(Fixture.notes, in: app)
         waitFor(app.secureTextFields["login-passphrase-field"])
         XCTAssertFalse(app.element("login-public-warning").exists)
-        snapshot("unlock", appearance: appearance)
+        snapshotBothAppearances("unlock")
 
-        app = launchApp(reset: true, appearance: appearance)
+        app = launchApp(reset: true)
         submitToken(Fixture.token, in: app)
         pickRepository(Fixture.empty, in: app)
         waitFor(app.element("init-description"))
         typeNewPassphrase(app.secureTextFields["init-passphrase-field"], "short passphrase", in: app)
         waitFor(app.element("init-strength"))
-        snapshot("initialise", appearance: appearance)
+        snapshotBothAppearances("initialise")
 
-        app = launchApp(reset: true, appearance: appearance)
+        app = launchApp(reset: true)
         logInToNotes(in: app)
         expandFolder("Journal", in: app)
-        snapshot("tree", appearance: appearance)
+        snapshotBothAppearances("tree")
 
         let welcome = note("Welcome", in: app)
         waitFor(welcome)
@@ -46,60 +44,60 @@ final class ScreenshotTests: XCTestCase {
         if isPad {
             waitFor(app.element("tree-note"))
         }
-        snapshot("note", appearance: appearance)
+        snapshotBothAppearances("note")
 
-        captureEditingScreens(appearance)
+        captureEditingScreens()
 
-        app = launchApp(reset: true, appearance: appearance)
+        app = launchApp(reset: true)
         submitToken(Fixture.token, in: app)
         pickRepository(Fixture.newer, in: app)
         waitFor(app.element("login-error"))
-        snapshot("newer-format", appearance: appearance)
+        snapshotBothAppearances("newer-format")
     }
 
-    private func captureEditingScreens(_ appearance: Appearance) {
-        var app = resumeNotes(appearance: appearance)
+    private func captureEditingScreens() {
+        var app = resumeNotes()
         openWelcome(in: app)
         focusEditor(in: app)
-        snapshot("editor", appearance: appearance)
+        snapshotBothAppearances("editor")
 
-        app = resumeNotes(appearance: appearance)
+        app = resumeNotes()
         hittable(app.buttons.matching(identifier: "new-note-button")).tap()
         waitForFocus(app.element("draft-name-field"))
-        snapshot("new-note", appearance: appearance)
+        snapshotBothAppearances("new-note")
 
-        app = resumeNotes(appearance: appearance)
+        app = resumeNotes()
         openFolderSheet(in: app)
         waitForFocus(app.element("new-folder-name-field"))
-        snapshot("new-folder", appearance: appearance)
+        snapshotBothAppearances("new-folder")
 
-        app = resumeNotes(appearance: appearance)
+        app = resumeNotes()
         openWelcome(in: app)
         useTestingMenu("testing-fail-saves", in: app)
         typeAtEnd("Not saved yet", in: app)
         waitForValue(syncStatus(in: app), "failed")
         openStatusMenu(in: app)
         waitFor(app.element("sync-status-note-0"))
-        snapshot("sync-status", appearance: appearance)
+        snapshotBothAppearances("sync-status")
 
-        app = resumeNotes(appearance: appearance)
+        app = resumeNotes()
         makeConflict(in: app)
-        snapshot("conflict", appearance: appearance)
+        snapshotBothAppearances("conflict")
         leaveNote(in: app)
         waitFor(app.buttons["notice-action-button"])
-        snapshot("notice-action", appearance: appearance)
+        snapshotBothAppearances("notice-action")
 
-        app = resumeNotes(appearance: appearance)
+        app = resumeNotes()
         openWelcome(in: app)
         useTestingMenu("testing-fail-saves", in: app)
         typeAtEnd("Not saved yet", in: app)
         tapLogOut(in: app)
         waitFor(unsavedAlert(in: app), timeout: 30)
-        snapshot("logout-unsaved", appearance: appearance)
+        snapshotBothAppearances("logout-unsaved")
 
-        app = resumeNotes(appearance: appearance)
+        app = resumeNotes()
         changeKeyWithUnsavedEdit("Not saved yet", in: app)
         waitFor(app.buttons["key-changed-export-button"])
-        snapshot("key-changed-export", appearance: appearance)
+        snapshotBothAppearances("key-changed-export")
     }
 }

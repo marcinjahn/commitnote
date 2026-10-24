@@ -5,7 +5,8 @@ enum AppearanceApplier {
     static func apply(_ appearance: AppAppearance) {
         var style = appearance.interfaceStyle
         #if FAKE_CORE
-        switch TestingHooks.requestedColorScheme {
+        TestingAppearance.shared.lastAppearance = appearance
+        switch TestingAppearance.shared.scheme {
         case .light: style = .light
         case .dark: style = .dark
         default: break
@@ -17,6 +18,11 @@ enum AppearanceApplier {
             for window in windowScene.windows {
                 window.overrideUserInterfaceStyle = style
                 window.tintColor = tint
+                #if FAKE_CORE
+                if let speed = TestingHooks.animationSpeed {
+                    window.layer.speed = speed
+                }
+                #endif
             }
         }
     }
