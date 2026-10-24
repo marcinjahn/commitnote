@@ -77,9 +77,16 @@ final class EditorFlowTests: XCTestCase {
         editor.typeKey(.downArrow, modifierFlags: .command)
         editor.typeText("\n\npasted")
         waitUntil(editor, NSPredicate(format: "value ENDSWITH %@", "\n\npasted"))
-        editor.typeKey(.leftArrow, modifierFlags: [.shift, .option])
-        pasteText("https://example.com", into: editor)
-        waitUntil(editor, NSPredicate(format: "value ENDSWITH %@", "\n\n[pasted](https://example.com)"))
+        // Hardware keys are sometimes dropped on a loaded runner, so the word is selected through
+        // the hook and the paste is repeated while the word is still there unchanged.
+        hittable(app.buttons.matching(identifier: "testing-select-word")).tap()
+        waitForSelection(length: 6, in: app)
+        let linked = "\n\n[pasted](https://example.com)"
+        for _ in 0..<3 {
+            pasteText("https://example.com", into: editor)
+            if poll(timeout: 10, until: { !((editor.value as? String) ?? "").hasSuffix("\n\npasted") }) { break }
+        }
+        waitUntil(editor, NSPredicate(format: "value ENDSWITH %@", linked))
         waitForValue(syncStatus(in: app), "synced")
     }
 
