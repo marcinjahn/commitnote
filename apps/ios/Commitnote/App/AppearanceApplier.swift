@@ -13,17 +13,23 @@ enum AppearanceApplier {
         }
         #endif
         let tint = appearance.tint
-        for scene in UIApplication.shared.connectedScenes {
-            guard let windowScene = scene as? UIWindowScene else { continue }
-            for window in windowScene.windows {
-                window.overrideUserInterfaceStyle = style
-                window.tintColor = tint
-                #if FAKE_CORE
-                if let speed = TestingHooks.animationSpeed {
-                    window.layer.speed = speed
-                }
-                #endif
+        for window in appWindows() {
+            window.overrideUserInterfaceStyle = style
+            window.tintColor = tint
+            #if FAKE_CORE
+            if let speed = TestingHooks.animationSpeed {
+                window.layer.speed = speed
             }
+            #endif
         }
+    }
+
+    /// The scene also lists the system's keyboard and text effects windows, which sit above the
+    /// normal level and follow the style of the view they serve.
+    static func appWindows() -> [UIWindow] {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .filter { $0.windowLevel == .normal }
     }
 }
