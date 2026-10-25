@@ -122,10 +122,17 @@ extension XCTestCase {
 
     func scrollToReveal(_ element: XCUIElement, in app: XCUIApplication) {
         var attempts = 0
-        while !element.isHittable && attempts < 6 {
+        while (!element.isHittable || isUnderKeyboard(element, in: app)) && attempts < 6 {
             app.swipeUp()
             attempts += 1
         }
+    }
+
+    /// The keyboard lives in another process, so `isHittable` still holds for an element it covers,
+    /// and a tap there presses a key instead.
+    func isUnderKeyboard(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        let keyboard = app.keyboards.firstMatch
+        return keyboard.exists && element.frame.maxY > keyboard.frame.minY
     }
 
     func tapRevealed(_ element: XCUIElement, in app: XCUIApplication) {

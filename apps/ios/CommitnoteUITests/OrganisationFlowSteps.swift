@@ -32,7 +32,7 @@ extension XCTestCase {
             backToTree(in: app, file: file, line: line)
         }
         // The last view can be reopened only once the tree has loaded, so the note may still slide in.
-        waitForCondition("The notes tree is shown", timeout: 30, file: file, line: line) {
+        let treeShown: () -> Bool = {
             if !isPad, noteView.exists {
                 let back = app.navigationBars.buttons["BackButton"]
                 if back.exists, back.isHittable { back.tap() }
@@ -40,6 +40,14 @@ extension XCTestCase {
             }
             return tree.exists
         }
+        // A tap can sit out XCTest's 60-second wait for idle animations, which outlasts the whole wait,
+        // so a wait that ran into one gets another round.
+        let timeoutsBefore = animationTimeouts
+        var shown = poll(timeout: 30, until: treeShown)
+        if !shown, animationTimeouts > timeoutsBefore {
+            shown = poll(timeout: 30, until: treeShown)
+        }
+        XCTAssertTrue(shown, "The notes tree is shown", file: file, line: line)
         return app
     }
 

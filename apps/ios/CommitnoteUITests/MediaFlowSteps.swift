@@ -77,13 +77,24 @@ extension XCTestCase {
         }
     }
 
-    /// A tap on the dimmed backdrop closes a menu without reaching the view below.
+    /// A tap on the backdrop closes a menu, but on a busy runner it can reach the view below. The
+    /// editor there would bring up a keyboard that takes the next taps as key presses, so the tap
+    /// goes to the start of the note's details line, plain text left of the menu.
     func closeMenu(showing item: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let editor = app.element("note-editor")
+        let text = editor.exists ? editor.value as? String : nil
+        let details = app.element("note-details")
+        waitFor(details, file: file, line: line)
+        let backdrop = details.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: 4, dy: 0))
+        XCTAssertFalse(item.frame.contains(backdrop.screenPoint), "The menu covers the details line", file: file, line: line)
         for _ in 0..<3 where item.exists {
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97)).tap()
+            backdrop.tap()
             poll(timeout: 5) { !item.exists }
         }
         waitUntilGone(item, file: file, line: line)
+        if let text {
+            XCTAssertEqual(editor.value as? String, text, "Closing the menu changed the note", file: file, line: line)
+        }
     }
 
     /// Pastes `text` at the end of the open note as one edit, so an autosave never holds part of it.

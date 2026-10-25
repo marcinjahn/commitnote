@@ -17,6 +17,8 @@ private enum MenuIdle {
 
 private var menuIdle = MenuIdle.off
 private var animationsStuck = false
+/// How many of XCTest's waits for idle animations have run into their timeout.
+private(set) var animationTimeouts = 0
 private let animationTimeoutSeen: TimeInterval = 55
 
 private func includesAnimations(_ requested: Bool) -> Bool {
@@ -37,6 +39,7 @@ private func includesAnimations(_ requested: Bool) -> Bool {
 private func noteTimeout(_ included: Bool, since start: Date) {
     if included, Date().timeIntervalSince(start) >= animationTimeoutSeen {
         animationsStuck = true
+        animationTimeouts += 1
         print("MENU-IDLE: animations never went idle; skipping animation waits until the next launch")
     }
 }

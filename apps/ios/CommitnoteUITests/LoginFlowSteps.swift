@@ -7,7 +7,7 @@ extension XCTestCase {
         XCTAssertTrue(
             poll(timeout: 20) { (field.value as? String)?.count == token.count },
             "Typed token length", file: file, line: line)
-        app.buttons["login-continue-button"].tap()
+        tapRevealed(app.buttons["login-continue-button"], in: app)
     }
 
     /// A tap lost on an overloaded runner leaves the list up, so it is repeated until the list goes.
