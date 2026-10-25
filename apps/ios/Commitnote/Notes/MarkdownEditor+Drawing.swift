@@ -110,7 +110,11 @@ final class PreviewLayoutFragment: NSTextLayoutFragment {
             boxes.append(contentsOf: list)
         }
         guard !boxes.isEmpty else { return [] }
-        var y = (textLineFragments.last?.typographicBounds.maxY ?? 0) + PreviewImageBox.gap
+        // The document's last paragraph also carries the empty line after its newline, which sits
+        // below the paragraph spacing the boxes are drawn in.
+        let lines = textLineFragments
+        let lastLine = lines.last { $0.characterRange.length > 0 } ?? lines.last
+        var y = (lastLine?.typographicBounds.maxY ?? 0) + PreviewImageBox.gap
         return boxes.map { box in
             let rect = CGRect(origin: CGPoint(x: padding, y: y), size: box.size)
             y = rect.maxY + PreviewImageBox.gap
