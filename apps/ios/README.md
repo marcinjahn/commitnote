@@ -212,21 +212,21 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   with TypeScript, and also boots an iPad Simulator to run the iPad `EditorFlowTests` and
   `DataFlowTests`.
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
-  shared build:
-  - `flows` — editing, media and login flows, plus the organisation flows and settings screenshots
-    on iPhone and the organisation screenshots on iPad.
-  - `screens` — the other screenshots and the settings flows, plus the editor and data flows on
-    iPhone and the organisation flows on iPad.
+  shared build. These jobs start once `Build for testing` has finished, and boot and prepare their simulator
+  while the test products download:
+  - `flows` — editing and media flows, plus the organisation flows and settings flows on iPhone
+    and the login flows and settings screenshots on iPad.
+  - `screens` — the other screenshots, plus the editor, data and login flows on iPhone and the
+    organisation flows, organisation screenshots and settings flows on iPad.
 
   The screenshot tests reach each screen once and capture it in light and dark, switching the
   running app's appearance through a FAKE_CORE testing hook. Between tests the app is restarted in
   its process through another such hook (a new model, core and fake forge, with stored state kept,
-  as a relaunch would) instead of being relaunched; tests about launching still relaunch it. The
-  Testing build also logs core requests left unanswered and stalls of the core's queue, and a failed
-  UI test run uploads that log as `app.log` with its result bundle.
+  as a relaunch would) instead of being relaunched; tests about launching still relaunch it. A failed
+  UI test run uploads the app's log as `app.log` with its result bundle.
 
   The class lists of the suites differ per device, so every UI class runs on both devices. The
-  `iphone`/`screens` job, which finishes its tests first, then builds and checks the unsigned IPA
+  `ipad`/`screens` job, which finishes its tests first, then builds and checks the unsigned IPA
   (`commitnote-unsigned-ipa`).
 
 The `Testing` configuration (fake core bundle only) adds test hooks: a Testing menu entry "Share
@@ -241,7 +241,7 @@ Artifacts, kept for 30 days:
 | --- | --- |
 | `commitnote-unsigned-ipa` | `commitnote-unsigned.ipa` |
 | `ios-screenshots-<device>` | the screenshots taken by the classes in that device's `screens` suite, light and dark |
-| `ios-screenshots-<device>-flows` | the screenshots taken by the classes in that device's `flows` suite (the iPhone settings and iPad organisation screenshots), light and dark |
+| `ios-screenshots-<device>-flows` | the screenshots taken by the classes in that device's `flows` suite (the iPad settings screenshots), light and dark |
 | `ios-xcresults-runtime` | Xcode result bundle of the runtime tests |
 | `ios-xcresults-ui-ipad-runtime` | Xcode result bundle of the iPad tests run in the runtime job |
 | `ios-xcresults-ui-<device>-<suite>` | Xcode result bundles of the UI tests |
