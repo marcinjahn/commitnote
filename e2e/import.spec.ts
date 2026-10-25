@@ -1,13 +1,17 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { strToU8, zipSync } from "fflate";
+import { readFile } from "node:fs/promises";
 import { openNotes, fakeForge } from "./helpers";
-import { openDataSecurityAction, settingsDialog } from "./helpers/settings";
+import { WHITEBOARD_IMAGE_ID, pngBase64 } from "./helpers/images";
+import { treeItem } from "./helpers/tree";
+import { closeSettings, openDataSecurityAction, settingsDialog } from "./helpers/settings";
 
 
-function zipOf(files: Record<string, string>): Buffer {
+function zipOf(files: Record<string, string | Uint8Array>): Buffer {
   const entries: Record<string, Uint8Array> = {};
-  for (const [path, text] of Object.entries(files)) entries[path] = strToU8(text);
+  for (const [path, content] of Object.entries(files))
+    entries[path] = typeof content === "string" ? strToU8(content) : content;
   return Buffer.from(zipSync(entries));
 }
 
@@ -191,4 +195,65 @@ test("rejects a picker selection that mixes a zip archive with other files", asy
   ).toBeVisible();
   await expect(importDialog(page)).toHaveCount(0);
   expect(await fakeForge(page).commitCount()).toBe(before);
+});
+
+test("imports bundled images as images", async ({ page }) => {
+  const forge = fakeForge(page, "sample/notes");
+  const pathsBefore = await forge.headPaths();
+  const before = await fakeForge(page).commitCount();
+  const png = Buffer.from(await pngBase64(page, { width: 8, height: 6, shade: 90 }), "base64");
+  await chooseArchive(
+    page,
+    "beach.zip",
+    zipOf({
+      "Trips/Beach.md": "Beach day\n\n![Beach](../pics/beach%20day.png)\n\n![Gone](missing.png)\n",
+      "pics/beach day.png": png,
+    }),
+  );
+
+  const dialog = importDialog(page);
+  await dialog.getByRole("radio", { name: "An existing folder" }).check();
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Added 1 image.")).toBeVisible();
+  await expect(page.getByText("1 image could not be imported")).toHaveCount(0);
+
+  await closeSettings(page);
+  await treeItem(page, "Trips").click();
+  await treeItem(page, "Beach").click();
+  await expect(page.locator('button.cm-image[data-state="loaded"]')).toHaveCount(1);
+  await expect(page.locator("button.cm-image")).toHaveAttribute("aria-label", /Beach/);
+  await expect(page.locator(".cm-content")).toContainText("![Gone](missing.png)");
+
+  const added = (await forge.headPaths())
+    .filter((path) => !pathsBefore.includes(path))
+    .filter((path) => path.startsWith(".commitnote/images/"));
+  expect(added).toHaveLength(1);
+  await expect.poll(() => fakeForge(page).commitCount()).toBe(before + 1);
+});
+
+test("re-imports an exported note with its image", async ({ page }) => {
+  const downloadPromise = page.waitForEvent("download");
+  await openDataSecurityAction(page, "Export notes");
+  const download = await downloadPromise;
+  const archive = await readFile(await download.path());
+  await page.keyboard.press("Escape");
+
+  await chooseArchive(page, download.suggestedFilename(), archive);
+  const dialog = importDialog(page);
+  await expect(dialog.getByRole("radio", { name: "A new folder" })).toBeChecked();
+  const folder = await dialog.getByLabel("Folder name").inputValue();
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText(/Added \d+ images?\./)).toBeVisible();
+
+  await closeSettings(page);
+  const imported = page.locator("li").filter({ has: treeItem(page, folder) }).first();
+  await imported.getByRole("treeitem", { name: "Journal", exact: true }).click();
+  await imported.getByRole("treeitem", { name: "2026", exact: true }).click();
+  await imported.getByRole("treeitem", { name: "Whiteboard", exact: true }).click();
+
+  const widget = page.locator('button.cm-image[data-state="loaded"]');
+  await expect(widget).toHaveCount(1);
+  await expect(widget).not.toHaveAttribute("data-image-id", WHITEBOARD_IMAGE_ID);
 });

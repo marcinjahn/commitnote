@@ -1,7 +1,12 @@
 import { unzipSync, type UnzipFileInfo } from "fflate";
 import type { NotePath } from "../changes/change";
 import { REPO_CONFIG_DIR } from "../format/v1";
+import { parseMarkdownImages } from "../images/image-reference";
 import { validateName } from "../tree/note-names";
+import {
+  isArchiveImagePath,
+  resolveArchiveImagePath,
+} from "./archive-image-paths";
 
 export const MAX_ARCHIVE_ENTRIES = 20_000;
 export const MAX_ARCHIVE_UNCOMPRESSED_BYTES = 200 * 1024 * 1024;
@@ -17,6 +22,7 @@ export type ArchiveImportEntry =
       readonly kind: "note";
       readonly path: NotePath;
       readonly content: string;
+      readonly archiveFolder?: readonly string[];
     };
 
 export interface ArchiveSkipCounts {
@@ -30,6 +36,7 @@ export interface ArchiveSkipCounts {
 export interface NotesArchiveContents {
   readonly entries: readonly ArchiveImportEntry[];
   readonly skipped: ArchiveSkipCounts;
+  readonly images: ReadonlyMap<string, Uint8Array>;
 }
 
 export type NotesArchiveErrorKind =
@@ -93,7 +100,10 @@ export function readNotesArchive(bytes: Uint8Array): NotesArchiveContents {
     invalidEncoding: 0,
   };
   const entries: ArchiveImportEntry[] = [];
-  const notePaths = new Map<string, NotePath>();
+  const notePaths = new Map<
+    string,
+    { path: NotePath; archiveFolder: readonly string[] }
+  >();
   let entryCount = 0;
   let totalBytes = 0;
 
@@ -119,7 +129,10 @@ export function readNotesArchive(bytes: Uint8Array): NotesArchiveContents {
     if (totalBytes > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
       throw new NotesArchiveError("tooLarge");
     }
-    notePaths.set(file.name, parsed.path);
+    notePaths.set(file.name, {
+      path: parsed.path,
+      archiveFolder: file.name.split("/").slice(0, -1),
+    });
     return true;
   }
 
@@ -134,7 +147,7 @@ export function readNotesArchive(bytes: Uint8Array): NotesArchiveContents {
   }
 
   const decoder = new TextDecoder("utf-8", { fatal: true });
-  for (const [zipPath, path] of notePaths) {
+  for (const [zipPath, { path, archiveFolder }] of notePaths) {
     let content: string;
     try {
       content = decoder.decode(files[zipPath]);
@@ -142,8 +155,57 @@ export function readNotesArchive(bytes: Uint8Array): NotesArchiveContents {
       skipped.invalidEncoding++;
       continue;
     }
-    entries.push({ kind: "note", path, content });
+    entries.push({ kind: "note", path, content, archiveFolder });
   }
 
-  return { entries, skipped };
+  const referenced = new Set<string>();
+  for (const entry of entries) {
+    if (entry.kind !== "note") continue;
+    for (const image of parseMarkdownImages(entry.content)) {
+      const resolved = resolveArchiveImagePath(
+        entry.archiveFolder ?? [],
+        image.url,
+      );
+      if (resolved !== null && isArchiveImagePath(resolved)) {
+        referenced.add(resolved);
+      }
+    }
+  }
+
+  const images = new Map<string, Uint8Array>();
+  if (referenced.size > 0) {
+    const imageEntryNames = new Map<string, string>();
+
+    function acceptImage(file: UnzipFileInfo): boolean {
+      const normalized = file.name.normalize("NFC");
+      if (!referenced.has(normalized)) return false;
+      const parsed = parseZipPath(file.name);
+      if (parsed.kind !== "skip" || parsed.reason !== "unsupported") {
+        return false;
+      }
+      if (file.compression !== STORED && file.compression !== DEFLATED) {
+        return false;
+      }
+      totalBytes += file.originalSize;
+      if (totalBytes > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
+        throw new NotesArchiveError("tooLarge");
+      }
+      imageEntryNames.set(file.name, normalized);
+      return true;
+    }
+
+    let imageFiles: Record<string, Uint8Array>;
+    try {
+      imageFiles = unzipSync(bytes, { filter: acceptImage });
+    } catch (error) {
+      if (error instanceof NotesArchiveError) throw error;
+      throw new NotesArchiveError("invalidArchive");
+    }
+    for (const [zipPath, normalized] of imageEntryNames) {
+      images.set(normalized, imageFiles[zipPath]);
+    }
+    skipped.unsupported -= imageEntryNames.size;
+  }
+
+  return { entries, skipped, images };
 }

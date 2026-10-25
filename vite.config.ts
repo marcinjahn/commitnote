@@ -47,6 +47,7 @@ export default defineConfig(({ mode, command }) => {
     test: {
       include: ["src/**/*.test.ts", "scripts/**/*.test.ts", "landing/**/*.test.ts"],
       environment: "node",
+      setupFiles: ["src/test-setup.ts"],
       css: { include: /\.css\?raw$/ },
       passWithNoTests: true,
       testTimeout: 30000,

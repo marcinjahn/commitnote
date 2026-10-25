@@ -1,6 +1,10 @@
 import { markdownLanguage } from "@codemirror/lang-markdown";
 import type { SyntaxNode, Tree } from "@lezer/common";
+import type { ImageId } from "../images/image-id";
+import { parseImageUrl } from "../images/image-reference";
 import { toOpenableUrl } from "./link-open";
+
+export const PRINT_IMAGE_UNAVAILABLE_TEXT = "Image unavailable";
 
 const SKIPPED_INLINE = new Set([
   "EmphasisMark",
@@ -19,6 +23,7 @@ interface RenderContext {
   readonly text: string;
   readonly doc: Document;
   readonly refs: ReadonlyMap<string, string>;
+  readonly images: ReadonlyMap<ImageId, string>;
   lineStart: boolean;
 }
 
@@ -293,6 +298,28 @@ function renderImage(ctx: RenderContext, parent: Node, node: SyntaxNode): void {
   const alt = plainText(ctx.text, node, parts.contentFrom, parts.contentTo)
     .replace(/\s+/g, " ")
     .trim();
+  const target = parseImageUrl(url);
+  if (target) {
+    const source = ctx.images.get(target.imageId);
+    if (source === undefined) {
+      const missing = appendElement(ctx, parent, "span");
+      missing.className = "print-image-unavailable";
+      missing.textContent = alt
+        ? `${alt} (${PRINT_IMAGE_UNAVAILABLE_TEXT})`
+        : PRINT_IMAGE_UNAVAILABLE_TEXT;
+    } else {
+      const img = appendElement(ctx, parent, "img");
+      img.className = "print-note-image";
+      img.setAttribute("src", source);
+      img.setAttribute("alt", alt);
+      if (target.width !== undefined && target.height !== undefined) {
+        img.setAttribute("width", String(target.width));
+        img.setAttribute("height", String(target.height));
+      }
+    }
+    ctx.lineStart = false;
+    return;
+  }
   const image = appendElement(ctx, parent, "span");
   image.className = "print-image";
   image.textContent = alt || url || ctx.text.slice(node.from, node.to);
@@ -629,6 +656,7 @@ function renderBlock(ctx: RenderContext, parent: Node, node: SyntaxNode): void {
 export function renderPrintMarkdown(
   text: string,
   doc: Document = document,
+  images: ReadonlyMap<ImageId, string> = new Map(),
 ): DocumentFragment {
   const fragment = doc.createDocumentFragment();
   if (!text.trim()) return fragment;
@@ -637,6 +665,7 @@ export function renderPrintMarkdown(
     text,
     doc,
     refs: collectReferences(text, tree),
+    images,
     lineStart: true,
   };
   renderBlocks(ctx, fragment, tree.topNode);

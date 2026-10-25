@@ -121,10 +121,6 @@ const modeOf = (view: EditorView) => vimStatusOf(view.state)?.mode;
 const docOf = (view: EditorView) => view.state.doc.toString();
 
 beforeAll(() => {
-  const empty = () => new DOMRect();
-  Range.prototype.getClientRects = () =>
-    Object.assign([], { item: () => null }) as unknown as DOMRectList;
-  Range.prototype.getBoundingClientRect = empty;
   EditorView.prototype.moveVertically = function (start, forward) {
     const doc = this.state.doc;
     const line = doc.lineAt(start.head);

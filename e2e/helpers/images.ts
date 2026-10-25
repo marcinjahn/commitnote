@@ -1,4 +1,17 @@
 import type { Page } from "@playwright/test";
+import { expect } from "../fixtures";
+import { treeItem } from "./tree";
+
+export const WHITEBOARD_IMAGE_ID = "s4u5q5zr4xaec3jewbaixgwlou";
+
+export async function openWhiteboardNote(page: Page): Promise<void> {
+  await treeItem(page, "Journal").click();
+  await treeItem(page, "2026").click();
+  await treeItem(page, "Whiteboard").click();
+  await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+    "Whiteboard",
+  );
+}
 
 export interface ImageSpec {
   readonly width: number;

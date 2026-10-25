@@ -303,6 +303,20 @@ describe("readPayload", () => {
     await expect(s.resolver.readPayload(image.imageId)).rejects.toBe(failure);
   });
 
+  it("shares one read with a concurrent resolve of the same id", async () => {
+    const s = setup();
+    const image = await stored(s);
+
+    const [resolved, read] = await Promise.all([
+      s.resolver.resolve(image.imageId),
+      s.resolver.readPayload(image.imageId),
+    ]);
+
+    expect(resolved).toEqual({ url: "blob:0" });
+    expect(read).toEqual(payload());
+    expect(s.reads).toEqual([image.blobSha]);
+  });
+
   it("does not fill the object url cache", async () => {
     const s = setup();
     const image = await stored(s);

@@ -59,6 +59,48 @@ function readImage(node: SyntaxNode, text: string): ParsedReference | null {
   return reference;
 }
 
+export interface MarkdownImage {
+  from: number;
+  to: number;
+  alt: string;
+  url: string;
+}
+
+export function parseMarkdownImages(text: string): MarkdownImage[] {
+  const images: MarkdownImage[] = [];
+  markdownParser.parse(text).iterate({
+    enter(node) {
+      if (node.name !== "Image") return;
+      const image = readMarkdownImage(node.node, text);
+      if (image) images.push(image);
+      return false;
+    },
+  });
+  return images;
+}
+
+function readMarkdownImage(
+  node: SyntaxNode,
+  text: string,
+): MarkdownImage | null {
+  const urlNode = node.getChild("URL");
+  if (!urlNode) return null;
+  const marks = node.getChildren("LinkMark");
+  const closingBracket = marks.filter((mark) => mark.to <= urlNode.from).at(-2);
+  if (!closingBracket || marks[0] === undefined) return null;
+
+  let url = text.slice(urlNode.from, urlNode.to);
+  if (url.length >= 2 && url.startsWith("<") && url.endsWith(">")) {
+    url = url.slice(1, -1);
+  }
+  return {
+    from: node.from,
+    to: node.to,
+    alt: text.slice(marks[0].to, closingBracket.from),
+    url,
+  };
+}
+
 export function parseImageUrl(
   url: string,
 ): { imageId: ImageId; width?: number; height?: number } | null {

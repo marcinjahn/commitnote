@@ -1,5 +1,8 @@
 import { strToU8, zipSync, type Zippable } from "fflate";
 import type { NotePath } from "../changes/change";
+import { imageFileExtension } from "../images/image-file-extension";
+import { parseImageReferences } from "../images/image-reference";
+import type { ReadImagePayload } from "../images/image-resolver";
 import type { WorkingFolder } from "../sync/working-tree";
 
 type ArchiveEntry =
@@ -10,6 +13,7 @@ type ArchiveEntry =
       readonly path: NotePath;
     };
 
+export const EXPORT_IMAGES_DIR = "_images";
 const NOTE_EXTENSION = ".md";
 const READ_CONCURRENCY = 6;
 
@@ -76,21 +80,70 @@ function planArchive(root: WorkingFolder): ArchiveEntry[] {
   return entries;
 }
 
+interface ExportedNote {
+  text: string;
+  images: Map<string, Uint8Array>;
+}
+
+async function exportNote(
+  zipPath: string,
+  text: string,
+  readImage: ReadImagePayload | undefined,
+): Promise<ExportedNote> {
+  const images = new Map<string, Uint8Array>();
+  const references = readImage ? parseImageReferences(text) : [];
+  if (!readImage || references.length === 0) {
+    return { text, images };
+  }
+  const folder = zipPath.slice(0, zipPath.lastIndexOf("/") + 1);
+  const relativePaths = new Map<string, string | null>();
+  for (const { imageId } of references) {
+    if (relativePaths.has(imageId)) {
+      continue;
+    }
+    const payload = await readImage(imageId);
+    if (payload === null) {
+      relativePaths.set(imageId, null);
+      continue;
+    }
+    const relativePath = `${EXPORT_IMAGES_DIR}/${imageId}.${imageFileExtension(payload.type)}`;
+    relativePaths.set(imageId, relativePath);
+    images.set(`${folder}${relativePath}`, payload.bytes);
+  }
+  let rewritten = text;
+  for (const reference of [...references].reverse()) {
+    const relativePath = relativePaths.get(reference.imageId);
+    if (relativePath) {
+      rewritten =
+        rewritten.slice(0, reference.from) +
+        `![${reference.alt}](${relativePath})` +
+        rewritten.slice(reference.to);
+    }
+  }
+  return { text: rewritten, images };
+}
+
 export async function buildNotesArchive(
   root: WorkingFolder,
   readNote: (path: NotePath) => Promise<string>,
   mtime: Date,
+  readImage?: ReadImagePayload,
 ): Promise<Uint8Array<ArrayBuffer>> {
   const entries = planArchive(root);
   const files: Zippable = {};
   const notes = entries.filter((entry) => entry.kind === "note");
-  const contents = new Array<string>(notes.length);
+  const exported = new Array<ExportedNote>(notes.length);
 
   let next = 0;
   async function worker(): Promise<void> {
     while (next < notes.length) {
       const index = next++;
-      contents[index] = await readNote(notes[index].path);
+      const text = await readNote(notes[index].path);
+      exported[index] = await exportNote(
+        notes[index].zipPath,
+        text,
+        readImage,
+      );
     }
   }
   await Promise.all(
@@ -99,10 +152,15 @@ export async function buildNotesArchive(
 
   let noteIndex = 0;
   for (const entry of entries) {
-    files[entry.zipPath] =
-      entry.kind === "folder"
-        ? new Uint8Array(0)
-        : strToU8(contents[noteIndex++]);
+    if (entry.kind === "folder") {
+      files[entry.zipPath] = new Uint8Array(0);
+      continue;
+    }
+    const { text, images } = exported[noteIndex++];
+    files[entry.zipPath] = strToU8(text);
+    for (const [path, bytes] of images) {
+      files[path] = [bytes, { level: 0 }];
+    }
   }
   return zipSync(files, { mtime });
 }

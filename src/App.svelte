@@ -1209,6 +1209,7 @@
       passphraseChange={phase.passphraseChange}
       noteHistory={phase.noteHistory}
       imageSource={phase.imageResolver.resolve}
+      readImage={phase.imageResolver.readPayload}
       shareService={phase.shareService}
       forgeId={phase.session.coordinates.forge}
       noteDatesResolver={phase.noteDatesResolver}
@@ -1290,7 +1291,10 @@
   onClose={() => install.closeHowTo()}
 />
 
-<PrintView note={phase.kind === "app" && keyChanged === null ? reportedPrintNote : null} />
+<PrintView
+  note={phase.kind === "app" && keyChanged === null ? reportedPrintNote : null}
+  readImage={phase.kind === "app" && keyChanged === null ? phase.imageResolver.readPayload : null}
+/>
 
 <style>
   .test-mode-banner {

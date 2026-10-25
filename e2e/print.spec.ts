@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { flushPendingSaves, openNotes, showTree, expectFamily, MONO_STACK, SERIF_STACK } from "./helpers";
 import { chooseOption, closeSettings, openSettings, settingsDialog } from "./helpers/settings";
+import { openWhiteboardNote } from "./helpers/images";
 import { openWelcome } from "./helpers/tree";
 
 const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
@@ -67,6 +68,24 @@ test.describe("with a note", () => {
     await expect(view.locator("h1")).toHaveText("Welcome");
     await expect(view.locator("header.print-title")).toHaveCount(0);
     await expect(view.locator("strong")).toHaveText("notes");
+  });
+
+  test("prints a note's image", async ({ page }) => {
+    await openWhiteboardNote(page);
+    await printPreview(page);
+
+    const image = printView(page).locator("img.print-note-image");
+    await expect(image).toBeVisible();
+    await expect
+      .poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth))
+      .toBeGreaterThan(0);
+    await expect(printView(page)).not.toContainText("image:");
+
+    await image.evaluate((el) => {
+      el.dataset.mark = "1";
+    });
+    await dispatchPrintEvent(page, "beforeprint");
+    await expect(printView(page).locator("img[data-mark]")).toHaveCount(1);
   });
 
   test("a long note prints every line", async ({ page }) => {

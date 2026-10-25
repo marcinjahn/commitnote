@@ -65,8 +65,27 @@ export function describeImportRefusal(
   }
 }
 
-export function describeImportDone(notes: number, folders: number): string {
-  return `Imported ${describeImportCounts(notes, folders)}.`;
+export interface ImportedImageCounts {
+  added: number;
+  failed: number;
+}
+
+export function describeImportDone(
+  notes: number,
+  folders: number,
+  images: ImportedImageCounts = { added: 0, failed: 0 },
+): string {
+  let message = `Imported ${describeImportCounts(notes, folders)}.`;
+  if (images.added > 0) {
+    message += ` Added ${plural(images.added, "image", "images")}.`;
+  }
+  if (images.failed > 0) {
+    message +=
+      images.failed === 1
+        ? " 1 image could not be imported and stays as a link."
+        : ` ${images.failed} images could not be imported and stay as links.`;
+  }
+  return message;
 }
 
 export const IMPORT_RETRYING_MESSAGE =

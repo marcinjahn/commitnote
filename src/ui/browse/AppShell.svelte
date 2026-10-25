@@ -109,6 +109,10 @@
     type ArchiveImportEntry,
     type NotesArchiveContents,
   } from "../../import/read-notes-archive";
+  import {
+    prepareImportImages,
+    type ImportImagesResult,
+  } from "../../import/import-images";
   import ImportDialog from "../import/ImportDialog.svelte";
   import AtomicBlockedDialog from "../import/AtomicBlockedDialog.svelte";
   import {
@@ -124,6 +128,7 @@
   } from "../import/import-messages";
   import type { ImportOutcome } from "../import/import-outcome";
   import type { Keyring } from "../../crypto/keyring";
+  import type { ReadImagePayload } from "../../images/image-resolver";
   import type { ImageSource } from "../../images/image-source";
   import type {
     HistoryOutcome,
@@ -266,6 +271,7 @@
     passphraseChange: PassphraseChange;
     noteHistory: NoteHistory;
     imageSource: ImageSource;
+    readImage: ReadImagePayload;
     shareService: ShareService;
     forgeId: ForgeId;
     noteDatesResolver: NoteDatesResolver;
@@ -304,6 +310,7 @@
     passphraseChange,
     noteHistory,
     imageSource,
+    readImage,
     shareService,
     forgeId,
     noteDatesResolver,
@@ -590,6 +597,7 @@
   let importStarted = $state<{
     readonly summary: ImportSummary;
     retryingShown: boolean;
+    readonly images?: { readonly added: number; readonly failed: number };
     readonly fileDrop?: {
       readonly paths: readonly NotePath[];
       readonly skipped: DropSkipCounts;
@@ -1894,7 +1902,7 @@
     exporting = true;
     clearToast("export");
     try {
-      await exportNotesArchive(snapshot, { download });
+      await exportNotesArchive(snapshot, { download, readImage });
     } catch {
       showToast("export", "error", "Export failed. Try again later.");
     } finally {
@@ -1920,7 +1928,11 @@
       if (fileDrop === undefined) {
         showImportMessage(
           "success",
-          describeImportDone(started.summary.notes, started.summary.folders),
+          describeImportDone(
+            started.summary.notes,
+            started.summary.folders,
+            started.images,
+          ),
         );
       } else {
         showToast(
@@ -2019,6 +2031,7 @@
     entries: readonly ArchiveImportEntry[],
     policy: CollisionPolicy,
     onQueued: (plan: Extract<ImportPlan, { ok: true }>) => void,
+    images: readonly PendingImage[] = [],
   ): Promise<ImportOutcome> {
     try {
       const support = await engine.atomicCommitSupport();
@@ -2048,6 +2061,7 @@
         };
       }
       if (!plan.ok) return { kind: "conflicts", count: plan.conflicts };
+      for (const image of images) engine.addPendingImage(image);
       const result = await engine.importChanges(plan.changes);
       if (result.ok) {
         onQueued(plan);
@@ -2060,17 +2074,48 @@
     return { kind: "error", message: describeImportRefusal("outdated") };
   }
 
+  let preparedImport: {
+    contents: NotesArchiveContents;
+    result: ImportImagesResult;
+  } | null = null;
+
+  async function prepareArchiveImages(
+    contents: NotesArchiveContents,
+  ): Promise<ImportImagesResult> {
+    if (preparedImport?.contents === contents) return preparedImport.result;
+    const result = await prepareImportImages(contents.entries, contents.images, {
+      keyring,
+      process: async () => (await loadImagePipeline()).processImageInBrowser,
+    });
+    preparedImport = { contents, result };
+    return result;
+  }
+
   async function handleImport(
     destination: ImportDestination,
     policy: CollisionPolicy,
   ): Promise<ImportOutcome> {
     const pending = importDialog;
     if (pending === null) return { kind: "error", message: describeImportRefusal("unavailable") };
-    return commitImport(destination, pending.contents.entries, policy, (plan) => {
+    let prepared: ImportImagesResult;
+    try {
+      prepared = await prepareArchiveImages(pending.contents);
+    } catch {
+      return {
+        kind: "error",
+        message: "Couldn't prepare the images in this archive. Try again.",
+      };
+    }
+    return commitImport(destination, prepared.entries, policy, (plan) => {
       tagFilter = null;
       importDialog = null;
+      preparedImport = null;
       if (plan.changes.length > 0) {
-        importStarted = { summary: plan.summary, retryingShown: false };
+        importStarted = {
+          summary: plan.summary,
+          retryingShown: false,
+          images: { added: prepared.added, failed: prepared.failed },
+        };
       }
       const first = plan.changes[0];
       if (destination.kind === "folder") {
@@ -2078,7 +2123,7 @@
       } else if (destination.kind === "new-folder" && first !== undefined) {
         expandFolder(first.kind === "create-folder" ? first.path : []);
       }
-    });
+    }, prepared.images);
   }
 
   let droppingFiles = false;

@@ -38,6 +38,24 @@ function setDeclaredSize(archive: Uint8Array, size: number): Uint8Array {
   return patched;
 }
 
+function setDeclaredSizeOf(
+  archive: Uint8Array,
+  name: string,
+  size: number,
+): Uint8Array {
+  const patched = archive.slice();
+  const view = new DataView(patched.buffer);
+  for (let offset = 0; offset < patched.length - 46; offset++) {
+    if (view.getUint32(offset, true) !== 0x02014b50) continue;
+    const nameLength = view.getUint16(offset + 28, true);
+    const entryName = new TextDecoder().decode(
+      patched.subarray(offset + 46, offset + 46 + nameLength),
+    );
+    if (entryName === name) view.setUint32(offset + 24, size, true);
+  }
+  return patched;
+}
+
 function expectArchiveError(bytes: Uint8Array, kind: string): void {
   let caught: unknown;
   try {
@@ -70,9 +88,15 @@ describe("readNotesArchive", () => {
           kind: "note",
           path: ["Journal", "2026", "January"],
           content: "Hello",
+          archiveFolder: ["Journal", "2026"],
         },
-        { kind: "note", path: ["Shout"], content: "LOUD" },
-        { kind: "note", path: ["Zażółć"], content: "gęślą" },
+        { kind: "note", path: ["Shout"], content: "LOUD", archiveFolder: [] },
+        {
+          kind: "note",
+          path: ["Zażółć"],
+          content: "gęślą",
+          archiveFolder: [],
+        },
       ]),
     );
     expect(result.entries).toHaveLength(5);
@@ -90,7 +114,7 @@ describe("readNotesArchive", () => {
     const result = readNotesArchive(zip({ "a.md": content }));
 
     expect(result.entries).toEqual([
-      { kind: "note", path: ["a"], content: "text" },
+      { kind: "note", path: ["a"], content: "text", archiveFolder: [] },
     ]);
   });
 
@@ -111,7 +135,7 @@ describe("readNotesArchive", () => {
     );
 
     expect(result.entries).toEqual([
-      { kind: "note", path: ["kept"], content: "ok" },
+      { kind: "note", path: ["kept"], content: "ok", archiveFolder: [] },
     ]);
     expect(result.skipped).toEqual({
       unsupported: 2,
@@ -141,7 +165,12 @@ describe("readNotesArchive", () => {
     const result = readNotesArchive(zip({ " Cafe\u0301 /note .md": "x" }));
 
     expect(result.entries).toEqual([
-      { kind: "note", path: ["Café", "note"], content: "x" },
+      {
+        kind: "note",
+        path: ["Café", "note"],
+        content: "x",
+        archiveFolder: [" Cafe\u0301 "],
+      },
     ]);
   });
 
@@ -153,6 +182,7 @@ describe("readNotesArchive", () => {
     expect(readNotesArchive(zipSync({}))).toEqual({
       entries: [],
       skipped: NO_SKIPS,
+      images: new Map(),
     });
   });
 
@@ -198,5 +228,90 @@ describe("readNotesArchive", () => {
     expect(entry.kind === "note" && entry.content.length).toBeLessThanOrEqual(
       10,
     );
+  });
+
+  describe("images", () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+    const jpg = new Uint8Array([0xff, 0xd8, 0xff, 9]);
+
+    it("keeps images referenced through relative paths", () => {
+      const result = readNotesArchive(
+        zip({
+          "Trip.md": "![a](pics/a.png) ![x](<pics/b%20c.png>)",
+          "pics/a.png": png,
+          "pics/b c.png": jpg,
+          "Deep/Er/Note.md": "![up](../../pics/a.png) ![s](./s.PNG)",
+          "Deep/Er/s.PNG": jpg,
+          "unused.png": png,
+        }),
+      );
+
+      expect(new Map(result.images)).toEqual(
+        new Map([
+          ["pics/a.png", png],
+          ["pics/b c.png", jpg],
+          ["Deep/Er/s.PNG", jpg],
+        ]),
+      );
+      expect(result.skipped).toEqual({ ...NO_SKIPS, unsupported: 1 });
+    });
+
+    it("keys images by the NFC-normalized path", () => {
+      const result = readNotesArchive(
+        zip({
+          "Cafe\u0301/n.md": "![](pic.png)",
+          "Cafe\u0301/pic.png": png,
+        }),
+      );
+
+      expect([...result.images.keys()]).toEqual(["Caf\u00e9/pic.png"]);
+      expect(result.skipped).toEqual(NO_SKIPS);
+    });
+
+    it("does not keep an unreferenced image", () => {
+      const result = readNotesArchive(zip({ "a.md": "text", "pic.png": png }));
+
+      expect(result.images.size).toBe(0);
+      expect(result.skipped).toEqual({ ...NO_SKIPS, unsupported: 1 });
+    });
+
+    it("counts a reserved image as reserved even when referenced", () => {
+      const result = readNotesArchive(
+        zip({
+          "a.md": "![](__MACOSX/pics/a.png) ![](../x.png)",
+          "__MACOSX/pics/a.png": png,
+        }),
+      );
+
+      expect(result.images.size).toBe(0);
+      expect(result.skipped).toEqual({ ...NO_SKIPS, reserved: 1 });
+    });
+
+    it("ignores references to missing images", () => {
+      const result = readNotesArchive(zip({ "a.md": "![](missing.png)" }));
+
+      expect(result.images.size).toBe(0);
+      expect(result.skipped).toEqual(NO_SKIPS);
+    });
+
+    it("counts referenced images toward the size limit", () => {
+      const archive = setDeclaredSizeOf(
+        zip({ "a.md": "![](p.png)", "p.png": png }),
+        "p.png",
+        MAX_ARCHIVE_UNCOMPRESSED_BYTES,
+      );
+
+      expectArchiveError(archive, "tooLarge");
+    });
+
+    it("ignores the declared size of unreferenced images", () => {
+      const archive = setDeclaredSizeOf(
+        zip({ "a.md": "text", "p.png": png }),
+        "p.png",
+        MAX_ARCHIVE_UNCOMPRESSED_BYTES,
+      );
+
+      expect(readNotesArchive(archive).images.size).toBe(0);
+    });
   });
 });
