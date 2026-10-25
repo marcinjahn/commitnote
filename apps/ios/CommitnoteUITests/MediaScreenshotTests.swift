@@ -6,13 +6,13 @@ final class MediaScreenshotTests: XCTestCase {
     }
 
     func testCaptureScreens() {
-        let app = launchApp(reset: true)
+        let app = launchApp(reset: true, editorHooks: true)
         logInToNotes(in: app)
         captureScreens()
     }
 
     private func captureScreens() {
-        let app = resumeAtTree()
+        let app = resumeAtTree(editorHooks: true)
         openWelcome(in: app)
         whileMenuIsOpen {
             openMenu(
@@ -28,6 +28,8 @@ final class MediaScreenshotTests: XCTestCase {
 
         pasteAtEnd("Edited for the history screen", in: app)
         waitForSaved(in: app)
+        // The editor hooks above the keyboard are not part of the app's screens.
+        hideKeyboardThroughHooks(in: app)
         openHistoryWithEdit(in: app)
         if let newest = historyRows(in: app).first {
             waitUntilSettled(newest)

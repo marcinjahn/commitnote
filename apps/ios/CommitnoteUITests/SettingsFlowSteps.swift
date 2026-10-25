@@ -150,8 +150,14 @@ extension XCTestCase {
         let button = revealInSettings(
             app.buttons["settings-change-passphrase-button"], in: app, file: file, line: line)
         waitUntil(button, NSPredicate(format: "enabled == true"), file: file, line: line)
-        button.tap()
-        waitFor(app.element("change-passphrase-screen"), timeout: 30, file: file, line: line)
+        // A tap while the form still scrolls only stops it, so the row is tapped again once settled.
+        let screen = app.element("change-passphrase-screen")
+        for _ in 0..<3 where !screen.exists && button.exists {
+            waitUntilSettled(button, file: file, line: line)
+            button.tap()
+            if appears(screen, within: 10) { break }
+        }
+        waitFor(screen, timeout: 30, file: file, line: line)
         waitFor(app.secureTextFields["change-passphrase-new"], timeout: 30, file: file, line: line)
     }
 }

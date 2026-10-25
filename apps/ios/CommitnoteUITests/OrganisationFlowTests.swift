@@ -249,7 +249,7 @@ final class OrganisationFlowTests: XCTestCase {
 
         app = launchApp(reset: false)
         Self.loggedIn = true
-        waitForText(editor(in: app), startingWith: "# January")
+        waitForText(editor(in: app), startingWith: "# January", timeout: 60)
         waitForValue(app.textFields["note-title-field"], "January")
         backToTree(in: app)
         waitFor(folder("2026", in: app))

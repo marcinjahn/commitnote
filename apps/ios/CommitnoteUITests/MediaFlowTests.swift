@@ -10,24 +10,31 @@ final class MediaFlowTests: XCTestCase {
 
     private func openNotes() -> XCUIApplication {
         guard Self.loggedIn else {
-            let app = launchApp(reset: true)
+            let app = launchApp(reset: true, editorHooks: true)
             logInToNotes(in: app)
             Self.loggedIn = true
             return app
         }
-        return resumeAtTree()
+        return resumeAtTree(editorHooks: true)
     }
 
     func testPasteImageAndOpenViewer() {
         let app = openNotes()
         let editor = openWelcome(in: app)
-        focusEditor(in: app)
-        for _ in 0..<3 {
-            editor.typeKey(.downArrow, modifierFlags: .command)
+        // A hardware key can be dropped on a loaded runner, and can take the editor's focus with it, so
+        // the paste is repeated from a focused editor until the editor has taken it. The image itself
+        // takes far longer to land in the text.
+        let png = Self.largePNG()
+        let pastes = app.element("testing-editor-image-pastes")
+        waitFor(pastes)
+        let pastesBefore = Int((pastes.value as? String) ?? "") ?? 0
+        for _ in 0..<4 {
+            focusEditor(in: app)
+            moveCaretToEnd(in: app)
+            UIPasteboard.general.setData(png, forPasteboardType: "public.png")
+            editor.typeKey("v", modifierFlags: .command)
+            if poll(timeout: 10, until: { (Int((pastes.value as? String) ?? "") ?? 0) > pastesBefore }) { break }
         }
-        UIPasteboard.general.setData(Self.largePNG(), forPasteboardType: "public.png")
-        editor.typeKey("v", modifierFlags: .command)
-
         waitUntil(
             editor, NSPredicate(format: "value MATCHES %@", "(?s).*image:[a-z2-7]{26}#[0-9]+x[0-9]+.*"),
             timeout: 60)
@@ -109,20 +116,6 @@ final class MediaFlowTests: XCTestCase {
         let error = app.element("share-error")
         waitFor(error, timeout: 30)
         waitUntil(error, NSPredicate(format: "label CONTAINS %@", "permission to create gists"))
-    }
-
-    /// The editor hides its keyboard when dragged down; iPad keyboards also offer a key for it.
-    private func dismissKeyboard(over editor: XCUIElement, in app: XCUIApplication) {
-        let keyboard = app.keyboards.firstMatch
-        for _ in 0..<3 where keyboard.exists {
-            let hide = keyboard.buttons["Hide keyboard"]
-            if hide.exists, hide.isHittable {
-                hide.tap()
-            } else {
-                editor.swipeDown(velocity: .fast)
-            }
-            poll(timeout: 5) { !keyboard.exists }
-        }
     }
 
     /// The pasted photo is drawn far larger than the 64×48 clone below it.

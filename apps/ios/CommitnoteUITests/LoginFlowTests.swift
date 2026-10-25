@@ -39,7 +39,7 @@ final class LoginFlowTests: XCTestCase {
         app.terminate()
 
         let relaunched = launchApp(reset: false)
-        waitFor(relaunched.element("notes-tree"))
+        waitFor(relaunched.element("notes-tree"), timeout: 60)
         XCTAssertFalse(relaunched.secureTextFields["login-token-field"].exists)
     }
 

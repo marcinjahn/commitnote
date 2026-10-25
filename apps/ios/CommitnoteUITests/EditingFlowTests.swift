@@ -24,8 +24,16 @@ final class EditingFlowTests: XCTestCase {
         waitForValue(status, "synced")
         typeAtEnd("Typed on this device", in: app)
 
-        // The status is already on screen, so the first check lands well inside the 2 s autosave delay.
-        waitUntil(status, NSPredicate(format: "value == %@", "pending"), timeout: 5)
+        // Reading the status can take longer than the 2 s autosave delay on a slow simulator, so each
+        // further keystroke reopens the delay for another look at the pending state.
+        let pending = NSPredicate(format: "value == %@", "pending")
+        var sawPending = false
+        for attempt in 0..<4 where !sawPending {
+            if attempt > 0 { editor(in: app).typeText(".") }
+            sawPending = XCTWaiter().wait(
+                for: [XCTNSPredicateExpectation(predicate: pending, object: status)], timeout: 3) == .completed
+        }
+        XCTAssertTrue(sawPending, "Expected \(status) to hold the typed text as pending before saving it")
         waitForValue(status, "synced")
         waitForText(editor(in: app), containing: "Typed on this device")
     }

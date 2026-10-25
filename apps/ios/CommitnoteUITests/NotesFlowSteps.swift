@@ -153,17 +153,34 @@ extension XCTestCase {
     }
 
     func typeAtEnd(_ text: String, in app: XCUIApplication) {
-        let editor = focusEditor(in: app)
+        var editor = focusEditor(in: app)
         moveCaret(.downArrow, in: editor)
+        if !hasKeyboardFocus(editor) {
+            editor = focusEditor(in: app)
+            moveCaret(.downArrow, in: editor)
+        }
         editor.typeText(text)
     }
 
     @discardableResult
-    func selectFirstLine(in app: XCUIApplication) -> XCUIElement {
-        let editor = focusEditor(in: app)
-        moveCaret(.upArrow, in: editor)
-        editor.typeKey(.rightArrow, modifierFlags: [.command, .shift])
-        return editor
+    func selectFirstLine(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
+        let selection = app.element("testing-editor-selection")
+        for _ in 0..<3 {
+            let editor = focusEditor(in: app, file: file, line: line)
+            moveCaret(.upArrow, in: editor)
+            editor.typeKey(.rightArrow, modifierFlags: [.command, .shift])
+            // A dropped key can leave the caret in place, so the selection length must match the first line.
+            let selected = poll(timeout: 20) {
+                let text = (editor.value as? String) ?? ""
+                let firstLine = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+                    .first.map(String.init) ?? ""
+                return selection.exists && (selection.value as? String) == "\(firstLine.utf16.count)"
+                    && self.hasKeyboardFocus(editor)
+            }
+            if selected { return editor }
+        }
+        XCTFail("Expected the editor to select its first line", file: file, line: line)
+        return editor(in: app)
     }
 
     func replaceFirstLine(with text: String, in app: XCUIApplication) {
@@ -224,17 +241,22 @@ extension XCTestCase {
         waitForValue(syncStatus(in: app), "conflict", file: file, line: line)
     }
 
+    /// A dismissal that lands while the sheet is still coming up is ignored, so it is repeated.
     func dismissShareSheet(in app: XCUIApplication) {
         let sheet = app.element("ActivityListView")
         waitFor(sheet)
+        waitUntilSettled(sheet)
         let dismissRegion = app.element("PopoverDismissRegion")
         let close = app.buttons["Close"]
-        if dismissRegion.exists {
-            dismissRegion.tap()
-        } else if appears(close, within: 5), close.isHittable {
-            close.tap()
-        } else {
-            sheet.swipeDown(velocity: .fast)
+        for _ in 0..<3 where sheet.exists {
+            if dismissRegion.exists {
+                dismissRegion.tap()
+            } else if appears(close, within: 5), close.isHittable {
+                close.tap()
+            } else {
+                sheet.swipeDown(velocity: .fast)
+            }
+            if poll(timeout: 5, until: { !sheet.exists }) { break }
         }
         waitUntilGone(sheet)
     }
