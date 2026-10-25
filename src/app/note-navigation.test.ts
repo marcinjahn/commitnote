@@ -739,8 +739,9 @@ describe("backToTree", () => {
     navigation.push(note("c.md"));
     navigation.push(note("d.md"));
     navigation.backToTree();
-    await vi.waitFor(() => expect(fake.index).toBe(1), WAIT);
-    await vi.waitFor(() => expect(fake.entry).toEqual(treeAt(1)), WAIT);
+    await vi.waitFor(() => expect(fake.writes).toHaveLength(7), WAIT);
+    expect(fake.index).toBe(1);
+    expect(fake.entry).toEqual(treeAt(1));
     expect(popped).toEqual([{ kind: "none" }]);
   });
 
@@ -774,7 +775,8 @@ describe("backToTree", () => {
     navigation.push(note("c.md"));
     expect(navigation.current()).toEqual(note("c.md"));
     const stored = await storedOf(["c.md"]);
-    await vi.waitFor(() => expect(fake.entries).toHaveLength(2), WAIT);
+    await vi.waitFor(() => expect(fake.writes).toHaveLength(5), WAIT);
+    expect(fake.entries).toHaveLength(2);
     expect(fake.entries[0]).toEqual(treeAt(0));
     expect(fake.entry.url).toBe(`/app/#n=${stored}`);
     expect(popped).toEqual([]);
