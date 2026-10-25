@@ -8,6 +8,7 @@ import {
 import {
   MAX_IMAGE_INPUT_BYTES,
   NOTE_IMAGE_PROFILE,
+  SHARE_IMAGE_PROFILE,
   type ImageProfile,
 } from "./image-profile";
 
@@ -261,5 +262,48 @@ describe("processImage WebP ladder", () => {
     const { codec, close } = fakeCodec({ encodeError: true });
     expect(await rejectionOf(input(), codec)).toEqual({ kind: "unsupported" });
     expect(close).toHaveBeenCalledOnce();
+  });
+});
+
+describe("processImage with the share profile", () => {
+  const input = () => asBlob(png(4000, 3000), "image/png");
+  const limit = SHARE_IMAGE_PROFILE.maxBytes;
+
+  it("caps the long edge at 1600", async () => {
+    const { codec, encodeWebp } = fakeCodec({ encodedSizes: [limit] });
+    const result = await processImage(input(), codec, SHARE_IMAGE_PROFILE);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload).toMatchObject({ type: "image/webp", width: 1600, height: 1200 });
+    expect(encodeWebp.mock.calls.map((call) => call.slice(1))).toEqual([[1600, 1200, 0.75]]);
+  });
+
+  it("falls through to 1280 and then 1024 when encodings are too big", async () => {
+    const { codec, encodeWebp } = fakeCodec({ encodedSizes: [limit + 1, limit + 1, 10] });
+    const result = await processImage(input(), codec, SHARE_IMAGE_PROFILE);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload).toMatchObject({ width: 1024, height: 768 });
+    expect(encodeWebp.mock.calls.map((call) => call.slice(1))).toEqual([
+      [1600, 1200, 0.75],
+      [1280, 960, 0.75],
+      [1024, 768, 0.6],
+    ]);
+  });
+
+  it("rejects when every attempt is too big", async () => {
+    const { codec } = fakeCodec({ encodedSizes: [limit + 1, limit + 1, limit + 1] });
+    expect(await rejectionOf(input(), codec, SHARE_IMAGE_PROFILE)).toEqual({
+      kind: "tooLargeAfterCompression",
+    });
+  });
+
+  it("keeps a GIF unchanged", async () => {
+    const { codec, decode } = fakeCodec();
+    const result = await processImage(asBlob(gif(7, 5), "image/gif"), codec, SHARE_IMAGE_PROFILE);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload).toMatchObject({ type: "image/gif", width: 7, height: 5 });
+    expect(decode).not.toHaveBeenCalled();
   });
 });

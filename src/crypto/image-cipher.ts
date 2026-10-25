@@ -46,12 +46,7 @@ function additionalData(imageId: ImageId): BufferSource {
   return asBufferSource(utf8Encode(IMAGE_AAD_PREFIX + imageId));
 }
 
-export async function encryptImage(
-  keyring: Keyring,
-  imageId: ImageId,
-  payload: ImagePayload,
-  random: RandomSource = secureRandom,
-): Promise<Uint8Array> {
+export function encodeImagePlaintext(payload: ImagePayload): Uint8Array {
   if (!isPositiveInteger(payload.width) || !isPositiveInteger(payload.height)) {
     throw new Error("Image dimensions must be positive integers");
   }
@@ -70,6 +65,16 @@ export async function encryptImage(
   new DataView(plaintext.buffer).setUint32(0, header.length, false);
   plaintext.set(header, LENGTH_PREFIX_BYTES);
   plaintext.set(payload.bytes, LENGTH_PREFIX_BYTES + header.length);
+  return plaintext;
+}
+
+export async function encryptImage(
+  keyring: Keyring,
+  imageId: ImageId,
+  payload: ImagePayload,
+  random: RandomSource = secureRandom,
+): Promise<Uint8Array> {
+  const plaintext = encodeImagePlaintext(payload);
 
   const iv = random(IV_BYTES);
   const ciphertext = new Uint8Array(
@@ -93,7 +98,7 @@ export async function encryptImage(
   return envelope;
 }
 
-function parseHeader(plaintext: Uint8Array): ImagePayload {
+export function decodeImagePlaintext(plaintext: Uint8Array): ImagePayload {
   if (plaintext.length < LENGTH_PREFIX_BYTES) {
     throw new ImageDecryptionError("header");
   }
@@ -170,5 +175,5 @@ export async function decryptImage(
   } catch {
     throw new ImageDecryptionError("auth");
   }
-  return parseHeader(plaintext);
+  return decodeImagePlaintext(plaintext);
 }

@@ -6,23 +6,44 @@ import {
   utf8Decode,
   utf8Encode,
 } from "../crypto/base64";
+import {
+  decodeImagePlaintext,
+  encodeImagePlaintext,
+  type ImagePayload,
+} from "../crypto/image-cipher";
 import { secureRandom, type RandomSource } from "../crypto/random";
 import { kdfCostOutOfBounds } from "../crypto/repo-config";
 import { KDF_DEFAULTS, KDF_LIMITS } from "../format/v1";
+import { shareImageFileName } from "../forge/share-files";
+import { type ImageId, isImageId } from "../images/image-id";
 
 export const SHARE_ENVELOPE_MAX_BYTES = 900_000;
+export const SHARE_MAX_IMAGES = 20;
+export const SHARE_IMAGE_FILE_MAX_BYTES = 900_000;
 
 const LINK_SECRET_BYTES = 32;
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const HKDF_INFO = "commitnote share v1 key";
 const AAD_PREFIX = "commitnote share v1\n";
+const IMAGE_AAD_PREFIX = "commitnote share v1 image\n";
+
+export interface SharedImage {
+  readonly imageId: ImageId;
+  readonly file: string;
+}
 
 export interface SharedNote {
   readonly name: string;
   readonly markdown: string;
   readonly sharedAt: string;
   readonly updatedAt: string | null;
+  readonly images: readonly SharedImage[];
+}
+
+export interface OpenedShare {
+  readonly note: SharedNote;
+  readonly shareKey: CryptoKey;
 }
 
 export type SealShareResult =
@@ -30,8 +51,10 @@ export type SealShareResult =
       readonly kind: "sealed";
       readonly envelope: string;
       readonly linkSecret: string;
+      readonly images: readonly string[];
     }
-  | { readonly kind: "tooLarge" };
+  | { readonly kind: "tooLarge" }
+  | { readonly kind: "imageTooLarge" };
 
 export type ShareOpenErrorKind = "passwordRequired" | "wrongPassword" | "damaged";
 
@@ -74,6 +97,10 @@ function canonicalKdf(kdf: EnvelopeKdf | null): EnvelopeKdf | null {
 function buildAad(kdf: EnvelopeKdf | null, salt: string): Uint8Array {
   const headerJson = JSON.stringify({ v: 1, kdf: canonicalKdf(kdf), salt });
   return utf8Encode(AAD_PREFIX + headerJson);
+}
+
+function imageAad(index: number): Uint8Array {
+  return utf8Encode(IMAGE_AAD_PREFIX + String(index));
 }
 
 async function deriveShareKey(
@@ -142,13 +169,24 @@ async function deriveShareKey(
 }
 
 export async function sealShare(
-  input: SharedNote & {
+  input: Omit<SharedNote, "images"> & {
+    readonly images?: readonly {
+      readonly imageId: ImageId;
+      readonly payload: ImagePayload;
+    }[];
     readonly password?: string;
     readonly linkSecret?: string;
     readonly random?: RandomSource;
     readonly argon2id: Argon2idFunction;
   },
 ): Promise<SealShareResult> {
+  const images = input.images ?? [];
+  if (
+    images.length > SHARE_MAX_IMAGES ||
+    new Set(images.map((image) => image.imageId)).size !== images.length
+  ) {
+    throw new Error("Share images are invalid");
+  }
   const random = input.random ?? secureRandom;
   const linkSecret =
     input.linkSecret === undefined
@@ -173,6 +211,14 @@ export async function sealShare(
       markdown: input.markdown,
       sharedAt: input.sharedAt,
       updatedAt: input.updatedAt,
+      ...(images.length > 0
+        ? {
+            images: images.map((image, index) => ({
+              imageId: image.imageId,
+              file: shareImageFileName(index),
+            })),
+          }
+        : {}),
     }),
   );
 
@@ -196,6 +242,32 @@ export async function sealShare(
         asBufferSource(plaintext),
       ),
     );
+    const imageFiles: string[] = [];
+    for (const [index, image] of images.entries()) {
+      const imageIv = random(IV_BYTES);
+      const imagePlaintext = encodeImagePlaintext(image.payload);
+      const imageCt = new Uint8Array(
+        await crypto.subtle.encrypt(
+          {
+            name: "AES-GCM",
+            iv: asBufferSource(imageIv),
+            additionalData: asBufferSource(imageAad(index)),
+          },
+          key,
+          asBufferSource(imagePlaintext),
+        ),
+      );
+      const content = JSON.stringify({
+        commitnote: "share image",
+        v: 1,
+        iv: toBase64Url(imageIv),
+        ct: toBase64Url(imageCt),
+      });
+      if (utf8Encode(content).length > SHARE_IMAGE_FILE_MAX_BYTES) {
+        return { kind: "imageTooLarge" };
+      }
+      imageFiles.push(content);
+    }
     const envelope = JSON.stringify({
       commitnote: "share",
       v: 1,
@@ -207,7 +279,12 @@ export async function sealShare(
     if (utf8Encode(envelope).length > SHARE_ENVELOPE_MAX_BYTES) {
       return { kind: "tooLarge" };
     }
-    return { kind: "sealed", envelope, linkSecret: toBase64Url(linkSecret) };
+    return {
+      kind: "sealed",
+      envelope,
+      linkSecret: toBase64Url(linkSecret),
+      images: imageFiles,
+    };
   } finally {
     plaintext.fill(0);
     linkSecret.fill(0);
@@ -287,6 +364,30 @@ export function envelopeNeedsPassword(envelope: string): boolean {
   return parseEnvelope(envelope).kdf !== null;
 }
 
+function parseSharedImages(value: unknown): SharedImage[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > SHARE_MAX_IMAGES) {
+    throw new ShareOpenError("damaged");
+  }
+  const seen = new Set<string>();
+  return value.map((entry: unknown, index) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new ShareOpenError("damaged");
+    }
+    const { imageId, file } = entry as Record<string, unknown>;
+    if (
+      typeof imageId !== "string" ||
+      !isImageId(imageId) ||
+      file !== shareImageFileName(index) ||
+      seen.has(imageId)
+    ) {
+      throw new ShareOpenError("damaged");
+    }
+    seen.add(imageId);
+    return { imageId, file };
+  });
+}
+
 function parseSharedNote(plaintext: Uint8Array): SharedNote {
   let value: unknown;
   try {
@@ -311,6 +412,7 @@ function parseSharedNote(plaintext: Uint8Array): SharedNote {
     markdown: record.markdown,
     sharedAt: record.sharedAt,
     updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : null,
+    images: parseSharedImages(record.images),
   };
 }
 
@@ -319,7 +421,7 @@ export async function openShare(
   linkSecret: string,
   password: string | undefined,
   argon2id: Argon2idFunction,
-): Promise<SharedNote> {
+): Promise<OpenedShare> {
   const parsed = parseEnvelope(envelope);
   const secretBytes = decodeExact(linkSecret, LINK_SECRET_BYTES);
   const usedPassword = parsed.kdf !== null;
@@ -328,8 +430,9 @@ export async function openShare(
   }
 
   let plaintext: Uint8Array;
+  let key: CryptoKey;
   try {
-    const key = await deriveShareKey(
+    key = await deriveShareKey(
       secretBytes,
       parsed.saltBytes,
       parsed.kdf,
@@ -357,8 +460,44 @@ export async function openShare(
   }
 
   try {
-    return parseSharedNote(plaintext);
+    return { note: parseSharedNote(plaintext), shareKey: key };
   } finally {
     plaintext.fill(0);
+  }
+}
+
+export async function openShareImage(
+  shareKey: CryptoKey,
+  index: number,
+  content: string,
+): Promise<ImagePayload> {
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new ShareOpenError("damaged");
+    }
+    const record = parsed as Record<string, unknown>;
+    if (record.commitnote !== "share image" || record.v !== 1) {
+      throw new ShareOpenError("damaged");
+    }
+    const iv = decodeExact(record.iv, IV_BYTES);
+    if (typeof record.ct !== "string") {
+      throw new ShareOpenError("damaged");
+    }
+    const ct = fromBase64Url(record.ct);
+    const plaintext = new Uint8Array(
+      await crypto.subtle.decrypt(
+        {
+          name: "AES-GCM",
+          iv: asBufferSource(iv),
+          additionalData: asBufferSource(imageAad(index)),
+        },
+        shareKey,
+        asBufferSource(ct),
+      ),
+    );
+    return decodeImagePlaintext(plaintext);
+  } catch {
+    throw new ShareOpenError("damaged");
   }
 }

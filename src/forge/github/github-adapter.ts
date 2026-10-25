@@ -34,7 +34,8 @@ import type {
   TreeEntry,
   ObservedRateLimit,
 } from "../forge-adapter";
-import type { ShareHost, ShareLocator } from "../share-host";
+import { isShareImageFileName, shareContentFiles } from "../share-files";
+import type { ShareContent, ShareHost, ShareLocator } from "../share-host";
 
 export interface GitHubAdapterOptions extends ForgeAdapterOptions {
   readonly fetch?: typeof fetch;
@@ -156,11 +157,20 @@ function decodeBase64Content(content: string): Uint8Array {
   return fromBase64(content.replace(/\s+/g, ""));
 }
 
+function gistFiles(
+  files: Record<string, string>,
+): Record<string, { content: string }> {
+  return Object.fromEntries(
+    Object.entries(files).map(([name, content]) => [name, { content }]),
+  );
+}
+
 class GitHubAdapter implements ForgeAdapter {
   readonly limits = GITHUB_WRITE_LIMITS;
   readonly shareHost: ShareHost = {
-    create: (envelope) => this.createShare(envelope),
-    update: (locator, envelope) => this.updateShare(locator, envelope),
+    maxImages: 20,
+    create: (content) => this.createShare(content),
+    update: (locator, content) => this.updateShare(locator, content),
     delete: (locator) => this.deleteShare(locator),
   };
   private readonly ownerPath: string;
@@ -224,14 +234,14 @@ class GitHubAdapter implements ForgeAdapter {
     return gitHubErrorFor(response, this.now);
   }
 
-  private async createShare(envelope: string): Promise<ShareLocator> {
+  private async createShare(content: ShareContent): Promise<ShareLocator> {
     this.report("createShare");
     const response = await this.send(`${API_BASE}/gists`, {
       method: "POST",
       body: {
         public: false,
         description: "Encrypted commitnote share",
-        files: { "commitnote-share.json": { content: envelope } },
+        files: gistFiles(shareContentFiles(content)),
       },
     });
     if (!response.ok) {
@@ -253,19 +263,29 @@ class GitHubAdapter implements ForgeAdapter {
 
   private async updateShare(
     locator: ShareLocator,
-    envelope: string,
+    content: ShareContent,
   ): Promise<void> {
     if (locator.provider !== "github") {
       throw new ForgeError("Server");
     }
     this.report("updateShare");
-    const response = await this.send(
-      `${API_BASE}/gists/${encodeURIComponent(locator.gistId)}`,
-      {
-        method: "PATCH",
-        body: { files: { "commitnote-share.json": { content: envelope } } },
-      },
-    );
+    const url = `${API_BASE}/gists/${encodeURIComponent(locator.gistId)}`;
+    const current = await this.send(url, { method: "GET" });
+    if (!current.ok) throw await this.errorFor(current);
+    const currentBody = (await current.json().catch(() => null)) as {
+      files?: unknown;
+    } | null;
+    const currentNames =
+      typeof currentBody?.files === "object" && currentBody.files !== null
+        ? Object.keys(currentBody.files)
+        : [];
+
+    const next = shareContentFiles(content);
+    const files: Record<string, { content: string } | null> = gistFiles(next);
+    for (const name of currentNames) {
+      if (isShareImageFileName(name) && !(name in next)) files[name] = null;
+    }
+    const response = await this.send(url, { method: "PATCH", body: { files } });
     if (!response.ok) throw await this.errorFor(response);
   }
 

@@ -76,6 +76,7 @@ export function withLatency(
     readFileAt: (...args) =>
       delayed(latency.readFileAtMs, () => adapter.readFileAt(...args)),
     shareHost: {
+      maxImages: shareHost.maxImages,
       create: (...args) =>
         delayed(latency.commitMs, () => shareHost.create(...args)),
       update: (...args) =>

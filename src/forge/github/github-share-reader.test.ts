@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { useMswServer } from "../fake/msw-test-server";
 import type { ShareLocator, ShareReadErrorKind } from "../share-host";
 import { ShareReadError } from "../share-host";
+import { SHARE_FILE, shareImageFileName } from "../share-files";
 import { createGitHubShareReader } from "./github-share-reader";
 
 const GIST_ID = "abc123gist";
@@ -35,25 +36,69 @@ describe("createGitHubShareReader", () => {
         authorization = request.headers.get("authorization");
         accept = request.headers.get("accept");
         return HttpResponse.json({
-          files: { "commitnote-share.json": { content: "envelope-text" } },
+          files: { [SHARE_FILE]: { content: "envelope-text" } },
         });
       }),
     );
 
-    await expect(reader.read(locator)).resolves.toBe("envelope-text");
+    const share = await reader.read(locator);
+    expect(share.envelope).toBe("envelope-text");
     expect(authorization).toBeNull();
     expect(accept).toBe("application/vnd.github+json");
   });
 
   it.each([
-    ["truncated", { files: { "commitnote-share.json": { content: "x", truncated: true } } }],
+    ["truncated", { files: { [SHARE_FILE]: { content: "x", truncated: true } } }],
     ["missing file", { files: { "other.txt": { content: "x" } } }],
-    ["missing content", { files: { "commitnote-share.json": {} } }],
-    ["non-string content", { files: { "commitnote-share.json": { content: 5 } } }],
+    ["missing content", { files: { [SHARE_FILE]: {} } }],
+    ["non-string content", { files: { [SHARE_FILE]: { content: 5 } } }],
     ["no files", {}],
   ])("maps %s to damaged", async (_name, body) => {
     respondWith(() => HttpResponse.json(body));
     expect(await kindOf(reader.read(locator))).toBe("damaged");
+  });
+
+  describe("readImageFile", () => {
+    const image0 = shareImageFileName(0);
+
+    function serveGist(files: Record<string, unknown>) {
+      let requests = 0;
+      getServer().use(
+        http.get(URL, () => {
+          requests++;
+          return HttpResponse.json({ files });
+        }),
+      );
+      return () => requests;
+    }
+
+    it("returns image content from the same response", async () => {
+      const requests = serveGist({
+        [SHARE_FILE]: { content: "env" },
+        [image0]: { content: "img-0" },
+        [shareImageFileName(1)]: { content: "img-1" },
+      });
+
+      const share = await reader.read(locator);
+
+      await expect(share.readImageFile(shareImageFileName(1))).resolves.toBe(
+        "img-1",
+      );
+      await expect(share.readImageFile(image0)).resolves.toBe("img-0");
+      expect(requests()).toBe(1);
+    });
+
+    it.each([
+      ["absent", {}, image0],
+      ["truncated", { [image0]: { content: "x", truncated: true } }, image0],
+      ["non-string content", { [image0]: { content: 5 } }, image0],
+      ["invalid name", { other: { content: "x" } }, "other"],
+      ["the envelope file", {}, SHARE_FILE],
+    ])("rejects %s as damaged", async (_name, extra, file) => {
+      serveGist({ [SHARE_FILE]: { content: "env" }, ...extra });
+      const share = await reader.read(locator);
+      expect(await kindOf(share.readImageFile(file))).toBe("damaged");
+    });
   });
 
   it("maps invalid JSON to damaged", async () => {

@@ -3173,6 +3173,7 @@
     {noteHistory}
     {forgeName}
     noteFont={settings.noteFont}
+    {imageSource}
     onClose={() => (sharedVersionEntry = null)}
   />
 {/if}

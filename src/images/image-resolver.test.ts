@@ -250,3 +250,66 @@ describe("createImageResolver", () => {
     expect(await resolve(image.imageId)).toEqual({ url: "blob:0" });
   });
 });
+
+describe("readPayload", () => {
+  it("returns a pending image without reading the adapter", async () => {
+    const s = setup();
+    const image = await createPendingImage(keyring, payload());
+    s.pending.set(image.imageId, image);
+
+    expect(await s.resolver.readPayload(image.imageId)).toEqual(payload());
+    expect(s.reads).toEqual([]);
+  });
+
+  it("returns an indexed image", async () => {
+    const s = setup();
+    const image = await stored(s);
+
+    expect(await s.resolver.readPayload(image.imageId)).toEqual(payload());
+    expect(s.reads).toEqual([image.blobSha]);
+  });
+
+  it("returns a tombstoned image", async () => {
+    const s = setup();
+    const image = await createPendingImage(keyring, payload());
+    s.blobs.set(image.blobSha, image.envelope);
+    s.index.value = indexWith("tombstones", image);
+
+    expect(await s.resolver.readPayload(image.imageId)).toEqual(payload());
+  });
+
+  it("returns null for an unknown id", async () => {
+    const s = setup();
+    const unknown = await createPendingImage(keyring, payload());
+
+    expect(await s.resolver.readPayload(unknown.imageId)).toBeNull();
+  });
+
+  it("returns null when decryption fails", async () => {
+    const s = setup();
+    const image = await stored(s);
+    const foreign = await createPendingImage(otherKeyring, payload());
+    s.blobs.set(image.blobSha, foreign.envelope);
+
+    expect(await s.resolver.readPayload(image.imageId)).toBeNull();
+  });
+
+  it("rejects when the blob read fails", async () => {
+    const s = setup();
+    const image = await stored(s);
+    const failure = new Error("network");
+    s.blobs.set(image.blobSha, failure);
+
+    await expect(s.resolver.readPayload(image.imageId)).rejects.toBe(failure);
+  });
+
+  it("does not fill the object url cache", async () => {
+    const s = setup();
+    const image = await stored(s);
+
+    await s.resolver.readPayload(image.imageId);
+
+    expect(s.created).toEqual([]);
+  });
+});
+

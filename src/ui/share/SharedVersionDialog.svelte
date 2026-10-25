@@ -1,12 +1,20 @@
 <script lang="ts">
+  import {
+    imageOpenHandler,
+    imageSource as imageSourceFacet,
+    imageWidgets,
+    type ImageOpenRequest,
+  } from "../../editor/image-widgets";
   import { livePreview } from "../../editor/live-preview";
   import { linkOpen } from "../../editor/link-open";
   import type { NoteHistory, VersionContent } from "../../history/note-history";
+  import type { ImageSource } from "../../images/image-source";
   import type { NoteFont } from "../../settings/note-font";
   import type { ShareEntry } from "../../share/share-index";
   import { describeSyncError } from "../browse/sync-messages";
   import Dialog from "../dialogs/Dialog.svelte";
   import MarkdownEditor from "../editor/MarkdownEditor.svelte";
+  import { loadImageLightbox } from "../images/load-image-lightbox";
   import { describeShareDate } from "./share-messages";
 
   interface Props {
@@ -14,12 +22,46 @@
     noteHistory: NoteHistory;
     forgeName: string;
     noteFont: NoteFont;
+    imageSource: ImageSource;
     onClose: () => void;
   }
 
-  const { entry, noteHistory, forgeName, noteFont, onClose }: Props = $props();
+  const { entry, noteHistory, forgeName, noteFont, imageSource, onClose }: Props = $props();
 
-  const editorExtensions = [livePreview(), linkOpen()];
+  const editorExtensions = [
+    livePreview(),
+    imageWidgets(),
+    imageSourceFacet.of((id) => imageSource(id)),
+    imageOpenHandler.of(openImage),
+    linkOpen(),
+  ];
+
+  type LightboxComponent = Awaited<ReturnType<typeof loadImageLightbox>>;
+
+  let lightbox = $state.raw<{
+    component: LightboxComponent;
+    url: string;
+    request: ImageOpenRequest;
+  } | null>(null);
+  let opening = false;
+
+  async function openImage(request: ImageOpenRequest): Promise<void> {
+    if (opening || lightbox !== null) return;
+    opening = true;
+    try {
+      const [component, source] = await Promise.all([
+        loadImageLightbox(),
+        imageSource(request.imageId),
+      ]);
+      if ("unavailable" in source) return;
+      lightbox = { component, url: source.url, request };
+    } catch {
+      return;
+    } finally {
+      opening = false;
+    }
+  }
+
   const GONE_MESSAGE =
     "The shared version is no longer in your history. The link still works.";
   const PASSPHRASE_CHANGED_MESSAGE =
@@ -85,6 +127,17 @@
     {/if}
   {/snippet}
 </Dialog>
+{#if lightbox}
+  {@const request = lightbox.request}
+  <lightbox.component.default
+    url={lightbox.url}
+    alt={request.alt}
+    width={request.width}
+    height={request.height}
+    origin={request.thumbnail}
+    onClose={() => (lightbox = null)}
+  />
+{/if}
 
 <style>
   .version-date,

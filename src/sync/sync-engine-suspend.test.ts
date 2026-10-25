@@ -94,6 +94,7 @@ describe("sync engine suspend", () => {
         readBlobBytes: () => Promise.reject(new Error()),
         commit: () => Promise.reject(new Error()),
         shareHost: {
+          maxImages: 20,
           create: () => Promise.reject(new Error()),
           update: () => Promise.reject(new Error()),
           delete: () => Promise.reject(new Error()),

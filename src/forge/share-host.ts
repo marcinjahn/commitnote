@@ -2,9 +2,15 @@ export type ShareLocator =
   | { readonly provider: "github"; readonly gistId: string }
   | { readonly provider: "gitlab"; readonly snippetId: string };
 
+export interface ShareContent {
+  readonly envelope: string;
+  readonly images: readonly string[];
+}
+
 export interface ShareHost {
-  create(envelope: string): Promise<ShareLocator>;
-  update(locator: ShareLocator, envelope: string): Promise<void>;
+  readonly maxImages: number;
+  create(content: ShareContent): Promise<ShareLocator>;
+  update(locator: ShareLocator, content: ShareContent): Promise<void>;
   delete(locator: ShareLocator): Promise<void>;
 }
 
@@ -22,8 +28,13 @@ export class ShareReadError extends Error {
   }
 }
 
+export interface HostedShare {
+  readonly envelope: string;
+  readImageFile(file: string): Promise<string>;
+}
+
 export interface ShareReader {
-  read(locator: ShareLocator): Promise<string>;
+  read(locator: ShareLocator): Promise<HostedShare>;
 }
 
 export type ShareReaders = Readonly<Record<ShareLocator["provider"], ShareReader>>;

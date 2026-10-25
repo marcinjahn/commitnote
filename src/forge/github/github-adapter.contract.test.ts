@@ -133,7 +133,7 @@ function buildSubject(mock: MockGitHubRepo): ContractSubject {
 const harness: ForgeContractHarness = {
   async readShare(subject, locator) {
     if (locator.provider !== "github") throw new Error("unexpected provider");
-    return mocks.get(subject)?.gistContent(locator.gistId) ?? null;
+    return mocks.get(subject)?.gistFiles(locator.gistId) ?? null;
   },
 
   async createEmpty(options) {

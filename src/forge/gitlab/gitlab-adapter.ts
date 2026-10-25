@@ -36,7 +36,12 @@ import type {
   TreeEntry,
   ObservedRateLimit,
 } from "../forge-adapter";
-import type { ShareHost, ShareLocator } from "../share-host";
+import {
+  isShareImageFileName,
+  SHARE_FILE,
+  shareContentFiles,
+} from "../share-files";
+import type { ShareContent, ShareHost, ShareLocator } from "../share-host";
 import { ROOT_LISTING_LIMIT, blobShasByPath } from "../forge-adapter";
 
 export interface GitLabAdapterOptions extends ForgeAdapterOptions {
@@ -208,8 +213,9 @@ function isRejectedCommit(status: number): boolean {
 class GitLabAdapter implements ForgeAdapter {
   readonly limits = GITLAB_WRITE_LIMITS;
   readonly shareHost: ShareHost = {
-    create: (envelope) => this.createShare(envelope),
-    update: (locator, envelope) => this.updateShare(locator, envelope),
+    maxImages: 9,
+    create: (content) => this.createShare(content),
+    update: (locator, content) => this.updateShare(locator, content),
     delete: (locator) => this.deleteShare(locator),
   };
   private readonly projectPath: string;
@@ -277,14 +283,16 @@ class GitLabAdapter implements ForgeAdapter {
     return gitLabErrorFor(response, this.now);
   }
 
-  private async createShare(envelope: string): Promise<ShareLocator> {
+  private async createShare(content: ShareContent): Promise<ShareLocator> {
     this.report("createShare");
     const response = await this.send(`${GITLAB_API_BASE}/snippets`, {
       method: "POST",
       body: {
         title: "Encrypted commitnote share",
         visibility: "public",
-        files: [{ file_path: "commitnote-share.json", content: envelope }],
+        files: Object.entries(shareContentFiles(content)).map(
+          ([file_path, fileContent]) => ({ file_path, content: fileContent }),
+        ),
       },
     });
     if (!response.ok) {
@@ -304,27 +312,50 @@ class GitLabAdapter implements ForgeAdapter {
 
   private async updateShare(
     locator: ShareLocator,
-    envelope: string,
+    content: ShareContent,
   ): Promise<void> {
     if (locator.provider !== "gitlab") {
       throw new ForgeError("Server");
     }
     this.report("updateShare");
-    const response = await this.send(
-      `${GITLAB_API_BASE}/snippets/${encodeURIComponent(locator.snippetId)}`,
-      {
-        method: "PUT",
-        body: {
-          files: [
-            {
-              action: "update",
-              file_path: "commitnote-share.json",
-              content: envelope,
-            },
-          ],
-        },
-      },
+    const snippetUrl = `${GITLAB_API_BASE}/snippets/${encodeURIComponent(locator.snippetId)}`;
+    const current = await this.send(snippetUrl, { method: "GET" });
+    if (!current.ok) throw this.errorFor(current);
+    const metadata = (await current.json().catch(() => null)) as {
+      files?: unknown;
+    } | null;
+    if (!Array.isArray(metadata?.files)) {
+      throw new ForgeError("Server", { status: current.status });
+    }
+    const existing = new Set<string>(
+      metadata.files.flatMap((file: { path?: unknown }) =>
+        typeof file?.path === "string" ? [file.path] : [],
+      ),
     );
+
+    const desired = shareContentFiles(content);
+    const actions: {
+      action: "create" | "update" | "delete";
+      file_path: string;
+      content?: string;
+    }[] = Object.entries(desired).map(([file_path, fileContent]) => ({
+      action:
+        file_path === SHARE_FILE || existing.has(file_path)
+          ? "update"
+          : "create",
+      file_path,
+      content: fileContent,
+    }));
+    for (const name of existing) {
+      if (isShareImageFileName(name) && !(name in desired)) {
+        actions.push({ action: "delete", file_path: name });
+      }
+    }
+
+    const response = await this.send(snippetUrl, {
+      method: "PUT",
+      body: { files: actions },
+    });
     if (!response.ok) throw this.errorFor(response);
   }
 

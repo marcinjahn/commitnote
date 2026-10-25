@@ -14,7 +14,8 @@ import { commitOnBranch } from "../fake/in-memory-git-repo";
 import type { InMemoryGitRepo } from "../fake/in-memory-git-repo";
 import type { MockFailure } from "../fake/mock-faults";
 import { ROOT_LISTING_LIMIT } from "../forge-adapter";
-import type { ShareHost, ShareLocator } from "../share-host";
+import { SHARE_FILE, shareImageFileName } from "../share-files";
+import type { ShareContent, ShareHost, ShareLocator } from "../share-host";
 
 export interface ContractSeed {
   readonly commits: readonly {
@@ -64,11 +65,11 @@ export interface ContractSubject {
 }
 
 export interface ForgeContractHarness {
-  /** Reads the hosted envelope back through the test backend; the shareHost block is skipped when absent. */
+  /** Reads the hosted files (name to content) back through the test backend; the shareHost block is skipped when absent. */
   readShare?(
     subject: ContractSubject,
     locator: ShareLocator,
-  ): Promise<string | null>;
+  ): Promise<Readonly<Record<string, string>> | null>;
   createEmpty(options?: {
     canWrite?: boolean;
     defaultBranch?: string;
@@ -1164,11 +1165,19 @@ export function describeForgeAdapterContract(
       function read(
         subject: ContractSubject,
         locator: ShareLocator,
-      ): Promise<string | null> {
+      ): Promise<Readonly<Record<string, string>> | null> {
         if (readShare === undefined) {
           throw new Error("unreachable: readShare is absent");
         }
         return readShare(subject, locator);
+      }
+
+      function content(envelope: string, ...images: string[]): ShareContent {
+        return { envelope, images };
+      }
+
+      function envelopeOnly(envelope: string): Record<string, string> {
+        return { [SHARE_FILE]: envelope };
       }
 
       function failNextShare(
@@ -1184,40 +1193,95 @@ export function describeForgeAdapterContract(
 
       it("creates a share whose hosted content equals the envelope", async () => {
         const { subject, host } = await createSubject();
-        const locator = await host.create("envelope-text");
+        const locator = await host.create(content("envelope-text"));
         expect(["github", "gitlab"]).toContain(locator.provider);
-        expect(await read(subject, locator)).toBe("envelope-text");
+        expect(await read(subject, locator)).toEqual(envelopeOnly("envelope-text"));
+      });
+
+      it("hosts exactly the envelope file for a share without images", async () => {
+        const { subject, host } = await createSubject();
+        const locator = await host.create(content("env"));
+        expect(await read(subject, locator)).toEqual({ [SHARE_FILE]: "env" });
+      });
+
+      it("hosts image files next to the envelope on create", async () => {
+        const { subject, host } = await createSubject();
+        const locator = await host.create(content("env", "img-a", "img-b"));
+        expect(await read(subject, locator)).toEqual({
+          [SHARE_FILE]: "env",
+          [shareImageFileName(0)]: "img-a",
+          [shareImageFileName(1)]: "img-b",
+        });
+      });
+
+      it("update from two images to one removes the extra image file", async () => {
+        const { subject, host } = await createSubject();
+        const locator = await host.create(content("env", "img-a", "img-b"));
+        await host.update(locator, content("env2", "img-c"));
+        expect(await read(subject, locator)).toEqual({
+          [SHARE_FILE]: "env2",
+          [shareImageFileName(0)]: "img-c",
+        });
+      });
+
+      it("update from no images to two images adds both files", async () => {
+        const { subject, host } = await createSubject();
+        const locator = await host.create(content("env"));
+        await host.update(locator, content("env", "img-a", "img-b"));
+        expect(await read(subject, locator)).toEqual({
+          [SHARE_FILE]: "env",
+          [shareImageFileName(0)]: "img-a",
+          [shareImageFileName(1)]: "img-b",
+        });
+      });
+
+      it("update from one image to none leaves only the envelope file", async () => {
+        const { subject, host } = await createSubject();
+        const locator = await host.create(content("env", "img-a"));
+        await host.update(locator, content("env"));
+        expect(await read(subject, locator)).toEqual({ [SHARE_FILE]: "env" });
+      });
+
+      it("accepts maxImages images on create", async () => {
+        const { subject, host } = await createSubject();
+        const images = Array.from({ length: host.maxImages }, (_, i) => `i${i}`);
+        const locator = await host.create({ envelope: "env", images });
+        const files = await read(subject, locator);
+        expect(Object.keys(files ?? {})).toHaveLength(host.maxImages + 1);
+        expect(files?.[shareImageFileName(host.maxImages - 1)]).toBe(
+          `i${host.maxImages - 1}`,
+        );
       });
 
       it("gives distinct locators to two creates", async () => {
         const { subject, host } = await createSubject();
-        const first = await host.create("one");
-        const second = await host.create("two");
+        const first = await host.create(content("one"));
+        const second = await host.create(content("two"));
         expect(second).not.toEqual(first);
-        expect(await read(subject, first)).toBe("one");
-        expect(await read(subject, second)).toBe("two");
+        expect(await read(subject, first)).toEqual(envelopeOnly("one"));
+        expect(await read(subject, second)).toEqual(envelopeOnly("two"));
       });
 
       it("update replaces the hosted content", async () => {
         const { subject, host } = await createSubject();
-        const locator = await host.create("before");
-        await host.update(locator, "after");
-        expect(await read(subject, locator)).toBe("after");
+        const locator = await host.create(content("before"));
+        await host.update(locator, content("after"));
+        expect(await read(subject, locator)).toEqual(envelopeOnly("after"));
       });
 
       it("update of a missing share fails with NotFound", async () => {
         const { host } = await createSubject();
-        const locator = await host.create("before");
+        const locator = await host.create(content("before"));
         await host.delete(locator);
-        await expect(host.update(locator, "after")).rejects.toMatchObject({
+        await expect(host.update(locator, content("after"))).rejects.toMatchObject({
           kind: "NotFound",
         });
       });
 
       it("reports updateShare", async () => {
         const { subject, host } = await createSubject();
-        const locator = await host.create("before");
-        await host.update(locator, "after");
+        const locator = await host.create(content("before"));
+        await host.update(locator, content("after"));
         expect(subject.contentCreatingRequests).toEqual([
           { operation: "createShare" },
           { operation: "updateShare" },
@@ -1226,21 +1290,21 @@ export function describeForgeAdapterContract(
 
       it("deletes a share", async () => {
         const { subject, host } = await createSubject();
-        const locator = await host.create("gone soon");
+        const locator = await host.create(content("gone soon"));
         await host.delete(locator);
         expect(await read(subject, locator)).toBeNull();
       });
 
       it("resolves when deleting an already-deleted share", async () => {
         const { host } = await createSubject();
-        const locator = await host.create("gone soon");
+        const locator = await host.create(content("gone soon"));
         await host.delete(locator);
         await expect(host.delete(locator)).resolves.toBeUndefined();
       });
 
       it("reports one content-creating request per create and per delete", async () => {
         const { subject, host } = await createSubject();
-        const locator = await host.create("x");
+        const locator = await host.create(content("x"));
         expect(subject.contentCreatingRequests).toEqual([
           { operation: "createShare" },
         ]);
@@ -1255,25 +1319,25 @@ export function describeForgeAdapterContract(
         it(`rejects create with ${kind}`, async () => {
           const { subject, host } = await createSubject();
           failNextShare(subject, "createShare", { kind });
-          await expect(host.create("x")).rejects.toMatchObject({ kind });
+          await expect(host.create(content("x"))).rejects.toMatchObject({ kind });
         });
 
         it(`rejects update with ${kind}`, async () => {
           const { subject, host } = await createSubject();
-          const locator = await host.create("x");
+          const locator = await host.create(content("x"));
           failNextShare(subject, "updateShare", { kind });
-          await expect(host.update(locator, "y")).rejects.toMatchObject({
+          await expect(host.update(locator, content("y"))).rejects.toMatchObject({
             kind,
           });
-          expect(await read(subject, locator)).toBe("x");
+          expect(await read(subject, locator)).toEqual(envelopeOnly("x"));
         });
 
         it(`rejects delete with ${kind}`, async () => {
           const { subject, host } = await createSubject();
-          const locator = await host.create("x");
+          const locator = await host.create(content("x"));
           failNextShare(subject, "deleteShare", { kind });
           await expect(host.delete(locator)).rejects.toMatchObject({ kind });
-          expect(await read(subject, locator)).toBe("x");
+          expect(await read(subject, locator)).toEqual(envelopeOnly("x"));
         });
       }
 
@@ -1283,16 +1347,16 @@ export function describeForgeAdapterContract(
           kind: "RateLimited",
           retryAfterSeconds: 30,
         });
-        await expect(host.create("x")).rejects.toMatchObject({
+        await expect(host.create(content("x"))).rejects.toMatchObject({
           kind: "RateLimited",
           retryAfterMs: 30_000,
         });
-        const locator = await host.create("x");
+        const locator = await host.create(content("x"));
         failNextShare(subject, "updateShare", {
           kind: "RateLimited",
           retryAfterSeconds: 30,
         });
-        await expect(host.update(locator, "y")).rejects.toMatchObject({
+        await expect(host.update(locator, content("y"))).rejects.toMatchObject({
           kind: "RateLimited",
         });
         failNextShare(subject, "deleteShare", {

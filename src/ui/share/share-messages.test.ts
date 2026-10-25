@@ -36,6 +36,11 @@ const SIMPLE: readonly [ShareError["kind"], string, string][] = [
     "This note is too large to share.",
   ],
   [
+    "tooManyImages",
+    "This note has too many images to share.",
+    "This note has too many images to share.",
+  ],
+  [
     "shareMissing",
     "This link no longer exists on GitHub. Revoke it to remove it from the list.",
     "This link no longer exists on GitLab. Revoke it to remove it from the list.",
