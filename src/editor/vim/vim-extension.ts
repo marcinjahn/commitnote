@@ -26,6 +26,7 @@ export interface VimExtensionOptions {
   readonly animatedCaret: boolean;
   readonly onWrite: () => Promise<void>;
   readonly onQuit: () => void;
+  readonly onInsertImage?: () => void;
   readonly onStatus?: (status: VimStatus) => void;
 }
 
@@ -322,10 +323,11 @@ export function vimExtension(options: VimExtensionOptions): Extension {
   leaveInsertCopyToBrowser();
   useSystemClipboard();
   defineAppExCommands();
-  const { initialMode, animatedCaret, onWrite, onQuit, onStatus } = options;
+  const { initialMode, animatedCaret, onWrite, onQuit, onInsertImage, onStatus } =
+    options;
   return [
     vimConfig.of({ initialMode, animatedCaret, onStatus }),
-    vimCallbacks.of({ onWrite, onQuit }),
+    vimCallbacks.of({ onWrite, onQuit, onInsertImage }),
     initialEditingMode.of(initialMode),
     staticExtensions,
   ];

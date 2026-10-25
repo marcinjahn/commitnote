@@ -377,6 +377,61 @@ describe("vimExtension editing", () => {
   });
 });
 
+describe("vim image command", () => {
+  const run = async (view: EditorView, command: string) => {
+    Vim.handleEx(cmOf(view) as Parameters<typeof Vim.handleEx>[0], command);
+    await settle();
+  };
+  const messageOf = (view: EditorView) => vimStatusOf(view.state)?.message;
+
+  it.each(["image", "ima"])("calls onInsertImage for :%s", async (command) => {
+    const onInsertImage = vi.fn();
+    const { view } = await setup({ onInsertImage });
+
+    await run(view, command);
+
+    expect(onInsertImage).toHaveBeenCalledTimes(1);
+    expect(messageOf(view)).toBeNull();
+  });
+
+  it("keeps :imap working", async () => {
+    const onInsertImage = vi.fn();
+    const { view } = await setup({ onInsertImage });
+
+    await run(view, "imap jk <Esc>");
+
+    expect(onInsertImage).not.toHaveBeenCalled();
+    expect(messageOf(view)).toBeNull();
+  });
+
+  it("reports an error while read-only", async () => {
+    const onInsertImage = vi.fn();
+    const { view } = await setup(
+      { onInsertImage },
+      EditorState.readOnly.of(true),
+    );
+
+    await run(view, "image");
+
+    expect(onInsertImage).not.toHaveBeenCalled();
+    expect(messageOf(view)).toMatchObject({
+      text: "Images cannot be added here.",
+      error: true,
+    });
+  });
+
+  it("reports an error without a callback", async () => {
+    const { view } = await setup();
+
+    await run(view, "image");
+
+    expect(messageOf(view)).toMatchObject({
+      text: "Images cannot be added here.",
+      error: true,
+    });
+  });
+});
+
 describe("vimExtension key policy", () => {
   it("indents with Tab in INSERT and consumes the event", async () => {
     const { view } = await setup({ initialMode: "insert" });

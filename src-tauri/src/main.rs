@@ -66,6 +66,7 @@ fn main() {
                 .resizable(true)
                 .decorations(true)
                 .zoom_hotkeys_enabled(false)
+                .disable_drag_drop_handler()
                 .build()?;
             Ok(())
         })

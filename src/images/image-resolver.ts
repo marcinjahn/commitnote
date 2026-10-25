@@ -1,17 +1,21 @@
 import { decryptImage, type ImagePayload } from "../crypto/image-cipher";
 import type { Keyring } from "../crypto/keyring";
 import type { ForgeAdapter } from "../forge/forge-adapter";
-import type { SyncEngine } from "../sync/sync-engine";
 import { type ImageId, isImageId } from "./image-id";
+import type { ImageIndex } from "./image-index";
+import type { PendingImage } from "./pending-image";
 import type { ImageSource, ImageSourceResult } from "./image-source";
+
+export interface ImageLookup {
+  getPendingImage(imageId: ImageId): PendingImage | undefined;
+  getRestoredImageSha(imageId: ImageId): string | undefined;
+  getImageIndex(): ImageIndex | null;
+}
 
 export interface ImageResolverDeps {
   readonly keyring: Keyring;
   readonly adapter: Pick<ForgeAdapter, "readBlobBytes">;
-  readonly engine: Pick<
-    SyncEngine,
-    "getState" | "getPendingImage" | "getRestoredImageSha"
-  >;
+  readonly engine: ImageLookup;
   readonly maxBytes?: number;
   readonly maxEntries?: number;
   readonly createObjectUrl?: (blob: Blob) => string;
@@ -92,7 +96,7 @@ export function createImageResolver(deps: ImageResolverDeps): ImageResolver {
   async function loadPayload(imageId: ImageId): Promise<ImagePayload | null> {
     const pending = deps.engine.getPendingImage(imageId);
     if (pending) return decryptImage(deps.keyring, imageId, pending.envelope);
-    const images = deps.engine.getState().synced?.images;
+    const images = deps.engine.getImageIndex();
     const blobSha =
       images?.images.get(imageId)?.blobSha ??
       images?.tombstones.get(imageId)?.blobSha ??

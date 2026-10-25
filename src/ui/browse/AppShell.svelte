@@ -132,11 +132,22 @@
   } from "../../rekey/change-passphrase";
   import ChangePassphraseDialog from "../passphrase/ChangePassphraseDialog.svelte";
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
-  import { actionIcons, commandIcons } from "./action-icons";
+  import { actionIcons, commandIcons, noteIcons } from "./action-icons";
   import type { ContentIndexer } from "../../search/content-indexer";
   import { createRecentNotes } from "../search/recent-notes";
   import SearchPalette from "../search/SearchPalette.svelte";
   import SearchTrigger from "../search/SearchTrigger.svelte";
+  import { decryptImage } from "../../crypto/image-cipher";
+  import { referencedImageIds } from "../../images/image-reference";
+  import type { PendingImage } from "../../images/pending-image";
+  import { prepareImages } from "../../images/prepare-images";
+  import { loadImagePipeline } from "../../images/load-image-pipeline";
+  import type { ImageInsertionConfig } from "../../editor/image-insertion";
+  import {
+    IMAGE_COUNT_LIMIT_MESSAGE,
+    describeAddingImages,
+    describeImageRejections,
+  } from "../images/image-messages";
   import CommandMenu from "./CommandMenu.svelte";
   import CommitSha from "./CommitSha.svelte";
   import { countDescendants } from "../dialogs/folder-options";
@@ -263,6 +274,7 @@
     sessionRemembered: boolean;
     initialMessage?: Pick<ToastMessage, "tone" | "text"> | null;
     earlyDraft: EarlyDraft | null;
+    earlyDraftImages: readonly PendingImage[];
     onEarlyDraftHandedOff: () => void;
     onPassphraseChanged: (
       keyring: Keyring,
@@ -300,6 +312,7 @@
     sessionRemembered,
     initialMessage = null,
     earlyDraft,
+    earlyDraftImages,
     onEarlyDraftHandedOff,
     onPassphraseChanged,
     onLogOut,
@@ -537,6 +550,7 @@
   type ToastChannel =
     | "refresh"
     | "save"
+    | "image"
     | "export"
     | "trash"
     | "place"
@@ -548,6 +562,7 @@
   const TOAST_ORDER = [
     "refresh",
     "save",
+    "image",
     "export",
     "trash",
     "place",
@@ -989,6 +1004,25 @@
     void handOffEarlyDraft();
   });
 
+  async function registerEarlyDraftImages(
+    body: string,
+    images: readonly PendingImage[],
+  ): Promise<void> {
+    const referenced = referencedImageIds(body);
+    await Promise.all(
+      images
+        .filter((image) => referenced.has(image.imageId))
+        .map(async (image) => {
+          try {
+            await decryptImage(keyring, image.imageId, image.envelope);
+          } catch {
+            return;
+          }
+          engine.addPendingImage(image);
+        }),
+    );
+  }
+
   async function handOffEarlyDraft(): Promise<void> {
     await waitForEditor();
     if (shellDestroyed) return;
@@ -997,7 +1031,10 @@
       earlyDraftHandoffStarted = false;
       return;
     }
-    const early = untrack(() => earlyDraft);
+    const { early, earlyImages } = untrack(() => ({
+      early: earlyDraft,
+      earlyImages: earlyDraftImages,
+    }));
     onEarlyDraftHandedOff();
     if (early === null) return;
     const plan = planEarlyDraftHandoff(early);
@@ -1007,9 +1044,10 @@
     if (plan.kind === "content") {
       const now = new Date(plan.contentStartedAt ?? Date.now());
       if (notePane?.hasEditor() === true) {
+        await registerEarlyDraftImages(plan.body, earlyImages);
         earlyContentTime = now;
         try {
-          notePane.insertEditorText(plan.body, false);
+          notePane.insertEditorText(plan.body, false, { imageCloneExempt: true });
         } finally {
           earlyContentTime = undefined;
         }
@@ -1074,8 +1112,72 @@
   }
   const head = $derived(engineState.synced?.head ?? null);
 
+  const imageInsertionConfig: ImageInsertionConfig = {
+    prepare: (files) =>
+      prepareImages(files, {
+        keyring,
+        process: async () => (await loadImagePipeline()).processImageInBrowser,
+      }),
+    register: (image) => engine.addPendingImage(image),
+    enabled: () => engineState.stopped === null,
+    onBusy: (busy, count) => {
+      if (busy) {
+        busyImageToast = showToast("image", "info", describeAddingImages(count));
+      } else {
+        clearToast("image", busyImageToast);
+      }
+    },
+    onOutcome: (outcome) => {
+      if (outcome.kind === "tooMany") {
+        showToast("image", "error", IMAGE_COUNT_LIMIT_MESSAGE);
+        return;
+      }
+      const text = describeImageRejections(outcome.rejections, outcome.total);
+      if (text !== null) showToast("image", "error", text);
+    },
+  };
+  let busyImageToast: number | undefined;
+
+  let imageInput: HTMLInputElement | undefined = $state();
+  let imagePickCapture: { position: number | null; noteSwitch: number } | null = null;
+
+  function openImagePicker(): void {
+    if (imageInput === undefined) return;
+    imagePickCapture = {
+      position: notePane?.imageInsertionPosition() ?? null,
+      noteSwitch,
+    };
+    imageInput.click();
+  }
+
+  function handleImagePicked(): void {
+    if (imageInput === undefined) return;
+    const files = Array.from(imageInput.files ?? []);
+    imageInput.value = "";
+    const capture = imagePickCapture;
+    imagePickCapture = null;
+    if (files.length === 0) return;
+    if (capture !== null && capture.noteSwitch !== noteSwitch) return;
+    notePane?.insertImageFiles(files, capture?.position ?? notePane.imageInsertionPosition() ?? undefined);
+  }
+
+  const canInsertImage = $derived(
+    draft !== null || (engineState.openNote?.kind === "loaded" && !openConflicted),
+  );
+
   const importing = $derived(engineState.importing || importStarted !== null);
   const commands: readonly Command[] = $derived([
+    ...(canInsertImage
+      ? [
+          {
+            id: "insert-image",
+            label: "Insert image",
+            icon: noteIcons.image,
+            disabled: engineState.stopped !== null,
+            run: openImagePicker,
+          },
+        ]
+      : []),
     ...(narrow && trashEntries.length > 0
       ? [
           {
@@ -2760,6 +2862,8 @@
           onNameEnterDone={handleNameEnterDone}
           onNameInput={handleDraftNameInput}
           onBack={handleHeaderBack}
+          onInsertImage={openImagePicker}
+          insertImageDisabled={engineState.stopped !== null}
         />
       {:else if engineState.openNote !== null}
         <NoteHeader
@@ -2778,6 +2882,8 @@
           onNameEscape={handleNameEscape}
           onNameEnterDone={handleNameEnterDone}
           onBack={handleHeaderBack}
+          onInsertImage={canInsertImage ? openImagePicker : undefined}
+          insertImageDisabled={engineState.stopped !== null}
           onHistory={() => void openHistory()}
           historyDisabled={engineState.openNote.kind === "missing" ||
             engineState.openNote.kind === "trashed" ||
@@ -2804,6 +2910,7 @@
       {engine}
       {forgeName}
       {imageSource}
+      imageInsertion={imageInsertionConfig}
       openNote={engineState.openNote}
       {noteSwitch}
       conflict={openConflict}
@@ -2820,6 +2927,7 @@
       vimMode={settings.vimMode}
       onVimWrite={saveFromShortcut}
       onVimQuit={handleHeaderBack}
+      onVimInsertImage={openImagePicker}
       shared={openTreeNote?.shared ?? false}
       onShared={draft === null && openTreeNote !== undefined && !openConflicted
         ? () => openShareDialog(openTreeNote.path, openTreeNote.syncedPath)
@@ -2827,6 +2935,19 @@
     />
   </main>
 </div>
+
+<input
+  bind:this={imageInput}
+  type="file"
+  accept="image/*"
+  multiple
+  class="visually-hidden"
+  tabindex="-1"
+  aria-hidden="true"
+  data-testid="insert-image-file"
+  onchange={handleImagePicked}
+  oncancel={() => (imagePickCapture = null)}
+/>
 
 <p class="visually-hidden" role="status" data-testid="status-announcer">
   {announcement}

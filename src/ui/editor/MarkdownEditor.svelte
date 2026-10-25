@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import type { Compartment, Extension } from "@codemirror/state";
+  import type { Annotation, Compartment, Extension } from "@codemirror/state";
   import type { EditorView } from "@codemirror/view";
   import {
     createMarkdownEditor,
@@ -59,12 +59,17 @@
     return editor === undefined ? undefined : fn(editor.view);
   }
 
-  export function insertText(inserted: string, focus = true): void {
+  export function insertText(
+    inserted: string,
+    focus = true,
+    annotations: readonly Annotation<unknown>[] = [],
+  ): void {
     if (editor === undefined) return;
     const view = editor.view;
     view.dispatch(view.state.replaceSelection(inserted), {
       userEvent: "input.type",
       scrollIntoView: true,
+      annotations,
     });
     if (focus) view.focus();
   }

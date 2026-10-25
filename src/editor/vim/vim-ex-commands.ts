@@ -6,6 +6,7 @@ import { showVimMessage } from "./vim-command-line";
 export interface VimCallbacks {
   readonly onWrite: () => Promise<void>;
   readonly onQuit: () => void;
+  readonly onInsertImage?: () => void;
 }
 
 export const vimCallbacks: Facet<VimCallbacks, VimCallbacks | null> =
@@ -53,6 +54,16 @@ function writeQuitCommand(cm: CodeMirror): void {
   });
 }
 
+function imageCommand(cm: CodeMirror): void {
+  const view = viewOf(cm);
+  const onInsertImage = view.state.facet(vimCallbacks)?.onInsertImage;
+  if (view.state.readOnly || !onInsertImage) {
+    showVimMessage(view, "Images cannot be added here.", true);
+    return;
+  }
+  onInsertImage();
+}
+
 let defined = false;
 
 export function defineAppExCommands(): void {
@@ -62,4 +73,5 @@ export function defineAppExCommands(): void {
   Vim.defineEx("quit", "q", quitCommand);
   Vim.defineEx("wq", "wq", writeQuitCommand);
   Vim.defineEx("xit", "x", writeQuitCommand);
+  Vim.defineEx("image", "ima", imageCommand);
 }

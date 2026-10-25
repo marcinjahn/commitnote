@@ -1,20 +1,40 @@
+import { decryptImage } from "../crypto/image-cipher";
 import { decryptNote, encryptNote } from "../crypto/note-cipher";
 import type { Keyring } from "../crypto/keyring";
 import { parseEarlyDraft, type EarlyDraft } from "../app/early-draft";
+import { gitBlobShaOfBytes } from "../forge/git-blob-sha";
+import { isImageId } from "../images/image-id";
+import type { PendingImage } from "../images/pending-image";
 
 export const EARLY_DRAFT_DB_NAME = "commitnote-early-draft";
 
 const DB_VERSION = 1;
 const STORE_NAME = "drafts";
 
+interface StoredImage {
+  readonly imageId: string;
+  readonly envelope: Uint8Array;
+}
+
 interface StoredRecord {
   readonly ciphertext: string;
   readonly savedAt: number;
+  readonly images?: readonly StoredImage[];
+}
+
+export interface LoadedEarlyDraft {
+  readonly draft: EarlyDraft;
+  readonly images: readonly PendingImage[];
 }
 
 export interface EarlyDraftStore {
-  save(repoKey: string, keyring: Keyring, draft: EarlyDraft): Promise<void>;
-  load(repoKey: string, keyring: Keyring): Promise<EarlyDraft | null>;
+  save(
+    repoKey: string,
+    keyring: Keyring,
+    draft: EarlyDraft,
+    images?: readonly PendingImage[],
+  ): Promise<void>;
+  load(repoKey: string, keyring: Keyring): Promise<LoadedEarlyDraft | null>;
   remove(repoKey: string): Promise<void>;
 }
 
@@ -91,6 +111,37 @@ function isStoredRecord(value: unknown): value is StoredRecord {
   );
 }
 
+function isStoredImage(value: unknown): value is StoredImage {
+  if (typeof value !== "object" || value === null) return false;
+  const image = value as Record<string, unknown>;
+  return typeof image.imageId === "string" && image.envelope instanceof Uint8Array;
+}
+
+async function restoreImages(
+  keyring: Keyring,
+  stored: unknown,
+): Promise<PendingImage[]> {
+  if (!Array.isArray(stored)) return [];
+  const images: PendingImage[] = [];
+  for (const entry of stored) {
+    if (!isStoredImage(entry) || !isImageId(entry.imageId)) continue;
+    try {
+      const payload = await decryptImage(keyring, entry.imageId, entry.envelope);
+      images.push({
+        imageId: entry.imageId,
+        envelope: entry.envelope,
+        blobSha: await gitBlobShaOfBytes(entry.envelope),
+        type: payload.type,
+        width: payload.width,
+        height: payload.height,
+      });
+    } catch {
+      // An unreadable image is dropped without losing the draft.
+    }
+  }
+  return images;
+}
+
 export function createEarlyDraftStore(options?: {
   readonly indexedDB?: IDBFactory;
 }): EarlyDraftStore {
@@ -129,11 +180,12 @@ export function createEarlyDraftStore(options?: {
   }
 
   return {
-    async save(repoKey, keyring, draft) {
+    async save(repoKey, keyring, draft, images = []) {
       try {
         const record: StoredRecord = {
           ciphertext: await encryptNote(keyring, JSON.stringify(draft)),
           savedAt: Date.now(),
+          images: images.map(({ imageId, envelope }) => ({ imageId, envelope })),
         };
         const db = await getDb();
         if (!db) return;
@@ -156,7 +208,9 @@ export function createEarlyDraftStore(options?: {
         const draft = parseEarlyDraft(
           JSON.parse(await decryptNote(keyring, record.ciphertext)),
         );
-        if (draft) return draft;
+        if (draft) {
+          return { draft, images: await restoreImages(keyring, record.images) };
+        }
       } catch {
         // Falls through to discarding the unreadable record.
       }

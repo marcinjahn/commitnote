@@ -22,6 +22,7 @@ export interface VimWiringOptions {
   initialMode: () => VimInitialMode;
   onWrite: () => Promise<void>;
   onQuit: () => void;
+  onInsertImage?: () => void;
 }
 
 export interface VimWiring {
@@ -63,6 +64,7 @@ export function createVimWiring(options: VimWiringOptions): VimWiring {
           animatedCaret: caret,
           onWrite: () => options.onWrite(),
           onQuit: () => options.onQuit(),
+          onInsertImage: options.onInsertImage && (() => options.onInsertImage?.()),
           onStatus: (next) => {
             if (vim?.editor === target) status = next;
           },

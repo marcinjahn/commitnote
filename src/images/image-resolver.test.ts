@@ -58,7 +58,7 @@ function setup(limits: Partial<ImageResolverDeps> = {}): Setup {
       },
     },
     engine: {
-      getState: () => ({ synced: { images: index.value } }) as never,
+      getImageIndex: () => index.value,
       getPendingImage: (id) => pending.get(id),
       getRestoredImageSha: (id) => restored.get(id),
     },

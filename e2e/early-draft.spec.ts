@@ -358,3 +358,45 @@ test("an early draft is stored encrypted and reopens after the app is closed", a
     .poll(async () => createCommits(await fakeForge(reopened).commitMessages()))
     .toBe(createsBefore + 1);
 });
+
+test("an image pasted into an early draft survives a reload and is stored with the note", async ({
+  page,
+  context,
+}) => {
+  await openNotes(page);
+  await holdLoadingScreen(page);
+
+  await newNoteButton(page).click();
+  await expect(nameField(page)).toBeFocused();
+  await page.keyboard.type("Pictured idea");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Look at this");
+  await page.locator(".cm-content").evaluate(async (element) => {
+    const canvas = new OffscreenCanvas(40, 30);
+    canvas.getContext("2d")!.fillRect(0, 0, 40, 30);
+    const blob = await canvas.convertToBlob({ type: "image/png" });
+    const data = new DataTransfer();
+    data.items.add(new File([blob], "photo.png", { type: "image/png" }));
+    element.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }),
+    );
+  });
+  const widget = (target: Page) => target.locator('button.cm-image[data-state="loaded"]');
+  await expect(widget(page)).toHaveCount(1);
+  await expect.poll(async () => (await earlyDraftRecords(page)).length).toBe(1);
+
+  const url = page.url();
+  await page.close();
+  const reopened = await context.newPage();
+  await reopened.goto(url);
+  await expectTree(reopened);
+
+  await expect(nameField(reopened)).toHaveValue("Pictured idea");
+  await expect(widget(reopened)).toHaveCount(1);
+  const id = (await reopened.locator("button.cm-image").getAttribute("data-image-id"))!;
+
+  await flushPendingSaves(reopened);
+  await expect
+    .poll(async () => (await fakeForge(reopened).headPaths()).includes(`.commitnote/images/${id}`))
+    .toBe(true);
+});
