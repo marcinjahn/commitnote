@@ -10,7 +10,12 @@ import {
   swipeDecision,
 } from "./swipe-decision";
 
-export type SwipeToCloseOptions = { enabled: boolean; onClose: () => void };
+export type SwipeToCloseOptions = {
+  enabled: boolean;
+  onClose: () => void;
+  card?: HTMLElement | null;
+  narrowOnly?: boolean;
+};
 
 const INTERACTIVE = "button, a, input, select, textarea, [role='button']";
 
@@ -33,7 +38,7 @@ export function swipeToClose(
   const tracker = createVelocityTracker();
 
   function resolveElements(): boolean {
-    card ??= header.closest<HTMLElement>(".dialog-card");
+    card ??= options.card ?? header.closest<HTMLElement>(".dialog-card");
     if (dialog === null) {
       dialog = header.closest("dialog");
       dialog?.addEventListener("close", onDialogClose);
@@ -116,7 +121,7 @@ export function swipeToClose(
     if (
       !options.enabled ||
       (event.pointerType !== "touch" && event.pointerType !== "pen") ||
-      !isNarrowLayout() ||
+      ((options.narrowOnly ?? true) && !isNarrowLayout()) ||
       stopSettling !== null ||
       closeCheckTimer !== undefined ||
       gesture !== null ||

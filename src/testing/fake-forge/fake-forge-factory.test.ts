@@ -326,6 +326,26 @@ describe("createFakeForge controls", () => {
     expect(await target.readBlob(entry!.sha)).toBe("extra");
   });
 
+  it("headPaths lists the files of the head commit", async () => {
+    const { factory, controls } = await createFakeForge();
+    const adapter = factory(coordinatesFor("sample/notes"), {
+      accessToken: TOKEN,
+    });
+    const head = await adapter.getHead();
+    const result = await adapter.commit({
+      parent: head,
+      changes: [{ kind: "upsert-text", path: "dir/extra.txt", text: "extra" }],
+      message: "test",
+    });
+    if (result.kind !== "ok") throw new Error("expected a commit");
+
+    const paths = await controls.headPaths("sample/notes");
+
+    expect(paths).toContain("dir/extra.txt");
+    expect(paths).toContain(".commitnote/config.json");
+    expect(paths).not.toContain("dir");
+  });
+
   it("editNote throws for an unknown fixture repository", async () => {
     const { controls } = await createFakeForge();
 

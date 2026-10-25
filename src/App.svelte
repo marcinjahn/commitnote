@@ -68,6 +68,7 @@
     type LandedCheck,
     type PassphraseChange,
   } from "./rekey/change-passphrase";
+  import { createImageResolver, type ImageResolver } from "./images/image-resolver";
   import { createNoteHistory, type NoteHistory } from "./history/note-history";
   import { createNoteDates, type NoteDatesResolver } from "./history/note-dates";
   import type { ToastMessage } from "./ui/notices/notice-messages";
@@ -168,6 +169,7 @@
         readonly remembered: boolean;
         readonly passphraseChange: PassphraseChange;
         readonly noteHistory: NoteHistory;
+        readonly imageResolver: ImageResolver;
         readonly shareService: ShareService;
         readonly noteDatesResolver: NoteDatesResolver;
         readonly initialMessage: Pick<ToastMessage, "tone" | "text"> | null;
@@ -360,6 +362,11 @@
       deviceName: currentDeviceName,
       ...(blobCache === null ? {} : { blobCache }),
     });
+    const imageResolver = createImageResolver({
+      keyring: session.keyring,
+      adapter: cachedAdapter,
+      engine,
+    });
     const contentIndexer = createContentIndexer({
       engine,
       clock: systemClock,
@@ -487,6 +494,7 @@
         deviceName: currentDeviceName,
       }),
       noteHistory,
+      imageResolver,
       shareService: createShareService({
         engine,
         shareHost: adapter.shareHost,
@@ -541,6 +549,7 @@
     engine: SyncEngine,
     settingsSaver: SettingsSaver,
     contentIndexer: ContentIndexer,
+    imageResolver: ImageResolver,
     blobCache: BlobCache | null,
     clearBlobCache: boolean,
   ): Promise<void> {
@@ -561,6 +570,7 @@
     appTreeLoaded = false;
     settingsSaver.dispose();
     contentIndexer.dispose();
+    imageResolver.dispose();
     engine.dispose();
     if (blobCache === null) return Promise.resolve();
     return clearBlobCache ? blobCache.clear() : blobCache.dispose();
@@ -576,12 +586,13 @@
       engine,
       settingsSaver,
       contentIndexer,
+      imageResolver,
       blobCache,
       session,
       adapter,
       rememberMe,
     } = phase;
-    await stopApp(engine, settingsSaver, contentIndexer, blobCache, false);
+    await stopApp(engine, settingsSaver, contentIndexer, imageResolver, blobCache, false);
     await startApp(
       { ...session, keyring },
       adapter,
@@ -593,8 +604,8 @@
 
   async function finishLogOut(clearStore = true): Promise<void> {
     if (phase.kind !== "app") return;
-    const { engine, settingsSaver, contentIndexer, blobCache, session } = phase;
-    await stopApp(engine, settingsSaver, contentIndexer, blobCache, true);
+    const { engine, settingsSaver, contentIndexer, imageResolver, blobCache, session } = phase;
+    await stopApp(engine, settingsSaver, contentIndexer, imageResolver, blobCache, true);
     earlyDraftBacking = null;
     if (clearStore) {
       await store.clear();
@@ -610,7 +621,7 @@
   // remembered the new keys; those are used instead of asking to log in.
   async function logInAfterKeyChange(): Promise<void> {
     if (phase.kind !== "app") return;
-    const { engine, settingsSaver, contentIndexer, blobCache, session } = phase;
+    const { engine, settingsSaver, contentIndexer, imageResolver, blobCache, session } = phase;
     let remembered: Session | null = null;
     try {
       remembered = await store.loadRememberedSession();
@@ -628,7 +639,7 @@
     }
     const result = await resumeSession(remembered, loginDeps());
     if (result.kind === "loggedIn") {
-      await stopApp(engine, settingsSaver, contentIndexer, blobCache, true);
+      await stopApp(engine, settingsSaver, contentIndexer, imageResolver, blobCache, true);
       await startApp(
         result.session,
         result.adapter,
@@ -1100,6 +1111,7 @@
       forgeName={phase.forgeName}
       passphraseChange={phase.passphraseChange}
       noteHistory={phase.noteHistory}
+      imageSource={phase.imageResolver.resolve}
       shareService={phase.shareService}
       forgeId={phase.session.coordinates.forge}
       noteDatesResolver={phase.noteDatesResolver}

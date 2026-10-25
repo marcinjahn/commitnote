@@ -144,6 +144,7 @@ interface FakeForgeControls {
     passphrase?: string,
     deviceName?: string,
   ): Promise<void>;
+  headPaths(repoKey: string): Promise<string[]>;
   exportRepo(repoKey: string): string;
   adoptRepo(repoKey: string, exported: string): void;
   changeRepoKey(repoKey: string): Promise<void>;
@@ -229,6 +230,14 @@ export function fakeForge(page: Page, repoKey: string = SAMPLE.key) {
             device,
           ),
         [repoKey, notePath, markdown, deviceName] as const,
+      ),
+    headPaths: () =>
+      page.evaluate(
+        (key) =>
+          (window as unknown as FakeForgeWindow).__commitNoteFakeForge.headPaths(
+            key,
+          ),
+        repoKey,
       ),
     exportRepo: () =>
       page.evaluate(

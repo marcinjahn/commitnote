@@ -176,4 +176,18 @@ describe("indexContent", () => {
   it("keeps the original text next to its folded form", () => {
     expect(indexContent("Zażółć")).toEqual({ text: "Zażółć", folded: "zazolc" });
   });
+
+  it("indexes the alt text of an image reference instead of its syntax", () => {
+    const indexed = indexContent(
+      "Before ![Whiteboard sketch](image:s4u5q5zr4xaec3jewbaixgwlou#64x48) after",
+    );
+    expect(indexed.text).toBe("Before Whiteboard sketch after");
+    expect(indexed.text).not.toContain("image:");
+    expect(indexed.folded).toBe("before whiteboard sketch after");
+  });
+
+  it("leaves a non-matching image verbatim", () => {
+    const text = "![x](https://example.com/a.png)";
+    expect(indexContent(text).text).toBe(text);
+  });
 });

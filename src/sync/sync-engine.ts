@@ -393,6 +393,7 @@ export interface SyncEngine {
   getPendingImage(imageId: ImageId): PendingImage | undefined;
   /** Image blobs reachable in history that note changes may revive. */
   addRestoredImages(shas: ReadonlyMap<ImageId, string>): void;
+  getRestoredImageSha(imageId: ImageId): string | undefined;
   /**
    * Registers a pending copy of an image under a new id. Null when the source
    * is unknown or cannot be read or decrypted.
@@ -3116,6 +3117,7 @@ export function createSyncEngine(options: {
     addPendingImage,
     getPendingImage: (imageId) => pendingImages.get(imageId),
     addRestoredImages,
+    getRestoredImageSha: (imageId) => restoredImages.get(imageId),
     cloneImage,
     snapshotNotes,
     searchSources,

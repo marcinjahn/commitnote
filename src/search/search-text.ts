@@ -1,3 +1,4 @@
+import { stripImageReferences } from "../images/image-reference";
 import { FOLD_TABLE } from "./search-tuning";
 
 const unitCache = new Map<string, string>();
@@ -90,5 +91,6 @@ export interface IndexedContent {
 }
 
 export function indexContent(text: string): IndexedContent {
-  return { text, folded: fold(text) };
+  const stripped = stripImageReferences(text, "alt");
+  return { text: stripped, folded: fold(stripped) };
 }

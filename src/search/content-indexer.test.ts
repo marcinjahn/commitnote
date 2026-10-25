@@ -429,6 +429,23 @@ describe("createContentIndexer", () => {
     });
   });
 
+  it("indexes local alt text and does not re-index unchanged local text", () => {
+    const text = "Before ![Whiteboard sketch](image:s4u5q5zr4xaec3jewbaixgwlou#64x48) after";
+    const { engine, clock, indexer } = setup([local("a", text)]);
+    indexer.open();
+    const first = indexer.contentFor(local("a", ""));
+    expect(first?.text).toBe("Before Whiteboard sketch after");
+
+    engine.setSources([local("a", text)]);
+    expect(indexer.contentFor(local("a", ""))).toBe(first);
+
+    clock.advance(250);
+    engine.setSources([local("a", text + " more")]);
+    expect(indexer.contentFor(local("a", ""))?.text).toBe(
+      "Before Whiteboard sketch after more",
+    );
+  });
+
   it("finishes the first run after close but fetches nothing new while closed afterwards", async () => {
     const { engine, indexer } = setup([blob("a", "sha0"), blob("b", "sha1")]);
     engine.setAutoRead(() => "text");

@@ -364,6 +364,23 @@ describe("sync engine images", () => {
     );
   });
 
+  it("reports a restored image sha until a commit consumes it", async () => {
+    const h = await setup();
+    const image = await newImage();
+    const blobSha = await h.fake.repo.putBlobBytes(image.envelope);
+
+    h.engine.addRestoredImages(new Map([[image.imageId, blobSha]]));
+    expect(h.engine.getRestoredImageSha(image.imageId)).toBe(blobSha);
+
+    h.engine.editNote(
+      WELCOME,
+      withReference(await welcomeText(h.fake), image.imageId),
+    );
+    expect(await h.engine.flush()).toEqual({ kind: "saved" });
+
+    expect(h.engine.getRestoredImageSha(image.imageId)).toBeUndefined();
+  });
+
   it("dispose drops pending images", async () => {
     const h = await setup();
     const image = await newImage();

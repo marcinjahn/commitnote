@@ -113,6 +113,18 @@ describe("countWords", () => {
     expect(countWords("今日は良い天気です", "ja")).toBe(5);
   });
 
+  it("ignores image references including their alt text", () => {
+    expect(
+      countWords("two words ![alt text here](image:s4u5q5zr4xaec3jewbaixgwlou#10x10)", "en-GB"),
+    ).toBe(2);
+  });
+
+  it("still counts a reference inside a fenced code block", () => {
+    expect(
+      countWords("```\n![alt](image:s4u5q5zr4xaec3jewbaixgwlou#10x10)\n```", "en-GB"),
+    ).toBeGreaterThan(0);
+  });
+
   it("counts nothing for empty or whitespace-only text", () => {
     expect(countWords("", "en-GB")).toBe(0);
     expect(countWords(" \n\t ", "en-GB")).toBe(0);

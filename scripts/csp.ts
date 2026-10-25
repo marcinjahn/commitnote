@@ -50,7 +50,7 @@ export function buildCsp(
     scriptSrc.join(" "),
     "style-src 'self' 'unsafe-inline'",
     connectSrc.join(" "),
-    "img-src 'self' https: data:",
+    "img-src 'self' https: data: blob:",
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",

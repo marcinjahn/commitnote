@@ -38,8 +38,8 @@ function parseAll(text: string): ParsedReference[] {
 function readImage(node: SyntaxNode, text: string): ParsedReference | null {
   const url = node.getChild("URL");
   if (!url) return null;
-  const match = URL_PATTERN.exec(text.slice(url.from, url.to));
-  if (!match) return null;
+  const target = parseImageUrl(text.slice(url.from, url.to));
+  if (!target) return null;
 
   const marks = node.getChildren("LinkMark");
   const closingBracket = marks.filter((mark) => mark.to <= url.from).at(-2);
@@ -48,15 +48,34 @@ function readImage(node: SyntaxNode, text: string): ParsedReference | null {
   const reference: ParsedReference = {
     from: node.from,
     to: node.to,
-    imageId: match[1],
+    imageId: target.imageId,
     alt: text.slice(marks[0].to, closingBracket.from),
     idFrom: url.from + URL_SCHEME_LENGTH,
   };
-  if (match[2] !== undefined && match[3] !== undefined) {
-    reference.width = Number(match[2]);
-    reference.height = Number(match[3]);
+  if (target.width !== undefined && target.height !== undefined) {
+    reference.width = target.width;
+    reference.height = target.height;
   }
   return reference;
+}
+
+export function parseImageUrl(
+  url: string,
+): { imageId: ImageId; width?: number; height?: number } | null {
+  const match = URL_PATTERN.exec(url);
+  if (!match) return null;
+  const target: { imageId: ImageId; width?: number; height?: number } = {
+    imageId: match[1],
+  };
+  if (match[2] !== undefined && match[3] !== undefined) {
+    target.width = Number(match[2]);
+    target.height = Number(match[3]);
+  }
+  return target;
+}
+
+export function imageAltText(alt: string): string {
+  return alt.replace(/\\([!-/:-@[-`{-~])/g, "$1");
 }
 
 export function parseImageReferences(text: string): ImageReference[] {
@@ -104,12 +123,13 @@ export function stripImageReferences(
   text: string,
   mode: "alt" | "remove",
 ): string {
+  if (!text.includes("image:")) return text;
   return replaceSpans(
     text,
     parseAll(text).map((reference) => ({
       from: reference.from,
       to: reference.to,
-      insert: mode === "alt" ? reference.alt : "",
+      insert: mode === "alt" ? imageAltText(reference.alt) : "",
     })),
   );
 }
