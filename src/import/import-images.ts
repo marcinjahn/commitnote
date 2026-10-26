@@ -3,6 +3,7 @@ import type { RandomSource } from "../crypto/random";
 import {
   formatImageReference,
   imageAltText,
+  isImageDimension,
   parseMarkdownImages,
 } from "../images/image-reference";
 import {
@@ -67,12 +68,13 @@ export async function prepareImportImages(
         firstByPath.set(path, null);
         return null;
       }
-      formatImageReference({
-        imageId: "a".repeat(26),
-        alt: "",
-        width: result.payload.width,
-        height: result.payload.height,
-      });
+      if (
+        !isImageDimension(result.payload.width) ||
+        !isImageDimension(result.payload.height)
+      ) {
+        firstByPath.set(path, null);
+        return null;
+      }
       const created = await createPendingImage(
         deps.keyring,
         result.payload,

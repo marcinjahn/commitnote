@@ -36,21 +36,17 @@ function parseAll(text: string): ParsedReference[] {
 }
 
 function readImage(node: SyntaxNode, text: string): ParsedReference | null {
-  const url = node.getChild("URL");
-  if (!url) return null;
-  const target = parseImageUrl(text.slice(url.from, url.to));
+  const image = readImageNode(node, text);
+  if (!image) return null;
+  const target = parseImageUrl(text.slice(image.urlNode.from, image.urlNode.to));
   if (!target) return null;
 
-  const marks = node.getChildren("LinkMark");
-  const closingBracket = marks.filter((mark) => mark.to <= url.from).at(-2);
-  if (!closingBracket || marks[0] === undefined) return null;
-
   const reference: ParsedReference = {
-    from: node.from,
-    to: node.to,
+    from: image.from,
+    to: image.to,
     imageId: target.imageId,
-    alt: text.slice(marks[0].to, closingBracket.from),
-    idFrom: url.from + URL_SCHEME_LENGTH,
+    alt: image.alt,
+    idFrom: image.urlNode.from + URL_SCHEME_LENGTH,
   };
   if (target.width !== undefined && target.height !== undefined) {
     reference.width = target.width;
@@ -79,26 +75,34 @@ export function parseMarkdownImages(text: string): MarkdownImage[] {
   return images;
 }
 
-function readMarkdownImage(
+function readImageNode(
   node: SyntaxNode,
   text: string,
-): MarkdownImage | null {
+): { from: number; to: number; alt: string; urlNode: SyntaxNode } | null {
   const urlNode = node.getChild("URL");
   if (!urlNode) return null;
   const marks = node.getChildren("LinkMark");
   const closingBracket = marks.filter((mark) => mark.to <= urlNode.from).at(-2);
   if (!closingBracket || marks[0] === undefined) return null;
-
-  let url = text.slice(urlNode.from, urlNode.to);
-  if (url.length >= 2 && url.startsWith("<") && url.endsWith(">")) {
-    url = url.slice(1, -1);
-  }
   return {
     from: node.from,
     to: node.to,
     alt: text.slice(marks[0].to, closingBracket.from),
-    url,
+    urlNode,
   };
+}
+
+function readMarkdownImage(
+  node: SyntaxNode,
+  text: string,
+): MarkdownImage | null {
+  const image = readImageNode(node, text);
+  if (!image) return null;
+  let url = text.slice(image.urlNode.from, image.urlNode.to);
+  if (url.length >= 2 && url.startsWith("<") && url.endsWith(">")) {
+    url = url.slice(1, -1);
+  }
+  return { from: image.from, to: image.to, alt: image.alt, url };
 }
 
 export function parseImageUrl(
@@ -128,7 +132,7 @@ export function referencedImageIds(text: string): Set<ImageId> {
   return new Set(parseAll(text).map((reference) => reference.imageId));
 }
 
-function isDimension(value: number): boolean {
+export function isImageDimension(value: number): boolean {
   return Number.isInteger(value) && value >= 1 && value <= MAX_DIMENSION;
 }
 
@@ -139,7 +143,7 @@ export function formatImageReference(input: {
   height: number;
 }): string {
   if (!isImageId(input.imageId)) throw new Error("Invalid image id");
-  if (!isDimension(input.width) || !isDimension(input.height)) {
+  if (!isImageDimension(input.width) || !isImageDimension(input.height)) {
     throw new Error("Invalid image dimensions");
   }
   const alt = input.alt
