@@ -117,7 +117,7 @@ extension XCTestCase {
         var previous = CGRect.null
         XCTAssertTrue(
             poll(timeout: 20) {
-                let frame = element.frame
+                let frame = element.exists ? element.frame : .null
                 defer { previous = frame }
                 return frame == previous && !frame.isEmpty
             }, "Expected \(element) to settle", file: file, line: line)

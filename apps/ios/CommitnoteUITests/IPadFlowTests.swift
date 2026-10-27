@@ -65,7 +65,7 @@ final class IPadFlowTests: XCTestCase {
         cancelSearch(in: app)
 
         let status = syncStatus(in: app)
-        pressShortcut("s", until: { (status.value as? String) == "synced" })
+        pressShortcut("s", until: { status.exists && (status.value as? String) == "synced" })
         waitForSaved(in: app)
         XCTAssertEqual(editorText(in: app), "**Alpha** *beta* ~~gamma~~ [delta]()\n- [ ] List")
     }

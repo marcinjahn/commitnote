@@ -94,7 +94,7 @@ extension XCTestCase {
         waitFor(app.element("note-view"), timeout: 30, file: file, line: line)
         waitForValue(app.textFields["note-title-field"], name, file: file, line: line)
         waitForCondition("The note keeps its text", file: file, line: line) {
-            self.editorText(in: app) == text
+            self.editor(in: app).exists && self.editorText(in: app) == text
         }
         waitForCondition("The note keeps its selection", file: file, line: line) {
             self.selectionLength(in: app) == selection

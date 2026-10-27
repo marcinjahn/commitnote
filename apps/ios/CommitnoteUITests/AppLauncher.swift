@@ -186,7 +186,7 @@ extension XCTestCase {
         for _ in 0..<3 {
             if width.exists && (width.value as? String) == value { return }
             useTestingMenu("testing-switch-width", in: app, file: file, line: line)
-            if poll(timeout: 5, until: { (width.value as? String) == value }) { return }
+            if poll(timeout: 5, until: { width.exists && (width.value as? String) == value }) { return }
         }
         XCTAssertEqual(width.value as? String, value, "Forced width", file: file, line: line)
     }
@@ -196,7 +196,7 @@ extension XCTestCase {
     ) {
         let state = app.element("testing-type-to-start")
         XCTAssertTrue(
-            poll(timeout: 20) { (state.value as? String) == "ready" }, "Type-to-start was not ready",
+            poll(timeout: 20) { state.exists && (state.value as? String) == "ready" }, "Type-to-start was not ready",
             file: file, line: line)
     }
 

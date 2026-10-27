@@ -25,7 +25,7 @@ final class SettingsFlowTests: XCTestCase {
         let dark = hittable(app.buttons.matching(NSPredicate(format: "label == %@", "Dark")))
         dark.tap()
         waitForCondition("Dark is the color mode") {
-            (colorMode.value as? String) == "dark" || self.isSelected(dark)
+            (colorMode.exists && (colorMode.value as? String) == "dark") || self.isSelected(dark)
         }
 
         let scope = app.element("settings-scope-accentColor")

@@ -117,7 +117,9 @@ extension XCTestCase {
         tapRevealed(row, in: app)
         let editor = self.editor(in: app)
         // A tap that lands while the tree redraws, as right after a sync, opens nothing.
-        if !poll(timeout: 10, until: { (editor.value as? String)?.hasPrefix(firstLine) == true }), row.exists {
+        if !poll(timeout: 10, until: { editor.exists && (editor.value as? String)?.hasPrefix(firstLine) == true }),
+            row.exists
+        {
             tapRevealed(row, in: app)
         }
         waitForText(editor, startingWith: firstLine, file: file, line: line)
