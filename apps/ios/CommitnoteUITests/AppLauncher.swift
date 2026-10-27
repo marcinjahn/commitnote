@@ -155,14 +155,14 @@ extension XCTestCase {
         let app = XCUIApplication()
         let focused = app.descendants(matching: .any).matching(NSPredicate(format: "hasKeyboardFocus == true"))
             .firstMatch
-        // The simulator sometimes loses a modified key press, mostly the first one after other
-        // input, so the shortcut is sent until its effect shows.
+        // The first hardware key after other input is often dropped or arrives without its
+        // modifiers, which types the bare letter instead (on the note placeholder, that starts a
+        // note). A lone Shift press, harmless either way, takes that place, and the shortcut is
+        // still sent until its effect shows.
         for _ in 0..<3 {
-            if focused.exists {
-                focused.typeKey(key, modifierFlags: modifiers)
-            } else {
-                app.typeKey(key, modifierFlags: modifiers)
-            }
+            let target: XCUIElement = focused.exists ? focused : app
+            target.typeKey(.shift, modifierFlags: [])
+            target.typeKey(key, modifierFlags: modifiers)
             if poll(timeout: 10, until: effect) { return }
         }
         XCTFail("Shortcut had no effect after three attempts", file: file, line: line)
