@@ -239,6 +239,10 @@ public struct PassphraseChangeProgress: Decodable, Equatable, Sendable {
     public var total: Int?
 }
 
+public struct LaunchActionEvent: Decodable, Equatable, Sendable {
+    public var action: LaunchAction
+}
+
 public enum CoreEvent: Decodable, Equatable, Sendable {
     case loadingProgress(LoadingProgress)
     case treeChanged(TreeChanged)
@@ -257,13 +261,14 @@ public enum CoreEvent: Decodable, Equatable, Sendable {
     case settingsSaveChanged(SettingsSaveChanged)
     case importStatusChanged(ImportStatusChanged)
     case passphraseChangeProgress(PassphraseChangeProgress)
+    case launchAction(LaunchAction)
     case unknown(name: String)
 
     public static let knownNames: [String] = [
         "loadingProgress", "treeChanged", "trashChanged", "searchStatusChanged", "noteChanged",
         "noteContentChangedRemotely", "syncStateChanged", "notice", "noticeCleared", "keyChanged",
         "sessionEnded", "historyChanged", "sharesChanged", "settingsChanged", "settingsSaveChanged",
-        "importStatusChanged", "passphraseChangeProgress",
+        "importStatusChanged", "passphraseChangeProgress", "launchAction",
     ]
 
     public var name: String {
@@ -285,6 +290,7 @@ public enum CoreEvent: Decodable, Equatable, Sendable {
         case .settingsSaveChanged: "settingsSaveChanged"
         case .importStatusChanged: "importStatusChanged"
         case .passphraseChangeProgress: "passphraseChangeProgress"
+        case .launchAction: "launchAction"
         case .unknown(let name): name
         }
     }
@@ -336,6 +342,9 @@ public enum CoreEvent: Decodable, Equatable, Sendable {
         case "passphraseChangeProgress":
             self = .passphraseChangeProgress(
                 try container.decode(PassphraseChangeProgress.self, forKey: .payload))
+        case "launchAction":
+            self = .launchAction(
+                try container.decode(LaunchActionEvent.self, forKey: .payload).action)
         default:
             self = .unknown(name: name)
         }

@@ -19,6 +19,7 @@ import { createEditingCommands } from "./commands/editing-commands";
 import { createHistoryCommands } from "./commands/history-commands";
 import { createImageCommands } from "./commands/image-commands";
 import { createImportCommands } from "./commands/import-commands";
+import { createLaunchCommands } from "./commands/launch-commands";
 import { createLoginCommands } from "./commands/login-commands";
 import { createNoteViewCommands } from "./commands/note-view-commands";
 import { createNotesCommands } from "./commands/notes-commands";
@@ -141,6 +142,7 @@ export function createNativeCore(options: {
       ...(typeof options.extraCommands === "function"
         ? options.extraCommands(app)
         : options.extraCommands),
+      ...createLaunchCommands({ emit }),
       ...createLoginCommands({ host, app, emit }),
       ...createSessionCommands({ host, app, emit, drafts }),
       ...createNotesCommands({ app, events: engineEvents, drafts, notices }),

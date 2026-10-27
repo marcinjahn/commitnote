@@ -373,7 +373,7 @@ final class CommandTests: XCTestCase {
     }
 
     func testVersion3CommandParams() throws {
-        XCTAssertEqual(NativeCoreAPIVersion.current, 5)
+        XCTAssertEqual(NativeCoreAPIVersion.current, 6)
         XCTAssertEqual(
             try params(NodeRename(path: ["a"], name: "b")), try json(#"{"path":["a"],"name":"b"}"#))
         XCTAssertEqual(
@@ -809,6 +809,12 @@ final class CommandTests: XCTestCase {
             try params(SettingsChange(key: .newFolderPlacement, value: "top")),
             try json(#"{"key":"newFolderPlacement","value":"top"}"#))
         XCTAssertEqual(
+            try params(SettingsChange(key: .typeToStart, value: "false")),
+            try json(#"{"key":"typeToStart","value":"false"}"#))
+        XCTAssertEqual(
+            try params(SettingsSetScope(key: .typeToStart, scope: .synced)),
+            try json(#"{"key":"typeToStart","scope":"synced"}"#))
+        XCTAssertEqual(
             try params(SettingsSetScope(key: .noteFont, scope: .device)),
             try json(#"{"key":"noteFont","scope":"device"}"#))
         XCTAssertEqual(
@@ -858,14 +864,14 @@ final class CommandTests: XCTestCase {
     }
 
     private let settingsViewJSON =
-        #"{"values":{"colorMode":"system","accentColor":"system","noteFont":"sans","newNotePlacement":"top","newFolderPlacement":"bottom"},"scopes":{"colorMode":"synced","accentColor":"device","noteFont":"synced"},"deviceName":"","automaticDeviceName":"iPhone","reopenLastView":true,"analyticsCounted":false,"canExport":true,"canImport":true,"canChangePassphrase":false}"#
+        #"{"values":{"colorMode":"system","accentColor":"system","noteFont":"sans","newNotePlacement":"top","newFolderPlacement":"bottom","typeToStart":true},"scopes":{"colorMode":"synced","accentColor":"device","noteFont":"synced","typeToStart":"device"},"deviceName":"","automaticDeviceName":"iPhone","reopenLastView":true,"analyticsCounted":false,"canExport":true,"canImport":true,"canChangePassphrase":false}"#
     private let saveViewJSON =
         #"{"state":"failed","label":"Not saved","detail":"Settings not saved","canRetry":true}"#
     private let choiceJSON =
         #"{"label":"Mode","options":[{"id":"a","label":"A","description":null},{"id":"b","label":"B","description":"d"}]}"#
 
     private var settingsCopyJSON: String {
-        ##"{"title":"Settings","intro":"i","sections":{"appearance":"a","editor":"e","notes":"n","thisDevice":"t","dataSecurity":"d"},"scopeLabels":{"synced":"All devices","device":"This device"},"colorMode":\##(choiceJSON),"accentColor":{"label":"Accent","options":[{"id":"system","label":"System","light":null,"dark":null},{"id":"blue","label":"Blue","light":"#0000ff","dark":"#8888ff"}]},"noteFont":{"label":"Font","options":[{"id":"sans","label":"Sans","description":null}],"previewHeading":"h","previewBody":"b","previewCode":"c"},"editorUnavailable":"u","newNotePlacement":\##(choiceJSON),"newFolderPlacement":\##(choiceJSON),"deviceName":{"label":"l","hint":"h","maxLength":40},"reopenLastView":{"label":"r"},"analytics":{"label":"l","hint":"h"},"data":{"exportLabel":"1","exportingLabel":"2","exportShareLabel":"3","exportFilesLabel":"4","exportFailed":"5","importLabel":"6","importingLabel":"7","changePassphraseLabel":"8"},"retryLabel":"Retry"}"##
+        ##"{"title":"Settings","intro":"i","sections":{"appearance":"a","editor":"e","notes":"n","thisDevice":"t","dataSecurity":"d"},"scopeLabels":{"synced":"All devices","device":"This device"},"colorMode":\##(choiceJSON),"accentColor":{"label":"Accent","options":[{"id":"system","label":"System","light":null,"dark":null},{"id":"blue","label":"Blue","light":"#0000ff","dark":"#8888ff"}]},"noteFont":{"label":"Font","options":[{"id":"sans","label":"Sans","description":null}],"previewHeading":"h","previewBody":"b","previewCode":"c"},"editorUnavailable":"u","newNotePlacement":\##(choiceJSON),"newFolderPlacement":\##(choiceJSON),"deviceName":{"label":"l","hint":"h","maxLength":40},"typeToStart":{"label":"Type to start","hint":"th"},"reopenLastView":{"label":"r"},"analytics":{"label":"l","hint":"h"},"data":{"exportLabel":"1","exportingLabel":"2","exportShareLabel":"3","exportFilesLabel":"4","exportFailed":"5","importLabel":"6","importingLabel":"7","changePassphraseLabel":"8"},"retryLabel":"Retry"}"##
     }
 
     func testVersion5SettingsResults() throws {
@@ -883,6 +889,10 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(value.copy.data.changePassphraseLabel, "8")
         XCTAssertEqual(value.view.scopes.accentColor, .device)
         XCTAssertEqual(value.view.values.newFolderPlacement, "bottom")
+        XCTAssertTrue(value.view.values.typeToStart)
+        XCTAssertEqual(value.view.scopes.typeToStart, .device)
+        XCTAssertEqual(value.copy.typeToStart.label, "Type to start")
+        XCTAssertEqual(value.copy.typeToStart.hint, "th")
         XCTAssertEqual(value.view.automaticDeviceName, "iPhone")
         XCTAssertFalse(value.view.canChangePassphrase)
         XCTAssertEqual(value.save.state, .failed)
@@ -1048,5 +1058,36 @@ final class CommandTests: XCTestCase {
         else { return XCTFail("expected passphraseChangeProgress") }
         XCTAssertNil(open.done)
         XCTAssertNil(open.total)
+    }
+
+    func testVersion6LaunchCommands() throws {
+        XCTAssertEqual(
+            try params(LaunchDeliver(action: .newNote)), try json(#"{"action":"new-note"}"#))
+        XCTAssertEqual(
+            try params(LaunchDeliver(action: .search)), try json(#"{"action":"search"}"#))
+        XCTAssertEqual(
+            try params(LaunchAttach(accepts: [.newNote, .search])),
+            try json(#"{"accepts":["new-note","search"]}"#))
+        XCTAssertEqual(try params(LaunchAttach(accepts: [])), try json(#"{"accepts":[]}"#))
+        XCTAssertEqual(try params(LaunchDetach()), try json("{}"))
+        XCTAssertEqual(LaunchAction.allCases, [.newNote, .search])
+        XCTAssertEqual(try result(LaunchDeliver.self, "{}"), Empty())
+        XCTAssertEqual(try result(LaunchAttach.self, "{}"), Empty())
+        XCTAssertEqual(try result(LaunchDetach.self, "{}"), Empty())
+    }
+
+    func testVersion6LaunchActionEvent() throws {
+        func decode(_ json: String) throws -> CoreEvent {
+            try JSONDecoder().decode(CoreEvent.self, from: Data(json.utf8))
+        }
+        XCTAssertEqual(
+            try decode(#"{"event":"launchAction","payload":{"action":"new-note"}}"#),
+            .launchAction(.newNote))
+        XCTAssertEqual(
+            try decode(#"{"event":"launchAction","payload":{"action":"search"}}"#),
+            .launchAction(.search))
+        XCTAssertEqual(CoreEvent.launchAction(.search).name, "launchAction")
+        XCTAssertThrowsError(
+            try decode(#"{"event":"launchAction","payload":{"action":"other"}}"#))
     }
 }

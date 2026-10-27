@@ -1,12 +1,13 @@
+import type { LaunchAction } from "../app/launch-action";
 import type { LoginStep } from "../login/login";
 import type { SettingScope } from "../settings/setting-scope";
 import type { ColorTag } from "../tags/color-tag";
 import type { MessagePart } from "../ui/share/share-messages";
 import type { HostServices } from "./host-services";
 
-export type { ColorTag, MessagePart, SettingScope };
+export type { ColorTag, LaunchAction, MessagePart, SettingScope };
 
-export const NATIVE_CORE_API_VERSION = 5;
+export const NATIVE_CORE_API_VERSION = 6;
 export const NATIVE_CORE_MARKER = "commitnote-native-core";
 
 type ForgeKind = "github" | "gitlab";
@@ -153,8 +154,13 @@ export type SettingKeyView =
   | "accentColor"
   | "noteFont"
   | "newNotePlacement"
-  | "newFolderPlacement";
-export type ScopedSettingKey = "colorMode" | "accentColor" | "noteFont";
+  | "newFolderPlacement"
+  | "typeToStart";
+export type ScopedSettingKey =
+  | "colorMode"
+  | "accentColor"
+  | "noteFont"
+  | "typeToStart";
 
 export interface SettingOptionView {
   id: string;
@@ -193,6 +199,7 @@ export interface SettingsCopy {
     previewCode: string;
   };
   editorUnavailable: string;
+  typeToStart: { label: string; hint: string };
   newNotePlacement: SettingChoiceCopy;
   newFolderPlacement: SettingChoiceCopy;
   deviceName: { label: string; hint: string; maxLength: number };
@@ -218,11 +225,13 @@ export interface SettingsView {
     noteFont: string;
     newNotePlacement: string;
     newFolderPlacement: string;
+    typeToStart: boolean;
   };
   scopes: {
     colorMode: SettingScope;
     accentColor: SettingScope;
     noteFont: SettingScope;
+    typeToStart: SettingScope;
   };
   deviceName: string;
   automaticDeviceName: string;
@@ -780,6 +789,9 @@ export type CoreCommands = {
     params: { name: string; body: string; nameConfirmed: boolean };
     result: { outcome: EarlyDraftOutcome };
   };
+  "launch.deliver": { params: { action: LaunchAction }; result: {} };
+  "launch.attach": { params: { accepts: LaunchAction[] }; result: {} };
+  "launch.detach": { params: {}; result: {} };
   "settings.open": {
     params: {};
     result: { copy: SettingsCopy; view: SettingsView; save: SettingsSaveView };
@@ -991,6 +1003,7 @@ export type CoreEvents = {
     done: number | null;
     total: number | null;
   };
+  launchAction: { action: LaunchAction };
 };
 
 export const CORE_COMMAND_NAMES = [
@@ -1058,6 +1071,9 @@ export const CORE_COMMAND_NAMES = [
   "lastView.load",
   "lastView.save",
   "earlyDraft.handOff",
+  "launch.deliver",
+  "launch.attach",
+  "launch.detach",
   "settings.open",
   "settings.change",
   "settings.setScope",
@@ -1101,6 +1117,7 @@ export const CORE_EVENT_NAMES = [
   "settingsSaveChanged",
   "importStatusChanged",
   "passphraseChangeProgress",
+  "launchAction",
 ] as const satisfies readonly (keyof CoreEvents)[];
 
 export const FAKE_CORE_COMMAND_NAMES = [

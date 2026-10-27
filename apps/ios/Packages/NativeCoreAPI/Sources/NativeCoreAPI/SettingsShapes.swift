@@ -9,12 +9,14 @@ public enum SettingKeyView: String, Codable, Equatable, Sendable {
     case noteFont
     case newNotePlacement
     case newFolderPlacement
+    case typeToStart
 }
 
 public enum ScopedSettingKey: String, Codable, Equatable, Sendable {
     case colorMode
     case accentColor
     case noteFont
+    case typeToStart
 }
 
 public struct SettingOptionView: Decodable, Equatable, Sendable {
@@ -76,6 +78,11 @@ public struct AnalyticsCopy: Decodable, Equatable, Sendable {
     public var hint: String
 }
 
+public struct TypeToStartCopy: Decodable, Equatable, Sendable {
+    public var label: String
+    public var hint: String
+}
+
 public struct SettingsDataCopy: Decodable, Equatable, Sendable {
     public var exportLabel: String
     public var exportingLabel: String
@@ -99,6 +106,7 @@ public struct SettingsCopy: Decodable, Equatable, Sendable {
     public var newNotePlacement: SettingChoiceCopy
     public var newFolderPlacement: SettingChoiceCopy
     public var deviceName: DeviceNameCopy
+    public var typeToStart: TypeToStartCopy
     public var reopenLastView: ReopenLastViewCopy
     public var analytics: AnalyticsCopy
     public var data: SettingsDataCopy
@@ -111,12 +119,14 @@ public struct SettingsValues: Decodable, Equatable, Sendable {
     public var noteFont: String
     public var newNotePlacement: String
     public var newFolderPlacement: String
+    public var typeToStart: Bool
 }
 
 public struct SettingsScopes: Decodable, Equatable, Sendable {
     public var colorMode: SettingScope
     public var accentColor: SettingScope
     public var noteFont: SettingScope
+    public var typeToStart: SettingScope
 }
 
 public struct SettingsView: Decodable, Equatable, Sendable {

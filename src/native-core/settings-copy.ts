@@ -41,6 +41,8 @@ import {
   SETTINGS_RETRY_LABEL,
   SETTINGS_TITLE,
   THIS_DEVICE_SECTION,
+  TYPE_TO_START_HINT,
+  TYPE_TO_START_LABEL,
 } from "../ui/settings/settings-messages";
 import type { SettingOptionView, SettingsCopy } from "./api";
 
@@ -92,6 +94,7 @@ export function buildSettingsCopy(): SettingsCopy {
       previewCode: NOTE_FONT_PREVIEW_CODE,
     },
     editorUnavailable: EDITOR_UNAVAILABLE_MESSAGE,
+    typeToStart: { label: TYPE_TO_START_LABEL, hint: TYPE_TO_START_HINT },
     newNotePlacement: {
       label: NEW_NOTES_LABEL,
       options: optionViews(NEW_NOTE_PLACEMENT_OPTIONS),

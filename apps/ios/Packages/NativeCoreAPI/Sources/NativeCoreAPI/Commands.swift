@@ -1,5 +1,5 @@
 public enum NativeCoreAPIVersion {
-    public static let current = 5
+    public static let current = 6
 }
 
 public protocol NativeCoreCommand: Encodable, Sendable {
@@ -842,6 +842,9 @@ public enum NativeCoreCommands {
         LastViewLoad.name,
         LastViewSave.name,
         EarlyDraftHandOff.name,
+        LaunchDeliver.name,
+        LaunchAttach.name,
+        LaunchDetach.name,
         SettingsOpen.name,
         SettingsChange.name,
         SettingsSetScope.name,
@@ -866,6 +869,26 @@ public enum NativeCoreCommands {
         PassphraseCancelChange.name,
         PassphraseEnableAtomic.name,
     ]
+}
+
+public struct LaunchDeliver: NativeCoreCommand {
+    public static let name = "launch.deliver"
+    public typealias Result = Empty
+    public var action: LaunchAction
+    public init(action: LaunchAction) { self.action = action }
+}
+
+public struct LaunchAttach: NativeCoreCommand {
+    public static let name = "launch.attach"
+    public typealias Result = Empty
+    public var accepts: [LaunchAction]
+    public init(accepts: [LaunchAction]) { self.accepts = accepts }
+}
+
+public struct LaunchDetach: NativeCoreCommand {
+    public static let name = "launch.detach"
+    public typealias Result = Empty
+    public init() {}
 }
 
 public struct SettingsOpen: NativeCoreCommand {

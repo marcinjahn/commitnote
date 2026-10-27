@@ -305,7 +305,7 @@ final class MessageTests: XCTestCase {
     }
 
     func testEventNameMatchesCase() throws {
-        XCTAssertEqual(CoreEvent.knownNames.count, 17)
+        XCTAssertEqual(CoreEvent.knownNames.count, 18)
         XCTAssertEqual(
             CoreEvent.noticeCleared(NoticeCleared(id: "x")).name, "noticeCleared")
     }

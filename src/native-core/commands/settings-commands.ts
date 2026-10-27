@@ -35,12 +35,14 @@ const SETTING_KEYS: readonly SettingKeyView[] = [
   "noteFont",
   "newNotePlacement",
   "newFolderPlacement",
+  "typeToStart",
 ];
 
 const SCOPED_SETTING_KEYS: readonly ScopedSettingKey[] = [
   "colorMode",
   "accentColor",
   "noteFont",
+  "typeToStart",
 ];
 
 function oneOf<T extends string>(
@@ -51,6 +53,12 @@ function oneOf<T extends string>(
   const value = stringParam(params, name);
   if (!(allowed as readonly string[]).includes(value)) throw invalidParams();
   return value as T;
+}
+
+function booleanString(raw: string): boolean {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  throw invalidParams();
 }
 
 function isRecord(value: unknown): value is CommandParams {
@@ -97,7 +105,10 @@ export function createSettingsCommands(context: {
 
     async "settings.change"(params): Promise<Result<"settings.change">> {
       const key = oneOf(params, "key", SETTING_KEYS);
-      const value = SETTINGS_SCHEMA[key].parse(stringParam(params, "value"));
+      const raw = stringParam(params, "value");
+      const value = SETTINGS_SCHEMA[key].parse(
+        key === "typeToStart" ? booleanString(raw) : raw,
+      );
       if (value === undefined) throw invalidParams();
       const current = running();
       changeSettings(

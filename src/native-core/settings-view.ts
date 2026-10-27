@@ -36,11 +36,13 @@ export function settingsViewOf(
       noteFont: settings.noteFont,
       newNotePlacement: settings.newNotePlacement,
       newFolderPlacement: settings.newFolderPlacement,
+      typeToStart: settings.typeToStart,
     },
     scopes: {
       colorMode: scopes.colorMode,
       accentColor: scopes.accentColor,
       noteFont: scopes.noteFont,
+      typeToStart: scopes.typeToStart,
     },
     deviceName: app.deviceSettings.readDeviceName() ?? "",
     automaticDeviceName: app.deviceModel,

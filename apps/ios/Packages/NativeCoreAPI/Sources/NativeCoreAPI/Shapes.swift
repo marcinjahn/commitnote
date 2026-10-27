@@ -1,3 +1,8 @@
+public enum LaunchAction: String, Codable, Sendable, CaseIterable {
+    case newNote = "new-note"
+    case search
+}
+
 public enum ForgeID: String, Codable, Equatable, Sendable {
     case github
     case gitlab
