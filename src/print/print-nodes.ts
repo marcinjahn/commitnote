@@ -2,6 +2,11 @@ import type { SyntaxNode, Tree } from "@lezer/common";
 import type { ImageId } from "../images/image-id";
 import { parseImageUrl } from "../images/image-reference";
 import { markdownParser } from "../markdown/markdown-parser";
+import {
+  readTable,
+  type MarkdownTableRow,
+  type TableAlignment,
+} from "../markdown/markdown-table";
 import { toOpenableUrl } from "../markdown/openable-url";
 
 export type PrintNode =
@@ -570,64 +575,27 @@ function renderListItem(
   }
 }
 
-function alignments(separator: string): string[] {
-  return separator
-    .trim()
-    .replace(/^\||\|$/g, "")
-    .split("|")
-    .map((cell) => {
-      const spec = cell.trim();
-      const left = spec.startsWith(":");
-      const right = spec.endsWith(":");
-      if (left && right) return "center";
-      if (left) return "left";
-      if (right) return "right";
-      return "";
-    });
-}
-
-function rowCells(row: SyntaxNode): Array<SyntaxNode | null> {
-  const delimiters = row.getChildren("TableDelimiter");
-  const cells = row.getChildren("TableCell");
-  const segments: Array<[number, number]> = [];
-  let start = row.from;
-  for (const delimiter of delimiters) {
-    segments.push([start, delimiter.from]);
-    start = delimiter.to;
-  }
-  segments.push([start, row.to]);
-  if (delimiters[0]?.from === row.from) segments.shift();
-  if (delimiters[delimiters.length - 1]?.to === row.to) segments.pop();
-  return segments.map(
-    ([from, to]) =>
-      cells.find((cell) => cell.from >= from && cell.to <= to) ?? null,
-  );
-}
-
 function renderTableRow(
   ctx: RenderContext,
   parent: ElementNode,
-  row: SyntaxNode,
+  row: MarkdownTableRow,
   tag: "th" | "td",
-  columns: number,
-  aligns: readonly string[],
+  aligns: readonly TableAlignment[],
 ): void {
   const tr = appendElement(parent, "tr");
-  const cells = rowCells(row);
-  for (let column = 0; column < columns; column++) {
+  row.cells.forEach((cell, column) => {
     const element = appendElement(tr, tag);
-    if (aligns[column])
-      setAttr(element, "style", `text-align: ${aligns[column]};`);
-    const cell = cells[column];
-    if (cell) {
+    const align = aligns[column];
+    if (align) setAttr(element, "style", `text-align: ${align};`);
+    if (cell.node) {
       renderInlineBlock(
         ctx,
         element,
-        cell,
+        cell.node,
         trimRange(ctx.text, cell.from, cell.to),
       );
     }
-  }
+  });
 }
 
 function renderTable(
@@ -635,29 +603,24 @@ function renderTable(
   parent: ElementNode,
   node: SyntaxNode,
 ): void {
-  const header = node.getChild("TableHeader");
-  if (!header) {
+  const model = readTable(node, ctx.text);
+  if (!model) {
     renderSourceParagraph(ctx, parent, node);
     return;
   }
-  const separator = node.getChild("TableDelimiter");
-  const aligns = separator
-    ? alignments(ctx.text.slice(separator.from, separator.to))
-    : [];
-  const columns = rowCells(header).length;
   const table = appendElement(parent, "table");
   renderTableRow(
     ctx,
     appendElement(table, "thead"),
-    header,
+    model.header,
     "th",
-    columns,
-    aligns,
+    model.alignments,
   );
-  const rows = node.getChildren("TableRow");
-  if (rows.length === 0) return;
+  if (model.rows.length === 0) return;
   const body = appendElement(table, "tbody");
-  for (const row of rows) renderTableRow(ctx, body, row, "td", columns, aligns);
+  for (const row of model.rows) {
+    renderTableRow(ctx, body, row, "td", model.alignments);
+  }
 }
 
 function renderBlocks(
