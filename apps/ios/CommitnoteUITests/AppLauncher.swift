@@ -22,6 +22,7 @@ var isPad: Bool {
 private struct LaunchOptions: Equatable {
     let appearance: Appearance
     let editorHooks: Bool
+    let contentSize: String?
 }
 
 /// What the running app was launched with, while the tests can restart it in its process.
@@ -39,10 +40,16 @@ private let appReadyObserver: Void = {
 }()
 
 func launchApp(
-    reset: Bool, appearance: Appearance = .light, holdLoading: Bool = false, editorHooks: Bool = false
+    reset: Bool, appearance: Appearance = .light, holdLoading: Bool = false, editorHooks: Bool = false,
+    contentSize: String? = nil
 ) -> XCUIApplication {
-    runningLaunch = holdLoading ? nil : LaunchOptions(appearance: appearance, editorHooks: editorHooks)
+    runningLaunch =
+        holdLoading
+        ? nil : LaunchOptions(appearance: appearance, editorHooks: editorHooks, contentSize: contentSize)
     let app = XCUIApplication()
+    if let contentSize {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", contentSize]
+    }
     if reset {
         app.launchEnvironment["COMMITNOTE_UI_TEST_RESET"] = "1"
     }
@@ -84,14 +91,17 @@ extension XCTestCase {
     /// Restarts the running app's model and core in place, as a relaunch without a reset would,
     /// and waits until it has settled. False when the app runs with other launch options or does
     /// not settle, so the caller relaunches it instead.
-    func restartInProcess(appearance: Appearance, editorHooks: Bool) -> XCUIApplication? {
+    func restartInProcess(
+        appearance: Appearance, editorHooks: Bool, contentSize: String? = nil
+    ) -> XCUIApplication? {
         _ = appReadyObserver
         let app = XCUIApplication()
-        guard runningLaunch == LaunchOptions(appearance: appearance, editorHooks: editorHooks),
+        guard
+            runningLaunch
+                == LaunchOptions(appearance: appearance, editorHooks: editorHooks, contentSize: contentSize),
             app.state == .runningForeground
         else { return nil }
         appReady = false
-        prepareAnimationIdleForLaunch()
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),
             CFNotificationName("io.github.marcinjahn.commitnote.testing.relaunch" as CFString), nil, nil, true)
@@ -110,6 +120,75 @@ extension XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return true
+    }
+
+    func openLink(_ link: String, file: StaticString = #filePath, line: UInt = #line) {
+        guard let url = URL(string: link) else {
+            XCTFail("Not a valid link", file: file, line: line)
+            return
+        }
+        // XCUIApplication.open relaunches the app with the link; the system hands it to the running one.
+        XCUIDevice.shared.system.open(url)
+        let confirm = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Open"]
+        if confirm.waitForExistence(timeout: 2) {
+            confirm.tap()
+        }
+        let app = XCUIApplication()
+        XCTAssertTrue(
+            poll(timeout: 20) { app.state == .runningForeground }, "App did not come to the foreground",
+            file: file, line: line)
+    }
+
+    func pressShortcut(
+        _ key: String, modifiers: XCUIElement.KeyModifierFlags = .command, until effect: () -> Bool,
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let app = XCUIApplication()
+        let focused = app.descendants(matching: .any).matching(NSPredicate(format: "hasKeyboardFocus == true"))
+            .firstMatch
+        // The simulator sometimes loses a modified key press, mostly the first one after other
+        // input, so the shortcut is sent until its effect shows.
+        for _ in 0..<3 {
+            if focused.exists {
+                focused.typeKey(key, modifierFlags: modifiers)
+            } else {
+                app.typeKey(key, modifierFlags: modifiers)
+            }
+            if poll(timeout: 10, until: effect) { return }
+        }
+        XCTFail("Shortcut had no effect after three attempts", file: file, line: line)
+    }
+
+    /// Never resends: a key that landed late would type its character twice.
+    func typeKeys(
+        _ text: String, until effect: () -> Bool, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let app = XCUIApplication()
+        for character in text {
+            app.typeKey(String(character), modifierFlags: [])
+        }
+        XCTAssertTrue(poll(timeout: 10, until: effect), "Typed keys had no effect", file: file, line: line)
+    }
+
+    func switchWidth(
+        to value: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let width = app.element("testing-width")
+        for _ in 0..<3 {
+            if width.exists && (width.value as? String) == value { return }
+            useTestingMenu("testing-switch-width", in: app, file: file, line: line)
+            if poll(timeout: 5, until: { (width.value as? String) == value }) { return }
+        }
+        XCTAssertEqual(width.value as? String, value, "Forced width", file: file, line: line)
+    }
+
+    func waitForTypeToStartReady(
+        in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let state = app.element("testing-type-to-start")
+        XCTAssertTrue(
+            poll(timeout: 20) { (state.value as? String) == "ready" }, "Type-to-start was not ready",
+            file: file, line: line)
     }
 
     func appears(_ element: XCUIElement, within timeout: TimeInterval) -> Bool {
@@ -136,6 +215,15 @@ extension XCTestCase {
     }
 
     func tapRevealed(_ element: XCUIElement, in app: XCUIApplication) {
+        // A form leaves rows scrolled out of view out of the hierarchy, as at large text sizes.
+        if !appears(element, within: 10) {
+            for _ in 0..<6 where !element.exists {
+                // Above the keyboard, which would take a swipe through the middle of the screen.
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(
+                    forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)))
+                _ = appears(element, within: 2)
+            }
+        }
         waitFor(element)
         scrollToReveal(element, in: app)
         element.tap()

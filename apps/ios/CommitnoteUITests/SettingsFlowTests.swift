@@ -94,6 +94,30 @@ final class SettingsFlowTests: XCTestCase {
         XCTAssertTrue(isOn(revealInSettings(app.switches["settings-analytics"], in: app)))
     }
 
+    func testTypeToStartToggleAndScope() {
+        let app = openNotes()
+        openSettings(in: app)
+        let toggle = revealInSettings(app.switches["settings-type-to-start"], in: app)
+        XCTAssertTrue(isOn(toggle), "Type-to-start is on by default")
+        revealInSettings(app.element("settings-editor-note"), tappable: false, in: app)
+
+        setToggle("settings-type-to-start", on: false, in: app)
+        setToggle("settings-type-to-start", on: true, in: app)
+
+        let scope = app.buttons["settings-scope-typeToStart"]
+        waitForValue(revealInSettings(scope, in: app), "device")
+        XCTAssertTrue(scope.label.contains("This device"), "The scope reads This device")
+        setScope("typeToStart", to: "synced", in: app)
+        waitUntil(scope, NSPredicate(format: "label CONTAINS %@", "All devices"))
+        waitForSettingsSaved(in: app)
+
+        setScope("typeToStart", to: "device", in: app)
+        waitUntil(scope, NSPredicate(format: "label CONTAINS %@", "This device"))
+        XCTAssertTrue(isOn(revealInSettings(app.switches["settings-type-to-start"], in: app)))
+        waitForSettingsSaved(in: app)
+        closeSettings(in: app)
+    }
+
     private func relaunchWithoutReopening() -> XCUIApplication {
         let app = launchApp(reset: false)
         waitFor(app.element("notes-tree"), timeout: 30)

@@ -105,7 +105,11 @@ extension XCTestCase {
     {
         let pasted = NSPredicate(format: "value CONTAINS %@", text)
         var editor = focusEditor(in: app, file: file, line: line)
-        for _ in 0..<4 {
+        for attempt in 0..<4 {
+            // After a menu closes the simulator can drop every ⌘V until the editor is focused anew.
+            if attempt > 0 {
+                hideKeyboardThroughHooks(in: app, file: file, line: line)
+            }
             editor = focusEditor(in: app, file: file, line: line)
             moveCaretToEnd(in: app, file: file, line: line)
             pasteText(text, into: editor)

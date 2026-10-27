@@ -6,9 +6,10 @@ import XCTest
 /// animations as finished, so each interaction there sat out XCTest's 60-second animation timeout.
 /// Inside `whileMenuIsOpen` the first wait is a full one, so the menu opens on a settled screen;
 /// after it only the run loop waits remain, and every step still waits for the elements it needs.
-/// On iPad a text selection sometimes leaves the app never reporting idle animations again until
-/// it is relaunched, so once a full wait has run into the timeout, the rest of that launch skips
-/// the animation part as well.
+/// On iPad a text selection or caret move sometimes leaves the app never reporting idle animations
+/// again until its process is relaunched, so once a full wait has run into the timeout, the rest of
+/// that launch skips the animation part as well, across in-process restarts too: they keep the
+/// process, and the next test's first interaction would otherwise sit out the timeout again.
 private enum MenuIdle {
     case off
     case armed

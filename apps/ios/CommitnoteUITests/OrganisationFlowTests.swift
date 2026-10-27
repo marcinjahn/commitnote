@@ -227,6 +227,11 @@ final class OrganisationFlowTests: XCTestCase {
 
         // ⌘A does not select the search field's text on iPad.
         field.buttons["Clear text"].tap()
+        // An empty search field without focus ends the search on iPad, so it is tapped again.
+        if poll(timeout: 3, until: { !self.hasKeyboardFocus(field) }) {
+            field.tap()
+            waitForFocus(field)
+        }
         field.typeText("encrypted")
         let content = app.elements("search-content-row")
             .matching(NSPredicate(format: "label CONTAINS %@", SampleNote.welcome)).firstMatch

@@ -28,6 +28,11 @@ final class SettingsScreenshotTests: XCTestCase {
         tapBack(in: app)
         waitUntilGone(app.element("settings-font-list"))
 
+        let typeToStart = revealInSettings(app.switches["settings-type-to-start"], in: app)
+        revealInSettings(app.element("settings-editor-note"), tappable: false, in: app)
+        waitUntilSettled(typeToStart)
+        snapshotBothAppearances("settings-editor")
+
         let passphrase = revealInSettings(app.buttons["settings-change-passphrase-button"], in: app)
         waitUntilSettled(passphrase)
         snapshotBothAppearances("settings-data")

@@ -113,8 +113,13 @@ extension XCTestCase {
         _ name: String, startingWith firstLine: String, in app: XCUIApplication,
         file: StaticString = #filePath, line: UInt = #line
     ) -> XCUIElement {
-        tapRevealed(note(name, in: app), in: app)
+        let row = note(name, in: app)
+        tapRevealed(row, in: app)
         let editor = self.editor(in: app)
+        // A tap that lands while the tree redraws, as right after a sync, opens nothing.
+        if !poll(timeout: 10, until: { (editor.value as? String)?.hasPrefix(firstLine) == true }), row.exists {
+            tapRevealed(row, in: app)
+        }
         waitForText(editor, startingWith: firstLine, file: file, line: line)
         return editor
     }

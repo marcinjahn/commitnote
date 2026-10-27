@@ -11,14 +11,41 @@ enum ImportSample {
 extension XCTestCase {
     func openSettings(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         backToTree(in: app, file: file, line: line)
-        let button = app.buttons["settings-button"]
+        var button = app.buttons["settings-button"]
         for _ in 0..<3 {
-            hittable(app.buttons.matching(identifier: "notes-menu-button"), file: file, line: line).tap()
+            if tapNotesMenu(in: app, file: file, line: line) {
+                button = app.buttons.matching(
+                    NSPredicate(format: "identifier == %@ OR label == %@", "settings-button", "Settings")
+                ).firstMatch
+            }
             if appears(button, within: 5) { break }
         }
         waitFor(button, file: file, line: line)
         button.tap()
         waitFor(app.element("settings-screen"), timeout: 30, file: file, line: line)
+    }
+
+    /// At accessibility text sizes the iPad sidebar has no room for every toolbar item, and the
+    /// system moves the notes menu into the toolbar's overflow menu. Returns whether it was there.
+    @discardableResult
+    func tapNotesMenu(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) -> Bool {
+        let menu = app.buttons.matching(identifier: "notes-menu-button")
+        if appears(menu.firstMatch, within: 5) {
+            hittable(menu, file: file, line: line).tap()
+            return false
+        }
+        let overflow = app.navigationBars.buttons.matching(NSPredicate(format: "label == %@", "More"))
+        XCTAssertTrue(
+            appears(overflow.firstMatch, within: 5),
+            "Expected the notes menu or the toolbar overflow among "
+                + "\(app.navigationBars.buttons.allElementsBoundByIndex.map { "\($0.identifier)|\($0.label)" })",
+            file: file, line: line)
+        hittable(overflow, file: file, line: line).tap()
+        hittable(
+            app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", "notes-menu-button", "Menu")),
+            file: file, line: line
+        ).tap()
+        return true
     }
 
     /// A tap on Done while a sheet over Settings is still going away is ignored, so it is repeated.
@@ -95,6 +122,25 @@ extension XCTestCase {
         }
         revealInSettings(toggle, in: app, file: file, line: line)
         XCTAssertEqual(isOn(toggle), on, "\(identifier) is \(on ? "on" : "off")", file: file, line: line)
+    }
+
+    /// The scope follows the core's answer rather than the tap, so a tap is repeated only once the
+    /// previous one has had time to come back.
+    func setScope(
+        _ key: String, to scope: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let button = app.buttons["settings-scope-\(key)"]
+        for _ in 0..<3 where !(button.exists && (button.value as? String) == scope) {
+            revealInSettings(button, in: app, file: file, line: line).tap()
+            if poll(timeout: 10, until: { button.exists && (button.value as? String) == scope }) { break }
+        }
+        XCTAssertEqual(button.value as? String, scope, "\(key) scope", file: file, line: line)
+    }
+
+    func waitForSettingsSaved(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let save = revealInSettings(
+            app.element("settings-save-status"), upward: true, tappable: false, in: app, file: file, line: line)
+        waitForValue(save, "synced", timeout: 60, file: file, line: line)
     }
 
     func isSelected(_ element: XCUIElement) -> Bool {
