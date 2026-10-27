@@ -14,8 +14,10 @@ Three layers:
   settings, image codec). It decodes images with ImageIO and encodes them through `ImageCodec`.
 - **Core bundle** (`commitnote-core.js`) — the native core, built from `src/native-core/`. It reuses
   the web app's format, crypto, forge adapters, `NoteTree` and `SyncEngine`, so the iOS app reads
-  exactly what the web app writes and syncs the same way. The native core API version is 4. The `Testing` configuration bundles the fake core bundle instead,
-  which serves the sample notes repo from a fake forge.
+  exactly what the web app writes and syncs the same way. The native core API version is 6.
+
+The `Testing` configuration bundles the fake core bundle instead, which serves the sample notes repo
+from a fake forge.
 
 What the app does:
 
@@ -59,6 +61,8 @@ What the app does:
 - The sync status shows synced, syncing, pending, failed, conflict or offline, with the unsaved
   notes and Retry now. On a conflict, the conflict view offers "Keep this device's version", "Keep
   other device's version" and "Edit merged". Notices come with actions.
+- Launch from outside the app and iPad keyboard, pointer and multitasking support: see Entry points
+  and iPad.
 - Log out saves first and offers "Keep trying" or "Log out anyway". After a passphrase change on
   another device, the key-changed screen exports the notes, including unsaved edits, as a zip
   through the share sheet.
@@ -74,7 +78,18 @@ What the app does:
   live-preview style runs and the editing commands. Depends on `EditorText`.
 - `Packages/ImageCodec` — libwebp 1.5.0 vendored unmodified as a C target (BSD-3-Clause, its licence
   file is kept with the sources) and a Swift WebP encoder, tested on Linux.
+- `Packages/AppInteraction` — pure Swift, tested on Linux: the `commitnote://` link parser, the quick
+  action mapping, the keyboard shortcut table, the type-to-start rules and key buffer, and the haptic
+  mapping.
 - `Packages/CoreRuntime` — the core runtime (Apple platforms only).
+- `Commitnote/App/LaunchInbox.swift` holds launch actions until the model forwards them to the native
+  core; `AppDelegate.swift` receives quick actions; `LaunchIntents.swift` declares the App Shortcuts;
+  `AppCommands.swift` is the menu-bar and ⌘-hold command set; `HapticsPlayer.swift` plays haptics.
+  `Commitnote/Notes/TypeToStartCatcher.swift` catches hardware key presses for type-to-start.
+- `Commitnote/Info.plist` (generated from `project.yml`) adds, beyond the standard keys: the
+  `commitnote` URL scheme (`CFBundleURLTypes`), the two quick actions (`UIApplicationShortcutItems`),
+  the camera usage string, the bundled note fonts (`UIAppFonts`) and the exported tree item type.
+  `UIApplicationSupportsMultipleScenes` is `false`.
 - `Commitnote/Settings/` — the Settings screen and its data screens (Export, Import notes, Change
   passphrase, note font list). `Commitnote/App/AppModel+Settings.swift`, `AppModel+Data.swift`,
   `AppModel+Passphrase.swift` and `AppModel+Print.swift` hold their model side;
@@ -86,6 +101,53 @@ What the app does:
 - `../test-vectors/` — JSON test vectors shared by the TypeScript and Swift tests.
 
 The Xcode project is generated and not committed.
+
+## Entry points and iPad
+
+### Launch actions
+
+Two launch actions exist: `new-note` and `search`. Each can come from a quick action, an App Shortcut
+or a link, and all of them take the same path: the app hands the launch action to the native core
+(`launch.*` commands), which holds it until the app can act on it.
+
+| Entry point | New note | Search notes |
+| --- | --- | --- |
+| Quick actions (long-press the app icon) | "New note" (`io.github.marcinjahn.commitnote.new-note`) | "Search notes" (`io.github.marcinjahn.commitnote.search`) |
+| App Shortcuts (Shortcuts app, Spotlight, Action Button) | `NewNoteIntent`: "New note in commitnote", "Start a note in commitnote" | `SearchNotesIntent`: "Search notes in commitnote", "Search commitnote" |
+| Links | `commitnote://new-note` | `commitnote://search` |
+
+Any `commitnote://` URL also accepts `?action=new-note` or `?action=search`, for example
+`commitnote://open?action=search`. A URL with another scheme, or without a known action, does nothing.
+To put a shortcut on the Action Button, choose the Shortcut action in Settings → Action Button and
+pick one of the two shortcuts.
+
+Rules:
+
+- While the app is starting or loading, only "new note" is accepted, and it focuses the early draft
+  on the loading screen. Search is dropped there.
+- Once the notes are ready, both work. They are dropped while a sheet, a dialog or search is open.
+- Search on iPhone first leaves the open note.
+- A cold launch from a link or quick action waits for the notes to be ready before acting.
+
+### iPad keyboard, pointer and multitasking
+
+- Menu-bar and ⌘-hold commands: ⌘N New Note, ⌘F Search Notes, ⌘S Save, and in the editor ⌘B Bold,
+  ⌘I Italic, ⌘⇧X Strikethrough, ⌘K Link, ⌘↩ Task. ⌘K opens Search when the editor is not focused. The
+  commands are disabled while the notes are not shown or a sheet is open, and the formatting commands
+  while the editor is not focused. ⌘S saves without a toast; the sync status icon shows the result.
+- Type-to-start: with a hardware keyboard, typing a printable character on the empty note placeholder
+  creates a new note and puts the typed text in its editor. It needs Settings → Editor → "Start a note
+  by typing" (on by default; the scope is This device by default), the regular width layout and the
+  loaded tree. It does not run on the loading screen, with a sheet or search open, with a text field
+  focused, or for key presses with ⌘, ⌃ or ⌥ held.
+- Pointer: rows, buttons and notices have hover effects, and tree and trash rows have right-click
+  context menus (the same actions as the long-press menus).
+- Multitasking: Stage Manager and Split View resize the one window. The layout follows the
+  size class, so a narrow window uses the iPhone layout. There is only one window and one scene.
+- Haptics: they follow the system haptics setting and play on iPhone for drags, drops, notices,
+  save failures, conflicts and finished actions. An iPad has no haptic engine, so nothing plays there.
+- Accessibility: Dynamic Type including the accessibility sizes (checked by an accessibility audit at
+  the AccessibilityL size), VoiceOver labels and values, Reduce Motion, and Increase Contrast.
 
 ## Usage statistics
 
@@ -115,7 +177,8 @@ Settings has the same sections as the web app. The differences:
   (settings are written per key).
 - Reopening the last view is on by default; turning it off is stored as
   `commitnote.reopenLastViewOff`.
-- There is no type-to-start toggle yet.
+- "Start a note by typing" (type-to-start) is offered, with the scope This device by default; it needs
+  the regular width layout and a hardware keyboard, so in practice it works on iPad (see Entry points and iPad).
 - The note fonts are the bundled ones (see Fonts).
 
 Data:
@@ -207,17 +270,34 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   still exercised on the Simulator by the runtime tests' test vector check.
 - `Build for testing` generates the project and builds the app and both test bundles once, for the
   Simulator, and hands them to the jobs below as the `ios-test-products` artifact.
-- `Runtime tests` runs the runtime tests (including `IOSVisitTests`, `NoteFontTests` and the `data`
-  read-back scenario) on an iPhone Simulator from the shared build, reads the produced repos back
-  with TypeScript, and also boots an iPad Simulator to run the iPad `EditorFlowTests` and
-  `DataFlowTests`.
+- `Runtime tests` boots one iPad Simulator and uses it for everything in the job, so it boots once,
+  while the test products download. It runs the core runtime tests (`CommitnoteTests`, including
+  `IOSVisitTests`, `NoteFontTests`, `LaunchActionTests`, the `data` read-back scenario and the
+  performance measurement) on it from the shared build, reads the produced repos back with
+  TypeScript, then runs `scripts/warm-up-app.sh` and the iPad UI classes `EditorFlowTests`,
+  `DataFlowTests`, `EntryPointFlowTests` and `MediaFlowTests` on the same simulator.
 - `UI tests (<device>, <suite>)` runs for `iphone` and `ipad`, each on its own simulator from the
-  shared build. These jobs start once `Build for testing` has finished, and boot and prepare their simulator
-  while the test products download:
-  - `flows` — editing and media flows, plus the organisation flows and settings flows on iPhone
-    and the login flows and settings screenshots on iPad.
-  - `screens` — the other screenshots, plus the editor, data and login flows on iPhone and the
-    organisation flows, organisation screenshots and settings flows on iPad.
+  shared build. These jobs start once `Build for testing` has finished, and boot and prepare their
+  simulator while the test products download. `scripts/warm-up-app.sh` then installs the app, launches
+  it once and waits until it reports ready (a notification the Testing build posts), instead of fixed
+  sleeps, so the first test does not pay for the slow first launch. The classes per job:
+
+  | Job | Classes |
+  | --- | --- |
+  | `iphone` / `flows` | `EditingFlowTests` (all but five methods), `OrganisationFlowTests`, `MediaFlowTests`, `SettingsFlowTests`, `EntryPointFlowTests`, `SettingsScreenshotTests` |
+  | `iphone` / `screens` | `ScreenshotTests`, `OrganisationScreenshotTests`, `EditorFlowTests`, `MediaScreenshotTests`, `DataFlowTests`, `LoginFlowTests`, `AccessibilityScreenshotTests`, five `EditingFlowTests` methods |
+  | `ipad` / `flows` | `EditingFlowTests`, `SettingsScreenshotTests`, `IPadFlowTests`, `AccessibilityScreenshotTests`, `LoginFlowTests` |
+  | `ipad` / `screens` | `ScreenshotTests`, `OrganisationFlowTests`, `MediaScreenshotTests`, `OrganisationScreenshotTests`, `SettingsFlowTests` |
+
+  `EditingFlowTests` is the longest class, so on iPhone it is split by method between the two jobs
+  (`IPHONE_EDITING` in the workflow): `flows` skips the listed methods and `screens` runs only those,
+  so a new method runs once, in `flows`.
+
+  `IPadFlowTests` (menu shortcuts, format shortcuts, type-to-start, width switch) run on iPad only.
+  `EntryPointFlowTests` (links, held until the tree is ready, dropped while a sheet is open) run on
+  iPhone in `flows` and on iPad in the runtime job. `AccessibilityScreenshotTests` run on both devices
+  (large text screens with an accessibility audit). Every other UI class runs on both devices, in
+  different jobs per device.
 
   The screenshot tests reach each screen once and capture it in light and dark, switching the
   running app's appearance through a FAKE_CORE testing hook. Between tests the app is restarted in
@@ -225,14 +305,17 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   as a relaunch would) instead of being relaunched; tests about launching still relaunch it. A failed
   UI test run uploads the app's log as `app.log` with its result bundle.
 
-  The class lists of the suites differ per device, so every UI class runs on both devices. The
-  `ipad`/`screens` job, which finishes its tests first, then builds and checks the unsigned IPA
-  (`commitnote-unsigned-ipa`).
+  The `Runtime tests` job, which finishes its tests first, then builds and checks the unsigned IPA
+  (`commitnote-unsigned-ipa`). The check asserts, among other things, that no test hook reached the
+  app, that there is no provisioning profile, entitlements file or `NSFaceIDUsageDescription`, and that
+  `Info.plist` has the `commitnote` URL scheme and both quick action types and the bundle has
+  `Metadata.appintents`.
 
 The `Testing` configuration (fake core bundle only) adds test hooks: a Testing menu entry "Share
-Welcome" and "Fail next share" (the next share fails), and "Import sample archive" (`testing-import-archive`, opens the Import notes form for a sample zip), the launch variable `COMMITNOTE_UI_HOLD_LOADING=1`, which holds loading and shows a
-loading testing bar, and `COMMITNOTE_UI_ANIMATION_SPEED`, which the UI tests set to run the app's
-animations faster. The UI tests expect password AutoFill to be off, so
+Welcome" and "Fail next share" (the next share fails), and "Import sample archive"
+(`testing-import-archive`, opens the Import notes form for a sample zip), the launch variable
+`COMMITNOTE_UI_HOLD_LOADING=1`, which holds loading and shows a loading testing bar, and
+`COMMITNOTE_UI_ANIMATION_SPEED`, which the UI tests set to run the app's animations faster. The UI tests expect password AutoFill to be off, so
 iOS never shows its save-password or strong-password sheets over the app; the workflow turns it off on
 every simulator with `scripts/disable-password-autofill.sh`. Do the same before running them locally.
 Artifacts, kept for 30 days:
@@ -241,20 +324,15 @@ Artifacts, kept for 30 days:
 | --- | --- |
 | `commitnote-unsigned-ipa` | `commitnote-unsigned.ipa` |
 | `ios-screenshots-<device>` | the screenshots taken by the classes in that device's `screens` suite, light and dark |
-| `ios-screenshots-<device>-flows` | the screenshots taken by the classes in that device's `flows` suite (the iPad settings screenshots), light and dark |
-| `ios-xcresults-runtime` | Xcode result bundle of the runtime tests |
-| `ios-xcresults-ui-ipad-runtime` | Xcode result bundle of the iPad tests run in the runtime job |
+| `ios-screenshots-<device>-flows` | the screenshots taken by the classes in that device's `flows` suite (the settings screenshots, and on iPad the large text ones), light and dark |
+| `ios-xcresults-runtime` | Xcode result bundle of the core runtime tests |
+| `ios-xcresults-ui-ipad-runtime` | Xcode result bundle of the iPad UI tests run in the runtime job |
 | `ios-xcresults-ui-<device>-<suite>` | Xcode result bundles of the UI tests |
-| `ios-test-output` | repos written by the runtime tests, and performance timings (`perf/perf.json`) |
+| `ios-test-output` | repos written by the runtime tests, and the performance timings (`perf/perf.json`, which names the iPad simulator that measured them) |
 
 The shared build, `ios-test-products`, is kept for a day.
 
-Download from a run:
-
-```sh
-gh run list --workflow ios.yml
-gh run download <run-id> -n commitnote-unsigned-ipa
-```
+To download the unsigned IPA from a run, see Installing on a device.
 
 ## Local checks on Linux
 
@@ -286,29 +364,67 @@ build fails if the file is missing.
 
 ## Installing on a device
 
-A totally unsigned app cannot be installed on a non-jailbroken iPhone. The CI artifact has to be
-re-signed with an Apple ID first. This works on Fedora, without a Mac.
+A totally unsigned app cannot be installed on a non-jailbroken iPhone or iPad. The CI artifact has to
+be re-signed with an Apple ID first. Every step below works on Linux, without a Mac. Nobody has
+installed the app on a device yet, so treat the steps as untested end to end. Tool facts were checked
+against Impactor v2.7.2 (released 2026-10-24).
 
-1. Download `commitnote-unsigned-ipa` and unzip it to get `commitnote-unsigned.ipa`.
-2. On the iPhone, enable Developer Mode: Settings → Privacy & Security → Developer Mode, then
-   restart the phone and confirm.
-3. Install Impactor (`https://github.com/claration/Impactor`, MIT) as a Linux AppImage or from
-   Flathub. `usbmuxd` must be running; if the phone is not detected, plug it in first and then
-   restart Impactor. Its command line tool is `plumesign`.
-4. Connect the iPhone over USB and trust the computer on the phone.
-5. In Impactor, sign in with a free Apple ID, select the device, and install
-   `commitnote-unsigned.ipa`. Impactor registers the device, creates a certificate and a
-   provisioning profile with Apple, signs the app and installs it over USB.
-6. When iOS asks, trust the developer certificate (Settings → General → VPN & Device Management).
+1. Authenticate `gh`, because artifact downloads need a logged-in `gh` even on a public repository,
+   then find the latest green `iOS` run on `main`:
 
-The Impactor README documents only this UI flow; the `plumesign` command lines are not quoted here.
-Check the tool's own documentation for them.
+   ```sh
+   gh auth login
+   gh run list -R marcinjahn/commitnote --workflow ios.yml --branch main --status success --limit 1
+   ```
+
+   The first column of the output is the run ID.
+2. Download and unzip the artifact (`gh` unzips it for you into the directory):
+
+   ```sh
+   gh run download <run-id> -R marcinjahn/commitnote -n commitnote-unsigned-ipa -D ./commitnote-ipa
+   ```
+
+   The directory then contains `commitnote-unsigned.ipa`. Artifacts are kept for 30 days. If the
+   newest green run is older, the artifact is gone: start a fresh run (this needs write access to the
+   repository) and wait for it to go green, then repeat from the list command:
+
+   ```sh
+   gh workflow run ios.yml -R marcinjahn/commitnote --ref main
+   ```
+3. On the device, enable Developer Mode: Settings → Privacy & Security → Developer Mode, switch it
+   on, restart the device and confirm.
+4. Install Impactor (`claration/Impactor`, MIT) from Flathub (`dev.khcrysalis.PlumeImpactor`) or as the
+   `Impactor-linux-x86_64.appimage` (`aarch64` on ARM) from its GitHub releases, and make the
+   AppImage executable. `usbmuxd` must be installed and running (most distributions have it). Plug the
+   device in over USB and tap "Trust" on it. If Impactor does not see the device, plug it in first and
+   restart Impactor, because `usbmuxd` may stop when no device is connected.
+5. In Impactor, select the device, sign in with a free Apple ID when asked, choose
+   `commitnote-unsigned.ipa` and start the install. Impactor registers the device, creates a
+   certificate and provisioning profile with Apple, signs the app and installs it over USB.
+   Impactor's README documents only this GUI flow. It ships a `plumesign` command line tool (release
+   assets `plumesign-linux-x86_64` and `plumesign-linux-aarch64`), but no documentation of an install
+   command, so no command lines are given here; see `plumesign --help`.
+6. If iOS asks, trust the developer profile: Settings → General → VPN & Device Management.
+7. Free-team signatures expire after 7 days, after which the app no longer opens. Repeat steps 1 to 2
+   if you want a newer build, then step 5 with the same Apple ID and bundle ID to reinstall over the
+   old app. The app's data survives a reinstall over the same bundle ID, and the notes
+   themselves live in your notes repo.
 
 The bundle ID is `io.github.marcinjahn.commitnote`. If Apple refuses it for your free team, Impactor
-can rewrite it. The app has no entitlements and no extensions; besides the standard keys, Info.plist
-adds only the camera usage string and the bundled note fonts (`UIAppFonts`).
+can rewrite it. A free team gets 10 App IDs per 7 days and 3 active sideloaded apps, so keep the
+bundle ID stable. The app has no entitlements and no extensions, which is why free signing works.
 
-Alternatives: SideStore (refreshes the signature on the device) and Sideloader/AltServer-Linux.
+### What needs a paid account
+
+Nothing in the app needs one. A paid Apple Developer Program membership ($99 per year) is only a
+fallback for signing: its certificates and profiles last longer and it signs with a paid team. Since
+mid-2026, Apple has been rejecting many free-team provisioning profiles at install time (`0xe8008024`,
+"provisioning profile is banned"). That comes from community reports only and is not confirmed by
+Apple. A paid team is not affected by that ban, so it is the way out if the free route fails.
+TestFlight and the App Store are out of scope.
+
+Alternatives to Impactor: SideStore (refreshes the signature on the device) and
+Sideloader/AltServer-Linux. They use the same free Apple ID and have the same limits.
 
 ## Limits
 
@@ -328,24 +444,40 @@ Signing and sideloading:
 
 - A free Apple ID is not the paid Apple Developer Program, but it is still an Apple account. Nothing
   in this repository creates one.
-- Free-team signatures expire after 7 days. Reinstall to refresh. Free teams can register a limited
-  number of App IDs (10 per 7 days).
-- Since July to October 2026 Apple has been rejecting many free-team provisioning profiles at
-  install time (`0xe8008024 "provisioning profile is banned"`). This comes from community reports
-  only. The fallback is the Apple Developer Program, $99 per year. TestFlight is out of scope.
+- Free-team signatures expire after 7 days. Reinstall to refresh. Free teams can register 10 App IDs
+  per 7 days and have 3 active apps.
+- Since mid-2026 Apple has been rejecting many free-team provisioning profiles at install time
+  (`0xe8008024 "provisioning profile is banned"`). This comes from community reports only. The
+  fallback is the Apple Developer Program, $99 per year, which signs with a paid team and avoids the
+  free-team ban. TestFlight is out of scope.
 - Nobody has installed the app on a device as part of this work. The deliverable is the CI-built
   IPA and the steps above.
 - Impactor's auto-refresh on Linux only runs when the device is plugged in.
 
+Entry points and iPad:
+
+- Quick actions, App Shortcuts and cold launches from a `commitnote://` link are not covered by UI
+  tests, because the Home Screen, Shortcuts and Spotlight are out of reach of XCUITest. Their
+  mapping (`AppInteraction`, `LaunchActionTests`) is tested, and the IPA check asserts the URL scheme
+  and quick action keys in `Info.plist` and the App Intents metadata. `EntryPointFlowTests` cover links
+  while the app runs.
+- Haptics and hardware-keyboard behaviour on a real device are not exercised: the Simulator has no
+  haptic engine and the type-to-start and shortcut tests drive a simulated keyboard.
+- The app has one window: no multiple windows, no widgets, Control Center or Lock Screen controls, no
+  share extension and no Siri beyond the App Shortcuts phrases.
+
 ## Performance
 
-Measured in the iPhone Simulator on CI, not on a device: iPhone 17 Pro Simulator (iOS 26.5), Xcode
-26.6, run on 2026-10-19. Each number is the median of 3 runs on `sample/large-tree`, in
-milliseconds.
+Measured in a Simulator on CI, not on a device. The core runtime tests, which include the
+performance measurement, run on the iPad Simulator of the runtime job, and `perf/perf.json` in the
+`ios-test-output` artifact names the device. The iPad numbers are from the iPad Pro 13-inch (M5)
+Simulator (iOS 26.5), Xcode 26.6, run on 2026-10-26; the iPhone numbers are from the iPhone 17 Pro
+Simulator (iOS 26.5), Xcode 26.6, run on 2026-10-19, before the measurement moved to the iPad. Each
+number is the median of 3 runs on `sample/large-tree`, in milliseconds.
 
-| Measurement | iPhone 17 Pro Simulator |
-| --- | --- |
-| resume | 1384 ms |
-| unlock | 1729 ms |
-| tree listing | 229 ms |
-| open note | 3 ms |
+| Measurement | iPad Pro 13-inch (M5) Simulator | iPhone 17 Pro Simulator |
+| --- | --- | --- |
+| resume | 2522 ms | 1384 ms |
+| unlock | 3899 ms | 1729 ms |
+| tree listing | 225 ms | 229 ms |
+| open note | 4 ms | 3 ms |
