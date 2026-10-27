@@ -14,20 +14,28 @@ final class AccessibilityScreenshotTests: XCTestCase {
     private static let auditErrorDomain = "com.apple.xcode.xctest.accessibilityAudit"
     private static let attempts = 3
 
+    /// Settings come before the note: the app reopens the last note when launched, and on iPad
+    /// laying its editor out again behind the settings sheet at every text size the audit tries
+    /// can take the audit past its time limit.
+    private static let captures: [(Screen, Appearance)] = [
+        (.tree, .light), (.settings, .light), (.tree, .dark), (.settings, .dark), (.note, .light), (.note, .dark),
+    ]
+
+    private var auditedSinceLaunch = false
+
     override func setUp() {
         continueAfterFailure = false
     }
 
-    /// Each screen is captured in each appearance from its own launch, which sets the appearance,
-    /// so no screen is switched to dark while shown and no audit runs in an app an earlier audit
-    /// went through. Screens are audited in light. Settings come before the note: the app reopens
-    /// the last note when launched, and on iPad laying its editor out again behind the settings
-    /// sheet at every text size the audit tries can take the audit past its time limit.
+    /// Each capture starts from a restart with the screen's appearance, so no screen is switched
+    /// to dark while shown. Screens are audited in light, and never in an app an earlier audit went
+    /// through, which is then launched afresh. Otherwise the app restarts in its process: killing
+    /// it while it still loads, as a launch right after the login did, can stall the next launch
+    /// for minutes on CI, and accessibility queries sent meanwhile time out.
     func testLargeTextScreens() throws {
         logInToNotes(in: launchApp(reset: true, contentSize: Self.contentSize))
-        for screen in Screen.allCases {
-            try capture(screen, appearance: .light)
-            try capture(screen, appearance: .dark)
+        for (screen, appearance) in Self.captures {
+            try capture(screen, appearance: appearance)
         }
     }
 
@@ -35,9 +43,12 @@ final class AccessibilityScreenshotTests: XCTestCase {
     /// the system's own text size checks; the screen is then captured again from a fresh launch.
     private func capture(_ screen: Screen, appearance: Appearance) throws {
         for attempt in 1...Self.attempts {
-            let app = resumeAtTree(appearance: appearance, contentSize: Self.contentSize, relaunch: true)
+            let app = resumeAtTree(
+                appearance: appearance, contentSize: Self.contentSize, relaunch: auditedSinceLaunch)
+            auditedSinceLaunch = false
             show(screen, in: app)
             if appearance == .light {
+                auditedSinceLaunch = true
                 do {
                     try audit(app, screen)
                 } catch let error as NSError where attempt < Self.attempts {

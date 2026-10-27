@@ -62,6 +62,8 @@ func launchApp(
         app.launchEnvironment["COMMITNOTE_UI_EDITOR_HOOKS"] = "1"
     }
     prepareAnimationIdleForLaunch()
+    _ = appReadyObserver
+    appReady = false
     app.launch()
     return app
 }
@@ -106,6 +108,12 @@ extension XCTestCase {
             CFNotificationCenterGetDarwinNotifyCenter(),
             CFNotificationName("io.github.marcinjahn.commitnote.testing.relaunch" as CFString), nil, nil, true)
         return poll(timeout: 30, until: { appReady }) ? app : nil
+    }
+
+    /// Whether the app launched last has reported that its first screen is ready. Accessibility
+    /// queries sent before then wait on the app's launch work and can time out the whole test.
+    func waitForLaunchReady(timeout: TimeInterval) -> Bool {
+        poll(timeout: timeout, until: { appReady })
     }
 
     /// XCTest's own waits first look a second after they start and then once a second, which adds

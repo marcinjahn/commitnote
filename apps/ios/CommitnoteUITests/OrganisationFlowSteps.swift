@@ -17,9 +17,15 @@ extension XCTestCase {
         let restarted =
             relaunch
             ? nil : restartInProcess(appearance: appearance, editorHooks: editorHooks, contentSize: contentSize)
-        let app =
-            restarted
-            ?? launchApp(reset: false, appearance: appearance, editorHooks: editorHooks, contentSize: contentSize)
+        let app: XCUIApplication
+        if let restarted {
+            app = restarted
+        } else {
+            app = launchApp(reset: false, appearance: appearance, editorHooks: editorHooks, contentSize: contentSize)
+            // A cold launch on a busy CI simulator can take over a minute, as the warm-up allows.
+            XCTAssertTrue(
+                waitForLaunchReady(timeout: 90), "The relaunched app reports it is ready", file: file, line: line)
+        }
         let tree = app.element("notes-tree")
         let noteView = app.element("note-view")
         let tokenField = app.secureTextFields["login-token-field"]
