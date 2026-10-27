@@ -35,6 +35,9 @@ export function scopeToggleLabel(label: string): string {
 export const COLOR_MODE_LABEL = "Color mode";
 export const ACCENT_COLOR_LABEL = "Accent color";
 export const NOTE_FONT_LABEL = "Note font";
+export const TYPE_TO_START_LABEL = "Start a note by typing";
+export const TYPE_TO_START_HINT =
+  "When no note is open, start typing to begin a new note.";
 export const NEW_NOTES_LABEL = "New notes";
 export const NEW_FOLDERS_LABEL = "New folders";
 export const SETTINGS_RETRY_LABEL = "Retry";

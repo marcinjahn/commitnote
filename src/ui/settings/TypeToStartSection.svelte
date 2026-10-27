@@ -1,6 +1,7 @@
 <script lang="ts">
   import ScopeToggle from "./ScopeToggle.svelte";
   import SettingRow from "./SettingRow.svelte";
+  import { TYPE_TO_START_HINT, TYPE_TO_START_LABEL } from "./settings-messages";
   import type { SettingsSectionProps } from "./settings-sections";
 
   const { settings, changeSettings, scopes, changeSettingScope }: SettingsSectionProps =
@@ -10,16 +11,13 @@
   const inputId = $props.id();
 </script>
 
-<SettingRow
-  {hintId}
-  hint="When no note is open, start typing to begin a new note."
->
+<SettingRow {hintId} hint={TYPE_TO_START_HINT}>
   {#snippet label()}
-    <label for={inputId}>Start a note by typing</label>
+    <label for={inputId}>{TYPE_TO_START_LABEL}</label>
   {/snippet}
   {#snippet aside()}
     <ScopeToggle
-      label="Start a note by typing"
+      label={TYPE_TO_START_LABEL}
       scope={scopes.typeToStart}
       onToggle={() =>
         changeSettingScope(
