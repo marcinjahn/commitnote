@@ -10,6 +10,13 @@ extension XCTestCase {
     /// ready, so on iPhone the tree may never show before the note view covers it.
     func logInToLinkedDraft(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         submitToken(Fixture.token, in: app, file: file, line: line)
+        // A tap lost on an overloaded runner leaves the token step up with nothing listing, so
+        // Continue is pressed again.
+        let row = app.element("login-repository-row", labelEndingWith: Fixture.notes)
+        let next = app.buttons["login-continue-button"]
+        for _ in 0..<2 where !appears(row, within: 10) && next.exists && next.isEnabled && next.isHittable {
+            next.tap()
+        }
         pickRepository(Fixture.notes, in: app)
         unlock(in: app)
         // Deriving the keys can take most of a minute on a freshly booted CI simulator.

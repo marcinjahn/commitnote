@@ -227,15 +227,33 @@ extension XCTestCase {
         // A form leaves rows scrolled out of view out of the hierarchy, as at large text sizes.
         if !appears(element, within: 10) {
             for _ in 0..<6 where !element.exists {
-                // Above the keyboard, which would take a swipe through the middle of the screen.
-                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(
-                    forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)))
+                let start = revealDragStart(in: app)
+                start.press(
+                    forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -0.25 * app.frame.height)))
                 _ = appears(element, within: 2)
             }
         }
         waitFor(element)
         scrollToReveal(element, in: app)
         element.tap()
+    }
+
+    /// Above the keyboard, which would take a swipe through the middle of the screen, and off the
+    /// focused field, where a drag moves the caret and opens the edit menu instead of scrolling.
+    private func revealDragStart(in app: XCUIApplication) -> XCUICoordinate {
+        let height = app.frame.height
+        var y = 0.4 * height
+        let focused = app.descendants(matching: .any).matching(NSPredicate(format: "hasKeyboardFocus == true"))
+            .firstMatch
+        if focused.exists {
+            let field = focused.frame.insetBy(dx: 0, dy: -16)
+            if field.minY <= y, y <= field.maxY {
+                let keyboard = app.keyboards.firstMatch
+                let keyboardTop = keyboard.exists ? keyboard.frame.minY : height
+                y = field.maxY + 8 < keyboardTop - 16 ? field.maxY + 8 : field.minY - 8
+            }
+        }
+        return app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width / 2, dy: y))
     }
 
     func typeInto(_ field: XCUIElement, _ text: String, in app: XCUIApplication) {

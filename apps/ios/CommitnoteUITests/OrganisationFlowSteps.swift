@@ -22,13 +22,14 @@ extension XCTestCase {
         waitForCondition("Notes or login screen appears", timeout: 30, file: file, line: line) {
             tree.exists || noteView.exists || tokenField.exists
         }
-        if tokenField.exists {
+        // Unlocking reopens the last view too, so a login also ends up in the loop below.
+        let loggedIn = tokenField.exists
+        if loggedIn {
             logInToNotes(in: app)
-            return app
         }
         // A restarted app reports once its last view is back, and the loop below closes it; after
         // a relaunch the note may still be on its way.
-        if restarted == nil, appears(noteView, within: 3) {
+        if restarted == nil || loggedIn, appears(noteView, within: 3) {
             backToTree(in: app, file: file, line: line)
         }
         // The last view can be reopened only once the tree has loaded, so the note may still slide in.
