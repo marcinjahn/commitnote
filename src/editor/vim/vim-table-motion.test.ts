@@ -198,3 +198,107 @@ describe("moveByLinesIntoTables", () => {
     expect(cursorOf(view).line).toBe(FIRST + 1);
   });
 });
+
+describe("counted line motions across a rendered table", () => {
+  const AFTER = BELOW + 1;
+
+  it.each([
+    { keys: ["2", "j"], from: ABOVE, to: FIRST + 1 },
+    { keys: ["3", "j"], from: ABOVE, to: LAST },
+    { keys: ["3", "j"], from: ABOVE - 1, to: FIRST + 1 },
+    { keys: ["2", "k"], from: BELOW, to: FIRST + 1 },
+    { keys: ["4", "k"], from: AFTER, to: FIRST },
+    { keys: ["2", "<Down>"], from: ABOVE, to: FIRST + 1 },
+    { keys: ["2", "<Up>"], from: BELOW, to: FIRST + 1 },
+    { keys: ["2", "+"], from: ABOVE, to: FIRST + 1 },
+    { keys: ["2", "-"], from: BELOW, to: FIRST + 1 },
+    { keys: ["3", "_"], from: ABOVE, to: FIRST + 1 },
+    { keys: ["2", "<CR>"], from: ABOVE, to: FIRST + 1 },
+  ])(
+    "lands $keys from line $from on table line $to and reveals it",
+    async ({ keys, from, to }) => {
+      const view = await setup(from);
+      expect(rendersTable(view.state)).toBe(true);
+
+      await press(view, ...keys);
+
+      expect(cursorOf(view)).toEqual({ line: to, column: 0 });
+      expect(rendersTable(view.state)).toBe(false);
+    },
+  );
+
+  it.each([
+    { keys: ["4", "j"], from: ABOVE, to: BELOW },
+    { keys: ["5", "k"], from: AFTER, to: ABOVE },
+    { keys: ["2", "0", "j"], from: ABOVE, to: AFTER },
+  ])(
+    "passes $keys from line $from through the table to line $to",
+    async ({ keys, from, to }) => {
+      const view = await setup(from);
+
+      await press(view, ...keys);
+
+      expect(cursorOf(view).line).toBe(to);
+      expect(rendersTable(view.state)).toBe(true);
+    },
+  );
+
+  it("moves the counted lines when no table lies in the way", async () => {
+    const view = await setup(1);
+
+    await press(view, "2", "j");
+
+    expect(cursorOf(view).line).toBe(3);
+    expect(rendersTable(view.state)).toBe(true);
+  });
+
+  it("keeps the goal column on a counted motion into the table", async () => {
+    const view = await setup(ABOVE - 1);
+    await press(view, "l", "l", "l");
+
+    await press(view, "3", "j");
+
+    expect(cursorOf(view)).toEqual({ line: FIRST + 1, column: 3 });
+  });
+
+  it("deletes the counted lines into the table with d2j", async () => {
+    const view = await setup(ABOVE);
+
+    await press(view, "d", "2", "j");
+
+    expect(view.state.doc.toString()).toBe(
+      "0123456789\nab\n0123456789\n| 1 | 2 |\n\nafter line",
+    );
+  });
+
+  it("extends a linewise Visual selection over the table with V3j", async () => {
+    const view = await setup(ABOVE);
+
+    await press(view, "V", "3", "j", "d");
+
+    expect(view.state.doc.toString()).toBe(
+      "0123456789\nab\n0123456789\n\nafter line",
+    );
+  });
+
+  it("goes to a table line with NG and reveals it", async () => {
+    const view = await setup(1);
+
+    await press(view, "6", "G");
+
+    expect(cursorOf(view).line).toBe(FIRST + 1);
+    expect(rendersTable(view.state)).toBe(false);
+  });
+
+  it("goes to a table line with :N and reveals it", async () => {
+    const view = await setup(1);
+    const cm = getCM(view);
+    if (!cm) throw new Error("vim is not attached");
+
+    Vim.handleEx(cm as Parameters<typeof Vim.handleEx>[0], "7");
+    await settle();
+
+    expect(cursorOf(view).line).toBe(LAST);
+    expect(rendersTable(view.state)).toBe(false);
+  });
+});

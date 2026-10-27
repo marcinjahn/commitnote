@@ -100,6 +100,18 @@ function watchOverflow(root: HTMLElement, scroller: HTMLElement): void {
   update();
 }
 
+export function tableRowTextTops(wrapper: HTMLElement): number[] {
+  return Array.from(wrapper.querySelectorAll("tr"), (row) => {
+    const cell = row.cells[0];
+    if (!cell) return row.getBoundingClientRect().top;
+    return (
+      cell.getBoundingClientRect().top +
+      cell.clientTop +
+      (parseFloat(getComputedStyle(cell).paddingTop) || 0)
+    );
+  });
+}
+
 const ROW_HEIGHT = 34;
 const WIDGET_PADDING = 16;
 

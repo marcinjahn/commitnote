@@ -137,6 +137,27 @@ export function tableEntryLine(
   return found ? doc.lineAt(edge) : null;
 }
 
+export function renderedTableInLines(
+  state: EditorState,
+  fromLine: number,
+  toLine: number,
+): boolean {
+  const widgets = state.field(tableWidgetsField, false);
+  if (!widgets) return false;
+  const doc = state.doc;
+  const first = Math.max(1, fromLine);
+  const last = Math.min(doc.lines, toLine);
+  if (first > last) return false;
+  let found = false;
+  widgets.between(doc.line(first).from, doc.line(last).to, (_f, _t, deco) => {
+    if (deco.spec.widget) {
+      found = true;
+      return false;
+    }
+  });
+  return found;
+}
+
 function enterTable(forward: boolean): Command {
   return (view) => {
     const { state } = view;
