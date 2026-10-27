@@ -6,6 +6,7 @@ struct NoteFontListScreen: View {
     let model: AppModel
     let copy: SettingsCopy
     let selected: String
+    @ScaledMetric(relativeTo: .body) private var bodySize: CGFloat = 17
 
     var body: some View {
         List {
@@ -31,7 +32,11 @@ struct NoteFontListScreen: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(option.label)
-                        .font(Font(NoteFontCatalog.bodyFont(id: option.id) as CTFont))
+                        .font(
+                            Font(
+                                NoteFontCatalog.font(
+                                    id: option.id, size: bodySize, semibold: false, italic: false)
+                                    as CTFont))
                         .foregroundStyle(.primary)
                     if let description = option.description {
                         Text(description)
@@ -57,11 +62,16 @@ struct NoteFontListScreen: View {
 private struct FontPreview: View {
     let copy: NoteFontCopy
     let fontID: String
+    @ScaledMetric(relativeTo: .body) private var bodySize: CGFloat = 17
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(copy.previewHeading)
-                .font(Font(NoteFontCatalog.bodyFont(id: fontID, semibold: true, scale: 1.4) as CTFont))
+                .font(
+                    Font(
+                        NoteFontCatalog.font(
+                            id: fontID, size: bodySize * 1.4, semibold: true, italic: false)
+                            as CTFont))
             Text(styled(copy.previewBody))
             Text(copy.previewCode)
                 .font(.system(.body, design: .monospaced))
@@ -81,8 +91,8 @@ private struct FontPreview: View {
                 text[run.range].font = .system(.body, design: .monospaced)
                 continue
             }
-            let font = NoteFontCatalog.bodyFont(
-                id: fontID, semibold: intent.contains(.stronglyEmphasized),
+            let font = NoteFontCatalog.font(
+                id: fontID, size: bodySize, semibold: intent.contains(.stronglyEmphasized),
                 italic: intent.contains(.emphasized))
             text[run.range].font = Font(font as CTFont)
         }

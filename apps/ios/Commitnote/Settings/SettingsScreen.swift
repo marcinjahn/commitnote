@@ -182,11 +182,10 @@ private struct AppearanceSection<Lead: View>: View {
     @ViewBuilder let lead: Lead
 
     @ScaledMetric private var swatchSize: CGFloat = 32
+    /// `UIFontMetrics` would scale by whichever traits are current when the body runs, which can
+    /// trail this view's own text size while it changes.
+    @ScaledMetric(relativeTo: .body) private var fontLabelSize: CGFloat = 17
     @Environment(\.colorSchemeContrast) private var contrast
-
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: swatchSize + 12), spacing: 12)]
-    }
 
     var body: some View {
         Section {
@@ -208,7 +207,7 @@ private struct AppearanceSection<Lead: View>: View {
                 SettingHeader(
                     model: model, copy: copy, title: copy.accentColor.label, key: .accentColor,
                     scope: view.scopes.accentColor)
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                WrappingLayout(spacing: 12) {
                     ForEach(copy.accentColor.options, id: \.id) { option in
                         swatch(option)
                     }
@@ -222,7 +221,11 @@ private struct AppearanceSection<Lead: View>: View {
                     NoteFontListScreen(model: model, copy: copy, selected: view.values.noteFont)
                 } label: {
                     Text(currentFontLabel)
-                        .font(Font(NoteFontCatalog.bodyFont(id: view.values.noteFont) as CTFont))
+                        .font(
+                            Font(
+                                NoteFontCatalog.font(
+                                    id: view.values.noteFont, size: fontLabelSize, semibold: false,
+                                    italic: false) as CTFont))
                 }
                 .accessibilityValue(view.values.noteFont)
                 .accessibilityIdentifier("settings-note-font")
@@ -365,5 +368,46 @@ private struct DeviceSection: View {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed != view.deviceName else { return }
         Task { await model.setDeviceName(trimmed) }
+    }
+}
+
+/// Self-sizing list cells must measure the same on every pass, or a text size change can loop the
+/// list's layout until UIKit stops the app; a lazy grid in a cell does not.
+private struct WrappingLayout: Layout {
+    let spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(subviews, width: proposal.width ?? .infinity).size
+    }
+
+    func placeSubviews(
+        in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    ) {
+        let frames = arrange(subviews, width: bounds.width).frames
+        for (subview, frame) in zip(subviews, frames) {
+            subview.place(
+                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                proposal: ProposedViewSize(frame.size))
+        }
+    }
+
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> (frames: [CGRect], size: CGSize) {
+        var frames: [CGRect] = []
+        var origin = CGPoint.zero
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if origin.x > 0, origin.x + size.width > width {
+                origin.x = 0
+                origin.y += rowHeight + spacing
+                rowHeight = 0
+            }
+            frames.append(CGRect(origin: origin, size: size))
+            usedWidth = max(usedWidth, origin.x + size.width)
+            origin.x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return (frames, CGSize(width: usedWidth, height: origin.y + rowHeight))
     }
 }
