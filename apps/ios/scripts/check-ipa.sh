@@ -27,7 +27,7 @@ for marker in "fake.saveNote" "fake.processImage" "sample/large-tree" "sample no
   fi
 done
 
-for marker in "fake.saveNote" "fake.remoteEdit" "fake.failNext" "fake.shareNote" "fake.holdLoading" "fake.processImage" "testing-menu" "testing-share-note" "testing-share-permission" "testing-loading-bar" "testing-select-word" "testing-caret-end" "testing-undo" "testing-hide-keyboard" "testing-editor-image-pastes" "testing-import-archive" "fake.importArchive" "sample-import.zip" "Imported plan" "unanswered for" "Core queue has not run"; do
+for marker in "fake.saveNote" "fake.remoteEdit" "fake.failNext" "fake.shareNote" "fake.holdLoading" "fake.processImage" "testing-menu" "testing-share-note" "testing-share-permission" "testing-loading-bar" "testing-select-word" "testing-caret-end" "testing-undo" "testing-hide-keyboard" "testing-editor-image-pastes" "testing-import-archive" "testing-type-to-start" "testing-switch-width" "testing-width" "fake.importArchive" "sample-import.zip" "Imported plan" "unanswered for" "Core queue has not run"; do
   if grep -rlF "$marker" "$APP" | grep -q .; then
     fail "app contains $marker"
   fi
@@ -43,6 +43,11 @@ plutil -convert json -o "$PLIST_JSON" "$PLIST" || fail "Info.plist is unreadable
 if grep -qF "NSFaceIDUsageDescription" "$PLIST_JSON"; then
   fail "Info.plist contains NSFaceIDUsageDescription"
 fi
+
+for needle in '"CFBundleURLSchemes":["commitnote"]' "io.github.marcinjahn.commitnote.new-note" "io.github.marcinjahn.commitnote.search"; do
+  tr -d ' \n' < "$PLIST_JSON" | grep -qF "$needle" || fail "Info.plist is missing $needle"
+done
+[ -e "$APP/Metadata.appintents" ] || fail "Metadata.appintents is missing"
 
 FONT_COUNT=0
 FONTS=$(plutil -extract UIAppFonts json -o - "$PLIST" | tr -d '[]"' | tr ',' '\n')

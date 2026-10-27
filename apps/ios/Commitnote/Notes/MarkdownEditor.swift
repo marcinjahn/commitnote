@@ -1,3 +1,4 @@
+import AppInteraction
 import EditorText
 import MarkdownStyling
 import NativeCoreAPI
@@ -56,6 +57,9 @@ struct MarkdownEditor: UIViewRepresentable {
         textView.formatHandler = { [weak coordinator] command in
             coordinator?.format(command)
         }
+        textView.shortcutHandler = { [weak coordinator] command in
+            coordinator?.formatFromShortcut(command)
+        }
         textView.checkboxHandler = { [weak coordinator] range in
             coordinator?.toggleCheckbox(range)
         }
@@ -94,20 +98,26 @@ struct MarkdownEditor: UIViewRepresentable {
             coordinator.show(readOnlyText)
             return
         }
+        model.editorPositionSaver = { [weak coordinator] in coordinator?.savePosition(includingDraft: true) }
         coordinator.sync(target: target, editorSwitch: editorSwitch, editorLineage: editorLineage, update: update)
         if let picked = model.pickedImages {
             coordinator.receivePickedImages(id: picked.id)
         }
         if focusRequested {
             Task { @MainActor in
-                container.textView.becomeFirstResponder()
+                // A freshly mounted editor can still be outside the window on the first attempt.
+                if !container.textView.becomeFirstResponder() {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    container.textView.becomeFirstResponder()
+                }
                 focusRequested = false
             }
         }
     }
 
     static func dismantleUIView(_ container: MarkdownEditorContainer, coordinator: Coordinator) {
-        coordinator.savePosition()
+        coordinator.savePosition(includingDraft: true)
+        coordinator.clearEditorFocus()
     }
 
     @MainActor
@@ -131,6 +141,7 @@ struct MarkdownEditor: UIViewRepresentable {
         private var base = ""
         private var appliedSwitch: Int?
         private var appliedPath: [String]?
+        private var appliedDraft = false
         private var currentSwitch = 0
         private var currentLineage = 0
         private var syncedKey: SyncKey?
@@ -234,15 +245,19 @@ struct MarkdownEditor: UIViewRepresentable {
 
             switch target {
             case .none:
+                appliedDraft = false
                 return
             case .draft:
                 if appliedSwitch != editorSwitch {
-                    replaceAll(with: "", in: textView)
+                    replaceAll(with: model?.draftText ?? "", in: textView)
                     appliedSwitch = editorSwitch
                     appliedPath = nil
+                    appliedDraft = true
                     base = ""
+                    placeDraftCaret(in: textView)
                 }
             case .note(let path):
+                appliedDraft = false
                 guard let update, update.path == path else { return }
                 apply(update, editorSwitch: editorSwitch, in: textView)
             }
@@ -254,13 +269,22 @@ struct MarkdownEditor: UIViewRepresentable {
             appliedSwitch = currentSwitch
         }
 
-        func savePosition() {
-            guard !readOnly, let appliedPath, let textView, let model else { return }
-            model.savePosition(
-                NotePosition(
-                    selection: Self.selection(of: textView),
-                    contentOffsetY: Double(textView.contentOffset.y)),
-                for: appliedPath)
+        func savePosition(includingDraft: Bool = false) {
+            guard !readOnly, let textView, let model else { return }
+            let position = NotePosition(
+                selection: Self.selection(of: textView),
+                contentOffsetY: Double(textView.contentOffset.y))
+            if let appliedPath {
+                model.savePosition(position, for: appliedPath)
+            } else if includingDraft, appliedDraft {
+                model.draftPosition = position
+            }
+        }
+
+        private func placeDraftCaret(in textView: MarkdownTextView) {
+            guard let position = model?.draftPosition else { return }
+            setSelection(position.selection, in: textView)
+            textView.pendingOffsetY = CGFloat(position.contentOffsetY)
         }
 
         private func apply(_ update: NoteContentUpdate, editorSwitch: Int, in textView: MarkdownTextView) {
@@ -448,7 +472,8 @@ struct MarkdownEditor: UIViewRepresentable {
                 from: providers,
                 anchor: InsertionAnchor(
                     editorLineage: currentLineage, text: lastText,
-                    selection: EditorText.TextSelection(location: offset, length: 0)))
+                    selection: EditorText.TextSelection(location: offset, length: 0)),
+                isDrop: true)
         }
 
         func receivePickedImages(id: UUID) {
@@ -464,18 +489,23 @@ struct MarkdownEditor: UIViewRepresentable {
             }
         }
 
-        private func insertImages(from providers: [NSItemProvider], anchor: InsertionAnchor) {
+        private func insertImages(
+            from providers: [NSItemProvider], anchor: InsertionAnchor, isDrop: Bool = false
+        ) {
             guard !providers.isEmpty else { return }
             Task { @MainActor [weak self] in
                 let inputs = await EditorImageItems.load(providers)
-                self?.insertImages(inputs, anchor: anchor)
+                self?.insertImages(inputs, anchor: anchor, isDrop: isDrop)
             }
         }
 
-        private func insertImages(_ inputs: [ImageInput], anchor: InsertionAnchor) {
+        private func insertImages(_ inputs: [ImageInput], anchor: InsertionAnchor, isDrop: Bool = false) {
             guard !inputs.isEmpty, let model else { return }
             Task { @MainActor [weak self] in
                 let references = await model.insertImages(inputs)
+                if isDrop {
+                    model.haptics.play(.dropFinished(succeeded: !references.isEmpty))
+                }
                 guard let self, let textView = self.textView, !references.isEmpty,
                     let edits = self.editsSince(anchor, in: textView)
                 else { return }
@@ -515,6 +545,45 @@ struct MarkdownEditor: UIViewRepresentable {
                 }
             guard let result else { return }
             applyCommand(result, in: textView)
+        }
+
+        func formatFromShortcut(_ command: FormatCommand) {
+            if command == .task, let textView, textView.markedTextRange == nil, textView.selectedRange.length == 0,
+                let url = textView.linkURLProvider?(textView.selectedRange.location)
+            {
+                UIApplication.shared.open(url)
+                return
+            }
+            format(command)
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            guard !readOnly else { return }
+            model?.editorDidBeginEditing(self) { [weak self] in self?.formatFromShortcut($0) }
+            insertTypeToStartText()
+        }
+
+        private func insertTypeToStartText() {
+            guard let model, model.typeToStartPending, model.editorTarget.isDraft, isReady, let textView,
+                textView.markedTextRange == nil, let text = model.editorBecameReady(), !text.isEmpty
+            else { return }
+            let selection = Self.selection(of: textView)
+            let end = selection.location + text.utf16.count
+            applyCommand(
+                CommandResult(
+                    edits: [
+                        TextEdit(from: selection.location, to: selection.location + selection.length, insert: text)
+                    ],
+                    selection: EditorText.TextSelection(location: end, length: 0)),
+                in: textView)
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            clearEditorFocus()
+        }
+
+        func clearEditorFocus() {
+            model?.editorDidEndEditing(self)
         }
 
         func toggleCheckbox(_ markerRange: Range<Int>) {
@@ -737,12 +806,7 @@ final class MarkdownEditorContainer: UIView {
         var elements: [EditorActionElement] = []
         let visible = textView.bounds
         for item in textView.visiblePreviewItems() where item.frame.intersects(visible) {
-            let key: String
-            switch item.kind {
-            case .checkbox(let range, _, _): key = "checkbox:\(range.lowerBound)"
-            case .link(let offset, _): key = "link:\(offset)"
-            case .image(let imageKey, _, _, _): key = "image:\(imageKey)"
-            }
+            let key = item.key
             let element = reusable.removeValue(forKey: key) ?? EditorActionElement(accessibilityContainer: self)
             element.accessibilityFrameInContainerSpace = textView.convert(item.frame, to: self)
             switch item.kind {
@@ -759,6 +823,7 @@ final class MarkdownEditorContainer: UIView {
                 element.accessibilityLabel = label
                 element.accessibilityValue = nil
                 element.accessibilityTraits = .link
+                element.accessibilityHint = "Opens the link"
                 element.action = { [weak textView] in
                     if let url = textView?.linkURLProvider?(offset) {
                         UIApplication.shared.open(url)
@@ -796,6 +861,7 @@ final class MarkdownTextView: UITextView {
     var editorUndoManager: UndoManager?
     var pasteHandler: ((String) -> Bool)?
     var formatHandler: ((FormatCommand) -> Void)?
+    var shortcutHandler: ((FormatCommand) -> Void)?
     var contentSizeCategoryHandler: (() -> Void)?
     var checkboxHandler: ((Range<Int>) -> Void)?
     var linkURLProvider: ((Int) -> URL?)?
@@ -813,6 +879,7 @@ final class MarkdownTextView: UITextView {
         }
     }
     private let previewTapDelegate = PreviewTapDelegate()
+    private let pointerDelegate = EditorPointerDelegate()
     private let imageDropDelegate = EditorImageDropDelegate()
     private var imageLayoutKey: [CGFloat] = []
     #if FAKE_CORE
@@ -840,6 +907,8 @@ final class MarkdownTextView: UITextView {
         let tap = UITapGestureRecognizer(target: self, action: #selector(handlePreviewTap(_:)))
         tap.delegate = previewTapDelegate
         addGestureRecognizer(tap)
+        pointerDelegate.textView = self
+        addInteraction(UIPointerInteraction(delegate: pointerDelegate))
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
             (textView: MarkdownTextView, _: UITraitCollection) in
             textView.contentSizeCategoryHandler?()
@@ -896,10 +965,41 @@ final class MarkdownTextView: UITextView {
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(UIResponderStandardEditActions.toggleBoldface(_:))
+            || action == #selector(UIResponderStandardEditActions.toggleItalics(_:))
+        {
+            return isEditable && shortcutHandler != nil
+        }
+        if action == #selector(UIResponderStandardEditActions.toggleUnderline(_:)) {
+            return false
+        }
         if action == #selector(paste(_:)), isEditable, UIPasteboard.general.hasImages {
             return true
         }
         return super.canPerformAction(action, withSender: sender)
+    }
+
+    /// On iPad the system Format menu keeps ⌘B and ⌘I, so they write markdown here.
+    override func toggleBoldface(_ sender: Any?) {
+        shortcutHandler?(.bold)
+    }
+
+    override func toggleItalics(_ sender: Any?) {
+        shortcutHandler?(.italic)
+    }
+
+    /// Format commands are the editor's own: SwiftUI commands placed in the text formatting group
+    /// never reach it on iPad.
+    override var keyCommands: [UIKeyCommand]? {
+        guard isEditable, shortcutHandler != nil else { return super.keyCommands }
+        let strikethrough = UIKeyCommand(
+            title: KeyboardShortcuts.title(for: .strikethrough), action: #selector(strikethroughFromKeyboard),
+            input: KeyboardShortcuts.key(for: .strikethrough).input, modifierFlags: [.command, .shift])
+        return (super.keyCommands ?? []) + [strikethrough]
+    }
+
+    @objc private func strikethroughFromKeyboard() {
+        shortcutHandler?(.strikethrough)
     }
 
     override func tintColorDidChange() {

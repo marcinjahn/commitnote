@@ -162,6 +162,7 @@ extension AppModel {
         do {
             outcome = try await operation()
         } catch {
+            haptics.play(.actionFinished(succeeded: false))
             guard passphraseChange != nil else { return }
             passphraseChange?.stage = previous
             passphraseChange?.error = Self.message(for: error)
@@ -180,11 +181,13 @@ extension AppModel {
         case .changed:
             passphraseChange?.error = nil
             passphraseChange?.stage = .done
+            haptics.play(.actionFinished(succeeded: true))
             isChangePassphrasePresented = false
             if let path = editorTarget.notePath {
                 await open(path: path)
             }
         case .failed(let message, let clearCurrent):
+            haptics.play(.actionFinished(succeeded: false))
             passphraseChange?.stage = .form
             passphraseChange?.error = message
             passphraseChange?.clearCurrentRequested = clearCurrent

@@ -9,6 +9,7 @@ struct NoteView: View {
     @FocusState private var titleFocused: Bool
     @State private var titleText = ""
     @State private var titleSubmitted = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private enum Mode: Equatable {
         case editor
@@ -32,9 +33,16 @@ struct NoteView: View {
             }
             nameSubmitted = false
         }
+        .onChange(of: nameFocused) { _, focused in
+            if focused { model.recordDraftFocus(.name) }
+        }
         .task(id: model.editorSwitch) {
-            if model.editorTarget.isDraft {
+            guard model.editorTarget.isDraft else { return }
+            switch model.draftFocus {
+            case .name:
                 nameFocused = true
+            case .editor:
+                editorFocusRequested = true
             }
         }
     }
@@ -56,6 +64,7 @@ struct NoteView: View {
             VStack(alignment: .leading, spacing: 4) {
                 TextField("Name", text: $model.draftName)
                     .font(.title3.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
                     .autocorrectionDisabled()
                     .focused($nameFocused)
                     .submitLabel(.next)
@@ -93,6 +102,7 @@ struct NoteView: View {
             Text(name)
                 .font(.title3.weight(.semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("note-title-field")
         } else {
             TextField("Name", text: $titleText)
@@ -119,6 +129,7 @@ struct NoteView: View {
                     if let error { AccessibilityNotification.Announcement(error).post() }
                 }
                 .accessibilityLabel("Note name")
+                .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("note-title-field")
         }
     }
@@ -160,12 +171,14 @@ struct NoteView: View {
                 .pickerStyle(.inline)
             } label: {
                 if let current {
-                    Circle().fill(current.color).frame(width: 14, height: 14)
+                    TagDot(tag: current, diameter: 14)
                 } else {
                     Image(systemName: "circle.dashed")
                 }
             }
+            .hoverEffect(.lift)
             .accessibilityLabel("Color tag")
+            .accessibilityValue(current.map { model.tagLabel($0) } ?? "None")
             .accessibilityIdentifier("note-color-tag-menu")
         }
     }
@@ -173,19 +186,29 @@ struct NoteView: View {
     @ViewBuilder
     private var detailsRow: some View {
         if let details = model.noteDetails {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    dateItems(details)
-                    countItems(details)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 10) { dateItems(details) }
-                    HStack(spacing: 10) { countItems(details) }
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 2) {
+                        dateItems(details)
+                        countItems(details)
+                    }
+                } else {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            dateItems(details)
+                            countItems(details)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 10) { dateItems(details) }
+                            HStack(spacing: 10) { countItems(details) }
+                        }
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .font(.footnote)
             .foregroundStyle(.secondary)
-            .lineLimit(1)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("note-details")
         }
@@ -194,7 +217,7 @@ struct NoteView: View {
     @ViewBuilder
     private func dateItems(_ details: NoteDetails) -> some View {
         if details.notSaved {
-            Text("Not saved yet").fixedSize()
+            Text("Not saved yet").fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: true)
         } else {
             if let created = details.created { dateItem(created) }
             if let updated = details.updated { dateItem(updated) }
@@ -207,17 +230,19 @@ struct NoteView: View {
         if let tasks = details.tasks { countItem(tasks) }
         if details.shared {
             Label("Shared", systemImage: "link")
-                .fixedSize()
+                .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: true)
                 .accessibilityIdentifier("note-details-shared")
         }
     }
 
     private func dateItem(_ item: DetailItemText) -> some View {
-        Text("\(item.label) \(item.value)").fixedSize()
+        Text("\(item.label) \(item.value)")
+            .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: true)
     }
 
     private func countItem(_ item: DetailItemText) -> some View {
-        Text("\(item.value) \(item.label)").fixedSize()
+        Text("\(item.value) \(item.label)")
+            .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: true)
     }
 
     @ViewBuilder

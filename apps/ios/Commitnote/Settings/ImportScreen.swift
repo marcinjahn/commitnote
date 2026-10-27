@@ -167,6 +167,7 @@ struct ImportScreen: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .accessibilityAddTraits(selectedFolder == target.path ? .isSelected : [])
         .accessibilityIdentifier(
             isRoot ? "import-folder-root" : "import-folder-\(target.depth)-\(target.label)")

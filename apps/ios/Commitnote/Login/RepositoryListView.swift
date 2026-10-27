@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RepositoryListView: View {
     let state: LoginFlowState
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         List {
@@ -23,7 +24,7 @@ struct RepositoryListView: View {
                     }
                     .listRowBackground(
                         repository.url == state.highlightedUrl
-                            ? Color.accentColor.opacity(0.15) : nil
+                            ? Color.accentColor.opacity(contrast == .increased ? 0.35 : 0.15) : nil
                     )
                     .accessibilityLabel(repository.label)
                     .accessibilityIdentifier("login-repository-row")

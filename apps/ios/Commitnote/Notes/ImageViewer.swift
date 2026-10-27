@@ -23,6 +23,7 @@ struct ImageViewer: View {
     let imageId: String
     @State private var image: UIImage?
     @State private var loaded = false
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         ZStack {
@@ -32,17 +33,18 @@ struct ImageViewer: View {
                     .ignoresSafeArea()
             } else if loaded {
                 Text("Image unavailable")
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.white.opacity(contrast == .increased ? 1 : 0.7))
                     .accessibilityIdentifier("image-viewer-unavailable")
             } else {
                 ProgressView().tint(.white)
+                    .accessibilityLabel("Loading image")
             }
         }
         .overlay(alignment: .topTrailing) {
             Button("Done") { model.viewerImageId = nil }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(Color.white.opacity(0.18))
+                .background(Color.white.opacity(contrast == .increased ? 0.4 : 0.18))
                 .padding()
                 .accessibilityIdentifier("image-viewer-done")
         }

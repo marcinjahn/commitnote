@@ -328,7 +328,7 @@ final class MarkdownStyler {
         if muted {
             result[.foregroundColor] = UIColor.secondaryLabel
         } else if listMark {
-            result[.foregroundColor] = tint.withAlphaComponent(0.5)
+            result[.foregroundColor] = tint.softened(alpha: 0.5)
         } else if link {
             result[.foregroundColor] = tint
             result[.underlineStyle] = NSUnderlineStyle.single.rawValue

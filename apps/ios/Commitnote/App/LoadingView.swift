@@ -34,6 +34,11 @@ struct LoadingView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .defaultScrollAnchor(.center)
+        .onChange(of: model.earlyDraftFocusRequest, initial: true) { _, requested in
+            guard requested else { return }
+            focus = .name
+            model.earlyDraftFocusRequest = false
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("loading-screen")
     }
@@ -73,6 +78,7 @@ struct LoadingView: View {
                 .padding(4)
                 .frame(minHeight: 200)
                 .background(Color(.secondarySystemBackground))
+                .accessibilityLabel("Note")
                 .accessibilityIdentifier("early-draft-body")
         }
     }

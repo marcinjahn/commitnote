@@ -63,6 +63,7 @@ extension AppModel {
 
     func handleSettingsChanged(_ view: SettingsView) {
         settingsView = view
+        typeToStartEnabled = view.values.typeToStart
         refreshAppearance()
         if settingsCopy == nil, !settingsCopyRequested {
             settingsCopyRequested = true

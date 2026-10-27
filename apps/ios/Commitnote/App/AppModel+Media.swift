@@ -96,11 +96,14 @@ extension AppModel {
         do {
             switch try await send(HistoryRestore(sha: sha, restoreTitle: restoreTitle)).outcome {
             case .restored, .closed:
+                haptics.play(.actionFinished(succeeded: true))
                 return nil
             case .blocked(let message), .error(let message):
+                haptics.play(.actionFinished(succeeded: false))
                 return message
             }
         } catch {
+            haptics.play(.actionFinished(succeeded: false))
             return Self.message(for: error)
         }
     }

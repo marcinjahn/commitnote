@@ -1,3 +1,4 @@
+import AppInteraction
 import CoreRuntime
 import Foundation
 import Network
@@ -152,6 +153,20 @@ final class AppModel {
     var imageSourceRequest: ImageSourceKind?
     private(set) var pickedImages: PickedImages?
     var viewerImageId: String?
+    private(set) var initialEntrySettled = false
+    var earlyDraftFocusRequest = false
+    var searchFocusRequest = false
+    var presentedViews: Set<PresentedView> = []
+    var isEditorFocused = false
+    var typeToStartEnabled = true
+    var typeToStartPending = false
+    @ObservationIgnored var typeToStartBuffer = TypeToStartBuffer()
+    @ObservationIgnored private(set) var draftFocus = DraftFocus.name
+    #if FAKE_CORE
+    var typeToStartCatcherReady = false
+    #endif
+    @ObservationIgnored var editorFormatter: ((FormatCommand) -> Void)?
+    @ObservationIgnored weak var editorFormatterOwner: AnyObject?
     @ObservationIgnored private(set) var notePositions: [[String]: NotePosition] = [:]
 
     @ObservationIgnored private var editSender: EditSender?
@@ -169,7 +184,14 @@ final class AppModel {
     @ObservationIgnored var queuedImportPreview: ImportDestinationView?
     @ObservationIgnored var importPreviewRunning = false
     @ObservationIgnored var draftText = ""
+    @ObservationIgnored var draftPosition: NotePosition?
+    @ObservationIgnored var editorPositionSaver: (() -> Void)?
+    @ObservationIgnored var usesCompactLayout = false
+    @ObservationIgnored var launchSyncActive = false
+    @ObservationIgnored var attachedLaunchAccepts: [LaunchAction]?
+    @ObservationIgnored var launchCommandTask: Task<Void, Never>?
     @ObservationIgnored private var noteEventCounts: [[String]: Int] = [:]
+    @ObservationIgnored let haptics = HapticsPlayer()
     private var noteUpdateSerial = 0
     private(set) var runtime: CoreRuntime?
     private var eventsTask: Task<Void, Never>?
@@ -243,6 +265,7 @@ final class AppModel {
                 self.handle(event)
             }
         }
+        startLaunchSync()
         startPathMonitor()
         await sendPendingLifecycle()
 
@@ -312,6 +335,7 @@ final class AppModel {
     }
 
     func open(path: [String]?) async {
+        cancelTypeToStart()
         await flushEdits()
         if let path, editorTarget == .note(path) {
             await sendNoteOpen(path: path)
@@ -341,18 +365,36 @@ final class AppModel {
         await editSender?.flush()
     }
 
-    func startDraft(parent: [String]) async {
+    func prepareForLayoutChange() async {
+        editorPositionSaver?()
+        await flushEdits()
+    }
+
+    func recordDraftFocus(_ focus: DraftFocus) {
+        guard editorTarget.isDraft else { return }
+        draftFocus = focus
+    }
+
+    @discardableResult
+    func startDraft(parent: [String], focus: DraftFocus = .name) async -> Bool {
+        if focus == .name {
+            cancelTypeToStart()
+        }
         await flushEdits()
         do {
             let draft = try await send(DraftStart(parent: parent)).draft
             draftName = ""
             draftText = ""
+            draftPosition = nil
+            draftFocus = focus
             setEditorTarget(.draft(draft))
             draftError = nil
             editorSwitch += 1
             editorLineage += 1
+            return true
         } catch {
             showError(error)
+            return false
         }
     }
 
@@ -369,6 +411,7 @@ final class AppModel {
                 setEditorTarget(.note(path))
                 draftError = fieldError
                 editorSwitch += 1
+                haptics.play(.actionFinished(succeeded: true))
             }
         } catch {
             showError(error)
@@ -376,6 +419,7 @@ final class AppModel {
     }
 
     func leaveDraft() async {
+        cancelTypeToStart()
         await flushEdits()
         guard editorTarget.isDraft else { return }
         do {
@@ -474,13 +518,16 @@ final class AppModel {
         do {
             switch try await send(NodePlace(path: path, parent: parent, before: before)).outcome {
             case .ok:
+                haptics.play(.dropFinished(succeeded: true))
                 return nil
             case .error(let message):
                 appendLocalNotice(tone: .error, message: message)
+                haptics.play(.dropFinished(succeeded: false))
                 return message
             }
         } catch {
             showError(error)
+            haptics.play(.dropFinished(succeeded: false))
             return Self.message(for: error)
         }
     }
@@ -576,8 +623,10 @@ final class AppModel {
     func emptyTrash() async {
         do {
             _ = try await send(TrashEmpty())
+            haptics.play(.actionFinished(succeeded: true))
         } catch {
             showError(error)
+            haptics.play(.actionFinished(succeeded: false))
         }
     }
 
@@ -657,7 +706,19 @@ final class AppModel {
     }
 
     func deactivateSearch() async {
-        guard isSearchActive else { return }
+        guard endSearchState() else { return }
+        _ = try? await send(SearchClose())
+    }
+
+    /// Ends the search before returning: the search bar reads the state again right after it is
+    /// dismissed, and a search still active then presents it again.
+    func endSearch() {
+        guard endSearchState() else { return }
+        Task { _ = try? await send(SearchClose()) }
+    }
+
+    private func endSearchState() -> Bool {
+        guard isSearchActive else { return false }
         isSearchActive = false
         searchTask?.cancel()
         searchTask = nil
@@ -666,7 +727,7 @@ final class AppModel {
         searchQuery = ""
         searchResults = nil
         searchStatus = nil
-        _ = try? await send(SearchClose())
+        return true
     }
 
     /// Opens before closing search: on iPhone a push started while the search bar is still
@@ -716,6 +777,7 @@ final class AppModel {
         guard restoringLastView, screen == .notes else { return }
         if handedOff {
             lastViewTracking = true
+            initialEntrySettled = true
             postTestingReady()
         } else {
             lastViewRestorePending = true
@@ -743,6 +805,8 @@ final class AppModel {
         case .draft(let name, let error):
             draftName = name
             draftText = draft.body
+            draftPosition = nil
+            draftFocus = .name
             setEditorTarget(.draft(NoteDraft(parent: [], name: name)))
             draftError = error
             editorSwitch += 1
@@ -769,6 +833,7 @@ final class AppModel {
             }
         }
         lastViewTracking = true
+        initialEntrySettled = true
         postTestingReady()
     }
 
@@ -782,6 +847,7 @@ final class AppModel {
     #if FAKE_CORE
     func stopForTesting() async {
         stoppedForTesting = true
+        stopLaunchSync()
         eventsTask?.cancel()
         eventsTask = nil
         pathMonitor?.cancel()
@@ -1066,6 +1132,7 @@ final class AppModel {
         expandedFolders = []
         lastViewRestorePending = false
         lastViewTracking = false
+        initialEntrySettled = false
         noteNameError = nil
         noteDetails = nil
         detailsPath = nil
@@ -1087,7 +1154,11 @@ final class AppModel {
         syncStatus = nil
         draftName = ""
         draftText = ""
+        draftPosition = nil
         draftError = nil
+        draftFocus = .name
+        cancelTypeToStart()
+        typeToStartEnabled = true
         exportState = .idle
         printState = .idle
         resetImportState()
@@ -1218,7 +1289,15 @@ final class AppModel {
             appendLocalNotice(tone: .info, message: change.message)
         case .syncStateChanged(let state):
             let wasSynced = syncStatus?.state == .synced
+            let previousState = syncStatus?.state
             syncStatus = state
+            if previousState != state.state {
+                switch state.state {
+                case .outOfSync(.failed): haptics.play(.saveFailed)
+                case .outOfSync(.conflict): haptics.play(.conflictAppeared)
+                default: break
+                }
+            }
             if !wasSynced, state.state == .synced, let detailsPath {
                 Task { await refreshDates(for: detailsPath) }
             }
@@ -1233,6 +1312,7 @@ final class AppModel {
                 notices[index] = value
             } else {
                 notices.append(value)
+                haptics.play(.notice(tone: notice.tone))
             }
         case .noticeCleared(let cleared):
             notices.removeAll { $0.id == cleared.id }
@@ -1268,6 +1348,8 @@ final class AppModel {
             atomicBlocked = status.atomicBlocked
         case .passphraseChangeProgress(let progress):
             handlePassphraseProgress(progress)
+        case .launchAction(let action):
+            handleLaunchAction(action)
         case .unknown:
             break
         }

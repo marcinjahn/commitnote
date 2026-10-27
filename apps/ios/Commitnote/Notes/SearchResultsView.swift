@@ -1,5 +1,6 @@
 import NativeCoreAPI
 import SwiftUI
+import UIKit
 
 enum SearchCopy {
     static let prompt = "Search notes"
@@ -35,9 +36,15 @@ enum SearchHighlight {
 
 struct SearchResultsView: View {
     let model: AppModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         List {
+            // The iPad search bar has no Cancel or close button of its own.
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                Button("Close search", systemImage: "xmark") { model.endSearch() }
+                    .accessibilityIdentifier("search-close")
+            }
             if let status = model.searchStatus, let text = status.status {
                 statusRow(text: text, progress: status.progress)
             }
@@ -161,7 +168,7 @@ struct SearchResultsView: View {
                         Text(SearchHighlight.snippet(snippet))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                     }
                 }
                 Spacer(minLength: 0)
@@ -174,6 +181,7 @@ struct SearchResultsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(identifier)
     }

@@ -48,6 +48,7 @@ struct NoteFontListScreen: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .accessibilityAddTraits(current ? .isSelected : [])
         .accessibilityIdentifier("settings-font-\(option.id)")
     }

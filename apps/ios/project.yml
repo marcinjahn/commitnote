@@ -24,6 +24,8 @@ packages:
     path: Packages/NativeCoreAPI
   EditorText:
     path: Packages/EditorText
+  AppInteraction:
+    path: Packages/AppInteraction
   MarkdownStyling:
     path: Packages/MarkdownStyling
   CoreRuntime:
@@ -43,6 +45,8 @@ targets:
         product: NativeCoreAPI
       - package: EditorText
         product: EditorText
+      - package: AppInteraction
+        product: AppInteraction
       - package: MarkdownStyling
         product: MarkdownStyling
     settings:
@@ -83,6 +87,17 @@ targets:
           - iAWriterQuattroS-Regular.ttf
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        CFBundleURLTypes:
+          - CFBundleURLName: io.github.marcinjahn.commitnote
+            CFBundleURLSchemes:
+              - commitnote
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: io.github.marcinjahn.commitnote.new-note
+            UIApplicationShortcutItemTitle: New note
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeCompose
+          - UIApplicationShortcutItemType: io.github.marcinjahn.commitnote.search
+            UIApplicationShortcutItemTitle: Search notes
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeSearch
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -134,6 +149,8 @@ targets:
         product: CommitnoteCrypto
       - package: EditorText
         product: EditorText
+      - package: AppInteraction
+        product: AppInteraction
     settings:
       base:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/commitnote.app/commitnote"

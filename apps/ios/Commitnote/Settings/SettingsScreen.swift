@@ -6,6 +6,16 @@ struct SettingsScreen: View {
     @Bindable var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
+    /// A text bar button keeps its size at large text sizes; the iOS 26 confirm button is a glyph.
+    @ViewBuilder
+    private var doneButton: some View {
+        if #available(iOS 26, *) {
+            Button(role: .confirm) { dismiss() }
+        } else {
+            Button("Done") { dismiss() }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             content
@@ -19,7 +29,8 @@ struct SettingsScreen: View {
                 }
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
+                        doneButton
+                            .accessibilityLabel("Done")
                             .accessibilityIdentifier("settings-done")
                     }
                 }
@@ -55,16 +66,37 @@ private struct SettingsForm: View {
 
     var body: some View {
         Form {
-            Section {
-                if let save {
-                    saveStatus(save)
+            // In a row of their own the status texts lag behind a text size change on iPad, long
+            // enough for the accessibility audit to find them not following Dynamic Type. In the
+            // header of a section without rows they crashed the list on a text size change, so
+            // they lead the first section's header.
+            AppearanceSection(model: model, copy: copy, view: view) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(copy.intro)
+                    if let save {
+                        saveStatus(save)
+                    }
                 }
-            } header: {
-                Text(copy.intro)
-                    .textCase(nil)
+                .textCase(nil)
             }
-            AppearanceSection(model: model, copy: copy, view: view)
             Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    SettingHeader(
+                        model: model, copy: copy, title: copy.typeToStart.label, key: .typeToStart,
+                        scope: view.scopes.typeToStart)
+                    Toggle(
+                        copy.typeToStart.label,
+                        isOn: Binding(
+                            get: { view.values.typeToStart },
+                            set: { model.changeSetting(.typeToStart, to: $0 ? "true" : "false") })
+                    )
+                    .labelsHidden()
+                    .accessibilityValue(view.values.typeToStart ? "on" : "off")
+                    .accessibilityIdentifier("settings-type-to-start")
+                    Text(copy.typeToStart.hint)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             } header: {
                 Text(copy.sections.editor)
             } footer: {
@@ -82,6 +114,10 @@ private struct SettingsForm: View {
     private func saveStatus(_ save: SettingsSaveView) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(save.label)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .accessibilityValue(save.state.rawValue)
+                .accessibilityIdentifier("settings-save-status")
             if !save.detail.isEmpty {
                 Text(save.detail)
                     .font(.footnote)
@@ -93,9 +129,6 @@ private struct SettingsForm: View {
                     .accessibilityIdentifier("settings-retry-button")
             }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityValue(save.state.rawValue)
-        .accessibilityIdentifier("settings-save-status")
     }
 }
 
@@ -115,6 +148,7 @@ private struct ScopeToggle: View {
         }
         .font(.footnote)
         .buttonStyle(.borderless)
+        .hoverEffect()
         .accessibilityValue(scope.rawValue)
         .accessibilityIdentifier("settings-scope-\(key.rawValue)")
     }
@@ -126,25 +160,36 @@ private struct SettingHeader: View {
     let title: String
     let key: ScopedSettingKey
     let scope: SettingScope
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack {
+        let layout =
+            dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout())
+        layout {
             Text(title)
-            Spacer()
+            if !dynamicTypeSize.isAccessibilitySize { Spacer() }
             ScopeToggle(model: model, copy: copy, key: key, scope: scope)
         }
     }
 }
 
-private struct AppearanceSection: View {
+private struct AppearanceSection<Lead: View>: View {
     let model: AppModel
     let copy: SettingsCopy
     let view: SettingsView
+    @ViewBuilder let lead: Lead
 
-    private let columns = [GridItem(.adaptive(minimum: 44), spacing: 12)]
+    @ScaledMetric private var swatchSize: CGFloat = 32
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: swatchSize + 12), spacing: 12)]
+    }
 
     var body: some View {
-        Section(copy.sections.appearance) {
+        Section {
             VStack(alignment: .leading, spacing: 8) {
                 SettingHeader(
                     model: model, copy: copy, title: copy.colorMode.label, key: .colorMode,
@@ -182,6 +227,11 @@ private struct AppearanceSection: View {
                 .accessibilityValue(view.values.noteFont)
                 .accessibilityIdentifier("settings-note-font")
             }
+        } header: {
+            VStack(alignment: .leading, spacing: 24) {
+                lead
+                Text(copy.sections.appearance)
+            }
         }
     }
 
@@ -200,14 +250,17 @@ private struct AppearanceSection: View {
         } label: {
             Circle()
                 .fill(swatchColor(option))
-                .frame(width: 32, height: 32)
+                .frame(width: swatchSize, height: swatchSize)
                 .overlay {
-                    Circle().strokeBorder(.primary.opacity(selected ? 1 : 0.15), lineWidth: selected ? 3 : 1)
+                    Circle().strokeBorder(
+                        .primary.opacity(selected || contrast == .increased ? 1 : 0.15),
+                        lineWidth: selected ? 3 : 1)
                 }
                 .padding(6)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
+        .hoverEffect(.lift)
         .accessibilityLabel(option.label)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("settings-accent-\(option.id)")

@@ -24,9 +24,17 @@ extension AppModel {
     func createShare(path: [String], password: String, label: String) async -> ShareCreateOutcome? {
         await flushEdits()
         do {
-            return try await send(ShareCreate(path: path, password: password, label: label)).outcome
+            let outcome = try await send(
+                ShareCreate(path: path, password: password, label: label)
+            ).outcome
+            switch outcome {
+            case .created: haptics.play(.actionFinished(succeeded: true))
+            case .error: haptics.play(.actionFinished(succeeded: false))
+            }
+            return outcome
         } catch {
             showError(error)
+            haptics.play(.actionFinished(succeeded: false))
             return nil
         }
     }
@@ -35,8 +43,10 @@ extension AppModel {
         Task {
             do {
                 _ = try await send(ShareUpdate(id: id))
+                haptics.play(.actionFinished(succeeded: true))
             } catch {
                 showError(error)
+                haptics.play(.actionFinished(succeeded: false))
             }
         }
     }

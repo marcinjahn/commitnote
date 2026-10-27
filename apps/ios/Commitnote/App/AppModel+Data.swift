@@ -49,7 +49,8 @@ extension AppModel {
         if files.count == 1, Self.isArchive(files[0].name) {
             await readArchive(files[0])
         } else {
-            await sendDroppedFiles(files, parent: nil, source: .picker)
+            let queued = await sendDroppedFiles(files, parent: nil, source: .picker)
+            haptics.play(.actionFinished(succeeded: queued))
         }
     }
 
@@ -127,7 +128,8 @@ extension AppModel {
                 name: file.name)
         }
         defer { runtime.discardStagedInputs(files.map(\.input)) }
-        await sendDroppedFiles(files, parent: parent, source: .tree)
+        let queued = await sendDroppedFiles(files, parent: parent, source: .tree)
+        haptics.play(.dropFinished(succeeded: queued))
     }
 
     func resolveAtomicBlocked(enable: Bool) async {
@@ -164,12 +166,14 @@ extension AppModel {
             archive = try await send(ExportNotes(includeImages: includeImages))
         } catch {
             exportState = .failed
+            haptics.play(.actionFinished(succeeded: false))
             return nil
         }
         let url = await Task.detached(priority: .userInitiated) {
             Self.writeArchive(archive)
         }.value
         exportState = url == nil ? .failed : .idle
+        haptics.play(.actionFinished(succeeded: url != nil))
         return url
     }
 
@@ -197,6 +201,7 @@ extension AppModel {
         do {
             outcome = try await send(ImportCommit(destination: destination, policy: policy)).outcome
         } catch {
+            haptics.play(.actionFinished(succeeded: false))
             if importForm != nil {
                 importOutcomeMessage = Self.message(for: error)
             }
@@ -205,6 +210,7 @@ extension AppModel {
         guard importForm != nil else { return }
         switch outcome {
         case .queued(let expand):
+            haptics.play(.actionFinished(succeeded: true))
             clearImportForm()
             if let expand {
                 expandImportedFolder(expand)
@@ -217,20 +223,24 @@ extension AppModel {
                 canConfigure: canConfigure, message: message, actionLabel: actionLabel,
                 destination: destination, policy: policy)
         case .error(let message):
+            haptics.play(.actionFinished(succeeded: false))
             importOutcomeMessage = message
         }
     }
 
     private func sendDroppedFiles(
         _ files: [ImportDroppedFile], parent: [String]?, source: ImportDropSource
-    ) async {
+    ) async -> Bool {
         do {
             let outcome = try await send(
                 ImportDropFiles(files: files, parent: parent, source: source)
             ).outcome
             applyDropOutcome(outcome)
+            if case .queued = outcome { return true }
+            return false
         } catch {
             showError(error)
+            return false
         }
     }
 

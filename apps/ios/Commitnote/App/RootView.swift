@@ -6,6 +6,7 @@ struct RootView: View {
 
     var body: some View {
         content
+            .modifier(ShortcutStatePublisher(model: model))
             .onChange(of: scenePhase, initial: true) { _, phase in
                 model.scenePhaseChanged(phase)
                 if phase == .active {
@@ -34,7 +35,11 @@ struct RootView: View {
         case .keyChanged(let info):
             KeyChangedView(model: model, info: info)
         case .notes:
+            #if FAKE_CORE
+            NotesRootView(model: model).modifier(TestingWidthOverride())
+            #else
             NotesRootView(model: model)
+            #endif
         case .fatal(let message):
             FatalView(message: message)
         }
@@ -50,6 +55,7 @@ private struct KeyChangedView: View {
         VStack(spacing: 16) {
             Text("Passphrase changed")
                 .font(.title2.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
             Text(info.message)
                 .multilineTextAlignment(.center)
             Text(info.detail)

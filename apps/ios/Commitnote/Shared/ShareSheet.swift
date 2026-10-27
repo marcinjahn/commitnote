@@ -42,7 +42,7 @@ enum ShareSheet {
             popover.sourceRect = sourceRect
                 ?? CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
         }
-        presenter.present(controller, animated: true)
+        presenter.present(controller, animated: !UIAccessibility.isReduceMotionEnabled)
     }
 
     private static func cleanUp(_ url: URL) {

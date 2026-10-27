@@ -108,9 +108,7 @@ struct TrashView: View {
             }
             Spacer(minLength: 0)
             if let tag = entry.colorTag {
-                Circle()
-                    .fill(tag.color)
-                    .frame(width: 10, height: 10)
+                TagDot(tag: tag)
                     .accessibilityHidden(true)
             }
             Menu {

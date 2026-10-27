@@ -4,22 +4,39 @@ import SwiftUI
 struct NotesRootView: View {
     let model: AppModel
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var dismissing = false
+    @State private var showsRegularLayout: Bool?
+    @State private var layoutChange: Task<Void, Never>?
+    @State private var layoutSettling = false
+    @FocusState private var searchFieldFocused: Bool
 
     var body: some View {
         layout
+            .onChange(of: sizeClass, initial: true) { _, newSizeClass in
+                model.usesCompactLayout = newSizeClass != .regular
+                applyLayout(regular: newSizeClass == .regular)
+            }
+            .onChange(of: model.searchFocusRequest, initial: true) { _, requested in
+                guard requested else { return }
+                focusSearchField()
+                model.searchFocusRequest = false
+            }
             .onChange(of: model.editorTarget, initial: true) { _, target in
                 dismissing = false
                 if let path = target.notePath {
                     model.expandAncestors(of: path)
                 }
             }
+            #if FAKE_CORE
+            .overlay(alignment: .bottomLeading) { TestingWidthState() }
+            #endif
             .overlay(alignment: .bottom) {
                 if let notice = model.notices.last {
                     NoticeBanner(model: model, notice: notice)
                         .padding()
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .animation(.default, value: model.notices.last)
@@ -95,7 +112,7 @@ struct NotesRootView: View {
 
     @ViewBuilder
     private var layout: some View {
-        if sizeClass == .regular {
+        if showsRegularLayout ?? (sizeClass == .regular) {
             NavigationSplitView(columnVisibility: $columnVisibility) {
                 treeColumn(placement: .navigationBarDrawer(displayMode: .always))
             } detail: {
@@ -120,6 +137,9 @@ struct NotesRootView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .accessibilityIdentifier("note-placeholder")
                             #if FAKE_CORE
+                            .overlay(alignment: .topLeading) {
+                                TestingTypeToStartState(model: model)
+                            }
                             .toolbar {
                                 ToolbarItem(placement: .topBarTrailing) {
                                     TestingMenu(model: model)
@@ -130,6 +150,16 @@ struct NotesRootView: View {
                 }
             }
             .navigationSplitViewStyle(.balanced)
+            .background {
+                // Outside the detail column: starting a note swaps that column while keys still arrive.
+                TypeToStartCatcher(
+                    model: model, placeholderVisible: model.editorTarget == .none,
+                    capturing: model.typeToStartPending
+                        || model.typeToStartArmed(placeholderVisible: model.editorTarget == .none)
+                )
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+            }
         } else {
             NavigationStack {
                 treeColumn(placement: .navigationBarDrawer(displayMode: .always))
@@ -170,6 +200,36 @@ struct NotesRootView: View {
         .searchable(
             text: searchText, isPresented: searchPresented, placement: placement,
             prompt: SearchCopy.prompt)
+        .searchFocused($searchFieldFocused)
+    }
+
+    private func applyLayout(regular: Bool) {
+        guard let current = showsRegularLayout else {
+            showsRegularLayout = regular
+            return
+        }
+        layoutChange?.cancel()
+        guard current != regular else { return }
+        layoutChange = Task {
+            await model.prepareForLayoutChange()
+            guard !Task.isCancelled else { return }
+            layoutSettling = true
+            dismissing = false
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { showsRegularLayout = regular }
+            try? await Task.sleep(for: .milliseconds(500))
+            layoutSettling = false
+        }
+    }
+
+    private func focusSearchField() {
+        guard sizeClass == .regular, columnVisibility != .all else {
+            searchFieldFocused = true
+            return
+        }
+        columnVisibility = .all
+        Task { searchFieldFocused = true }
     }
 
     private var searchText: Binding<String> {
@@ -182,12 +242,11 @@ struct NotesRootView: View {
         Binding(
             get: { model.isSearchActive },
             set: { presented in
-                Task {
-                    if presented {
-                        await model.activateSearch()
-                    } else {
-                        await model.deactivateSearch()
-                    }
+                guard !layoutSettling else { return }
+                if presented {
+                    Task { await model.activateSearch() }
+                } else {
+                    model.endSearch()
                 }
             })
     }
@@ -262,23 +321,21 @@ struct NotesRootView: View {
     }
 
     private func closeEditor() async {
-        if model.editorTarget.isDraft {
-            await model.leaveDraft()
-        }
-        if model.editorTarget != .none {
-            await model.open(path: nil)
-        }
+        await model.leaveEditor()
         dismissing = false
     }
 }
 
 private struct LogoutSavingOverlay: View {
+    @Environment(\.colorSchemeContrast) private var contrast
+
     var body: some View {
         ZStack {
-            Color.black.opacity(0.35).ignoresSafeArea()
+            Color.black.opacity(contrast == .increased ? 0.6 : 0.35).ignoresSafeArea()
             VStack(spacing: 12) {
                 Text("Logging out")
                     .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
                 ProgressView()
                 Text("Saving…")
                     .foregroundStyle(.secondary)

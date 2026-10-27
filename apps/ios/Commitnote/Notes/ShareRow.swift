@@ -9,12 +9,13 @@ struct ShareRow: View {
     let onViewSharedVersion: (ShareRowView) -> Void
     @State private var renaming = false
     @State private var confirmingRevoke = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title)
-                    .lineLimit(2)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 if let secondary {
                     Text(secondary)
                         .font(.caption)
@@ -42,6 +43,7 @@ struct ShareRow: View {
             .accessibilityIdentifier("share-row-menu")
         }
         .accessibilityElement(children: .contain)
+        .accessibilityLabel([row.title, secondary].compactMap { $0 }.joined(separator: ", "))
         .accessibilityIdentifier("share-row")
         .contextMenu { actionButtons }
         .sheet(isPresented: $renaming) {

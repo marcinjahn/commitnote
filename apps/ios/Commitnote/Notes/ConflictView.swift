@@ -12,6 +12,7 @@ struct ConflictView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(conflict.heading)
                         .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
                     Text(conflict.text)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -32,6 +33,7 @@ struct ConflictView: View {
             .padding()
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("conflict-view")
+            .onAppear { AccessibilityNotification.Announcement(conflict.heading).post() }
         }
     }
 

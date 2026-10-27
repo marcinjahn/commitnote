@@ -16,6 +16,11 @@ struct TreeView: View {
     var body: some View {
         content
             .navigationTitle("Notes")
+            .reportsPresentation(
+                .treeAction,
+                presented: folderSheet != nil || renameTarget != nil || moveTarget != nil
+                    || deleteRequest != nil,
+                model: model)
             .sheet(item: $folderSheet) { target in
                 NewFolderSheet(model: model, parent: target.parent) {
                     if !target.parent.isEmpty {
@@ -94,8 +99,7 @@ struct TreeView: View {
                         }
                         .accessibilityIdentifier("log-out-button")
                     } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .accessibilityLabel("Menu")
+                        Label("Menu", systemImage: "ellipsis.circle")
                     }
                     .accessibilityIdentifier("notes-menu-button")
                 }
@@ -157,11 +161,10 @@ struct TreeView: View {
             }
             .pickerStyle(.inline)
         } label: {
-            Image(
-                systemName: model.tagFilter == nil
-                    ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill"
-            )
-            .accessibilityLabel("Color tag filter")
+            Label(
+                "Color tag filter",
+                systemImage: model.tagFilter == nil
+                    ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
         }
         .accessibilityIdentifier("tag-filter-menu")
     }
@@ -256,6 +259,14 @@ private struct TreeRows: View {
     @Binding var folderSheet: FolderSheetTarget?
     let drop: TreeDropHandler
     let perform: (TreeAction) -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var rowLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 8))
+    }
 
     /// The List lets its rows be dragged only while it accepts drops itself.
     var body: some View {
@@ -280,16 +291,18 @@ private struct TreeRows: View {
                     model: model, parent: path, nodes: children, expanded: $expanded,
                     folderSheet: $folderSheet, drop: drop, perform: perform)
             } label: {
-                HStack {
+                rowLayout {
                     Label {
                         Text(name)
+                            .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("tree-folder")
                             .accessibilityLabel(name)
+                            .accessibilityValue(expanded.contains(path) ? "Expanded" : "Collapsed")
                     } icon: {
                         Image(systemName: "folder")
                     }
                     if !expanded.contains(path) {
-                        Spacer()
+                        if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                         Text("\(noteCount)")
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("tree-folder-count")
@@ -298,8 +311,9 @@ private struct TreeRows: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    withAnimation { toggle(path) }
+                    withAnimation(reduceMotion ? nil : .default) { toggle(path) }
                 }
+                .hoverEffect(.highlight)
                 .contextMenu {
                     Button("New note", systemImage: "square.and.pencil") {
                         Task { await model.startDraft(parent: path) }
@@ -317,26 +331,36 @@ private struct TreeRows: View {
                         perform: perform))
             }
         case .note(let name, let path, let colorTag, let shared):
-            HStack(spacing: 8) {
-                Label(name, systemImage: "doc.text")
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(name)
-                    .accessibilityIdentifier("tree-note")
-                Spacer(minLength: 0)
-                if shared {
-                    Image(systemName: "link")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Shared")
-                        .accessibilityIdentifier("tree-note-shared")
+            rowLayout {
+                Label {
+                    Text(name)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("tree-note")
+                        .accessibilityLabel(name)
+                        .accessibilityValue(noteValue(colorTag: colorTag, shared: shared))
+                } icon: {
+                    Image(systemName: "doc.text")
                 }
-                if let colorTag {
-                    TagDot(tag: colorTag)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("\(model.tagLabel(colorTag)) tag")
-                        .accessibilityIdentifier("tree-note-tag")
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
+                if shared || colorTag != nil {
+                    HStack(spacing: 8) {
+                        if shared {
+                            Image(systemName: "link")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("Shared")
+                                .accessibilityIdentifier("tree-note-shared")
+                        }
+                        if let colorTag {
+                            TagDot(tag: colorTag)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("\(model.tagLabel(colorTag)) tag")
+                                .accessibilityIdentifier("tree-note-tag")
+                        }
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .tag(Optional(path))
             .contextMenu {
                 organiseActions(path: path, name: name, first: first, last: last, colorTag: .some(colorTag))
@@ -346,6 +370,13 @@ private struct TreeRows: View {
                     target: TreeActionTarget(path: path, name: name), isFolder: false, drop: drop,
                     perform: perform))
         }
+    }
+
+    private func noteValue(colorTag: ColorTag?, shared: Bool) -> String {
+        var parts: [String] = []
+        if let colorTag { parts.append("\(model.tagLabel(colorTag)) tag") }
+        if shared { parts.append("Shared") }
+        return parts.joined(separator: ", ")
     }
 
     @ViewBuilder
@@ -439,18 +470,27 @@ private struct TreeRowActions: ViewModifier {
                     .tint(.accentColor)
                     .accessibilityIdentifier("swipe-rename")
             }
-            .itemProvider { TreeDrop.provider(for: target.path) }
+            .itemProvider {
+                drop.model?.haptics.play(.dragStarted)
+                return TreeDrop.provider(for: target.path)
+            }
             .background(TreeDropInstaller(handler: drop, path: target.path, isFolder: isFolder))
     }
 }
 
 struct TagDot: View {
     let tag: ColorTag
+    @ScaledMetric private var diameter: CGFloat
+
+    init(tag: ColorTag, diameter: CGFloat = 10) {
+        self.tag = tag
+        _diameter = ScaledMetric(wrappedValue: diameter)
+    }
 
     var body: some View {
         Circle()
             .fill(tag.color)
-            .frame(width: 10, height: 10)
+            .frame(width: diameter, height: diameter)
     }
 
     static func menuImage(_ tag: ColorTag) -> Image {
@@ -519,6 +559,7 @@ private struct TreeDropTarget: Equatable {
 @MainActor
 private final class TreeDropHandler: NSObject, UIDropInteractionDelegate {
     weak var model: AppModel?
+    private var hoveredTarget: TreeDropTarget?
 
     func install(on cell: UICollectionViewCell) {
         let installed = cell.interactions.contains { ($0 as? UIDropInteraction)?.delegate === self }
@@ -542,18 +583,25 @@ private final class TreeDropHandler: NSObject, UIDropInteractionDelegate {
         let allowed = target != nil && !(external && model?.isImporting == true)
         setHighlighted(allowed, interaction)
         guard allowed else { return UIDropProposal(operation: .forbidden) }
+        if target != hoveredTarget {
+            hoveredTarget = target
+            model?.haptics.play(.dropTargetChanged)
+        }
         return UIDropProposal(operation: external ? .copy : .move)
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, sessionDidExit session: UIDropSession) {
+        hoveredTarget = nil
         setHighlighted(false, interaction)
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, sessionDidEnd session: UIDropSession) {
+        hoveredTarget = nil
         setHighlighted(false, interaction)
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
+        hoveredTarget = nil
         setHighlighted(false, interaction)
         guard let target = target(of: interaction), let model else { return }
         if session.localDragSession == nil {

@@ -12,6 +12,9 @@ struct ImageSourcePresenter: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .reportsPresentation(
+                .imageSource, presented: photosPresented || cameraPresented || filesPresented,
+                model: model)
             .onChange(of: model.imageSourceRequest) { _, kind in
                 guard let kind else { return }
                 model.imageSourceRequest = nil

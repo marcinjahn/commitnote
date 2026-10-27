@@ -53,6 +53,7 @@ struct SharedVersionScreen: View {
                             .foregroundStyle(.secondary)
                         Text(name ?? item.title)
                             .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)

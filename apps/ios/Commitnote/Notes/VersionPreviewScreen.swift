@@ -145,6 +145,7 @@ struct VersionPreviewScreen: View {
 
 private struct DiffLine: View {
     let line: DiffLineView
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         Text(attributedText)
@@ -167,16 +168,16 @@ private struct DiffLine: View {
     private var lineTint: Color {
         switch line {
         case .same: .clear
-        case .added: Color.green.opacity(0.15)
-        case .removed: Color.red.opacity(0.15)
+        case .added: Color.green.opacity(contrast == .increased ? 0.3 : 0.15)
+        case .removed: Color.red.opacity(contrast == .increased ? 0.3 : 0.15)
         }
     }
 
     private var emphasis: Color {
         switch line {
         case .same: .clear
-        case .added: Color.green.opacity(0.4)
-        case .removed: Color.red.opacity(0.4)
+        case .added: Color.green.opacity(contrast == .increased ? 0.65 : 0.4)
+        case .removed: Color.red.opacity(contrast == .increased ? 0.65 : 0.4)
         }
     }
 

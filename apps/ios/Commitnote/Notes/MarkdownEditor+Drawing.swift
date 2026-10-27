@@ -136,7 +136,9 @@ final class PreviewLayoutFragment: NSTextLayoutFragment {
         UIGraphicsPushContext(context)
         for decoration in decorations where decoration == .quote {
             if let rect = rect(for: decoration) {
-                tint.withAlphaComponent(0.4).setFill()
+                let contrast = UITraitCollection(
+                    accessibilityContrast: UIAccessibility.isDarkerSystemColorsEnabled ? .high : .normal)
+                tint.softened(alpha: 0.4).resolvedColor(with: contrast).setFill()
                 UIRectFill(rect.offsetBy(dx: point.x, dy: point.y))
             }
         }
@@ -339,6 +341,31 @@ struct PreviewAccessibilityItem {
     var kind: Kind
     /// In text view coordinates.
     var frame: CGRect
+
+    var key: String {
+        switch kind {
+        case .checkbox(let range, _, _): "checkbox:\(range.lowerBound)"
+        case .link(let offset, _): "link:\(offset)"
+        case .image(let imageKey, _, _, _): "image:\(imageKey)"
+        }
+    }
+}
+
+final class EditorPointerDelegate: NSObject, UIPointerInteractionDelegate {
+    weak var textView: MarkdownTextView?
+
+    func pointerInteraction(_ interaction: UIPointerInteraction, regionFor request: UIPointerRegionRequest, defaultRegion: UIPointerRegion)
+        -> UIPointerRegion?
+    {
+        guard let textView,
+            let item = textView.visiblePreviewItems().first(where: { $0.frame.contains(request.location) })
+        else { return nil }
+        return UIPointerRegion(rect: item.frame, identifier: item.key as NSString)
+    }
+
+    func pointerInteraction(_ interaction: UIPointerInteraction, styleFor region: UIPointerRegion) -> UIPointerStyle? {
+        UIPointerStyle(shape: .roundedRect(region.rect, radius: 4))
+    }
 }
 
 extension MarkdownTextView {

@@ -99,6 +99,75 @@ final class TestingAppearance {
     }
 }
 
+/// SwiftUI's size class environment cannot be overridden from the outside, so UI tests force the
+/// width through the window scene's trait overrides, which also move UIKit's own adaptive behaviour.
+@MainActor
+@Observable
+final class TestingLayout {
+    static let shared = TestingLayout()
+
+    var forced: UIUserInterfaceSizeClass? {
+        didSet { applyToScenes() }
+    }
+
+    var label: String {
+        switch forced {
+        case .compact: "compact"
+        case .regular: "regular"
+        default: "system"
+        }
+    }
+
+    func cycle() {
+        switch forced {
+        case .compact: forced = .regular
+        case .regular: forced = nil
+        default: forced = .compact
+        }
+    }
+
+    private func applyToScenes() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            if let forced {
+                windowScene.traitOverrides.horizontalSizeClass = forced
+            } else {
+                windowScene.traitOverrides.remove(UITraitHorizontalSizeClass.self)
+            }
+        }
+    }
+}
+
+/// The scene's trait override does not reach SwiftUI's size class environment, so the forced width
+/// is also handed to the notes screen directly.
+struct TestingWidthOverride: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var system
+
+    func body(content: Content) -> some View {
+        content.environment(\.horizontalSizeClass, sizeClass)
+    }
+
+    private var sizeClass: UserInterfaceSizeClass? {
+        switch TestingLayout.shared.forced {
+        case .compact: .compact
+        case .regular: .regular
+        default: system
+        }
+    }
+}
+
+struct TestingWidthState: View {
+    var body: some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .allowsHitTesting(false)
+            .accessibilityElement()
+            .accessibilityLabel("Width")
+            .accessibilityValue(TestingLayout.shared.label)
+            .accessibilityIdentifier("testing-width")
+    }
+}
+
 /// UI tests restart the app's model and core in the running process instead of relaunching it,
 /// which costs far less than a new process. Everything a relaunch resets is rebuilt: a new model, a
 /// new core with a fresh fake forge, and new views; stored state stays, as it does across launches.
@@ -190,6 +259,20 @@ struct FakeHoldLoading: NativeCoreCommand {
 struct FakeReleaseLoading: NativeCoreCommand {
     static let name = "fake.releaseLoading"
     typealias Result = Empty
+}
+
+struct TestingTypeToStartState: View {
+    let model: AppModel
+
+    var body: some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .allowsHitTesting(false)
+            .accessibilityElement()
+            .accessibilityLabel("Type to start")
+            .accessibilityValue(model.typeToStartCatcherReady ? "ready" : "idle")
+            .accessibilityIdentifier("testing-type-to-start")
+    }
 }
 
 struct TestingLoadingBar: View {
@@ -312,6 +395,10 @@ struct TestingMenu: View {
                 Task { await model.setForcedOffline(!model.forcedOffline) }
             }
             .accessibilityIdentifier("testing-offline")
+            Button("Switch width") {
+                TestingLayout.shared.cycle()
+            }
+            .accessibilityIdentifier("testing-switch-width")
         }
         .accessibilityIdentifier("testing-menu")
     }
