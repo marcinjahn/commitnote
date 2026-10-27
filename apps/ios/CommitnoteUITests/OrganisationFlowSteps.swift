@@ -11,11 +11,15 @@ extension XCTestCase {
     /// The last view reopens the previously open note shortly after the tree loads, so a note
     /// that appears within a few seconds is closed again on iPhone.
     func resumeAtTree(
-        appearance: Appearance = .light, editorHooks: Bool = false, file: StaticString = #filePath,
-        line: UInt = #line
+        appearance: Appearance = .light, editorHooks: Bool = false, contentSize: String? = nil,
+        relaunch: Bool = false, file: StaticString = #filePath, line: UInt = #line
     ) -> XCUIApplication {
-        let restarted = restartInProcess(appearance: appearance, editorHooks: editorHooks)
-        let app = restarted ?? launchApp(reset: false, appearance: appearance, editorHooks: editorHooks)
+        let restarted =
+            relaunch
+            ? nil : restartInProcess(appearance: appearance, editorHooks: editorHooks, contentSize: contentSize)
+        let app =
+            restarted
+            ?? launchApp(reset: false, appearance: appearance, editorHooks: editorHooks, contentSize: contentSize)
         let tree = app.element("notes-tree")
         let noteView = app.element("note-view")
         let tokenField = app.secureTextFields["login-token-field"]
