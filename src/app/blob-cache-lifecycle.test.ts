@@ -1,6 +1,7 @@
 import { IDBFactory, IDBKeyRange as FakeIDBKeyRange } from "fake-indexeddb";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createBlobStore, BLOB_CACHE_DB_NAME } from "../blob-cache/blob-store";
+import { createMemoryBlobStoreProvider } from "../blob-cache/testing/memory-blob-store";
 import { gitBlobSha } from "../forge/git-blob-sha";
 import type { RepoCoordinates } from "../forge/repo-coordinates";
 import type { IndexStatus } from "../search/content-indexer";
@@ -93,6 +94,36 @@ describe("openSessionBlobCache", () => {
     expect(await check.get(OTHER_REPO_KEY, "other-sha")).toBeNull();
     expect(await check.get("github:alice/notes", ownSha)).not.toBeNull();
     check.close();
+  });
+
+  it("uses an injected blob store instead of IndexedDB", async () => {
+    const provider = createMemoryBlobStoreProvider();
+    const ownText = "own ciphertext";
+    const ownSha = await gitBlobSha(ownText);
+    const seed = provider.open();
+    await seed.put("github:alice/notes", ownSha, ownText, 1);
+    await seed.put(OTHER_REPO_KEY, "other-sha", "other ciphertext", 1);
+
+    const cache = await openSessionBlobCache({
+      remembered: true,
+      coordinates: COORDINATES,
+      clock,
+      blobStore: provider,
+    });
+
+    expect(await cache?.read(ownSha)).toBe(ownText);
+    expect(await seed.get(OTHER_REPO_KEY, "other-sha")).toBeNull();
+
+    const none = await openSessionBlobCache({
+      remembered: false,
+      coordinates: COORDINATES,
+      clock,
+      blobStore: provider,
+    });
+
+    expect(none).toBeNull();
+    expect(provider.deletedAll).toBe(1);
+    expect(provider.entries.size).toBe(0);
   });
 });
 

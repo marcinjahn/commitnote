@@ -5,6 +5,12 @@ import { describeMinutes } from "../plural";
 export const KEY_CHANGED_MESSAGE =
   "The passphrase was changed on another device. Log in again.";
 
+export function describeKeyChangedUnsaved(unsavedCount: number): string {
+  return unsavedCount === 0
+    ? "All your changes were saved before this happened."
+    : `${unsavedCount} ${unsavedCount === 1 ? "note or folder was" : "notes or folders were"} not saved and are lost when you log in again. Export your notes first to keep them.`;
+}
+
 export function describeSyncState(state: SyncState): string {
   switch (state.kind) {
     case "synced":

@@ -1,0 +1,47 @@
+{
+  "format": 1,
+  "keyring": "A",
+  "notes": [
+    {
+      "markdown": "",
+      "randomHex": "a1ed50349a1f985095d32b88",
+      "stored": "v1:oe1QNJofmFCV0yuINA9jHR04rRr19+X4Pnx6ng=="
+    },
+    {
+      "markdown": "Hello, world.",
+      "randomHex": "71d1b922830fcac3614e658a",
+      "stored": "v1:cdG5IoMPysNhTmWKIaj2FmnxsSTD40gX9iSHo5nhBG1BA+pTIGOoXwg="
+    },
+    {
+      "markdown": "# Zażółć gęślą jaźń\n\nLine two with 📝 and é.\n\n- item one\n- item two\n",
+      "randomHex": "593928b01db4418b8a8a88c1",
+      "stored": "v1:WTkosB20QYuKiojB3+oCUiPuM1f/dVeUfyuTOQ+yYnvK63l+BV5HXEtLMRmUj6G1mpFUa3hLXJAQA2+4drFQW2OwglwThEA1F2afmO7zp2Rt9Exkry2ffj/etUttxlJ3lah3aPl3jMmyBeu2"
+    }
+  ],
+  "indexes": [
+    {
+      "kind": "order",
+      "serialized": "{\"version\":1,\"folders\":{\"[\\\"Projects\\\"]\":{\"commitnote\":\"V\",\"notes.md\":\"k\"},\"[]\":{\"Ideas\":\"8\",\"Projects\":\"V\",\"Zażółć\":\"k\"}}}",
+      "randomHex": "307d974e8e49f29b0f7b8c7d",
+      "stored": "v1:MH2XTo5J8psPe4x9O3HrMMHn1EVmU0K/My0eZCDrlscKYBs+jW9Kz6NohmmHCGnKYWovXgHWLzJL21P31ilEVGEqUxMrVhPag+bt/eZsjY4Qi280Bc6TusvQ9v/0Xd4EaAicp7HYioUAXT+37agss1TxTLRzS+pvt6DQrw/TcQ/xTKIWK+LZw3wwicRzksBRRO77RdgB7dpG6OU="
+    },
+    {
+      "kind": "tags",
+      "serialized": "{\"version\":1,\"notes\":{\"[\\\"Ideas\\\"]\":{\"color\":\"green\"},\"[\\\"Projects\\\",\\\"commitnote\\\"]\":{\"color\":\"blue\"}},\"trash\":{\"trash-entry-1\":{\"[]\":{\"color\":\"red\"}}}}",
+      "randomHex": "604d5370819daa6e8e7e5d60",
+      "stored": "v1:YE1TcIGdqm6Ofl1gFyYKLBoyAGlUSS8kkBw6+MCuOPP2fhbfbY8g7TLSS0FGUoVAa2uILiSqsKC0wHH4BW7CYpefq8OMa0YxEfoEksuLy+F8XtHc1wl2mWwJQ/aPggpHxoplXo5pYUcel72OaBjAXXfzJ2m9m+M7NqLj3l57L1AJsmXtLEvv5BF0m06zu8oMXMIHqB2asYkucjkc00IN+xIxpKFmsWUov0TaS+tWwVwabWWJQA=="
+    },
+    {
+      "kind": "images",
+      "serialized": "{\"images\":{\"abcdefghijklmnopqrstuvwxyz\":{\"blobSha\":\"0123456789abcdef0123456789abcdef01234567\",\"owners\":[{\"entryId\":\"trash-entry-1\",\"path\":[],\"state\":\"trashed\"},{\"path\":[\"Projects\",\"commitnote\"],\"state\":\"active\"}]}},\"tombstones\":{\"7777777777777777aaaaaaaaaa\":{\"blobSha\":\"89abcdef0123456789abcdef0123456789abcdef\",\"removedAt\":1767225600000}},\"version\":1}",
+      "randomHex": "de39f520a79d9ff61a220738",
+      "stored": "v1:3jn1IKedn/YaIgc4MmJmgUlBtMym/Cb4BxMhv5wVQdNrGPgIAOw0F42qv4kSg66VRRV50OIzfvWIAo16U8CM5TGWyNWhln4qt3/mfO7mxw87Ddb5agiSIioGjst1fgyZ1CdJlCnkgkz8L2/A2LVSA1e9OiSJL6HxpfXTEuld7+mFF4hUxD+dpSwPLh4c8ldMABWlkv4dsdVLsdeqVB0nS4zc+r+OJRwFqU5mDH76/VkU69NgwjcxCSt9nU7PCAjxL0jBhpuHr0yRkeQOU4Ss5xOTUDXoC5pSQMh4+M4ipxrc0w0TRtjn6sJeqr/scyEnLKTpkLCsiOmrTJnIpFKx3QZAGz4Q4fJw57tupJbfkQ+zoxhd5V8BYlP1nkozfhjLge+ZJC1+1/09XlWoQ93xWv+VgqD1v2gxUPL+6I5NryqyoTb90RmEVUytb/0RipbVY7bCfXpGVDn4LekGfCPTv7SvSwBR2J84LyeykGdDyCVlOFmCQM4abX3Es5U="
+    },
+    {
+      "kind": "shares",
+      "serialized": "{\"shares\":{\"c2hhcmUtaWQtMDAwMDAwMQ\":{\"linkSecret\":\"MDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSElKS0xNTk8\",\"locator\":{\"gistId\":\"0123456789abcdef\",\"provider\":\"github\"},\"name\":\"Projects note\",\"note\":{\"path\":[\"Projects\",\"commitnote\"],\"state\":\"active\"},\"password\":null,\"sharedAt\":\"2026-01-01T00:00:00.000Z\",\"source\":{\"blobSha\":\"89abcdef0123456789abcdef0123456789abcdef\",\"commit\":\"0123456789abcdef0123456789abcdef01234567\",\"storedPath\":\"abc/def\"},\"updatedAt\":null},\"c2hhcmUtaWQtMDAwMDAwMg\":{\"label\":\"for the team\",\"linkSecret\":\"MDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSElKS0xNTk8\",\"locator\":{\"provider\":\"gitlab\",\"snippetId\":\"42\"},\"name\":\"Zażółć\",\"note\":{\"entryId\":\"trash-entry-1\",\"path\":[\"a\"],\"state\":\"trashed\"},\"password\":\"share password\",\"sharedAt\":\"2026-01-01T00:00:00.000Z\",\"source\":null,\"updatedAt\":\"2026-01-02T00:00:00.000Z\"}},\"version\":1}",
+      "randomHex": "c96336c63fa5fb424bade25a",
+      "stored": "v1:yWM2xj+l+0JLreJaplIq2WUfaYD+WbCyN9YNU/tDHROCltUlGRp10cz5AwyCA4NhWIQ8k4318lKXNfQKg1Ekeq7tXEHgbw7qst8m6GgEyv5vrysqVe+l0CAMjMuK1b41c4dsWuu33VC+t5e2Y+XLPTWDWShWh49Y5uU0C7QA+v8FEplpWziKZuuSy5mBFiGOoeazQ5sVQr5eNAgIzKkhIIfwX6mFn2oklY3RYI8GpmuDE95vf3vEuhoMzgZJYSM59rhrKPQc8uSHi5UVYcwQxRnhW0PI9KYUo4Z9IIvCF+O1xZ0udWQLjRei80tQH0Tkp6zGTfJs+KDqselJO27MD0UTgG3rFFSzCkyzFZnGs6beC1HEBNZl9z4GxoXpbg1zM62qNMlyU1Dg4i06HyLMXt4X3jR5jux0p8/qJNJtO6m1lnkGUgfJgmzMUccu5Un6ca5TudisG90g+VjuFqTd3Do588kFiUVJcqhdpZvFd5+JmK38oqDOk3qIydBQ/ItGVROu2AZZvy0iM7dNJv6YFyZLH2bZFx1aI42s1/7VNn9S0D/BHU+Ld0IwNMkapes3EV1ZT7tGFyjPF9IPr0EEENzj923hziF4rlqeq2hf4XH1KBRfYdD5fcVsVSrT8P4/1tpo8T8V/8Sqm+DYQWAj+iiAEpVmin6yOJFUVifcLMSS1MLBbL49hGITVzMwQgapZH/XIJz1sUMtPIyMLJp/v0SSlRKnQVzouK9PWiQRQCcdksK76KVPFxJG4dbND8lrAeVRewyjNdsC9Cz9Z3GBz7Hx3q14ArAjyOC7hDG1n5bNwmte+cULXk+Kv3zasIVWi7asC5iioRfmpyp9QvA3C+GJCEvP7MfHvDTl85XYTQPKQnY7kzqJhnGFbW65/A4uGRvigazFC0oW7L4AFw0bHzLDJsvaHX/0o3PN+TKo7axl7xGaCwqSUt5XSE6CRkHWHw8h++Z3fLT56RMSYOFzi6g3B0ajHGOvwEJXMFQPHlAhWEnp/yx58rvnJ6k0zHymy2fW6ZDSYlq1DSiLybY5c5k8dxh3O/etf0jlYA8jULpIzo+mtA9GFsUDpS1y0CXJ4RCIP1AFtUJBpswfaEf23BgGc79HucIo19CJA7QyOwuS3fv3jg=="
+    }
+  ]
+}

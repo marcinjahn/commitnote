@@ -1,9 +1,9 @@
 <script lang="ts">
   import { flushSync, onMount, tick, untrack } from "svelte";
   import { removeLastView } from "./app/last-view";
-  import { createAutoRefresh, type AutoRefresh } from "./app/auto-refresh";
+  import type { AutoRefresh } from "./app/auto-refresh";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
-  import { requestPersistentStorage } from "./app/persistent-storage";
+  import { createBrowserPlatformPorts } from "./app/platform-ports";
   import type { AppUpdates } from "./app/app-updates";
   import {
     createReloadGuard,
@@ -13,20 +13,20 @@
     type UpdateView,
   } from "./app/auto-update";
   import { browserSessionStorage } from "./app/update-resume";
-  import { clearNoteFragment } from "./app/note-navigation";
   import {
-    openSessionBlobCache,
-    purgeBlobCacheNow,
-    purgeBlobCacheWhenIndexed,
-  } from "./app/blob-cache-lifecycle";
-  import type { BlobCache } from "./blob-cache/blob-cache";
+    startApp as startRunningApp,
+    stopApp as stopRunningApp,
+    type AppServicesContext,
+    type RunningApp,
+    type StartAppDeps,
+  } from "./app/start-app";
+  import { resumeRemembered as resumeRememberedSession } from "./app/resume-remembered";
   import { deleteBlobCacheDatabase } from "./blob-cache/blob-store";
   import { repoKeyOf } from "./blob-cache/blob-cache";
   import {
     createEarlyDraftStore,
     deleteEarlyDraftDatabase,
   } from "./session/early-draft-store";
-  import { withBlobCache } from "./blob-cache/caching-adapter";
   import type {
     LoginError,
     LoginStep,
@@ -51,13 +51,9 @@
   import { systemClock } from "./sync/clock";
   import { createRateBudget, type RateBudget } from "./sync/rate-budget";
   import { createShareService, type ShareService } from "./share/share-service";
-  import { shareLinkBase } from "./share/share-link";
   import { argon2idInWorker } from "./crypto/argon2";
-  import { createSyncEngine } from "./sync/sync-engine";
-  import { createContentIndexer, type ContentIndexer } from "./search/content-indexer";
-  import { createBrowserIndexerEnvironment } from "./search/indexer-environment";
-  import { SETTINGS_SAVE_DEBOUNCE_MS, SETTINGS_SAVE_MAX_WAIT_MS } from "./sync/tuning";
-  import { createSettingsSaver, type SettingsSaver } from "./settings/settings-saver";
+  import type { ContentIndexer } from "./search/content-indexer";
+  import type { SettingsSaver } from "./settings/settings-saver";
   import { createDeviceSettingsStore } from "./settings/device-settings-store";
   import type { SyncEngine } from "./sync/sync-engine";
   import type { Keyring } from "./crypto/keyring";
@@ -170,14 +166,12 @@
       }
     | {
         readonly kind: "app";
+        readonly running: RunningApp<WebServices>;
         readonly engine: SyncEngine;
         readonly autoRefresh: AutoRefresh;
         readonly settingsSaver: SettingsSaver;
         readonly contentIndexer: ContentIndexer;
         readonly session: Session;
-        readonly adapter: ForgeAdapter;
-        readonly blobCache: BlobCache | null;
-        readonly rememberMe: boolean;
         readonly remembered: boolean;
         readonly passphraseChange: PassphraseChange;
         readonly noteHistory: NoteHistory;
@@ -190,6 +184,15 @@
         readonly forgeName: string;
       };
 
+  interface WebServices {
+    readonly passphraseChange: PassphraseChange;
+    readonly noteHistory: NoteHistory;
+    readonly imageResolver: ImageResolver;
+    readonly shareService: ShareService;
+    readonly noteDatesResolver: NoteDatesResolver;
+  }
+
+  const platformPorts = createBrowserPlatformPorts();
   const store = createSessionStore();
   const rateBudgets = new Map<ForgeId, RateBudget>();
 
@@ -216,14 +219,8 @@
 
   let phase = $state.raw<Phase>({ kind: "restoring" });
   let loginKey = $state(0);
-  let autoRefresh: AutoRefresh | null = null;
-  let uninstallLifecycleTriggers: (() => void) | null = null;
   let autoUpdate: AutoUpdate | null = null;
-  let stopAutoUpdateWatch: (() => void) | null = null;
   let updateView: UpdateView | null = null;
-  let uninstallCloseGuard: (() => void) | null = null;
-  let uninstallBlobCachePurge: (() => void) | null = null;
-  let unsubscribeStopped: (() => void) | null = null;
   let keyChanged = $state<{ readonly unsavedCount: number } | null>(null);
   let appRefreshError = $state.raw<SyncError | null>(null);
   let appTreeLoaded = $state(false);
@@ -332,181 +329,24 @@
     };
   }
 
-  async function startApp(
-    session: Session,
-    adapter: ForgeAdapter,
-    rememberMe: boolean,
-    initialMessage: Pick<ToastMessage, "tone" | "text"> | null = null,
-    purgeBlobCache = false,
-    resumed = false,
-    knownHead?: string,
-  ): Promise<void> {
-    phase = { kind: "restoring" };
-    const { remembered } = await store.start(session, { rememberMe });
-    earlyDraftBacking = remembered
-      ? {
-          repoKey: repoKeyOf(session.coordinates),
-          keyring: session.keyring,
-        }
-      : null;
-    useEarlyDraftKeyring(session.keyring);
-    if (remembered && (!resumed || standalone)) {
-      void requestPersistentStorage(navigator.storage);
-    }
-    const blobCache = await openSessionBlobCache({
-      remembered,
-      coordinates: session.coordinates,
-      clock: systemClock,
-    });
-    const cachedAdapter =
-      blobCache === null ? adapter : withBlobCache(adapter, blobCache);
-
-    const rateBudget = rateBudgetFor(session.coordinates.forge, cachedAdapter);
-    const noteHistory = createNoteHistory({
-      adapter: cachedAdapter,
-      keyring: session.keyring,
-    });
-    const engine = createSyncEngine({
-      adapter: cachedAdapter,
-      keyring: session.keyring,
-      clock: systemClock,
-      rateBudget,
-      isOnline: () => navigator.onLine,
-      deviceName: currentDeviceName,
-      ...(blobCache === null ? {} : { blobCache }),
-    });
+  function createWebServices(context: AppServicesContext): WebServices {
+    const { session, sourceAdapter, adapter, engine, rateBudget, clock } = context;
+    const noteHistory = createNoteHistory({ adapter, keyring: session.keyring });
     const imageResolver = createImageResolver({
       keyring: session.keyring,
-      adapter: cachedAdapter,
+      adapter,
       engine: {
         getPendingImage: (id) => engine.getPendingImage(id),
         getRestoredImageSha: (id) => engine.getRestoredImageSha(id),
         getImageIndex: () => engine.getState().synced?.images ?? null,
       },
     });
-    const contentIndexer = createContentIndexer({
-      engine,
-      clock: systemClock,
-      environment: createBrowserIndexerEnvironment(),
-    });
-    if (blobCache !== null) {
-      uninstallBlobCachePurge = purgeBlobCacheWhenIndexed({
-        indexer: contentIndexer,
-        engine,
-        cache: blobCache,
-        clock: systemClock,
-      });
-    }
-    const settingsSaver = createSettingsSaver({
-      clock: systemClock,
-      debounceMs: SETTINGS_SAVE_DEBOUNCE_MS,
-      maxWaitMs: SETTINGS_SAVE_MAX_WAIT_MS,
-      stored: () => engine.getState().rawSettings,
-      save: (edits) => engine.changeSettings(edits),
-    });
-    unsubscribeStopped = engine.subscribe((state) => {
-      appRefreshError = state.refresh.lastError;
-      appTreeLoaded = state.workingTree !== null;
-      if (state.stopped?.kind === "keyChanged") {
-        keyChanged = { unsavedCount: state.syncStates.unsavedCount };
-        resetReported();
-      } else {
-        keyChanged = null;
-      }
-    });
-    const hasUnsaved = () =>
-      settingsSaver.hasPending ||
-      engine.getState().syncStates.hasUnsaved ||
-      earlyDraftNeedsGuard();
-    const flush = () => {
-      settingsSaver.flush();
-      void engine.flush();
-    };
-    uninstallLifecycleTriggers = installLifecycleTriggers(
-      { window, document },
-      {
-        flush,
-        retryNow: () => engine.retryNow(),
-        setOnline: (online) => engine.setOnline(online),
-        setVisible: (visible) => autoRefresh?.setVisible(visible),
-        refreshTrigger: (trigger) => {
-          autoRefresh?.trigger(trigger);
-          appUpdates?.checkForUpdate();
-        },
-        hasUnsaved,
-      },
-    );
-    const onUnsavedChange = (listener: () => void) => {
-      const stopEngine = engine.subscribe(() => listener());
-      const stopSaver = settingsSaver.subscribe(listener);
-      return () => {
-        stopEngine();
-        stopSaver();
-      };
-    };
-    stopAutoUpdateWatch = onUnsavedChange(() => autoUpdate?.evaluate());
-    uninstallCloseGuard =
-      desktop?.installCloseGuard({
-        hasUnsaved,
-        flush,
-        onUnsavedChange,
-        hasSettledUnsaved: () => {
-          const state = engine.getState();
-          return (
-            state.save.kind === "waiting" ||
-            state.conflicts.length > 0 ||
-            state.stopped !== null ||
-            !state.online
-          );
-        },
-      }) ?? null;
-
-    // Forge errors resolve with `refresh.lastError` set, which the shell shows.
-    let refreshed = true;
-    try {
-      await engine.refresh({ knownHead });
-    } catch (e) {
-      console.error(e);
-      refreshed = false;
-    }
-
-    const refreshScheduler = createAutoRefresh({
-      refresh: () => engine.refresh(),
-      lastError: () => engine.getState().refresh.lastError,
-      canRefresh: () => {
-        const s = engine.getState();
-        return (
-          document.visibilityState === "visible" &&
-          s.online &&
-          s.stopped === null &&
-          !s.suspended &&
-          !s.importing &&
-          !s.refresh.inFlight &&
-          !engine.hasLocalWork()
-        );
-      },
-      observedRateLimit: () => cachedAdapter.observedRateLimit?.() ?? null,
-      clock: systemClock,
-      visible: document.visibilityState === "visible",
-    });
-    autoRefresh = refreshScheduler;
-
-    phase = {
-      kind: "app",
-      engine,
-      autoRefresh: refreshScheduler,
-      settingsSaver,
-      contentIndexer,
-      session,
-      adapter,
-      blobCache,
-      rememberMe,
-      remembered,
+    return {
       passphraseChange: createPassphraseChange({
-        adapter: cachedAdapter,
+        adapter,
         engine,
         rateBudget,
-        clock: systemClock,
+        clock,
         argon2id,
         deviceName: currentDeviceName,
       }),
@@ -514,7 +354,7 @@
       imageResolver,
       shareService: createShareService({
         engine,
-        shareHost: adapter.shareHost,
+        shareHost: sourceAdapter.shareHost,
         noteHistory,
         images: {
           read: (id) => imageResolver.readPayload(id),
@@ -525,38 +365,101 @@
             ),
         },
         rateBudget,
-        clock: systemClock,
+        clock,
         argon2id: argon2id ?? argon2idInWorker,
-        linkBase: shareLinkBase(location, __DESKTOP_SHELL__),
+        linkBase: platformPorts.navigation.shareLinkBase(),
       }),
       noteDatesResolver: createNoteDates({
-        adapter: cachedAdapter,
+        adapter,
         keyring: session.keyring,
-        clock: systemClock,
+        clock,
       }),
+    };
+  }
+
+  const appDeps: StartAppDeps<WebServices> = {
+    store,
+    ports: platformPorts,
+    clock: systemClock,
+    rateBudgetFor,
+    deviceName: currentDeviceName,
+    get requestPersistentStorageOnResume() {
+      return standalone;
+    },
+    installLifecycle: (handlers) => installLifecycleTriggers({ window, document }, handlers),
+    createServices: createWebServices,
+    disposeServices: (services) => {
+      services.imageResolver.dispose();
+      clearEarlyDraftImages();
+    },
+    extraHasUnsaved: () => earlyDraftNeedsGuard(),
+    onRefreshTrigger: () => appUpdates?.checkForUpdate(),
+    afterStart: ({ hasUnsaved, flush, onUnsavedChange, hasSettledUnsaved }) => {
+      const stopAutoUpdateWatch = onUnsavedChange(() => autoUpdate?.evaluate());
+      const uninstallCloseGuard =
+        desktop?.installCloseGuard({
+          hasUnsaved,
+          flush,
+          onUnsavedChange,
+          hasSettledUnsaved,
+        }) ?? null;
+      return () => {
+        stopAutoUpdateWatch();
+        uninstallCloseGuard?.();
+      };
+    },
+    onKeyChanged: (state) => {
+      keyChanged = state;
+      if (state !== null) resetReported();
+    },
+    onRefreshState: (state) => {
+      appRefreshError = state.lastError;
+      appTreeLoaded = state.treeLoaded;
+    },
+    beforeEngine: (session, remembered) => {
+      earlyDraftBacking = remembered
+        ? {
+            repoKey: repoKeyOf(session.coordinates),
+            keyring: session.keyring,
+          }
+        : null;
+      useEarlyDraftKeyring(session.keyring);
+    },
+  };
+
+  async function startApp(
+    session: Session,
+    adapter: ForgeAdapter,
+    rememberMe: boolean,
+    initialMessage: Pick<ToastMessage, "tone" | "text"> | null = null,
+    purgeBlobCache = false,
+    resumed = false,
+    knownHead?: string,
+  ): Promise<void> {
+    phase = { kind: "restoring" };
+    const running = await startRunningApp(appDeps, {
+      session,
+      adapter,
+      rememberMe,
+      resumed,
+      purgeBlobCache,
+      ...(knownHead === undefined ? {} : { knownHead }),
+    });
+    phase = {
+      kind: "app",
+      running,
+      engine: running.engine,
+      autoRefresh: running.autoRefresh,
+      settingsSaver: running.settingsSaver,
+      contentIndexer: running.contentIndexer,
+      session,
+      remembered: running.remembered,
+      ...running.services,
       initialMessage,
       repoLabel: repositoryLabel(session.coordinates),
       repoUrl: session.repoUrl,
       forgeName: registry[session.coordinates.forge].name,
     };
-    if (refreshed) {
-      try {
-        engine.purgeExpiredTrash();
-      } catch {
-        console.error("Trash purge failed");
-      }
-      try {
-        engine.sweepOrphanImages();
-      } catch {
-        console.error("Image sweep failed");
-      }
-      cachedAdapter.sweepAbandoned?.().catch(() => {
-        console.error("Sweeping abandoned atomic commits failed");
-      });
-      if (purgeBlobCache && blobCache !== null) {
-        purgeBlobCacheNow({ engine, cache: blobCache, clock: systemClock });
-      }
-    }
   }
 
   async function handleLoggedIn(result: {
@@ -570,59 +473,18 @@
     await started;
   }
 
-  function stopApp(
-    engine: SyncEngine,
-    settingsSaver: SettingsSaver,
-    contentIndexer: ContentIndexer,
-    imageResolver: ImageResolver,
-    blobCache: BlobCache | null,
-    clearBlobCache: boolean,
-  ): Promise<void> {
-    uninstallLifecycleTriggers?.();
-    uninstallLifecycleTriggers = null;
-    stopAutoUpdateWatch?.();
-    stopAutoUpdateWatch = null;
-    uninstallCloseGuard?.();
-    uninstallCloseGuard = null;
-    autoRefresh?.dispose();
-    autoRefresh = null;
-    uninstallBlobCachePurge?.();
-    uninstallBlobCachePurge = null;
-    unsubscribeStopped?.();
-    unsubscribeStopped = null;
-    keyChanged = null;
-    appRefreshError = null;
-    appTreeLoaded = false;
-    settingsSaver.dispose();
-    contentIndexer.dispose();
-    imageResolver.dispose();
-    clearEarlyDraftImages();
-    engine.dispose();
-    if (blobCache === null) return Promise.resolve();
-    return clearBlobCache ? blobCache.clear() : blobCache.dispose();
-  }
-
   async function handlePassphraseChanged(
     keyring: Keyring,
     check: LandedCheck,
     history: HistoryOutcome,
   ): Promise<void> {
     if (phase.kind !== "app") return;
-    const {
-      engine,
-      settingsSaver,
-      contentIndexer,
-      imageResolver,
-      blobCache,
-      session,
-      adapter,
-      rememberMe,
-    } = phase;
-    await stopApp(engine, settingsSaver, contentIndexer, imageResolver, blobCache, false);
+    const { running } = phase;
+    await stopRunningApp(running, { clearBlobCache: false });
     await startApp(
-      { ...session, keyring },
-      adapter,
-      rememberMe,
+      { ...running.session, keyring },
+      running.sourceAdapter,
+      running.rememberMe,
       describePassphraseChanged(check, history),
       true,
     );
@@ -630,8 +492,8 @@
 
   async function finishLogOut(clearStore = true): Promise<void> {
     if (phase.kind !== "app") return;
-    const { engine, settingsSaver, contentIndexer, imageResolver, blobCache, session } = phase;
-    await stopApp(engine, settingsSaver, contentIndexer, imageResolver, blobCache, true);
+    const { running, session } = phase;
+    await stopRunningApp(running, { clearBlobCache: true });
     earlyDraftBacking = null;
     if (clearStore) {
       await store.clear();
@@ -639,7 +501,7 @@
     }
     removeLastView(repoKeyOf(session.coordinates));
     logout = null;
-    clearNoteFragment(window.history, window.location);
+    platformPorts.navigation.clearNoteFragment();
     showLogin(null);
   }
 
@@ -647,7 +509,7 @@
   // remembered the new keys; those are used instead of asking to log in.
   async function logInAfterKeyChange(): Promise<void> {
     if (phase.kind !== "app") return;
-    const { engine, settingsSaver, contentIndexer, imageResolver, blobCache, session } = phase;
+    const { running, session } = phase;
     let remembered: Session | null = null;
     try {
       remembered = await store.loadRememberedSession();
@@ -665,7 +527,7 @@
     }
     const result = await resumeSession(remembered, loginDeps());
     if (result.kind === "loggedIn") {
-      await stopApp(engine, settingsSaver, contentIndexer, imageResolver, blobCache, true);
+      await stopRunningApp(running, { clearBlobCache: true });
       await startApp(
         result.session,
         result.adapter,
@@ -1049,34 +911,46 @@
     showLogin(error);
   }
 
+  async function loadEarlyDraftFor(session: Session): Promise<void> {
+    const backing = {
+      repoKey: repoKeyOf(session.coordinates),
+      keyring: session.keyring,
+    };
+    const stored = await queueEarlyDraftStore(() =>
+      earlyDraftStore.load(backing.repoKey, backing.keyring),
+    );
+    earlyDraftBacking = backing;
+    useEarlyDraftKeyring(session.keyring);
+    if (stored !== null && (earlyDraft === null || isUntouched(earlyDraft))) {
+      earlyDraftImages = new Map(stored.images.map((image) => [image.imageId, image]));
+      earlyDraft = stored.draft;
+      earlyDraftOpen = true;
+    }
+    earlyDraftOffered = true;
+    resumeForgeName = registry[session.coordinates.forge].name;
+  }
+
+  async function clearRememberedData(session: Session | null): Promise<void> {
+    if (session !== null) {
+      await store.clear();
+      removeLastView(repoKeyOf(session.coordinates));
+    }
+    await deleteBlobCacheDatabase();
+    await discardEarlyDraftData();
+  }
+
   async function resumeRemembered(): Promise<void> {
     try {
-      const session = await store.loadRememberedSession();
-      if (session === null) {
-        await deleteBlobCacheDatabase();
-        await discardEarlyDraftData();
-        leaveToLogin(null);
-        return;
-      }
-
-      const backing = {
-        repoKey: repoKeyOf(session.coordinates),
-        keyring: session.keyring,
-      };
-      const stored = await queueEarlyDraftStore(() =>
-        earlyDraftStore.load(backing.repoKey, backing.keyring),
-      );
-      earlyDraftBacking = backing;
-      useEarlyDraftKeyring(session.keyring);
-      if (stored !== null && (earlyDraft === null || isUntouched(earlyDraft))) {
-        earlyDraftImages = new Map(stored.images.map((image) => [image.imageId, image]));
-        earlyDraft = stored.draft;
-        earlyDraftOpen = true;
-      }
-      earlyDraftOffered = true;
-      resumeForgeName = registry[session.coordinates.forge].name;
-      const result = await resumeSession(session, loginDeps());
+      const result = await resumeRememberedSession({
+        store,
+        loginDeps: loginDeps(),
+        onSessionLoaded: loadEarlyDraftFor,
+        clearAfterFailure: clearRememberedData,
+      });
       switch (result.kind) {
+        case "none":
+          leaveToLogin(null);
+          return;
         case "loggedIn":
           await startApp(
             result.session,
@@ -1089,20 +963,13 @@
           );
           return;
         case "failed": {
-          const transient = isTransient(result.error);
-          if (!transient) {
-            await store.clear();
-            removeLastView(repoKeyOf(session.coordinates));
-            await deleteBlobCacheDatabase();
-            await discardEarlyDraftData();
-          }
           if (earlyDraft === null || isUntouched(earlyDraft)) {
             leaveToLogin(result.error);
             return;
           }
           resumeError = result.error;
           earlyDraftOpen = true;
-          if (!transient) showLogin(result.error);
+          if (!result.transient) showLogin(result.error);
         }
       }
     } catch (e) {

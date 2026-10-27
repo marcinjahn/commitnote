@@ -11,6 +11,8 @@ describe("buildModeFacts", () => {
     ["fake-forge", false, true, FAKE_ANALYTICS_ENDPOINT],
     ["desktop", true, false, null],
     ["desktop-fake", true, true, FAKE_ANALYTICS_ENDPOINT],
+    ["native-core", false, false, null],
+    ["native-core-fake", false, true, null],
     ["development", false, false, null],
     ["test", false, false, null],
     ["something-else", false, false, null],

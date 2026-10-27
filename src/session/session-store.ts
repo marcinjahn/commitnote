@@ -8,8 +8,8 @@ const DB_VERSION = 1;
 const STORE_NAME = "session";
 const RECORD_KEY = "current";
 const RECORD_VERSION = 1;
-const REPO_URL_STORAGE_KEY = "commitnote.repoUrl";
-const FORGE_ID_STORAGE_KEY = "commitnote.forge";
+export const REPO_URL_STORAGE_KEY = "commitnote.repoUrl";
+export const FORGE_ID_STORAGE_KEY = "commitnote.forge";
 
 export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 

@@ -1,0 +1,68 @@
+{
+  "format": 1,
+  "shares": [
+    {
+      "name": "no-password",
+      "input": {
+        "name": "no-password",
+        "markdown": "Shared note\n\nWith **markdown**.",
+        "sharedAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": null,
+        "linkSecret": "MDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSElKS0xNTk8",
+        "password": null,
+        "images": []
+      },
+      "randomHex": "9d683e44a81977ba79c5165ce9f416dfb952d5f1ad3eea160b120911",
+      "envelope": "{\"commitnote\":\"share\",\"v\":1,\"kdf\":null,\"salt\":\"nWg-RKgZd7p5xRZc6fQW3w\",\"iv\":\"uVLV8a0-6hYLEgkR\",\"ct\":\"TArhjiSrjb4gE6aCeTjlzXol5ui2Js8zIsVyEcaxDQZnp9U7oPyK8O29SYNwcDhpzkKCFo5IjJ_jpmAkf-jyiVJvalXSylun0UtFGCkBJhTJVq2C7ptuDrGTLy0MpeHab-WKy_h7LMmPDL-GAxr8tdqxflc3mXPVGT5VW5xxT2sEjEgQpCBf27qOaJS9twoDJFk\"}",
+      "imageFiles": []
+    },
+    {
+      "name": "password",
+      "input": {
+        "name": "password",
+        "markdown": "Zażółć gęślą jaźń 📝",
+        "sharedAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-02T00:00:00.000Z",
+        "linkSecret": "MDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSElKS0xNTk8",
+        "password": "share password",
+        "images": []
+      },
+      "randomHex": "bdc27bdd9be7432e162496c5eb5fa4f13621fa7d3d6700827c1bc9ec",
+      "envelope": "{\"commitnote\":\"share\",\"v\":1,\"kdf\":{\"alg\":\"argon2id\",\"memoryKiB\":65536,\"iterations\":3,\"parallelism\":1},\"salt\":\"vcJ73ZvnQy4WJJbF61-k8Q\",\"iv\":\"NiH6fT1nAIJ8G8ns\",\"ct\":\"3967eP4mcHhHinGdxfq3kJ9HYLMj4GOproUTrq_qmP8-CTgnE5fwRY2VVye6c1b-JBrcErRpEE-r7_907Us7g3w_rmYlSOulxILoAv_fws0ICwiFq7DRUrO_Z1VvJSHgv7ry6EYqr-Z5gEzJ2Q_RIO5LZL8NL-NumABISM2ybjnGUcfYG9AUsPAL_qjZpdrPonmePD9aoGZQIGz-Gx7Dmfax5Q\"}",
+      "imageFiles": []
+    },
+    {
+      "name": "with-images",
+      "input": {
+        "name": "with-images",
+        "markdown": "Note with pictures\n\n![a](image-0)\n\n![b](image-1)",
+        "sharedAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-02T00:00:00.000Z",
+        "linkSecret": "MDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSElKS0xNTk8",
+        "password": null,
+        "images": [
+          {
+            "imageId": "abcdefghijklmnopqrstuvwxyz",
+            "type": "image/webp",
+            "width": 2,
+            "height": 3,
+            "bytesHex": "525960676e757c838a91"
+          },
+          {
+            "imageId": "bbbbbbbbbbbbbbbb2222222222",
+            "type": "image/gif",
+            "width": 7,
+            "height": 5,
+            "bytesHex": "4754616e7b8895a2afbcc9d6e3f0fd0a1724313e4b5865727f8c99a6b3c0cddae7f4010e1b2835424f5c697683909daab7c4d1deebf805121f2c394653606d7a8794a1aebbc8d5e2effc091623303d4a5764717e8b98a5b2bfccd9e6f3000d1a2734414e5b6875828f9ca9b6c3d0ddeaf704111e2b3845525f6c798693a0adbac7d4e1eefb0815222f3c495663707d8a97a4b1becbd8e5f2ff0c192633404d5a6774818e9ba8b5c2cfdce9f603101d2a3744515e6b7885929facb9c6d3e0edfa0714212e3b4855626f7c8996a3b0bdcad7e4f1fe0b1825323f4c596673808d9aa7b4c1cedbe8f5020f1c293643505d6a7784919eabb8c5d2dfecf90613202d3a4754616e7b8895a2afbcc9d6e3f0fd0a1724313e4b5865727f8c99a6b3c0cddae7f4010e1b2835424f5c6976"
+          }
+        ]
+      },
+      "randomHex": "8be6bf5c84416ff7a497bd6448f21cf9ebe6af6e25919d105b6450e1ddf43bb363f30c1039c1158efaff808913db1d84e5b49b63",
+      "envelope": "{\"commitnote\":\"share\",\"v\":1,\"kdf\":null,\"salt\":\"i-a_XIRBb_ekl71kSPIc-Q\",\"iv\":\"6-avbiWRnRBbZFDh\",\"ct\":\"DFzwciTJwXudrOAldy6WgrjzKhuQNrXEIgYpMiNbWJ9k4fY4GTnGb4j_nxhWqPNVe30X4DhCBYZL8q3ghlLAMBJHrsrJf8mLKLM-I7sO69WjsRsk2eeGWsT3xRhca8BOnwxwbFNoKjTQShgqBfUII64A9MAJQpqTjHloB_GbIYPXb5yhkebc5WlTEHvl3shdy_XebrD87R79YDgrfVY8IzUQbRlAPNv7THDOX9rCCnw0n158mHVSTkFo9sdrrBLF2_LZr5y_h8gqeEvZYjXlietIY-WQ3APrgiIzNEX1c3tsHfJ3hkW9wzia1iepe7iiLtNfSiUYg2cxZub2XfqAiGUxddEdybDI9uBhjmmR1ntUfiEqMDC9RMwQyNoB3W6yH__Wawj0aLdczxqt2iQEm51SIQfrr4KgY_53gYmWRfPyKfPvsw1gkql3e3ghClZNgPEZ0ZkQ8XnVlg\"}",
+      "imageFiles": [
+        "{\"commitnote\":\"share image\",\"v\":1,\"iv\":\"3fQ7s2PzDBA5wRWO\",\"ct\":\"THdPTWV_UL6dZ7ZC4jKJmHMdWQWz0lcjGibOz8e10LuD3vQZBed-WqVhmVJVO13t-RCYN6dmdbNk3pYC4CN-2M6-XXPDk-ddBo9Aw6V3qfv3GRRzcE5OIEnLkDx0Mg6v\"}",
+        "{\"commitnote\":\"share image\",\"v\":1,\"iv\":\"-v-AiRPbHYTltJtj\",\"ct\":\"VefBua5dhqyss_D1hWyXeqx55XtXI_1xCp1ZaV1UJgdBIj5zLUBPUVfY6ED6IIp4ZNI2NmAsjcpGu7lLCB6xlogXnkRrv6Da5-VQ39hgYVTkdtCE57Zs3mBOqp7MVP0-CvQ_Pr3WKaoCK6MmpQpBCZtZWSzpdSXXjxRju03KKfKq3HqCPU2twPPsxpImLXfbFFewO2_XEKeLV1JJ9LZXyK55zN3Ow0MkDGqfJ73IkjvXCQK60Qy8H0VIM9A7NNCCdGvy6qdrtSFHu28p6Auuxp34mI2TkN14Ji6jkU5L4xAIdN_LqEc3tbVzzFK_fkYN924AIc_UhJ9qD0Iw2Z7_wE8Qou1IFFbFbDKWUtzrSXEf2X7l6hG9JGLZX0GbtRb3SGdtd5b_oJbW9SxQqCofUm6MyTd-ikEfMTxnjP-wW59sevjdckK7C6O-lBqDhvpUExiT0jQKsqz1aIBApjO5b0qUJxaEUMbCuxXh4pKKHcXLFdeF9RcX6QE0Z5lc-ipR\"}"
+      ]
+    }
+  ]
+}

@@ -5,39 +5,18 @@ import {
   FAKE_FORGE_BANNER,
   FAKE_FORGE_CONTROLS_KEY,
 } from "../src/testing/fake-forge/fake-forge-factory";
-import { FAKE_SHARE_STORE_KEY } from "../src/forge/fake/fake-share-store";
-import {
-  FAKE_FORGE_ARGON2_BINDING,
-  FAKE_FORGE_OPTIONS_KEY,
-} from "../src/testing/fake-forge/fake-forge-options";
-import { FAKE_FORGE_SESSION_PARAM } from "../src/testing/fake-forge/remembered-session";
 import {
   computeBuildId,
   parsePrecacheManifest,
 } from "./precache-manifest";
 import { buildModeFacts, FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
+import {
+  NATIVE_CORE_NEEDLES,
+  PROD_LEAK_NEEDLES,
+  TAURI_NEEDLES,
+} from "./bundle-needles";
 import { buildCsp, inlineScriptHashes, type CspTarget } from "./csp";
 import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree-source";
-import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
-
-export const TAURI_NEEDLES = [
-  "__TAURI_INTERNALS__",
-  "plugin:opener",
-  "plugin:dialog",
-  "plugin:fs",
-] as const;
-
-const PROD_LEAK_NEEDLES: readonly string[] = [
-  FAKE_FORGE_BANNER,
-  SAMPLE_NOTES_REPO_PASSPHRASE,
-  FAKE_FORGE_CONTROLS_KEY,
-  FAKE_FORGE_OPTIONS_KEY,
-  FAKE_FORGE_ARGON2_BINDING,
-  FAKE_FORGE_SESSION_PARAM,
-  FAKE_SHARE_STORE_KEY,
-  LARGE_TREE_REPO_KEY,
-  new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
-];
 
 const GOATCOUNTER_ENDPOINT_NEEDLE = ".goatcounter.com/count";
 
@@ -465,6 +444,21 @@ async function main(): Promise<void> {
     return;
   }
 
+  const nativeCoreInWeb = [
+    ...(await findForbidden(distDir, NATIVE_CORE_NEEDLES)),
+    ...(await findForbidden(fakeDistDir, NATIVE_CORE_NEEDLES)),
+    ...(await findForbidden(desktopDistDir, NATIVE_CORE_NEEDLES)),
+  ];
+  if (nativeCoreInWeb.length > 0) {
+    for (const hit of nativeCoreInWeb) {
+      console.error(
+        `A web bundle ships the native core: "${hit.needle}" found in ${hit.file}`,
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
+
   const forbiddenInDesktop = await findForbidden(desktopDistDir, PROD_LEAK_NEEDLES);
   if (forbiddenInDesktop.length > 0) {
     for (const hit of forbiddenInDesktop) {
@@ -534,7 +528,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `Bundle check passed: production build never ships fake forge fixtures or desktop shell code and serves the landing page at the root and the app under app/ with a complete web app manifest and service worker (${serviceWorkers.join("; ")}); landing html, css and js total ${budget.textBytes} of ${LANDING_TEXT_BUDGET_BYTES} bytes; desktop build ships the desktop shell but no fake forge fixtures or service worker, and its CSP matches the expected policy.`,
+    `Bundle check passed: production build never ships fake forge fixtures or desktop shell code, no web build contains the native core, and serves the landing page at the root and the app under app/ with a complete web app manifest and service worker (${serviceWorkers.join("; ")}); landing html, css and js total ${budget.textBytes} of ${LANDING_TEXT_BUDGET_BYTES} bytes; desktop build ships the desktop shell but no fake forge fixtures or service worker, and its CSP matches the expected policy.`,
   );
 }
 

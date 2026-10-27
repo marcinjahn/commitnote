@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SyncError } from "../../sync/sync-engine";
 import type { SyncState } from "../../sync/sync-state";
 import {
+  describeKeyChangedUnsaved,
   describeOffline,
   describeSaveShortcutResult,
   describeSyncError,
@@ -264,5 +265,25 @@ describe("describeSaveShortcutResult", () => {
     expect(
       describeSaveShortcutResult({ ...settled, stopped: true, offline: true }),
     ).toBeNull();
+  });
+});
+
+describe("describeKeyChangedUnsaved", () => {
+  it("says everything was saved when nothing is unsaved", () => {
+    expect(describeKeyChangedUnsaved(0)).toBe(
+      "All your changes were saved before this happened.",
+    );
+  });
+
+  it("counts a single unsaved note or folder", () => {
+    expect(describeKeyChangedUnsaved(1)).toBe(
+      "1 note or folder was not saved and are lost when you log in again. Export your notes first to keep them.",
+    );
+  });
+
+  it("counts several unsaved notes or folders", () => {
+    expect(describeKeyChangedUnsaved(3)).toBe(
+      "3 notes or folders were not saved and are lost when you log in again. Export your notes first to keep them.",
+    );
   });
 });

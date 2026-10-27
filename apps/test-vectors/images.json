@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "keyring": "A",
+  "padme": [
+    {
+      "length": 0,
+      "padded": 0
+    },
+    {
+      "length": 1,
+      "padded": 1
+    },
+    {
+      "length": 2,
+      "padded": 2
+    },
+    {
+      "length": 3,
+      "padded": 3
+    },
+    {
+      "length": 100,
+      "padded": 104
+    },
+    {
+      "length": 1000,
+      "padded": 1024
+    },
+    {
+      "length": 65537,
+      "padded": 67584
+    },
+    {
+      "length": 1000000,
+      "padded": 1015808
+    }
+  ],
+  "images": [
+    {
+      "imageId": "abcdefghijklmnopqrstuvwxyz",
+      "type": "image/webp",
+      "width": 2,
+      "height": 3,
+      "bytesHex": "525960676e757c838a91",
+      "randomHex": "00711ccf36aa2101fb4308c5",
+      "envelopeHex": "434e490100711ccf36aa2101fb4308c531eed1a2ed5211bf8a992bd2207deee6e36a238ecbf893f68b53e42680610278303e819ac8a21fea9bd32b93a2a9b51bc5ca91231c253445695a1d293adfc021cabe6bebde38964933aea0ebff757ec58fbbe61d11b6959ab03d9c5e9e58df37"
+    },
+    {
+      "imageId": "bbbbbbbbbbbbbbbb2222222222",
+      "type": "image/gif",
+      "width": 7,
+      "height": 5,
+      "bytesHex": "4754616e7b8895a2afbcc9d6e3f0fd0a1724313e4b5865727f8c99a6b3c0cddae7f4010e1b2835424f5c697683909daab7c4d1deebf805121f2c394653606d7a8794a1aebbc8d5e2effc091623303d4a5764717e8b98a5b2bfccd9e6f3000d1a2734414e5b6875828f9ca9b6c3d0ddeaf704111e2b3845525f6c798693a0adbac7d4e1eefb0815222f3c495663707d8a97a4b1becbd8e5f2ff0c192633404d5a6774818e9ba8b5c2cfdce9f603101d2a3744515e6b7885929facb9c6d3e0edfa0714212e3b4855626f7c8996a3b0bdcad7e4f1fe0b1825323f4c596673808d9aa7b4c1cedbe8f5020f1c293643505d6a7784919eabb8c5d2dfecf90613202d3a4754616e7b8895a2afbcc9d6e3f0fd0a1724313e4b5865727f8c99a6b3c0cddae7f4010e1b2835424f5c6976",
+      "randomHex": "6639697edcf05f4434322ccb",
+      "envelopeHex": "434e49016639697edcf05f4434322ccb008c79325e19ce4ba96effa6b36efdff67c6744fd3cbb9c765773e620aa8cd6cf7d4f2c0da7ff8be585c18fca879c6fbe6915014ce92ddc4dee300c97785361a3ee853543994c56899991ef5452875025b321567297d69b50726c707aec5fd5d4569362907b3c834faae875b493b3ed58eb402efa6aed41ca08e1f33ba5ded0d995b90c9db007982832defbef5658030d216d91e27608944594b31373b9a40f12e53e9c64d8ebe2a43fa6fcf343bfcac1c44df7851040b35ae80070d632a8a606c993c0538e36f9df505eb3950461c81688e84c44607bd59944269ebab2e2771ba2f3cf88c25941dfde25fde3a65095de7f2ae9ac1cad6ce6828f709548a8ddcf8e2c6bb3da70bee0e291fe427b22590834ec15d376e15a8493c0d595ac5316d36530974d7882bcad8e2218a62674c458e98b07666c397383c9de85ea3dd96dbecf8ac5af604d0a1c55cddca614815537387ecd89ac4b3835b703bed3e4eb85555727e29de4ec40f5283e12e4af4f23a0d0b0de6fa968c95c697087b7ff19c77"
+    }
+  ]
+}
