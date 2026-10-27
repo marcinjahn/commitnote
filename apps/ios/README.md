@@ -472,13 +472,14 @@ Entry points and iPad:
 Measured in a Simulator on CI, not on a device. The core runtime tests, which include the
 performance measurement, run on the iPad Simulator of the runtime job, and `perf/perf.json` in the
 `ios-test-output` artifact names the device. The iPad numbers are from the iPad Pro 13-inch (M5)
-Simulator (iOS 26.5), Xcode 26.6, run on 2026-10-26; the iPhone numbers are from the iPhone 17 Pro
-Simulator (iOS 26.5), Xcode 26.6, run on 2026-10-19, before the measurement moved to the iPad. Each
-number is the median of 3 runs on `sample/large-tree`, in milliseconds.
+Simulator (iOS 26.5), Xcode 26.6, in the green `iOS` run on `main` on 2026-10-27; the iPhone numbers
+are from the iPhone 17 Pro Simulator (iOS 26.5), Xcode 26.6, run on 2026-10-19, before the
+measurement moved to the iPad. Each number is the median of 3 runs on `sample/large-tree`, in
+milliseconds.
 
 | Measurement | iPad Pro 13-inch (M5) Simulator | iPhone 17 Pro Simulator |
 | --- | --- | --- |
-| resume | 2522 ms | 1384 ms |
-| unlock | 3899 ms | 1729 ms |
-| tree listing | 225 ms | 229 ms |
-| open note | 4 ms | 3 ms |
+| resume | 1106 ms | 1384 ms |
+| unlock | 1735 ms | 1729 ms |
+| tree listing | 173 ms | 229 ms |
+| open note | 3 ms | 3 ms |
