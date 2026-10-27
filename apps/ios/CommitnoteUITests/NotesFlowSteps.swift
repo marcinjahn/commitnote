@@ -131,12 +131,37 @@ extension XCTestCase {
 
     func leaveNote(in app: XCUIApplication) {
         guard !isPad else { return }
-        let back = app.navigationBars.buttons["BackButton"]
-        if back.exists {
-            back.tap()
-        }
+        closeNote(in: app)
         waitFor(app.element("notes-tree"))
         waitFor(note(SampleNote.welcome, in: app))
+    }
+
+    /// Goes back from the note open in the compact layout until its view is gone.
+    func closeNote(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let noteView = app.element("note-view")
+        for _ in 0..<3 where noteView.exists {
+            poll(timeout: 10) { self.tapBackToTree(in: app) }
+            if poll(timeout: 10, until: { !noteView.exists }) { break }
+        }
+        waitUntilGone(noteView, file: file, line: line)
+    }
+
+    /// On a loaded runner the simulator can hold a back tap long enough to open the back button's
+    /// history menu, which covers the button until one of its entries is chosen, so the tree's entry
+    /// there goes back too. False when neither can be tapped yet.
+    @discardableResult
+    func tapBackToTree(in app: XCUIApplication) -> Bool {
+        let back = app.navigationBars.buttons["BackButton"]
+        if back.exists, back.isHittable {
+            back.tap()
+            return true
+        }
+        let treeEntry = app.buttons.matching(
+            NSPredicate(format: "label == %@ AND identifier != %@", "Notes", "BackButton")
+        ).firstMatch
+        guard treeEntry.exists, treeEntry.isHittable else { return false }
+        whileMenuIsOpen(alreadyOpen: true) { treeEntry.tap() }
+        return true
     }
 
     @discardableResult

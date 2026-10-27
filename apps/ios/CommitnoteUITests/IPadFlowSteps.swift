@@ -33,17 +33,9 @@ extension XCTestCase {
         let placeholder = app.element("note-placeholder")
         if placeholder.exists { return }
         switchWidth(to: "compact", in: app, file: file, line: line)
-        let noteView = app.element("note-view")
-        let back = app.navigationBars.buttons["BackButton"]
-        if appears(noteView, within: 10) {
-            waitFor(back, file: file, line: line)
-            for _ in 0..<3 where noteView.exists {
-                if back.exists, back.isHittable {
-                    back.tap()
-                }
-                if poll(timeout: 10, until: { !noteView.exists }) { break }
-            }
-            waitUntilGone(noteView, file: file, line: line)
+        if appears(app.element("note-view"), within: 10) {
+            waitFor(app.navigationBars.buttons["BackButton"], file: file, line: line)
+            closeNote(in: app, file: file, line: line)
         }
         waitFor(app.element("notes-tree"), file: file, line: line)
         switchWidth(to: "system", in: app, file: file, line: line)

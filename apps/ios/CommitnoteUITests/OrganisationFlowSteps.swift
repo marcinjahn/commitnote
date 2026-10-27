@@ -35,8 +35,7 @@ extension XCTestCase {
         // The last view can be reopened only once the tree has loaded, so the note may still slide in.
         let treeShown: () -> Bool = {
             if !isPad, noteView.exists {
-                let back = app.navigationBars.buttons["BackButton"]
-                if back.exists, back.isHittable { back.tap() }
+                self.tapBackToTree(in: app)
                 return false
             }
             return tree.exists
@@ -54,9 +53,7 @@ extension XCTestCase {
 
     func backToTree(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         if !isPad, app.element("note-view").exists {
-            let back = app.navigationBars.buttons["BackButton"]
-            waitFor(back, file: file, line: line)
-            back.tap()
+            closeNote(in: app, file: file, line: line)
         }
         waitFor(app.element("notes-tree"), file: file, line: line)
     }

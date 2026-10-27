@@ -92,12 +92,14 @@ func prepareAnimationIdleForLaunch() {
 }
 
 extension XCTestCase {
-    func whileMenuIsOpen<Result>(_ body: () throws -> Result) rethrows -> Result {
+    /// `alreadyOpen` is for a menu something earlier opened, which no wait could see settle, so
+    /// none of the waits inside includes animations.
+    func whileMenuIsOpen<Result>(alreadyOpen: Bool = false, _ body: () throws -> Result) rethrows -> Result {
         _ = animationIdleSwitch
         guard menuIdle == .off else {
             return try body()
         }
-        menuIdle = .armed
+        menuIdle = alreadyOpen ? .skipping : .armed
         defer { menuIdle = .off }
         return try body()
     }
