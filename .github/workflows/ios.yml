@@ -77,18 +77,22 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/ios-macos-setup
+      # Node runs only the TypeScript read-back; the tests run from the build job's products.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: ./.github/actions/ios-select-xcode
 
-      - name: Start simulators
+      - name: Start simulator
         run: |
           set -eu
-          SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh iphone)
-          IPAD_SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ipad)
+          SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ipad)
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
-          echo "IPAD_SIMULATOR_ID=$IPAD_SIMULATOR_ID" >> "$GITHUB_ENV"
           mkdir -p out
-          # Boots and prepares the iPhone simulator while the test products download. The iPad one
-          # follows after the runtime tests: booting it next to a starting test run stalls the run.
+          # One iPad simulator runs the runtime tests and then the UI tests, so the job boots only
+          # once, while the test products download.
           nohup sh -c 'apps/ios/scripts/disable-password-autofill.sh "$1"; echo $? > out/simulator-ready' \
             prepare "$SIMULATOR_ID" > out/simulator-prep.log 2>&1 &
 
@@ -135,15 +139,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      - name: Prepare iPad simulator
-        run: |
-          set -eu
-          xcrun simctl shutdown "$SIMULATOR_ID"
-          apps/ios/scripts/disable-password-autofill.sh "$IPAD_SIMULATOR_ID"
-          xcrun simctl install "$IPAD_SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
-          xcrun simctl launch "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
-          sleep 30
-          xcrun simctl terminate "$IPAD_SIMULATOR_ID" io.github.marcinjahn.commitnote
+      - name: Warm up app
+        run: apps/ios/scripts/warm-up-app.sh "$SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
 
       - name: iPad UI tests
         run: |
@@ -151,16 +148,18 @@ jobs:
           mkdir -p out/xcresults-ui
           xcodebuild test-without-building \
             -xctestrun "$XCTESTRUN" \
-            -destination "id=$IPAD_SIMULATOR_ID" \
+            -destination "id=$SIMULATOR_ID" \
             -only-testing:CommitnoteUITests/EditorFlowTests \
             -only-testing:CommitnoteUITests/DataFlowTests \
+            -only-testing:CommitnoteUITests/EntryPointFlowTests \
+            -only-testing:CommitnoteUITests/MediaFlowTests \
             -parallel-testing-enabled NO \
             -resultBundlePath out/xcresults-ui/ui-ipad-runtime.xcresult
 
       - name: Collect app log
         if: failure()
         run: |
-          xcrun simctl spawn "$IPAD_SIMULATOR_ID" log show --last 90m --info --style compact \
+          xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --info --style compact \
             --predicate 'subsystem == "io.github.marcinjahn.commitnote"' > out/xcresults-ui/app.log || true
 
       - uses: actions/upload-artifact@v4
@@ -169,6 +168,25 @@ jobs:
           name: ios-xcresults-ui-ipad-runtime
           path: out/xcresults-ui
           if-no-files-found: ignore
+          retention-days: 30
+
+      # The IPA builds in the job that finishes its tests first, off the longest path.
+      - uses: ./.github/actions/ios-macos-setup
+        if: ${{ !cancelled() }}
+
+      - name: Build unsigned IPA
+        if: ${{ !cancelled() }}
+        run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
+
+      - name: Check IPA
+        if: ${{ !cancelled() }}
+        run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: commitnote-unsigned-ipa
+          path: out/ipa/commitnote-unsigned.ipa
           retention-days: 30
 
   ui-tests:
@@ -206,24 +224,25 @@ jobs:
           done
           cat out/simulator-prep.log
           [ "$(cat out/simulator-ready)" = 0 ]
-          xcrun simctl bootstatus "$SIMULATOR_ID" -b
-          xcrun simctl install "$SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
-          xcrun simctl launch "$SIMULATOR_ID" io.github.marcinjahn.commitnote
-          sleep 30
-          xcrun simctl terminate "$SIMULATOR_ID" io.github.marcinjahn.commitnote
+          apps/ios/scripts/warm-up-app.sh "$SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
 
       - name: UI tests
         run: |
           set -eu -o pipefail
+          # On iPhone, EditingFlowTests is split by method between the two jobs: the methods flows
+          # skips are the only ones screens runs, so a new method runs once, in flows.
+          IPHONE_EDITING="EditingFlowTests/testEditAutosaves EditingFlowTests/testNewNoteDrafts EditingFlowTests/testOfflineEditSavesWhenOnline EditingFlowTests/testRemoteEditKeepsCaretAndUndo EditingFlowTests/testRemoteEditOverSelection"
           case "${{ matrix.device }}-${{ matrix.suite }}" in
             iphone-flows)
-              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/SettingsFlowTests"
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/SettingsFlowTests -only-testing:CommitnoteUITests/EntryPointFlowTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
+              for TEST in $IPHONE_EDITING; do SELECTED="$SELECTED -skip-testing:CommitnoteUITests/$TEST"; done
               ;;
             iphone-screens)
-              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/DataFlowTests -only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
+              SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/EditorFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/DataFlowTests -only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/AccessibilityScreenshotTests"
+              for TEST in $IPHONE_EDITING; do SELECTED="$SELECTED -only-testing:CommitnoteUITests/$TEST"; done
               ;;
             ipad-flows)
-              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/LoginFlowTests -only-testing:CommitnoteUITests/MediaFlowTests -only-testing:CommitnoteUITests/SettingsScreenshotTests"
+              SELECTED="-only-testing:CommitnoteUITests/EditingFlowTests -only-testing:CommitnoteUITests/SettingsScreenshotTests -only-testing:CommitnoteUITests/IPadFlowTests -only-testing:CommitnoteUITests/AccessibilityScreenshotTests -only-testing:CommitnoteUITests/LoginFlowTests"
               ;;
             ipad-screens)
               SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/SettingsFlowTests"
@@ -269,23 +288,4 @@ jobs:
           name: ios-xcresults-ui-${{ matrix.device }}-${{ matrix.suite }}
           path: out/xcresults
           if-no-files-found: ignore
-          retention-days: 30
-
-      # The IPA builds in the job that finishes its tests first, off the longest path.
-      - uses: ./.github/actions/ios-macos-setup
-        if: ${{ !cancelled() && matrix.device == 'ipad' && matrix.suite == 'screens' }}
-
-      - name: Build unsigned IPA
-        if: ${{ !cancelled() && matrix.device == 'ipad' && matrix.suite == 'screens' }}
-        run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
-
-      - name: Check IPA
-        if: ${{ !cancelled() && matrix.device == 'ipad' && matrix.suite == 'screens' }}
-        run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
-
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() && matrix.device == 'ipad' && matrix.suite == 'screens' }}
-        with:
-          name: commitnote-unsigned-ipa
-          path: out/ipa/commitnote-unsigned.ipa
           retention-days: 30
