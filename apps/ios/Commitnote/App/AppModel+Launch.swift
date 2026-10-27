@@ -59,6 +59,7 @@ extension AppModel {
         case .starting, .loading(.inProgress):
             if action == .newNote {
                 earlyDraftFocusRequest = true
+                earlyNewNoteTaken = true
             }
         case .notes:
             guard initialEntrySettled, !isModalPresented, !isSearchActive else { return }
@@ -69,7 +70,11 @@ extension AppModel {
                 Task { await presentSearch() }
             }
         default:
-            break
+            // The core ran it under an attachment whose detach was still on its way.
+            if action == .newNote {
+                earlyNewNoteTaken = true
+                redeliverEarlyNewNote()
+            }
         }
     }
 
@@ -98,6 +103,7 @@ extension AppModel {
             Task { @MainActor [weak self] in self?.forwardLaunchActions() }
         }
         guard hasPending else { return }
+        earlyNewNoteTaken = false
         for action in LaunchInbox.shared.take() {
             enqueueLaunchCommand(LaunchDeliver(action: action))
         }
@@ -110,13 +116,28 @@ extension AppModel {
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in self?.syncLaunchAttachment() }
         }
+        if screen == .notes {
+            earlyNewNoteTaken = false
+        }
         guard accepts != attachedLaunchAccepts else { return }
         attachedLaunchAccepts = accepts
         if let accepts {
             enqueueLaunchCommand(LaunchAttach(accepts: accepts))
         } else {
             enqueueLaunchCommand(LaunchDetach())
+            redeliverEarlyNewNote()
         }
+    }
+
+    /// A start-up that ends without the notes, such as on the login screen, leaves the new note the
+    /// early draft took unused unless something was typed there, so it goes back to the core to wait
+    /// for the notes. It must reach the core after the detach: while the start-up attachment stands,
+    /// the core would run it again at once.
+    private func redeliverEarlyNewNote() {
+        guard earlyNewNoteTaken, attachedLaunchAccepts == nil, screen != .notes else { return }
+        earlyNewNoteTaken = false
+        guard earlyDraft.isEmpty else { return }
+        enqueueLaunchCommand(LaunchDeliver(action: .newNote))
     }
 
     private func enqueueLaunchCommand<C: NativeCoreCommand>(_ command: C) {

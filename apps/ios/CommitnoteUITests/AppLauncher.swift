@@ -139,6 +139,15 @@ extension XCTestCase {
             file: file, line: line)
     }
 
+    /// The system launches the app without any of the test's launch options, so the next test
+    /// launches it afresh instead of restarting it in its process.
+    func launchThroughLink(_ link: String, file: StaticString = #filePath, line: UInt = #line) -> XCUIApplication {
+        runningLaunch = nil
+        prepareAnimationIdleForLaunch()
+        openLink(link, file: file, line: line)
+        return XCUIApplication()
+    }
+
     func pressShortcut(
         _ key: String, modifiers: XCUIElement.KeyModifierFlags = .command, until effect: () -> Bool,
         file: StaticString = #filePath, line: UInt = #line

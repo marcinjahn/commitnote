@@ -6,6 +6,17 @@ extension XCTestCase {
         XCTAssertTrue(app.element("note-view").exists, "The draft opens in the note view", file: file, line: line)
     }
 
+    /// Without a remembered session the launch action opens its draft as soon as the notes are
+    /// ready, so on iPhone the tree may never show before the note view covers it.
+    func logInToLinkedDraft(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        submitToken(Fixture.token, in: app, file: file, line: line)
+        pickRepository(Fixture.notes, in: app)
+        unlock(in: app)
+        // Deriving the keys can take most of a minute on a freshly booted CI simulator.
+        waitFor(app.element("draft-name-field"), timeout: 60, file: file, line: line)
+        waitForLinkedDraft(in: app, file: file, line: line)
+    }
+
     /// An untouched draft is dropped once another note opens or, on iPhone, once the note view is left.
     func leaveLinkedDraft(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         if isPad {

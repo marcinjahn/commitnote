@@ -80,4 +80,20 @@ final class EntryPointFlowTests: XCTestCase {
 
         closeLinkedSearch(in: app)
     }
+
+    func testEColdLinkWithoutSession() {
+        let previous = launchApp(reset: true)
+        waitFor(previous.secureTextFields["login-token-field"], timeout: 30)
+        previous.terminate()
+        XCTAssertTrue(poll(timeout: 20) { previous.state == .notRunning }, "The app stopped")
+
+        let app = launchThroughLink("commitnote://new-note")
+        logInToLinkedDraft(in: app)
+        XCTAssertFalse(app.element("search-results").exists, "Search stays closed")
+
+        leaveLinkedDraft(in: app)
+        XCTAssertEqual(
+            sortedNoteLabels(in: app), [SampleNote.welcome, SampleNote.other].sorted(),
+            "An untouched draft leaves no note")
+    }
 }

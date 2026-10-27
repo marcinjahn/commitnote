@@ -155,6 +155,7 @@ final class AppModel {
     var viewerImageId: String?
     private(set) var initialEntrySettled = false
     var earlyDraftFocusRequest = false
+    @ObservationIgnored var earlyNewNoteTaken = false
     var searchFocusRequest = false
     var presentedViews: Set<PresentedView> = []
     var isEditorFocused = false

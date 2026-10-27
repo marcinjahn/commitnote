@@ -123,8 +123,9 @@ pick one of the two shortcuts.
 
 Rules:
 
-- While the app is starting or loading, only "new note" is accepted, and it focuses the early draft
-  on the loading screen. Search is dropped there.
+- While the app is starting or loading with a remembered session, "new note" focuses the early draft
+  on the loading screen. Without a remembered session, it waits through login and opens a draft once
+  the notes are ready. Search waits for the notes in both cases.
 - Once the notes are ready, both work. They are dropped while a sheet, a dialog or search is open.
 - Search on iPhone first leaves the open note.
 - A cold launch from a link or quick action waits for the notes to be ready before acting.
