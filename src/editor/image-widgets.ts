@@ -273,6 +273,7 @@ function findReferences(state: EditorState): FoundReference[] {
   const references: FoundReference[] = [];
   tree.iterate({
     enter(node) {
+      if (node.name === "Table") return false;
       if (node.name !== "Image") return;
       const reference = readReference(state, node.node);
       if (reference) references.push(reference);

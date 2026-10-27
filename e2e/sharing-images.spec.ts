@@ -44,6 +44,7 @@ async function openWelcomeAtEnd(page: Page): Promise<void> {
   await openWelcome(page);
   await page.locator("#note-pane .cm-content").click();
   await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.press("Enter");
 }
 
 async function pasteImages(

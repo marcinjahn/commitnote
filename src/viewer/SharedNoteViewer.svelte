@@ -11,6 +11,7 @@
     imageWidgets,
     type ImageOpenRequest,
   } from "../editor/image-widgets";
+  import { tableWidgets } from "../editor/table-widgets";
   import type { ImageSource } from "../images/image-source";
   import { loadImageLightbox } from "../ui/images/load-image-lightbox";
   import { createDialogEntries } from "../ui/dialogs/dialog-entries";
@@ -51,6 +52,7 @@
   const editorExtensions = $derived([
     livePreview(),
     imageWidgets(),
+    tableWidgets(),
     imageSourceFacet.of((id) =>
       currentImageSource === null
         ? Promise.resolve({ unavailable: true as const })

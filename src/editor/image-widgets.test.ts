@@ -147,6 +147,22 @@ describe("imageWidgetsField", () => {
     state = state.update({ selection: { anchor: state.doc.length } }).state;
     expect(decorations(state).hidden).toEqual([]);
   });
+  it("ignores image references inside a table and keeps those outside it", () => {
+    const table = `| a | b |\n| - | - |\n| ${REF} | y |`;
+    const doc = `${table}\n\n${REF}\n\nafter`;
+    const { widgets, hidden } = decorations(
+      stateFor(doc, EditorSelection.cursor(doc.length)),
+    );
+    const outsideFrom = doc.lastIndexOf("!");
+
+    expect(widgets).toHaveLength(1);
+    expect(widgets[0]?.pos).toBe(outsideFrom + REF.length);
+    expect(hidden).toEqual([[outsideFrom, outsideFrom + REF.length]]);
+    expect(decorations(stateFor(table, EditorSelection.cursor(0)))).toEqual({
+      widgets: [],
+      hidden: [],
+    });
+  });
 });
 
 describe("ImageWidget.eq", () => {

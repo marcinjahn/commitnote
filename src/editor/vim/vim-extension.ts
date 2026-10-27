@@ -11,6 +11,7 @@ import { relativeLineNumbers } from "./relative-line-numbers";
 import { nativePaste, useSystemClipboard } from "./vim-clipboard";
 import { adoptVimDialogs, discardCommandLine } from "./vim-command-line";
 import { defineAppExCommands, vimCallbacks } from "./vim-ex-commands";
+import { defineTableMotions } from "./vim-table-motion";
 import {
   initialEditingMode,
   setVimStatus,
@@ -322,6 +323,7 @@ const staticExtensions: Extension = [
 export function vimExtension(options: VimExtensionOptions): Extension {
   leaveInsertCopyToBrowser();
   useSystemClipboard();
+  defineTableMotions();
   defineAppExCommands();
   const { initialMode, animatedCaret, onWrite, onQuit, onInsertImage, onStatus } =
     options;

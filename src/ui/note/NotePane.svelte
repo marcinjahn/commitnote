@@ -10,6 +10,7 @@
     imageWidgets,
     type ImageOpenRequest,
   } from "../../editor/image-widgets";
+  import { tableWidgets } from "../../editor/table-widgets";
   import type { ImageSource } from "../../images/image-source";
   import type { ImageId } from "../../images/image-id";
   import { noteOwnsImage } from "../../images/image-ownership";
@@ -165,6 +166,7 @@
   const editorExtensions = $derived([
     livePreview(),
     imageWidgets(),
+    tableWidgets(),
     imageSourceFacet.of((id) => imageSource(id)),
     imageOpenHandler.of(openImage),
     imageFileHandlers(),

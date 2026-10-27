@@ -5,6 +5,7 @@
     imageWidgets,
     type ImageOpenRequest,
   } from "../../editor/image-widgets";
+  import { tableWidgets } from "../../editor/table-widgets";
   import { livePreview } from "../../editor/live-preview";
   import { linkOpen } from "../../editor/link-open";
   import { readSharedVersion, type SharedVersionOutcome } from "../../app/shared-version";
@@ -37,6 +38,7 @@
   const editorExtensions = [
     livePreview(),
     imageWidgets(),
+    tableWidgets(),
     imageSourceFacet.of((id) => imageSource(id)),
     imageOpenHandler.of(openImage),
     linkOpen(),
