@@ -1,4 +1,5 @@
 import {
+  EditorSelection,
   type EditorState,
   type Extension,
   type Line,
@@ -158,6 +159,55 @@ export function renderedTableInLines(
   return found;
 }
 
+export function pageTargetInTable(
+  view: EditorView,
+  head: number,
+  forward: boolean,
+  distance: number,
+): number | null {
+  const { state } = view;
+  if (state.readOnly) return null;
+  const widgets = state.field(tableWidgetsField, false);
+  if (!widgets) return null;
+  const documentTop = view.documentTop;
+  let start = view.coordsAtPos(head, forward ? 1 : -1);
+  if (!start) {
+    const line = view.lineBlockAt(head);
+    start = {
+      left: 0,
+      right: 0,
+      top: line.top + documentTop,
+      bottom: line.bottom + documentTop,
+    };
+  }
+  const y = forward ? start.bottom + distance : start.top - distance;
+  const height = y - documentTop;
+  const block = view.lineBlockAtHeight(height);
+  if (height < block.top || height >= block.bottom) return null;
+  let from = -1;
+  let to = -1;
+  widgets.between(block.from, block.to, (f, t, deco) => {
+    if (deco.spec.widget) {
+      from = f;
+      to = t;
+      return false;
+    }
+  });
+  if (from < 0) return null;
+  const doc = state.doc;
+  const first = doc.lineAt(from).number;
+  const last = doc.lineAt(to).number;
+  for (const table of view.contentDOM.querySelectorAll("table.cm-table")) {
+    const pos = view.posAtDOM(table);
+    if (pos < from || pos > to) continue;
+    const rows = [...table.querySelectorAll("tr")];
+    const hit = rows.findIndex((row) => row.getBoundingClientRect().bottom > y);
+    const index = hit === -1 ? Math.max(0, rows.length - 1) : hit;
+    return index === 0 ? first : Math.min(first + 1 + index, last);
+  }
+  return forward ? first : last;
+}
+
 function enterTable(forward: boolean): Command {
   return (view) => {
     const { state } = view;
@@ -181,10 +231,51 @@ function enterTable(forward: boolean): Command {
 export const enterTableDown = enterTable(true);
 export const enterTableUp = enterTable(false);
 
+function pageHeight(view: EditorView): number {
+  const { scrollDOM } = view;
+  let height: number;
+  if (scrollDOM.clientHeight < scrollDOM.scrollHeight - 2) {
+    let top = 0;
+    let bottom = 0;
+    for (const source of view.state.facet(EditorView.scrollMargins)) {
+      const margins = source(view);
+      if (margins?.top) top = Math.max(margins.top, top);
+      if (margins?.bottom) bottom = Math.max(margins.bottom, bottom);
+    }
+    height = scrollDOM.clientHeight - top - bottom;
+  } else {
+    height = (view.dom.ownerDocument.defaultView ?? window).innerHeight;
+  }
+  return Math.max(view.defaultLineHeight, height - 5);
+}
+
+function pageIntoTable(forward: boolean): Command {
+  return (view) => {
+    const { state } = view;
+    const range = state.selection.main;
+    if (state.selection.ranges.length > 1 || !range.empty) return false;
+    const line = pageTargetInTable(view, range.head, forward, pageHeight(view));
+    if (line === null) return false;
+    const { doc } = state;
+    const target = doc.line(line);
+    const column = range.head - doc.lineAt(range.head).from;
+    view.dispatch({
+      selection: EditorSelection.cursor(
+        target.from + Math.min(column, target.length),
+      ),
+      scrollIntoView: true,
+      userEvent: "select",
+    });
+    return true;
+  };
+}
+
 const tableEntryKeymap = Prec.highest(
   keymap.of([
     { key: "ArrowDown", run: enterTableDown },
     { key: "ArrowUp", run: enterTableUp },
+    { key: "PageDown", run: pageIntoTable(true) },
+    { key: "PageUp", run: pageIntoTable(false) },
   ]),
 );
 

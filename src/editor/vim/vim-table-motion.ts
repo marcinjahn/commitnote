@@ -1,6 +1,7 @@
 import { CodeMirror, Vim } from "@replit/codemirror-vim";
+import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { renderedTableInLines } from "../table-widgets";
+import { pageTargetInTable, renderedTableInLines } from "../table-widgets";
 
 type MotionFn = Parameters<typeof Vim.defineMotion>[1];
 type MotionParams = Parameters<MotionFn>;
@@ -12,6 +13,7 @@ interface VimMotions {
   readonly moveByLines: MotionFn;
   readonly moveByDisplayLines: MotionFn;
   readonly moveByScroll: MotionFn;
+  readonly moveByPage: MotionFn;
   readonly moveToColumn: MotionFn;
   readonly moveToEol: MotionFn;
 }
@@ -28,7 +30,7 @@ function normaliseLastMotion(vim: VimState, motions: VimMotions): void {
   if (last === moveByLinesIntoTables) vim.lastMotion = motions.moveByLines;
   else if (last === moveByDisplayLinesIntoTables)
     vim.lastMotion = motions.moveByDisplayLines;
-  else if (last === moveByScrollIntoTables)
+  else if (last === moveByScrollIntoTables || last === moveByPageIntoTables)
     vim.lastMotion = motions.moveByScroll;
 }
 
@@ -218,6 +220,45 @@ const moveByScrollIntoTables = function (
   return end;
 };
 
+// Upstream's findPosV pages by the editor's full height, which here is the
+// whole document because the note pane scrolls instead of the editor.
+const moveByPageIntoTables = function (
+  this: VimMotions,
+  ...[cm, head, motionArgs, vim, inputState]: MotionParams
+): ReturnType<MotionFn> {
+  normaliseLastMotion(vim, this);
+  const view = editableView(cm);
+  if (!view) return this.moveByPage(cm, head, motionArgs, vim, inputState);
+  const forward = motionArgs.forward ?? true;
+  const info = cm.getScrollInfo();
+  const height = info.clientHeight;
+  const orig = cm.charCoords(head, "local");
+  if (!lastMotionVertical(vim, this)) {
+    vim.lastHPos = head.ch;
+    vim.lastHSPos = cm.charCoords(head, "div").left;
+  }
+  let range = EditorSelection.cursor(
+    cm.indexFromPos(head),
+    1,
+    undefined,
+    vim.lastHSPos,
+  );
+  let end: Position | null = null;
+  for (let i = 0; i < motionArgs.repeat; i++) {
+    const line = pageTargetInTable(view, range.head, forward, height);
+    if (line !== null) {
+      const { length } = view.state.doc.line(line);
+      end = new CodeMirror.Pos(line - 1, Math.min(vim.lastHPos, length));
+      break;
+    }
+    range = view.moveVertically(range, forward, height);
+  }
+  end ??= cm.posFromIndex(range.head);
+  const dest = cm.charCoords(end, "local");
+  cm.scrollTo(null, info.top + dest.top - orig.top);
+  return end;
+};
+
 let defined = false;
 
 export function defineTableMotions(): void {
@@ -232,6 +273,7 @@ export function defineTableMotions(): void {
     "moveByScrollIntoTables",
     moveByScrollIntoTables as MotionFn,
   );
+  Vim.defineMotion("moveByPageIntoTables", moveByPageIntoTables as MotionFn);
   // Upstream's <Down>, <Up>, g<Down>, g<Up>, <C-n> and <C-p> are noremap
   // keyToKey defaults, which never reach a remapped target. Mappings without a
   // context leave upstream's insert-mode <C-d> and <C-u> in place.
@@ -263,6 +305,10 @@ export function defineTableMotions(): void {
       "moveByScrollIntoTables",
       { forward: false, explicitRepeat: true },
     ],
+    ["<C-f>", "moveByPageIntoTables", { forward: true }],
+    ["<PageDown>", "moveByPageIntoTables", { forward: true }],
+    ["<C-b>", "moveByPageIntoTables", { forward: false }],
+    ["<PageUp>", "moveByPageIntoTables", { forward: false }],
   ] as const) {
     Vim.mapCommand(keys, "motion", motion, motionArgs, {});
   }

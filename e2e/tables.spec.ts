@@ -824,3 +824,392 @@ test.describe("vim mode", () => {
     ).toBeVisible();
   });
 });
+
+test.describe("page motions", () => {
+  const ROWS = 60;
+  const TALL_HEADER = "| A | B | C |";
+  const FIRST_FILLER = 1;
+  const FIRST_TAIL = 105;
+  const TALL_HEADER_OFFSET = 42;
+
+  interface Box {
+    top: number;
+    bottom: number;
+  }
+
+  interface Layout {
+    lines: Array<Box & { text: string }>;
+    rows: Box[];
+  }
+
+  const tallRow = (r: number) =>
+    r === 0 ? TALL_HEADER : `| r${r} a | r${r} b | r${r} c |`;
+  const exactLine = (page: Page, text: string) =>
+    pane(page).locator(".cm-line", {
+      hasText: new RegExp(`^${text.replace(/[|]/g, "\\|")}$`),
+    });
+  const position = (page: Page) => page.locator(".vim-status-bar .position");
+
+  async function insertTallNote(page: Page): Promise<void> {
+    await page.keyboard.insertText(
+      [
+        ...Array.from({ length: 40 }, (_, i) => `Filler ${i + 1}`),
+        "",
+        TALL_HEADER,
+        "| --- | --- | --- |",
+        ...Array.from({ length: ROWS }, (_, i) => tallRow(i + 1)),
+        "",
+        ...Array.from({ length: 40 }, (_, i) => `Tail ${i + 1}`),
+      ].join("\n"),
+    );
+  }
+
+  async function openTallNote(page: Page): Promise<void> {
+    await openWelcomeNote(page);
+    await editor(page).focus();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.press("Enter");
+    await insertTallNote(page);
+    await expect(exactLine(page, "Tail 40")).toBeVisible();
+  }
+
+  async function openVimTallNote(page: Page): Promise<number> {
+    await openNotes(page);
+    await enableVimMode(page);
+    await openWelcome(page);
+    await expect(modeText(page)).toHaveText("NORMAL");
+    await editor(page).focus();
+    await page.keyboard.press("G");
+    await expect(position(page)).toHaveText(/^\d+:/);
+    const welcomeEnd = Number((await position(page).innerText()).split(":")[0]);
+    await page.keyboard.press("o");
+    await insertTallNote(page);
+    await page.keyboard.press("Escape");
+    await expect(modeText(page)).toHaveText("NORMAL");
+    await expect(exactLine(page, "Tail 40")).toBeVisible();
+    return welcomeEnd;
+  }
+
+  function measure(page: Page): Promise<Layout> {
+    return page.evaluate(() => {
+      const box = (el: Element): Box => {
+        const { top, bottom } = el.getBoundingClientRect();
+        return { top, bottom };
+      };
+      const root = document.querySelector("#note-pane")!;
+      const lines = [...root.querySelectorAll(".cm-line")]
+        .filter((el) => /^(Filler|Tail) \d+$/.test(el.textContent ?? ""))
+        .map((el) => ({ text: el.textContent ?? "", ...box(el) }));
+      const table = [...root.querySelectorAll("table.cm-table")].find((t) =>
+        t.textContent?.includes("r1 a"),
+      );
+      const rows = table ? [...table.querySelectorAll("tr")].map(box) : [];
+      return { lines, rows };
+    });
+  }
+
+  function pageHeight(page: Page, vim: boolean): Promise<number> {
+    return vim
+      ? page.locator(".note-content").evaluate((el) => el.clientHeight)
+      : page.evaluate(() => window.innerHeight - 5);
+  }
+
+  function targetY(line: Box, forward: boolean, height: number): number {
+    return forward ? line.bottom + height : line.top - height;
+  }
+
+  function rowAt(rows: Box[], y: number): number {
+    const index = rows.findIndex((row) => row.bottom > y);
+    return index === -1 ? rows.length - 1 : index;
+  }
+
+  // CodeMirror keeps a viewport while it still covers the visible part of the
+  // note, so one that stops short of the table needs a further scroll.
+  async function nudge(page: Page, forward: boolean): Promise<void> {
+    await page
+      .locator(".note-content")
+      .evaluate((el, by) => el.scrollBy(0, by), forward ? 40 : -40);
+  }
+
+  async function chooseStart(
+    page: Page,
+    prefix: "Filler" | "Tail",
+    forward: boolean,
+    height: number,
+    row: number | null,
+  ): Promise<string> {
+    let start: string | null = null;
+    await expect
+      .poll(async () => {
+        const { lines, rows } = await measure(page);
+        if (rows.length !== ROWS + 1) {
+          await nudge(page, forward);
+          return null;
+        }
+        const hits = lines
+          .filter((l) => l.text.startsWith(`${prefix} `))
+          .map((l) => {
+            const y = targetY(l, forward, height);
+            const index = rows.findIndex((r) => r.top <= y && y < r.bottom);
+            const target = rows[index];
+            const offset = target
+              ? Math.abs(y - (target.top + target.bottom) / 2)
+              : Infinity;
+            return { text: l.text, index, offset };
+          })
+          .filter((hit) => (row === null ? hit.index >= 1 : hit.index === row));
+        if (row !== null) hits.sort((a, b) => a.offset - b.offset);
+        start = hits[0]?.text ?? null;
+        if (!start) await nudge(page, forward);
+        return start;
+      })
+      .not.toBeNull();
+    return start!;
+  }
+
+  async function expectedRow(
+    page: Page,
+    startText: string,
+    forward: boolean,
+    height: number,
+  ): Promise<number> {
+    let expected = -1;
+    await expect
+      .poll(async () => {
+        const { lines, rows } = await measure(page);
+        const start = lines.find((l) => l.text === startText);
+        if (!start || rows.length !== ROWS + 1) return -1;
+        const y = targetY(start, forward, height);
+        expected = y < rows[0].top ? -1 : rowAt(rows, y);
+        return expected;
+      })
+      .toBeGreaterThanOrEqual(0);
+    return expected;
+  }
+
+  async function expectRowRevealed(page: Page, row: number): Promise<void> {
+    await expect(tables(page).filter({ hasText: "r1 a" })).toHaveCount(0);
+    await expect(exactLine(page, tallRow(row))).toBeVisible();
+  }
+
+  async function landedRow(page: Page): Promise<number> {
+    await expect(tables(page).filter({ hasText: "r1 a" })).toHaveCount(0);
+    await page.keyboard.press("End");
+    await page.keyboard.type("Z");
+    const marked = pane(page).locator(".cm-line", { hasText: /Z$/ });
+    await expect(marked).toHaveCount(1);
+    const text = (await marked.innerText()).slice(0, -1);
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(marked).toHaveCount(0);
+    const row =
+      text === TALL_HEADER ? 0 : Number(/^\| r(\d+) a/.exec(text)?.[1]);
+    expect(row).toBeGreaterThanOrEqual(0);
+    return row;
+  }
+
+  // CodeMirror draws only a margin beyond the visible part of the note, and
+  // that margin is widest in the direction of the last long scroll, which is
+  // where the page motion aims.
+  async function scrollLineTo(
+    page: Page,
+    text: string,
+    block: "start" | "end",
+  ): Promise<void> {
+    await exactLine(page, text).evaluate(
+      (el, b) => el.scrollIntoView({ block: b }),
+      block,
+    );
+  }
+
+  async function placeCaret(page: Page, text: string): Promise<void> {
+    await exactLine(page, text).click();
+    await page.keyboard.press("End");
+  }
+
+  async function pageFrom(
+    page: Page,
+    prefix: "Filler" | "Tail",
+    key: "PageDown" | "PageUp",
+    row: number | null,
+  ): Promise<{ expected: number; landed: number }> {
+    const forward = key === "PageDown";
+    await openTallNote(page);
+    if (forward) {
+      await page.keyboard.press("ControlOrMeta+Home");
+      await placeCaret(page, "Filler 1");
+      await scrollLineTo(page, "Filler 8", "start");
+    } else {
+      await placeCaret(page, "Tail 1");
+      await scrollLineTo(page, "Tail 1", "end");
+    }
+    const height = await pageHeight(page, false);
+    const start = await chooseStart(page, prefix, forward, height, row);
+    await placeCaret(page, start);
+    const expected = await expectedRow(page, start, forward, height);
+    await page.keyboard.press(key);
+    const landed = await landedRow(page);
+    await expectRowRevealed(page, landed);
+    return { expected, landed };
+  }
+
+  test("PageDown from a line above lands on the row at the page height", async ({
+    page,
+  }) => {
+    const { expected, landed } = await pageFrom(page, "Filler", "PageDown", 5);
+    expect(Math.abs(landed - expected)).toBeLessThanOrEqual(1);
+  });
+
+  test("PageUp from a line below lands on the row at the page height", async ({
+    page,
+  }) => {
+    const { expected, landed } = await pageFrom(page, "Tail", "PageUp", null);
+    expect(expected).toBeGreaterThanOrEqual(1);
+    expect(Math.abs(landed - expected)).toBeLessThanOrEqual(1);
+  });
+
+  test("PageDown onto the header row lands on the header line", async ({
+    page,
+  }) => {
+    const { expected, landed } = await pageFrom(page, "Filler", "PageDown", 0);
+    expect(expected).toBe(0);
+    expect(landed).toBe(0);
+  });
+
+  test.describe("vim", () => {
+    const commandInput = (page: Page) =>
+      page.getByRole("textbox", { name: "Vim command" });
+
+    async function lineNumber(page: Page): Promise<number> {
+      await expect(position(page)).toHaveText(/^\d+:/);
+      return Number((await position(page).innerText()).split(":")[0]);
+    }
+
+    async function goToLine(page: Page, n: number): Promise<void> {
+      await page.keyboard.press(":");
+      await expect(commandInput(page)).toBeFocused();
+      await page.keyboard.type(String(n));
+      await page.keyboard.press("Enter");
+      await expect(position(page)).toHaveText(new RegExp(`^${n}:`));
+    }
+
+    function lineOf(welcomeEnd: number, text: string): number {
+      const [prefix, n] = text.split(" ");
+      return (
+        welcomeEnd +
+        Number(n) -
+        1 +
+        (prefix === "Filler" ? FIRST_FILLER : FIRST_TAIL)
+      );
+    }
+
+    async function prepare(
+      page: Page,
+      prefix: "Filler" | "Tail",
+      forward: boolean,
+      vimHeight: boolean,
+      row: number | null,
+    ): Promise<{ header: number; start: number; expected: number }> {
+      const welcomeEnd = await openVimTallNote(page);
+      if (forward) {
+        await goToLine(page, lineOf(welcomeEnd, "Filler 8"));
+        await scrollLineTo(page, "Filler 8", "start");
+      } else {
+        await exactLine(page, "Tail 1").click();
+        await expect(position(page)).toHaveText(
+          new RegExp(`^${lineOf(welcomeEnd, "Tail 1")}:`),
+        );
+        await scrollLineTo(page, "Tail 1", "end");
+      }
+      const height = await pageHeight(page, vimHeight);
+      const text = await chooseStart(page, prefix, forward, height, row);
+      const start = lineOf(welcomeEnd, text);
+      await goToLine(page, start);
+      const expected = await expectedRow(page, text, forward, height);
+      return { header: welcomeEnd + TALL_HEADER_OFFSET, start, expected };
+    }
+
+    async function expectLanded(
+      page: Page,
+      header: number,
+      start: number,
+      expected: number,
+    ): Promise<number> {
+      await expect.poll(() => lineNumber(page)).not.toBe(start);
+      const landed = await lineNumber(page);
+      const row = landed === header ? 0 : landed - header - 1;
+      expect(Math.abs(row - expected)).toBeLessThanOrEqual(1);
+      await expectRowRevealed(page, row);
+      return landed;
+    }
+
+    test("Ctrl+f lands on the row at the pane height and keeps the column", async ({
+      page,
+    }) => {
+      const { header, start, expected } = await prepare(
+        page,
+        "Filler",
+        true,
+        true,
+        5,
+      );
+      for (let i = 0; i < 3; i++) await page.keyboard.press("l");
+      await expect(position(page)).toHaveText(`${start}:4`);
+      await page.keyboard.press("Control+f");
+      const landed = await expectLanded(page, header, start, expected);
+      await expect(position(page)).toHaveText(`${landed}:4`);
+    });
+
+    test("PageUp from a line below lands in the table", async ({ page }) => {
+      const { header, start, expected } = await prepare(
+        page,
+        "Tail",
+        false,
+        true,
+        null,
+      );
+      await page.keyboard.press("PageUp");
+      await expectLanded(page, header, start, expected);
+      await expect(modeText(page)).toHaveText("NORMAL");
+    });
+
+    test("Ctrl+f without a table in reach moves by one pane", async ({
+      page,
+    }) => {
+      const welcomeEnd = await openVimTallNote(page);
+      const start = lineOf(welcomeEnd, "Filler 1");
+      await goToLine(page, start);
+      await page.keyboard.type("zt");
+      const fillerTop = (n: number) =>
+        exactLine(page, `Filler ${n}`).evaluate(
+          (el) => el.getBoundingClientRect().top,
+        );
+      await expect
+        .poll(async () => (await fillerTop(3)) - (await fillerTop(2)))
+        .toBeGreaterThan(0);
+      const lineHeight = (await fillerTop(3)) - (await fillerTop(2));
+      const lines = (await pageHeight(page, true)) / lineHeight;
+
+      await page.keyboard.press("Control+f");
+
+      await expect.poll(() => lineNumber(page)).not.toBe(start);
+      const landed = await lineNumber(page);
+      expect(landed).toBeLessThanOrEqual(lineOf(welcomeEnd, "Filler 40"));
+      expect(Math.abs(landed - start - lines)).toBeLessThanOrEqual(2);
+    });
+
+    test("PageDown in insert mode lands in the table", async ({ page }) => {
+      const { header, start, expected } = await prepare(
+        page,
+        "Filler",
+        true,
+        false,
+        5,
+      );
+      await page.keyboard.press("A");
+      await expect(modeText(page)).toHaveText("INSERT");
+      await page.keyboard.press("PageDown");
+      await expectLanded(page, header, start, expected);
+      await expect(modeText(page)).toHaveText("INSERT");
+    });
+  });
+});
