@@ -94,7 +94,7 @@ jobs:
           nohup apps/ios/scripts/sample-host.sh out/xcresults-ui/host.log > /dev/null 2>&1 &
           # One iPad simulator runs the runtime tests and then the UI tests, so the job boots only
           # once, while the test products download.
-          nohup sh -c 'apps/ios/scripts/disable-password-autofill.sh "$1"; echo $? > out/simulator-ready' \
+          nohup sh -c 'apps/ios/scripts/prepare-simulator.sh "$1"; echo $? > out/simulator-ready' \
             prepare "$SIMULATOR_ID" > out/simulator-prep.log 2>&1 &
 
       - uses: ./.github/actions/ios-test-products
@@ -219,7 +219,7 @@ jobs:
           mkdir -p out
           nohup apps/ios/scripts/sample-host.sh out/xcresults/host.log > /dev/null 2>&1 &
           # Boots and prepares the simulator while the test products download.
-          nohup sh -c 'apps/ios/scripts/disable-password-autofill.sh "$1"; echo $? > out/simulator-ready' \
+          nohup sh -c 'apps/ios/scripts/prepare-simulator.sh "$1"; echo $? > out/simulator-ready' \
             prepare "$SIMULATOR_ID" > out/simulator-prep.log 2>&1 &
 
       - uses: ./.github/actions/ios-test-products

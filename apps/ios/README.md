@@ -96,7 +96,7 @@ What the app does:
   `Commitnote/App/PrintRenderer.swift` renders the print PDF.
 - `Packages/CoreRuntime/Sources/CoreRuntime/IOSVisit.swift` — the iOS visit (see Usage statistics).
 - `Commitnote/Fonts/` — the bundled note fonts (see Fonts below).
-- `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `disable-password-autofill.sh`,
+- `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `prepare-simulator.sh`,
   `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
 - `../test-vectors/` — JSON test vectors shared by the TypeScript and Swift tests.
 
@@ -318,7 +318,8 @@ Welcome" and "Fail next share" (the next share fails), and "Import sample archiv
 `COMMITNOTE_UI_HOLD_LOADING=1`, which holds loading and shows a loading testing bar, and
 `COMMITNOTE_UI_ANIMATION_SPEED`, which the UI tests set to run the app's animations faster. The UI tests expect password AutoFill to be off, so
 iOS never shows its save-password or strong-password sheets over the app; the workflow turns it off on
-every simulator with `scripts/disable-password-autofill.sh`. Do the same before running them locally.
+every simulator with `scripts/prepare-simulator.sh`, which also stops the wallpaper gallery from
+prewarming after boot. Do the same before running them locally.
 Artifacts, kept for 30 days:
 
 | Artifact | Contents |
