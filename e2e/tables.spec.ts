@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { TouchFinger, openNotes } from "./helpers";
 import {
@@ -466,6 +466,178 @@ test(
   },
 );
 
+test.describe("nested tables", () => {
+  const NESTED_CONTENT = [
+    "Between one",
+    "",
+    "> Quoted line",
+    "",
+    "> | Quoted | Value |",
+    "> | --- | --- |",
+    "> | q1 | v1 |",
+    "",
+    "Between two",
+    "",
+    "> > | Deep | Value |",
+    "> > | --- | --- |",
+    "> > | d1 | v1 |",
+    "",
+    "Between three",
+    "",
+    "- Item text",
+    "",
+    "  Continuation text",
+    "",
+    "  | Listed | Value |",
+    "  | --- | --- |",
+    "  | l1 | v1 |",
+    "",
+  ];
+
+  async function appendContent(
+    page: Page,
+    content: readonly string[],
+    expectedTables: number,
+  ): Promise<void> {
+    await openWelcomeNote(page);
+    await caretBelowTable(page);
+    const lines = pane(page).locator(".cm-line");
+    const lineCount = await lines.count();
+    await page.keyboard.press("Enter");
+    // CodeMirror applies Enter asynchronously on Android.
+    await expect(lines).toHaveCount(lineCount + 1);
+    await page.keyboard.insertText(content.join("\n"));
+    await page.keyboard.press("ControlOrMeta+Home");
+    await expect(tables(page)).toHaveCount(expectedTables);
+  }
+
+  const widgetWith = (page: Page, header: string) =>
+    pane(page)
+      .locator(".cm-table-widget")
+      .filter({ has: page.getByRole("columnheader", { name: header }) });
+
+  const tableLeft = (table: Locator) =>
+    table.evaluate((el) => el.getBoundingClientRect().left);
+
+  function firstCharLeft(container: Locator, text: string): Promise<number> {
+    return container.evaluate((el, wanted) => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const at = node.textContent?.indexOf(wanted) ?? -1;
+        if (at < 0) continue;
+        const range = document.createRange();
+        range.setStart(node, at);
+        range.setEnd(node, at + 1);
+        return range.getBoundingClientRect().left;
+      }
+      throw new Error("text not found");
+    }, text);
+  }
+
+  test("tables in blockquotes and list items render with bars and indent", async ({
+    page,
+  }) => {
+    await appendContent(page, NESTED_CONTENT, 4);
+    await expect(
+      pane(page).locator(".cm-line", { hasText: "| --- |" }),
+    ).toHaveCount(0);
+
+    const quoted = widgetWith(page, "Quoted");
+    const deep = widgetWith(page, "Deep");
+    await expect(quoted.locator(".cm-table-quote")).toHaveCount(1);
+    await expect(deep.locator(".cm-table-quote")).toHaveCount(2);
+
+    const quoteLine = line(page, "Quoted line");
+    await expect
+      .poll(async () => {
+        const [bar, source] = await Promise.all([
+          quoted
+            .locator(".cm-table-quote")
+            .evaluate((el) => getComputedStyle(el).borderLeftColor),
+          quoteLine.evaluate((el) => getComputedStyle(el).borderLeftColor),
+        ]);
+        return bar === source;
+      })
+      .toBe(true);
+
+    await expect
+      .poll(async () => {
+        const [bar, source] = await Promise.all([
+          quoted
+            .locator(".cm-table-quote")
+            .evaluate((el) => el.getBoundingClientRect().left),
+          quoteLine.evaluate((el) => el.getBoundingClientRect().left),
+        ]);
+        return Math.abs(bar - source);
+      })
+      .toBeLessThanOrEqual(1);
+
+    await expect
+      .poll(async () => {
+        const nestedOffset =
+          (await tableLeft(widgetWith(page, "Listed").locator("table"))) -
+          (await firstCharLeft(
+            line(page, "Continuation text"),
+            "Continuation text",
+          ));
+        const topOffset =
+          (await tableLeft(tables(page).first())) -
+          (await firstCharLeft(line(page, "Between one"), "Between one"));
+        return Math.abs(nestedOffset - topOffset);
+      })
+      .toBeLessThanOrEqual(2);
+  });
+
+  test("clicking a cell of a nested table reveals only that table", async ({
+    page,
+  }) => {
+    await appendContent(page, NESTED_CONTENT, 4);
+
+    await widgetWith(page, "Quoted").getByRole("cell", { name: "q1" }).click();
+    await expect(tables(page)).toHaveCount(3);
+    await expect(
+      pane(page).locator(".cm-line", { hasText: "| --- |" }),
+    ).toHaveCount(1);
+    await expectCaretIn(line(page, "q1"));
+    await expect(widgetWith(page, "Deep")).toHaveCount(1);
+    await expect(widgetWith(page, "Listed")).toHaveCount(1);
+  });
+
+  test("ArrowDown from above a list table enters its first line", async ({
+    page,
+  }) => {
+    await appendContent(page, NESTED_CONTENT, 4);
+
+    await line(page, "Continuation text").click();
+    await page.keyboard.press("ArrowDown");
+    await expect(tables(page)).toHaveCount(4);
+    await page.keyboard.press("ArrowDown");
+    await expect(tables(page)).toHaveCount(3);
+    await expect(line(page, "| Listed | Value |")).toBeVisible();
+    await expectCaretIn(line(page, "| Listed | Value |"));
+  });
+
+  test("an irregular nested table stays source", async ({ page }) => {
+    await appendContent(
+      page,
+      [
+        "Between one",
+        "",
+        "> | Lazy | Value |",
+        "> | --- | --- |",
+        "| z1 | v1 |",
+        "",
+      ],
+      1,
+    );
+
+    await expect(line(page, "| z1 | v1 |")).toBeVisible();
+    await expect(
+      pane(page).locator(".cm-line", { hasText: "| --- |" }),
+    ).toHaveCount(1);
+  });
+});
+
 test.describe("vim mode", () => {
   const gutter = (page: Page) => page.locator(".cm-relative-line-numbers");
   const position = (page: Page) => page.locator(".vim-status-bar .position");
@@ -631,6 +803,57 @@ test.describe("vim mode", () => {
       await page.keyboard.press("Escape");
       await expect(modeText(page)).toHaveText("NORMAL");
       await expect(tables(page)).toHaveCount(2);
+
+      const wrapped = tables(page)
+        .nth(1)
+        .getByRole("cell", { name: LONG_TEXT });
+      await expect
+        .poll(() =>
+          wrapped.evaluate((el) => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            return new Set([...range.getClientRects()].map((r) => r.top)).size;
+          }),
+        )
+        .toBeGreaterThan(1);
+
+      await expect(
+        gutter(page).locator(".cm-table-line-numbers").nth(1),
+      ).toBeAttached();
+      await expect
+        .poll(async () => misalignments(await measureTable(page, 1)))
+        .toEqual([]);
+    },
+  );
+
+  test(
+    "nested table line numbers sit on their rows",
+    { tag: "@mobile" },
+    async ({ page }) => {
+      await openVimWelcome(page);
+      await focusEditor(page);
+      await page.keyboard.press("G");
+      await page.keyboard.press("o");
+      await page.keyboard.insertText(
+        [
+          row(["Name", "Notes"]),
+          row(["---", "---"]),
+          row(["first", "short"]),
+          row(["second", LONG_TEXT]),
+          row(["third", "short"]),
+          "",
+        ]
+          .map((text) => (text === "" ? text : `> ${text}`))
+          .join("\n"),
+      );
+      await page.keyboard.press("Escape");
+      await expect(modeText(page)).toHaveText("NORMAL");
+      await expect(tables(page)).toHaveCount(2);
+      await expect(
+        tables(page)
+          .nth(1)
+          .locator("xpath=ancestor::*[contains(@class,'cm-table-quote')]"),
+      ).toHaveCount(1);
 
       const wrapped = tables(page)
         .nth(1)

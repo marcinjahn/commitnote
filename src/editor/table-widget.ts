@@ -1,11 +1,12 @@
 import { Facet } from "@codemirror/state";
 import { type EditorView, WidgetType } from "@codemirror/view";
 import { openExternal } from "../app/external-open";
-import type {
-  MarkdownTable,
-  MarkdownTableCell,
-  MarkdownTableRow,
-  TableAlignment,
+import {
+  containerPrefixLayout,
+  type MarkdownTable,
+  type MarkdownTableCell,
+  type MarkdownTableRow,
+  type TableAlignment,
 } from "../markdown/markdown-table";
 import { renderTableCellContent } from "./table-cell-content";
 
@@ -121,6 +122,7 @@ export class TableWidget extends WidgetType {
     readonly table: MarkdownTable,
     readonly from: number,
     readonly readOnly: boolean,
+    readonly prefix: string,
   ) {
     super();
   }
@@ -156,7 +158,7 @@ export class TableWidget extends WidgetType {
     }
 
     scroller.appendChild(table);
-    wrapper.appendChild(scroller);
+    this.mount(wrapper, scroller);
 
     wrapper.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
@@ -183,6 +185,32 @@ export class TableWidget extends WidgetType {
 
     if (this.readOnly) watchOverflow(wrapper, scroller);
     return wrapper;
+  }
+
+  private mount(wrapper: HTMLElement, scroller: HTMLElement): void {
+    if (this.prefix === "") {
+      wrapper.appendChild(scroller);
+      return;
+    }
+    const { quoteLevels, indent } = containerPrefixLayout(this.prefix);
+    let parent = wrapper;
+    for (let level = 0; level < quoteLevels; level++) {
+      const quote = document.createElement("div");
+      quote.className = "cm-table-quote";
+      parent.appendChild(quote);
+      parent = quote;
+    }
+    const nest = document.createElement("div");
+    nest.className = "cm-table-nest";
+    if (indent !== "") {
+      const span = document.createElement("span");
+      span.className = "cm-table-indent";
+      span.setAttribute("aria-hidden", "true");
+      span.textContent = indent;
+      nest.appendChild(span);
+    }
+    nest.appendChild(scroller);
+    parent.appendChild(nest);
   }
 
   override destroy(dom: HTMLElement): void {

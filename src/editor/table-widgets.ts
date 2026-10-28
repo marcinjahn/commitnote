@@ -16,7 +16,7 @@ import {
 } from "@codemirror/view";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { readTable } from "../markdown/markdown-table";
+import { readTable, tableContainerPrefix } from "../markdown/markdown-table";
 import { lineHasSelection } from "./live-preview";
 import { TableWidget, tableLinkOpener } from "./table-widget";
 
@@ -70,11 +70,10 @@ function buildTableWidgetDecorations(state: EditorState): DecorationSet {
       const node = ref.node;
       const touched =
         !state.readOnly && lineHasSelection(state, node.from, node.to);
-      const table =
-        node.parent?.name === "Document" && !touched
-          ? readTable(node, (text ??= doc.toString()))
-          : null;
-      if (table) {
+      text ??= doc.toString();
+      const prefix = touched ? null : tableContainerPrefix(node, text);
+      const table = prefix !== null ? readTable(node, text) : null;
+      if (table && prefix !== null) {
         const from = doc.lineAt(node.from).from;
         const to = doc.lineAt(node.to).to;
         decorations.push(
@@ -84,6 +83,7 @@ function buildTableWidgetDecorations(state: EditorState): DecorationSet {
               table,
               from,
               state.readOnly,
+              prefix,
             ),
             block: true,
           }).range(from, to),
@@ -282,6 +282,22 @@ const tableEntryKeymap = Prec.highest(
 const tableWidgetsTheme = EditorView.baseTheme({
   ".cm-table-widget": {
     padding: "var(--space-2) 0",
+  },
+  ".cm-table-quote": {
+    borderLeft: "var(--hairline) solid var(--color-accent-rule)",
+    paddingLeft: "var(--space-3)",
+  },
+  ".cm-table-nest": {
+    display: "flex",
+    alignItems: "flex-start",
+  },
+  ".cm-table-indent": {
+    whiteSpace: "pre",
+    flex: "none",
+  },
+  ".cm-table-nest > .cm-table-scroller": {
+    flex: "1 1 auto",
+    minWidth: "0",
   },
   ".cm-table-scroller": {
     overflowX: "auto",

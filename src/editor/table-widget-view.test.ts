@@ -147,3 +147,72 @@ describe("TableWidget DOM", () => {
     expect(widget?.querySelector("[aria-hidden]")).toBeNull();
   });
 });
+
+describe("TableWidget nested DOM", () => {
+  function nestedWidget(text: string): HTMLElement {
+    setup(`Intro\n\n${text}`);
+    const found = parent?.querySelector<HTMLElement>(".cm-table-widget");
+    if (!found) throw new Error("table widget not rendered");
+    return found;
+  }
+
+  function cells(widget: HTMLElement): string[] {
+    return Array.from(widget.querySelectorAll("th, td"), (c) => c.textContent);
+  }
+
+  it("renders a blockquote table with one quote bar and no indent", () => {
+    const widget = nestedWidget("> | a | b |\n> | - | - |\n> | 1 | 2 |");
+
+    expect(widget.querySelectorAll(".cm-table-quote")).toHaveLength(1);
+    expect(widget.querySelector(".cm-table-indent")).toBeNull();
+    expect(
+      widget.querySelector(
+        ".cm-table-widget > .cm-table-quote > .cm-table-nest > .cm-table-scroller > table.cm-table",
+      ),
+    ).not.toBeNull();
+    expect(cells(widget)).toEqual(["a", "b", "1", "2"]);
+  });
+
+  it("nests one quote bar per blockquote level", () => {
+    const widget = nestedWidget("> > | a | b |\n> > | - | - |\n> > | 1 | 2 |");
+    const quotes = widget.querySelectorAll(".cm-table-quote");
+
+    expect(quotes).toHaveLength(2);
+    expect(quotes[1]?.parentElement).toBe(quotes[0]);
+    expect(widget.querySelector(".cm-table-indent")).toBeNull();
+    expect(cells(widget)).toEqual(["a", "b", "1", "2"]);
+  });
+
+  it("offsets a list table by its indent text without a quote bar", () => {
+    const widget = nestedWidget(
+      "- item\n\n  | a | b |\n  | - | - |\n  | 1 | 2 |",
+    );
+    const indent = widget.querySelector(".cm-table-indent");
+
+    expect(widget.querySelector(".cm-table-quote")).toBeNull();
+    expect(indent?.textContent).toBe("  ");
+    expect(indent?.getAttribute("aria-hidden")).toBe("true");
+    expect(cells(widget)).toEqual(["a", "b", "1", "2"]);
+  });
+
+  it("combines a quote bar with an indent", () => {
+    const widget = nestedWidget(">   | a | b |\n>   | - | - |\n>   | 1 | 2 |");
+    const indent = widget.querySelector(".cm-table-indent");
+
+    expect(widget.querySelectorAll(".cm-table-quote")).toHaveLength(1);
+    expect(indent?.textContent).toBe("  ");
+    expect(indent?.getAttribute("aria-hidden")).toBe("true");
+    expect(cells(widget)).toEqual(["a", "b", "1", "2"]);
+  });
+
+  it("keeps a top-level table directly in its scroller", () => {
+    const widget = nestedWidget("| a | b |\n| - | - |\n| 1 | 2 |");
+
+    expect(widget.querySelector(".cm-table-quote, .cm-table-nest")).toBeNull();
+    expect(
+      widget.querySelector(
+        ".cm-table-widget > .cm-table-scroller > table.cm-table",
+      ),
+    ).not.toBeNull();
+  });
+});
