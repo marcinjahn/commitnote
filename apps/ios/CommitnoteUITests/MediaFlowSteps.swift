@@ -230,9 +230,20 @@ extension XCTestCase {
         return link
     }
 
+    /// A tap on Done can show its highlight and still be cancelled without running the button,
+    /// leaving the sheet up, so Done is tapped again while the sheet stays.
     func closeShareScreen(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        hittable(app.buttons.matching(identifier: "share-done"), file: file, line: line).tap()
-        waitUntilGone(app.element("share-screen"), file: file, line: line)
+        let screen = app.element("share-screen")
+        let done = app.buttons.matching(identifier: "share-done")
+        for attempt in 0..<3 where screen.exists {
+            if attempt == 0 {
+                hittable(done, file: file, line: line).tap()
+            } else if let button = done.allElementsBoundByIndex.first(where: { $0.exists && $0.isHittable }) {
+                button.tap()
+            }
+            if poll(timeout: 10, until: { !screen.exists }) { break }
+        }
+        waitUntilGone(screen, file: file, line: line)
     }
 
     func openSharedLinks(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
