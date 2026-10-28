@@ -22,6 +22,45 @@ export interface MarkdownTable {
   readonly rows: readonly MarkdownTableRow[];
 }
 
+export function tableContainerPrefix(
+  node: SyntaxNode,
+  text: string,
+): string | null {
+  if (node.name !== "Table") return null;
+  if (!node.parent || node.parent.name === "Document") return "";
+  const lines: SyntaxNode[] = [];
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (
+      child.name === "TableHeader" ||
+      child.name === "TableDelimiter" ||
+      child.name === "TableRow"
+    ) {
+      lines.push(child);
+    }
+  }
+  if (lines.length !== text.slice(node.from, node.to).split("\n").length) {
+    return null;
+  }
+  const prefixes = lines.map((line) =>
+    text.slice(text.lastIndexOf("\n", line.from - 1) + 1, line.from),
+  );
+  const prefix = prefixes[0];
+  if (prefix === undefined || prefixes.some((other) => other !== prefix)) {
+    return null;
+  }
+  return /^[ \t>]*$/.test(prefix) ? prefix : null;
+}
+
+export function containerPrefixLayout(prefix: string): {
+  quoteLevels: number;
+  indent: string;
+} {
+  return {
+    quoteLevels: prefix.split(">").length - 1,
+    indent: prefix.replace(/>[ \t]?/g, ""),
+  };
+}
+
 function parseAlignments(separator: string): TableAlignment[] {
   return separator
     .trim()

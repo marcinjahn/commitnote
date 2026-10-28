@@ -1,7 +1,11 @@
 import type { SyntaxNode } from "@lezer/common";
 import { describe, expect, it } from "vitest";
 import { markdownParser } from "./markdown-parser";
-import { readTable } from "./markdown-table";
+import {
+  containerPrefixLayout,
+  readTable,
+  tableContainerPrefix,
+} from "./markdown-table";
 
 function findNode(text: string, name: string): SyntaxNode {
   const cursor = markdownParser.parse(text).cursor();
@@ -124,5 +128,64 @@ describe("readTable", () => {
   it("returns null for a node that is not a table", () => {
     const text = "just a paragraph";
     expect(readTable(findNode(text, "Paragraph"), text)).toBeNull();
+  });
+});
+
+describe("tableContainerPrefix", () => {
+  it.each<[string, string, string | null]>([
+    ["top level", "| a | b |\n| - | - |\n| 1 | 2 |", ""],
+    ["indented top level", "  | a | b |\n  | - | - |\n  | 1 | 2 |", ""],
+    ["blockquote", "> | a | b |\n> | - | - |\n> | 1 | 2 |", "> "],
+    [
+      "nested blockquote",
+      "> > | a | b |\n> > | - | - |\n> > | 1 | 2 |",
+      "> > ",
+    ],
+    [
+      "blockquote, table after a paragraph",
+      "> text\n> | a | b |\n> | - | - |",
+      "> ",
+    ],
+    ["lazy blockquote line", "> | a | b |\n> | - | - |\n| 1 | 2 |", null],
+    ["mixed quote prefixes", "> | a | b |\n>| - | - |\n> | 1 | 2 |", null],
+    [
+      "bullet list item",
+      "- item\n\n  | a | b |\n  | - | - |\n  | 1 | 2 |",
+      "  ",
+    ],
+    [
+      "ordered list item",
+      "1. item\n\n   | a | b |\n   | - | - |\n   | 1 | 2 |",
+      "   ",
+    ],
+    [
+      "list marker on the first line",
+      "- | a | b |\n  | - | - |\n  | 1 | 2 |",
+      null,
+    ],
+    [
+      "list item in a blockquote",
+      "> - item\n>\n>   | a | b |\n>   | - | - |\n>   | 1 | 2 |",
+      ">   ",
+    ],
+  ])("%s", (_name, text, expected) => {
+    expect(tableContainerPrefix(findNode(text, "Table"), text)).toBe(expected);
+  });
+
+  it("returns null for a node that is not a table", () => {
+    const text = "just a paragraph";
+    expect(tableContainerPrefix(findNode(text, "Paragraph"), text)).toBeNull();
+  });
+});
+
+describe("containerPrefixLayout", () => {
+  it.each<[string, number, string]>([
+    ["> ", 1, ""],
+    ["> > ", 2, ""],
+    ["  ", 0, "  "],
+    [">   ", 1, "  "],
+    ["", 0, ""],
+  ])("splits %j", (prefix, quoteLevels, indent) => {
+    expect(containerPrefixLayout(prefix)).toEqual({ quoteLevels, indent });
   });
 });
