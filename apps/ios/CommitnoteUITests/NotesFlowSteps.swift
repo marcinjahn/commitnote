@@ -16,9 +16,10 @@ extension XCTestCase {
         _ element: XCUIElement, _ predicate: NSPredicate, timeout: TimeInterval = 30,
         file: StaticString = #filePath, line: UInt = #line
     ) {
-        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
-        XCTAssertEqual(
-            XCTWaiter().wait(for: [expectation], timeout: timeout), .completed,
+        // XCTWaiter gives up at its timeout even while a check is still reading the screen, which
+        // takes up to 20 s on a slow simulator, so a condition met long before still fails.
+        XCTAssertTrue(
+            poll(timeout: timeout) { predicate.evaluate(with: element) },
             "Expected \(element) to match \(predicate.predicateFormat)", file: file, line: line)
     }
 

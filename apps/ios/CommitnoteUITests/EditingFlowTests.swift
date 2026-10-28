@@ -30,8 +30,7 @@ final class EditingFlowTests: XCTestCase {
         var sawPending = false
         for attempt in 0..<4 where !sawPending {
             if attempt > 0 { editor(in: app).typeText(".") }
-            sawPending = XCTWaiter().wait(
-                for: [XCTNSPredicateExpectation(predicate: pending, object: status)], timeout: 3) == .completed
+            sawPending = poll(timeout: 3) { pending.evaluate(with: status) }
         }
         XCTAssertTrue(sawPending, "Expected \(status) to hold the typed text as pending before saving it")
         waitForValue(status, "synced")
