@@ -28,7 +28,7 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertTrue(text.contains("- [x] Done task\n- [ ] Open task"))
 
         // Offline keeps the toggle unsaved until it is checked, however long the tap takes to settle.
-        useTestingMenu("testing-offline", in: app)
+        runTestingAction("testing-offline")
         waitForValue(status, "offline")
         let checkbox = app.elements("editor-task-checkbox").firstMatch
         revealInEditor(checkbox, editor: editor)
@@ -39,9 +39,9 @@ final class EditorFlowTests: XCTestCase {
         waitForValue(checkbox, wasChecked ? "unchecked" : "checked")
         XCTAssertFalse(hasKeyboardFocus(editor), "Tapping a checkbox leaves the editor unfocused")
         waitForText(editor, containing: (wasChecked ? "- [ ] " : "- [x] ") + task)
-        waitUntil(status, NSPredicate(format: "label CONTAINS %@", "Changes will save when you're back online"))
+        waitForUnsavedWhileOffline(in: app)
 
-        useTestingMenu("testing-offline", in: app)
+        runTestingAction("testing-offline")
         waitForValue(status, "synced")
         XCTAssertFalse(hasKeyboardFocus(editor))
     }

@@ -44,13 +44,14 @@ final class EditingFlowTests: XCTestCase {
 
         // Offline keeps the local edit unsaved until the remote edit is in, so the save merges both
         // instead of the remote full-text edit overwriting an already saved local edit.
-        useTestingMenu("testing-offline", in: app)
+        runTestingAction("testing-offline")
         waitForValue(status, "offline")
         focusEditor(in: app)
         editor.typeKey(.upArrow, modifierFlags: .command)
         editor.typeText("local text")
-        useTestingMenu("testing-remote-edit-refresh", in: app)
-        useTestingMenu("testing-offline", in: app)
+        waitForUnsavedWhileOffline(in: app)
+        runTestingAction("testing-remote-edit-refresh")
+        runTestingAction("testing-offline")
 
         waitForText(editor, containing: "Appended on another device")
         waitForValue(status, "synced")
@@ -78,7 +79,7 @@ final class EditingFlowTests: XCTestCase {
         waitForValue(status, "synced")
 
         selectFirstLine(in: app)
-        useTestingMenu("testing-remote-edit-refresh", in: app)
+        runTestingAction("testing-remote-edit-refresh")
         waitForText(editor, containing: "Appended on another device")
         waitForFocus(editor)
 
@@ -153,7 +154,7 @@ final class EditingFlowTests: XCTestCase {
     func testFailedSaveAndRetryNow() {
         let app = openNotes()
         openWelcome(in: app)
-        useTestingMenu("testing-fail-saves", in: app)
+        runTestingAction("testing-fail-saves")
         typeAtEnd("Saved after retry", in: app)
         let status = syncStatus(in: app)
         waitForValue(status, "failed")
@@ -170,7 +171,7 @@ final class EditingFlowTests: XCTestCase {
             waitForValue(status, "failed")
         }
 
-        useTestingMenu("testing-stop-failing", in: app)
+        runTestingAction("testing-stop-failing")
         openStatusMenuWithRetry(in: app).tap()
         waitForValue(status, "synced")
     }
@@ -178,13 +179,13 @@ final class EditingFlowTests: XCTestCase {
     func testOfflineEditSavesWhenOnline() {
         let app = openNotes()
         openWelcome(in: app)
-        useTestingMenu("testing-offline", in: app)
+        runTestingAction("testing-offline")
         let status = syncStatus(in: app)
         waitForValue(status, "offline")
         typeAtEnd("Written offline", in: app)
-        waitUntil(status, NSPredicate(format: "label CONTAINS %@", "Changes will save when you're back online"))
+        waitForUnsavedWhileOffline(in: app)
 
-        useTestingMenu("testing-offline", in: app)
+        runTestingAction("testing-offline")
         waitForValue(status, "synced")
 
         if isPad {
@@ -238,7 +239,7 @@ final class EditingFlowTests: XCTestCase {
     func testLogOutAnywayWithUnsavedChanges() {
         let app = openNotes()
         openWelcome(in: app)
-        useTestingMenu("testing-fail-saves", in: app)
+        runTestingAction("testing-fail-saves")
         typeAtEnd("Never saved", in: app)
         tapLogOut(in: app)
 
@@ -251,7 +252,7 @@ final class EditingFlowTests: XCTestCase {
     func testLogOutKeepTryingThenSaved() {
         let app = openNotes()
         openWelcome(in: app)
-        useTestingMenu("testing-fail-saves", in: app)
+        runTestingAction("testing-fail-saves")
         typeAtEnd("Saved before logout", in: app)
         tapLogOut(in: app)
 
@@ -264,7 +265,7 @@ final class EditingFlowTests: XCTestCase {
         cancel.tap()
         waitUntilGone(alert)
 
-        useTestingMenu("testing-stop-failing", in: app)
+        runTestingAction("testing-stop-failing")
         tapLogOut(in: app)
         waitFor(app.secureTextFields["login-token-field"], timeout: 30)
         XCTAssertFalse(alert.exists)

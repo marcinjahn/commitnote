@@ -182,7 +182,7 @@ extension XCTestCase {
 
     func openSampleImport(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         backToTree(in: app, file: file, line: line)
-        useTestingMenu("testing-import-archive", in: app, file: file, line: line)
+        runTestingAction("testing-import-archive", file: file, line: line)
         waitFor(app.element("import-screen"), timeout: 30, file: file, line: line)
     }
 

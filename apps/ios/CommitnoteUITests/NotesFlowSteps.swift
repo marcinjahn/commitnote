@@ -7,6 +7,16 @@ enum SampleNote {
     static let other = "Zażółć gęślą jaźń"
 }
 
+private let testingActionRequestPrefix = "io.github.marcinjahn.commitnote.testing.action."
+private let testingActionDonePrefix = "io.github.marcinjahn.commitnote.testing.action-done."
+
+private nonisolated(unsafe) var registeredTestingActions = Set<String>()
+private nonisolated(unsafe) var finishedTestingAction: String?
+
+private let testingActionDone: CFNotificationCallback = { _, _, name, _, _ in
+    finishedTestingAction = name.map { $0.rawValue as String }
+}
+
 extension XCTestCase {
     func resumeNotes(appearance: Appearance = .light) -> XCUIApplication {
         resumeAtTree(appearance: appearance)
@@ -81,22 +91,29 @@ extension XCTestCase {
         app.element("note-editor")
     }
 
-    func useTestingMenu(_ item: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        let button = app.buttons[item]
-        // A tap while another menu is still closing finds no hit point and opens nothing.
-        for _ in 0..<3 {
-            hittable(app.buttons.matching(identifier: "testing-menu"), file: file, line: line).tap()
-            if appears(button, within: 5) { break }
+    /// Runs one of the app's testing actions and waits until it has finished, so its effect, like
+    /// failing saves, is in place before the next step.
+    func runTestingAction(_ action: String, file: StaticString = #filePath, line: UInt = #line) {
+        let done = testingActionDonePrefix + action
+        if registeredTestingActions.insert(action).inserted {
+            CFNotificationCenterAddObserver(
+                CFNotificationCenterGetDarwinNotifyCenter(), nil, testingActionDone, done as CFString, nil,
+                .deliverImmediately)
         }
-        waitFor(button, file: file, line: line)
-        // With the keyboard up the menu scrolls, and a tap there can highlight the item and be
-        // cancelled without selecting it. The menu closes on a selection, and only a selection runs
-        // the item, so an item still shown has not run and is tapped again.
-        for _ in 0..<3 {
-            button.tap()
-            if poll(timeout: 5, until: { !button.exists }) { return }
-        }
-        waitUntilGone(button, file: file, line: line)
+        finishedTestingAction = nil
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName((testingActionRequestPrefix + action) as CFString), nil, nil, true)
+        XCTAssertTrue(
+            poll(timeout: 30) { finishedTestingAction == done }, "The app finished \(action)", file: file, line: line)
+    }
+
+    /// An edit reaches the core a moment after its keystrokes, so going online straight after typing
+    /// can sync before the edit is there to merge or keep.
+    func waitForUnsavedWhileOffline(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        waitUntil(
+            syncStatus(in: app), NSPredicate(format: "label CONTAINS %@", "Changes will save when you're back online"),
+            file: file, line: line)
     }
 
     func openStatusMenu(in app: XCUIApplication) {
@@ -238,11 +255,12 @@ extension XCTestCase {
     /// offline first keeps any refresh from noticing the change before the edit exists.
     func changeKeyWithUnsavedEdit(_ text: String, in app: XCUIApplication) {
         openWelcome(in: app)
-        useTestingMenu("testing-offline", in: app)
+        runTestingAction("testing-offline")
         waitForValue(syncStatus(in: app), "offline")
         typeAtEnd(text, in: app)
-        useTestingMenu("testing-change-key", in: app)
-        useTestingMenu("testing-offline", in: app)
+        waitForUnsavedWhileOffline(in: app)
+        runTestingAction("testing-change-key")
+        runTestingAction("testing-offline")
         waitFor(app.element("key-changed-screen"), timeout: 30)
     }
 
@@ -271,11 +289,12 @@ extension XCTestCase {
     /// from pulling the remote edit into the editor before the local edit is made.
     func makeConflict(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         openWelcome(in: app, file: file, line: line)
-        useTestingMenu("testing-offline", in: app, file: file, line: line)
+        runTestingAction("testing-offline", file: file, line: line)
         waitForValue(syncStatus(in: app), "offline", file: file, line: line)
-        useTestingMenu("testing-remote-edit", in: app, file: file, line: line)
+        runTestingAction("testing-remote-edit", file: file, line: line)
         replaceFirstLine(with: "Edited on this device", in: app)
-        useTestingMenu("testing-offline", in: app, file: file, line: line)
+        waitForUnsavedWhileOffline(in: app, file: file, line: line)
+        runTestingAction("testing-offline", file: file, line: line)
         waitFor(app.element("conflict-view"), timeout: 30, file: file, line: line)
         waitForValue(syncStatus(in: app), "conflict", file: file, line: line)
     }

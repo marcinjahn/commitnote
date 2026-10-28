@@ -193,7 +193,7 @@ extension XCTestCase {
         let width = app.element("testing-width")
         for _ in 0..<3 {
             if width.exists && (width.value as? String) == value { return }
-            useTestingMenu("testing-switch-width", in: app, file: file, line: line)
+            runTestingAction("testing-switch-width", file: file, line: line)
             if poll(timeout: 5, until: { width.exists && (width.value as? String) == value }) { return }
         }
         XCTAssertEqual(width.value as? String, value, "Forced width", file: file, line: line)

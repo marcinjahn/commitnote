@@ -60,7 +60,7 @@ final class OrganisationScreenshotTests: XCTestCase {
         waitUntilGone(app.elements("folder-picker-row").firstMatch)
         switchAppearance(.light)
 
-        useTestingMenu("testing-share-note", in: app)
+        runTestingAction("testing-share-note")
         waitFor(app.element("tree-note-shared"))
         chooseFromContextMenu(on: welcome, "tree-action-delete", label: "Delete", in: app)
         let warning = text(containing: "active share link", in: app)

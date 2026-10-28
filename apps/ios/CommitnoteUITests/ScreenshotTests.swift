@@ -73,7 +73,7 @@ final class ScreenshotTests: XCTestCase {
 
         app = resumeNotes()
         openWelcome(in: app)
-        useTestingMenu("testing-fail-saves", in: app)
+        runTestingAction("testing-fail-saves")
         typeAtEnd("Not saved yet", in: app)
         waitForValue(syncStatus(in: app), "failed")
         openStatusMenu(in: app)
@@ -89,7 +89,7 @@ final class ScreenshotTests: XCTestCase {
 
         app = resumeNotes()
         openWelcome(in: app)
-        useTestingMenu("testing-fail-saves", in: app)
+        runTestingAction("testing-fail-saves")
         typeAtEnd("Not saved yet", in: app)
         tapLogOut(in: app)
         waitFor(unsavedAlert(in: app), timeout: 30)

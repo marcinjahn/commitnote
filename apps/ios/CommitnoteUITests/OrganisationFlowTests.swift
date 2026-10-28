@@ -113,7 +113,7 @@ final class OrganisationFlowTests: XCTestCase {
 
     func testSharedNoteWarning() {
         let app = openNotes()
-        useTestingMenu("testing-share-note", in: app)
+        runTestingAction("testing-share-note")
         waitFor(app.element("tree-note-shared"))
 
         let welcome = note(SampleNote.welcome, in: app)

@@ -64,6 +64,11 @@ final class TestingAppearance {
         }
         CFNotificationCenterAddObserver(
             center, nil, testingRelaunchRequested, TestingRelaunch.request as CFString, nil, .deliverImmediately)
+        for action in TestingAction.allCases {
+            CFNotificationCenterAddObserver(
+                center, nil, testingActionRequested, (TestingAction.requestPrefix + action.rawValue) as CFString, nil,
+                .deliverImmediately)
+        }
     }
 
     fileprivate func apply(_ scheme: ColorScheme) {
@@ -201,6 +206,15 @@ private let testingRelaunchRequested: CFNotificationCallback = { _, _, _, _, _ i
     }
 }
 
+private let testingActionRequested: CFNotificationCallback = { _, _, name, _, _ in
+    guard let raw = name.map({ $0.rawValue as String }),
+        let action = TestingAction(rawValue: String(raw.dropFirst(TestingAction.requestPrefix.count)))
+    else { return }
+    DispatchQueue.main.async {
+        NotificationCenter.default.post(name: TestingAction.notification, object: action)
+    }
+}
+
 private let testingAppearanceRequested: CFNotificationCallback = { _, _, name, _, _ in
     guard let raw = name.map({ $0.rawValue as String }) else { return }
     let scheme: ColorScheme = raw.hasSuffix("dark") ? .dark : .light
@@ -310,8 +324,24 @@ struct TestingLoadingBar: View {
     }
 }
 
-struct TestingMenu: View {
-    let model: AppModel
+/// The UI tests run these through Darwin notifications and wait for the acknowledgement, which
+/// arrives once the action has finished. The Testing menu offers the same actions by hand, but
+/// with the keyboard up it scrolls, and a tap on an item can close it without running the item.
+enum TestingAction: String, CaseIterable, Sendable {
+    case remoteEdit = "testing-remote-edit"
+    case remoteEditAndRefresh = "testing-remote-edit-refresh"
+    case changeKey = "testing-change-key"
+    case failSaves = "testing-fail-saves"
+    case stopFailingSaves = "testing-stop-failing"
+    case shareNote = "testing-share-note"
+    case failNextShare = "testing-share-permission"
+    case importArchive = "testing-import-archive"
+    case toggleOffline = "testing-offline"
+    case switchWidth = "testing-switch-width"
+
+    static let requestPrefix = "io.github.marcinjahn.commitnote.testing.action."
+    static let donePrefix = "io.github.marcinjahn.commitnote.testing.action-done."
+    static let notification = Notification.Name("CommitnoteTestingAction")
 
     private static let repo = "sample/notes"
     private static let welcomeLines = [
@@ -342,74 +372,80 @@ struct TestingMenu: View {
         "",
     ]
 
-    var body: some View {
-        Menu("Testing", systemImage: "wrench.and.screwdriver") {
-            Button("Remote edit") {
-                Task { await remoteEdit(replacing: 0, with: "Edited on another device") }
-            }
-            .accessibilityIdentifier("testing-remote-edit")
-            Button("Remote edit and refresh") {
-                Task {
-                    await remoteEdit(
-                        replacing: Self.welcomeLines.count - 1, with: "Appended on another device")
-                    await model.sendTesting(SyncRefresh())
-                }
-            }
-            .accessibilityIdentifier("testing-remote-edit-refresh")
-            Button("Change passphrase elsewhere") {
-                Task { await model.sendTesting(FakeChangeRepoKey(repo: Self.repo)) }
-            }
-            .accessibilityIdentifier("testing-change-key")
-            Button("Fail saves") {
-                Task {
-                    await model.sendTesting(
-                        FakeFailNext(
-                            repo: Self.repo, operation: "commit", kind: "Network", count: 1000))
-                }
-            }
-            .accessibilityIdentifier("testing-fail-saves")
-            Button("Stop failing saves") {
-                Task {
-                    await model.sendTesting(
-                        FakeClearFailures(repo: Self.repo, operation: "commit"))
-                }
-            }
-            .accessibilityIdentifier("testing-stop-failing")
-            Button("Share Welcome") {
-                Task { await model.sendTesting(FakeShareNote(path: ["Welcome"])) }
-            }
-            .accessibilityIdentifier("testing-share-note")
-            Button("Fail next share") {
-                Task {
-                    await model.sendTesting(
-                        FakeFailNext(
-                            repo: Self.repo, operation: "createShare", kind: "Forbidden", count: 1))
-                }
-            }
-            .accessibilityIdentifier("testing-share-permission")
-            Button("Import sample archive") {
-                Task { await model.importSampleArchive() }
-            }
-            .accessibilityIdentifier("testing-import-archive")
-            Button(model.forcedOffline ? "Go online" : "Go offline") {
-                Task { await model.setForcedOffline(!model.forcedOffline) }
-            }
-            .accessibilityIdentifier("testing-offline")
-            Button("Switch width") {
-                TestingLayout.shared.cycle()
-            }
-            .accessibilityIdentifier("testing-switch-width")
+    @MainActor
+    func title(for model: AppModel) -> String {
+        switch self {
+        case .remoteEdit: "Remote edit"
+        case .remoteEditAndRefresh: "Remote edit and refresh"
+        case .changeKey: "Change passphrase elsewhere"
+        case .failSaves: "Fail saves"
+        case .stopFailingSaves: "Stop failing saves"
+        case .shareNote: "Share Welcome"
+        case .failNextShare: "Fail next share"
+        case .importArchive: "Import sample archive"
+        case .toggleOffline: model.forcedOffline ? "Go online" : "Go offline"
+        case .switchWidth: "Switch width"
         }
-        .accessibilityIdentifier("testing-menu")
     }
 
-    private func remoteEdit(replacing index: Int, with line: String) async {
-        var lines = Self.welcomeLines
+    @MainActor
+    func run(on model: AppModel) async {
+        switch self {
+        case .remoteEdit:
+            await Self.remoteEdit(replacing: 0, with: "Edited on another device", on: model)
+        case .remoteEditAndRefresh:
+            await Self.remoteEdit(
+                replacing: Self.welcomeLines.count - 1, with: "Appended on another device", on: model)
+            await model.sendTesting(SyncRefresh())
+        case .changeKey:
+            await model.sendTesting(FakeChangeRepoKey(repo: Self.repo))
+        case .failSaves:
+            await model.sendTesting(FakeFailNext(repo: Self.repo, operation: "commit", kind: "Network", count: 1000))
+        case .stopFailingSaves:
+            await model.sendTesting(FakeClearFailures(repo: Self.repo, operation: "commit"))
+        case .shareNote:
+            await model.sendTesting(FakeShareNote(path: ["Welcome"]))
+        case .failNextShare:
+            await model.sendTesting(
+                FakeFailNext(repo: Self.repo, operation: "createShare", kind: "Forbidden", count: 1))
+        case .importArchive:
+            await model.importSampleArchive()
+        case .toggleOffline:
+            await model.setForcedOffline(!model.forcedOffline)
+        case .switchWidth:
+            TestingLayout.shared.cycle()
+        }
+    }
+
+    func postDone() {
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName((Self.donePrefix + rawValue) as CFString),
+            nil, nil, true)
+    }
+
+    @MainActor
+    private static func remoteEdit(replacing index: Int, with line: String, on model: AppModel) async {
+        var lines = welcomeLines
         lines[index] = line
         await model.sendTesting(
             FakeRemoteEdit(
-                repo: Self.repo, path: ["Welcome"], text: lines.joined(separator: "\n"),
-                device: "Other iPhone"))
+                repo: repo, path: ["Welcome"], text: lines.joined(separator: "\n"), device: "Other iPhone"))
+    }
+}
+
+struct TestingMenu: View {
+    let model: AppModel
+
+    var body: some View {
+        Menu("Testing", systemImage: "wrench.and.screwdriver") {
+            ForEach(TestingAction.allCases, id: \.self) { action in
+                Button(action.title(for: model)) {
+                    Task { await action.run(on: model) }
+                }
+                .accessibilityIdentifier(action.rawValue)
+            }
+        }
+        .accessibilityIdentifier("testing-menu")
     }
 }
 #endif

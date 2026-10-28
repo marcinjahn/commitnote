@@ -27,6 +27,14 @@ struct CommitnoteApp: App {
                         model = AppModel()
                     }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: TestingAction.notification)) { notification in
+                    guard let action = notification.object as? TestingAction else { return }
+                    let current = model
+                    Task {
+                        await action.run(on: current)
+                        action.postDone()
+                    }
+                }
                 #endif
         }
         .commands { AppCommands(model: model) }

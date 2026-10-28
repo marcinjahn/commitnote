@@ -109,7 +109,7 @@ final class MediaFlowTests: XCTestCase {
 
     func testSharePermissionError() {
         let app = openNotes()
-        useTestingMenu("testing-share-permission", in: app)
+        runTestingAction("testing-share-permission")
         openWelcome(in: app)
         openShareScreen(in: app)
         tapRevealed(app.buttons["share-create-button"], in: app)
