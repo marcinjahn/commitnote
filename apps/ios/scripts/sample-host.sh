@@ -6,9 +6,11 @@ if [ "$#" -ne 1 ]; then
   exit 2
 fi
 log=$1
+mkdir -p "$(dirname "$log")"
 
 # A UI test job can stall for minutes with every simulator operation slow at once. These samples
-# show whether the runner was short of CPU or memory then, or still had app processes left over.
+# show whether the runner was short of CPU or memory then, and which processes held it.
+echo "memsize=$(sysctl -n hw.memsize) ncpu=$(sysctl -n hw.ncpu)" >>"$log"
 while :; do
   {
     printf '%s load=%s pressure=%s apps=%s runners=%s\n' \
@@ -19,7 +21,12 @@ while :; do
       "$(pgrep -f 'CommitnoteUITests-Runner' | wc -l | xargs)"
     sysctl -n vm.swapusage
     vm_stat | grep -E 'Pages (free|occupied by compressor)|Swapouts'
-    ps -Ao pcpu=,rss=,comm= -r | head -5
+    ps -Ao rss=,comm= | awk '{ total += $1; count++ } /CoreSimulator/ { sim += $1; simcount++ }
+      END { printf "processes=%d rss=%dM simulator processes=%d rss=%dM\n", count, total / 1024, simcount, sim / 1024 }'
+    echo "by cpu:"
+    ps -Ao pcpu=,rss=,comm= -r | awk 'NR <= 5' | sed -E 's#^( *[0-9.]+ +[0-9]+ +).*/#\1#'
+    echo "by memory:"
+    ps -Ao pcpu=,rss=,comm= -m | awk 'NR <= 8' | sed -E 's#^( *[0-9.]+ +[0-9]+ +).*/#\1#'
   } >>"$log" 2>&1
   sleep 15
 done

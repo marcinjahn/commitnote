@@ -91,6 +91,7 @@ jobs:
           SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ipad)
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           mkdir -p out
+          nohup apps/ios/scripts/sample-host.sh out/xcresults-ui/host.log > /dev/null 2>&1 &
           # One iPad simulator runs the runtime tests and then the UI tests, so the job boots only
           # once, while the test products download.
           nohup sh -c 'apps/ios/scripts/disable-password-autofill.sh "$1"; echo $? > out/simulator-ready' \
@@ -161,6 +162,13 @@ jobs:
         run: |
           xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --info --style compact \
             --predicate 'subsystem == "io.github.marcinjahn.commitnote"' > out/xcresults-ui/app.log || true
+          xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --style compact \
+            --predicate 'messageType == fault OR messageType == error' \
+            | grep -v IOSurfaceQueryTransactionList | tail -n 50000 > out/xcresults-ui/simulator.log || true
+
+      - name: Stop host sampler
+        if: always()
+        run: pkill -f sample-host.sh || true
 
       - uses: ./.github/actions/ios-upload
         if: always()
@@ -209,6 +217,7 @@ jobs:
           SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ${{ matrix.device }})
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           mkdir -p out
+          nohup apps/ios/scripts/sample-host.sh out/xcresults/host.log > /dev/null 2>&1 &
           # Boots and prepares the simulator while the test products download.
           nohup sh -c 'apps/ios/scripts/disable-password-autofill.sh "$1"; echo $? > out/simulator-ready' \
             prepare "$SIMULATOR_ID" > out/simulator-prep.log 2>&1 &
@@ -250,10 +259,6 @@ jobs:
               SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/SettingsFlowTests"
               ;;
           esac
-          mkdir -p out/xcresults
-          apps/ios/scripts/sample-host.sh out/xcresults/host.log &
-          SAMPLER=$!
-          trap 'kill $SAMPLER' EXIT
           apps/ios/scripts/stop-when-silent.sh 600 xcodebuild test-without-building \
             -xctestrun "$XCTESTRUN" \
             -destination "id=$SIMULATOR_ID" \
@@ -267,7 +272,8 @@ jobs:
           xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --info --style compact \
             --predicate 'subsystem == "io.github.marcinjahn.commitnote"' > out/xcresults/app.log || true
           xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --style compact \
-            --predicate 'messageType == fault OR messageType == error' | tail -n 20000 > out/xcresults/simulator.log || true
+            --predicate 'messageType == fault OR messageType == error' \
+            | grep -v IOSurfaceQueryTransactionList | tail -n 50000 > out/xcresults/simulator.log || true
 
       - name: Export screenshots
         if: always()
@@ -289,6 +295,10 @@ jobs:
           path: out/screenshots
           if-no-files-found: ignore
           retention-days: 30
+
+      - name: Stop host sampler
+        if: always()
+        run: pkill -f sample-host.sh || true
 
       - uses: ./.github/actions/ios-upload
         if: always()
