@@ -250,6 +250,10 @@ jobs:
               SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/SettingsFlowTests"
               ;;
           esac
+          mkdir -p out/xcresults
+          apps/ios/scripts/sample-host.sh out/xcresults/host.log &
+          SAMPLER=$!
+          trap 'kill $SAMPLER' EXIT
           apps/ios/scripts/stop-when-silent.sh 600 xcodebuild test-without-building \
             -xctestrun "$XCTESTRUN" \
             -destination "id=$SIMULATOR_ID" \
@@ -262,6 +266,8 @@ jobs:
         run: |
           xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --info --style compact \
             --predicate 'subsystem == "io.github.marcinjahn.commitnote"' > out/xcresults/app.log || true
+          xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --style compact \
+            --predicate 'messageType == fault OR messageType == error' | tail -n 20000 > out/xcresults/simulator.log || true
 
       - name: Export screenshots
         if: always()
