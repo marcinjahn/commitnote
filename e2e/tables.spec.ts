@@ -742,6 +742,247 @@ test.describe("cell images", () => {
   });
 });
 
+const FRUIT = [
+  "| Fruit | Colour |",
+  "| --- | --- |",
+  "| Apple | Red |",
+  "| Lemon | Yellow |",
+];
+const AFTER_FRUIT = "After fruit";
+
+interface Point {
+  readonly x: number;
+  readonly y: number;
+}
+
+const fruitTable = (page: Page) =>
+  tables(page).filter({
+    has: page.getByRole("columnheader", { name: "Fruit" }),
+  });
+const fruitCell = (page: Page, name: string) =>
+  fruitTable(page).getByRole("cell", { name, exact: true });
+const selectedText = (page: Page) =>
+  page.evaluate(() => getSelection()?.toString() ?? "");
+
+async function textPoint(target: Locator, fraction: number): Promise<Point> {
+  await target.scrollIntoViewIfNeeded();
+  return target.evaluate((el, at) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.left + rect.width * at, y: rect.top + rect.height / 2 };
+  }, fraction);
+}
+
+async function drag(page: Page, from: Point, to: Point): Promise<void> {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+}
+
+async function dragAcrossFruit(page: Page): Promise<void> {
+  await drag(
+    page,
+    await textPoint(fruitCell(page, "Apple"), 0.4),
+    await textPoint(fruitCell(page, "Yellow"), 0.6),
+  );
+  await expect.poll(() => selectedText(page)).toContain("Lemon");
+  await expect
+    .poll(() =>
+      fruitTable(page).evaluate(
+        (el) => document.activeElement === el.closest(".cm-table-widget"),
+      ),
+    )
+    .toBe(true);
+}
+
+async function appendFruitTable(page: Page): Promise<void> {
+  await openWelcomeNote(page);
+  await caretBelowTable(page);
+  const lines = pane(page).locator(".cm-line");
+  const lineCount = await lines.count();
+  await page.keyboard.press("Enter");
+  await expect(lines).toHaveCount(lineCount + 1);
+  await page.keyboard.insertText([...FRUIT, "", AFTER_FRUIT].join("\n"));
+  await page.keyboard.press("ControlOrMeta+Home");
+  await expect(tables(page)).toHaveCount(2);
+}
+
+async function expectFruitRevealed(page: Page): Promise<void> {
+  await expect(line(page, "| Apple | Red |")).toBeVisible();
+  await expect(tables(page)).toHaveCount(1);
+}
+
+test.describe("table text selection", () => {
+  test("a drag across cells selects their text without revealing the table", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+
+    await dragAcrossFruit(page);
+
+    expect(await selectedText(page)).toContain("Red");
+    await expect(tables(page)).toHaveCount(2);
+    await expect(pane(page).locator(".cm-table-source-line")).toHaveCount(0);
+  });
+
+  test("a drag beyond the table stays in it and a later click edits normally", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+
+    await drag(
+      page,
+      await textPoint(fruitCell(page, "Apple"), 0.4),
+      await textPoint(line(page, AFTER_FRUIT), 0.5),
+    );
+
+    await expect
+      .poll(() =>
+        fruitTable(page).evaluate((el) =>
+          el.contains(getSelection()!.focusNode),
+        ),
+      )
+      .toBe(true);
+    const selected = await selectedText(page);
+    expect(selected).toContain("Yellow");
+    expect(selected).not.toContain("After");
+    await expect(tables(page)).toHaveCount(2);
+
+    await line(page, AFTER_FRUIT).click();
+    await expect(editor(page)).toBeFocused();
+    await appendToLine(page, `${AFTER_FRUIT}Z`);
+    await expect(tables(page)).toHaveCount(2);
+  });
+
+  test("a press that moves only a few pixels still reveals the table", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+    const { x, y } = await textPoint(fruitCell(page, "Red"), 0.5);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 2, y);
+    await page.mouse.up();
+
+    await expectFruitRevealed(page);
+    await expectCaretIn(line(page, "| Apple | Red |"));
+  });
+
+  test("after a drag selection Escape and typing go to the previous caret", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+    const firstLine = pane(page).locator(".cm-line").first();
+
+    await dragAcrossFruit(page);
+    await page.keyboard.press("Escape");
+    await expect(editor(page)).toBeFocused();
+    await expect.poll(() => selectedText(page)).toBe("");
+    await page.keyboard.type("X");
+    await expect(firstLine).toHaveText("X# Welcome");
+
+    await dragAcrossFruit(page);
+    await page.keyboard.type("Y");
+    await expect(firstLine).toHaveText("XY# Welcome");
+    await expect(editor(page)).toBeFocused();
+    await expect(tables(page)).toHaveCount(2);
+  });
+
+  test("after a drag selection ArrowDown puts the caret below the table", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+    await dragAcrossFruit(page);
+
+    await page.keyboard.press("ArrowDown");
+    await expect(editor(page)).toBeFocused();
+    await expect(tables(page)).toHaveCount(2);
+
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.type("Z");
+    await expect(line(page, AFTER_FRUIT)).toHaveText(`Z${AFTER_FRUIT}`);
+    await expect(tables(page)).toHaveCount(2);
+  });
+
+  test("the share viewer keeps native selection across table cells", async ({
+    page,
+  }) => {
+    await openWelcomeNote(page);
+    await page.getByRole("button", { name: "Share", exact: true }).click();
+    const link = await createLink(page);
+    const viewer = await page.context().newPage();
+    await viewer.goto(link);
+    const table = viewer.locator("table.cm-table");
+    await expect(table).toBeVisible();
+
+    await drag(
+      viewer,
+      await textPoint(
+        table.getByRole("columnheader", { name: "Column A" }),
+        0.3,
+      ),
+      await textPoint(table.getByRole("cell", { name: "2", exact: true }), 0.5),
+    );
+
+    const selected = await selectedText(viewer);
+    expect(selected).toContain("Column B");
+    expect(selected).toContain("1");
+    await expect(table).toBeVisible();
+    await expect(
+      viewer.locator(".cm-line", { hasText: "| --- |" }),
+    ).toHaveCount(0);
+  });
+
+  test(
+    "a tap on a cell reveals the table",
+    { tag: "@mobile-only" },
+    async ({ page }) => {
+      await appendFruitTable(page);
+
+      await fruitCell(page, "Red").tap();
+
+      await expectFruitRevealed(page);
+    },
+  );
+
+  test(
+    "a long press on a cell does not reveal the table",
+    { tag: "@mobile-only" },
+    async ({ page }) => {
+      await appendFruitTable(page);
+      const point = await textPoint(fruitCell(page, "Red"), 0.5);
+
+      const finger = await TouchFinger.on(page);
+      await finger.down(point);
+      finger.hold(800);
+      await finger.move(point, 1);
+      await finger.up();
+
+      await expect(tables(page)).toHaveCount(2);
+
+      // Headless Chromium selects no word on a long press, so the selection
+      // it would make is set directly.
+      await editor(page).focus();
+      await fruitCell(page, "Red").evaluate((cell) => {
+        const text = cell.firstChild!;
+        getSelection()!.setBaseAndExtent(text, 0, text, 3);
+      });
+      await expect
+        .poll(() =>
+          fruitTable(page).evaluate(
+            (el) => document.activeElement === el.closest(".cm-table-widget"),
+          ),
+        )
+        .toBe(true);
+      await expect.poll(() => selectedText(page)).toBe("Red");
+      await expect(tables(page)).toHaveCount(2);
+    },
+  );
+});
+
 test.describe("vim mode", () => {
   const gutter = (page: Page) => page.locator(".cm-relative-line-numbers");
   const position = (page: Page) => page.locator(".vim-status-bar .position");
@@ -1186,6 +1427,55 @@ test.describe("vim mode", () => {
         ),
       }),
     ).toBeVisible();
+  });
+
+  test("a click on a cell reveals the table in normal mode", async ({
+    page,
+  }) => {
+    await openVimWelcome(page);
+
+    await tables(page).getByRole("cell", { name: "1", exact: true }).click();
+
+    await expectRevealed(page);
+    await expect(modeText(page)).toHaveText("NORMAL");
+  });
+
+  test("after a drag selection keys act from the previous cursor", async ({
+    page,
+  }) => {
+    await openVimWelcome(page);
+    await focusEditor(page);
+    await page.keyboard.press("G");
+    await page.keyboard.press("o");
+    await page.keyboard.insertText([...FRUIT, "", AFTER_FRUIT].join("\n"));
+    await page.keyboard.press("Escape");
+    await page.keyboard.type("gg");
+    await expect(tables(page)).toHaveCount(2);
+    const secondLine = pane(page).locator(".cm-line").nth(1);
+
+    await dragAcrossFruit(page);
+    await page.keyboard.press("Escape");
+    await expect(editor(page)).toBeFocused();
+    await expect(modeText(page)).toHaveText("NORMAL");
+
+    await dragAcrossFruit(page);
+    await page.keyboard.press("j");
+    await expect(editor(page)).toBeFocused();
+    await page.keyboard.press("i");
+    await expect(modeText(page)).toHaveText("INSERT");
+    await page.keyboard.type("Q");
+    await page.keyboard.press("Escape");
+    await expect(secondLine).toHaveText("Q");
+    await expect(tables(page)).toHaveCount(2);
+
+    await dragAcrossFruit(page);
+    await line(page, AFTER_FRUIT).click();
+    await expect(editor(page)).toBeFocused();
+    await expect(modeText(page)).toHaveText("NORMAL");
+    await page.keyboard.press("i");
+    await page.keyboard.type("W");
+    await expect(line(page, "After")).toHaveText(/^After fr.*W/);
+    await expect(tables(page)).toHaveCount(2);
   });
 });
 

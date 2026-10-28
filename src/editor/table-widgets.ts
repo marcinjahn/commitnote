@@ -18,6 +18,7 @@ import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { readTable, tableContainerPrefix } from "../markdown/markdown-table";
 import { lineHasSelection } from "./live-preview";
+import { tableSelection } from "./table-selection";
 import { TableWidget, tableLinkOpener } from "./table-widget";
 
 const CONTAINERS = new Set([
@@ -283,6 +284,9 @@ const tableWidgetsTheme = EditorView.baseTheme({
   ".cm-table-widget": {
     padding: "var(--space-2) 0",
   },
+  ".cm-table-widget:focus": {
+    outline: "none",
+  },
   ".cm-table-quote": {
     borderLeft: "var(--hairline) solid var(--color-accent-rule)",
     paddingLeft: "var(--space-3)",
@@ -389,6 +393,7 @@ export function tableWidgets(
     tableWidgetsField,
     tableEntryKeymap,
     tableWidgetsTheme,
+    tableSelection,
   ];
   if (options.open) extensions.push(tableLinkOpener.of(options.open));
   return extensions;

@@ -13,6 +13,7 @@ import {
   renderTableCellContent,
 } from "./table-cell-content";
 import { renderTableCellImage } from "./table-cell-image";
+import { tableKeyDown } from "./table-selection";
 
 type LinkOpener = (url: string) => void;
 
@@ -118,6 +119,61 @@ export function tableRowTextTops(wrapper: HTMLElement): number[] {
   });
 }
 
+interface Caret {
+  readonly node: Node;
+  readonly offset: number;
+}
+
+function caretAt(doc: Document, x: number, y: number): Caret | null {
+  if (typeof doc.caretPositionFromPoint === "function") {
+    const position = doc.caretPositionFromPoint(x, y);
+    return position && { node: position.offsetNode, offset: position.offset };
+  }
+  if (typeof doc.caretRangeFromPoint === "function") {
+    const range = doc.caretRangeFromPoint(x, y);
+    return range && { node: range.startContainer, offset: range.startOffset };
+  }
+  return null;
+}
+
+// Chromium can keep collapsing a mouse drag that starts inside this
+// non-editable island of the editor. Once the selection is a range, its native
+// extension takes over.
+function seedDragSelection(wrapper: HTMLElement, press: MouseEvent): void {
+  const doc = wrapper.ownerDocument;
+  const start = caretAt(doc, press.clientX, press.clientY);
+  if (!start || !wrapper.contains(start.node)) return;
+  const listening = new AbortController();
+  const options = { capture: true, signal: listening.signal };
+  doc.addEventListener(
+    "mousemove",
+    (event) => {
+      if (!(event.buttons & 1)) {
+        listening.abort();
+        return;
+      }
+      const distance = Math.hypot(
+        event.clientX - press.clientX,
+        event.clientY - press.clientY,
+      );
+      const selection = doc.getSelection();
+      if (distance <= CLICK_SLOP || !selection?.isCollapsed) return;
+      const here = caretAt(doc, event.clientX, event.clientY);
+      if (!here) return;
+      selection.setBaseAndExtent(
+        start.node,
+        start.offset,
+        here.node,
+        here.offset,
+      );
+    },
+    options,
+  );
+  doc.addEventListener("mouseup", () => listening.abort(), options);
+}
+
+const CLICK_SLOP = 4;
+const LONG_PRESS_MS = 500;
 const ROW_HEIGHT = 34;
 const WIDGET_PADDING = 16;
 
@@ -168,15 +224,49 @@ export class TableWidget extends WidgetType {
     scroller.appendChild(table);
     this.mount(wrapper, scroller);
 
+    let press: { x: number; y: number } | null = null;
+    let pointerType = "";
+    let pressTime = 0;
+
+    if (!this.readOnly) {
+      wrapper.tabIndex = -1;
+      wrapper.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        pointerType = event.pointerType;
+        press = { x: event.clientX, y: event.clientY };
+        pressTime = event.timeStamp;
+      });
+      wrapper.addEventListener("dragstart", (event) => event.preventDefault());
+      wrapper.addEventListener("keydown", (event) => {
+        let from: number;
+        try {
+          from = view.posAtDOM(wrapper);
+        } catch {
+          return;
+        }
+        tableKeyDown(view, event, {
+          from,
+          to: from + this.source.length,
+          inset: this.prefix.length,
+        });
+      });
+    }
+
     wrapper.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       const url = linkUrl(wrapper, event);
       if (url !== null) {
         event.preventDefault();
         view.state.facet(tableLinkOpener)(url);
-      } else if (!view.state.readOnly) {
-        event.preventDefault();
+        return;
       }
+      if (view.state.readOnly) return;
+      press = { x: event.clientX, y: event.clientY };
+      if (pointerType === "touch") {
+        event.preventDefault();
+        return;
+      }
+      seedDragSelection(wrapper, event);
     });
     wrapper.addEventListener("click", (event) => {
       if (event.button !== 0) return;
@@ -185,6 +275,21 @@ export class TableWidget extends WidgetType {
         return;
       }
       if (view.state.readOnly) return;
+      const start = press;
+      press = null;
+      if (
+        start &&
+        Math.hypot(event.clientX - start.x, event.clientY - start.y) >
+          CLICK_SLOP
+      ) {
+        return;
+      }
+      if (
+        pointerType === "touch" &&
+        event.timeStamp - pressTime >= LONG_PRESS_MS
+      ) {
+        return;
+      }
       placeCaret(view, wrapper, event);
     });
     wrapper.addEventListener("mousemove", (event) => {
