@@ -727,4 +727,100 @@ test.describe("vim mode", () => {
     await expect(position(page)).toHaveText(new RegExp(`^${header}:`));
     await landOn(page, HEADER);
   });
+
+  test("gj and gk enter the table", async ({ page }) => {
+    await openVimWelcome(page);
+    await goToTaskLine(page);
+    const header = (await currentLineNumber(page)) + 2;
+    await page.keyboard.press("j");
+    await expect(tables(page)).toHaveCount(1);
+
+    await page.keyboard.type("gj");
+    await expectRevealed(page);
+    await expect(position(page)).toHaveText(new RegExp(`^${header}:`));
+    await landOn(page, HEADER);
+
+    await page.keyboard.press("G");
+    await expect(tables(page)).toHaveCount(1);
+    await page.keyboard.type("gk");
+    await expectRevealed(page);
+    await expect(position(page)).toHaveText(new RegExp(`^${header + 2}:`));
+    await landOn(page, LAST_ROW);
+  });
+
+  test("an uncounted Ctrl+d lands inside a tall table", async ({ page }) => {
+    const ROWS = 60;
+    const lineNumberOf = async () => {
+      await expect(position(page)).toHaveText(/^\d+:/);
+      return Number((await position(page).innerText()).split(":")[0]);
+    };
+    const goToLine = async (n: number) => {
+      await page.keyboard.press(":");
+      await expect(commandInput(page)).toBeFocused();
+      await page.keyboard.type(String(n));
+      await page.keyboard.press("Enter");
+      await expect(position(page)).toHaveText(new RegExp(`^${n}:`));
+    };
+
+    await openVimWelcome(page);
+    await focusEditor(page);
+    await page.keyboard.press("G");
+    const welcomeEnd = await lineNumberOf();
+    await page.keyboard.press("o");
+    await page.keyboard.insertText(
+      [
+        ...Array.from({ length: 40 }, (_, i) => `Filler ${i + 1}`),
+        "",
+        "| A | B | C |",
+        "| --- | --- | --- |",
+        ...Array.from(
+          { length: ROWS },
+          (_, i) => `| r${i + 1} a | r${i + 1} b | r${i + 1} c |`,
+        ),
+        "",
+        "After tall",
+      ].join("\n"),
+    );
+    await page.keyboard.press("Escape");
+    await expect(modeText(page)).toHaveText("NORMAL");
+    const tallHeader = welcomeEnd + 42;
+    await expect(position(page)).toHaveText(
+      new RegExp(`^${tallHeader + ROWS + 3}:`),
+    );
+
+    await goToLine(welcomeEnd + 2);
+    const fillerTop = (n: number) =>
+      pane(page)
+        .locator(".cm-line", { hasText: new RegExp(`^Filler ${n}$`) })
+        .evaluate((el) => el.getBoundingClientRect().top);
+    await expect
+      .poll(async () => (await fillerTop(3)) - (await fillerTop(2)))
+      .toBeGreaterThan(0);
+    const lineHeight = (await fillerTop(3)) - (await fillerTop(2));
+    const paneHeight = () =>
+      page.locator(".note-content").evaluate((el) => el.clientHeight);
+    await expect.poll(paneHeight).toBeGreaterThan(lineHeight);
+    const half = Math.round((await paneHeight()) / (2 * lineHeight));
+
+    const start = tallHeader - Math.floor(half / 2);
+    await goToLine(start);
+    await page.keyboard.type("zt");
+    await page.keyboard.press("Control+d");
+
+    await expect
+      .poll(async () => Math.abs((await lineNumberOf()) - (start + half)))
+      .toBeLessThanOrEqual(1);
+    const landed = await lineNumberOf();
+    const rowNumber = landed - tallHeader - 1;
+    expect(rowNumber).toBeGreaterThanOrEqual(1);
+    expect(rowNumber).toBeLessThanOrEqual(ROWS);
+    await expect(tables(page)).toHaveCount(1);
+    await expect(
+      pane(page).locator(".cm-line", {
+        hasText: new RegExp(
+          `^\\| r${rowNumber} a \\| r${rowNumber} b \\| r${rowNumber} c \\|$`,
+        ),
+      }),
+    ).toBeVisible();
+  });
 });

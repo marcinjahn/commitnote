@@ -321,3 +321,112 @@ describe("counted line motions across a rendered table", () => {
     expect(rendersTable(view.state)).toBe(false);
   });
 });
+
+describe("display-line and half-page motions across a rendered table", () => {
+  const AFTER = BELOW + 1;
+
+  it.each([
+    { keys: ["g", "j"], from: ABOVE, to: FIRST },
+    { keys: ["g", "k"], from: BELOW, to: LAST },
+    { keys: ["2", "g", "j"], from: ABOVE, to: FIRST + 1 },
+    { keys: ["3", "g", "j"], from: ABOVE - 1, to: FIRST + 1 },
+    { keys: ["g", "<Down>"], from: ABOVE, to: FIRST },
+    { keys: ["g", "<Up>"], from: BELOW, to: LAST },
+    { keys: ["3", "<C-d>"], from: ABOVE, to: LAST },
+    { keys: ["3", "<C-u>"], from: AFTER, to: FIRST + 1 },
+    { keys: ["<C-n>"], from: ABOVE, to: FIRST },
+    { keys: ["2", "<C-p>"], from: BELOW, to: FIRST + 1 },
+  ])(
+    "lands $keys from line $from on table line $to and reveals it",
+    async ({ keys, from, to }) => {
+      const view = await setup(from);
+      expect(rendersTable(view.state)).toBe(true);
+
+      await press(view, ...keys);
+
+      expect(cursorOf(view)).toEqual({ line: to, column: 0 });
+      expect(rendersTable(view.state)).toBe(false);
+    },
+  );
+
+  it.each([
+    { keys: ["4", "g", "j"], from: ABOVE, to: BELOW },
+    { keys: ["5", "g", "k"], from: AFTER, to: ABOVE },
+  ])(
+    "passes $keys from line $from through the table to line $to",
+    async ({ keys, from, to }) => {
+      const view = await setup(from);
+
+      await press(view, ...keys);
+
+      expect(cursorOf(view).line).toBe(to);
+      expect(rendersTable(view.state)).toBe(true);
+    },
+  );
+
+  it("moves the counted display lines when no table lies in the way", async () => {
+    const view = await setup(1);
+
+    await press(view, "2", "g", "j");
+
+    expect(cursorOf(view).line).toBe(3);
+    expect(rendersTable(view.state)).toBe(true);
+  });
+
+  it("keeps the goal column on a counted display-line motion into the table", async () => {
+    const view = await setup(ABOVE - 1);
+    await press(view, "l", "l", "l");
+
+    await press(view, "3", "g", "j");
+
+    expect(cursorOf(view)).toEqual({ line: FIRST + 1, column: 3 });
+  });
+
+  it("keeps the pixel goal of repeated gj across a short line", async () => {
+    const view = await setup(1);
+    await press(view, "l", "l", "l", "l", "l", "l");
+
+    await press(view, "g", "j", "g", "j");
+
+    expect(cursorOf(view)).toEqual({ line: 3, column: 6 });
+  });
+
+  it("continues j with gj from the goal Vim kept for j", async () => {
+    const view = await setup(1);
+    await press(view, "l", "l", "l", "l", "l", "l");
+
+    await press(view, "j", "g", "j");
+
+    expect(cursorOf(view)).toEqual({ line: 3, column: 2 });
+  });
+
+  it("deletes the display lines into the table with V2gjd", async () => {
+    const view = await setup(ABOVE);
+
+    await press(view, "V", "2", "g", "j", "d");
+
+    expect(view.state.doc.toString()).toBe(
+      "0123456789\nab\n0123456789\n| 1 | 2 |\n\nafter line",
+    );
+  });
+
+  it("deletes characterwise up to the table line with d2gj", async () => {
+    const view = await setup(ABOVE);
+
+    await press(view, "d", "2", "g", "j");
+
+    expect(view.state.doc.toString()).toBe(
+      "0123456789\nab\n0123456789\n\n| - | - |\n| 1 | 2 |\n\nafter line",
+    );
+  });
+
+  it("keeps Vim's insert-mode <C-u>", async () => {
+    const view = await setup(1);
+    await press(view, "l", "l", "l", "l", "l", "l", "i");
+
+    await press(view, "<C-u>");
+
+    expect(view.state.doc.line(1).text).toBe("6789");
+    expect(getCM(view)?.state.vim?.insertMode).toBe(true);
+  });
+});
