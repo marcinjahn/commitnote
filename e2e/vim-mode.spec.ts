@@ -644,3 +644,89 @@ test("the conflict view follows vim mode live", async ({ page }) => {
   await closeSettings(page);
   await expect(bar(page)).toHaveCount(0);
 });
+
+test("half-page and page motions scroll the note pane", async ({ page }) => {
+  const pane = page.locator(".note-content");
+  const lineNumber = async () =>
+    Number.parseInt((await position(page).innerText()).split(":")[0], 10);
+  const scrollTop = () => pane.evaluate((el) => el.scrollTop);
+  const lineTop = async (n: number) => {
+    const box = await page
+      .locator(".cm-line")
+      .filter({ hasText: new RegExp(`^Line ${n}$`) })
+      .boundingBox();
+    if (!box) throw new Error(`Line ${n} is not rendered`);
+    return box.y;
+  };
+
+  await openVimWelcome(page);
+  await focusEditor(page);
+  await page.keyboard.press("G");
+  await page.keyboard.press("o");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("o");
+  await expect(modeText(page)).toHaveText("INSERT");
+  await page.keyboard.insertText(
+    Array.from({ length: 80 }, (_, i) => `Line ${i + 1}`).join("\n"),
+  );
+  await page.keyboard.press("Escape");
+  await expect(modeText(page)).toHaveText("NORMAL");
+  await expect(editor(page)).toContainText("Line 80");
+
+  const firstLine = (await lineNumber()) - 79;
+  await page.keyboard.press(":");
+  await page.keyboard.type(String(firstLine));
+  await page.keyboard.press("Enter");
+  await expect(position(page)).toHaveText(`${firstLine}:1`);
+  await page.keyboard.type("zt");
+
+  await expect
+    .poll(async () => (await lineTop(3)) - (await lineTop(2)))
+    .toBeGreaterThan(0);
+  const lineHeight = (await lineTop(3)) - (await lineTop(2));
+  const paneHeight = await pane.evaluate((el) => el.clientHeight);
+  const half = Math.round(paneHeight / (2 * lineHeight));
+  expect(half).toBeGreaterThan(2);
+
+  await expect.poll(scrollTop).toBeGreaterThan(0);
+  const startTop = await scrollTop();
+  const startLine = await lineNumber();
+
+  await page.keyboard.press("Control+d");
+  await expect
+    .poll(async () => Math.abs((await lineNumber()) - startLine - half))
+    .toBeLessThanOrEqual(2);
+  await expect
+    .poll(async () =>
+      Math.abs((await scrollTop()) - startTop - half * lineHeight),
+    )
+    .toBeLessThanOrEqual(2 * lineHeight);
+
+  await page.keyboard.press("Control+u");
+  await expect
+    .poll(async () => Math.abs((await lineNumber()) - startLine))
+    .toBeLessThanOrEqual(1);
+  await expect
+    .poll(async () => Math.abs((await scrollTop()) - startTop))
+    .toBeLessThanOrEqual(2 * lineHeight);
+
+  const lower = Math.floor((paneHeight / lineHeight) * 0.75);
+  await page.keyboard.type(`${lower}j`);
+  await expect(position(page)).toHaveText(`${startLine + lower}:1`);
+  await page.keyboard.type("zz");
+  const target = page
+    .locator(".cm-line")
+    .filter({ hasText: new RegExp(`^Line ${1 + lower}$`) });
+  await expect
+    .poll(async () => {
+      const [line, box] = [
+        await target.boundingBox(),
+        await pane.boundingBox(),
+      ];
+      if (!line || !box) return Number.POSITIVE_INFINITY;
+      const paneCentre =
+        box.y + (await pane.evaluate((el) => el.clientHeight)) / 2;
+      return Math.abs(line.y + line.height / 2 - paneCentre);
+    })
+    .toBeLessThanOrEqual(2 * lineHeight);
+});

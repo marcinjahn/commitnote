@@ -12,6 +12,7 @@ import { nativePaste, useSystemClipboard } from "./vim-clipboard";
 import { adoptVimDialogs, discardCommandLine } from "./vim-command-line";
 import { defineAppExCommands, vimCallbacks } from "./vim-ex-commands";
 import { defineTableMotions } from "./vim-table-motion";
+import { useNoteScroller } from "./vim-scroller";
 import {
   initialEditingMode,
   setVimStatus,
@@ -101,6 +102,7 @@ class VimSession {
   constructor(private readonly view: EditorView) {
     this.cm = getCM(view);
     if (!this.cm) return;
+    useNoteScroller(this.cm, view);
     this.releaseDialogs = adoptVimDialogs(view, this.cm, (update) =>
       this.publish(update),
     );
