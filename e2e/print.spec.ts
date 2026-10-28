@@ -14,7 +14,7 @@ import {
   openSettings,
   settingsDialog,
 } from "./helpers/settings";
-import { openWhiteboardNote } from "./helpers/images";
+import { dispatchImages, openWhiteboardNote } from "./helpers/images";
 import { openWelcome } from "./helpers/tree";
 
 const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
@@ -102,6 +102,62 @@ test.describe("with a note", () => {
     });
     await dispatchPrintEvent(page, "beforeprint");
     await expect(printView(page).locator("img[data-mark]")).toHaveCount(1);
+  });
+
+  test("an image in a table cell prints inside its cell", async ({ page }) => {
+    await openWelcome(page);
+    await editor(page).click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.press("Enter");
+    await dispatchImages(page, "paste", [
+      { width: 2400, height: 300, shade: 40 },
+    ]);
+    const widget = page.locator("button.cm-image").last();
+    await expect(widget).toHaveAttribute("data-image-id", /^\w{26}$/);
+    const id = await widget.getAttribute("data-image-id");
+
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter");
+    await page.keyboard.insertText(
+      [
+        "| Picture | Notes |",
+        "| --- | --- |",
+        `| ![wide](image:${id}) | A short sentence beside the picture. |`,
+      ].join("\n"),
+    );
+
+    await printPreview(page);
+    const view = printView(page);
+    const image = view.locator("td img.print-note-image");
+    await expect(image).toHaveCount(1);
+    await expect
+      .poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth))
+      .toBeGreaterThan(0);
+
+    const naturalWidth = await image.evaluate(
+      (el: HTMLImageElement) => el.naturalWidth,
+    );
+    const cell = image.locator("xpath=ancestor::td");
+    const table = image.locator("xpath=ancestor::table");
+    await expect
+      .poll(async () => {
+        const [imageBox, cellBox, tableBox, viewBox] = await Promise.all([
+          image.boundingBox(),
+          cell.boundingBox(),
+          table.boundingBox(),
+          view.boundingBox(),
+        ]);
+        if (!imageBox || !cellBox || !tableBox || !viewBox) return null;
+        return {
+          insideCell:
+            imageBox.x + imageBox.width <= cellBox.x + cellBox.width + 1,
+          constrained: imageBox.width < naturalWidth,
+          insideView:
+            tableBox.x + tableBox.width <= viewBox.x + viewBox.width + 1,
+        };
+      })
+      .toEqual({ insideCell: true, constrained: true, insideView: true });
   });
 
   test("a long note prints every line", async ({ page }) => {
