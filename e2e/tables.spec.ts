@@ -797,6 +797,45 @@ async function dragAcrossFruit(page: Page): Promise<void> {
     .toBe(true);
 }
 
+async function dragFruitWords(
+  page: Page,
+  from: Locator,
+  to: Locator,
+): Promise<void> {
+  await drag(page, await textPoint(from, 0), await textPoint(to, 1));
+  await expect
+    .poll(() =>
+      fruitTable(page).evaluate(
+        (el) => document.activeElement === el.closest(".cm-table-widget"),
+      ),
+    )
+    .toBe(true);
+}
+
+interface CopiedData {
+  readonly text: string;
+  readonly html: string;
+}
+
+async function recordCopy(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const target = window as unknown as { copied: CopiedData | null };
+    target.copied = null;
+    window.addEventListener("copy", (event) => {
+      target.copied = {
+        text: event.clipboardData?.getData("text/plain") ?? "",
+        html: event.clipboardData?.getData("text/html") ?? "",
+      };
+    });
+  });
+}
+
+async function copiedData(page: Page): Promise<CopiedData | null> {
+  return page.evaluate(
+    () => (window as unknown as { copied: CopiedData | null }).copied,
+  );
+}
+
 async function appendFruitTable(page: Page): Promise<void> {
   await openWelcomeNote(page);
   await caretBelowTable(page);
@@ -934,6 +973,93 @@ test.describe("table text selection", () => {
     await expect(
       viewer.locator(".cm-line", { hasText: "| --- |" }),
     ).toHaveCount(0);
+  });
+
+  test("copying a drag across cells puts them on the clipboard as TSV and an HTML table", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+    await recordCopy(page);
+
+    await dragFruitWords(
+      page,
+      fruitCell(page, "Apple"),
+      fruitCell(page, "Yellow"),
+    );
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect.poll(() => copiedData(page)).not.toBeNull();
+    const body = await copiedData(page);
+
+    expect(body?.text).toBe("Apple\tRed\nLemon\tYellow");
+    expect(body?.html).toContain("<td>Apple</td><td>Red</td>");
+    await expect(tables(page)).toHaveCount(2);
+
+    await dragFruitWords(
+      page,
+      fruitTable(page).getByRole("columnheader", { name: "Fruit" }),
+      fruitCell(page, "Red"),
+    );
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect
+      .poll(async () => (await copiedData(page))?.text)
+      .toBe("Fruit\tColour\nApple\tRed");
+    expect((await copiedData(page))?.html).toContain("<th>Fruit</th>");
+  });
+
+  test("copying a selection inside one cell copies it natively", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await appendFruitTable(page);
+    await recordCopy(page);
+
+    await dragFruitWords(
+      page,
+      fruitCell(page, "Yellow"),
+      fruitCell(page, "Yellow"),
+    );
+    await expect.poll(() => selectedText(page)).toBe("Yellow");
+    await page.keyboard.press("ControlOrMeta+c");
+
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe("Yellow");
+    const html = await page.evaluate(async () => {
+      const [item] = await navigator.clipboard.read();
+      return item.types.includes("text/html")
+        ? (await item.getType("text/html")).text()
+        : "";
+    });
+    expect(html).not.toContain("<table");
+    expect((await copiedData(page))?.html).toBe("");
+  });
+
+  test("the share viewer copies selected cells as TSV", async ({ page }) => {
+    await appendFruitTable(page);
+    await flushPendingSaves(page);
+    await page.getByRole("button", { name: "Share", exact: true }).click();
+    const link = await createLink(page);
+    const viewer = await page.context().newPage();
+    await viewer.goto(link);
+    const table = viewer.locator("table.cm-table").filter({
+      has: viewer.getByRole("columnheader", { name: "Fruit" }),
+    });
+    await expect(table).toBeVisible();
+
+    await expect(async () => {
+      await drag(
+        viewer,
+        await textPoint(table.getByRole("cell", { name: "Apple" }), 0),
+        await textPoint(table.getByRole("cell", { name: "Yellow" }), 1),
+      );
+      expect(await selectedText(viewer)).toContain("Lemon");
+    }).toPass();
+    await recordCopy(viewer);
+    await viewer.keyboard.press("ControlOrMeta+c");
+    await expect.poll(() => copiedData(viewer)).not.toBeNull();
+
+    expect((await copiedData(viewer))?.text).toBe("Apple\tRed\nLemon\tYellow");
   });
 
   test(
@@ -1438,6 +1564,44 @@ test.describe("vim mode", () => {
 
     await expectRevealed(page);
     await expect(modeText(page)).toHaveText("NORMAL");
+  });
+
+  test("copying table cells fills the Vim register", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await openVimWelcome(page);
+    await focusEditor(page);
+    await page.keyboard.press("G");
+    await page.keyboard.press("o");
+    await page.keyboard.insertText([...FRUIT, "", AFTER_FRUIT].join("\n"));
+    await page.keyboard.press("Escape");
+    await page.keyboard.type("gg");
+    await expect(tables(page)).toHaveCount(2);
+
+    await dragFruitWords(
+      page,
+      fruitCell(page, "Apple"),
+      fruitCell(page, "Yellow"),
+    );
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe("Apple\tRed\nLemon\tYellow");
+
+    await line(page, AFTER_FRUIT)
+      .locator("xpath=preceding-sibling::*[1]")
+      .click();
+    await expect(editor(page)).toBeFocused();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("p");
+
+    await expect
+      .poll(async () =>
+        (await pane(page).locator(".cm-line").allTextContents()).join("\n"),
+      )
+      .toContain("Apple\tRed\nLemon\tYellow\n" + AFTER_FRUIT);
   });
 
   test("after a drag selection keys act from the previous cursor", async ({

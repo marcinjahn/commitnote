@@ -111,14 +111,96 @@ function isAfter(table: Element, node: Node, offset: number): boolean {
   return start.comparePoint(node, offset) > 0;
 }
 
+function cellText(cell: Element, range: Range): string {
+  const clipped = cell.ownerDocument.createRange();
+  clipped.selectNodeContents(cell);
+  if (cell.contains(range.startContainer)) {
+    clipped.setStart(range.startContainer, range.startOffset);
+  }
+  if (cell.contains(range.endContainer)) {
+    clipped.setEnd(range.endContainer, range.endOffset);
+  }
+  const fragment = clipped.cloneContents();
+  for (const image of fragment.querySelectorAll(".cm-table-image")) {
+    const alt = image.querySelector("img")?.getAttribute("alt") ?? "";
+    image.replaceWith(cell.ownerDocument.createTextNode(alt));
+  }
+  return (fragment.textContent ?? "").replace(/[\t\r\n]/g, " ");
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export function tableSelectionClipboard(
+  table: HTMLTableElement,
+  range: Range,
+): { text: string; html: string } | null {
+  const rows: Array<Array<{ tag: string; text: string }>> = [];
+  let count = 0;
+  for (const row of table.rows) {
+    const cells: Array<{ tag: string; text: string }> = [];
+    for (const cell of row.cells) {
+      if (!range.intersectsNode(cell)) continue;
+      cells.push({ tag: cell.localName, text: cellText(cell, range) });
+    }
+    if (cells.length > 0) rows.push(cells);
+    count += cells.length;
+  }
+  if (count < 2) return null;
+  const text = rows
+    .map((cells) => cells.map((c) => c.text).join("\t"))
+    .join("\n");
+  const body = rows
+    .map(
+      (cells) =>
+        `<tr>${cells
+          .map((c) => `<${c.tag}>${escapeHtml(c.text)}</${c.tag}>`)
+          .join("")}</tr>`,
+    )
+    .join("");
+  return { text, html: `<table>${body}</table>` };
+}
+
 class TableSelection {
   private readonly onSelectionChange = (): void => this.check();
+
+  private readonly onCopy = (event: ClipboardEvent): void => {
+    const { view } = this;
+    const root = view.root as { getSelection?: () => Selection | null };
+    const selection =
+      root.getSelection?.() ?? view.dom.ownerDocument.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount !== 1) {
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    const table = closestTable(range.startContainer);
+    if (
+      !table ||
+      !view.contentDOM.contains(table) ||
+      !table.contains(range.endContainer) ||
+      closestTable(range.endContainer) !== table
+    ) {
+      return;
+    }
+    const data = event.clipboardData;
+    const copied = tableSelectionClipboard(table as HTMLTableElement, range);
+    if (!data || !copied) return;
+    data.setData("text/plain", copied.text);
+    data.setData("text/html", copied.html);
+    event.preventDefault();
+  };
 
   constructor(private readonly view: EditorView) {
     view.dom.ownerDocument.addEventListener(
       "selectionchange",
       this.onSelectionChange,
     );
+    view.contentDOM.addEventListener("copy", this.onCopy, { capture: true });
   }
 
   private check(): void {
@@ -164,6 +246,9 @@ class TableSelection {
       "selectionchange",
       this.onSelectionChange,
     );
+    this.view.contentDOM.removeEventListener("copy", this.onCopy, {
+      capture: true,
+    });
   }
 }
 
