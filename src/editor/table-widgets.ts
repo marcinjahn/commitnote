@@ -222,7 +222,7 @@ const tableWidgetsTheme = EditorView.baseTheme({
   ".cm-table th": {
     fontWeight: "var(--font-weight-semibold)",
     textAlign: "start",
-    borderBottom: "var(--hairline) solid var(--color-accent-rule)",
+    borderBottom: "var(--hairline) solid var(--color-accent)",
   },
   ".cm-table code": {
     fontFamily: "var(--font-mono)",

@@ -1,9 +1,16 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { TouchFinger, openNotes } from "./helpers";
-import { enableVimMode } from "./helpers/settings";
+import {
+  chooseAccent,
+  chooseOption,
+  closeSettings,
+  enableVimMode,
+  openSettings,
+} from "./helpers/settings";
 import { createLink } from "./helpers/sharing";
 import { openWelcome, treeItem, waitForSynced } from "./helpers/tree";
+import { ACCENT_PALETTE } from "../src/settings/accent-palette";
 
 const HEADER = "| Column A | Column B |";
 const DELIMITER = "| --- | --- |";
@@ -45,6 +52,11 @@ const line = (page: Page, text: string) =>
   pane(page).locator(".cm-line", { hasText: text });
 const openTaskLine = (page: Page) => line(page, "Open task");
 const modeText = (page: Page) => page.locator(".vim-status-bar .mode-label");
+
+function hexToRgb(hex: string): string {
+  const value = parseInt(hex.slice(1), 16);
+  return `rgb(${value >> 16}, ${(value >> 8) & 255}, ${value & 255})`;
+}
 
 function row(cells: readonly string[]): string {
   return `| ${cells.join(" | ")} |`;
@@ -121,6 +133,44 @@ test("Welcome's table renders as a table", async ({ page }) => {
   await expect(
     pane(page).locator(".cm-line", { hasText: "| --- |" }),
   ).toHaveCount(0);
+});
+
+test("the header rule uses the full accent colour in light and dark", async ({
+  page,
+}) => {
+  await openWelcomeNote(page);
+  await openSettings(page);
+  const headerRule = () =>
+    tables(page)
+      .locator("th")
+      .first()
+      .evaluate((th) => getComputedStyle(th).borderBottomColor);
+  const accentColor = () =>
+    page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--color-accent)";
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+
+  for (const mode of ["Light", "Dark"] as const) {
+    await chooseOption(page, "Color mode", mode);
+    for (const accent of ACCENT_PALETTE) {
+      await chooseAccent(page, accent.label);
+      if ("light" in accent) {
+        const hex = mode === "Light" ? accent.light : accent.dark;
+        await expect.poll(headerRule).toBe(hexToRgb(hex));
+      } else {
+        await expect
+          .poll(async () => (await headerRule()) === (await accentColor()))
+          .toBe(true);
+      }
+    }
+  }
+
+  await closeSettings(page);
 });
 
 test("clicking a cell reveals the table with the caret after the cell's text", async ({
