@@ -88,7 +88,13 @@ extension XCTestCase {
             if appears(button, within: 5) { break }
         }
         waitFor(button, file: file, line: line)
-        button.tap()
+        // With the keyboard up the menu scrolls, and a tap there can highlight the item and be
+        // cancelled without selecting it. The menu closes on a selection, and only a selection runs
+        // the item, so an item still shown has not run and is tapped again.
+        for _ in 0..<3 {
+            button.tap()
+            if poll(timeout: 5, until: { !button.exists }) { return }
+        }
         waitUntilGone(button, file: file, line: line)
     }
 
