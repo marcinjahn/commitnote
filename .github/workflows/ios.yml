@@ -63,7 +63,7 @@ jobs:
           tar -C out/dd/Build/Products -cf out/test-products.tar .
           ls -l out/test-products.tar
 
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/ios-upload
         with:
           name: ios-test-products
           path: out/test-products.tar
@@ -114,7 +114,7 @@ jobs:
           set -eu -o pipefail
           mkdir -p out/test-output out/xcresults
           TEST_RUNNER_COMMITNOTE_READBACK_DIR="$PWD/out/test-output" \
-          xcodebuild test-without-building \
+          apps/ios/scripts/stop-when-silent.sh 600 xcodebuild test-without-building \
             -xctestrun "$XCTESTRUN" \
             -destination "id=$SIMULATOR_ID" \
             -only-testing:CommitnoteTests \
@@ -123,7 +123,7 @@ jobs:
       - name: Read back with TypeScript
         run: npx tsx scripts/read-back-native-repo.ts out/test-output
 
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/ios-upload
         if: always()
         with:
           name: ios-xcresults-runtime
@@ -131,7 +131,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/ios-upload
         if: always()
         with:
           name: ios-test-output
@@ -146,7 +146,7 @@ jobs:
         run: |
           set -eu -o pipefail
           mkdir -p out/xcresults-ui
-          xcodebuild test-without-building \
+          apps/ios/scripts/stop-when-silent.sh 600 xcodebuild test-without-building \
             -xctestrun "$XCTESTRUN" \
             -destination "id=$SIMULATOR_ID" \
             -only-testing:CommitnoteUITests/EditorFlowTests \
@@ -162,7 +162,7 @@ jobs:
           xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --info --style compact \
             --predicate 'subsystem == "io.github.marcinjahn.commitnote"' > out/xcresults-ui/app.log || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/ios-upload
         if: always()
         with:
           name: ios-xcresults-ui-ipad-runtime
@@ -182,7 +182,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
 
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/ios-upload
         if: ${{ !cancelled() }}
         with:
           name: commitnote-unsigned-ipa
@@ -250,7 +250,7 @@ jobs:
               SELECTED="-only-testing:CommitnoteUITests/ScreenshotTests -only-testing:CommitnoteUITests/OrganisationFlowTests -only-testing:CommitnoteUITests/MediaScreenshotTests -only-testing:CommitnoteUITests/OrganisationScreenshotTests -only-testing:CommitnoteUITests/SettingsFlowTests"
               ;;
           esac
-          xcodebuild test-without-building \
+          apps/ios/scripts/stop-when-silent.sh 600 xcodebuild test-without-building \
             -xctestrun "$XCTESTRUN" \
             -destination "id=$SIMULATOR_ID" \
             $SELECTED \
@@ -276,7 +276,7 @@ jobs:
             fi
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/ios-upload
         if: always()
         with:
           name: ios-screenshots-${{ matrix.device }}${{ matrix.suite == 'flows' && '-flows' || '' }}
@@ -284,7 +284,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      - uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/ios-upload
         if: always()
         with:
           name: ios-xcresults-ui-${{ matrix.device }}-${{ matrix.suite }}

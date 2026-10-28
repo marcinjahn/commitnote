@@ -1,0 +1,43 @@
+name: iOS upload
+description: Uploads an artifact, and once more a minute later when the artifact service times out.
+
+inputs:
+  name:
+    required: true
+  path:
+    required: true
+  retention-days:
+    default: "30"
+  compression-level:
+    default: "6"
+  if-no-files-found:
+    default: warn
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/upload-artifact@v4
+      id: first
+      continue-on-error: true
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+
+    # The upload action already retries for under a minute; the outages seen last longer.
+    - name: Wait for the artifact service
+      if: steps.first.outcome == 'failure'
+      shell: bash
+      run: sleep 60
+
+    - uses: actions/upload-artifact@v4
+      if: steps.first.outcome == 'failure'
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        overwrite: true
