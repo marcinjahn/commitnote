@@ -1,5 +1,6 @@
 <script lang="ts">
   import { flushSync, onMount, tick, untrack } from "svelte";
+import { flushBeforeLogOut } from "./app/log-out";
   import { removeLastView } from "./app/last-view";
   import type { AutoRefresh } from "./app/auto-refresh";
   import { installLifecycleTriggers } from "./app/lifecycle-triggers";
@@ -545,8 +546,7 @@
   async function attemptLogOut(): Promise<void> {
     if (phase.kind !== "app") return;
     logout = { kind: "saving" };
-    phase.settingsSaver.flush();
-    const result = await phase.engine.flush();
+    const result = await flushBeforeLogOut(phase);
     if (result.kind === "saved") {
       await finishLogOut();
     } else {

@@ -37,6 +37,8 @@ const DEVICE_MODEL = "Bare host";
 const ACCESS_TOKEN = "test-token";
 const INITIALIZE_PASSPHRASE = "bare host initialize passphrase";
 const EDITED_TEXT = "# Bare host\n\nZażółć gęślą jaźń 🙂\nSecond line\n";
+const DRAFT_TEXT = "Drafted on the bare host\n";
+const CREATED_FOLDER = "Created folder";
 const RESPONSE_TIMEOUT_MS = 60_000;
 const PURGE_POLL_MS = 200;
 const PURGE_DEADLINE_MS = 30_000;
@@ -448,6 +450,79 @@ async function smokeCheck(bundle: vm.Script): Promise<string> {
   return `logged in, resumed in a new context (${host.posted.length} messages posted), opened and saved a note, and read the commit back`;
 }
 
+async function editingCheck(bundle: vm.Script): Promise<string> {
+  const core = new BareHostCore(bundle, createNodeHostServices());
+  try {
+    const kind = await core.logIn("sample/notes");
+    if (kind !== "notesRepo")
+      throw new Error(`sample/notes inspected as ${kind}`);
+    await core.send("login.unlock", {
+      passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
+    });
+    const tree = await core.poll(
+      "loading the tree",
+      async () =>
+        (await core.send<{ tree: TreeNode[] | null }>("tree.get")).tree,
+      100,
+      RESPONSE_TIMEOUT_MS,
+    );
+    const path = firstNote(tree);
+    if (path === null) throw new Error("the tree holds no note");
+    await core.poll(
+      "opening the note",
+      async () => {
+        const { note } = await core.send<{ note: OpenNote | null }>(
+          "note.open",
+          { path },
+        );
+        return note?.state === "loaded" ? note : null;
+      },
+      100,
+      RESPONSE_TIMEOUT_MS,
+    );
+    await core.send("note.edit", { path, text: EDITED_TEXT });
+
+    await core.send("draft.start", { parent: [] });
+    const content = await core.send<{
+      outcome: { kind: string; path?: string[] };
+    }>("draft.content", { name: "", content: DRAFT_TEXT });
+    if (content.outcome.kind !== "created" || content.outcome.path === undefined) {
+      throw new Error(`draft.content returned ${content.outcome.kind}`);
+    }
+    const draftPath = content.outcome.path;
+
+    const folder = await core.send<{ outcome: { kind: string; path?: string[] } }>(
+      "folder.create",
+      { parent: [], name: CREATED_FOLDER },
+    );
+    if (folder.outcome.kind !== "created" || folder.outcome.path === undefined) {
+      throw new Error(`folder.create returned ${folder.outcome.kind}`);
+    }
+
+    const flushed = await core.send<{ result: { kind: string } }>("sync.flush");
+    if (flushed.result.kind !== "saved") {
+      throw new Error(`sync.flush returned ${flushed.result.kind}`);
+    }
+    await expectReadBack({
+      name: "bare host editing",
+      passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
+      exported: await core.exportRepo("sample/notes"),
+      expect: {
+        initialized: false,
+        notes: [
+          { path, text: EDITED_TEXT },
+          { path: draftPath, text: DRAFT_TEXT },
+        ],
+        folders: [folder.outcome.path],
+        deviceName: DEVICE_MODEL,
+      },
+    });
+  } finally {
+    core.stop();
+  }
+  return "edited a note, created a note from a draft and a folder, saved, and read all three back";
+}
+
 async function initializeCheck(bundle: vm.Script): Promise<string> {
   const core = new BareHostCore(bundle, createNodeHostServices());
   try {
@@ -539,6 +614,7 @@ async function main(): Promise<void> {
   for (const [label, check] of [
     ["test vectors", vectorsCheck],
     ["bare-host check", smokeCheck],
+    ["bare-host editing", editingCheck],
     ["bare-host initialize", initializeCheck],
     ["bare-host housekeeping", housekeepingCheck],
   ] as const) {

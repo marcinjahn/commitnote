@@ -26,6 +26,7 @@ export interface ReadBackScenario {
   expect: {
     initialized: boolean;
     notes: { path: string[]; text: string }[];
+    folders?: string[][];
     deviceName: string | null;
   };
 }
@@ -188,6 +189,15 @@ export async function readBackNativeRepo(
     }
     if (text !== expected.text) {
       failures.push(...fail(`${label} has different text`));
+    }
+  }
+
+  for (const [index, folder] of (scenario.expect.folders ?? []).entries()) {
+    const node = findNode(tree, folder);
+    if (node === undefined || node.kind !== "folder") {
+      failures.push(
+        ...fail(`expected folder ${index + 1} is not in the head tree`),
+      );
     }
   }
 

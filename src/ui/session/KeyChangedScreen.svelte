@@ -7,6 +7,13 @@
     KEY_CHANGED_MESSAGE,
   } from "../browse/sync-messages";
   import Wordmark from "../wordmark/Wordmark.svelte";
+  import {
+    EXPORT_FAILED_MESSAGE,
+    EXPORTING_LABEL,
+    exportNotesLabel,
+    LOG_IN_AGAIN_LABEL,
+    PASSPHRASE_CHANGED_TITLE,
+  } from "./session-messages";
 
   interface Props {
     engine: SyncEngine;
@@ -40,11 +47,11 @@
 <main class="key-changed-shell window-drag">
   <div class="key-changed-card">
     <Wordmark />
-    <h1>Passphrase changed</h1>
+    <h1>{PASSPHRASE_CHANGED_TITLE}</h1>
     <p role="alert">{KEY_CHANGED_MESSAGE}</p>
     <p class="unsaved">{unsavedMessage}</p>
     {#if exportFailed}
-      <p role="alert" class="alert-error">Export failed. Try again.</p>
+      <p role="alert" class="alert-error">{EXPORT_FAILED_MESSAGE}</p>
     {/if}
     <div class="actions">
       <button
@@ -54,7 +61,7 @@
         disabled={exporting}
         onclick={() => void handleExport()}
       >
-        {exporting ? "Exporting…" : unsavedCount > 0 ? "Export unsaved notes" : "Export notes"}
+        {exporting ? EXPORTING_LABEL : exportNotesLabel(unsavedCount)}
       </button>
       <button
         type="button"
@@ -63,7 +70,7 @@
         class:button-danger={unsavedCount > 0}
         onclick={onLogInAgain}
       >
-        Log in again
+        {LOG_IN_AGAIN_LABEL}
       </button>
     </div>
   </div>

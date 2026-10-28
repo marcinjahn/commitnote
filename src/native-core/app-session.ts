@@ -25,6 +25,7 @@ import {
   describeKeyChangedUnsaved,
   KEY_CHANGED_MESSAGE,
 } from "../ui/browse/sync-messages";
+import { exportNotesLabel } from "../ui/session/session-messages";
 import type { EmitCoreEvent } from "./commands/command-context";
 import { createHostBlobStore } from "./host-blob-store";
 import {
@@ -193,6 +194,7 @@ export function createAppSession(options: {
         unsavedCount,
         message: KEY_CHANGED_MESSAGE,
         detail: describeKeyChangedUnsaved(unsavedCount),
+        exportLabel: exportNotesLabel(unsavedCount),
       });
     },
     onRefreshState: () => undefined,

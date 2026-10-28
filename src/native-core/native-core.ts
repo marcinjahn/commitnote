@@ -12,6 +12,8 @@ import {
   type CommandParams,
   type EmitCoreEvent,
 } from "./commands/command-context";
+import { createDraftCommands } from "./commands/draft-commands";
+import { createEditingCommands } from "./commands/editing-commands";
 import { createLoginCommands } from "./commands/login-commands";
 import { createNotesCommands } from "./commands/notes-commands";
 import { createSessionCommands } from "./commands/session-commands";
@@ -87,14 +89,22 @@ export function createNativeCore(options: {
 
   const engineEvents = createEngineEvents({ app, emit });
 
+  const drafts = createDraftCommands({
+    host,
+    app,
+    events: engineEvents,
+  });
+
   const commands = new Map<string, CommandHandler>(
     Object.entries({
       ...(typeof options.extraCommands === "function"
         ? options.extraCommands(app)
         : options.extraCommands),
       ...createLoginCommands({ host, app, emit }),
-      ...createSessionCommands({ app, emit }),
-      ...createNotesCommands({ app, events: engineEvents }),
+      ...createSessionCommands({ app, emit, drafts }),
+      ...createNotesCommands({ app, events: engineEvents, drafts }),
+      ...createEditingCommands({ host, app, events: engineEvents }),
+      ...drafts.handlers,
     }),
   );
 

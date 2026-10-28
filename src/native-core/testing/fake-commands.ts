@@ -13,6 +13,8 @@ import {
   sampleNotesRepo,
 } from "../../testing/sample-notes-repo/seed-sample-notes-repo";
 import type { FakeForgeControls } from "../../testing/fake-forge/fake-forge-factory";
+import type { HoldableOperation } from "../../testing/fake-forge/forge-hold";
+import type { ForgeErrorKind } from "../../forge/errors";
 import { buildNoteTree, listNotes } from "../../tree/note-tree";
 import type { SyncEngine } from "../../sync/sync-engine";
 import {
@@ -50,6 +52,52 @@ function stringArrayParam(value: unknown): string[] {
     throw invalidParams();
   }
   return value;
+}
+
+const FAILABLE_OPERATIONS: readonly HoldableOperation[] = [
+  "inspect",
+  "getHead",
+  "listTree",
+  "readBlob",
+  "readBlobBytes",
+  "commit",
+  "replaceHistory",
+  "createBlob",
+  "listCommits",
+  "readFileAt",
+  "createShare",
+  "updateShare",
+  "deleteShare",
+];
+
+function failableOperation(params: Params): HoldableOperation {
+  const operation = FAILABLE_OPERATIONS.find(
+    (candidate) => candidate === params.operation,
+  );
+  if (operation === undefined) throw invalidParams();
+  return operation;
+}
+
+const FORGE_ERROR_KINDS: readonly ForgeErrorKind[] = [
+  "Unauthorized",
+  "Forbidden",
+  "NotFound",
+  "RateLimited",
+  "Network",
+  "Server",
+  "TreeTruncated",
+];
+
+function isForgeErrorKind(kind: string): kind is ForgeErrorKind {
+  return FORGE_ERROR_KINDS.some((candidate) => candidate === kind);
+}
+
+async function fixtureCall(call: () => Promise<void>): Promise<void> {
+  try {
+    await call();
+  } catch {
+    throw invalidParams();
+  }
 }
 
 function flattenNotes(
@@ -164,6 +212,56 @@ export function createFakeCommands(options: {
         headers: responseHeaders,
         bodyText: await response.text(),
       };
+    },
+
+    async "fake.remoteEdit"(raw) {
+      const params = asParams(raw);
+      const controls = await options.controls();
+      await fixtureCall(() =>
+        controls.editNote(
+          stringParam(params, "repo"),
+          stringArrayParam(params.path),
+          stringParam(params, "text"),
+          SAMPLE_NOTES_REPO_PASSPHRASE,
+          stringParam(params, "device"),
+        ),
+      );
+      return {};
+    },
+
+    async "fake.changeRepoKey"(raw) {
+      const repo = stringParam(asParams(raw), "repo");
+      const controls = await options.controls();
+      await fixtureCall(() => controls.changeRepoKey(repo));
+      return {};
+    },
+
+    async "fake.failNext"(raw) {
+      const params = asParams(raw);
+      const repo = stringParam(params, "repo");
+      const operation = failableOperation(params);
+      const kind = stringParam(params, "kind");
+      const count = params.count;
+      if (!isForgeErrorKind(kind)) throw invalidParams();
+      if (typeof count !== "number" || !Number.isInteger(count) || count < 0) {
+        throw invalidParams();
+      }
+      const controls = await options.controls();
+      await fixtureCall(async () => {
+        for (let queued = 0; queued < count; queued++) {
+          controls.failNext(repo, operation, kind);
+        }
+      });
+      return {};
+    },
+
+    async "fake.clearFailures"(raw) {
+      const params = asParams(raw);
+      const repo = stringParam(params, "repo");
+      const operation = failableOperation(params);
+      const controls = await options.controls();
+      await fixtureCall(async () => controls.clearFailures(repo, operation));
+      return {};
     },
 
     async "fake.timerProbe"(raw) {

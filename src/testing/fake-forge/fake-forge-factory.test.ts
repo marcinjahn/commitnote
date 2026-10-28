@@ -298,6 +298,21 @@ describe("createFakeForge controls", () => {
     ).rejects.toMatchObject({ kind: "Unauthorized" });
   });
 
+  it("clearFailures drops the queued failures", async () => {
+    const { factory, controls } = await createFakeForge();
+    const adapter = factory(coordinatesFor("sample/notes"), {
+      accessToken: TOKEN,
+    });
+    controls.failNext("sample/notes", "commit", "Network");
+    controls.failNext("sample/notes", "commit", "Network");
+    controls.clearFailures("sample/notes", "commit");
+
+    const head = await adapter.getHead();
+    await expect(
+      adapter.commit({ parent: head, changes: [], message: "test" }),
+    ).resolves.toBeDefined();
+  });
+
   it("adoptRepo moves a fixture to the state exported from another fake forge", async () => {
     const first = await createFakeForge();
     const second = await createFakeForge();

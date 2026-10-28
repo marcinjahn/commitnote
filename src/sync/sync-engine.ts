@@ -318,7 +318,7 @@ export type ShareChangeResult =
 
 type ConflictResolution = "keepMine" | "keepTheirs" | "editMerged";
 
-type FlushResult =
+export type FlushResult =
   | { readonly kind: "saved" }
   | { readonly kind: "unsaved"; readonly count: number };
 

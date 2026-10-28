@@ -1,5 +1,13 @@
 <script lang="ts">
   import Dialog from "../dialogs/Dialog.svelte";
+  import {
+    describeLogoutUnsaved,
+    KEEP_TRYING_LABEL,
+    LOG_OUT_ANYWAY_LABEL,
+    LOGGING_OUT_TITLE,
+    LOGOUT_SAVING_TEXT,
+    LOGOUT_UNSAVED_TITLE,
+  } from "./session-messages";
 
   interface Props {
     open: boolean;
@@ -12,20 +20,18 @@
   const { open, saving, unsavedCount, onKeepTrying, onLogOutAnyway }: Props =
     $props();
 
-  const message = $derived(
-    `${unsavedCount} ${unsavedCount === 1 ? "note or folder is" : "notes or folders are"} not saved yet. If you log out now, these changes are lost.`,
-  );
+  const message = $derived(describeLogoutUnsaved(unsavedCount));
 </script>
 
 <Dialog
   {open}
-  title={saving ? "Logging out" : "Some changes are not saved"}
+  title={saving ? LOGGING_OUT_TITLE : LOGOUT_UNSAVED_TITLE}
   onClose={() => {}}
   swipeToClose={false}
 >
   {#snippet children()}
     {#if saving}
-      <p role="status" class="status">Saving…</p>
+      <p role="status" class="status">{LOGOUT_SAVING_TEXT}</p>
     {:else}
       <p>{message}</p>
     {/if}
@@ -33,10 +39,10 @@
   {#snippet actions()}
     {#if !saving}
       <button type="button" class="button button-primary" onclick={onKeepTrying}>
-        Keep trying
+        {KEEP_TRYING_LABEL}
       </button>
       <button type="button" class="button button-danger" onclick={onLogOutAnyway}>
-        Log out anyway
+        {LOG_OUT_ANYWAY_LABEL}
       </button>
     {/if}
   {/snippet}
