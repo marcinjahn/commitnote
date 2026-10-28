@@ -75,7 +75,20 @@ function cursorOf(view: EditorView): { line: number; column: number } {
   return { line: line.number, column: head - line.from };
 }
 
+const CHAR_WIDTH = 10;
+const LINE_HEIGHT = 20;
+
 beforeAll(() => {
+  EditorView.prototype.coordsAtPos = function (pos) {
+    const line = this.state.doc.lineAt(pos);
+    const left = (pos - line.from) * CHAR_WIDTH;
+    return {
+      left,
+      right: left,
+      top: (line.number - 1) * LINE_HEIGHT,
+      bottom: line.number * LINE_HEIGHT,
+    };
+  };
   EditorView.prototype.moveVertically = function (start, forward) {
     const doc = this.state.doc;
     const line = doc.lineAt(start.head);
@@ -91,8 +104,14 @@ beforeAll(() => {
           : doc.lineAt(from).number - 1;
         target = doc.line(Math.min(doc.lines, Math.max(1, past)));
       });
-    const column = start.head - line.from;
-    return EditorSelection.cursor(Math.min(target.from + column, target.to));
+    const goal = start.goalColumn ?? this.coordsAtPos(start.head)!.left;
+    const column = Math.round(goal / CHAR_WIDTH);
+    return EditorSelection.cursor(
+      Math.min(target.from + column, target.to),
+      start.assoc,
+      undefined,
+      goal,
+    );
   };
 });
 

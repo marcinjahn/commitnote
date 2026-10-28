@@ -325,8 +325,14 @@ export function vimExtension(options: VimExtensionOptions): Extension {
   useSystemClipboard();
   defineTableMotions();
   defineAppExCommands();
-  const { initialMode, animatedCaret, onWrite, onQuit, onInsertImage, onStatus } =
-    options;
+  const {
+    initialMode,
+    animatedCaret,
+    onWrite,
+    onQuit,
+    onInsertImage,
+    onStatus,
+  } = options;
   return [
     vimConfig.of({ initialMode, animatedCaret, onStatus }),
     vimCallbacks.of({ onWrite, onQuit, onInsertImage }),
