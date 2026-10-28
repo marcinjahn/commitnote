@@ -325,6 +325,43 @@ test("Vim j and k enter the table from the adjacent lines", async ({
   await expect(line(page, `${LAST_ROW}Z`)).toHaveText(`${LAST_ROW}Z`);
 });
 
+async function expectTextOnOwnLines(page: Page): Promise<void> {
+  await expect(tables(page)).toHaveCount(1);
+  const lines = editor(page).locator(".cm-line");
+  await expect(lines.last()).toHaveText("bar");
+  const texts = await lines.evaluateAll((els) =>
+    els.map((el) => el.textContent),
+  );
+  expect(texts.slice(-3)).toEqual(["", "foo", "bar"]);
+  await expect(tables(page).locator("td", { hasText: "foo" })).toHaveCount(0);
+}
+
+test("typing right after a rendered table starts a new line", async ({
+  page,
+}) => {
+  await openWelcomeNote(page);
+  await caretBelowTable(page);
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("foo");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("bar");
+
+  await expectTextOnOwnLines(page);
+});
+
+test("pasting multi-line text right after a rendered table keeps its first line break", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openWelcomeNote(page);
+  await caretBelowTable(page);
+  await page.evaluate(() => navigator.clipboard.writeText("\nfoo\nbar"));
+  await page.keyboard.press("ControlOrMeta+v");
+
+  await expectTextOnOwnLines(page);
+});
+
 test("the share viewer renders the table and a click does not reveal it", async ({
   page,
 }) => {
