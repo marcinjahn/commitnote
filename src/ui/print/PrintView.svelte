@@ -5,6 +5,7 @@
   import type { ImageId } from "../../images/image-id";
   import type { ReadImagePayload } from "../../images/image-resolver";
   import { createPrintImages, type PrintImages } from "./print-images";
+  import { PRINT_VIEW_STYLE } from "./print-style";
   import type { PrintNote } from "./print-note";
 
   interface Props {
@@ -20,6 +21,7 @@
 
   const { note, readImage }: Props = $props();
 
+  const printStyleElement = `<style>${PRINT_VIEW_STYLE}</style>`;
   const RENDER_DEBOUNCE_MS = 300;
   const NO_IMAGES: ReadonlyMap<ImageId, string> = new Map();
 
@@ -133,6 +135,8 @@
     handleAfterPrint();
   });
 </script>
+
+<svelte:head>{@html printStyleElement}</svelte:head>
 
 <svelte:window onbeforeprint={handleBeforePrint} onafterprint={handleAfterPrint} />
 
