@@ -8,7 +8,11 @@ import {
   type MarkdownTableRow,
   type TableAlignment,
 } from "../markdown/markdown-table";
-import { renderTableCellContent } from "./table-cell-content";
+import {
+  type CellImageRenderer,
+  renderTableCellContent,
+} from "./table-cell-content";
+import { renderTableCellImage } from "./table-cell-image";
 
 type LinkOpener = (url: string) => void;
 
@@ -22,6 +26,7 @@ export const tableLinkOpener: Facet<LinkOpener, LinkOpener> = Facet.define<
 const ARMED_CLASS = "cm-link-open-armed";
 const LINK_SELECTOR = ".cm-table-link[data-url]";
 const observers = new WeakMap<HTMLElement, ResizeObserver>();
+const destroyed = new WeakSet<HTMLElement>();
 
 function hasModifier(event: MouseEvent): boolean {
   return event.ctrlKey || event.metaKey;
@@ -145,14 +150,17 @@ export class TableWidget extends WidgetType {
     const table = document.createElement("table");
     table.className = "cm-table";
 
+    const renderImage: CellImageRenderer = (image) =>
+      renderTableCellImage(view, image, () => !destroyed.has(wrapper));
+
     const thead = document.createElement("thead");
-    thead.appendChild(this.renderRow(this.table.header, "th"));
+    thead.appendChild(this.renderRow(this.table.header, "th", renderImage));
     table.appendChild(thead);
 
     if (this.table.rows.length > 0) {
       const tbody = document.createElement("tbody");
       for (const row of this.table.rows) {
-        tbody.appendChild(this.renderRow(row, "td"));
+        tbody.appendChild(this.renderRow(row, "td", renderImage));
       }
       table.appendChild(tbody);
     }
@@ -216,11 +224,13 @@ export class TableWidget extends WidgetType {
   override destroy(dom: HTMLElement): void {
     observers.get(dom)?.disconnect();
     observers.delete(dom);
+    destroyed.add(dom);
   }
 
   private renderRow(
     row: MarkdownTableRow,
     tag: "th" | "td",
+    renderImage: CellImageRenderer,
   ): HTMLTableRowElement {
     const read = (a: number, b: number): string =>
       this.source.slice(a - this.from, b - this.from);
@@ -232,7 +242,9 @@ export class TableWidget extends WidgetType {
       if (tag === "th") element.scope = "col";
       const alignment: TableAlignment = this.table.alignments[column] ?? "";
       if (alignment) element.style.textAlign = alignment;
-      if (cell.node) renderTableCellContent(element, cell.node, read);
+      if (cell.node) {
+        renderTableCellContent(element, cell.node, read, renderImage);
+      }
       tr.appendChild(element);
     });
     return tr;

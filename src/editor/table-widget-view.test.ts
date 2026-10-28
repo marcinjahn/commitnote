@@ -1,15 +1,21 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import type { Extension } from "@codemirror/state";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createMarkdownEditor,
   type MarkdownEditor,
 } from "./create-markdown-editor";
+import { imageSource } from "./image-widgets";
 import { tableWidgets } from "./table-widgets";
 
 let editor: MarkdownEditor | null = null;
 let parent: HTMLElement | null = null;
 
-function setup(text: string, readOnly = false): MarkdownEditor {
+function setup(
+  text: string,
+  readOnly = false,
+  extra: Extension[] = [],
+): MarkdownEditor {
   parent = document.createElement("div");
   document.body.appendChild(parent);
   editor = createMarkdownEditor({
@@ -17,13 +23,17 @@ function setup(text: string, readOnly = false): MarkdownEditor {
     text,
     readOnly,
     onChange: () => {},
-    extensions: [tableWidgets()],
+    extensions: [tableWidgets(), ...extra],
   });
   return editor;
 }
 
-function renderedTable(text: string, readOnly = false): HTMLTableElement {
-  setup(`Intro\n\n${text}`, readOnly);
+function renderedTable(
+  text: string,
+  readOnly = false,
+  extra: Extension[] = [],
+): HTMLTableElement {
+  setup(`Intro\n\n${text}`, readOnly, extra);
   const found = parent?.querySelector<HTMLTableElement>(
     ".cm-table-widget > .cm-table-scroller > table.cm-table",
   );
@@ -106,13 +116,63 @@ describe("TableWidget DOM", () => {
     expect(table.querySelector("td")?.textContent).toBe("x | y");
   });
 
-  it("shows an image reference as its alt text without an img", () => {
-    const table = renderedTable(
-      "| a |\n| - |\n| ![A cat](image:abcdefghijklmnopqrstuvwxyz#800x600) |",
-    );
+  describe("cell images", () => {
+    const cat = "| a |\n| - |\n| ![A cat](image:abcdefghijklmnopqrstuvwxyz) |";
 
-    expect(table.querySelector("td")?.textContent).toBe("A cat");
-    expect(table.querySelector("img")).toBeNull();
+    it("marks an image unavailable and shows its alt text without an image source", () => {
+      const table = renderedTable(cat);
+
+      const image = table.querySelector<HTMLElement>("td span.cm-table-image");
+      expect(image?.dataset.state).toBe("unavailable");
+      expect(image?.dataset.imageId).toBe("abcdefghijklmnopqrstuvwxyz");
+      expect(image?.querySelector("img")?.alt).toBe("A cat");
+      expect(image?.querySelector(".cm-table-image-alt")?.textContent).toBe(
+        "A cat",
+      );
+    });
+
+    it("loads the image through the image source", async () => {
+      const table = renderedTable(cat, false, [
+        imageSource.of(() => Promise.resolve({ url: "blob:x" })),
+      ]);
+      const image = table.querySelector<HTMLElement>("td .cm-table-image");
+
+      await vi.waitFor(() =>
+        expect(image?.querySelector("img")?.getAttribute("src")).toBe("blob:x"),
+      );
+      expect(image?.dataset.state).toBe("loading");
+    });
+
+    it("discards a result that arrives after the editor is destroyed", async () => {
+      let resolve: (value: { url: string }) => void = () => {};
+      const pending = new Promise<{ url: string }>((r) => (resolve = r));
+      const table = renderedTable(cat, false, [imageSource.of(() => pending)]);
+      const img = table.querySelector("img");
+
+      editor?.destroy();
+      resolve({ url: "blob:x" });
+      await pending;
+      await Promise.resolve();
+
+      expect(img?.hasAttribute("src")).toBe(false);
+    });
+
+    it("sizes a reference with dimensions to the maximum height", () => {
+      vi.stubGlobal("devicePixelRatio", 1);
+      try {
+        const table = renderedTable(
+          "| a |\n| - |\n| ![A cat](image:abcdefghijklmnopqrstuvwxyz#800x600) |",
+        );
+        const img = table.querySelector("img");
+
+        expect(parseFloat(img?.style.width ?? "")).toBeCloseTo(
+          (160 * 800) / 600,
+        );
+        expect(img?.style.aspectRatio).not.toBe("");
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
   });
 
   it("renders in a read-only editor with the cursor inside the table", () => {

@@ -1,11 +1,23 @@
 import type { SyntaxNode } from "@lezer/common";
+import type { ImageId } from "../images/image-id";
+import { imageAltText, parseImageUrl } from "../images/image-reference";
 import { toOpenableUrl } from "../markdown/openable-url";
 
 type Read = (from: number, to: number) => string;
 
+export interface CellImage {
+  imageId: ImageId;
+  alt: string;
+  width?: number;
+  height?: number;
+}
+
+export type CellImageRenderer = (image: CellImage) => Node;
+
 interface Context {
   doc: Document;
   read: Read;
+  renderImage?: CellImageRenderer;
 }
 
 const INLINE_ELEMENTS: Record<string, { tag: string; mark: string }> = {
@@ -20,8 +32,9 @@ export function renderTableCellContent(
   parent: HTMLElement,
   cell: SyntaxNode,
   read: Read,
+  renderImage?: CellImageRenderer,
 ): void {
-  const ctx: Context = { doc: parent.ownerDocument, read };
+  const ctx: Context = { doc: parent.ownerDocument, read, renderImage };
   renderRange(ctx, parent, cell, cell.from, cell.to, false);
 }
 
@@ -43,7 +56,12 @@ function renderRange(
   appendText(ctx, parent, pos, to);
 }
 
-function appendText(ctx: Context, parent: Node, from: number, to: number): void {
+function appendText(
+  ctx: Context,
+  parent: Node,
+  from: number,
+  to: number,
+): void {
   if (to > from) parent.appendChild(ctx.doc.createTextNode(ctx.read(from, to)));
 }
 
@@ -60,7 +78,10 @@ function innerRange(node: SyntaxNode, markName: string): [number, number] {
 
 function labelRange(node: SyntaxNode): [number, number] {
   const marks = node.getChildren("LinkMark");
-  return [marks[0]?.to ?? node.from, marks.length > 1 ? marks[1].from : node.to];
+  return [
+    marks[0]?.to ?? node.from,
+    marks.length > 1 ? marks[1].from : node.to,
+  ];
 }
 
 function destinationOf(ctx: Context, link: SyntaxNode): SyntaxNode | null {
@@ -125,11 +146,9 @@ function renderNode(
     case "Link":
       renderLink(ctx, parent, node, inLink);
       return;
-    case "Image": {
-      const [from, to] = labelRange(node);
-      appendText(ctx, parent, from, to);
+    case "Image":
+      renderImageNode(ctx, parent, node);
       return;
-    }
     case "Autolink": {
       const url = node.getChild("URL");
       if (url) {
@@ -145,6 +164,20 @@ function renderNode(
     default:
       appendText(ctx, parent, node.from, node.to);
   }
+}
+
+function renderImageNode(ctx: Context, parent: Node, image: SyntaxNode): void {
+  const [from, to] = labelRange(image);
+  const url = image.getChild("URL");
+  const target =
+    ctx.renderImage && url ? parseImageUrl(ctx.read(url.from, url.to)) : null;
+  if (!ctx.renderImage || !target) {
+    appendText(ctx, parent, from, to);
+    return;
+  }
+  parent.appendChild(
+    ctx.renderImage({ ...target, alt: imageAltText(ctx.read(from, to)) }),
+  );
 }
 
 function renderLink(

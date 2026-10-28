@@ -345,6 +345,26 @@ const tableWidgetsTheme = EditorView.baseTheme({
   "&.cm-link-open-armed .cm-table-link": {
     cursor: "pointer",
   },
+  ".cm-table-image": {
+    display: "inline-block",
+    maxWidth: "100%",
+    verticalAlign: "top",
+  },
+  ".cm-table-image img": {
+    display: "block",
+    maxWidth: "100%",
+    height: "auto",
+  },
+  '.cm-table-image:not([data-state="loaded"]) img': {
+    display: "none",
+  },
+  ".cm-table-image-alt": {
+    color: "var(--color-text-muted)",
+    fontSize: "var(--font-size-sm)",
+  },
+  '.cm-table-image[data-state="loaded"] .cm-table-image-alt': {
+    display: "none",
+  },
   ".cm-table-source-line": {
     fontFamily: "var(--font-mono)",
     fontSize: "0.875em",

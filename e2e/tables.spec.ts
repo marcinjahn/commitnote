@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { TouchFinger, openNotes } from "./helpers";
+import { TouchFinger, flushPendingSaves, openNotes } from "./helpers";
+import { WHITEBOARD_IMAGE_ID } from "./helpers/images";
 import {
   chooseAccent,
   chooseOption,
@@ -635,6 +636,109 @@ test.describe("nested tables", () => {
     await expect(
       pane(page).locator(".cm-line", { hasText: "| --- |" }),
     ).toHaveCount(1);
+  });
+});
+
+test.describe("cell images", () => {
+  const PICTURE_ROW = `| ![Whiteboard](image:${WHITEBOARD_IMAGE_ID}) |`;
+
+  async function appendImageTable(
+    page: Page,
+    rows: readonly string[],
+  ): Promise<void> {
+    await openWelcomeNote(page);
+    await caretBelowTable(page);
+    const lines = pane(page).locator(".cm-line");
+    const lineCount = await lines.count();
+    await page.keyboard.press("Enter");
+    await expect(lines).toHaveCount(lineCount + 1);
+    await page.keyboard.insertText(
+      ["", "| Picture |", "| --- |", ...rows, ""].join("\n"),
+    );
+    await page.keyboard.press("ControlOrMeta+Home");
+    await expect(tables(page)).toHaveCount(2);
+  }
+
+  const cellImage = (scope: Page | Locator) => scope.locator(".cm-table-image");
+
+  test(
+    "an image reference shows the image inside its cell",
+    { tag: "@mobile" },
+    async ({ page }) => {
+      await appendImageTable(page, [PICTURE_ROW]);
+
+      const image = cellImage(pane(page));
+      await expect(image).toHaveAttribute("data-state", "loaded");
+      const img = image.locator("img");
+      expect(
+        await img.evaluate((el: HTMLImageElement) => el.naturalWidth),
+      ).toBeGreaterThan(0);
+      await expect(image.locator(".cm-table-image-alt")).toBeHidden();
+
+      const box = (await img.boundingBox())!;
+      expect(box.height).toBeLessThanOrEqual(160.5);
+      const cellContentWidth = await image.evaluate((el) => {
+        const cell = el.closest("td")!;
+        const style = getComputedStyle(cell);
+        return (
+          cell.clientWidth -
+          parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight)
+        );
+      });
+      expect(box.width).toBeLessThanOrEqual(cellContentWidth + 0.5);
+    },
+  );
+
+  test("an unavailable image shows its alt text", async ({ page }) => {
+    await appendImageTable(page, [
+      "| ![Missing picture](image:aaaaaaaaaaaaaaaaaaaaaaaaaa#40x30) |",
+    ]);
+
+    const image = cellImage(pane(page));
+    await expect(image).toHaveAttribute("data-state", "unavailable");
+    await expect(image.locator(".cm-table-image-alt")).toHaveText(
+      "Missing picture",
+    );
+    await expect(image.locator("img")).toBeHidden();
+  });
+
+  test("clicking an image reveals the table at its row", async ({ page }) => {
+    await appendImageTable(page, [PICTURE_ROW]);
+    const image = cellImage(pane(page));
+    await expect(image).toHaveAttribute("data-state", "loaded");
+
+    await image.locator("img").click();
+
+    await expect(line(page, "| --- |").last()).toBeVisible();
+    await expect(tables(page)).toHaveCount(1);
+    await expectCaretIn(line(page, "![Whiteboard](image:"));
+  });
+
+  test("the share viewer shows the image and a click does not reveal the table", async ({
+    page,
+  }) => {
+    await appendImageTable(page, [PICTURE_ROW]);
+    await expect(cellImage(pane(page))).toHaveAttribute("data-state", "loaded");
+    await flushPendingSaves(page);
+    await page.getByRole("button", { name: "Share", exact: true }).click();
+    const link = await createLink(page);
+
+    const viewer = await page.context().newPage();
+    await viewer.goto(link);
+    const image = viewer.locator(".cm-table-image");
+    await expect(image).toHaveAttribute("data-state", "loaded");
+    expect(
+      await image
+        .locator("img")
+        .evaluate((el: HTMLImageElement) => el.naturalWidth),
+    ).toBeGreaterThan(0);
+
+    await image.locator("img").click();
+    await expect(image).toBeVisible();
+    await expect(
+      viewer.locator(".cm-line", { hasText: "| --- |" }),
+    ).toHaveCount(0);
   });
 });
 
