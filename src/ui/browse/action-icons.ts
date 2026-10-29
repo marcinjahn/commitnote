@@ -1,5 +1,6 @@
 import type { ShareMenuId } from "../share/share-menu";
 import type { RowAction } from "./row-menu-types";
+import type { TableMenuId } from "./table-menu";
 
 const FOLDER_OUTLINE =
   "M1.75 12.5v-9a.75.75 0 0 1 .75-.75h3.25l1.5 1.75h6.25a.75.75 0 0 1 .75.75v7.25a.75.75 0 0 1-.75.75H2.5a.75.75 0 0 1-.75-.75z";
@@ -84,7 +85,29 @@ export const noteIcons = {
     "m2.5 10.5 3.25-3.25 2.75 2.75 1.5-1.5 3.5 3.5",
     "M10.5 6.25h.01",
   ],
+  table: [
+    "M2.5 3h11v10h-11z",
+    "M2.5 6.5h11M2.5 9.75h11M6.25 3v10M9.75 3v10",
+  ],
 } as const;
+
+export const tableMenuIcons = {
+  "insert-table": noteIcons.table,
+  "insert-row-above": ["M2.5 7.5h11v6h-11z", "M8 1.75v3.5M6.25 3.5h3.5"],
+  "insert-row-below": ["M2.5 2.5h11v6h-11z", "M8 10.75v3.5M6.25 12.5h3.5"],
+  "insert-column-left": ["M7.5 2.5h6v11h-6z", "M1.75 8h3.5M3.5 6.25v3.5"],
+  "insert-column-right": ["M2.5 2.5h6v11h-6z", "M10.75 8h3.5M12.5 6.25v3.5"],
+  "delete-row": ["M2.5 4.5h11v7h-11z", "M6 8h4"],
+  "delete-column": ["M4.5 2.5h7v11h-7z", "M6 8h4"],
+  "align-left": ["M2.5 4h11M2.5 7h7M2.5 10h11M2.5 13h7"],
+  "align-center": ["M2.5 4h11M4.5 7h7M2.5 10h11M4.5 13h7"],
+  "align-right": ["M2.5 4h11M6.5 7h7M2.5 10h11M6.5 13h7"],
+  "align-default": ["M2.5 4h11M2.5 8h11M2.5 12h11"],
+  "format-table": [
+    "M2.5 3h11v10h-11z",
+    "M5 6.5h6M5 9.5h6",
+  ],
+} as const satisfies Record<TableMenuId, readonly string[]>;
 
 export const searchIcon = [
   "M7 2.25a4.75 4.75 0 1 0 0 9.5a4.75 4.75 0 1 0 0-9.5z",

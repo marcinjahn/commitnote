@@ -131,6 +131,11 @@
   import ChangePassphraseDialog from "../passphrase/ChangePassphraseDialog.svelte";
   import DeleteDialog from "../dialogs/DeleteDialog.svelte";
   import { actionIcons, commandIcons, noteIcons } from "./action-icons";
+  import {
+    TABLE_COMMANDS,
+    type ColumnAlignment,
+    type TableCommand,
+  } from "../../markdown/table-commands";
   import type { ContentIndexer } from "../../search/content-indexer";
   import { createRecentNotes } from "../search/recent-notes";
   import SearchPalette from "../search/SearchPalette.svelte";
@@ -1173,6 +1178,20 @@
     draft !== null || (engineState.openNote?.kind === "loaded" && !openConflicted),
   );
 
+  const NO_TABLE_COMMANDS: Readonly<Record<TableCommand, boolean>> =
+    Object.fromEntries(TABLE_COMMANDS.map((command) => [command, false])) as Record<
+      TableCommand,
+      boolean
+    >;
+
+  const tableMenu = {
+    availability: () => notePane?.tableCommandAvailability() ?? NO_TABLE_COMMANDS,
+    run: (command: TableCommand, argument?: ColumnAlignment): void => {
+      notePane?.runTableCommand(command, argument);
+      notePane?.focusEditor();
+    },
+  };
+
   const importing = $derived(engineState.importing || importStarted !== null);
   const commands: readonly Command[] = $derived([
     ...(canInsertImage
@@ -1183,6 +1202,12 @@
             icon: noteIcons.image,
             disabled: engineState.stopped !== null,
             run: openImagePicker,
+          },
+          {
+            id: "insert-table",
+            label: "Insert table",
+            icon: noteIcons.table,
+            run: () => tableMenu.run("insert-table"),
           },
         ]
       : []),
@@ -2620,6 +2645,7 @@
           onBack={handleHeaderBack}
           onInsertImage={openImagePicker}
           insertImageDisabled={engineState.stopped !== null}
+          {tableMenu}
         />
       {:else if engineState.openNote !== null}
         <NoteHeader
@@ -2640,6 +2666,7 @@
           onBack={handleHeaderBack}
           onInsertImage={canInsertImage ? openImagePicker : undefined}
           insertImageDisabled={engineState.stopped !== null}
+          tableMenu={canInsertImage ? tableMenu : undefined}
           onHistory={() => void openHistory()}
           historyDisabled={engineState.openNote.kind === "missing" ||
             engineState.openNote.kind === "trashed" ||
