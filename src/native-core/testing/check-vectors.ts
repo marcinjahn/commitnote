@@ -33,6 +33,12 @@ import {
   parseOrderIndex,
   serializeOrderIndex,
 } from "../../order/order-index";
+import { insertImageReferences } from "../../markdown/insertion-rule";
+import {
+  applyTableCommand,
+  availableTableCommands,
+} from "../../markdown/table-commands";
+import { applyTextEdit, type TextEdit } from "../../markdown/text-edit";
 import { sealShare } from "../../share/share-envelope";
 import {
   encryptShareIndex,
@@ -56,6 +62,8 @@ export const TEST_VECTOR_FILES = [
   "device-trailer.json",
   "shares.json",
   "git-blob-sha1.json",
+  "table-commands.json",
+  "image-insertion.json",
 ] as const;
 
 // Vector files are untrusted JSON; a malformed one surfaces as a failed check.
@@ -171,6 +179,20 @@ async function digestHex(
     new Uint8Array(
       await crypto.subtle.digest(algorithm, asBufferSource(fromHex(dataHex))),
     ),
+  );
+}
+
+function reproduces(
+  text: string,
+  edit: TextEdit | null,
+  expected: Json,
+): boolean {
+  if (expected === null) return edit === null;
+  return (
+    edit !== null &&
+    applyTextEdit(text, edit) === expected.text &&
+    edit.selection.anchor === expected.selection.anchor &&
+    edit.selection.head === expected.selection.head
   );
 }
 
@@ -614,6 +636,41 @@ export async function checkTestVectors(
     byIndex("vectors"),
     async (vector) =>
       (await gitBlobShaOfBytes(fromHex(vector.contentHex))) === vector.sha,
+  );
+
+  await eachVector("table-commands.json", "commands", byName, (vector) =>
+    reproduces(
+      vector.text,
+      applyTableCommand(
+        vector.text,
+        vector.selection,
+        vector.command,
+        vector.argument,
+      ),
+      vector.expected,
+    ),
+  );
+  await eachVector("table-commands.json", "availability", byName, (vector) => {
+    const available = availableTableCommands(vector.text, vector.selection);
+    return (
+      Array.isArray(vector.available) &&
+      available.length === vector.available.length &&
+      available.every((command, index) => command === vector.available[index])
+    );
+  });
+
+  await eachVector("image-insertion.json", "insertions", byName, (vector) =>
+    reproduces(
+      vector.text,
+      vector.command === "insert-image-references"
+        ? insertImageReferences(
+            vector.text,
+            vector.selection.head,
+            vector.argument,
+          )
+        : null,
+      vector.expected,
+    ),
   );
 
   return { checked, failures };

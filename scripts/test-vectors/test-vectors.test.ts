@@ -11,6 +11,7 @@ import { decryptName, decryptPath } from "../../src/crypto/name-cipher";
 import { decryptNote } from "../../src/crypto/note-cipher";
 import { padmeLength } from "../../src/crypto/padme";
 import { isImageId } from "../../src/images/image-id";
+import { TABLE_COMMANDS } from "../../src/markdown/table-commands";
 import { openShare, openShareImage } from "../../src/share/share-envelope";
 import {
   DEVICE_NAMES,
@@ -63,6 +64,8 @@ const FILES = [
   "device-trailer.json",
   "shares.json",
   "git-blob-sha1.json",
+  "table-commands.json",
+  "image-insertion.json",
 ];
 
 describe("test vectors", () => {
@@ -235,6 +238,177 @@ describe("test vectors", () => {
     expect(file.sha256.some((v: any) => v.dataHex === "")).toBe(true);
     expect(file.sha256[1].digestHex).toBe(
       "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+  });
+});
+
+function marked(
+  text: string,
+  { anchor, head }: { anchor: number; head: number },
+): string {
+  if (anchor === head) return text.slice(0, head) + "¦" + text.slice(head);
+  return (
+    text.slice(0, anchor) +
+    "«" +
+    text.slice(anchor, head) +
+    "»" +
+    text.slice(head)
+  );
+}
+
+function named(vectors: any[], name: string): any {
+  const found = vectors.filter((vector) => vector.name === name);
+  expect(found).toHaveLength(1);
+  return found[0];
+}
+
+const REFERENCE = "![](image:abcdefghijklmnopqrstuvwxy2#640x480)";
+
+describe("table command vectors", () => {
+  it("has unique names and only known commands", async () => {
+    const file = await committed("table-commands.json");
+    for (const field of ["commands", "availability"]) {
+      const names = file[field].map((vector: { name: string }) => vector.name);
+      expect(new Set(names).size).toBe(names.length);
+    }
+    for (const vector of file.commands) {
+      expect(TABLE_COMMANDS).toContain(vector.command);
+      if (vector.command !== "align-column") {
+        expect("argument" in vector).toBe(false);
+      }
+    }
+    const used = new Set(file.commands.map((v: any) => v.command));
+    expect([...TABLE_COMMANDS].filter((command) => !used.has(command))).toEqual(
+      [],
+    );
+    for (const vector of file.availability) {
+      const positions = vector.available.map((command: string) =>
+        TABLE_COMMANDS.indexOf(command as (typeof TABLE_COMMANDS)[number]),
+      );
+      expect(positions.every((position: number) => position >= 0)).toBe(true);
+      expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    }
+  });
+
+  it("pins a row insert", async () => {
+    const { commands } = await committed("table-commands.json");
+    const vector = named(commands, "top level: insert-row-below");
+    expect(marked(vector.text, vector.selection)).toBe(
+      "| a | b |\n| :-: | -: |\n| 1¦ | 22 |",
+    );
+    expect(marked(vector.expected.text, vector.expected.selection)).toBe(
+      "| a   | b   |\n| :-: | --: |\n| 1   | 22  |\n| ¦    |     |",
+    );
+  });
+
+  it("pins a next-cell that appends a row", async () => {
+    const { commands } = await committed("table-commands.json");
+    const vector = named(commands, "next-cell appends a row");
+    expect(marked(vector.text, vector.selection)).toBe(
+      "| a | b |\n|-|-|\n| 1 | 2¦ |",
+    );
+    expect(marked(vector.expected.text, vector.expected.selection)).toBe(
+      "| a   | b   |\n| --- | --- |\n| 1   | 2   |\n| ¦    |     |",
+    );
+  });
+
+  it("pins a format inside a blockquote", async () => {
+    const { commands } = await committed("table-commands.json");
+    const vector = named(commands, "blockquote: format-table");
+    expect(marked(vector.text, vector.selection)).toBe(
+      "> | a | b |\n> | - | - |\n> | 1¦ | 22 |",
+    );
+    expect(marked(vector.expected.text, vector.expected.selection)).toBe(
+      "> | a   | b   |\n> | --- | --- |\n> | 1¦   | 22  |",
+    );
+  });
+
+  it("pins insert-table in an empty document", async () => {
+    const { commands } = await committed("table-commands.json");
+    const vector = named(commands, "insert-table in an empty document");
+    expect(vector.text).toBe("");
+    expect(vector.expected).toEqual({
+      text: [
+        "| Column 1 | Column 2 | Column 3 |",
+        "| -------- | -------- | -------- |",
+        "|          |          |          |",
+        "|          |          |          |",
+        "",
+      ].join("\n"),
+      selection: { anchor: 2, head: 10 },
+    });
+  });
+
+  it("pins the absent argument and the no-op previous-cell", async () => {
+    const { commands } = await committed("table-commands.json");
+    const missing = named(commands, "align-column without an argument");
+    expect("argument" in missing).toBe(false);
+    expect(missing.expected).toBeNull();
+    const first = named(
+      commands,
+      "previous-cell in the first header cell with a selection",
+    );
+    expect(first.expected).toEqual({
+      text: first.text,
+      selection: first.selection,
+    });
+    expect(first.selection).toEqual({ anchor: 2, head: 3 });
+  });
+
+  it("pins availability in a header and outside a table", async () => {
+    const { availability } = await committed("table-commands.json");
+    expect(named(availability, "outside a table").available).toEqual([
+      "insert-table",
+    ]);
+    expect(named(availability, "header").available).toEqual([
+      "insert-table",
+      "insert-row-below",
+      "insert-column-left",
+      "insert-column-right",
+      "delete-column",
+      "align-column",
+      "format-table",
+      "next-cell",
+      "previous-cell",
+    ]);
+    expect(named(availability, "irregular nested").available).toEqual([
+      "insert-table",
+    ]);
+  });
+});
+
+describe("image insertion vectors", () => {
+  it("has unique names, the insert command and valid references", async () => {
+    const { insertions } = await committed("image-insertion.json");
+    const names = insertions.map((vector: { name: string }) => vector.name);
+    expect(new Set(names).size).toBe(names.length);
+    for (const vector of insertions) {
+      expect(vector.command).toBe("insert-image-references");
+      expect(vector.argument.length).toBeGreaterThan(0);
+      for (const reference of vector.argument) {
+        expect(reference).toMatch(/^!\[\]\(image:[a-z2-7]{26}#\d+x\d+\)$/);
+      }
+    }
+  });
+
+  it("pins an inline cell insertion", async () => {
+    const { insertions } = await committed("image-insertion.json");
+    const vector = named(insertions, "mid cell");
+    expect(vector.argument).toEqual([REFERENCE]);
+    expect(marked(vector.text, vector.selection)).toBe("| a¦b |\n| - |");
+    expect(marked(vector.expected.text, vector.expected.selection)).toBe(
+      `| a ${REFERENCE}¦ b |\n| - |`,
+    );
+  });
+
+  it("pins an insertion after a table", async () => {
+    const { insertions } = await committed("image-insertion.json");
+    const vector = named(insertions, "at the end of a table's last line");
+    expect(marked(vector.text, vector.selection)).toBe(
+      "| a |\n| - |\n| 1 |¦\n# next",
+    );
+    expect(marked(vector.expected.text, vector.expected.selection)).toBe(
+      `| a |\n| - |\n| 1 |\n\n${REFERENCE}\n¦\n# next`,
     );
   });
 });
