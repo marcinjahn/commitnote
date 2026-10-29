@@ -9,6 +9,7 @@ import { APP_ICONS, DESKTOP_ICONS } from "./app-icons";
 import { buildBrandOutputs } from "./brand-outputs";
 import { buildBrandSvgs, FONT_FILE, readmeWordmarkWidth } from "./brand-svgs";
 import { loadFont } from "./font-outlining";
+import { GNOME_ICONS } from "./gnome-icons";
 import { readPngSize } from "./png-size";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -80,6 +81,8 @@ describe("brand SVGs", () => {
         "src-tauri/icons/128x128.png",
         "src-tauri/icons/128x128@2x.png",
         "src-tauri/icons/icon.png",
+        GNOME_ICONS.scalable,
+        GNOME_ICONS.symbolic,
       ]),
     );
   });
