@@ -26,7 +26,7 @@
     const el = menuEl;
     if (el === undefined) return [];
     return Array.from(
-      el.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled), [role="menuitemradio"]:not(:disabled)'),
+      el.querySelectorAll<HTMLButtonElement>('[role="menuitem"], [role="menuitemradio"]'),
     );
   }
 
@@ -62,7 +62,8 @@
   $effect(() => {
     const buttons = itemButtons();
     const checked = buttons.find((button) => button.getAttribute("aria-checked") === "true");
-    (checked ?? buttons[0])?.focus();
+    const firstEnabled = buttons.find((button) => button.getAttribute("aria-disabled") !== "true");
+    (checked ?? firstEnabled ?? buttons[0])?.focus();
   });
 
   $effect(() => {
@@ -91,7 +92,7 @@
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
       const row = Array.from(
         menuEl?.querySelectorAll<HTMLButtonElement>(
-          '.menu-swatches [role="menuitemradio"]:not(:disabled)',
+          '.menu-swatches [role="menuitemradio"]',
         ) ?? [],
       );
       const index = row.findIndex((button) => button === document.activeElement);
@@ -130,8 +131,10 @@
           class="menu-swatch"
           aria-checked={swatches.selected === option.id}
           aria-label={option.label}
-          disabled={swatches.disabled}
-          onclick={() => swatches.onPick(option.id)}
+          aria-disabled={swatches.disabled ? "true" : undefined}
+          onclick={() => {
+            if (!swatches.disabled) swatches.onPick(option.id);
+          }}
         >
           <span class="swatch-circle tag-colored" style={colorTagStyle(option.id)}></span>
         </button>
@@ -142,8 +145,10 @@
         class="menu-swatch"
         aria-checked={swatches.selected === null}
         aria-label="No color"
-        disabled={swatches.disabled}
-        onclick={() => swatches.onPick(null)}
+        aria-disabled={swatches.disabled ? "true" : undefined}
+        onclick={() => {
+          if (!swatches.disabled) swatches.onPick(null);
+        }}
       >
         <span class="swatch-circle swatch-none">
           <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
@@ -182,8 +187,10 @@
       role="menuitem"
       class="menu-popup-item"
       class:destructive={item.destructive === true}
-      disabled={item.disabled === true}
-      onclick={() => onSelect(item.id)}
+      aria-disabled={item.disabled === true ? "true" : undefined}
+      onclick={() => {
+        if (item.disabled !== true) onSelect(item.id);
+      }}
     >
       <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
         {#each item.icon as d (d)}
@@ -200,7 +207,8 @@
     position: fixed;
     inset: auto;
     margin: 0;
-    overflow: visible;
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
     color: var(--color-text);
     z-index: 20;
     display: flex;
@@ -247,7 +255,7 @@
     }
   }
 
-  .menu-swatch:disabled {
+  .menu-swatch[aria-disabled="true"] {
     cursor: default;
     opacity: 0.4;
   }
@@ -343,10 +351,11 @@
 
   .menu-popup-item:focus-visible {
     background: var(--color-hover);
+    outline-offset: -2px;
   }
 
   @media (hover: hover) {
-    .menu-popup-item:hover:not(:disabled) {
+    .menu-popup-item:hover:not([aria-disabled="true"]) {
       background: var(--color-hover);
     }
   }
@@ -355,7 +364,7 @@
     color: var(--color-danger);
   }
 
-  .menu-popup-item:disabled {
+  .menu-popup-item[aria-disabled="true"] {
     color: var(--color-text-muted);
     cursor: default;
   }
