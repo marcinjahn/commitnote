@@ -1,12 +1,5 @@
 // @vitest-environment jsdom
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-  type Mock,
-  vi,
-} from "vitest";
+import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 import { undo } from "@codemirror/commands";
 import {
   EditorSelection,
@@ -298,8 +291,67 @@ describe("image paste", () => {
     view.dispatch({ selection: EditorSelection.cursor(0) });
     await fake.resolve(prepared([IMAGE_A]));
 
-    expect(docOf(view)).toBe(`one\n${REF_A}\ntwo`);
+    expect(docOf(view)).toBe(`one\n${REF_A}\n\ntwo`);
     expect(view.state.selection.main.head).toBe(0);
+  });
+
+  it("separates the reference from a table directly above it with a blank line", async () => {
+    const table = "| a | b |\n| - | - |\n| 1 | 2 |";
+    const { view, fake } = setup(`${table}\n`, { caret: table.length + 1 });
+    paste(view, { files: [imageFile()] });
+    await fake.resolve(prepared([IMAGE_A]));
+
+    expect(docOf(view)).toBe(`${table}\n\n${REF_A}\n`);
+    expect(view.state.selection.main.head).toBe(view.state.doc.length);
+  });
+
+  it("puts the reference inline in a body cell with the caret after it", async () => {
+    const text = "| a | b |\n| - | - |\n| 1 | 2 |\n\n# next";
+    const caret = text.indexOf("1") + 1;
+    const { view, fake } = setup(text, { caret });
+    paste(view, { files: [imageFile()] });
+    await fake.resolve(prepared([IMAGE_A]));
+
+    expect(docOf(view)).toBe(
+      `| a | b |\n| - | - |\n| 1 ${REF_A} | 2 |\n\n# next`,
+    );
+    expect(view.state.selection.main.head).toBe(
+      text.indexOf("1") + 2 + REF_A.length,
+    );
+  });
+
+  it("keeps the table intact when inserting at the start of its header line", async () => {
+    const table = "| a | b |\n| - | - |\n| 1 | 2 |";
+    const { view, fake } = setup(table, { caret: 0 });
+    paste(view, { files: [imageFile()] });
+    await fake.resolve(prepared([IMAGE_A]));
+
+    expect(docOf(view)).toBe(`${REF_A}\n\n${table}`);
+    expect(view.state.selection.main.head).toBe(REF_A.length + 1);
+  });
+
+  it("separates several references in a cell with spaces", async () => {
+    const text = "| a | b |\n| - | - |\n| 1 | 2 |\n\n# next";
+    const caret = text.indexOf("1") + 1;
+    const { view, fake } = setup(text, { caret });
+    paste(view, { files: [imageFile(), imageFile("b.png")] });
+    await fake.resolve(prepared([IMAGE_A, IMAGE_B]));
+
+    expect(docOf(view)).toBe(
+      `| a | b |\n| - | - |\n| 1 ${REF_A} ${REF_B} | 2 |\n\n# next`,
+    );
+  });
+
+  it("puts the reference inline in a cell of a blockquote table", async () => {
+    const text = "> | a | b |\n> | - | - |\n> | 1 | 2 |\n\n# next";
+    const caret = text.indexOf("2") + 1;
+    const { view, fake } = setup(text, { caret });
+    paste(view, { files: [imageFile()] });
+    await fake.resolve(prepared([IMAGE_A]));
+
+    expect(docOf(view)).toBe(
+      `> | a | b |\n> | - | - |\n> | 1 | 2 ${REF_A} |\n\n# next`,
+    );
   });
 
   it("inserts several images in order, one per line, registering each first", async () => {
@@ -532,7 +584,7 @@ describe("image drop", () => {
     expect(fake.prepare).toHaveBeenCalledWith(files);
 
     await fake.resolve(prepared([IMAGE_A]));
-    expect(docOf(view)).toBe(`one\n${REF_A}\ntwo`);
+    expect(docOf(view)).toBe(`one\n${REF_A}\n\ntwo`);
   });
 
   it("falls back to the selection head without a drop position", async () => {
@@ -592,7 +644,7 @@ describe("insertImageFiles", () => {
     expect(insertImageFiles(view, [imageFile()], 99)).toBe(true);
     await fake.resolve(prepared([IMAGE_A]));
 
-    expect(docOf(view)).toBe(`ab\n${REF_A}`);
+    expect(docOf(view)).toBe(`ab\n${REF_A}\n`);
   });
 });
 

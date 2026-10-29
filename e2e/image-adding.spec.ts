@@ -272,6 +272,118 @@ test("Vim :image opens the picker and paste inserts an image in insert mode", as
   await expect(loadedWidgets(page)).toHaveCount(2);
 });
 
+const IMAGE_REFERENCE = /!\[\]\(image:[a-z2-7]{26}#\d+x\d+\)/;
+
+function tables(page: Page): Locator {
+  return page.locator("#note-pane table.cm-table");
+}
+
+function sourceLine(page: Page, text: string): Locator {
+  return page.locator("#note-pane .cm-line", { hasText: text });
+}
+
+async function openWelcomeWithTable(page: Page): Promise<void> {
+  await openNotes(page);
+  await openWelcome(page);
+  await expect(tables(page)).toHaveCount(1);
+}
+
+async function pickImage(page: Page, click: () => Promise<void>) {
+  const chooser = page.waitForEvent("filechooser");
+  await click();
+  await (
+    await chooser
+  ).setFiles(await pickerFile(page, { width: 30, height: 30, shade: 5 }));
+}
+
+async function expectImageInTable(page: Page): Promise<void> {
+  await expect(tables(page)).toHaveCount(1);
+  const image = tables(page).locator("img");
+  await expect(image).toHaveCount(1);
+  await expect
+    .poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBeGreaterThan(0);
+}
+
+test("the picker after a table separates the reference with a blank line", async ({
+  page,
+}) => {
+  await openWelcomeWithTable(page);
+  await editorContent(page).focus();
+  await page.keyboard.press("ControlOrMeta+End");
+  await expect(tables(page)).toHaveCount(1);
+
+  await pickImage(page, () =>
+    page.getByRole("button", { name: "Insert image" }).click(),
+  );
+
+  await expect(loadedWidgets(page)).toHaveCount(1);
+  await expect(tables(page)).toHaveCount(1);
+  await expect(tables(page).getByRole("cell")).toHaveText(["1", "2"]);
+  await expect(tables(page).getByRole("columnheader")).toHaveText([
+    "Column A",
+    "Column B",
+  ]);
+  await expect(tables(page).locator("img")).toHaveCount(0);
+  const blocks = await editorContent(page).evaluate((content) =>
+    [...content.children].map((child) =>
+      child.classList.contains("cm-table-widget")
+        ? "table"
+        : child.classList.contains("cm-image-widget")
+          ? "image"
+          : "line",
+    ),
+  );
+  expect(blocks.indexOf("table")).toBeGreaterThan(-1);
+  expect(blocks.indexOf("image")).toBeGreaterThan(blocks.indexOf("table"));
+});
+
+test("the picker in a revealed cell inserts the reference inline and the cell renders the image", async ({
+  page,
+}) => {
+  await openWelcomeWithTable(page);
+  await tables(page).getByRole("cell", { name: "1", exact: true }).click();
+  await expect(tables(page)).toHaveCount(0);
+
+  await pickImage(page, () =>
+    page.getByRole("button", { name: "Insert image" }).click(),
+  );
+
+  const row = sourceLine(page, "| 1 ");
+  await expect(row).toHaveText(
+    new RegExp(`^\\| 1 ${IMAGE_REFERENCE.source} \\| 2 \\|$`),
+  );
+
+  await editorContent(page).focus();
+  await page.keyboard.press("ControlOrMeta+End");
+  await expectImageInTable(page);
+});
+
+test("Vim :image in a revealed cell inserts the reference inline", async ({
+  page,
+}) => {
+  await openNotes(page);
+  await enableVimMode(page);
+  await openWelcome(page);
+  await expect(tables(page)).toHaveCount(1);
+  await tables(page).getByRole("cell", { name: "1", exact: true }).click();
+  await expect(tables(page)).toHaveCount(0);
+  await expect(page.locator(".vim-status-bar .mode-label")).toHaveText(
+    "NORMAL",
+  );
+
+  await page.keyboard.type(":");
+  await pickImage(page, async () => {
+    await page.keyboard.type("image");
+    await page.keyboard.press("Enter");
+  });
+
+  const row = sourceLine(page, "| 1 ");
+  await expect(row).toHaveText(
+    new RegExp(`^\\| 1 ${IMAGE_REFERENCE.source} \\| 2 \\|$`),
+  );
+});
+
 test("files that are not accepted images show a notice and insert nothing", async ({
   page,
 }) => {
