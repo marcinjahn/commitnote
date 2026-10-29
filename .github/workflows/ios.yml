@@ -5,6 +5,7 @@ on:
     branches: [main, "ios-ci/**"]
     paths:
       - "apps/**"
+      - "!apps/linux/**"
       - "src/**"
       - "scripts/**"
       - "package.json"
