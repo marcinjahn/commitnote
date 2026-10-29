@@ -38,6 +38,9 @@ export const NOTE_FONT_LABEL = "Note font";
 export const TYPE_TO_START_LABEL = "Start a note by typing";
 export const TYPE_TO_START_HINT =
   "When no note is open, start typing to begin a new note.";
+export const VIM_MODE_LABEL = "Vim mode";
+export const VIM_MODE_HINT =
+  "Edit notes with Vim keys: Normal, Insert and Visual modes.";
 export const NEW_NOTES_LABEL = "New notes";
 export const NEW_FOLDERS_LABEL = "New folders";
 export const SETTINGS_RETRY_LABEL = "Retry";

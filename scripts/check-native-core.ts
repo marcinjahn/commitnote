@@ -74,6 +74,9 @@ const FAKE_CORE_CONTROLS: readonly string[] = [
   "fake.shareNote",
   "fake.processImage",
   "/app/ios",
+  "App (iOS)",
+  "/app/linux",
+  "App (Linux)",
   "Imported plan",
   new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
   LARGE_TREE_REPO_KEY,
@@ -250,6 +253,7 @@ class BareHostCore {
   constructor(
     bundle: vm.Script,
     readonly host: NodeHostServices,
+    startOptions: object = { platform: "ios" },
   ) {
     const context = vm.createContext({});
     vm.runInContext("delete globalThis.WebAssembly", context);
@@ -258,7 +262,7 @@ class BareHostCore {
       NativeCoreGlobal | undefined;
     if (core?.apiVersion !== NATIVE_CORE_API_VERSION) {
       throw new Error(
-        `the fake core bundle reports native core API version ${String(core?.apiVersion)}, expected ${NATIVE_CORE_API_VERSION}`,
+        `the core bundle reports native core API version ${String(core?.apiVersion)}, expected ${NATIVE_CORE_API_VERSION}`,
       );
     }
     const innerHost = crossRealmHost(
@@ -266,7 +270,10 @@ class BareHostCore {
       vm.runInContext("Uint8Array", context) as Uint8ArrayConstructor,
       (message) => this.receive(message),
     );
-    this.handle = core.start(innerHost, { deviceModel: DEVICE_MODEL });
+    this.handle = core.start(innerHost, {
+      deviceModel: DEVICE_MODEL,
+      ...startOptions,
+    } as Parameters<NativeCoreGlobal["start"]>[1]);
   }
 
   private receive(message: string): void {
@@ -1047,6 +1054,69 @@ async function dataCheck(bundle: vm.Script): Promise<string> {
   return "exported with images, imported into a new folder, rendered a print page with the image, changed the passphrase, and read the notes and both images back under the new passphrase";
 }
 
+const VISIT_URLS = [
+  ["ios", `${FAKE_ANALYTICS_ENDPOINT}?p=%2Fapp%2Fios&t=App%20(iOS)`],
+  ["linux", `${FAKE_ANALYTICS_ENDPOINT}?p=%2Fapp%2Flinux&t=App%20(Linux)`],
+] as const;
+
+const REJECTED_START_OPTIONS: readonly [string, object][] = [
+  ["no platform", {}],
+  ["an unknown platform", { platform: "android" }],
+];
+
+function expectUnsupportedPlatform(
+  label: string,
+  bundle: vm.Script,
+  startOptions: object,
+): void {
+  try {
+    new BareHostCore(bundle, createNodeHostServices(), startOptions).stop();
+  } catch (error) {
+    const message = (error as { message?: unknown } | null)?.message;
+    if (message === "Unsupported platform") return;
+    throw new Error(
+      `${label} failed with "${String(message)}" instead of "Unsupported platform"`,
+    );
+  }
+  throw new Error(`${label} started instead of throwing "Unsupported platform"`);
+}
+
+async function platformCheck(
+  bundle: vm.Script,
+  prodBundle: vm.Script,
+): Promise<string> {
+  for (const [platform, expected] of VISIT_URLS) {
+    const core = new BareHostCore(bundle, createNodeHostServices(), {
+      platform,
+    });
+    try {
+      const { url } = await core.send<{ url: string | null }>(
+        "analytics.visit",
+      );
+      if (url !== expected) {
+        throw new Error(
+          `analytics.visit on ${platform} returned ${String(url)}, expected ${expected}`,
+        );
+      }
+    } finally {
+      core.stop();
+    }
+  }
+  for (const [bundleLabel, target] of [
+    ["fake core bundle", bundle],
+    ["core bundle", prodBundle],
+  ] as const) {
+    for (const [optionsLabel, startOptions] of REJECTED_START_OPTIONS) {
+      expectUnsupportedPlatform(
+        `the ${bundleLabel} started with ${optionsLabel}`,
+        target,
+        startOptions,
+      );
+    }
+  }
+  return `analytics.visit returns the exact ${VISIT_URLS.map(([platform]) => platform).join(" and ")} visit URLs, and both bundles reject a missing or unknown platform`;
+}
+
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -1081,7 +1151,14 @@ async function main(): Promise<void> {
       filename: join(FAKE_DIR, BUNDLE_FILE),
     },
   );
+  const prodBundle = new vm.Script(
+    await readFile(join(PROD_DIR, BUNDLE_FILE), "utf8"),
+    {
+      filename: join(PROD_DIR, BUNDLE_FILE),
+    },
+  );
   for (const [label, check] of [
+    ["platform check", (fake: vm.Script) => platformCheck(fake, prodBundle)],
     ["test vectors", vectorsCheck],
     ["bare-host check", smokeCheck],
     ["bare-host editing", editingCheck],

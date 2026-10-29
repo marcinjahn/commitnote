@@ -21,6 +21,17 @@ describe("analytics.visit", () => {
     });
   });
 
+  it("returns the exact Linux visit URL for an endpoint", async () => {
+    ctx = await createCoreTestContext({
+      analyticsEndpoint: FAKE_ENDPOINT,
+      platform: "linux",
+    });
+    const core = ctx.startCore();
+    expect(await ctx.call(core, "analytics.visit")).toEqual({
+      url: "https://analytics.invalid/count?p=%2Fapp%2Flinux&t=App%20(Linux)",
+    });
+  });
+
   it("returns null without an endpoint", async () => {
     ctx = await createCoreTestContext({ analyticsEndpoint: null });
     const core = ctx.startCore();

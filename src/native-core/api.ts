@@ -7,8 +7,14 @@ import type { HostServices } from "./host-services";
 
 export type { ColorTag, LaunchAction, MessagePart, SettingScope };
 
-export const NATIVE_CORE_API_VERSION = 6;
+export const NATIVE_CORE_API_VERSION = 7;
 export const NATIVE_CORE_MARKER = "commitnote-native-core";
+
+export type NativePlatform = "ios" | "linux";
+export const NATIVE_PLATFORMS = [
+  "ios",
+  "linux",
+] as const satisfies readonly NativePlatform[];
 
 type ForgeKind = "github" | "gitlab";
 
@@ -155,7 +161,8 @@ export type SettingKeyView =
   | "noteFont"
   | "newNotePlacement"
   | "newFolderPlacement"
-  | "typeToStart";
+  | "typeToStart"
+  | "vimMode";
 export type ScopedSettingKey =
   | "colorMode"
   | "accentColor"
@@ -200,6 +207,7 @@ export interface SettingsCopy {
   };
   editorUnavailable: string;
   typeToStart: { label: string; hint: string };
+  vimMode?: { label: string; hint: string };
   newNotePlacement: SettingChoiceCopy;
   newFolderPlacement: SettingChoiceCopy;
   deviceName: { label: string; hint: string; maxLength: number };
@@ -226,6 +234,7 @@ export interface SettingsView {
     newNotePlacement: string;
     newFolderPlacement: string;
     typeToStart: boolean;
+    vimMode?: boolean;
   };
   scopes: {
     colorMode: SettingScope;
@@ -1140,6 +1149,7 @@ export const FAKE_CORE_COMMAND_NAMES = [
 
 export interface NativeCoreStartOptions {
   deviceModel: string;
+  platform: NativePlatform;
 }
 
 export interface NativeCoreHandle {

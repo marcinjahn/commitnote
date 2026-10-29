@@ -7,7 +7,12 @@ import {
   type FakeForgeControls,
 } from "../../testing/fake-forge/fake-forge-factory";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../../testing/sample-notes-repo/sample-source";
-import type { CoreEventMessage, CoreResponse, NativeCoreHandle } from "../api";
+import type {
+  CoreEventMessage,
+  CoreResponse,
+  NativeCoreHandle,
+  NativePlatform,
+} from "../api";
 import type { AppSession } from "../app-session";
 import { createNativeCore } from "../native-core";
 import { createCryptoShim } from "../runtime/crypto-shim";
@@ -58,6 +63,7 @@ export async function createCoreTestContext(
   options: {
     readonly extraCommands?: ExtraCommandsInput;
     readonly analyticsEndpoint?: string | null;
+    readonly platform?: NativePlatform;
   } = {},
 ): Promise<CoreTestContext> {
   const clock = createTestClock(Date.UTC(2026, 9, 1, 12));
@@ -99,6 +105,7 @@ export async function createCoreTestContext(
     const core = createNativeCore({
       host,
       deviceModel: "iPhone",
+      platform: options.platform ?? "ios",
       analyticsEndpoint: options.analyticsEndpoint ?? null,
       registry: () => Promise.resolve(forges),
       extraCommands: (app) => ({

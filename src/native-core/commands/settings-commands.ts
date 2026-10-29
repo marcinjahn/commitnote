@@ -8,7 +8,12 @@ import {
 } from "../../app/settings-actions";
 import { SETTINGS_SCHEMA } from "../../settings/settings";
 import type { ActionNotices } from "../action-notices";
-import type { CoreCommands, ScopedSettingKey, SettingKeyView } from "../api";
+import type {
+  CoreCommands,
+  NativePlatform,
+  ScopedSettingKey,
+  SettingKeyView,
+} from "../api";
 import type { AppSession, NativeRunningApp } from "../app-session";
 import type { EngineEvents } from "../engine-events";
 import { nativeDeviceName } from "../host-device-settings";
@@ -37,6 +42,20 @@ const SETTING_KEYS: readonly SettingKeyView[] = [
   "newFolderPlacement",
   "typeToStart",
 ];
+
+const LINUX_SETTING_KEYS: readonly SettingKeyView[] = [
+  ...SETTING_KEYS,
+  "vimMode",
+];
+
+const BOOLEAN_SETTING_KEYS: ReadonlySet<SettingKeyView> = new Set([
+  "typeToStart",
+  "vimMode",
+]);
+
+function settingKeysFor(platform: NativePlatform): readonly SettingKeyView[] {
+  return platform === "linux" ? LINUX_SETTING_KEYS : SETTING_KEYS;
+}
 
 const SCOPED_SETTING_KEYS: readonly ScopedSettingKey[] = [
   "colorMode",
@@ -97,17 +116,17 @@ export function createSettingsCommands(context: {
     async "settings.open"(): Promise<Result<"settings.open">> {
       const current = running();
       return {
-        copy: buildSettingsCopy(),
+        copy: buildSettingsCopy(app.platform),
         view: settingsViewOf(current, { host, app }),
         save: settingsSaveViewOf(current),
       };
     },
 
     async "settings.change"(params): Promise<Result<"settings.change">> {
-      const key = oneOf(params, "key", SETTING_KEYS);
+      const key = oneOf(params, "key", settingKeysFor(app.platform));
       const raw = stringParam(params, "value");
       const value = SETTINGS_SCHEMA[key].parse(
-        key === "typeToStart" ? booleanString(raw) : raw,
+        BOOLEAN_SETTING_KEYS.has(key) ? booleanString(raw) : raw,
       );
       if (value === undefined) throw invalidParams();
       const current = running();

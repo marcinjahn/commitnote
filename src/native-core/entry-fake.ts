@@ -3,6 +3,7 @@ import { createFakeForge } from "../testing/fake-forge/fake-forge-factory";
 import {
   NATIVE_CORE_API_VERSION,
   NATIVE_CORE_MARKER,
+  NATIVE_PLATFORMS,
   type NativeCoreGlobal,
 } from "./api";
 import { createNativeCore } from "./native-core";
@@ -13,6 +14,10 @@ const nativeCore: NativeCoreGlobal = {
   apiVersion: NATIVE_CORE_API_VERSION,
   marker: NATIVE_CORE_MARKER,
   start(host, options) {
+    const { platform } = options;
+    if (!NATIVE_PLATFORMS.includes(platform)) {
+      throw new Error("Unsupported platform");
+    }
     bindHost(host);
     bindHostArgon2(host.crypto);
     const shareStorage = new Map<string, string>();
@@ -28,6 +33,7 @@ const nativeCore: NativeCoreGlobal = {
     return createNativeCore({
       host,
       deviceModel: options.deviceModel,
+      platform,
       analyticsEndpoint: __ANALYTICS_ENDPOINT__,
       registry: async () => (await fakeForge).registry,
       extraCommands: (app) =>

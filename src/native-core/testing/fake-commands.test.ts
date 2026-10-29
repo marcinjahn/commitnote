@@ -71,6 +71,7 @@ async function setUp() {
     createNativeCore({
       host,
       deviceModel: "iPhone",
+      platform: "ios",
       analyticsEndpoint: null,
       registry: () => Promise.resolve(forge.registry),
       extraCommands: (app) =>

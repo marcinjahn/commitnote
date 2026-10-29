@@ -4,6 +4,7 @@ import type {
   CoreEventMessage,
   CoreResponse,
   NativeCoreHandle,
+  NativePlatform,
 } from "./api";
 import { createActionNotices } from "./action-notices";
 import { createAppSession, type AppSession } from "./app-session";
@@ -84,6 +85,7 @@ type ExtraCommands = Record<string, (params: unknown) => Promise<unknown>>;
 export function createNativeCore(options: {
   readonly host: HostServices;
   readonly deviceModel: string;
+  readonly platform: NativePlatform;
   readonly analyticsEndpoint: string | null;
   readonly registry: () => Promise<ForgeRegistry>;
   readonly extraCommands?: ExtraCommands | ((app: AppSession) => ExtraCommands);
@@ -103,6 +105,7 @@ export function createNativeCore(options: {
   const app = createAppSession({
     host,
     deviceModel: options.deviceModel,
+    platform: options.platform,
     registry: options.registry,
     emit,
   });

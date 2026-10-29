@@ -12,6 +12,7 @@ import {
 import { buildModeFacts, FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
 import {
   IOS_VISIT_NEEDLES,
+  LINUX_VISIT_NEEDLES,
   NATIVE_CORE_NEEDLES,
   PROD_LEAK_NEEDLES,
   TAURI_NEEDLES,
@@ -445,19 +446,24 @@ async function main(): Promise<void> {
     return;
   }
 
-  const iosVisitInWeb = [
-    ...(await findForbidden(distDir, IOS_VISIT_NEEDLES)),
-    ...(await findForbidden(fakeDistDir, IOS_VISIT_NEEDLES)),
-    ...(await findForbidden(desktopDistDir, IOS_VISIT_NEEDLES)),
-  ];
-  if (iosVisitInWeb.length > 0) {
-    for (const hit of iosVisitInWeb) {
-      console.error(
-        `A web bundle ships the iOS visit: "${hit.needle}" found in ${hit.file}`,
-      );
+  for (const [platform, needles] of [
+    ["iOS", IOS_VISIT_NEEDLES],
+    ["Linux", LINUX_VISIT_NEEDLES],
+  ] as const) {
+    const visitInWeb = [
+      ...(await findForbidden(distDir, needles)),
+      ...(await findForbidden(fakeDistDir, needles)),
+      ...(await findForbidden(desktopDistDir, needles)),
+    ];
+    if (visitInWeb.length > 0) {
+      for (const hit of visitInWeb) {
+        console.error(
+          `A web bundle ships the ${platform} visit: "${hit.needle}" found in ${hit.file}`,
+        );
+      }
+      process.exitCode = 1;
+      return;
     }
-    process.exitCode = 1;
-    return;
   }
 
   const nativeCoreInWeb = [

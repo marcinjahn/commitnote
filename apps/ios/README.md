@@ -14,7 +14,7 @@ Three layers:
   settings, image codec). It decodes images with ImageIO and encodes them through `ImageCodec`.
 - **Core bundle** (`commitnote-core.js`) — the native core, built from `src/native-core/`. It reuses
   the web app's format, crypto, forge adapters, `NoteTree` and `SyncEngine`, so the iOS app reads
-  exactly what the web app writes and syncs the same way. The native core API version is 6.
+  exactly what the web app writes and syncs the same way. The native core API version is 7.
 
 The `Testing` configuration bundles the fake core bundle instead, which serves the sample notes repo
 from a fake forge.

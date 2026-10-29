@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseRepoConfig } from "../crypto/repo-config";
 import { REPO_CONFIG_PATH, TRAILER } from "../format/v1";
-import type { NativeCoreHandle, SettingsSaveView, SettingsView } from "./api";
+import type {
+  NativeCoreHandle,
+  NativePlatform,
+  SettingsSaveView,
+  SettingsView,
+} from "./api";
 import type { AppSession, NativeRunningApp } from "./app-session";
 import { REOPEN_LAST_VIEW_OFF_KEY } from "./reopen-last-view";
 import {
@@ -19,9 +24,12 @@ afterEach(() => {
   ctx.dispose();
 });
 
-async function started(): Promise<NativeCoreHandle> {
+async function started(
+  platform?: NativePlatform,
+): Promise<NativeCoreHandle> {
   ctx = await createCoreTestContext({
     analyticsEndpoint: "https://a.invalid/c",
+    platform,
   });
   const core = ctx.startCore(undefined, (session) => {
     app = session;
@@ -114,14 +122,97 @@ describe("settings.change", () => {
     { key: "typeToStart", value: "yes" },
     { key: "colorMode", value: "sepia" },
     { key: "noteFont", value: "comic-sans" },
-  ])("rejects $key = $value", async ({ key, value }) => {
-    const core = await started();
+  ])("rejects $key = $value on iOS", async ({ key, value }) => {
+    const core = await started("ios");
     const response = await ctx.send(core, "settings.change", { key, value });
     expect(response).toMatchObject({
       ok: false,
       error: { kind: "invalidParams" },
     });
     expect(current().settingsSaver.hasPending).toBe(false);
+    expect(app.deviceSettings.read().values.vimMode).toBeUndefined();
+  });
+
+  it.each([
+    { key: "animatedCaret", value: "false" },
+    { key: "vimMode", value: "yes" },
+    { key: "vimMode", value: "True" },
+    { key: "typeToStart", value: "yes" },
+    { key: "colorMode", value: "sepia" },
+    { key: "noteFont", value: "comic-sans" },
+  ])("rejects $key = $value on Linux", async ({ key, value }) => {
+    const core = await started("linux");
+    const response = await ctx.send(core, "settings.change", { key, value });
+    expect(response).toMatchObject({
+      ok: false,
+      error: { kind: "invalidParams" },
+    });
+    expect(current().settingsSaver.hasPending).toBe(false);
+    expect(app.deviceSettings.read().values.vimMode).toBeUndefined();
+  });
+});
+
+describe("vimMode setting on Linux", () => {
+  it("is device-scoped by default and stays out of the repo", async () => {
+    const core = await started("linux");
+    const commitsBefore = ctx.controls.commitMessages(REPO).length;
+    expect(lastView().values.vimMode).toBe(false);
+
+    await ctx.call(core, "settings.change", {
+      key: "vimMode",
+      value: "true",
+    });
+
+    expect(app.deviceSettings.read().values.vimMode).toBe(true);
+    expect(current().settingsSaver.hasPending).toBe(false);
+    expect(ctx.controls.commitMessages(REPO)).toHaveLength(commitsBefore);
+    expect(lastView().values.vimMode).toBe(true);
+    expect((await ctx.call(core, "settings.open")).view.values.vimMode).toBe(
+      true,
+    );
+
+    await ctx.call(core, "settings.change", {
+      key: "vimMode",
+      value: "false",
+    });
+    expect(lastView().values.vimMode).toBe(false);
+  });
+
+  it("cannot have its scope changed", async () => {
+    const core = await started("linux");
+    const response = await ctx.send(core, "settings.setScope", {
+      key: "vimMode",
+      scope: "synced",
+    });
+    expect(response).toMatchObject({
+      ok: false,
+      error: { kind: "invalidParams" },
+    });
+  });
+
+  it("has the Linux label and hint and only the caret as unavailable", async () => {
+    const core = await started("linux");
+    const { copy } = await ctx.call(core, "settings.open");
+    expect(copy.vimMode).toEqual({
+      label: "Vim mode",
+      hint: "Edit notes with Vim keys: Normal, Insert and Visual modes.",
+    });
+    expect(copy.editorUnavailable).toBe(
+      "The animated caret is not available on Linux. Its setting stays as it is for your other devices.",
+    );
+  });
+});
+
+describe("iOS settings", () => {
+  it("keep the copy without Vim mode and the view without a Vim value", async () => {
+    const core = await started("ios");
+    const { copy, view } = await ctx.call(core, "settings.open");
+    expect(copy.editorUnavailable).toBe(
+      "Vim mode and the animated caret are not available on iOS. Their settings stay as they are for your other devices.",
+    );
+    expect("vimMode" in copy).toBe(false);
+    expect("vimMode" in view.values).toBe(false);
+    expect("vimMode" in lastView().values).toBe(false);
   });
 });
 

@@ -1,5 +1,5 @@
 public enum NativeCoreAPIVersion {
-    public static let current = 6
+    public static let current = 7
 }
 
 public protocol NativeCoreCommand: Encodable, Sendable {

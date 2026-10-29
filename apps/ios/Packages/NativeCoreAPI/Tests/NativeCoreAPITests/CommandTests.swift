@@ -373,7 +373,7 @@ final class CommandTests: XCTestCase {
     }
 
     func testVersion3CommandParams() throws {
-        XCTAssertEqual(NativeCoreAPIVersion.current, 6)
+        XCTAssertEqual(NativeCoreAPIVersion.current, 7)
         XCTAssertEqual(
             try params(NodeRename(path: ["a"], name: "b")), try json(#"{"path":["a"],"name":"b"}"#))
         XCTAssertEqual(

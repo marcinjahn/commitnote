@@ -80,7 +80,7 @@ public actor CoreRuntime {
             stagedInputs: stagedInputs,
             logger: logger,
             onPost: { message in router.receive(message) })
-        let options = JSBridge.newObject(in: context, [("deviceModel", configuration.deviceModel)])
+        let options = JSBridge.newObject(in: context, [("deviceModel", configuration.deviceModel), ("platform", "ios")])
 
         let started: JSValue?
         do {
