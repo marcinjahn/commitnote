@@ -23,6 +23,7 @@ import {
 import { livePreview } from "../live-preview";
 import { linkOpen } from "../link-open";
 import { accentCaret } from "../accent-caret";
+import { tableCellNavigation } from "../table-editing";
 import {
   resetEditingMode,
   vimCallbacks,
@@ -452,6 +453,100 @@ describe("vim image command", () => {
 
     expect(messageOf(view)).toMatchObject({
       text: "Images cannot be added here.",
+      error: true,
+    });
+  });
+});
+
+describe("vim table support", () => {
+  const TABLE = "| a | b |\n| - | - |\n| 1 | 2 |";
+  const run = async (view: EditorView, command: string) => {
+    Vim.handleEx(cmOf(view) as Parameters<typeof Vim.handleEx>[0], command);
+    await settle();
+  };
+  const selectedOf = (view: EditorView) => {
+    const { from, to } = view.state.selection.main;
+    return view.state.sliceDoc(from, to);
+  };
+  const withTable = async (
+    overrides: Partial<VimExtensionOptions>,
+    extra: Extension = [],
+  ) => {
+    const result = await setup(overrides, [tableCellNavigation(), extra]);
+    result.view.dispatch({
+      changes: { from: 0, to: result.view.state.doc.length, insert: TABLE },
+      selection: { anchor: 3 },
+    });
+    await settle();
+    return result;
+  };
+
+  it("does not handle Tab in NORMAL", async () => {
+    const { view } = await withTable({});
+
+    const event = keydown(view, { key: "Tab" });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(docOf(view)).toBe(TABLE);
+  });
+
+  it("does not handle Tab in VISUAL", async () => {
+    const { view } = await withTable({});
+    await press(view, "v");
+
+    const event = keydown(view, { key: "Tab" });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(docOf(view)).toBe(TABLE);
+  });
+
+  it("moves to the next cell with Tab in INSERT", async () => {
+    const { view } = await withTable({ initialMode: "insert" });
+
+    const event = keydown(view, { key: "Tab" });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(docOf(view)).toBe("| a   | b   |\n| --- | --- |\n| 1   | 2   |");
+    expect(selectedOf(view)).toBe("b");
+  });
+
+  it.each(["table", "tab"])("inserts a table with :%s", async (command) => {
+    const { view } = await setup();
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length },
+      selection: { anchor: 0 },
+    });
+
+    await run(view, command);
+
+    expect(docOf(view)).toContain("| Column 1 | Column 2 | Column 3 |");
+    expect(selectedOf(view)).toBe("Column 1");
+    expect(vimStatusOf(view.state)?.message).toBeNull();
+  });
+
+  it("enters VISUAL on the selected header after :table", async () => {
+    const { view } = await setup();
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length },
+      selection: { anchor: 0 },
+    });
+
+    await run(view, "table");
+    expect(modeOf(view)).toBe("visual");
+
+    await press(view, "c");
+    expect(modeOf(view)).toBe("insert");
+    expect(docOf(view)).toContain("|  | Column 2 | Column 3 |");
+  });
+
+  it("reports an error for :table while read-only", async () => {
+    const { view } = await setup({}, EditorState.readOnly.of(true));
+
+    await run(view, "table");
+
+    expect(docOf(view)).toBe(DOC);
+    expect(vimStatusOf(view.state)?.message).toMatchObject({
+      text: "Tables cannot be added here.",
       error: true,
     });
   });
