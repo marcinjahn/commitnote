@@ -17,6 +17,10 @@ import {
   MAIN_BRANCH,
 } from "../../src/format/v1";
 import { README_COMMIT_MESSAGE } from "../../src/login/repo-readme";
+import { readOrderIndex, siblingComparator } from "../../src/order/order-index";
+import type { ColorTag } from "../../src/tags/color-tag";
+import { colorTagOf, readTagIndex } from "../../src/tags/tag-index";
+import { buildTrashIndex } from "../../src/trash/trash-index";
 import { buildNoteTree, findNode } from "../../src/tree/note-tree";
 
 export interface ReadBackScenario {
@@ -27,6 +31,9 @@ export interface ReadBackScenario {
     initialized: boolean;
     notes: { path: string[]; text: string }[];
     folders?: string[][];
+    order?: { parent: string[]; names: string[] }[];
+    tags?: { path: string[]; tag: ColorTag | null }[];
+    trash?: { count: number; names: string[] };
     deviceName: string | null;
   };
 }
@@ -169,10 +176,9 @@ export async function readBackNativeRepo(
     );
   }
 
-  const tree = await buildNoteTree(
-    await adapter.listTree(snapshot.main),
-    keyring,
-  );
+  const listing = await adapter.listTree(snapshot.main);
+  const tree = await buildNoteTree(listing, keyring);
+  const readBlob = (sha: string) => adapter.readBlob(sha);
   for (const [index, expected] of scenario.expect.notes.entries()) {
     const label = `expected note ${index + 1}`;
     const node = findNode(tree, expected.path);
@@ -198,6 +204,50 @@ export async function readBackNativeRepo(
       failures.push(
         ...fail(`expected folder ${index + 1} is not in the head tree`),
       );
+    }
+  }
+
+  if (scenario.expect.order !== undefined) {
+    const order = await readOrderIndex(listing, keyring, readBlob);
+    if (!order.writable) failures.push(...fail("the order index is unreadable"));
+    for (const [index, expected] of scenario.expect.order.entries()) {
+      const label = `expected order ${index + 1}`;
+      const folder = findNode(tree, expected.parent);
+      if (folder === undefined || folder.kind !== "folder") {
+        failures.push(...fail(`${label} names a folder that is not in the head tree`));
+        continue;
+      }
+      const actual = [...folder.children]
+        .sort(siblingComparator(order, expected.parent))
+        .map((child) => child.name);
+      if (JSON.stringify(actual) !== JSON.stringify(expected.names)) {
+        failures.push(...fail(`${label} lists the siblings in a different order`));
+      }
+    }
+  }
+
+  if (scenario.expect.tags !== undefined) {
+    const tags = await readTagIndex(listing, keyring, readBlob);
+    if (!tags.writable) failures.push(...fail("the tag index is unreadable"));
+    for (const [index, expected] of scenario.expect.tags.entries()) {
+      if (colorTagOf(tags, expected.path) !== expected.tag) {
+        failures.push(...fail(`expected tag ${index + 1} differs`));
+      }
+    }
+  }
+
+  if (scenario.expect.trash !== undefined) {
+    const entries = await buildTrashIndex(listing, keyring);
+    const names = entries
+      .flatMap((entry) => (entry.undecryptable ? [] : [entry.tree.name]))
+      .sort();
+    if (entries.length !== scenario.expect.trash.count) {
+      failures.push(...fail("the trash holds a different number of entries"));
+    } else if (
+      JSON.stringify(names) !==
+      JSON.stringify([...scenario.expect.trash.names].sort())
+    ) {
+      failures.push(...fail("the trash holds differently named entries"));
     }
   }
 

@@ -7,8 +7,17 @@
     matchNames,
     type ContentMatch,
     type MatchSection,
-    type NameMatch,
   } from "../../search/search-ranking";
+  import {
+    contentRows as toContentRows,
+    isPartial,
+    nameRows as toNameRows,
+    recentRows as toRecentRows,
+    resultCountText as describeCount,
+    rowView,
+    searchProgress,
+    type SearchRow,
+  } from "../../search/search-results";
   import { parseTerms, toSegments, type TextRange } from "../../search/search-text";
   import { CONTENT_QUERY_DEBOUNCE_MS, RESULT_CAP } from "../../search/search-tuning";
   import type { SearchSource } from "../../sync/search-source";
@@ -18,7 +27,6 @@
   import {
     contentSectionHeading,
     describeNoMatches,
-    describeResultCount,
     describeSearchStatus,
     describeShowingFirst,
     NAME_SECTION_HEADING,
@@ -133,34 +141,14 @@
   });
 
   const statusText = $derived(describeSearchStatus(indexerState, forgeName, now));
-  const progress = $derived(
-    indexerState.status.kind === "indexing" && indexerState.status.total > 0
-      ? indexerState.status.done / indexerState.status.total
-      : null,
-  );
-  const partial = $derived(indexerState.status.kind !== "complete");
+  const progress = $derived(searchProgress(indexerState));
+  const partial = $derived(isPartial(indexerState));
 
-  interface Row {
-    readonly key: string;
-    readonly match: NameMatch | ContentMatch;
-  }
+  type Row = SearchRow;
 
-  const toRow = (match: NameMatch | ContentMatch): Row => ({
-    key: JSON.stringify(match.source.path),
-    match,
-  });
-  const nameRows = $derived(nameSection.matches.map(toRow));
-  const contentRows = $derived(contentSection.matches.map(toRow));
-  const recentRows = $derived.by(() => {
-    if (terms.length > 0) return [];
-    const byKey = new Map(sources.map((source) => [JSON.stringify(source.path), source]));
-    return recent.flatMap((path) => {
-      const source = byKey.get(JSON.stringify(path));
-      return source === undefined
-        ? []
-        : [toRow({ source, nameRanges: [], folderRanges: [] })];
-    });
-  });
+  const nameRows = $derived(toNameRows(nameSection));
+  const contentRows = $derived(toContentRows(contentSection));
+  const recentRows = $derived(terms.length > 0 ? [] : toRecentRows(recent, null, sources));
   const rows = $derived(
     terms.length === 0 ? recentRows : [...nameRows, ...contentRows],
   );
@@ -168,11 +156,7 @@
     contentRows.length > 0 || (nameRows.length > 0 && partial),
   );
   const contentsSettled = $derived(contentTerms === terms);
-  const resultCountText = $derived(
-    terms.length === 0 || !contentsSettled
-      ? ""
-      : describeResultCount(rows.length),
-  );
+  const resultCountText = $derived(describeCount(terms.length > 0, contentsSettled, rows.length));
 
   let active = $state(-1);
   let activeKey: string | null = null;
@@ -208,20 +192,12 @@
       onOpen(row.match.source.path);
     }
   }
-
-  function folders(match: NameMatch): { text: string; ranges: readonly TextRange[] }[] {
-    return match.source.path
-      .slice(0, -1)
-      .map((text, i) => ({ text, ranges: match.folderRanges[i] ?? [] }));
-  }
 </script>
 
 {#snippet highlighted(text: string, ranges: readonly TextRange[])}{#each toSegments(text, ranges) as segment, i (i)}{#if segment.match}<mark>{segment.text}</mark>{:else}{segment.text}{/if}{/each}{/snippet}
 
 {#snippet option(row: Row, index: number)}
-  {@const match = row.match}
-  {@const source = match.source}
-  {@const folderParts = folders(match)}
+  {@const view = rowView(row)}
   <div
     id={optionId(index)}
     class="option"
@@ -233,26 +209,26 @@
       if (index !== active) setActive(index);
     }}
     onmousedown={(event) => event.preventDefault()}
-    onclick={() => onOpen(source.path)}
+    onclick={() => onOpen(view.path)}
     onkeydown={handleKeydown}
   >
     <div class="option-line">
-      <NoteIcon colorTag={source.colorTag} muted />
-      <span class="option-name">{@render highlighted(source.name, match.nameRanges)}</span>
-      {#if source.colorTag !== null}
-        <span class="visually-hidden">{describeColorTag(source.colorTag)}</span>
+      <NoteIcon colorTag={view.colorTag} muted />
+      <span class="option-name">{@render highlighted(view.name, view.nameRanges)}</span>
+      {#if view.colorTag !== null}
+        <span class="visually-hidden">{describeColorTag(view.colorTag)}</span>
       {/if}
-      {#if folderParts.length > 0}
+      {#if view.folders.length > 0}
         <span class="option-folder"
-          >{#each folderParts as part, i (i)}{#if i > 0}{" / "}{/if}{@render highlighted(
+          >{#each view.folders as part, i (i)}{#if i > 0}{" / "}{/if}{@render highlighted(
               part.text,
               part.ranges,
             )}{/each}</span
         >
       {/if}
     </div>
-    {#if "snippet" in match}
-      <div class="option-snippet">{@render highlighted(match.snippet.text, match.snippet.ranges)}</div>
+    {#if view.snippet !== null}
+      <div class="option-snippet">{@render highlighted(view.snippet.text, view.snippet.ranges)}</div>
     {/if}
   </div>
 {/snippet}

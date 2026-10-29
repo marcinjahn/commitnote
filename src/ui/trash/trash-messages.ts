@@ -69,3 +69,53 @@ export function describeRevokeFailed(reason: string, revoked: number): string {
       : ` ${plural(revoked, "link was", "links were")} already revoked.`;
   return `${reason} Nothing was moved to the trash.${done}`;
 }
+
+export const DELETE_PERMANENTLY_TITLE = "Delete permanently?";
+export const DELETE_PERMANENTLY_MESSAGE = "This can't be undone.";
+export const EMPTY_TRASH_TITLE = "Empty trash?";
+
+export interface TrashConfirmationInput {
+  readonly name: string;
+  readonly kind: "note" | "folder";
+  readonly itemCount: number;
+  readonly shareCount: number;
+  readonly revoking: boolean;
+}
+
+export interface TrashConfirmation {
+  readonly title: string;
+  readonly body: string;
+  readonly shareWarning: string | null;
+  readonly retentionNote: string | null;
+  readonly confirmLabel: string;
+}
+
+export function describeTrashConfirmation(
+  input: TrashConfirmationInput,
+): TrashConfirmation {
+  const { name, kind, itemCount, shareCount, revoking } = input;
+  const nonEmptyFolder = kind === "folder" && itemCount > 0;
+  const toTrash = kind === "note" || nonEmptyFolder;
+  const items = `${itemCount} ${itemCount === 1 ? "item" : "items"}`;
+  return {
+    title: toTrash ? "Move to trash?" : "Delete folder?",
+    body:
+      kind === "note"
+        ? `“${name}” will be moved to the trash.`
+        : nonEmptyFolder
+          ? `“${name}” and everything in it (${items}) will be moved to the trash.`
+          : `“${name}” will be deleted.`,
+    shareWarning:
+      shareCount > 0 ? describeSharesRevokedOnTrash(shareCount, kind) : null,
+    retentionNote: toTrash
+      ? "Items in the trash are deleted permanently after 30 days."
+      : null,
+    confirmLabel: revoking
+      ? "Revoking links…"
+      : shareCount > 0
+        ? "Revoke links and move to trash"
+        : toTrash
+          ? "Move to trash"
+          : "Delete",
+  };
+}

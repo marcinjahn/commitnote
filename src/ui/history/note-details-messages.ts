@@ -1,5 +1,4 @@
-import { markdownLanguage } from "@codemirror/lang-markdown";
-import { stripImageReferences } from "../../images/image-reference";
+import type { TaskProgress } from "../../tree/note-stats";
 import { dayKey } from "./history-messages";
 
 export const NOT_SAVED_YET_LABEL = "Not saved yet";
@@ -66,21 +65,6 @@ export function describeUpdated(
   return { label, value: describeDate(at, locale) };
 }
 
-const segmenters = new Map<string | undefined, Intl.Segmenter>();
-
-export function countWords(text: string, locale?: string): number {
-  let segmenter = segmenters.get(locale);
-  if (!segmenter) {
-    segmenter = new Intl.Segmenter(locale, { granularity: "word" });
-    segmenters.set(locale, segmenter);
-  }
-  let count = 0;
-  for (const segment of segmenter.segment(stripImageReferences(text, "remove"))) {
-    if (segment.isWordLike) count++;
-  }
-  return count;
-}
-
 export function describeWordCount(
   count: number,
   locale?: string,
@@ -89,25 +73,6 @@ export function describeWordCount(
     value: new Intl.NumberFormat(locale).format(count),
     label: count === 1 ? "word" : "words",
   };
-}
-
-export interface TaskProgress {
-  readonly done: number;
-  readonly total: number;
-}
-
-export function countTasks(text: string): TaskProgress {
-  let done = 0;
-  let total = 0;
-  markdownLanguage.parser.parse(text).iterate({
-    enter(node) {
-      if (node.name !== "TaskMarker") return;
-      total++;
-      const state = text[node.from + 1];
-      if (state === "x" || state === "X") done++;
-    },
-  });
-  return { done, total };
 }
 
 export function describeTaskProgress(

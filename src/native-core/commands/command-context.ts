@@ -32,6 +32,14 @@ export function stringParam(params: CommandParams, name: string): string {
   return value;
 }
 
+export function pathParam(params: CommandParams, name: string): string[] {
+  const value = params[name];
+  if (!Array.isArray(value) || !value.every((s) => typeof s === "string")) {
+    throw invalidParams();
+  }
+  return value as string[];
+}
+
 export function booleanParam(params: CommandParams, name: string): boolean {
   const value = params[name];
   if (typeof value !== "boolean") throw invalidParams();

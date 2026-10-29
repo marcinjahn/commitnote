@@ -1,12 +1,14 @@
+import { removeLastView } from "../../app/last-view";
 import { flushBeforeLogOut } from "../../app/log-out";
-import type { RunningApp } from "../../app/start-app";
 import { resumeRemembered } from "../../app/resume-remembered";
+import { repoKeyOf } from "../../blob-cache/blob-cache";
 import type { ForgeId } from "../../forge/repo-coordinates";
 import { describeLoginStep } from "../../ui/login/login-messages";
 import { describeLogoutUnsaved } from "../../ui/session/session-messages";
 import type { CoreCommands } from "../api";
-import type { AppSession } from "../app-session";
+import type { AppSession, NativeRunningApp } from "../app-session";
 import { toCoreError } from "../core-errors";
+import type { HostServices } from "../host-services";
 import type { DraftCommands } from "./draft-commands";
 import {
   booleanParam,
@@ -17,7 +19,7 @@ import {
 
 type Result<Name extends keyof CoreCommands> = CoreCommands[Name]["result"];
 
-async function unsavedCountAfterFlush(running: RunningApp): Promise<number> {
+async function unsavedCountAfterFlush(running: NativeRunningApp): Promise<number> {
   try {
     const result = await flushBeforeLogOut(running);
     return result.kind === "unsaved" ? result.count : 0;
@@ -27,11 +29,12 @@ async function unsavedCountAfterFlush(running: RunningApp): Promise<number> {
 }
 
 export function createSessionCommands(context: {
+  readonly host: HostServices;
   readonly app: AppSession;
   readonly emit: EmitCoreEvent;
   readonly drafts: Pick<DraftCommands, "discard">;
 }): Record<string, CommandHandler> {
-  const { app, emit, drafts } = context;
+  const { host, app, emit, drafts } = context;
 
   return {
     async "session.resume"(): Promise<Result<"session.resume">> {
@@ -95,6 +98,10 @@ export function createSessionCommands(context: {
         }
         drafts.discard();
         await app.stop({ clearBlobCache: true });
+        removeLastView(
+          repoKeyOf(running.session.coordinates),
+          host.deviceSettings,
+        );
       }
       await app.store.clear();
       emit("sessionEnded", { reason: "loggedOut" });

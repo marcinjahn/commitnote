@@ -1,6 +1,6 @@
 <script lang="ts">
   import Dialog from "./Dialog.svelte";
-  import { describeSharesRevokedOnTrash } from "../trash/trash-messages";
+  import { describeTrashConfirmation } from "../trash/trash-messages";
 
   interface Props {
     itemName: string;
@@ -24,51 +24,28 @@
     onClose,
   }: Props = $props();
 
-  const nonEmptyFolder = $derived(itemKind === "folder" && itemCount > 0);
-
-  const toTrash = $derived(itemKind === "note" || nonEmptyFolder);
-
-  const title = $derived(
-    toTrash
-      ? "Move to trash?"
-      : "Delete folder?",
+  const copy = $derived(
+    describeTrashConfirmation({
+      name: itemName,
+      kind: itemKind,
+      itemCount,
+      shareCount,
+      revoking,
+    }),
   );
-
-  const itemsLabel = $derived(
-    `${itemCount} ${itemCount === 1 ? "item" : "items"}`,
-  );
-
-  const confirmLabel = $derived(
-    revoking
-      ? "Revoking links…"
-      : shareCount > 0
-        ? "Revoke links and move to trash"
-        : toTrash
-          ? "Move to trash"
-          : "Delete",
-  );
-
-  const body = $derived(
-    itemKind === "note"
-      ? `“${itemName}” will be moved to the trash.`
-      : nonEmptyFolder
-        ? `“${itemName}” and everything in it (${itemsLabel}) will be moved to the trash.`
-        : `“${itemName}” will be deleted.`,
-  );
+  const toTrash = $derived(itemKind === "note" || (itemKind === "folder" && itemCount > 0));
 </script>
 
-<Dialog open={true} {title} onClose={() => !revoking && onClose()}>
+<Dialog open={true} title={copy.title} onClose={() => !revoking && onClose()}>
   {#snippet children()}
-    <p>{body}</p>
-    {#if shareCount > 0}
+    <p>{copy.body}</p>
+    {#if copy.shareWarning !== null}
       <p class="share-warning" data-testid="trash-share-warning">
-        {describeSharesRevokedOnTrash(shareCount, itemKind)}
+        {copy.shareWarning}
       </p>
     {/if}
-    {#if toTrash}
-      <p class="trash-note">
-        Items in the trash are deleted permanently after 30 days.
-      </p>
+    {#if copy.retentionNote !== null}
+      <p class="trash-note">{copy.retentionNote}</p>
     {/if}
     {#if error !== null}
       <p role="alert" class="alert-error">{error}</p>
@@ -91,7 +68,7 @@
       disabled={revoking}
       onclick={onConfirm}
     >
-      {confirmLabel}
+      {copy.confirmLabel}
     </button>
   {/snippet}
 </Dialog>

@@ -27,6 +27,15 @@ export function buildTagFilter(
   return { tree: { ...tree, root }, usedTags };
 }
 
+export function resolveTagFilter(
+  current: ColorTag | null,
+  view: Pick<TagFilterView, "usedTags">,
+  tagsWritable: boolean,
+): ColorTag | null {
+  if (current === null) return null;
+  return tagsWritable && view.usedTags.includes(current) ? current : null;
+}
+
 function collectTags(folder: WorkingFolder, used: Set<ColorTag>): void {
   for (const child of folder.children) {
     if (child.kind === "folder") collectTags(child, used);

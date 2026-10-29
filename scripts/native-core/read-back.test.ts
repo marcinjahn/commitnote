@@ -13,11 +13,15 @@ import { readBackNativeRepo, type ReadBackScenario } from "./read-back";
 
 const DEVICE = "Read-back device";
 const EDITED_TEXT = "# Edited\n\nZażółć gęślą jaźń\n";
+const WELCOME = ["Welcome"];
+const POLISH = ["Zażółć gęślą jaźń"];
+const IDEAS = ["Projects", "commitnote", "Ideas"];
 const notePath = [
   sampleNotesRepoSource.find((entry) => entry.kind === "note")!.name,
 ];
 
 let scenario: ReadBackScenario;
+let organised: ReadBackScenario;
 
 beforeAll(async () => {
   const adapter = await createSampleNotesRepoAdapter();
@@ -32,6 +36,42 @@ beforeAll(async () => {
   const flushed = await engine.flush();
   engine.dispose();
   if (flushed.kind !== "saved") throw new Error(`save failed: ${flushed.kind}`);
+
+  const organiseAdapter = await createSampleNotesRepoAdapter();
+  const organiseEngine = createSyncEngine({
+    adapter: organiseAdapter,
+    keyring: await sampleNotesRepoKeyring(),
+    clock: createTestClock(Date.now()),
+    deviceName: () => DEVICE,
+  });
+  await organiseEngine.refresh();
+  organiseEngine.place(POLISH, { parent: [], before: "Welcome" });
+  organiseEngine.setColorTag(WELCOME, "red");
+  organiseEngine.delete(IDEAS);
+  const organiseFlushed = await organiseEngine.flush();
+  organiseEngine.dispose();
+  if (organiseFlushed.kind !== "saved") {
+    throw new Error(`save failed: ${organiseFlushed.kind}`);
+  }
+  organised = {
+    name: "organise",
+    passphrase: SAMPLE_NOTES_REPO_PASSPHRASE,
+    exported: JSON.stringify({
+      objects: organiseAdapter.repo.exportObjects(),
+      main: organiseAdapter.repo.getRef(MAIN_BRANCH) ?? null,
+    }),
+    expect: {
+      initialized: false,
+      notes: [],
+      deviceName: DEVICE,
+      order: [{ parent: [], names: ["Empty folder", "Journal", "Projects", POLISH[0]!, "Welcome"] }],
+      tags: [
+        { path: WELCOME, tag: "red" },
+        { path: POLISH, tag: "purple" },
+      ],
+      trash: { count: 1, names: ["Ideas"] },
+    },
+  };
 
   scenario = {
     name: "save",
@@ -93,5 +133,45 @@ describe("readBackNativeRepo", () => {
       "save: expected folder 1 is not in the head tree",
       "save: expected folder 2 is not in the head tree",
     ]);
+  });
+
+  it("reads back order, tags and trash from an organised repo", async () => {
+    expect(
+      await readBackNativeRepo(organised, { argon2id: sharedMemoizedArgon2id }),
+    ).toEqual([]);
+  });
+
+  it("fails each organisation check without naming anything", async () => {
+    const failures = await readBackNativeRepo(
+      {
+        ...organised,
+        expect: {
+          ...organised.expect,
+          order: [
+            { parent: [], names: ["Welcome", POLISH[0]!, "Projects", "Journal", "Empty folder"] },
+            { parent: ["Nowhere"], names: [] },
+          ],
+          tags: [{ path: WELCOME, tag: "blue" }],
+          trash: { count: 1, names: ["Something else"] },
+        },
+      },
+      { argon2id: sharedMemoizedArgon2id },
+    );
+
+    expect(failures).toEqual([
+      "organise: expected order 1 lists the siblings in a different order",
+      "organise: expected order 2 names a folder that is not in the head tree",
+      "organise: expected tag 1 differs",
+      "organise: the trash holds differently named entries",
+    ]);
+    expect(
+      await readBackNativeRepo(
+        {
+          ...organised,
+          expect: { ...organised.expect, trash: { count: 2, names: [] } },
+        },
+        { argon2id: sharedMemoizedArgon2id },
+      ),
+    ).toEqual(["organise: the trash holds a different number of entries"]);
   });
 });

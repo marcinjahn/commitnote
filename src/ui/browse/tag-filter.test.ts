@@ -6,7 +6,7 @@ import type {
   WorkingNode,
   WorkingTree,
 } from "../../sync/working-tree";
-import { buildTagFilter } from "./tag-filter";
+import { buildTagFilter, resolveTagFilter } from "./tag-filter";
 
 function note(path: readonly string[], colorTag: ColorTag | null = null): WorkingNote {
   return {
@@ -131,5 +131,25 @@ describe("buildTagFilter", () => {
     const view = buildTagFilter(tree, "red");
     expect(view.tree.root.children).toEqual([]);
     expect(view.usedTags).toEqual(["blue"]);
+  });
+});
+
+describe("resolveTagFilter", () => {
+  const view = { usedTags: ["red", "blue"] as const };
+
+  it("keeps a used tag while tags are writable", () => {
+    expect(resolveTagFilter("red", view, true)).toBe("red");
+  });
+
+  it("resets when the tag is no longer used", () => {
+    expect(resolveTagFilter("green", view, true)).toBeNull();
+  });
+
+  it("resets when tags are not writable", () => {
+    expect(resolveTagFilter("red", view, false)).toBeNull();
+  });
+
+  it("stays null without a filter", () => {
+    expect(resolveTagFilter(null, view, true)).toBeNull();
   });
 });

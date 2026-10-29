@@ -2,11 +2,10 @@
   import { onDestroy, untrack } from "svelte";
   import type { NoteDates } from "../../history/note-dates";
   import { systemClock } from "../../sync/clock";
+  import { countTasks, countWords } from "../../tree/note-stats";
   import { describeDateTime } from "../history/history-messages";
   import {
     NOT_SAVED_YET_LABEL,
-    countTasks,
-    countWords,
     type DetailItemText,
     describeCreated,
     describeUpdated,

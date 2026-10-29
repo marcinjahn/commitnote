@@ -78,7 +78,6 @@ export async function createCoreTestContext(
 
   const { registry, controls } = await createFakeForge({
     argon2id: sharedMemoizedArgon2id,
-    shareStorage: new Map<string, string>() as unknown as Storage,
   });
   const cores: NativeCoreHandle[] = [];
   let nextId = 1;

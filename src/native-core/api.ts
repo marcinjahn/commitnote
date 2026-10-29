@@ -1,7 +1,10 @@
 import type { LoginStep } from "../login/login";
+import type { ColorTag } from "../tags/color-tag";
 import type { HostServices } from "./host-services";
 
-export const NATIVE_CORE_API_VERSION = 2;
+export type { ColorTag };
+
+export const NATIVE_CORE_API_VERSION = 3;
 export const NATIVE_CORE_MARKER = "commitnote-native-core";
 
 type ForgeKind = "github" | "gitlab";
@@ -45,7 +48,113 @@ export type TreeNode =
       noteCount: number;
       children: TreeNode[];
     }
-  | { kind: "note"; name: string; path: string[] };
+  | {
+      kind: "note";
+      name: string;
+      path: string[];
+      colorTag: ColorTag | null;
+      shared: boolean;
+    };
+
+export type StructureOutcome =
+  { kind: "ok"; path: string[] } | { kind: "error"; message: string };
+
+export interface MoveTargetView {
+  path: string[];
+  label: string;
+  depth: number;
+  disabled: boolean;
+}
+
+export interface TrashPreview {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  itemCount: number;
+  shareCount: number;
+}
+
+export type TrashOutcome =
+  | { kind: "trashed"; entryId: string }
+  | { kind: "deleted" }
+  | { kind: "confirm"; preview: TrashPreview }
+  | { kind: "error"; message: string };
+
+export interface TrashItemView {
+  kind: "note" | "folder";
+  name: string;
+  subPath: string[];
+  children: TrashItemView[];
+}
+
+export interface TrashEntryView {
+  id: string;
+  kind: "note" | "folder";
+  name: string;
+  originalFolder: string;
+  daysLeft: string;
+  colorTag: ColorTag | null;
+  children: TrashItemView[];
+}
+
+export interface TrashConfirmationText {
+  title: string;
+  message: string;
+}
+
+export interface SearchRow {
+  path: string[];
+  name: string;
+  folder: string | null;
+  nameRanges: [number, number][];
+  snippet: { text: string; match: boolean }[] | null;
+  colorTag: ColorTag | null;
+}
+
+export interface SearchCopy {
+  recentHeading: string;
+  namesHeading: string;
+  contentsHeading: string;
+  noMatches: string;
+  stillReading: string;
+  hint: string;
+}
+
+export interface SearchResults {
+  recent: SearchRow[];
+  names: SearchRow[];
+  contents: SearchRow[];
+  countText: string | null;
+  namesMore: string | null;
+  contentsMore: string | null;
+  copy: SearchCopy;
+}
+
+export interface DetailItemText {
+  label: string;
+  value: string;
+}
+
+export type NameCommitOutcome =
+  | { kind: "none" }
+  | { kind: "restore" }
+  | { kind: "error"; message: string }
+  | { kind: "ok"; path: string[] };
+
+export interface LastViewState {
+  note: string[] | null;
+  folders: string[][];
+}
+
+export type EarlyDraftOutcome =
+  | { kind: "none" }
+  | { kind: "draft"; name: string; error: string | null }
+  | { kind: "created"; path: string[]; fieldError: string | null };
+
+export interface TagOptionView {
+  tag: ColorTag;
+  label: string;
+}
 
 export type OpenNote =
   | { state: "loading"; path: string[] }
@@ -54,6 +163,8 @@ export type OpenNote =
       path: string[];
       content: string;
       conflict: OpenNoteConflict | null;
+      colorTag: ColorTag | null;
+      shared: boolean;
     }
   | { state: "missing" | "trashed"; path: string[]; message: string }
   | { state: "failed"; path: string[]; message: string; error: CoreError };
@@ -87,11 +198,9 @@ export interface SyncStatusMenuItem {
   path: string[] | null;
 }
 
-export type NoticeAction = {
-  kind: "openNote";
-  label: "Open note";
-  path: string[];
-};
+export type NoticeAction =
+  | { kind: "openNote"; label: "Open note"; path: string[] }
+  | { kind: "undo"; label: "Undo" };
 
 export type FlushOutcome =
   { kind: "saved" } | { kind: "unsaved"; count: number };
@@ -240,6 +349,84 @@ export type CoreCommands = {
   "lifecycle.setOnline": { params: { online: boolean }; result: {} };
   "device.name": { params: {}; result: { name: string } };
   "notices.dismiss": { params: { id: string }; result: {} };
+  "notices.perform": { params: { id: string }; result: {} };
+  "node.rename": {
+    params: { path: string[]; name: string };
+    result: { outcome: StructureOutcome };
+  };
+  "node.move": {
+    params: { path: string[]; parent: string[] };
+    result: { outcome: StructureOutcome };
+  };
+  "node.place": {
+    params: { path: string[]; parent: string[]; before: string | null };
+    result: { outcome: StructureOutcome };
+  };
+  "node.moveSibling": {
+    params: { path: string[]; direction: "up" | "down" };
+    result: { outcome: StructureOutcome | { kind: "none" } };
+  };
+  "node.moveTargets": {
+    params: { path: string[] };
+    result: { targets: MoveTargetView[] };
+  };
+  "node.trashPreview": {
+    params: { path: string[] };
+    result: { preview: TrashPreview };
+  };
+  "node.trash": {
+    params: { path: string[]; shareCount: number };
+    result: { outcome: TrashOutcome };
+  };
+  "node.setColorTag": {
+    params: { path: string[]; tag: ColorTag | null };
+    result: { outcome: StructureOutcome };
+  };
+  "trash.restoreTargets": {
+    params: { entryId: string; subPath: string[] };
+    result: { targets: MoveTargetView[] };
+  };
+  "trash.restore": {
+    params: { entryId: string; subPath: string[]; parent: string[] };
+    result: { outcome: StructureOutcome };
+  };
+  "trash.delete": { params: { entryId: string }; result: {} };
+  "trash.empty": { params: {}; result: {} };
+  "tags.setFilter": { params: { tag: ColorTag | null }; result: {} };
+  "search.open": { params: {}; result: {} };
+  "search.close": { params: {}; result: {} };
+  "search.query": {
+    params: { query: string };
+    result: { results: SearchResults };
+  };
+  "note.rename": {
+    params: { path: string[]; name: string };
+    result: { outcome: NameCommitOutcome };
+  };
+  "note.stats": {
+    params: { path: string[] };
+    result: { words: DetailItemText; tasks: DetailItemText | null };
+  };
+  "note.dates": {
+    params: { path: string[] };
+    result: {
+      notSaved: boolean;
+      created: DetailItemText | null;
+      updated: DetailItemText | null;
+    };
+  };
+  "image.read": {
+    params: { imageId: string };
+    result: {
+      image: { type: "image/webp" | "image/gif"; base64: string } | null;
+    };
+  };
+  "lastView.load": { params: {}; result: { view: LastViewState | null } };
+  "lastView.save": { params: LastViewState; result: {} };
+  "earlyDraft.handOff": {
+    params: { name: string; body: string; nameConfirmed: boolean };
+    result: { outcome: EarlyDraftOutcome };
+  };
 };
 
 export type FakeCoreCommands = {
@@ -286,11 +473,30 @@ export type FakeCoreCommands = {
     params: { repo: string; operation: string };
     result: {};
   };
+  "fake.shareNote": { params: { path: string[] }; result: {} };
+  "fake.holdLoading": { params: {}; result: {} };
+  "fake.releaseLoading": { params: {}; result: {} };
 };
 
 export type CoreEvents = {
   loadingProgress: { step: LoginStep; message: string };
-  treeChanged: { tree: TreeNode[] | null };
+  treeChanged: {
+    tree: TreeNode[] | null;
+    tagFilter: ColorTag | null;
+    usedTags: ColorTag[];
+    tagsWritable: boolean;
+    tagOptions: TagOptionView[];
+  };
+  trashChanged: {
+    entries: TrashEntryView[];
+    deleteConfirmation: TrashConfirmationText;
+    emptyConfirmation: TrashConfirmationText;
+  };
+  searchStatusChanged: {
+    status: string | null;
+    progress: number | null;
+    partial: boolean;
+  };
   noteChanged: { note: OpenNote | null; edits: RemoteTextEdit[] | null };
   noteContentChangedRemotely: {
     change: "updated" | "relocated" | "trashed";
@@ -352,11 +558,37 @@ export const CORE_COMMAND_NAMES = [
   "lifecycle.setOnline",
   "device.name",
   "notices.dismiss",
+  "notices.perform",
+  "node.rename",
+  "node.move",
+  "node.place",
+  "node.moveSibling",
+  "node.moveTargets",
+  "node.trashPreview",
+  "node.trash",
+  "node.setColorTag",
+  "trash.restoreTargets",
+  "trash.restore",
+  "trash.delete",
+  "trash.empty",
+  "tags.setFilter",
+  "search.open",
+  "search.close",
+  "search.query",
+  "note.rename",
+  "note.stats",
+  "note.dates",
+  "image.read",
+  "lastView.load",
+  "lastView.save",
+  "earlyDraft.handOff",
 ] as const satisfies readonly (keyof CoreCommands)[];
 
 export const CORE_EVENT_NAMES = [
   "loadingProgress",
   "treeChanged",
+  "trashChanged",
+  "searchStatusChanged",
   "noteChanged",
   "noteContentChangedRemotely",
   "syncStateChanged",
@@ -377,6 +609,9 @@ export const FAKE_CORE_COMMAND_NAMES = [
   "fake.changeRepoKey",
   "fake.failNext",
   "fake.clearFailures",
+  "fake.shareNote",
+  "fake.holdLoading",
+  "fake.releaseLoading",
 ] as const satisfies readonly (keyof FakeCoreCommands)[];
 
 export interface NativeCoreStartOptions {

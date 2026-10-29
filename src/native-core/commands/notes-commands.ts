@@ -1,3 +1,4 @@
+import type { ActionNotices } from "../action-notices";
 import type { CoreCommands } from "../api";
 import type { AppSession } from "../app-session";
 import { coreLevelError, toCoreError } from "../core-errors";
@@ -35,8 +36,9 @@ export function createNotesCommands(context: {
   readonly app: AppSession;
   readonly events: EngineEvents;
   readonly drafts: Pick<DraftCommands, "discard">;
+  readonly notices: Pick<ActionNotices, "dismiss">;
 }): Record<string, CommandHandler> {
-  const { app, events, drafts } = context;
+  const { app, events, drafts, notices } = context;
 
   function running() {
     const current = app.current();
@@ -97,6 +99,7 @@ export function createNotesCommands(context: {
         events.clearRefreshNotice();
         return {};
       }
+      if (notices.dismiss(id)) return {};
       if (!id.startsWith(ENGINE_NOTICE_PREFIX)) throw invalidParams();
       const noticeId = Number(id.slice(ENGINE_NOTICE_PREFIX.length));
       if (!Number.isSafeInteger(noticeId)) throw invalidParams();
