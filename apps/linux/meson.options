@@ -1,0 +1,2 @@
+option('profile', type: 'combo', choices: ['development', 'release'], value: 'development', description: 'Build profile')
+option('testing', type: 'boolean', value: false, description: 'Embed the fake core bundle (development profile only)')

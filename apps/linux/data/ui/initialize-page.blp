@@ -1,0 +1,142 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CommitnoteInitializePage: Adw.NavigationPage {
+  title: "Set Up Notes Repo";
+  tag: "initialize";
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+
+    content: Gtk.ScrolledWindow {
+      hscrollbar-policy: never;
+
+      Adw.Clamp {
+        maximum-size: 480;
+        tightening-threshold: 360;
+        margin-top: 24;
+        margin-bottom: 24;
+        margin-start: 12;
+        margin-end: 12;
+
+        Gtk.Box {
+          orientation: vertical;
+          spacing: 24;
+
+          Adw.PreferencesGroup warning_group {
+            visible: false;
+
+            Adw.ActionRow warning_row {
+              use-markup: false;
+              css-classes: ["warning"];
+
+              [prefix]
+              Gtk.Image {
+                icon-name: "dialog-warning-symbolic";
+              }
+            }
+          }
+
+          Gtk.Label description_label {
+            wrap: true;
+            xalign: 0;
+          }
+
+          Adw.PreferencesGroup {
+            title: "Repository";
+
+            Adw.ActionRow repository_row {
+              title: "Name";
+              use-markup: false;
+              subtitle-selectable: true;
+              sensitive: false;
+            }
+          }
+
+          Adw.PreferencesGroup {
+            title: "Create passphrase";
+            description: "Use a long passphrase, for example several random words. It encrypts your notes and cannot be recovered if you forget it.";
+
+            Adw.PasswordEntryRow passphrase_row {
+              name: "init-passphrase-row";
+              title: "Create passphrase";
+            }
+
+            Gtk.Box strength_box {
+              visible: false;
+              orientation: vertical;
+              spacing: 6;
+              margin-top: 12;
+
+              Gtk.LevelBar strength_bar {
+                mode: discrete;
+                min-value: 0;
+                max-value: 4;
+                value: 0;
+                hexpand: true;
+                css-classes: ["passphrase-strength"];
+
+                accessibility {
+                  hidden: true;
+                }
+              }
+
+              Gtk.Label strength_label {
+                name: "init-strength-label";
+                wrap: true;
+                xalign: 0;
+                css-classes: ["caption"];
+              }
+            }
+          }
+
+          Adw.PreferencesGroup {
+            title: "Repeat passphrase";
+
+            Adw.PasswordEntryRow repeat_row {
+              name: "init-repeat-row";
+              title: "Repeat passphrase";
+            }
+          }
+
+          Adw.PreferencesGroup {
+            Adw.SwitchRow remember_row {
+              title: "Remember me";
+              subtitle: "Stay logged in on this device until you log out.";
+              active: true;
+            }
+          }
+
+          Adw.PreferencesGroup progress_group {
+            visible: false;
+
+            Adw.ActionRow progress_row {
+              use-markup: false;
+
+              [prefix]
+              Adw.Spinner {}
+            }
+          }
+
+          Gtk.Label error_label {
+            name: "init-error-label";
+            visible: false;
+            wrap: true;
+            xalign: 0;
+            selectable: true;
+            accessible-role: alert;
+            css-classes: ["error"];
+          }
+
+          Gtk.Button init_button {
+            name: "init-button";
+            label: "Set Up Notes Repo";
+            halign: center;
+            css-classes: ["suggested-action", "pill"];
+          }
+        }
+      }
+    };
+  };
+}

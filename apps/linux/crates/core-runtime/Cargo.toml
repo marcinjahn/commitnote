@@ -1,0 +1,32 @@
+[package]
+name = "commitnote-core-runtime"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+commitnote-crypto.workspace = true
+commitnote-core-api.workspace = true
+javascriptcore6.workspace = true
+javascriptcore6-sys.workspace = true
+glib.workspace = true
+gio.workspace = true
+soup3.workspace = true
+oo7.workspace = true
+async-channel.workspace = true
+futures-channel.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+getrandom.workspace = true
+base64.workspace = true
+zeroize.workspace = true
+libc.workspace = true
+
+[dev-dependencies]
+commitnote-core-api = { workspace = true, features = ["testing"] }
+tempfile.workspace = true
+hex.workspace = true
+
+[features]
+testing = ["commitnote-core-api/testing"]

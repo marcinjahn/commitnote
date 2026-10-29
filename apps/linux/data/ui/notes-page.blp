@@ -1,0 +1,89 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CommitnoteNotesPage: Adw.NavigationPage {
+  tag: "notes";
+  title: "commitnote";
+  can-pop: false;
+
+  child: Adw.BreakpointBin {
+    width-request: 360;
+    height-request: 294;
+
+    Adw.Breakpoint {
+      condition ("max-width: 640sp")
+
+      setters {
+        template.narrow: true;
+      }
+    }
+
+    child: Adw.NavigationSplitView split_view {
+      name: "notes-split-view";
+      max-sidebar-width: 280;
+      min-sidebar-width: 200;
+
+      sidebar: Adw.NavigationPage sidebar_page {
+        tag: "sidebar";
+        title: "commitnote";
+
+        child: Adw.ToolbarView sidebar_toolbar {
+          [top]
+          Adw.HeaderBar {
+            [end]
+            Gtk.MenuButton {
+              name: "notes-main-menu-button";
+              icon-name: "open-menu-symbolic";
+              tooltip-text: "Main Menu";
+              primary: true;
+              menu-model: main_menu;
+            }
+          }
+        };
+      };
+
+      content: Adw.NavigationPage content_page {
+        tag: "note";
+        title: "commitnote";
+
+        child: Adw.ToolbarView content_toolbar {
+          [top]
+          Adw.HeaderBar {
+            show-back-button: bind template.narrow;
+
+            [start]
+            Gtk.ToggleButton {
+              name: "notes-sidebar-toggle";
+              icon-name: "sidebar-show-symbolic";
+              tooltip-text: "Toggle Sidebar";
+              action-name: "notes.toggle-sidebar";
+              active: bind template.sidebar-hidden inverted;
+              visible: bind template.narrow inverted;
+
+              accessibility {
+                label: "Toggle Sidebar";
+              }
+            }
+          }
+        };
+      };
+    };
+  };
+}
+
+menu main_menu {
+  section {
+    item {
+      label: "Refresh";
+      action: "win.refresh";
+      accel: "<Control>r";
+    }
+  }
+
+  section {
+    item {
+      label: "Log Out";
+      action: "win.log-out";
+    }
+  }
+}

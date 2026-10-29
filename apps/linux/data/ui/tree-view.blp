@@ -1,0 +1,52 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CommitnoteNotesTree: Adw.Bin {
+  name: "notes-tree";
+
+  child: Gtk.Stack stack {
+    Gtk.StackPage {
+      name: "loading";
+
+      child: Gtk.Box {
+        orientation: vertical;
+        spacing: 12;
+        halign: center;
+        valign: center;
+
+        Adw.Spinner {
+          width-request: 32;
+          height-request: 32;
+        }
+
+        Gtk.Label {
+          label: "Loading notes…";
+          styles ["dim-label"]
+        }
+      };
+    }
+
+    Gtk.StackPage {
+      name: "empty";
+
+      child: Adw.StatusPage {
+        icon-name: "text-x-generic-symbolic";
+        title: "No Notes Yet";
+      };
+    }
+
+    Gtk.StackPage {
+      name: "tree";
+
+      child: Gtk.ScrolledWindow scrolled {
+        hscrollbar-policy: never;
+
+        child: Gtk.ListView list_view {
+          name: "notes-tree-list";
+          single-click-activate: true;
+          styles ["navigation-sidebar"]
+        };
+      };
+    }
+  };
+}

@@ -1,0 +1,99 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CommitnoteUnlockPage: Adw.NavigationPage {
+  title: "Unlock";
+  tag: "unlock";
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+
+    content: Gtk.ScrolledWindow {
+      hscrollbar-policy: never;
+
+      Adw.Clamp {
+        maximum-size: 480;
+        tightening-threshold: 360;
+        margin-top: 24;
+        margin-bottom: 24;
+        margin-start: 12;
+        margin-end: 12;
+
+        Gtk.Box {
+          orientation: vertical;
+          spacing: 24;
+
+          Adw.PreferencesGroup warning_group {
+            visible: false;
+
+            Adw.ActionRow warning_row {
+              use-markup: false;
+              css-classes: ["warning"];
+
+              [prefix]
+              Gtk.Image {
+                icon-name: "dialog-warning-symbolic";
+              }
+            }
+          }
+
+          Adw.PreferencesGroup {
+            title: "Repository";
+
+            Adw.ActionRow repository_row {
+              title: "Name";
+              use-markup: false;
+              subtitle-selectable: true;
+              sensitive: false;
+            }
+          }
+
+          Adw.PreferencesGroup {
+            title: "Passphrase";
+
+            Adw.PasswordEntryRow passphrase_row {
+              name: "unlock-passphrase-row";
+              title: "Passphrase";
+            }
+
+            Adw.SwitchRow remember_row {
+              name: "unlock-remember-row";
+              title: "Remember me";
+              subtitle: "Stay logged in on this device until you log out.";
+              active: true;
+            }
+          }
+
+          Adw.PreferencesGroup progress_group {
+            visible: false;
+
+            Adw.ActionRow progress_row {
+              use-markup: false;
+
+              [prefix]
+              Adw.Spinner {}
+            }
+          }
+
+          Gtk.Label error_label {
+            name: "unlock-error-label";
+            visible: false;
+            wrap: true;
+            xalign: 0;
+            selectable: true;
+            accessible-role: alert;
+            css-classes: ["error"];
+          }
+
+          Gtk.Button unlock_button {
+            name: "unlock-button";
+            label: "Log In";
+            halign: center;
+            css-classes: ["suggested-action", "pill"];
+          }
+        }
+      }
+    };
+  };
+}

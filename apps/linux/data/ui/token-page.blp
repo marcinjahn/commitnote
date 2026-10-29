@@ -1,0 +1,123 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CommitnoteTokenPage: Adw.NavigationPage {
+  title: "Log In";
+  tag: "token";
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+
+    content: Gtk.ScrolledWindow {
+      hscrollbar-policy: never;
+
+      child: Adw.Clamp {
+        maximum-size: 480;
+        tightening-threshold: 360;
+
+        child: Gtk.Box {
+          orientation: vertical;
+          spacing: 24;
+          margin-top: 24;
+          margin-bottom: 24;
+          margin-start: 12;
+          margin-end: 12;
+
+          Gtk.Box {
+            orientation: vertical;
+            spacing: 6;
+            halign: center;
+
+            Gtk.Image app_icon {
+              pixel-size: 64;
+              margin-bottom: 6;
+            }
+
+            Gtk.Label {
+              label: "commitnote";
+              styles ["title-1"]
+            }
+
+            Gtk.Label {
+              label: "Encrypted markdown notes in your own git repository.";
+              wrap: true;
+              justify: center;
+              styles ["dim-label"]
+            }
+          }
+
+          Adw.PreferencesGroup forge_group {
+            title: "Git host";
+
+            Adw.ToggleGroup forge_toggle {
+              name: "login-forge-toggle";
+              homogeneous: true;
+
+              accessibility {
+                label: "Git host";
+              }
+            }
+          }
+
+          Gtk.Box {
+            orientation: vertical;
+            spacing: 12;
+
+            Adw.PreferencesGroup token_group {
+              title: "Access token";
+
+              Adw.PasswordEntryRow token_row {
+                name: "login-token-row";
+                title: "Access token";
+              }
+            }
+
+            Gtk.Label error_label {
+              name: "login-error-label";
+              visible: false;
+              wrap: true;
+              xalign: 0;
+              styles ["error"]
+            }
+
+            Gtk.Label token_link {
+              wrap: true;
+              xalign: 0;
+              use-markup: true;
+            }
+
+            Gtk.Label repository_note {
+              wrap: true;
+              xalign: 0;
+              use-markup: true;
+              styles ["dim-label"]
+            }
+          }
+
+          Gtk.Box progress_box {
+            visible: false;
+            spacing: 12;
+            halign: center;
+
+            Adw.Spinner {
+              width-request: 24;
+              height-request: 24;
+            }
+
+            Gtk.Label progress_label {
+              wrap: true;
+            }
+          }
+
+          Gtk.Button continue_button {
+            name: "login-continue-button";
+            label: "Continue";
+            halign: center;
+            styles ["suggested-action", "pill"]
+          }
+        };
+      };
+    };
+  };
+}

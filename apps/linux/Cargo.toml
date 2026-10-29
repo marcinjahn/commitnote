@@ -1,0 +1,69 @@
+[workspace]
+members = ["crates/crypto", "crates/core-api", "crates/core-runtime"]
+resolver = "3"
+
+[workspace.dependencies]
+commitnote-crypto = { path = "crates/crypto" }
+commitnote-core-api = { path = "crates/core-api" }
+commitnote-core-runtime = { path = "crates/core-runtime" }
+gtk4 = { version = "0.11.5", features = ["gnome_49"] }
+libadwaita = { version = "0.9.2", features = ["v1_8"] }
+soup3 = "0.9.0"
+javascriptcore6 = { version = "0.6.0", features = ["v2_48"] }
+javascriptcore6-sys = "0.6.0"
+glib = "0.22"
+gio = "0.22"
+oo7 = { version = "0.6.0", default-features = false, features = ["async-std", "native_crypto"] }
+aes-gcm = "0.11.1"
+hkdf = "0.13"
+hmac = "0.13"
+sha1 = "0.11"
+sha2 = "0.11.1"
+argon2 = "0.6"
+zeroize = { version = "1.9.1", features = ["zeroize_derive"] }
+getrandom = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures-channel = "0.3"
+futures-util = "0.3"
+async-channel = "2"
+libc = "0.2"
+base64 = "0.23"
+hex = "0.4"
+tempfile = "3"
+
+[package]
+name = "commitnote"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "commitnote"
+path = "src/main.rs"
+
+[[test]]
+name = "ui"
+path = "tests/ui/main.rs"
+harness = false
+required-features = ["testing"]
+
+[features]
+testing = ["commitnote-core-runtime/testing", "commitnote-core-api/testing"]
+
+[dependencies]
+gtk4.workspace = true
+libadwaita.workspace = true
+glib.workspace = true
+gio.workspace = true
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-channel.workspace = true
+futures-util.workspace = true
+commitnote-core-api.workspace = true
+commitnote-core-runtime.workspace = true
+zeroize.workspace = true
+
+[profile.dev.package."*"]
+opt-level = 2

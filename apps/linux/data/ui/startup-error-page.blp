@@ -1,0 +1,17 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CommitnoteStartupErrorPage: Adw.NavigationPage {
+  title: "commitnote";
+  can-pop: false;
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+
+    content: Adw.StatusPage status_page {
+      icon-name: "dialog-error-symbolic";
+      title: "commitnote cannot start";
+    };
+  };
+}

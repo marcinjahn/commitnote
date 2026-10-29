@@ -1,0 +1,15 @@
+appstream
+blueprint-compiler
+desktop-file-utils
+gcc
+glib2-devel
+gtk4-devel
+gtksourceview5-devel
+javascriptcoregtk6.0-devel
+libadwaita-devel
+libsoup3-devel
+libwebp-devel
+meson
+ninja-build
+pkgconf-pkg-config
+webkitgtk6.0-devel

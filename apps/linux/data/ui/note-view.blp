@@ -1,0 +1,85 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CommitnoteNoteView: Adw.Bin {
+  name: "note-view";
+
+  child: Gtk.Stack stack {
+    Gtk.StackPage {
+      name: "empty";
+
+      child: Adw.StatusPage {
+        icon-name: "text-x-generic-symbolic";
+        title: "No Note Open";
+        description: "Choose a note in the sidebar.";
+      };
+    }
+
+    Gtk.StackPage {
+      name: "blank";
+
+      child: Gtk.Box {};
+    }
+
+    Gtk.StackPage {
+      name: "loading";
+
+      child: Adw.Spinner {
+        halign: center;
+        valign: center;
+        width-request: 32;
+        height-request: 32;
+      };
+    }
+
+    Gtk.StackPage {
+      name: "loaded";
+
+      child: Gtk.ScrolledWindow scrolled {
+        hscrollbar-policy: never;
+
+        child: Adw.Clamp {
+          maximum-size: 760;
+          tightening-threshold: 600;
+
+          child: Gtk.Box {
+            orientation: vertical;
+            spacing: 12;
+            margin-top: 24;
+            margin-bottom: 24;
+
+            Gtk.Label title_label {
+              name: "note-title-label";
+              xalign: 0;
+              wrap: true;
+              selectable: true;
+              margin-start: 12;
+              margin-end: 12;
+              styles ["title-1"]
+            }
+
+            Gtk.TextView text_view {
+              name: "note-text-view";
+              editable: false;
+              cursor-visible: false;
+              wrap-mode: word_char;
+              left-margin: 12;
+              right-margin: 12;
+              top-margin: 12;
+              bottom-margin: 12;
+            }
+          };
+        };
+      };
+    }
+
+    Gtk.StackPage {
+      name: "problem";
+
+      child: Adw.StatusPage status_page {
+        name: "note-status-page";
+        icon-name: "dialog-warning-symbolic";
+      };
+    }
+  };
+}
