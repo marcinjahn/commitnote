@@ -38,6 +38,7 @@ final class MarkdownStyler {
     private var lines: [LineStyle] = []
     private var needsFullRestyle = true
     private var fonts: [FontKey: UIFont] = [:]
+    private var cachedHiddenFont: UIFont?
     var noteFont = AppAppearance.standard.noteFont {
         didSet {
             guard noteFont != oldValue else { return }
@@ -65,6 +66,7 @@ final class MarkdownStyler {
 
     func contentSizeCategoryDidChange() {
         fonts = [:]
+        cachedHiddenFont = nil
         needsFullRestyle = true
     }
 
@@ -337,7 +339,7 @@ final class MarkdownStyler {
     ) -> [NSAttributedString.Key: Any] {
         if styles.contains(.hidden) {
             return [
-                .font: UIFont.systemFont(ofSize: 0.01),
+                .font: hiddenFont,
                 .foregroundColor: UIColor.clear,
                 .paragraphStyle: paragraph,
             ]
@@ -384,6 +386,15 @@ final class MarkdownStyler {
             result[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
         }
         return result
+    }
+
+    /// Scaled like the note fonts: the editor reports the font of its first character, which is hidden when a note
+    /// starts with a rendered table, and a fixed size there fails the Dynamic Type audit.
+    private var hiddenFont: UIFont {
+        if let cachedHiddenFont { return cachedHiddenFont }
+        let font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 0.01))
+        cachedHiddenFont = font
+        return font
     }
 
     private func font(_ key: FontKey) -> UIFont {

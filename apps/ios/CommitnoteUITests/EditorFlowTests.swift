@@ -7,7 +7,8 @@ final class EditorFlowTests: XCTestCase {
     ]
     private static let auditErrorDomain = "com.apple.xcode.xctest.accessibilityAudit"
     private static let auditAttempts = 3
-    private static let tableNote = "Rendered table"
+    /// As short as "Welcome", whose title passes the text clipping audit at every size the audit tries on iPhone.
+    private static let tableNote = "Table"
     private static let tableFirstLine = "| Item | Amount |"
 
     override func setUp() {
