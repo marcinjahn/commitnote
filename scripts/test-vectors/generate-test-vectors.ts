@@ -1021,6 +1021,7 @@ const INSERTION_CASES: readonly InsertionCase[] = [
   ["at the document end", "text¦", [REF_A]],
   ["in an empty document", "¦", [REF_A]],
   ["on a blank line", "one\n¦\ntwo", [REF_A]],
+  ["on an empty first line", "¦\nabc", [REF_A]],
   ["with a non-collapsed selection", "a«bc»d", [REF_A]],
   ["several references mid-line", "ab¦cd", [REF_A, REF_B]],
   ["several references at a line end", "text¦\nnext", [REF_A, REF_B, REF_C]],

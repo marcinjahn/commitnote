@@ -35,6 +35,7 @@ describe("insertImageReferences outside tables", () => {
     ["at a line end with text after", "ab¦\nnext", "ab\nREF\n¦\nnext"],
     ["at a line end before a blank line", "ab¦\n\nnext", "ab\nREF\n¦\nnext"],
     ["on an empty line", "ab\n¦\ncd", "ab\nREF\n¦\ncd"],
+    ["on an empty first line", "¦\ncd", "REF\n¦\ncd"],
     ["at a line start", "ab\n¦cd", "ab\nREF\n¦cd"],
     ["at the end without a trailing newline", "ab¦", "ab\nREF\n¦"],
     ["at the end with a trailing newline", "ab\n¦", "ab\nREF\n¦"],

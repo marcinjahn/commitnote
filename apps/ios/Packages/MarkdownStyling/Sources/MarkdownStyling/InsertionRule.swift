@@ -68,10 +68,9 @@ private struct Source {
         spans = document.tables.map(\.range)
     }
 
-    // JavaScript's `lastIndexOf("\n", position - 1) + 1`, which clamps a negative start to 0.
     func lineStart(_ position: Int) -> Int {
-        guard !units.isEmpty else { return 0 }
-        var index = min(max(position - 1, 0), units.count - 1)
+        guard position > 0, !units.isEmpty else { return 0 }
+        var index = min(position - 1, units.count - 1)
         while index >= 0 {
             if units[index] == newline { return index + 1 }
             index -= 1
