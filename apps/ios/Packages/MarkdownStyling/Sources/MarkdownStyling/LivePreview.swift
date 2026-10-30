@@ -29,6 +29,7 @@ public enum Placement: Sendable, Equatable {
     case checkbox(range: Range<Int>, checked: Bool)
     case rule(lineRange: Range<Int>)
     case image(reference: ImageReference, lineRange: Range<Int>, sourceVisible: Bool)
+    case table(RenderedTable)
 }
 
 public enum LivePreview {
@@ -49,6 +50,7 @@ private struct Renderer {
     var inline: [StyleRun] = []
     var hidden: [StyleRun] = []
     var placements: [Placement] = []
+    var images: [(node: SyntaxNode, reference: ImageReference?)] = []
 
     init(document: MarkdownDocument, selection: [TextSelection]) {
         self.document = document
@@ -100,6 +102,7 @@ private struct Renderer {
             ancestors.append(node)
             visit(node, parent: parent)
         }
+        placeTables()
     }
 
     mutating func visit(_ node: SyntaxNode, parent: SyntaxKind?) {
@@ -178,12 +181,60 @@ private struct Renderer {
     }
 
     mutating func visitImage(_ node: SyntaxNode) {
-        guard let reference = ImageReference.reference(for: node, in: document) else { return }
+        let reference = ImageReference.reference(for: node, in: document)
+        images.append((node, reference))
+        guard let reference else { return }
         let active = linesActive(node.range)
         if !active { hidden.append(StyleRun(range: node.range, style: .hidden)) }
         placements.append(
             .image(
                 reference: reference, lineRange: document.line(containing: node.range.lowerBound),
                 sourceVisible: active))
+    }
+
+    mutating func placeTables() {
+        let tables = document.tables.filter { $0.containerPrefix != nil && !linesActive($0.range) }
+        guard !tables.isEmpty else { return }
+        var sources = Array(repeating: TableCellSources(), count: tables.count)
+        for run in inline {
+            switch run.style {
+            case .emphasis, .strong, .strikethrough, .inlineCode, .link, .url:
+                for index in Self.indices(of: tables, overlapping: run.range) { sources[index].styled.append(run) }
+            case .mutedMarker:
+                for index in Self.indices(of: tables, overlapping: run.range) { sources[index].dropped.append(run) }
+            default:
+                break
+            }
+        }
+        for run in hidden {
+            for index in Self.indices(of: tables, overlapping: run.range) { sources[index].dropped.append(run) }
+        }
+        for image in images {
+            for index in Self.indices(of: tables, overlapping: image.node.range) { sources[index].images.append(image) }
+        }
+        placements.removeAll { placement in
+            guard case .image(let reference, _, _) = placement else { return false }
+            return Self.indices(of: tables, overlapping: reference.range).contains {
+                tables[$0].range.lowerBound <= reference.range.lowerBound
+                    && reference.range.upperBound <= tables[$0].range.upperBound
+            }
+        }
+        for (table, sources) in zip(tables, sources) {
+            placements.append(.table(RenderedTable(table, units: document.units, sources: sources)))
+            hidden.append(StyleRun(range: table.range, style: .hidden))
+        }
+    }
+
+    /// `tables` must be in document order and disjoint.
+    static func indices(of tables: [MarkdownTable], overlapping range: Range<Int>) -> Range<Int> {
+        var low = 0
+        var high = tables.count
+        while low < high {
+            let mid = (low + high) / 2
+            if tables[mid].range.upperBound <= range.lowerBound { low = mid + 1 } else { high = mid }
+        }
+        var end = low
+        while end < tables.count, tables[end].range.lowerBound < range.upperBound { end += 1 }
+        return low..<end
     }
 }

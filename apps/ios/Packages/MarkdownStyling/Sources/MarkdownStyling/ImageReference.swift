@@ -74,7 +74,7 @@ public struct ImageReference: Sendable, Equatable {
         return String(decoding: result, as: UTF16.self)
     }
 
-    private static func isEscapable(_ unit: UInt16) -> Bool {
+    static func isEscapable(_ unit: UInt16) -> Bool {
         (33...47).contains(unit) || (58...64).contains(unit) || (91...96).contains(unit)
             || (123...126).contains(unit)
     }

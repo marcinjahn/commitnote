@@ -191,6 +191,7 @@ final class MarkdownStyler {
                     Checkbox(range: (range.lowerBound - start)..<(range.upperBound - start), checked: checked))
             case .image(let reference, let lineRange, _):
                 result[lineIndex(starts, lineRange.lowerBound)].images.append(imageBox(reference))
+            case .table: break
             }
         }
         return result
