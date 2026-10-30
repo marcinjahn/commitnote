@@ -65,6 +65,7 @@ final class PreviewLayoutDelegate: NSObject, NSTextLayoutManagerDelegate {
     var hairline: CGFloat = 1
     var bodyFont = UIFont.preferredFont(forTextStyle: .body)
     weak var images: EditorImageStore?
+    var tableSelection: TableSelection?
 
     func textLayoutManager(
         _ textLayoutManager: NSTextLayoutManager, textLayoutFragmentFor location: any NSTextLocation,
@@ -79,7 +80,7 @@ final class PreviewLayoutDelegate: NSObject, NSTextLayoutManagerDelegate {
         }
         return PreviewLayoutFragment(
             textElement: textElement, range: textElement.elementRange, decorations: decorations,
-            tint: tint, hairline: hairline, bodyFont: bodyFont, images: images)
+            tint: tint, hairline: hairline, bodyFont: bodyFont, images: images, previewLayout: self)
     }
 }
 
@@ -88,17 +89,19 @@ final class PreviewLayoutFragment: NSTextLayoutFragment {
     private let tint: UIColor
     private let hairline: CGFloat
     private weak var images: EditorImageStore?
+    private weak var previewLayout: PreviewLayoutDelegate?
     private let font: UIFont
 
     init(
         textElement: NSTextElement, range: NSTextRange?, decorations: [PreviewDecoration], tint: UIColor,
-        hairline: CGFloat, bodyFont: UIFont, images: EditorImageStore?
+        hairline: CGFloat, bodyFont: UIFont, images: EditorImageStore?, previewLayout: PreviewLayoutDelegate?
     ) {
         self.font = bodyFont
         self.decorations = decorations
         self.tint = tint
         self.hairline = hairline
         self.images = images
+        self.previewLayout = previewLayout
         super.init(textElement: textElement, range: range)
     }
 
@@ -195,7 +198,7 @@ final class PreviewLayoutFragment: NSTextLayoutFragment {
                 if let table = tableFrame {
                     let origin = CGPoint(
                         x: pixelAligned(table.rect.minX) + point.x, y: pixelAligned(table.rect.minY) + point.y)
-                    table.box.draw(at: origin, tint: tint) { imageId in
+                    table.box.draw(at: origin, tint: tint, selection: tableSelection(for: table.box)) { imageId in
                         if case .loaded(let image) = self.imageState(imageId) { return image }
                         return nil
                     }
@@ -208,6 +211,15 @@ final class PreviewLayoutFragment: NSTextLayoutFragment {
     private func imageState(_ imageId: String) -> EditorImageState {
         guard Thread.isMainThread else { return .loading }
         return MainActor.assumeIsolated { images?.state(for: imageId) ?? .loading }
+    }
+
+    private func tableSelection(for box: PreviewTableBox) -> TableSelection? {
+        guard Thread.isMainThread else { return nil }
+        let start = box.table.table.range.lowerBound
+        return MainActor.assumeIsolated {
+            guard let selection = previewLayout?.tableSelection, selection.tableStart == start else { return nil }
+            return selection
+        }
     }
 
     private func drawImage(_ box: PreviewImageBox, in rect: CGRect) {
@@ -506,6 +518,32 @@ extension MarkdownTextView {
             return true
         }
         return hit
+    }
+
+    /// The rendered table whose source starts at note offset `tableStart`, with its rect in container coordinates.
+    func renderedTable(startingAt tableStart: Int) -> (box: PreviewTableBox, rect: CGRect)? {
+        guard let fragment = tableFragment(startingAt: tableStart), let table = fragment.tableFrame else { return nil }
+        return (
+            table.box,
+            table.rect.offsetBy(dx: fragment.layoutFragmentFrame.minX, dy: fragment.layoutFragmentFrame.minY)
+        )
+    }
+
+    func redrawTable(startingAt tableStart: Int) {
+        guard let layout = textLayoutManager, let fragment = tableFragment(startingAt: tableStart) else { return }
+        layout.invalidateLayout(for: fragment.rangeInElement)
+        layout.textViewportLayoutController.layoutViewport()
+    }
+
+    private func tableFragment(startingAt tableStart: Int) -> PreviewLayoutFragment? {
+        guard let layout = textLayoutManager, let storage = contentStorage,
+            let location = storage.location(storage.documentRange.location, offsetBy: tableStart)
+        else { return nil }
+        layout.ensureLayout(for: NSTextRange(location: location))
+        guard let fragment = layout.textLayoutFragment(for: location) as? PreviewLayoutFragment,
+            fragment.tableFrame?.box.table.table.range.lowerBound == tableStart
+        else { return nil }
+        return fragment
     }
 
     /// Rendered tables in the viewport, with their frames in text view coordinates.

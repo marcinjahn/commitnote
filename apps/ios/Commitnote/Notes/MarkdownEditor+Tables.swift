@@ -18,6 +18,18 @@ struct PreviewTableBox: Equatable {
     var size: CGSize { CGSize(width: geometry.width, height: geometry.height) }
 }
 
+/// Whole cells selected in the rendered table whose source starts at note offset `tableStart`.
+struct TableSelection: Equatable, Sendable {
+    var tableStart: Int
+    var anchor: TableCellPosition
+    var focus: TableCellPosition
+
+    /// Row-major, as `RenderedTable.copyText(from:to:)` copies.
+    func contains(_ position: TableCellPosition) -> Bool {
+        min(anchor, focus) <= position && position <= max(anchor, focus)
+    }
+}
+
 final class PreviewTableValue: NSObject {
     let box: PreviewTableBox
 
@@ -195,7 +207,7 @@ struct PreviewTableBuilder {
 extension PreviewTableBox {
     /// Draws the grid and the cell items with the table's top-left outer border corner at `origin`.
     /// Border rects never overlap: the separator colour is translucent.
-    func draw(at origin: CGPoint, tint: UIColor, image: (String) -> UIImage?) {
+    func draw(at origin: CGPoint, tint: UIColor, selection: TableSelection?, image: (String) -> UIImage?) {
         guard let firstRow = geometry.cellFrames.first, let firstCell = firstRow.first, firstCell.x > 0 else {
             return
         }
@@ -215,6 +227,20 @@ extension PreviewTableBox {
             guard height > 0 else { continue }
             for x in xs {
                 UIRectFill(CGRect(x: origin.x + x, y: origin.y + top + border, width: border, height: height))
+            }
+        }
+
+        if let selection {
+            tint.withAlphaComponent(0.2).setFill()
+            for (row, frames) in geometry.cellFrames.enumerated() {
+                for (column, frame) in frames.enumerated()
+                where selection.contains(TableCellPosition(row: row, column: column)) {
+                    UIRectFillUsingBlendMode(
+                        CGRect(
+                            x: origin.x + CGFloat(frame.x), y: origin.y + CGFloat(frame.y),
+                            width: CGFloat(frame.width), height: CGFloat(frame.height)),
+                        .normal)
+                }
             }
         }
 

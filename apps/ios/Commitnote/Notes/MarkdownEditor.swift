@@ -204,7 +204,16 @@ struct MarkdownEditor: UIViewRepresentable {
                     case .checkbox, .rule: return []
                     }
                 })
-            (textView as? MarkdownTextView)?.previewLayoutHandler?()
+            guard let textView = textView as? MarkdownTextView else { return }
+            textView.previewLayoutHandler?()
+            if let tableStart = textView.tableSelectionStart,
+                !styler.placements.contains(where: { placement in
+                    if case .table(let rendered) = placement { return rendered.table.range.lowerBound == tableStart }
+                    return false
+                })
+            {
+                textView.clearTableSelection()
+            }
         }
 
         private func imageResolved(_ imageId: String) {
@@ -668,6 +677,7 @@ struct MarkdownEditor: UIViewRepresentable {
         }
 
         func textViewDidChange(_ textView: UITextView) {
+            (textView as? MarkdownTextView)?.clearTableSelection()
             guard !applying else { return }
             let text = textView.text ?? ""
             let selection = Self.selection(of: textView)
@@ -693,6 +703,7 @@ struct MarkdownEditor: UIViewRepresentable {
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
+            (textView as? MarkdownTextView)?.clearTableSelection()
             #if FAKE_CORE
             (textView as? MarkdownTextView)?.previewLayoutHandler?()
             #endif
@@ -921,6 +932,8 @@ final class MarkdownTextView: UITextView {
         }
     }
     private let previewTapDelegate = PreviewTapDelegate()
+    private let tableSelectionDelegate = TableSelectionDelegate()
+    private var tableMenu: UIEditMenuInteraction?
     private let pointerDelegate = EditorPointerDelegate()
     private let imageDropDelegate = EditorImageDropDelegate()
     private var imageLayoutKey: [CGFloat] = []
@@ -949,6 +962,13 @@ final class MarkdownTextView: UITextView {
         let tap = UITapGestureRecognizer(target: self, action: #selector(handlePreviewTap(_:)))
         tap.delegate = previewTapDelegate
         addGestureRecognizer(tap)
+        tableSelectionDelegate.textView = self
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleTableLongPress(_:)))
+        longPress.delegate = tableSelectionDelegate
+        addGestureRecognizer(longPress)
+        let menu = UIEditMenuInteraction(delegate: tableSelectionDelegate)
+        addInteraction(menu)
+        tableMenu = menu
         pointerDelegate.textView = self
         addInteraction(UIPointerInteraction(delegate: pointerDelegate))
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
@@ -1018,7 +1038,15 @@ final class MarkdownTextView: UITextView {
         if action == #selector(paste(_:)), isEditable, UIPasteboard.general.hasImages {
             return true
         }
+        if action == #selector(UIResponderStandardEditActions.copy(_:)), hasTableSelection {
+            return true
+        }
         return super.canPerformAction(action, withSender: sender)
+    }
+
+    override func copy(_ sender: Any?) {
+        if copyTableSelection() { return }
+        super.copy(sender)
     }
 
     /// On iPad the system Format menu keeps ⌘B and ⌘I, so they write markdown here.
@@ -1050,7 +1078,12 @@ final class MarkdownTextView: UITextView {
     }
 
     @objc private func handlePreviewTap(_ recognizer: UITapGestureRecognizer) {
-        guard recognizer.state == .ended, let hit = previewHit(at: recognizer.location(in: self)) else { return }
+        guard recognizer.state == .ended else { return }
+        if hasTableSelection {
+            clearTableSelection()
+            return
+        }
+        guard let hit = previewHit(at: recognizer.location(in: self)) else { return }
         switch hit {
         case .checkbox(let range):
             checkboxHandler?(range)
@@ -1070,6 +1103,71 @@ final class MarkdownTextView: UITextView {
         }
         selectedRange = NSRange(location: caret, length: 0)
         scrollRangeToVisible(selectedRange)
+    }
+
+    var hasTableSelection: Bool { previewLayout.tableSelection != nil }
+    var tableSelectionStart: Int? { previewLayout.tableSelection?.tableStart }
+
+    /// The rendered table cell under `point` (text view coordinates), named by its table's note offset.
+    func renderedTableCell(at point: CGPoint) -> (tableStart: Int, cell: TableCellPosition)? {
+        guard markedTextRange == nil else { return nil }
+        let containerPoint = CGPoint(x: point.x - textContainerInset.left, y: point.y - textContainerInset.top)
+        guard let hit = tableHit(at: containerPoint), let box = hit.fragment.tableFrame?.box,
+            let cell = box.geometry.cell(atX: Double(hit.point.x), y: Double(hit.point.y))
+        else { return nil }
+        return (box.table.table.range.lowerBound, TableCellPosition(row: cell.row, column: cell.column))
+    }
+
+    /// Selects whole cells without touching `selectedRange` or first responder, so the table never reveals.
+    @objc private func handleTableLongPress(_ recognizer: UILongPressGestureRecognizer) {
+        let point = recognizer.location(in: self)
+        switch recognizer.state {
+        case .began:
+            guard let hit = renderedTableCell(at: point) else { return }
+            let previous = previewLayout.tableSelection
+            tableMenu?.dismissMenu()
+            previewLayout.tableSelection = TableSelection(tableStart: hit.tableStart, anchor: hit.cell, focus: hit.cell)
+            if let previous, previous.tableStart != hit.tableStart {
+                redrawTable(startingAt: previous.tableStart)
+            }
+            redrawTable(startingAt: hit.tableStart)
+        case .changed:
+            guard var selection = previewLayout.tableSelection,
+                let table = renderedTable(startingAt: selection.tableStart)
+            else { return }
+            let geometry = table.box.geometry
+            let x = Double(point.x - textContainerInset.left - table.rect.minX)
+            let y = Double(point.y - textContainerInset.top - table.rect.minY)
+            guard
+                let cell = geometry.cell(
+                    atX: min(max(x, 0), max(0, geometry.width - 1)), y: min(max(y, 0), max(0, geometry.height - 1)))
+            else { return }
+            let focus = TableCellPosition(row: cell.row, column: cell.column)
+            guard focus != selection.focus else { return }
+            selection.focus = focus
+            previewLayout.tableSelection = selection
+            redrawTable(startingAt: selection.tableStart)
+        case .ended:
+            guard hasTableSelection else { return }
+            tableMenu?.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: point))
+        default:
+            break
+        }
+    }
+
+    func copyTableSelection() -> Bool {
+        guard let selection = previewLayout.tableSelection,
+            let table = renderedTable(startingAt: selection.tableStart)
+        else { return false }
+        UIPasteboard.general.string = table.box.table.copyText(from: selection.anchor, to: selection.focus)
+        return true
+    }
+
+    func clearTableSelection() {
+        guard let selection = previewLayout.tableSelection else { return }
+        previewLayout.tableSelection = nil
+        tableMenu?.dismissMenu()
+        redrawTable(startingAt: selection.tableStart)
     }
 
     override func layoutSubviews() {
@@ -1219,7 +1317,44 @@ private final class PreviewTapDelegate: NSObject, UIGestureRecognizerDelegate {
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard let textView else { return false }
-        return textView.previewHit(at: gestureRecognizer.location(in: textView)) != nil
+        return textView.hasTableSelection || textView.previewHit(at: gestureRecognizer.location(in: textView)) != nil
+    }
+}
+
+/// Lets the table long press track only touches over rendered table cells, and makes UIKit's own text gestures there
+/// wait for it, so they run normally everywhere else. Also supplies the table selection's Copy menu.
+private final class TableSelectionDelegate: NSObject, UIGestureRecognizerDelegate, UIEditMenuInteractionDelegate {
+    weak var textView: MarkdownTextView?
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard let textView else { return false }
+        return textView.renderedTableCell(at: touch.location(in: textView)) != nil
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let textView else { return false }
+        return textView.renderedTableCell(at: gestureRecognizer.location(in: textView)) != nil
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        guard let textView, let view = otherGestureRecognizer.view, view.isDescendant(of: textView) else {
+            return false
+        }
+        return otherGestureRecognizer !== textView.panGestureRecognizer
+            && otherGestureRecognizer !== textView.pinchGestureRecognizer
+            && !(otherGestureRecognizer is UITapGestureRecognizer)
+    }
+
+    func editMenuInteraction(
+        _ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration,
+        suggestedActions: [UIMenuElement]
+    ) -> UIMenu? {
+        let copyAction = UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { [weak textView] _ in
+            _ = textView?.copyTableSelection()
+        }
+        return UIMenu(children: [copyAction])
     }
 }
 
