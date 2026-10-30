@@ -2,7 +2,10 @@ import { isPersistentToast } from "../ui/notices/notice-messages";
 import type { AppSession, NativeRunningApp } from "./app-session";
 import type { EmitCoreEvent } from "./commands/command-context";
 
-export type ActionNoticeChannel = "trash" | "place" | "tag";
+export type ActionNoticeChannel =
+  "trash" | "place" | "tag" | "image" | "history" | "share";
+
+export type ActionNoticeTone = "info" | "success" | "error";
 
 export type NoticeUndo = () => Promise<
   { readonly kind: "ok" } | { readonly kind: "error"; readonly message: string }
@@ -14,8 +17,16 @@ export interface ActionNotices {
     channel: ActionNoticeChannel,
     message: string,
     undo: NoticeUndo,
-  ): void;
-  clear(channel: ActionNoticeChannel): void;
+  ): string;
+  show(
+    owner: NativeRunningApp,
+    channel: ActionNoticeChannel,
+    tone: ActionNoticeTone,
+    message: string,
+    options?: { readonly persistent?: boolean },
+  ): string;
+  /** With `id`, clears the channel only while that notice is still the one shown on it. */
+  clear(channel: ActionNoticeChannel, id?: string): void;
   perform(id: string): Promise<void>;
   /** False when `id` is not an action notice id at all. */
   dismiss(id: string): boolean;
@@ -38,20 +49,22 @@ export function createActionNotices(options: {
   const held = new Map<ActionNoticeChannel, HeldNotice>();
   let nextId = 1;
 
-  function clear(channel: ActionNoticeChannel): void {
+  function clear(channel: ActionNoticeChannel, id?: string): void {
     const notice = held.get(channel);
     if (notice === undefined) return;
+    if (id !== undefined && notice.id !== id) return;
     held.delete(channel);
     emit("noticeCleared", { id: notice.id });
   }
 
-  function show(
+  function post(
     owner: NativeRunningApp,
     channel: ActionNoticeChannel,
-    tone: "success" | "error",
+    tone: ActionNoticeTone,
     message: string,
     undo: NoticeUndo | null,
-  ): void {
+    persistent: boolean,
+  ): string {
     clear(channel);
     const id = `${ID_PREFIX}${nextId++}`;
     held.set(channel, { id, owner, undo });
@@ -59,9 +72,10 @@ export function createActionNotices(options: {
       id,
       tone,
       message,
-      persistent: isPersistentToast(tone, undo !== null),
+      persistent,
       action: undo === null ? null : { kind: "undo", label: "Undo" },
     });
+    return id;
   }
 
   function channelOf(id: string): ActionNoticeChannel | null {
@@ -77,7 +91,24 @@ export function createActionNotices(options: {
 
   return {
     showUndo(owner, channel, message, undo) {
-      show(owner, channel, "success", message, undo);
+      return post(
+        owner,
+        channel,
+        "success",
+        message,
+        undo,
+        isPersistentToast("success", true),
+      );
+    },
+    show(owner, channel, tone, message, options) {
+      return post(
+        owner,
+        channel,
+        tone,
+        message,
+        null,
+        options?.persistent ?? isPersistentToast(tone, false),
+      );
     },
     clear,
     async perform(id) {
@@ -89,7 +120,14 @@ export function createActionNotices(options: {
       if (app.current() !== notice.owner) return;
       const outcome = await notice.undo();
       if (outcome.kind === "error" && app.current() === notice.owner) {
-        show(notice.owner, channel, "error", outcome.message, null);
+        post(
+          notice.owner,
+          channel,
+          "error",
+          outcome.message,
+          null,
+          isPersistentToast("error", false),
+        );
       }
     },
     dismiss(id) {

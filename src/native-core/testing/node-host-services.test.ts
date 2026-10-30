@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import {
+  readImageDimensions,
+  sniffImageFormat,
+} from "../../images/pipeline/image-format";
+import { SAMPLE_IMAGE_WEBP_BASE64 } from "../../testing/sample-notes-repo/sample-image";
 import { createNodeHostServices } from "./node-host-services";
 
 const key = Uint8Array.from({ length: 32 }, (_, index) => index);
@@ -55,5 +60,54 @@ describe("Node host services", () => {
     expect(() => host.crypto.hmacSha256(contentKey, plaintext)).toThrow();
     sealed[0] ^= 1;
     expect(host.crypto.aesGcmDecrypt(contentKey, iv, aad, sealed)).toBeNull();
+  });
+
+  it("hands out each staged image input once", () => {
+    const host = createNodeHostServices();
+    const bytes = Uint8Array.of(1, 2, 3);
+    const input = host.stageInput(bytes, "image/png");
+    bytes[0] = 9;
+    expect(host.imageCodec.takeInput(input)).toEqual({
+      bytes: Uint8Array.of(1, 2, 3),
+      type: "image/png",
+    });
+    expect(host.imageCodec.takeInput(input)).toBeNull();
+    expect(host.imageCodec.takeInput("unknown")).toBeNull();
+  });
+
+  it("decodes image headers and encodes header-valid, size-dependent lossy WebP", async () => {
+    const { imageCodec } = createNodeHostServices();
+    const sample = Uint8Array.from(atob(SAMPLE_IMAGE_WEBP_BASE64), (char) =>
+      char.charCodeAt(0),
+    );
+    const decoded = await imageCodec.decode(sample);
+    expect(decoded).toMatchObject({ width: 64, height: 48 });
+
+    const small = await imageCodec.encodeWebp(decoded.handle, 20, 10, 0.5);
+    expect(small.length).toBe(64);
+    const large = await imageCodec.encodeWebp(decoded.handle, 1000, 700, 0.75);
+    expect(large.length).toBe(65_625);
+    expect(
+      await imageCodec.encodeWebp(decoded.handle, 1000, 700, 0.75),
+    ).toEqual(large);
+    for (const [bytes, width, height] of [
+      [small, 20, 10],
+      [large, 1000, 700],
+    ] as const) {
+      expect(sniffImageFormat(bytes)).toBe("webp");
+      expect(readImageDimensions(bytes, "webp")).toEqual({ width, height });
+      expect(new DataView(bytes.buffer).getUint32(4, true)).toBe(
+        bytes.length - 8,
+      );
+    }
+
+    imageCodec.release(decoded.handle);
+    await expect(
+      imageCodec.encodeWebp(decoded.handle, 40, 30, 0.5),
+    ).rejects.toThrow();
+    await expect(imageCodec.encodeWebp("unknown", 40, 30, 0.5)).rejects.toThrow();
+    await expect(
+      imageCodec.decode(new TextEncoder().encode("not an image")),
+    ).rejects.toThrow();
   });
 });

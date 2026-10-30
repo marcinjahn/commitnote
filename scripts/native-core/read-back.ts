@@ -1,9 +1,11 @@
 import { parseCommitMessage } from "../../src/changes/commit-message";
 import { readDeviceTrailer } from "../../src/changes/device-trailer";
 import { argon2idDirect, type Argon2idFunction } from "../../src/crypto/argon2";
-import { deriveKeyring, verifyKeyCheck } from "../../src/crypto/keyring";
+import { deriveKeyring, verifyKeyCheck, type Keyring } from "../../src/crypto/keyring";
+import { decryptImage, type ImageType } from "../../src/crypto/image-cipher";
 import { decryptNote } from "../../src/crypto/note-cipher";
 import { parseRepoConfig } from "../../src/crypto/repo-config";
+import type { TreeEntry } from "../../src/forge/forge-adapter";
 import { FakeForgeAdapter } from "../../src/forge/fake/fake-forge-adapter";
 import {
   InMemoryGitRepo,
@@ -16,12 +18,24 @@ import {
   INITIALIZE_SUBJECT,
   MAIN_BRANCH,
 } from "../../src/format/v1";
+import { imageFilePath } from "../../src/images/image-id";
+import { readImageIndex } from "../../src/images/image-index";
+import { parseImageReferences } from "../../src/images/image-reference";
+import {
+  readImageDimensions,
+  sniffImageFormat,
+} from "../../src/images/pipeline/image-format";
 import { README_COMMIT_MESSAGE } from "../../src/login/repo-readme";
 import { readOrderIndex, siblingComparator } from "../../src/order/order-index";
 import type { ColorTag } from "../../src/tags/color-tag";
 import { colorTagOf, readTagIndex } from "../../src/tags/tag-index";
 import { buildTrashIndex } from "../../src/trash/trash-index";
 import { buildNoteTree, findNode } from "../../src/tree/note-tree";
+
+const IMAGE_FORMATS: Record<ImageType, "webp" | "gif"> = {
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
 
 export interface ReadBackScenario {
   name: string;
@@ -34,6 +48,7 @@ export interface ReadBackScenario {
     order?: { parent: string[]; names: string[] }[];
     tags?: { path: string[]; tag: ColorTag | null }[];
     trash?: { count: number; names: string[] };
+    images?: { reference: string; type: ImageType }[];
     deviceName: string | null;
   };
 }
@@ -251,5 +266,95 @@ export async function readBackNativeRepo(
     }
   }
 
+  if (scenario.expect.images !== undefined) {
+    failures.push(
+      ...(await readBackImages(scenario, keyring, listing, adapter, tree)),
+    );
+  }
+
+  return failures;
+}
+
+async function readBackImages(
+  scenario: ReadBackScenario,
+  keyring: Keyring,
+  listing: readonly TreeEntry[],
+  adapter: FakeForgeAdapter,
+  tree: Awaited<ReturnType<typeof buildNoteTree>>,
+): Promise<string[]> {
+  const failures: string[] = [];
+  const fail = (check: string) => failures.push(`${scenario.name}: ${check}`);
+  const index = await readImageIndex(listing, keyring, (sha) =>
+    adapter.readBlob(sha),
+  );
+  if (!index.writable) fail("the image index is unreadable");
+
+  for (const [position, expected] of (scenario.expect.images ?? []).entries()) {
+    const label = `image ${position + 1}`;
+    const reference = parseImageReferences(expected.reference)[0];
+    if (
+      reference === undefined ||
+      reference.width === undefined ||
+      reference.height === undefined
+    ) {
+      fail(`${label} is not an image reference with dimensions`);
+      continue;
+    }
+    const { imageId, width, height } = reference;
+
+    const owners = index.images.get(imageId)?.owners ?? [];
+    if (owners.length === 0) {
+      fail(`${label} is not in the image index`);
+      continue;
+    }
+    let owned = false;
+    for (const owner of owners) {
+      if (owner.state !== "active") continue;
+      const node = findNode(tree, owner.path);
+      if (node === undefined || node.kind !== "note") continue;
+      try {
+        const text = await decryptNote(
+          keyring,
+          await adapter.readBlob(node.blobSha),
+        );
+        owned ||= text.includes(expected.reference);
+      } catch {
+        continue;
+      }
+    }
+    if (!owned) fail(`${label} has no active owner whose text references it`);
+
+    const entry = listing.find(
+      (candidate) => candidate.path === imageFilePath(imageId),
+    );
+    if (entry === undefined) {
+      fail(`${label} has no image file`);
+      continue;
+    }
+    let payload;
+    try {
+      payload = await decryptImage(
+        keyring,
+        imageId,
+        await adapter.readBlobBytes(entry.sha),
+      );
+    } catch {
+      fail(`${label} does not decrypt`);
+      continue;
+    }
+    if (payload.type !== expected.type) fail(`${label} has a different type`);
+    if (payload.width !== width || payload.height !== height) {
+      fail(`${label} has a different size than its reference`);
+    }
+    const format = sniffImageFormat(payload.bytes);
+    if (format !== IMAGE_FORMATS[expected.type]) {
+      fail(`${label} has bytes of a different format than its type`);
+      continue;
+    }
+    const dimensions = readImageDimensions(payload.bytes, format);
+    if (dimensions?.width !== width || dimensions.height !== height) {
+      fail(`${label} has a different size in its bytes than its reference`);
+    }
+  }
   return failures;
 }

@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { groupVersions } from "../../history/group-versions";
+  import {
+    buildVersionSections,
+    newestOfRow,
+  } from "../../history/version-sections";
   import { isGroupShared } from "../../history/shared-versions";
   import { noteIcons } from "../browse/action-icons";
   import type {
@@ -9,7 +12,6 @@
   import type { SyncError } from "../../sync/sync-engine";
   import { describeSyncError } from "../browse/sync-messages";
   import {
-    dayKey,
     describeDateTime,
     describeDay,
     describeEvent,
@@ -49,35 +51,7 @@
     onRetry,
   }: Props = $props();
 
-  type Row =
-    | { readonly kind: "single"; readonly version: NoteVersion; readonly current: boolean }
-    | { readonly kind: "session"; readonly versions: readonly NoteVersion[] };
-
-  interface Section {
-    readonly day: number;
-    readonly rows: Row[];
-  }
-
-  const sections = $derived.by(() => {
-    const [current, ...older] = versions;
-    if (current === undefined) return [];
-    const rows: Row[] = [{ kind: "single", version: current, current: true }];
-    for (const group of groupVersions(older)) {
-      rows.push(
-        group.versions.length === 1
-          ? { kind: "single", version: group.versions[0]!, current: false }
-          : { kind: "session", versions: group.versions },
-      );
-    }
-    const result: Section[] = [];
-    for (const row of rows) {
-      const day = dayKey(newestOf(row).committedAt);
-      const last = result[result.length - 1];
-      if (last !== undefined && last.day === day) last.rows.push(row);
-      else result.push({ day, rows: [row] });
-    }
-    return result;
-  });
+  const sections = $derived(buildVersionSections(versions));
 
   const indexBySha = $derived(
     new Map(versions.map((version, index) => [version.sha, index])),
@@ -85,10 +59,6 @@
 
   let expanded = $state<ReadonlySet<string>>(new Set());
   let listEl: HTMLElement | undefined = $state();
-
-  function newestOf(row: Row): NoteVersion {
-    return row.kind === "single" ? row.version : row.versions[0]!;
-  }
 
   function toggle(sha: string): void {
     const next = new Set(expanded);
@@ -181,11 +151,11 @@
   bind:this={listEl}
   onkeydown={handleKeydown}
 >
-  {#each sections as section (newestOf(section.rows[0]!).sha)}
+  {#each sections as section (newestOfRow(section.rows[0]!).sha)}
     <section class="day">
       <h3 class="day-header">{describeDay(section.day, now)}</h3>
       <ul class="rows">
-        {#each section.rows as row (newestOf(row).sha)}
+        {#each section.rows as row (newestOfRow(row).sha)}
           <li>
             {#if row.kind === "single"}
               {@render versionButton(

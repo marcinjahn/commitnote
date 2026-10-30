@@ -9,10 +9,16 @@ import {
   randomUUID,
 } from "node:crypto";
 import { argon2idDirect } from "../../crypto/argon2";
+import {
+  readImageDimensions,
+  sniffImageFormat,
+} from "../../images/pipeline/image-format";
 import type {
   HostBlobCacheEntry,
   HostClock,
   HostCrypto,
+  HostImageCodec,
+  HostImageInput,
   HostKeyAlgorithm,
   HostLogLevel,
   HostServices,
@@ -23,6 +29,7 @@ import type {
 export interface NodeHostServices extends HostServices {
   readonly posted: string[];
   readonly logs: { level: HostLogLevel; message: string }[];
+  stageInput(bytes: Uint8Array, type: string): string;
 }
 
 interface StoredKey {
@@ -132,6 +139,73 @@ function createNodeCrypto(keys: Map<KeyHandle, StoredKey>): HostCrypto {
   };
 }
 
+const MAX_VP8_DIMENSION = 0x3fff;
+const MIN_WEBP_BYTES = 64;
+
+function fakeLossyWebp(width: number, height: number, quality: number): Uint8Array {
+  const length = Math.max(
+    MIN_WEBP_BYTES,
+    Math.round((width * height * quality) / 8),
+  );
+  const out = new Uint8Array(length);
+  const data = new DataView(out.buffer);
+  const ascii = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i++) out[offset + i] = text.charCodeAt(i);
+  };
+  ascii(0, "RIFF");
+  data.setUint32(4, length - 8, true);
+  ascii(8, "WEBP");
+  ascii(12, "VP8 ");
+  data.setUint32(16, length - 20, true);
+  out[20] = 0x10;
+  out.set([0x9d, 0x01, 0x2a], 23);
+  data.setUint16(26, width, true);
+  data.setUint16(28, height, true);
+  return out;
+}
+
+function createNodeImageCodec(
+  inputs: Map<string, HostImageInput>,
+): HostImageCodec {
+  const images = new Map<string, { width: number; height: number }>();
+  return {
+    takeInput(input) {
+      const staged = inputs.get(input);
+      if (staged === undefined) return null;
+      inputs.delete(input);
+      return staged;
+    },
+    async decode(bytes) {
+      const format = sniffImageFormat(bytes);
+      const dimensions =
+        format === null ? null : readImageDimensions(bytes, format);
+      if (dimensions === null) {
+        throw new Error("Not a decodable image");
+      }
+      const handle = randomUUID();
+      images.set(handle, {
+        width: dimensions.width,
+        height: dimensions.height,
+      });
+      return { handle, width: dimensions.width, height: dimensions.height };
+    },
+    async encodeWebp(handle, width, height, quality) {
+      if (!images.has(handle)) {
+        throw new Error("Unknown image handle");
+      }
+      const valid = (value: number) =>
+        Number.isInteger(value) && value > 0 && value <= MAX_VP8_DIMENSION;
+      if (!valid(width) || !valid(height)) {
+        throw new Error("WebP dimensions out of range");
+      }
+      return fakeLossyWebp(width, height, quality);
+    },
+    release(handle) {
+      images.delete(handle);
+    },
+  };
+}
+
 function realClock(): HostClock {
   const timers = new Map<number, ReturnType<typeof setTimeout>>();
   let nextId = 1;
@@ -184,6 +258,7 @@ export function createNodeHostServices(
   const blobs = new Map<string, Map<string, HostBlobCacheEntry>>();
   const settings = new Map<string, string>();
   let session: StoredSession | null = null;
+  const imageInputs = new Map<string, HostImageInput>();
 
   function storedKey(handle: KeyHandle): StoredKey {
     const key = keys.get(handle);
@@ -196,6 +271,11 @@ export function createNodeHostServices(
   return {
     posted,
     logs,
+    stageInput(bytes, type) {
+      const input = randomUUID();
+      imageInputs.set(input, { bytes: plain(bytes), type });
+      return input;
+    },
     crypto,
     random: {
       randomBytes: (length) => plain(randomBytes(length)),
@@ -310,6 +390,7 @@ export function createNodeHostServices(
         logs.push({ level, message });
       },
     },
+    imageCodec: createNodeImageCodec(imageInputs),
     post(message) {
       posted.push(message);
     },

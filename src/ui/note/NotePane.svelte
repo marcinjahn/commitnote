@@ -12,6 +12,7 @@
   } from "../../editor/image-widgets";
   import type { ImageSource } from "../../images/image-source";
   import type { ImageId } from "../../images/image-id";
+  import { noteOwnsImage } from "../../images/image-ownership";
   import { loadImageLightbox } from "../images/load-image-lightbox";
   import { isNarrowLayout } from "../browse/drag-motion";
   import { Compartment } from "@codemirror/state";
@@ -32,7 +33,7 @@
   import { createNoteSwitchMotion } from "./note-switch-motion";
   import { playLeaveFade, playSwitchEnter } from "./switch-motion-driver";
   import { clampNotePosition, createNotePositions, type NotePosition } from "./note-position";
-  import { notePathEquals, type NotePath } from "../../changes/change";
+  import type { NotePath } from "../../changes/change";
   import VimStatusBar from "./VimStatusBar.svelte";
   import { createVimWiring, type VimInitialMode } from "./vim-wiring.svelte";
 
@@ -156,8 +157,7 @@
   function ownsImage(id: ImageId): boolean {
     const current = shown.openNote;
     if (shown.draft || current?.kind !== "loaded") return false;
-    const owners = engine.getState().synced?.images.images.get(id)?.owners ?? [];
-    return owners.some((owner) => owner.state === "active" && notePathEquals(owner.path, current.path));
+    return noteOwnsImage(engine.getState().synced?.images, current.path, id);
   }
 
 

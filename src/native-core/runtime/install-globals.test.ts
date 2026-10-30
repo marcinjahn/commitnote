@@ -9,7 +9,7 @@ describe("installBareHostGlobals", () => {
     installBareHostGlobals(target, getHost);
     for (const name of [
       "TextEncoder", "TextDecoder", "btoa", "atob", "setTimeout", "clearTimeout",
-      "queueMicrotask", "URL", "URLSearchParams", "Headers", "Response", "fetch", "console",
+      "queueMicrotask", "URL", "URLSearchParams", "Headers", "Response", "fetch", "console", "Blob",
     ]) {
       expect(target[name], name).toBeDefined();
     }
@@ -23,6 +23,12 @@ describe("installBareHostGlobals", () => {
     installBareHostGlobals(target, () => ({}) as HostServices);
     expect(target.URL).not.toBe("old");
     expect(target.globalThis).toBe(existing);
+  });
+
+  it("keeps an existing Blob", () => {
+    const target: Record<string, unknown> = { Blob: "native" };
+    installBareHostGlobals(target, () => ({}) as HostServices);
+    expect(target.Blob).toBe("native");
   });
 
   it("binds the host lazily", async () => {

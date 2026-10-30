@@ -1,3 +1,4 @@
+import { zlibSync } from "fflate";
 import { argon2idDirect, type Argon2idFunction } from "../../src/crypto/argon2";
 import { toBase64Url, utf8Encode } from "../../src/crypto/base64";
 import { encryptImage, type ImagePayload } from "../../src/crypto/image-cipher";
@@ -41,6 +42,15 @@ import {
   tagKey,
   type TagIndex,
 } from "../../src/tags/tag-index";
+import {
+  processImage,
+  type ImageCodec,
+} from "../../src/images/pipeline/image-pipeline";
+import {
+  NOTE_IMAGE_PROFILE,
+  SHARE_IMAGE_PROFILE,
+  type ImageProfile,
+} from "../../src/images/pipeline/image-profile";
 import { createSeededRandom } from "../../src/testing/sample-notes-repo/seeded-random";
 
 export const KEYRING_PASSPHRASE = "commitnote known answer";
@@ -743,6 +753,217 @@ async function gitBlobFile(noteEnvelope: string) {
   return { format: FORMAT, vectors };
 }
 
+const crcTable = Uint32Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let bit = 0; bit < 8; bit++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+
+function crc32(bytes: Uint8Array): number {
+  let c = 0xffffffff;
+  for (const byte of bytes) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function concatBytes(...parts: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
+}
+
+function ascii(text: string): Uint8Array {
+  return Uint8Array.from(text, (char) => char.charCodeAt(0));
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const typeAndData = concatBytes(ascii(type), data);
+  const out = new Uint8Array(typeAndData.length + 8);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, data.length);
+  out.set(typeAndData, 4);
+  view.setUint32(out.length - 4, crc32(typeAndData));
+  return out;
+}
+
+const PNG_SIGNATURE = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+
+function pngIhdr(width: number, height: number, colorType: number): Uint8Array {
+  const ihdr = new Uint8Array(13);
+  const view = new DataView(ihdr.buffer);
+  view.setUint32(0, width);
+  view.setUint32(4, height);
+  ihdr.set([8, colorType, 0, 0, 0], 8);
+  return pngChunk("IHDR", ihdr);
+}
+
+function buildPng(
+  width: number,
+  height: number,
+  channels: 3 | 4,
+  pixel: (x: number, y: number) => number[],
+): Uint8Array {
+  const stride = width * channels + 1;
+  const raw = new Uint8Array(stride * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      raw.set(pixel(x, y), y * stride + 1 + x * channels);
+    }
+  }
+  return concatBytes(
+    PNG_SIGNATURE,
+    pngIhdr(width, height, channels === 3 ? 2 : 6),
+    pngChunk("IDAT", zlibSync(raw, { level: 9 })),
+    pngChunk("IEND", new Uint8Array(0)),
+  );
+}
+
+function buildGifWithMetadata(): Uint8Array {
+  const u16 = (value: number) => Uint8Array.of(value & 0xff, value >> 8);
+  const comment = Uint8Array.of(0x21, 0xfe, 5, ...ascii("hello"), 0);
+  const xmp = Uint8Array.of(
+    0x21,
+    0xff,
+    11,
+    ...ascii("XMP DataXMP"),
+    4,
+    ...ascii("<x/>"),
+    0,
+  );
+  return concatBytes(
+    ascii("GIF89a"),
+    u16(2),
+    u16(2),
+    Uint8Array.of(0x80, 0, 0),
+    Uint8Array.of(0, 0, 0, 255, 255, 255),
+    comment,
+    xmp,
+    Uint8Array.of(0x2c, 0, 0, 0, 0),
+    u16(2),
+    u16(2),
+    Uint8Array.of(0, 2, 2, 0x4c, 0x01, 0, 0x3b),
+  );
+}
+
+function stubWebp(width: number, height: number): Uint8Array {
+  const out = new Uint8Array(30);
+  const view = new DataView(out.buffer);
+  out.set(ascii("RIFF"), 0);
+  view.setUint32(4, out.length - 8, true);
+  out.set(ascii("WEBPVP8 "), 8);
+  view.setUint32(16, 10, true);
+  out.set([0x9d, 0x01, 0x2a], 23);
+  view.setUint16(26, width, true);
+  view.setUint16(28, height, true);
+  return out;
+}
+
+const stubImageCodec: ImageCodec = {
+  async decode(input) {
+    const header = new DataView(await input.arrayBuffer());
+    return {
+      width: header.getUint32(16),
+      height: header.getUint32(20),
+      close() {},
+    };
+  },
+  async encodeWebp(_image, width, height) {
+    return stubWebp(width, height);
+  },
+};
+
+interface ImagePipelineInput {
+  readonly name: string;
+  readonly profile: "note" | "share";
+  readonly type: string;
+  readonly bytes: Uint8Array;
+}
+
+const IMAGE_PROFILES: Record<"note" | "share", ImageProfile> = {
+  note: NOTE_IMAGE_PROFILE,
+  share: SHARE_IMAGE_PROFILE,
+};
+
+function imagePipelineInputs(): ImagePipelineInput[] {
+  const twoColour = (x: number, y: number) =>
+    ((x >> 9) + (y >> 9)) & 1 ? [250, 250, 250] : [20, 90, 200];
+  const large = buildPng(3000, 1500, 3, twoColour);
+  const tooManyPixels = concatBytes(
+    PNG_SIGNATURE,
+    pngIhdr(10000, 6000, 2),
+  );
+  return [
+    { name: "png-large-note", profile: "note", type: "image/png", bytes: large },
+    { name: "png-large-share", profile: "share", type: "image/png", bytes: large },
+    {
+      name: "png-small-note",
+      profile: "note",
+      type: "image/png",
+      bytes: buildPng(120, 80, 3, (x, y) => [x * 2, y * 3, 128]),
+    },
+    {
+      name: "png-alpha-note",
+      profile: "note",
+      type: "image/png",
+      bytes: buildPng(64, 64, 4, (x, y) => [
+        200,
+        40,
+        40,
+        (x >> 3) + (y >> 3) & 1 ? 255 : 0,
+      ]),
+    },
+    {
+      name: "gif-with-comment",
+      profile: "note",
+      type: "image/gif",
+      bytes: buildGifWithMetadata(),
+    },
+    {
+      name: "svg",
+      profile: "note",
+      type: "image/svg+xml",
+      bytes: ascii(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>',
+      ),
+    },
+    {
+      name: "not-image",
+      profile: "note",
+      type: "text/plain",
+      bytes: ascii("just some text"),
+    },
+    { name: "too-many-pixels", profile: "note", type: "image/png", bytes: tooManyPixels },
+  ];
+}
+
+async function imagePipelineFile() {
+  const cases = [];
+  for (const { name, profile, type, bytes } of imagePipelineInputs()) {
+    const result = await processImage(
+      new Blob([bytes as Uint8Array<ArrayBuffer>], { type }),
+      stubImageCodec,
+      IMAGE_PROFILES[profile],
+    );
+    let expect;
+    if (!result.ok) {
+      expect = { kind: "rejected", rejection: result.rejection.kind };
+    } else if (result.payload.type === "image/gif") {
+      expect = { kind: "gif", bytesHex: toHex(result.payload.bytes) };
+    } else {
+      expect = {
+        kind: "webp",
+        width: result.payload.width,
+        height: result.payload.height,
+      };
+    }
+    cases.push({ name, profile, input: { type, bytesHex: toHex(bytes) }, expect });
+  }
+  return { format: FORMAT, cases };
+}
+
 export async function generateTestVectors(
   argon2id: Argon2idFunction = memoizeArgon2id(argon2idDirect),
 ): Promise<Record<string, unknown>> {
@@ -758,6 +979,7 @@ export async function generateTestVectors(
     "names.json": await namesFile(a.keyring),
     "notes.json": notes,
     "images.json": await imagesFile(a.keyring),
+    "image-pipeline.json": await imagePipelineFile(),
     "device-trailer.json": await deviceTrailerFile(a.keyring),
     "shares.json": await sharesFile(argon2id),
     "git-blob-sha1.json": await gitBlobFile(asciiNote.stored),

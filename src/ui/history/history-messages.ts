@@ -9,6 +9,7 @@ export const TITLE_ONLY_MESSAGE = "Restoring would change only the title.";
 export const TOO_LARGE_MESSAGE =
   "Too large to compare. This version can still be restored.";
 export const UNDECRYPTABLE_VERSION_MESSAGE = "This version can't be decrypted.";
+export const NOTE_NOT_OPEN_MESSAGE = "This note is no longer open.";
 export const LOAD_OLDER_LABEL = "Load older versions";
 
 /** Equal for two times on the same local day. */

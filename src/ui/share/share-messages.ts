@@ -1,6 +1,6 @@
 import type { ForgeId } from "../../forge/repo-coordinates";
 import { MAX_SHARE_LABEL_LENGTH } from "../../share/share-label";
-import type { ShareError } from "../../share/share-service";
+import type { ShareError, UpdateShareResult } from "../../share/share-service";
 
 export type MessagePart =
   | { readonly kind: "text"; readonly text: string }
@@ -15,6 +15,55 @@ const FORGE_NAMES: Readonly<Record<ForgeId, string>> = {
 
 export const SHARE_UPDATED_TEXT = "Link updated";
 export const SHARE_UNCHANGED_TEXT = "Link already shows the current version";
+
+export const SHARE_LABEL_FIELD = "Name (optional)";
+export const SHARE_PASSWORD_FIELD = "Password (optional)";
+export const SHARE_PASSWORD_HINT =
+  "The recipient needs the link and this password. Send the password separately.";
+export const CREATE_LINK_LABEL = "Create link";
+export const CREATING_LINK_LABEL = "Creating link…";
+export const CREATE_ANOTHER_LINK_LABEL = "Create another link";
+export const SHARE_LINK_LABEL = "Share link";
+export const SHARE_PASSWORD_LABEL = "Share password";
+export const COPY_LINK_LABEL = "Copy link";
+export const COPY_PASSWORD_LABEL = "Copy password";
+export const SHARED_LINKS_TITLE = "Shared links";
+export const SHARED_LINKS_EMPTY =
+  "No shared links yet. Share a note from its menu.";
+export const PASSWORD_PROTECTED_LABEL = "Password protected";
+export const UPDATING_LABEL = "Updating…";
+export const LINK_COPIED_TEXT = "Link copied";
+export const PASSWORD_COPIED_TEXT = "Password copied";
+export const COPY_FAILED_TEXT = "Couldn't copy. Select the text and copy it.";
+export const LINK_REVOKED_TEXT = "Link revoked";
+export const REVOKE_LINK_TITLE = "Revoke link?";
+export const REVOKE_LINK_MESSAGE =
+  "The link will stop working. People who already opened it may have kept a copy.";
+export const REVOKE_LINK_CONFIRM = "Revoke";
+export const RENAME_LINK_TITLE = "Rename link";
+export const RENAME_LINK_FIELD = "Name";
+export const RENAME_LINK_CONFIRM = "Rename";
+export const SHARED_VERSION_TITLE = "Shared version";
+export const LOADING_SHARED_VERSION_TEXT = "Loading shared version…";
+export const SHARED_VERSION_GONE_MESSAGE =
+  "The shared version is no longer in your history. The link still works.";
+export const SHARED_VERSION_PASSPHRASE_CHANGED_MESSAGE =
+  "The shared version is no longer in your history. Your passphrase was changed after this note was shared. The link still works.";
+export const TRY_AGAIN_LABEL = "Try again";
+
+export function shareDialogTitle(noteName: string): string {
+  return `Share “${noteName}”`;
+}
+
+export function shareExplanation(forgeId: ForgeId): string {
+  return forgeId === "github"
+    ? "Creates an encrypted copy of the saved version of this note as a secret gist on your GitHub account. Anyone with the link can read it. Later edits are not included. Your username is visible on the gist."
+    : "Creates an encrypted copy of the saved version of this note as a public snippet on your GitLab account. Anyone with the link can read it. Later edits are not included. Your username is visible on the snippet.";
+}
+
+export function shareActionsLabel(title: string): string {
+  return `Share actions for ${title}`;
+}
 
 const text = (value: string): MessagePart => ({ kind: "text", text: value });
 const link = (label: string, href: string): MessagePart => ({
@@ -106,6 +155,21 @@ export function describeShareError(
         ),
       ];
   }
+}
+
+export function describeShareUpdate(
+  result: UpdateShareResult,
+  forgeId: ForgeId,
+): { readonly tone: "success" | "info" | "error"; readonly text: string } {
+  if (!result.ok) {
+    return {
+      tone: "error",
+      text: messageText(describeShareError(result.error, forgeId)),
+    };
+  }
+  return result.unchanged
+    ? { tone: "info", text: SHARE_UNCHANGED_TEXT }
+    : { tone: "success", text: SHARE_UPDATED_TEXT };
 }
 
 export function messageText(parts: readonly MessagePart[]): string {

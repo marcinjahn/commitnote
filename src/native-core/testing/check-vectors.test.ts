@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { argon2idDirect } from "../../crypto/argon2";
 import { checkTestVectors } from "./check-vectors";
+import { createNodeHostServices } from "./node-host-services";
 
 const vectorModules = import.meta.glob<unknown>(
   "../../../apps/test-vectors/*.json",
@@ -33,7 +34,11 @@ describe("checkTestVectors", () => {
     );
     delete files["device-trailer.json"];
 
-    const result = await checkTestVectors(files, argon2idDirect);
+    const result = await checkTestVectors(
+      files,
+      argon2idDirect,
+      createNodeHostServices().imageCodec,
+    );
 
     expect(result.failures).toEqual([
       "device-trailer.json: format",

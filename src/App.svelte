@@ -74,9 +74,8 @@ import { flushBeforeLogOut } from "./app/log-out";
   import { SHARE_IMAGE_PROFILE } from "./images/pipeline/image-profile";
   import type { ImageInsertionConfig } from "./editor/image-insertion";
   import {
-    IMAGE_COUNT_LIMIT_MESSAGE,
     describeAddingImages,
-    describeImageRejections,
+    describeImageOutcome,
   } from "./ui/images/image-messages";
   import { createNoteHistory, type NoteHistory } from "./history/note-history";
   import { createNoteDates, type NoteDatesResolver } from "./history/note-dates";
@@ -674,13 +673,7 @@ import { flushBeforeLogOut } from "./app/log-out";
     enabled: () => earlyDraftKeyring !== null,
     onBusy: (busy, count) =>
       showEarlyDraftImageNotice(busy ? describeAddingImages(count) : null),
-    onOutcome: (outcome) => {
-      if (outcome.kind === "tooMany") {
-        showEarlyDraftImageNotice(IMAGE_COUNT_LIMIT_MESSAGE);
-        return;
-      }
-      showEarlyDraftImageNotice(describeImageRejections(outcome.rejections, outcome.total));
-    },
+    onOutcome: (outcome) => showEarlyDraftImageNotice(describeImageOutcome(outcome)),
   };
 
   async function discardEarlyDraftData(): Promise<void> {

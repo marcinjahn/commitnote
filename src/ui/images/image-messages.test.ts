@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ImageRejection } from "../../images/pipeline/image-pipeline";
 import {
   describeAddingImages,
+  describeImageOutcome,
   describeImageRejection,
   describeImageRejections,
   IMAGE_COUNT_LIMIT_MESSAGE,
@@ -64,5 +65,29 @@ describe("other messages", () => {
   it("describes adding images", () => {
     expect(describeAddingImages(1)).toBe("Adding image…");
     expect(describeAddingImages(2)).toBe("Adding images…");
+  });
+});
+
+describe("describeImageOutcome", () => {
+  it("reports the count limit for tooMany", () => {
+    expect(describeImageOutcome({ kind: "tooMany", count: 11 })).toBe(IMAGE_COUNT_LIMIT_MESSAGE);
+  });
+
+  it("is null when nothing was rejected", () => {
+    expect(describeImageOutcome({ kind: "prepared", images: [], rejections: [], total: 2 })).toBeNull();
+  });
+
+  it("describes a single rejection and summarises several", () => {
+    expect(
+      describeImageOutcome({ kind: "prepared", images: [], rejections: [{ kind: "notImage" }], total: 1 }),
+    ).toBe("This file is not an image.");
+    expect(
+      describeImageOutcome({
+        kind: "prepared",
+        images: [],
+        rejections: [{ kind: "notImage" }, { kind: "unsupported" }],
+        total: 3,
+      }),
+    ).toBe("2 of 3 images could not be added.");
   });
 });

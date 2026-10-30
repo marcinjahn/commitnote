@@ -1,5 +1,6 @@
 import { strFromU8, unzipSync } from "fflate";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { sniffImageFormat } from "../../images/pipeline/image-format";
 import { sharedMemoizedArgon2id } from "../../crypto/testing/shared-argon2id";
 import {
   createFakeForge,
@@ -15,6 +16,20 @@ import {
   createNodeHostServices,
   type NodeHostServices,
 } from "./node-host-services";
+
+function pngBytes(width: number, height: number): Uint8Array {
+  const ihdr = new Uint8Array(25);
+  const view = new DataView(ihdr.buffer);
+  view.setUint32(0, 13);
+  ihdr.set([0x49, 0x48, 0x44, 0x52], 4);
+  view.setUint32(8, width);
+  view.setUint32(12, height);
+  ihdr.set([8, 2, 0, 0, 0], 16);
+  return Uint8Array.of(
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ...ihdr,
+  );
+}
 
 let host: NodeHostServices;
 let controls: FakeForgeControls;
@@ -234,6 +249,45 @@ describe("fake core commands", () => {
     expect(requests).toEqual([
       { url: "https://example.test/ping", method: "POST" },
     ]);
+    core.stop();
+  });
+
+  it("processes an image through the host image codec", async () => {
+    const { core, send } = await setUp();
+    const png = pngBytes(3000, 1500);
+    const processed = await ok(
+      send("fake.processImage", {
+        base64: Buffer.from(png).toString("base64"),
+        type: "image/png",
+        profile: "note",
+      }),
+    );
+    expect(processed.result).toMatchObject({
+      ok: true,
+      type: "image/webp",
+      width: 2560,
+      height: 1280,
+    });
+    expect(
+      sniffImageFormat(Buffer.from(processed.result.base64, "base64")),
+    ).toBe("webp");
+
+    expect(
+      await ok(
+        send("fake.processImage", {
+          base64: Buffer.from("not an image").toString("base64"),
+          type: "image/png",
+          profile: "share",
+        }),
+      ),
+    ).toEqual({ result: { ok: false, rejection: "unsupported" } });
+    expect(
+      await send("fake.processImage", {
+        base64: "",
+        type: "",
+        profile: "other",
+      }),
+    ).toMatchObject({ ok: false, error: { kind: "invalidParams" } });
     core.stop();
   });
 

@@ -14,6 +14,16 @@ import type { RandomSource } from "../../crypto/random";
 import { gitBlobShaOfBytes } from "../../forge/git-blob-sha";
 import { HKDF_INFO } from "../../format/v1";
 import {
+  readImageDimensions,
+  sniffImageFormat,
+} from "../../images/pipeline/image-format";
+import {
+  NOTE_IMAGE_PROFILE,
+  SHARE_IMAGE_PROFILE,
+} from "../../images/pipeline/image-profile";
+import { processHostImage } from "../host-image-codec";
+import type { HostImageCodec } from "../host-services";
+import {
   encryptImageIndex,
   parseImageIndex,
   serializeImageIndex,
@@ -42,6 +52,7 @@ export const TEST_VECTOR_FILES = [
   "names.json",
   "notes.json",
   "images.json",
+  "image-pipeline.json",
   "device-trailer.json",
   "shares.json",
   "git-blob-sha1.json",
@@ -166,6 +177,7 @@ async function digestHex(
 export async function checkTestVectors(
   files: Record<string, unknown>,
   argon2id: Argon2idFunction,
+  imageCodec: HostImageCodec,
 ): Promise<{ checked: number; failures: string[] }> {
   const argon2 = memoize(argon2id);
   const failures: string[] = [];
@@ -553,6 +565,46 @@ export async function checkTestVectors(
       sealed.images.length === vector.imageFiles.length &&
       sealed.images.every((file, index) => file === vector.imageFiles[index]) &&
       source.done()
+    );
+  });
+
+  await eachVector("image-pipeline.json", "cases", byName, async (vector) => {
+    const profile =
+      vector.profile === "note"
+        ? NOTE_IMAGE_PROFILE
+        : vector.profile === "share"
+          ? SHARE_IMAGE_PROFILE
+          : null;
+    if (profile === null || typeof vector.input.type !== "string") return false;
+    const input = fromHex(vector.input.bytesHex);
+    const result = await processHostImage(
+      imageCodec,
+      new Blob([asBufferSource(input)], { type: vector.input.type }),
+      profile,
+    );
+    const expected = vector.expect;
+    if (!result.ok) {
+      return (
+        expected.kind === "rejected" &&
+        result.rejection.kind === expected.rejection
+      );
+    }
+    const { payload } = result;
+    if (expected.kind === "gif") {
+      return (
+        payload.type === "image/gif" &&
+        toHex(payload.bytes) === expected.bytesHex
+      );
+    }
+    if (expected.kind !== "webp" || payload.type !== "image/webp") return false;
+    const dimensions = readImageDimensions(payload.bytes, "webp");
+    return (
+      payload.width === expected.width &&
+      payload.height === expected.height &&
+      sniffImageFormat(payload.bytes) === "webp" &&
+      dimensions?.width === expected.width &&
+      dimensions?.height === expected.height &&
+      payload.bytes.length <= profile.maxBytes
     );
   });
 

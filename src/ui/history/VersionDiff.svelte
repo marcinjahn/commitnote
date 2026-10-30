@@ -10,6 +10,7 @@
     SAME_AS_CURRENT_MESSAGE,
     TITLE_ONLY_MESSAGE,
     TOO_LARGE_MESSAGE,
+    NOTE_NOT_OPEN_MESSAGE,
     UNDECRYPTABLE_VERSION_MESSAGE,
   } from "./history-messages";
 
@@ -69,7 +70,7 @@
   {:else if content.kind === "undecryptable"}
     <p class="diff-message">{UNDECRYPTABLE_VERSION_MESSAGE}</p>
   {:else if current === null}
-    <p class="diff-message">This note is no longer open.</p>
+    <p class="diff-message">{NOTE_NOT_OPEN_MESSAGE}</p>
   {:else if diff?.kind === "tooLarge"}
     {#if titleChanged}
       <p class="title-change">{describeTitleChange(currentName, versionName!)}</p>

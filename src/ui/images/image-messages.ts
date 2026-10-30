@@ -1,3 +1,4 @@
+import type { PrepareImagesOutcome } from "../../images/prepare-images";
 import type { ImageRejection } from "../../images/pipeline/image-pipeline";
 
 export const IMAGE_COUNT_LIMIT_MESSAGE = "You can add up to 10 images at a time.";
@@ -30,4 +31,9 @@ export function describeImageRejections(
 
 export function describeAddingImages(count: number): string {
   return count === 1 ? "Adding image…" : "Adding images…";
+}
+
+export function describeImageOutcome(outcome: PrepareImagesOutcome): string | null {
+  if (outcome.kind === "tooMany") return IMAGE_COUNT_LIMIT_MESSAGE;
+  return describeImageRejections(outcome.rejections, outcome.total);
 }

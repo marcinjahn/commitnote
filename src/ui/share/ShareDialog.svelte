@@ -7,8 +7,23 @@
   import { MAX_SHARE_LABEL_LENGTH } from "../../share/share-label";
   import Dialog from "../dialogs/Dialog.svelte";
   import {
+    COPY_LINK_LABEL,
+    COPY_PASSWORD_LABEL,
+    CREATE_ANOTHER_LINK_LABEL,
+    CREATE_LINK_LABEL,
+    CREATING_LINK_LABEL,
     describeShareError,
+    LINK_COPIED_TEXT,
     messageText,
+    PASSWORD_COPIED_TEXT,
+    SHARE_LABEL_FIELD,
+    SHARE_LINK_LABEL,
+    SHARE_PASSWORD_FIELD,
+    SHARE_PASSWORD_HINT,
+    SHARE_PASSWORD_LABEL,
+    shareDialogTitle,
+    shareExplanation,
+    SHARED_LINKS_TITLE,
     type MessagePart,
   } from "./share-messages";
   import ShareList from "./ShareList.svelte";
@@ -70,11 +85,7 @@
 
   const existing = $derived(shares === null ? [] : sharesOfNote(shares, path));
   const unreadable = $derived(shares !== null && !shares.writable);
-  const explanation = $derived(
-    forgeId === "github"
-      ? "Creates an encrypted copy of the saved version of this note as a secret gist on your GitHub account. Anyone with the link can read it. Later edits are not included. Your username is visible on the gist."
-      : "Creates an encrypted copy of the saved version of this note as a public snippet on your GitLab account. Anyone with the link can read it. Later edits are not included. Your username is visible on the snippet.",
-  );
+  const explanation = $derived(shareExplanation(forgeId));
 
   function fail(shareError: ShareError): void {
     error = describeShareError(shareError, forgeId);
@@ -115,12 +126,12 @@
   }
 </script>
 
-<Dialog {open} title={`Share “${noteName}”`} closeButton {onClose}>
+<Dialog {open} title={shareDialogTitle(noteName)} closeButton {onClose}>
   {#snippet children()}
     <div class="share-dialog">
       {#if existing.length > 0}
         <section class="existing">
-          <h3 class="existing-heading">Shared links</h3>
+          <h3 class="existing-heading">{SHARED_LINKS_TITLE}</h3>
           <ShareList
             entries={existing}
             {linkBase}
@@ -149,7 +160,7 @@
       {#if created === null}
         <form class="share-form" onsubmit={handleSubmit}>
           <div class="field">
-            <label for={labelId}>Name (optional)</label>
+            <label for={labelId}>{SHARE_LABEL_FIELD}</label>
             <input
               id={labelId}
               type="text"
@@ -161,7 +172,7 @@
             />
           </div>
           <div class="field">
-            <label for={passwordId}>Password (optional)</label>
+            <label for={passwordId}>{SHARE_PASSWORD_FIELD}</label>
             <input
               id={passwordId}
               type="text"
@@ -172,9 +183,7 @@
               disabled={unreadable || running}
             />
             <span id={hintId} class="field-hint"
-              >The recipient needs the link and this password. Send the password
-              separately.</span
-            >
+              >{SHARE_PASSWORD_HINT}</span>
           </div>
           {#if error !== null}
             <p class="alert-error" role="alert">
@@ -195,14 +204,14 @@
               class="button button-primary"
               disabled={unreadable || running}
             >
-              {running ? "Creating link…" : "Create link"}
+              {running ? CREATING_LINK_LABEL : CREATE_LINK_LABEL}
             </button>
           </div>
         </form>
       {:else}
         <div class="share-form">
           <div class="field">
-            <label for={linkFieldId}>Share link</label>
+            <label for={linkFieldId}>{SHARE_LINK_LABEL}</label>
             <div class="copy-row">
               <input
                 id={linkFieldId}
@@ -215,14 +224,14 @@
                 type="button"
                 class="button"
                 onclick={() =>
-                  void copyField(created?.link ?? "", linkField, "Link copied")}
-                >Copy link</button
+                  void copyField(created?.link ?? "", linkField, LINK_COPIED_TEXT)}
+                >{COPY_LINK_LABEL}</button
               >
             </div>
           </div>
           {#if created.password !== null}
             <div class="field">
-              <label for={passwordFieldId}>Share password</label>
+              <label for={passwordFieldId}>{SHARE_PASSWORD_LABEL}</label>
               <div class="copy-row">
                 <input
                   id={passwordFieldId}
@@ -238,15 +247,15 @@
                     void copyField(
                       created?.password ?? "",
                       passwordField,
-                      "Password copied",
-                    )}>Copy password</button
+                      PASSWORD_COPIED_TEXT,
+                    )}>{COPY_PASSWORD_LABEL}</button
                 >
               </div>
             </div>
           {/if}
           <div>
             <button type="button" class="button button-ghost" onclick={createAnother}
-              >Create another link</button
+              >{CREATE_ANOTHER_LINK_LABEL}</button
             >
           </div>
         </div>

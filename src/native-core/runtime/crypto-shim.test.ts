@@ -68,6 +68,7 @@ describe("crypto shim", () => {
     const result = await checkTestVectors(
       vectorFiles,
       hostArgon2id(host.crypto),
+      host.imageCodec,
     );
     expect(result.failures).toEqual([]);
     expect(result.checked).toBeGreaterThan(50);
