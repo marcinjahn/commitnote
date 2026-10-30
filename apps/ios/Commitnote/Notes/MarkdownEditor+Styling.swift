@@ -20,9 +20,11 @@ final class MarkdownStyler {
         var checkboxes: [Checkbox] = []
         var rule = false
         var images: [PreviewImageBox] = []
+        var table: PreviewTableBox?
+        var tableLine = false
 
         var quote: Bool { segments.contains { $0.style == .quoteLine } }
-        var decorated: Bool { rule || quote || !checkboxes.isEmpty || !images.isEmpty }
+        var decorated: Bool { rule || quote || !checkboxes.isEmpty || !images.isEmpty || table != nil }
     }
 
     private struct FontKey: Hashable {
@@ -77,8 +79,9 @@ final class MarkdownStyler {
                 ? [EditorText.TextSelection(location: selected.location, length: selected.length)] : [])
         placements = rendered.placements
         let imageBox = imageBoxMaker(textView)
+        let tableBox = tableBoxMaker(textView)
         let newLines = Self.lineStyles(
-            document, runs: rendered.runs, placements: rendered.placements, imageBox: imageBox)
+            document, runs: rendered.runs, placements: rendered.placements, imageBox: imageBox, tableBox: tableBox)
         let changed = needsFullRestyle ? Array(newLines.indices) : Self.changedLines(old: lines, new: newLines)
         let redraw = changed.filter { index in
             newLines[index].decorated || (index < lines.count && lines[index].decorated)
@@ -103,6 +106,7 @@ final class MarkdownStyler {
         }
         invalidateLayout(redraw, of: document, in: textView)
         if textView.typingAttributes[.previewCheckbox] != nil || textView.typingAttributes[.previewImages] != nil
+            || textView.typingAttributes[.previewTable] != nil
             || (textView.typingAttributes[.font] as? UIFont).map({ $0.pointSize < 1 }) == true
         {
             textView.typingAttributes = baseAttributes
@@ -111,7 +115,10 @@ final class MarkdownStyler {
 
     func invalidateImage(_ imageId: String, in textView: UITextView) {
         guard let document, document.lines.count == lines.count else { return }
-        let indices = lines.indices.filter { index in lines[index].images.contains { $0.imageId == imageId } }
+        let indices = lines.indices.filter { index in
+            lines[index].images.contains { $0.imageId == imageId }
+                || lines[index].table?.table.imageIds.contains(imageId) == true
+        }
         invalidateLayout(indices, of: document, in: textView)
         if !indices.isEmpty {
             textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
@@ -131,6 +138,23 @@ final class MarkdownStyler {
                 size: PreviewImageBox.size(
                     for: reference, state: images?.state(for: reference.imageId) ?? .loading,
                     available: available, compact: compact, scale: scale))
+        }
+    }
+
+    private func tableBoxMaker(_ textView: UITextView) -> @MainActor (RenderedTable) -> PreviewTableBox {
+        let container = textView.textLayoutManager?.textContainer
+        let width = container.map { $0.size.width - 2 * $0.lineFragmentPadding } ?? 0
+        let lineWidth = width > 0 && width < 1e6 ? width : 0
+        let scale = textView.traitCollection.displayScale
+        let tint: UIColor = textView.tintColor
+        let bodyFont = font(FontKey())
+        let images = self.images
+        return { table in
+            PreviewTableBuilder(
+                bodyFont: bodyFont, scale: scale, lineWidth: lineWidth,
+                imageState: { images?.state(for: $0) ?? .loading },
+                attributes: { self.attributes($0, paragraph: $1, tint: tint) }
+            ).box(for: table)
         }
     }
 
@@ -158,7 +182,8 @@ final class MarkdownStyler {
 
     private static func lineStyles(
         _ document: MarkdownDocument, runs: [StyleRun], placements: [Placement],
-        imageBox: @MainActor (ImageReference) -> PreviewImageBox
+        imageBox: @MainActor (ImageReference) -> PreviewImageBox,
+        tableBox: @MainActor (RenderedTable) -> PreviewTableBox
     ) -> [LineStyle] {
         let text = document.text as NSString
         let starts = document.lines
@@ -191,7 +216,14 @@ final class MarkdownStyler {
                     Checkbox(range: (range.lowerBound - start)..<(range.upperBound - start), checked: checked))
             case .image(let reference, let lineRange, _):
                 result[lineIndex(starts, lineRange.lowerBound)].images.append(imageBox(reference))
-            case .table: break
+            case .table(let rendered):
+                let range = rendered.table.range
+                var index = lineIndex(starts, range.lowerBound)
+                result[index].table = tableBox(rendered)
+                while index < starts.count, range.contains(starts[index]) {
+                    result[index].tableLine = true
+                    index += 1
+                }
             }
         }
         return result
@@ -244,6 +276,7 @@ final class MarkdownStyler {
         }
         let quote = line.quote
         let images = line.images.isEmpty ? nil : PreviewImageList(line.images)
+        let table = line.table.map(PreviewTableValue.init)
         let points = boundaries.sorted()
         for (lower, upper) in zip(points, points.dropFirst()) where lower < upper {
             let covering = line.segments.filter { $0.range.lowerBound <= lower && upper <= $0.range.upperBound }
@@ -252,6 +285,7 @@ final class MarkdownStyler {
             if quote { styled[.previewQuote] = true }
             if line.rule { styled[.previewRule] = true }
             if let images { styled[.previewImages] = images }
+            if let table { styled[.previewTable] = table }
             if let checkbox = line.checkboxes.first(where: {
                 $0.range.lowerBound <= lower && upper <= $0.range.upperBound
             }) {
@@ -269,16 +303,18 @@ final class MarkdownStyler {
             storage.setAttributes(styled, range: NSRange(location: start + lower, length: upper - lower))
         }
         if start + length < storage.length {
-            var attributes = baseAttributes
-            attributes[.paragraphStyle] = paragraph
-            if let images { attributes[.previewImages] = images }
-            storage.setAttributes(attributes, range: NSRange(location: start + length, length: 1))
+            var lineBreak = line.tableLine ? attributes([.hidden], paragraph: paragraph, tint: tint) : baseAttributes
+            lineBreak[.paragraphStyle] = paragraph
+            if let images { lineBreak[.previewImages] = images }
+            if line.tableLine && quote { lineBreak[.previewQuote] = true }
+            if let table { lineBreak[.previewTable] = table }
+            storage.setAttributes(lineBreak, range: NSRange(location: start + length, length: 1))
         }
     }
 
     private func paragraphStyle(_ line: LineStyle) -> NSParagraphStyle {
         let quote = line.segments.contains { $0.style == .quoteLine }
-        guard quote || line.rule || !line.images.isEmpty else { return NSParagraphStyle.default }
+        guard quote || line.rule || !line.images.isEmpty || line.table != nil else { return NSParagraphStyle.default }
         let style = NSMutableParagraphStyle()
         if quote {
             style.firstLineHeadIndent = 12
@@ -289,6 +325,9 @@ final class MarkdownStyler {
         }
         if !line.images.isEmpty {
             style.paragraphSpacing = PreviewImageBox.spacing(for: line.images)
+        }
+        if let table = line.table {
+            style.paragraphSpacing = PreviewImageBox.gap + table.size.height + PreviewImageBox.gap
         }
         return style
     }

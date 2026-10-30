@@ -8,6 +8,11 @@ extension NSAttributedString.Key {
     static let previewLink = NSAttributedString.Key("commitnote.preview.link")
     /// A `PreviewImageList` drawn below the paragraph.
     static let previewImages = NSAttributedString.Key("commitnote.preview.images")
+    /// A `PreviewTableValue` drawn below the paragraph.
+    static let previewTable = NSAttributedString.Key("commitnote.preview.table")
+    /// In a table cell's text: the source offset of the attribute run's first character.
+    static let previewTableSource = NSAttributedString.Key("commitnote.preview.table-source")
+    static let previewTableLink = NSAttributedString.Key("commitnote.preview.table-link")
 }
 
 /// What a paragraph draws besides its text; ranges are relative to the paragraph.
@@ -16,6 +21,7 @@ enum PreviewDecoration: Equatable {
     case rule
     case quote
     case images([PreviewImageBox])
+    case table(PreviewTableBox)
 
     static func decorations(in string: NSAttributedString) -> [PreviewDecoration] {
         var result: [PreviewDecoration] = []
@@ -32,6 +38,13 @@ enum PreviewDecoration: Equatable {
                 stop.pointee = true
             }
         }
+        var table: PreviewTableBox?
+        string.enumerateAttribute(.previewTable, in: whole) { value, _, stop in
+            if let value = value as? PreviewTableValue {
+                table = value.box
+                stop.pointee = true
+            }
+        }
         var rule = false
         var quote = false
         string.enumerateAttributes(in: whole) { attributes, _, stop in
@@ -42,6 +55,7 @@ enum PreviewDecoration: Equatable {
         if rule { result.append(.rule) }
         if quote { result.append(.quote) }
         if let images { result.append(.images(images)) }
+        if let table { result.append(.table(table)) }
         return result
     }
 }
@@ -110,16 +124,29 @@ final class PreviewLayoutFragment: NSTextLayoutFragment {
             boxes.append(contentsOf: list)
         }
         guard !boxes.isEmpty else { return [] }
-        // The document's last paragraph also carries the empty line after its newline, which sits
-        // below the paragraph spacing the boxes are drawn in.
-        let lines = textLineFragments
-        let lastLine = lines.last { $0.characterRange.length > 0 } ?? lines.last
-        var y = (lastLine?.typographicBounds.maxY ?? 0) + PreviewImageBox.gap
+        var y = textBottom + PreviewImageBox.gap
         return boxes.map { box in
             let rect = CGRect(origin: CGPoint(x: padding, y: y), size: box.size)
             y = rect.maxY + PreviewImageBox.gap
             return (box, rect)
         }
+    }
+
+    /// The rendered table and its rect, below the paragraph's last line.
+    var tableFrame: (box: PreviewTableBox, rect: CGRect)? {
+        for case .table(let box) in decorations {
+            let origin = CGPoint(x: padding + box.indent, y: textBottom + PreviewImageBox.gap)
+            return (box, CGRect(origin: origin, size: box.size))
+        }
+        return nil
+    }
+
+    /// The document's last paragraph also carries the empty line after its newline, which sits
+    /// below the paragraph spacing the boxes and tables are drawn in.
+    private var textBottom: CGFloat {
+        let lines = textLineFragments
+        let lastLine = lines.last { $0.characterRange.length > 0 } ?? lines.last
+        return lastLine?.typographicBounds.maxY ?? 0
     }
 
     override var renderingSurfaceBounds: CGRect {
@@ -164,6 +191,15 @@ final class PreviewLayoutFragment: NSTextLayoutFragment {
                 for image in imageBoxes {
                     drawImage(image.box, in: image.rect.offsetBy(dx: point.x, dy: point.y))
                 }
+            case .table:
+                if let table = tableFrame {
+                    let origin = CGPoint(
+                        x: pixelAligned(table.rect.minX) + point.x, y: pixelAligned(table.rect.minY) + point.y)
+                    table.box.draw(at: origin, tint: tint) { imageId in
+                        if case .loaded(let image) = self.imageState(imageId) { return image }
+                        return nil
+                    }
+                }
             }
         }
         UIGraphicsPopContext()
@@ -180,14 +216,7 @@ final class PreviewLayoutFragment: NSTextLayoutFragment {
             UIColor.secondarySystemFill.setFill()
             UIRectFill(rect)
         case .loaded(let image):
-            let size = image.size
-            guard size.width > 0, size.height > 0 else { return }
-            let scale = min(rect.width / size.width, rect.height / size.height)
-            let fitted = CGSize(width: size.width * scale, height: size.height * scale)
-            image.draw(
-                in: CGRect(
-                    x: rect.midX - fitted.width / 2, y: rect.midY - fitted.height / 2, width: fitted.width,
-                    height: fitted.height))
+            image.drawAspectFit(in: rect)
         case .unavailable:
             UIColor.separator.setStroke()
             let border = UIBezierPath(rect: rect.insetBy(dx: hairline / 2, dy: hairline / 2))
@@ -217,6 +246,10 @@ final class PreviewLayoutFragment: NSTextLayoutFragment {
 
     private var padding: CGFloat { textLayoutManager?.textContainer?.lineFragmentPadding ?? 5 }
 
+    private func pixelAligned(_ value: CGFloat) -> CGFloat {
+        (value / hairline).rounded() * hairline
+    }
+
     private var containerWidth: CGFloat {
         let width = textLayoutManager?.textContainer?.size.width ?? 0
         return width > 0 && width < 1e6 ? width : layoutFragmentFrame.width
@@ -232,10 +265,16 @@ final class PreviewLayoutFragment: NSTextLayoutFragment {
             let y = ((bounds.midY - hairline / 2) / hairline).rounded() * hairline
             return CGRect(x: padding, y: y, width: max(0, containerWidth - 2 * padding), height: hairline)
         case .quote:
-            return CGRect(x: padding, y: 0, width: 2, height: layoutFragmentFrame.height)
+            var height = layoutFragmentFrame.height
+            if let table = tableFrame {
+                height = max(height, table.rect.maxY + PreviewImageBox.gap)
+            }
+            return CGRect(x: padding, y: 0, width: 2, height: height)
         case .images:
             let rects = imageBoxes.map(\.rect)
             return rects.dropFirst().reduce(rects.first) { $0?.union($1) }
+        case .table:
+            return tableFrame?.rect
         }
     }
 

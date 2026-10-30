@@ -197,8 +197,12 @@ struct MarkdownEditor: UIViewRepresentable {
             applyNoteFont(to: textView)
             styler.restyle(textView)
             images.request(
-                styler.placements.compactMap { placement in
-                    if case .image(let reference, _, _) = placement { reference.imageId } else { nil }
+                styler.placements.flatMap { placement -> [String] in
+                    switch placement {
+                    case .image(let reference, _, _): return [reference.imageId]
+                    case .table(let rendered): return rendered.imageIds
+                    case .checkbox, .rule: return []
+                    }
                 })
         }
 
