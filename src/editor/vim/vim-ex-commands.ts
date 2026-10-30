@@ -1,7 +1,6 @@
 import { Vim, type CodeMirror } from "@replit/codemirror-vim";
 import { Facet } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-import { runTableCommand } from "../table-editing";
 import { showVimMessage } from "./vim-command-line";
 
 export interface VimCallbacks {
@@ -65,18 +64,6 @@ function imageCommand(cm: CodeMirror): void {
   onInsertImage();
 }
 
-function tableCommand(cm: CodeMirror): void {
-  const view = viewOf(cm);
-  if (view.state.readOnly) {
-    showVimMessage(view, "Tables cannot be added here.", true);
-    return;
-  }
-  // The selection must reach Vim as an external one so it enters visual mode.
-  if (cm.curOp) cm.curOp.isVimOp = false;
-  runTableCommand(view, "insert-table");
-  if (cm.curOp) cm.curOp.isVimOp = true;
-}
-
 let defined = false;
 
 export function defineAppExCommands(): void {
@@ -87,5 +74,4 @@ export function defineAppExCommands(): void {
   Vim.defineEx("wq", "wq", writeQuitCommand);
   Vim.defineEx("xit", "x", writeQuitCommand);
   Vim.defineEx("image", "ima", imageCommand);
-  Vim.defineEx("table", "tab", tableCommand);
 }
