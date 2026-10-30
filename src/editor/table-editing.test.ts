@@ -4,6 +4,7 @@ import {
   EditorSelection,
   EditorState,
   type Extension,
+  type Transaction,
 } from "@codemirror/state";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { undo } from "@codemirror/commands";
@@ -275,6 +276,46 @@ describe("tableCellNavigation", () => {
 
     expect(show(view)).toBe("| «a»   | b   |\n| --- | --- |\n| 1   | 2   |");
   });
+
+  it.each([
+    {
+      name: "Tab",
+      shiftKey: false,
+      marked: "| a   ¦| b   |",
+      selected: "b",
+    },
+    {
+      name: "Shift-Tab",
+      shiftKey: true,
+      marked: "| a   | b¦   |",
+      selected: "a",
+    },
+  ])(
+    "scrolls the caret into view on $name without changing the text or history",
+    ({ shiftKey, marked, selected }) => {
+      const transactions: Transaction[] = [];
+      const view = create(`${marked}\n| --- | --- |\n| 1   | 2   |`, {
+        extra: [
+          tableCellNavigation(),
+          EditorView.updateListener.of((update) => {
+            transactions.push(...update.transactions);
+          }),
+        ],
+      });
+      const before = view.state.doc.toString();
+
+      expect(press(view, "Tab", shiftKey)).toBe(true);
+
+      expect(transactions).toHaveLength(1);
+      expect(transactions[0].scrollIntoView).toBe(true);
+      expect(transactions[0].docChanged).toBe(false);
+      expect(view.state.doc.toString()).toBe(before);
+      const { from, to } = view.state.selection.main;
+      expect(view.state.sliceDoc(from, to)).toBe(selected);
+      expect(undo(view)).toBe(false);
+      expect(view.state.doc.toString()).toBe(before);
+    },
+  );
 
   it("appends a row with Tab in the last cell", () => {
     const view = create(`| a | b |\n| - | - |\n| 1 | 2¦ |`, withNavigation);

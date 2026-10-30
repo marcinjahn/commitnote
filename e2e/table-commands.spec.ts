@@ -57,6 +57,66 @@ test("Tab formats the table and walks through the cells", async ({ page }) => {
   await expect(editor(page)).toBeFocused();
 });
 
+test("Tab and Shift-Tab keep the selected cell in view in a tall table @mobile", async ({
+  page,
+}) => {
+  const numbers = Array.from({ length: 40 }, (_, index) =>
+    String(index + 1).padStart(2, "0"),
+  );
+  const rows = numbers.map((number) => `| r${number} | v${number} |`);
+  const cells = [
+    "col",
+    "val",
+    ...numbers.flatMap((number) => [`r${number}`, `v${number}`]),
+  ];
+  const scroller = page.locator(".note-content");
+  const expectCaretInView = async (): Promise<void> => {
+    await expect
+      .poll(async () => {
+        const [caret, bounds] = await Promise.all([
+          page.evaluate(() => {
+            const { top, bottom } = getSelection()!
+              .getRangeAt(0)
+              .getBoundingClientRect();
+            return { top, bottom };
+          }),
+          scroller.evaluate((el) => {
+            const { top, bottom } = el.getBoundingClientRect();
+            return { top, bottom };
+          }),
+        ]);
+        return caret.top >= bounds.top && caret.bottom <= bounds.bottom;
+      })
+      .toBe(true);
+  };
+  const tableSource = (): Promise<string | null> =>
+    editor(page).evaluate((el) => el.textContent);
+
+  await openWelcomeNote(page);
+  await pane(page).locator(".cm-line").last().click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.insertText(
+    ["", "", "| col | val |", "| --- | --- |", ...rows].join("\n"),
+  );
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  const source = await tableSource();
+
+  for (let index = cells.length - 1; index > 0; index--) {
+    await page.keyboard.press("Shift+Tab");
+    await expectSelected(page, cells[index - 1]);
+    await expectCaretInView();
+    if (index === cells.length - 1) expect(await tableSource()).toBe(source);
+  }
+
+  for (let index = 1; index < cells.length; index++) {
+    await page.keyboard.press("Tab");
+    await expectSelected(page, cells[index]);
+    await expectCaretInView();
+  }
+  await expectSelected(page, "v40");
+});
+
 test("Tab in the last cell adds a row", async ({ page }) => {
   await openWelcomeNote(page);
   await revealFirstHeader(page);
