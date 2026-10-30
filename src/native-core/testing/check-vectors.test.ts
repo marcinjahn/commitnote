@@ -72,15 +72,9 @@ describe("checkTestVectors", () => {
     expect(result.checked).toBe(expected);
   });
 
-  it("reports a tampered table command or image insertion by its name", async () => {
+  it("reports a tampered image insertion by its name", async () => {
     const files = freshFiles();
-    const commands = files["table-commands.json"];
     const insertions = files["image-insertion.json"];
-    const command = commands.commands.find((vector: any) => vector.expected);
-    command.expected.text += "x";
-    commands.commands.find((vector: any) => vector.expected === null).expected =
-      { text: "", selection: { anchor: 0, head: 0 } };
-    commands.availability[0].available.push("format-table");
     insertions.insertions[0].expected.selection.head += 1;
 
     const result = await checkTestVectors(
@@ -90,20 +84,14 @@ describe("checkTestVectors", () => {
     );
 
     expect(result.failures).toEqual([
-      `table-commands.json: ${command.name}`,
-      `table-commands.json: ${
-        commands.commands.find((vector: any) => vector.expected?.text === "")
-          .name
-      }`,
-      `table-commands.json: ${commands.availability[0].name}`,
       `image-insertion.json: ${insertions.insertions[0].name}`,
     ]);
   });
 
   it("reports a missing vector array and a missing file", async () => {
     const files = freshFiles();
-    delete files["table-commands.json"].availability;
-    delete files["image-insertion.json"];
+    delete files["image-insertion.json"].insertions;
+    delete files["git-blob-sha1.json"];
 
     const result = await checkTestVectors(
       files,
@@ -112,8 +100,8 @@ describe("checkTestVectors", () => {
     );
 
     expect(result.failures).toEqual([
-      "image-insertion.json: format",
-      "table-commands.json: availability",
+      "git-blob-sha1.json: format",
+      "git-blob-sha1.json: vectors",
       "image-insertion.json: insertions",
     ]);
   });

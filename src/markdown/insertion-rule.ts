@@ -20,11 +20,10 @@ function isBlankLine(line: string): boolean {
   return line.trim() === "";
 }
 
-export function insertBlock(
+function insertBlock(
   text: string,
   position: number,
   block: string,
-  kind: "table" | "lines",
   prefix = "",
 ): TextEdit {
   const separator = prefix.trimEnd();
@@ -48,7 +47,7 @@ export function insertBlock(
     const previousInTable = spans.some(
       (span) => span.from <= previousFrom && previousFrom <= span.to,
     );
-    if (!isBlankLine(previous) && (kind === "table" || previousInTable)) {
+    if (!isBlankLine(previous) && previousInTable) {
       before += separator + "\n";
     }
   }
@@ -56,7 +55,7 @@ export function insertBlock(
   let after = "";
   if (!isBlankLine(text.slice(at, to))) {
     const startsTable = at === from && spans.some((span) => span.from === from);
-    if (kind === "table" || startsTable) after = "\n";
+    if (startsTable) after = "\n";
   }
 
   const prefixed =
@@ -98,14 +97,13 @@ function closingSeparator(line: string, separator: string): string {
   return closing;
 }
 
-export function insertBlockAfterTable(
+function insertBlockAfterTable(
   text: string,
   tableEnd: number,
   block: string,
-  kind: "table" | "lines",
   prefix: string | null,
 ): TextEdit {
-  if (!prefix) return insertBlock(text, tableEnd, block, kind);
+  if (!prefix) return insertBlock(text, tableEnd, block);
   const separator = prefix.trimEnd();
   const prefixed = block
     .split("\n")
@@ -182,14 +180,14 @@ export function insertImageReferences(
   const at = Math.min(Math.max(position, 0), text.length);
   const block = references.join("\n");
   const table = tableSourceAt(text, at);
-  if (!table) return insertBlock(text, at, block, "lines");
+  if (!table) return insertBlock(text, at, block);
   const after = (end: number) =>
-    insertBlockAfterTable(text, end, block, "lines", table.prefix);
+    insertBlockAfterTable(text, end, block, table.prefix);
 
   const lineIndex = cellAt(table, at).line;
   const line = table.lines[lineIndex];
   if (lineIndex === 0 && at <= line.rowFrom) {
-    return insertBlock(text, line.from, block, "lines", table.prefix ?? "");
+    return insertBlock(text, line.from, block, table.prefix ?? "");
   }
   if (line.cells.length === 0) {
     if (lineIndex === table.lines.length - 1 && at > line.rowFrom) {
