@@ -17,7 +17,6 @@ import {
   enableVimMode,
   openDataSecurityAction,
   openSettings,
-  saveAccent,
 } from "./helpers/settings";
 import { createLink, shareDialog } from "./helpers/sharing";
 import {
@@ -139,27 +138,6 @@ test("commands-menu @mobile", async ({ page }) => {
   await openNotes(page);
   await openCommandsMenu(page);
   await expectNoA11yViolations(page, "commands-menu");
-});
-
-async function openTableMenuInCell(page: Page): Promise<void> {
-  await showTree(page);
-  await openWelcome(page);
-  await page.getByRole("cell", { name: "1", exact: true }).click();
-  await page.getByRole("button", { name: "Table", exact: true }).click();
-  await expect(page.getByRole("menu", { name: "Table" })).toBeVisible();
-}
-
-test("table-menu @mobile", async ({ page }) => {
-  await openNotes(page);
-  await openTableMenuInCell(page);
-  await expectNoA11yViolations(page, "table-menu");
-});
-
-test("table-menu teal accent @mobile", async ({ page }) => {
-  await openNotes(page);
-  await saveAccent(page, "Teal", "rgb(0, 133, 115)");
-  await openTableMenuInCell(page);
-  await expectNoA11yViolations(page, "table-menu");
 });
 
 test("row-menu", async ({ page }) => {

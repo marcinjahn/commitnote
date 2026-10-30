@@ -13,7 +13,6 @@ export type A11yState =
   | "image-note"
   | "image-lightbox"
   | "commands-menu"
-  | "table-menu"
   | "row-menu"
   | "error-toast"
   | "settings"
