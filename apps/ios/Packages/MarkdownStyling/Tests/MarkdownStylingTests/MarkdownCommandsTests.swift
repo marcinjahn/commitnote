@@ -326,7 +326,7 @@ final class MarkdownCommandsTests: XCTestCase {
 
     func testInsertImageReferencesAtEndWithoutCaretAnchor() {
         let result = insertImages("one", at: 3, caret(0))
-        XCTAssertEqual(result?.0, "one\n![a](image:x)")
+        XCTAssertEqual(result?.0, "one\n![a](image:x)\n")
         XCTAssertEqual(result?.1, caret(0))
     }
 
@@ -379,5 +379,41 @@ final class MarkdownCommandsTests: XCTestCase {
         let result = insertImages(text, at: position, caret(position), ["R"])
         XCTAssertEqual(result?.0, "😀é\nline\nR\n two")
         XCTAssertEqual(result?.1, caret(position + 3))
+    }
+
+    private let tableText = "| a | b |\n| - | - |\n| 1 | 2 |"
+    private let tableThenParagraph = "| a |\n| - |\n| 1 |\n\nafter"
+
+    func testInsertImageReferencesInTableCellTakesRuleCaret() {
+        let result = insertImages(tableText, at: 27, caret(27), ["R"])
+        XCTAssertEqual(result?.0, "| a | b |\n| - | - |\n| 1 | 2 R |")
+        XCTAssertEqual(result?.1, caret(29))
+    }
+
+    func testInsertImageReferencesInTableCellMapsSelectionElsewhere() {
+        let result = insertImages(tableText, at: 27, TextSelection(location: 0, length: 29), ["R"])
+        XCTAssertEqual(result?.1, TextSelection(location: 0, length: 31))
+    }
+
+    func testInsertImageReferencesAfterTableCaretAtAnchor() {
+        let result = insertImages(tableThenParagraph, at: 17, caret(17), ["R"])
+        XCTAssertEqual(result?.0, "| a |\n| - |\n| 1 |\n\nR\n\nafter")
+        XCTAssertEqual(result?.1, caret(21))
+    }
+
+    func testInsertImageReferencesAfterTableMapsSelectionOverFollowingWord() {
+        let result = insertImages(tableThenParagraph, at: 17, TextSelection(location: 19, length: 5), ["R"])
+        XCTAssertEqual(result?.1, TextSelection(location: 22, length: 5))
+    }
+
+    func testInsertImageReferencesAfterTableCaretAtInsertionPointButNotAnchorStays() {
+        let result = insertImages(tableThenParagraph, at: 17, caret(18), ["R"])
+        XCTAssertEqual(result?.1, caret(18))
+    }
+
+    func testInsertImageReferencesAboveTable() {
+        let result = insertImages("| a |\n| - |", at: 0, caret(0), ["R"])
+        XCTAssertEqual(result?.0, "R\n\n| a |\n| - |")
+        XCTAssertEqual(result?.1, caret(2))
     }
 }

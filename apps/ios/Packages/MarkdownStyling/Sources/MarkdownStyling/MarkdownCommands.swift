@@ -91,28 +91,11 @@ public enum MarkdownCommands {
         text: String, at position: Int, selection: TextSelection, references: [String]
     ) -> CommandResult? {
         if references.isEmpty { return nil }
-        let units = Array(text.utf16)
-        let anchor = max(0, min(position, units.count))
-        var lineStart = anchor
-        while lineStart > 0 && units[lineStart - 1] != 10 { lineStart -= 1 }
-        var lineEnd = anchor
-        while lineEnd < units.count && units[lineEnd] != 10 { lineEnd += 1 }
-        let caretAtAnchor = selection.length == 0 && selection.location == anchor
-        let insert =
-            (anchor == lineStart ? "" : "\n") + references.joined(separator: "\n")
-            + (anchor != lineEnd || caretAtAnchor ? "\n" : "")
-        let length = insert.utf16.count
-        let resulting: TextSelection
-        if caretAtAnchor {
-            resulting = TextSelection(location: anchor + length, length: 0)
-        } else {
-            let start = selection.location
-            let end = selection.location + selection.length
-            let mappedStart = start >= anchor && (selection.length > 0 || start > anchor) ? start + length : start
-            let mappedEnd = end > anchor ? end + length : end
-            resulting = TextSelection(location: mappedStart, length: mappedEnd - mappedStart)
-        }
-        return CommandResult(edits: [TextEdit(from: anchor, to: anchor, insert: insert)], selection: resulting)
+        let placed = InsertionRule.insertImageReferences(text: text, at: position, references: references)
+        let anchor = max(0, min(position, text.utf16.count))
+        if selection.length == 0 && selection.location == anchor { return placed }
+        return CommandResult(
+            edits: placed.edits, selection: TextEdits.mapSelection(selection, through: placed.edits))
     }
 
     /// The openable destination of the link, autolink or bare URL at `offset`.
