@@ -368,6 +368,7 @@ enum PreviewHit {
     case checkbox(Range<Int>)
     case link(URL)
     case image(String)
+    case tableCell(caret: Int)
 }
 
 struct PreviewAccessibilityItem {
@@ -429,6 +430,18 @@ extension MarkdownTextView {
         if let imageId = imageHit(at: containerPoint) {
             return .image(imageId)
         }
+        if let hit = tableHit(at: containerPoint), let box = hit.fragment.tableFrame?.box,
+            let cell = box.geometry.cell(atX: Double(hit.point.x), y: Double(hit.point.y))
+        {
+            if !isFirstResponder, let source = box.linkSource(row: cell.row, column: cell.column, at: hit.point) {
+                guard let url = linkURLProvider?(source) else { return nil }
+                return .link(url)
+            }
+            guard isEditable, cell.row < box.table.rows.count, cell.column < box.table.rows[cell.row].count else {
+                return nil
+            }
+            return .tableCell(caret: box.table.rows[cell.row][cell.column].caret)
+        }
         guard let fragment = layout.textLayoutFragment(for: containerPoint), let start = offset(of: fragment) else {
             return nil
         }
@@ -468,6 +481,53 @@ extension MarkdownTextView {
             return true
         }
         return hit
+    }
+
+    /// The rendered table under a container point, with the point in table coordinates. Checked across the
+    /// viewport because the table lies in the paragraph spacing, below its first line.
+    func tableHit(at containerPoint: CGPoint) -> (fragment: PreviewLayoutFragment, point: CGPoint)? {
+        guard let layout = textLayoutManager, let viewport = layout.textViewportLayoutController.viewportRange
+        else { return nil }
+        var hit: (fragment: PreviewLayoutFragment, point: CGPoint)?
+        _ = layout.enumerateTextLayoutFragments(from: viewport.location, options: []) { fragment in
+            if fragment.rangeInElement.location.compare(viewport.endLocation) != .orderedAscending {
+                return false
+            }
+            guard let preview = fragment as? PreviewLayoutFragment, let rect = preview.tableFrame?.rect else {
+                return true
+            }
+            let local = CGPoint(
+                x: containerPoint.x - fragment.layoutFragmentFrame.minX,
+                y: containerPoint.y - fragment.layoutFragmentFrame.minY)
+            if rect.contains(local) {
+                hit = (preview, CGPoint(x: local.x - rect.minX, y: local.y - rect.minY))
+                return false
+            }
+            return true
+        }
+        return hit
+    }
+
+    /// Rendered tables in the viewport, with their frames in text view coordinates.
+    func visibleRenderedTables() -> [PreviewTableAccessibilityItem] {
+        guard markedTextRange == nil, let layout = textLayoutManager,
+            let viewport = layout.textViewportLayoutController.viewportRange
+        else { return [] }
+        var tables: [PreviewTableAccessibilityItem] = []
+        _ = layout.enumerateTextLayoutFragments(from: viewport.location, options: []) { fragment in
+            if fragment.rangeInElement.location.compare(viewport.endLocation) != .orderedAscending {
+                return false
+            }
+            guard let preview = fragment as? PreviewLayoutFragment, let table = preview.tableFrame,
+                let start = self.offset(of: fragment)
+            else { return true }
+            let corner = self.origin(of: fragment)
+            tables.append(
+                PreviewTableAccessibilityItem(
+                    box: table.box, frame: table.rect.offsetBy(dx: corner.x, dy: corner.y), firstLineOffset: start))
+            return true
+        }
+        return tables
     }
 
     func visiblePreviewItems() -> [PreviewAccessibilityItem] {
@@ -523,7 +583,7 @@ extension MarkdownTextView {
     }
 }
 
-final class EditorActionElement: UIAccessibilityElement {
+class EditorActionElement: UIAccessibilityElement {
     var action: (() -> Void)?
 
     override func accessibilityActivate() -> Bool {

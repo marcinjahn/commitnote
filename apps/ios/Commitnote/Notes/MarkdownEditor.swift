@@ -204,6 +204,7 @@ struct MarkdownEditor: UIViewRepresentable {
                     case .checkbox, .rule: return []
                     }
                 })
+            (textView as? MarkdownTextView)?.previewLayoutHandler?()
         }
 
         private func imageResolved(_ imageId: String) {
@@ -760,6 +761,10 @@ final class MarkdownEditorContainer: UIView {
     private var previewElements: [EditorActionElement] = []
     private var previewElementKeys: [String] = []
     private var previewElementsValid = false
+    private var tableElements: [EditorTableElement] = []
+    private var tableElementKeys: [String] = []
+    private var tableElementsBuilt = false
+    private var tableElementsValid = false
     #if FAKE_CORE
     private lazy var testingSelection = testingElement("testing-editor-selection", x: 0)
     private lazy var testingImagePastes = testingElement("testing-editor-image-pastes", x: 1)
@@ -782,6 +787,7 @@ final class MarkdownEditorContainer: UIView {
         addSubview(textView)
         textView.previewLayoutHandler = { [weak self] in
             self?.previewElementsValid = false
+            self?.tableElementsValid = false
         }
     }
 
@@ -789,6 +795,7 @@ final class MarkdownEditorContainer: UIView {
         get {
             var elements: [Any] = [textView]
             elements.append(contentsOf: currentPreviewElements())
+            elements.append(contentsOf: currentTableElements())
             #if FAKE_CORE
             testingSelection.accessibilityValue = "\(textView.selectedRange.length)"
             testingImagePastes.accessibilityValue = "\(textView.imagePastesTaken)"
@@ -852,6 +859,37 @@ final class MarkdownEditorContainer: UIView {
         }
         previewElementKeys = keys
         previewElements = elements
+        return elements
+    }
+
+    private func currentTableElements() -> [EditorTableElement] {
+        if tableElementsValid { return tableElements }
+        tableElementsValid = true
+        var reusable: [String: EditorTableElement] = [:]
+        for (key, element) in zip(tableElementKeys, tableElements) {
+            reusable[key] = element
+        }
+        var keys: [String] = []
+        var elements: [EditorTableElement] = []
+        let visible = textView.bounds
+        for item in textView.visibleRenderedTables() where item.frame.intersects(visible) {
+            let element: EditorTableElement
+            if let existing = reusable.removeValue(forKey: item.key), existing.box == item.box {
+                element = existing
+            } else {
+                element = EditorTableElement(accessibilityContainer: self)
+                element.configure(box: item.box, editor: self, textView: textView)
+            }
+            element.place(at: textView.convert(item.frame, to: self))
+            keys.append(item.key)
+            elements.append(element)
+        }
+        if tableElementsBuilt && Set(keys) != Set(tableElementKeys) {
+            UIAccessibility.post(notification: .layoutChanged, argument: nil)
+        }
+        tableElementsBuilt = true
+        tableElementKeys = keys
+        tableElements = elements
         return elements
     }
 
@@ -1020,7 +1058,18 @@ final class MarkdownTextView: UITextView {
             UIApplication.shared.open(url)
         case .image(let imageId):
             imageTapHandler?(imageId)
+        case .tableCell(let caret):
+            revealTableCell(caret: caret)
         }
+    }
+
+    /// The caret then touches the table, so the next restyle shows its source.
+    func revealTableCell(caret: Int) {
+        if !isFirstResponder {
+            becomeFirstResponder()
+        }
+        selectedRange = NSRange(location: caret, length: 0)
+        scrollRangeToVisible(selectedRange)
     }
 
     override func layoutSubviews() {
@@ -1163,7 +1212,7 @@ final class MarkdownTextView: UITextView {
     }
 }
 
-/// Lets the preview tap begin only on a checkbox, link or image, so UIKit's own text taps place
+/// Lets the preview tap begin only on a checkbox, link, image or rendered table cell, so UIKit's own text taps place
 /// the caret everywhere else; once it recognizes, it keeps those taps from also firing.
 private final class PreviewTapDelegate: NSObject, UIGestureRecognizerDelegate {
     weak var textView: MarkdownTextView?
