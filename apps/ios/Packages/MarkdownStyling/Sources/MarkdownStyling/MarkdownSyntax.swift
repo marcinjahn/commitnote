@@ -50,6 +50,8 @@ public struct MarkdownDocument: Sendable {
     public let nodes: [SyntaxNode]
     /// UTF-16 offset of the start of each line.
     public let lines: [Int]
+    /// Every table, in document order.
+    public let tables: [MarkdownTable]
     let length: Int
     let units: [UInt16]
 
@@ -64,6 +66,11 @@ public struct MarkdownDocument: Sendable {
         }
         let end = low + 1 < lines.count ? lines[low + 1] - 1 : length
         return lines[low]..<end
+    }
+
+    /// The first table whose range, ends included, contains `position`.
+    public func table(containing position: Int) -> MarkdownTable? {
+        tables.first { $0.range.lowerBound <= position && position <= $0.range.upperBound }
     }
 
     /// Nodes intersecting `range`; an empty range matches nodes that contain or touch its position.
@@ -85,11 +92,13 @@ public enum MarkdownParser {
         var nodes: [SyntaxNode] = []
         nodes.reserveCapacity(units.count / 4)
         flatten(root, units, into: &nodes)
+        var tables: [MarkdownTable] = []
+        collectTables(root, topLevel: true, units, into: &tables)
         var lines = [0]
         for (index, unit) in units.enumerated() where unit == 10 {
             lines.append(index + 1)
         }
-        return MarkdownDocument(text: text, nodes: nodes, lines: lines, length: units.count, units: units)
+        return MarkdownDocument(text: text, nodes: nodes, lines: lines, tables: tables, length: units.count, units: units)
     }
 
     private static func flatten(_ node: Node, _ units: [UInt16], into nodes: inout [SyntaxNode]) {
@@ -98,6 +107,18 @@ public enum MarkdownParser {
         }
         for child in node.children where node.type != .linkReference || child.type == .quoteMark {
             flatten(child, units, into: &nodes)
+        }
+    }
+
+    private static func collectTables(
+        _ node: Node, topLevel: Bool, _ units: [UInt16], into tables: inout [MarkdownTable]
+    ) {
+        if node.type == .table {
+            if let table = MarkdownTable(node, topLevel: topLevel, units: units) { tables.append(table) }
+            return
+        }
+        for child in node.children {
+            collectTables(child, topLevel: node.type == .document, units, into: &tables)
         }
     }
 
