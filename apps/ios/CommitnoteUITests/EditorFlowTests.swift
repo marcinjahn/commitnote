@@ -2,6 +2,13 @@ import XCTest
 
 final class EditorFlowTests: XCTestCase {
     private static var loggedIn = false
+    private static let auditTypes: XCUIAccessibilityAuditType = [
+        .sufficientElementDescription, .dynamicType, .textClipped,
+    ]
+    private static let auditErrorDomain = "com.apple.xcode.xctest.accessibilityAudit"
+    private static let auditAttempts = 3
+    private static let tableNote = "Rendered table"
+    private static let tableFirstLine = "| Item | Amount |"
 
     override func setUp() {
         continueAfterFailure = false
@@ -231,5 +238,108 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertEqual(unavailable.label, "Image")
         XCTAssertEqual(images.count, 2)
         XCTAssertEqual(images.matching(NSPredicate(format: "value == %@", "loaded")).count, 1)
+    }
+
+    func testRenderedTable() {
+        let app = openNotes()
+        let newNote = app.buttons.matching(identifier: "new-note-button")
+        let nameField = app.element("draft-name-field")
+        hittable(newNote).tap()
+        waitForFocus(nameField)
+        nameField.typeText(Self.tableNote + "\n")
+        let editor = self.editor(in: app)
+        waitForFocus(editor)
+
+        let source = "\(Self.tableFirstLine)\n| --- | ---: |\n| Tea | Two cups |"
+        pasteText(source + "\n\nDone", into: editor)
+        waitForText(editor, containing: "| Tea | Two cups |")
+        waitForValue(syncStatus(in: app), "synced")
+
+        hideKeyboardThroughHooks(in: app)
+        leaveNote(in: app)
+        let opened = openNote(Self.tableNote, startingWith: Self.tableFirstLine, in: app)
+        XCTAssertFalse(hasKeyboardFocus(opened), "A reopened note stays unfocused")
+
+        let cells = app.elements("editor-table-cell")
+        waitForCondition("The table renders its cells") { cells.count == 4 }
+        XCTAssertEqual(cells.count, 4)
+        XCTAssertEqual(cells.allElementsBoundByIndex.map(\.label), ["Item", "Amount", "Tea", "Two cups"])
+        XCTAssertEqual(app.elements("editor-table").count, 1)
+
+        snapshotBothAppearances("editor-table")
+        let (audited, auditedEditor) = auditRenderedTable(app, opened)
+
+        let auditedCells = audited.elements("editor-table-cell")
+        auditedCells.matching(NSPredicate(format: "label == %@", "Tea")).firstMatch.tap()
+        waitUntilGone(audited.element("editor-table-cell"))
+        waitForFocus(auditedEditor)
+        waitForText(auditedEditor, containing: source)
+        auditedEditor.typeText("X")
+        waitForText(auditedEditor, containing: "| TeaX | Two cups |")
+
+        waitForValue(syncStatus(in: audited), "synced")
+        leaveNote(in: audited)
+    }
+
+    /// Returns the app and editor the audit ended with, as an audit that stops the app relaunches it.
+    private func auditRenderedTable(
+        _ app: XCUIApplication, _ editor: XCUIElement, file: StaticString = #filePath, line: UInt = #line
+    ) -> (XCUIApplication, XCUIElement) {
+        var app = app
+        var editor = editor
+        for attempt in 1...Self.auditAttempts {
+            var failures: [String] = []
+            do {
+                try app.performAccessibilityAudit(for: Self.auditTypes) { issue in
+                    guard let element = issue.element, !self.isIgnorable(element, in: app) else { return true }
+                    failures.append(
+                        "\(issue.compactDescription): \(issue.detailedDescription) "
+                            + "(identifier: \"\(element.identifier)\", label: \"\(element.label)\", "
+                            + "type: \(element.elementType.rawValue), frame: \(element.frame))")
+                    return true
+                }
+            } catch let error as NSError {
+                XCTAssertTrue(failures.isEmpty, auditMessage(failures), file: file, line: line)
+                guard error.domain == Self.auditErrorDomain, [-56, -51].contains(error.code),
+                    attempt < Self.auditAttempts
+                else {
+                    XCTFail("The accessibility audit failed: \(error)", file: file, line: line)
+                    return (app, editor)
+                }
+                if error.code == -51 {
+                    app = resumeAtTree(editorHooks: true, relaunch: true, file: file, line: line)
+                    editor = openNote(
+                        Self.tableNote, startingWith: Self.tableFirstLine, in: app, file: file, line: line)
+                    waitForCondition("The table renders its cells", file: file, line: line) {
+                        app.elements("editor-table-cell").count == 4
+                    }
+                }
+                continue
+            }
+            XCTAssertTrue(failures.isEmpty, auditMessage(failures), file: file, line: line)
+            return (app, editor)
+        }
+        return (app, editor)
+    }
+
+    private func auditMessage(_ failures: [String]) -> String {
+        "Accessibility audit of the rendered table found:\n" + failures.joined(separator: "\n")
+    }
+
+    private func isIgnorable(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        if element.elementType == .keyboard || element.elementType == .key {
+            return true
+        }
+        let identifier = element.identifier
+        if identifier.hasPrefix("testing-") {
+            return true
+        }
+        guard identifier.isEmpty else { return false }
+        if element.elementType == .searchField {
+            return true
+        }
+        let frame = element.frame
+        let bars = app.navigationBars.allElementsBoundByIndex + app.toolbars.allElementsBoundByIndex
+        return bars.contains { $0.frame.contains(frame) }
     }
 }
