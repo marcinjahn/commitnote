@@ -331,6 +331,12 @@ const tableWidgetsTheme = EditorView.baseTheme({
     wordBreak: "normal",
     overflowWrap: "break-word",
   },
+  ".cm-table th:empty::before, .cm-table td:empty::before": {
+    content: '""',
+    display: "inline-block",
+    height: "1lh",
+    verticalAlign: "top",
+  },
   ".cm-table th": {
     fontWeight: "var(--font-weight-semibold)",
     textAlign: "start",

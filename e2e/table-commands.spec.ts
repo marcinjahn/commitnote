@@ -280,6 +280,42 @@ test("Insert table from the Table menu selects the first header and keeps focus"
   await expect(line(page, "Name")).toHaveText("| Name | Column 2 | Column 3 |");
 });
 
+test("the empty rows of an inserted table are as tall as a filled row and can be clicked @mobile", async ({
+  page,
+}) => {
+  await openWelcomeNote(page);
+  await line(page, "Notes stay private").click();
+  await runTableMenuItem(page, "Insert table");
+  await line(page, "Notes stay private").click();
+  await expect(tables(page)).toHaveCount(2);
+
+  const rows = tables(page)
+    .filter({ has: page.getByRole("columnheader", { name: "Column 1" }) })
+    .locator("tr");
+  await expect(rows).toHaveCount(3);
+  await expect
+    .poll(async () => {
+      const heights: number[] = [];
+      for (let index = 0; index < 3; index++) {
+        const box = await rows.nth(index).boundingBox();
+        heights.push(box?.height ?? 0);
+      }
+      const [header, ...body] = heights;
+      return (
+        header > 0 && body.every((h) => h >= header - 1 && h <= header + 1)
+      );
+    })
+    .toBe(true);
+
+  await rows.nth(1).locator("td").first().click();
+  await expect(tables(page)).toHaveCount(1);
+  await expect(editor(page)).toBeFocused();
+  await page.keyboard.type("X");
+  await expect(
+    pane(page).locator(".cm-line", { hasText: /^\| X\s+\|/ }),
+  ).toHaveCount(1);
+});
+
 test("each table menu command is one undo step", async ({ page }) => {
   await openWelcomeNote(page);
   await placeCaretInBodyCell(page);
