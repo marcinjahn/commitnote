@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { insertBlock, insertImageReferences } from "./insertion-rule";
+import { tableSourceAt } from "./table-source";
 import { applyTextEdit, type TextEdit } from "./text-edit";
 
 const MARK = "¦";
@@ -128,7 +129,113 @@ describe("insertImageReferences around tables", () => {
   });
 
   it("places the lines above a table whose header sits in a blockquote", () => {
-    expect(lines("> ¦| a |\n> | - |", "REF")).toBe("REF\n¦\n> | a |\n> | - |");
+    expect(lines("> ¦| a |\n> | - |", "REF")).toBe(
+      "> REF\n>¦\n> | a |\n> | - |",
+    );
+  });
+});
+
+describe("insertImageReferences before a nested table", () => {
+  it.each<[string, string, string[], string]>([
+    [
+      "a list item at the header start",
+      "- x\n\n  ¦| a |\n  | - |",
+      ["REF"],
+      "- x\n\n  REF\n¦\n  | a |\n  | - |",
+    ],
+    [
+      "a list item at the header line start",
+      "- x\n\n¦  | a |\n  | - |",
+      ["REF"],
+      "- x\n\n  REF\n¦\n  | a |\n  | - |",
+    ],
+    [
+      "a blockquote at the header start",
+      "> ¦| a |\n> | - |",
+      ["REF"],
+      "> REF\n>¦\n> | a |\n> | - |",
+    ],
+    [
+      "a blockquote at the header line start",
+      "¦> | a |\n> | - |",
+      ["REF"],
+      "> REF\n>¦\n> | a |\n> | - |",
+    ],
+    [
+      "an ordered list item",
+      "1. x\n\n   ¦| a |\n   | - |",
+      ["REF"],
+      "1. x\n\n   REF\n¦\n   | a |\n   | - |",
+    ],
+    [
+      "a two-level blockquote",
+      "> > ¦| a |\n> > | - |",
+      ["REF"],
+      "> > REF\n> >¦\n> > | a |\n> > | - |",
+    ],
+    [
+      "several references",
+      "> ¦| a |\n> | - |",
+      ["A", "B"],
+      "> A\n> B\n>¦\n> | a |\n> | - |",
+    ],
+    [
+      "a blockquote with a paragraph above",
+      "> intro\n>\n> ¦| a |\n> | - |",
+      ["REF"],
+      "> intro\n>\n> REF\n>¦\n> | a |\n> | - |",
+    ],
+    [
+      "a list item followed by another item",
+      "- x\n\n  ¦| a | b |\n  | - | - |\n  | 1 | 2 |\n- y",
+      ["REF"],
+      "- x\n\n  REF\n¦\n  | a | b |\n  | - | - |\n  | 1 | 2 |\n- y",
+    ],
+  ])(
+    "keeps the references in the container of %s",
+    (_name, marked, refs, out) => {
+      expect(lines(marked, ...refs)).toBe(out);
+    },
+  );
+
+  it.each<[string, string]>([
+    ["a list item", "- x\n\n  | a | b |\n  | - | - |\n  | 1 | 2 |\n- y"],
+    ["an ordered list item", "1. x\n\n   | a |\n   | - |\n   | 1 |\n2. y"],
+    ["a blockquote", "> | a |\n> | - |\n> | 1 |"],
+    ["a two-level blockquote", "> > | a |\n> > | - |\n> > | 1 |"],
+  ])("keeps the prefix and rows of the table in %s", (_name, text) => {
+    const original = tableSourceAt(text, text.indexOf("|"));
+    expect(original?.prefix).toBeTruthy();
+    const header = original!.lines[0];
+    const rows = (table: NonNullable<typeof original>, source: string) =>
+      table.lines.map((line) => source.slice(line.from, line.to));
+    for (let position = header.from; position <= header.rowFrom; position++) {
+      const edit = insertImageReferences(text, position, ["REF"]);
+      const result = applyTextEdit(text, edit);
+      const found = tableSourceAt(result, result.indexOf("| a"));
+      expect(found?.prefix).toBe(original!.prefix);
+      expect(rows(found!, result)).toEqual(rows(original!, text));
+    }
+  });
+
+  it.each<[string, string, string]>([
+    [
+      "a top-level table",
+      "intro\n\n¦| a |\n| - |",
+      "intro\n\nREF\n¦\n| a |\n| - |",
+    ],
+    [
+      "an irregular nested table at the start",
+      "¦> | a | b |\n> | - | - |\n| 1 | 2 |",
+      "REF\n¦\n> | a | b |\n> | - | - |\n| 1 | 2 |",
+    ],
+    [
+      "an irregular nested table after the prefix",
+      "> ¦| a | b |\n> | - | - |\n| 1 | 2 |",
+      "REF\n¦\n> | a | b |\n> | - | - |\n| 1 | 2 |",
+    ],
+  ])("keeps the output for %s", (_name, marked, out) => {
+    expect(lines(marked, "REF")).toBe(out);
   });
 });
 

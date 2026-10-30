@@ -722,10 +722,86 @@
         "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
       ],
       "expected": {
-        "text": "![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n> | a |\n> | - |",
+        "text": "> ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n>\n> | a |\n> | - |",
         "selection": {
-          "anchor": 46,
-          "head": 46
+          "anchor": 49,
+          "head": 49
+        }
+      }
+    },
+    {
+      "name": "list item table header start",
+      "text": "- x\n\n  | a |\n  | - |",
+      "selection": {
+        "anchor": 7,
+        "head": 7
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "- x\n\n  ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n  | a |\n  | - |",
+        "selection": {
+          "anchor": 53,
+          "head": 53
+        }
+      }
+    },
+    {
+      "name": "list item table header line start",
+      "text": "- x\n\n  | a |\n  | - |",
+      "selection": {
+        "anchor": 5,
+        "head": 5
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "- x\n\n  ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n  | a |\n  | - |",
+        "selection": {
+          "anchor": 53,
+          "head": 53
+        }
+      }
+    },
+    {
+      "name": "ordered list item table header start",
+      "text": "1. x\n\n   | a |\n   | - |",
+      "selection": {
+        "anchor": 9,
+        "head": 9
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "1. x\n\n   ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n   | a |\n   | - |",
+        "selection": {
+          "anchor": 55,
+          "head": 55
+        }
+      }
+    },
+    {
+      "name": "two-level blockquote table header start",
+      "text": "> > | a |\n> > | - |",
+      "selection": {
+        "anchor": 4,
+        "head": 4
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "> > ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n> >\n> > | a |\n> > | - |",
+        "selection": {
+          "anchor": 53,
+          "head": 53
         }
       }
     },

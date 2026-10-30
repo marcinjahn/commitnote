@@ -25,7 +25,9 @@ export function insertBlock(
   position: number,
   block: string,
   kind: "table" | "lines",
+  prefix = "",
 ): TextEdit {
+  const separator = prefix.trimEnd();
   let at = Math.min(Math.max(position, 0), text.length);
   let from = lineStart(text, at);
   let to = lineEnd(text, at);
@@ -47,7 +49,7 @@ export function insertBlock(
       (span) => span.from <= previousFrom && previousFrom <= span.to,
     );
     if (!isBlankLine(previous) && (kind === "table" || previousInTable)) {
-      before += "\n";
+      before += separator + "\n";
     }
   }
 
@@ -57,8 +59,21 @@ export function insertBlock(
     if (kind === "table" || startsTable) after = "\n";
   }
 
-  const insert = before + block + "\n" + after;
-  const caret = at + before.length + block.length + 1;
+  const prefixed =
+    prefix === ""
+      ? block
+      : block
+          .split("\n")
+          .map((line) => prefix + line)
+          .join("\n");
+  const insert =
+    before + prefixed + "\n" + (after === "" ? "" : separator + after);
+  const caret =
+    at +
+    before.length +
+    prefixed.length +
+    1 +
+    (after === "" ? 0 : separator.length);
   return {
     changes: [{ from: at, to: at, insert }],
     selection: { anchor: caret, head: caret },
@@ -117,7 +132,7 @@ export function insertImageReferences(
   const lineIndex = cellAt(table, at).line;
   const line = table.lines[lineIndex];
   if (lineIndex === 0 && at <= line.rowFrom) {
-    return insertBlock(text, line.from, block, "lines");
+    return insertBlock(text, line.from, block, "lines", table.prefix ?? "");
   }
   if (line.cells.length === 0) {
     if (lineIndex === table.lines.length - 1 && at > line.rowFrom) {

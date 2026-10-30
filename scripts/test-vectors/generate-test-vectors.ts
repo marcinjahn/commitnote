@@ -1464,6 +1464,14 @@ const INSERTION_CASES: readonly InsertionCase[] = [
   ["blockquote table cell", "> | a |\n> | - |\n> | x¦y |", [REF_A]],
   ["blockquote table line end", "> | a |\n> | - |\n> | 1 |¦\n# next", [REF_A]],
   ["blockquote table header start", "> ¦| a |\n> | - |", [REF_A]],
+  ["list item table header start", "- x\n\n  ¦| a |\n  | - |", [REF_A]],
+  ["list item table header line start", "- x\n\n¦  | a |\n  | - |", [REF_A]],
+  [
+    "ordered list item table header start",
+    "1. x\n\n   ¦| a |\n   | - |",
+    [REF_A],
+  ],
+  ["two-level blockquote table header start", "> > ¦| a |\n> > | - |", [REF_A]],
   ["list item table cell", "- item\n\n  | a |\n  | - |\n  | x¦y |", [REF_A]],
   [
     "irregular nested table cell",
