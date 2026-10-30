@@ -785,6 +785,82 @@
           "head": 62
         }
       }
+    },
+    {
+      "name": "row with no cells after its pipe",
+      "text": "| a | b |\n| - | - |\n|",
+      "selection": {
+        "anchor": 21,
+        "head": 21
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a | b |\n| - | - |\n|\n\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n",
+        "selection": {
+          "anchor": 69,
+          "head": 69
+        }
+      }
+    },
+    {
+      "name": "row with no cells in the middle of a table",
+      "text": "| a | b |\n| - | - |\n|\n| c | d |",
+      "selection": {
+        "anchor": 21,
+        "head": 21
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a | b |\n| - | - |\n| ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n| c | d |",
+        "selection": {
+          "anchor": 67,
+          "head": 67
+        }
+      }
+    },
+    {
+      "name": "blockquote row with no cells before its pipe",
+      "text": "> | a |\n> | - |\n> |\n",
+      "selection": {
+        "anchor": 18,
+        "head": 18
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "> | a |\n> | - |\n> ![](image:abcdefghijklmnopqrstuvwxy2#640x480) |\n",
+        "selection": {
+          "anchor": 63,
+          "head": 63
+        }
+      }
+    },
+    {
+      "name": "list item row with no cells after its pipe",
+      "text": "- item\n\n  | a |\n  | - |\n  |",
+      "selection": {
+        "anchor": 27,
+        "head": 27
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "- item\n\n  | a |\n  | - |\n  |\n\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n",
+        "selection": {
+          "anchor": 75,
+          "head": 75
+        }
+      }
     }
   ]
 }

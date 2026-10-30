@@ -1471,6 +1471,22 @@ const INSERTION_CASES: readonly InsertionCase[] = [
     [REF_A],
   ],
   ["cell with a non-collapsed selection", "| a |\n| - |\n| x«y» |", [REF_A]],
+  ["row with no cells after its pipe", "| a | b |\n| - | - |\n|¦", [REF_A]],
+  [
+    "row with no cells in the middle of a table",
+    "| a | b |\n| - | - |\n|¦\n| c | d |",
+    [REF_A],
+  ],
+  [
+    "blockquote row with no cells before its pipe",
+    "> | a |\n> | - |\n> ¦|\n",
+    [REF_A],
+  ],
+  [
+    "list item row with no cells after its pipe",
+    "- item\n\n  | a |\n  | - |\n  |¦",
+    [REF_A],
+  ],
 ];
 
 function insertionCase([name, marked, references]: InsertionCase) {

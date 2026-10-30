@@ -354,6 +354,17 @@ describe("image paste", () => {
     );
   });
 
+  it("places the reference after a table whose last row has no cells", async () => {
+    const text = "| a | b |\n| - | - |\n|";
+    const { view, fake } = setup(text, { caret: text.length });
+    paste(view, { files: [imageFile()] });
+    const outcome = prepared([IMAGE_A]);
+    await fake.resolve(outcome);
+
+    expect(docOf(view)).toBe(`${text}\n\n${REF_A}\n`);
+    expect(fake.onOutcome).toHaveBeenCalledWith(outcome);
+  });
+
   it("inserts several images in order, one per line, registering each first", async () => {
     const { view, fake } = setup("");
     const docsAtRegister: string[] = [];

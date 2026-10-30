@@ -119,6 +119,13 @@ export function insertImageReferences(
   if (lineIndex === 0 && at <= line.rowFrom) {
     return insertBlock(text, line.from, block, "lines");
   }
+  if (line.cells.length === 0) {
+    if (lineIndex === table.lines.length - 1 && at > line.rowFrom) {
+      return insertBlock(text, line.to, block, "lines");
+    }
+    const point = Math.min(Math.max(at, line.rowFrom), line.to);
+    return insertInline(text, point, references);
+  }
   if (lineIndex === table.lines.length - 1 && line.trailingPipe) {
     const pipeEnd = line.cells[line.cells.length - 1].to + 1;
     if (at >= pipeEnd) return insertBlock(text, line.to, block, "lines");

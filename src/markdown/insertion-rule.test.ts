@@ -233,6 +233,102 @@ describe("insertImageReferences in cells", () => {
   });
 });
 
+describe("insertImageReferences on rows with no cells", () => {
+  it.each<[string, string, string]>([
+    [
+      "before the pipe of the last row",
+      "| a | b |\n| - | - |\n¦|",
+      "| a | b |\n| - | - |\nREF¦ |",
+    ],
+    [
+      "after the pipe of the last row",
+      "| a | b |\n| - | - |\n|¦",
+      "| a | b |\n| - | - |\n|\n\nREF\n¦",
+    ],
+    [
+      "after the pipe and space of the last row",
+      "| a | b |\n| - | - |\n| ¦",
+      "| a | b |\n| - | - |\n| \n\nREF\n¦",
+    ],
+    [
+      "after the pipe of a row in the middle",
+      "| a | b |\n| - | - |\n|¦\n| c | d |",
+      "| a | b |\n| - | - |\n| REF¦\n| c | d |",
+    ],
+    [
+      "inside the container prefix of a blockquote row",
+      "> | a |\n> | - |\n¦> |\n",
+      "> | a |\n> | - |\n> REF¦ |\n",
+    ],
+    [
+      "after the pipe of a blockquote last row",
+      "> | a |\n> | - |\n> |¦\n",
+      "> | a |\n> | - |\n> |\n\nREF\n¦",
+    ],
+    [
+      "before the pipe of a list item row",
+      "- item\n\n  | a |\n  | - |\n  ¦|",
+      "- item\n\n  | a |\n  | - |\n  REF¦ |",
+    ],
+    [
+      "after the pipe of a list item last row",
+      "- item\n\n  | a |\n  | - |\n  |¦",
+      "- item\n\n  | a |\n  | - |\n  |\n\nREF\n¦",
+    ],
+  ])("%s", (_name, input, expected) => {
+    expect(lines(input, "REF")).toBe(expected);
+  });
+
+  const NO_CELL_ROW = /^(?:>\s*|\s+)?\|\s*$/;
+  const sweepTexts: [string, string][] = [
+    ["top level last row", "| a | b |\n| - | - |\n|"],
+    ["top level last row with a space", "| a | b |\n| - | - |\n| "],
+    ["top level middle row", "| a | b |\n| - | - |\n|\n| c | d |"],
+    ["blockquote last row", "> | a |\n> | - |\n> |\n"],
+    ["blockquote middle row", "> | a |\n> | - |\n> |\n> | c |\n"],
+    ["list item last row", "- item\n\n  | a |\n  | - |\n  |"],
+    ["list item middle row", "- item\n\n  | a |\n  | - |\n  |\n  | c |"],
+  ];
+
+  it.each(sweepTexts)(
+    "places references at every position of a %s",
+    (_name, text) => {
+      const rows = text.split("\n");
+      const lastRow = rows.findLastIndex((row) => row.includes("|"));
+      let rowFrom = 0;
+      const spans = rows.map((row, index) => {
+        const span = {
+          from: rowFrom,
+          to: rowFrom + row.length,
+          index,
+          bare: NO_CELL_ROW.test(row),
+          pipe: rowFrom + row.indexOf("|"),
+        };
+        rowFrom += row.length + 1;
+        return span;
+      });
+
+      for (let position = 0; position <= text.length; position++) {
+        const edit = insertImageReferences(text, position, ["REF"]);
+        expect(edit.changes).toHaveLength(1);
+        const [change] = edit.changes;
+        const row = spans.find(
+          (span) => span.bare && span.from <= position && position <= span.to,
+        );
+        if (!row) continue;
+        if (row.index === lastRow && position > row.pipe) {
+          expect(change.from).toBeGreaterThanOrEqual(row.to);
+          expect(change.insert).toContain("REF\n");
+        } else {
+          const point = Math.min(Math.max(position, row.pipe), row.to);
+          expect(change.from).toBe(point);
+          expect(change.insert.trim()).toBe("REF");
+        }
+      }
+    },
+  );
+});
+
 describe("insertBlock with a table", () => {
   it("separates the table from text on both sides after a non-empty line", () => {
     expect(table("ab¦\nnext")).toBe("ab\n\nTABLE\n¦\nnext");
