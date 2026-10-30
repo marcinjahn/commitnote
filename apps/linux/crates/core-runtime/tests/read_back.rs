@@ -453,8 +453,8 @@ fn resolved_conflict_reads_back() {
             else {
                 continue;
             };
-            if let Some(device) = conflict["otherDevice"].as_str() {
-                break device.to_owned();
+            if let Some(device) = conflict.other_device {
+                break device;
             }
         };
         assert_eq!(other_device, "Other iPhone");

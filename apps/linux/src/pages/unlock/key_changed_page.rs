@@ -72,7 +72,7 @@ impl KeyChangedPage {
         imp.log_out_button.connect_clicked(glib::clone!(
             #[weak(rename_to = page)]
             page,
-            move |_| page.run(|model| async move { model.log_out().await })
+            move |_| page.run(|model| async move { model.log_out_anyway().await })
         ));
         let handler = model.connect_route_changed(glib::clone!(
             #[weak(rename_to = page)]

@@ -63,6 +63,16 @@ fn typed_commands_are_declared_in_typescript() {
         SettingsOpen::NAME,
         SettingsChange::NAME,
         AnalyticsVisit::NAME,
+        NoteEdit::NAME,
+        SyncFlush::NAME,
+        SyncRetry::NAME,
+        ConflictResolve::NAME,
+        DraftStart::NAME,
+        DraftCommitName::NAME,
+        DraftContent::NAME,
+        DraftLeave::NAME,
+        NoteRename::NAME,
+        EarlyDraftHandOff::NAME,
     ];
     for name in typed {
         assert!(declared.iter().any(|d| d == name), "{name}");

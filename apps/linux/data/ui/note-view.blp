@@ -4,82 +4,135 @@ using Adw 1;
 template $CommitnoteNoteView: Adw.Bin {
   name: "note-view";
 
-  child: Gtk.Stack stack {
-    Gtk.StackPage {
-      name: "empty";
+  child: Gtk.Box {
+    orientation: vertical;
 
-      child: Adw.StatusPage {
-        icon-name: "text-x-generic-symbolic";
-        title: "No Note Open";
-        description: "Choose a note in the sidebar.";
-      };
+    Adw.Banner banner {
+      name: "note-banner";
     }
 
-    Gtk.StackPage {
-      name: "blank";
+    Gtk.Stack stack {
+      vexpand: true;
 
-      child: Gtk.Box {};
-    }
+      Gtk.StackPage {
+        name: "empty";
 
-    Gtk.StackPage {
-      name: "loading";
+        child: Adw.StatusPage {
+          icon-name: "text-x-generic-symbolic";
+          title: "No Note Open";
+          description: "Choose a note in the sidebar.";
+        };
+      }
 
-      child: Adw.Spinner {
-        halign: center;
-        valign: center;
-        width-request: 32;
-        height-request: 32;
-      };
-    }
+      Gtk.StackPage {
+        name: "blank";
 
-    Gtk.StackPage {
-      name: "loaded";
+        child: Gtk.Box {};
+      }
 
-      child: Gtk.ScrolledWindow scrolled {
-        hscrollbar-policy: never;
+      Gtk.StackPage {
+        name: "loading";
 
-        child: Adw.Clamp {
-          maximum-size: 760;
-          tightening-threshold: 600;
+        child: Adw.Spinner {
+          halign: center;
+          valign: center;
+          width-request: 32;
+          height-request: 32;
+        };
+      }
 
-          child: Gtk.Box {
-            orientation: vertical;
-            spacing: 12;
-            margin-top: 24;
-            margin-bottom: 24;
+      Gtk.StackPage {
+        name: "loaded";
 
-            Gtk.Label title_label {
-              name: "note-title-label";
-              xalign: 0;
-              wrap: true;
-              selectable: true;
+        child: Gtk.Box {
+          orientation: vertical;
+
+          Gtk.ScrolledWindow scrolled {
+            vexpand: true;
+            hscrollbar-policy: never;
+
+            child: Adw.Clamp {
+              maximum-size: 760;
+              tightening-threshold: 600;
+
+              child: Gtk.Box {
+                orientation: vertical;
+                spacing: 12;
+                margin-top: 24;
+                margin-bottom: 24;
+
+                Gtk.Box {
+                  orientation: vertical;
+                  spacing: 4;
+                  margin-start: 12;
+                  margin-end: 12;
+
+                  Gtk.Entry title_entry {
+                    name: "note-title-entry";
+                    placeholder-text: _("Name");
+                    styles ["flat", "title-1"]
+
+                    accessibility {
+                      label: _("Note name");
+                    }
+                  }
+
+                  Gtk.Label name_error {
+                    name: "note-name-error";
+                    xalign: 0;
+                    wrap: true;
+                    wrap-mode: word_char;
+                    visible: false;
+                    styles ["error", "caption"]
+                  }
+                }
+
+                $CommitnoteNoteEditor editor {
+                  name: "note-editor";
+                }
+              };
+            };
+          }
+
+          Adw.Clamp {
+            maximum-size: 760;
+            tightening-threshold: 600;
+
+            child: Gtk.Box vim_status_box {
+              name: "vim-status-box";
+              visible: false;
               margin-start: 12;
               margin-end: 12;
-              styles ["title-1"]
-            }
+              margin-top: 4;
+              margin-bottom: 6;
+              spacing: 12;
 
-            Gtk.TextView text_view {
-              name: "note-text-view";
-              editable: false;
-              cursor-visible: false;
-              wrap-mode: word_char;
-              left-margin: 12;
-              right-margin: 12;
-              top-margin: 12;
-              bottom-margin: 12;
-            }
-          };
+              Gtk.Label vim_status_line {
+                name: "vim-status-line";
+                xalign: 0;
+                hexpand: true;
+                ellipsize: end;
+                styles ["monospace", "dim-label", "caption"]
+              }
+
+              Gtk.Label vim_command_text {
+                name: "vim-command-text";
+                xalign: 1;
+                styles ["monospace", "dim-label", "caption"]
+              }
+            };
+          }
         };
-      };
-    }
+      }
 
-    Gtk.StackPage {
-      name: "problem";
+      Gtk.StackPage {
+        name: "problem";
 
-      child: Adw.StatusPage status_page {
-        name: "note-status-page";
-        icon-name: "dialog-warning-symbolic";
-      };
+        child: Adw.StatusPage status_page {
+          name: "note-status-page";
+          icon-name: "dialog-warning-symbolic";
+        };
+      }
     }
   };
 }

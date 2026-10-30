@@ -30,6 +30,18 @@ template $CommitnoteNotesPage: Adw.NavigationPage {
         child: Adw.ToolbarView sidebar_toolbar {
           [top]
           Adw.HeaderBar {
+            [start]
+            Gtk.Button {
+              name: "new-note-button";
+              icon-name: "document-new-symbolic";
+              tooltip-text: _("New Note");
+              action-name: "win.new-note";
+
+              accessibility {
+                label: _("New Note");
+              }
+            }
+
             [end]
             Gtk.MenuButton {
               name: "notes-main-menu-button";
@@ -37,6 +49,12 @@ template $CommitnoteNotesPage: Adw.NavigationPage {
               tooltip-text: "Main Menu";
               primary: true;
               menu-model: main_menu;
+            }
+
+            [end]
+            Gtk.MenuButton sync_status_button {
+              name: "sync-status-button";
+              visible: false;
             }
           }
         };
@@ -64,11 +82,141 @@ template $CommitnoteNotesPage: Adw.NavigationPage {
                 label: "Toggle Sidebar";
               }
             }
+
+            [end]
+            Gtk.MenuButton note_menu_button {
+              name: "note-menu-button";
+              icon-name: "view-more-symbolic";
+              tooltip-text: _("Note Menu");
+              menu-model: note_menu;
+              visible: false;
+
+              accessibility {
+                label: _("Note Menu");
+              }
+            }
+
+            [end]
+            Gtk.MenuButton content_sync_status_button {
+              name: "content-sync-status-button";
+              visible: false;
+            }
+          }
+
+          [bottom]
+          Gtk.Box formatting_bar {
+            name: "formatting-bar";
+            halign: center;
+            spacing: 6;
+            visible: false;
+            styles ["toolbar"]
+
+            Gtk.Button {
+              name: "format-bold-button";
+              icon-name: "format-text-bold-symbolic";
+              tooltip-text: _("Bold");
+              action-name: "editor.bold";
+              focus-on-click: false;
+
+              accessibility {
+                label: _("Bold");
+              }
+            }
+
+            Gtk.Button {
+              name: "format-italic-button";
+              icon-name: "format-text-italic-symbolic";
+              tooltip-text: _("Italic");
+              action-name: "editor.italic";
+              focus-on-click: false;
+
+              accessibility {
+                label: _("Italic");
+              }
+            }
+
+            Gtk.Button {
+              name: "format-strikethrough-button";
+              icon-name: "format-text-strikethrough-symbolic";
+              tooltip-text: _("Strikethrough");
+              action-name: "editor.strikethrough";
+              focus-on-click: false;
+
+              accessibility {
+                label: _("Strikethrough");
+              }
+            }
+
+            Gtk.Button {
+              name: "format-link-button";
+              icon-name: "insert-link-symbolic";
+              tooltip-text: _("Insert Link");
+              action-name: "editor.insert-link";
+              focus-on-click: false;
+
+              accessibility {
+                label: _("Insert Link");
+              }
+            }
+
+            Gtk.Button {
+              name: "format-task-button";
+              icon-name: "checkbox-checked-symbolic";
+              tooltip-text: _("Toggle Task");
+              action-name: "editor.toggle-task";
+              focus-on-click: false;
+
+              accessibility {
+                label: _("Toggle Task");
+              }
+            }
           }
         };
       };
     };
   };
+}
+
+menu note_menu {
+  section {
+    item {
+      label: _("Save Now");
+      action: "win.save-now";
+      accel: "<Control>s";
+    }
+  }
+
+  section {
+    item {
+      label: _("Bold");
+      action: "editor.bold";
+      accel: "<Control>b";
+    }
+
+    item {
+      label: _("Italic");
+      action: "editor.italic";
+      accel: "<Control>i";
+    }
+
+    item {
+      label: _("Strikethrough");
+      action: "editor.strikethrough";
+      accel: "<Control><Shift>x";
+    }
+
+    item {
+      label: _("Insert Link");
+      action: "editor.insert-link";
+      accel: "<Control>k";
+    }
+
+    item {
+      label: _("Toggle Task");
+      action: "editor.toggle-task";
+      accel: "<Control>Return";
+    }
+  }
 }
 
 menu main_menu {

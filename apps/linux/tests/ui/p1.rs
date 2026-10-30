@@ -1,14 +1,13 @@
-use std::time::Duration;
-
 use adw::prelude::*;
 use commitnote::model::Route;
-use commitnote_core_api::shapes::TreeNode;
 use gtk4 as gtk;
 use libadwaita as adw;
 
-use crate::support::{
-    ALL_VARIANTS, Case, Harness, NARROW_VARIANTS, Theme, WIDE_VARIANTS, Width, route_name,
+use crate::flows::{
+    NOTES_URL, UNLOCK_TIMEOUT, choose_repository, ensure, launch_and_log_in, open_first_note,
+    split_view, submit_token, unlock, wait_tree,
 };
+use crate::support::{ALL_VARIANTS, Case, Harness, NARROW_VARIANTS, Theme, WIDE_VARIANTS, Width};
 
 pub const CASES: &[Case] = &[
     ("login_unlock_tree", login_unlock_tree),
@@ -21,100 +20,13 @@ pub const CASES: &[Case] = &[
     ("key_changed", key_changed),
 ];
 
-const NOTES_URL: &str = "https://github.com/sample/notes";
 const EMPTY_URL: &str = "https://github.com/sample/empty";
 const FOREIGN_URL: &str = "https://github.com/sample/foreign";
-const PASSPHRASE: &str = "sample notes repo passphrase";
 const NEW_PASSPHRASE: &str = "harbour lantern copper meadow violin";
 const EMPTY_PASSPHRASE_MESSAGE: &str = "Enter the passphrase.";
 const MISMATCH_MESSAGE: &str = "Passphrases do not match.";
 const REMOTE_EDIT_LINE: &str = "Edited on another device";
 const HELD_LOADING_MESSAGE: &str = "Checking repository…";
-const UNLOCK_TIMEOUT: Duration = Duration::from_secs(60);
-
-fn ensure(condition: bool, message: impl FnOnce() -> String) -> Result<(), String> {
-    if condition { Ok(()) } else { Err(message()) }
-}
-
-fn submit_token(h: &Harness) -> Result<(), String> {
-    h.wait_page("token")?;
-    h.set_text("login-token-row", "token")?;
-    h.click("login-continue-button")?;
-    h.wait_page("repositories")
-}
-
-fn choose_repository(h: &Harness, url: &str) -> Result<(), String> {
-    let Route::RepositoryList { repositories } = h.route()? else {
-        return Err(format!(
-            "expected the repository list, got {}",
-            route_name(&h.route()?)
-        ));
-    };
-    let index = repositories
-        .iter()
-        .position(|choice| choice.url == url)
-        .ok_or_else(|| format!("{url} is not listed"))?;
-    h.activate_row(&format!("repository-row-{index}"))
-}
-
-fn unlock(h: &Harness, remember: bool) -> Result<(), String> {
-    h.wait_page("unlock")?;
-    h.set_text("unlock-passphrase-row", PASSPHRASE)?;
-    h.set_switch("unlock-remember-row", remember)?;
-    h.click("unlock-button")?;
-    h.wait_page_for("notes", UNLOCK_TIMEOUT)
-}
-
-fn log_in(h: &Harness, remember: bool) -> Result<(), String> {
-    submit_token(h)?;
-    choose_repository(h, NOTES_URL)?;
-    unlock(h, remember)
-}
-
-fn launch_and_log_in(h: &Harness, remember: bool) -> Result<(), String> {
-    h.launch()?;
-    log_in(h, remember)?;
-    wait_tree(h)
-}
-
-fn wait_tree(h: &Harness) -> Result<(), String> {
-    h.wait("the note tree", || {
-        h.shown("notes-tree-list") && h.list_len("notes-tree-list").is_ok_and(|len| len > 0)
-    })
-}
-
-/// The list position and path of the first top-level note; folders start collapsed, so a
-/// top-level node's position in the model is its row.
-fn first_top_level_note(h: &Harness) -> Result<(u32, Vec<String>), String> {
-    let tree = h.model()?.tree().ok_or("the tree has not loaded")?;
-    tree.iter()
-        .enumerate()
-        .find_map(|(index, node)| match node {
-            TreeNode::Note { path, .. } => Some((index as u32, path.clone())),
-            TreeNode::Folder { .. } => None,
-        })
-        .ok_or_else(|| "the sample repository has no top-level note".to_owned())
-}
-
-fn open_first_note(h: &Harness) -> Result<String, String> {
-    let (position, path) = first_top_level_note(h)?;
-    let title = path.last().cloned().unwrap_or_default();
-    h.activate_list_item("notes-tree-list", position)?;
-    let model = h.model()?;
-    h.wait("the note to open", || {
-        model.open_note_path().as_ref() == Some(&path)
-            && h.stack_page("note-view").ok().flatten().as_deref() == Some("loaded")
-            && h.label("note-title-label")
-                .is_ok_and(|label| label == title)
-            && h.text_view_text("note-text-view")
-                .is_ok_and(|text| !text.is_empty())
-    })?;
-    Ok(title)
-}
-
-fn split_view(h: &Harness) -> Result<adw::NavigationSplitView, String> {
-    h.widget_as::<adw::NavigationSplitView>("notes-split-view")
-}
 
 fn login_unlock_tree(h: &mut Harness) -> Result<(), String> {
     h.launch()?;
@@ -273,7 +185,7 @@ fn read_note(h: &mut Harness) -> Result<(), String> {
 
     h.window_action("testing-remote-edit")?;
     h.refresh_until("the remote edit to show", || {
-        h.text_view_text("note-text-view")
+        h.text_view_text("note-editor-view")
             .is_ok_and(|text| text.lines().next() == Some(REMOTE_EDIT_LINE))
     })?;
 
@@ -290,12 +202,15 @@ fn narrow_navigation(h: &mut Harness) -> Result<(), String> {
 
     open_first_note(h)?;
     h.wait("the note to replace the tree", || {
-        split.shows_content() && h.shown("note-title-label")
+        split.shows_content() && h.shown("note-title-entry")
     })?;
-    let text_view = h.widget_as::<gtk::TextView>("note-text-view")?;
+    let text_view = h.widget_as::<gtk::TextView>("note-editor-view")?;
     h.wait("the note text to fit its wrapped height", || {
-        let (_, natural, _, _) = text_view.measure(gtk::Orientation::Vertical, text_view.width());
-        text_view.height() >= natural
+        let width = text_view.width();
+        width > 0 && {
+            let (_, natural, _, _) = text_view.measure(gtk::Orientation::Vertical, width);
+            text_view.height() >= natural
+        }
     })?;
     h.session_screenshots("note", NARROW_VARIANTS)?;
 

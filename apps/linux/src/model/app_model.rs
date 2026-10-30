@@ -1,4 +1,5 @@
 use std::cell::{Cell, OnceCell, Ref, RefCell, RefMut};
+use std::collections::HashMap;
 use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
@@ -6,30 +7,39 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 
 use commitnote_core_api::commands::{
-    DeviceName, DeviceNameParams, ForgesList, ForgesListParams, LifecycleSetOnline,
+    ConflictResolution, ConflictResolve, ConflictResolveParams, DeviceName, DeviceNameParams,
+    DraftCommitName, DraftCommitNameParams, DraftContent, DraftContentParams, DraftLeave,
+    DraftLeaveParams, DraftStart, DraftStartParams, EarlyDraftHandOff, EarlyDraftHandOffParams,
+    EarlyDraftOutcome, FlushOutcome, ForgesList, ForgesListParams, LifecycleSetOnline,
     LifecycleSetOnlineParams, LifecycleSetVisible, LifecycleSetVisibleParams, LoginInitialize,
     LoginInspectRepository, LoginInspectRepositoryParams, LoginInspectRepositoryResult,
     LoginLastRepository, LoginLastRepositoryParams, LoginListRepositories,
-    LoginListRepositoriesParams, LoginUnlock, NoteOpen, NoteOpenParams, NoticeIdParams,
-    NoticesDismiss, NoticesPerform, PassphraseParams, PassphraseStrengthCheck,
+    LoginListRepositoriesParams, LoginUnlock, NameCommitOutcome, NoteDraft, NoteDraftOutcome,
+    NoteEdit, NoteEditParams, NoteOpen, NoteOpenParams, NoteRename, NoteRenameParams,
+    NoticeIdParams, NoticesDismiss, NoticesPerform, PassphraseParams, PassphraseStrengthCheck,
     PassphraseStrengthParams, SessionLogout, SessionLogoutParams, SessionLogoutResult,
     SessionResume, SessionResumeParams, SessionResumeResult, SettingsOpen, SettingsOpenParams,
-    SyncRefresh, SyncRefreshParams, TreeGet, TreeGetParams, TreeGetResult,
+    SyncFlush, SyncFlushParams, SyncRefresh, SyncRefreshParams, SyncRetry, SyncRetryParams,
+    TreeGet, TreeGetParams, TreeGetResult,
 };
 use commitnote_core_api::events::{NoteChanged, Notice, SyncStateChanged, TreeChanged};
 use commitnote_core_api::settings::{AccentOptionView, SettingsView};
 use commitnote_core_api::shapes::{
     ForgeKind, ForgeView, LogoutOutcome, NoticeAction, OpenNote, PassphraseStrength,
-    RepositoryView, TagOptionView, TreeNode,
+    RemoteTextEdit, RepositoryView, TagOptionView, TreeNode,
 };
 use commitnote_core_api::{Command, CoreError, CoreErrorKind, CoreEvent, Secret};
 use commitnote_core_runtime::RequestError;
+use commitnote_interaction::{TypeToStartBuffer, TypeToStartInput};
 use glib::prelude::*;
 use glib::subclass::Signal;
 use glib::subclass::prelude::*;
 
 use super::appearance::Appearance;
 use super::core_client::{ClientConfig, CoreClient, startup_message};
+use super::edit_sender::{EditDestination, EditSender};
+use super::editor_lane::EditorLane;
+use super::editor_settings::EditorSettings;
 
 pub const GENERIC_ERROR_MESSAGE: &str = "Something went wrong. Try again.";
 const NO_KEYRING_MESSAGE: &str = "No keyring is available, so this session will not be remembered.";
@@ -75,6 +85,12 @@ pub struct KeyChangedView {
     pub export_label: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LogOutResult {
+    LoggedOut,
+    Unsaved { message: String },
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum Route {
     #[default]
@@ -103,6 +119,65 @@ pub enum Route {
     KeyChanged {
         view: KeyChangedView,
     },
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum EditorTarget {
+    #[default]
+    None,
+    Note(Vec<String>),
+    Draft(NoteDraft),
+}
+
+impl EditorTarget {
+    pub fn note_path(&self) -> Option<&[String]> {
+        match self {
+            Self::Note(path) => Some(path),
+            Self::None | Self::Draft(_) => None,
+        }
+    }
+
+    pub fn is_draft(&self) -> bool {
+        matches!(self, Self::Draft(_))
+    }
+}
+
+/// Where the cursor goes when a draft starts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DraftFocus {
+    #[default]
+    Name,
+    Editor,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RenameResult {
+    None,
+    Restore,
+    Error(String),
+    Renamed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteContentUpdate {
+    pub serial: u64,
+    pub path: Vec<String>,
+    pub content: String,
+    pub edits: Option<Vec<RemoteTextEdit>>,
+}
+
+/// Text typed on the loading page before the notes are available.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EarlyDraftState {
+    pub name: String,
+    pub body: String,
+    pub name_confirmed: bool,
+}
+
+impl EarlyDraftState {
+    pub fn is_empty(&self) -> bool {
+        self.name.is_empty() && self.body.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -180,11 +255,30 @@ struct State {
     loading_message: Option<String>,
     tree: Option<Vec<TreeNode>>,
     tag_options: Vec<TagOptionView>,
+    notice_actions: HashMap<String, NoticeAction>,
     open_note_path: Option<Vec<String>>,
+    core_open_path: Option<Vec<String>>,
+    pending_opens: usize,
     open_note: Option<OpenNote>,
+    editor_target: EditorTarget,
+    editor_lineage: u64,
+    draft_name: String,
+    draft_body: String,
+    draft_error: Option<String>,
+    draft_focus: DraftFocus,
+    focus_end: bool,
+    early_draft: EarlyDraftState,
+    handing_off: bool,
+    type_to_start: Option<TypeToStartBuffer>,
+    note_name_error: Option<String>,
+    note_switch: u64,
+    note_update: Option<NoteContentUpdate>,
+    note_update_serial: u64,
+    sync: Option<SyncStateChanged>,
     key_changed: Option<KeyChangedView>,
     accent_options: Vec<AccentOptionView>,
     appearance: Appearance,
+    editor_settings: EditorSettings,
     visible: bool,
     online: bool,
     sent_visible: Option<bool>,
@@ -205,6 +299,8 @@ mod imp {
         pub(super) client: RefCell<Option<Rc<CoreClient>>>,
         pub(super) state: RefCell<State>,
         pub(super) generation: Cell<u64>,
+        pub(super) edit_sender: OnceCell<EditSender>,
+        pub(super) editor_lane: EditorLane,
     }
 
     #[glib::object_subclass]
@@ -223,6 +319,10 @@ mod imp {
                     Signal::builder("tree-changed").build(),
                     Signal::builder("open-note-changed").build(),
                     Signal::builder("appearance-changed").build(),
+                    Signal::builder("editor-settings-changed").build(),
+                    Signal::builder("early-draft-changed").build(),
+                    Signal::builder("early-draft-presence-changed").build(),
+                    Signal::builder("sync-state-changed").build(),
                     Signal::builder("notice")
                         .param_types([
                             String::static_type(),
@@ -254,6 +354,7 @@ impl AppModel {
         let imp = model.imp();
         let _ = imp.context.set(glib::MainContext::ref_thread_default());
         let _ = imp.config.set(config);
+        let _ = imp.edit_sender.set(model.new_edit_sender());
         {
             let mut state = imp.state.borrow_mut();
             state.visible = true;
@@ -333,6 +434,95 @@ impl AppModel {
         self.state().open_note.clone()
     }
 
+    pub fn note_switch(&self) -> u64 {
+        self.state().note_switch
+    }
+
+    pub fn sync_state(&self) -> Option<SyncStateChanged> {
+        self.state().sync.clone()
+    }
+
+    pub fn editor_target(&self) -> EditorTarget {
+        self.state().editor_target.clone()
+    }
+
+    /// Changes whenever the editor starts on a different note or draft; a draft that becomes
+    /// a note keeps it.
+    pub fn editor_lineage(&self) -> u64 {
+        self.state().editor_lineage
+    }
+
+    pub fn draft_name(&self) -> String {
+        self.state().draft_name.clone()
+    }
+
+    pub fn set_draft_name(&self, name: String) {
+        self.state_mut().draft_name = name;
+    }
+
+    /// The text a draft starts with when it comes from the early draft.
+    pub fn draft_body(&self) -> String {
+        self.state().draft_body.clone()
+    }
+
+    /// Whether the note that opens next takes the caret at the end of its text; asking clears it.
+    pub fn take_focus_end(&self) -> bool {
+        std::mem::take(&mut self.state_mut().focus_end)
+    }
+
+    pub fn early_draft(&self) -> EarlyDraftState {
+        self.state().early_draft.clone()
+    }
+
+    pub fn has_early_draft_text(&self) -> bool {
+        !self.state().early_draft.is_empty()
+    }
+
+    pub fn set_early_draft_name(&self, name: String) {
+        self.edit_early_draft(|early| early.name = name);
+    }
+
+    pub fn set_early_draft_body(&self, body: String) {
+        self.edit_early_draft(|early| early.body = body);
+    }
+
+    pub fn confirm_early_draft_name(&self) {
+        self.edit_early_draft(|early| early.name_confirmed = true);
+    }
+
+    fn edit_early_draft(&self, edit: impl FnOnce(&mut EarlyDraftState)) {
+        let flipped = {
+            let mut state = self.state_mut();
+            let was_empty = state.early_draft.is_empty();
+            edit(&mut state.early_draft);
+            was_empty != state.early_draft.is_empty()
+        };
+        if flipped {
+            self.emit_by_name::<()>("early-draft-presence-changed", &[]);
+        }
+    }
+
+    /// True while the early draft is being sent, when it must not change.
+    pub fn handing_off(&self) -> bool {
+        self.state().handing_off
+    }
+
+    pub fn draft_error(&self) -> Option<String> {
+        self.state().draft_error.clone()
+    }
+
+    pub fn draft_focus(&self) -> DraftFocus {
+        self.state().draft_focus
+    }
+
+    pub fn note_name_error(&self) -> Option<String> {
+        self.state().note_name_error.clone()
+    }
+
+    pub fn note_update(&self) -> Option<NoteContentUpdate> {
+        self.state().note_update.clone()
+    }
+
     pub fn open_note_path(&self) -> Option<Vec<String>> {
         self.state().open_note_path.clone()
     }
@@ -343,6 +533,18 @@ impl AppModel {
 
     pub fn appearance(&self) -> Appearance {
         self.state().appearance.clone()
+    }
+
+    pub fn editor_settings(&self) -> EditorSettings {
+        self.state().editor_settings
+    }
+
+    pub fn vim_mode(&self) -> bool {
+        self.state().editor_settings.vim_mode
+    }
+
+    pub fn type_to_start(&self) -> bool {
+        self.state().editor_settings.type_to_start
     }
 
     pub fn connect_route_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
@@ -369,6 +571,34 @@ impl AppModel {
         f: F,
     ) -> glib::SignalHandlerId {
         self.connect_unit_signal("appearance-changed", f)
+    }
+
+    pub fn connect_editor_settings_changed<F: Fn(&Self) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_unit_signal("editor-settings-changed", f)
+    }
+
+    pub fn connect_early_draft_changed<F: Fn(&Self) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_unit_signal("early-draft-changed", f)
+    }
+
+    pub fn connect_early_draft_presence_changed<F: Fn(&Self) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_unit_signal("early-draft-presence-changed", f)
+    }
+
+    pub fn connect_sync_state_changed<F: Fn(&Self) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_unit_signal("sync-state-changed", f)
     }
 
     pub fn connect_notice<F: Fn(&Self, &NoticeView) + 'static>(
@@ -461,26 +691,293 @@ impl AppModel {
     }
 
     pub fn open_note(&self, path: Option<Vec<String>>) {
-        {
+        let mut turn = self.imp().editor_lane.reserve(true);
+        let leaving_draft = {
             let mut state = self.state_mut();
+            state.type_to_start = None;
             if path.is_none() {
                 state.open_note = None;
             }
             state.open_note_path = path.clone();
-        }
+            state.pending_opens += 1;
+            let leaving_draft = state.editor_target.is_draft();
+            let target = path.clone().map_or(EditorTarget::None, EditorTarget::Note);
+            if state.editor_target != target {
+                state.draft_error = None;
+                state.open_note = None;
+                state.note_update = None;
+                retarget(&mut state, target);
+                state.note_switch += 1;
+                state.editor_lineage += 1;
+            }
+            leaving_draft
+        };
         self.emit_by_name::<()>("open-note-changed", &[]);
-        let request = self.request::<NoteOpen>(NoteOpenParams { path: path.clone() });
+        let sender = self.edit_sender().clone();
         let model = self.downgrade();
+        let generation = self.imp().generation.get();
         self.spawn(async move {
+            sender.flush().await;
+            turn.begin().await;
+            if leaving_draft
+                && let Some(request) = model
+                    .upgrade()
+                    .map(|model| model.request::<DraftLeave>(DraftLeaveParams {}))
+                && let Err(error) = request.await
+            {
+                warn("could not leave a draft", &error);
+            }
+            let Some(request) = model
+                .upgrade()
+                .map(|model| model.request::<NoteOpen>(NoteOpenParams { path: path.clone() }))
+            else {
+                return;
+            };
             let result = request.await;
             let Some(model) = model.upgrade() else {
                 return;
             };
+            model.open_answered(generation);
             match result {
                 Ok(result) => model.apply_opened_note(path, result.note),
                 Err(error) => warn("could not open a note", &error),
             }
         });
+    }
+
+    /// Starts a note that exists only in the editor until it gets a name or some content.
+    /// A start that the user has moved past in the meantime changes nothing.
+    pub fn start_draft(
+        &self,
+        parent: Vec<String>,
+        focus: DraftFocus,
+    ) -> impl Future<Output = Result<(), UserError>> + use<> {
+        let model = self.clone();
+        let mut turn = self.imp().editor_lane.reserve(true);
+        async move {
+            model.flush_edits().await;
+            turn.begin().await;
+            if !model.imp().editor_lane.is_current(&turn) {
+                return Ok(());
+            }
+            let reply = model
+                .request::<DraftStart>(DraftStartParams { parent })
+                .await;
+            if !model.imp().editor_lane.is_current(&turn) {
+                if let Err(error) = &reply {
+                    warn("could not start a draft", error);
+                }
+                return Ok(());
+            }
+            let draft = match reply {
+                Ok(result) => result.draft,
+                Err(error) => {
+                    warn("could not start a draft", &error);
+                    return Err(UserError::from(error));
+                }
+            };
+            {
+                let mut state = model.state_mut();
+                state.draft_name.clear();
+                state.draft_body.clear();
+                state.focus_end = false;
+                if focus == DraftFocus::Name {
+                    state.type_to_start = None;
+                }
+                state.draft_focus = focus;
+                state.draft_error = None;
+                state.open_note_path = None;
+                state.core_open_path = None;
+                state.open_note = None;
+                retarget(&mut state, EditorTarget::Draft(draft));
+                state.note_switch += 1;
+                state.editor_lineage += 1;
+            }
+            model.emit_by_name::<()>("open-note-changed", &[]);
+            Ok(())
+        }
+    }
+
+    /// Creates the draft's note under the name typed so far.
+    pub async fn commit_draft_name(&self) -> NoteDraftOutcome {
+        self.flush_edits().await;
+        let name = {
+            let state = self.state();
+            if !state.editor_target.is_draft() {
+                return NoteDraftOutcome::None;
+            }
+            state.draft_name.clone()
+        };
+        let outcome = match self
+            .request::<DraftCommitName>(DraftCommitNameParams { name })
+            .await
+        {
+            Ok(result) => result.outcome,
+            Err(error) => {
+                warn("could not name a draft", &error);
+                self.show_toast(&UserError::from(error).message);
+                return NoteDraftOutcome::None;
+            }
+        };
+        {
+            let mut state = self.state_mut();
+            match &outcome {
+                NoteDraftOutcome::None => {}
+                NoteDraftOutcome::Error { message } => state.draft_error = Some(message.clone()),
+                NoteDraftOutcome::Created { path, field_error } => {
+                    if state.editor_target.is_draft() {
+                        retarget(&mut state, EditorTarget::Note(path.clone()));
+                        state.draft_error = field_error.clone();
+                        state.draft_name.clear();
+                        state.note_switch += 1;
+                    }
+                }
+            }
+        }
+        self.emit_by_name::<()>("open-note-changed", &[]);
+        outcome
+    }
+
+    /// Drops the draft open in the editor, if any; a draft with content is already a note.
+    /// It does nothing when the editor was moved after it was asked for.
+    pub fn leave_draft(&self) -> impl Future<Output = ()> + use<> {
+        let model = self.clone();
+        let mut turn = self.imp().editor_lane.reserve(false);
+        async move {
+            model.flush_edits().await;
+            turn.begin().await;
+            if !model.imp().editor_lane.is_current(&turn) || !model.state().editor_target.is_draft()
+            {
+                return;
+            }
+            if let Err(error) = model.request::<DraftLeave>(DraftLeaveParams {}).await {
+                warn("could not leave a draft", &error);
+            }
+            {
+                let mut state = model.state_mut();
+                if !state.editor_target.is_draft() {
+                    return;
+                }
+                retarget(&mut state, EditorTarget::None);
+                state.core_open_path = None;
+                state.draft_error = None;
+                state.draft_name.clear();
+                state.draft_body.clear();
+                state.type_to_start = None;
+            }
+            model.emit_by_name::<()>("open-note-changed", &[]);
+        }
+    }
+
+    /// Starts a note from the first typed character, holding on to what is typed while the
+    /// draft opens.
+    pub fn start_type_to_start(&self, characters: &str) {
+        {
+            let mut state = self.state_mut();
+            if state.type_to_start.is_some() {
+                return;
+            }
+            let mut buffer = TypeToStartBuffer::new();
+            buffer.append(TypeToStartInput::Text(characters.to_owned()));
+            state.type_to_start = Some(buffer);
+        }
+        let model = self.clone();
+        let start = self.start_draft(Vec::new(), DraftFocus::Editor);
+        self.spawn(async move {
+            if let Err(error) = start.await {
+                model.cancel_type_to_start();
+                model.show_toast(&error.message);
+            }
+        });
+    }
+
+    pub fn type_to_start_pending(&self) -> bool {
+        self.state().type_to_start.is_some()
+    }
+
+    /// Returns whether the key was held for the draft that is opening.
+    pub fn buffer_type_to_start(&self, input: TypeToStartInput) -> bool {
+        match self.state_mut().type_to_start.as_mut() {
+            Some(buffer) => {
+                buffer.append(input);
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn cancel_type_to_start(&self) {
+        self.state_mut().type_to_start = None;
+    }
+
+    /// Hands over what was typed while the draft opened, once, if the draft is open.
+    pub fn take_type_to_start_text(&self) -> Option<String> {
+        let mut state = self.state_mut();
+        if !state.editor_target.is_draft() {
+            return None;
+        }
+        state.type_to_start.take().map(|mut buffer| buffer.drain())
+    }
+
+    pub async fn rename_open_note(&self, name: String) -> RenameResult {
+        let Some(path) = self
+            .state()
+            .editor_target
+            .note_path()
+            .map(<[String]>::to_vec)
+        else {
+            return RenameResult::None;
+        };
+        self.flush_edits().await;
+        let result = self
+            .request::<NoteRename>(NoteRenameParams {
+                path: path.clone(),
+                name,
+            })
+            .await;
+        let result = {
+            let mut state = self.state_mut();
+            match result {
+                Ok(result) => match result.outcome {
+                    NameCommitOutcome::None => {
+                        state.note_name_error = None;
+                        RenameResult::None
+                    }
+                    NameCommitOutcome::Restore => {
+                        state.note_name_error = None;
+                        RenameResult::Restore
+                    }
+                    NameCommitOutcome::Error { message } => {
+                        state.note_name_error = Some(message.clone());
+                        RenameResult::Error(message)
+                    }
+                    NameCommitOutcome::Ok { path: renamed } => {
+                        if state.editor_target.note_path() == Some(path.as_slice())
+                            && renamed != path
+                        {
+                            if state.core_open_path.as_deref() == Some(path.as_slice()) {
+                                state.core_open_path = Some(renamed.clone());
+                            }
+                            if state.open_note_path.as_deref() == Some(path.as_slice()) {
+                                state.open_note_path = Some(renamed.clone());
+                            }
+                            retarget(&mut state, EditorTarget::Note(renamed));
+                        }
+                        state.note_name_error = None;
+                        state.draft_error = None;
+                        RenameResult::Renamed
+                    }
+                },
+                Err(error) => {
+                    warn("could not rename a note", &error);
+                    let message = UserError::from(error).message;
+                    state.note_name_error = Some(message.clone());
+                    RenameResult::Error(message)
+                }
+            }
+        };
+        self.emit_by_name::<()>("open-note-changed", &[]);
+        result
     }
 
     pub async fn refresh(&self) -> Result<(), UserError> {
@@ -523,15 +1020,17 @@ impl AppModel {
         self.log_out_anyway().await
     }
 
-    pub async fn log_out(&self) -> Result<(), UserError> {
+    /// Logs out once every edit is saved; otherwise reports what would be lost and stays.
+    pub async fn log_out(&self) -> Result<LogOutResult, UserError> {
+        self.flush_edits().await;
         let result = self
             .request::<SessionLogout>(SessionLogoutParams { anyway: false })
             .await;
         match result {
             Ok(SessionLogoutResult {
-                outcome: LogoutOutcome::Unsaved { .. },
-            }) => self.log_out_anyway().await,
-            other => logout_result(other),
+                outcome: LogoutOutcome::Unsaved { message, .. },
+            }) => Ok(LogOutResult::Unsaved { message }),
+            other => logout_result(other).map(|()| LogOutResult::LoggedOut),
         }
     }
 
@@ -550,15 +1049,40 @@ impl AppModel {
     }
 
     pub fn perform_notice(&self, id: &str) {
-        let request = self.request::<NoticesPerform>(NoticeIdParams { id: id.to_owned() });
+        let performed = self.perform_notice_action(id);
         self.spawn(async move {
-            if let Err(error) = request.await {
+            if let Err(error) = performed.await {
                 warn("could not perform a notice action", &error);
             }
         });
     }
 
+    fn perform_notice_action(
+        &self,
+        id: &str,
+    ) -> impl Future<Output = Result<(), RequestError>> + use<> {
+        let action = self.state_mut().notice_actions.remove(id);
+        if let Some(NoticeAction::OpenNote { path, .. }) = &action {
+            self.open_note(Some(path.clone()));
+        }
+        let model = self.clone();
+        let params = NoticeIdParams { id: id.to_owned() };
+        async move {
+            match action {
+                Some(NoticeAction::OpenNote { .. }) => {
+                    model.request::<NoticesDismiss>(params).await.map(|_| ())
+                }
+                Some(NoticeAction::Undo { .. }) => {
+                    model.flush_edits().await;
+                    model.request::<NoticesPerform>(params).await.map(|_| ())
+                }
+                None => Ok(()),
+            }
+        }
+    }
+
     pub fn dismiss_notice(&self, id: &str) {
+        self.state_mut().notice_actions.remove(id);
         let request = self.request::<NoticesDismiss>(NoticeIdParams { id: id.to_owned() });
         self.spawn(async move {
             if let Err(error) = request.await {
@@ -569,12 +1093,164 @@ impl AppModel {
 
     pub fn set_visible(&self, visible: bool) {
         self.state_mut().visible = visible;
-        self.spawn(self.lifecycle_update());
+        if visible {
+            self.spawn(self.lifecycle_update());
+            return;
+        }
+        let model = self.clone();
+        self.spawn(async move {
+            model.flush_edits().await;
+            model.lifecycle_update().await;
+            if model.state().session_active {
+                model.send_sync_flush().await;
+            }
+        });
+    }
+
+    pub fn edit(&self, text: String) {
+        let destination = match &self.state().editor_target {
+            EditorTarget::None => return,
+            EditorTarget::Note(path) => EditDestination::Note(path.clone()),
+            EditorTarget::Draft(_) => EditDestination::Draft,
+        };
+        self.edit_sender().submit(text, destination);
+    }
+
+    pub async fn flush_edits(&self) {
+        self.edit_sender().flush().await;
+    }
+
+    pub async fn save_now(&self) {
+        self.flush_edits().await;
+        self.send_sync_flush().await;
+    }
+
+    /// Saves every edit for a close; a failed request counts the edits last reported unsaved.
+    pub async fn flush_for_close(&self) -> FlushOutcome {
+        self.flush_edits().await;
+        match self.request::<SyncFlush>(SyncFlushParams {}).await {
+            Ok(result) => result.result,
+            Err(RequestError::Stopped) => FlushOutcome::Saved,
+            Err(error) => {
+                warn("could not save before closing", &error);
+                let count = self.unsaved_count();
+                if count == 0 {
+                    FlushOutcome::Saved
+                } else {
+                    FlushOutcome::Unsaved { count }
+                }
+            }
+        }
+    }
+
+    pub fn unsaved_count(&self) -> u32 {
+        self.state()
+            .sync
+            .as_ref()
+            .map_or(0, |sync| sync.unsaved_count)
+    }
+
+    pub async fn retry_sync(&self) {
+        if let Err(error) = self.request::<SyncRetry>(SyncRetryParams {}).await {
+            warn("could not retry saving", &error);
+            self.show_toast(&UserError::from(error).message);
+        }
+    }
+
+    pub async fn resolve_conflict(&self, resolution: ConflictResolution) {
+        self.flush_edits().await;
+        let path = match self.state().open_note.as_ref() {
+            Some(OpenNote::Loaded {
+                path,
+                conflict: Some(_),
+                ..
+            }) => path.clone(),
+            _ => return,
+        };
+        let result = self
+            .request::<ConflictResolve>(ConflictResolveParams { path, resolution })
+            .await;
+        if let Err(error) = result {
+            warn("could not resolve the conflict", &error);
+            self.show_toast(&UserError::from(error).message);
+        }
     }
 
     pub fn set_online(&self, online: bool) {
         self.state_mut().online = online;
         self.spawn(self.lifecycle_update());
+    }
+
+    async fn send_sync_flush(&self) {
+        if let Err(error) = self.request::<SyncFlush>(SyncFlushParams {}).await {
+            warn("could not save", &error);
+        }
+    }
+
+    fn new_edit_sender(&self) -> EditSender {
+        let notes = self.downgrade();
+        let drafts = self.downgrade();
+        EditSender::new(
+            move |path, text| {
+                let model = notes.upgrade();
+                async move {
+                    if let Some(model) = model {
+                        model.send_note_edit(path, text).await;
+                    }
+                }
+            },
+            move |text| {
+                let model = drafts.upgrade();
+                async move {
+                    match model {
+                        Some(model) => model.send_draft_content(text).await,
+                        None => None,
+                    }
+                }
+            },
+        )
+    }
+
+    async fn send_note_edit(&self, path: Vec<String>, text: String) {
+        if let Err(error) = self
+            .request::<NoteEdit>(NoteEditParams { path, text })
+            .await
+        {
+            warn("could not send an edit", &error);
+        }
+    }
+
+    async fn send_draft_content(&self, content: String) -> Option<NoteDraftOutcome> {
+        let name = self.state().draft_name.clone();
+        match self
+            .request::<DraftContent>(DraftContentParams { name, content })
+            .await
+        {
+            Ok(result) => {
+                {
+                    let mut state = self.state_mut();
+                    if state.editor_target.is_draft() {
+                        match &result.outcome {
+                            NoteDraftOutcome::None => {}
+                            NoteDraftOutcome::Error { message } => {
+                                state.draft_error = Some(message.clone());
+                            }
+                            NoteDraftOutcome::Created { path, field_error } => {
+                                retarget(&mut state, EditorTarget::Note(path.clone()));
+                                state.draft_error = field_error.clone();
+                                state.draft_name.clear();
+                            }
+                        }
+                    }
+                }
+                self.emit_by_name::<()>("open-note-changed", &[]);
+                Some(result.outcome)
+            }
+            Err(error) => {
+                warn("could not send a draft", &error);
+                None
+            }
+        }
     }
 
     async fn start(&self) {
@@ -700,9 +1376,104 @@ impl AppModel {
             }
         };
         if ready {
-            self.set_loading_message(None);
-            self.set_route(Route::Notes);
+            let model = self.clone();
+            self.spawn(async move { model.enter_notes().await });
         }
+    }
+
+    async fn enter_notes(&self) {
+        match self.hand_off_early_draft().await {
+            Ok(()) => {
+                if matches!(self.state().route, Route::Loading { .. }) {
+                    self.set_loading_message(None);
+                    self.set_route(Route::Notes);
+                }
+            }
+            Err(error) => {
+                if matches!(self.state().route, Route::Loading { .. }) {
+                    self.show_toast(&error.message);
+                    self.set_route(Route::Loading {
+                        failure: Some(LoadingFailure {
+                            message: error.message,
+                            can_retry: true,
+                        }),
+                    });
+                }
+            }
+        }
+    }
+
+    /// Sends the text typed on the loading page. A failure keeps it for another try.
+    async fn hand_off_early_draft(&self) -> Result<(), UserError> {
+        let early = {
+            let mut state = self.state_mut();
+            if state.early_draft.is_empty() {
+                return Ok(());
+            }
+            state.handing_off = true;
+            state.early_draft.clone()
+        };
+        self.emit_by_name::<()>("early-draft-changed", &[]);
+        let generation = self.imp().generation.get();
+        let result = self
+            .request::<EarlyDraftHandOff>(EarlyDraftHandOffParams {
+                name: early.name,
+                body: early.body.clone(),
+                name_confirmed: early.name_confirmed,
+            })
+            .await;
+        if self.imp().generation.get() != generation {
+            return Ok(());
+        }
+        let outcome = match result {
+            Ok(result) => result.outcome,
+            Err(error) => {
+                warn("could not hand off the early draft", &error);
+                self.state_mut().handing_off = false;
+                self.emit_by_name::<()>("early-draft-changed", &[]);
+                return Err(UserError::from(error));
+            }
+        };
+        {
+            let mut state = self.state_mut();
+            state.handing_off = false;
+        }
+        self.edit_early_draft(|early| *early = EarlyDraftState::default());
+        self.emit_by_name::<()>("early-draft-changed", &[]);
+        match outcome {
+            EarlyDraftOutcome::None => {}
+            EarlyDraftOutcome::Draft { name, error } => {
+                {
+                    let mut state = self.state_mut();
+                    state.draft_name = name.clone();
+                    state.draft_body = early.body;
+                    state.draft_focus = DraftFocus::Name;
+                    state.draft_error = error;
+                    state.open_note_path = None;
+                    state.core_open_path = None;
+                    state.open_note = None;
+                    retarget(
+                        &mut state,
+                        EditorTarget::Draft(NoteDraft {
+                            parent: Vec::new(),
+                            name,
+                        }),
+                    );
+                    state.note_switch += 1;
+                    state.editor_lineage += 1;
+                }
+                self.emit_by_name::<()>("open-note-changed", &[]);
+            }
+            EarlyDraftOutcome::Created { path, field_error } => {
+                {
+                    let mut state = self.state_mut();
+                    state.draft_error = field_error;
+                    state.focus_end = true;
+                }
+                self.open_note(Some(path));
+            }
+        }
+        Ok(())
     }
 
     async fn load_settings(&self) {
@@ -728,6 +1499,14 @@ impl AppModel {
         };
         if changed {
             self.emit_by_name::<()>("appearance-changed", &[]);
+        }
+        let editor_settings = EditorSettings::from_settings(&view.values);
+        let editor_changed = {
+            let mut state = self.state_mut();
+            std::mem::replace(&mut state.editor_settings, editor_settings) != editor_settings
+        };
+        if editor_changed {
+            self.emit_by_name::<()>("editor-settings-changed", &[]);
         }
     }
 
@@ -900,7 +1679,8 @@ impl AppModel {
         }
     }
 
-    async fn log_out_anyway(&self) -> Result<(), UserError> {
+    pub async fn log_out_anyway(&self) -> Result<(), UserError> {
+        self.leave_draft().await;
         logout_result(
             self.request::<SessionLogout>(SessionLogoutParams { anyway: true })
                 .await,
@@ -947,6 +1727,7 @@ impl AppModel {
             CoreEvent::SyncStateChanged(sync) => self.sync_state_changed(sync),
             CoreEvent::Notice(notice) => self.show_notice(notice),
             CoreEvent::NoticeCleared(cleared) => {
+                self.state_mut().notice_actions.remove(&cleared.id);
                 self.emit_by_name::<()>("notice-cleared", &[&cleared.id]);
             }
             CoreEvent::KeyChanged {
@@ -970,6 +1751,7 @@ impl AppModel {
             }
             CoreEvent::SessionEnded { .. } => self.session_ended(),
             CoreEvent::SettingsChanged { view } => self.apply_settings_view(&view),
+            CoreEvent::NoteContentChangedRemotely(changed) => self.show_toast(&changed.message),
             CoreEvent::Other { .. } => {}
         }
     }
@@ -984,23 +1766,66 @@ impl AppModel {
         self.finish_loading_if_ready();
     }
 
+    /// While any open is unanswered, an event only tracks what the core holds: the reply to
+    /// the latest open fills the editor, so neither an echo of an edit made before leaving
+    /// nor the note of an earlier open can show older text in the meantime.
     fn note_changed(&self, changed: NoteChanged) {
         {
             let mut state = self.state_mut();
-            state.open_note_path = changed.note.as_ref().map(|note| note_path(note).to_vec());
+            let reported = changed.note.as_ref().map(|note| note_path(note).to_vec());
+            let previous_path = std::mem::replace(&mut state.core_open_path, reported.clone());
+            let stale = state.pending_opens > 0
+                || (state.open_note_path != previous_path && reported != state.open_note_path);
+            if stale {
+                return;
+            }
+            state.open_note_path = reported;
+            if let Some(OpenNote::Loaded { path, content, .. }) = &changed.note {
+                let no_remote_edits = changed.edits.as_ref().is_none_or(Vec::is_empty);
+                if !(delivered(&state, path, content) && no_remote_edits) {
+                    let renamed = changed.edits.is_some()
+                        && matches!(
+                            &state.editor_target,
+                            EditorTarget::Note(target)
+                                if target != path && previous_path.as_ref() == Some(target)
+                        );
+                    if renamed {
+                        retarget(&mut state, EditorTarget::Note(path.clone()));
+                    }
+                    publish(&mut state, path, content, changed.edits.clone());
+                }
+            }
             state.open_note = changed.note;
         }
         self.emit_by_name::<()>("open-note-changed", &[]);
     }
 
+    fn open_answered(&self, generation: u64) {
+        if self.imp().generation.get() == generation {
+            let mut state = self.state_mut();
+            state.pending_opens = state.pending_opens.saturating_sub(1);
+        }
+    }
+
+    #[cfg(all(test, feature = "testing"))]
+    fn opens_pending(&self) -> bool {
+        self.state().pending_opens > 0
+    }
+
     fn apply_opened_note(&self, requested: Option<Vec<String>>, note: Option<OpenNote>) {
         {
             let mut state = self.state_mut();
-            if state.open_note_path != requested {
+            state.core_open_path = note.as_ref().map(|note| note_path(note).to_vec());
+            if state.pending_opens > 0 || state.open_note_path != requested {
                 return;
             }
             if let Some(note) = &note {
                 state.open_note_path = Some(note_path(note).to_vec());
+            }
+            if let Some(OpenNote::Loaded { path, content, .. }) = &note
+                && !delivered(&state, path, content)
+            {
+                publish(&mut state, path, content, None);
             }
             state.open_note = note;
         }
@@ -1015,10 +1840,12 @@ impl AppModel {
                 && !sync.tree_loaded
                 && !sync.refreshing;
             if still_loading {
-                sync.last_refresh_error.map(|error| LoadingFailure {
-                    message: error.message,
-                    can_retry: true,
-                })
+                sync.last_refresh_error
+                    .as_ref()
+                    .map(|error| LoadingFailure {
+                        message: error.message.clone(),
+                        can_retry: true,
+                    })
             } else {
                 None
             }
@@ -1028,12 +1855,24 @@ impl AppModel {
                 failure: Some(failure),
             });
         }
+        self.state_mut().sync = Some(sync);
+        self.emit_by_name::<()>("sync-state-changed", &[]);
     }
 
     fn show_notice(&self, notice: Notice) {
-        let action_label = notice.action.map(|action| match action {
-            NoticeAction::OpenNote { label, .. } | NoticeAction::Undo { label } => label,
+        let action_label = notice.action.as_ref().map(|action| match action {
+            NoticeAction::OpenNote { label, .. } | NoticeAction::Undo { label } => label.clone(),
         });
+        match notice.action {
+            Some(action) => {
+                self.state_mut()
+                    .notice_actions
+                    .insert(notice.id.clone(), action);
+            }
+            None => {
+                self.state_mut().notice_actions.remove(&notice.id);
+            }
+        }
         self.emit_by_name::<()>(
             "notice",
             &[
@@ -1061,8 +1900,12 @@ impl AppModel {
                     forge: previous.draft.forge,
                     token: None,
                 },
+                note_switch: previous.note_switch + 1,
+                editor_lineage: previous.editor_lineage + 1,
+                note_update_serial: previous.note_update_serial,
                 accent_options: previous.accent_options,
                 appearance: previous.appearance,
+                editor_settings: previous.editor_settings,
                 visible: previous.visible,
                 online: previous.online,
                 keyring_warned: previous.keyring_warned,
@@ -1072,7 +1915,9 @@ impl AppModel {
         self.emit_by_name::<()>("loading-message-changed", &[]);
         self.emit_by_name::<()>("tree-changed", &[]);
         self.emit_by_name::<()>("open-note-changed", &[]);
+        self.emit_by_name::<()>("sync-state-changed", &[]);
         self.bump_generation();
+        self.imp().editor_lane.supersede();
         let model = self.clone();
         self.spawn(async move {
             match client.restart().await {
@@ -1179,6 +2024,13 @@ impl AppModel {
 
     fn client(&self) -> Option<Rc<CoreClient>> {
         self.imp().client.borrow().clone()
+    }
+
+    fn edit_sender(&self) -> &EditSender {
+        self.imp()
+            .edit_sender
+            .get()
+            .expect("the model is created with an edit sender")
     }
 
     fn config(&self) -> &AppConfig {
@@ -1308,6 +2160,19 @@ impl AppModel {
         .map_err(UserError::from)
     }
 
+    pub fn testing_remote_change(
+        &self,
+        change: commitnote_core_api::events::RemoteChange,
+        message: &str,
+    ) {
+        self.handle_event(CoreEvent::NoteContentChangedRemotely(
+            commitnote_core_api::events::NoteContentChangedRemotely {
+                change,
+                message: message.to_owned(),
+            },
+        ));
+    }
+
     pub async fn testing_fail_next(&self) -> Result<(), UserError> {
         use commitnote_core_api::fake::{FakeFailNext, FakeFailNextParams};
 
@@ -1418,6 +2283,30 @@ fn repo_key(url: &str) -> Option<String> {
     (!path.is_empty()).then(|| path.to_owned())
 }
 
+fn delivered(state: &State, path: &[String], content: &str) -> bool {
+    state
+        .note_update
+        .as_ref()
+        .is_some_and(|update| update.path == path && update.content == content)
+}
+
+fn publish(state: &mut State, path: &[String], content: &str, edits: Option<Vec<RemoteTextEdit>>) {
+    state.note_update_serial += 1;
+    state.note_update = Some(NoteContentUpdate {
+        serial: state.note_update_serial,
+        path: path.to_vec(),
+        content: content.to_owned(),
+        edits,
+    });
+}
+
+fn retarget(state: &mut State, target: EditorTarget) {
+    if state.editor_target.note_path() != target.note_path() {
+        state.note_name_error = None;
+    }
+    state.editor_target = target;
+}
+
 /// Names only the failing step and the error kind, never request content.
 fn warn(what: &str, error: &RequestError) {
     let reason = match error {
@@ -1433,9 +2322,11 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::time::{Duration, Instant};
 
+    use commitnote_core_api::shapes::{OutOfSyncReason, SyncState};
     use commitnote_core_api::{NATIVE_CORE_API_VERSION, NATIVE_CORE_MARKER};
 
     use super::*;
+    use crate::pages::notes::note_state::{NoteDisplay, display_state, loaded_update};
 
     const NOTES_URL: &str = "https://github.com/sample/notes";
     const PASSPHRASE: &str = "sample notes repo passphrase";
@@ -1580,7 +2471,10 @@ mod tests {
                 })
                 .await;
 
-            session.model.log_out().await.expect("logging out succeeds");
+            assert_eq!(
+                session.model.log_out().await.expect("logging out succeeds"),
+                LogOutResult::LoggedOut
+            );
             session
                 .wait_until("the token page after logging out", |model| {
                     model.route() == Route::Token
@@ -1588,6 +2482,1091 @@ mod tests {
                 .await;
             assert!(session.model.tree().is_none());
             assert_eq!(session.model.login_draft().forge.as_deref(), Some("github"));
+        });
+    }
+
+    async fn exported_main(session: &Session) -> serde_json::Value {
+        use commitnote_core_api::fake::{FakeExportRepo, FakeExportRepoParams};
+
+        let exported = session
+            .model
+            .request::<FakeExportRepo>(FakeExportRepoParams {
+                repo_key: "sample/notes".to_owned(),
+            })
+            .await
+            .expect("the fake core exports the repository")
+            .exported;
+        let exported: serde_json::Value =
+            serde_json::from_str(&exported).expect("the export is JSON");
+        exported["main"].clone()
+    }
+
+    #[test]
+    fn an_edit_followed_by_save_now_reaches_the_repository() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let tree = session.model.tree().unwrap_or_default();
+            let path = first_note(&tree).expect("the sample tree has a note");
+            session.model.open_note(Some(path.clone()));
+            session
+                .wait_until("the loaded note", |model| {
+                    matches!(
+                        model.open_note_state(),
+                        Some(OpenNote::Loaded { path: loaded, .. }) if loaded == path
+                    )
+                })
+                .await;
+            session
+                .wait_until("the note content update", |model| {
+                    model
+                        .note_update()
+                        .is_some_and(|update| update.path == path)
+                })
+                .await;
+            assert_eq!(session.model.note_switch(), 1);
+
+            let before = exported_main(&session).await;
+            session.model.edit("Typed in the editor\n".to_owned());
+            session.model.save_now().await;
+            assert_ne!(exported_main(&session).await, before);
+
+            session.model.open_note(Some(path));
+            assert_eq!(session.model.note_switch(), 1);
+        });
+    }
+
+    #[test]
+    fn a_failed_save_is_reported_and_retried() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            open_first_note(&session).await;
+            let signals = Rc::new(Cell::new(0_u32));
+            session.model.connect_sync_state_changed({
+                let signals = signals.clone();
+                move |_| signals.set(signals.get() + 1)
+            });
+            let failed = |model: &AppModel| {
+                model.sync_state().is_some_and(|sync| {
+                    sync.can_retry
+                        && sync.state
+                            == SyncState::OutOfSync {
+                                reason: OutOfSyncReason::Failed,
+                            }
+                })
+            };
+            let repo = session.model.testing_repo_key().expect("a repository");
+            let fail = serde_json::json!({
+                "repo": repo, "operation": "commit", "kind": "Network", "count": 50,
+            });
+            session
+                .model
+                .testing_send("fake.failNext", fail)
+                .await
+                .expect("the fake forge fails commits");
+
+            session.model.edit("Typed while failing\n".to_owned());
+            session.model.save_now().await;
+            session.wait_until("the failed state", failed).await;
+            assert!(signals.get() > 0);
+
+            let clear = serde_json::json!({ "repo": repo, "operation": "commit" });
+            session
+                .model
+                .testing_send("fake.clearFailures", clear)
+                .await
+                .expect("the fake forge clears failures");
+            session.model.retry_sync().await;
+            session
+                .wait_until("the synced state", |model| {
+                    model
+                        .sync_state()
+                        .is_some_and(|sync| sync.state == SyncState::Synced)
+                })
+                .await;
+        });
+    }
+
+    #[test]
+    fn a_remote_change_to_the_open_note_is_a_toast() {
+        run(|| async {
+            let session = Session::start(String::new());
+            let toasts = Rc::new(RefCell::new(Vec::new()));
+            session.model.connect_toast({
+                let toasts = toasts.clone();
+                move |_, message| toasts.borrow_mut().push(message.to_owned())
+            });
+            session.model.testing_remote_change(
+                commitnote_core_api::events::RemoteChange::Trashed,
+                "Moved to trash elsewhere.",
+            );
+            assert_eq!(*toasts.borrow(), ["Moved to trash elsewhere."]);
+        });
+    }
+
+    async fn open_first_note(session: &Session) -> Vec<String> {
+        let tree = session.model.tree().unwrap_or_default();
+        let path = first_note(&tree).expect("the sample tree has a note");
+        session.model.open_note(Some(path.clone()));
+        session
+            .wait_until("the note content update", |model| {
+                model
+                    .note_update()
+                    .is_some_and(|update| update.path == path)
+            })
+            .await;
+        path
+    }
+
+    fn all_notes(nodes: &[TreeNode]) -> Vec<Vec<String>> {
+        nodes
+            .iter()
+            .flat_map(|node| match node {
+                TreeNode::Note { path, .. } => vec![path.clone()],
+                TreeNode::Folder { children, .. } => all_notes(children),
+            })
+            .collect()
+    }
+
+    fn tree_has(model: &AppModel, path: &[String]) -> bool {
+        all_notes(&model.tree().unwrap_or_default())
+            .iter()
+            .any(|note| note == path)
+    }
+
+    fn renamed(path: &[String], name: &str) -> Vec<String> {
+        let mut renamed = path.to_vec();
+        if let Some(last) = renamed.last_mut() {
+            *last = name.to_owned();
+        }
+        renamed
+    }
+
+    #[test]
+    fn renaming_the_open_note_moves_the_editor_along() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let path = open_first_note(&session).await;
+            let switch = session.model.note_switch();
+            let before = exported_main(&session).await;
+
+            let result = session
+                .model
+                .rename_open_note("Renamed note".to_owned())
+                .await;
+
+            assert_eq!(result, RenameResult::Renamed);
+            let target = renamed(&path, "Renamed note");
+            assert_eq!(
+                session.model.editor_target(),
+                EditorTarget::Note(target.clone())
+            );
+            assert_eq!(session.model.note_switch(), switch);
+            assert_eq!(session.model.note_name_error(), None);
+            session
+                .wait_until("the tree to hold the new name", |model| {
+                    tree_has(model, &target) && !tree_has(model, &path)
+                })
+                .await;
+            session.model.save_now().await;
+            assert_ne!(exported_main(&session).await, before);
+        });
+    }
+
+    async fn open_and_read(session: &Session, path: &[String]) -> String {
+        session.model.open_note(Some(path.to_vec()));
+        session
+            .wait_until("the opened note's content", |model| {
+                model.note_update().is_some_and(|update| {
+                    update.path == path
+                        && matches!(
+                            model.open_note_state(),
+                            Some(OpenNote::Loaded { path: loaded, .. }) if loaded == path
+                        )
+                })
+            })
+            .await;
+        session
+            .model
+            .note_update()
+            .map(|update| update.content)
+            .expect("the note was delivered")
+    }
+
+    type Shown = (Vec<String>, String);
+
+    fn shown(model: &AppModel) -> Option<Shown> {
+        let path = model.open_note_path();
+        let state = model.open_note_state();
+        let display = display_state(path.as_deref(), state.as_ref());
+        loaded_update(&display, &model.editor_target(), model.note_update())
+            .map(|update| (update.path, update.content))
+    }
+
+    fn record_shown(model: &AppModel) -> Rc<RefCell<Vec<Shown>>> {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        model.connect_open_note_changed({
+            let log = log.clone();
+            move |model| {
+                if let Some(shown) = shown(model) {
+                    log.borrow_mut().push(shown);
+                }
+            }
+        });
+        log
+    }
+
+    fn assert_only_shown(seen: &[Shown], allowed: &[(&[String], &str)]) {
+        for (path, text) in seen {
+            assert!(
+                allowed.iter().any(
+                    |(allowed_path, allowed_text)| *allowed_path == path.as_slice()
+                        && *allowed_text == text
+                ),
+                "the editor got {text:?} for {path:?}"
+            );
+        }
+    }
+
+    async fn settle_and_type(session: &Session, path: &[String], text: &str) -> String {
+        session
+            .wait_until("the editor to settle on the note", |model| {
+                !model.opens_pending() && shown(model) == Some((path.to_vec(), text.to_owned()))
+            })
+            .await;
+        let typed = format!("{text}K");
+        session.model.edit(typed.clone());
+        session.model.save_now().await;
+        typed
+    }
+
+    async fn until_sent(session: &Session) {
+        while session.model.edit_sender().has_pending() {
+            glib::timeout_future(Duration::ZERO).await;
+        }
+    }
+
+    async fn two_notes(session: &Session) -> (Vec<String>, String, Vec<String>, String) {
+        let notes = all_notes(&session.model.tree().unwrap_or_default());
+        let (a, b) = (notes[0].clone(), notes[1].clone());
+        let b_content = open_and_read(session, &b).await;
+        let a_content = open_and_read(session, &a).await;
+        (a, a_content, b, b_content)
+    }
+
+    async fn return_while_an_edit_is_in_flight(after_turns: bool) {
+        let session = Session::start(fake_bundle());
+        session.log_in().await;
+        let (a, a_content, b, b_content) = two_notes(&session).await;
+        let typed = format!("{a_content}typed in A\n");
+        let log = record_shown(&session.model);
+
+        session.model.edit(typed.clone());
+        if after_turns {
+            glib::timeout_future(Duration::ZERO).await;
+        }
+        session.model.open_note(Some(b.clone()));
+        if after_turns {
+            glib::timeout_future(Duration::ZERO).await;
+        }
+        session.model.open_note(Some(a.clone()));
+        let typed_k = settle_and_type(&session, &a, &typed).await;
+
+        let seen = log.take();
+        assert_only_shown(&seen, &[(&a, &typed), (&a, &typed_k), (&b, &b_content)]);
+        assert!(seen.contains(&(a.clone(), typed.clone())));
+        assert_eq!(open_and_read(&session, &b).await, b_content);
+        assert_eq!(open_and_read(&session, &a).await, typed_k);
+    }
+
+    #[test]
+    fn returning_at_once_to_a_note_with_an_edit_in_flight_shows_the_typed_text() {
+        run(|| return_while_an_edit_is_in_flight(false));
+    }
+
+    #[test]
+    fn returning_after_a_turn_to_a_note_with_an_edit_in_flight_shows_the_typed_text() {
+        run(|| return_while_an_edit_is_in_flight(true));
+    }
+
+    #[test]
+    fn returning_with_two_edits_outstanding_shows_only_the_newest() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let (a, a_content, b, b_content) = two_notes(&session).await;
+            let first = format!("{a_content}first\n");
+            let second = format!("{first}second\n");
+            let log = record_shown(&session.model);
+
+            session.model.edit(first);
+            until_sent(&session).await;
+            session.model.edit(second.clone());
+            session.model.open_note(Some(b.clone()));
+            session.model.open_note(Some(a.clone()));
+            let typed_k = settle_and_type(&session, &a, &second).await;
+
+            let seen = log.take();
+            assert_only_shown(&seen, &[(&a, &second), (&a, &typed_k)]);
+            assert!(seen.contains(&(a.clone(), second.clone())));
+            assert_eq!(open_and_read(&session, &b).await, b_content);
+            assert_eq!(open_and_read(&session, &a).await, typed_k);
+        });
+    }
+
+    #[test]
+    fn an_edit_echo_for_the_note_just_left_does_not_pull_the_editor_back() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let (a, a_content, b, b_content) = two_notes(&session).await;
+            let typed = format!("{a_content}typed in A\n");
+            let log = record_shown(&session.model);
+
+            session.model.edit(typed.clone());
+            session.model.open_note(Some(b.clone()));
+            let b_typed = settle_and_type(&session, &b, &b_content).await;
+
+            assert_eq!(session.model.editor_target(), EditorTarget::Note(b.clone()));
+            assert_eq!(session.model.open_note_path(), Some(b.clone()));
+            let seen = log.take();
+            assert_only_shown(&seen, &[(&b, &b_content), (&b, &b_typed)]);
+            assert!(seen.contains(&(b.clone(), b_content.clone())));
+            assert_eq!(open_and_read(&session, &a).await, typed);
+            assert_eq!(open_and_read(&session, &b).await, b_typed);
+        });
+    }
+
+    #[test]
+    fn returning_to_a_note_whose_echo_was_held_back_shows_its_newest_text() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let (a, a_content, b, b_content) = two_notes(&session).await;
+            let typed = format!("{a_content}typed in A\n");
+            let log = record_shown(&session.model);
+
+            session.model.edit(typed.clone());
+            session.model.open_note(Some(b.clone()));
+            session.model.flush_edits().await;
+            assert!(session.model.opens_pending(), "the echo was not held back");
+            session.model.open_note(Some(a.clone()));
+            let typed_k = settle_and_type(&session, &a, &typed).await;
+
+            let seen = log.take();
+            assert_only_shown(&seen, &[(&a, &typed), (&a, &typed_k), (&b, &b_content)]);
+            assert!(seen.contains(&(a.clone(), typed.clone())));
+            assert_eq!(open_and_read(&session, &a).await, typed_k);
+            assert_eq!(open_and_read(&session, &b).await, b_content);
+        });
+    }
+
+    #[test]
+    fn returning_to_a_note_while_the_opens_are_queued_keeps_the_editor_on_it() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let (a, a_content, b, b_content) = two_notes(&session).await;
+            let log = record_shown(&session.model);
+
+            session.model.open_note(Some(b.clone()));
+            session.model.open_note(Some(a.clone()));
+            let typed_k = settle_and_type(&session, &a, &a_content).await;
+
+            assert_eq!(session.model.editor_target(), EditorTarget::Note(a.clone()));
+            assert_eq!(session.model.open_note_path(), Some(a.clone()));
+            let seen = log.take();
+            assert_only_shown(&seen, &[(&a, &a_content), (&a, &typed_k)]);
+            assert!(seen.contains(&(a.clone(), a_content.clone())));
+            assert_eq!(open_and_read(&session, &b).await, b_content);
+            assert_eq!(open_and_read(&session, &a).await, typed_k);
+        });
+    }
+
+    #[test]
+    fn passing_through_a_note_shows_only_the_last_one() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let notes = all_notes(&session.model.tree().unwrap_or_default());
+            let c = notes[2].clone();
+            let c_content = open_and_read(&session, &c).await;
+            let (a, a_content, b, b_content) = two_notes(&session).await;
+            let typed = format!("{a_content}typed in A\n");
+            let log = record_shown(&session.model);
+
+            session.model.edit(typed.clone());
+            session.model.open_note(Some(b.clone()));
+            session.model.open_note(Some(c.clone()));
+            let c_typed = settle_and_type(&session, &c, &c_content).await;
+
+            assert_only_shown(&log.take(), &[(&c, &c_content), (&c, &c_typed)]);
+            assert_eq!(open_and_read(&session, &a).await, typed);
+            assert_eq!(open_and_read(&session, &b).await, b_content);
+            assert_eq!(open_and_read(&session, &c).await, c_typed);
+        });
+    }
+
+    #[test]
+    fn an_open_after_a_failed_one_shows_the_requested_note() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let notes = all_notes(&session.model.tree().unwrap_or_default());
+            let c = notes[2].clone();
+            let (_, _, b, b_content) = two_notes(&session).await;
+            let repo = session.model.testing_repo_key().expect("a repository");
+            let fail = serde_json::json!({
+                "repo": repo, "operation": "readBlob", "kind": "Network", "count": 1,
+            });
+            session
+                .model
+                .testing_send("fake.failNext", fail)
+                .await
+                .expect("the fake forge fails a read");
+            let log = record_shown(&session.model);
+
+            session.model.open_note(Some(c.clone()));
+            session
+                .wait_until("the failed open", |model| {
+                    !model.opens_pending()
+                        && matches!(
+                            model.open_note_state(),
+                            Some(OpenNote::Failed { path, .. }) if path == c
+                        )
+                })
+                .await;
+            let path = session.model.open_note_path();
+            let state = session.model.open_note_state();
+            assert!(matches!(
+                display_state(path.as_deref(), state.as_ref()),
+                NoteDisplay::Problem(_)
+            ));
+            assert!(log.borrow().is_empty());
+
+            session.model.open_note(Some(c.clone()));
+            session
+                .wait_until("the note after the failure", |model| {
+                    !model.opens_pending() && shown(model).is_some()
+                })
+                .await;
+            let (shown_path, c_content) = shown(&session.model).expect("the note is shown");
+            assert_eq!(shown_path, c);
+            let c_typed = settle_and_type(&session, &c, &c_content).await;
+
+            assert_only_shown(&log.take(), &[(&c, &c_content), (&c, &c_typed)]);
+            assert_eq!(open_and_read(&session, &b).await, b_content);
+            assert_eq!(open_and_read(&session, &c).await, c_typed);
+        });
+    }
+
+    async fn rename_and_type(reply_first: bool) {
+        let session = Session::start(fake_bundle());
+        session.log_in().await;
+        let notes = all_notes(&session.model.tree().unwrap_or_default());
+        let other = notes[1].clone();
+        let path = notes[0].clone();
+        let content = open_and_read(&session, &path).await;
+        let switch = session.model.note_switch();
+        let target = renamed(&path, "Renamed note");
+        let log = record_shown(&session.model);
+
+        let mut rename = Box::pin(session.model.rename_open_note("Renamed note".to_owned()));
+        let result = if reply_first {
+            let deadline = Instant::now() + Duration::from_secs(30);
+            loop {
+                if let std::task::Poll::Ready(result) = poll_once(&mut rename) {
+                    break result;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "timed out waiting for the rename"
+                );
+                std::thread::yield_now();
+            }
+        } else {
+            assert!(poll_once(&mut rename).is_pending());
+            session
+                .wait_until("the event to move the editor", |model| {
+                    model.editor_target() == EditorTarget::Note(target.clone())
+                })
+                .await;
+            rename.await
+        };
+
+        assert_eq!(result, RenameResult::Renamed);
+        assert_eq!(
+            session.model.editor_target(),
+            EditorTarget::Note(target.clone())
+        );
+        let typed = settle_and_type(&session, &target, &content).await;
+        assert_eq!(session.model.note_switch(), switch);
+        assert_only_shown(
+            &log.take(),
+            &[(&path, &content), (&target, &content), (&target, &typed)],
+        );
+        open_and_read(&session, &other).await;
+        assert_eq!(open_and_read(&session, &target).await, typed);
+    }
+
+    #[test]
+    fn a_rename_announced_before_its_reply_keeps_the_text() {
+        run(|| rename_and_type(false));
+    }
+
+    #[test]
+    fn a_rename_answered_before_its_announcement_keeps_the_text() {
+        run(|| rename_and_type(true));
+    }
+
+    #[test]
+    fn renaming_to_a_sibling_name_reports_the_error_and_keeps_the_note() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let notes = all_notes(&session.model.tree().unwrap_or_default());
+            let (path, sibling) = notes
+                .iter()
+                .find_map(|path| {
+                    let sibling = notes.iter().find(|other| {
+                        *other != path
+                            && other.len() == path.len()
+                            && other[..other.len() - 1] == path[..path.len() - 1]
+                    })?;
+                    Some((path.clone(), sibling.clone()))
+                })
+                .expect("the sample tree has two sibling notes");
+            session.model.open_note(Some(path.clone()));
+            session
+                .wait_until("the note content update", |model| {
+                    model
+                        .note_update()
+                        .is_some_and(|update| update.path == path)
+                })
+                .await;
+
+            let name = sibling.last().cloned().unwrap_or_default();
+            let RenameResult::Error(message) = session.model.rename_open_note(name).await else {
+                panic!("a sibling's name is refused");
+            };
+
+            assert_eq!(session.model.note_name_error(), Some(message));
+            assert_eq!(
+                session.model.editor_target(),
+                EditorTarget::Note(path.clone())
+            );
+            assert!(tree_has(&session.model, &path));
+
+            let current = path.last().cloned().unwrap_or_default();
+            assert_eq!(
+                session.model.rename_open_note(current).await,
+                RenameResult::None
+            );
+            assert_eq!(session.model.note_name_error(), None);
+        });
+    }
+
+    #[test]
+    fn an_empty_name_restores_the_current_one() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let path = open_first_note(&session).await;
+
+            assert_eq!(
+                session.model.rename_open_note("  ".to_owned()).await,
+                RenameResult::Restore
+            );
+            assert_eq!(
+                session.model.editor_target(),
+                EditorTarget::Note(path.clone())
+            );
+            assert_eq!(session.model.note_name_error(), None);
+            assert!(tree_has(&session.model, &path));
+        });
+    }
+
+    #[test]
+    fn a_draft_name_creates_the_note_and_switches_the_editor() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let existing = all_notes(&session.model.tree().unwrap_or_default())
+                .into_iter()
+                .find(|path| path.len() == 1)
+                .expect("the sample tree has a top-level note");
+
+            session
+                .model
+                .start_draft(Vec::new(), DraftFocus::Name)
+                .await
+                .expect("a draft starts at the root");
+            assert!(session.model.editor_target().is_draft());
+            assert_eq!(session.model.draft_focus(), DraftFocus::Name);
+            assert_eq!(session.model.open_note_path(), None);
+            let switch = session.model.note_switch();
+
+            session.model.set_draft_name(existing[0].clone());
+            assert!(matches!(
+                session.model.commit_draft_name().await,
+                NoteDraftOutcome::Error { .. }
+            ));
+            assert!(session.model.draft_error().is_some());
+            assert!(session.model.editor_target().is_draft());
+
+            session.model.set_draft_name("Fresh note".to_owned());
+            let outcome = session.model.commit_draft_name().await;
+
+            let path = vec!["Fresh note".to_owned()];
+            assert!(
+                matches!(&outcome, NoteDraftOutcome::Created { path: created, .. } if *created == path)
+            );
+            assert_eq!(
+                session.model.editor_target(),
+                EditorTarget::Note(path.clone())
+            );
+            assert_eq!(session.model.note_switch(), switch + 1);
+            assert_eq!(session.model.draft_name(), "");
+            assert_eq!(session.model.draft_error(), None);
+            session
+                .wait_until("the tree to hold the new note", |model| {
+                    tree_has(model, &path)
+                })
+                .await;
+        });
+    }
+
+    #[test]
+    fn draft_content_promotes_the_draft_without_a_switch() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let notes = all_notes(&session.model.tree().unwrap_or_default());
+            session
+                .model
+                .start_draft(Vec::new(), DraftFocus::Editor)
+                .await
+                .expect("a draft starts at the root");
+            let switch = session.model.note_switch();
+            let lineage = session.model.editor_lineage();
+            let before = exported_main(&session).await;
+
+            session.model.edit("Body of the draft\n".to_owned());
+            session.model.flush_edits().await;
+
+            let EditorTarget::Note(path) = session.model.editor_target() else {
+                panic!("the draft became a note");
+            };
+            assert!(!notes.contains(&path));
+            assert_eq!(session.model.note_switch(), switch);
+            assert_eq!(session.model.editor_lineage(), lineage);
+            session
+                .wait_until("the created note's content", |model| {
+                    model.note_update().is_some_and(|update| {
+                        update.path == path && update.content == "Body of the draft\n"
+                    })
+                })
+                .await;
+            session.model.save_now().await;
+            assert_ne!(exported_main(&session).await, before);
+        });
+    }
+
+    #[test]
+    fn leaving_an_empty_draft_discards_it() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let notes = all_notes(&session.model.tree().unwrap_or_default());
+            let before = exported_main(&session).await;
+            session
+                .model
+                .start_draft(Vec::new(), DraftFocus::Name)
+                .await
+                .expect("a draft starts at the root");
+            session.model.set_draft_name("Never named".to_owned());
+
+            session.model.leave_draft().await;
+
+            assert_eq!(session.model.editor_target(), EditorTarget::None);
+            assert_eq!(session.model.draft_name(), "");
+            assert_eq!(
+                session.model.commit_draft_name().await,
+                NoteDraftOutcome::None
+            );
+            session.model.save_now().await;
+            assert_eq!(exported_main(&session).await, before);
+            assert_eq!(all_notes(&session.model.tree().unwrap_or_default()), notes);
+        });
+    }
+
+    #[test]
+    fn an_untouched_early_draft_hands_off_nothing() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let switch = session.model.note_switch();
+
+            session
+                .model
+                .hand_off_early_draft()
+                .await
+                .expect("an empty early draft needs no request");
+
+            assert_eq!(session.model.editor_target(), EditorTarget::None);
+            assert_eq!(session.model.note_switch(), switch);
+            assert!(!session.model.take_focus_end());
+        });
+    }
+
+    #[test]
+    fn an_early_body_becomes_a_note_with_the_caret_at_the_end() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            session
+                .model
+                .set_early_draft_body("Quick thought".to_owned());
+
+            session
+                .model
+                .hand_off_early_draft()
+                .await
+                .expect("the hand-off succeeds");
+
+            let EditorTarget::Note(path) = session.model.editor_target() else {
+                panic!("the early draft became a note");
+            };
+            assert_eq!(session.model.open_note_path(), Some(path.clone()));
+            assert!(session.model.early_draft().is_empty());
+            assert!(!session.model.handing_off());
+            assert!(session.model.take_focus_end());
+            assert!(!session.model.take_focus_end());
+            session
+                .wait_until("the created note's content", |model| {
+                    model.note_update().is_some_and(|update| {
+                        update.path == path && update.content == "Quick thought"
+                    })
+                })
+                .await;
+        });
+    }
+
+    #[test]
+    fn a_confirmed_early_name_creates_the_note_under_that_name() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            session.model.set_early_draft_name("Plans".to_owned());
+            session.model.set_early_draft_body("Body text".to_owned());
+            session.model.confirm_early_draft_name();
+
+            session
+                .model
+                .hand_off_early_draft()
+                .await
+                .expect("the hand-off succeeds");
+
+            assert_eq!(
+                session.model.editor_target(),
+                EditorTarget::Note(vec!["Plans".to_owned()])
+            );
+            assert_eq!(session.model.draft_error(), None);
+        });
+    }
+
+    #[test]
+    fn an_early_name_alone_opens_a_draft_with_that_name() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let switch = session.model.note_switch();
+            let lineage = session.model.editor_lineage();
+            session.model.set_early_draft_name("Half".to_owned());
+
+            session
+                .model
+                .hand_off_early_draft()
+                .await
+                .expect("the hand-off succeeds");
+
+            assert!(session.model.editor_target().is_draft());
+            assert_eq!(session.model.draft_name(), "Half");
+            assert_eq!(session.model.draft_body(), "");
+            assert_eq!(session.model.draft_focus(), DraftFocus::Name);
+            assert_eq!(session.model.draft_error(), None);
+            assert_eq!(session.model.note_switch(), switch + 1);
+            assert_eq!(session.model.editor_lineage(), lineage + 1);
+            assert!(session.model.early_draft().is_empty());
+            assert!(!session.model.take_focus_end());
+        });
+    }
+
+    #[test]
+    fn a_taken_early_name_alone_opens_a_draft_with_the_error() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let existing = all_notes(&session.model.tree().unwrap_or_default())
+                .into_iter()
+                .find(|path| path.len() == 1)
+                .expect("the sample tree has a top-level note");
+            session.model.set_early_draft_name(existing[0].clone());
+            session.model.confirm_early_draft_name();
+
+            session
+                .model
+                .hand_off_early_draft()
+                .await
+                .expect("the hand-off succeeds");
+
+            assert!(session.model.editor_target().is_draft());
+            assert_eq!(session.model.draft_name(), existing[0]);
+            assert!(session.model.draft_error().is_some());
+            assert!(session.model.early_draft().is_empty());
+        });
+    }
+
+    #[test]
+    fn a_taken_early_name_with_a_body_still_creates_a_note() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let existing = all_notes(&session.model.tree().unwrap_or_default())
+                .into_iter()
+                .find(|path| path.len() == 1)
+                .expect("the sample tree has a top-level note");
+            session.model.set_early_draft_name(existing[0].clone());
+            session.model.set_early_draft_body("Body".to_owned());
+            session.model.confirm_early_draft_name();
+
+            session
+                .model
+                .hand_off_early_draft()
+                .await
+                .expect("the hand-off succeeds");
+
+            let target = session.model.editor_target();
+            assert!(target.note_path().is_some_and(|path| path != existing));
+            assert!(session.model.early_draft().is_empty());
+        });
+    }
+
+    #[test]
+    fn type_to_start_holds_keys_until_the_draft_hands_them_over() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            assert!(
+                !session
+                    .model
+                    .buffer_type_to_start(TypeToStartInput::Text("x".into()))
+            );
+
+            session.model.start_type_to_start("H");
+            assert!(session.model.type_to_start_pending());
+            assert!(
+                session
+                    .model
+                    .buffer_type_to_start(TypeToStartInput::Text("i".into()))
+            );
+            assert!(session.model.buffer_type_to_start(TypeToStartInput::Enter));
+            assert_eq!(session.model.take_type_to_start_text(), None);
+            session
+                .wait_until("the draft", |model| model.editor_target().is_draft())
+                .await;
+            assert_eq!(session.model.draft_focus(), DraftFocus::Editor);
+
+            assert_eq!(
+                session.model.take_type_to_start_text().as_deref(),
+                Some("Hi\n")
+            );
+            assert!(!session.model.type_to_start_pending());
+            assert_eq!(session.model.take_type_to_start_text(), None);
+        });
+    }
+
+    fn poll_once<F: Future>(future: &mut std::pin::Pin<Box<F>>) -> std::task::Poll<F::Output> {
+        future
+            .as_mut()
+            .poll(&mut std::task::Context::from_waker(std::task::Waker::noop()))
+    }
+
+    async fn assert_opened_note_is_what_the_core_holds(session: &Session, path: &[String]) {
+        assert_eq!(
+            session.model.editor_target(),
+            EditorTarget::Note(path.to_vec())
+        );
+        assert_eq!(session.model.open_note_path().as_deref(), Some(path));
+        session
+            .wait_until("the opened note", |model| {
+                matches!(
+                    model.open_note_state(),
+                    Some(OpenNote::Loaded { path: loaded, .. }) if loaded == path
+                )
+            })
+            .await;
+        let probe = session
+            .model
+            .request::<DraftContent>(DraftContentParams {
+                name: String::new(),
+                content: "probe".to_owned(),
+            })
+            .await
+            .expect("the core answers a draft probe");
+        assert_eq!(probe.outcome, NoteDraftOutcome::None);
+
+        let before = exported_main(session).await;
+        session.model.edit("Typed after the race\n".to_owned());
+        session.model.save_now().await;
+        assert_ne!(exported_main(session).await, before);
+        assert_eq!(session.model.unsaved_count(), 0);
+    }
+
+    fn superseded_start_test(focus: DraftFocus) {
+        run(|| async move {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let note = first_note(&session.model.tree().unwrap_or_default())
+                .expect("the sample tree has a note");
+            let toasts = Rc::new(RefCell::new(Vec::new()));
+            let sink = toasts.clone();
+            session
+                .model
+                .connect_toast(move |_, message| sink.borrow_mut().push(message.to_owned()));
+
+            let mut start = Box::pin(session.model.start_draft(Vec::new(), focus));
+            assert!(poll_once(&mut start).is_pending());
+            let switch = session.model.note_switch();
+            session.model.open_note(Some(note.clone()));
+            assert_eq!(session.model.note_switch(), switch + 1);
+
+            assert_eq!(start.await, Ok(()));
+
+            assert_eq!(session.model.note_switch(), switch + 1);
+            assert_opened_note_is_what_the_core_holds(&session, &note).await;
+            assert!(toasts.borrow().is_empty());
+        });
+    }
+
+    #[test]
+    fn a_draft_started_into_the_editor_does_not_replace_a_note_opened_meanwhile() {
+        superseded_start_test(DraftFocus::Editor);
+    }
+
+    #[test]
+    fn a_draft_started_with_a_name_does_not_replace_a_note_opened_meanwhile() {
+        superseded_start_test(DraftFocus::Name);
+    }
+
+    #[test]
+    fn a_draft_start_still_waiting_to_be_sent_is_dropped_when_a_note_is_opened() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let note = first_note(&session.model.tree().unwrap_or_default())
+                .expect("the sample tree has a note");
+
+            let start = session.model.start_draft(Vec::new(), DraftFocus::Editor);
+            session.model.open_note(Some(note.clone()));
+
+            assert_eq!(start.await, Ok(()));
+
+            assert_opened_note_is_what_the_core_holds(&session, &note).await;
+        });
+    }
+
+    #[test]
+    fn typing_to_start_a_note_is_dropped_when_another_note_is_opened_first() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let note = first_note(&session.model.tree().unwrap_or_default())
+                .expect("the sample tree has a note");
+            let toasts = Rc::new(RefCell::new(Vec::new()));
+            let sink = toasts.clone();
+            session
+                .model
+                .connect_toast(move |_, message| sink.borrow_mut().push(message.to_owned()));
+
+            session.model.start_type_to_start("H");
+            session.model.open_note(Some(note.clone()));
+            assert!(!session.model.type_to_start_pending());
+
+            assert_opened_note_is_what_the_core_holds(&session, &note).await;
+            assert!(!session.model.type_to_start_pending());
+            assert!(toasts.borrow().is_empty());
+        });
+    }
+
+    #[test]
+    fn a_later_draft_start_survives_an_earlier_superseded_one() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let note = first_note(&session.model.tree().unwrap_or_default())
+                .expect("the sample tree has a note");
+
+            let mut first = Box::pin(session.model.start_draft(Vec::new(), DraftFocus::Editor));
+            assert!(poll_once(&mut first).is_pending());
+            session.model.open_note(Some(note));
+            let second = session.model.start_draft(Vec::new(), DraftFocus::Name);
+
+            let (first, second) = futures_util::future::join(first, second).await;
+
+            assert_eq!((first, second), (Ok(()), Ok(())));
+            assert!(session.model.editor_target().is_draft());
+            assert_eq!(session.model.draft_focus(), DraftFocus::Name);
+            session.model.set_draft_name("Second draft".to_owned());
+            assert!(matches!(
+                session.model.commit_draft_name().await,
+                NoteDraftOutcome::Created { .. }
+            ));
+        });
+    }
+
+    #[test]
+    fn leaving_a_draft_does_not_clear_one_started_after_it() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            session
+                .model
+                .start_draft(Vec::new(), DraftFocus::Name)
+                .await
+                .expect("a draft starts at the root");
+
+            let leave = session.model.leave_draft();
+            let start = session.model.start_draft(Vec::new(), DraftFocus::Name);
+            futures_util::future::join(leave, async {
+                start.await.expect("the second draft starts");
+            })
+            .await;
+
+            assert!(session.model.editor_target().is_draft());
+            session.model.set_draft_name("Kept draft".to_owned());
+            assert!(matches!(
+                session.model.commit_draft_name().await,
+                NoteDraftOutcome::Created { .. }
+            ));
+        });
+    }
+
+    #[test]
+    fn leaving_the_draft_drops_the_held_keys() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            session.model.start_type_to_start("H");
+            session
+                .wait_until("the draft", |model| model.editor_target().is_draft())
+                .await;
+
+            session.model.leave_draft().await;
+
+            assert!(!session.model.type_to_start_pending());
         });
     }
 
@@ -1665,6 +3644,181 @@ mod tests {
                         "This build of the app is broken: its core has API version 999, but the app expects {NATIVE_CORE_API_VERSION}."
                     ),
                 }
+            );
+        });
+    }
+
+    #[test]
+    fn editor_settings_follow_the_core_and_signal_changes() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            assert!(!session.model.vim_mode());
+            assert!(session.model.type_to_start());
+
+            let signals = Rc::new(Cell::new(0_u32));
+            session.model.connect_editor_settings_changed({
+                let signals = signals.clone();
+                move |_| signals.set(signals.get() + 1)
+            });
+            let change = |key: &'static str, value: &'static str| {
+                session.model.testing_send(
+                    "settings.change",
+                    serde_json::json!({ "key": key, "value": value }),
+                )
+            };
+
+            change("vimMode", "true").await.expect("vimMode changes");
+            session
+                .wait_until("Vim mode to turn on", |model| model.vim_mode())
+                .await;
+            assert_eq!(signals.get(), 1);
+
+            change("colorMode", "dark")
+                .await
+                .expect("colorMode changes");
+            change("typeToStart", "false")
+                .await
+                .expect("typeToStart changes");
+            session
+                .wait_until("type to start to turn off", |model| !model.type_to_start())
+                .await;
+            assert!(session.model.vim_mode());
+            assert_eq!(signals.get(), 2);
+
+            change("vimMode", "false").await.expect("vimMode changes");
+            session
+                .wait_until("Vim mode to turn off", |model| !model.vim_mode())
+                .await;
+            assert!(!session.model.type_to_start());
+            assert_eq!(signals.get(), 3);
+        });
+    }
+
+    fn open_notes_pair(notes: &[Vec<String>]) -> (Vec<String>, Vec<String>) {
+        (notes[0].clone(), notes[1].clone())
+    }
+
+    fn feed_notice(session: &Session, id: &str, action: NoticeAction) {
+        session.model.handle_event(CoreEvent::Notice(Notice {
+            id: id.to_owned(),
+            tone: commitnote_core_api::shapes::NoticeTone::Warning,
+            message: "A notice".to_owned(),
+            persistent: true,
+            action: Some(action),
+        }));
+    }
+
+    #[test]
+    fn an_open_note_notice_opens_its_note_and_asks_the_core_to_dismiss_it() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let notes = all_notes(&session.model.tree().unwrap_or_default());
+            let (a, b) = open_notes_pair(&notes);
+            open_and_read(&session, &a).await;
+            feed_notice(
+                &session,
+                "engine-x",
+                NoticeAction::OpenNote {
+                    label: "Open note".to_owned(),
+                    path: b.clone(),
+                },
+            );
+
+            let dismissed = session.model.perform_notice_action("engine-x").await;
+
+            assert!(matches!(dismissed, Err(RequestError::Core(_))));
+            session
+                .wait_until("the named note", |model| {
+                    matches!(
+                        model.open_note_state(),
+                        Some(OpenNote::Loaded { path, .. }) if path == b
+                    )
+                })
+                .await;
+            assert_eq!(session.model.editor_target(), EditorTarget::Note(b));
+            assert_eq!(
+                session.model.perform_notice_action("engine-x").await,
+                Ok(())
+            );
+        });
+    }
+
+    #[test]
+    fn an_undo_notice_is_performed_by_the_core_and_leaves_the_open_note() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let notes = all_notes(&session.model.tree().unwrap_or_default());
+            let (a, _) = open_notes_pair(&notes);
+            open_and_read(&session, &a).await;
+            feed_notice(
+                &session,
+                "engine-x",
+                NoticeAction::Undo {
+                    label: "Undo".to_owned(),
+                },
+            );
+
+            let performed = session.model.perform_notice_action("engine-x").await;
+
+            assert_eq!(performed, Ok(()));
+            assert_eq!(session.model.editor_target(), EditorTarget::Note(a));
+        });
+    }
+
+    #[test]
+    fn a_conflict_notice_for_another_note_opens_it_without_losing_the_open_note_edits() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let notes = all_notes(&session.model.tree().unwrap_or_default());
+            let (a, b) = open_notes_pair(&notes);
+            let notices = Rc::new(RefCell::new(Vec::<NoticeView>::new()));
+            session.model.connect_notice({
+                let notices = notices.clone();
+                move |_, notice| notices.borrow_mut().push(notice.clone())
+            });
+            let b_content = open_and_read(&session, &b).await;
+            session
+                .model
+                .testing_remote_edit()
+                .await
+                .expect("the other device edits the note");
+            session.model.edit(format!("Local {b_content}"));
+            let a_content = open_and_read(&session, &a).await;
+            session.model.save_now().await;
+            session
+                .wait_until("the conflict notice", |_| {
+                    notices
+                        .borrow()
+                        .iter()
+                        .any(|notice| notice.action_label.is_some())
+                })
+                .await;
+            let id = notices
+                .borrow()
+                .iter()
+                .find(|notice| notice.action_label.is_some())
+                .map(|notice| notice.id.clone())
+                .expect("the conflict notice was shown");
+
+            session.model.edit(format!("{a_content}pending\n"));
+            let dismissed = session.model.perform_notice_action(&id).await;
+
+            assert_eq!(dismissed, Ok(()));
+            session
+                .wait_until("the conflicted note", |model| {
+                    matches!(
+                        model.open_note_state(),
+                        Some(OpenNote::Loaded { path, .. }) if path == b
+                    )
+                })
+                .await;
+            assert_eq!(
+                open_and_read(&session, &a).await,
+                format!("{a_content}pending\n")
             );
         });
     }

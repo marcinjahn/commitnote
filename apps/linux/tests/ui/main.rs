@@ -1,7 +1,10 @@
+mod flows;
 mod p1;
+mod p2;
 mod support;
 
 use std::process::ExitCode;
+use std::time::Instant;
 
 use adw::prelude::*;
 use commitnote::config;
@@ -10,7 +13,7 @@ use libadwaita as adw;
 
 use support::{Case, Harness};
 
-const SUITES: &[(&str, &[Case])] = &[("p1", p1::CASES)];
+const SUITES: &[(&str, &[Case])] = &[("p1", p1::CASES), ("p2", p2::CASES)];
 
 fn main() -> ExitCode {
     support::prepare_environment();
@@ -18,6 +21,7 @@ fn main() -> ExitCode {
         eprintln!("FAILED to start GTK: {error}");
         return ExitCode::FAILURE;
     }
+    sourceview5::init();
     commitnote::register_resources();
     if let Some(settings) = gtk::Settings::default() {
         settings.set_gtk_enable_animations(false);
@@ -50,6 +54,7 @@ fn main() -> ExitCode {
                 continue;
             }
             ran += 1;
+            let started = Instant::now();
             let result = harness
                 .begin(prefix, name)
                 .and_then(|()| case(&mut harness));
@@ -57,11 +62,12 @@ fn main() -> ExitCode {
                 harness.save_failure();
             }
             harness.finish();
+            let seconds = started.elapsed().as_secs_f32();
             match result {
-                Ok(()) => println!("ok {name}"),
+                Ok(()) => println!("ok {name} ({seconds:.1}s)"),
                 Err(reason) => {
                     failed += 1;
-                    println!("FAILED {name}: {reason}");
+                    println!("FAILED {name} ({seconds:.1}s): {reason}");
                 }
             }
         }

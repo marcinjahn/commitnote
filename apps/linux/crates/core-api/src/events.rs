@@ -34,6 +34,21 @@ pub struct NoteChanged {
     pub edits: Option<Vec<RemoteTextEdit>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RemoteChange {
+    Updated,
+    Relocated,
+    Trashed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteContentChangedRemotely {
+    pub change: RemoteChange,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncStateChanged {
@@ -91,6 +106,7 @@ pub enum CoreEvent {
     LoadingProgress(LoadingProgress),
     TreeChanged(TreeChanged),
     NoteChanged(NoteChanged),
+    NoteContentChangedRemotely(NoteContentChangedRemotely),
     SyncStateChanged(SyncStateChanged),
     Notice(Notice),
     NoticeCleared(NoticeCleared),
@@ -118,6 +134,9 @@ impl CoreEvent {
             "loadingProgress" => Self::LoadingProgress(decode_value(payload)?),
             "treeChanged" => Self::TreeChanged(decode_value(payload)?),
             "noteChanged" => Self::NoteChanged(decode_value(payload)?),
+            "noteContentChangedRemotely" => {
+                Self::NoteContentChangedRemotely(decode_value(payload)?)
+            }
             "syncStateChanged" => Self::SyncStateChanged(decode_value(payload)?),
             "notice" => Self::Notice(decode_value(payload)?),
             "noticeCleared" => Self::NoticeCleared(decode_value(payload)?),
@@ -155,6 +174,7 @@ impl CoreEvent {
             Self::LoadingProgress(_) => "loadingProgress",
             Self::TreeChanged(_) => "treeChanged",
             Self::NoteChanged(_) => "noteChanged",
+            Self::NoteContentChangedRemotely(_) => "noteContentChangedRemotely",
             Self::SyncStateChanged(_) => "syncStateChanged",
             Self::Notice(_) => "notice",
             Self::NoticeCleared(_) => "noticeCleared",
@@ -316,8 +336,40 @@ mod tests {
         else {
             panic!("conflict");
         };
-        assert_eq!(conflict["editing"], json!(true));
+        assert_eq!(conflict.other_device.as_deref(), Some("Other device"));
+        assert_eq!(conflict.edit_merged_label, "Edit merged");
+        assert!(conflict.editing);
         payload_round_trip(&changed);
+    }
+
+    #[test]
+    fn note_content_changed_remotely() {
+        for (wire, change) in [
+            ("updated", RemoteChange::Updated),
+            ("relocated", RemoteChange::Relocated),
+            ("trashed", RemoteChange::Trashed),
+        ] {
+            let text = format!(
+                r#"{{"kind":"event","event":"noteContentChangedRemotely","payload":{{"change":"{wire}","message":"m"}}}}"#
+            );
+            let decoded = event(&text);
+            let expected = NoteContentChangedRemotely {
+                change,
+                message: "m".into(),
+            };
+            assert_eq!(
+                decoded,
+                CoreEvent::NoteContentChangedRemotely(expected.clone())
+            );
+            assert_eq!(decoded.name(), "noteContentChangedRemotely");
+            payload_round_trip(&expected);
+        }
+        assert!(
+            parse_incoming(
+                r#"{"kind":"event","event":"noteContentChangedRemotely","payload":{"change":"moved","message":"m"}}"#
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -513,6 +565,10 @@ mod tests {
                 json!({"tree":null,"tagFilter":null,"usedTags":[],"tagsWritable":false,"tagOptions":[]}),
             ),
             ("noteChanged", json!({"note":null,"edits":null})),
+            (
+                "noteContentChangedRemotely",
+                json!({"change":"updated","message":"m"}),
+            ),
             ("noticeCleared", json!({"id":"x"})),
             ("sessionEnded", json!({"reason":"loggedOut"})),
             (

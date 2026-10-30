@@ -1,0 +1,5845 @@
+{
+  "entries": [
+    {
+      "name": "empty",
+      "text": "",
+      "nodes": []
+    },
+    {
+      "name": "plain-paragraph",
+      "text": "Just a plain paragraph of text.",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 31
+        }
+      ]
+    },
+    {
+      "name": "two-paragraphs",
+      "text": "First paragraph.\n\nSecond paragraph.",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 16
+        },
+        {
+          "kind": "paragraph",
+          "from": 18,
+          "to": 35
+        }
+      ]
+    },
+    {
+      "name": "atx-level-1",
+      "text": "# Heading one",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 0,
+          "to": 13
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 1
+        }
+      ]
+    },
+    {
+      "name": "atx-level-2",
+      "text": "## Heading two",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 2,
+          "from": 0,
+          "to": 14
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 2
+        }
+      ]
+    },
+    {
+      "name": "atx-level-3",
+      "text": "### Heading three",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 3,
+          "from": 0,
+          "to": 17
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 3
+        }
+      ]
+    },
+    {
+      "name": "atx-level-4",
+      "text": "#### Heading four",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 4,
+          "from": 0,
+          "to": 17
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 4
+        }
+      ]
+    },
+    {
+      "name": "atx-level-5",
+      "text": "##### Heading five",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 5,
+          "from": 0,
+          "to": 18
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 5
+        }
+      ]
+    },
+    {
+      "name": "atx-level-6",
+      "text": "###### Heading six",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 6,
+          "from": 0,
+          "to": 18
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 6
+        }
+      ]
+    },
+    {
+      "name": "atx-seven-hashes",
+      "text": "####### Not a heading",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "atx-no-space",
+      "text": "#NoSpace",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 8
+        }
+      ]
+    },
+    {
+      "name": "atx-closing-hashes",
+      "text": "## Closed heading ##",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 2,
+          "from": 0,
+          "to": 20
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "headerMark",
+          "from": 18,
+          "to": 20
+        }
+      ]
+    },
+    {
+      "name": "atx-empty",
+      "text": "#",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 1
+        }
+      ]
+    },
+    {
+      "name": "atx-with-emphasis",
+      "text": "# Title with *emphasis* and `code`",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 0,
+          "to": 34
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "emphasis",
+          "from": 13,
+          "to": 23
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 13,
+          "to": 14
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 22,
+          "to": 23
+        },
+        {
+          "kind": "inlineCode",
+          "from": 28,
+          "to": 34
+        },
+        {
+          "kind": "codeMark",
+          "from": 28,
+          "to": 29
+        },
+        {
+          "kind": "codeMark",
+          "from": 33,
+          "to": 34
+        }
+      ]
+    },
+    {
+      "name": "atx-tab",
+      "text": "#\tTabbed heading",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 16
+        }
+      ]
+    },
+    {
+      "name": "setext-level-1",
+      "text": "Setext one\n==========",
+      "nodes": [
+        {
+          "kind": "setextHeading",
+          "level": 1,
+          "from": 0,
+          "to": 21
+        },
+        {
+          "kind": "headerMark",
+          "from": 11,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "setext-level-2",
+      "text": "Setext two\n----------",
+      "nodes": [
+        {
+          "kind": "setextHeading",
+          "level": 2,
+          "from": 0,
+          "to": 21
+        },
+        {
+          "kind": "headerMark",
+          "from": 11,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "setext-multiline",
+      "text": "Line one\nline two\n===",
+      "nodes": [
+        {
+          "kind": "setextHeading",
+          "level": 1,
+          "from": 0,
+          "to": 21
+        },
+        {
+          "kind": "headerMark",
+          "from": 18,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "rule-dashes",
+      "text": "above\n\n---\n\nbelow",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 5
+        },
+        {
+          "kind": "horizontalRule",
+          "from": 7,
+          "to": 10
+        },
+        {
+          "kind": "paragraph",
+          "from": 12,
+          "to": 17
+        }
+      ]
+    },
+    {
+      "name": "rule-stars",
+      "text": "***",
+      "nodes": [
+        {
+          "kind": "horizontalRule",
+          "from": 0,
+          "to": 3
+        }
+      ]
+    },
+    {
+      "name": "rule-underscores",
+      "text": "___",
+      "nodes": [
+        {
+          "kind": "horizontalRule",
+          "from": 0,
+          "to": 3
+        }
+      ]
+    },
+    {
+      "name": "rule-spaced",
+      "text": "- - -",
+      "nodes": [
+        {
+          "kind": "horizontalRule",
+          "from": 0,
+          "to": 5
+        }
+      ]
+    },
+    {
+      "name": "rule-after-paragraph-is-setext",
+      "text": "paragraph\n---",
+      "nodes": [
+        {
+          "kind": "setextHeading",
+          "level": 2,
+          "from": 0,
+          "to": 13
+        },
+        {
+          "kind": "headerMark",
+          "from": 10,
+          "to": 13
+        }
+      ]
+    },
+    {
+      "name": "blockquote-simple",
+      "text": "> A quote",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 9
+        }
+      ]
+    },
+    {
+      "name": "blockquote-multiline",
+      "text": "> line one\n> line two",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 21
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 21
+        },
+        {
+          "kind": "quoteMark",
+          "from": 11,
+          "to": 12
+        }
+      ]
+    },
+    {
+      "name": "blockquote-lazy",
+      "text": "> line one\nlazy line",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 20
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 20
+        }
+      ]
+    },
+    {
+      "name": "blockquote-nested",
+      "text": "> outer\n>> inner\n> outer again",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 30
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 7
+        },
+        {
+          "kind": "quoteMark",
+          "from": 8,
+          "to": 9
+        },
+        {
+          "kind": "blockquote",
+          "from": 9,
+          "to": 30
+        },
+        {
+          "kind": "quoteMark",
+          "from": 9,
+          "to": 10
+        },
+        {
+          "kind": "paragraph",
+          "from": 11,
+          "to": 30
+        },
+        {
+          "kind": "quoteMark",
+          "from": 17,
+          "to": 18
+        }
+      ]
+    },
+    {
+      "name": "blockquote-no-space",
+      "text": ">tight quote",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 12
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 1,
+          "to": 12
+        }
+      ]
+    },
+    {
+      "name": "blockquote-deep-indent",
+      "text": "    > indented too far",
+      "nodes": [
+        {
+          "kind": "indentedCode",
+          "from": 4,
+          "to": 22
+        },
+        {
+          "kind": "codeText",
+          "from": 4,
+          "to": 22
+        }
+      ]
+    },
+    {
+      "name": "blockquote-with-heading",
+      "text": "> # Quoted heading\n> body",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 25
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 2,
+          "to": 18
+        },
+        {
+          "kind": "headerMark",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "quoteMark",
+          "from": 19,
+          "to": 20
+        },
+        {
+          "kind": "paragraph",
+          "from": 21,
+          "to": 25
+        }
+      ]
+    },
+    {
+      "name": "blockquote-empty",
+      "text": ">",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        }
+      ]
+    },
+    {
+      "name": "bullet-list-dash",
+      "text": "- one\n- two\n- three",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 19
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 5
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 5
+        },
+        {
+          "kind": "listItem",
+          "from": 6,
+          "to": 11
+        },
+        {
+          "kind": "listMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "paragraph",
+          "from": 8,
+          "to": 11
+        },
+        {
+          "kind": "listItem",
+          "from": 12,
+          "to": 19
+        },
+        {
+          "kind": "listMark",
+          "from": 12,
+          "to": 13
+        },
+        {
+          "kind": "paragraph",
+          "from": 14,
+          "to": 19
+        }
+      ]
+    },
+    {
+      "name": "bullet-list-star",
+      "text": "* one\n* two",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 11
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 5
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 5
+        },
+        {
+          "kind": "listItem",
+          "from": 6,
+          "to": 11
+        },
+        {
+          "kind": "listMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "paragraph",
+          "from": 8,
+          "to": 11
+        }
+      ]
+    },
+    {
+      "name": "bullet-list-plus",
+      "text": "+ one\n+ two",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 11
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 5
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 5
+        },
+        {
+          "kind": "listItem",
+          "from": 6,
+          "to": 11
+        },
+        {
+          "kind": "listMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "paragraph",
+          "from": 8,
+          "to": 11
+        }
+      ]
+    },
+    {
+      "name": "ordered-list",
+      "text": "1. one\n2. two\n3. three",
+      "nodes": [
+        {
+          "kind": "orderedList",
+          "from": 0,
+          "to": 22
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 6
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "paragraph",
+          "from": 3,
+          "to": 6
+        },
+        {
+          "kind": "listItem",
+          "from": 7,
+          "to": 13
+        },
+        {
+          "kind": "listMark",
+          "from": 7,
+          "to": 9
+        },
+        {
+          "kind": "paragraph",
+          "from": 10,
+          "to": 13
+        },
+        {
+          "kind": "listItem",
+          "from": 14,
+          "to": 22
+        },
+        {
+          "kind": "listMark",
+          "from": 14,
+          "to": 16
+        },
+        {
+          "kind": "paragraph",
+          "from": 17,
+          "to": 22
+        }
+      ]
+    },
+    {
+      "name": "ordered-list-paren",
+      "text": "1) one\n2) two",
+      "nodes": [
+        {
+          "kind": "orderedList",
+          "from": 0,
+          "to": 13
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 6
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "paragraph",
+          "from": 3,
+          "to": 6
+        },
+        {
+          "kind": "listItem",
+          "from": 7,
+          "to": 13
+        },
+        {
+          "kind": "listMark",
+          "from": 7,
+          "to": 9
+        },
+        {
+          "kind": "paragraph",
+          "from": 10,
+          "to": 13
+        }
+      ]
+    },
+    {
+      "name": "ordered-list-start",
+      "text": "7. seven\n8. eight",
+      "nodes": [
+        {
+          "kind": "orderedList",
+          "from": 0,
+          "to": 17
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 8
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "paragraph",
+          "from": 3,
+          "to": 8
+        },
+        {
+          "kind": "listItem",
+          "from": 9,
+          "to": 17
+        },
+        {
+          "kind": "listMark",
+          "from": 9,
+          "to": 11
+        },
+        {
+          "kind": "paragraph",
+          "from": 12,
+          "to": 17
+        }
+      ]
+    },
+    {
+      "name": "list-nested",
+      "text": "- parent\n  - child\n    - grandchild\n- sibling",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 45
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 35
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 8
+        },
+        {
+          "kind": "bulletList",
+          "from": 11,
+          "to": 35
+        },
+        {
+          "kind": "listItem",
+          "from": 11,
+          "to": 35
+        },
+        {
+          "kind": "listMark",
+          "from": 11,
+          "to": 12
+        },
+        {
+          "kind": "paragraph",
+          "from": 13,
+          "to": 18
+        },
+        {
+          "kind": "bulletList",
+          "from": 23,
+          "to": 35
+        },
+        {
+          "kind": "listItem",
+          "from": 23,
+          "to": 35
+        },
+        {
+          "kind": "listMark",
+          "from": 23,
+          "to": 24
+        },
+        {
+          "kind": "paragraph",
+          "from": 25,
+          "to": 35
+        },
+        {
+          "kind": "listItem",
+          "from": 36,
+          "to": 45
+        },
+        {
+          "kind": "listMark",
+          "from": 36,
+          "to": 37
+        },
+        {
+          "kind": "paragraph",
+          "from": 38,
+          "to": 45
+        }
+      ]
+    },
+    {
+      "name": "list-loose",
+      "text": "- one\n\n- two\n\n- three",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 21
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 5
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 5
+        },
+        {
+          "kind": "listItem",
+          "from": 7,
+          "to": 12
+        },
+        {
+          "kind": "listMark",
+          "from": 7,
+          "to": 8
+        },
+        {
+          "kind": "paragraph",
+          "from": 9,
+          "to": 12
+        },
+        {
+          "kind": "listItem",
+          "from": 14,
+          "to": 21
+        },
+        {
+          "kind": "listMark",
+          "from": 14,
+          "to": 15
+        },
+        {
+          "kind": "paragraph",
+          "from": 16,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "list-with-continuation",
+      "text": "- item\n  continued text\n\n  second paragraph",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 43
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 43
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 23
+        },
+        {
+          "kind": "paragraph",
+          "from": 27,
+          "to": 43
+        }
+      ]
+    },
+    {
+      "name": "list-empty-item",
+      "text": "-\n- item",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 8
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "listItem",
+          "from": 2,
+          "to": 8
+        },
+        {
+          "kind": "listMark",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "paragraph",
+          "from": 4,
+          "to": 8
+        }
+      ]
+    },
+    {
+      "name": "list-empty-item-lazy",
+      "text": "-\ncontinued",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 11
+        }
+      ]
+    },
+    {
+      "name": "list-mixed-markers",
+      "text": "- a\n* b\n+ c",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 3
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 3
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "bulletList",
+          "from": 4,
+          "to": 7
+        },
+        {
+          "kind": "listItem",
+          "from": 4,
+          "to": 7
+        },
+        {
+          "kind": "listMark",
+          "from": 4,
+          "to": 5
+        },
+        {
+          "kind": "paragraph",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "bulletList",
+          "from": 8,
+          "to": 11
+        },
+        {
+          "kind": "listItem",
+          "from": 8,
+          "to": 11
+        },
+        {
+          "kind": "listMark",
+          "from": 8,
+          "to": 9
+        },
+        {
+          "kind": "paragraph",
+          "from": 10,
+          "to": 11
+        }
+      ]
+    },
+    {
+      "name": "list-ordered-in-bullet",
+      "text": "- parent\n  1. first\n  2. second",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 31
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 31
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 8
+        },
+        {
+          "kind": "orderedList",
+          "from": 11,
+          "to": 31
+        },
+        {
+          "kind": "listItem",
+          "from": 11,
+          "to": 19
+        },
+        {
+          "kind": "listMark",
+          "from": 11,
+          "to": 13
+        },
+        {
+          "kind": "paragraph",
+          "from": 14,
+          "to": 19
+        },
+        {
+          "kind": "listItem",
+          "from": 22,
+          "to": 31
+        },
+        {
+          "kind": "listMark",
+          "from": 22,
+          "to": 24
+        },
+        {
+          "kind": "paragraph",
+          "from": 25,
+          "to": 31
+        }
+      ]
+    },
+    {
+      "name": "task-unchecked",
+      "text": "- [ ] todo",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "task",
+          "from": 2,
+          "to": 10
+        },
+        {
+          "kind": "taskMarker",
+          "checked": false,
+          "from": 2,
+          "to": 5
+        }
+      ]
+    },
+    {
+      "name": "task-checked",
+      "text": "- [x] done",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "task",
+          "from": 2,
+          "to": 10
+        },
+        {
+          "kind": "taskMarker",
+          "checked": true,
+          "from": 2,
+          "to": 5
+        }
+      ]
+    },
+    {
+      "name": "task-checked-upper",
+      "text": "- [X] done upper",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 16
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 16
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "task",
+          "from": 2,
+          "to": 16
+        },
+        {
+          "kind": "taskMarker",
+          "checked": true,
+          "from": 2,
+          "to": 5
+        }
+      ]
+    },
+    {
+      "name": "task-list-mixed",
+      "text": "- [ ] one\n- [x] two\n- plain",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 27
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "task",
+          "from": 2,
+          "to": 9
+        },
+        {
+          "kind": "taskMarker",
+          "checked": false,
+          "from": 2,
+          "to": 5
+        },
+        {
+          "kind": "listItem",
+          "from": 10,
+          "to": 19
+        },
+        {
+          "kind": "listMark",
+          "from": 10,
+          "to": 11
+        },
+        {
+          "kind": "task",
+          "from": 12,
+          "to": 19
+        },
+        {
+          "kind": "taskMarker",
+          "checked": true,
+          "from": 12,
+          "to": 15
+        },
+        {
+          "kind": "listItem",
+          "from": 20,
+          "to": 27
+        },
+        {
+          "kind": "listMark",
+          "from": 20,
+          "to": 21
+        },
+        {
+          "kind": "paragraph",
+          "from": 22,
+          "to": 27
+        }
+      ]
+    },
+    {
+      "name": "task-nested",
+      "text": "- [ ] parent\n  - [x] child",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "task",
+          "from": 2,
+          "to": 12
+        },
+        {
+          "kind": "taskMarker",
+          "checked": false,
+          "from": 2,
+          "to": 5
+        },
+        {
+          "kind": "bulletList",
+          "from": 15,
+          "to": 26
+        },
+        {
+          "kind": "listItem",
+          "from": 15,
+          "to": 26
+        },
+        {
+          "kind": "listMark",
+          "from": 15,
+          "to": 16
+        },
+        {
+          "kind": "task",
+          "from": 17,
+          "to": 26
+        },
+        {
+          "kind": "taskMarker",
+          "checked": true,
+          "from": 17,
+          "to": 20
+        }
+      ]
+    },
+    {
+      "name": "task-ordered",
+      "text": "1. [ ] first\n2. [x] second",
+      "nodes": [
+        {
+          "kind": "orderedList",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 12
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "task",
+          "from": 3,
+          "to": 12
+        },
+        {
+          "kind": "taskMarker",
+          "checked": false,
+          "from": 3,
+          "to": 6
+        },
+        {
+          "kind": "listItem",
+          "from": 13,
+          "to": 26
+        },
+        {
+          "kind": "listMark",
+          "from": 13,
+          "to": 15
+        },
+        {
+          "kind": "task",
+          "from": 16,
+          "to": 26
+        },
+        {
+          "kind": "taskMarker",
+          "checked": true,
+          "from": 16,
+          "to": 19
+        }
+      ]
+    },
+    {
+      "name": "task-formatted",
+      "text": "- [ ] **bold** and *italic* task",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 32
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 32
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "task",
+          "from": 2,
+          "to": 32
+        },
+        {
+          "kind": "taskMarker",
+          "checked": false,
+          "from": 2,
+          "to": 5
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 6,
+          "to": 14
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 6,
+          "to": 8
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 12,
+          "to": 14
+        },
+        {
+          "kind": "emphasis",
+          "from": 19,
+          "to": 27
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 19,
+          "to": 20
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 26,
+          "to": 27
+        }
+      ]
+    },
+    {
+      "name": "task-empty",
+      "text": "- [ ]",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 5
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 5
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 5
+        }
+      ]
+    },
+    {
+      "name": "task-not-task",
+      "text": "- [] nope\n- [y] nope",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 20
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 9
+        },
+        {
+          "kind": "listItem",
+          "from": 10,
+          "to": 20
+        },
+        {
+          "kind": "listMark",
+          "from": 10,
+          "to": 11
+        },
+        {
+          "kind": "paragraph",
+          "from": 12,
+          "to": 20
+        },
+        {
+          "kind": "link",
+          "from": 12,
+          "to": 15
+        },
+        {
+          "kind": "linkMark",
+          "from": 12,
+          "to": 13
+        },
+        {
+          "kind": "linkMark",
+          "from": 14,
+          "to": 15
+        }
+      ]
+    },
+    {
+      "name": "quote-list-task",
+      "text": "> - [ ] quoted todo\n> - [x] quoted done\n>   - [ ] nested",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 56
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "bulletList",
+          "from": 2,
+          "to": 56
+        },
+        {
+          "kind": "listItem",
+          "from": 2,
+          "to": 19
+        },
+        {
+          "kind": "listMark",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "task",
+          "from": 4,
+          "to": 19
+        },
+        {
+          "kind": "taskMarker",
+          "checked": false,
+          "from": 4,
+          "to": 7
+        },
+        {
+          "kind": "quoteMark",
+          "from": 20,
+          "to": 21
+        },
+        {
+          "kind": "listItem",
+          "from": 22,
+          "to": 56
+        },
+        {
+          "kind": "listMark",
+          "from": 22,
+          "to": 23
+        },
+        {
+          "kind": "task",
+          "from": 24,
+          "to": 39
+        },
+        {
+          "kind": "taskMarker",
+          "checked": true,
+          "from": 24,
+          "to": 27
+        },
+        {
+          "kind": "quoteMark",
+          "from": 40,
+          "to": 41
+        },
+        {
+          "kind": "bulletList",
+          "from": 44,
+          "to": 56
+        },
+        {
+          "kind": "listItem",
+          "from": 44,
+          "to": 56
+        },
+        {
+          "kind": "listMark",
+          "from": 44,
+          "to": 45
+        },
+        {
+          "kind": "task",
+          "from": 46,
+          "to": 56
+        },
+        {
+          "kind": "taskMarker",
+          "checked": false,
+          "from": 46,
+          "to": 49
+        }
+      ]
+    },
+    {
+      "name": "fence-backticks",
+      "text": "```\ncode line\n```",
+      "nodes": [
+        {
+          "kind": "fencedCode",
+          "from": 0,
+          "to": 17
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 3
+        },
+        {
+          "kind": "codeText",
+          "from": 4,
+          "to": 13
+        },
+        {
+          "kind": "codeMark",
+          "from": 14,
+          "to": 17
+        }
+      ]
+    },
+    {
+      "name": "fence-with-info",
+      "text": "```ts\nconst a = 1;\n```",
+      "nodes": [
+        {
+          "kind": "fencedCode",
+          "from": 0,
+          "to": 22
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 3
+        },
+        {
+          "kind": "codeInfo",
+          "from": 3,
+          "to": 5
+        },
+        {
+          "kind": "codeText",
+          "from": 6,
+          "to": 18
+        },
+        {
+          "kind": "codeMark",
+          "from": 19,
+          "to": 22
+        }
+      ]
+    },
+    {
+      "name": "fence-tildes",
+      "text": "~~~python\nprint(1)\n~~~",
+      "nodes": [
+        {
+          "kind": "fencedCode",
+          "from": 0,
+          "to": 22
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 3
+        },
+        {
+          "kind": "codeInfo",
+          "from": 3,
+          "to": 9
+        },
+        {
+          "kind": "codeText",
+          "from": 10,
+          "to": 18
+        },
+        {
+          "kind": "codeMark",
+          "from": 19,
+          "to": 22
+        }
+      ]
+    },
+    {
+      "name": "fence-unequal-tildes",
+      "text": "~~~~\ncode\n~~~",
+      "nodes": [
+        {
+          "kind": "fencedCode",
+          "from": 0,
+          "to": 13
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 4
+        },
+        {
+          "kind": "codeText",
+          "from": 5,
+          "to": 13
+        }
+      ]
+    },
+    {
+      "name": "fence-unclosed",
+      "text": "```js\nlet x;\nlet y;",
+      "nodes": [
+        {
+          "kind": "fencedCode",
+          "from": 0,
+          "to": 19
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 3
+        },
+        {
+          "kind": "codeInfo",
+          "from": 3,
+          "to": 5
+        },
+        {
+          "kind": "codeText",
+          "from": 6,
+          "to": 19
+        }
+      ]
+    },
+    {
+      "name": "fence-empty",
+      "text": "```\n```",
+      "nodes": [
+        {
+          "kind": "fencedCode",
+          "from": 0,
+          "to": 7
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 3
+        },
+        {
+          "kind": "codeMark",
+          "from": 4,
+          "to": 7
+        }
+      ]
+    },
+    {
+      "name": "fence-longer-close",
+      "text": "```\ncode\n`````",
+      "nodes": [
+        {
+          "kind": "fencedCode",
+          "from": 0,
+          "to": 14
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 3
+        },
+        {
+          "kind": "codeText",
+          "from": 4,
+          "to": 8
+        },
+        {
+          "kind": "codeMark",
+          "from": 9,
+          "to": 14
+        }
+      ]
+    },
+    {
+      "name": "fence-in-list",
+      "text": "- item\n\n  ```\n  code\n  ```",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 6
+        },
+        {
+          "kind": "fencedCode",
+          "from": 10,
+          "to": 26
+        },
+        {
+          "kind": "codeMark",
+          "from": 10,
+          "to": 13
+        },
+        {
+          "kind": "codeText",
+          "from": 16,
+          "to": 20
+        },
+        {
+          "kind": "codeMark",
+          "from": 23,
+          "to": 26
+        }
+      ]
+    },
+    {
+      "name": "fence-in-quote",
+      "text": "> ```\n> code\n> ```",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 18
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "fencedCode",
+          "from": 2,
+          "to": 18
+        },
+        {
+          "kind": "codeMark",
+          "from": 2,
+          "to": 5
+        },
+        {
+          "kind": "quoteMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "codeText",
+          "from": 8,
+          "to": 12
+        },
+        {
+          "kind": "quoteMark",
+          "from": 13,
+          "to": 14
+        },
+        {
+          "kind": "codeMark",
+          "from": 15,
+          "to": 18
+        }
+      ]
+    },
+    {
+      "name": "fence-info-words",
+      "text": "```rust ignore\nfn main() {}\n```",
+      "nodes": [
+        {
+          "kind": "fencedCode",
+          "from": 0,
+          "to": 31
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 3
+        },
+        {
+          "kind": "codeInfo",
+          "from": 3,
+          "to": 14
+        },
+        {
+          "kind": "codeText",
+          "from": 15,
+          "to": 27
+        },
+        {
+          "kind": "codeMark",
+          "from": 28,
+          "to": 31
+        }
+      ]
+    },
+    {
+      "name": "fence-markdown-inside",
+      "text": "```\n# not heading\n- not list\n**not bold**\n```",
+      "nodes": [
+        {
+          "kind": "fencedCode",
+          "from": 0,
+          "to": 45
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 3
+        },
+        {
+          "kind": "codeText",
+          "from": 4,
+          "to": 41
+        },
+        {
+          "kind": "codeMark",
+          "from": 42,
+          "to": 45
+        }
+      ]
+    },
+    {
+      "name": "indented-code",
+      "text": "    indented code\n    second line",
+      "nodes": [
+        {
+          "kind": "indentedCode",
+          "from": 4,
+          "to": 33
+        },
+        {
+          "kind": "codeText",
+          "from": 4,
+          "to": 18
+        },
+        {
+          "kind": "codeText",
+          "from": 22,
+          "to": 33
+        }
+      ]
+    },
+    {
+      "name": "indented-code-after-paragraph",
+      "text": "paragraph\n    still paragraph",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 29
+        }
+      ]
+    },
+    {
+      "name": "indented-code-blank-inside",
+      "text": "    one\n\n    two",
+      "nodes": [
+        {
+          "kind": "indentedCode",
+          "from": 4,
+          "to": 16
+        },
+        {
+          "kind": "codeText",
+          "from": 4,
+          "to": 9
+        },
+        {
+          "kind": "codeText",
+          "from": 13,
+          "to": 16
+        }
+      ]
+    },
+    {
+      "name": "indented-code-tab",
+      "text": "\ttab indented",
+      "nodes": [
+        {
+          "kind": "indentedCode",
+          "from": 1,
+          "to": 13
+        },
+        {
+          "kind": "codeText",
+          "from": 1,
+          "to": 13
+        }
+      ]
+    },
+    {
+      "name": "emphasis-star",
+      "text": "*emphasis*",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "emphasis",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 9,
+          "to": 10
+        }
+      ]
+    },
+    {
+      "name": "emphasis-underscore",
+      "text": "_emphasis_",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "emphasis",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 9,
+          "to": 10
+        }
+      ]
+    },
+    {
+      "name": "strong-stars",
+      "text": "**strong**",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 8,
+          "to": 10
+        }
+      ]
+    },
+    {
+      "name": "strong-underscores",
+      "text": "__strong__",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 8,
+          "to": 10
+        }
+      ]
+    },
+    {
+      "name": "strong-emphasis-combined",
+      "text": "***both***",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "emphasis",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 1,
+          "to": 9
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 1,
+          "to": 3
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 7,
+          "to": 9
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 9,
+          "to": 10
+        }
+      ]
+    },
+    {
+      "name": "emphasis-nested",
+      "text": "*outer **inner** outer*",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 23
+        },
+        {
+          "kind": "emphasis",
+          "from": 0,
+          "to": 23
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 7,
+          "to": 16
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 7,
+          "to": 9
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 14,
+          "to": 16
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 22,
+          "to": 23
+        }
+      ]
+    },
+    {
+      "name": "emphasis-intraword-underscore",
+      "text": "snake_case_word and __init__ here",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 33
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 20,
+          "to": 28
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 20,
+          "to": 22
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 26,
+          "to": 28
+        }
+      ]
+    },
+    {
+      "name": "emphasis-intraword-star",
+      "text": "intra*word*emphasis",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 19
+        },
+        {
+          "kind": "emphasis",
+          "from": 5,
+          "to": 11
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 5,
+          "to": 6
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 10,
+          "to": 11
+        }
+      ]
+    },
+    {
+      "name": "emphasis-unmatched",
+      "text": "*open only and **another",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 24
+        }
+      ]
+    },
+    {
+      "name": "emphasis-spaces",
+      "text": "* not emphasis * here",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 21
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 21
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "emphasis-punctuation-flanking",
+      "text": "(*quoted*) and *«guillemets»*",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 29
+        },
+        {
+          "kind": "emphasis",
+          "from": 1,
+          "to": 9
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 1,
+          "to": 2
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 8,
+          "to": 9
+        },
+        {
+          "kind": "emphasis",
+          "from": 15,
+          "to": 29
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 15,
+          "to": 16
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 28,
+          "to": 29
+        }
+      ]
+    },
+    {
+      "name": "strikethrough",
+      "text": "~~struck~~ text",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 15
+        },
+        {
+          "kind": "strikethrough",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "strikethroughMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "strikethroughMark",
+          "from": 8,
+          "to": 10
+        }
+      ]
+    },
+    {
+      "name": "strikethrough-single",
+      "text": "~single~ tilde",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 14
+        }
+      ]
+    },
+    {
+      "name": "strikethrough-nested",
+      "text": "~~struck *and italic*~~",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 23
+        },
+        {
+          "kind": "strikethrough",
+          "from": 0,
+          "to": 23
+        },
+        {
+          "kind": "strikethroughMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "emphasis",
+          "from": 9,
+          "to": 21
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 9,
+          "to": 10
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 20,
+          "to": 21
+        },
+        {
+          "kind": "strikethroughMark",
+          "from": 21,
+          "to": 23
+        }
+      ]
+    },
+    {
+      "name": "inline-code",
+      "text": "use `code` here",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 15
+        },
+        {
+          "kind": "inlineCode",
+          "from": 4,
+          "to": 10
+        },
+        {
+          "kind": "codeMark",
+          "from": 4,
+          "to": 5
+        },
+        {
+          "kind": "codeMark",
+          "from": 9,
+          "to": 10
+        }
+      ]
+    },
+    {
+      "name": "inline-code-double",
+      "text": "``a ` b``",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "inlineCode",
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "codeMark",
+          "from": 7,
+          "to": 9
+        }
+      ]
+    },
+    {
+      "name": "inline-code-unclosed",
+      "text": "`unclosed code",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 14
+        }
+      ]
+    },
+    {
+      "name": "inline-code-with-stars",
+      "text": "`*not emphasis*` and *emphasis*",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 31
+        },
+        {
+          "kind": "inlineCode",
+          "from": 0,
+          "to": 16
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "codeMark",
+          "from": 15,
+          "to": 16
+        },
+        {
+          "kind": "emphasis",
+          "from": 21,
+          "to": 31
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 21,
+          "to": 22
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 30,
+          "to": 31
+        }
+      ]
+    },
+    {
+      "name": "link-inline",
+      "text": "[label](https://example.com)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 28
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 28
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkLabel",
+          "from": 1,
+          "to": 6
+        },
+        {
+          "kind": "linkMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "linkMark",
+          "from": 7,
+          "to": 8
+        },
+        {
+          "kind": "url",
+          "from": 8,
+          "to": 27
+        },
+        {
+          "kind": "linkMark",
+          "from": 27,
+          "to": 28
+        }
+      ]
+    },
+    {
+      "name": "link-with-title",
+      "text": "[label](https://example.com \"title\")",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 36
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 36
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkLabel",
+          "from": 1,
+          "to": 6
+        },
+        {
+          "kind": "linkMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "linkMark",
+          "from": 7,
+          "to": 8
+        },
+        {
+          "kind": "url",
+          "from": 8,
+          "to": 27
+        },
+        {
+          "kind": "linkMark",
+          "from": 35,
+          "to": 36
+        }
+      ]
+    },
+    {
+      "name": "link-angle-destination",
+      "text": "[label](<https://example.com/a b>)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 34
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 34
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkLabel",
+          "from": 1,
+          "to": 6
+        },
+        {
+          "kind": "linkMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "linkMark",
+          "from": 7,
+          "to": 8
+        },
+        {
+          "kind": "url",
+          "from": 8,
+          "to": 33
+        },
+        {
+          "kind": "linkMark",
+          "from": 33,
+          "to": 34
+        }
+      ]
+    },
+    {
+      "name": "link-empty-label",
+      "text": "[](https://example.com)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 23
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 23
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkMark",
+          "from": 1,
+          "to": 2
+        },
+        {
+          "kind": "linkMark",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "url",
+          "from": 3,
+          "to": 22
+        },
+        {
+          "kind": "linkMark",
+          "from": 22,
+          "to": 23
+        }
+      ]
+    },
+    {
+      "name": "link-empty-destination",
+      "text": "[label]()",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkLabel",
+          "from": 1,
+          "to": 6
+        },
+        {
+          "kind": "linkMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "linkMark",
+          "from": 7,
+          "to": 8
+        },
+        {
+          "kind": "linkMark",
+          "from": 8,
+          "to": 9
+        }
+      ]
+    },
+    {
+      "name": "link-with-emphasis",
+      "text": "[*emphasised* and **strong** label](https://example.com)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 56
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 56
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkLabel",
+          "from": 1,
+          "to": 34
+        },
+        {
+          "kind": "emphasis",
+          "from": 1,
+          "to": 13
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 1,
+          "to": 2
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 12,
+          "to": 13
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 18,
+          "to": 28
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 18,
+          "to": 20
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 26,
+          "to": 28
+        },
+        {
+          "kind": "linkMark",
+          "from": 34,
+          "to": 35
+        },
+        {
+          "kind": "linkMark",
+          "from": 35,
+          "to": 36
+        },
+        {
+          "kind": "url",
+          "from": 36,
+          "to": 55
+        },
+        {
+          "kind": "linkMark",
+          "from": 55,
+          "to": 56
+        }
+      ]
+    },
+    {
+      "name": "link-with-code",
+      "text": "[`code` label](https://example.com)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 35
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 35
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkLabel",
+          "from": 1,
+          "to": 13
+        },
+        {
+          "kind": "inlineCode",
+          "from": 1,
+          "to": 7
+        },
+        {
+          "kind": "codeMark",
+          "from": 1,
+          "to": 2
+        },
+        {
+          "kind": "codeMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "linkMark",
+          "from": 13,
+          "to": 14
+        },
+        {
+          "kind": "linkMark",
+          "from": 14,
+          "to": 15
+        },
+        {
+          "kind": "url",
+          "from": 15,
+          "to": 34
+        },
+        {
+          "kind": "linkMark",
+          "from": 34,
+          "to": 35
+        }
+      ]
+    },
+    {
+      "name": "link-nested-brackets",
+      "text": "[a [b] c](https://example.com)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 30
+        },
+        {
+          "kind": "link",
+          "from": 3,
+          "to": 6
+        },
+        {
+          "kind": "linkMark",
+          "from": 3,
+          "to": 4
+        },
+        {
+          "kind": "linkMark",
+          "from": 5,
+          "to": 6
+        },
+        {
+          "kind": "url",
+          "from": 10,
+          "to": 29
+        }
+      ]
+    },
+    {
+      "name": "link-relative",
+      "text": "[note](../other/note.md)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 24
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 24
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkLabel",
+          "from": 1,
+          "to": 5
+        },
+        {
+          "kind": "linkMark",
+          "from": 5,
+          "to": 6
+        },
+        {
+          "kind": "linkMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "url",
+          "from": 7,
+          "to": 23
+        },
+        {
+          "kind": "linkMark",
+          "from": 23,
+          "to": 24
+        }
+      ]
+    },
+    {
+      "name": "link-reference-full",
+      "text": "[text][ref]\n\n[ref]: https://example.com",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 11
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 11
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkMark",
+          "from": 5,
+          "to": 6
+        }
+      ]
+    },
+    {
+      "name": "link-reference-collapsed",
+      "text": "[ref][]\n\n[ref]: https://example.com \"Title\"",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 7
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 7
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkMark",
+          "from": 4,
+          "to": 5
+        }
+      ]
+    },
+    {
+      "name": "link-reference-shortcut",
+      "text": "[ref]\n\n[ref]: https://example.com",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 5
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 5
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkMark",
+          "from": 4,
+          "to": 5
+        }
+      ]
+    },
+    {
+      "name": "link-reference-undefined",
+      "text": "[no definition] and [also][none]",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 32
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 15
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkMark",
+          "from": 14,
+          "to": 15
+        },
+        {
+          "kind": "link",
+          "from": 20,
+          "to": 32
+        },
+        {
+          "kind": "linkMark",
+          "from": 20,
+          "to": 21
+        },
+        {
+          "kind": "linkMark",
+          "from": 25,
+          "to": 26
+        }
+      ]
+    },
+    {
+      "name": "link-reference-definition-only",
+      "text": "[ref]: https://example.com",
+      "nodes": []
+    },
+    {
+      "name": "link-in-heading",
+      "text": "## See [docs](https://example.com)",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 2,
+          "from": 0,
+          "to": 34
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "link",
+          "from": 7,
+          "to": 34
+        },
+        {
+          "kind": "linkMark",
+          "from": 7,
+          "to": 8
+        },
+        {
+          "kind": "linkLabel",
+          "from": 8,
+          "to": 12
+        },
+        {
+          "kind": "linkMark",
+          "from": 12,
+          "to": 13
+        },
+        {
+          "kind": "linkMark",
+          "from": 13,
+          "to": 14
+        },
+        {
+          "kind": "url",
+          "from": 14,
+          "to": 33
+        },
+        {
+          "kind": "linkMark",
+          "from": 33,
+          "to": 34
+        }
+      ]
+    },
+    {
+      "name": "link-in-list",
+      "text": "- [item](https://example.com)\n- plain",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 37
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 29
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 29
+        },
+        {
+          "kind": "link",
+          "from": 2,
+          "to": 29
+        },
+        {
+          "kind": "linkMark",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "linkLabel",
+          "from": 3,
+          "to": 7
+        },
+        {
+          "kind": "linkMark",
+          "from": 7,
+          "to": 8
+        },
+        {
+          "kind": "linkMark",
+          "from": 8,
+          "to": 9
+        },
+        {
+          "kind": "url",
+          "from": 9,
+          "to": 28
+        },
+        {
+          "kind": "linkMark",
+          "from": 28,
+          "to": 29
+        },
+        {
+          "kind": "listItem",
+          "from": 30,
+          "to": 37
+        },
+        {
+          "kind": "listMark",
+          "from": 30,
+          "to": 31
+        },
+        {
+          "kind": "paragraph",
+          "from": 32,
+          "to": 37
+        }
+      ]
+    },
+    {
+      "name": "link-in-quote",
+      "text": "> [quoted](https://example.com)",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 31
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 31
+        },
+        {
+          "kind": "link",
+          "from": 2,
+          "to": 31
+        },
+        {
+          "kind": "linkMark",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "linkLabel",
+          "from": 3,
+          "to": 9
+        },
+        {
+          "kind": "linkMark",
+          "from": 9,
+          "to": 10
+        },
+        {
+          "kind": "linkMark",
+          "from": 10,
+          "to": 11
+        },
+        {
+          "kind": "url",
+          "from": 11,
+          "to": 30
+        },
+        {
+          "kind": "linkMark",
+          "from": 30,
+          "to": 31
+        }
+      ]
+    },
+    {
+      "name": "link-adjacent",
+      "text": "[a](https://a.example)[b](https://b.example)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 44
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 22
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkLabel",
+          "from": 1,
+          "to": 2
+        },
+        {
+          "kind": "linkMark",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "linkMark",
+          "from": 3,
+          "to": 4
+        },
+        {
+          "kind": "url",
+          "from": 4,
+          "to": 21
+        },
+        {
+          "kind": "linkMark",
+          "from": 21,
+          "to": 22
+        },
+        {
+          "kind": "link",
+          "from": 22,
+          "to": 44
+        },
+        {
+          "kind": "linkMark",
+          "from": 22,
+          "to": 23
+        },
+        {
+          "kind": "linkLabel",
+          "from": 23,
+          "to": 24
+        },
+        {
+          "kind": "linkMark",
+          "from": 24,
+          "to": 25
+        },
+        {
+          "kind": "linkMark",
+          "from": 25,
+          "to": 26
+        },
+        {
+          "kind": "url",
+          "from": 26,
+          "to": 43
+        },
+        {
+          "kind": "linkMark",
+          "from": 43,
+          "to": 44
+        }
+      ]
+    },
+    {
+      "name": "image-simple",
+      "text": "![alt](https://example.com/a.png)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 33
+        },
+        {
+          "kind": "image",
+          "from": 0,
+          "to": 33
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "linkLabel",
+          "from": 2,
+          "to": 5
+        },
+        {
+          "kind": "linkMark",
+          "from": 5,
+          "to": 6
+        },
+        {
+          "kind": "linkMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "url",
+          "from": 7,
+          "to": 32
+        },
+        {
+          "kind": "linkMark",
+          "from": 32,
+          "to": 33
+        }
+      ]
+    },
+    {
+      "name": "image-reference",
+      "text": "![alt text](image:abcdefghijklmnopqrstuvwxyz#640x480)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 53
+        },
+        {
+          "kind": "image",
+          "from": 0,
+          "to": 53
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "linkLabel",
+          "from": 2,
+          "to": 10
+        },
+        {
+          "kind": "linkMark",
+          "from": 10,
+          "to": 11
+        },
+        {
+          "kind": "linkMark",
+          "from": 11,
+          "to": 12
+        },
+        {
+          "kind": "url",
+          "from": 12,
+          "to": 52
+        },
+        {
+          "kind": "linkMark",
+          "from": 52,
+          "to": 53
+        }
+      ]
+    },
+    {
+      "name": "image-escaped-alt",
+      "text": "![my \\[alt\\]](image:abcdefghijklmnopqrstuvwxyz)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 47
+        },
+        {
+          "kind": "image",
+          "from": 0,
+          "to": 47
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "linkLabel",
+          "from": 2,
+          "to": 12
+        },
+        {
+          "kind": "linkMark",
+          "from": 12,
+          "to": 13
+        },
+        {
+          "kind": "linkMark",
+          "from": 13,
+          "to": 14
+        },
+        {
+          "kind": "url",
+          "from": 14,
+          "to": 46
+        },
+        {
+          "kind": "linkMark",
+          "from": 46,
+          "to": 47
+        }
+      ]
+    },
+    {
+      "name": "image-empty-alt",
+      "text": "![](image:abcdefghijklmnopqrstuvwxyz)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 37
+        },
+        {
+          "kind": "image",
+          "from": 0,
+          "to": 37
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "linkMark",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "linkMark",
+          "from": 3,
+          "to": 4
+        },
+        {
+          "kind": "url",
+          "from": 4,
+          "to": 36
+        },
+        {
+          "kind": "linkMark",
+          "from": 36,
+          "to": 37
+        }
+      ]
+    },
+    {
+      "name": "image-in-paragraph",
+      "text": "before ![alt](image:abcdefghijklmnopqrstuvwxyz) after",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 53
+        },
+        {
+          "kind": "image",
+          "from": 7,
+          "to": 47
+        },
+        {
+          "kind": "linkMark",
+          "from": 7,
+          "to": 9
+        },
+        {
+          "kind": "linkLabel",
+          "from": 9,
+          "to": 12
+        },
+        {
+          "kind": "linkMark",
+          "from": 12,
+          "to": 13
+        },
+        {
+          "kind": "linkMark",
+          "from": 13,
+          "to": 14
+        },
+        {
+          "kind": "url",
+          "from": 14,
+          "to": 46
+        },
+        {
+          "kind": "linkMark",
+          "from": 46,
+          "to": 47
+        }
+      ]
+    },
+    {
+      "name": "image-in-list",
+      "text": "- ![alt](image:abcdefghijklmnopqrstuvwxyz#10x20)",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 48
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 48
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 48
+        },
+        {
+          "kind": "image",
+          "from": 2,
+          "to": 48
+        },
+        {
+          "kind": "linkMark",
+          "from": 2,
+          "to": 4
+        },
+        {
+          "kind": "linkLabel",
+          "from": 4,
+          "to": 7
+        },
+        {
+          "kind": "linkMark",
+          "from": 7,
+          "to": 8
+        },
+        {
+          "kind": "linkMark",
+          "from": 8,
+          "to": 9
+        },
+        {
+          "kind": "url",
+          "from": 9,
+          "to": 47
+        },
+        {
+          "kind": "linkMark",
+          "from": 47,
+          "to": 48
+        }
+      ]
+    },
+    {
+      "name": "image-in-link",
+      "text": "[![alt](image:abcdefghijklmnopqrstuvwxyz)](https://example.com)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 63
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 63
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkLabel",
+          "from": 1,
+          "to": 41
+        },
+        {
+          "kind": "image",
+          "from": 1,
+          "to": 41
+        },
+        {
+          "kind": "linkMark",
+          "from": 1,
+          "to": 3
+        },
+        {
+          "kind": "linkLabel",
+          "from": 3,
+          "to": 6
+        },
+        {
+          "kind": "linkMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "linkMark",
+          "from": 7,
+          "to": 8
+        },
+        {
+          "kind": "url",
+          "from": 8,
+          "to": 40
+        },
+        {
+          "kind": "linkMark",
+          "from": 40,
+          "to": 41
+        },
+        {
+          "kind": "linkMark",
+          "from": 41,
+          "to": 42
+        },
+        {
+          "kind": "linkMark",
+          "from": 42,
+          "to": 43
+        },
+        {
+          "kind": "url",
+          "from": 43,
+          "to": 62
+        },
+        {
+          "kind": "linkMark",
+          "from": 62,
+          "to": 63
+        }
+      ]
+    },
+    {
+      "name": "image-reference-style",
+      "text": "![alt][ref]\n\n[ref]: https://example.com/a.png",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 11
+        },
+        {
+          "kind": "image",
+          "from": 0,
+          "to": 11
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "linkMark",
+          "from": 5,
+          "to": 6
+        }
+      ]
+    },
+    {
+      "name": "autolink-angle",
+      "text": "<https://example.com/path>",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "autolink",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "url",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "kind": "linkMark",
+          "from": 25,
+          "to": 26
+        }
+      ]
+    },
+    {
+      "name": "autolink-angle-email",
+      "text": "<user@example.com>",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 18
+        },
+        {
+          "kind": "autolink",
+          "from": 0,
+          "to": 18
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "url",
+          "from": 1,
+          "to": 17
+        },
+        {
+          "kind": "linkMark",
+          "from": 17,
+          "to": 18
+        }
+      ]
+    },
+    {
+      "name": "autolink-bare-url",
+      "text": "see https://example.com for more",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 32
+        },
+        {
+          "kind": "url",
+          "from": 4,
+          "to": 23
+        }
+      ]
+    },
+    {
+      "name": "autolink-www",
+      "text": "visit www.example.com today",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 27
+        },
+        {
+          "kind": "url",
+          "from": 6,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "autolink-bare-email",
+      "text": "mail user@example.com now",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 25
+        },
+        {
+          "kind": "url",
+          "from": 5,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "autolink-trailing-period",
+      "text": "go to https://example.com.",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "url",
+          "from": 6,
+          "to": 25
+        }
+      ]
+    },
+    {
+      "name": "autolink-trailing-comma",
+      "text": "https://example.com, and more",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 29
+        },
+        {
+          "kind": "url",
+          "from": 0,
+          "to": 19
+        }
+      ]
+    },
+    {
+      "name": "autolink-trailing-paren",
+      "text": "(https://example.com) and https://example.com/a_(b)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 51
+        },
+        {
+          "kind": "url",
+          "from": 1,
+          "to": 20
+        },
+        {
+          "kind": "url",
+          "from": 26,
+          "to": 51
+        }
+      ]
+    },
+    {
+      "name": "autolink-trailing-question",
+      "text": "is it https://example.com?",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "url",
+          "from": 6,
+          "to": 25
+        }
+      ]
+    },
+    {
+      "name": "autolink-with-query",
+      "text": "https://example.com/a?b=c&d=e#frag",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 34
+        },
+        {
+          "kind": "url",
+          "from": 0,
+          "to": 34
+        }
+      ]
+    },
+    {
+      "name": "autolink-in-emphasis",
+      "text": "*https://example.com*",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 21
+        },
+        {
+          "kind": "emphasis",
+          "from": 0,
+          "to": 21
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "url",
+          "from": 1,
+          "to": 20
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 20,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "autolink-before-code",
+      "text": "https://example.com`code`",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 25
+        },
+        {
+          "kind": "url",
+          "from": 0,
+          "to": 19
+        },
+        {
+          "kind": "inlineCode",
+          "from": 19,
+          "to": 25
+        },
+        {
+          "kind": "codeMark",
+          "from": 19,
+          "to": 20
+        },
+        {
+          "kind": "codeMark",
+          "from": 24,
+          "to": 25
+        }
+      ]
+    },
+    {
+      "name": "autolink-in-link-label",
+      "text": "[https://example.com](https://other.example)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 44
+        },
+        {
+          "kind": "link",
+          "from": 0,
+          "to": 44
+        },
+        {
+          "kind": "linkMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "linkLabel",
+          "from": 1,
+          "to": 20
+        },
+        {
+          "kind": "url",
+          "from": 1,
+          "to": 20
+        },
+        {
+          "kind": "linkMark",
+          "from": 20,
+          "to": 21
+        },
+        {
+          "kind": "linkMark",
+          "from": 21,
+          "to": 22
+        },
+        {
+          "kind": "url",
+          "from": 22,
+          "to": 43
+        },
+        {
+          "kind": "linkMark",
+          "from": 43,
+          "to": 44
+        }
+      ]
+    },
+    {
+      "name": "autolink-in-list",
+      "text": "- https://example.com/item",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 26
+        },
+        {
+          "kind": "url",
+          "from": 2,
+          "to": 26
+        }
+      ]
+    },
+    {
+      "name": "table-simple",
+      "text": "| a | b |\n| - | - |\n| 1 | 2 |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 29
+        }
+      ]
+    },
+    {
+      "name": "table-aligned",
+      "text": "| left | center | right |\n| :--- | :---: | ---: |\n| a | b | c |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 63
+        }
+      ]
+    },
+    {
+      "name": "table-no-outer-pipes",
+      "text": "a | b\n- | -\n1 | 2",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 5
+        },
+        {
+          "kind": "bulletList",
+          "from": 6,
+          "to": 17
+        },
+        {
+          "kind": "listItem",
+          "from": 6,
+          "to": 17
+        },
+        {
+          "kind": "listMark",
+          "from": 6,
+          "to": 7
+        },
+        {
+          "kind": "paragraph",
+          "from": 8,
+          "to": 17
+        }
+      ]
+    },
+    {
+      "name": "table-inline-formatting",
+      "text": "| **a** | `b` |\n| --- | --- |\n| [l](https://example.com) | *i* |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 64
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 2,
+          "to": 7
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 2,
+          "to": 4
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 5,
+          "to": 7
+        },
+        {
+          "kind": "inlineCode",
+          "from": 10,
+          "to": 13
+        },
+        {
+          "kind": "codeMark",
+          "from": 10,
+          "to": 11
+        },
+        {
+          "kind": "codeMark",
+          "from": 12,
+          "to": 13
+        },
+        {
+          "kind": "link",
+          "from": 32,
+          "to": 56
+        },
+        {
+          "kind": "linkMark",
+          "from": 32,
+          "to": 33
+        },
+        {
+          "kind": "linkLabel",
+          "from": 33,
+          "to": 34
+        },
+        {
+          "kind": "linkMark",
+          "from": 34,
+          "to": 35
+        },
+        {
+          "kind": "linkMark",
+          "from": 35,
+          "to": 36
+        },
+        {
+          "kind": "url",
+          "from": 36,
+          "to": 55
+        },
+        {
+          "kind": "linkMark",
+          "from": 55,
+          "to": 56
+        },
+        {
+          "kind": "emphasis",
+          "from": 59,
+          "to": 62
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 59,
+          "to": 60
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 61,
+          "to": 62
+        }
+      ]
+    },
+    {
+      "name": "table-escaped-pipe",
+      "text": "| a \\| b | c |\n| --- | --- |\n| 1 | 2 |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 38
+        }
+      ]
+    },
+    {
+      "name": "table-indented-delimiter",
+      "text": "| a | b |\n   | - | - |\n| 1 | 2 |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 32
+        }
+      ]
+    },
+    {
+      "name": "table-after-paragraph",
+      "text": "text before\n\n| a |\n| - |\n| 1 |\n\ntext after",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 11
+        },
+        {
+          "kind": "table",
+          "from": 13,
+          "to": 30
+        },
+        {
+          "kind": "paragraph",
+          "from": 32,
+          "to": 42
+        }
+      ]
+    },
+    {
+      "name": "table-in-quote",
+      "text": "> | a | b |\n> | - | - |\n> | 1 | 2 |",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 35
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "table",
+          "from": 2,
+          "to": 35
+        },
+        {
+          "kind": "quoteMark",
+          "from": 12,
+          "to": 13
+        },
+        {
+          "kind": "quoteMark",
+          "from": 24,
+          "to": 25
+        }
+      ]
+    },
+    {
+      "name": "table-missing-delimiter",
+      "text": "| a | b |\n| 1 | 2 |",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 19
+        }
+      ]
+    },
+    {
+      "name": "hard-break-backslash",
+      "text": "line one\\\nline two",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 18
+        },
+        {
+          "kind": "hardBreak",
+          "from": 8,
+          "to": 10
+        }
+      ]
+    },
+    {
+      "name": "hard-break-spaces",
+      "text": "line one  \nline two",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 19
+        },
+        {
+          "kind": "hardBreak",
+          "from": 8,
+          "to": 11
+        }
+      ]
+    },
+    {
+      "name": "soft-break",
+      "text": "line one\nline two",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 17
+        }
+      ]
+    },
+    {
+      "name": "hard-break-in-list",
+      "text": "- item one\\\n  item two",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 22
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 22
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 22
+        },
+        {
+          "kind": "hardBreak",
+          "from": 10,
+          "to": 12
+        }
+      ]
+    },
+    {
+      "name": "html-inline",
+      "text": "text <b>bold</b> text",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "html-block",
+      "text": "<div>\nblock\n</div>",
+      "nodes": []
+    },
+    {
+      "name": "html-comment",
+      "text": "<!-- comment -->",
+      "nodes": []
+    },
+    {
+      "name": "html-comment-multiline",
+      "text": "<!--\nmulti\n-->\n\nafter",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 16,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "html-entity",
+      "text": "fish &amp; chips &copy; &#35;",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 29
+        }
+      ]
+    },
+    {
+      "name": "escape-asterisks",
+      "text": "\\*not emphasis\\*",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 16
+        }
+      ]
+    },
+    {
+      "name": "escape-brackets",
+      "text": "\\[not link\\](url)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 17
+        }
+      ]
+    },
+    {
+      "name": "escape-backslash-punctuation",
+      "text": "a \\# b \\> c \\` d \\\\ e",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "escape-hash-line",
+      "text": "\\# not heading",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 14
+        }
+      ]
+    },
+    {
+      "name": "subscript",
+      "text": "H~2~O is water",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 14
+        }
+      ]
+    },
+    {
+      "name": "superscript",
+      "text": "x^2^ is squared",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 15
+        }
+      ]
+    },
+    {
+      "name": "emoji",
+      "text": "hello :smile: world :+1:",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 24
+        }
+      ]
+    },
+    {
+      "name": "unicode-accents",
+      "text": "# Zażółć gęślą jaźń\n\n*zażółć* **gęślą** `jaźń`",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 0,
+          "to": 19
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 21,
+          "to": 46
+        },
+        {
+          "kind": "emphasis",
+          "from": 21,
+          "to": 29
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 21,
+          "to": 22
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 28,
+          "to": 29
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 30,
+          "to": 39
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 30,
+          "to": 32
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 37,
+          "to": 39
+        },
+        {
+          "kind": "inlineCode",
+          "from": 40,
+          "to": 46
+        },
+        {
+          "kind": "codeMark",
+          "from": 40,
+          "to": 41
+        },
+        {
+          "kind": "codeMark",
+          "from": 45,
+          "to": 46
+        }
+      ]
+    },
+    {
+      "name": "unicode-cjk",
+      "text": "- 日本語のテキスト\n- **太字** と *斜体*",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 10
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 10
+        },
+        {
+          "kind": "listItem",
+          "from": 11,
+          "to": 26
+        },
+        {
+          "kind": "listMark",
+          "from": 11,
+          "to": 12
+        },
+        {
+          "kind": "paragraph",
+          "from": 13,
+          "to": 26
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 13,
+          "to": 19
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 13,
+          "to": 15
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 17,
+          "to": 19
+        },
+        {
+          "kind": "emphasis",
+          "from": 22,
+          "to": 26
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 22,
+          "to": 23
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 25,
+          "to": 26
+        }
+      ]
+    },
+    {
+      "name": "astral-emoji",
+      "text": "😀 *😀 emphasis* 😀\n\n> 🎉 party\n\n- 🚀 [rocket](https://example.com/🚀)",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 19
+        },
+        {
+          "kind": "emphasis",
+          "from": 3,
+          "to": 16
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 3,
+          "to": 4
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 15,
+          "to": 16
+        },
+        {
+          "kind": "blockquote",
+          "from": 21,
+          "to": 31
+        },
+        {
+          "kind": "quoteMark",
+          "from": 21,
+          "to": 22
+        },
+        {
+          "kind": "paragraph",
+          "from": 23,
+          "to": 31
+        },
+        {
+          "kind": "bulletList",
+          "from": 33,
+          "to": 70
+        },
+        {
+          "kind": "listItem",
+          "from": 33,
+          "to": 70
+        },
+        {
+          "kind": "listMark",
+          "from": 33,
+          "to": 34
+        },
+        {
+          "kind": "paragraph",
+          "from": 35,
+          "to": 70
+        },
+        {
+          "kind": "link",
+          "from": 38,
+          "to": 70
+        },
+        {
+          "kind": "linkMark",
+          "from": 38,
+          "to": 39
+        },
+        {
+          "kind": "linkLabel",
+          "from": 39,
+          "to": 45
+        },
+        {
+          "kind": "linkMark",
+          "from": 45,
+          "to": 46
+        },
+        {
+          "kind": "linkMark",
+          "from": 46,
+          "to": 47
+        },
+        {
+          "kind": "url",
+          "from": 47,
+          "to": 69
+        },
+        {
+          "kind": "linkMark",
+          "from": 69,
+          "to": 70
+        }
+      ]
+    },
+    {
+      "name": "astral-in-heading",
+      "text": "## 🌍 World",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 2,
+          "from": 0,
+          "to": 11
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 2
+        }
+      ]
+    },
+    {
+      "name": "astral-in-code",
+      "text": "```\n😀 code\n```\n\n`😀`",
+      "nodes": [
+        {
+          "kind": "fencedCode",
+          "from": 0,
+          "to": 15
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 3
+        },
+        {
+          "kind": "codeText",
+          "from": 4,
+          "to": 11
+        },
+        {
+          "kind": "codeMark",
+          "from": 12,
+          "to": 15
+        },
+        {
+          "kind": "paragraph",
+          "from": 17,
+          "to": 21
+        },
+        {
+          "kind": "inlineCode",
+          "from": 17,
+          "to": 21
+        },
+        {
+          "kind": "codeMark",
+          "from": 17,
+          "to": 18
+        },
+        {
+          "kind": "codeMark",
+          "from": 20,
+          "to": 21
+        }
+      ]
+    },
+    {
+      "name": "combining-marks",
+      "text": "é *éé* ~~á~~",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 16
+        },
+        {
+          "kind": "emphasis",
+          "from": 3,
+          "to": 9
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 3,
+          "to": 4
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 8,
+          "to": 9
+        },
+        {
+          "kind": "strikethrough",
+          "from": 10,
+          "to": 16
+        },
+        {
+          "kind": "strikethroughMark",
+          "from": 10,
+          "to": 12
+        },
+        {
+          "kind": "strikethroughMark",
+          "from": 14,
+          "to": 16
+        }
+      ]
+    },
+    {
+      "name": "rtl-text",
+      "text": "# שלום\n\n*עולם*",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 0,
+          "to": 6
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 8,
+          "to": 14
+        },
+        {
+          "kind": "emphasis",
+          "from": 8,
+          "to": 14
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 8,
+          "to": 9
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 13,
+          "to": 14
+        }
+      ]
+    },
+    {
+      "name": "multi-line-note",
+      "text": "# Title\n\nIntro line one\nintro line two\n\n## Section\n\n- a\n- b\n\n> quote\n\nEnd.",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 0,
+          "to": 7
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 9,
+          "to": 38
+        },
+        {
+          "kind": "atxHeading",
+          "level": 2,
+          "from": 40,
+          "to": 50
+        },
+        {
+          "kind": "headerMark",
+          "from": 40,
+          "to": 42
+        },
+        {
+          "kind": "bulletList",
+          "from": 52,
+          "to": 59
+        },
+        {
+          "kind": "listItem",
+          "from": 52,
+          "to": 55
+        },
+        {
+          "kind": "listMark",
+          "from": 52,
+          "to": 53
+        },
+        {
+          "kind": "paragraph",
+          "from": 54,
+          "to": 55
+        },
+        {
+          "kind": "listItem",
+          "from": 56,
+          "to": 59
+        },
+        {
+          "kind": "listMark",
+          "from": 56,
+          "to": 57
+        },
+        {
+          "kind": "paragraph",
+          "from": 58,
+          "to": 59
+        },
+        {
+          "kind": "blockquote",
+          "from": 61,
+          "to": 68
+        },
+        {
+          "kind": "quoteMark",
+          "from": 61,
+          "to": 62
+        },
+        {
+          "kind": "paragraph",
+          "from": 63,
+          "to": 68
+        },
+        {
+          "kind": "paragraph",
+          "from": 70,
+          "to": 74
+        }
+      ]
+    },
+    {
+      "name": "blank-lines-between",
+      "text": "a\n\n\n\nb",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 5,
+          "to": 6
+        }
+      ]
+    },
+    {
+      "name": "trailing-newline",
+      "text": "# Heading\n\ntext\n",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 11,
+          "to": 15
+        }
+      ]
+    },
+    {
+      "name": "trailing-spaces",
+      "text": "text with trailing spaces   \n",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 28
+        }
+      ]
+    },
+    {
+      "name": "only-whitespace-lines",
+      "text": "   \n\n  ",
+      "nodes": []
+    },
+    {
+      "name": "setext-vs-rule-vs-list",
+      "text": "Title\n---\n\n---\n\n- item\n---\nafter",
+      "nodes": [
+        {
+          "kind": "setextHeading",
+          "level": 2,
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "headerMark",
+          "from": 6,
+          "to": 9
+        },
+        {
+          "kind": "horizontalRule",
+          "from": 11,
+          "to": 14
+        },
+        {
+          "kind": "bulletList",
+          "from": 16,
+          "to": 22
+        },
+        {
+          "kind": "listItem",
+          "from": 16,
+          "to": 22
+        },
+        {
+          "kind": "listMark",
+          "from": 16,
+          "to": 17
+        },
+        {
+          "kind": "paragraph",
+          "from": 18,
+          "to": 22
+        },
+        {
+          "kind": "horizontalRule",
+          "from": 23,
+          "to": 26
+        },
+        {
+          "kind": "paragraph",
+          "from": 27,
+          "to": 32
+        }
+      ]
+    },
+    {
+      "name": "nested-quote-list-emphasis",
+      "text": "> - *item* with [link](https://example.com)\n> - **second**\n>\n> > nested *quote*",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 79
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "bulletList",
+          "from": 2,
+          "to": 60
+        },
+        {
+          "kind": "listItem",
+          "from": 2,
+          "to": 43
+        },
+        {
+          "kind": "listMark",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "paragraph",
+          "from": 4,
+          "to": 43
+        },
+        {
+          "kind": "emphasis",
+          "from": 4,
+          "to": 10
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 4,
+          "to": 5
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 9,
+          "to": 10
+        },
+        {
+          "kind": "link",
+          "from": 16,
+          "to": 43
+        },
+        {
+          "kind": "linkMark",
+          "from": 16,
+          "to": 17
+        },
+        {
+          "kind": "linkLabel",
+          "from": 17,
+          "to": 21
+        },
+        {
+          "kind": "linkMark",
+          "from": 21,
+          "to": 22
+        },
+        {
+          "kind": "linkMark",
+          "from": 22,
+          "to": 23
+        },
+        {
+          "kind": "url",
+          "from": 23,
+          "to": 42
+        },
+        {
+          "kind": "linkMark",
+          "from": 42,
+          "to": 43
+        },
+        {
+          "kind": "quoteMark",
+          "from": 44,
+          "to": 45
+        },
+        {
+          "kind": "listItem",
+          "from": 46,
+          "to": 60
+        },
+        {
+          "kind": "listMark",
+          "from": 46,
+          "to": 47
+        },
+        {
+          "kind": "paragraph",
+          "from": 48,
+          "to": 58
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 48,
+          "to": 58
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 48,
+          "to": 50
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 56,
+          "to": 58
+        },
+        {
+          "kind": "quoteMark",
+          "from": 59,
+          "to": 60
+        },
+        {
+          "kind": "quoteMark",
+          "from": 61,
+          "to": 62
+        },
+        {
+          "kind": "blockquote",
+          "from": 63,
+          "to": 79
+        },
+        {
+          "kind": "quoteMark",
+          "from": 63,
+          "to": 64
+        },
+        {
+          "kind": "paragraph",
+          "from": 65,
+          "to": 79
+        },
+        {
+          "kind": "emphasis",
+          "from": 72,
+          "to": 79
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 72,
+          "to": 73
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 78,
+          "to": 79
+        }
+      ]
+    },
+    {
+      "name": "emphasis-in-link-in-emphasis",
+      "text": "*see [a *b* c](https://example.com) now*",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 40
+        },
+        {
+          "kind": "emphasis",
+          "from": 0,
+          "to": 40
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "link",
+          "from": 5,
+          "to": 35
+        },
+        {
+          "kind": "linkMark",
+          "from": 5,
+          "to": 6
+        },
+        {
+          "kind": "linkLabel",
+          "from": 6,
+          "to": 13
+        },
+        {
+          "kind": "emphasis",
+          "from": 8,
+          "to": 11
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 8,
+          "to": 9
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 10,
+          "to": 11
+        },
+        {
+          "kind": "linkMark",
+          "from": 13,
+          "to": 14
+        },
+        {
+          "kind": "linkMark",
+          "from": 14,
+          "to": 15
+        },
+        {
+          "kind": "url",
+          "from": 15,
+          "to": 34
+        },
+        {
+          "kind": "linkMark",
+          "from": 34,
+          "to": 35
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 39,
+          "to": 40
+        }
+      ]
+    },
+    {
+      "name": "list-code-quote",
+      "text": "1. step one\n\n   > note\n\n   ```sh\n   run\n   ```\n2. step two",
+      "nodes": [
+        {
+          "kind": "orderedList",
+          "from": 0,
+          "to": 58
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 46
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "paragraph",
+          "from": 3,
+          "to": 11
+        },
+        {
+          "kind": "blockquote",
+          "from": 16,
+          "to": 22
+        },
+        {
+          "kind": "quoteMark",
+          "from": 16,
+          "to": 17
+        },
+        {
+          "kind": "paragraph",
+          "from": 18,
+          "to": 22
+        },
+        {
+          "kind": "fencedCode",
+          "from": 27,
+          "to": 46
+        },
+        {
+          "kind": "codeMark",
+          "from": 27,
+          "to": 30
+        },
+        {
+          "kind": "codeInfo",
+          "from": 30,
+          "to": 32
+        },
+        {
+          "kind": "codeText",
+          "from": 36,
+          "to": 39
+        },
+        {
+          "kind": "codeMark",
+          "from": 43,
+          "to": 46
+        },
+        {
+          "kind": "listItem",
+          "from": 47,
+          "to": 58
+        },
+        {
+          "kind": "listMark",
+          "from": 47,
+          "to": 49
+        },
+        {
+          "kind": "paragraph",
+          "from": 50,
+          "to": 58
+        }
+      ]
+    },
+    {
+      "name": "realistic-note",
+      "text": "# Weekend plans\n\nThings to do **before** Monday:\n\n- [x] Buy groceries\n- [ ] Call *Anna* about the [trip](https://example.com/trip)\n- [ ] Finish the report\n  - [x] outline\n  - [ ] draft\n\n## Notes\n\n> Remember: the deadline is **Friday**.\n\nSome code:\n\n```sh\nnpm run build\n```\n\n| Day | Plan |\n| --- | ---- |\n| Sat | hike |\n| Sun | rest |\n\n---\n\nSee https://example.com/docs. ~~Cancelled~~ item.\n\n![chart](image:abcdefghijklmnopqrstuvwxyz#800x600)\n",
+      "nodes": [
+        {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 0,
+          "to": 15
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 17,
+          "to": 48
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 30,
+          "to": 40
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 30,
+          "to": 32
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 38,
+          "to": 40
+        },
+        {
+          "kind": "bulletList",
+          "from": 50,
+          "to": 184
+        },
+        {
+          "kind": "listItem",
+          "from": 50,
+          "to": 69
+        },
+        {
+          "kind": "listMark",
+          "from": 50,
+          "to": 51
+        },
+        {
+          "kind": "task",
+          "from": 52,
+          "to": 69
+        },
+        {
+          "kind": "taskMarker",
+          "checked": true,
+          "from": 52,
+          "to": 55
+        },
+        {
+          "kind": "listItem",
+          "from": 70,
+          "to": 130
+        },
+        {
+          "kind": "listMark",
+          "from": 70,
+          "to": 71
+        },
+        {
+          "kind": "task",
+          "from": 72,
+          "to": 130
+        },
+        {
+          "kind": "taskMarker",
+          "checked": false,
+          "from": 72,
+          "to": 75
+        },
+        {
+          "kind": "emphasis",
+          "from": 81,
+          "to": 87
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 81,
+          "to": 82
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 86,
+          "to": 87
+        },
+        {
+          "kind": "link",
+          "from": 98,
+          "to": 130
+        },
+        {
+          "kind": "linkMark",
+          "from": 98,
+          "to": 99
+        },
+        {
+          "kind": "linkLabel",
+          "from": 99,
+          "to": 103
+        },
+        {
+          "kind": "linkMark",
+          "from": 103,
+          "to": 104
+        },
+        {
+          "kind": "linkMark",
+          "from": 104,
+          "to": 105
+        },
+        {
+          "kind": "url",
+          "from": 105,
+          "to": 129
+        },
+        {
+          "kind": "linkMark",
+          "from": 129,
+          "to": 130
+        },
+        {
+          "kind": "listItem",
+          "from": 131,
+          "to": 184
+        },
+        {
+          "kind": "listMark",
+          "from": 131,
+          "to": 132
+        },
+        {
+          "kind": "task",
+          "from": 133,
+          "to": 154
+        },
+        {
+          "kind": "taskMarker",
+          "checked": false,
+          "from": 133,
+          "to": 136
+        },
+        {
+          "kind": "bulletList",
+          "from": 157,
+          "to": 184
+        },
+        {
+          "kind": "listItem",
+          "from": 157,
+          "to": 170
+        },
+        {
+          "kind": "listMark",
+          "from": 157,
+          "to": 158
+        },
+        {
+          "kind": "task",
+          "from": 159,
+          "to": 170
+        },
+        {
+          "kind": "taskMarker",
+          "checked": true,
+          "from": 159,
+          "to": 162
+        },
+        {
+          "kind": "listItem",
+          "from": 173,
+          "to": 184
+        },
+        {
+          "kind": "listMark",
+          "from": 173,
+          "to": 174
+        },
+        {
+          "kind": "task",
+          "from": 175,
+          "to": 184
+        },
+        {
+          "kind": "taskMarker",
+          "checked": false,
+          "from": 175,
+          "to": 178
+        },
+        {
+          "kind": "atxHeading",
+          "level": 2,
+          "from": 186,
+          "to": 194
+        },
+        {
+          "kind": "headerMark",
+          "from": 186,
+          "to": 188
+        },
+        {
+          "kind": "blockquote",
+          "from": 196,
+          "to": 235
+        },
+        {
+          "kind": "quoteMark",
+          "from": 196,
+          "to": 197
+        },
+        {
+          "kind": "paragraph",
+          "from": 198,
+          "to": 235
+        },
+        {
+          "kind": "strongEmphasis",
+          "from": 224,
+          "to": 234
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 224,
+          "to": 226
+        },
+        {
+          "kind": "emphasisMark",
+          "from": 232,
+          "to": 234
+        },
+        {
+          "kind": "paragraph",
+          "from": 237,
+          "to": 247
+        },
+        {
+          "kind": "fencedCode",
+          "from": 249,
+          "to": 272
+        },
+        {
+          "kind": "codeMark",
+          "from": 249,
+          "to": 252
+        },
+        {
+          "kind": "codeInfo",
+          "from": 252,
+          "to": 254
+        },
+        {
+          "kind": "codeText",
+          "from": 255,
+          "to": 268
+        },
+        {
+          "kind": "codeMark",
+          "from": 269,
+          "to": 272
+        },
+        {
+          "kind": "table",
+          "from": 274,
+          "to": 333
+        },
+        {
+          "kind": "horizontalRule",
+          "from": 335,
+          "to": 338
+        },
+        {
+          "kind": "paragraph",
+          "from": 340,
+          "to": 389
+        },
+        {
+          "kind": "url",
+          "from": 344,
+          "to": 368
+        },
+        {
+          "kind": "strikethrough",
+          "from": 370,
+          "to": 383
+        },
+        {
+          "kind": "strikethroughMark",
+          "from": 370,
+          "to": 372
+        },
+        {
+          "kind": "strikethroughMark",
+          "from": 381,
+          "to": 383
+        },
+        {
+          "kind": "paragraph",
+          "from": 391,
+          "to": 441
+        },
+        {
+          "kind": "image",
+          "from": 391,
+          "to": 441
+        },
+        {
+          "kind": "linkMark",
+          "from": 391,
+          "to": 393
+        },
+        {
+          "kind": "linkLabel",
+          "from": 393,
+          "to": 398
+        },
+        {
+          "kind": "linkMark",
+          "from": 398,
+          "to": 399
+        },
+        {
+          "kind": "linkMark",
+          "from": 399,
+          "to": 400
+        },
+        {
+          "kind": "url",
+          "from": 400,
+          "to": 440
+        },
+        {
+          "kind": "linkMark",
+          "from": 440,
+          "to": 441
+        }
+      ]
+    }
+  ]
+}

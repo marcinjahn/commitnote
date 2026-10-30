@@ -1,4 +1,4 @@
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
@@ -20,6 +20,10 @@ mod imp {
         #[template_child]
         pub(super) spinner: TemplateChild<adw::Spinner>,
         #[template_child]
+        pub(super) early_draft_name_entry: TemplateChild<gtk::Entry>,
+        #[template_child]
+        pub(super) early_draft_body: TemplateChild<gtk::TextView>,
+        #[template_child]
         pub(super) try_again_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub(super) log_in_button: TemplateChild<gtk::Button>,
@@ -30,6 +34,7 @@ mod imp {
         pub(super) finish_loading_button: OnceCell<gtk::Button>,
         pub(super) model: OnceCell<AppModel>,
         pub(super) handlers: RefCell<Vec<glib::SignalHandlerId>>,
+        pub(super) syncing: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -92,11 +97,78 @@ impl LoadingPage {
             page,
             move |_| page.refresh()
         ));
-        imp.handlers.replace(vec![route, message]);
+        let early_draft = model.connect_early_draft_changed(glib::clone!(
+            #[weak(rename_to = page)]
+            page,
+            move |_| page.sync_early_draft()
+        ));
+        imp.handlers.replace(vec![route, message, early_draft]);
+        page.setup_early_draft(model);
         #[cfg(feature = "testing")]
         page.add_finish_loading_button();
         page.refresh();
         page
+    }
+
+    pub fn focus_name(&self) {
+        self.imp().early_draft_name_entry.grab_focus();
+    }
+
+    fn setup_early_draft(&self, model: &AppModel) {
+        let model = model.clone();
+        let imp = self.imp();
+        imp.early_draft_name_entry.connect_changed(glib::clone!(
+            #[weak(rename_to = page)]
+            self,
+            #[weak]
+            model,
+            move |entry| {
+                if !page.imp().syncing.get() {
+                    model.set_early_draft_name(entry.text().to_string());
+                }
+            }
+        ));
+        imp.early_draft_name_entry.connect_activate(glib::clone!(
+            #[weak(rename_to = page)]
+            self,
+            #[weak]
+            model,
+            move |_| {
+                model.confirm_early_draft_name();
+                page.imp().early_draft_body.grab_focus();
+            }
+        ));
+        imp.early_draft_body.buffer().connect_changed(glib::clone!(
+            #[weak(rename_to = page)]
+            self,
+            #[weak]
+            model,
+            move |buffer| {
+                if !page.imp().syncing.get() {
+                    let (start, end) = buffer.bounds();
+                    model.set_early_draft_body(buffer.text(&start, &end, false).to_string());
+                }
+            }
+        ));
+    }
+
+    fn sync_early_draft(&self) {
+        let imp = self.imp();
+        let model = imp.model.get().expect("the page is created with a model");
+        let early = model.early_draft();
+        imp.syncing.set(true);
+        if imp.early_draft_name_entry.text() != early.name {
+            imp.early_draft_name_entry.set_text(&early.name);
+        }
+        let buffer = imp.early_draft_body.buffer();
+        let (start, end) = buffer.bounds();
+        if buffer.text(&start, &end, false) != early.body {
+            buffer.set_text(&early.body);
+        }
+        imp.syncing.set(false);
+        let editable = !model.handing_off();
+        imp.early_draft_name_entry.set_editable(editable);
+        imp.early_draft_body.set_editable(editable);
     }
 
     fn refresh(&self) {

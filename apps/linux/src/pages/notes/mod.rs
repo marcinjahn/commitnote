@@ -1,8 +1,9 @@
 mod node_object;
 mod node_row;
-mod note_state;
+pub(crate) mod note_state;
 mod note_view;
 mod notes_page;
+mod sync_feedback;
 mod tree_logic;
 mod tree_view;
 

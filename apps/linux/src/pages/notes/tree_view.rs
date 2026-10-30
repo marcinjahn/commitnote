@@ -298,9 +298,15 @@ impl NotesTree {
             self.sync_open_note();
             return;
         }
+        let synced = imp.synced_path.borrow().clone();
         let position = selected
             .as_deref()
             .and_then(|path| position_of(&rows, path))
+            .or_else(|| {
+                let path = synced?;
+                restore_expanded(&mut rows, &ancestors(&path));
+                position_of(&rows, &path)
+            })
             .unwrap_or(gtk::INVALID_LIST_POSITION);
         imp.selection.set_selected(position);
         glib::idle_add_local_once(move || adjustment.set_value(scroll));
@@ -319,6 +325,11 @@ impl NotesTree {
 
     fn sync_open_note(&self) {
         let imp = self.imp();
+        if self.model().editor_target().is_draft() {
+            imp.synced_path.replace(None);
+            imp.selection.set_selected(gtk::INVALID_LIST_POSITION);
+            return;
+        }
         let path = self.model().open_note_path();
         if *imp.synced_path.borrow() == path {
             return;

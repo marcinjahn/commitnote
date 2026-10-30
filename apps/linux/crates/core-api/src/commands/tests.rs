@@ -62,6 +62,9 @@ fn empty_params_encode_as_empty_objects() {
         params_json::<AnalyticsVisit>(&AnalyticsVisitParams {}),
         empty
     );
+    assert_eq!(params_json::<SyncFlush>(&SyncFlushParams {}), empty);
+    assert_eq!(params_json::<SyncRetry>(&SyncRetryParams {}), empty);
+    assert_eq!(params_json::<DraftLeave>(&DraftLeaveParams {}), empty);
 }
 
 #[test]
@@ -87,6 +90,16 @@ fn every_command_has_a_distinct_name() {
         SettingsOpen::NAME,
         SettingsChange::NAME,
         AnalyticsVisit::NAME,
+        NoteEdit::NAME,
+        SyncFlush::NAME,
+        SyncRetry::NAME,
+        ConflictResolve::NAME,
+        DraftStart::NAME,
+        DraftCommitName::NAME,
+        DraftContent::NAME,
+        DraftLeave::NAME,
+        NoteRename::NAME,
+        EarlyDraftHandOff::NAME,
     ];
     let mut sorted = names.to_vec();
     sorted.sort_unstable();
@@ -470,12 +483,18 @@ fn note_open_results_cover_every_state() {
 }
 
 #[test]
-fn open_note_keeps_the_conflict_payload_verbatim() {
-    let conflict = json!({
-        "otherDevice":"Other","heading":"h","text":"t","keepThisLabel":"k1",
-        "keepOtherLabel":"k2","editMergedLabel":"Edit merged","editHint":"hint",
-        "merged":"<<<<<<<","editing":false
-    });
+fn open_note_round_trips_a_typed_conflict() {
+    let conflict = OpenNoteConflict {
+        other_device: Some("Other".into()),
+        heading: "h".into(),
+        text: "t".into(),
+        keep_this_label: "k1".into(),
+        keep_other_label: "k2".into(),
+        edit_merged_label: "Edit merged".into(),
+        edit_hint: "hint".into(),
+        merged: "<<<<<<<".into(),
+        editing: false,
+    };
     let note = OpenNote::Loaded {
         path: path(&["a"]),
         content: "x".into(),
@@ -484,8 +503,24 @@ fn open_note_keeps_the_conflict_payload_verbatim() {
         shared: true,
     };
     let encoded = round_trip(&note);
-    assert_eq!(encoded["conflict"], conflict);
+    assert_eq!(
+        encoded["conflict"],
+        json!({
+            "otherDevice":"Other","heading":"h","text":"t","keepThisLabel":"k1",
+            "keepOtherLabel":"k2","editMergedLabel":"Edit merged","editHint":"hint",
+            "merged":"<<<<<<<","editing":false
+        })
+    );
     assert_eq!(encoded["colorTag"], "red");
+
+    let anonymous = OpenNoteConflict {
+        other_device: None,
+        editing: true,
+        ..conflict
+    };
+    let encoded = round_trip(&anonymous);
+    assert_eq!(encoded["otherDevice"], Value::Null);
+    assert_eq!(encoded["editing"], true);
 }
 
 #[test]
@@ -604,5 +639,190 @@ fn settings_save_states_round_trip() {
         (SettingsSaveState::Failed, "failed"),
     ] {
         assert_eq!(round_trip(&state), json!(name));
+    }
+}
+
+#[test]
+fn editing_params_use_camel_case_wire_names() {
+    assert_eq!(
+        round_trip(&NoteEditParams {
+            path: path(&["a", "b"]),
+            text: "x".into()
+        }),
+        json!({"path":["a","b"],"text":"x"})
+    );
+    assert_eq!(
+        round_trip(&ConflictResolveParams {
+            path: path(&["a"]),
+            resolution: ConflictResolution::EditMerged
+        }),
+        json!({"path":["a"],"resolution":"editMerged"})
+    );
+    assert_eq!(
+        round_trip(&DraftStartParams { parent: vec![] }),
+        json!({"parent":[]})
+    );
+    assert_eq!(
+        round_trip(&DraftCommitNameParams { name: "n".into() }),
+        json!({"name":"n"})
+    );
+    assert_eq!(
+        round_trip(&DraftContentParams {
+            name: "n".into(),
+            content: "c".into()
+        }),
+        json!({"name":"n","content":"c"})
+    );
+    assert_eq!(
+        round_trip(&NoteRenameParams {
+            path: path(&["a"]),
+            name: "n".into()
+        }),
+        json!({"path":["a"],"name":"n"})
+    );
+    assert_eq!(
+        round_trip(&EarlyDraftHandOffParams {
+            name: "n".into(),
+            body: "b".into(),
+            name_confirmed: true
+        }),
+        json!({"name":"n","body":"b","nameConfirmed":true})
+    );
+}
+
+#[test]
+fn conflict_resolutions_are_plain_strings() {
+    for (resolution, wire) in [
+        (ConflictResolution::KeepMine, "keepMine"),
+        (ConflictResolution::KeepTheirs, "keepTheirs"),
+        (ConflictResolution::EditMerged, "editMerged"),
+    ] {
+        assert_eq!(round_trip(&resolution), json!(wire));
+    }
+}
+
+#[test]
+fn edit_and_sync_results_decode() {
+    decode::<NoteEdit>("{}");
+    decode::<SyncRetry>("{}");
+    decode::<ConflictResolve>("{}");
+    decode::<DraftLeave>("{}");
+    assert_eq!(
+        decode::<SyncFlush>(r#"{"result":{"kind":"saved"}}"#).result,
+        FlushOutcome::Saved
+    );
+    assert_eq!(
+        decode::<SyncFlush>(r#"{"result":{"kind":"unsaved","count":2}}"#).result,
+        FlushOutcome::Unsaved { count: 2 }
+    );
+    assert_eq!(
+        round_trip(&FlushOutcome::Unsaved { count: 2 }),
+        json!({"kind":"unsaved","count":2})
+    );
+}
+
+#[test]
+fn draft_results_decode() {
+    assert_eq!(
+        decode::<DraftStart>(r#"{"draft":{"parent":["f"],"name":"Untitled"}}"#).draft,
+        NoteDraft {
+            parent: path(&["f"]),
+            name: "Untitled".into()
+        }
+    );
+    for (text, expected) in [
+        (r#"{"outcome":{"kind":"none"}}"#, NoteDraftOutcome::None),
+        (
+            r#"{"outcome":{"kind":"error","message":"taken"}}"#,
+            NoteDraftOutcome::Error {
+                message: "taken".into(),
+            },
+        ),
+        (
+            r#"{"outcome":{"kind":"created","path":["f","n"],"fieldError":null}}"#,
+            NoteDraftOutcome::Created {
+                path: path(&["f", "n"]),
+                field_error: None,
+            },
+        ),
+        (
+            r#"{"outcome":{"kind":"created","path":["f","n"],"fieldError":"bad"}}"#,
+            NoteDraftOutcome::Created {
+                path: path(&["f", "n"]),
+                field_error: Some("bad".into()),
+            },
+        ),
+    ] {
+        assert_eq!(decode::<DraftCommitName>(text).outcome, expected);
+        assert_eq!(decode::<DraftContent>(text).outcome, expected);
+    }
+    assert_eq!(
+        round_trip(&NoteDraftOutcome::Created {
+            path: path(&["n"]),
+            field_error: Some("bad".into())
+        }),
+        json!({"kind":"created","path":["n"],"fieldError":"bad"})
+    );
+}
+
+#[test]
+fn rename_results_decode() {
+    for (text, expected) in [
+        (r#"{"outcome":{"kind":"none"}}"#, NameCommitOutcome::None),
+        (
+            r#"{"outcome":{"kind":"restore"}}"#,
+            NameCommitOutcome::Restore,
+        ),
+        (
+            r#"{"outcome":{"kind":"error","message":"exists"}}"#,
+            NameCommitOutcome::Error {
+                message: "exists".into(),
+            },
+        ),
+        (
+            r#"{"outcome":{"kind":"ok","path":["f","m"]}}"#,
+            NameCommitOutcome::Ok {
+                path: path(&["f", "m"]),
+            },
+        ),
+    ] {
+        assert_eq!(decode::<NoteRename>(text).outcome, expected);
+    }
+}
+
+#[test]
+fn early_draft_results_decode() {
+    for (text, expected) in [
+        (r#"{"outcome":{"kind":"none"}}"#, EarlyDraftOutcome::None),
+        (
+            r#"{"outcome":{"kind":"draft","name":"n","error":null}}"#,
+            EarlyDraftOutcome::Draft {
+                name: "n".into(),
+                error: None,
+            },
+        ),
+        (
+            r#"{"outcome":{"kind":"draft","name":"n","error":"bad"}}"#,
+            EarlyDraftOutcome::Draft {
+                name: "n".into(),
+                error: Some("bad".into()),
+            },
+        ),
+        (
+            r#"{"outcome":{"kind":"created","path":["n"],"fieldError":null}}"#,
+            EarlyDraftOutcome::Created {
+                path: path(&["n"]),
+                field_error: None,
+            },
+        ),
+        (
+            r#"{"outcome":{"kind":"created","path":["n"],"fieldError":"bad"}}"#,
+            EarlyDraftOutcome::Created {
+                path: path(&["n"]),
+                field_error: Some("bad".into()),
+            },
+        ),
+    ] {
+        assert_eq!(decode::<EarlyDraftHandOff>(text).outcome, expected);
     }
 }

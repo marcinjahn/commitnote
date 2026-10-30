@@ -33,6 +33,7 @@ mod imp {
     impl ApplicationImpl for CommitnoteApplication {
         fn startup(&self) {
             self.parent_startup();
+            sourceview5::init();
             let applier = AppearanceApplier::new();
             let model = AppModel::new(app_config());
             applier.apply(&model.appearance());

@@ -21,6 +21,7 @@ const WAKE_INTERVAL: Duration = Duration::from_millis(50);
 const REFRESH_GAP: Duration = Duration::from_millis(500);
 const BUNDLE_RESOURCE: &str = "core/commitnote-core.js";
 const SESSION_ACCENT: &str = "violet";
+const DEVICE_MODEL: &str = "Linux";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Width {
@@ -80,6 +81,42 @@ pub const NARROW_VARIANTS: &[(Width, Theme)] =
     &[(Width::Narrow, Theme::Light), (Width::Narrow, Theme::Dark)];
 pub const WIDE_VARIANTS: &[(Width, Theme)] =
     &[(Width::Wide, Theme::Light), (Width::Wide, Theme::Dark)];
+pub const NARROW_LIGHT: &[(Width, Theme)] = &[(Width::Narrow, Theme::Light)];
+pub const WIDE_LIGHT: &[(Width, Theme)] = &[(Width::Wide, Theme::Light)];
+
+/// A read-back scenario for the shared TypeScript reader, written into the directory named by
+/// `COMMITNOTE_READBACK_DIR`; returns whether it was written, which it is not when the variable is
+/// unset.
+pub fn write_read_back(
+    file_name: &str,
+    name: &str,
+    passphrase: &str,
+    exported: &str,
+    notes: &[(Vec<String>, String)],
+) -> Result<bool, String> {
+    let Some(directory) = std::env::var_os("COMMITNOTE_READBACK_DIR").filter(|dir| !dir.is_empty())
+    else {
+        return Ok(false);
+    };
+    let directory = PathBuf::from(directory);
+    let notes: Vec<_> = notes
+        .iter()
+        .map(|(path, text)| serde_json::json!({ "path": path, "text": text }))
+        .collect();
+    let scenario = serde_json::json!({
+        "name": name,
+        "passphrase": passphrase,
+        "exported": exported,
+        "expect": { "initialized": false, "notes": notes, "deviceName": DEVICE_MODEL },
+    });
+    std::fs::create_dir_all(&directory)
+        .map_err(|error| format!("cannot create the read-back directory: {error}"))?;
+    let bytes = serde_json::to_vec(&scenario)
+        .map_err(|error| format!("cannot encode the read-back scenario: {error}"))?;
+    std::fs::write(directory.join(file_name), bytes)
+        .map_err(|error| format!("cannot write {file_name}: {error}"))?;
+    Ok(true)
+}
 
 /// Sets the process environment the harness relies on; must run before GTK starts any thread.
 pub fn prepare_environment() {
@@ -194,7 +231,7 @@ impl Harness {
             bundle_source: self.bundle.clone(),
             cache_dir: case_dir.join("cache"),
             config_dir: case_dir.join("config"),
-            device_model: "Linux".to_owned(),
+            device_model: DEVICE_MODEL.to_owned(),
             testing: true,
         });
         self.routes.borrow_mut().clear();
@@ -414,7 +451,21 @@ impl Harness {
     pub fn text_view_text(&self, name: &str) -> Result<String, String> {
         let buffer = self.widget_as::<gtk::TextView>(name)?.buffer();
         let (start, end) = buffer.bounds();
-        Ok(buffer.text(&start, &end, false).to_string())
+        Ok(buffer.text(&start, &end, true).to_string())
+    }
+
+    /// The names of the tags at character `offset` of the text view named `name`.
+    pub fn tags_at(&self, name: &str, offset: i32) -> Result<Vec<String>, String> {
+        let buffer = self.widget_as::<gtk::TextView>(name)?.buffer();
+        if offset < 0 || offset > buffer.char_count() {
+            return Err(format!("{name} has no character at {offset}"));
+        }
+        Ok(buffer
+            .iter_at_offset(offset)
+            .tags()
+            .iter()
+            .filter_map(|tag| tag.name().map(|name| name.to_string()))
+            .collect())
     }
 
     pub fn label_shown_with(&self, text: &str) -> bool {
@@ -610,12 +661,42 @@ impl Harness {
         variants: &[(Width, Theme)],
     ) -> Result<(), String> {
         for &(width, theme) in variants {
-            self.resize(width)?;
-            self.apply_session_appearance(theme)?;
-            self.settle()?;
+            self.show_variant(width, theme)?;
             self.capture(view, width, theme, SESSION_ACCENT)?;
         }
         Ok(())
+    }
+
+    /// Sizes the window and applies the scheme and session accent, so that a later
+    /// [`Self::capture_variant`] shows a state that must not change in between.
+    pub fn show_variant(&self, width: Width, theme: Theme) -> Result<(), String> {
+        self.resize(width)?;
+        self.apply_session_appearance(theme)?;
+        self.settle()
+    }
+
+    pub fn capture_variant(&self, view: &str, width: Width, theme: Theme) -> Result<(), String> {
+        self.settle()?;
+        self.capture(view, width, theme, SESSION_ACCENT)
+    }
+
+    /// Like [`Self::capture_variant`], with an open popover painted over the window, which the
+    /// window's own snapshot leaves out because a popover has a surface of its own.
+    pub fn capture_variant_with_popover(
+        &self,
+        view: &str,
+        width: Width,
+        theme: Theme,
+        popover: &gtk::Popover,
+    ) -> Result<(), String> {
+        self.settle()?;
+        let file = format!(
+            "{}-{view}-{}-{}-{SESSION_ACCENT}.png",
+            self.prefix.get(),
+            width.name(),
+            theme.name()
+        );
+        self.render_over(&self.screenshot_dir.join(file), Some(popover))
     }
 
     fn apply_session_appearance(&self, theme: Theme) -> Result<(), String> {
@@ -666,11 +747,26 @@ impl Harness {
     }
 
     fn render(&self, path: &Path) -> Result<(), String> {
+        self.render_over(path, None)
+    }
+
+    fn render_over(&self, path: &Path, popover: Option<&gtk::Popover>) -> Result<(), String> {
         let window = self.window()?;
         let (width, height) = (window.width(), window.height());
         let paintable = gtk::WidgetPaintable::new(Some(&window));
         let snapshot = gtk::Snapshot::new();
         paintable.snapshot(&snapshot, f64::from(width), f64::from(height));
+        if let Some(popover) = popover {
+            let (x, y) = popover_origin(&window, popover)?;
+            snapshot.save();
+            snapshot.translate(&graphene::Point::new(x as f32, y as f32));
+            gtk::WidgetPaintable::new(Some(popover)).snapshot(
+                &snapshot,
+                f64::from(popover.width()),
+                f64::from(popover.height()),
+            );
+            snapshot.restore();
+        }
         let node = snapshot
             .to_node()
             .ok_or_else(|| "the window rendered nothing".to_owned())?;
@@ -683,6 +779,19 @@ impl Harness {
             .save_to_png(path)
             .map_err(|error| format!("cannot save {}: {error}", path.display()))
     }
+}
+
+fn popover_origin(window: &CommitnoteWindow, popover: &gtk::Popover) -> Result<(f64, f64), String> {
+    let surface = popover.surface().ok_or("the popover has no surface")?;
+    let popup = surface
+        .downcast_ref::<gtk::gdk::Popup>()
+        .ok_or("the popover is not a popup surface")?;
+    let (inner_x, inner_y) = popover.surface_transform();
+    let (outer_x, outer_y) = window.surface_transform();
+    Ok((
+        f64::from(popup.position_x()) + inner_x - outer_x,
+        f64::from(popup.position_y()) + inner_y - outer_y,
+    ))
 }
 
 /// Puts the app icons where the icon theme finds them under the app id, as installing does.
