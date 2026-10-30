@@ -1,11 +1,10 @@
-import { insertBlock } from "./insertion-rule";
+import { insertBlock, insertBlockAfterTable } from "./insertion-rule";
 import type { TableAlignment } from "./markdown-table";
 import {
   cellAt,
   renderTableGrid,
   tableGrid,
   tableSourceAt,
-  tableSpans,
   type TableSource,
 } from "./table-source";
 import type { TextEdit, TextSelection } from "./text-edit";
@@ -160,25 +159,29 @@ function formatEdit(
 
 function insertTable(text: string, head: number): TextEdit {
   const at = Math.min(Math.max(head, 0), text.length);
-  const span = tableSpans(text).find(
-    (candidate) => candidate.from <= at && at <= candidate.to,
-  );
-  let position: number;
-  if (span) {
-    position = span.to;
-  } else {
-    const from = text.lastIndexOf("\n", at - 1) + 1;
-    const end = text.indexOf("\n", at);
-    const to = end < 0 ? text.length : end;
-    position = text.slice(from, to).trim() === "" ? from : to;
-  }
-  const edit = insertBlock(text, position, NEW_TABLE, "table");
-  const tableStart = edit.selection.head - NEW_TABLE.length - 1;
-  const anchor = tableStart + "| ".length;
+  const table = tableSourceAt(text, at);
+  const edit = table
+    ? insertBlockAfterTable(text, table.to, NEW_TABLE, "table", table.prefix)
+    : insertBlock(text, newTablePosition(text, at), NEW_TABLE, "table");
+  const [change] = edit.changes;
+  const prefix = table?.prefix ?? "";
+  const firstLine = prefix + NEW_TABLE.slice(0, NEW_TABLE.indexOf("\n"));
+  const anchor =
+    change.from +
+    change.insert.indexOf(firstLine) +
+    prefix.length +
+    "| ".length;
   return {
     changes: edit.changes,
     selection: { anchor, head: anchor + FIRST_HEADER.length },
   };
+}
+
+function newTablePosition(text: string, at: number): number {
+  const from = text.lastIndexOf("\n", at - 1) + 1;
+  const end = text.indexOf("\n", at);
+  const to = end < 0 ? text.length : end;
+  return text.slice(from, to).trim() === "" ? from : to;
 }
 
 function nextCellTarget(

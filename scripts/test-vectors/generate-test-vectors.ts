@@ -1098,6 +1098,16 @@ const TABLE_COMMAND_CASES: readonly TableCommandCase[] = [
     "| a |\n| - |\n| 1¦ |\n\nnext",
     "insert-table",
   ],
+  [
+    "insert-table inside a list item table",
+    "- x\n\n  | a |\n  | - |\n  | 1¦ |\n- y",
+    "insert-table",
+  ],
+  [
+    "insert-table inside a blockquote table",
+    "> | a |\n> | - |\n> | 1¦ |\n\nnext",
+    "insert-table",
+  ],
   ["insert-table in an empty document", "¦", "insert-table"],
   ["insert-table with a non-collapsed selection", "a«b\nc»d", "insert-table"],
 
@@ -1463,6 +1473,26 @@ const INSERTION_CASES: readonly InsertionCase[] = [
   ["grapheme cluster cell", "| 👍🏽¦ |\n| - |", [REF_A]],
   ["blockquote table cell", "> | a |\n> | - |\n> | x¦y |", [REF_A]],
   ["blockquote table line end", "> | a |\n> | - |\n> | 1 |¦\n# next", [REF_A]],
+  [
+    "ordered list item table line end before the next item",
+    "1. x\n\n   | a |\n   | - |\n   | 1 |¦\n2. y",
+    [REF_A],
+  ],
+  [
+    "blockquote table line end before a quoted paragraph",
+    "> | a |\n> | - |\n> | 1 |¦\n>\n> after",
+    [REF_A],
+  ],
+  [
+    "blockquote table line end before a quoted heading",
+    "> | a |\n> | - |\n> | 1 |¦\n> # head",
+    [REF_A],
+  ],
+  [
+    "two-level blockquote table line end",
+    "> > | a |\n> > | - |\n> > | 1 |¦",
+    [REF_A],
+  ],
   ["blockquote table header start", "> ¦| a |\n> | - |", [REF_A]],
   ["list item table header start", "- x\n\n  ¦| a |\n  | - |", [REF_A]],
   ["list item table header line start", "- x\n\n¦  | a |\n  | - |", [REF_A]],

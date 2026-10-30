@@ -299,6 +299,38 @@
       }
     },
     {
+      "name": "insert-table inside a list item table",
+      "text": "- x\n\n  | a |\n  | - |\n  | 1 |\n- y",
+      "selection": {
+        "anchor": 26,
+        "head": 26
+      },
+      "command": "insert-table",
+      "expected": {
+        "text": "- x\n\n  | a |\n  | - |\n  | 1 |\n\n  | Column 1 | Column 2 | Column 3 |\n  | -------- | -------- | -------- |\n  |          |          |          |\n  |          |          |          |\n\n- y",
+        "selection": {
+          "anchor": 34,
+          "head": 42
+        }
+      }
+    },
+    {
+      "name": "insert-table inside a blockquote table",
+      "text": "> | a |\n> | - |\n> | 1 |\n\nnext",
+      "selection": {
+        "anchor": 21,
+        "head": 21
+      },
+      "command": "insert-table",
+      "expected": {
+        "text": "> | a |\n> | - |\n> | 1 |\n>\n> | Column 1 | Column 2 | Column 3 |\n> | -------- | -------- | -------- |\n> |          |          |          |\n> |          |          |          |\n\nnext",
+        "selection": {
+          "anchor": 30,
+          "head": 38
+        }
+      }
+    },
+    {
       "name": "insert-table in an empty document",
       "text": "",
       "selection": {
