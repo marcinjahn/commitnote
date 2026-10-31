@@ -6,6 +6,7 @@
     describeSettingsSaveState,
     describeSettingsSaveStateInDetail,
   } from "./settings-save-messages";
+  import { SETTINGS_RETRY_LABEL } from "./settings-messages";
 
   interface Props {
     saveState: SyncState;
@@ -80,7 +81,7 @@
     class="button button-ghost retry-button"
     onclick={retry}
   >
-    Retry
+    {SETTINGS_RETRY_LABEL}
   </button>
 {/if}
 

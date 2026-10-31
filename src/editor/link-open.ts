@@ -15,25 +15,9 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
+import { toOpenableUrl } from "../markdown/openable-url";
 
-const OPENABLE_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
-const WWW_PREFIX = /^www\./i;
-const EMAIL = /^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/i;
-
-function withScheme(url: string): string {
-  if (WWW_PREFIX.test(url)) return `https://${url}`;
-  if (EMAIL.test(url)) return `mailto:${url}`;
-  return url;
-}
-
-export function toOpenableUrl(text: string): string | null {
-  const url = withScheme(text);
-  try {
-    return OPENABLE_PROTOCOLS.has(new URL(url).protocol) ? url : null;
-  } catch {
-    return null;
-  }
-}
+export { toOpenableUrl };
 
 // GFM autolinks also parse a URL-shaped link label as a URL node.
 export function isLinkDestination(state: EditorState, node: SyntaxNode): boolean {

@@ -6,6 +6,8 @@ import {
 } from "../../changes/change";
 import type { WorkingFolder, WorkingTree } from "../../sync/working-tree";
 
+export const ROOT_FOLDER_LABEL = "Notes (top level)";
+
 export interface MoveTarget {
   readonly path: NotePath;
   readonly label: string;
@@ -24,7 +26,7 @@ export function listMoveTargets(
   const targets: MoveTarget[] = [
     {
       path: [],
-      label: "Notes (top level)",
+      label: ROOT_FOLDER_LABEL,
       depth: 0,
       disabled: currentParent !== null && notePathEquals(currentParent, []),
     },

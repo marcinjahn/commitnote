@@ -6,6 +6,7 @@
   } from "../../settings/note-font";
   import ScopeToggle from "./ScopeToggle.svelte";
   import SettingRow from "./SettingRow.svelte";
+  import { NOTE_FONT_LABEL, NOTE_FONT_PREVIEW_HEADING } from "./settings-messages";
   import SettingOptionList from "./SettingOptionList.svelte";
   import type { SettingsSectionProps } from "./settings-sections";
 
@@ -24,10 +25,10 @@
 </script>
 
 <SettingRow stacked>
-  {#snippet label()}Note font{/snippet}
+  {#snippet label()}{NOTE_FONT_LABEL}{/snippet}
   {#snippet aside()}
     <ScopeToggle
-      label="Note font"
+      label={NOTE_FONT_LABEL}
       scope={scopes.noteFont}
       onToggle={() =>
         changeSettingScope(
@@ -43,12 +44,12 @@
       aria-hidden="true"
       style:font-family={previewedFamily}
     >
-      <p class="font-preview-heading">Weekly notes</p>
+      <p class="font-preview-heading">{NOTE_FONT_PREVIEW_HEADING}</p>
       <p>A <strong>clear</strong> list keeps a week <em>calm</em>.</p>
       <p class="font-preview-code">Run <code>cargo clippy</code> before you push.</p>
     </div>
     <SettingOptionList
-      label="Note font"
+      label={NOTE_FONT_LABEL}
       name="note-font"
       options={NOTE_FONT_OPTIONS}
       value={settings.noteFont}

@@ -16,7 +16,23 @@
   import PassphraseStrength from "./PassphraseStrength.svelte";
   import { warningReveal } from "./warning-reveal";
   import {
+    CANCEL_LABEL,
+    CHANGE_PASSPHRASE_CONFIRM_LABEL,
+    CHANGE_PASSPHRASE_CONTINUE_LABEL,
     CHANGE_PASSPHRASE_INTRO,
+    CHANGE_PASSPHRASE_REVIEW_TITLE,
+    CHANGE_PASSPHRASE_SETUP_TITLE,
+    CHANGE_PASSPHRASE_TITLE,
+    CHANGE_PASSPHRASE_UNSETTLED_TITLE,
+    CHANGE_STARTING_LABEL,
+    CHANGING_LABEL,
+    CHECK_AGAIN_LABEL,
+    CHECKING_LABEL,
+    CURRENT_PASSPHRASE_LABEL,
+    LOG_OUT_LABEL,
+    NEW_PASSPHRASE_LABEL,
+    REPEAT_PASSPHRASE_LABEL,
+    describeEnableAtomicChangeFailure,
     describeCarriedOver,
     describeChangeAtomicSetup,
     describeChangeFailure,
@@ -108,17 +124,17 @@
   const engineHeld = $derived(stage.kind !== "form" && stage.kind !== "setup");
   const title = $derived(
     stage.kind === "review"
-      ? "Ready to change passphrase"
+      ? CHANGE_PASSPHRASE_REVIEW_TITLE
       : stage.kind === "unsettled"
-        ? "Checking the passphrase change"
+        ? CHANGE_PASSPHRASE_UNSETTLED_TITLE
       : stage.kind === "setup"
-        ? "Project setting needed"
-        : "Change passphrase",
+        ? CHANGE_PASSPHRASE_SETUP_TITLE
+        : CHANGE_PASSPHRASE_TITLE,
   );
   const stepLabel = $derived(
     stage.kind === "working" && stage.step !== null
       ? describeChangeStep(stage.step)
-      : "Starting…",
+      : CHANGE_STARTING_LABEL,
   );
   const progress = $derived(
     stage.kind === "working" &&
@@ -235,7 +251,7 @@
     }
     if (!enabled) {
       stage = { kind: "form" };
-      error = `Couldn't change the ${forgeName} project settings. Try again later.`;
+      error = describeEnableAtomicChangeFailure(forgeName);
       return;
     }
     await prepare();
@@ -318,7 +334,7 @@
             <p role="alert" class="alert-error">{formError}</p>
           {/if}
           <div class="field">
-            <label for={currentId}>Current passphrase</label>
+            <label for={currentId}>{CURRENT_PASSPHRASE_LABEL}</label>
             <input
               id={currentId}
               type="password"
@@ -337,7 +353,7 @@
             {/if}
           </div>
           <div class="field">
-            <label for={newId}>New passphrase</label>
+            <label for={newId}>{NEW_PASSPHRASE_LABEL}</label>
             <input
               id={newId}
               type="password"
@@ -353,7 +369,7 @@
             />
           </div>
           <div class="field">
-            <label for={repeatId}>Repeat new passphrase</label>
+            <label for={repeatId}>{REPEAT_PASSPHRASE_LABEL}</label>
             <input
               id={repeatId}
               type="password"
@@ -392,10 +408,10 @@
         disabled={stage.checking}
         onclick={() => void checkAgain()}
       >
-        {stage.checking ? "Checking…" : "Check again"}
+        {stage.checking ? CHECKING_LABEL : CHECK_AGAIN_LABEL}
       </button>
       <button type="button" class="button button-ghost" onclick={onLogOut}>
-        Log out
+        {LOG_OUT_LABEL}
       </button>
     {:else if stage.kind === "review"}
       <button
@@ -404,10 +420,10 @@
         bind:this={confirmButton}
         onclick={() => void commit()}
       >
-        Change passphrase
+        {CHANGE_PASSPHRASE_CONFIRM_LABEL}
       </button>
       <button type="button" class="button button-ghost" onclick={cancelReview}>
-        Back
+        {CANCEL_LABEL}
       </button>
     {:else if stage.kind === "setup"}
       {#if stage.canConfigure}
@@ -425,7 +441,7 @@
         class="button button-ghost"
         onclick={() => (stage = { kind: "form" })}
       >
-        Back
+        {CANCEL_LABEL}
       </button>
     {:else}
       <button
@@ -434,7 +450,7 @@
         class="button button-primary"
         disabled={working}
       >
-        {working ? "Changing…" : "Continue"}
+        {working ? CHANGING_LABEL : CHANGE_PASSPHRASE_CONTINUE_LABEL}
       </button>
     {/if}
   {/snippet}

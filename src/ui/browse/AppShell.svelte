@@ -34,13 +34,17 @@
   import { automaticDeviceName, effectiveDeviceName } from "../../settings/device-name";
   import { readPlatformInputs } from "../../app/platform-inputs";
   import type { DeviceSettingsStore } from "../../settings/device-settings-store";
-  import {
-    resolveEffectiveSettings,
-    routeSettingsEdits,
-    switchSettingScope,
-    type SettingScope,
-    type SwitchableSettingKey,
+  import type {
+    SettingScope,
+    SwitchableSettingKey,
   } from "../../settings/setting-scope";
+  import {
+    changeSettingScope as applySettingScope,
+    changeSettings as applySettingsChange,
+    effectiveSettingsOf,
+    shouldApplyColorMode,
+    syncedRawSettings as syncedRawSettingsOf,
+  } from "../../app/settings-actions";
   import { systemClock } from "../../sync/clock";
   import { tabTitle } from "../../app/tab-title";
   import { installSaveShortcut } from "../../app/save-shortcut";
@@ -55,12 +59,7 @@
     restorableLastView,
     type LastView,
   } from "../../app/last-view";
-  import {
-    applySettingsEdits,
-    resolveSettings,
-    SETTINGS_SCHEMA,
-    type Settings,
-  } from "../../settings/settings";
+  import type { Settings } from "../../settings/settings";
   import type { AccentColorId } from "../../settings/accent-palette";
   import type { ColorModeId } from "../../settings/color-mode";
   import type { NoteFont } from "../../settings/note-font";
@@ -86,12 +85,9 @@
   import type { WorkingNode } from "../../sync/working-tree";
   import type { ArchiveDownload } from "../../export/deliver-archive";
   import { exportNotesArchive } from "../../export/export-notes-archive";
-  import {
-    planImport,
-    type CollisionPolicy,
-    type ImportDestination,
-    type ImportPlan,
-    type ImportSummary,
+  import type {
+    CollisionPolicy,
+    ImportDestination,
   } from "../../import/plan-import";
   import {
     readDroppedFiles,
@@ -99,25 +95,25 @@
     type DroppedNotes,
     type DropSkipCounts,
   } from "../../import/read-dropped-files";
+  import type { NotesArchiveContents } from "../../import/read-notes-archive";
   import {
-    MAX_ARCHIVE_UNCOMPRESSED_BYTES,
-    NotesArchiveError,
-    readNotesArchive,
-    type ArchiveImportEntry,
-    type NotesArchiveContents,
-  } from "../../import/read-notes-archive";
-  import {
-    prepareImportImages,
-    type ImportImagesResult,
-  } from "../../import/import-images";
+    checkImportArchiveSize,
+    commitImport,
+    createArchiveImagePreparer,
+    enableAtomicCommits,
+    importCompletion,
+    importedNotePaths,
+    importExpandPath,
+    readImportArchive,
+    routeImportFiles,
+    undoFileDrop as undoImportedFileDrop,
+    type StartedImport,
+  } from "../../app/import-actions";
   import ImportDialog from "../import/ImportDialog.svelte";
   import AtomicBlockedDialog from "../import/AtomicBlockedDialog.svelte";
   import {
     describeArchiveError,
     describeAtomicSetup,
-    describeEnableAtomicFailure,
-    describeFileDropDone,
-    describeImportDone,
     describeImportRefusal,
     describeNothingDropped,
     ENABLE_ATOMIC_LABEL,
@@ -172,6 +168,7 @@
   import ConfirmDialog from "../dialogs/ConfirmDialog.svelte";
   import NameDialog from "../dialogs/NameDialog.svelte";
   import SettingsDialog from "../dialogs/SettingsDialog.svelte";
+  import { SETTINGS_EXPORT_FAILED_MESSAGE } from "../settings/settings-messages";
     import { resolveNoteDraft, type NoteDraft } from "../note/note-draft";
   import {
     commitNoteDraftContent,
@@ -249,7 +246,6 @@
     DELETE_PERMANENTLY_TITLE,
     EMPTY_TRASH_TITLE,
     describeEmptyTrash,
-    describeUndoneFileDrop,
   } from "../trash/trash-messages";
   import type { ReadableWorkingTrashEntry } from "../../sync/working-trash";
   import Wordmark from "../wordmark/Wordmark.svelte";
@@ -613,15 +609,7 @@
     readonly contents: NotesArchiveContents;
     readonly opener: HTMLElement | null;
   } | null>(null);
-  let importStarted = $state<{
-    readonly summary: ImportSummary;
-    retryingShown: boolean;
-    readonly images?: { readonly added: number; readonly failed: number };
-    readonly fileDrop?: {
-      readonly paths: readonly NotePath[];
-      readonly skipped: DropSkipCounts;
-    };
-  } | null>(null);
+  let importStarted = $state<(StartedImport & { retryingShown: boolean }) | null>(null);
   let atomicBlockedOpen = $state(false);
   let changePassphraseOpen = $state(false);
   let settingsOpen = $state(false);
@@ -828,10 +816,10 @@
   });
 
   const syncedRawSettings = $derived(
-    applySettingsEdits(engineState.rawSettings, pendingSettingsEdits),
+    syncedRawSettingsOf(engineState.rawSettings, pendingSettingsEdits),
   );
   const effectiveSettings = $derived(
-    resolveEffectiveSettings(syncedRawSettings, deviceSettings),
+    effectiveSettingsOf(engineState.rawSettings, pendingSettingsEdits, deviceSettings),
   );
   const settings: Settings = $derived(effectiveSettings.settings);
 
@@ -841,9 +829,11 @@
 
   $effect(() => {
     if (
-      engineState.synced !== null ||
-      pendingSettingsEdits.colorMode !== undefined ||
-      effectiveSettings.scopes.colorMode === "device"
+      shouldApplyColorMode({
+        settingsLoaded: engineState.synced !== null,
+        colorModePending: pendingSettingsEdits.colorMode !== undefined,
+        colorModeScope: effectiveSettings.scopes.colorMode,
+      })
     )
       onColorMode(settings.colorMode);
   });
@@ -876,25 +866,25 @@
     }),
   );
 
+  function settingsActionsDeps() {
+    return { saver: settingsSaver, deviceStore: deviceSettingsStore };
+  }
+
   function changeSettings(edits: Partial<Settings>): void {
-    const { device, synced } = routeSettingsEdits(edits, effectiveSettings.scopes);
-    if (Object.keys(device).length > 0) deviceSettingsStore.writeValues(device);
-    if (Object.keys(synced).length > 0) settingsSaver.change(synced);
+    applySettingsChange(settingsActionsDeps(), edits, effectiveSettings.scopes);
   }
 
   function changeSettingScope(
     key: SwitchableSettingKey,
     to: SettingScope,
   ): void {
-    const syncedResolved = resolveSettings(SETTINGS_SCHEMA, syncedRawSettings);
-    const { deviceValue, syncedEdits } = switchSettingScope(
+    applySettingScope(
+      settingsActionsDeps(),
       key,
       to,
-      settings,
-      syncedResolved,
+      effectiveSettings,
+      syncedRawSettings,
     );
-    if (Object.keys(syncedEdits).length > 0) settingsSaver.change(syncedEdits);
-    deviceSettingsStore.setScope(key, to, deviceValue);
   }
 
   function openSettings(): void {
@@ -1795,7 +1785,7 @@
     try {
       await exportNotesArchive(snapshot, { download, readImage });
     } catch {
-      showToast("export", "error", "Export failed. Try again later.");
+      showToast("export", "error", SETTINGS_EXPORT_FAILED_MESSAGE);
     } finally {
       exporting = false;
     }
@@ -1807,42 +1797,21 @@
 
   $effect(() => {
     const started = importStarted;
-    if (started === null) return;
-    const { importing: busy, save, stopped } = engineState;
-    if (stopped !== null) {
+    const completion = importCompletion(started, engineState);
+    if (completion.kind === "cleared") {
       importStarted = null;
-      return;
-    }
-    if (!busy) {
+    } else if (completion.kind === "done") {
       importStarted = null;
-      const { fileDrop } = started;
-      if (fileDrop === undefined) {
-        showImportMessage(
-          "success",
-          describeImportDone(
-            started.summary.notes,
-            started.summary.folders,
-            started.images,
-          ),
-        );
-      } else {
-        showToast(
-          "import",
-          "success",
-          describeFileDropDone(fileDrop.paths.length, fileDrop.skipped),
-          {
-            action: { label: "Undo", run: () => undoFileDrop(fileDrop.paths) },
-          },
-        );
-      }
-      return;
-    }
-    if (
-      !started.retryingShown &&
-      engineState.atomicBlocked === null &&
-      save.kind === "waiting" &&
-      save.reason === "failed"
-    ) {
+      const { undoPaths } = completion;
+      showToast(
+        "import",
+        completion.tone,
+        completion.message,
+        undoPaths === null
+          ? undefined
+          : { action: { label: "Undo", run: () => undoFileDrop(undoPaths) } },
+      );
+    } else if (completion.kind === "retrying" && started !== null) {
       started.retryingShown = true;
       showImportMessage("warning", IMPORT_RETRYING_MESSAGE);
     }
@@ -1855,27 +1824,19 @@
     atomicBlockedSeen = blocked;
   });
 
-  async function handleEnableAtomic(): Promise<string | null> {
-    try {
-      const support = await engine.enableAtomicCommits();
-      return support.kind === "available"
-        ? null
-        : describeEnableAtomicFailure(forgeName);
-    } catch {
-      return describeEnableAtomicFailure(forgeName);
-    }
+  function handleEnableAtomic(): Promise<string | null> {
+    return enableAtomicCommits({ engine, forgeName });
   }
 
   async function handleImportFiles(files: readonly File[]): Promise<void> {
-    const isZip = (file: File) => file.name.toLowerCase().endsWith(".zip");
-    const [first] = files;
-    if (files.length === 1 && isZip(first)) {
-      await handleImportFile(first);
+    const route = routeImportFiles(files);
+    if (route.kind === "archive") {
+      await handleImportFile(files[route.index]);
       return;
     }
-    if (files.some(isZip)) {
+    if (route.kind === "error") {
       clearToast("import");
-      showImportMessage("error", "Choose one .zip archive, or Markdown and text files.");
+      showImportMessage("error", route.message);
       return;
     }
     await handleFileDrop(
@@ -1892,95 +1853,38 @@
   async function handleImportFile(file: File): Promise<void> {
     if (reading) return;
     clearToast("import");
-    if (file.size > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
-      showImportMessage("error", describeArchiveError("tooLarge"));
+    const tooLarge = checkImportArchiveSize(file.size);
+    if (tooLarge !== null) {
+      showImportMessage("error", tooLarge);
       return;
     }
     const opener = captureFocusReturn();
     reading = true;
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      importDialog = {
-        fileName: file.name,
-        contents: readNotesArchive(bytes),
-        opener,
-      };
-    } catch (error) {
-      showImportMessage(
-        "error",
-        describeArchiveError(
-          error instanceof NotesArchiveError ? error.kind : "invalidArchive",
-        ),
-      );
+      let bytes: Uint8Array;
+      try {
+        bytes = new Uint8Array(await file.arrayBuffer());
+      } catch {
+        showImportMessage("error", describeArchiveError("invalidArchive"));
+        return;
+      }
+      const archive = readImportArchive(bytes);
+      if (archive.ok) {
+        importDialog = { fileName: file.name, contents: archive.contents, opener };
+      } else {
+        showImportMessage("error", archive.message);
+      }
     } finally {
       reading = false;
     }
   }
 
-  async function commitImport(
-    destination: ImportDestination,
-    entries: readonly ArchiveImportEntry[],
-    policy: CollisionPolicy,
-    onQueued: (plan: Extract<ImportPlan, { ok: true }>) => void,
-    images: readonly PendingImage[] = [],
-  ): Promise<ImportOutcome> {
-    try {
-      const support = await engine.atomicCommitSupport();
-      if (support.kind === "needsSetup") {
-        return { kind: "needsSetup", canConfigure: support.canConfigure };
-      }
-    } catch {
-      return {
-        kind: "error",
-        message: `Could not reach ${forgeName}. Try again later.`,
-      };
-    }
-    // A save before the import can change the tree, so the plan is redone once
-    // when it no longer applies.
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const current = engine.getState().workingTree;
-      if (current === null) {
-        return { kind: "error", message: describeImportRefusal("unavailable") };
-      }
-      let plan;
-      try {
-        plan = planImport(current, destination, entries, policy);
-      } catch {
-        return {
-          kind: "error",
-          message: "The destination folder no longer exists.",
-        };
-      }
-      if (!plan.ok) return { kind: "conflicts", count: plan.conflicts };
-      for (const image of images) engine.addPendingImage(image);
-      const result = await engine.importChanges(plan.changes);
-      if (result.ok) {
-        onQueued(plan);
-        return { kind: "queued" };
-      }
-      if (result.reason !== "outdated") {
-        return { kind: "error", message: describeImportRefusal(result.reason) };
-      }
-    }
-    return { kind: "error", message: describeImportRefusal("outdated") };
-  }
-
-  let preparedImport: {
-    contents: NotesArchiveContents;
-    result: ImportImagesResult;
-  } | null = null;
-
-  async function prepareArchiveImages(
-    contents: NotesArchiveContents,
-  ): Promise<ImportImagesResult> {
-    if (preparedImport?.contents === contents) return preparedImport.result;
-    const result = await prepareImportImages(contents.entries, contents.images, {
-      keyring,
-      process: async () => (await loadImagePipeline()).processImageInBrowser,
-    });
-    preparedImport = { contents, result };
-    return result;
-  }
+  const archiveImages = createArchiveImagePreparer({
+    get keyring() {
+      return keyring;
+    },
+    process: async () => (await loadImagePipeline()).processImageInBrowser,
+  });
 
   async function handleImport(
     destination: ImportDestination,
@@ -1988,19 +1892,17 @@
   ): Promise<ImportOutcome> {
     const pending = importDialog;
     if (pending === null) return { kind: "error", message: describeImportRefusal("unavailable") };
-    let prepared: ImportImagesResult;
-    try {
-      prepared = await prepareArchiveImages(pending.contents);
-    } catch {
-      return {
-        kind: "error",
-        message: "Couldn't prepare the images in this archive. Try again.",
-      };
-    }
-    return commitImport(destination, prepared.entries, policy, (plan) => {
+    const images = await archiveImages.prepare(pending.contents);
+    if (!images.ok) return { kind: "error", message: images.message };
+    const { prepared } = images;
+    const { outcome, plan } = await commitImport(
+      { engine, forgeName },
+      { destination, entries: prepared.entries, policy, images: prepared.images },
+    );
+    if (plan !== null) {
       tagFilter = null;
       importDialog = null;
-      preparedImport = null;
+      archiveImages.reset();
       if (plan.changes.length > 0) {
         importStarted = {
           summary: plan.summary,
@@ -2008,13 +1910,10 @@
           images: { added: prepared.added, failed: prepared.failed },
         };
       }
-      const first = plan.changes[0];
-      if (destination.kind === "folder") {
-        expandFolder(destination.path);
-      } else if (destination.kind === "new-folder" && first !== undefined) {
-        expandFolder(first.kind === "create-folder" ? first.path : []);
-      }
-    }, prepared.images);
+      const expand = importExpandPath(destination, plan);
+      if (expand !== null) expandFolder(expand);
+    }
+    return outcome;
   }
 
   let droppingFiles = false;
@@ -2043,18 +1942,20 @@
     skipped: DropSkipCounts,
     destination: ImportDestination,
   ): Promise<void> {
-    const outcome = await commitImport(destination, entries, "rename", (plan) => {
+    const { outcome, plan } = await commitImport(
+      { engine, forgeName },
+      { destination, entries, policy: "rename" },
+    );
+    if (plan !== null) {
       tagFilter = null;
-      if (destination.kind === "folder") expandFolder(destination.path);
-      const paths = plan.changes.flatMap((change) =>
-        change.kind === "create-note" ? [change.path] : [],
-      );
+      const expand = importExpandPath(destination, plan);
+      if (expand !== null) expandFolder(expand);
       importStarted = {
         summary: plan.summary,
         retryingShown: false,
-        fileDrop: { paths, skipped },
+        fileDrop: { paths: importedNotePaths(plan), skipped },
       };
-    });
+    }
     if (outcome.kind === "needsSetup") {
       showToast(
         "import",
@@ -2094,25 +1995,9 @@
   }
 
   function undoFileDrop(paths: readonly NotePath[]): void {
-    let trashed = 0;
-    let kept = 0;
-    let affectsOpenNote = false;
-    for (const path of paths) {
-      const current = engine.getState().workingTree;
-      if (current === null || findWorkingNode(current, path)?.kind !== "note") continue;
-      if (shareCountWithin(path) > 0) {
-        kept++;
-        continue;
-      }
-      const open = openPath;
-      if (!engine.delete(path).ok) continue;
-      trashed++;
-      if (open !== null && notePathEquals(open, path)) affectsOpenNote = true;
-    }
-    if (trashed > 0 || kept > 0) {
-      showToast("trash", "success", describeUndoneFileDrop(trashed, kept));
-    }
-    if (affectsOpenNote) mobileView = "tree";
+    const result = undoImportedFileDrop({ engine }, paths, shareCountWithin, openPath);
+    if (result.message !== null) showToast("trash", "success", result.message);
+    if (result.affectsOpenNote) mobileView = "tree";
   }
 
   function expandFolder(path: NotePath): void {

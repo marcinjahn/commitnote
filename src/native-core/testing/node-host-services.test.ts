@@ -67,12 +67,12 @@ describe("Node host services", () => {
     const bytes = Uint8Array.of(1, 2, 3);
     const input = host.stageInput(bytes, "image/png");
     bytes[0] = 9;
-    expect(host.imageCodec.takeInput(input)).toEqual({
+    expect(host.stagedInputs.take(input)).toEqual({
       bytes: Uint8Array.of(1, 2, 3),
       type: "image/png",
     });
-    expect(host.imageCodec.takeInput(input)).toBeNull();
-    expect(host.imageCodec.takeInput("unknown")).toBeNull();
+    expect(host.stagedInputs.take(input)).toBeNull();
+    expect(host.stagedInputs.take("unknown")).toBeNull();
   });
 
   it("decodes image headers and encodes header-valid, size-dependent lossy WebP", async () => {

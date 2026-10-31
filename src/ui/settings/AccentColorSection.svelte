@@ -8,6 +8,7 @@
   import { systemAccent } from "../system-accent.svelte";
   import ScopeToggle from "./ScopeToggle.svelte";
   import SettingRow from "./SettingRow.svelte";
+  import { ACCENT_COLOR_LABEL } from "./settings-messages";
   import { describeSystemAccent } from "./settings-messages";
   import type { SettingsSectionProps } from "./settings-sections";
 
@@ -36,10 +37,10 @@
 </script>
 
 <SettingRow stacked>
-  {#snippet label()}Accent color{/snippet}
+  {#snippet label()}{ACCENT_COLOR_LABEL}{/snippet}
   {#snippet aside()}
     <ScopeToggle
-      label="Accent color"
+      label={ACCENT_COLOR_LABEL}
       scope={scopes.accentColor}
       onToggle={() =>
         changeSettingScope(
@@ -52,7 +53,7 @@
     <div
       class="accent-swatches"
       role="radiogroup"
-      aria-label="Accent color"
+      aria-label={ACCENT_COLOR_LABEL}
       style="--swatch-count: {ACCENT_PALETTE.length - 1}; --swatch-columns: {Math.ceil((ACCENT_PALETTE.length - 1) / 2)}"
     >
       {#each ACCENT_PALETTE as option (option.id)}

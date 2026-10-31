@@ -66,9 +66,9 @@ export function createImageCommands(context: {
     return current;
   }
 
-  function takeInputs(inputs: readonly string[]): Blob[] {
+  function takeStaged(inputs: readonly string[]): Blob[] {
     return inputs.map((input) => {
-      const taken = host.imageCodec.takeInput(input) ?? {
+      const taken = host.stagedInputs.take(input) ?? {
         bytes: new Uint8Array(0),
         type: "",
       };
@@ -92,7 +92,7 @@ export function createImageCommands(context: {
       );
     }, BUSY_DELAY_MS);
     try {
-      return await prepareImages(takeInputs(inputs), {
+      return await prepareImages(takeStaged(inputs), {
         keyring: current.session.keyring,
         process: async () => (input, profile) =>
           processHostImage(host.imageCodec, input, profile),

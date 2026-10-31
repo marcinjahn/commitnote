@@ -204,3 +204,23 @@ export function describeChangeFailure(
       return `${describeForgeError(failure.error, forgeName)} ${NOTHING_CHANGED}`;
   }
 }
+
+export const CURRENT_PASSPHRASE_LABEL = "Current passphrase";
+export const NEW_PASSPHRASE_LABEL = "New passphrase";
+export const REPEAT_PASSPHRASE_LABEL = "Repeat new passphrase";
+export const CHECK_AGAIN_LABEL = "Check again";
+export const CHECKING_LABEL = "Checking…";
+export const CHANGE_PASSPHRASE_CONTINUE_LABEL = "Continue";
+export const CHANGE_PASSPHRASE_CONFIRM_LABEL = "Change passphrase";
+export const CANCEL_LABEL = "Back";
+export const CHANGE_STARTING_LABEL = "Starting…";
+export const CHANGING_LABEL = "Changing…";
+export const LOG_OUT_LABEL = "Log out";
+export const CHANGE_PASSPHRASE_TITLE = "Change passphrase";
+export const CHANGE_PASSPHRASE_REVIEW_TITLE = "Ready to change passphrase";
+export const CHANGE_PASSPHRASE_UNSETTLED_TITLE = "Checking the passphrase change";
+export const CHANGE_PASSPHRASE_SETUP_TITLE = "Project setting needed";
+
+export function describeEnableAtomicChangeFailure(forgeName: string): string {
+  return `Couldn't change the ${forgeName} project settings. Try again later.`;
+}

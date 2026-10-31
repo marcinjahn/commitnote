@@ -4,7 +4,9 @@
     describeAtomicSetup,
     ENABLE_ATOMIC_LABEL,
     IMPORT_BLOCKED_KEPT,
+    IMPORT_BLOCKED_TITLE,
     SAVE_WITHOUT_ATOMIC_HINT,
+    SAVE_WITHOUT_ATOMIC_LABEL,
   } from "./import-messages";
 
   interface Props {
@@ -42,7 +44,7 @@
   }
 </script>
 
-<Dialog open={true} title="Import not saved" onClose={handleClose} closeButton={true} swipeToClose={!busy}>
+<Dialog open={true} title={IMPORT_BLOCKED_TITLE} onClose={handleClose} closeButton={true} swipeToClose={!busy}>
   {#snippet children()}
     {#if error !== null}
       <p role="alert" class="alert-error">{error}</p>
@@ -68,7 +70,7 @@
       disabled={busy}
       onclick={onSaveWithoutAtomic}
     >
-      Save without it
+      {SAVE_WITHOUT_ATOMIC_LABEL}
     </button>
   {/snippet}
 </Dialog>

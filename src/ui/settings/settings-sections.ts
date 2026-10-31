@@ -13,6 +13,11 @@ import VimModeSection from "./VimModeSection.svelte";
 import NewFolderPlacementSection from "./NewFolderPlacementSection.svelte";
 import TypeToStartSection from "./TypeToStartSection.svelte";
 import NewNotePlacementSection from "./NewNotePlacementSection.svelte";
+import {
+  APPEARANCE_SECTION,
+  EDITOR_SECTION,
+  NOTES_SECTION,
+} from "./settings-messages";
 
 export interface SettingsSectionProps {
   readonly settings: Settings;
@@ -33,17 +38,17 @@ export interface SettingsGroup {
 export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
   {
     id: "appearance",
-    title: "Appearance",
+    title: APPEARANCE_SECTION,
     components: [ColorModeSection, AccentColorSection, NoteFontSection],
   },
   {
     id: "editor",
-    title: "Editor",
+    title: EDITOR_SECTION,
     components: [AnimatedCaretSection, VimModeSection, TypeToStartSection],
   },
   {
     id: "notes",
-    title: "Notes",
+    title: NOTES_SECTION,
     components: [NewNotePlacementSection, NewFolderPlacementSection],
   },
 ];

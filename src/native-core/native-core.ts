@@ -13,14 +13,19 @@ import {
   type CommandParams,
   type EmitCoreEvent,
 } from "./commands/command-context";
+import { createAnalyticsCommands } from "./commands/analytics-commands";
 import { createDraftCommands } from "./commands/draft-commands";
 import { createEditingCommands } from "./commands/editing-commands";
 import { createHistoryCommands } from "./commands/history-commands";
 import { createImageCommands } from "./commands/image-commands";
+import { createImportCommands } from "./commands/import-commands";
 import { createLoginCommands } from "./commands/login-commands";
 import { createNoteViewCommands } from "./commands/note-view-commands";
 import { createNotesCommands } from "./commands/notes-commands";
+import { createPassphraseCommands } from "./commands/passphrase-commands";
+import { createPrintCommands } from "./commands/print-commands";
 import { createShareCommands } from "./commands/share-commands";
+import { createSettingsCommands } from "./commands/settings-commands";
 import { createSessionCommands } from "./commands/session-commands";
 import { createSessionViewCommands } from "./commands/session-view-commands";
 import { createSearchCommands } from "./commands/search-commands";
@@ -28,6 +33,7 @@ import { createStructureCommands } from "./commands/structure-commands";
 import { createTrashCommands } from "./commands/trash-commands";
 import { coreLevelError } from "./core-errors";
 import { createEngineEvents } from "./engine-events";
+import { createSettingsEvents } from "./settings-events";
 import type { HostServices } from "./host-services";
 
 export const UNKNOWN_REQUEST_ID = -1;
@@ -37,6 +43,9 @@ const SERIALISED_COMMANDS: ReadonlySet<string> = new Set([
   "login.initialize",
   "session.resume",
   "session.logout",
+  "passphrase.prepareChange",
+  "passphrase.commitChange",
+  "passphrase.settle",
 ]);
 
 type ParsedRequest =
@@ -74,6 +83,7 @@ type ExtraCommands = Record<string, (params: unknown) => Promise<unknown>>;
 export function createNativeCore(options: {
   readonly host: HostServices;
   readonly deviceModel: string;
+  readonly analyticsEndpoint: string | null;
   readonly registry: () => Promise<ForgeRegistry>;
   readonly extraCommands?: ExtraCommands | ((app: AppSession) => ExtraCommands);
 }): NativeCoreHandle {
@@ -102,6 +112,7 @@ export function createNativeCore(options: {
     now: () => host.clock.now(),
   });
   const notices = createActionNotices({ app, emit });
+  const settingsEvents = createSettingsEvents({ host, app, emit });
 
   const drafts = createDraftCommands({
     host,
@@ -110,6 +121,14 @@ export function createNativeCore(options: {
   });
 
   const history = createHistoryCommands({
+    host,
+    app,
+    events: engineEvents,
+    notices,
+    emit,
+  });
+
+  const imports = createImportCommands({
     host,
     app,
     events: engineEvents,
@@ -137,6 +156,29 @@ export function createNativeCore(options: {
         app,
         events: engineEvents,
         notices,
+      }),
+      ...createSettingsCommands({
+        host,
+        app,
+        events: engineEvents,
+        notices,
+        settings: settingsEvents,
+      }),
+      ...createAnalyticsCommands({
+        host,
+        app,
+        events: engineEvents,
+        notices,
+        analyticsEndpoint: options.analyticsEndpoint,
+      }),
+      ...createPrintCommands({ host, app, events: engineEvents, notices }),
+      ...imports.handlers,
+      ...createPassphraseCommands({
+        host,
+        app,
+        events: engineEvents,
+        notices,
+        emit,
       }),
       ...createSessionViewCommands({
         host,
@@ -199,7 +241,9 @@ export function createNativeCore(options: {
       if (stopped) return;
       stopped = true;
       engineEvents.dispose();
+      settingsEvents.dispose();
       history.dispose();
+      imports.dispose();
       notices.dispose();
       void app.dispose().catch(() => undefined);
     },

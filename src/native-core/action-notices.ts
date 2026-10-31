@@ -3,9 +3,16 @@ import type { AppSession, NativeRunningApp } from "./app-session";
 import type { EmitCoreEvent } from "./commands/command-context";
 
 export type ActionNoticeChannel =
-  "trash" | "place" | "tag" | "image" | "history" | "share";
+  | "trash"
+  | "place"
+  | "tag"
+  | "image"
+  | "history"
+  | "share"
+  | "import"
+  | "passphrase";
 
-export type ActionNoticeTone = "info" | "success" | "error";
+export type ActionNoticeTone = "info" | "success" | "warning" | "error";
 
 export type NoticeUndo = () => Promise<
   { readonly kind: "ok" } | { readonly kind: "error"; readonly message: string }

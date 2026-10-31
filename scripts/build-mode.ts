@@ -27,12 +27,9 @@ export function buildModeFacts(
   const goatCounter = goatCounterEndpoint(siteCode);
   const fakeForge =
     mode === "fake-forge" || mode === "desktop-fake" || mode === "native-core-fake";
-  const nativeCore = mode === "native-core" || mode === "native-core-fake";
-  const analyticsEndpoint = nativeCore
-    ? null
-    : fakeForge
+  const analyticsEndpoint = fakeForge
     ? FAKE_ANALYTICS_ENDPOINT
-    : mode === "production" || mode === "desktop"
+    : mode === "production" || mode === "desktop" || mode === "native-core"
       ? goatCounter
       : null;
   return {

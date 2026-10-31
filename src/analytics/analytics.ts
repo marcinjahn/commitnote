@@ -56,6 +56,14 @@ export function browserOptsOut(navigator: AnalyticsNavigator): boolean {
   return navigator.doNotTrack === "1" || navigator.globalPrivacyControl === true;
 }
 
+export function visitUrl(
+  endpoint: string,
+  path: string,
+  title: string,
+): string {
+  return `${endpoint}?p=${encodeURIComponent(path)}&t=${encodeURIComponent(title)}`;
+}
+
 export function decideVisit(
   inputs: VisitInputs,
 ): { readonly url: string } | null {
@@ -70,9 +78,7 @@ export function decideVisit(
   const platform = analyticsPlatform(inputs.desktopShell, inputs.standalone);
   const path = visitPath(inputs.page, platform);
   const title = visitTitle(inputs.page, platform);
-  return {
-    url: `${inputs.endpoint}?p=${encodeURIComponent(path)}&t=${encodeURIComponent(title)}`,
-  };
+  return { url: visitUrl(inputs.endpoint, path, title) };
 }
 
 function resolveStorage(

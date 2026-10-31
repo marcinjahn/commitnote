@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  CANCEL_LABEL,
+  CHANGE_PASSPHRASE_CONFIRM_LABEL,
+  CHANGE_PASSPHRASE_CONTINUE_LABEL,
+  CHANGE_PASSPHRASE_REVIEW_TITLE,
+  CHANGE_PASSPHRASE_SETUP_TITLE,
+  CHANGE_PASSPHRASE_TITLE,
+  CHANGE_PASSPHRASE_UNSETTLED_TITLE,
+  CHANGE_STARTING_LABEL,
+  CHANGING_LABEL,
+  CHECK_AGAIN_LABEL,
+  CHECKING_LABEL,
+  CURRENT_PASSPHRASE_LABEL,
+  describeEnableAtomicChangeFailure,
+  LOG_OUT_LABEL,
+  NEW_PASSPHRASE_LABEL,
+  REPEAT_PASSPHRASE_LABEL,
   describeCarriedOver,
   describeChangeFailure,
   describeChangeStep,
@@ -123,6 +139,53 @@ describe("otherDevicesWarning", () => {
   it("does not mention tabs in the installed app", () => {
     expect(otherDevicesWarning(true)).toBe(
       "Other devices are signed out and must log in with the new passphrase. Reload commitnote wherever else it's open.",
+    );
+  });
+});
+
+describe("change passphrase dialog copy", () => {
+  it("keeps the field and button wording", () => {
+    expect([
+      CURRENT_PASSPHRASE_LABEL,
+      NEW_PASSPHRASE_LABEL,
+      REPEAT_PASSPHRASE_LABEL,
+      CHECK_AGAIN_LABEL,
+      CHECKING_LABEL,
+      CHANGE_PASSPHRASE_CONTINUE_LABEL,
+      CHANGE_PASSPHRASE_CONFIRM_LABEL,
+      CANCEL_LABEL,
+      CHANGE_STARTING_LABEL,
+      CHANGING_LABEL,
+      LOG_OUT_LABEL,
+    ]).toEqual([
+      "Current passphrase",
+      "New passphrase",
+      "Repeat new passphrase",
+      "Check again",
+      "Checking…",
+      "Continue",
+      "Change passphrase",
+      "Back",
+      "Starting…",
+      "Changing…",
+      "Log out",
+    ]);
+    expect([
+      CHANGE_PASSPHRASE_TITLE,
+      CHANGE_PASSPHRASE_REVIEW_TITLE,
+      CHANGE_PASSPHRASE_UNSETTLED_TITLE,
+      CHANGE_PASSPHRASE_SETUP_TITLE,
+    ]).toEqual([
+      "Change passphrase",
+      "Ready to change passphrase",
+      "Checking the passphrase change",
+      "Project setting needed",
+    ]);
+  });
+
+  it("names the forge when enabling the merge method fails", () => {
+    expect(describeEnableAtomicChangeFailure("GitHub")).toBe(
+      "Couldn't change the GitHub project settings. Try again later.",
     );
   });
 });

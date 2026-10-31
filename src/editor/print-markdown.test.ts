@@ -1,13 +1,31 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+import type { ImageId } from "../images/image-id";
+import { buildPrintNodes, renderPrintHtml } from "../print/print-nodes";
+import {
+  sampleImageNoteMarkdown,
+  sampleNotesRepoSource,
+  sampleSearchRepoSource,
+  sampleTrashRepoSource,
+  type SampleEntry,
+} from "../testing/sample-notes-repo/sample-source";
 import {
   PRINT_IMAGE_UNAVAILABLE_TEXT,
   renderPrintMarkdown,
 } from "./print-markdown";
 
+function expectHtmlParity(
+  md: string,
+  images: ReadonlyMap<ImageId, string>,
+  el: HTMLElement,
+): void {
+  expect(renderPrintHtml(md, images)).toBe(el.innerHTML);
+}
+
 function render(md: string): HTMLDivElement {
   const el = document.createElement("div");
   el.append(renderPrintMarkdown(md));
+  expectHtmlParity(md, new Map(), el);
   return el;
 }
 
@@ -322,7 +340,9 @@ describe("renderPrintMarkdown images", () => {
 
   function renderWith(md: string, urls: [string, string][]): HTMLDivElement {
     const el = document.createElement("div");
-    el.append(renderPrintMarkdown(md, document, new Map(urls)));
+    const images = new Map(urls);
+    el.append(renderPrintMarkdown(md, document, images));
+    expectHtmlParity(md, images, el);
     return el;
   }
 
@@ -359,9 +379,7 @@ describe("renderPrintMarkdown images", () => {
   });
 
   it("renders an unresolved reference with alt and the unavailable text", () => {
-    const el = renderWith(`![a cat](image:${ID})\n`, [
-      [SECOND, "blob:other"],
-    ]);
+    const el = renderWith(`![a cat](image:${ID})\n`, [[SECOND, "blob:other"]]);
     expect(el.querySelector("img")).toBeNull();
     expect(el.textContent).toBe("a cat (Image unavailable)");
     expect(el.innerHTML).not.toContain("image:");
@@ -395,5 +413,55 @@ describe("renderPrintMarkdown images", () => {
     const p = one(el, "p");
     expect(p.querySelector("img.print-note-image")).not.toBeNull();
     expect(p.textContent).toBe("before  after");
+  });
+});
+
+function sampleMarkdown(entries: readonly SampleEntry[]): string[] {
+  return entries.flatMap((entry) =>
+    entry.kind === "note" ? [entry.markdown] : sampleMarkdown(entry.children),
+  );
+}
+
+describe("renderPrintHtml", () => {
+  const IMAGE_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaa" as ImageId;
+
+  it("matches the DOM output for every sample notes repo note", () => {
+    const corpus = [
+      ...sampleMarkdown(sampleNotesRepoSource),
+      ...sampleMarkdown(sampleSearchRepoSource),
+      ...sampleMarkdown(sampleTrashRepoSource),
+      sampleImageNoteMarkdown(IMAGE_ID),
+    ];
+    expect(corpus.length).toBeGreaterThan(5);
+    for (const markdown of corpus) {
+      for (const images of [
+        new Map<ImageId, string>(),
+        new Map<ImageId, string>([[IMAGE_ID, "blob:sample"]]),
+      ]) {
+        const el = document.createElement("div");
+        el.append(renderPrintMarkdown(markdown, document, images));
+        expectHtmlParity(markdown, images, el);
+      }
+    }
+  });
+
+  it("escapes text and attribute values and leaves void elements open", () => {
+    const md = 'a < b & c > d\n\n[x "y"](https://e.com/?a=1&b="2")\n\n---\n';
+    const el = document.createElement("div");
+    el.append(renderPrintMarkdown(md));
+    expectHtmlParity(md, new Map(), el);
+    expect(renderPrintHtml(md, new Map())).toContain("<hr>");
+  });
+
+  it("builds the unavailable text for a missing image id", () => {
+    const nodes = buildPrintNodes(`![](image:${IMAGE_ID})\n`, new Map());
+    const paragraph = nodes[0];
+    if (paragraph.kind !== "element") throw new Error("expected element");
+    const span = paragraph.children[0];
+    if (span.kind !== "element") throw new Error("expected element");
+    expect(span.attrs).toEqual([["class", "print-image-unavailable"]]);
+    expect(span.children).toEqual([
+      { kind: "text", text: PRINT_IMAGE_UNAVAILABLE_TEXT },
+    ]);
   });
 });

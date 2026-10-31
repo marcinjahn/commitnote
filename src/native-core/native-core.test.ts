@@ -527,7 +527,7 @@ describe("notes commands", () => {
       ["note.edit", { path: ["Welcome"], text: "x" }],
       ["sync.retry", {}],
       ["conflict.resolve", { path: ["Welcome"], resolution: "keepMine" }],
-      ["export.notes", {}],
+      ["export.notes", { includeImages: false }],
       ["draft.start", { parent: [] }],
       ["folder.create", { parent: [], name: "x" }],
     ] as const) {

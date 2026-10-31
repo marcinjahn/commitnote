@@ -7,6 +7,7 @@ import {
   sendVisit,
   visitPath,
   visitTitle,
+  visitUrl,
   writeAnalyticsOptOut,
   type AnalyticsNavigator,
   type AnalyticsPage,
@@ -259,5 +260,13 @@ describe("sendVisit", () => {
       },
     });
     expect(() => sendVisit("app", deps)).not.toThrow();
+  });
+});
+
+describe("visitUrl", () => {
+  it("encodes the path and title into the query", () => {
+    expect(visitUrl("https://x.invalid/count", "/app/web", "App (web)")).toBe(
+      "https://x.invalid/count?p=%2Fapp%2Fweb&t=App%20(web)",
+    );
   });
 });

@@ -5,11 +5,16 @@ import {
   withEarlyDraftBody,
   withEarlyDraftName,
 } from "../../app/early-draft";
-import { lastViewOf, restorableLastView } from "../../app/last-view";
+import {
+  lastViewOf,
+  restorableLastView,
+  type LastView,
+} from "../../app/last-view";
 import type { CoreCommands, EarlyDraftOutcome } from "../api";
 import type { AppSession } from "../app-session";
 import type { EngineEvents } from "../engine-events";
 import type { HostServices } from "../host-services";
+import { isReopenLastViewOff } from "../reopen-last-view";
 import {
   booleanParam,
   invalidParams,
@@ -31,6 +36,10 @@ function foldersParam(params: CommandParams): string[][] {
 
 function notePathParam(params: CommandParams): string[] | null {
   return params.note === null ? null : pathParam(params, "note");
+}
+
+export function lastViewParam(params: CommandParams): LastView {
+  return lastViewOf(notePathParam(params), foldersParam(params));
 }
 
 export function createSessionViewCommands(context: {
@@ -86,7 +95,9 @@ export function createSessionViewCommands(context: {
     async "lastView.load"(): Promise<Result<"lastView.load">> {
       const current = running();
       const store = app.lastView();
-      if (store === null) return { view: null };
+      if (store === null || isReopenLastViewOff(host.deviceSettings)) {
+        return { view: null };
+      }
       if (!store.isEnabled()) {
         store.setEnabled(true, lastViewOf(null, []));
       }
@@ -104,9 +115,11 @@ export function createSessionViewCommands(context: {
 
     async "lastView.save"(params): Promise<Result<"lastView.save">> {
       running();
-      const view = lastViewOf(notePathParam(params), foldersParam(params));
+      const view = lastViewParam(params);
       const store = app.lastView();
-      if (store === null) return {};
+      if (store === null || isReopenLastViewOff(host.deviceSettings)) {
+        return {};
+      }
       if (store.isEnabled()) store.save(view);
       else store.setEnabled(true, view);
       return {};

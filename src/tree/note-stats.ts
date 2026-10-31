@@ -1,4 +1,4 @@
-import { GFM, Emoji, Subscript, Superscript, parser } from "@lezer/markdown";
+import { markdownParser } from "../markdown/markdown-parser";
 import { stripImageReferences } from "../images/image-reference";
 
 const segmenters = new Map<string | undefined, Intl.Segmenter>();
@@ -15,8 +15,6 @@ export function countWords(text: string, locale?: string): number {
   }
   return count;
 }
-
-const markdownParser = parser.configure([GFM, Subscript, Superscript, Emoji]);
 
 export interface TaskProgress {
   readonly done: number;

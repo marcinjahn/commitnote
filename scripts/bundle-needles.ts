@@ -32,6 +32,8 @@ export const PROD_LEAK_NEEDLES: readonly string[] = [
   new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
 ];
 
+export const NATIVE_VISIT_NEEDLES: readonly string[] = ["/app/native", "App (native)"];
+
 export const NATIVE_CORE_NEEDLES: readonly string[] = [
   NATIVE_CORE_MARKER,
   "CommitnoteNativeCore",

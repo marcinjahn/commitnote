@@ -7,6 +7,7 @@
   import SegmentedControl from "./SegmentedControl.svelte";
   import ScopeToggle from "./ScopeToggle.svelte";
   import SettingRow from "./SettingRow.svelte";
+  import { COLOR_MODE_LABEL } from "./settings-messages";
   import type { SettingsSectionProps } from "./settings-sections";
 
   const { settings, changeSettings, scopes, changeSettingScope }: SettingsSectionProps = $props();
@@ -54,10 +55,10 @@
 {/snippet}
 
 <SettingRow stacked>
-  {#snippet label()}Color mode{/snippet}
+  {#snippet label()}{COLOR_MODE_LABEL}{/snippet}
   {#snippet aside()}
     <ScopeToggle
-      label="Color mode"
+      label={COLOR_MODE_LABEL}
       scope={scopes.colorMode}
       onToggle={() =>
         changeSettingScope(
@@ -67,7 +68,7 @@
     />
   {/snippet}
   <SegmentedControl
-    label="Color mode"
+    label={COLOR_MODE_LABEL}
     name="color-mode"
     options={COLOR_MODE_OPTIONS}
     value={settings.colorMode}
