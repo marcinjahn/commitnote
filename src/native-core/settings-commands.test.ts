@@ -111,7 +111,7 @@ describe("settings.change", () => {
   it.each([
     { key: "vimMode", value: "true" },
     { key: "animatedCaret", value: "false" },
-    { key: "typeToStart", value: "true" },
+    { key: "typeToStart", value: "yes" },
     { key: "colorMode", value: "sepia" },
     { key: "noteFont", value: "comic-sans" },
   ])("rejects $key = $value", async ({ key, value }) => {
@@ -165,6 +165,68 @@ describe("settings.setScope", () => {
       scope: "synced",
     });
     expect(current().settingsSaver.hasPending).toBe(false);
+  });
+});
+
+describe("typeToStart setting", () => {
+  it("is device-scoped by default and stays out of the repo", async () => {
+    const core = await started();
+    const commitsBefore = ctx.controls.commitMessages(REPO).length;
+
+    await ctx.call(core, "settings.change", {
+      key: "typeToStart",
+      value: "false",
+    });
+
+    expect(app.deviceSettings.read().values.typeToStart).toBe(false);
+    expect(current().settingsSaver.hasPending).toBe(false);
+    expect(ctx.controls.commitMessages(REPO)).toHaveLength(commitsBefore);
+    expect(lastView()).toMatchObject({
+      values: { typeToStart: false },
+      scopes: { typeToStart: "device" },
+    });
+  });
+
+  it("commits only typeToStart once switched to synced", async () => {
+    const core = await started();
+    const seeded = { vimMode: true, animatedCaret: false };
+    current().engine.changeSettings(seeded);
+    expect(await current().engine.flush()).toEqual({ kind: "saved" });
+    const commitsBefore = ctx.controls.commitMessages(REPO).length;
+
+    await ctx.call(core, "settings.setScope", {
+      key: "typeToStart",
+      scope: "synced",
+    });
+    await ctx.call(core, "settings.change", {
+      key: "typeToStart",
+      value: "false",
+    });
+    await ctx.call(core, "settings.flush");
+    await waitForSave("synced");
+
+    const messages = ctx.controls.commitMessages(REPO);
+    expect(messages).toHaveLength(commitsBefore + 1);
+    expect(settingsTrailers(messages[0]!)).toEqual([
+      `${TRAILER.settings}: typeToStart`,
+    ]);
+    expect(await storedSettings()).toMatchObject({
+      ...seeded,
+      typeToStart: false,
+    });
+    expect(lastView()).toMatchObject({
+      values: { typeToStart: false },
+      scopes: { typeToStart: "synced" },
+    });
+  });
+
+  it("has the web label and hint", async () => {
+    const core = await started();
+    const { copy } = await ctx.call(core, "settings.open");
+    expect(copy.typeToStart).toEqual({
+      label: "Start a note by typing",
+      hint: "When no note is open, start typing to begin a new note.",
+    });
   });
 });
 

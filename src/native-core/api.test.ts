@@ -23,8 +23,8 @@ assertType<
 >();
 
 describe("native core API", () => {
-  it("declares version 5 and the marker", () => {
-    expect(NATIVE_CORE_API_VERSION).toBe(5);
+  it("declares version 6 and the marker", () => {
+    expect(NATIVE_CORE_API_VERSION).toBe(6);
     expect(NATIVE_CORE_MARKER).toBe("commitnote-native-core");
   });
 
