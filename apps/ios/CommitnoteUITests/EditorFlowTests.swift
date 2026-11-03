@@ -10,6 +10,8 @@ final class EditorFlowTests: XCTestCase {
     /// As short as "Welcome", whose title passes the text clipping audit at every size the audit tries on iPhone.
     private static let tableNote = "Table"
     private static let tableFirstLine = "| Item | Amount |"
+    /// The audit samples a note's leading text, and a table source there is hidden.
+    private static let tableNoteFirstLine = "Shopping"
 
     override func setUp() {
         continueAfterFailure = false
@@ -252,13 +254,13 @@ final class EditorFlowTests: XCTestCase {
         waitForFocus(editor)
 
         let source = "\(Self.tableFirstLine)\n| --- | ---: |\n| Tea | Two cups |"
-        pasteText(source + "\n\nDone", into: editor)
+        pasteText("\(Self.tableNoteFirstLine)\n\n\(source)\n\nDone", into: editor)
         waitForText(editor, containing: "| Tea | Two cups |")
         waitForValue(syncStatus(in: app), "synced")
 
         hideKeyboardThroughHooks(in: app)
         leaveNote(in: app)
-        let opened = openNote(Self.tableNote, startingWith: Self.tableFirstLine, in: app)
+        let opened = openNote(Self.tableNote, startingWith: Self.tableNoteFirstLine, in: app)
         XCTAssertFalse(hasKeyboardFocus(opened), "A reopened note stays unfocused")
 
         let cells = app.elements("editor-table-cell")
@@ -310,7 +312,7 @@ final class EditorFlowTests: XCTestCase {
                 if error.code == -51 {
                     app = resumeAtTree(editorHooks: true, relaunch: true, file: file, line: line)
                     editor = openNote(
-                        Self.tableNote, startingWith: Self.tableFirstLine, in: app, file: file, line: line)
+                        Self.tableNote, startingWith: Self.tableNoteFirstLine, in: app, file: file, line: line)
                     waitForCondition("The table renders its cells", file: file, line: line) {
                         app.elements("editor-table-cell").count == 4
                     }
