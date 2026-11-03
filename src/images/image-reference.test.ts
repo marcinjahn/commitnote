@@ -73,6 +73,7 @@ describe("parseImageReferences", () => {
         from: 0,
         to: text.length,
         imageId: A,
+        idFrom: 13,
         alt: "cat",
         width: 640,
         height: 480,
@@ -82,7 +83,13 @@ describe("parseImageReferences", () => {
 
   it("parses a reference without dimensions", () => {
     const [reference] = parseImageReferences(`![](image:${A})`);
-    expect(reference).toEqual({ from: 0, to: 37, imageId: A, alt: "" });
+    expect(reference).toEqual({
+      from: 0,
+      to: 37,
+      imageId: A,
+      idFrom: 10,
+      alt: "",
+    });
     expect("width" in reference).toBe(false);
   });
 
@@ -162,6 +169,27 @@ describe("parseImageReferences", () => {
     expect(reference).toMatchObject({ imageId: A, width: 10, height: 20 });
     expect(reference.to).toBe(text.length);
   });
+
+  it("points idFrom at the image id", () => {
+    const texts = [
+      `![](image:${A})`,
+      `![cat](image:${A}#640x480)`,
+      `before ![a \\[b\\] \\\\ c](image:${A}) after`,
+      `![x](image:${A}#2x3 "title")`,
+      `| ![Whiteboard](image:${A}) |`,
+    ];
+    for (const text of texts) {
+      const references = parseImageReferences(text);
+      expect(references).toHaveLength(1);
+      const [reference] = references;
+      expect(
+        text.slice(
+          reference.idFrom,
+          reference.idFrom + reference.imageId.length,
+        ),
+      ).toBe(A);
+    }
+  });
 });
 
 describe("referencedImageIds", () => {
@@ -174,7 +202,12 @@ describe("referencedImageIds", () => {
 describe("formatImageReference", () => {
   it("replaces line breaks with a space", () => {
     expect(
-      formatImageReference({ imageId: A, alt: "a\nb\r\nc", width: 1, height: 1 }),
+      formatImageReference({
+        imageId: A,
+        alt: "a\nb\r\nc",
+        width: 1,
+        height: 1,
+      }),
     ).toBe(`![a b c](image:${A}#1x1)`);
   });
 
