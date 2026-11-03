@@ -139,6 +139,7 @@ struct MarkdownEditor: UIViewRepresentable {
         private var lastText = ""
         private var lastSelection = EditorText.TextSelection(location: 0, length: 0)
         private var base = ""
+        private var sent = SentTexts()
         private var appliedSwitch: Int?
         private var appliedPath: [String]?
         private var appliedDraft = false
@@ -303,9 +304,10 @@ struct MarkdownEditor: UIViewRepresentable {
 
         private func apply(_ update: NoteContentUpdate, editorSwitch: Int, in textView: MarkdownTextView) {
             let doc = textView.text ?? ""
+            let echo = sent.takeEcho(update.content)
             let decision = EditorTextSync.decide(
                 noteSwitch: editorSwitch, appliedSwitch: appliedSwitch ?? Int.min,
-                text: update.content, doc: doc, base: base)
+                text: update.content, doc: doc, base: base, echo: echo)
             switch decision {
             case .set:
                 replaceAll(with: update.content, in: textView)
@@ -366,6 +368,7 @@ struct MarkdownEditor: UIViewRepresentable {
                 CGPoint(x: 0, y: -textView.adjustedContentInset.top), animated: false)
             applying = false
             history.reset()
+            sent.clear()
             lastText = text
             lastSelection = EditorText.TextSelection(location: 0, length: 0)
             composing = false
@@ -416,6 +419,7 @@ struct MarkdownEditor: UIViewRepresentable {
 
         private func sendEdit(_ text: String) {
             guard !readOnly else { return }
+            sent.record(text)
             model?.edit(text: text)
         }
 
