@@ -17,12 +17,17 @@ import type { ImageId } from "../images/image-id";
 const FOREIGN = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
 const OWNED = "bbbbbbbbbbbbbbbbbbbbbbbbbb";
 const CLONE = "cccccccccccccccccccccccccc";
+const SHARES_1 = `a${"c".repeat(25)}`;
+const SHARES_25 = `${"a".repeat(25)}c`;
+const SECOND_FOREIGN = "d".repeat(26);
+const SECOND_SHARES_25 = `${"d".repeat(25)}f`;
 
 function ref(imageId: ImageId): string {
   return `![](image:${imageId}#800x600)`;
 }
 
 interface Deferred {
+  imageId: ImageId;
   resolve(value: ImageId | null): void;
 }
 
@@ -45,9 +50,9 @@ function setup(
   const owned = new Set(options.owned ?? []);
   const pending: Deferred[] = [];
   const clone = vi.fn(
-    (_imageId: ImageId) =>
+    (imageId: ImageId) =>
       new Promise<ImageId | null>((resolve) => {
-        pending.push({ resolve });
+        pending.push({ imageId, resolve });
       }),
   );
   const cloning: ImageCloning = {
@@ -89,6 +94,12 @@ function setup(
       for (const deferred of pending.splice(0)) deferred.resolve(value);
       await new Promise((resolve) => setTimeout(resolve, 0));
     },
+    async resolveEach(clones: Readonly<Record<ImageId, ImageId>>) {
+      for (const deferred of pending.splice(0)) {
+        deferred.resolve(clones[deferred.imageId] ?? null);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    },
   };
 }
 
@@ -100,6 +111,43 @@ describe("imageCloneOnInsert", () => {
     expect(editor.clone).toHaveBeenCalledWith(FOREIGN);
     await editor.resolveAll();
     expect(editor.text()).toBe(`Note\n${ref(CLONE)}`);
+  });
+
+  it.each([
+    [1, "#800x600", SHARES_1],
+    [1, "", SHARES_1],
+    [25, "#800x600", SHARES_25],
+    [25, "", SHARES_25],
+  ])(
+    "rewrites to a clone sharing %i leading characters (suffix %j)",
+    async (_shared, suffix, clone) => {
+      const editor = setup("Before\nAfter");
+      editor.insert(`![Whiteboard](image:${FOREIGN}${suffix}) tail\n`, 7);
+      await editor.resolveAll(clone);
+      expect(editor.text()).toBe(
+        `Before\n![Whiteboard](image:${clone}${suffix}) tail\nAfter`,
+      );
+    },
+  );
+
+  it("rewrites several foreign references whose clones share prefixes", async () => {
+    const editor = setup("Table\n");
+    const table = (first: ImageId, second: ImageId) =>
+      [
+        "| Picture |",
+        "| --- |",
+        `| ![One](image:${first}) |`,
+        `| ![Two](image:${second}#40x30) |`,
+        `| ![Again](image:${first}) |`,
+        "",
+      ].join("\n");
+    editor.insert(table(FOREIGN, SECOND_FOREIGN));
+    expect(editor.clone).toHaveBeenCalledTimes(2);
+    await editor.resolveEach({
+      [FOREIGN]: SHARES_1,
+      [SECOND_FOREIGN]: SECOND_SHARES_25,
+    });
+    expect(editor.text()).toBe(`Table\n${table(SHARES_1, SECOND_SHARES_25)}`);
   });
 
   it("leaves references the note owns untouched", async () => {
