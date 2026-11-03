@@ -393,3 +393,37 @@ test("a remotely trashed folder offers Restore folder", async ({
   await expect(page.getByText(TRASHED_TEXT)).toHaveCount(0);
   await expect(editor(page)).toContainText("Add mobile client");
 });
+
+test.describe("with GitHub-like forge latency", () => {
+  test.use({ forgeLatency: "github" });
+
+  test("Undo while the typing is being saved stays undone, and redo restores it", async ({
+    page,
+  }) => {
+    await openNotes(page);
+    await openLoadedWelcome(page);
+    await waitForSynced(page);
+    const forge = fakeForge(page);
+    await forge.hold("commit");
+
+    await editor(page).click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.type("echoword");
+    await flushPendingSaves(page);
+    await expect(
+      page.locator("header.note-header").getByRole("img", { name: "Saving" }),
+    ).toBeVisible();
+
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(editor(page)).not.toContainText("echoword");
+
+    await forge.release("commit");
+    await waitForSynced(page);
+    await expect(editor(page)).not.toContainText("echoword");
+
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    await expect(editor(page)).toContainText("echoword");
+    await waitForSynced(page);
+    await expect(editor(page)).toContainText("echoword");
+  });
+});
