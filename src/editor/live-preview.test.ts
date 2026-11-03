@@ -120,6 +120,63 @@ describe("buildLivePreviewDecorations", () => {
     expect(widgetRanges(state)).toContainEqual([0, 3]);
   });
 
+  describe("tables", () => {
+    const table =
+      "| a | b |\n| - | - |\n| x | y |\n| **b** | [l](https://example.com) |";
+    const markerRanges = (doc: string): Array<[number, number]> => {
+      const bold = doc.indexOf("**b**");
+      const link = doc.indexOf("[l](");
+      return [
+        [bold, bold + 2],
+        [bold + 3, bold + 5],
+        [link, link + 1],
+        [link + 2, link + 4],
+        [link + 4, link + 4 + "https://example.com".length],
+        [
+          link + 4 + "https://example.com".length,
+          link + 4 + "https://example.com)".length,
+        ],
+      ];
+    };
+
+    it("hides markers in a table when no selection touches it", () => {
+      const doc = `${table}\n\nafter`;
+      const hidden = hiddenRanges(stateFor(doc, doc.length));
+
+      for (const [from, to] of markerRanges(doc)) {
+        expect(isFullyHidden(hidden, from, to)).toBe(true);
+      }
+    });
+
+    it("shows every marker in a table when the cursor is on another row", () => {
+      const doc = `${table}\n\nafter`;
+      const hidden = hiddenRanges(stateFor(doc, 2));
+
+      for (const [from, to] of markerRanges(doc)) {
+        expect(isFullyHidden(hidden, from, to)).toBe(false);
+      }
+      expect(hidden).toEqual([]);
+    });
+
+    it("hides and shows markers of a table inside a blockquote by the whole table", () => {
+      const quoted = table
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n");
+      const doc = `${quoted}\n\nafter`;
+      const away = hiddenRanges(stateFor(doc, doc.length));
+
+      for (const [from, to] of markerRanges(doc)) {
+        expect(isFullyHidden(away, from, to)).toBe(true);
+      }
+
+      const onOtherRow = hiddenRanges(stateFor(doc, doc.indexOf("| x |")));
+      for (const [from, to] of markerRanges(doc)) {
+        expect(isFullyHidden(onOtherRow, from, to)).toBe(false);
+      }
+    });
+  });
+
   it("does not alter the document text while building decorations", () => {
     const doc =
       "# Title\n\n**bold** *em* ~~s~~ `code`\n\n- [ ] task\n\n---\n\n> quote\n\n[text](https://x)";

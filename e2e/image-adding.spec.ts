@@ -45,6 +45,7 @@ async function openWelcomeAtEnd(page: Page): Promise<void> {
   await openWelcome(page);
   await editorContent(page).click();
   await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.press("Enter");
 }
 
 async function typeLines(page: Page, lines: readonly string[]): Promise<void> {
@@ -231,6 +232,7 @@ test("Vim :image opens the picker and paste inserts an image in insert mode", as
   await page.keyboard.press("G");
   await page.keyboard.press("i");
   await expect(page.locator(".vim-status-bar .mode-label")).toHaveText("INSERT");
+  await page.keyboard.press("Enter");
   await dispatchImages(page, "paste", [{ width: 20, height: 20, shade: 60 }]);
   await expect(loadedWidgets(page)).toHaveCount(2);
 });

@@ -5,6 +5,7 @@
   import { linkOpen } from "../../editor/link-open";
   import { livePreview } from "../../editor/live-preview";
   import { imageSource as imageSourceFacet, imageWidgets } from "../../editor/image-widgets";
+  import { tableWidgets } from "../../editor/table-widgets";
   import {
     imageFileHandlers,
     imageInsertion as imageInsertionFacet,
@@ -68,6 +69,7 @@
   const extensions = [
     livePreview(),
     imageWidgets(),
+    tableWidgets(),
     imageSourceFacet.of((id) => (imageSource ? imageSource(id) : Promise.resolve({ unavailable: true }))),
     imageFileHandlers(),
     imageInsertionFacet.of(imageInsertionBridge),

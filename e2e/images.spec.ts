@@ -150,7 +150,8 @@ test("an unknown image reference shows Image unavailable", async ({ page }) => {
   const editor = page.getByRole("textbox", { name: "Note editor" });
   await editor.click();
   await page.keyboard.press("Control+End");
-  await page.keyboard.insertText("\n![](image:aaaaaaaaaaaaaaaaaaaaaaaaaa#40x30)\n");
+  await page.keyboard.press("Enter");
+  await page.keyboard.insertText("![](image:aaaaaaaaaaaaaaaaaaaaaaaaaa#40x30)\n");
 
   const unknown = page.locator(
     'button.cm-image[data-image-id="aaaaaaaaaaaaaaaaaaaaaaaaaa"]',

@@ -76,7 +76,8 @@ const livePreviewHighlightStyle = HighlightStyle.define([
 
 const livePreviewBaseTheme = EditorView.baseTheme({
   [`.${LIST_MARK_CLASS}, .${LIST_MARK_CLASS} *`]: {
-    color: "color-mix(in srgb, var(--color-accent) 50%, var(--color-text-muted))",
+    color:
+      "color-mix(in srgb, var(--color-accent) 50%, var(--color-text-muted))",
   },
   [`.${QUOTE_LINE_CLASS}`]: {
     borderLeft: "var(--hairline) solid var(--color-accent-rule)",
@@ -292,12 +293,19 @@ function collectLivePreviewDecorations(
 ): Range<Decoration>[] {
   const decorations: Range<Decoration>[] = [];
   const ancestors: string[] = [];
+  let table: { from: number; to: number } | null = null;
+
+  const touchesSelection = (from: number, to: number): boolean =>
+    table
+      ? lineHasSelection(state, table.from, table.to)
+      : lineHasSelection(state, from, to);
 
   tree.iterate({
     enter(node) {
       const name = node.name;
       const parent = ancestors[ancestors.length - 1];
       ancestors.push(name);
+      if (name === "Table") table = { from: node.from, to: node.to };
 
       switch (name) {
         case "ListMark": {
@@ -307,7 +315,7 @@ function collectLivePreviewDecorations(
         case "HeaderMark": {
           if (
             parent?.startsWith("ATXHeading") &&
-            !lineHasSelection(state, node.from, node.to)
+            !touchesSelection(node.from, node.to)
           ) {
             const [from, to] = withTrailingSpace(state, node.from, node.to);
             decorations.push(Decoration.replace({}).range(from, to));
@@ -317,7 +325,7 @@ function collectLivePreviewDecorations(
         case "QuoteMark": {
           if (
             parent === "Blockquote" &&
-            !lineHasSelection(state, node.from, node.to)
+            !touchesSelection(node.from, node.to)
           ) {
             const [from, to] = withTrailingSpace(state, node.from, node.to);
             decorations.push(Decoration.replace({}).range(from, to));
@@ -326,7 +334,7 @@ function collectLivePreviewDecorations(
         }
         case "EmphasisMark":
         case "StrikethroughMark": {
-          if (!lineHasSelection(state, node.from, node.to)) {
+          if (!touchesSelection(node.from, node.to)) {
             decorations.push(Decoration.replace({}).range(node.from, node.to));
           }
           break;
@@ -334,7 +342,7 @@ function collectLivePreviewDecorations(
         case "CodeMark": {
           if (
             parent === "InlineCode" &&
-            !lineHasSelection(state, node.from, node.to)
+            !touchesSelection(node.from, node.to)
           ) {
             decorations.push(Decoration.replace({}).range(node.from, node.to));
           }
@@ -346,7 +354,7 @@ function collectLivePreviewDecorations(
           if (
             parent === "Link" &&
             (name === "LinkMark" || isLinkDestination(state, node.node)) &&
-            !lineHasSelection(state, node.from, node.to)
+            !touchesSelection(node.from, node.to)
           ) {
             decorations.push(Decoration.replace({}).range(node.from, node.to));
           }
@@ -378,7 +386,7 @@ function collectLivePreviewDecorations(
           break;
         }
         case "HorizontalRule": {
-          if (!lineHasSelection(state, node.from, node.to)) {
+          if (!touchesSelection(node.from, node.to)) {
             decorations.push(
               Decoration.replace({ widget: new HorizontalRuleWidget() }).range(
                 node.from,
@@ -412,8 +420,9 @@ function collectLivePreviewDecorations(
           break;
       }
     },
-    leave() {
+    leave(node) {
       ancestors.pop();
+      if (node.name === "Table") table = null;
     },
   });
 
