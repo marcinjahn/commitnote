@@ -26,7 +26,8 @@ pub(super) struct SearchState {
     query: String,
     results: Option<SearchResults>,
     status: Option<SearchStatus>,
-    debounce: Option<glib::SourceId>,
+    ticket: u64,
+    pending: bool,
     in_flight: bool,
     dirty: bool,
     #[cfg(all(test, feature = "testing"))]
@@ -75,7 +76,7 @@ impl AppModel {
     }
 
     pub fn close_search(&self) {
-        let debounce = {
+        {
             let mut state = self.state_mut();
             let search = &mut state.search;
             if !search.open {
@@ -86,10 +87,8 @@ impl AppModel {
             search.query.clear();
             search.results = None;
             search.status = None;
-            search.debounce.take()
-        };
-        if let Some(debounce) = debounce {
-            debounce.remove();
+            search.pending = false;
+            search.ticket += 1;
         }
         let request = self.request::<SearchClose>(SearchCloseParams {});
         self.spawn(async move {
@@ -101,26 +100,40 @@ impl AppModel {
     }
 
     pub fn set_search_query(&self, text: String) {
-        let previous = {
+        let ticket = {
             let mut state = self.state_mut();
             let search = &mut state.search;
-            if search.query == text && search.debounce.is_none() {
+            if search.query == text && !search.pending {
                 return;
             }
             search.query = text;
-            search.debounce.take()
+            search.pending = true;
+            search.ticket += 1;
+            search.ticket
         };
-        if let Some(previous) = previous {
-            previous.remove();
-        }
+        let generation = self.imp().generation.get();
         let model = self.downgrade();
-        let debounce = glib::timeout_add_local_once(SEARCH_DEBOUNCE, move || {
-            if let Some(model) = model.upgrade() {
-                model.state_mut().search.debounce = None;
-                model.run_search();
+        self.spawn(async move {
+            glib::timeout_future(SEARCH_DEBOUNCE).await;
+            if let Some(model) = model.upgrade()
+                && model.imp().generation.get() == generation
+            {
+                model.search_debounced(ticket);
             }
         });
-        self.state_mut().search.debounce = Some(debounce);
+    }
+
+    /// A timer whose ticket is no longer the newest, or whose search was closed, does nothing.
+    fn search_debounced(&self, ticket: u64) {
+        {
+            let mut state = self.state_mut();
+            let search = &mut state.search;
+            if search.ticket != ticket || !search.pending {
+                return;
+            }
+            search.pending = false;
+        }
+        self.run_search();
     }
 
     pub(super) fn attach_search_triggers(&self) {
@@ -152,10 +165,10 @@ impl AppModel {
 
     /// Clears search at session end, when the core no longer holds a search to close.
     pub(super) fn end_search(&self) -> bool {
-        let previous = std::mem::take(&mut self.state_mut().search);
-        if let Some(debounce) = previous.debounce {
-            debounce.remove();
-        }
+        let mut state = self.state_mut();
+        let ticket = state.search.ticket + 1;
+        let previous = std::mem::take(&mut state.search);
+        state.search.ticket = ticket;
         previous.open
     }
 
@@ -231,7 +244,7 @@ impl AppModel {
 
 #[cfg(all(test, feature = "testing"))]
 mod tests {
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
     use super::super::tests::{Session, fake_bundle, open_and_read, run};
@@ -355,6 +368,170 @@ mod tests {
                     .as_ref()
                     .is_some_and(|parts| parts.iter().any(|part| part.is_match))
             );
+        });
+    }
+
+    async fn opened_search() -> (Session, usize) {
+        let session = opened().await;
+        session.model.open_search();
+        session
+            .wait_until("the finished index", |model| {
+                model.search_status().is_some_and(|status| !status.partial)
+                    && model.search_results().is_some()
+                    && !model.state().search.in_flight
+            })
+            .await;
+        let before = sent(&session.model).len();
+        (session, before)
+    }
+
+    fn sent(model: &AppModel) -> Vec<String> {
+        model.state().search.sent.clone()
+    }
+
+    fn sent_since(model: &AppModel, before: usize) -> Vec<String> {
+        sent(model).split_off(before)
+    }
+
+    async fn past_the_debounce() {
+        glib::timeout_future(SEARCH_DEBOUNCE * 3).await;
+    }
+
+    #[test]
+    fn a_burst_of_queries_sends_one_search_with_the_last_text() {
+        run(|| async {
+            let (session, before) = opened_search().await;
+            let model = &session.model;
+            for text in ["l", "li", "lis", "lisb"] {
+                model.set_search_query(text.to_owned());
+            }
+            assert!(sent_since(model, before).is_empty());
+
+            session
+                .wait_until("the debounced search", |model| sent(model).len() > before)
+                .await;
+            session
+                .wait_until("the name match", |model| {
+                    model
+                        .search_results()
+                        .is_some_and(|results| names(&results.names).contains(&"Lisbon"))
+                })
+                .await;
+            past_the_debounce().await;
+            assert_eq!(sent_since(model, before), ["lisb"]);
+        });
+    }
+
+    #[test]
+    fn a_query_set_again_restarts_the_wait() {
+        run(|| async {
+            let (session, before) = opened_search().await;
+            let model = &session.model;
+
+            model.set_search_query("road".to_owned());
+            glib::timeout_future(SEARCH_DEBOUNCE / 2).await;
+            model.set_search_query("lisb".to_owned());
+            glib::timeout_future(SEARCH_DEBOUNCE * 3 / 4).await;
+            assert!(sent_since(model, before).is_empty());
+
+            session
+                .wait_until("the debounced search", |model| sent(model).len() > before)
+                .await;
+            past_the_debounce().await;
+            assert_eq!(sent_since(model, before), ["lisb"]);
+        });
+    }
+
+    #[test]
+    fn clearing_the_query_cancels_the_pending_text() {
+        run(|| async {
+            let (session, before) = opened_search().await;
+            let model = &session.model;
+
+            model.set_search_query("lisb".to_owned());
+            model.set_search_query(String::new());
+            session
+                .wait_until("the debounced search", |model| sent(model).len() > before)
+                .await;
+            past_the_debounce().await;
+            assert_eq!(sent_since(model, before), [""]);
+            assert_eq!(model.search_query(), "");
+        });
+    }
+
+    #[test]
+    fn closing_search_cancels_the_pending_search() {
+        run(|| async {
+            let (session, before) = opened_search().await;
+            let model = &session.model;
+
+            model.set_search_query("lisb".to_owned());
+            model.close_search();
+            past_the_debounce().await;
+            assert!(sent_since(model, before).is_empty());
+            assert_eq!(model.search_results(), None);
+            assert_eq!(model.search_query(), "");
+        });
+    }
+
+    #[test]
+    fn a_pending_search_does_not_outlive_a_reopened_search() {
+        run(|| async {
+            let (session, before) = opened_search().await;
+            let model = &session.model;
+
+            model.set_search_query("lisb".to_owned());
+            model.close_search();
+            model.open_search();
+            session
+                .wait_until("the reopened results", |model| {
+                    model.search_results().is_some() && !model.state().search.in_flight
+                })
+                .await;
+            past_the_debounce().await;
+            let sent = sent_since(model, before);
+            assert!(!sent.is_empty() && sent.iter().all(String::is_empty));
+        });
+    }
+
+    #[test]
+    fn a_reply_to_an_older_query_never_replaces_newer_results() {
+        run(|| async {
+            let (session, _) = opened_search().await;
+            let model = &session.model;
+            let seen = Rc::new(RefCell::new(Vec::<Vec<String>>::new()));
+            model.connect_search_changed({
+                let seen = seen.clone();
+                move |model| {
+                    if let Some(results) = model.search_results() {
+                        seen.borrow_mut()
+                            .push(results.names.iter().map(|row| row.name.clone()).collect());
+                    }
+                }
+            });
+
+            model.state_mut().search.query = "road".to_owned();
+            model.run_search();
+            assert!(model.state().search.in_flight);
+            model.set_search_query("lisb".to_owned());
+            session
+                .wait_until("the newer results", |model| {
+                    model
+                        .search_results()
+                        .is_some_and(|results| names(&results.names).contains(&"Lisbon"))
+                        && !model.state().search.in_flight
+                })
+                .await;
+            past_the_debounce().await;
+
+            assert_eq!(sent(model).last().map(String::as_str), Some("lisb"));
+            assert!(
+                seen.borrow()
+                    .iter()
+                    .all(|names| !names.contains(&"Roadmap".to_owned()))
+            );
+            let results = model.search_results().expect("the results arrived");
+            assert!(!names(&results.names).contains(&"Roadmap"));
         });
     }
 
