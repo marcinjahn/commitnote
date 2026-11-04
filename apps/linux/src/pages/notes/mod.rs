@@ -6,6 +6,8 @@ pub(crate) mod note_state;
 mod note_view;
 mod notes_page;
 mod row_menu;
+mod search_logic;
+mod search_view;
 mod sync_feedback;
 mod target_picker;
 mod trash_confirm;
@@ -15,4 +17,5 @@ mod tree_view;
 
 pub use note_view::NoteView;
 pub use notes_page::NotesPage;
+pub use search_view::SearchView;
 pub use tree_view::NotesTree;

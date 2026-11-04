@@ -4,11 +4,13 @@ use commitnote::model::{AppModel, DraftFocus, EditorTarget};
 use commitnote::pages::notes::NotesTree;
 use commitnote_core_api::commands::NoteDraftOutcome;
 use commitnote_core_api::shapes::{OpenNote, TreeNode};
-use gtk4::{self as gtk, gdk, glib};
+use gtk4::{self as gtk, gdk, glib, pango};
 use libadwaita as adw;
 
-use crate::flows::{choose_repository, ensure, launch_and_log_in, submit_token, unlock, wait_tree};
-use crate::support::{ALL_VARIANTS, Case, Harness};
+use crate::flows::{
+    choose_repository, ensure, launch_and_log_in, open_first_note, submit_token, unlock, wait_tree,
+};
+use crate::support::{ALL_VARIANTS, Case, Harness, Width};
 
 pub const CASES: &[Case] = &[
     ("p3-new-folder-shortcut", new_folder_shortcut),
@@ -38,6 +40,14 @@ pub const CASES: &[Case] = &[
     ("p3-trash-share-warning", trash_share_warning),
     ("p3-trash-restore-undo", trash_restore_undo),
     ("p3-filter-then-tag", filter_then_tag),
+    ("p3-search-open-close", search_open_close),
+    ("p3-search-recent", search_recent),
+    ("p3-search-type", search_type),
+    ("p3-search-contents", search_contents),
+    ("p3-search-no-matches", search_no_matches),
+    ("p3-search-escape", search_escape),
+    ("p3-search-ctrl-k-editor", search_ctrl_k_editor),
+    ("p3-search-shot", shot_search),
     ("p3-shot-tree-context-menu", shot_tree_context_menu),
     ("p3-shot-trash-dialog", shot_trash_dialog),
 ];
@@ -47,6 +57,9 @@ const NAME_ROW: &str = "new-folder-name";
 const NAME_ERROR: &str = "new-folder-error";
 const MOVE_LIST: &str = "move-to-list";
 const TRASH_URL: &str = "https://github.com/sample/trash";
+const SEARCH_URL: &str = "https://github.com/sample/search";
+const SEARCH_LIST: &str = "search-results-list";
+const LISBON: &[&str] = &["Journal", "Trips", "Lisbon"];
 const TRASH_CONFIRM: &str = "trash-confirm-dialog";
 const TRASH_DIALOG: &str = "trash-dialog";
 const RESTORE_LIST: &str = "restore-to-list";
@@ -534,6 +547,330 @@ fn trash_dialog(h: &mut Harness) -> Result<(), String> {
     ensure(has_node(h, &welcome) && has_node(h, &kept), || {
         "restored notes vanished with the empty trash".to_owned()
     })
+}
+
+fn search_entry_focused(h: &Harness) -> bool {
+    let (Ok(window), Ok(entry)) = (h.window(), h.widget("search-entry")) else {
+        return false;
+    };
+    GtkWindowExt::focus(&window).is_some_and(|focus| focus == entry || focus.is_ancestor(&entry))
+}
+
+fn search_open_close(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    h.widget(TREE_LIST)?.grab_focus();
+    h.wait("the tree to have focus", || tree_focused(h))?;
+    ensure(!h.shown("search-entry"), || {
+        "the search entry is shown before searching".to_owned()
+    })?;
+
+    h.press_keys("<Control>f")?;
+    h.wait("the search entry to show with focus", || {
+        h.shown("search-entry") && search_entry_focused(h)
+    })?;
+    h.wait("the results list to show", || {
+        h.shown("search-results-list")
+    })?;
+    h.wait("the tree to hide", || !h.shown(TREE_LIST))?;
+
+    h.press_keys("Escape")?;
+    h.wait("the search entry to hide", || !h.shown("search-entry"))?;
+    h.wait("the results list to hide", || {
+        !h.shown("search-results-list")
+    })?;
+    h.wait("the tree to have focus", || tree_focused(h))
+}
+
+struct ResultRow {
+    name: String,
+    folder: Option<String>,
+    snippet: Option<gtk::Label>,
+    name_label: gtk::Label,
+}
+
+fn label_of(widget: &gtk::Widget) -> Option<gtk::Label> {
+    widget
+        .clone()
+        .downcast::<gtk::Label>()
+        .ok()
+        .or_else(|| widget.first_child()?.downcast::<gtk::Label>().ok())
+}
+
+fn search_rows(h: &Harness) -> (Vec<String>, Vec<ResultRow>) {
+    let mut headings = Vec::new();
+    let mut rows = Vec::new();
+    let Ok(list) = h.widget_as::<gtk::ListBox>(SEARCH_LIST) else {
+        return (headings, rows);
+    };
+    let mut index = 0;
+    while let Some(row) = list.row_at_index(index) {
+        index += 1;
+        let Some(child) = row.child() else { continue };
+        if !row.is_activatable() {
+            if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                headings.push(label.label().to_string());
+            }
+            continue;
+        }
+        let mut labels = Vec::new();
+        let mut part = child.first_child();
+        while let Some(current) = part {
+            part = current.next_sibling();
+            labels.extend(label_of(&current));
+        }
+        let Some(name_label) = labels.first().cloned() else {
+            continue;
+        };
+        let folder = labels
+            .iter()
+            .skip(1)
+            .find(|label| label.has_css_class("dim-label"))
+            .map(|label| label.label().to_string());
+        let snippet = labels
+            .iter()
+            .skip(1)
+            .find(|label| !label.has_css_class("dim-label"))
+            .cloned();
+        rows.push(ResultRow {
+            name: name_label.label().to_string(),
+            name_label,
+            folder,
+            snippet,
+        });
+    }
+    (headings, rows)
+}
+
+fn is_bold(label: &gtk::Label) -> bool {
+    label.attributes().is_some_and(|attrs| {
+        attrs.attributes().iter().any(|attr| {
+            attr.type_() == pango::AttrType::Weight
+                && attr
+                    .downcast_ref::<pango::AttrInt>()
+                    .is_some_and(|weight| weight.value() >= 700)
+        })
+    })
+}
+
+fn search_row(h: &Harness, name: &str) -> Option<ResultRow> {
+    search_rows(h).1.into_iter().find(|row| row.name == name)
+}
+
+fn launch_search_repository(h: &Harness) -> Result<(), String> {
+    h.launch()?;
+    submit_token(h)?;
+    choose_repository(h, SEARCH_URL)?;
+    unlock(h, false)?;
+    wait_tree(h)
+}
+
+fn focus_tree(h: &Harness) -> Result<(), String> {
+    h.widget(TREE_LIST)?.grab_focus();
+    h.wait("the tree to have focus", || tree_focused(h))
+}
+
+fn search_with(h: &Harness, shortcut: &str, query: &str) -> Result<(), String> {
+    h.press_keys(shortcut)?;
+    h.wait("the search entry to show with focus", || {
+        h.shown("search-entry") && search_entry_focused(h)
+    })?;
+    if query.is_empty() {
+        return Ok(());
+    }
+    h.type_keys(query)?;
+    h.wait("the typed query", || {
+        h.text("search-entry").is_ok_and(|text| text == query)
+    })
+}
+
+fn search_recent(h: &mut Harness) -> Result<(), String> {
+    launch_search_repository(h)?;
+    let model = h.model()?;
+    for target in [path(&["Welcome"]), path(&["Reading list"])] {
+        model.open_note(Some(target.clone()));
+        h.wait("the note to open", || {
+            loaded_content(&model, &target).is_some()
+        })?;
+    }
+    focus_tree(h)?;
+    search_with(h, "<Control>f", "")?;
+
+    let mut heading = String::new();
+    h.wait("the recent notes", || {
+        let Some(results) = model.search_results() else {
+            return false;
+        };
+        heading = results.copy.recent_heading;
+        let (headings, rows) = search_rows(h);
+        !heading.is_empty()
+            && headings == [heading.clone()]
+            && rows.iter().map(|row| row.name.as_str()).eq(["Welcome"])
+    })?;
+    ensure(h.shown(SEARCH_LIST), || {
+        "the results are not shown".to_owned()
+    })?;
+    h.wait_shown("search-status")
+}
+
+fn search_type(h: &mut Harness) -> Result<(), String> {
+    launch_search_repository(h)?;
+    let model = h.model()?;
+    let lisbon = path(LISBON);
+    focus_tree(h)?;
+    search_with(h, "<Control>k", "lisb")?;
+    h.wait("the Lisbon result with a bold match", || {
+        search_row(h, "Lisbon").is_some_and(|row| is_bold(&row.name_label))
+    })?;
+    let row = search_row(h, "Lisbon").ok_or("no Lisbon row")?;
+    ensure(row.folder.as_deref() == Some("Journal / Trips"), || {
+        format!("the folder line is {:?}", row.folder)
+    })?;
+
+    h.press_keys("Down")?;
+    h.wait("a result to take focus", || {
+        let Ok(list) = h.widget(SEARCH_LIST) else {
+            return false;
+        };
+        h.window()
+            .ok()
+            .and_then(|window| GtkWindowExt::focus(&window))
+            .is_some_and(|focus| focus.is_ancestor(&list))
+    })?;
+    h.press_keys("Return")?;
+    h.wait("Lisbon to open", || {
+        model.open_note_path().as_ref() == Some(&lisbon)
+    })?;
+    h.wait("search to close", || {
+        !h.shown("search-entry") && !model.search_open()
+    })?;
+    h.wait("Lisbon to be selected in the tree", || {
+        selected_path(h).as_ref() == Some(&lisbon)
+    })?;
+    h.wait("Journal and Trips to expand", || {
+        ["Journal", "Trips"].iter().all(|name| {
+            row_expander(h, name)
+                .ok()
+                .and_then(|expander| expander.list_row())
+                .is_some_and(|row| row.is_expanded())
+        })
+    })?;
+    h.wait("the note title", || {
+        h.text("note-title-entry")
+            .is_ok_and(|title| title == "Lisbon")
+    })
+}
+
+fn search_contents(h: &mut Harness) -> Result<(), String> {
+    launch_search_repository(h)?;
+    let model = h.model()?;
+    focus_tree(h)?;
+    search_with(h, "<Control>f", "kingfisher")?;
+    h.wait("the contents row with a highlighted snippet", || {
+        search_row(h, "Meeting minutes").is_some_and(|row| {
+            row.snippet
+                .as_ref()
+                .is_some_and(|snippet| is_bold(snippet) && snippet.label().contains("kingfisher"))
+        })
+    })?;
+    let (headings, rows) = search_rows(h);
+    let contents = model
+        .search_results()
+        .map(|results| results.copy.contents_heading)
+        .ok_or("no search results")?;
+    ensure(headings == [contents.clone()], || {
+        format!("the headings are {headings:?}, not [{contents:?}]")
+    })?;
+    ensure(rows.len() == 1 && !is_bold(&rows[0].name_label), || {
+        "the name of a contents-only match is highlighted".to_owned()
+    })
+}
+
+fn search_no_matches(h: &mut Harness) -> Result<(), String> {
+    launch_search_repository(h)?;
+    let model = h.model()?;
+    focus_tree(h)?;
+    search_with(h, "<Control>f", "zzzqqq")?;
+    h.wait_shown("search-no-matches")?;
+    let expected = model
+        .search_results()
+        .map(|results| results.copy.no_matches)
+        .ok_or("no search results")?;
+    ensure(!expected.is_empty(), || {
+        "the core has no no-matches text".to_owned()
+    })?;
+    ensure(
+        h.widget_as::<adw::StatusPage>("search-no-matches")?.title() == expected,
+        || "the no-matches page is not the core's text".to_owned(),
+    )?;
+    ensure(search_rows(h).1.is_empty(), || {
+        "rows are listed for a query without matches".to_owned()
+    })
+}
+
+fn search_escape(h: &mut Harness) -> Result<(), String> {
+    launch_search_repository(h)?;
+    let model = h.model()?;
+    let lisbon = path(LISBON);
+    select_path(h, LISBON)?;
+    search_with(h, "<Control>f", "road")?;
+    h.wait("the Roadmap result", || search_row(h, "Roadmap").is_some())?;
+
+    h.press_keys("Escape")?;
+    h.wait("search to close with the tree focused", || {
+        !h.shown("search-entry") && !model.search_open() && tree_focused(h)
+    })?;
+    ensure(selected_path(h).as_ref() == Some(&lisbon), || {
+        "the selection changed".to_owned()
+    })?;
+    ensure(model.search_query().is_empty(), || {
+        "the query survived closing".to_owned()
+    })
+}
+
+fn search_ctrl_k_editor(h: &mut Harness) -> Result<(), String> {
+    launch_search_repository(h)?;
+    let model = h.model()?;
+    open_first_note(h)?;
+    let editor = h.widget_as::<NoteEditor>("note-editor")?;
+    focus_editor(h, &editor)?;
+    let before = editor.text();
+
+    h.press_keys("<Control>k")?;
+    h.wait("the link to be inserted", || {
+        editor.text() != before && editor.text().contains("[]()")
+    })?;
+    ensure(!h.shown("search-entry") && !model.search_open(), || {
+        "Ctrl+K in the editor opened search".to_owned()
+    })?;
+
+    h.press_keys("<Control>z")?;
+    h.wait("the link to be undone", || editor.text() == before)?;
+    focus_editor(h, &editor)
+}
+
+fn shot_search(h: &mut Harness) -> Result<(), String> {
+    launch_search_repository(h)?;
+    focus_tree(h)?;
+    search_with(h, "<Control>f", "road")?;
+    for &(width, theme) in ALL_VARIANTS {
+        h.show_variant(width, theme)?;
+        h.wait("a highlighted name row and a snippet row", || {
+            let rows = search_rows(h).1;
+            rows.iter()
+                .any(|row| row.name == "Roadmap" && is_bold(&row.name_label))
+                && rows
+                    .iter()
+                    .any(|row| row.snippet.as_ref().is_some_and(is_bold))
+        })?;
+        h.wait("the search entry", || h.shown("search-entry"))?;
+        if width == Width::Narrow {
+            ensure(!crate::flows::split_view(h)?.shows_content(), || {
+                "the sidebar is not the visible page".to_owned()
+            })?;
+        }
+        h.capture_variant("search", width, theme)?;
+    }
+    Ok(())
 }
 
 fn rename_entry_focused(h: &Harness) -> bool {

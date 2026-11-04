@@ -4,12 +4,14 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use commitnote_core_api::commands::MoveDirection;
 use commitnote_core_api::shapes::ColorTag;
-use gtk4::{self as gtk, glib};
+use gtk4::{self as gtk, gdk, glib};
 use libadwaita as adw;
 
 use super::sync_feedback::{SyncMenuAction, SyncStatusView, sync_status_view};
 use super::tree_logic::{find_node, menu_tag, new_folder_parent, tag_from_id, tag_id, tag_label};
-use super::{NoteView, NotesTree, folder_dialog, move_dialog, trash_confirm, trash_dialog};
+use super::{
+    NoteView, NotesTree, SearchView, folder_dialog, move_dialog, trash_confirm, trash_dialog,
+};
 use crate::editor::NoteEditor;
 use crate::model::{AppModel, COLOR_TAGS, DraftFocus, EditorTarget};
 
@@ -36,6 +38,10 @@ mod imp {
         #[template_child]
         pub(super) tag_filter_banner: TemplateChild<adw::Banner>,
         #[template_child]
+        pub(super) search_bar: TemplateChild<gtk::SearchBar>,
+        #[template_child]
+        pub(super) search_entry: TemplateChild<gtk::SearchEntry>,
+        #[template_child]
         pub(super) main_menu: TemplateChild<gtk::gio::Menu>,
         #[template_child]
         pub(super) note_menu: TemplateChild<gtk::gio::Menu>,
@@ -58,6 +64,8 @@ mod imp {
         pub(super) filter_menu: OnceCell<gtk::gio::Menu>,
         pub(super) organise_menu: OnceCell<gtk::gio::Menu>,
         pub(super) tree: OnceCell<NotesTree>,
+        pub(super) search_view: OnceCell<SearchView>,
+        pub(super) sidebar_stack: gtk::Stack,
         pub(super) editor: OnceCell<NoteEditor>,
         pub(super) note_view: OnceCell<NoteView>,
         pub(super) model: OnceCell<AppModel>,
@@ -152,6 +160,9 @@ mod imp {
                     }
                 },
             );
+            klass.install_action("notes.search", None, |page, _, _| {
+                page.start_search();
+            });
             klass.install_action("notes.new-folder", None, |page, _, _| {
                 page.show_new_folder_here();
             });
@@ -208,6 +219,7 @@ mod imp {
                 }
             });
             page.add_controller(shortcuts());
+            page.connect_search_signals();
         }
 
         fn dispose(&self) {
@@ -226,8 +238,12 @@ mod imp {
             self.parent_shown();
             let sidebar_visible =
                 !self.split_view.is_collapsed() || !self.split_view.shows_content();
-            if sidebar_visible && let Some(tree) = self.sidebar_toolbar.content() {
-                tree.grab_focus();
+            if sidebar_visible {
+                if self.search_bar.is_search_mode() {
+                    self.search_entry.grab_focus();
+                } else if let Some(tree) = self.tree.get() {
+                    tree.grab_focus();
+                }
             }
         }
     }
@@ -251,8 +267,16 @@ impl NotesPage {
         page.set_title(&label);
         imp.sidebar_page.set_title(&label);
         let tree = NotesTree::new(model);
-        imp.sidebar_toolbar.set_content(Some(&tree));
+        let search_view = SearchView::new();
+        search_view.bind(model);
+        imp.sidebar_stack
+            .set_transition_type(gtk::StackTransitionType::Crossfade);
+        imp.sidebar_stack.add_named(&tree, Some("tree"));
+        imp.sidebar_stack.add_named(&search_view, Some("search"));
+        imp.sidebar_toolbar.set_content(Some(&imp.sidebar_stack));
         let _ = imp.tree.set(tree);
+        let _ = imp.search_view.set(search_view);
+        page.connect_search_results();
         let note_view = NoteView::new(model);
         let editor = note_view.editor();
         page.insert_action_group("editor", Some(&editor.actions()));
@@ -331,6 +355,149 @@ impl NotesPage {
                 .map_or(FALLBACK_TITLE, String::as_str),
         };
         self.imp().content_page.set_title(title);
+    }
+
+    fn connect_search_signals(&self) {
+        let imp = self.imp();
+        self.imp().search_bar.connect_search_mode_enabled_notify({
+            let page = self.downgrade();
+            move |_| {
+                if let Some(page) = page.upgrade() {
+                    page.search_mode_changed();
+                }
+            }
+        });
+        imp.search_entry.connect_search_changed({
+            let page = self.downgrade();
+            move |entry| {
+                let Some(page) = page.upgrade() else {
+                    return;
+                };
+                if let (true, Some(model)) = (
+                    page.imp().search_bar.is_search_mode(),
+                    page.imp().model.get(),
+                ) {
+                    model.set_search_query(entry.text().to_string());
+                }
+            }
+        });
+        imp.search_entry.connect_stop_search({
+            let page = self.downgrade();
+            move |_| {
+                if let Some(page) = page.upgrade() {
+                    page.imp().search_bar.set_search_mode(false);
+                }
+            }
+        });
+        imp.search_entry.connect_activate({
+            let page = self.downgrade();
+            move |_| {
+                if let Some(view) = page
+                    .upgrade()
+                    .and_then(|page| page.imp().search_view.get().cloned())
+                {
+                    view.activate_first_result();
+                }
+            }
+        });
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        keys.connect_key_pressed({
+            let page = self.downgrade();
+            move |_, key, _, state| {
+                let plain = state
+                    .intersection(gtk::accelerator_get_default_mod_mask())
+                    .is_empty();
+                let focused = plain
+                    && key == gdk::Key::Down
+                    && page
+                        .upgrade()
+                        .and_then(|page| page.imp().search_view.get().cloned())
+                        .is_some_and(|view| view.focus_first_result());
+                if focused {
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
+            }
+        });
+        imp.search_entry.add_controller(keys);
+
+        let escape = gtk::EventControllerKey::new();
+        escape.connect_key_pressed({
+            let page = self.downgrade();
+            move |_, key, _, _| match page.upgrade() {
+                Some(page) if key == gdk::Key::Escape && page.imp().search_bar.is_search_mode() => {
+                    page.imp().search_bar.set_search_mode(false);
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
+            }
+        });
+        imp.sidebar_stack.add_controller(escape);
+    }
+
+    fn connect_search_results(&self) {
+        let Some(view) = self.imp().search_view.get() else {
+            return;
+        };
+        view.connect_result_activated({
+            let page = self.downgrade();
+            move |_, path| {
+                if let Some(page) = page.upgrade() {
+                    page.open_search_result(path);
+                }
+            }
+        });
+    }
+
+    fn start_search(&self) {
+        let imp = self.imp();
+        if self.narrow() {
+            imp.split_view.set_show_content(false);
+        } else if self.sidebar_hidden() {
+            self.set_sidebar_hidden(false);
+        }
+        if imp.search_bar.is_search_mode() {
+            imp.search_entry.grab_focus();
+            imp.search_entry.select_region(0, -1);
+        } else {
+            imp.search_bar.set_search_mode(true);
+        }
+    }
+
+    fn search_mode_changed(&self) {
+        let imp = self.imp();
+        let Some(model) = imp.model.get() else {
+            return;
+        };
+        if imp.search_bar.is_search_mode() {
+            model.open_search();
+            imp.sidebar_stack.set_visible_child_name("search");
+            imp.search_entry.grab_focus();
+        } else {
+            model.close_search();
+            imp.search_entry.set_text("");
+            imp.sidebar_stack.set_visible_child_name("tree");
+            if let Some(tree) = imp.tree.get() {
+                tree.grab_focus();
+            }
+        }
+    }
+
+    fn open_search_result(&self, path: Vec<String>) {
+        let imp = self.imp();
+        let Some(model) = imp.model.get() else {
+            return;
+        };
+        model.open_note(Some(path.clone()));
+        imp.search_bar.set_search_mode(false);
+        if let Some(tree) = imp.tree.get() {
+            tree.reveal(path);
+        }
+        if self.narrow() {
+            imp.split_view.set_show_content(true);
+        }
     }
 
     fn show_new_folder_here(&self) {
@@ -788,6 +955,8 @@ fn shortcuts() -> gtk::ShortcutController {
     for (trigger, action) in [
         ("F9", "notes.toggle-sidebar"),
         ("<Control>r", "win.refresh"),
+        ("<Control>f", "notes.search"),
+        ("<Control>k", "notes.search"),
         ("<Control><Shift>n", "notes.new-folder"),
     ] {
         controller.add_shortcut(gtk::Shortcut::new(

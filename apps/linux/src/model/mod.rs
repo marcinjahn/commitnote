@@ -9,8 +9,8 @@ pub mod lifecycle;
 pub use app_model::{
     AppConfig, AppModel, COLOR_TAGS, DraftFocus, EarlyDraftState, EditorTarget,
     GENERIC_ERROR_MESSAGE, KeyChangedView, LoadingFailure, LogOutResult, LoginDraft,
-    NoteContentUpdate, NoticeView, RenameResult, RepositoryChoice, Route, TokenError, TrashResult,
-    TrashState, UnlockError, UnusableOutcome, UserError,
+    NoteContentUpdate, NoticeView, RenameResult, RepositoryChoice, Route, SearchStatus, TokenError,
+    TrashResult, TrashState, UnlockError, UnusableOutcome, UserError,
 };
 pub use appearance::{Appearance, ColorMode};
 pub use editor_settings::EditorSettings;

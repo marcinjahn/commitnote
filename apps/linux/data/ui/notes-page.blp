@@ -42,6 +42,17 @@ template $CommitnoteNotesPage: Adw.NavigationPage {
               }
             }
 
+            [start]
+            Gtk.ToggleButton search_button {
+              name: "search-button";
+              icon-name: "system-search-symbolic";
+              tooltip-text: _("Search");
+
+              accessibility {
+                label: _("Search");
+              }
+            }
+
             [end]
             Gtk.MenuButton {
               name: "notes-main-menu-button";
@@ -56,6 +67,23 @@ template $CommitnoteNotesPage: Adw.NavigationPage {
               name: "sync-status-button";
               visible: false;
             }
+          }
+
+          [top]
+          Gtk.SearchBar search_bar {
+            name: "search-bar";
+            search-mode-enabled: bind search_button.active bidirectional;
+
+            child: Gtk.SearchEntry search_entry {
+              name: "search-entry";
+              hexpand: true;
+              search-delay: 0;
+              placeholder-text: _("Search notes");
+
+              accessibility {
+                label: _("Search notes");
+              }
+            };
           }
 
           [top]

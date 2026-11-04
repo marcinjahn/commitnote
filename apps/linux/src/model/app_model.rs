@@ -42,8 +42,10 @@ use super::editor_lane::EditorLane;
 use super::editor_settings::EditorSettings;
 
 mod organise;
+mod search;
 
 pub use organise::{COLOR_TAGS, TrashResult, TrashState};
+pub use search::SearchStatus;
 
 pub const GENERIC_ERROR_MESSAGE: &str = "Something went wrong. Try again.";
 const NO_KEYRING_MESSAGE: &str = "No keyring is available, so this session will not be remembered.";
@@ -263,6 +265,7 @@ struct State {
     used_tags: Vec<ColorTag>,
     tags_writable: bool,
     trash: Option<TrashState>,
+    search: search::SearchState,
     notice_actions: HashMap<String, NoticeAction>,
     open_note_path: Option<Vec<String>>,
     core_open_path: Option<Vec<String>>,
@@ -332,6 +335,7 @@ mod imp {
                     Signal::builder("early-draft-changed").build(),
                     Signal::builder("early-draft-presence-changed").build(),
                     Signal::builder("sync-state-changed").build(),
+                    Signal::builder("search-changed").build(),
                     Signal::builder("notice")
                         .param_types([
                             String::static_type(),
@@ -364,6 +368,7 @@ impl AppModel {
         let _ = imp.context.set(glib::MainContext::ref_thread_default());
         let _ = imp.config.set(config);
         let _ = imp.edit_sender.set(model.new_edit_sender());
+        model.attach_search_triggers();
         {
             let mut state = imp.state.borrow_mut();
             state.visible = true;
@@ -1762,7 +1767,8 @@ impl AppModel {
             CoreEvent::SettingsChanged { view } => self.apply_settings_view(&view),
             CoreEvent::NoteContentChangedRemotely(changed) => self.show_toast(&changed.message),
             CoreEvent::TrashChanged(changed) => self.trash_changed(changed),
-            CoreEvent::SearchStatusChanged(_) | CoreEvent::Other { .. } => {}
+            CoreEvent::SearchStatusChanged(changed) => self.search_status_changed(changed),
+            CoreEvent::Other { .. } => {}
         }
     }
 
@@ -1901,6 +1907,7 @@ impl AppModel {
         let Some(client) = self.client() else {
             return;
         };
+        let search_ended = self.end_search();
         {
             let mut state = self.state_mut();
             let previous = std::mem::take(&mut *state);
@@ -1930,6 +1937,9 @@ impl AppModel {
         self.emit_by_name::<()>("trash-changed", &[]);
         self.emit_by_name::<()>("open-note-changed", &[]);
         self.emit_by_name::<()>("sync-state-changed", &[]);
+        if search_ended {
+            self.emit_by_name::<()>("search-changed", &[]);
+        }
         self.bump_generation();
         self.imp().editor_lane.supersede();
         let model = self.clone();
