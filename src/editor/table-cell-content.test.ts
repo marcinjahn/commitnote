@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { markdownParser } from "../markdown/markdown-parser";
-import { renderTableCellContent } from "./table-cell-content";
+import {
+  type CellImageRenderer,
+  renderTableCellContent,
+} from "./table-cell-content";
 
-function renderCell(source: string): string {
+function renderCell(source: string, renderImage?: CellImageRenderer): string {
   const text = `| h |\n| - |\n| ${source} |`;
   const tree = markdownParser.parse(text);
   const cells: ReturnType<typeof tree.resolve>[] = [];
@@ -14,7 +17,12 @@ function renderCell(source: string): string {
   });
   const cell = cells[cells.length - 1];
   const td = document.createElement("td");
-  renderTableCellContent(td, cell, (from, to) => text.slice(from, to));
+  renderTableCellContent(
+    td,
+    cell,
+    (from, to) => text.slice(from, to),
+    renderImage,
+  );
   return td.innerHTML;
 }
 
@@ -102,6 +110,52 @@ describe("renderTableCellContent", () => {
 
   it("renders an image as its alt text", () => {
     expect(renderCell("![a cat](cat.png)")).toBe("a cat");
+  });
+
+  it("renders an image reference through the image renderer", () => {
+    const renderImage = vi.fn<CellImageRenderer>(() => {
+      const node = document.createElement("i");
+      node.textContent = "img";
+      return node;
+    });
+
+    expect(
+      renderCell(
+        "![a cat](image:abcdefghijklmnopqrstuvwxyz#800x600)",
+        renderImage,
+      ),
+    ).toBe("<i>img</i>");
+    expect(renderImage).toHaveBeenCalledOnce();
+    expect(renderImage).toHaveBeenCalledWith({
+      imageId: "abcdefghijklmnopqrstuvwxyz",
+      alt: "a cat",
+      width: 800,
+      height: 600,
+    });
+  });
+
+  it("unescapes the alt text passed to the image renderer", () => {
+    const renderImage = vi.fn<CellImageRenderer>(() =>
+      document.createTextNode(""),
+    );
+
+    renderCell("![a \\*cat\\*](image:abcdefghijklmnopqrstuvwxyz)", renderImage);
+
+    expect(renderImage).toHaveBeenCalledWith({
+      imageId: "abcdefghijklmnopqrstuvwxyz",
+      alt: "a *cat*",
+    });
+  });
+
+  it("keeps the label of an external image and never calls the renderer", () => {
+    const renderImage = vi.fn<CellImageRenderer>(() =>
+      document.createTextNode(""),
+    );
+
+    expect(
+      renderCell("![a cat](https://example.com/cat.png)", renderImage),
+    ).toBe("a cat");
+    expect(renderImage).not.toHaveBeenCalled();
   });
 
   it("renders an escaped pipe and other escapes", () => {

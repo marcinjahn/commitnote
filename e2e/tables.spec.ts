@@ -1,6 +1,7 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { TouchFinger, openNotes } from "./helpers";
+import { TouchFinger, flushPendingSaves, openNotes } from "./helpers";
+import { WHITEBOARD_IMAGE_ID } from "./helpers/images";
 import {
   chooseAccent,
   chooseOption,
@@ -466,6 +467,648 @@ test(
   },
 );
 
+test.describe("nested tables", () => {
+  const NESTED_CONTENT = [
+    "Between one",
+    "",
+    "> Quoted line",
+    "",
+    "> | Quoted | Value |",
+    "> | --- | --- |",
+    "> | q1 | v1 |",
+    "",
+    "Between two",
+    "",
+    "> > | Deep | Value |",
+    "> > | --- | --- |",
+    "> > | d1 | v1 |",
+    "",
+    "Between three",
+    "",
+    "- Item text",
+    "",
+    "  Continuation text",
+    "",
+    "  | Listed | Value |",
+    "  | --- | --- |",
+    "  | l1 | v1 |",
+    "",
+  ];
+
+  async function appendContent(
+    page: Page,
+    content: readonly string[],
+    expectedTables: number,
+  ): Promise<void> {
+    await openWelcomeNote(page);
+    await caretBelowTable(page);
+    const lines = pane(page).locator(".cm-line");
+    const lineCount = await lines.count();
+    await page.keyboard.press("Enter");
+    // CodeMirror applies Enter asynchronously on Android.
+    await expect(lines).toHaveCount(lineCount + 1);
+    await page.keyboard.insertText(content.join("\n"));
+    await page.keyboard.press("ControlOrMeta+Home");
+    await expect(tables(page)).toHaveCount(expectedTables);
+  }
+
+  const widgetWith = (page: Page, header: string) =>
+    pane(page)
+      .locator(".cm-table-widget")
+      .filter({ has: page.getByRole("columnheader", { name: header }) });
+
+  const tableLeft = (table: Locator) =>
+    table.evaluate((el) => el.getBoundingClientRect().left);
+
+  function firstCharLeft(container: Locator, text: string): Promise<number> {
+    return container.evaluate((el, wanted) => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const at = node.textContent?.indexOf(wanted) ?? -1;
+        if (at < 0) continue;
+        const range = document.createRange();
+        range.setStart(node, at);
+        range.setEnd(node, at + 1);
+        return range.getBoundingClientRect().left;
+      }
+      throw new Error("text not found");
+    }, text);
+  }
+
+  test("tables in blockquotes and list items render with bars and indent", async ({
+    page,
+  }) => {
+    await appendContent(page, NESTED_CONTENT, 4);
+    await expect(
+      pane(page).locator(".cm-line", { hasText: "| --- |" }),
+    ).toHaveCount(0);
+
+    const quoted = widgetWith(page, "Quoted");
+    const deep = widgetWith(page, "Deep");
+    await expect(quoted.locator(".cm-table-quote")).toHaveCount(1);
+    await expect(deep.locator(".cm-table-quote")).toHaveCount(2);
+
+    const quoteLine = line(page, "Quoted line");
+    await expect
+      .poll(async () => {
+        const [bar, source] = await Promise.all([
+          quoted
+            .locator(".cm-table-quote")
+            .evaluate((el) => getComputedStyle(el).borderLeftColor),
+          quoteLine.evaluate((el) => getComputedStyle(el).borderLeftColor),
+        ]);
+        return bar === source;
+      })
+      .toBe(true);
+
+    await expect
+      .poll(async () => {
+        const [bar, source] = await Promise.all([
+          quoted
+            .locator(".cm-table-quote")
+            .evaluate((el) => el.getBoundingClientRect().left),
+          quoteLine.evaluate((el) => el.getBoundingClientRect().left),
+        ]);
+        return Math.abs(bar - source);
+      })
+      .toBeLessThanOrEqual(1);
+
+    await expect
+      .poll(async () => {
+        const nestedOffset =
+          (await tableLeft(widgetWith(page, "Listed").locator("table"))) -
+          (await firstCharLeft(
+            line(page, "Continuation text"),
+            "Continuation text",
+          ));
+        const topOffset =
+          (await tableLeft(tables(page).first())) -
+          (await firstCharLeft(line(page, "Between one"), "Between one"));
+        return Math.abs(nestedOffset - topOffset);
+      })
+      .toBeLessThanOrEqual(2);
+  });
+
+  test("clicking a cell of a nested table reveals only that table", async ({
+    page,
+  }) => {
+    await appendContent(page, NESTED_CONTENT, 4);
+
+    await widgetWith(page, "Quoted").getByRole("cell", { name: "q1" }).click();
+    await expect(tables(page)).toHaveCount(3);
+    await expect(
+      pane(page).locator(".cm-line", { hasText: "| --- |" }),
+    ).toHaveCount(1);
+    await expectCaretIn(line(page, "q1"));
+    await expect(widgetWith(page, "Deep")).toHaveCount(1);
+    await expect(widgetWith(page, "Listed")).toHaveCount(1);
+  });
+
+  test("ArrowDown from above a list table enters its first line", async ({
+    page,
+  }) => {
+    await appendContent(page, NESTED_CONTENT, 4);
+
+    await line(page, "Continuation text").click();
+    await page.keyboard.press("ArrowDown");
+    await expect(tables(page)).toHaveCount(4);
+    await page.keyboard.press("ArrowDown");
+    await expect(tables(page)).toHaveCount(3);
+    await expect(line(page, "| Listed | Value |")).toBeVisible();
+    await expectCaretIn(line(page, "| Listed | Value |"));
+  });
+
+  test("an irregular nested table stays source", async ({ page }) => {
+    await appendContent(
+      page,
+      [
+        "Between one",
+        "",
+        "> | Lazy | Value |",
+        "> | --- | --- |",
+        "| z1 | v1 |",
+        "",
+      ],
+      1,
+    );
+
+    await expect(line(page, "| z1 | v1 |")).toBeVisible();
+    await expect(
+      pane(page).locator(".cm-line", { hasText: "| --- |" }),
+    ).toHaveCount(1);
+  });
+});
+
+test.describe("cell images", () => {
+  const PICTURE_ROW = `| ![Whiteboard](image:${WHITEBOARD_IMAGE_ID}) |`;
+
+  async function appendImageTable(
+    page: Page,
+    rows: readonly string[],
+  ): Promise<void> {
+    await openWelcomeNote(page);
+    await caretBelowTable(page);
+    const lines = pane(page).locator(".cm-line");
+    const lineCount = await lines.count();
+    await page.keyboard.press("Enter");
+    await expect(lines).toHaveCount(lineCount + 1);
+    await page.keyboard.insertText(
+      ["", "| Picture |", "| --- |", ...rows, ""].join("\n"),
+    );
+    await page.keyboard.press("ControlOrMeta+Home");
+    await expect(tables(page)).toHaveCount(2);
+  }
+
+  const cellImage = (scope: Page | Locator) => scope.locator(".cm-table-image");
+
+  test(
+    "an image reference shows the image inside its cell",
+    { tag: "@mobile" },
+    async ({ page }) => {
+      await appendImageTable(page, [PICTURE_ROW]);
+
+      const image = cellImage(pane(page));
+      await expect(image).toHaveAttribute("data-state", "loaded");
+      const img = image.locator("img");
+      expect(
+        await img.evaluate((el: HTMLImageElement) => el.naturalWidth),
+      ).toBeGreaterThan(0);
+      await expect(image.locator(".cm-table-image-alt")).toBeHidden();
+
+      const box = (await img.boundingBox())!;
+      expect(box.height).toBeLessThanOrEqual(160.5);
+      const cellContentWidth = await image.evaluate((el) => {
+        const cell = el.closest("td")!;
+        const style = getComputedStyle(cell);
+        return (
+          cell.clientWidth -
+          parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight)
+        );
+      });
+      expect(box.width).toBeLessThanOrEqual(cellContentWidth + 0.5);
+    },
+  );
+
+  test("an unavailable image shows its alt text", async ({ page }) => {
+    await appendImageTable(page, [
+      "| ![Missing picture](image:aaaaaaaaaaaaaaaaaaaaaaaaaa#40x30) |",
+    ]);
+
+    const image = cellImage(pane(page));
+    await expect(image).toHaveAttribute("data-state", "unavailable");
+    await expect(image.locator(".cm-table-image-alt")).toHaveText(
+      "Missing picture",
+    );
+    await expect(image.locator("img")).toBeHidden();
+  });
+
+  test("clicking an image reveals the table at its row", async ({ page }) => {
+    await appendImageTable(page, [PICTURE_ROW]);
+    const image = cellImage(pane(page));
+    await expect(image).toHaveAttribute("data-state", "loaded");
+
+    await image.locator("img").click();
+
+    await expect(line(page, "| --- |").last()).toBeVisible();
+    await expect(tables(page)).toHaveCount(1);
+    await expectCaretIn(line(page, "![Whiteboard](image:"));
+  });
+
+  test("the share viewer shows the image and a click does not reveal the table", async ({
+    page,
+  }) => {
+    await appendImageTable(page, [PICTURE_ROW]);
+    await expect(cellImage(pane(page))).toHaveAttribute("data-state", "loaded");
+    await flushPendingSaves(page);
+    await page.getByRole("button", { name: "Share", exact: true }).click();
+    const link = await createLink(page);
+
+    const viewer = await page.context().newPage();
+    await viewer.goto(link);
+    const image = viewer.locator(".cm-table-image");
+    await expect(image).toHaveAttribute("data-state", "loaded");
+    expect(
+      await image
+        .locator("img")
+        .evaluate((el: HTMLImageElement) => el.naturalWidth),
+    ).toBeGreaterThan(0);
+
+    await image.locator("img").click();
+    await expect(image).toBeVisible();
+    await expect(
+      viewer.locator(".cm-line", { hasText: "| --- |" }),
+    ).toHaveCount(0);
+  });
+});
+
+const FRUIT = [
+  "| Fruit | Colour |",
+  "| --- | --- |",
+  "| Apple | Red |",
+  "| Lemon | Yellow |",
+];
+const AFTER_FRUIT = "After fruit";
+
+interface Point {
+  readonly x: number;
+  readonly y: number;
+}
+
+const fruitTable = (page: Page) =>
+  tables(page).filter({
+    has: page.getByRole("columnheader", { name: "Fruit" }),
+  });
+const fruitCell = (page: Page, name: string) =>
+  fruitTable(page).getByRole("cell", { name, exact: true });
+const selectedText = (page: Page) =>
+  page.evaluate(() => getSelection()?.toString() ?? "");
+
+async function textPoint(target: Locator, fraction: number): Promise<Point> {
+  await target.scrollIntoViewIfNeeded();
+  return target.evaluate((el, at) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.left + rect.width * at, y: rect.top + rect.height / 2 };
+  }, fraction);
+}
+
+async function drag(page: Page, from: Point, to: Point): Promise<void> {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+}
+
+async function dragAcrossFruit(page: Page): Promise<void> {
+  await drag(
+    page,
+    await textPoint(fruitCell(page, "Apple"), 0.4),
+    await textPoint(fruitCell(page, "Yellow"), 0.6),
+  );
+  await expect.poll(() => selectedText(page)).toContain("Lemon");
+  await expect
+    .poll(() =>
+      fruitTable(page).evaluate(
+        (el) => document.activeElement === el.closest(".cm-table-widget"),
+      ),
+    )
+    .toBe(true);
+}
+
+async function dragFruitWords(
+  page: Page,
+  from: Locator,
+  to: Locator,
+): Promise<void> {
+  await drag(page, await textPoint(from, 0), await textPoint(to, 1));
+  await expect
+    .poll(() =>
+      fruitTable(page).evaluate(
+        (el) => document.activeElement === el.closest(".cm-table-widget"),
+      ),
+    )
+    .toBe(true);
+}
+
+interface CopiedData {
+  readonly text: string;
+  readonly html: string;
+}
+
+async function recordCopy(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const target = window as unknown as { copied: CopiedData | null };
+    target.copied = null;
+    window.addEventListener("copy", (event) => {
+      target.copied = {
+        text: event.clipboardData?.getData("text/plain") ?? "",
+        html: event.clipboardData?.getData("text/html") ?? "",
+      };
+    });
+  });
+}
+
+async function copiedData(page: Page): Promise<CopiedData | null> {
+  return page.evaluate(
+    () => (window as unknown as { copied: CopiedData | null }).copied,
+  );
+}
+
+async function appendFruitTable(page: Page): Promise<void> {
+  await openWelcomeNote(page);
+  await caretBelowTable(page);
+  const lines = pane(page).locator(".cm-line");
+  const lineCount = await lines.count();
+  await page.keyboard.press("Enter");
+  await expect(lines).toHaveCount(lineCount + 1);
+  await page.keyboard.insertText([...FRUIT, "", AFTER_FRUIT].join("\n"));
+  await page.keyboard.press("ControlOrMeta+Home");
+  await expect(tables(page)).toHaveCount(2);
+}
+
+async function expectFruitRevealed(page: Page): Promise<void> {
+  await expect(line(page, "| Apple | Red |")).toBeVisible();
+  await expect(tables(page)).toHaveCount(1);
+}
+
+test.describe("table text selection", () => {
+  test("a drag across cells selects their text without revealing the table", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+
+    await dragAcrossFruit(page);
+
+    expect(await selectedText(page)).toContain("Red");
+    await expect(tables(page)).toHaveCount(2);
+    await expect(pane(page).locator(".cm-table-source-line")).toHaveCount(0);
+  });
+
+  test("a drag beyond the table stays in it and a later click edits normally", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+
+    await drag(
+      page,
+      await textPoint(fruitCell(page, "Apple"), 0.4),
+      await textPoint(line(page, AFTER_FRUIT), 0.5),
+    );
+
+    await expect
+      .poll(() =>
+        fruitTable(page).evaluate((el) =>
+          el.contains(getSelection()!.focusNode),
+        ),
+      )
+      .toBe(true);
+    const selected = await selectedText(page);
+    expect(selected).toContain("Yellow");
+    expect(selected).not.toContain("After");
+    await expect(tables(page)).toHaveCount(2);
+
+    await line(page, AFTER_FRUIT).click();
+    await expect(editor(page)).toBeFocused();
+    await appendToLine(page, `${AFTER_FRUIT}Z`);
+    await expect(tables(page)).toHaveCount(2);
+  });
+
+  test("a press that moves only a few pixels still reveals the table", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+    const { x, y } = await textPoint(fruitCell(page, "Red"), 0.5);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 2, y);
+    await page.mouse.up();
+
+    await expectFruitRevealed(page);
+    await expectCaretIn(line(page, "| Apple | Red |"));
+  });
+
+  test("after a drag selection Escape and typing go to the previous caret", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+    const firstLine = pane(page).locator(".cm-line").first();
+
+    await dragAcrossFruit(page);
+    await page.keyboard.press("Escape");
+    await expect(editor(page)).toBeFocused();
+    await expect.poll(() => selectedText(page)).toBe("");
+    await page.keyboard.type("X");
+    await expect(firstLine).toHaveText("X# Welcome");
+
+    await dragAcrossFruit(page);
+    await page.keyboard.type("Y");
+    await expect(firstLine).toHaveText("XY# Welcome");
+    await expect(editor(page)).toBeFocused();
+    await expect(tables(page)).toHaveCount(2);
+  });
+
+  test("after a drag selection ArrowDown puts the caret below the table", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+    await dragAcrossFruit(page);
+
+    await page.keyboard.press("ArrowDown");
+    await expect(editor(page)).toBeFocused();
+    await expect(tables(page)).toHaveCount(2);
+
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.type("Z");
+    await expect(line(page, AFTER_FRUIT)).toHaveText(`Z${AFTER_FRUIT}`);
+    await expect(tables(page)).toHaveCount(2);
+  });
+
+  test("the share viewer keeps native selection across table cells", async ({
+    page,
+  }) => {
+    await openWelcomeNote(page);
+    await page.getByRole("button", { name: "Share", exact: true }).click();
+    const link = await createLink(page);
+    const viewer = await page.context().newPage();
+    await viewer.goto(link);
+    const table = viewer.locator("table.cm-table");
+    await expect(table).toBeVisible();
+
+    await drag(
+      viewer,
+      await textPoint(
+        table.getByRole("columnheader", { name: "Column A" }),
+        0.3,
+      ),
+      await textPoint(table.getByRole("cell", { name: "2", exact: true }), 0.5),
+    );
+
+    const selected = await selectedText(viewer);
+    expect(selected).toContain("Column B");
+    expect(selected).toContain("1");
+    await expect(table).toBeVisible();
+    await expect(
+      viewer.locator(".cm-line", { hasText: "| --- |" }),
+    ).toHaveCount(0);
+  });
+
+  test("copying a drag across cells puts them on the clipboard as TSV and an HTML table", async ({
+    page,
+  }) => {
+    await appendFruitTable(page);
+    await recordCopy(page);
+
+    await dragFruitWords(
+      page,
+      fruitCell(page, "Apple"),
+      fruitCell(page, "Yellow"),
+    );
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect.poll(() => copiedData(page)).not.toBeNull();
+    const body = await copiedData(page);
+
+    expect(body?.text).toBe("Apple\tRed\nLemon\tYellow");
+    expect(body?.html).toContain("<td>Apple</td><td>Red</td>");
+    await expect(tables(page)).toHaveCount(2);
+
+    await dragFruitWords(
+      page,
+      fruitTable(page).getByRole("columnheader", { name: "Fruit" }),
+      fruitCell(page, "Red"),
+    );
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect
+      .poll(async () => (await copiedData(page))?.text)
+      .toBe("Fruit\tColour\nApple\tRed");
+    expect((await copiedData(page))?.html).toContain("<th>Fruit</th>");
+  });
+
+  test("copying a selection inside one cell copies it natively", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await appendFruitTable(page);
+    await recordCopy(page);
+
+    await dragFruitWords(
+      page,
+      fruitCell(page, "Yellow"),
+      fruitCell(page, "Yellow"),
+    );
+    await expect.poll(() => selectedText(page)).toBe("Yellow");
+    await page.keyboard.press("ControlOrMeta+c");
+
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe("Yellow");
+    const html = await page.evaluate(async () => {
+      const [item] = await navigator.clipboard.read();
+      return item.types.includes("text/html")
+        ? (await item.getType("text/html")).text()
+        : "";
+    });
+    expect(html).not.toContain("<table");
+    expect((await copiedData(page))?.html).toBe("");
+  });
+
+  test("the share viewer copies selected cells as TSV", async ({ page }) => {
+    await appendFruitTable(page);
+    await flushPendingSaves(page);
+    await page.getByRole("button", { name: "Share", exact: true }).click();
+    const link = await createLink(page);
+    const viewer = await page.context().newPage();
+    await viewer.goto(link);
+    const table = viewer.locator("table.cm-table").filter({
+      has: viewer.getByRole("columnheader", { name: "Fruit" }),
+    });
+    await expect(table).toBeVisible();
+
+    await expect(async () => {
+      await drag(
+        viewer,
+        await textPoint(table.getByRole("cell", { name: "Apple" }), 0),
+        await textPoint(table.getByRole("cell", { name: "Yellow" }), 1),
+      );
+      expect(await selectedText(viewer)).toContain("Lemon");
+    }).toPass();
+    await recordCopy(viewer);
+    await viewer.keyboard.press("ControlOrMeta+c");
+    await expect.poll(() => copiedData(viewer)).not.toBeNull();
+
+    expect((await copiedData(viewer))?.text).toBe("Apple\tRed\nLemon\tYellow");
+  });
+
+  test(
+    "a tap on a cell reveals the table",
+    { tag: "@mobile-only" },
+    async ({ page }) => {
+      await appendFruitTable(page);
+
+      await fruitCell(page, "Red").tap();
+
+      await expectFruitRevealed(page);
+    },
+  );
+
+  test(
+    "a long press on a cell does not reveal the table",
+    { tag: "@mobile-only" },
+    async ({ page }) => {
+      await appendFruitTable(page);
+      const point = await textPoint(fruitCell(page, "Red"), 0.5);
+
+      const finger = await TouchFinger.on(page);
+      await finger.down(point);
+      finger.hold(800);
+      await finger.move(point, 1);
+      await finger.up();
+
+      await expect(tables(page)).toHaveCount(2);
+
+      // Headless Chromium selects no word on a long press, so the selection
+      // it would make is set directly.
+      await editor(page).focus();
+      await fruitCell(page, "Red").evaluate((cell) => {
+        const text = cell.firstChild!;
+        getSelection()!.setBaseAndExtent(text, 0, text, 3);
+      });
+      await expect
+        .poll(() =>
+          fruitTable(page).evaluate(
+            (el) => document.activeElement === el.closest(".cm-table-widget"),
+          ),
+        )
+        .toBe(true);
+      await expect.poll(() => selectedText(page)).toBe("Red");
+      await expect(tables(page)).toHaveCount(2);
+    },
+  );
+});
+
 test.describe("vim mode", () => {
   const gutter = (page: Page) => page.locator(".cm-relative-line-numbers");
   const position = (page: Page) => page.locator(".vim-status-bar .position");
@@ -631,6 +1274,57 @@ test.describe("vim mode", () => {
       await page.keyboard.press("Escape");
       await expect(modeText(page)).toHaveText("NORMAL");
       await expect(tables(page)).toHaveCount(2);
+
+      const wrapped = tables(page)
+        .nth(1)
+        .getByRole("cell", { name: LONG_TEXT });
+      await expect
+        .poll(() =>
+          wrapped.evaluate((el) => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            return new Set([...range.getClientRects()].map((r) => r.top)).size;
+          }),
+        )
+        .toBeGreaterThan(1);
+
+      await expect(
+        gutter(page).locator(".cm-table-line-numbers").nth(1),
+      ).toBeAttached();
+      await expect
+        .poll(async () => misalignments(await measureTable(page, 1)))
+        .toEqual([]);
+    },
+  );
+
+  test(
+    "nested table line numbers sit on their rows",
+    { tag: "@mobile" },
+    async ({ page }) => {
+      await openVimWelcome(page);
+      await focusEditor(page);
+      await page.keyboard.press("G");
+      await page.keyboard.press("o");
+      await page.keyboard.insertText(
+        [
+          row(["Name", "Notes"]),
+          row(["---", "---"]),
+          row(["first", "short"]),
+          row(["second", LONG_TEXT]),
+          row(["third", "short"]),
+          "",
+        ]
+          .map((text) => (text === "" ? text : `> ${text}`))
+          .join("\n"),
+      );
+      await page.keyboard.press("Escape");
+      await expect(modeText(page)).toHaveText("NORMAL");
+      await expect(tables(page)).toHaveCount(2);
+      await expect(
+        tables(page)
+          .nth(1)
+          .locator("xpath=ancestor::*[contains(@class,'cm-table-quote')]"),
+      ).toHaveCount(1);
 
       const wrapped = tables(page)
         .nth(1)
@@ -859,6 +1553,93 @@ test.describe("vim mode", () => {
         ),
       }),
     ).toBeVisible();
+  });
+
+  test("a click on a cell reveals the table in normal mode", async ({
+    page,
+  }) => {
+    await openVimWelcome(page);
+
+    await tables(page).getByRole("cell", { name: "1", exact: true }).click();
+
+    await expectRevealed(page);
+    await expect(modeText(page)).toHaveText("NORMAL");
+  });
+
+  test("copying table cells fills the Vim register", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await openVimWelcome(page);
+    await focusEditor(page);
+    await page.keyboard.press("G");
+    await page.keyboard.press("o");
+    await page.keyboard.insertText([...FRUIT, "", AFTER_FRUIT].join("\n"));
+    await page.keyboard.press("Escape");
+    await page.keyboard.type("gg");
+    await expect(tables(page)).toHaveCount(2);
+
+    await dragFruitWords(
+      page,
+      fruitCell(page, "Apple"),
+      fruitCell(page, "Yellow"),
+    );
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe("Apple\tRed\nLemon\tYellow");
+
+    await line(page, AFTER_FRUIT)
+      .locator("xpath=preceding-sibling::*[1]")
+      .click();
+    await expect(editor(page)).toBeFocused();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("p");
+
+    await expect
+      .poll(async () =>
+        (await pane(page).locator(".cm-line").allTextContents()).join("\n"),
+      )
+      .toContain("Apple\tRed\nLemon\tYellow\n" + AFTER_FRUIT);
+  });
+
+  test("after a drag selection keys act from the previous cursor", async ({
+    page,
+  }) => {
+    await openVimWelcome(page);
+    await focusEditor(page);
+    await page.keyboard.press("G");
+    await page.keyboard.press("o");
+    await page.keyboard.insertText([...FRUIT, "", AFTER_FRUIT].join("\n"));
+    await page.keyboard.press("Escape");
+    await page.keyboard.type("gg");
+    await expect(tables(page)).toHaveCount(2);
+    const secondLine = pane(page).locator(".cm-line").nth(1);
+
+    await dragAcrossFruit(page);
+    await page.keyboard.press("Escape");
+    await expect(editor(page)).toBeFocused();
+    await expect(modeText(page)).toHaveText("NORMAL");
+
+    await dragAcrossFruit(page);
+    await page.keyboard.press("j");
+    await expect(editor(page)).toBeFocused();
+    await page.keyboard.press("i");
+    await expect(modeText(page)).toHaveText("INSERT");
+    await page.keyboard.type("Q");
+    await page.keyboard.press("Escape");
+    await expect(secondLine).toHaveText("Q");
+    await expect(tables(page)).toHaveCount(2);
+
+    await dragAcrossFruit(page);
+    await line(page, AFTER_FRUIT).click();
+    await expect(editor(page)).toBeFocused();
+    await expect(modeText(page)).toHaveText("NORMAL");
+    await page.keyboard.press("i");
+    await page.keyboard.type("W");
+    await expect(line(page, "After")).toHaveText(/^After fr.*W/);
+    await expect(tables(page)).toHaveCount(2);
   });
 });
 

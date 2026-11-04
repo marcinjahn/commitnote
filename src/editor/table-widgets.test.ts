@@ -167,22 +167,71 @@ describe("tableWidgetsField", () => {
     expect(lines).toEqual([]);
   });
 
-  it("never renders a table inside a blockquote", () => {
+  it("renders a table inside a blockquote", () => {
     const quoted = "> | a | b |\n> | - | - |\n> | 1 | 2 |";
     const doc = `Intro\n\n${quoted}\n\nafter`;
     const from = doc.indexOf(">");
     const { widgets, lines, marks } = decorations(stateFor(doc));
 
-    expect(widgets).toEqual([]);
-    expect(lines).toEqual(lineStarts(doc, from, 3));
-    expect(marks).toEqual(delimiterRanges(doc, from, 3, 2));
+    expect(widgets.map((w) => [w.from, w.to])).toEqual([
+      [from, from + quoted.length],
+    ]);
+    expect(widgets[0]?.widget.source).toBe(quoted);
+    expect(widgets[0]?.widget.prefix).toBe("> ");
+    expect(lines).toEqual([]);
+    expect(marks).toEqual([]);
   });
 
-  it("never renders a table inside a list item", () => {
+  it("renders a table inside a nested blockquote", () => {
+    const quoted = "> > | a | b |\n> > | - | - |\n> > | 1 | 2 |";
+    const doc = `Intro\n\n${quoted}\n\nafter`;
+    const from = doc.indexOf(">");
+    const { widgets, lines, marks } = decorations(stateFor(doc));
+
+    expect(widgets.map((w) => [w.from, w.to])).toEqual([
+      [from, from + quoted.length],
+    ]);
+    expect(widgets[0]?.widget.prefix).toBe("> > ");
+    expect(lines).toEqual([]);
+    expect(marks).toEqual([]);
+  });
+
+  it("renders a table inside a list item", () => {
     const listed = "- item\n\n  | a | b |\n  | - | - |\n  | 1 | 2 |";
     const doc = `Intro\n\n${listed}\n\nafter`;
-    const from = doc.indexOf("| a");
+    const from = doc.indexOf("  | a");
     const { widgets, lines, marks } = decorations(stateFor(doc));
+
+    expect(widgets.map((w) => [w.from, w.to])).toEqual([
+      [from, from + "  | a | b |\n  | - | - |\n  | 1 | 2 |".length],
+    ]);
+    expect(widgets[0]?.widget.prefix).toBe("  ");
+    expect(lines).toEqual([]);
+    expect(marks).toEqual([]);
+  });
+
+  it.each([
+    ["a lazy blockquote line", "> | a | b |\n> | - | - |\n| 1 | 2 |"],
+    [
+      "a list marker on the first line",
+      "- | a | b |\n  | - | - |\n  | 1 | 2 |",
+    ],
+    ["mixed quote prefixes", "> | a | b |\n>| - | - |\n> | 1 | 2 |"],
+  ])("keeps a nested table with %s as source", (_name, nested) => {
+    const doc = `Intro\n\n${nested}\n\nafter`;
+    const { widgets, lines } = decorations(stateFor(doc));
+
+    expect(widgets).toEqual([]);
+    expect(lines.length).toBeGreaterThan(0);
+  });
+
+  it("reveals a touched nested table as source", () => {
+    const quoted = "> | a | b |\n> | - | - |\n> | 1 | 2 |";
+    const doc = `Intro\n\n${quoted}\n\nafter`;
+    const from = doc.indexOf(">");
+    const { widgets, lines, marks } = decorations(
+      stateFor(doc, EditorSelection.cursor(doc.indexOf("b"))),
+    );
 
     expect(widgets).toEqual([]);
     expect(lines).toEqual(lineStarts(doc, from, 3));
@@ -348,12 +397,12 @@ describe("tableEntryLine", () => {
     expect(lineNumberOf(state, 6, false)).toBeNull();
   });
 
-  it("returns null for a nested table", () => {
+  it("enters a nested table at its edge lines", () => {
     const quoted = "Intro\n\n> | a | b |\n> | - | - |\n> | 1 | 2 |\n\nafter";
     const state = stateFor(quoted);
 
-    expect(lineNumberOf(state, 2, true)).toBeNull();
-    expect(lineNumberOf(state, 6, false)).toBeNull();
+    expect(lineNumberOf(state, 2, true)).toBe(3);
+    expect(lineNumberOf(state, 6, false)).toBe(5);
   });
 
   it("returns null in a read-only state", () => {

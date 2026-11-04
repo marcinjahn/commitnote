@@ -61,7 +61,7 @@ interface FoundReference {
   readonly height?: number;
 }
 
-function devicePixelRatio(): number {
+export function devicePixelRatio(): number {
   return globalThis.devicePixelRatio || 1;
 }
 

@@ -39,7 +39,7 @@ function widget(): HTMLElement | null {
 }
 
 function mouse(
-  type: "mousedown" | "click" | "mousemove",
+  type: "mousedown" | "mouseup" | "click" | "mousemove",
   target: Element,
   init: MouseEventInit = {},
 ): MouseEvent {
@@ -183,9 +183,45 @@ describe("table widget in a read-only editor", () => {
   });
 });
 
+function touchDown(target: Element, timeStamp: number): void {
+  const event = new PointerEvent("pointerdown", {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    pointerType: "touch",
+  });
+  Object.defineProperty(event, "timeStamp", { value: timeStamp });
+  target.dispatchEvent(event);
+}
+
+function clickAt(
+  target: Element,
+  init: MouseEventInit & { timeStamp?: number },
+) {
+  const { timeStamp, ...rest } = init;
+  const event = new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    ...rest,
+  });
+  if (timeStamp !== undefined) {
+    Object.defineProperty(event, "timeStamp", { value: timeStamp });
+  }
+  target.dispatchEvent(event);
+  return event;
+}
+
 describe("table widget mousedown", () => {
-  it("prevents the default of a plain mousedown in an editable editor", () => {
+  it("leaves a plain mousedown to the browser so a drag can select text", () => {
     setup(`${INTRO}${TABLE}`);
+
+    expect(mouse("mousedown", cellAt(1, 0)).defaultPrevented).toBe(false);
+  });
+
+  it("prevents the default of a touch press in an editable editor", () => {
+    setup(`${INTRO}${TABLE}`);
+    touchDown(cellAt(1, 0), 0);
 
     expect(mouse("mousedown", cellAt(1, 0)).defaultPrevented).toBe(true);
   });
@@ -202,6 +238,124 @@ describe("table widget mousedown", () => {
     expect(
       mouse("mousedown", cellAt(1, 0), { button: 2 }).defaultPrevented,
     ).toBe(false);
+  });
+
+  it("prevents dragging the table's content", () => {
+    setup(`${INTRO}${TABLE}`);
+    const event = new Event("dragstart", { bubbles: true, cancelable: true });
+
+    cellAt(1, 0).dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+});
+
+describe("table widget press and release", () => {
+  it("reveals the table when the pointer moved only a few pixels", () => {
+    setup(`${INTRO}${TABLE}`);
+
+    mouse("mousedown", cellAt(1, 0), { clientX: 10, clientY: 10 });
+    clickAt(cellAt(1, 0), { clientX: 12, clientY: 10 });
+
+    expect(widget()).toBeNull();
+  });
+
+  it("keeps the table and the selection after a drag", () => {
+    const ed = setup(`${INTRO}${TABLE}`);
+    ed.setSelection(2, 2);
+
+    mouse("mousedown", cellAt(1, 0), { clientX: 10, clientY: 10 });
+    const event = clickAt(cellAt(1, 1), { clientX: 16, clientY: 10 });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(ed.getSelection()).toEqual({ anchor: 2, head: 2 });
+    expect(widget()).not.toBeNull();
+  });
+
+  it("reveals the table on a short tap", () => {
+    setup(`${INTRO}${TABLE}`);
+
+    touchDown(cellAt(1, 0), 1000);
+    mouse("mousedown", cellAt(1, 0));
+    clickAt(cellAt(1, 0), { timeStamp: 1100 });
+
+    expect(widget()).toBeNull();
+  });
+
+  it("keeps the table after a long press", () => {
+    const ed = setup(`${INTRO}${TABLE}`);
+
+    touchDown(cellAt(1, 0), 1000);
+    mouse("mousedown", cellAt(1, 0));
+    clickAt(cellAt(1, 0), { timeStamp: 1500 });
+
+    expect(ed.getSelection().anchor).toBe(0);
+    expect(widget()).not.toBeNull();
+  });
+});
+
+describe("table widget drag selection seed", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(document, "caretPositionFromPoint");
+  });
+
+  function stubCarets(): void {
+    const carets = [
+      { x: 10, node: cellAt(1, 0).firstChild! },
+      { x: 30, node: cellAt(1, 1).firstChild! },
+    ];
+    Object.defineProperty(document, "caretPositionFromPoint", {
+      configurable: true,
+      value: (x: number) => {
+        const caret = carets.find((entry) => entry.x === x);
+        return caret ? { offsetNode: caret.node, offset: 0 } : null;
+      },
+    });
+  }
+
+  function move(x: number, buttons: number): void {
+    mouse("mousemove", cellAt(1, 1), { clientX: x, clientY: 10, buttons });
+  }
+
+  it("turns a collapsed drag into a range from the press point", () => {
+    setup(`${INTRO}${TABLE}`);
+    stubCarets();
+    getSelection()?.removeAllRanges();
+
+    mouse("mousedown", cellAt(1, 0), { clientX: 10, clientY: 10 });
+    move(30, 1);
+
+    const selection = getSelection();
+    expect(selection?.anchorNode).toBe(cellAt(1, 0).firstChild);
+    expect(selection?.focusNode).toBe(cellAt(1, 1).firstChild);
+  });
+
+  it("leaves the selection alone within the click slop and after release", () => {
+    setup(`${INTRO}${TABLE}`);
+    stubCarets();
+    getSelection()?.removeAllRanges();
+
+    mouse("mousedown", cellAt(1, 0), { clientX: 10, clientY: 10 });
+    move(12, 1);
+    expect(getSelection()?.rangeCount).toBe(0);
+
+    mouse("mouseup", cellAt(1, 0), { clientX: 12, clientY: 10 });
+    move(30, 1);
+    expect(getSelection()?.rangeCount).toBe(0);
+  });
+});
+
+describe("table widget focus", () => {
+  it("makes the editable wrapper focusable by script only", () => {
+    setup(`${INTRO}${TABLE}`);
+
+    expect(widget()?.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("leaves the read-only wrapper unfocusable", () => {
+    setup(`${INTRO}${TABLE}`, { readOnly: true });
+
+    expect(widget()?.hasAttribute("tabindex")).toBe(false);
   });
 });
 
@@ -361,5 +515,186 @@ describe("table scroller focusability", () => {
     setup(`${INTRO}${TABLE}`, { readOnly: true });
 
     expect(query(".cm-table-scroller").hasAttribute("tabindex")).toBe(false);
+  });
+});
+
+describe("table text selection", () => {
+  const OUTRO = "\n\nOutro";
+
+  function selectionChange(): void {
+    document.dispatchEvent(new Event("selectionchange"));
+  }
+
+  function outroText(): Node {
+    const line = [...(parent?.querySelectorAll(".cm-line") ?? [])].find(
+      (element) => element.textContent === "Outro",
+    );
+    if (!line?.firstChild) throw new Error("outro not found");
+    return line.firstChild;
+  }
+
+  function introText(): Node {
+    const line = parent?.querySelector(".cm-line");
+    if (!line?.firstChild) throw new Error("intro not found");
+    return line.firstChild;
+  }
+
+  it("clamps a selection leaving the table to the table's end", () => {
+    setup(`${INTRO}${TABLE}${OUTRO}`);
+    const table = query("table.cm-table");
+
+    getSelection()?.setBaseAndExtent(
+      cellAt(1, 0).firstChild!,
+      0,
+      outroText(),
+      2,
+    );
+    selectionChange();
+
+    const selection = getSelection();
+    expect(selection?.anchorNode).toBe(cellAt(1, 0).firstChild);
+    expect(selection?.focusNode).toBe(table);
+    expect(selection?.focusOffset).toBe(table.childNodes.length);
+  });
+
+  it("clamps a selection leaving the table upwards to the table's start", () => {
+    setup(`${INTRO}${TABLE}${OUTRO}`);
+    const table = query("table.cm-table");
+
+    getSelection()?.setBaseAndExtent(
+      cellAt(1, 0).firstChild!,
+      1,
+      introText(),
+      1,
+    );
+    selectionChange();
+
+    expect(getSelection()?.focusNode).toBe(table);
+    expect(getSelection()?.focusOffset).toBe(0);
+  });
+
+  it("leaves a read-only selection alone", () => {
+    setup(`${INTRO}${TABLE}${OUTRO}`, { readOnly: true });
+
+    getSelection()?.setBaseAndExtent(
+      cellAt(1, 0).firstChild!,
+      0,
+      outroText(),
+      2,
+    );
+    selectionChange();
+
+    expect(getSelection()?.focusNode).toBe(outroText());
+  });
+
+  it("moves focus to the table wrapper without changing the selection", () => {
+    const ed = setup(`${INTRO}${TABLE}${OUTRO}`);
+    ed.setSelection(2, 2);
+    ed.view.contentDOM.focus();
+    const from = cellAt(1, 0).firstChild!;
+    const to = cellAt(1, 1).firstChild!;
+
+    getSelection()?.setBaseAndExtent(from, 0, to, 1);
+    selectionChange();
+
+    expect(document.activeElement).toBe(widget());
+    expect(getSelection()?.anchorNode).toBe(from);
+    expect(getSelection()?.focusNode).toBe(to);
+    expect(ed.getSelection()).toEqual({ anchor: 2, head: 2 });
+  });
+});
+
+describe("table wrapper keys", () => {
+  const OUTRO = "\n\nOutro";
+
+  function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
+    const wrapper = widget();
+    if (!wrapper) throw new Error("widget not found");
+    wrapper.focus();
+    const event = new KeyboardEvent("keydown", {
+      key,
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    wrapper.dispatchEvent(event);
+    return event;
+  }
+
+  it("puts the caret on the line after the table on ArrowDown", () => {
+    const ed = setup(`${INTRO}${TABLE}${OUTRO}`);
+
+    const event = press("ArrowDown");
+
+    const after = INTRO.length + TABLE.length + 1;
+    expect(event.defaultPrevented).toBe(true);
+    expect(ed.getSelection()).toEqual({ anchor: after, head: after });
+    expect(widget()).not.toBeNull();
+    expect(document.activeElement).toBe(ed.view.contentDOM);
+  });
+
+  it("puts the caret at the end of the line before the table on ArrowLeft", () => {
+    const ed = setup(`${INTRO}${TABLE}${OUTRO}`);
+
+    press("ArrowLeft");
+
+    const before = INTRO.length - 1;
+    expect(ed.getSelection()).toEqual({ anchor: before, head: before });
+    expect(widget()).not.toBeNull();
+  });
+
+  it("reveals the table at its end when no line follows it", () => {
+    const ed = setup(`${INTRO}${TABLE}`);
+    ed.setSelection(2, 2);
+
+    press("ArrowRight");
+
+    expect(ed.getSelection().anchor).toBe(INTRO.length + TABLE.length);
+    expect(widget()).toBeNull();
+  });
+
+  it("reveals the table at its start when no line precedes it", () => {
+    const ed = setup(`${TABLE}${OUTRO}`);
+    ed.setSelection(TABLE.length + 2, TABLE.length + 2);
+
+    press("ArrowUp");
+
+    expect(ed.getSelection().anchor).toBe(0);
+    expect(widget()).toBeNull();
+  });
+
+  it("hands Escape to the editor at its unchanged selection", () => {
+    const ed = setup(`${INTRO}${TABLE}${OUTRO}`);
+    ed.setSelection(2, 2);
+
+    press("Escape", { keyCode: 27 });
+
+    expect(document.activeElement).toBe(ed.view.contentDOM);
+    expect(ed.getSelection()).toEqual({ anchor: 2, head: 2 });
+    expect(widget()).not.toBeNull();
+  });
+
+  it("runs other keys in the editor from its previous selection", () => {
+    const ed = setup(`${INTRO}${TABLE}${OUTRO}`);
+    ed.setSelection(2, 2);
+
+    const event = press("Enter", { keyCode: 13 });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(ed.view.state.doc.toString()).toBe(`In\ntro\n\n${TABLE}${OUTRO}`);
+  });
+
+  it.each([
+    ["Control+C", { key: "c", ctrlKey: true }],
+    ["Meta+C", { key: "c", metaKey: true }],
+    ["Control+Insert", { key: "Insert", ctrlKey: true }],
+    ["Shift", { key: "Shift", shiftKey: true }],
+  ])("keeps focus on the table for %s", (_name, init) => {
+    setup(`${INTRO}${TABLE}${OUTRO}`);
+
+    const event = press(init.key, init);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(widget());
   });
 });

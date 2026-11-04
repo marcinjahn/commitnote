@@ -2,15 +2,10 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { fakeForge, flushPendingSaves, openNotes } from "./helpers";
 import { startConflictOnWelcome } from "./helpers/conflict";
-import {
-  closeSettings,
-  enableVimMode,
-  openSettings,
-} from "./helpers/settings";
+import { closeSettings, enableVimMode, openSettings } from "./helpers/settings";
 import { openWelcome, treeItem } from "./helpers/tree";
 
-const DEFAULT_DESCRIPTION =
-  "Press Escape, then Tab, to leave the editor.";
+const DEFAULT_DESCRIPTION = "Press Escape, then Tab, to leave the editor.";
 const VIM_DESCRIPTION =
   "Vim mode is on. Press Escape, then Tab, to leave the editor.";
 const LINK_URL = "https://github.com/example/commitnote";
@@ -45,7 +40,6 @@ async function startNewNote(page: Page): Promise<void> {
   await editor(page).click();
   await expect(editor(page)).toBeFocused();
 }
-
 
 test("vim mode is off by default and loads nothing", async ({ page }) => {
   const requested: string[] = [];
@@ -113,7 +107,9 @@ test("editing modes follow the keys and the bar follows the modes", async ({
   await startNewNote(page);
   await expect(modeText(page)).toHaveText("INSERT");
   await expect(
-    bar(page).getByRole("button", { name: "Mode: Insert. Switch to Normal mode" }),
+    bar(page).getByRole("button", {
+      name: "Mode: Insert. Switch to Normal mode",
+    }),
   ).toBeVisible();
 
   await page.keyboard.type("abc");
@@ -153,9 +149,13 @@ test("editing modes follow the keys and the bar follows the modes", async ({
   await page.keyboard.press("Escape");
   await expect(bar(page)).not.toContainText("2d");
 
-  await bar(page).getByRole("button", { name: /^Mode: Normal/ }).click();
+  await bar(page)
+    .getByRole("button", { name: /^Mode: Normal/ })
+    .click();
   await expect(modeText(page)).toHaveText("INSERT");
-  await bar(page).getByRole("button", { name: /^Mode: Insert/ }).click();
+  await bar(page)
+    .getByRole("button", { name: /^Mode: Insert/ })
+    .click();
   await expect(modeText(page)).toHaveText("NORMAL");
 });
 
@@ -350,17 +350,20 @@ test("the current line number uses the text-safe accent", async ({ page }) => {
   await openVimWelcome(page);
   await focusEditor(page);
   const colorOf = (selector: string) =>
-    page.locator(selector).first().evaluate((element) => {
-      const probe = document.createElement("span");
-      probe.style.color = "var(--color-link)";
-      element.append(probe);
-      const colors = {
-        own: getComputedStyle(element).color,
-        link: getComputedStyle(probe).color,
-      };
-      probe.remove();
-      return colors;
-    });
+    page
+      .locator(selector)
+      .first()
+      .evaluate((element) => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--color-link)";
+        element.append(probe);
+        const colors = {
+          own: getComputedStyle(element).color,
+          link: getComputedStyle(probe).color,
+        };
+        probe.remove();
+        return colors;
+      });
   const current = ".cm-relative-line-current";
   const other =
     ".cm-relative-line-numbers .cm-gutterElement:not(.cm-relative-line-current):not([style*='visibility'])";
@@ -514,20 +517,26 @@ test("switching notes resets the mode to normal", async ({ page }) => {
   await expect(modeText(page)).toHaveText("NORMAL");
 });
 
-test("the bar and its buttons work on the narrow layout", { tag: "@mobile-only" }, async ({
-  page,
-}) => {
-  await openVimWelcome(page);
-  await expect(bar(page)).toBeVisible();
+test(
+  "the bar and its buttons work on the narrow layout",
+  { tag: "@mobile-only" },
+  async ({ page }) => {
+    await openVimWelcome(page);
+    await expect(bar(page)).toBeVisible();
 
-  await bar(page).getByRole("button", { name: /^Mode: Normal/ }).tap();
-  await expect(modeText(page)).toHaveText("INSERT");
-  await bar(page).getByRole("button", { name: /^Mode: Insert/ }).tap();
-  await expect(modeText(page)).toHaveText("NORMAL");
+    await bar(page)
+      .getByRole("button", { name: /^Mode: Normal/ })
+      .tap();
+    await expect(modeText(page)).toHaveText("INSERT");
+    await bar(page)
+      .getByRole("button", { name: /^Mode: Insert/ })
+      .tap();
+    await expect(modeText(page)).toHaveText("NORMAL");
 
-  await bar(page).getByRole("button", { name: "Open command line" }).tap();
-  await expect(commandInput(page)).toBeFocused();
-});
+    await bar(page).getByRole("button", { name: "Open command line" }).tap();
+    await expect(commandInput(page)).toBeFocused();
+  },
+);
 
 test(
   "relative line numbers keep an inset from the screen edge on the narrow layout",
@@ -561,9 +570,7 @@ async function rowCentres(
 ): Promise<{ number: number; text: number }> {
   return page.evaluate((needle) => {
     const lines = Array.from(document.querySelectorAll(".cm-content .cm-line"));
-    const index = lines.findIndex((line) =>
-      line.textContent?.includes(needle),
-    );
+    const index = lines.findIndex((line) => line.textContent?.includes(needle));
     const numbers = Array.from(
       document.querySelectorAll<HTMLElement>(
         ".cm-relative-line-numbers .cm-gutterElement",
@@ -604,10 +611,13 @@ test(
       "```js",
     ]) {
       await expect
-        .poll(async () => {
-          const centres = await rowCentres(page, lineText);
-          return Math.abs(centres.number - centres.text);
-        }, { message: lineText })
+        .poll(
+          async () => {
+            const centres = await rowCentres(page, lineText);
+            return Math.abs(centres.number - centres.text);
+          },
+          { message: lineText },
+        )
         .toBeLessThanOrEqual(2);
     }
   },

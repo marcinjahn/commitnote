@@ -62,21 +62,27 @@ async function typeLines(page: Page, lines: readonly string[]): Promise<void> {
 async function widgetIds(page: Page): Promise<string[]> {
   return page
     .locator("button.cm-image")
-    .evaluateAll((buttons) => buttons.map((b) => b.getAttribute("data-image-id")!));
+    .evaluateAll((buttons) =>
+      buttons.map((b) => b.getAttribute("data-image-id")!),
+    );
 }
 
 async function outline(page: Page): Promise<string[]> {
-  const entries = await page.locator("#note-pane .cm-content").evaluate((content) =>
-    [...content.children].map((child) => {
-      const image = child.matches("button.cm-image")
-        ? child
-        : child.querySelector("button.cm-image");
-      if (image) return `image:${image.getAttribute("data-image-id")}`;
-      const raw = /image:([a-z2-7]{26})/.exec(child.textContent ?? "");
-      return raw ? `image:${raw[1]}` : (child.textContent ?? "");
-    }),
+  const entries = await page
+    .locator("#note-pane .cm-content")
+    .evaluate((content) =>
+      [...content.children].map((child) => {
+        const image = child.matches("button.cm-image")
+          ? child
+          : child.querySelector("button.cm-image");
+        if (image) return `image:${image.getAttribute("data-image-id")}`;
+        const raw = /image:([a-z2-7]{26})/.exec(child.textContent ?? "");
+        return raw ? `image:${raw[1]}` : (child.textContent ?? "");
+      }),
+    );
+  return entries.filter(
+    (entry, index) => entry !== "" && entry !== entries[index - 1],
   );
-  return entries.filter((entry, index) => entry !== "" && entry !== entries[index - 1]);
 }
 
 async function headImagePaths(page: Page): Promise<string[]> {
@@ -116,7 +122,9 @@ async function expectNoPlaintextInRepo(page: Page): Promise<void> {
   const repo = JSON.parse(exported) as RepoExport;
   const everything = [
     Buffer.from(exported, "utf8"),
-    ...(repo.objects.binaryBlobs ?? []).map(([, base64]) => Buffer.from(base64, "base64")),
+    ...(repo.objects.binaryBlobs ?? []).map(([, base64]) =>
+      Buffer.from(base64, "base64"),
+    ),
   ];
   for (const bytes of everything) {
     expect(bytes.includes(Buffer.from("\x89PNG", "latin1"))).toBe(false);
@@ -130,13 +138,17 @@ function errorToast(page: Page, text: string): Locator {
   return page.getByRole("group").filter({ hasText: text });
 }
 
-test("a pasted image lands at the caret and is stored encrypted", async ({ page }) => {
+test("a pasted image lands at the caret and is stored encrypted", async ({
+  page,
+}) => {
   await openWelcomeAtEnd(page);
   await typeLines(page, ["before", "after"]);
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("End");
 
-  await dispatchImages(page, "paste", [{ width: 40, height: 30, shade: 10, name: PHOTO_NAME }]);
+  await dispatchImages(page, "paste", [
+    { width: 40, height: 30, shade: 10, name: PHOTO_NAME },
+  ]);
 
   await expect(loadedWidgets(page)).toHaveCount(1);
   const [id] = await widgetIds(page);
@@ -145,10 +157,16 @@ test("a pasted image lands at the caret and is stored encrypted", async ({ page 
 
   const lines = await outline(page);
   const beforeAt = lines.indexOf("before");
-  expect(lines.slice(beforeAt, beforeAt + 3)).toEqual(["before", `image:${id}`, "after"]);
+  expect(lines.slice(beforeAt, beforeAt + 3)).toEqual([
+    "before",
+    `image:${id}`,
+    "after",
+  ]);
 
   await flushPendingSaves(page);
-  await expect.poll(() => headImagePaths(page)).toContain(`${IMAGE_PREFIX}${id}`);
+  await expect
+    .poll(() => headImagePaths(page))
+    .toContain(`${IMAGE_PREFIX}${id}`);
   expect(await headImagePaths(page)).toHaveLength(2);
   const file = await imageFileBytes(page, id);
   expect(file.subarray(0, 4)).toEqual(Buffer.from([0x43, 0x4e, 0x49, 0x01]));
@@ -160,7 +178,9 @@ test("dropping two images inserts both in order at the drop position", async ({
 }) => {
   await openWelcomeAtEnd(page);
   await typeLines(page, ["first", "second", "third"]);
-  const secondLine = page.locator("#note-pane .cm-line", { hasText: /^second$/ });
+  const secondLine = page.locator("#note-pane .cm-line", {
+    hasText: /^second$/,
+  });
   const box = (await secondLine.boundingBox())!;
 
   await dispatchImages(
@@ -186,7 +206,9 @@ test("dropping two images inserts both in order at the drop position", async ({
   expect(new Set(await widgetIds(page)).size).toBe(2);
 });
 
-test("the header Insert image button downscales a large image", async ({ page }) => {
+test("the header Insert image button downscales a large image", async ({
+  page,
+}) => {
   await openWelcomeAtEnd(page);
   const file = await pickerFile(page, { width: 3000, height: 2000, shade: 90 });
 
@@ -200,7 +222,9 @@ test("the header Insert image button downscales a large image", async ({ page })
   await expect(editorContent(page)).toContainText("#2560x1707");
 });
 
-test("the command menu Insert image opens the file chooser", async ({ page }) => {
+test("the command menu Insert image opens the file chooser", async ({
+  page,
+}) => {
   await openWelcomeAtEnd(page);
   await page.getByRole("button", { name: "More commands" }).click();
 
@@ -209,7 +233,9 @@ test("the command menu Insert image opens the file chooser", async ({ page }) =>
     .getByRole("menu", { name: "Commands" })
     .getByRole("menuitem", { name: "Insert image" })
     .click();
-  await (await chooser).setFiles(await pickerFile(page, { width: 30, height: 30, shade: 5 }));
+  await (
+    await chooser
+  ).setFiles(await pickerFile(page, { width: 30, height: 30, shade: 5 }));
 
   await expect(loadedWidgets(page)).toHaveCount(1);
 });
@@ -222,19 +248,25 @@ test("Vim :image opens the picker and paste inserts an image in insert mode", as
   await openWelcome(page);
   const editor = page.getByRole("textbox", { name: "Note editor" });
   await editor.focus();
-  await expect(page.locator(".vim-status-bar .mode-label")).toHaveText("NORMAL");
+  await expect(page.locator(".vim-status-bar .mode-label")).toHaveText(
+    "NORMAL",
+  );
 
   await page.keyboard.type(":");
   const chooser = page.waitForEvent("filechooser");
   await page.keyboard.type("image");
   await page.keyboard.press("Enter");
-  await (await chooser).setFiles(await pickerFile(page, { width: 30, height: 30, shade: 5 }));
+  await (
+    await chooser
+  ).setFiles(await pickerFile(page, { width: 30, height: 30, shade: 5 }));
   await expect(loadedWidgets(page)).toHaveCount(1);
 
   await page.keyboard.press("Escape");
   await page.keyboard.press("G");
   await page.keyboard.press("i");
-  await expect(page.locator(".vim-status-bar .mode-label")).toHaveText("INSERT");
+  await expect(page.locator(".vim-status-bar .mode-label")).toHaveText(
+    "INSERT",
+  );
   await page.keyboard.press("Enter");
   await dispatchImages(page, "paste", [{ width: 20, height: 20, shade: 60 }]);
   await expect(loadedWidgets(page)).toHaveCount(2);
@@ -258,11 +290,15 @@ test("files that are not accepted images show a notice and insert nothing", asyn
     mimeType: "image/svg+xml",
     buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'),
   });
-  await expect(errorToast(page, "This image format is not supported.")).toBeVisible();
+  await expect(
+    errorToast(page, "This image format is not supported."),
+  ).toBeVisible();
 
   const tiny = await pickerFile(page, { width: 8, height: 8, shade: 1 });
   await input.setInputFiles(Array.from({ length: 11 }, () => tiny));
-  await expect(errorToast(page, "You can add up to 10 images at a time.")).toBeVisible();
+  await expect(
+    errorToast(page, "You can add up to 10 images at a time."),
+  ).toBeVisible();
 
   await expect(editorContent(page)).not.toContainText("image:");
   await expect(page.locator("button.cm-image")).toHaveCount(0);
@@ -275,14 +311,20 @@ test("pasting a reference to an existing image clones it under a new id", async 
   await treeItem(page, "Journal").click();
   await treeItem(page, "2026").click();
   await treeItem(page, "Whiteboard").click();
-  const original = page.locator(`button.cm-image[data-image-id="${WHITEBOARD_ID}"]`);
+  const original = page.locator(
+    `button.cm-image[data-image-id="${WHITEBOARD_ID}"]`,
+  );
   await expect(original).toHaveAttribute("data-state", "loaded");
   const size = await original
     .locator("img")
-    .evaluate((img: HTMLImageElement) => `${img.naturalWidth}x${img.naturalHeight}`);
+    .evaluate(
+      (img: HTMLImageElement) => `${img.naturalWidth}x${img.naturalHeight}`,
+    );
 
   await treeItem(page, "Welcome").click();
-  await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue("Welcome");
+  await expect(page.getByRole("textbox", { name: "Note name" })).toHaveValue(
+    "Welcome",
+  );
   await editorContent(page).click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.press("Enter");
@@ -297,7 +339,10 @@ test("pasting a reference to an existing image clones it under a new id", async 
   await expect
     .poll(() => headImagePaths(page))
     .toEqual(
-      expect.arrayContaining([`${IMAGE_PREFIX}${WHITEBOARD_ID}`, `${IMAGE_PREFIX}${cloneId}`]),
+      expect.arrayContaining([
+        `${IMAGE_PREFIX}${WHITEBOARD_ID}`,
+        `${IMAGE_PREFIX}${cloneId}`,
+      ]),
     );
 });
 
@@ -308,7 +353,10 @@ test.describe("without native WebP encoding", () => {
         type === "image/webp" ? "image/png" : type;
       const convert = OffscreenCanvas.prototype.convertToBlob;
       OffscreenCanvas.prototype.convertToBlob = function (options) {
-        return convert.call(this, { ...options, type: pngInstead(options?.type) });
+        return convert.call(this, {
+          ...options,
+          type: pngInstead(options?.type),
+        });
       };
       const toBlob = HTMLCanvasElement.prototype.toBlob;
       HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
@@ -317,39 +365,50 @@ test.describe("without native WebP encoding", () => {
     });
   });
 
-  test("the WASM encoder stores the image under the production CSP", async ({ page }) => {
+  test("the WASM encoder stores the image under the production CSP", async ({
+    page,
+  }) => {
     const violations: string[] = [];
     page.on("console", (message) => {
       const text = message.text();
-      if (/content security policy|csp/i.test(text) && !text.includes("frame-ancestors")) {
+      if (
+        /content security policy|csp/i.test(text) &&
+        !text.includes("frame-ancestors")
+      ) {
         violations.push(text);
       }
     });
     await openWelcomeAtEnd(page);
     await typeLines(page, ["wasm"]);
 
-    await dispatchImages(page, "paste", [{ width: 120, height: 80, shade: 40, name: PHOTO_NAME }]);
+    await dispatchImages(page, "paste", [
+      { width: 120, height: 80, shade: 40, name: PHOTO_NAME },
+    ]);
 
     await expect(loadedWidgets(page)).toHaveCount(1);
     const [id] = await widgetIds(page);
     await flushPendingSaves(page);
-    await expect.poll(() => headImagePaths(page)).toContain(`${IMAGE_PREFIX}${id}`);
+    await expect
+      .poll(() => headImagePaths(page))
+      .toContain(`${IMAGE_PREFIX}${id}`);
     await expectNoPlaintextInRepo(page);
     expect(violations).toEqual([]);
   });
 });
 
-test("tapping Insert image on the mobile layout picks and inserts an image", { tag: "@mobile" }, async ({
-  page,
-}) => {
-  await openNotes(page);
-  await openWelcome(page);
-  await editorContent(page).click();
-  const file = await pickerFile(page, { width: 60, height: 40, shade: 70 });
+test(
+  "tapping Insert image on the mobile layout picks and inserts an image",
+  { tag: "@mobile" },
+  async ({ page }) => {
+    await openNotes(page);
+    await openWelcome(page);
+    await editorContent(page).click();
+    const file = await pickerFile(page, { width: 60, height: 40, shade: 70 });
 
-  const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Insert image" }).click();
-  await (await chooser).setFiles(file);
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Insert image" }).click();
+    await (await chooser).setFiles(file);
 
-  await expect(loadedWidgets(page)).toHaveCount(1);
-});
+    await expect(loadedWidgets(page)).toHaveCount(1);
+  },
+);

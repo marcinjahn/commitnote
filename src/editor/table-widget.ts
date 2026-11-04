@@ -1,13 +1,19 @@
 import { Facet } from "@codemirror/state";
 import { type EditorView, WidgetType } from "@codemirror/view";
 import { openExternal } from "../app/external-open";
-import type {
-  MarkdownTable,
-  MarkdownTableCell,
-  MarkdownTableRow,
-  TableAlignment,
+import {
+  containerPrefixLayout,
+  type MarkdownTable,
+  type MarkdownTableCell,
+  type MarkdownTableRow,
+  type TableAlignment,
 } from "../markdown/markdown-table";
-import { renderTableCellContent } from "./table-cell-content";
+import {
+  type CellImageRenderer,
+  renderTableCellContent,
+} from "./table-cell-content";
+import { renderTableCellImage } from "./table-cell-image";
+import { tableKeyDown } from "./table-selection";
 
 type LinkOpener = (url: string) => void;
 
@@ -21,6 +27,7 @@ export const tableLinkOpener: Facet<LinkOpener, LinkOpener> = Facet.define<
 const ARMED_CLASS = "cm-link-open-armed";
 const LINK_SELECTOR = ".cm-table-link[data-url]";
 const observers = new WeakMap<HTMLElement, ResizeObserver>();
+const destroyed = new WeakSet<HTMLElement>();
 
 function hasModifier(event: MouseEvent): boolean {
   return event.ctrlKey || event.metaKey;
@@ -112,6 +119,61 @@ export function tableRowTextTops(wrapper: HTMLElement): number[] {
   });
 }
 
+interface Caret {
+  readonly node: Node;
+  readonly offset: number;
+}
+
+function caretAt(doc: Document, x: number, y: number): Caret | null {
+  if (typeof doc.caretPositionFromPoint === "function") {
+    const position = doc.caretPositionFromPoint(x, y);
+    return position && { node: position.offsetNode, offset: position.offset };
+  }
+  if (typeof doc.caretRangeFromPoint === "function") {
+    const range = doc.caretRangeFromPoint(x, y);
+    return range && { node: range.startContainer, offset: range.startOffset };
+  }
+  return null;
+}
+
+// Chromium can keep collapsing a mouse drag that starts inside this
+// non-editable island of the editor. Once the selection is a range, its native
+// extension takes over.
+function seedDragSelection(wrapper: HTMLElement, press: MouseEvent): void {
+  const doc = wrapper.ownerDocument;
+  const start = caretAt(doc, press.clientX, press.clientY);
+  if (!start || !wrapper.contains(start.node)) return;
+  const listening = new AbortController();
+  const options = { capture: true, signal: listening.signal };
+  doc.addEventListener(
+    "mousemove",
+    (event) => {
+      if (!(event.buttons & 1)) {
+        listening.abort();
+        return;
+      }
+      const distance = Math.hypot(
+        event.clientX - press.clientX,
+        event.clientY - press.clientY,
+      );
+      const selection = doc.getSelection();
+      if (distance <= CLICK_SLOP || !selection?.isCollapsed) return;
+      const here = caretAt(doc, event.clientX, event.clientY);
+      if (!here) return;
+      selection.setBaseAndExtent(
+        start.node,
+        start.offset,
+        here.node,
+        here.offset,
+      );
+    },
+    options,
+  );
+  doc.addEventListener("mouseup", () => listening.abort(), options);
+}
+
+const CLICK_SLOP = 4;
+const LONG_PRESS_MS = 500;
 const ROW_HEIGHT = 34;
 const WIDGET_PADDING = 16;
 
@@ -121,6 +183,7 @@ export class TableWidget extends WidgetType {
     readonly table: MarkdownTable,
     readonly from: number,
     readonly readOnly: boolean,
+    readonly prefix: string,
   ) {
     super();
   }
@@ -143,20 +206,51 @@ export class TableWidget extends WidgetType {
     const table = document.createElement("table");
     table.className = "cm-table";
 
+    const renderImage: CellImageRenderer = (image) =>
+      renderTableCellImage(view, image, () => !destroyed.has(wrapper));
+
     const thead = document.createElement("thead");
-    thead.appendChild(this.renderRow(this.table.header, "th"));
+    thead.appendChild(this.renderRow(this.table.header, "th", renderImage));
     table.appendChild(thead);
 
     if (this.table.rows.length > 0) {
       const tbody = document.createElement("tbody");
       for (const row of this.table.rows) {
-        tbody.appendChild(this.renderRow(row, "td"));
+        tbody.appendChild(this.renderRow(row, "td", renderImage));
       }
       table.appendChild(tbody);
     }
 
     scroller.appendChild(table);
-    wrapper.appendChild(scroller);
+    this.mount(wrapper, scroller);
+
+    let press: { x: number; y: number } | null = null;
+    let pointerType = "";
+    let pressTime = 0;
+
+    if (!this.readOnly) {
+      wrapper.tabIndex = -1;
+      wrapper.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        pointerType = event.pointerType;
+        press = { x: event.clientX, y: event.clientY };
+        pressTime = event.timeStamp;
+      });
+      wrapper.addEventListener("dragstart", (event) => event.preventDefault());
+      wrapper.addEventListener("keydown", (event) => {
+        let from: number;
+        try {
+          from = view.posAtDOM(wrapper);
+        } catch {
+          return;
+        }
+        tableKeyDown(view, event, {
+          from,
+          to: from + this.source.length,
+          inset: this.prefix.length,
+        });
+      });
+    }
 
     wrapper.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
@@ -164,9 +258,15 @@ export class TableWidget extends WidgetType {
       if (url !== null) {
         event.preventDefault();
         view.state.facet(tableLinkOpener)(url);
-      } else if (!view.state.readOnly) {
-        event.preventDefault();
+        return;
       }
+      if (view.state.readOnly) return;
+      press = { x: event.clientX, y: event.clientY };
+      if (pointerType === "touch") {
+        event.preventDefault();
+        return;
+      }
+      seedDragSelection(wrapper, event);
     });
     wrapper.addEventListener("click", (event) => {
       if (event.button !== 0) return;
@@ -175,6 +275,21 @@ export class TableWidget extends WidgetType {
         return;
       }
       if (view.state.readOnly) return;
+      const start = press;
+      press = null;
+      if (
+        start &&
+        Math.hypot(event.clientX - start.x, event.clientY - start.y) >
+          CLICK_SLOP
+      ) {
+        return;
+      }
+      if (
+        pointerType === "touch" &&
+        event.timeStamp - pressTime >= LONG_PRESS_MS
+      ) {
+        return;
+      }
       placeCaret(view, wrapper, event);
     });
     wrapper.addEventListener("mousemove", (event) => {
@@ -185,14 +300,42 @@ export class TableWidget extends WidgetType {
     return wrapper;
   }
 
+  private mount(wrapper: HTMLElement, scroller: HTMLElement): void {
+    if (this.prefix === "") {
+      wrapper.appendChild(scroller);
+      return;
+    }
+    const { quoteLevels, indent } = containerPrefixLayout(this.prefix);
+    let parent = wrapper;
+    for (let level = 0; level < quoteLevels; level++) {
+      const quote = document.createElement("div");
+      quote.className = "cm-table-quote";
+      parent.appendChild(quote);
+      parent = quote;
+    }
+    const nest = document.createElement("div");
+    nest.className = "cm-table-nest";
+    if (indent !== "") {
+      const span = document.createElement("span");
+      span.className = "cm-table-indent";
+      span.setAttribute("aria-hidden", "true");
+      span.textContent = indent;
+      nest.appendChild(span);
+    }
+    nest.appendChild(scroller);
+    parent.appendChild(nest);
+  }
+
   override destroy(dom: HTMLElement): void {
     observers.get(dom)?.disconnect();
     observers.delete(dom);
+    destroyed.add(dom);
   }
 
   private renderRow(
     row: MarkdownTableRow,
     tag: "th" | "td",
+    renderImage: CellImageRenderer,
   ): HTMLTableRowElement {
     const read = (a: number, b: number): string =>
       this.source.slice(a - this.from, b - this.from);
@@ -204,7 +347,9 @@ export class TableWidget extends WidgetType {
       if (tag === "th") element.scope = "col";
       const alignment: TableAlignment = this.table.alignments[column] ?? "";
       if (alignment) element.style.textAlign = alignment;
-      if (cell.node) renderTableCellContent(element, cell.node, read);
+      if (cell.node) {
+        renderTableCellContent(element, cell.node, read, renderImage);
+      }
       tr.appendChild(element);
     });
     return tr;

@@ -16,8 +16,9 @@ import {
 } from "@codemirror/view";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { readTable } from "../markdown/markdown-table";
+import { readTable, tableContainerPrefix } from "../markdown/markdown-table";
 import { lineHasSelection } from "./live-preview";
+import { tableSelection } from "./table-selection";
 import { TableWidget, tableLinkOpener } from "./table-widget";
 
 const CONTAINERS = new Set([
@@ -70,11 +71,10 @@ function buildTableWidgetDecorations(state: EditorState): DecorationSet {
       const node = ref.node;
       const touched =
         !state.readOnly && lineHasSelection(state, node.from, node.to);
-      const table =
-        node.parent?.name === "Document" && !touched
-          ? readTable(node, (text ??= doc.toString()))
-          : null;
-      if (table) {
+      text ??= doc.toString();
+      const prefix = touched ? null : tableContainerPrefix(node, text);
+      const table = prefix !== null ? readTable(node, text) : null;
+      if (table && prefix !== null) {
         const from = doc.lineAt(node.from).from;
         const to = doc.lineAt(node.to).to;
         decorations.push(
@@ -84,6 +84,7 @@ function buildTableWidgetDecorations(state: EditorState): DecorationSet {
               table,
               from,
               state.readOnly,
+              prefix,
             ),
             block: true,
           }).range(from, to),
@@ -283,6 +284,25 @@ const tableWidgetsTheme = EditorView.baseTheme({
   ".cm-table-widget": {
     padding: "var(--space-2) 0",
   },
+  ".cm-table-widget:focus": {
+    outline: "none",
+  },
+  ".cm-table-quote": {
+    borderLeft: "var(--hairline) solid var(--color-accent-rule)",
+    paddingLeft: "var(--space-3)",
+  },
+  ".cm-table-nest": {
+    display: "flex",
+    alignItems: "flex-start",
+  },
+  ".cm-table-indent": {
+    whiteSpace: "pre",
+    flex: "none",
+  },
+  ".cm-table-nest > .cm-table-scroller": {
+    flex: "1 1 auto",
+    minWidth: "0",
+  },
   ".cm-table-scroller": {
     overflowX: "auto",
     maxWidth: "100%",
@@ -329,6 +349,26 @@ const tableWidgetsTheme = EditorView.baseTheme({
   "&.cm-link-open-armed .cm-table-link": {
     cursor: "pointer",
   },
+  ".cm-table-image": {
+    display: "inline-block",
+    maxWidth: "100%",
+    verticalAlign: "top",
+  },
+  ".cm-table-image img": {
+    display: "block",
+    maxWidth: "100%",
+    height: "auto",
+  },
+  '.cm-table-image:not([data-state="loaded"]) img': {
+    display: "none",
+  },
+  ".cm-table-image-alt": {
+    color: "var(--color-text-muted)",
+    fontSize: "var(--font-size-sm)",
+  },
+  '.cm-table-image[data-state="loaded"] .cm-table-image-alt': {
+    display: "none",
+  },
   ".cm-table-source-line": {
     fontFamily: "var(--font-mono)",
     fontSize: "0.875em",
@@ -353,6 +393,7 @@ export function tableWidgets(
     tableWidgetsField,
     tableEntryKeymap,
     tableWidgetsTheme,
+    tableSelection,
   ];
   if (options.open) extensions.push(tableLinkOpener.of(options.open));
   return extensions;
