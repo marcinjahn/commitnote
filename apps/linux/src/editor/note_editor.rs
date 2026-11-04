@@ -5,8 +5,8 @@ use std::sync::OnceLock;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use commitnote_editor_text::{
-    EditorHistory, EditorTextSync, HistoryStep, TextEdit, TextSelection, Utf16Index, apply, diff,
-    map_selection,
+    EditorHistory, EditorTextSync, HistoryStep, SentTexts, TextEdit, TextSelection, Utf16Index,
+    apply, diff, map_selection,
 };
 use commitnote_markdown::{
     CommandResult, insert_link, paste_link, toggle_bold, toggle_italic, toggle_strikethrough,
@@ -54,6 +54,7 @@ struct EditState {
     applied_switch: Option<u64>,
     base: String,
     synced: Option<(u64, u64)>,
+    sent: SentTexts,
 }
 
 impl Default for EditState {
@@ -66,6 +67,7 @@ impl Default for EditState {
             applied_switch: None,
             base: String::new(),
             synced: None,
+            sent: SentTexts::default(),
         }
     }
 }
@@ -344,11 +346,17 @@ impl NoteEditor {
 
         let doc = self.text();
         let decision = {
-            let state = imp.state.borrow();
+            let mut state = imp.state.borrow_mut();
+            let echo = state.sent.take_echo(&update.content);
             match state.applied_switch {
-                Some(applied) if applied == note_switch => {
-                    EditorTextSync::decide(note_switch, applied, &update.content, &doc, &state.base)
-                }
+                Some(applied) if applied == note_switch => EditorTextSync::decide(
+                    note_switch,
+                    applied,
+                    &update.content,
+                    &doc,
+                    &state.base,
+                    echo,
+                ),
                 _ => EditorTextSync::Set,
             }
         };
@@ -715,8 +723,13 @@ impl NoteEditor {
         if changed {
             self.update_actions();
             self.queue_scroll_to_caret();
-            self.emit_by_name::<()>("local-edit", &[&text]);
+            self.send(&text);
         }
+    }
+
+    fn send(&self, text: &str) {
+        self.imp().state.borrow_mut().sent.record(text);
+        self.emit_by_name::<()>("local-edit", &[&text]);
     }
 
     fn replace_all(&self, text: &str) {
@@ -730,6 +743,7 @@ impl NoteEditor {
         view.reset();
         let mut state = imp.state.borrow_mut();
         state.history.reset();
+        state.sent.clear();
         state.last_text = text.to_owned();
         state.last_index = Utf16Index::new(text);
         state.last_selection = TextSelection::new(0, 0);
@@ -785,7 +799,7 @@ impl NoteEditor {
         }
         self.update_actions();
         self.queue_scroll_to_caret();
-        self.emit_by_name::<()>("local-edit", &[&text]);
+        self.send(&text);
     }
 
     fn set_selection(&self, selection: TextSelection) {
