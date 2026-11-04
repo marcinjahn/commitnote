@@ -378,3 +378,303 @@ test(
     expect(lineBoxes).toBeGreaterThan(1);
   },
 );
+
+test.describe("vim mode", () => {
+  const gutter = (page: Page) => page.locator(".cm-relative-line-numbers");
+  const position = (page: Page) => page.locator(".vim-status-bar .position");
+  const commandInput = (page: Page) =>
+    page.getByRole("textbox", { name: "Vim command" });
+  const tableLabels = (page: Page) =>
+    gutter(page).locator(".cm-table-line-numbers .cm-table-line-number");
+  const lineLabels = (page: Page) =>
+    gutter(page).locator(".cm-gutterElement:not(:has(.cm-table-line-numbers))");
+
+  async function openVimWelcome(page: Page): Promise<void> {
+    await openNotes(page);
+    await enableVimMode(page);
+    await openWelcome(page);
+    await expect(modeText(page)).toHaveText("NORMAL");
+    await expect(tables(page)).toHaveCount(1);
+  }
+
+  async function goToTaskLine(page: Page): Promise<void> {
+    await openTaskLine(page).click();
+    await expect(tables(page)).toHaveCount(1);
+    await expect(
+      gutter(page).locator(".cm-gutterElement.cm-relative-line-current"),
+    ).toHaveCount(1);
+  }
+
+  async function currentLineNumber(page: Page): Promise<number> {
+    const current = gutter(page).locator(".cm-relative-line-current");
+    await expect(current).toHaveCount(1);
+    return Number(await current.innerText());
+  }
+
+  async function appendZ(page: Page): Promise<void> {
+    await page.keyboard.press("$");
+    await page.keyboard.press("a");
+    await page.keyboard.type("Z");
+    await page.keyboard.press("Escape");
+    await expect(modeText(page)).toHaveText("NORMAL");
+  }
+
+  async function landOn(page: Page, text: string): Promise<void> {
+    await appendZ(page);
+    await expect(line(page, `${text}Z`)).toHaveText(`${text}Z`);
+    await page.keyboard.press("u");
+    await expect(line(page, text)).toHaveText(text);
+  }
+
+  async function focusEditor(page: Page): Promise<void> {
+    await editor(page).focus();
+    await expect(editor(page)).toBeFocused();
+  }
+
+  async function addLinesBelowTable(page: Page): Promise<void> {
+    await focusEditor(page);
+    await page.keyboard.press("G");
+    await page.keyboard.press("o");
+    await page.keyboard.type("- after one");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("o");
+    await page.keyboard.type("- after two");
+    await page.keyboard.press("Escape");
+    await expect(modeText(page)).toHaveText("NORMAL");
+    await expect(tables(page)).toHaveCount(1);
+  }
+
+  interface Box {
+    top: number;
+    bottom: number;
+  }
+
+  async function measureTable(
+    page: Page,
+    index: number,
+  ): Promise<{ labels: Box[]; rows: Box[] }> {
+    return page.evaluate((i) => {
+      const container = document.querySelectorAll(
+        "#note-pane .cm-relative-line-numbers .cm-table-line-numbers",
+      )[i];
+      const table = document.querySelectorAll("#note-pane table.cm-table")[i];
+      const textBox = (el: Element): Box => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const { top, bottom } = range.getBoundingClientRect();
+        return { top, bottom };
+      };
+      const rowBox = (el: Element): Box => {
+        const { top, bottom } = el.getBoundingClientRect();
+        return { top, bottom };
+      };
+      return {
+        labels: [...container.children].map(textBox),
+        rows: [...table.querySelectorAll("tr")].map(rowBox),
+      };
+    }, index);
+  }
+
+  function misalignments(measured: { labels: Box[]; rows: Box[] }): string[] {
+    const { labels, rows } = measured;
+    const problems: string[] = [];
+    if (labels.length !== rows.length + 1) {
+      return [`${labels.length} labels for ${rows.length} rows`];
+    }
+    const centre = (box: Box) => (box.top + box.bottom) / 2;
+    const within = (box: Box, row: Box) =>
+      centre(box) >= row.top && centre(box) <= row.bottom;
+    if (!within(labels[0], rows[0])) problems.push("header outside its row");
+    if (labels[1].top < labels[0].bottom - 1) {
+      problems.push("delimiter above the end of the header label");
+    }
+    for (let i = 2; i < labels.length; i++) {
+      if (!within(labels[i], rows[i - 1])) {
+        problems.push(`label ${i} outside its row`);
+      }
+    }
+    for (let i = 1; i < labels.length; i++) {
+      if (labels[i].top <= labels[i - 1].top) {
+        problems.push(`label ${i} does not sit below label ${i - 1}`);
+      }
+      if (labels[i].top < labels[i - 1].bottom - 1) {
+        problems.push(`label ${i} overlaps label ${i - 1}`);
+      }
+    }
+    return problems;
+  }
+
+  test(
+    "every table line has a gutter number",
+    { tag: "@mobile" },
+    async ({ page }) => {
+      await openVimWelcome(page);
+      await goToTaskLine(page);
+
+      await expect(gutter(page).locator(".cm-table-line-numbers")).toHaveCount(
+        1,
+      );
+      await expect(tableLabels(page)).toHaveText(["2", "3", "4"]);
+      await expect(lineLabels(page).last()).toHaveText("5");
+
+      await page.keyboard.press("j");
+      await expect(tableLabels(page)).toHaveText(["1", "2", "3"]);
+      await expect(tables(page)).toHaveCount(1);
+    },
+  );
+
+  test(
+    "table line numbers sit on their rows",
+    { tag: "@mobile" },
+    async ({ page }) => {
+      await openVimWelcome(page);
+      await focusEditor(page);
+      await page.keyboard.press("G");
+      await page.keyboard.press("o");
+      await page.keyboard.insertText(
+        [
+          row(["Name", "Notes"]),
+          row(["---", "---"]),
+          row(["first", "short"]),
+          row(["second", LONG_TEXT]),
+          row(["third", "short"]),
+          "",
+        ].join("\n"),
+      );
+      await page.keyboard.press("Escape");
+      await expect(modeText(page)).toHaveText("NORMAL");
+      await expect(tables(page)).toHaveCount(2);
+
+      const wrapped = tables(page)
+        .nth(1)
+        .getByRole("cell", { name: LONG_TEXT });
+      await expect
+        .poll(() =>
+          wrapped.evaluate((el) => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            return new Set([...range.getClientRects()].map((r) => r.top)).size;
+          }),
+        )
+        .toBeGreaterThan(1);
+
+      await expect(
+        gutter(page).locator(".cm-table-line-numbers").nth(1),
+      ).toBeAttached();
+      await expect
+        .poll(async () => misalignments(await measureTable(page, 1)))
+        .toEqual([]);
+    },
+  );
+
+  test("counted jumps land into the table", async ({ page }) => {
+    await openVimWelcome(page);
+
+    for (const [keys, text] of [
+      ["2j", HEADER],
+      ["3j", DELIMITER],
+      ["4j", LAST_ROW],
+    ] as const) {
+      await goToTaskLine(page);
+      await page.keyboard.type(keys);
+      await expectRevealed(page);
+      await landOn(page, text);
+    }
+
+    for (const [keys, text] of [
+      ["2k", DELIMITER],
+      ["3k", HEADER],
+    ] as const) {
+      await page.keyboard.press("G");
+      await expect(tables(page)).toHaveCount(1);
+      await page.keyboard.type(keys);
+      await expectRevealed(page);
+      await landOn(page, text);
+    }
+
+    await goToTaskLine(page);
+    const taskLine = await currentLineNumber(page);
+    await page.keyboard.press("G");
+    await expect(tables(page)).toHaveCount(1);
+    await page.keyboard.type("4k");
+    await expect(position(page)).toHaveText(new RegExp(`^${taskLine + 1}:`));
+    await expect(tables(page)).toHaveCount(1);
+  });
+
+  test("counted jumps go through and out of the table", async ({ page }) => {
+    await openVimWelcome(page);
+    await addLinesBelowTable(page);
+    await expect(tableLabels(page)).toHaveText(["5", "4", "3"]);
+
+    await goToTaskLine(page);
+    await expect(tableLabels(page)).toHaveText(["2", "3", "4"]);
+    await page.keyboard.type("6j");
+    await expect(tables(page)).toHaveCount(1);
+    await landOn(page, "- after one");
+
+    await page.keyboard.press("G");
+    await expect(tables(page)).toHaveCount(1);
+    await page.keyboard.type("7k");
+    await expect(tables(page)).toHaveCount(1);
+    await appendZ(page);
+    await expect(line(page, "Open taskZ")).toBeVisible();
+    await page.keyboard.press("u");
+    await expect(line(page, "Open taskZ")).toHaveCount(0);
+
+    await goToTaskLine(page);
+    await page.keyboard.type("3j");
+    await expectRevealed(page);
+    await page.keyboard.press("Escape");
+    await page.keyboard.type("3j");
+    await expect(tables(page)).toHaveCount(1);
+    await landOn(page, "- after one");
+  });
+
+  test("NG and :N land on table lines", async ({ page }) => {
+    await openVimWelcome(page);
+    await goToTaskLine(page);
+    await page.keyboard.type("2j");
+    await expectRevealed(page);
+    const header = await currentLineNumber(page);
+
+    await goToTaskLine(page);
+    await page.keyboard.type(`${header}G`);
+    await expectRevealed(page);
+    await expect(position(page)).toHaveText(`${header}:1`);
+    await landOn(page, HEADER);
+
+    await goToTaskLine(page);
+    await page.keyboard.press(":");
+    await expect(commandInput(page)).toBeFocused();
+    await page.keyboard.type(String(header + 2));
+    await page.keyboard.press("Enter");
+    await expectRevealed(page);
+    await expect(position(page)).toHaveText(new RegExp(`^${header + 2}:`));
+    await landOn(page, LAST_ROW);
+  });
+
+  test("+, - and ArrowDown take a count", async ({ page }) => {
+    await openVimWelcome(page);
+    await goToTaskLine(page);
+    const header = (await currentLineNumber(page)) + 2;
+
+    await page.keyboard.type("2+");
+    await expectRevealed(page);
+    await expect(position(page)).toHaveText(`${header}:1`);
+    await landOn(page, HEADER);
+
+    await page.keyboard.press("G");
+    await expect(tables(page)).toHaveCount(1);
+    await page.keyboard.type("2-");
+    await expectRevealed(page);
+    await expect(position(page)).toHaveText(`${header + 1}:1`);
+    await landOn(page, DELIMITER);
+
+    await goToTaskLine(page);
+    await page.keyboard.press("2");
+    await page.keyboard.press("ArrowDown");
+    await expectRevealed(page);
+    await expect(position(page)).toHaveText(new RegExp(`^${header}:`));
+    await landOn(page, HEADER);
+  });
+});

@@ -5,7 +5,9 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { markdownEditorExtensions } from "../create-markdown-editor";
 import { livePreview } from "../live-preview";
+import { tableWidgets } from "../table-widgets";
 import {
+  alignTableLineNumbers,
   relativeLineLabel,
   relativeLineNumbers,
 } from "./relative-line-numbers";
@@ -129,5 +131,137 @@ describe("relativeLineNumbers", () => {
       ".cm-relative-line-numbers .cm-gutterElement[style*='hidden']",
     );
     expect(wider?.textContent).toBe("999");
+  });
+});
+
+const TABLE_DOC = [
+  "first",
+  "second",
+  "third",
+  "",
+  "| a | b |",
+  "| - | - |",
+  "| 1 | 2 |",
+  "",
+  "after",
+].join("\n");
+
+describe("relativeLineNumbers beside rendered tables", () => {
+  let view: EditorView | undefined;
+
+  afterEach(() => {
+    view?.destroy();
+    view = undefined;
+  });
+
+  function mount(line: number, readOnly = false): EditorView {
+    const state = EditorState.create({
+      doc: TABLE_DOC,
+      extensions: [
+        markdownEditorExtensions(),
+        tableWidgets(),
+        relativeLineNumbers(),
+        EditorState.readOnly.of(readOnly),
+      ],
+    });
+    view = new EditorView({
+      parent: document.body,
+      state: state.update({
+        selection: { anchor: state.doc.line(line).from },
+      }).state,
+    });
+    forceParsing(view, view.state.doc.length, 5000);
+    return view;
+  }
+
+  const tableNumbers = (editor: EditorView) =>
+    Array.from(
+      editor.dom.querySelectorAll<HTMLElement>(
+        ".cm-relative-line-numbers .cm-table-line-numbers",
+      ),
+    );
+
+  const tableLabels = (container: HTMLElement) =>
+    Array.from(
+      container.querySelectorAll<HTMLElement>(".cm-table-line-number"),
+      (label) => label.textContent,
+    );
+
+  const lineLabels = (editor: EditorView) =>
+    Array.from(
+      editor.dom.querySelectorAll<HTMLElement>(
+        ".cm-relative-line-numbers .cm-gutterElement",
+      ),
+    )
+      .filter((el) => el.style.visibility !== "hidden")
+      .map((el) => el.textContent);
+
+  it("numbers every source line of a rendered table", () => {
+    const editor = mount(1);
+
+    const containers = tableNumbers(editor);
+    expect(containers).toHaveLength(1);
+    expect(tableLabels(containers[0])).toEqual(["4", "5", "6"]);
+    expect(lineLabels(editor)).toEqual(["1", "1", "2", "3", "456", "7", "8"]);
+  });
+
+  it("updates the table labels when the cursor moves", () => {
+    const editor = mount(1);
+    editor.dispatch({ selection: { anchor: editor.state.doc.line(9).from } });
+
+    const containers = tableNumbers(editor);
+    expect(containers).toHaveLength(1);
+    expect(tableLabels(containers[0])).toEqual(["4", "3", "2"]);
+  });
+
+  it("marks the cursor line inside a read-only rendered table", () => {
+    const editor = mount(6, true);
+
+    const containers = tableNumbers(editor);
+    expect(containers).toHaveLength(1);
+    expect(tableLabels(containers[0])).toEqual(["1", "6", "1"]);
+    const current = Array.from(
+      containers[0].querySelectorAll(".cm-table-line-number"),
+      (label) => label.classList.contains("cm-relative-line-current"),
+    );
+    expect(current).toEqual([false, true, false]);
+  });
+
+  it("uses ordinary line numbers once the table is revealed", () => {
+    const editor = mount(6);
+
+    expect(tableNumbers(editor)).toHaveLength(0);
+    expect(lineLabels(editor)).toEqual([
+      "5",
+      "4",
+      "3",
+      "2",
+      "1",
+      "6",
+      "1",
+      "2",
+      "3",
+    ]);
+  });
+});
+
+describe("alignTableLineNumbers", () => {
+  it("aligns the header and body labels to their rows", () => {
+    expect(alignTableLineNumbers([10, 60, 100], 4, 20)).toEqual([
+      10, 30, 60, 100,
+    ]);
+  });
+
+  it("stacks the delimiter label right under the header", () => {
+    expect(alignTableLineNumbers([8, 70], 3, 24)).toEqual([8, 32, 70]);
+  });
+
+  it("pushes a label down when the previous one would overlap", () => {
+    expect(alignTableLineNumbers([0, 30, 35], 4, 20)).toEqual([0, 20, 40, 60]);
+  });
+
+  it("returns null when the rows do not match the source lines", () => {
+    expect(alignTableLineNumbers([0, 30], 4, 20)).toBeNull();
+    expect(alignTableLineNumbers([], 1, 20)).toBeNull();
   });
 });

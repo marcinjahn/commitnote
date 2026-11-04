@@ -7,6 +7,7 @@ import {
 import { markdownEditorExtensions } from "./create-markdown-editor";
 import { TableWidget } from "./table-widget";
 import {
+  renderedTableInLines,
   tableEntryLine,
   tableWidgets,
   tableWidgetsField,
@@ -380,5 +381,40 @@ describe("tableEntryLine", () => {
     expect(lineNumberOf(leading, 1, false)).toBeNull();
     expect(decorations(trailing).widgets).toHaveLength(1);
     expect(lineNumberOf(trailing, 5, true)).toBeNull();
+  });
+});
+
+describe("renderedTableInLines", () => {
+  const doc = `Intro\n\n${TABLE}\n\nafter`;
+
+  it("is true for a span covering any table line", () => {
+    const state = stateFor(doc);
+
+    expect(renderedTableInLines(state, 1, 3)).toBe(true);
+    expect(renderedTableInLines(state, 4, 4)).toBe(true);
+    expect(renderedTableInLines(state, 5, 7)).toBe(true);
+    expect(renderedTableInLines(state, 1, 7)).toBe(true);
+  });
+
+  it("is false for a span ending just before or starting just after the table", () => {
+    const state = stateFor(doc);
+
+    expect(renderedTableInLines(state, 1, 2)).toBe(false);
+    expect(renderedTableInLines(state, 6, 7)).toBe(false);
+  });
+
+  it("is false when the selection touches the table", () => {
+    const state = stateFor(doc, EditorSelection.cursor(doc.indexOf("b")));
+
+    expect(renderedTableInLines(state, 1, 7)).toBe(false);
+  });
+
+  it("is false without the table widgets field", () => {
+    const state = EditorState.create({
+      doc,
+      extensions: markdownEditorExtensions(),
+    });
+
+    expect(renderedTableInLines(state, 1, 7)).toBe(false);
   });
 });

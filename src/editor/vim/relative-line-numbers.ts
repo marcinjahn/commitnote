@@ -1,8 +1,18 @@
 import { syntaxTree } from "@codemirror/language";
 import type { EditorState, Extension } from "@codemirror/state";
-import { EditorView, GutterMarker, gutter } from "@codemirror/view";
+import {
+  EditorView,
+  GutterMarker,
+  ViewPlugin,
+  type ViewUpdate,
+  gutter,
+} from "@codemirror/view";
+import { TableWidget, tableRowTextTops } from "../table-widget";
 
 const CURRENT_CLASS = "cm-relative-line-current";
+const TABLE_LINES_CLASS = "cm-table-line-numbers";
+const TABLE_LINES_ALIGNED_CLASS = "cm-table-line-numbers-aligned";
+const TABLE_LINE_CLASS = "cm-table-line-number";
 const HEADING_NODE = /^(?:ATXHeading|SetextHeading)([1-6])$/;
 
 export function relativeLineLabel(line: number, cursorLine: number): string {
@@ -32,6 +42,152 @@ class LineNumberMarker extends GutterMarker {
     return document.createTextNode(this.label);
   }
 }
+
+interface TableLineLabel {
+  readonly label: string;
+  readonly current: boolean;
+}
+
+class TableLineNumbersMarker extends GutterMarker {
+  constructor(
+    private readonly firstLine: number,
+    private readonly lines: readonly TableLineLabel[],
+  ) {
+    super();
+  }
+
+  eq(other: GutterMarker): boolean {
+    return (
+      other instanceof TableLineNumbersMarker &&
+      other.firstLine === this.firstLine &&
+      other.lines.length === this.lines.length &&
+      other.lines.every(
+        (line, i) =>
+          line.label === this.lines[i].label &&
+          line.current === this.lines[i].current,
+      )
+    );
+  }
+
+  toDOM(): Node {
+    const container = document.createElement("div");
+    container.className = TABLE_LINES_CLASS;
+    container.dataset.firstLine = String(this.firstLine);
+    for (const { label, current } of this.lines) {
+      const element = document.createElement("div");
+      element.className = current
+        ? `${TABLE_LINE_CLASS} ${CURRENT_CLASS}`
+        : TABLE_LINE_CLASS;
+      element.textContent = label;
+      container.appendChild(element);
+    }
+    return container;
+  }
+}
+
+export function alignTableLineNumbers(
+  rowTops: readonly number[],
+  lineCount: number,
+  labelHeight: number,
+): number[] | null {
+  if (lineCount < 2 || rowTops.length !== lineCount - 1) return null;
+  const tops = [rowTops[0], rowTops[0] + labelHeight];
+  for (let k = 2; k < lineCount; k++) {
+    tops.push(Math.max(rowTops[k - 1], tops[k - 1] + labelHeight));
+  }
+  return tops;
+}
+
+interface TableLinePlacement {
+  readonly container: HTMLElement;
+  readonly tops: number[] | null;
+}
+
+// A label box is a full gutter line, nearly as tall as a one-line table row, so
+// spacing labels by their boxes would push the delimiter onto the first body
+// row. Spacing by the text keeps the digits apart without that drift.
+function labelTextHeight(label: HTMLElement): number {
+  const range = document.createRange();
+  range.selectNodeContents(label);
+  return range.getBoundingClientRect().height;
+}
+
+function measureTableLineNumbers(view: EditorView): TableLinePlacement[] {
+  const rowTopsByLine = new Map<number, number[]>();
+  for (const wrapper of view.contentDOM.querySelectorAll<HTMLElement>(
+    ".cm-table-widget",
+  )) {
+    let from: number;
+    try {
+      from = view.posAtDOM(wrapper);
+    } catch {
+      continue;
+    }
+    rowTopsByLine.set(
+      view.state.doc.lineAt(from).number,
+      tableRowTextTops(wrapper),
+    );
+  }
+
+  const placements: TableLinePlacement[] = [];
+  for (const container of view.dom.querySelectorAll<HTMLElement>(
+    `.cm-relative-line-numbers .${TABLE_LINES_CLASS}`,
+  )) {
+    const rowTops = rowTopsByLine.get(Number(container.dataset.firstLine));
+    const label = container.firstElementChild;
+    if (!rowTops || !(label instanceof HTMLElement)) {
+      placements.push({ container, tops: null });
+      continue;
+    }
+    const top = container.getBoundingClientRect().top;
+    placements.push({
+      container,
+      tops: alignTableLineNumbers(
+        rowTops.map((rowTop) => (rowTop - top) / view.scaleY),
+        container.childElementCount,
+        labelTextHeight(label) / view.scaleY,
+      ),
+    });
+  }
+  return placements;
+}
+
+function placeTableLineNumbers(placements: TableLinePlacement[]): void {
+  for (const { container, tops } of placements) {
+    const labels = Array.from(container.children) as HTMLElement[];
+    container.classList.toggle(TABLE_LINES_ALIGNED_CLASS, tops !== null);
+    labels.forEach((label, i) => {
+      label.style.top = tops ? `${tops[i]}px` : "";
+    });
+  }
+}
+
+const tableLineNumberAlignment = ViewPlugin.fromClass(
+  class {
+    constructor(readonly view: EditorView) {
+      this.schedule();
+    }
+
+    update(update: ViewUpdate): void {
+      if (
+        update.docChanged ||
+        update.selectionSet ||
+        update.viewportChanged ||
+        update.geometryChanged ||
+        update.heightChanged
+      )
+        this.schedule();
+    }
+
+    private schedule(): void {
+      this.view.requestMeasure({
+        key: this,
+        read: measureTableLineNumbers,
+        write: placeTableLineNumbers,
+      });
+    }
+  },
+);
 
 function headingLevel(state: EditorState, from: number, to: number): number {
   let level = 0;
@@ -115,6 +271,23 @@ const theme = EditorView.theme({
   ".cm-relative-line-numbers .cm-relative-line-rule": {
     paddingTop: `calc(${lineHeightOf("var(--font-size-base)")} / 2 + var(--space-3))`,
   },
+  [`.cm-relative-line-numbers .${TABLE_LINES_CLASS}`]: {
+    height: "100%",
+  },
+  [`.cm-relative-line-numbers .${TABLE_LINES_ALIGNED_CLASS}`]: {
+    position: "relative",
+  },
+  [`.cm-relative-line-numbers .${TABLE_LINE_CLASS}`]: {
+    height: lineHeightOf("var(--font-size-base)"),
+    lineHeight: lineHeightOf("var(--font-size-base)"),
+    whiteSpace: "nowrap",
+  },
+  [`.cm-relative-line-numbers .${TABLE_LINES_ALIGNED_CLASS} .${TABLE_LINE_CLASS}`]:
+    {
+      position: "absolute",
+      left: "0",
+      right: "0",
+    },
   "@media (max-width: 767px)": {
     ".cm-relative-line-numbers .cm-gutterElement": {
       paddingLeft: "var(--space-2)",
@@ -158,6 +331,21 @@ export function relativeLineNumbers(): Extension {
           classes.join(" "),
         );
       },
+      widgetMarker(view, widget, block) {
+        if (!(widget instanceof TableWidget)) return null;
+        const { doc, selection } = view.state;
+        const cursorLine = doc.lineAt(selection.main.head).number;
+        const first = doc.lineAt(block.from).number;
+        const last = doc.lineAt(block.to).number;
+        const lines: TableLineLabel[] = [];
+        for (let n = first; n <= last; n++) {
+          lines.push({
+            label: relativeLineLabel(n, cursorLine),
+            current: n === cursorLine,
+          });
+        }
+        return new TableLineNumbersMarker(first, lines);
+      },
       lineMarkerChange: (update) =>
         update.docChanged ||
         update.selectionSet ||
@@ -165,6 +353,7 @@ export function relativeLineNumbers(): Extension {
       initialSpacer: (view) => spacerFor(view.state),
       updateSpacer: (_spacer, update) => spacerFor(update.state),
     }),
+    tableLineNumberAlignment,
     theme,
   ];
 }
