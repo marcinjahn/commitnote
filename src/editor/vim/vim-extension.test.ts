@@ -34,6 +34,7 @@ import {
 import { setVimStatus, vimStatusOf, type VimStatus } from "./vim-status";
 
 const DOC = "first line\nsecond line\nthird line";
+const GOAL_DOC = "0123456789\nab\n0123456789";
 
 const views: EditorView[] = [];
 
@@ -120,22 +121,33 @@ function keydown(
 const modeOf = (view: EditorView) => vimStatusOf(view.state)?.mode;
 const docOf = (view: EditorView) => view.state.doc.toString();
 
+const CHAR_WIDTH = 10;
+const LINE_HEIGHT = 20;
+
 beforeAll(() => {
+  EditorView.prototype.coordsAtPos = function (pos) {
+    const line = this.state.doc.lineAt(pos);
+    const left = (pos - line.from) * CHAR_WIDTH;
+    return {
+      left,
+      right: left,
+      top: (line.number - 1) * LINE_HEIGHT,
+      bottom: line.number * LINE_HEIGHT,
+    };
+  };
   EditorView.prototype.moveVertically = function (start, forward) {
     const doc = this.state.doc;
     const line = doc.lineAt(start.head);
     const target = doc.line(
-      Math.min(
-        doc.lines,
-        Math.max(1, line.number + (forward ? 1 : -1)),
-      ),
+      Math.min(doc.lines, Math.max(1, line.number + (forward ? 1 : -1))),
     );
-    const column = start.goalColumn ?? start.head - line.from;
+    const goal = start.goalColumn ?? this.coordsAtPos(start.head)!.left;
+    const column = Math.round(goal / CHAR_WIDTH);
     return EditorSelection.cursor(
       Math.min(target.from + column, target.to),
       start.assoc,
       undefined,
-      column,
+      goal,
     );
   };
 });
@@ -236,6 +248,23 @@ describe("vimExtension cursor position", () => {
 
     expect(vimStatusOf(view.state)).toMatchObject({ line, column });
   });
+});
+
+describe("vimExtension goal column", () => {
+  it.each([["j"], ["gj"]])(
+    "keeps the column through a short line with %s",
+    async (key) => {
+      const { view } = await setup();
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: GOAL_DOC },
+        selection: { anchor: 6 },
+      });
+
+      await press(view, ...key, ...key);
+
+      expect(vimStatusOf(view.state)).toMatchObject({ line: 3, column: 7 });
+    },
+  );
 });
 
 describe("vimExtension visual position after external selection changes", () => {
@@ -721,9 +750,7 @@ describe("vimExtension system clipboard", () => {
     const { view } = await setup();
 
     await press(view, "y", "y", "p");
-    expect(docOf(view)).toBe(
-      "first line\nfirst line\nsecond line\nthird line",
-    );
+    expect(docOf(view)).toBe("first line\nfirst line\nsecond line\nthird line");
 
     await press(view, "u");
     expect(docOf(view)).toBe(DOC);
@@ -737,9 +764,7 @@ describe("vimExtension system clipboard", () => {
     await press(view, "y", "y");
     leaveWindow();
     await press(view, "p");
-    expect(docOf(view)).toBe(
-      "first line\nfirst line\nsecond line\nthird line",
-    );
+    expect(docOf(view)).toBe("first line\nfirst line\nsecond line\nthird line");
 
     await press(view, "p");
     expect(clipboard.readText).toHaveBeenCalledTimes(2);
@@ -813,9 +838,7 @@ describe("vimExtension system clipboard", () => {
 
     document.dispatchEvent(clipboardEvent("copy", "copied\n"));
     await press(view, "p");
-    expect(docOf(view)).toBe(
-      "first line\ncopied\nsecond line\nthird line",
-    );
+    expect(docOf(view)).toBe("first line\ncopied\nsecond line\nthird line");
 
     leaveWindow();
     document.dispatchEvent(clipboardEvent("paste", "pasted"));
@@ -835,9 +858,7 @@ describe("vimExtension system clipboard", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(modeOf(view)).toBe("normal");
-    expect(docOf(view)).toBe(
-      "first line\nfirst line\nsecond line\nthird line",
-    );
+    expect(docOf(view)).toBe("first line\nfirst line\nsecond line\nthird line");
     expect(clipboard.readText).not.toHaveBeenCalled();
 
     await press(view, "u");

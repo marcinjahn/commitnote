@@ -1,12 +1,15 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EditorSelection,
   EditorState,
   type EditorStateConfig,
 } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { markdownEditorExtensions } from "./create-markdown-editor";
 import { TableWidget } from "./table-widget";
 import {
+  pageTargetInTable,
   renderedTableInLines,
   tableEntryLine,
   tableWidgets,
@@ -416,5 +419,83 @@ describe("renderedTableInLines", () => {
     });
 
     expect(renderedTableInLines(state, 1, 7)).toBe(false);
+  });
+});
+
+describe("pageTargetInTable", () => {
+  const doc = `Intro\n\n${TABLE}\n\nafter`;
+  const tableFrom = doc.indexOf("|");
+  let view: EditorView | null = null;
+
+  afterEach(() => {
+    view?.destroy();
+    view = null;
+    vi.restoreAllMocks();
+  });
+
+  function viewFor(state: EditorState): EditorView {
+    const created = new EditorView({ parent: document.body, state });
+    view = created;
+    const first = created.lineBlockAt(0);
+    const top = created.documentTop;
+    vi.spyOn(created, "coordsAtPos").mockReturnValue({
+      left: 0,
+      right: 0,
+      top: first.top + top,
+      bottom: first.bottom + top,
+    });
+    return created;
+  }
+
+  function distanceTo(target: EditorView, pos: number): number {
+    const block = target.lineBlockAt(pos);
+    return (block.top + block.bottom) / 2 - target.lineBlockAt(0).bottom;
+  }
+
+  it("finds the rendered table at the target height", () => {
+    const target = viewFor(stateFor(doc));
+
+    expect(
+      pageTargetInTable(target, 0, true, distanceTo(target, tableFrom)),
+    ).not.toBeNull();
+  });
+
+  it("returns null in a read-only state", () => {
+    const target = viewFor(stateFor(doc, undefined, true));
+
+    expect(
+      pageTargetInTable(target, 0, true, distanceTo(target, tableFrom)),
+    ).toBeNull();
+  });
+
+  it("returns null without the table widgets field", () => {
+    const target = viewFor(
+      EditorState.create({ doc, extensions: markdownEditorExtensions() }),
+    );
+
+    expect(
+      pageTargetInTable(target, 0, true, distanceTo(target, tableFrom)),
+    ).toBeNull();
+  });
+
+  it("returns null when no rendered table is at the target height", () => {
+    const target = viewFor(stateFor(doc));
+    const end = target.lineBlockAt(doc.length).bottom;
+
+    expect(
+      pageTargetInTable(target, 0, true, distanceTo(target, doc.length)),
+    ).toBeNull();
+    expect(pageTargetInTable(target, 0, true, end + 100)).toBeNull();
+    expect(pageTargetInTable(target, 0, false, 100)).toBeNull();
+  });
+
+  it("returns null for a table revealed by the selection", () => {
+    const target = viewFor(
+      stateFor(doc, EditorSelection.cursor(doc.indexOf("b"))),
+    );
+
+    expect(
+      pageTargetInTable(target, 0, true, distanceTo(target, tableFrom)),
+    ).toBeNull();
   });
 });

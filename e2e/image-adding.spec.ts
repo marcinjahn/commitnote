@@ -45,6 +45,9 @@ async function openWelcomeAtEnd(page: Page): Promise<void> {
   await openWelcome(page);
   await editorContent(page).click();
   await page.keyboard.press("ControlOrMeta+End");
+  // Moves off the table's trailing blank line so new content cannot continue the table. Don't fold
+  // this into insertText("\n..."): Playwright's synthetic insert drops that leading newline right
+  // after a block widget, while real typing and paste keep it.
   await page.keyboard.press("Enter");
 }
 

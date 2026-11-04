@@ -1,8 +1,20 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { flushPendingSaves, openNotes, showTree, expectFamily, MONO_STACK, SERIF_STACK } from "./helpers";
-import { chooseOption, closeSettings, openSettings, settingsDialog } from "./helpers/settings";
-import { openWhiteboardNote } from "./helpers/images";
+import {
+  flushPendingSaves,
+  openNotes,
+  showTree,
+  expectFamily,
+  MONO_STACK,
+  SERIF_STACK,
+} from "./helpers";
+import {
+  chooseOption,
+  closeSettings,
+  openSettings,
+  settingsDialog,
+} from "./helpers/settings";
+import { dispatchImages, openWhiteboardNote } from "./helpers/images";
 import { openWelcome } from "./helpers/tree";
 
 const FAKE_FORGE_BANNER = "Test mode: fake forge, no network";
@@ -51,24 +63,28 @@ test.describe("with a note", () => {
     await openNotes(page);
   });
 
-  test("hides the app and shows the rendered note under print media", { tag: "@mobile" }, async ({
-    page,
-  }) => {
-    await openWelcome(page);
-    await expect(printView(page)).toBeHidden();
+  test(
+    "hides the app and shows the rendered note under print media",
+    { tag: "@mobile" },
+    async ({ page }) => {
+      await openWelcome(page);
+      await expect(printView(page)).toBeHidden();
 
-    await page.emulateMedia({ media: "print" });
-    const view = printView(page);
-    await expect(view).toBeVisible();
-    await expect(page.getByRole("treeitem").first()).toBeHidden();
-    await expect(page.getByRole("textbox", { name: "Note name" })).toBeHidden();
-    await expect(editor(page)).toBeHidden();
-    await expect(page.getByText(FAKE_FORGE_BANNER)).toBeHidden();
+      await page.emulateMedia({ media: "print" });
+      const view = printView(page);
+      await expect(view).toBeVisible();
+      await expect(page.getByRole("treeitem").first()).toBeHidden();
+      await expect(
+        page.getByRole("textbox", { name: "Note name" }),
+      ).toBeHidden();
+      await expect(editor(page)).toBeHidden();
+      await expect(page.getByText(FAKE_FORGE_BANNER)).toBeHidden();
 
-    await expect(view.locator("h1")).toHaveText("Welcome");
-    await expect(view.locator("header.print-title")).toHaveCount(0);
-    await expect(view.locator("strong")).toHaveText("notes");
-  });
+      await expect(view.locator("h1")).toHaveText("Welcome");
+      await expect(view.locator("header.print-title")).toHaveCount(0);
+      await expect(view.locator("strong")).toHaveText("notes");
+    },
+  );
 
   test("prints a note's image", async ({ page }) => {
     await openWhiteboardNote(page);
@@ -86,6 +102,62 @@ test.describe("with a note", () => {
     });
     await dispatchPrintEvent(page, "beforeprint");
     await expect(printView(page).locator("img[data-mark]")).toHaveCount(1);
+  });
+
+  test("an image in a table cell prints inside its cell", async ({ page }) => {
+    await openWelcome(page);
+    await editor(page).click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.press("Enter");
+    await dispatchImages(page, "paste", [
+      { width: 2400, height: 300, shade: 40 },
+    ]);
+    const widget = page.locator("button.cm-image").last();
+    await expect(widget).toHaveAttribute("data-image-id", /^\w{26}$/);
+    const id = await widget.getAttribute("data-image-id");
+
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter");
+    await page.keyboard.insertText(
+      [
+        "| Picture | Notes |",
+        "| --- | --- |",
+        `| ![wide](image:${id}) | A short sentence beside the picture. |`,
+      ].join("\n"),
+    );
+
+    await printPreview(page);
+    const view = printView(page);
+    const image = view.locator("td img.print-note-image");
+    await expect(image).toHaveCount(1);
+    await expect
+      .poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth))
+      .toBeGreaterThan(0);
+
+    const naturalWidth = await image.evaluate(
+      (el: HTMLImageElement) => el.naturalWidth,
+    );
+    const cell = image.locator("xpath=ancestor::td");
+    const table = image.locator("xpath=ancestor::table");
+    await expect
+      .poll(async () => {
+        const [imageBox, cellBox, tableBox, viewBox] = await Promise.all([
+          image.boundingBox(),
+          cell.boundingBox(),
+          table.boundingBox(),
+          view.boundingBox(),
+        ]);
+        if (!imageBox || !cellBox || !tableBox || !viewBox) return null;
+        return {
+          insideCell:
+            imageBox.x + imageBox.width <= cellBox.x + cellBox.width + 1,
+          constrained: imageBox.width < naturalWidth,
+          insideView:
+            tableBox.x + tableBox.width <= viewBox.x + viewBox.width + 1,
+        };
+      })
+      .toEqual({ insideCell: true, constrained: true, insideView: true });
   });
 
   test("a long note prints every line", async ({ page }) => {
@@ -170,16 +242,20 @@ test.describe("with a note", () => {
     await expect(page.getByRole("tree", { name: "Notes" })).toBeHidden();
   });
 
-  test("prints the note while a dialog is open", { tag: "@mobile" }, async ({ page }) => {
-    await openWelcome(page);
-    await showTree(page);
-    await openSettings(page);
+  test(
+    "prints the note while a dialog is open",
+    { tag: "@mobile" },
+    async ({ page }) => {
+      await openWelcome(page);
+      await showTree(page);
+      await openSettings(page);
 
-    await printPreview(page);
-    await expect(settingsDialog(page)).toBeHidden();
-    await expect(printView(page)).toBeVisible();
-    await expect(printView(page)).toContainText("Welcome");
-  });
+      await printPreview(page);
+      await expect(settingsDialog(page)).toBeHidden();
+      await expect(printView(page)).toBeVisible();
+      await expect(printView(page)).toContainText("Welcome");
+    },
+  );
 
   test("dark mode prints black on white", async ({ page }) => {
     await openWelcome(page);
@@ -195,11 +271,16 @@ test.describe("with a note", () => {
     await expect(view.locator("a").first()).toHaveCSS("color", "rgb(0, 0, 0)");
   });
 
-  test("prints black on white under a forced Dark color mode", async ({ page }) => {
+  test("prints black on white under a forced Dark color mode", async ({
+    page,
+  }) => {
     await openSettings(page);
     await chooseOption(page, "Color mode", "Dark");
     await closeSettings(page);
-    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(11, 11, 11)");
+    await expect(page.locator("body")).toHaveCSS(
+      "background-color",
+      "rgb(11, 11, 11)",
+    );
     await openWelcome(page);
 
     await printPreview(page);
@@ -225,6 +306,27 @@ test.describe("with a note", () => {
     await expectFamily(page, view.locator("p").first(), LITERATA_STACK);
     await expectFamily(page, view.locator("pre code"), MONO_STACK);
     await expectFamily(page, view.locator("p code").first(), MONO_STACK);
+  });
+
+  test("the print view keeps its print styles", async ({ page }) => {
+    await openWelcome(page);
+    await printPreview(page);
+    const view = printView(page);
+
+    await expect(view).toHaveCSS("font-size", "14.6667px");
+    await expect(view).toHaveCSS("line-height", "22px");
+    await expect(view.locator("h1", { hasText: "Welcome" })).toHaveCSS(
+      "font-size",
+      "25.6667px",
+    );
+    const th = view.locator("th").first();
+    await expect(th).toHaveCSS("border-bottom-width", "1px");
+    await expect(th).toHaveCSS("font-weight", "600");
+    await expectFamily(
+      page,
+      view.locator("code", { hasText: "inline code" }),
+      MONO_STACK,
+    );
   });
 
   test("produces a PDF", async ({ page }) => {
