@@ -100,6 +100,20 @@ fn every_command_has_a_distinct_name() {
         DraftLeave::NAME,
         NoteRename::NAME,
         EarlyDraftHandOff::NAME,
+        FolderCreate::NAME,
+        NodeRename::NAME,
+        NodeMove::NAME,
+        NodePlace::NAME,
+        NodeMoveSibling::NAME,
+        NodeMoveTargets::NAME,
+        NodeTrashPreview::NAME,
+        NodeTrash::NAME,
+        NodeSetColorTag::NAME,
+        TrashRestoreTargets::NAME,
+        TrashRestore::NAME,
+        TrashDelete::NAME,
+        TrashEmpty::NAME,
+        TagsSetFilter::NAME,
     ];
     let mut sorted = names.to_vec();
     sorted.sort_unstable();
@@ -825,4 +839,506 @@ fn early_draft_results_decode() {
     ] {
         assert_eq!(decode::<EarlyDraftHandOff>(text).outcome, expected);
     }
+}
+
+fn restore_target(label: &str, depth: u32, disabled: bool) -> MoveTargetView {
+    MoveTargetView {
+        path: path(&[label]),
+        label: label.into(),
+        depth,
+        disabled,
+    }
+}
+
+#[test]
+fn structure_commands_have_their_wire_names() {
+    for (name, wire) in [
+        (FolderCreate::NAME, "folder.create"),
+        (NodeRename::NAME, "node.rename"),
+        (NodeMove::NAME, "node.move"),
+        (NodePlace::NAME, "node.place"),
+        (NodeMoveSibling::NAME, "node.moveSibling"),
+        (NodeMoveTargets::NAME, "node.moveTargets"),
+        (NodeTrashPreview::NAME, "node.trashPreview"),
+        (NodeTrash::NAME, "node.trash"),
+        (NodeSetColorTag::NAME, "node.setColorTag"),
+        (TrashRestoreTargets::NAME, "trash.restoreTargets"),
+        (TrashRestore::NAME, "trash.restore"),
+        (TrashDelete::NAME, "trash.delete"),
+        (TrashEmpty::NAME, "trash.empty"),
+        (TagsSetFilter::NAME, "tags.setFilter"),
+    ] {
+        assert_eq!(name, wire);
+    }
+}
+
+#[test]
+fn structure_params_use_camel_case_wire_names() {
+    assert_eq!(
+        params_json::<FolderCreate>(&FolderCreateParams {
+            parent: path(&["a"]),
+            name: "n".into()
+        }),
+        json!({"parent":["a"],"name":"n"})
+    );
+    assert_eq!(
+        params_json::<NodeRename>(&NodeRenameParams {
+            path: path(&["a", "b"]),
+            name: "n".into()
+        }),
+        json!({"path":["a","b"],"name":"n"})
+    );
+    assert_eq!(
+        params_json::<NodeMove>(&NodeMoveParams {
+            path: path(&["a"]),
+            parent: vec![]
+        }),
+        json!({"path":["a"],"parent":[]})
+    );
+    assert_eq!(
+        params_json::<NodePlace>(&NodePlaceParams {
+            path: path(&["a"]),
+            parent: path(&["f"]),
+            before: None
+        }),
+        json!({"path":["a"],"parent":["f"],"before":null})
+    );
+    assert_eq!(
+        params_json::<NodePlace>(&NodePlaceParams {
+            path: path(&["a"]),
+            parent: path(&["f"]),
+            before: Some("b".into())
+        }),
+        json!({"path":["a"],"parent":["f"],"before":"b"})
+    );
+    for (direction, wire) in [(MoveDirection::Up, "up"), (MoveDirection::Down, "down")] {
+        assert_eq!(
+            params_json::<NodeMoveSibling>(&NodeMoveSiblingParams {
+                path: path(&["a"]),
+                direction
+            }),
+            json!({"path":["a"],"direction":wire})
+        );
+        assert_eq!(round_trip(&direction), json!(wire));
+    }
+    assert_eq!(
+        params_json::<NodeMoveTargets>(&NodePathParams { path: path(&["a"]) }),
+        json!({"path":["a"]})
+    );
+    assert_eq!(
+        params_json::<NodeTrashPreview>(&NodePathParams { path: path(&["a"]) }),
+        json!({"path":["a"]})
+    );
+    assert_eq!(
+        params_json::<NodeTrash>(&NodeTrashParams {
+            path: path(&["a"]),
+            share_count: 2
+        }),
+        json!({"path":["a"],"shareCount":2})
+    );
+    assert_eq!(
+        params_json::<TrashRestoreTargets>(&TrashRestoreTargetsParams {
+            entry_id: "e1".into(),
+            sub_path: path(&["x"])
+        }),
+        json!({"entryId":"e1","subPath":["x"]})
+    );
+    assert_eq!(
+        params_json::<TrashRestore>(&TrashRestoreParams {
+            entry_id: "e1".into(),
+            sub_path: vec![],
+            parent: path(&["f"])
+        }),
+        json!({"entryId":"e1","subPath":[],"parent":["f"]})
+    );
+    assert_eq!(
+        params_json::<TrashDelete>(&TrashDeleteParams {
+            entry_id: "e1".into()
+        }),
+        json!({"entryId":"e1"})
+    );
+    assert_eq!(params_json::<TrashEmpty>(&TrashEmptyParams {}), json!({}));
+}
+
+#[test]
+fn color_tag_params_keep_a_null_tag_on_the_wire() {
+    assert_eq!(
+        params_json::<NodeSetColorTag>(&NodeSetColorTagParams {
+            path: path(&["a"]),
+            tag: None
+        }),
+        json!({"path":["a"],"tag":null})
+    );
+    assert_eq!(
+        params_json::<NodeSetColorTag>(&NodeSetColorTagParams {
+            path: path(&["a"]),
+            tag: Some(ColorTag::Purple)
+        }),
+        json!({"path":["a"],"tag":"purple"})
+    );
+    assert_eq!(
+        params_json::<TagsSetFilter>(&TagsSetFilterParams { tag: None }),
+        json!({"tag":null})
+    );
+    assert_eq!(
+        params_json::<TagsSetFilter>(&TagsSetFilterParams {
+            tag: Some(ColorTag::Orange)
+        }),
+        json!({"tag":"orange"})
+    );
+}
+
+#[test]
+fn structure_outcomes_decode() {
+    for (text, expected) in [
+        (
+            r#"{"outcome":{"kind":"ok","path":["f","n"]}}"#,
+            StructureOutcome::Ok {
+                path: path(&["f", "n"]),
+            },
+        ),
+        (
+            r#"{"outcome":{"kind":"error","message":"taken"}}"#,
+            StructureOutcome::Error {
+                message: "taken".into(),
+            },
+        ),
+    ] {
+        assert_eq!(decode::<NodeRename>(text).outcome, expected);
+        assert_eq!(decode::<NodeMove>(text).outcome, expected);
+        assert_eq!(decode::<NodePlace>(text).outcome, expected);
+        assert_eq!(decode::<NodeSetColorTag>(text).outcome, expected);
+        assert_eq!(decode::<TrashRestore>(text).outcome, expected);
+        round_trip(&expected);
+    }
+    assert_eq!(
+        round_trip(&StructureOutcome::Ok { path: path(&["n"]) }),
+        json!({"kind":"ok","path":["n"]})
+    );
+}
+
+#[test]
+fn folder_create_outcomes_decode() {
+    assert_eq!(
+        decode::<FolderCreate>(r#"{"outcome":{"kind":"created","path":["f"]}}"#).outcome,
+        FolderCreateOutcome::Created { path: path(&["f"]) }
+    );
+    assert_eq!(
+        decode::<FolderCreate>(r#"{"outcome":{"kind":"error","message":"exists"}}"#).outcome,
+        FolderCreateOutcome::Error {
+            message: "exists".into()
+        }
+    );
+}
+
+#[test]
+fn move_sibling_outcomes_decode() {
+    for (text, expected) in [
+        (
+            r#"{"outcome":{"kind":"ok","path":["f","n"]}}"#,
+            MoveSiblingOutcome::Ok {
+                path: path(&["f", "n"]),
+            },
+        ),
+        (
+            r#"{"outcome":{"kind":"error","message":"m"}}"#,
+            MoveSiblingOutcome::Error {
+                message: "m".into(),
+            },
+        ),
+        (r#"{"outcome":{"kind":"none"}}"#, MoveSiblingOutcome::None),
+    ] {
+        assert_eq!(decode::<NodeMoveSibling>(text).outcome, expected);
+    }
+    assert_eq!(
+        round_trip(&MoveSiblingOutcome::None),
+        json!({"kind":"none"})
+    );
+}
+
+#[test]
+fn move_target_results_decode() {
+    let text = r#"{"targets":[
+        {"path":[],"label":"All notes","depth":0,"disabled":false},
+        {"path":["f"],"label":"f","depth":1,"disabled":true}]}"#;
+    let expected = vec![
+        MoveTargetView {
+            path: vec![],
+            label: "All notes".into(),
+            depth: 0,
+            disabled: false,
+        },
+        restore_target("f", 1, true),
+    ];
+    assert_eq!(decode::<NodeMoveTargets>(text).targets, expected);
+    assert_eq!(decode::<TrashRestoreTargets>(text).targets, expected);
+    assert_eq!(
+        decode::<NodeMoveTargets>(r#"{"targets":[]}"#).targets,
+        vec![]
+    );
+}
+
+fn trash_preview() -> TrashPreview {
+    TrashPreview {
+        title: "Move to Trash?".into(),
+        message: "m".into(),
+        confirm_label: "Move to Trash".into(),
+        item_count: 3,
+        share_count: 1,
+    }
+}
+
+const TRASH_PREVIEW_JSON: &str = r#"{"title":"Move to Trash?","message":"m","confirmLabel":"Move to Trash","itemCount":3,"shareCount":1}"#;
+
+#[test]
+fn trash_preview_uses_camel_case_wire_names() {
+    assert_eq!(
+        decode::<NodeTrashPreview>(&format!(r#"{{"preview":{TRASH_PREVIEW_JSON}}}"#)).preview,
+        trash_preview()
+    );
+    assert_eq!(
+        round_trip(&trash_preview()),
+        json!({
+            "title":"Move to Trash?","message":"m","confirmLabel":"Move to Trash",
+            "itemCount":3,"shareCount":1
+        })
+    );
+}
+
+#[test]
+fn trash_outcomes_decode() {
+    for (text, expected) in [
+        (
+            r#"{"outcome":{"kind":"trashed","entryId":"e1"}}"#.to_owned(),
+            TrashOutcome::Trashed {
+                entry_id: "e1".into(),
+            },
+        ),
+        (
+            r#"{"outcome":{"kind":"deleted"}}"#.to_owned(),
+            TrashOutcome::Deleted,
+        ),
+        (
+            format!(r#"{{"outcome":{{"kind":"confirm","preview":{TRASH_PREVIEW_JSON}}}}}"#),
+            TrashOutcome::Confirm {
+                preview: trash_preview(),
+            },
+        ),
+        (
+            r#"{"outcome":{"kind":"error","message":"m"}}"#.to_owned(),
+            TrashOutcome::Error {
+                message: "m".into(),
+            },
+        ),
+    ] {
+        assert_eq!(decode::<NodeTrash>(&text).outcome, expected);
+    }
+    assert_eq!(
+        round_trip(&TrashOutcome::Trashed {
+            entry_id: "e1".into()
+        }),
+        json!({"kind":"trashed","entryId":"e1"})
+    );
+    assert_eq!(
+        round_trip(&TrashOutcome::Deleted),
+        json!({"kind":"deleted"})
+    );
+}
+
+#[test]
+fn empty_trash_results_decode() {
+    decode::<TrashDelete>("{}");
+    decode::<TrashEmpty>("{}");
+    decode::<TagsSetFilter>("{}");
+}
+
+#[test]
+fn trash_entries_round_trip_with_nested_items() {
+    let entry = TrashEntryView {
+        id: "e1".into(),
+        kind: TrashItemKind::Folder,
+        name: "Plans".into(),
+        original_folder: "Work".into(),
+        days_left: "29 days left".into(),
+        color_tag: Some(ColorTag::Red),
+        children: vec![TrashItemView {
+            kind: TrashItemKind::Folder,
+            name: "Q1".into(),
+            sub_path: path(&["Q1"]),
+            children: vec![TrashItemView {
+                kind: TrashItemKind::Note,
+                name: "Goals".into(),
+                sub_path: path(&["Q1", "Goals"]),
+                children: vec![],
+            }],
+        }],
+    };
+    assert_eq!(
+        round_trip(&entry),
+        json!({
+            "id":"e1","kind":"folder","name":"Plans","originalFolder":"Work",
+            "daysLeft":"29 days left","colorTag":"red",
+            "children":[{"kind":"folder","name":"Q1","subPath":["Q1"],"children":[
+                {"kind":"note","name":"Goals","subPath":["Q1","Goals"],"children":[]}]}]
+        })
+    );
+    assert_eq!(
+        round_trip(&TrashConfirmationText {
+            title: "t".into(),
+            message: "m".into()
+        }),
+        json!({"title":"t","message":"m"})
+    );
+}
+
+fn search_row_json() -> Value {
+    json!({
+        "path":["Work","Plan"],"name":"Plan","folder":"Work",
+        "nameRanges":[[0,2],[3,4]],
+        "snippet":[{"text":"a ","match":false},{"text":"plan","match":true}],
+        "colorTag":"blue"
+    })
+}
+
+#[test]
+fn search_row_round_trips_with_ranges_and_snippet() {
+    let row = SearchRow {
+        path: path(&["Work", "Plan"]),
+        name: "Plan".into(),
+        folder: Some("Work".into()),
+        name_ranges: vec![(0, 2), (3, 4)],
+        snippet: Some(vec![
+            SnippetPart {
+                text: "a ".into(),
+                is_match: false,
+            },
+            SnippetPart {
+                text: "plan".into(),
+                is_match: true,
+            },
+        ]),
+        color_tag: Some(ColorTag::Blue),
+    };
+    assert_eq!(round_trip(&row), search_row_json());
+}
+
+#[test]
+fn search_row_with_null_folder_and_snippet_round_trips() {
+    let row = SearchRow {
+        path: path(&["Idea"]),
+        name: "Idea".into(),
+        folder: None,
+        name_ranges: vec![],
+        snippet: None,
+        color_tag: None,
+    };
+    assert_eq!(
+        round_trip(&row),
+        json!({"path":["Idea"],"name":"Idea","folder":null,"nameRanges":[],"snippet":null,"colorTag":null})
+    );
+}
+
+#[test]
+fn search_query_decodes_results() {
+    let text = json!({"results":{
+        "recent":[],"names":[search_row_json()],"contents":[],
+        "countText":"1 result","namesMore":"Show All","contentsMore":null,
+        "copy":{"recentHeading":"Recent","namesHeading":"Names","contentsHeading":"Contents",
+                "noMatches":"No matches","stillReading":"Still reading","hint":"Type to search"}
+    }})
+    .to_string();
+    let results = decode::<SearchQuery>(&text).results;
+    assert_eq!(results.names.len(), 1);
+    assert_eq!(results.names[0].name_ranges, vec![(0, 2), (3, 4)]);
+    assert_eq!(results.count_text.as_deref(), Some("1 result"));
+    assert_eq!(results.names_more.as_deref(), Some("Show All"));
+    assert_eq!(results.contents_more, None);
+    assert_eq!(results.copy.still_reading, "Still reading");
+    assert_eq!(
+        params_json::<SearchQuery>(&SearchQueryParams { query: "pl".into() }),
+        json!({"query":"pl"})
+    );
+}
+
+#[test]
+fn search_open_and_close_use_empty_shapes() {
+    let empty = json!({});
+    assert_eq!(params_json::<SearchOpen>(&SearchOpenParams {}), empty);
+    assert_eq!(params_json::<SearchClose>(&SearchCloseParams {}), empty);
+    decode::<SearchOpen>("{}");
+    decode::<SearchClose>("{}");
+}
+
+#[test]
+fn note_stats_decode_with_and_without_tasks() {
+    let with_tasks = decode::<NoteStats>(
+        r#"{"words":{"label":"Words","value":"12"},"tasks":{"label":"Tasks","value":"1 of 2"}}"#,
+    );
+    assert_eq!(
+        with_tasks.tasks,
+        Some(DetailItemText {
+            label: "Tasks".into(),
+            value: "1 of 2".into()
+        })
+    );
+    let without = decode::<NoteStats>(r#"{"words":{"label":"Words","value":"0"},"tasks":null}"#);
+    assert_eq!(without.tasks, None);
+    assert_eq!(without.words.value, "0");
+    assert_eq!(
+        params_json::<NoteStats>(&NoteStatsParams { path: path(&["A"]) }),
+        json!({"path":["A"]})
+    );
+}
+
+#[test]
+fn note_dates_decode_not_saved_with_nulls() {
+    let dates = decode::<NoteDates>(r#"{"notSaved":true,"created":null,"updated":null}"#);
+    assert!(dates.not_saved);
+    assert_eq!(dates.created, None);
+    assert_eq!(dates.updated, None);
+    let saved = decode::<NoteDates>(
+        r#"{"notSaved":false,"created":{"label":"Created","value":"Today"},"updated":{"label":"Updated","value":"Now"}}"#,
+    );
+    assert_eq!(saved.created.unwrap().label, "Created");
+    assert_eq!(
+        params_json::<NoteDates>(&NoteDatesParams { path: path(&["A"]) }),
+        json!({"path":["A"]})
+    );
+}
+
+#[test]
+fn last_view_commands_encode_and_decode() {
+    let state = LastViewState {
+        note: Some(path(&["Work", "Plan"])),
+        folders: vec![path(&["Work"]), path(&["Work", "Q1"])],
+    };
+    assert_eq!(
+        params_json::<LastViewSave>(&state),
+        json!({"note":["Work","Plan"],"folders":[["Work"],["Work","Q1"]]})
+    );
+    assert_eq!(
+        params_json::<LastViewSetEnabled>(&LastViewSetEnabledParams {
+            enabled: true,
+            view: LastViewState {
+                note: None,
+                folders: vec![],
+            },
+        }),
+        json!({"enabled":true,"view":{"note":null,"folders":[]}})
+    );
+    assert_eq!(
+        params_json::<LastViewLoad>(&LastViewLoadParams {}),
+        json!({})
+    );
+    assert_eq!(decode::<LastViewLoad>(r#"{"view":null}"#).view, None);
+    let loaded = decode::<LastViewLoad>(r#"{"view":{"note":null,"folders":[["A"]]}}"#);
+    assert_eq!(
+        loaded.view,
+        Some(LastViewState {
+            note: None,
+            folders: vec![path(&["A"])],
+        })
+    );
+    decode::<LastViewSave>("{}");
+    decode::<LastViewSetEnabled>("{}");
 }

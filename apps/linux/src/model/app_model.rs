@@ -1752,7 +1752,9 @@ impl AppModel {
             CoreEvent::SessionEnded { .. } => self.session_ended(),
             CoreEvent::SettingsChanged { view } => self.apply_settings_view(&view),
             CoreEvent::NoteContentChangedRemotely(changed) => self.show_toast(&changed.message),
-            CoreEvent::Other { .. } => {}
+            CoreEvent::TrashChanged(_)
+            | CoreEvent::SearchStatusChanged(_)
+            | CoreEvent::Other { .. } => {}
         }
     }
 

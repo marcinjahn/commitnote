@@ -213,3 +213,45 @@ pub enum NoticeAction {
 pub enum SessionEndReason {
     LoggedOut,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TrashItemKind {
+    Note,
+    Folder,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashItemView {
+    pub kind: TrashItemKind,
+    pub name: String,
+    pub sub_path: Vec<String>,
+    pub children: Vec<TrashItemView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashEntryView {
+    pub id: String,
+    pub kind: TrashItemKind,
+    pub name: String,
+    pub original_folder: String,
+    pub days_left: String,
+    pub color_tag: Option<ColorTag>,
+    pub children: Vec<TrashItemView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashConfirmationText {
+    pub title: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LastViewState {
+    pub note: Option<Vec<String>>,
+    pub folders: Vec<Vec<String>>,
+}
