@@ -156,7 +156,7 @@ impl AppModel {
         let Ok(_owner) = context.acquire() else {
             return;
         };
-        let Some((view, expected)) = self.exit_flush() else {
+        let Some((view, read_back)) = self.exit_flush() else {
             return;
         };
         let done = Rc::new(Cell::new(false));
@@ -173,7 +173,7 @@ impl AppModel {
         context.spawn_local({
             let done = done.clone();
             async move {
-                model.store_last_view(view, &expected).await;
+                model.store_last_view(view, &read_back).await;
                 done.set(true);
             }
         });
@@ -187,7 +187,7 @@ impl AppModel {
 
     /// A core that reopens nothing answers a load with no view, and must not be switched back
     /// on by the write.
-    async fn store_last_view(&self, view: LastViewState, expected: &LastViewState) {
+    async fn store_last_view(&self, view: LastViewState, read_back: &ReadBack) {
         let reopening = self.request::<LastViewLoad>(LastViewLoadParams {}).await;
         if !reopening.is_ok_and(|reply| reply.view.is_some()) {
             return;
@@ -202,7 +202,7 @@ impl AppModel {
         let deadline = Instant::now() + EXIT_FLUSH_LIMIT;
         loop {
             let stored = self.request::<LastViewLoad>(LastViewLoadParams {}).await;
-            if stored.is_ok_and(|reply| reply.view.as_ref() == Some(expected))
+            if stored.is_ok_and(|reply| reply.view.is_some_and(|view| read_back.matches(&view)))
                 || Instant::now() >= deadline
             {
                 return;
@@ -212,7 +212,7 @@ impl AppModel {
     }
 
     /// The view to store and what the core reads back for it, unless nothing of it can be lost.
-    fn exit_flush(&self) -> Option<(LastViewState, LastViewState)> {
+    fn exit_flush(&self) -> Option<(LastViewState, ReadBack)> {
         let mut state = self.state_mut();
         if state.shut_down || state.last_view.check != Check::Done {
             return None;
@@ -226,20 +226,8 @@ impl AppModel {
         }
         state.last_view.pending = None;
         let view = current_view(&state);
-        let tree = state.tree.as_deref().unwrap_or_default();
-        let expected = LastViewState {
-            note: view
-                .note
-                .clone()
-                .filter(|note| matches!(find_node(tree, note), Some(TreeNode::Note { .. }))),
-            folders: view
-                .folders
-                .iter()
-                .filter(|folder| matches!(find_node(tree, folder), Some(TreeNode::Folder { .. })))
-                .cloned()
-                .collect(),
-        };
-        Some((view, expected))
+        let read_back = ReadBack::new(view.clone(), state.tree.as_deref().unwrap_or_default());
+        Some((view, read_back))
     }
 
     /// The tracker for the next session; nothing of the ended one carries over, as the core
@@ -402,6 +390,45 @@ impl AppModel {
     }
 }
 
+/// What the core reads back once it has stored a view. The core keeps what exists in the whole
+/// tree, but the model only sees the tree a tag filter leaves: the open note and every expanded
+/// folder the filter shows must come back, while an expanded folder the filter hides may not.
+#[derive(Debug)]
+struct ReadBack {
+    view: LastViewState,
+    visible: Vec<bool>,
+}
+
+impl ReadBack {
+    fn new(view: LastViewState, tree: &[TreeNode]) -> Self {
+        let visible = view
+            .folders
+            .iter()
+            .map(|folder| matches!(find_node(tree, folder), Some(TreeNode::Folder { .. })))
+            .collect();
+        Self { view, visible }
+    }
+
+    /// The core writes an empty view before the real one, so an empty read-back counts only
+    /// for an empty view.
+    fn matches(&self, stored: &LastViewState) -> bool {
+        if stored.note != self.view.note || (is_empty(stored) && !is_empty(&self.view)) {
+            return false;
+        }
+        let mut kept = stored.folders.iter().peekable();
+        for (folder, visible) in self.view.folders.iter().zip(&self.visible) {
+            if kept.next_if_eq(&folder).is_none() && *visible {
+                return false;
+            }
+        }
+        kept.next().is_none()
+    }
+}
+
+fn is_empty(view: &LastViewState) -> bool {
+    view.note.is_none() && view.folders.is_empty()
+}
+
 fn current_view(state: &State) -> LastViewState {
     LastViewState {
         note: state.editor_target.note_path().map(<[String]>::to_vec),
@@ -435,6 +462,7 @@ mod tests {
     use std::time::Instant;
 
     use commitnote_core_api::commands::LastViewLoadResult;
+    use commitnote_core_api::shapes::ColorTag;
 
     use super::super::tests::{Session, fake_bundle, open_and_read, run};
     use super::*;
@@ -557,18 +585,172 @@ mod tests {
     }
 
     /// Runs `before`, shuts the model down outside any polled future, as the application does,
-    /// and runs `after` on the relaunched one.
-    fn across_a_shutdown(before: impl AsyncFnOnce(&Session), after: impl AsyncFnOnce(&Session)) {
+    /// and runs `after` on the relaunched one. Returns how long the shutdown took.
+    fn across_a_shutdown(
+        before: impl AsyncFnOnce(&Session),
+        after: impl AsyncFnOnce(&Session),
+    ) -> Duration {
         let context = glib::MainContext::new();
         let mut session = context.block_on(async {
             let session = Session::start(fake_bundle());
             before(&session).await;
             session
         });
+        let started = Instant::now();
         context
             .with_thread_default(|| session.restart_with_flush())
             .expect("the test owns the context");
+        let shutdown = started.elapsed();
         context.block_on(after(&session));
+        shutdown
+    }
+
+    fn welcome() -> Vec<String> {
+        path(&["Welcome"])
+    }
+
+    fn shown(model: &AppModel, path: &[String]) -> bool {
+        model
+            .tree()
+            .is_some_and(|tree| find_node(&tree, path).is_some())
+    }
+
+    /// Opens the untagged Welcome note and filters the tree by blue, which hides that note.
+    async fn welcome_under_the_blue_filter(session: &Session) {
+        remember_ideas(session).await;
+        open_and_read(session, &welcome()).await;
+        session
+            .model
+            .set_tag_filter(Some(ColorTag::Blue))
+            .await
+            .expect("the filter is set");
+        session
+            .wait_until("the blue filter", |model| {
+                model.tag_filter() == Some(ColorTag::Blue) && !shown(model, &welcome())
+            })
+            .await;
+        assert_eq!(session.model.editor_target(), EditorTarget::Note(welcome()));
+    }
+
+    async fn reopened(session: &Session, expected: &LastViewState) {
+        session.log_in_remembered().await;
+        checked(session).await;
+        assert_eq!(stored_view(session).await.as_ref(), Some(expected));
+        session
+            .wait_until("the restored note", |model| {
+                Some(model.editor_target()) == expected.note.clone().map(EditorTarget::Note)
+            })
+            .await;
+        assert_eq!(session.model.take_restored_folders(), expected.folders);
+    }
+
+    #[test]
+    fn quitting_under_a_tag_filter_keeps_a_hidden_note_and_a_shown_folder_without_waiting() {
+        let expected = LastViewState {
+            note: Some(welcome()),
+            folders: vec![path(&["Projects"])],
+        };
+        let shutdown = across_a_shutdown(
+            async |session| {
+                welcome_under_the_blue_filter(session).await;
+                assert!(shown(&session.model, &expected.folders[0]));
+                session
+                    .model
+                    .record_expanded_folders(expected.folders.clone());
+                assert!(session.model.state().last_view.pending.is_some());
+            },
+            async |session| reopened(session, &expected).await,
+        );
+        assert!(
+            shutdown < Duration::from_secs(1),
+            "the shutdown took {shutdown:?}"
+        );
+    }
+
+    #[test]
+    fn quitting_with_the_whole_view_hidden_by_a_tag_filter_keeps_it() {
+        let expected = LastViewState {
+            note: Some(welcome()),
+            folders: vec![path(&["Journal"])],
+        };
+        across_a_shutdown(
+            async |session| {
+                welcome_under_the_blue_filter(session).await;
+                assert!(!shown(&session.model, &expected.folders[0]));
+                session
+                    .model
+                    .record_expanded_folders(expected.folders.clone());
+                assert!(session.model.state().last_view.pending.is_some());
+            },
+            async |session| reopened(session, &expected).await,
+        );
+    }
+
+    fn folder_node(own: Vec<String>, children: Vec<TreeNode>) -> TreeNode {
+        TreeNode::Folder {
+            name: own.last().cloned().unwrap_or_default(),
+            path: own,
+            note_count: 1,
+            children,
+        }
+    }
+
+    fn note_node(own: Vec<String>) -> TreeNode {
+        TreeNode::Note {
+            name: own.last().cloned().unwrap_or_default(),
+            path: own,
+            color_tag: Some(ColorTag::Blue),
+            shared: false,
+        }
+    }
+
+    /// A filtered tree that shows "A" and "A/B" but hides "C", "D" and the note "Hidden".
+    fn read_back(note: Option<&[&str]>, folders: &[&[&str]]) -> ReadBack {
+        let tree = [folder_node(
+            path(&["A"]),
+            vec![folder_node(
+                path(&["A", "B"]),
+                vec![note_node(path(&["A", "B", "N"]))],
+            )],
+        )];
+        ReadBack::new(view(note, folders), &tree)
+    }
+
+    fn view(note: Option<&[&str]>, folders: &[&[&str]]) -> LastViewState {
+        LastViewState {
+            note: note.map(path),
+            folders: folders.iter().map(|folder| path(folder)).collect(),
+        }
+    }
+
+    #[test]
+    fn the_read_back_needs_the_open_note_even_when_the_filter_hides_it() {
+        let expected = read_back(Some(&["Hidden"]), &[&["A"]]);
+
+        assert!(expected.matches(&view(Some(&["Hidden"]), &[&["A"]])));
+        assert!(!expected.matches(&view(None, &[&["A"]])));
+        assert!(!expected.matches(&view(Some(&["A", "B", "N"]), &[&["A"]])));
+        assert!(!expected.matches(&view(None, &[])));
+    }
+
+    #[test]
+    fn the_read_back_needs_every_shown_folder_and_may_drop_hidden_ones() {
+        let expected = read_back(None, &[&["C"], &["A"], &["D"], &["A", "B"]]);
+
+        assert!(expected.matches(&view(None, &[&["C"], &["A"], &["D"], &["A", "B"]])));
+        assert!(expected.matches(&view(None, &[&["A"], &["A", "B"]])));
+        assert!(expected.matches(&view(None, &[&["A"], &["D"], &["A", "B"]])));
+        assert!(!expected.matches(&view(None, &[&["C"], &["D"], &["A", "B"]])));
+        assert!(!expected.matches(&view(None, &[&["A", "B"], &["A"]])));
+        assert!(!expected.matches(&view(None, &[&["A"], &["A", "B"], &["E"]])));
+    }
+
+    #[test]
+    fn the_read_back_takes_the_interim_empty_view_only_for_an_empty_view() {
+        assert!(!read_back(None, &[&["C"], &["D"]]).matches(&view(None, &[])));
+        assert!(read_back(None, &[&["C"], &["D"]]).matches(&view(None, &[&["D"]])));
+        assert!(read_back(None, &[]).matches(&view(None, &[])));
+        assert!(!read_back(None, &[]).matches(&view(None, &[&["A"]])));
     }
 
     #[test]
