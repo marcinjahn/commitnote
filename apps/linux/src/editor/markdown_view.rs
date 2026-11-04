@@ -14,7 +14,7 @@ use super::overlay::{
 };
 use super::spans::{self, Spans};
 use super::tags::{Palette, PreviewTags};
-use crate::links;
+use crate::{accent, links};
 
 const MARGIN: i32 = 12;
 const LIGHT_SCHEME: &str = "Adwaita";
@@ -112,9 +112,7 @@ mod imp {
                 }
             });
 
-            let probe = gtk::Label::new(None);
-            probe.add_css_class("accent");
-            probe.set_visible(false);
+            let probe = accent::probe();
             view.add_overlay(&probe, 0, 0);
             let _ = self.accent_probe.set(probe);
 
@@ -531,7 +529,7 @@ impl MarkdownView {
             .imp()
             .accent_probe
             .get()
-            .map_or_else(|| self.color(), |probe| probe.color());
+            .map_or_else(|| self.color(), accent::color);
         Palette {
             foreground: self.color(),
             accent,

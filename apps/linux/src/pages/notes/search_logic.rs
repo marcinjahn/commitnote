@@ -1,7 +1,6 @@
 use commitnote_core_api::commands::SnippetPart;
-use gtk4::pango;
+use gtk4::{gdk, pango};
 
-const MATCH_BACKGROUND: (u16, u16, u16) = (0x3535, 0x8484, 0xe4e4);
 const MATCH_BACKGROUND_ALPHA: u16 = 0x4000;
 
 pub fn utf16_range_to_bytes(text: &str, (start, end): (u32, u32)) -> Option<(usize, usize)> {
@@ -37,9 +36,17 @@ fn bold(start: usize, end: usize) -> pango::AttrInt {
     weight
 }
 
-fn highlight(attrs: &pango::AttrList, start: usize, end: usize) {
+fn channel(value: f32) -> u16 {
+    (value.clamp(0.0, 1.0) * f32::from(u16::MAX)).round() as u16
+}
+
+fn highlight(attrs: &pango::AttrList, start: usize, end: usize, accent: &gdk::RGBA) {
     attrs.insert(bold(start, end));
-    let (red, green, blue) = MATCH_BACKGROUND;
+    let (red, green, blue) = (
+        channel(accent.red()),
+        channel(accent.green()),
+        channel(accent.blue()),
+    );
     let mut background = pango::AttrColor::new_background(red, green, blue);
     background.set_start_index(start as u32);
     background.set_end_index(end as u32);
@@ -62,14 +69,14 @@ pub fn name_attributes(name: &str, ranges: &[(u32, u32)]) -> pango::AttrList {
     attrs
 }
 
-pub fn snippet_markup(parts: &[SnippetPart]) -> (String, pango::AttrList) {
+pub fn snippet_markup(parts: &[SnippetPart], accent: &gdk::RGBA) -> (String, pango::AttrList) {
     let attrs = pango::AttrList::new();
     let mut text = String::new();
     for part in parts {
         let start = text.len();
         text.push_str(&part.text);
         if part.is_match && text.len() > start {
-            highlight(&attrs, start, text.len());
+            highlight(&attrs, start, text.len(), accent);
         }
     }
     (text, attrs)
@@ -95,6 +102,10 @@ mod tests {
             .filter(|attr| attr.type_() == pango::AttrType::Background)
             .map(|attr| (attr.start_index(), attr.end_index()))
             .collect()
+    }
+
+    fn accent() -> gdk::RGBA {
+        gdk::RGBA::new(0.5, 0.25, 1.0, 1.0)
     }
 
     fn part(text: &str, is_match: bool) -> SnippetPart {
@@ -170,26 +181,64 @@ mod tests {
     #[test]
     fn snippet_markup_concatenates_parts_and_marks_matches() {
         let parts = [part("a ", false), part("żółw", true), part(" run", false)];
-        let (text, attrs) = snippet_markup(&parts);
+        let (text, attrs) = snippet_markup(&parts, &accent());
         assert_eq!(text, "a żółw run");
         assert_eq!(weight_ranges(&attrs), vec![(2, 9)]);
         assert_eq!(background_ranges(&attrs), vec![(2, 9)]);
     }
 
     #[test]
+    fn snippet_markup_uses_the_given_accent_with_a_translucent_background() {
+        let parts = [part("a ", false), part("żółw", true)];
+        let (_, attrs) = snippet_markup(&parts, &accent());
+        let attributes = attrs.attributes();
+        let background = attributes
+            .iter()
+            .find(|attr| attr.type_() == pango::AttrType::Background)
+            .and_then(|attr| attr.downcast_ref::<pango::AttrColor>())
+            .expect("background attribute")
+            .color();
+        assert_eq!(
+            (background.red(), background.green(), background.blue()),
+            (0x8000, 0x4000, 0xffff)
+        );
+        let alpha = attributes
+            .iter()
+            .find(|attr| attr.type_() == pango::AttrType::BackgroundAlpha)
+            .and_then(|attr| attr.downcast_ref::<pango::AttrInt>())
+            .expect("alpha attribute")
+            .value();
+        assert_eq!(alpha, i32::from(MATCH_BACKGROUND_ALPHA));
+
+        let other = gdk::RGBA::new(1.0, 0.0, 0.0, 1.0);
+        let (_, attrs) = snippet_markup(&parts, &other);
+        let attributes = attrs.attributes();
+        let background = attributes
+            .iter()
+            .find(|attr| attr.type_() == pango::AttrType::Background)
+            .and_then(|attr| attr.downcast_ref::<pango::AttrColor>())
+            .unwrap()
+            .color();
+        assert_eq!(
+            (background.red(), background.green(), background.blue()),
+            (0xffff, 0, 0)
+        );
+    }
+
+    #[test]
     fn snippet_markup_handles_adjacent_matches_and_emoji() {
         let parts = [part("🙂", false), part("ab", true), part("cd", true)];
-        let (text, attrs) = snippet_markup(&parts);
+        let (text, attrs) = snippet_markup(&parts, &accent());
         assert_eq!(text, "🙂abcd");
         assert_eq!(weight_ranges(&attrs), vec![(4, 6), (6, 8)]);
     }
 
     #[test]
     fn snippet_markup_ignores_empty_matches_and_empty_input() {
-        let (text, attrs) = snippet_markup(&[part("x", false), part("", true)]);
+        let (text, attrs) = snippet_markup(&[part("x", false), part("", true)], &accent());
         assert_eq!(text, "x");
         assert!(weight_ranges(&attrs).is_empty());
-        let (text, attrs) = snippet_markup(&[]);
+        let (text, attrs) = snippet_markup(&[], &accent());
         assert!(text.is_empty());
         assert!(attrs.attributes().is_empty());
     }

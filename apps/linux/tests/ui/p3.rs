@@ -4,7 +4,7 @@ use std::rc::Rc;
 use adw::prelude::*;
 use commitnote::editor::NoteEditor;
 use commitnote::model::{AppModel, DraftFocus, EditorTarget};
-use commitnote::pages::notes::NotesTree;
+use commitnote::pages::notes::{NotesTree, SearchView};
 use commitnote_core_api::commands::{LastViewLoadResult, NoteDraftOutcome};
 use commitnote_core_api::shapes::{LastViewState, OpenNote, TreeNode};
 use gtk4::{self as gtk, gdk, glib, pango};
@@ -664,6 +664,34 @@ fn is_bold(label: &gtk::Label) -> bool {
     })
 }
 
+fn highlight_background(label: &gtk::Label) -> Option<(u16, u16, u16)> {
+    let attrs = label.attributes()?.attributes();
+    let color = attrs
+        .iter()
+        .filter(|attr| attr.type_() == pango::AttrType::Background)
+        .find_map(|attr| attr.downcast_ref::<pango::AttrColor>().map(|c| c.color()))?;
+    Some((color.red(), color.green(), color.blue()))
+}
+
+fn highlight_follows_accent(h: &Harness) -> bool {
+    let Ok(view) = h.widget_as::<SearchView>("search-view") else {
+        return false;
+    };
+    let accent = view.highlight_accent();
+    let channel = |value: f32| (value * f32::from(u16::MAX)).round() as u16;
+    let expected = (
+        channel(accent.red()),
+        channel(accent.green()),
+        channel(accent.blue()),
+    );
+    let rows = search_rows(h).1;
+    let highlights: Vec<_> = rows
+        .iter()
+        .filter_map(|row| row.snippet.as_ref().and_then(highlight_background))
+        .collect();
+    !highlights.is_empty() && highlights.iter().all(|color| *color == expected)
+}
+
 fn search_row(h: &Harness, name: &str) -> Option<ResultRow> {
     search_rows(h).1.into_iter().find(|row| row.name == name)
 }
@@ -873,6 +901,9 @@ fn shot_search(h: &mut Harness) -> Result<(), String> {
                 && rows
                     .iter()
                     .any(|row| row.snippet.as_ref().is_some_and(is_bold))
+        })?;
+        h.wait("the match highlight in the accent colour", || {
+            highlight_follows_accent(h)
         })?;
         h.wait("the search entry", || h.shown("search-entry"))?;
         if width == Width::Narrow {

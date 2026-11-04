@@ -6,11 +6,12 @@ use adw::subclass::prelude::*;
 use commitnote_core_api::commands::{SearchResults, SearchRow};
 use commitnote_core_api::shapes::TagOptionView;
 use glib::subclass::Signal;
-use gtk4::{self as gtk, glib, pango};
+use gtk4::{self as gtk, gdk, glib, pango};
 use libadwaita as adw;
 
 use super::search_logic::{name_attributes, snippet_markup};
 use super::tree_logic::{note_description, tag_id, tag_label};
+use crate::accent;
 use crate::model::{AppModel, SearchStatus};
 
 mod imp {
@@ -30,6 +31,9 @@ mod imp {
         pub(super) paths: RefCell<Vec<Option<Vec<String>>>>,
         pub(super) model: OnceCell<AppModel>,
         pub(super) handler: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) accent_probe: OnceCell<gtk::Label>,
+        pub(super) style_handlers: RefCell<Vec<glib::SignalHandlerId>>,
+        pub(super) restyle_source: RefCell<Option<glib::SourceId>>,
     }
 
     #[glib::object_subclass]
@@ -116,11 +120,43 @@ mod imp {
             content.append(&self.count);
             content.append(&self.stack);
             content.append(&self.status_box);
+            let probe = accent::probe();
+            content.append(&probe);
+            let _ = self.accent_probe.set(probe);
             view.set_child(Some(&content));
+
+            let style_manager = adw::StyleManager::default();
+            let handlers = vec![
+                style_manager.connect_dark_notify({
+                    let view = view.downgrade();
+                    move |_| {
+                        if let Some(view) = view.upgrade() {
+                            view.queue_restyle();
+                        }
+                    }
+                }),
+                style_manager.connect_accent_color_rgba_notify({
+                    let view = view.downgrade();
+                    move |_| {
+                        if let Some(view) = view.upgrade() {
+                            view.queue_restyle();
+                        }
+                    }
+                }),
+            ];
+            self.style_handlers.replace(handlers);
+            view.connect_root_notify(|view| view.queue_restyle());
             view.render();
         }
 
         fn dispose(&self) {
+            let style_manager = adw::StyleManager::default();
+            for handler in self.style_handlers.take() {
+                style_manager.disconnect(handler);
+            }
+            if let Some(source) = self.restyle_source.take() {
+                source.remove();
+            }
             if let (Some(model), Some(id)) = (self.model.get(), self.handler.take()) {
                 model.disconnect(id);
             }
@@ -199,6 +235,30 @@ impl SearchView {
         }
     }
 
+    fn queue_restyle(&self) {
+        let imp = self.imp();
+        if imp.restyle_source.borrow().is_some() {
+            return;
+        }
+        let source = glib::idle_add_local_once({
+            let view = self.downgrade();
+            move || {
+                if let Some(view) = view.upgrade() {
+                    view.imp().restyle_source.take();
+                    view.render();
+                }
+            }
+        });
+        imp.restyle_source.replace(Some(source));
+    }
+
+    pub fn highlight_accent(&self) -> gdk::RGBA {
+        self.imp()
+            .accent_probe
+            .get()
+            .map_or_else(|| self.color(), accent::color)
+    }
+
     fn render(&self) {
         let imp = self.imp();
         let model = imp.model.get();
@@ -214,7 +274,7 @@ impl SearchView {
             .and_then(|index| imp.paths.borrow().get(index).cloned().flatten());
         let had_focus = imp.list.focus_child().is_some();
 
-        self.render_list(results.as_ref(), &tag_options);
+        self.render_list(results.as_ref(), &tag_options, &self.highlight_accent());
         self.render_count(results.as_ref());
         self.render_stack(results.as_ref(), query_empty);
         self.render_status(results.as_ref(), status.as_ref(), query_empty);
@@ -234,7 +294,12 @@ impl SearchView {
         }
     }
 
-    fn render_list(&self, results: Option<&SearchResults>, tag_options: &[TagOptionView]) {
+    fn render_list(
+        &self,
+        results: Option<&SearchResults>,
+        tag_options: &[TagOptionView],
+        accent: &gdk::RGBA,
+    ) {
         let imp = self.imp();
         imp.list.remove_all();
         let mut paths = Vec::new();
@@ -245,6 +310,7 @@ impl SearchView {
                     &results.recent,
                     None,
                     tag_options,
+                    accent,
                     &mut paths,
                 );
             } else {
@@ -253,6 +319,7 @@ impl SearchView {
                     &results.names,
                     results.names_more.as_deref(),
                     tag_options,
+                    accent,
                     &mut paths,
                 );
                 self.append_section(
@@ -260,6 +327,7 @@ impl SearchView {
                     &results.contents,
                     results.contents_more.as_deref(),
                     tag_options,
+                    accent,
                     &mut paths,
                 );
             }
@@ -273,6 +341,7 @@ impl SearchView {
         rows: &[SearchRow],
         more: Option<&str>,
         tag_options: &[TagOptionView],
+        accent: &gdk::RGBA,
         paths: &mut Vec<Option<Vec<String>>>,
     ) {
         if rows.is_empty() {
@@ -282,7 +351,7 @@ impl SearchView {
         list.append(&heading_row(heading));
         paths.push(None);
         for row in rows {
-            list.append(&result_row(row, tag_options));
+            list.append(&result_row(row, tag_options, accent));
             paths.push(Some(row.path.clone()));
         }
         if let Some(more) = more {
@@ -384,7 +453,11 @@ fn inert_row(child: &impl IsA<gtk::Widget>) -> gtk::ListBoxRow {
     row
 }
 
-fn result_row(result: &SearchRow, tag_options: &[TagOptionView]) -> gtk::ListBoxRow {
+fn result_row(
+    result: &SearchRow,
+    tag_options: &[TagOptionView],
+    accent: &gdk::RGBA,
+) -> gtk::ListBoxRow {
     let name = gtk::Label::new(Some(&result.name));
     name.set_xalign(0.0);
     name.set_hexpand(true);
@@ -421,7 +494,7 @@ fn result_row(result: &SearchRow, tag_options: &[TagOptionView]) -> gtk::ListBox
         description.push(folder.clone());
     }
     if let Some(parts) = &result.snippet {
-        let (text, attrs) = snippet_markup(parts);
+        let (text, attrs) = snippet_markup(parts, accent);
         let label = gtk::Label::new(Some(&text));
         label.set_attributes(Some(&attrs));
         label.set_xalign(0.0);

@@ -1,3 +1,4 @@
+pub mod accent;
 pub mod application;
 pub mod close_guard;
 pub mod config;
