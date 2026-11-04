@@ -11,7 +11,8 @@ use commitnote::model::{AppConfig, AppModel, Appearance, ColorMode, Route};
 use commitnote::window::CommitnoteWindow;
 use commitnote_core_runtime::services::RememberedSessionStore;
 use commitnote_core_runtime::services::remembered_session::open_remembered_session_store;
-use gtk4::{self as gtk, gio, glib, graphene};
+use gtk4::glib::translate::IntoGlib;
+use gtk4::{self as gtk, gdk, gio, glib, graphene};
 use libadwaita as adw;
 
 pub type Case = (&'static str, fn(&mut Harness) -> Result<(), String>);
@@ -22,6 +23,19 @@ const REFRESH_GAP: Duration = Duration::from_millis(500);
 const BUNDLE_RESOURCE: &str = "core/commitnote-core.js";
 const SESSION_ACCENT: &str = "violet";
 const DEVICE_MODEL: &str = "Linux";
+const REMOTE_DESKTOP: &str = "org.gnome.Mutter.RemoteDesktop";
+const REMOTE_DESKTOP_PATH: &str = "/org/gnome/Mutter/RemoteDesktop";
+const REMOTE_DESKTOP_SESSION: &str = "org.gnome.Mutter.RemoteDesktop.Session";
+const DBUS_TIMEOUT_MS: i32 = 5_000;
+const SHIFTED_SYMBOLS: &str = "~!@#$%^&*()_+{}|:\"<>?";
+
+mod keysym {
+    pub const SHIFT_L: u32 = 0xffe1;
+    pub const CONTROL_L: u32 = 0xffe3;
+    pub const ALT_L: u32 = 0xffe9;
+    pub const RETURN: u32 = 0xff0d;
+    pub const TAB: u32 = 0xff09;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Width {
@@ -141,6 +155,7 @@ pub struct Harness {
     changes: Rc<Cell<u64>>,
     routes: Rc<RefCell<Vec<Route>>>,
     failure_saved: Cell<bool>,
+    keyboard: Keyboard,
 }
 
 impl Harness {
@@ -160,6 +175,7 @@ impl Harness {
         std::fs::create_dir_all(&screenshot_dir)
             .map_err(|error| format!("cannot create the screenshot directory: {error}"))?;
         install_app_icons(&run_dir.join("icons"))?;
+        let keyboard = Keyboard::start()?;
         Ok(Self {
             application,
             applier: Rc::new(AppearanceApplier::new()),
@@ -174,6 +190,7 @@ impl Harness {
             changes: Rc::default(),
             routes: Rc::default(),
             failure_saved: Cell::new(false),
+            keyboard,
         })
     }
 
@@ -567,6 +584,61 @@ impl Harness {
         Ok(())
     }
 
+    /// Presses `accelerator` on the real keyboard: its modifiers, then the key, released in reverse
+    /// order. The key goes to the focused widget of the harness window once it is active.
+    pub fn press_keys(&self, accelerator: &str) -> Result<(), String> {
+        let (key, modifiers) = gtk::accelerator_parse(accelerator)
+            .ok_or_else(|| format!("{accelerator} is not a valid accelerator"))?;
+        let pressable = [
+            (gdk::ModifierType::CONTROL_MASK, keysym::CONTROL_L),
+            (gdk::ModifierType::SHIFT_MASK, keysym::SHIFT_L),
+            (gdk::ModifierType::ALT_MASK, keysym::ALT_L),
+        ];
+        let known = pressable
+            .iter()
+            .fold(gdk::ModifierType::empty(), |all, &(mask, _)| all | mask);
+        if !known.contains(modifiers) {
+            return Err(format!(
+                "{accelerator} has a modifier the harness cannot press"
+            ));
+        }
+        let held: Vec<u32> = pressable
+            .iter()
+            .filter(|&&(mask, _)| modifiers.contains(mask))
+            .map(|&(_, keysym)| keysym)
+            .collect();
+        self.wait_active()?;
+        self.keyboard.chord(&held, key.into_glib())
+    }
+
+    /// Types `text` on the real keyboard into the focused widget of the harness window: printable
+    /// ASCII, with `\n` as Return and `\t` as Tab.
+    pub fn type_keys(&self, text: &str) -> Result<(), String> {
+        let strokes = text
+            .chars()
+            .map(|character| match character {
+                '\n' => Ok((false, keysym::RETURN)),
+                '\t' => Ok((false, keysym::TAB)),
+                ' '..='~' => Ok((
+                    character.is_ascii_uppercase() || SHIFTED_SYMBOLS.contains(character),
+                    gdk::unicode_to_keyval(u32::from(character)),
+                )),
+                _ => Err(format!("the harness cannot type {character:?}")),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        self.wait_active()?;
+        for (shifted, keysym) in strokes {
+            let held: &[u32] = if shifted { &[keysym::SHIFT_L] } else { &[] };
+            self.keyboard.chord(held, keysym)?;
+        }
+        Ok(())
+    }
+
+    fn wait_active(&self) -> Result<(), String> {
+        let window = self.window()?;
+        self.wait("the window to be active", || window.is_active())
+    }
+
     /// Refreshes repeatedly, spaced out, until `predicate` holds, so a change made on the fake
     /// forge reaches the app regardless of when the request that made it completes.
     pub fn refresh_until(
@@ -778,6 +850,81 @@ impl Harness {
             .render_texture(&node, Some(&viewport))
             .save_to_png(path)
             .map_err(|error| format!("cannot save {}: {error}", path.display()))
+    }
+}
+
+/// A virtual keyboard from a mutter remote desktop session; the session lives as long as the
+/// connection that created it.
+struct Keyboard {
+    connection: gio::DBusConnection,
+    session: String,
+}
+
+impl Keyboard {
+    fn start() -> Result<Self, String> {
+        let connection = gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>)
+            .map_err(|error| format!("cannot reach the session bus: {error}"))?;
+        let reply = connection
+            .call_sync(
+                Some(REMOTE_DESKTOP),
+                REMOTE_DESKTOP_PATH,
+                REMOTE_DESKTOP,
+                "CreateSession",
+                None,
+                Some(glib::VariantTy::new("(o)").expect("a valid type")),
+                gio::DBusCallFlags::NONE,
+                DBUS_TIMEOUT_MS,
+                None::<&gio::Cancellable>,
+            )
+            .map_err(|error| {
+                format!("mutter's remote desktop service is unavailable, so no keys can be sent: {error}")
+            })?;
+        let session = reply
+            .child_value(0)
+            .str()
+            .ok_or("mutter returned no remote desktop session")?
+            .to_owned();
+        let keyboard = Self {
+            connection,
+            session,
+        };
+        keyboard.call("Start", None)?;
+        keyboard.key(keysym::SHIFT_L, true)?;
+        keyboard.key(keysym::SHIFT_L, false)?;
+        Ok(keyboard)
+    }
+
+    fn call(&self, method: &str, parameters: Option<glib::Variant>) -> Result<(), String> {
+        self.connection
+            .call_sync(
+                Some(REMOTE_DESKTOP),
+                &self.session,
+                REMOTE_DESKTOP_SESSION,
+                method,
+                parameters.as_ref(),
+                None,
+                gio::DBusCallFlags::NONE,
+                DBUS_TIMEOUT_MS,
+                None::<&gio::Cancellable>,
+            )
+            .map(drop)
+            .map_err(|error| format!("the remote desktop {method} call failed: {error}"))
+    }
+
+    fn key(&self, keysym: u32, pressed: bool) -> Result<(), String> {
+        self.call("NotifyKeyboardKeysym", Some((keysym, pressed).to_variant()))
+    }
+
+    fn chord(&self, modifiers: &[u32], keysym: u32) -> Result<(), String> {
+        for &modifier in modifiers {
+            self.key(modifier, true)?;
+        }
+        self.key(keysym, true)?;
+        self.key(keysym, false)?;
+        for &modifier in modifiers.iter().rev() {
+            self.key(modifier, false)?;
+        }
+        Ok(())
     }
 }
 

@@ -45,6 +45,8 @@ pub const CASES: &[Case] = &[
     ("vim_status_line", vim_status_line),
     ("vim_edit_undo", vim_edit_undo),
     ("vim_no_corruption", vim_no_corruption),
+    ("p2-real-keys-vim", real_keys_vim),
+    ("p2-real-keys-ctrl-r", real_keys_ctrl_r),
     ("title_rename", title_rename),
     ("title_rename_error", title_rename_error),
     ("new_note_named", new_note_named),
@@ -220,19 +222,12 @@ fn editor_preview(h: &mut Harness) -> Result<(), String> {
         "moving the caret changed the text".to_owned()
     })?;
 
-    let pictured = SAMPLE.replacen("😀 then", "Then", 1);
-    show_saved(h, &editor, &pictured)?;
-    buffer.place_cursor(&buffer.iter_at_offset(bold_line));
-    h.wait("the bold markers to show for the picture", || {
-        h.tags_at(VIEW, open)
-            .is_ok_and(|tags| !tags.iter().any(|name| name == HIDDEN))
-    })?;
     h.session_screenshots("editor", WIDE_VARIANTS)?;
     h.resize(Width::Narrow)?;
     split_view(h)?.set_show_content(true);
     h.wait_shown("formatting-bar")?;
     h.session_screenshots("editor-narrow", NARROW_VARIANTS)?;
-    ensure(editor.text() == pictured, || {
+    ensure(editor.text() == SAMPLE, || {
         "the note text changed while the sample was shown".to_owned()
     })?;
     h.resize(Width::Wide)?;
@@ -1112,6 +1107,98 @@ fn vim_no_corruption(h: &mut Harness) -> Result<(), String> {
 
     save_now(h)?;
     wait_open_note(h, &third)
+}
+
+const KEYED_LINE: &str = "Typed with real keys";
+
+fn focus_editor(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
+    let view = editor.view();
+    view.grab_focus();
+    h.wait("the editor to take focus", || focus_within(h, &view))
+}
+
+fn count_refreshes(h: &Harness) -> Result<Rc<Cell<u32>>, String> {
+    let action = h
+        .window()?
+        .lookup_action("refresh")
+        .and_downcast::<gtk::gio::SimpleAction>()
+        .ok_or("the window has no refresh action")?;
+    let count = Rc::new(Cell::new(0));
+    action.connect_activate({
+        let count = count.clone();
+        move |_, _| count.set(count.get() + 1)
+    });
+    Ok(count)
+}
+
+fn real_keys_vim(h: &mut Harness) -> Result<(), String> {
+    let editor = open_editor(h)?;
+    show_saved(h, &editor, VIM_TEXT)?;
+    set_vim_mode(h, &editor, true)?;
+    buffer_end(&editor);
+    focus_editor(h, &editor)?;
+
+    h.type_keys("i")?;
+    h.type_keys(KEYED_LINE)?;
+    let typed = format!("{VIM_TEXT}{KEYED_LINE}");
+    h.wait("the typed line", || editor.text() == typed)?;
+    h.press_keys("Escape")?;
+    h.wait("Escape to leave insert mode", || {
+        editor.vim_status().0.is_empty()
+    })?;
+
+    h.type_keys("dd")?;
+    h.wait("dd to delete the typed line", || {
+        !editor.text().contains(KEYED_LINE)
+    })?;
+    let deleted = editor.text();
+    expect_consistent(&editor, &deleted, "after dd")?;
+
+    h.type_keys("u")?;
+    h.wait("u to bring the line back", || editor.text() == typed)?;
+    h.press_keys("<Control>r")?;
+    h.wait("Ctrl+R to delete the line again", || {
+        editor.text() == deleted
+    })?;
+
+    let before = exported_main(h)?;
+    h.type_keys(":w\n")?;
+    wait_exported_change(h, &before)?;
+    wait_open_note(h, &deleted)
+}
+
+fn real_keys_ctrl_r(h: &mut Harness) -> Result<(), String> {
+    let editor = open_editor(h)?;
+    show_saved(h, &editor, VIM_TEXT)?;
+    set_vim_mode(h, &editor, true)?;
+    let refreshes = count_refreshes(h)?;
+    focus_editor(h, &editor)?;
+
+    let cut = &VIM_TEXT[1..];
+    h.type_keys("x")?;
+    h.wait("x to delete a character", || editor.text() == cut)?;
+    h.type_keys("u")?;
+    h.wait("u to undo", || editor.text() == VIM_TEXT)?;
+    h.press_keys("<Control>r")?;
+    h.wait("Ctrl+R in the editor to redo", || editor.text() == cut)?;
+    ensure(refreshes.get() == 0, || {
+        "Ctrl+R in Vim normal mode also refreshed".to_owned()
+    })?;
+
+    wait_echo(h, cut)?;
+    save_now(h)?;
+    let model = h.model()?;
+    h.run("the remote edit", async move {
+        model.testing_remote_edit().await
+    })?
+    .map_err(|error| format!("cannot edit remotely: {}", error.message))?;
+    let tree = h.widget("notes-tree-list")?;
+    tree.grab_focus();
+    h.wait("the tree to take focus", || focus_within(h, &tree))?;
+    h.press_keys("<Control>r")?;
+    h.wait("Ctrl+R in the tree to refresh", || {
+        refreshes.get() == 1 && editor.text() == remotely_edited(cut)
+    })
 }
 
 const TITLE: &str = "note-title-entry";

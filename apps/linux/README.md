@@ -260,15 +260,17 @@ The tests (`test.sh`) run, in this order:
    gnome-keyring, because the remembered-session store uses the Secret Service. One more test checks
    that the app copes with no Secret Service at all.
 2. The app's own unit tests (meson `cargo` suite).
-3. The UI suite (`ci/steps/ui-test.sh`): the testing build under headless Weston at 1280x800 with
-   an unlocked keyring, driving real pages and saving screenshots to
+3. The UI suite (`ci/steps/ui-test.sh`): the testing build at 1280x800 under headless mutter
+   (a 1920x1200 virtual monitor, so the window is never maximised) with an unlocked keyring, driving real pages and saving screenshots to
    `apps/linux/out/screenshots/p<phase>-<view>-<narrow|wide>-<light|dark>-<accent>.png`. The `p1`
    cases cover login, unlocking and reading; the `p2` cases cover the editor, Vim mode, drafts,
    sync feedback, conflicts, the close guard and the early draft. A failing case saves
    `failure-<case>.png` there. Logs go to `apps/linux/out/logs/`, with per-case timings in
-   `ui-testlog.txt`. The filter of `ui-test.sh` matches case names only. The headless compositor has
-   no input seat, so the cases drive keys by calling the controllers and the Vim input method
-   directly, and the container has no emoji font, so screenshots show no emoji glyphs.
+   `ui-testlog.txt`. The filter of `ui-test.sh` matches case names only. The harness sends real key
+   events through mutter's remote desktop virtual keyboard: `press_keys("<Control>r")` presses one
+   accelerator and `type_keys("text")` types ASCII text, both into the focused widget of the
+   active window; older cases still drive some keys by calling the controllers and the Vim input
+   method directly. The container has the Noto Color Emoji font, so screenshots show emoji.
 4. On the host, the read-back: the crate tests and the UI case `editor_read_back` write scenarios
    (a repo made by the Rust runtime and what a reader should find in it) into `apps/linux/out/read-back`, and
    `npx tsx scripts/read-back-native-repo.ts apps/linux/out/read-back` has the shared TypeScript
@@ -315,8 +317,9 @@ sudo dnf install \
   adwaita-sans-fonts \
   dbus-daemon \
   gnome-keyring \
+  google-noto-color-emoji-fonts \
   mesa-dri-drivers \
-  weston
+  mutter
 ```
 
 ### Caches and resources
@@ -362,7 +365,7 @@ minutes. The cargo cache makes a warm run take about 3 minutes against about 15 
 Every run uploads two artifacts, even when a step failed:
 
 - `linux-screenshots` — the UI screenshots, including `failure-*.png` for failed cases,
-- `linux-logs` — the Weston log and the UI test log.
+- `linux-logs` — the mutter log (`mutter.log`) and the UI test log.
 
 Both are kept for 30 days. To fetch them, name them, because a bare `gh run download` fails on the
 `*.dockerbuild` artifact that the image build adds:

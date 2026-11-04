@@ -22,26 +22,6 @@ XDG_RUNTIME_DIR=$(mktemp -d)
 chmod 0700 "$XDG_RUNTIME_DIR"
 export XDG_RUNTIME_DIR
 
-weston --backend=headless --socket=commitnote-ui --width=1280 --height=800 --idle-time=0 \
-  >/src/apps/linux/out/logs/weston.log 2>&1 &
-weston_pid=$!
-
-stop_weston() {
-  kill "$weston_pid" 2>/dev/null || true
-  wait "$weston_pid" 2>/dev/null || true
-}
-trap stop_weston EXIT
-
-waited=0
-while [ ! -S "$XDG_RUNTIME_DIR/commitnote-ui" ]; do
-  if [ "$waited" -ge 100 ] || ! kill -0 "$weston_pid" 2>/dev/null; then
-    echo "weston did not start; see out/logs/weston.log" >&2
-    exit 1
-  fi
-  sleep 0.1
-  waited=$((waited + 1))
-done
-
 status=0
 WAYLAND_DISPLAY=commitnote-ui \
   GDK_BACKEND=wayland \
@@ -51,6 +31,32 @@ WAYLAND_DISPLAY=commitnote-ui \
   COMMITNOTE_READBACK_DIR=/src/apps/linux/out/read-back \
   dbus-run-session -- sh -c '
     set -eu
+    env -u GSETTINGS_SCHEMA_DIR -u GSETTINGS_BACKEND -u WAYLAND_DISPLAY \
+      mutter --headless --wayland --no-x11 --virtual-monitor 1920x1200 \
+      --wayland-display=commitnote-ui >/src/apps/linux/out/logs/mutter.log 2>&1 &
+    mutter_pid=$!
+    stop_mutter() {
+      kill "$mutter_pid" 2>/dev/null || true
+      wait "$mutter_pid" 2>/dev/null || true
+    }
+    trap stop_mutter EXIT
+
+    waited=0
+    while [ ! -S "$XDG_RUNTIME_DIR/commitnote-ui" ]; do
+      if [ "$waited" -ge 100 ] || ! kill -0 "$mutter_pid" 2>/dev/null; then
+        echo "mutter did not start; see out/logs/mutter.log" >&2
+        exit 1
+      fi
+      sleep 0.1
+      waited=$((waited + 1))
+    done
+    gdbus wait --session --timeout 10 org.gnome.Mutter.RemoteDesktop
+
+    if ! fc-list ":charset=1f600" | grep -q .; then
+      echo "no color emoji font is installed (google-noto-color-emoji-fonts)" >&2
+      exit 1
+    fi
+
     echo "" | gnome-keyring-daemon --unlock --components=secrets >/dev/null
     gdbus wait --session --timeout 10 org.freedesktop.secrets
     meson test -C target/meson/testing --suite ui --print-errorlogs

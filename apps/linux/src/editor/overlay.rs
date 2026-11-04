@@ -221,7 +221,7 @@ impl OverlayTags {
                     }
                     let target = (width * pango::SCALE as f32).round() as i32;
                     let spacing = (target - self.natural_width(view, &text)) / count;
-                    if spacing != 0 {
+                    if spacing > 0 {
                         spans.push((range, self.spacing_tag(spacing)));
                     }
                 }
