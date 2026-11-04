@@ -24,6 +24,7 @@ use crate::model::NoteContentUpdate;
 
 const GROUPING_INTERVAL: f64 = 1.0;
 const CARET_SCROLL_MARGIN: f64 = 24.0;
+const CARET_SCROLL_RETRIES: u8 = 10;
 
 type Command = fn(&str, TextSelection) -> Option<CommandResult>;
 
@@ -84,6 +85,7 @@ mod imp {
         pub(super) user_action_depth: Cell<u32>,
         pub(super) changed_in_action: Cell<bool>,
         pub(super) scroll_pending: Cell<bool>,
+        pub(super) scroll_retries: Cell<u8>,
         pub(super) vim: RefCell<Option<Vim>>,
     }
 
@@ -331,6 +333,22 @@ impl NoteEditor {
         let buffer = view.buffer();
         buffer.place_cursor(&buffer.end_iter());
         view.grab_focus();
+    }
+
+    /// The caret's character offset in the buffer.
+    pub fn caret_offset(&self) -> i32 {
+        self.view().buffer().cursor_position()
+    }
+
+    /// Puts the caret at a character offset, clamped to the text, without scrolling to it.
+    pub fn place_caret(&self, offset: i32) {
+        let imp = self.imp();
+        let buffer = self.view().buffer();
+        imp.applying.set(true);
+        buffer.place_cursor(&buffer.iter_at_offset(offset.clamp(0, buffer.char_count())));
+        imp.applying.set(false);
+        let mut state = imp.state.borrow_mut();
+        state.last_selection = buffer_selection(&buffer, &state.last_index);
     }
 
     /// Brings a note update from the core into the editor and returns what it did: a new
@@ -843,7 +861,16 @@ impl NoteEditor {
                 }
                 if let Some(editor) = editor.upgrade() {
                     editor.imp().scroll_pending.set(false);
-                    editor.scroll_to_caret();
+                    if !editor.scroll_to_caret() {
+                        let imp = editor.imp();
+                        let retries = imp.scroll_retries.get();
+                        if retries < CARET_SCROLL_RETRIES {
+                            imp.scroll_retries.set(retries + 1);
+                            editor.queue_scroll_to_caret();
+                            return;
+                        }
+                    }
+                    editor.imp().scroll_retries.set(0);
                 }
             }
         });
@@ -851,9 +878,11 @@ impl NoteEditor {
         self.queue_draw();
     }
 
-    fn scroll_to_caret(&self) {
+    /// Returns whether the caret ended up in view; it is not while the page has yet to grow
+    /// to the laid-out text, which clamps the scroll position.
+    fn scroll_to_caret(&self) -> bool {
         let Some(scrolled) = self.scroll_window() else {
-            return;
+            return true;
         };
         let view = self.view();
         let buffer = view.buffer();
@@ -863,17 +892,20 @@ impl NoteEditor {
         let Some(top) =
             view.compute_point(&scrolled, &gtk::graphene::Point::new(x as f32, y as f32))
         else {
-            return;
+            return true;
         };
         let top = f64::from(top.y());
         let bottom = top + f64::from(caret.height());
         let adjustment = scrolled.vadjustment();
         let page = adjustment.page_size();
+        let before = adjustment.value();
         if top < 0.0 {
-            adjustment.set_value(adjustment.value() + top - CARET_SCROLL_MARGIN);
+            adjustment.set_value(before + top - CARET_SCROLL_MARGIN);
         } else if bottom > page {
-            adjustment.set_value(adjustment.value() + bottom - page + CARET_SCROLL_MARGIN);
+            adjustment.set_value(before + bottom - page + CARET_SCROLL_MARGIN);
         }
+        let moved = adjustment.value() - before;
+        top - moved >= 0.0 && bottom - moved <= page
     }
 }
 

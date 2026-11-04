@@ -10,7 +10,8 @@ use libadwaita as adw;
 use super::sync_feedback::{SyncMenuAction, SyncStatusView, sync_status_view};
 use super::tree_logic::{find_node, menu_tag, new_folder_parent, tag_from_id, tag_id, tag_label};
 use super::{
-    NoteView, NotesTree, SearchView, folder_dialog, move_dialog, trash_confirm, trash_dialog,
+    NoteView, NotesTree, SearchView, details_dialog, folder_dialog, move_dialog, trash_confirm,
+    trash_dialog,
 };
 use crate::editor::NoteEditor;
 use crate::model::{AppModel, COLOR_TAGS, DraftFocus, EditorTarget};
@@ -179,6 +180,13 @@ mod imp {
             klass.install_action("notes.move-note", None, |page, _, _| {
                 if let Some(path) = page.open_saved_path() {
                     page.show_move_to(path);
+                }
+            });
+            klass.install_action("notes.show-details", None, |page, _, _| {
+                if let Some(model) = page.imp().model.get()
+                    && page.open_saved_path().is_some()
+                {
+                    details_dialog::present(model, page);
                 }
             });
             klass.install_action("notes.trash-note", None, |page, _, _| {
@@ -804,6 +812,7 @@ impl NotesPage {
             }
             menu.append_submenu(Some("Color Tag"), &choices);
         }
+        menu.append(Some("Details"), Some("notes.show-details"));
         menu.append(Some("Move to Trash"), Some("notes.trash-note"));
     }
 
@@ -833,7 +842,12 @@ impl NotesPage {
             return;
         };
         let path = self.open_saved_path();
-        for action in ["notes.rename-note", "notes.move-note", "notes.trash-note"] {
+        for action in [
+            "notes.rename-note",
+            "notes.move-note",
+            "notes.show-details",
+            "notes.trash-note",
+        ] {
             self.action_set_enabled(action, path.is_some());
         }
         let tag = path.as_deref().and_then(|path| {

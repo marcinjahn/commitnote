@@ -1443,7 +1443,7 @@ fn draft_leave(h: &mut Harness) -> Result<(), String> {
 
 const SAMPLE_REPO_KEY: &str = "sample/notes";
 const EARLY_NAME: &str = "Typed while loading";
-const EARLY_BODY: &str = "Body typed before the notes were ready";
+pub(crate) const EARLY_BODY: &str = "Body typed before the notes were ready";
 const EARLY_NAME_ENTRY: &str = "early-draft-name-entry";
 const EARLY_BODY_VIEW: &str = "early-draft-body";
 
@@ -1452,7 +1452,7 @@ fn hold_loading(h: &mut Harness) -> Result<(), String> {
     reopen_held(h)
 }
 
-fn reopen_held(h: &mut Harness) -> Result<(), String> {
+pub(crate) fn reopen_held(h: &mut Harness) -> Result<(), String> {
     h.close();
 
     unsafe { std::env::set_var("COMMITNOTE_TESTING_HOLD_LOADING", "1") };
@@ -1468,14 +1468,14 @@ fn reopen_held(h: &mut Harness) -> Result<(), String> {
     h.wait_shown(EARLY_BODY_VIEW)
 }
 
-fn set_early_body(h: &Harness, text: &str) -> Result<(), String> {
+pub(crate) fn set_early_body(h: &Harness, text: &str) -> Result<(), String> {
     h.widget_as::<gtk::TextView>(EARLY_BODY_VIEW)?
         .buffer()
         .set_text(text);
     Ok(())
 }
 
-fn finish_loading(h: &Harness) -> Result<(), String> {
+pub(crate) fn finish_loading(h: &Harness) -> Result<(), String> {
     h.window_action("testing-finish-loading")?;
     h.wait_page_for("notes", UNLOCK_TIMEOUT)
 }

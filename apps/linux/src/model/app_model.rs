@@ -41,9 +41,11 @@ use super::edit_sender::{EditDestination, EditSender};
 use super::editor_lane::EditorLane;
 use super::editor_settings::EditorSettings;
 
+mod last_view;
 mod organise;
 mod search;
 
+pub use last_view::NoteDetails;
 pub use organise::{COLOR_TAGS, TrashResult, TrashState};
 pub use search::SearchStatus;
 
@@ -266,6 +268,7 @@ struct State {
     tags_writable: bool,
     trash: Option<TrashState>,
     search: search::SearchState,
+    last_view: last_view::LastViewTracker,
     notice_actions: HashMap<String, NoticeAction>,
     open_note_path: Option<Vec<String>>,
     core_open_path: Option<Vec<String>>,
@@ -336,6 +339,7 @@ mod imp {
                     Signal::builder("early-draft-presence-changed").build(),
                     Signal::builder("sync-state-changed").build(),
                     Signal::builder("search-changed").build(),
+                    Signal::builder("last-view-restored").build(),
                     Signal::builder("notice")
                         .param_types([
                             String::static_type(),
@@ -369,6 +373,7 @@ impl AppModel {
         let _ = imp.config.set(config);
         let _ = imp.edit_sender.set(model.new_edit_sender());
         model.attach_search_triggers();
+        model.attach_last_view_triggers();
         {
             let mut state = imp.state.borrow_mut();
             state.visible = true;
@@ -381,6 +386,11 @@ impl AppModel {
 
     /// Stops the core runtime and flushes the blob cache; the model is unusable afterwards.
     pub fn shutdown(&self) {
+        self.flush_last_view_on_exit();
+        self.stop();
+    }
+
+    fn stop(&self) {
         self.state_mut().shut_down = true;
         self.bump_generation();
         let client = self.imp().client.take();
@@ -1037,6 +1047,7 @@ impl AppModel {
     /// Logs out once every edit is saved; otherwise reports what would be lost and stays.
     pub async fn log_out(&self) -> Result<LogOutResult, UserError> {
         self.flush_edits().await;
+        self.flush_last_view().await;
         let result = self
             .request::<SessionLogout>(SessionLogoutParams { anyway: false })
             .await;
@@ -1427,6 +1438,7 @@ impl AppModel {
             state.handing_off = true;
             state.early_draft.clone()
         };
+        self.mark_early_draft_handed_off();
         self.emit_by_name::<()>("early-draft-changed", &[]);
         let generation = self.imp().generation.get();
         let result = self
@@ -1695,6 +1707,7 @@ impl AppModel {
 
     pub async fn log_out_anyway(&self) -> Result<(), UserError> {
         self.leave_draft().await;
+        self.flush_last_view().await;
         logout_result(
             self.request::<SessionLogout>(SessionLogoutParams { anyway: true })
                 .await,
@@ -1908,6 +1921,7 @@ impl AppModel {
             return;
         };
         let search_ended = self.end_search();
+        let last_view = self.end_last_view();
         {
             let mut state = self.state_mut();
             let previous = std::mem::take(&mut *state);
@@ -1929,6 +1943,7 @@ impl AppModel {
                 visible: previous.visible,
                 online: previous.online,
                 keyring_warned: previous.keyring_warned,
+                last_view,
                 ..State::default()
             };
         }
@@ -2360,6 +2375,7 @@ mod tests {
 
     pub(super) struct Session {
         pub(super) model: AppModel,
+        config: AppConfig,
         root: PathBuf,
     }
 
@@ -2371,7 +2387,7 @@ mod tests {
                 std::process::id()
             );
             let root = std::env::temp_dir().join(&app_id);
-            let model = AppModel::new(AppConfig {
+            let config = AppConfig {
                 app_id,
                 version: "test".to_owned(),
                 bundle_source,
@@ -2379,8 +2395,26 @@ mod tests {
                 config_dir: root.join("config"),
                 device_model: "Linux".to_owned(),
                 testing: true,
-            });
-            Self { model, root }
+            };
+            let model = AppModel::new(config.clone());
+            Self {
+                model,
+                config,
+                root,
+            }
+        }
+
+        /// Starts a new model over the same storage, as relaunching the app does.
+        pub(super) fn restart(&mut self) {
+            self.model.stop();
+            self.model = AppModel::new(self.config.clone());
+        }
+
+        /// Restarts through the model's shutdown, which waits on the main context and so cannot
+        /// run inside a polled future.
+        pub(super) fn restart_with_flush(&mut self) {
+            self.model.shutdown();
+            self.model = AppModel::new(self.config.clone());
         }
 
         pub(super) async fn wait_until(&self, what: &str, done: impl Fn(&AppModel) -> bool) {
@@ -2418,11 +2452,29 @@ mod tests {
             self.wait_until("the notes page", |model| model.route() == Route::Notes)
                 .await;
         }
+
+        /// Logs in to be remembered, unless a keyring resumes the remembered session.
+        pub(super) async fn log_in_remembered(&self) {
+            self.wait_until("the token or notes page", |model| {
+                matches!(model.route(), Route::Token | Route::Notes)
+            })
+            .await;
+            if self.model.route() == Route::Notes {
+                return;
+            }
+            self.choose(NOTES_URL).await;
+            self.model
+                .unlock(Secret::new(PASSPHRASE), true)
+                .await
+                .expect("the sample passphrase unlocks");
+            self.wait_until("the notes page", |model| model.route() == Route::Notes)
+                .await;
+        }
     }
 
     impl Drop for Session {
         fn drop(&mut self) {
-            self.model.shutdown();
+            self.model.stop();
             let _ = std::fs::remove_dir_all(&self.root);
         }
     }

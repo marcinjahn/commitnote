@@ -1,3 +1,4 @@
+mod details_dialog;
 mod folder_dialog;
 mod move_dialog;
 mod node_object;

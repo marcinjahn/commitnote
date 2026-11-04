@@ -1,15 +1,20 @@
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
 use adw::prelude::*;
 use commitnote::editor::NoteEditor;
 use commitnote::model::{AppModel, DraftFocus, EditorTarget};
 use commitnote::pages::notes::NotesTree;
-use commitnote_core_api::commands::NoteDraftOutcome;
-use commitnote_core_api::shapes::{OpenNote, TreeNode};
+use commitnote_core_api::commands::{LastViewLoadResult, NoteDraftOutcome};
+use commitnote_core_api::shapes::{LastViewState, OpenNote, TreeNode};
 use gtk4::{self as gtk, gdk, glib, pango};
 use libadwaita as adw;
 
 use crate::flows::{
-    choose_repository, ensure, launch_and_log_in, open_first_note, submit_token, unlock, wait_tree,
+    UNLOCK_TIMEOUT, choose_repository, ensure, launch_and_log_in, open_first_note, submit_token,
+    unlock, wait_tree,
 };
+use crate::p2::{EARLY_BODY, finish_loading, reopen_held, set_early_body};
 use crate::support::{ALL_VARIANTS, Case, Harness, Width};
 
 pub const CASES: &[Case] = &[
@@ -35,6 +40,12 @@ pub const CASES: &[Case] = &[
     ("p3-drop-indicator", drop_indicator),
     ("p3-tag-filter", tag_filter),
     ("p3-note-menu-organise", note_menu_organise),
+    ("p3-details", details),
+    ("p3-last-view-restart", last_view_restart),
+    ("p3-last-view-flush-on-close", last_view_flush_on_close),
+    ("p3-last-view-off", last_view_off),
+    ("p3-last-view-early-draft", last_view_early_draft),
+    ("p3-caret-memory", caret_memory),
     ("p3-undo-move", undo_move),
     ("p3-open-note-follows-move", open_note_follows_move),
     ("p3-trash-share-warning", trash_share_warning),
@@ -70,6 +81,7 @@ const MENU: &str = "tree-context-menu";
 const COMMITNOTE: &[&str] = &["Projects", "commitnote"];
 const ROADMAP: &[&str] = &["Projects", "commitnote", "Roadmap"];
 const IDEAS: &[&str] = &["Projects", "commitnote", "Ideas"];
+const MEETING_MINUTES: &[&str] = &["Projects", "commitnote", "Meeting minutes"];
 
 fn path(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).to_owned()).collect()
@@ -1640,10 +1652,11 @@ fn drop_indicator(h: &mut Harness) -> Result<(), String> {
 }
 
 const TAG_BANNER: &str = "tag-filter-banner";
-const NOTE_ACTIONS: [&str; 4] = [
+const NOTE_ACTIONS: [&str; 5] = [
     "notes.rename-note",
     "notes.move-note",
     "notes.color-tag",
+    "notes.show-details",
     "notes.trash-note",
 ];
 
@@ -1789,7 +1802,14 @@ fn note_menu_organise(h: &mut Harness) -> Result<(), String> {
         .filter_map(|item| string_attribute(&organise, item, "label"))
         .collect();
     ensure(
-        labels == ["Rename", "Move To…", "Color Tag", "Move to Trash"],
+        labels
+            == [
+                "Rename",
+                "Move To…",
+                "Color Tag",
+                "Details",
+                "Move to Trash",
+            ],
         || format!("the organise section holds {labels:?}"),
     )?;
     let targets: Vec<String> = menu_item_attributes(&organise, "submenu")
@@ -2158,4 +2178,292 @@ fn shot_trash_dialog(h: &mut Harness) -> Result<(), String> {
             .all(|title| h.row_titled(title).is_ok_and(|row| row.is_mapped()))
     })?;
     h.session_screenshots("trash-dialog", ALL_VARIANTS)
+}
+
+fn details(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    let welcome = path(&["Welcome"]);
+    let roadmap = path(ROADMAP);
+    let model = h.model()?;
+    model.open_note(Some(welcome.clone()));
+    h.wait("the note to open", || {
+        model.editor_target() == EditorTarget::Note(welcome.clone())
+            && h.text("note-title-entry")
+                .is_ok_and(|title| title == "Welcome")
+    })?;
+    h.wait("the note actions to be enabled", || {
+        action_enabled(h, "notes.show-details").unwrap_or(false)
+    })?;
+    let tree = h.widget("notes-tree")?;
+    WidgetExt::activate_action(&tree, "notes.show-details", None)
+        .map_err(|error| format!("cannot activate notes.show-details: {error}"))?;
+    h.wait_shown("details-dialog")?;
+    h.wait("the words of the first note", || {
+        h.label("details-words")
+            .is_ok_and(|value| !value.is_empty())
+    })?;
+    let welcome_words = h.label("details-words")?;
+    h.wait("the sharing state", || {
+        h.label("details-shared").is_ok_and(|value| value == "No")
+    })?;
+    ensure(!h.shown("details-not-saved"), || {
+        "a saved note shows Not saved yet".to_owned()
+    })?;
+
+    model.open_note(Some(roadmap.clone()));
+    h.wait("the words of the second note", || {
+        h.label("details-words")
+            .is_ok_and(|value| value != welcome_words)
+    })?;
+    let expected = h
+        .run("the note details", {
+            let model = model.clone();
+            async move { model.note_details(roadmap).await }
+        })?
+        .map_err(|error| error.message)?;
+    ensure(h.label("details-words")? == expected.words.value, || {
+        "the dialog shows another note's words".to_owned()
+    })?;
+    ensure(h.shown("details-dialog"), || {
+        "the dialog closed when another note opened".to_owned()
+    })?;
+
+    h.run("the draft", {
+        let model = model.clone();
+        async move { model.start_draft(Vec::new(), DraftFocus::Name).await }
+    })?
+    .map_err(|error| error.message)?;
+    h.wait("the dialog to close", || !h.shown("details-dialog"))
+}
+
+fn expanded_folders() -> Vec<Vec<String>> {
+    vec![path(&["Projects"]), path(COMMITNOTE)]
+}
+
+fn is_expanded(h: &Harness, name: &str) -> bool {
+    row_expander(h, name)
+        .ok()
+        .and_then(|expander| expander.list_row())
+        .is_some_and(|row| row.is_expanded())
+}
+
+fn expand_with_key(h: &Harness, target: &[&str]) -> Result<(), String> {
+    select_path(h, target)?;
+    h.press_keys("Right")?;
+    let name = target.last().copied().unwrap_or_default();
+    h.wait("the folder to expand", || is_expanded(h, name))
+}
+
+fn open_note_at(h: &Harness, target: &[&str]) -> Result<(), String> {
+    let model = h.model()?;
+    let target = path(target);
+    let title = target.last().cloned().unwrap_or_default();
+    model.open_note(Some(target.clone()));
+    h.wait("the note to open", || {
+        model.editor_target() == EditorTarget::Note(target.clone())
+            && loaded_content(&model, &target).is_some()
+            && h.text("note-title-entry").is_ok_and(|text| text == title)
+    })
+}
+
+fn wait_last_view_stored(h: &Harness, expected: &LastViewState) -> Result<(), String> {
+    let model = h.model()?;
+    let latest = Rc::new(RefCell::new(None::<LastViewState>));
+    let in_flight = Rc::new(Cell::new(false));
+    h.wait("the last view to be stored", || {
+        if latest.borrow().as_ref() == Some(expected) {
+            return true;
+        }
+        if !in_flight.replace(true) {
+            let model = model.clone();
+            let latest = latest.clone();
+            let in_flight = in_flight.clone();
+            glib::spawn_future_local(async move {
+                let reply = model
+                    .testing_send("lastView.load", serde_json::json!({}))
+                    .await;
+                if let Some(result) = reply
+                    .ok()
+                    .and_then(|reply| serde_json::from_value::<LastViewLoadResult>(reply).ok())
+                {
+                    latest.replace(result.view);
+                }
+                in_flight.set(false);
+            });
+        }
+        false
+    })
+}
+
+fn open_roadmap_with_folders_expanded(h: &Harness) -> Result<(), String> {
+    launch_and_log_in(h, true)?;
+    expand_with_key(h, &["Projects"])?;
+    expand_with_key(h, COMMITNOTE)?;
+    open_note_at(h, ROADMAP)
+}
+
+fn relaunch(h: &Harness) -> Result<(), String> {
+    h.close();
+    h.launch()?;
+    h.wait_page_for("notes", UNLOCK_TIMEOUT)?;
+    wait_tree(h)
+}
+
+fn top_level_count(h: &Harness) -> Result<u32, String> {
+    let tree = h.model()?.tree().ok_or("the tree has not loaded")?;
+    u32::try_from(tree.len()).map_err(|error| error.to_string())
+}
+
+fn wait_last_view_restored(h: &Harness) -> Result<(), String> {
+    let model = h.model()?;
+    let roadmap = path(ROADMAP);
+    h.wait("Roadmap to reopen", || {
+        model.editor_target() == EditorTarget::Note(roadmap.clone())
+            && h.text("note-title-entry")
+                .is_ok_and(|title| title == "Roadmap")
+    })?;
+    h.wait("the folders to expand again", || {
+        is_expanded(h, "Projects") && is_expanded(h, "commitnote")
+    })?;
+    h.wait("Roadmap to be selected", || {
+        selected_path(h).as_ref() == Some(&roadmap)
+    })
+}
+
+fn last_view_restart(h: &mut Harness) -> Result<(), String> {
+    open_roadmap_with_folders_expanded(h)?;
+    wait_last_view_stored(
+        h,
+        &LastViewState {
+            note: Some(path(ROADMAP)),
+            folders: expanded_folders(),
+        },
+    )?;
+
+    relaunch(h)?;
+    wait_last_view_restored(h)
+}
+
+fn last_view_flush_on_close(h: &mut Harness) -> Result<(), String> {
+    open_roadmap_with_folders_expanded(h)?;
+
+    relaunch(h)?;
+    wait_last_view_restored(h)
+}
+
+fn last_view_off(h: &mut Harness) -> Result<(), String> {
+    open_roadmap_with_folders_expanded(h)?;
+    let model = h.model()?;
+    wait_last_view_stored(
+        h,
+        &LastViewState {
+            note: Some(path(ROADMAP)),
+            folders: expanded_folders(),
+        },
+    )?;
+    h.run("turning reopening off", {
+        let model = model.clone();
+        async move { model.set_reopen_last_view(false).await }
+    })?
+    .map_err(|error| error.message)?;
+
+    relaunch(h)?;
+    let model = h.model()?;
+    h.wait("the last-view check", || model.testing_last_view_checked())?;
+    ensure(model.editor_target() == EditorTarget::None, || {
+        "a note opened with reopening off".to_owned()
+    })?;
+    ensure(h.list_len(TREE_LIST)? == top_level_count(h)?, || {
+        "a folder is expanded with reopening off".to_owned()
+    })?;
+    ensure(
+        h.stack_page("note-view")?.as_deref() != Some("loaded"),
+        || "the note view shows a note".to_owned(),
+    )
+}
+
+fn last_view_early_draft(h: &mut Harness) -> Result<(), String> {
+    open_roadmap_with_folders_expanded(h)?;
+    wait_last_view_stored(
+        h,
+        &LastViewState {
+            note: Some(path(ROADMAP)),
+            folders: expanded_folders(),
+        },
+    )?;
+
+    reopen_held(h)?;
+    set_early_body(h, EARLY_BODY)?;
+    finish_loading(h)?;
+    let model = h.model()?;
+    let editor = h.widget_as::<NoteEditor>("note-editor")?;
+    h.wait("the early draft to become the open note", || {
+        model.editor_target().note_path().is_some() && editor.text() == EARLY_BODY
+    })?;
+    h.wait("the last-view check", || model.testing_last_view_checked())?;
+    ensure(model.open_note_path() != Some(path(ROADMAP)), || {
+        "the stored note replaced the early draft".to_owned()
+    })?;
+    ensure(editor.text() == EARLY_BODY, || {
+        "the stored note's text replaced the early draft".to_owned()
+    })?;
+    ensure(h.list_len(TREE_LIST)? == top_level_count(h)?, || {
+        "the stored folders expanded after the early draft".to_owned()
+    })
+}
+
+fn scrolled_around(editor: &NoteEditor) -> Result<gtk::ScrolledWindow, String> {
+    editor
+        .ancestor(gtk::ScrolledWindow::static_type())
+        .and_downcast::<gtk::ScrolledWindow>()
+        .ok_or_else(|| "the editor is not in a scrolled window".to_owned())
+}
+
+fn caret_shown(editor: &NoteEditor, scrolled: &gtk::ScrolledWindow) -> bool {
+    let view = editor.view();
+    let buffer = view.buffer();
+    let caret = view.iter_location(&buffer.iter_at_offset(editor.caret_offset()));
+    let adjustment = scrolled.vadjustment();
+    let top = adjustment.value();
+    f64::from(caret.y()) >= top && f64::from(caret.y()) < top + adjustment.page_size()
+}
+
+fn caret_memory(h: &mut Harness) -> Result<(), String> {
+    h.launch()?;
+    submit_token(h)?;
+    choose_repository(h, SEARCH_URL)?;
+    unlock(h, false)?;
+    wait_tree(h)?;
+
+    open_note_at(h, MEETING_MINUTES)?;
+    let editor = h.widget_as::<NoteEditor>("note-editor")?;
+    h.wait("the note text in the editor", || !editor.text().is_empty())?;
+    let scrolled = scrolled_around(&editor)?;
+    let end = i32::try_from(editor.text().chars().count()).map_err(|error| error.to_string())?;
+    h.wait("the text to be laid out", || {
+        let view = editor.view();
+        let last = view.iter_location(&view.buffer().end_iter());
+        f64::from(last.y()) > scrolled.vadjustment().page_size() / 2.0
+    })?;
+    focus_editor(h, &editor)?;
+    h.press_keys("<Control>End")?;
+    h.wait("the caret at the end of the note", || {
+        editor.caret_offset() == end
+    })?;
+    h.wait("the view to scroll to the caret", || {
+        scrolled.vadjustment().value() > 0.0 && caret_shown(&editor, &scrolled)
+    })?;
+
+    open_note_at(h, ROADMAP)?;
+    h.wait("the other note's text", || {
+        !editor.text().is_empty() && editor.caret_offset() != end
+    })?;
+
+    open_note_at(h, MEETING_MINUTES)?;
+    h.wait("the caret back at the end of the note", || {
+        editor.text().chars().count() == end as usize && editor.caret_offset() == end
+    })?;
+    h.wait("the view to show the caret again", || {
+        scrolled.vadjustment().value() > 0.0 && caret_shown(&editor, &scrolled)
+    })
 }

@@ -153,6 +153,13 @@ pub fn expanded_paths(rows: &impl RowList) -> HashSet<Vec<String>> {
         .collect()
 }
 
+/// The expanded folders in a stable order, parents before their children.
+pub fn expanded_folders(rows: &impl RowList) -> Vec<Vec<String>> {
+    let mut folders: Vec<_> = expanded_paths(rows).into_iter().collect();
+    folders.sort();
+    folders
+}
+
 pub fn restore_expanded(rows: &mut impl RowList, paths: &HashSet<Vec<String>>) {
     if paths.is_empty() {
         return;
@@ -630,6 +637,17 @@ mod tests {
         let mut rows = FlatRows::new(sample());
         restore_expanded(&mut rows, &HashSet::new());
         assert_eq!(rows.names(), ["a", "c", "n4"]);
+    }
+
+    #[test]
+    fn expanded_folders_lists_open_folders_in_a_stable_order() {
+        let mut rows = FlatRows::new(sample());
+        assert!(expanded_folders(&rows).is_empty());
+        restore_expanded(&mut rows, &paths(&[&["c"], &["a", "b"], &["a"]]));
+        assert_eq!(
+            expanded_folders(&rows),
+            vec![path(&["a"]), path(&["a", "b"]), path(&["c"])]
+        );
     }
 
     #[test]

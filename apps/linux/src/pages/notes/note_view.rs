@@ -1,4 +1,5 @@
 use std::cell::{Cell, OnceCell, RefCell};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -20,6 +21,12 @@ use crate::model::{AppModel, DraftFocus, EditorTarget, NoteContentUpdate, Rename
 
 const SPINNER_DELAY: Duration = Duration::from_millis(300);
 const MARKER_ALPHA: f32 = 0.55;
+
+#[derive(Debug, Clone, Copy)]
+struct CaretMemory {
+    offset: i32,
+    scroll: f64,
+}
 
 mod imp {
     use super::*;
@@ -61,6 +68,10 @@ mod imp {
         pub(super) title_syncing: Cell<bool>,
         pub(super) title_submitted: Cell<bool>,
         pub(super) focus_body_pending: Cell<bool>,
+        pub(super) tree_handler: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) carets: RefCell<HashMap<Vec<String>, super::CaretMemory>>,
+        pub(super) shown_note: RefCell<Option<(Vec<String>, u64)>>,
+        pub(super) scroll_restore: RefCell<Option<(gtk::TickCallbackId, f64)>>,
     }
 
     #[glib::object_subclass]
@@ -103,6 +114,7 @@ mod imp {
                     self.handler.take(),
                     self.settings_handler.take(),
                     self.sync_handler.take(),
+                    self.tree_handler.take(),
                 ]
                 .into_iter()
                 .flatten()
@@ -111,6 +123,9 @@ mod imp {
                 }
             }
             if let Some(id) = self.spinner_timer.take() {
+                id.remove();
+            }
+            if let Some((id, _)) = self.scroll_restore.take() {
                 id.remove();
             }
         }
@@ -187,6 +202,17 @@ impl NoteView {
             }
         });
         widget.imp().sync_handler.replace(Some(sync_handler));
+        let tree_handler = model.connect_tree_changed({
+            let widget = widget.downgrade();
+            move |model| {
+                if model.tree().is_none()
+                    && let Some(widget) = widget.upgrade()
+                {
+                    widget.forget_carets();
+                }
+            }
+        });
+        widget.imp().tree_handler.replace(Some(tree_handler));
         widget.imp().banner.connect_button_clicked({
             let widget = widget.downgrade();
             move |_| {
@@ -411,6 +437,7 @@ impl NoteView {
         let Some(model) = imp.model.get() else {
             return;
         };
+        self.track_shown_note(model);
         self.update_title(model);
         self.update_banner();
         let target = model.editor_target();
@@ -499,9 +526,24 @@ impl NoteView {
 
     fn show_loaded(&self, update: &NoteContentUpdate, note_switch: u64, locked: bool) {
         let imp = self.imp();
+        let fresh = imp.shown_lineage.get() != imp.model.get().map(AppModel::editor_lineage);
         if imp.editor.apply_update(update, note_switch) == EditorTextSync::Set {
-            imp.scrolled.vadjustment().set_value(0.0);
+            self.cancel_scroll_restore();
+            let memory = if fresh {
+                imp.carets.borrow().get(&update.path).copied()
+            } else {
+                None
+            };
+            match memory {
+                Some(memory) => {
+                    imp.editor.place_caret(memory.offset);
+                    self.restore_scroll(memory.scroll);
+                }
+                None => imp.scrolled.vadjustment().set_value(0.0),
+            }
         }
+        imp.shown_note
+            .replace(Some((update.path.clone(), note_switch)));
         imp.editor.set_editable(!locked);
         imp.stack.set_visible_child_name("loaded");
         if let Some(model) = imp.model.get() {
@@ -512,6 +554,86 @@ impl NoteView {
             imp.editor.focus_at_end();
         } else if at_end {
             self.focus_at_end_when_mapped();
+        }
+    }
+
+    /// Remembers the caret and scroll of the note leaving the editor, before another note
+    /// replaces it, and follows the open note when it moves.
+    fn track_shown_note(&self, model: &AppModel) {
+        let imp = self.imp();
+        let Some((path, shown_switch)) = imp.shown_note.take() else {
+            return;
+        };
+        let note_switch = model.note_switch();
+        let target = model.editor_target();
+        match target.note_path() {
+            Some(current) if shown_switch == note_switch => {
+                if current != path.as_slice() {
+                    let mut carets = imp.carets.borrow_mut();
+                    let memory = carets.remove(&path);
+                    carets.remove(current);
+                    if let Some(memory) = memory {
+                        carets.insert(current.to_vec(), memory);
+                    }
+                }
+                imp.shown_note
+                    .replace(Some((current.to_vec(), note_switch)));
+            }
+            _ => {
+                let scroll = imp
+                    .scroll_restore
+                    .borrow()
+                    .as_ref()
+                    .map_or_else(|| imp.scrolled.vadjustment().value(), |(_, value)| *value);
+                let memory = CaretMemory {
+                    offset: imp.editor.caret_offset(),
+                    scroll,
+                };
+                imp.carets.borrow_mut().insert(path, memory);
+                self.cancel_scroll_restore();
+            }
+        }
+    }
+
+    fn forget_carets(&self) {
+        let imp = self.imp();
+        imp.carets.borrow_mut().clear();
+        imp.shown_note.replace(None);
+        self.cancel_scroll_restore();
+    }
+
+    /// Scrolls to `value` once the new text is laid out: the first frame still has the old
+    /// text's size, and the text view measures long text over several frames, so the value
+    /// is set as soon as the range covers it, or clamped once the range stops growing.
+    fn restore_scroll(&self, value: f64) {
+        let widget = self.downgrade();
+        let previous_upper = Cell::new(None);
+        let id = self.imp().scrolled.add_tick_callback(move |scrolled, _| {
+            if !scrolled.is_mapped() {
+                previous_upper.set(None);
+                return glib::ControlFlow::Continue;
+            }
+            let adjustment = scrolled.vadjustment();
+            let upper = adjustment.upper();
+            let Some(previous) = previous_upper.replace(Some(upper)) else {
+                return glib::ControlFlow::Continue;
+            };
+            let max = upper - adjustment.page_size();
+            if max < value && previous != upper {
+                return glib::ControlFlow::Continue;
+            }
+            adjustment.set_value(value.min(max).max(adjustment.lower()));
+            if let Some(widget) = widget.upgrade() {
+                widget.imp().scroll_restore.take();
+            }
+            glib::ControlFlow::Break
+        });
+        self.imp().scroll_restore.replace(Some((id, value)));
+    }
+
+    fn cancel_scroll_restore(&self) {
+        if let Some((id, _)) = self.imp().scroll_restore.take() {
+            id.remove();
         }
     }
 

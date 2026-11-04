@@ -258,7 +258,7 @@ impl AppModel {
     }
 }
 
-fn failed(what: &str, error: RequestError) -> UserError {
+pub(super) fn failed(what: &str, error: RequestError) -> UserError {
     warn(what, &error);
     UserError::from(error)
 }

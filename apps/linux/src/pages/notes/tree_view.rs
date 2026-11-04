@@ -1,4 +1,5 @@
 use std::cell::{Cell, OnceCell, RefCell};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use adw::subclass::prelude::*;
@@ -12,9 +13,9 @@ use super::node_row::NodeRow;
 use super::row_menu;
 use super::tree_logic::{
     DropAction, DropZone, KeyStep, RenameState, RowList, RowRef, accessible_text, ancestors,
-    child_names, drop_action, drop_at_end, expanded_paths, first_child_position, left_step,
-    menu_tag, node_path, parent_of, parent_position, position_of, restore_expanded, right_step,
-    siblings,
+    child_names, drop_action, drop_at_end, expanded_folders, expanded_paths, first_child_position,
+    left_step, menu_tag, node_path, parent_of, parent_position, position_of, restore_expanded,
+    right_step, siblings,
 };
 use crate::model::{AppModel, UserError};
 
@@ -70,6 +71,9 @@ mod imp {
         pub(super) drop_mark: RefCell<Option<(glib::WeakRef<gtk::Widget>, DropZone)>>,
         pub(super) model: OnceCell<AppModel>,
         pub(super) handlers: RefCell<Vec<glib::SignalHandlerId>>,
+        pub(super) restored_folders: RefCell<Option<HashSet<Vec<String>>>>,
+        pub(super) reported_folders: RefCell<Option<Vec<Vec<String>>>>,
+        pub(super) report_queued: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -156,8 +160,17 @@ impl NotesTree {
                     }
                 }
             }),
+            model.connect_last_view_restored({
+                let widget = widget.downgrade();
+                move |_| {
+                    if let Some(widget) = widget.upgrade() {
+                        widget.restore_folders();
+                    }
+                }
+            }),
         ];
         widget.imp().handlers.replace(handlers);
+        widget.restore_folders();
         widget
     }
 
@@ -186,6 +199,7 @@ impl NotesTree {
                 tree.connect_rename_entry(&row);
                 let expander = gtk::TreeExpander::new();
                 expander.set_child(Some(&row));
+                tree.watch_expanded(&expander);
                 tree.connect_menu_gestures(&expander);
                 tree.connect_drag_source(&expander);
                 tree.connect_drop_target(&expander);
@@ -773,6 +787,8 @@ impl NotesTree {
             imp.selection.set_model(None::<&gio::ListModel>);
             imp.synced_path.replace(None);
             imp.rename.replace(None);
+            imp.restored_folders.replace(None);
+            imp.reported_folders.replace(None);
             return;
         };
         let tree_model = gtk::TreeListModel::new(build_store(&nodes), false, false, |item| {
@@ -781,12 +797,22 @@ impl NotesTree {
                 TreeNode::Note { .. } => None,
             }
         });
+        tree_model.connect_items_changed({
+            let tree = self.downgrade();
+            move |_, _, _, _| {
+                if let Some(tree) = tree.upgrade() {
+                    tree.queue_expanded_report();
+                }
+            }
+        });
         imp.selection.set_model(Some(&tree_model));
         imp.tree_model.replace(Some(tree_model.clone()));
 
         let mut rows = TreeRows(tree_model);
         restore_expanded(&mut rows, &keep);
+        self.apply_restored_folders(&mut rows);
         self.keep_rename_row(&mut rows);
+        self.queue_expanded_report();
 
         if first {
             imp.synced_path.replace(None);
@@ -812,6 +838,77 @@ impl NotesTree {
             }
             glib::idle_add_local_once(move || adjustment.set_value(scroll));
         }
+    }
+
+    /// Expands the folders of the restored view, now or, before the list exists, at the next
+    /// rebuild.
+    fn restore_folders(&self) {
+        let folders = self.model().take_restored_folders();
+        if folders.is_empty() {
+            return;
+        }
+        let imp = self.imp();
+        imp.restored_folders
+            .replace(Some(folders.into_iter().collect()));
+        let tree_model = imp.tree_model.borrow().clone();
+        if let Some(tree_model) = tree_model {
+            self.apply_restored_folders(&mut TreeRows(tree_model));
+        }
+    }
+
+    fn apply_restored_folders(&self, rows: &mut TreeRows) {
+        let Some(folders) = self.imp().restored_folders.take() else {
+            return;
+        };
+        restore_expanded(rows, &folders);
+        self.imp().reported_folders.replace(None);
+        self.queue_expanded_report();
+    }
+
+    /// Notices a folder expanding or collapsing even when that adds or removes no rows, as for
+    /// an empty folder.
+    fn watch_expanded(&self, expander: &gtk::TreeExpander) {
+        let group = glib::SignalGroup::new::<gtk::TreeListRow>();
+        group.connect_notify_local(Some("expanded"), {
+            let tree = self.downgrade();
+            move |_, _| {
+                if let Some(tree) = tree.upgrade() {
+                    tree.queue_expanded_report();
+                }
+            }
+        });
+        expander.connect_list_row_notify(move |expander| {
+            group.set_target(expander.list_row().as_ref());
+        });
+    }
+
+    /// Reports the expanded folders once the current changes are done, so a rebuild that
+    /// restores the same folders reports nothing.
+    fn queue_expanded_report(&self) {
+        let imp = self.imp();
+        if imp.report_queued.replace(true) {
+            return;
+        }
+        let tree = self.downgrade();
+        glib::idle_add_local_once(move || {
+            if let Some(tree) = tree.upgrade() {
+                tree.imp().report_queued.set(false);
+                tree.report_expanded();
+            }
+        });
+    }
+
+    fn report_expanded(&self) {
+        let imp = self.imp();
+        let Some(tree_model) = imp.tree_model.borrow().clone() else {
+            return;
+        };
+        let folders = expanded_folders(&TreeRows(tree_model));
+        if imp.reported_folders.borrow().as_ref() == Some(&folders) {
+            return;
+        }
+        imp.reported_folders.replace(Some(folders.clone()));
+        self.model().record_expanded_folders(folders);
     }
 
     fn selected_node(&self) -> Option<NodeObject> {
