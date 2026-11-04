@@ -3,8 +3,9 @@
 A native GNOME client for the same encrypted notes repo the web app uses. It is a Rust, GTK 4 and
 libadwaita app that runs the shared native core bundle (`commitnote-core.js`, built from
 `src/native-core/`) in JavaScriptCore, so it reads and writes exactly what the web app does. It logs
-in, unlocks a notes repo or sets a new one up, browses the note tree, and edits notes in a
-live-preview Markdown editor with autosave, sync status and conflict resolution.
+in, unlocks a notes repo or sets a new one up, browses and organises the note tree, searches notes,
+and edits them in a live-preview Markdown editor with autosave, sync status and conflict
+resolution.
 
 ## Overview
 
@@ -92,30 +93,123 @@ The note view has a title field above the editor. Everything below is in the edi
   the early draft holds text, the app also holds a GNOME logout inhibit, so a session logout or
   shutdown warns first.
 
+## Organising notes
+
+The sidebar tree holds folders and notes. A folder row shows the number of notes under it, a note
+row shows a dot for its color tag and an icon when the note is shared. Structure changes go through
+the core, so the web app sees exactly what the Linux app did.
+
+- **New notes and folders.** New Note (the sidebar button, Ctrl+N) starts a draft at the top level.
+  New Note in a row's context menu starts it in that folder, or in the folder of the note. New
+  Folder… (the main menu, Ctrl+Shift+N, the context menu) asks for a name and creates the folder
+  inside the selected folder, next to the selected note, or at the top level when nothing is
+  selected. Where the new item lands among its siblings follows the core's `newNotePlacement` and
+  `newFolderPlacement` settings; there is no Preferences row for them yet.
+- **Rename.** F2 or Rename in the context menu turns the row's name into an entry. Enter commits,
+  Escape cancels, and a name that cannot be used shows an error under the entry. Moving the focus
+  away commits the name. The note menu's Rename moves the focus to the title field of the open
+  note instead.
+- **Move.** Move To… (context menu, note menu) opens a folder picker. Move Up and Move Down (Alt+Up
+  and Alt+Down in the tree, or the context menu) swap the row with its neighbour and are disabled
+  at the ends. Dragging a row shows where it will land: a line before or after the row, or the row
+  highlighted for dropping into a folder (a folder takes the top and bottom quarter of its height
+  for before and after, a note the top and bottom half). A drop that would leave the row where it
+  is, or put a folder into itself, is refused. Dropping below the last row moves the row to the end
+  of the top level.
+- **Trash.** Move to Trash (Delete in the tree, the context menu, the note menu) first asks the
+  core what it would trash and shows its confirmation. The preview counts the shares involved, so
+  trashing a shared note or a folder holding one shows the core's share warning, and the
+  confirmation is asked again if the shares changed in the meantime. After
+  structure changes and trashing the core's notice appears as a toast with Undo. Trash in the main
+  menu opens the Trash dialog with the trashed notes and folders and the days left for each.
+  Restore To… always asks for a folder, Delete Permanently and Empty Trash ask for confirmation,
+  and each confirmation text comes from the core.
+- **Color tags.** The Color Tag submenu of a note (context menu, note menu) sets one of six colors
+  or None. It appears where the repository allows tags, and the color names come from the core.
+  Once any note has a tag, the main menu gets Filter by Color Tag with All Notes and the used
+  colors; a filter shows only the notes with that color, with a banner "Showing notes tagged …" and
+  Show All to clear it.
+- **Context menus.** A row's menu opens with a right click, a long press (touch), the Menu key or
+  Shift+F10 on the selected row. It holds New Note, New Folder…, Rename, Move To…, Move Up, Move
+  Down, Color Tag (notes only) and Move to Trash. The tree shortcuts act on the selected row and
+  are not handled while a rename or the menu is open.
+
+## Search
+
+The search button in the sidebar header, Ctrl+F, and Ctrl+K outside the editor open the search bar
+and replace the tree with the results. In the narrow layout they also bring the sidebar back, and
+with the sidebar hidden they show it. Ctrl+K inside the editor stays Insert Link (see Shortcuts).
+Typing in the tree does not start a search.
+
+- **Recent.** With an empty query the list shows the recently opened notes, without the open one,
+  and the core's hint.
+- **Results.** Each keystroke searches. Matching notes are listed by name and by content, in two
+  sections with the core's headings, a count, and a "more" row when a section is cut off. A name
+  row bolds the matched part of the name; a content row shows a snippet with the match in bold.
+  A row shows the note's folder and its color dot. When nothing matches, the core's no-match text
+  replaces the list.
+- **Index status.** While the core is still reading notes to build the index, the results are
+  marked as partial with the core's "still reading" line, and the status text and a progress bar
+  show how far it is.
+- **Keys.** Down in the entry moves into the results, Enter in the entry opens the first result,
+  and Escape or the search button closes search and puts the focus back in the tree. Opening a
+  result closes search, reveals the note in the tree and, in the narrow layout, shows the note.
+
+## Last view and details
+
+- **Reopen last view.** At start the app opens the note that was open and expands the folders that
+  were expanded, unless something else was opened first (an early draft, or a note chosen while the
+  notes loaded) or the core's device setting is off (`lastView.setEnabled`, stored by the core as
+  `commitnote.reopenLastViewOff`; there is no Preferences row for it yet). A note or folder that no
+  longer exists is skipped. The view is saved about half a second after it changes, and quitting
+  saves it at once, waiting up to 2 s, so a quick quit keeps it. With the setting off nothing is
+  written.
+- **Caret and scroll.** The caret and scroll position of a note are remembered when you leave it
+  and come back while the app runs. They are not saved across restarts. A long note scrolls to the
+  caret over a few frames, so the caret stays visible.
+- **Details.** Details in the note menu shows the words and tasks done of the open saved note, when
+  it was created and last updated, or "Not saved yet" for a note that has not been saved, and
+  whether it is shared. There is no character count. The dialog follows the open note and closes
+  when it is gone.
+
 ## Shortcuts
 
-| Shortcut         | Where                    | What it does                                                           |
-| ---------------- | ------------------------ | ---------------------------------------------------------------------- |
-| Ctrl+S           | anywhere in the window   | Save Now: sends the edits and saves them.                              |
-| Ctrl+N           | notes and loading pages  | New note; on the loading page it focuses the early draft's name field. |
-| Ctrl+W           | anywhere in the window   | Closes the window, through the close guard.                            |
-| Ctrl+Q           | anywhere in the window   | Quits, through the close guard.                                        |
-| Ctrl+R           | notes page               | Refresh. With Vim mode on and the editor focused, Vim's redo instead.  |
-| F9               | notes page               | Shows or hides the sidebar.                                            |
-| Left, Right      | note tree                | Collapse or expand a folder; move to the parent or the first child.    |
-| Ctrl+Z           | editor                   | Undo.                                                                  |
-| Ctrl+Shift+Z     | editor                   | Redo.                                                                  |
-| Ctrl+B           | editor                   | Bold.                                                                  |
-| Ctrl+I           | editor                   | Italic.                                                                |
-| Ctrl+Shift+X     | editor                   | Strikethrough.                                                         |
-| Ctrl+K           | editor                   | Insert link.                                                           |
-| Ctrl+Return      | editor                   | Toggle task; with nothing selected inside a link, open it.             |
-| Ctrl+click       | a link in the editor     | Opens the link.                                                        |
-| `u`              | editor, Vim normal mode  | Undo through the app's history.                                        |
-| `:undo`, `:redo` | editor, Vim command line | Undo and redo through the app's history.                               |
-| `:w`             | editor, Vim command line | Save Now.                                                              |
+| Shortcut         | Where                          | What it does                                                                            |
+| ---------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
+| Ctrl+S           | anywhere in the window         | Save Now: sends the edits and saves them.                                               |
+| Ctrl+N           | notes and loading pages        | New note at the top level; on the loading page it focuses the early draft's name field. |
+| Ctrl+Shift+N     | notes page                     | New Folder….                                                                            |
+| Ctrl+W           | anywhere in the window         | Closes the window, through the close guard.                                             |
+| Ctrl+Q           | anywhere in the window         | Quits, through the close guard.                                                         |
+| Ctrl+R           | notes page                     | Refresh. With Vim mode on and the editor focused, Vim's redo instead.                   |
+| Ctrl+F           | notes page                     | Opens search, or selects the text of the search entry.                                  |
+| Ctrl+K           | notes page, outside the editor | Same as Ctrl+F.                                                                         |
+| F9               | notes page                     | Shows or hides the sidebar.                                                             |
+| Escape           | search                         | Closes search.                                                                          |
+| Down             | search entry                   | Moves into the results.                                                                 |
+| Enter            | search entry                   | Opens the first result.                                                                 |
+| Left, Right      | note tree                      | Collapse or expand a folder; move to the parent or the first child.                     |
+| F2               | note tree                      | Renames the selected row in place.                                                      |
+| Enter, Escape    | rename entry                   | Commits or cancels the rename.                                                          |
+| Delete           | note tree                      | Move to Trash, after the confirmation.                                                  |
+| Alt+Up, Alt+Down | note tree                      | Move Up or Move Down among the siblings.                                                |
+| Menu, Shift+F10  | note tree                      | Opens the context menu of the selected row.                                             |
+| Ctrl+Z           | editor                         | Undo.                                                                                   |
+| Ctrl+Shift+Z     | editor                         | Redo.                                                                                   |
+| Ctrl+B           | editor                         | Bold.                                                                                   |
+| Ctrl+I           | editor                         | Italic.                                                                                 |
+| Ctrl+Shift+X     | editor                         | Strikethrough.                                                                          |
+| Ctrl+K           | editor                         | Insert link.                                                                            |
+| Ctrl+Return      | editor                         | Toggle task; with nothing selected inside a link, open it.                              |
+| Ctrl+click       | a link in the editor           | Opens the link.                                                                         |
+| `u`              | editor, Vim normal mode        | Undo through the app's history.                                                         |
+| `:undo`, `:redo` | editor, Vim command line       | Undo and redo through the app's history.                                                |
+| `:w`             | editor, Vim command line       | Save Now.                                                                               |
 
-The editor shortcuts work while the editor has focus. Ctrl+KP_Enter also toggles the task.
+The editor shortcuts work while the editor has focus. Ctrl+KP_Enter also toggles the task. The tree
+shortcuts need the tree focused and a row selected; the keypad Delete, Up and Down work like the
+main keys. Ctrl+F, Ctrl+K (outside the editor), Ctrl+Shift+N and F9 work anywhere on the notes
+page.
 
 ## Build on the host (Fedora 43)
 
@@ -264,7 +358,12 @@ The tests (`test.sh`) run, in this order:
    (a 1920x1200 virtual monitor, so the window is never maximised) with an unlocked keyring, driving real pages and saving screenshots to
    `apps/linux/out/screenshots/p<phase>-<view>-<narrow|wide>-<light|dark>-<accent>.png`. The `p1`
    cases cover login, unlocking and reading; the `p2` cases cover the editor, Vim mode, drafts,
-   sync feedback, conflicts, the close guard and the early draft. A failing case saves
+   sync feedback, conflicts, the close guard and the early draft; the `p3` cases cover new folders,
+   Move To…, inline rename, the context menu and its keys, drag and drop, Move Up and Down, color
+   tags and the filter, the note menu, Undo, the Trash dialog and its confirmations, search, the
+   Details dialog and the last view. `p3-shot-tree-context-menu`, `p3-shot-trash-dialog` and
+   `p3-search-shot` also save the `p3-tree-context-menu`, `p3-trash-dialog` and `p3-search`
+   screenshots, each narrow and wide, light and dark, with the violet accent. A failing case saves
    `failure-<case>.png` there. Logs go to `apps/linux/out/logs/`, with per-case timings in
    `ui-testlog.txt`. The filter of `ui-test.sh` matches case names only. The harness sends real key
    events through mutter's remote desktop virtual keyboard: `press_keys("<Control>r")` presses one
