@@ -1,18 +1,3 @@
-blueprints = files(
-  'ui/window.blp',
-  'ui/startup-error-page.blp',
-  'ui/token-page.blp',
-  'ui/repository-list-page.blp',
-  'ui/unusable-repository-page.blp',
-  'ui/unlock-page.blp',
-  'ui/initialize-page.blp',
-  'ui/loading-page.blp',
-  'ui/key-changed-page.blp',
-  'ui/notes-page.blp',
-  'ui/tree-view.blp',
-  'ui/note-view.blp',
-)
-
 conf = configuration_data()
 conf.set('APP_ID', app_id)
 conf.set('SCHEMA_PATH', schema_path)
@@ -78,18 +63,7 @@ install_data(
   rename: app_id + '-symbolic.svg',
 )
 
-ui_files = custom_target(
-  'blueprints',
-  input: blueprints,
-  output: '.',
-  command: [
-    find_program('blueprint-compiler'),
-    'batch-compile',
-    '@OUTPUT@',
-    '@CURRENT_SOURCE_DIR@',
-    '@INPUT@',
-  ],
-)
+subdir('ui')
 
 core_bundle_copy = fs.copyfile(core_bundle, 'commitnote-core.js')
 
