@@ -57,6 +57,14 @@ template $CommitnoteNotesPage: Adw.NavigationPage {
               visible: false;
             }
           }
+
+          [top]
+          Adw.Banner tag_filter_banner {
+            name: "tag-filter-banner";
+            button-label: _("Show All");
+            use-markup: false;
+            revealed: false;
+          }
         };
       };
 
@@ -220,6 +228,19 @@ menu note_menu {
 }
 
 menu main_menu {
+  section {
+    item {
+      label: _("New Folder…");
+      action: "notes.new-folder";
+      accel: "<Control><Shift>n";
+    }
+
+    item {
+      label: _("Trash");
+      action: "notes.show-trash";
+    }
+  }
+
   section {
     item {
       label: "Refresh";

@@ -1,9 +1,15 @@
+mod folder_dialog;
+mod move_dialog;
 mod node_object;
 mod node_row;
 pub(crate) mod note_state;
 mod note_view;
 mod notes_page;
+mod row_menu;
 mod sync_feedback;
+mod target_picker;
+mod trash_confirm;
+mod trash_dialog;
 mod tree_logic;
 mod tree_view;
 

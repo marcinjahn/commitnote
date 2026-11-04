@@ -2,13 +2,16 @@ use std::cell::{Cell, OnceCell, RefCell};
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
+use commitnote_core_api::commands::MoveDirection;
+use commitnote_core_api::shapes::ColorTag;
 use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
 use super::sync_feedback::{SyncMenuAction, SyncStatusView, sync_status_view};
-use super::{NoteView, NotesTree};
+use super::tree_logic::{find_node, menu_tag, new_folder_parent, tag_from_id, tag_id, tag_label};
+use super::{NoteView, NotesTree, folder_dialog, move_dialog, trash_confirm, trash_dialog};
 use crate::editor::NoteEditor;
-use crate::model::{AppModel, EditorTarget};
+use crate::model::{AppModel, COLOR_TAGS, DraftFocus, EditorTarget};
 
 const FALLBACK_TITLE: &str = "commitnote";
 const DRAFT_TITLE: &str = "New Note";
@@ -31,7 +34,11 @@ mod imp {
         #[template_child]
         pub(super) content_toolbar: TemplateChild<adw::ToolbarView>,
         #[template_child]
+        pub(super) tag_filter_banner: TemplateChild<adw::Banner>,
+        #[template_child]
         pub(super) main_menu: TemplateChild<gtk::gio::Menu>,
+        #[template_child]
+        pub(super) note_menu: TemplateChild<gtk::gio::Menu>,
         #[template_child]
         pub(super) formatting_bar: TemplateChild<gtk::Box>,
         #[template_child]
@@ -44,12 +51,21 @@ mod imp {
         narrow: Cell<bool>,
         #[property(get, set)]
         sidebar_hidden: Cell<bool>,
+        #[property(get, set)]
+        filter_tag: RefCell<String>,
+        #[property(get, set)]
+        note_color_tag: RefCell<String>,
+        pub(super) filter_menu: OnceCell<gtk::gio::Menu>,
+        pub(super) organise_menu: OnceCell<gtk::gio::Menu>,
+        pub(super) tree: OnceCell<NotesTree>,
         pub(super) editor: OnceCell<NoteEditor>,
         pub(super) note_view: OnceCell<NoteView>,
         pub(super) model: OnceCell<AppModel>,
         pub(super) open_path: RefCell<Option<Vec<String>>>,
         pub(super) draft_switch: Cell<Option<u64>>,
         pub(super) model_handlers: RefCell<Vec<glib::SignalHandlerId>>,
+        pub(super) trash_dialog: glib::WeakRef<adw::Dialog>,
+        pub(super) trashing: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -62,6 +78,102 @@ mod imp {
             klass.bind_template();
             klass.install_action("notes.toggle-sidebar", None, |page, _, _| {
                 page.toggle_sidebar();
+            });
+            klass.install_action(
+                "tree.new-folder",
+                Some(glib::VariantTy::STRING_ARRAY),
+                |page, _, parameter| {
+                    if let Some(parent) = parameter.and_then(|value| value.get::<Vec<String>>()) {
+                        page.show_new_folder(parent);
+                    }
+                },
+            );
+            klass.install_action(
+                "tree.move-to",
+                Some(glib::VariantTy::STRING_ARRAY),
+                |page, _, parameter| {
+                    if let Some(path) = parameter.and_then(|value| value.get::<Vec<String>>()) {
+                        page.show_move_to(path);
+                    }
+                },
+            );
+            klass.install_action(
+                "tree.trash",
+                Some(glib::VariantTy::STRING_ARRAY),
+                |page, _, parameter| {
+                    if let Some(path) = parameter.and_then(|value| value.get::<Vec<String>>()) {
+                        page.move_to_trash(path);
+                    }
+                },
+            );
+            klass.install_action(
+                "tree.rename",
+                Some(glib::VariantTy::STRING_ARRAY),
+                |page, _, parameter| {
+                    if let (Some(path), Some(tree)) = (
+                        parameter.and_then(|value| value.get::<Vec<String>>()),
+                        page.imp().tree.get(),
+                    ) {
+                        tree.start_rename(path);
+                    }
+                },
+            );
+            klass.install_action(
+                "tree.new-note",
+                Some(glib::VariantTy::STRING_ARRAY),
+                |page, _, parameter| {
+                    if let Some(parent) = parameter.and_then(|value| value.get::<Vec<String>>()) {
+                        page.start_note_in(parent);
+                    }
+                },
+            );
+            for (name, direction) in [
+                ("tree.move-up", MoveDirection::Up),
+                ("tree.move-down", MoveDirection::Down),
+            ] {
+                klass.install_action(
+                    name,
+                    Some(glib::VariantTy::STRING_ARRAY),
+                    move |page, _, parameter| {
+                        if let Some(path) = parameter.and_then(|value| value.get::<Vec<String>>()) {
+                            page.move_sibling(path, direction);
+                        }
+                    },
+                );
+            }
+            klass.install_action(
+                "tree.set-color-tag",
+                Some(&<(Vec<String>, String)>::static_variant_type()),
+                |page, _, parameter| {
+                    if let Some((path, id)) =
+                        parameter.and_then(|value| value.get::<(Vec<String>, String)>())
+                    {
+                        page.set_color_tag(path, &id);
+                    }
+                },
+            );
+            klass.install_action("notes.new-folder", None, |page, _, _| {
+                page.show_new_folder_here();
+            });
+            klass.install_action("notes.show-trash", None, |page, _, _| {
+                page.show_trash();
+            });
+            klass.install_property_action("notes.tag-filter", "filter-tag");
+            klass.install_property_action("notes.color-tag", "note-color-tag");
+            klass.install_action("notes.rename-note", None, |page, _, _| {
+                if let Some(note_view) = page.imp().note_view.get() {
+                    note_view.focus_title();
+                }
+            });
+            klass.install_action("notes.move-note", None, |page, _, _| {
+                if let Some(path) = page.open_saved_path() {
+                    page.show_move_to(path);
+                }
+            });
+            klass.install_action("notes.trash-note", None, |page, _, _| {
+                if let Some(path) = page.open_saved_path() {
+                    page.move_to_trash(path);
+                }
             });
         }
 
@@ -77,6 +189,16 @@ mod imp {
             let page = self.obj();
             page.connect_narrow_notify(|page| page.narrow_changed());
             page.connect_sidebar_hidden_notify(|page| page.sidebar_hidden_changed());
+            page.connect_filter_tag_notify(|page| page.filter_tag_chosen());
+            page.connect_note_color_tag_notify(|page| page.note_color_tag_chosen());
+            self.tag_filter_banner.connect_button_clicked({
+                let page = page.downgrade();
+                move |_| {
+                    if let Some(page) = page.upgrade() {
+                        page.apply_tag_filter(None);
+                    }
+                }
+            });
             self.split_view.connect_show_content_notify({
                 let page = page.downgrade();
                 move |_| {
@@ -128,8 +250,9 @@ impl NotesPage {
             .unwrap_or_else(|| FALLBACK_TITLE.to_owned());
         page.set_title(&label);
         imp.sidebar_page.set_title(&label);
-        imp.sidebar_toolbar
-            .set_content(Some(&NotesTree::new(model)));
+        let tree = NotesTree::new(model);
+        imp.sidebar_toolbar.set_content(Some(&tree));
+        let _ = imp.tree.set(tree);
         let note_view = NoteView::new(model);
         let editor = note_view.editor();
         page.insert_action_group("editor", Some(&editor.actions()));
@@ -144,12 +267,14 @@ impl NotesPage {
         let _ = imp.editor.set(editor);
         let _ = imp.note_view.set(note_view.clone());
         imp.content_toolbar.set_content(Some(&note_view));
+        page.install_menus();
         page.append_testing_menu();
 
         let path = model.open_note_path();
         page.set_content_title(&model.editor_target(), path.as_deref());
         imp.open_path.replace(path);
         page.update_note_controls();
+        page.update_organisation();
         let handler = model.connect_open_note_changed({
             let page = page.downgrade();
             move |model| {
@@ -166,7 +291,16 @@ impl NotesPage {
                 }
             }
         });
-        imp.model_handlers.replace(vec![handler, sync_handler]);
+        let tree_handler = model.connect_tree_changed({
+            let page = page.downgrade();
+            move |_| {
+                if let Some(page) = page.upgrade() {
+                    page.update_organisation();
+                }
+            }
+        });
+        imp.model_handlers
+            .replace(vec![handler, sync_handler, tree_handler]);
         page.update_sync_status();
         page
     }
@@ -197,6 +331,128 @@ impl NotesPage {
                 .map_or(FALLBACK_TITLE, String::as_str),
         };
         self.imp().content_page.set_title(title);
+    }
+
+    fn show_new_folder_here(&self) {
+        let Some(tree) = self.imp().tree.get() else {
+            return;
+        };
+        let selected = tree.selected_target();
+        let parent = new_folder_parent(
+            selected
+                .as_ref()
+                .map(|(path, folder)| (path.as_slice(), *folder)),
+        );
+        self.show_new_folder(parent);
+    }
+
+    fn show_new_folder(&self, parent: Vec<String>) {
+        let imp = self.imp();
+        let (Some(model), Some(tree)) = (imp.model.get(), imp.tree.get()) else {
+            return;
+        };
+        let tree = tree.downgrade();
+        folder_dialog::present(model, self, parent, move |path| {
+            if let Some(tree) = tree.upgrade() {
+                tree.reveal(path);
+            }
+        });
+    }
+
+    fn start_note_in(&self, parent: Vec<String>) {
+        let Some(model) = self.imp().model.get() else {
+            return;
+        };
+        let start = model.start_draft(parent, DraftFocus::Name);
+        let (model, page) = (model.clone(), self.downgrade());
+        glib::spawn_future_local(async move {
+            match start.await {
+                Ok(()) => {
+                    if let Some(page) = page.upgrade()
+                        && page.narrow()
+                    {
+                        page.imp().split_view.set_show_content(true);
+                    }
+                }
+                Err(error) => model.report_error(&error),
+            }
+        });
+    }
+
+    fn move_sibling(&self, path: Vec<String>, direction: MoveDirection) {
+        let imp = self.imp();
+        let (Some(model), Some(tree)) = (imp.model.get(), imp.tree.get()) else {
+            return;
+        };
+        let (model, tree) = (model.clone(), tree.downgrade());
+        glib::spawn_future_local(async move {
+            match model.move_sibling(path, direction).await {
+                Ok(Some(moved)) => {
+                    if let Some(tree) = tree.upgrade() {
+                        tree.reveal(moved);
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => model.report_error(&error),
+            }
+        });
+    }
+
+    fn set_color_tag(&self, path: Vec<String>, id: &str) {
+        let (Some(model), Some(tag)) = (self.imp().model.get(), tag_from_id(id)) else {
+            return;
+        };
+        let model = model.clone();
+        glib::spawn_future_local(async move {
+            if let Err(error) = model.set_color_tag(path, tag).await {
+                model.report_error(&error);
+            }
+        });
+    }
+
+    fn show_move_to(&self, path: Vec<String>) {
+        let imp = self.imp();
+        let (Some(model), Some(tree)) = (imp.model.get(), imp.tree.get()) else {
+            return;
+        };
+        let tree = tree.downgrade();
+        move_dialog::present(model, self, path, move |moved| {
+            if let Some(tree) = tree.upgrade() {
+                tree.reveal(moved);
+            }
+        });
+    }
+
+    fn move_to_trash(&self, path: Vec<String>) {
+        let imp = self.imp();
+        let Some(model) = imp.model.get() else {
+            return;
+        };
+        if imp.trashing.replace(true) {
+            return;
+        }
+        let (model, page) = (model.clone(), self.clone());
+        glib::spawn_future_local(async move {
+            trash_confirm::move_to_trash(model, page.clone().upcast(), path).await;
+            page.imp().trashing.set(false);
+        });
+    }
+
+    fn show_trash(&self) {
+        let imp = self.imp();
+        let (Some(model), Some(tree)) = (imp.model.get(), imp.tree.get()) else {
+            return;
+        };
+        if imp.trash_dialog.upgrade().is_some() {
+            return;
+        }
+        let tree = tree.downgrade();
+        let dialog = trash_dialog::present(model, self, move |restored| {
+            if let Some(tree) = tree.upgrade() {
+                tree.reveal(restored);
+            }
+        });
+        imp.trash_dialog.set(Some(&dialog));
     }
 
     fn toggle_sidebar(&self) {
@@ -313,6 +569,167 @@ impl NotesPage {
         }
     }
 
+    fn install_menus(&self) {
+        let imp = self.imp();
+        let filter = gtk::gio::Menu::new();
+        imp.main_menu.insert_section(1, None, &filter);
+        let _ = imp.filter_menu.set(filter);
+        let organise = gtk::gio::Menu::new();
+        imp.note_menu.insert_section(0, None, &organise);
+        let _ = imp.organise_menu.set(organise);
+    }
+
+    fn open_saved_path(&self) -> Option<Vec<String>> {
+        match self.imp().model.get()?.editor_target() {
+            EditorTarget::Note(path) => Some(path),
+            _ => None,
+        }
+    }
+
+    fn update_organisation(&self) {
+        self.rebuild_filter_menu();
+        self.rebuild_organise_menu();
+        self.update_tag_filter();
+        self.update_note_actions();
+    }
+
+    fn rebuild_filter_menu(&self) {
+        let imp = self.imp();
+        let (Some(model), Some(menu)) = (imp.model.get(), imp.filter_menu.get()) else {
+            return;
+        };
+        menu.remove_all();
+        let tags = model.filter_tags();
+        if tags.is_empty() {
+            return;
+        }
+        let options = model.tag_options();
+        let choices = gtk::gio::Menu::new();
+        choices.append_item(&tag_item("All Notes", "notes.tag-filter", ""));
+        for tag in tags {
+            choices.append_item(&tag_item(
+                &tag_label(tag, &options),
+                "notes.tag-filter",
+                tag_id(tag),
+            ));
+        }
+        menu.append_submenu(Some("Filter by Color Tag"), &choices);
+    }
+
+    fn rebuild_organise_menu(&self) {
+        let imp = self.imp();
+        let (Some(model), Some(menu)) = (imp.model.get(), imp.organise_menu.get()) else {
+            return;
+        };
+        menu.remove_all();
+        menu.append(Some("Rename"), Some("notes.rename-note"));
+        menu.append(Some("Move To…"), Some("notes.move-note"));
+        if model.tags_writable() {
+            let options = model.tag_options();
+            let choices = gtk::gio::Menu::new();
+            choices.append_item(&tag_item("None", "notes.color-tag", ""));
+            for tag in COLOR_TAGS {
+                choices.append_item(&tag_item(
+                    &tag_label(tag, &options),
+                    "notes.color-tag",
+                    tag_id(tag),
+                ));
+            }
+            menu.append_submenu(Some("Color Tag"), &choices);
+        }
+        menu.append(Some("Move to Trash"), Some("notes.trash-note"));
+    }
+
+    fn update_tag_filter(&self) {
+        let imp = self.imp();
+        let Some(model) = imp.model.get() else {
+            return;
+        };
+        let active = model.tag_filter();
+        let id = active.map_or("", tag_id);
+        if self.filter_tag() != id {
+            self.set_filter_tag(id.to_owned());
+        }
+        match active {
+            Some(tag) => {
+                let label = tag_label(tag, &model.tag_options());
+                imp.tag_filter_banner
+                    .set_title(&format!("Showing notes tagged {label}"));
+                imp.tag_filter_banner.set_revealed(true);
+            }
+            None => imp.tag_filter_banner.set_revealed(false),
+        }
+    }
+
+    fn update_note_actions(&self) {
+        let Some(model) = self.imp().model.get() else {
+            return;
+        };
+        let path = self.open_saved_path();
+        for action in ["notes.rename-note", "notes.move-note", "notes.trash-note"] {
+            self.action_set_enabled(action, path.is_some());
+        }
+        let tag = path.as_deref().and_then(|path| {
+            let tree = model.tree()?;
+            menu_tag(find_node(&tree, path)?, model.tags_writable())
+        });
+        self.action_set_enabled("notes.color-tag", tag.is_some());
+        let id = tag.flatten().map_or("", tag_id);
+        if self.note_color_tag() != id {
+            self.set_note_color_tag(id.to_owned());
+        }
+    }
+
+    fn filter_tag_chosen(&self) {
+        match tag_from_id(&self.filter_tag()) {
+            Some(tag) => self.apply_tag_filter(tag),
+            None => self.update_tag_filter(),
+        }
+    }
+
+    fn apply_tag_filter(&self, tag: Option<ColorTag>) {
+        let Some(model) = self.imp().model.get() else {
+            return;
+        };
+        if tag == model.tag_filter() {
+            return;
+        }
+        let (model, page) = (model.clone(), self.downgrade());
+        glib::spawn_future_local(async move {
+            if let Err(error) = model.set_tag_filter(tag).await {
+                model.report_error(&error);
+                if let Some(page) = page.upgrade() {
+                    page.update_tag_filter();
+                }
+            }
+        });
+    }
+
+    fn note_color_tag_chosen(&self) {
+        let (Some(model), Some(path)) = (self.imp().model.get(), self.open_saved_path()) else {
+            return;
+        };
+        let Some(tag) = tag_from_id(&self.note_color_tag()) else {
+            self.update_note_actions();
+            return;
+        };
+        let current = model
+            .tree()
+            .and_then(|tree| menu_tag(find_node(&tree, &path)?, model.tags_writable()));
+        if current.is_none_or(|current| current == tag) {
+            return;
+        }
+        let (model, page) = (model.clone(), self.downgrade());
+        glib::spawn_future_local(async move {
+            if let Err(error) = model.set_color_tag(path, tag).await {
+                model.report_error(&error);
+                if let Some(page) = page.upgrade() {
+                    page.update_note_actions();
+                }
+            }
+        });
+    }
+
     fn narrow_changed(&self) {
         if self.narrow() {
             self.set_sidebar_hidden(false);
@@ -358,6 +775,7 @@ impl NotesPage {
         }
         imp.open_path.replace(path);
         self.update_note_controls();
+        self.update_organisation();
         if opened && imp.split_view.is_collapsed() {
             imp.split_view.set_show_content(true);
         }
@@ -370,6 +788,7 @@ fn shortcuts() -> gtk::ShortcutController {
     for (trigger, action) in [
         ("F9", "notes.toggle-sidebar"),
         ("<Control>r", "win.refresh"),
+        ("<Control><Shift>n", "notes.new-folder"),
     ] {
         controller.add_shortcut(gtk::Shortcut::new(
             gtk::ShortcutTrigger::parse_string(trigger),
@@ -377,4 +796,10 @@ fn shortcuts() -> gtk::ShortcutController {
         ));
     }
     controller
+}
+
+fn tag_item(label: &str, action: &str, target: &str) -> gtk::gio::MenuItem {
+    let item = gtk::gio::MenuItem::new(Some(label), None);
+    item.set_action_and_target_value(Some(action), Some(&target.to_variant()));
+    item
 }

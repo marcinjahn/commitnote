@@ -210,6 +210,12 @@ impl NoteView {
         self.imp().title_entry.set_editable(editable);
     }
 
+    pub fn focus_title(&self) {
+        let entry = &self.imp().title_entry;
+        entry.grab_focus();
+        entry.select_region(0, -1);
+    }
+
     fn setup_title(&self) {
         let entry = &self.imp().title_entry;
         entry.connect_changed({

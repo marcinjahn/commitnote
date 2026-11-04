@@ -1,6 +1,7 @@
 mod flows;
 mod p1;
 mod p2;
+mod p3;
 mod support;
 
 use std::process::ExitCode;
@@ -13,7 +14,7 @@ use libadwaita as adw;
 
 use support::{Case, Harness};
 
-const SUITES: &[(&str, &[Case])] = &[("p1", p1::CASES), ("p2", p2::CASES)];
+const SUITES: &[(&str, &[Case])] = &[("p1", p1::CASES), ("p2", p2::CASES), ("p3", p3::CASES)];
 
 fn main() -> ExitCode {
     support::prepare_environment();

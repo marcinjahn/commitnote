@@ -443,6 +443,29 @@ impl Harness {
             .ok_or_else(|| format!("no widget is named {name}"))
     }
 
+    /// The widget named `name` under `parent`, for names that several widgets share.
+    pub fn widget_in(&self, parent: &gtk::Widget, name: &str) -> Result<gtk::Widget, String> {
+        descendants(parent)
+            .into_iter()
+            .find(|widget| widget.widget_name() == name)
+            .ok_or_else(|| format!("no widget named {name} under {}", parent.widget_name()))
+    }
+
+    /// The preferences row titled `title`, preferring one that is on screen.
+    pub fn row_titled(&self, title: &str) -> Result<adw::PreferencesRow, String> {
+        let window = self.window()?;
+        let rows: Vec<adw::PreferencesRow> = descendants(window.upcast_ref())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<adw::PreferencesRow>().ok())
+            .filter(|row| row.title() == title)
+            .collect();
+        rows.iter()
+            .find(|row| row.is_mapped())
+            .or_else(|| rows.first())
+            .cloned()
+            .ok_or_else(|| format!("no row is titled {title}"))
+    }
+
     pub fn widget_as<T: IsA<gtk::Widget>>(&self, name: &str) -> Result<T, String> {
         self.widget(name)?
             .downcast::<T>()
