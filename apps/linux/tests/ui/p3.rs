@@ -4,7 +4,7 @@ use std::rc::Rc;
 use adw::prelude::*;
 use commitnote::editor::NoteEditor;
 use commitnote::model::{AppModel, DraftFocus, EditorTarget};
-use commitnote::pages::notes::{NotesTree, SearchView};
+use commitnote::pages::notes::{NotesPage, NotesTree, SearchView};
 use commitnote_core_api::commands::{LastViewLoadResult, NoteDraftOutcome};
 use commitnote_core_api::shapes::{LastViewState, OpenNote, TreeNode};
 use gtk4::{self as gtk, gdk, glib, pango};
@@ -40,7 +40,12 @@ pub const CASES: &[Case] = &[
     ("p3-drop-indicator", drop_indicator),
     ("p3-tag-filter", tag_filter),
     ("p3-note-menu-organise", note_menu_organise),
+    ("p3-note-menu-tag-under-filter", note_menu_tag_under_filter),
     ("p3-details", details),
+    (
+        "p3-details-shared-under-filter",
+        details_shared_under_filter,
+    ),
     ("p3-last-view-restart", last_view_restart),
     ("p3-last-view-flush-on-close", last_view_flush_on_close),
     ("p3-last-view-off", last_view_off),
@@ -1872,6 +1877,103 @@ fn note_menu_organise(h: &mut Harness) -> Result<(), String> {
         NOTE_ACTIONS
             .iter()
             .all(|action| action_enabled(h, action).is_ok_and(|enabled| !enabled))
+    })
+}
+
+fn tag_welcome_green_and_filter(h: &Harness) -> Result<(), String> {
+    use commitnote_core_api::shapes::ColorTag;
+
+    let model = h.model()?;
+    let welcome = path(&["Welcome"]);
+    h.run("tagging Welcome green", {
+        let (model, welcome) = (model.clone(), welcome.clone());
+        async move { model.set_color_tag(welcome, Some(ColorTag::Green)).await }
+    })?
+    .map_err(|error| error.message)?;
+    h.wait("the green tag", || {
+        color_of(h, &welcome) == Some(ColorTag::Green)
+    })?;
+    let tree = h.widget("notes-tree")?;
+    WidgetExt::activate_action(&tree, "notes.tag-filter", Some(&"green".to_variant()))
+        .map_err(|error| format!("cannot activate notes.tag-filter: {error}"))?;
+    h.wait("the green filter", || {
+        model.tag_filter() == Some(ColorTag::Green)
+    })
+}
+
+fn color_tag_state(h: &Harness) -> Option<String> {
+    let page = h
+        .widget("notes-tree")
+        .ok()?
+        .ancestor(NotesPage::static_type())?
+        .downcast::<NotesPage>()
+        .ok()?;
+    Some(page.note_color_tag())
+}
+
+fn note_menu_tag_under_filter(h: &mut Harness) -> Result<(), String> {
+    use commitnote_core_api::shapes::ColorTag;
+
+    launch_and_log_in(h, false)?;
+    let model = h.model()?;
+    let welcome = path(&["Welcome"]);
+    tag_welcome_green_and_filter(h)?;
+    h.wait("Welcome in the filtered tree", || has_node(h, &welcome))?;
+    open_note_at(h, &["Welcome"])?;
+    h.wait("the note menu to offer Color Tag", || {
+        action_enabled(h, "notes.color-tag").unwrap_or(false)
+            && color_tag_state(h).as_deref() == Some("green")
+    })?;
+
+    let tree = h.widget("notes-tree")?;
+    WidgetExt::activate_action(&tree, "notes.color-tag", Some(&"blue".to_variant()))
+        .map_err(|error| format!("cannot activate notes.color-tag: {error}"))?;
+    h.wait("Welcome to leave the filtered tree", || {
+        model.tag_filter() == Some(ColorTag::Green) && !has_node(h, &welcome)
+    })?;
+    h.wait("the note's blue tag", || {
+        matches!(
+            model.open_note_state(),
+            Some(OpenNote::Loaded {
+                color_tag: Some(ColorTag::Blue),
+                ..
+            })
+        ) && color_tag_state(h).as_deref() == Some("blue")
+    })?;
+    ensure(action_enabled(h, "notes.color-tag")?, || {
+        "Color Tag was disabled while the filter hides the open note".to_owned()
+    })?;
+
+    WidgetExt::activate_action(&tree, "notes.color-tag", Some(&"green".to_variant()))
+        .map_err(|error| format!("cannot activate notes.color-tag: {error}"))?;
+    h.wait("Welcome back in the filtered tree", || {
+        has_node(h, &welcome) && color_of(h, &welcome) == Some(ColorTag::Green)
+    })
+}
+
+fn details_shared_under_filter(h: &mut Harness) -> Result<(), String> {
+    use commitnote_core_api::shapes::ColorTag;
+
+    launch_and_log_in(h, false)?;
+    let model = h.model()?;
+    let roadmap = path(ROADMAP);
+    create_share(h, ROADMAP)?;
+    h.wait("the share", || is_shared(h, &roadmap))?;
+    open_note_at(h, ROADMAP)?;
+    tag_welcome_green_and_filter(h)?;
+    h.wait("Roadmap to leave the filtered tree", || {
+        model.tag_filter() == Some(ColorTag::Green) && !has_node(h, &roadmap)
+    })?;
+    h.wait("the note actions to be enabled", || {
+        action_enabled(h, "notes.show-details").unwrap_or(false)
+    })?;
+
+    let tree = h.widget("notes-tree")?;
+    WidgetExt::activate_action(&tree, "notes.show-details", None)
+        .map_err(|error| format!("cannot activate notes.show-details: {error}"))?;
+    h.wait_shown("details-dialog")?;
+    h.wait("the sharing state", || {
+        h.label("details-shared").is_ok_and(|value| value == "Yes")
     })
 }
 

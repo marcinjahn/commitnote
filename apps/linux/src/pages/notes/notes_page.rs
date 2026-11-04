@@ -8,7 +8,7 @@ use gtk4::{self as gtk, gdk, glib};
 use libadwaita as adw;
 
 use super::sync_feedback::{SyncMenuAction, SyncStatusView, sync_status_view};
-use super::tree_logic::{find_node, menu_tag, new_folder_parent, tag_from_id, tag_id, tag_label};
+use super::tree_logic::{new_folder_parent, tag_from_id, tag_id, tag_label};
 use super::{
     NoteView, NotesTree, SearchView, details_dialog, folder_dialog, move_dialog, trash_confirm,
     trash_dialog,
@@ -850,10 +850,9 @@ impl NotesPage {
         ] {
             self.action_set_enabled(action, path.is_some());
         }
-        let tag = path.as_deref().and_then(|path| {
-            let tree = model.tree()?;
-            menu_tag(find_node(&tree, path)?, model.tags_writable())
-        });
+        let tag = path
+            .as_deref()
+            .and_then(|path| open_note_menu_tag(model, path));
         self.action_set_enabled("notes.color-tag", tag.is_some());
         let id = tag.flatten().map_or("", tag_id);
         if self.note_color_tag() != id {
@@ -894,9 +893,7 @@ impl NotesPage {
             self.update_note_actions();
             return;
         };
-        let current = model
-            .tree()
-            .and_then(|tree| menu_tag(find_node(&tree, &path)?, model.tags_writable()));
+        let current = open_note_menu_tag(model, &path);
         if current.is_none_or(|current| current == tag) {
             return;
         }
@@ -961,6 +958,15 @@ impl NotesPage {
             imp.split_view.set_show_content(true);
         }
     }
+}
+
+fn open_note_menu_tag(model: &AppModel, path: &[String]) -> Option<Option<ColorTag>> {
+    if !model.tags_writable() {
+        return None;
+    }
+    model
+        .open_note_tag_and_sharing(path)
+        .map(|(color_tag, _)| color_tag)
 }
 
 fn shortcuts() -> gtk::ShortcutController {

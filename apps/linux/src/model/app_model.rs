@@ -458,6 +458,20 @@ impl AppModel {
         self.state().open_note.clone()
     }
 
+    /// The open note's tag and sharing as the core reads them from the whole tree, so they stay
+    /// known while a tag filter hides the note from `tree()`.
+    pub fn open_note_tag_and_sharing(&self, path: &[String]) -> Option<(Option<ColorTag>, bool)> {
+        match self.state().open_note.as_ref()? {
+            OpenNote::Loaded {
+                path: open,
+                color_tag,
+                shared,
+                ..
+            } if open == path => Some((*color_tag, *shared)),
+            _ => None,
+        }
+    }
+
     pub fn note_switch(&self) -> u64 {
         self.state().note_switch
     }

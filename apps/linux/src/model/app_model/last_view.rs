@@ -116,11 +116,8 @@ impl AppModel {
             .await
             .map_err(|error| failed("could not read the note's dates", error))?;
         let shared = self
-            .state()
-            .tree
-            .as_deref()
-            .and_then(|tree| find_node(tree, &path))
-            .is_some_and(|node| matches!(node, TreeNode::Note { shared: true, .. }));
+            .open_note_tag_and_sharing(&path)
+            .is_some_and(|(_, shared)| shared);
         Ok(NoteDetails {
             words: stats.words,
             tasks: stats.tasks,
@@ -977,6 +974,53 @@ mod tests {
             assert!(!details.words.value.is_empty());
             assert!(details.not_saved || (details.created.is_some() && details.updated.is_some()));
             assert!(!details.shared);
+        });
+    }
+
+    #[test]
+    fn details_tell_a_shared_note_a_tag_filter_hides() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.log_in().await;
+            let roadmap = path(&["Projects", "commitnote", "Roadmap"]);
+            let created = session
+                .model
+                .testing_send(
+                    "share.create",
+                    serde_json::json!({ "path": roadmap, "password": "", "label": "" }),
+                )
+                .await
+                .expect("the share is created");
+            assert_eq!(
+                created
+                    .pointer("/outcome/kind")
+                    .and_then(|kind| kind.as_str()),
+                Some("created")
+            );
+            open_and_read(&session, &roadmap).await;
+            session
+                .model
+                .set_color_tag(welcome(), Some(ColorTag::Green))
+                .await
+                .expect("Welcome is tagged");
+            session
+                .model
+                .set_tag_filter(Some(ColorTag::Green))
+                .await
+                .expect("the filter is set");
+            session
+                .wait_until("Roadmap to leave the filtered tree", |model| {
+                    model.tag_filter() == Some(ColorTag::Green) && !shown(model, &roadmap)
+                })
+                .await;
+
+            let details = session
+                .model
+                .note_details(roadmap)
+                .await
+                .expect("the details load");
+
+            assert!(details.shared);
         });
     }
 }
