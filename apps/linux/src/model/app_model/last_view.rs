@@ -1,5 +1,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use commitnote_core_api::commands::{
@@ -160,15 +162,15 @@ impl AppModel {
             return;
         };
         let done = Rc::new(Cell::new(false));
-        let timed_out = Rc::new(Cell::new(false));
-        let limit = glib::timeout_add_local_once(EXIT_FLUSH_LIMIT, {
-            let done = done.clone();
+        let timed_out = Arc::new(AtomicBool::new(false));
+        let limit = glib::timeout_source_new(EXIT_FLUSH_LIMIT, None, glib::Priority::DEFAULT, {
             let timed_out = timed_out.clone();
             move || {
-                timed_out.set(true);
-                done.set(true);
+                timed_out.store(true, Ordering::Release);
+                glib::ControlFlow::Break
             }
         });
+        limit.attach(Some(context));
         let model = self.clone();
         context.spawn_local({
             let done = done.clone();
@@ -177,12 +179,10 @@ impl AppModel {
                 done.set(true);
             }
         });
-        while !done.get() {
+        while !done.get() && !timed_out.load(Ordering::Acquire) {
             context.iteration(true);
         }
-        if !timed_out.get() {
-            limit.remove();
-        }
+        limit.destroy();
     }
 
     /// A core that reopens nothing answers a load with no view, and must not be switched back
@@ -683,6 +683,71 @@ mod tests {
                 assert!(session.model.state().last_view.pending.is_some());
             },
             async |session| reopened(session, &expected).await,
+        );
+    }
+
+    struct DefaultContextOwner {
+        release: Option<std::sync::mpsc::Sender<()>>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl DefaultContextOwner {
+        fn take() -> Self {
+            let (acquired_tx, acquired_rx) = std::sync::mpsc::channel();
+            let (release, release_rx) = std::sync::mpsc::channel::<()>();
+            let thread = std::thread::spawn(move || {
+                let default = glib::MainContext::default();
+                let deadline = Instant::now() + Duration::from_secs(30);
+                let owner = loop {
+                    if let Ok(owner) = default.acquire() {
+                        break owner;
+                    }
+                    assert!(Instant::now() < deadline, "the default context stayed busy");
+                    std::thread::yield_now();
+                };
+                acquired_tx.send(()).expect("the test waits for the owner");
+                let _ = release_rx.recv();
+                drop(owner);
+            });
+            acquired_rx
+                .recv()
+                .expect("the helper thread owns the default context");
+            Self {
+                release: Some(release),
+                thread: Some(thread),
+            }
+        }
+    }
+
+    impl Drop for DefaultContextOwner {
+        fn drop(&mut self) {
+            drop(self.release.take());
+            if let Some(thread) = self.thread.take() {
+                let _ = thread.join();
+            }
+        }
+    }
+
+    #[test]
+    fn quitting_while_another_thread_owns_the_default_context_stays_within_the_limit() {
+        let expected = LastViewState {
+            note: Some(welcome()),
+            folders: vec![path(&["Journal"])],
+        };
+        let _owner = DefaultContextOwner::take();
+        let shutdown = across_a_shutdown(
+            async |session| {
+                welcome_under_the_blue_filter(session).await;
+                session
+                    .model
+                    .record_expanded_folders(expected.folders.clone());
+                assert!(session.model.state().last_view.pending.is_some());
+            },
+            async |session| reopened(session, &expected).await,
+        );
+        assert!(
+            shutdown < EXIT_FLUSH_LIMIT,
+            "the shutdown took {shutdown:?}"
         );
     }
 
