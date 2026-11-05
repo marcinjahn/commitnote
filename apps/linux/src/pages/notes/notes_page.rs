@@ -11,7 +11,7 @@ use super::sync_feedback::{SyncMenuAction, SyncStatusView, sync_status_view};
 use super::tree_logic::{new_folder_parent, tag_from_id, tag_id, tag_label};
 use super::{
     NoteView, NotesTree, SearchView, details_dialog, folder_dialog, history_dialog, move_dialog,
-    trash_confirm, trash_dialog,
+    share_dialog, shared_links_dialog, trash_confirm, trash_dialog,
 };
 use crate::editor::{InsertAt, NoteEditor};
 use crate::model::{AppModel, COLOR_TAGS, DraftFocus, EditorTarget, ImageInput};
@@ -74,6 +74,7 @@ mod imp {
         pub(super) draft_switch: Cell<Option<u64>>,
         pub(super) model_handlers: RefCell<Vec<glib::SignalHandlerId>>,
         pub(super) trash_dialog: glib::WeakRef<adw::Dialog>,
+        pub(super) shared_links_dialog: glib::WeakRef<adw::Dialog>,
         pub(super) trashing: Cell<bool>,
         #[cfg(feature = "testing")]
         pub(super) next_picked_files: RefCell<Option<Vec<gio::File>>>,
@@ -172,6 +173,9 @@ mod imp {
             klass.install_action("notes.show-trash", None, |page, _, _| {
                 page.show_trash();
             });
+            klass.install_action("notes.show-shared-links", None, |page, _, _| {
+                page.show_shared_links();
+            });
             klass.install_property_action("notes.tag-filter", "filter-tag");
             klass.install_property_action("notes.color-tag", "note-color-tag");
             klass.install_action("notes.rename-note", None, |page, _, _| {
@@ -193,6 +197,9 @@ mod imp {
             });
             klass.install_action("notes.show-history", None, |page, _, _| {
                 page.show_history();
+            });
+            klass.install_action("notes.share-note", None, |page, _, _| {
+                page.show_share();
             });
             klass.install_action("notes.trash-note", None, |page, _, _| {
                 if let Some(path) = page.open_saved_path() {
@@ -692,6 +699,18 @@ impl NotesPage {
         imp.trash_dialog.set(Some(&dialog));
     }
 
+    fn show_shared_links(&self) {
+        let imp = self.imp();
+        let Some(model) = imp.model.get() else {
+            return;
+        };
+        if imp.shared_links_dialog.upgrade().is_some() {
+            return;
+        }
+        let dialog = shared_links_dialog::present(model, self);
+        imp.shared_links_dialog.set(Some(&dialog));
+    }
+
     fn toggle_sidebar(&self) {
         let split_view = &self.imp().split_view;
         if self.narrow() {
@@ -830,6 +849,15 @@ impl NotesPage {
         });
     }
 
+    fn show_share(&self) {
+        let (Some(model), Some(path)) = (self.imp().model.get(), self.open_saved_path()) else {
+            return;
+        };
+        if let Some(copy) = model.share_copy() {
+            share_dialog::present(model, self, path, &copy);
+        }
+    }
+
     fn open_saved_path(&self) -> Option<Vec<String>> {
         match self.imp().model.get()?.editor_target() {
             EditorTarget::Note(path) => Some(path),
@@ -923,6 +951,7 @@ impl NotesPage {
             "notes.move-note",
             "notes.show-details",
             "notes.show-history",
+            "notes.share-note",
             "notes.trash-note",
         ] {
             self.action_set_enabled(action, path.is_some());

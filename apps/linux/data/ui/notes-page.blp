@@ -228,6 +228,11 @@ template $CommitnoteNotesPage: Adw.NavigationPage {
 menu note_menu {
   section {
     item {
+      label: _("Share…");
+      action: "notes.share-note";
+    }
+
+    item {
       label: _("History");
       action: "notes.show-history";
     }
@@ -290,6 +295,11 @@ menu main_menu {
     item {
       label: _("Trash");
       action: "notes.show-trash";
+    }
+
+    item {
+      label: _("Shared Links");
+      action: "notes.show-shared-links";
     }
   }
 

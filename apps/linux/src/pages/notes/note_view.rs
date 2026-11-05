@@ -142,7 +142,7 @@ mod imp {
     impl BinImpl for NoteView {}
 }
 
-struct ModelImages(glib::WeakRef<AppModel>);
+pub(super) struct ModelImages(pub(super) glib::WeakRef<AppModel>);
 
 struct ModelImageInserter(glib::WeakRef<AppModel>);
 

@@ -11,6 +11,7 @@ mod notes;
 mod search;
 mod session;
 mod settings;
+mod shares;
 mod structure;
 
 pub use app::*;
@@ -23,6 +24,7 @@ pub use notes::*;
 pub use search::*;
 pub use session::*;
 pub use settings::*;
+pub use shares::*;
 pub use structure::*;
 
 #[cfg(test)]

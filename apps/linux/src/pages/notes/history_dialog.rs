@@ -11,6 +11,7 @@ use libadwaita as adw;
 
 use super::version_preview;
 use crate::model::AppModel;
+use crate::window::host_dialog_toasts;
 
 struct Dialog {
     model: AppModel,
@@ -181,31 +182,15 @@ pub fn present(model: &AppModel, anchor: &impl IsA<gtk::Widget>) -> adw::Dialog 
         }
     });
 
-    let handlers = Rc::new(RefCell::new(Some((
-        model.connect_history_changed({
-            let state = state.clone();
-            move |_| state.refresh()
-        }),
-        model.connect_toast({
-            let toasts = state.toasts.downgrade();
-            move |_, message| {
-                if let Some(toasts) = toasts.upgrade() {
-                    toasts.add_toast(
-                        adw::Toast::builder()
-                            .title(message)
-                            .use_markup(false)
-                            .build(),
-                    );
-                }
-            }
-        }),
-    ))));
+    let handler = Rc::new(RefCell::new(Some(model.connect_history_changed({
+        let state = state.clone();
+        move |_| state.refresh()
+    }))));
     dialog.connect_closed({
         let model = model.clone();
         move |_| {
-            if let Some((history, toast)) = handlers.take() {
-                model.disconnect(history);
-                model.disconnect(toast);
+            if let Some(handler) = handler.take() {
+                model.disconnect(handler);
             }
             if model.history().is_some() {
                 let model = model.clone();
@@ -214,6 +199,7 @@ pub fn present(model: &AppModel, anchor: &impl IsA<gtk::Widget>) -> adw::Dialog 
         }
     });
 
+    host_dialog_toasts(anchor, &dialog, &state.toasts);
     state.refresh();
     dialog.present(Some(anchor));
     dialog

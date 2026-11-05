@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::commands::HistoryView;
+use crate::commands::{HistoryView, ShareCopy, ShareRowView};
 use crate::envelope::{ParseError, decode_value};
 use crate::error::CoreError;
 use crate::settings::SettingsView;
@@ -124,6 +124,15 @@ pub struct HistoryChanged {
     pub history: Option<HistoryView>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharesChanged {
+    pub shares: Vec<ShareRowView>,
+    pub unreadable: Option<String>,
+    pub updating_id: Option<String>,
+    pub copy: Box<ShareCopy>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoreEvent {
     LoadingProgress(LoadingProgress),
@@ -132,6 +141,7 @@ pub enum CoreEvent {
     NoteChanged(NoteChanged),
     SearchStatusChanged(SearchStatusChanged),
     HistoryChanged(HistoryChanged),
+    SharesChanged(SharesChanged),
     NoteContentChangedRemotely(NoteContentChangedRemotely),
     SyncStateChanged(SyncStateChanged),
     Notice(Notice),
@@ -163,6 +173,7 @@ impl CoreEvent {
             "noteChanged" => Self::NoteChanged(decode_value(payload)?),
             "searchStatusChanged" => Self::SearchStatusChanged(decode_value(payload)?),
             "historyChanged" => Self::HistoryChanged(decode_value(payload)?),
+            "sharesChanged" => Self::SharesChanged(decode_value(payload)?),
             "noteContentChangedRemotely" => {
                 Self::NoteContentChangedRemotely(decode_value(payload)?)
             }
@@ -206,6 +217,7 @@ impl CoreEvent {
             Self::NoteChanged(_) => "noteChanged",
             Self::SearchStatusChanged(_) => "searchStatusChanged",
             Self::HistoryChanged(_) => "historyChanged",
+            Self::SharesChanged(_) => "sharesChanged",
             Self::NoteContentChangedRemotely(_) => "noteContentChangedRemotely",
             Self::SyncStateChanged(_) => "syncStateChanged",
             Self::Notice(_) => "notice",
@@ -223,9 +235,12 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::commands::{HistoryPhase, HistoryRow, HistorySection, HistoryVersionView};
+    use crate::commands::{
+        HistoryPhase, HistoryRow, HistorySection, HistoryVersionView, ShareActionId,
+    };
     use crate::envelope::{Incoming, parse_incoming};
     use crate::error::CoreErrorKind;
+    use crate::secret::Secret;
     use crate::settings::SettingScope;
     use crate::shapes::{OutOfSyncReason, TrashItemKind, TrashItemView};
 
@@ -401,6 +416,90 @@ mod tests {
             })
         );
         assert_eq!(idle.name(), "searchStatusChanged");
+    }
+
+    fn shares_copy_json() -> &'static str {
+        r#""copy":{"explanation":"e","labelField":"Label","passwordField":"Password","passwordHint":"h","create":"Create link","creating":"Creating…","createAnother":"Create another","shareLink":"Link","sharePassword":"Password","sharedLinksTitle":"Shared links","sharedLinksEmpty":"None","passwordProtected":"Password protected","updating":"Updating…","linkCopied":"Link copied","passwordCopied":"Password copied","revoke":{"title":"Revoke?","message":"m","confirmLabel":"Revoke"},"rename":{"title":"Rename","fieldLabel":"Label","confirmLabel":"Save"},"sharedVersionTitle":"Shared version","loadingSharedVersion":"Loading…"}"#
+    }
+
+    #[test]
+    fn shares_changed_without_shares() {
+        let text = format!(
+            r#"{{"kind":"event","event":"sharesChanged","payload":{{"shares":[],"unreadable":null,"updatingId":null,{}}}}}"#,
+            shares_copy_json()
+        );
+        let decoded = event(&text);
+        assert_eq!(decoded.name(), "sharesChanged");
+        let CoreEvent::SharesChanged(changed) = decoded else {
+            panic!("sharesChanged");
+        };
+        assert!(changed.shares.is_empty());
+        assert_eq!(changed.unreadable, None);
+        assert_eq!(changed.updating_id, None);
+        assert_eq!(changed.copy.shared_links_title, "Shared links");
+        assert_eq!(changed.copy.revoke.confirm_label, "Revoke");
+        assert_eq!(changed.copy.rename.field_label, "Label");
+        payload_round_trip(&changed);
+    }
+
+    #[test]
+    fn shares_changed_with_a_password_protected_row() {
+        let text = format!(
+            r#"{{"kind":"event","event":"sharesChanged","payload":{{"shares":[{{
+              "id":"g1","title":"For Sam","label":"For Sam","date":"Shared today",
+              "passwordProtected":true,"link":"https://example.test/s#k","password":"hunter2",
+              "notePath":["Welcome"],"menuLabel":"Share actions for For Sam",
+              "actions":[
+                {{"id":"copy-link","label":"Copy link","disabled":false,"destructive":false}},
+                {{"id":"copy-password","label":"Copy password","disabled":false,"destructive":false}},
+                {{"id":"update","label":"Update","disabled":true,"destructive":false}},
+                {{"id":"view","label":"View","disabled":false,"destructive":false}},
+                {{"id":"open","label":"Open note","disabled":false,"destructive":false}},
+                {{"id":"rename","label":"Rename","disabled":false,"destructive":false}},
+                {{"id":"revoke","label":"Revoke","disabled":false,"destructive":true}}]}},
+              {{"id":"g2","title":"Gone","label":null,"date":"Shared today",
+              "passwordProtected":false,"link":"l","password":null,"notePath":null,
+              "menuLabel":"m","actions":[]}}],
+              "unreadable":"Some links could not be read","updatingId":"g1",{}}}}}"#,
+            shares_copy_json()
+        );
+        let CoreEvent::SharesChanged(changed) = event(&text) else {
+            panic!("sharesChanged");
+        };
+        assert_eq!(changed.updating_id.as_deref(), Some("g1"));
+        assert_eq!(
+            changed.unreadable.as_deref(),
+            Some("Some links could not be read")
+        );
+        let [row, other] = changed.shares.as_slice() else {
+            panic!("two rows");
+        };
+        assert_eq!(row.password.as_ref().map(Secret::expose), Some("hunter2"));
+        assert_eq!(row.note_path.as_deref(), Some(&["Welcome".to_owned()][..]));
+        assert_eq!(row.label.as_deref(), Some("For Sam"));
+        assert!(row.password_protected);
+        let ids: Vec<ShareActionId> = row.actions.iter().map(|action| action.id).collect();
+        assert_eq!(
+            ids,
+            [
+                ShareActionId::CopyLink,
+                ShareActionId::CopyPassword,
+                ShareActionId::Update,
+                ShareActionId::View,
+                ShareActionId::Open,
+                ShareActionId::Rename,
+                ShareActionId::Revoke,
+            ]
+        );
+        assert!(row.actions[2].disabled);
+        assert!(row.actions[6].destructive);
+        assert_eq!(other.password, None);
+        assert_eq!(other.note_path, None);
+        assert_eq!(other.label, None);
+        payload_round_trip(&changed);
+        let debug = format!("{changed:?}");
+        assert!(!debug.contains("hunter2"));
+        assert!(!debug.contains("https://example.test"));
     }
 
     #[test]
@@ -770,6 +869,14 @@ mod tests {
                 json!({"change":"updated","message":"m"}),
             ),
             ("noticeCleared", json!({"id":"x"})),
+            (
+                "sharesChanged",
+                serde_json::from_str(&format!(
+                    r#"{{"shares":[],"unreadable":null,"updatingId":null,{}}}"#,
+                    shares_copy_json()
+                ))
+                .unwrap(),
+            ),
             ("sessionEnded", json!({"reason":"loggedOut"})),
             (
                 "keyChanged",

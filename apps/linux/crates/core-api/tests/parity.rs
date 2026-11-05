@@ -104,6 +104,12 @@ fn typed_commands_are_declared_in_typescript() {
         HistoryRetry::NAME,
         HistoryPreview::NAME,
         HistoryRestore::NAME,
+        ShareForm::NAME,
+        ShareCreate::NAME,
+        ShareUpdate::NAME,
+        ShareRename::NAME,
+        ShareRevoke::NAME,
+        ShareSharedVersion::NAME,
     ];
     for name in typed {
         assert!(declared.iter().any(|d| d == name), "{name}");

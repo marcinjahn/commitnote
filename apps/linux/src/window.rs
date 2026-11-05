@@ -42,6 +42,7 @@ mod imp {
         pub(super) starting_spinner: TemplateChild<adw::Spinner>,
         pub(super) model: OnceCell<AppModel>,
         pub(super) toasts: RefCell<HashMap<String, adw::Toast>>,
+        pub(super) toast_hosts: RefCell<Vec<glib::WeakRef<adw::ToastOverlay>>>,
         pub(super) applying_route: Cell<bool>,
         pub(super) lifecycle: RefCell<Option<Lifecycle>>,
         pub(super) close_released: Cell<bool>,
@@ -661,13 +662,36 @@ impl CommitnoteWindow {
         if let Some(previous) = previous {
             previous.dismiss();
         }
-        self.imp().toast_overlay.add_toast(toast);
+        self.toast_host().add_toast(toast);
     }
 
     fn show_toast(&self, message: &str) {
         let toast = adw::Toast::new(message);
         toast.set_timeout(NOTICE_TIMEOUT_SECONDS);
-        self.imp().toast_overlay.add_toast(toast);
+        self.toast_host().add_toast(toast);
+    }
+
+    fn toast_host(&self) -> adw::ToastOverlay {
+        let mut hosts = self.imp().toast_hosts.borrow_mut();
+        hosts.retain(|host| host.upgrade().is_some());
+        hosts
+            .last()
+            .and_then(|host| host.upgrade())
+            .unwrap_or_else(|| self.imp().toast_overlay.get())
+    }
+
+    fn push_toast_host(&self, overlay: &adw::ToastOverlay) {
+        self.imp()
+            .toast_hosts
+            .borrow_mut()
+            .push(overlay.downgrade());
+    }
+
+    fn pop_toast_host(&self, overlay: &adw::ToastOverlay) {
+        self.imp()
+            .toast_hosts
+            .borrow_mut()
+            .retain(|host| host.upgrade().is_some_and(|host| &host != overlay));
     }
 
     fn restore_state(&self) {
@@ -685,6 +709,28 @@ impl CommitnoteWindow {
         let _ = settings.set_int("window-height", height);
         let _ = settings.set_boolean("is-maximized", self.is_maximized());
     }
+}
+
+/// Routes the window's notices and toasts into `overlay` while `dialog` is open, because the
+/// window's own overlay is drawn beneath a dialog.
+pub fn host_dialog_toasts(
+    anchor: &impl IsA<gtk::Widget>,
+    dialog: &adw::Dialog,
+    overlay: &adw::ToastOverlay,
+) {
+    let Some(window) = anchor.root().and_downcast::<CommitnoteWindow>() else {
+        return;
+    };
+    window.push_toast_host(overlay);
+    dialog.connect_closed({
+        let window = window.downgrade();
+        let overlay = overlay.downgrade();
+        move |_| {
+            if let (Some(window), Some(overlay)) = (window.upgrade(), overlay.upgrade()) {
+                window.pop_toast_host(&overlay);
+            }
+        }
+    });
 }
 
 pub struct WindowInhibitor {

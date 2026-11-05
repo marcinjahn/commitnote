@@ -1688,12 +1688,13 @@ fn drop_indicator(h: &mut Harness) -> Result<(), String> {
 }
 
 const TAG_BANNER: &str = "tag-filter-banner";
-const NOTE_ACTIONS: [&str; 6] = [
+const NOTE_ACTIONS: [&str; 7] = [
     "notes.rename-note",
     "notes.move-note",
     "notes.color-tag",
     "notes.show-details",
     "notes.show-history",
+    "notes.share-note",
     "notes.trash-note",
 ];
 
@@ -2120,7 +2121,7 @@ fn create_share(h: &Harness, target: &[&str]) -> Result<(), String> {
     )
 }
 
-fn is_shared(h: &Harness, target: &[String]) -> bool {
+pub fn is_shared(h: &Harness, target: &[String]) -> bool {
     h.model()
         .ok()
         .and_then(|model| model.tree())

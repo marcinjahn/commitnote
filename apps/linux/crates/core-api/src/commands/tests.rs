@@ -129,6 +129,12 @@ fn every_command_has_a_distinct_name() {
         HistoryRetry::NAME,
         HistoryPreview::NAME,
         HistoryRestore::NAME,
+        ShareForm::NAME,
+        ShareCreate::NAME,
+        ShareUpdate::NAME,
+        ShareRename::NAME,
+        ShareRevoke::NAME,
+        ShareSharedVersion::NAME,
     ];
     let mut sorted = names.to_vec();
     sorted.sort_unstable();
@@ -1707,4 +1713,192 @@ fn restore_outcomes_decode() {
         decode::<HistoryRestore>(r#"{"outcome":{"kind":"closed"}}"#).outcome,
         RestoreVersionOutcome::Closed
     );
+}
+
+#[test]
+fn share_commands_have_their_wire_names() {
+    assert_eq!(ShareForm::NAME, "share.form");
+    assert_eq!(ShareCreate::NAME, "share.create");
+    assert_eq!(ShareUpdate::NAME, "share.update");
+    assert_eq!(ShareRename::NAME, "share.rename");
+    assert_eq!(ShareRevoke::NAME, "share.revoke");
+    assert_eq!(ShareSharedVersion::NAME, "share.sharedVersion");
+}
+
+#[test]
+fn share_params_use_camel_case_wire_names() {
+    assert_eq!(
+        params_json::<ShareForm>(&ShareFormParams {
+            path: path(&["A", "B"])
+        }),
+        json!({"path":["A","B"]})
+    );
+    assert_eq!(
+        params_json::<ShareCreate>(&ShareCreateParams {
+            path: path(&["A"]),
+            password: "hunter2".into(),
+            label: String::new(),
+        }),
+        json!({"path":["A"],"password":"hunter2","label":""})
+    );
+    assert_eq!(
+        params_json::<ShareUpdate>(&ShareUpdateParams { id: "g".into() }),
+        json!({"id":"g"})
+    );
+    assert_eq!(
+        params_json::<ShareRename>(&ShareRenameParams {
+            id: "g".into(),
+            label: "Team".into()
+        }),
+        json!({"id":"g","label":"Team"})
+    );
+    assert_eq!(
+        params_json::<ShareRevoke>(&ShareRevokeParams { id: "g".into() }),
+        json!({"id":"g"})
+    );
+    assert_eq!(
+        params_json::<ShareSharedVersion>(&ShareSharedVersionParams { id: "g".into() }),
+        json!({"id":"g"})
+    );
+}
+
+#[test]
+fn share_form_and_empty_results_decode() {
+    assert_eq!(
+        decode::<ShareForm>(r#"{"title":"Share \"Welcome\""}"#).title,
+        "Share \"Welcome\""
+    );
+    assert_eq!(decode::<ShareUpdate>("{}"), ShareUpdateResult {});
+    assert_eq!(decode::<ShareRevoke>("{}"), ShareRevokeResult {});
+}
+
+#[test]
+fn share_create_outcomes_decode() {
+    let created = decode::<ShareCreate>(
+        r#"{"outcome":{"kind":"created","link":"https://example.test/s#k","password":"hunter2"}}"#,
+    )
+    .outcome;
+    assert_eq!(
+        created,
+        ShareCreateOutcome::Created {
+            link: "https://example.test/s#k".into(),
+            password: Some("hunter2".into()),
+        }
+    );
+    let without_password =
+        decode::<ShareCreate>(r#"{"outcome":{"kind":"created","link":"l","password":null}}"#)
+            .outcome;
+    assert_eq!(
+        without_password,
+        ShareCreateOutcome::Created {
+            link: "l".into(),
+            password: None
+        }
+    );
+
+    let error = decode::<ShareCreate>(
+        r#"{"outcome":{"kind":"error","parts":[
+        {"kind":"text","text":"Open "},
+        {"kind":"link","text":"settings","href":"https://example.test/settings"}]}}"#,
+    )
+    .outcome;
+    assert_eq!(
+        error,
+        ShareCreateOutcome::Error {
+            parts: vec![
+                MessagePart::Text {
+                    text: "Open ".into()
+                },
+                MessagePart::Link {
+                    text: "settings".into(),
+                    href: "https://example.test/settings".into()
+                },
+            ]
+        }
+    );
+    assert_eq!(round_trip(&error)["parts"][1]["kind"], "link");
+}
+
+#[test]
+fn a_created_share_keeps_its_password_and_link_out_of_debug_output() {
+    let created = ShareCreateOutcome::Created {
+        link: "https://example.test/s#key".into(),
+        password: Some("hunter2".into()),
+    };
+    let text = format!("{created:?}");
+    assert!(!text.contains("hunter2"));
+    assert!(!text.contains("example.test"));
+    let params = ShareCreateParams {
+        path: path(&["Welcome"]),
+        password: "hunter2".into(),
+        label: String::new(),
+    };
+    assert!(!format!("{params:?}").contains("hunter2"));
+}
+
+#[test]
+fn share_rename_outcomes_decode() {
+    assert_eq!(
+        decode::<ShareRename>(r#"{"outcome":{"kind":"ok"}}"#).outcome,
+        ShareRenameOutcome::Ok
+    );
+    assert_eq!(
+        decode::<ShareRename>(r#"{"outcome":{"kind":"error","message":"Too long"}}"#).outcome,
+        ShareRenameOutcome::Error {
+            message: "Too long".into()
+        }
+    );
+}
+
+#[test]
+fn shared_version_outcomes_decode() {
+    assert_eq!(
+        decode::<ShareSharedVersion>(
+            r#"{"outcome":{"kind":"readable","name":"Plan","content":"text","date":"Today"}}"#
+        )
+        .outcome,
+        SharedVersionOutcome::Readable {
+            name: Some("Plan".into()),
+            content: "text".into(),
+            date: "Today".into()
+        }
+    );
+    assert_eq!(
+        decode::<ShareSharedVersion>(
+            r#"{"outcome":{"kind":"readable","name":null,"content":"","date":"d"}}"#
+        )
+        .outcome,
+        SharedVersionOutcome::Readable {
+            name: None,
+            content: String::new(),
+            date: "d".into()
+        }
+    );
+    assert_eq!(
+        decode::<ShareSharedVersion>(r#"{"outcome":{"kind":"message","message":"Gone"}}"#).outcome,
+        SharedVersionOutcome::Message {
+            message: "Gone".into()
+        }
+    );
+    assert_eq!(
+        decode::<ShareSharedVersion>(r#"{"outcome":{"kind":"failed","message":"No"}}"#).outcome,
+        SharedVersionOutcome::Failed {
+            message: "No".into()
+        }
+    );
+}
+
+#[test]
+fn share_action_ids_use_kebab_case_wire_names() {
+    for (id, wire) in [
+        (ShareActionId::CopyLink, "copy-link"),
+        (ShareActionId::CopyPassword, "copy-password"),
+        (ShareActionId::Update, "update"),
+        (ShareActionId::View, "view"),
+        (ShareActionId::Open, "open"),
+        (ShareActionId::Rename, "rename"),
+        (ShareActionId::Revoke, "revoke"),
+    ] {
+        assert_eq!(round_trip(&id), json!(wire));
+    }
 }
