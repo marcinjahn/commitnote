@@ -4,16 +4,19 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use commitnote::editor::NoteEditor;
-use commitnote::model::ImageState;
+use commitnote::model::{DraftFocus, EditorTarget, ImageState};
 use commitnote::pages::notes::{ImageViewer, NotesPage};
+use commitnote_core_api::commands::{HistoryPhase, HistoryRow, HistoryVersionView};
 use commitnote_editor_text::apply;
 use commitnote_markdown::insert_image_references;
 use gtk4::{self as gtk, gdk, gio, glib};
 use libadwaita as adw;
 
 use crate::flows::{ensure, launch_and_log_in, split_view};
-use crate::p3::{focus_editor, open_note_at, path};
-use crate::support::{Case, Harness, NARROW_VARIANTS, Theme, WIDE_LIGHT, WIDE_VARIANTS, Width};
+use crate::p3::{action_enabled, click_labelled, focus_editor, has_node, open_note_at, path};
+use crate::support::{
+    ALL_VARIANTS, Case, Harness, NARROW_VARIANTS, Theme, WIDE_LIGHT, WIDE_VARIANTS, Width,
+};
 
 pub const CASES: &[Case] = &[
     ("p4-insert-file-dialog", insert_file_dialog),
@@ -29,6 +32,14 @@ pub const CASES: &[Case] = &[
     ("p4-gif-animation", gif_animation),
     ("p4-shot-note-images", shot_note_images),
     ("p4-shot-image-viewer", shot_image_viewer),
+    ("p4-history-open", history_open),
+    ("p4-history-shared-mark", history_shared_mark),
+    ("p4-history-unsaved", history_unsaved),
+    ("p4-history-preview-restore", history_preview_restore),
+    ("p4-history-restore-title", history_restore_title),
+    ("p4-history-keys", history_keys),
+    ("p4-shot-history", shot_history),
+    ("p4-shot-version-preview", shot_version_preview),
 ];
 
 const WELCOME: &[&str] = &["Welcome"];
@@ -564,6 +575,327 @@ fn shot_image_viewer(h: &mut Harness) -> Result<(), String> {
     wait_zoom(h, &viewer, 1.25)?;
     for &(width, theme) in WIDE_LIGHT {
         h.capture_variant("image-viewer", width, theme)?;
+    }
+    Ok(())
+}
+
+const HISTORY_DIALOG: &str = "history-dialog";
+const VERSION_PREVIEW: &str = "version-preview";
+const SHOW_HISTORY: &str = "notes.show-history";
+const FIRST_TEXT: &str =
+    "# Welcome\n\nThis is your notes repo.\n\n- First bullet\n- Second bullet\n";
+const SECOND_TEXT: &str =
+    "# Welcome\n\nThis is your notes repo.\n\n- First bullet\n- Third bullet\n";
+
+fn save_version(h: &Harness, target: &[String], text: &str) -> Result<(), String> {
+    h.run(
+        "saving a version",
+        h.model()?.testing_send(
+            "fake.saveNote",
+            serde_json::json!({ "path": target, "text": text }),
+        ),
+    )?
+    .map_err(|error| error.message)
+    .map(|_| ())
+}
+
+fn share_note(h: &Harness, target: &[String]) -> Result<(), String> {
+    let outcome = h
+        .run(
+            "sharing the note",
+            h.model()?.testing_send(
+                "share.create",
+                serde_json::json!({
+                    "path": target,
+                    "password": "correct horse battery staple",
+                    "label": "History",
+                }),
+            ),
+        )?
+        .map_err(|error| error.message)?;
+    ensure(outcome["outcome"]["kind"] == "created", || {
+        "the note was not shared".to_owned()
+    })
+}
+
+fn welcome_with_versions(h: &Harness, texts: &[&str]) -> Result<NoteEditor, String> {
+    launch_and_log_in(h, false)?;
+    let target = path(WELCOME);
+    for text in texts {
+        save_version(h, &target, text)?;
+    }
+    open_editor(h, WELCOME)
+}
+
+fn open_history(h: &Harness) -> Result<(), String> {
+    let tree = h.widget("notes-tree")?;
+    h.wait("History to be available", || {
+        action_enabled(h, SHOW_HISTORY).unwrap_or(false)
+    })?;
+    WidgetExt::activate_action(&tree, SHOW_HISTORY, None)
+        .map_err(|error| format!("cannot activate {SHOW_HISTORY}: {error}"))?;
+    h.wait_shown(HISTORY_DIALOG)
+}
+
+fn listed_versions(h: &Harness) -> Vec<HistoryVersionView> {
+    let Some(view) = h.model().ok().and_then(|model| model.history()) else {
+        return Vec::new();
+    };
+    view.sections
+        .into_iter()
+        .flat_map(|section| section.rows)
+        .flat_map(|row| match row {
+            HistoryRow::Single { version } => vec![version],
+            HistoryRow::Session { versions, .. } => versions,
+        })
+        .collect()
+}
+
+fn wait_history_ready(h: &Harness, count: usize) -> Result<Vec<HistoryVersionView>, String> {
+    h.wait("the history to be ready", || {
+        h.model()
+            .ok()
+            .and_then(|model| model.history())
+            .is_some_and(|view| {
+                view.phase == HistoryPhase::Ready && !view.loading && view.error.is_none()
+            })
+    })?;
+    let versions = listed_versions(h);
+    ensure(versions.len() == count, || {
+        format!("the history lists {} versions, not {count}", versions.len())
+    })?;
+    h.wait("the version rows", || {
+        h.widget(&version_row(count - 1)).is_ok()
+    })?;
+    Ok(versions)
+}
+
+fn version_row(index: usize) -> String {
+    format!("history-version-{index}")
+}
+
+fn widgets_under(root: &gtk::Widget) -> Vec<gtk::Widget> {
+    let mut found = Vec::new();
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        found.extend(widgets_under(&widget));
+        found.push(widget);
+    }
+    found
+}
+
+fn row_marks(h: &Harness, index: usize) -> Result<Vec<String>, String> {
+    let row = h.widget(&version_row(index))?;
+    Ok(widgets_under(&row)
+        .into_iter()
+        .filter(|widget| widget.has_css_class("history-mark"))
+        .flat_map(|mark| widgets_under(&mark))
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .map(|label| label.label().to_string())
+        .collect())
+}
+
+fn open_version(h: &Harness, index: usize) -> Result<(), String> {
+    h.activate_row(&version_row(index))?;
+    h.wait_shown(VERSION_PREVIEW)?;
+    h.wait("the preview to load", || {
+        h.widget_as::<gtk::Button>("version-restore")
+            .is_ok_and(|button| button.is_sensitive() && button.is_mapped())
+    })
+}
+
+fn diff_lines(h: &Harness, class: &str) -> Result<usize, String> {
+    let page = h.widget(VERSION_PREVIEW)?;
+    Ok(widgets_under(&page)
+        .into_iter()
+        .filter(|widget| widget.has_css_class(class))
+        .count())
+}
+
+fn wait_dialog_focus(h: &Harness) -> Result<(), String> {
+    h.wait("the focus to be in the history dialog", || {
+        let dialog = h.widget(HISTORY_DIALOG).ok();
+        let focus = h
+            .window()
+            .ok()
+            .and_then(|window| GtkWindowExt::focus(&window));
+        dialog
+            .zip(focus)
+            .is_some_and(|(dialog, focus)| focus == dialog || focus.is_ancestor(&dialog))
+    })
+}
+
+fn history_open(h: &mut Harness) -> Result<(), String> {
+    welcome_with_versions(h, &[FIRST_TEXT, SECOND_TEXT])?;
+    open_history(h)?;
+
+    let versions = wait_history_ready(h, 3)?;
+    ensure(
+        versions[0].current && versions[1..].iter().all(|version| !version.current),
+        || "only the newest version should be current".to_owned(),
+    )?;
+    ensure(row_marks(h, 0)? == ["Current"], || {
+        "the newest row is not marked current".to_owned()
+    })?;
+    ensure(
+        (1..3).all(|index| row_marks(h, index).is_ok_and(|marks| marks.is_empty())),
+        || "an older row carries a mark".to_owned(),
+    )
+}
+
+fn history_shared_mark(h: &mut Harness) -> Result<(), String> {
+    welcome_with_versions(h, &[FIRST_TEXT, SECOND_TEXT])?;
+    share_note(h, &path(WELCOME))?;
+    open_history(h)?;
+
+    let versions = wait_history_ready(h, 3)?;
+    ensure(versions[0].shared && !versions[1].shared, || {
+        "the core does not mark the newest version alone as shared".to_owned()
+    })?;
+    ensure(row_marks(h, 0)?.contains(&"Shared".to_owned()), || {
+        "the newest row is not marked shared".to_owned()
+    })?;
+    ensure(!row_marks(h, 1)?.contains(&"Shared".to_owned()), || {
+        "an unshared row is marked shared".to_owned()
+    })
+}
+
+fn history_unsaved(h: &mut Harness) -> Result<(), String> {
+    welcome_with_versions(h, &[FIRST_TEXT])?;
+    h.wait("History to be available for the saved note", || {
+        action_enabled(h, SHOW_HISTORY).unwrap_or(false)
+    })?;
+
+    let model = h.model()?;
+    h.run("the draft", async move {
+        model.start_draft(Vec::new(), DraftFocus::Name).await
+    })?
+    .map_err(|error| error.message)?;
+    h.wait("History to be unavailable for the draft", || {
+        h.model()
+            .is_ok_and(|model| !matches!(model.editor_target(), EditorTarget::Note(_)))
+            && action_enabled(h, SHOW_HISTORY).is_ok_and(|enabled| !enabled)
+    })?;
+    ensure(
+        h.model()?.history().is_none() && !h.shown(HISTORY_DIALOG),
+        || "a history opened for a draft".to_owned(),
+    )
+}
+
+fn history_preview_restore(h: &mut Harness) -> Result<(), String> {
+    let editor = welcome_with_versions(h, &[FIRST_TEXT, SECOND_TEXT])?;
+    h.wait("the newest text in the editor", || {
+        editor.text() == SECOND_TEXT
+    })?;
+    open_history(h)?;
+    wait_history_ready(h, 3)?;
+    open_version(h, 1)?;
+
+    ensure(
+        diff_lines(h, "diff-added")? >= 1 && diff_lines(h, "diff-removed")? >= 1,
+        || "the preview shows no added and removed lines".to_owned(),
+    )?;
+    h.click("version-restore")?;
+    h.wait("the dialog to close", || !h.shown(HISTORY_DIALOG))?;
+    h.wait("the older text in the editor", || {
+        editor.text() == FIRST_TEXT
+    })?;
+
+    click_labelled(h, "Undo")?;
+    h.wait("the newer text back in the editor", || {
+        editor.text() == SECOND_TEXT
+    })
+}
+
+fn history_restore_title(h: &mut Harness) -> Result<(), String> {
+    welcome_with_versions(h, &[FIRST_TEXT])?;
+    let model = h.model()?;
+    let renamed = h
+        .run("renaming the note", {
+            let model = model.clone();
+            async move {
+                model
+                    .rename_node(path(WELCOME), "Greeting".to_owned())
+                    .await
+            }
+        })?
+        .map_err(|error| error.message)?;
+    save_version(h, &renamed, SECOND_TEXT)?;
+    h.wait("the renamed note in the editor", || {
+        model.editor_target() == EditorTarget::Note(renamed.clone())
+            && h.text("note-title-entry")
+                .is_ok_and(|title| title == "Greeting")
+    })?;
+    open_history(h)?;
+    let versions = wait_history_ready(h, 3)?;
+    let older = versions
+        .iter()
+        .position(|version| version.name.as_deref() == Some("Welcome"))
+        .ok_or("no version from before the rename")?;
+    open_version(h, older)?;
+
+    h.wait_shown("version-restore-title")?;
+    h.set_switch("version-restore-title", true)?;
+    h.wait("the preview to reload", || {
+        h.widget_as::<gtk::Button>("version-restore")
+            .is_ok_and(|button| button.is_sensitive())
+    })?;
+    h.click("version-restore")?;
+
+    h.wait("the dialog to close", || !h.shown(HISTORY_DIALOG))?;
+    h.wait("the note under its old name", || {
+        model.editor_target() == EditorTarget::Note(path(WELCOME))
+            && has_node(h, &path(WELCOME))
+            && !has_node(h, &renamed)
+            && h.text("note-title-entry")
+                .is_ok_and(|title| title == "Welcome")
+    })
+}
+
+fn history_keys(h: &mut Harness) -> Result<(), String> {
+    welcome_with_versions(h, &[FIRST_TEXT])?;
+    open_history(h)?;
+    wait_history_ready(h, 2)?;
+    wait_dialog_focus(h)?;
+    open_version(h, 1)?;
+    wait_dialog_focus(h)?;
+
+    h.press_keys("Escape")?;
+    h.wait("the preview to close", || !h.shown(VERSION_PREVIEW))?;
+    ensure(h.shown(HISTORY_DIALOG) && h.shown(&version_row(1)), || {
+        "the first Escape closed the dialog".to_owned()
+    })?;
+    wait_dialog_focus(h)?;
+
+    h.press_keys("Escape")?;
+    h.wait("the dialog to close", || !h.shown(HISTORY_DIALOG))?;
+    let model = h.model()?;
+    h.wait("the history to be closed", || model.history().is_none())
+}
+
+fn shot_history(h: &mut Harness) -> Result<(), String> {
+    welcome_with_versions(h, &[FIRST_TEXT, SECOND_TEXT])?;
+    share_note(h, &path(WELCOME))?;
+    open_history(h)?;
+    wait_history_ready(h, 3)?;
+
+    h.session_screenshots("history", ALL_VARIANTS)
+}
+
+fn shot_version_preview(h: &mut Harness) -> Result<(), String> {
+    welcome_with_versions(h, &[FIRST_TEXT, SECOND_TEXT])?;
+    open_history(h)?;
+    wait_history_ready(h, 3)?;
+    h.show_variant(Width::Wide, Theme::Light)?;
+    open_version(h, 2)?;
+
+    ensure(
+        diff_lines(h, "diff-added")? >= 1 && diff_lines(h, "diff-removed")? >= 1,
+        || "the preview shows no added and removed lines".to_owned(),
+    )?;
+    for &(width, theme) in WIDE_LIGHT {
+        h.capture_variant("version-preview", width, theme)?;
     }
     Ok(())
 }

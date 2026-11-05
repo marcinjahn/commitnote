@@ -100,7 +100,7 @@ fn find<'a>(nodes: &'a [TreeNode], target: &[String]) -> Option<&'a TreeNode> {
     })
 }
 
-fn has_node(h: &Harness, target: &[String]) -> bool {
+pub fn has_node(h: &Harness, target: &[String]) -> bool {
     h.model()
         .ok()
         .and_then(|model| model.tree())
@@ -282,7 +282,7 @@ fn find_labelled(h: &Harness, label: &str) -> Option<gtk::Button> {
     button_labelled(window.upcast_ref(), label)
 }
 
-fn click_labelled(h: &Harness, label: &str) -> Result<(), String> {
+pub fn click_labelled(h: &Harness, label: &str) -> Result<(), String> {
     h.wait(&format!("the {label} button"), || {
         find_labelled(h, label).is_some()
     })?;
@@ -1688,11 +1688,12 @@ fn drop_indicator(h: &mut Harness) -> Result<(), String> {
 }
 
 const TAG_BANNER: &str = "tag-filter-banner";
-const NOTE_ACTIONS: [&str; 5] = [
+const NOTE_ACTIONS: [&str; 6] = [
     "notes.rename-note",
     "notes.move-note",
     "notes.color-tag",
     "notes.show-details",
+    "notes.show-history",
     "notes.trash-note",
 ];
 
@@ -1790,7 +1791,7 @@ fn tag_filter(h: &mut Harness) -> Result<(), String> {
     expect_choices(h, "after filtering")
 }
 
-fn action_enabled(h: &Harness, action: &str) -> Result<bool, String> {
+pub fn action_enabled(h: &Harness, action: &str) -> Result<bool, String> {
     let anchor = h.widget("notes-tree")?;
     let probe = gtk::Button::new();
     probe.set_action_name(Some(action));

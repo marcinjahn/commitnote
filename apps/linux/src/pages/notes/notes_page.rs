@@ -10,8 +10,8 @@ use libadwaita as adw;
 use super::sync_feedback::{SyncMenuAction, SyncStatusView, sync_status_view};
 use super::tree_logic::{new_folder_parent, tag_from_id, tag_id, tag_label};
 use super::{
-    NoteView, NotesTree, SearchView, details_dialog, folder_dialog, move_dialog, trash_confirm,
-    trash_dialog,
+    NoteView, NotesTree, SearchView, details_dialog, folder_dialog, history_dialog, move_dialog,
+    trash_confirm, trash_dialog,
 };
 use crate::editor::{InsertAt, NoteEditor};
 use crate::model::{AppModel, COLOR_TAGS, DraftFocus, EditorTarget, ImageInput};
@@ -190,6 +190,9 @@ mod imp {
                 {
                     details_dialog::present(model, page);
                 }
+            });
+            klass.install_action("notes.show-history", None, |page, _, _| {
+                page.show_history();
             });
             klass.install_action("notes.trash-note", None, |page, _, _| {
                 if let Some(path) = page.open_saved_path() {
@@ -813,6 +816,20 @@ impl NotesPage {
         let _ = imp.organise_menu.set(organise);
     }
 
+    fn show_history(&self) {
+        let (Some(model), Some(path)) = (self.imp().model.get(), self.open_saved_path()) else {
+            return;
+        };
+        let dialog = history_dialog::present(model, self);
+        let model = model.clone();
+        glib::spawn_future_local(async move {
+            if let Err(error) = model.open_history(path).await {
+                dialog.force_close();
+                model.report_error(&error);
+            }
+        });
+    }
+
     fn open_saved_path(&self) -> Option<Vec<String>> {
         match self.imp().model.get()?.editor_target() {
             EditorTarget::Note(path) => Some(path),
@@ -905,6 +922,7 @@ impl NotesPage {
             "notes.rename-note",
             "notes.move-note",
             "notes.show-details",
+            "notes.show-history",
             "notes.trash-note",
         ] {
             self.action_set_enabled(action, path.is_some());

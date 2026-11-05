@@ -64,3 +64,26 @@
   background-color: color-mix(in srgb, var(--accent-bg-color) 25%, transparent);
   border-radius: 6px;
 }
+
+.history-mark {
+  padding: 1px 8px;
+  border-radius: 99px;
+  font-size: smaller;
+  font-weight: 600;
+}
+
+.history-mark.accent {
+  background-color: color-mix(in srgb, var(--accent-bg-color) 18%, transparent);
+}
+
+.history-mark.dim-label {
+  background-color: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.diff-added {
+  background-color: color-mix(in srgb, var(--success-color) 20%, transparent);
+}
+
+.diff-removed {
+  background-color: color-mix(in srgb, var(--error-color) 20%, transparent);
+}

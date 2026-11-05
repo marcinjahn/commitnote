@@ -10,7 +10,7 @@ use commitnote_core_api::commands::{
     ConflictResolution, ConflictResolve, ConflictResolveParams, DeviceName, DeviceNameParams,
     DraftCommitName, DraftCommitNameParams, DraftContent, DraftContentParams, DraftLeave,
     DraftLeaveParams, DraftStart, DraftStartParams, EarlyDraftHandOff, EarlyDraftHandOffParams,
-    EarlyDraftOutcome, FlushOutcome, ForgesList, ForgesListParams, LifecycleSetOnline,
+    EarlyDraftOutcome, FlushOutcome, ForgesList, ForgesListParams, HistoryView, LifecycleSetOnline,
     LifecycleSetOnlineParams, LifecycleSetVisible, LifecycleSetVisibleParams, LoginInitialize,
     LoginInspectRepository, LoginInspectRepositoryParams, LoginInspectRepositoryResult,
     LoginLastRepository, LoginLastRepositoryParams, LoginListRepositories,
@@ -41,11 +41,13 @@ use super::edit_sender::{EditDestination, EditSender};
 use super::editor_lane::EditorLane;
 use super::editor_settings::EditorSettings;
 
+mod history;
 mod images;
 mod last_view;
 mod organise;
 mod search;
 
+pub use history::RestoreResult;
 pub use images::{ImageInput, ImageState, LoadedImage};
 pub use last_view::NoteDetails;
 pub use organise::{COLOR_TAGS, TrashResult, TrashState};
@@ -270,6 +272,7 @@ struct State {
     tags_writable: bool,
     trash: Option<TrashState>,
     search: search::SearchState,
+    history: Option<HistoryView>,
     last_view: last_view::LastViewTracker,
     image_cache: images::ImageCache,
     notice_actions: HashMap<String, NoticeAction>,
@@ -343,6 +346,7 @@ mod imp {
                     Signal::builder("sync-state-changed").build(),
                     Signal::builder("search-changed").build(),
                     Signal::builder("last-view-restored").build(),
+                    Signal::builder("history-changed").build(),
                     Signal::builder("notice")
                         .param_types([
                             String::static_type(),
@@ -1803,6 +1807,7 @@ impl AppModel {
             CoreEvent::NoteContentChangedRemotely(changed) => self.show_toast(&changed.message),
             CoreEvent::TrashChanged(changed) => self.trash_changed(changed),
             CoreEvent::SearchStatusChanged(changed) => self.search_status_changed(changed),
+            CoreEvent::HistoryChanged(changed) => self.history_changed(changed),
             CoreEvent::Other { .. } => {}
         }
     }
@@ -1944,6 +1949,7 @@ impl AppModel {
             return;
         };
         let search_ended = self.end_search();
+        let history_ended = self.state().history.is_some();
         let last_view = self.end_last_view();
         {
             let mut state = self.state_mut();
@@ -1978,6 +1984,9 @@ impl AppModel {
         self.emit_by_name::<()>("sync-state-changed", &[]);
         if search_ended {
             self.emit_by_name::<()>("search-changed", &[]);
+        }
+        if history_ended {
+            self.emit_by_name::<()>("history-changed", &[]);
         }
         self.bump_generation();
         self.imp().editor_lane.supersede();

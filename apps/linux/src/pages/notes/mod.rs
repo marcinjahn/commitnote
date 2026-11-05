@@ -1,5 +1,6 @@
 mod details_dialog;
 mod folder_dialog;
+mod history_dialog;
 mod image_viewer;
 mod move_dialog;
 mod node_object;
@@ -16,6 +17,7 @@ mod trash_confirm;
 mod trash_dialog;
 mod tree_logic;
 mod tree_view;
+mod version_preview;
 mod zoom_logic;
 mod zoom_view;
 

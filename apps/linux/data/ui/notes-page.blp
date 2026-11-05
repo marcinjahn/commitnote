@@ -228,6 +228,13 @@ template $CommitnoteNotesPage: Adw.NavigationPage {
 menu note_menu {
   section {
     item {
+      label: _("History");
+      action: "notes.show-history";
+    }
+  }
+
+  section {
+    item {
       label: _("Save Now");
       action: "win.save-now";
       accel: "<Control>s";

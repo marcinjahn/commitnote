@@ -98,6 +98,12 @@ fn typed_commands_are_declared_in_typescript() {
         ImageRead::NAME,
         ImageInsert::NAME,
         ImageClonePasted::NAME,
+        HistoryOpen::NAME,
+        HistoryClose::NAME,
+        HistoryLoadMore::NAME,
+        HistoryRetry::NAME,
+        HistoryPreview::NAME,
+        HistoryRestore::NAME,
     ];
     for name in typed {
         assert!(declared.iter().any(|d| d == name), "{name}");

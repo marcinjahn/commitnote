@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::commands::HistoryView;
 use crate::envelope::{ParseError, decode_value};
 use crate::error::CoreError;
 use crate::settings::SettingsView;
@@ -117,6 +118,12 @@ pub struct SettingsChangedPayload {
     pub view: SettingsView,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryChanged {
+    pub history: Option<HistoryView>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoreEvent {
     LoadingProgress(LoadingProgress),
@@ -124,6 +131,7 @@ pub enum CoreEvent {
     TrashChanged(TrashChanged),
     NoteChanged(NoteChanged),
     SearchStatusChanged(SearchStatusChanged),
+    HistoryChanged(HistoryChanged),
     NoteContentChangedRemotely(NoteContentChangedRemotely),
     SyncStateChanged(SyncStateChanged),
     Notice(Notice),
@@ -154,6 +162,7 @@ impl CoreEvent {
             "trashChanged" => Self::TrashChanged(decode_value(payload)?),
             "noteChanged" => Self::NoteChanged(decode_value(payload)?),
             "searchStatusChanged" => Self::SearchStatusChanged(decode_value(payload)?),
+            "historyChanged" => Self::HistoryChanged(decode_value(payload)?),
             "noteContentChangedRemotely" => {
                 Self::NoteContentChangedRemotely(decode_value(payload)?)
             }
@@ -196,6 +205,7 @@ impl CoreEvent {
             Self::TrashChanged(_) => "trashChanged",
             Self::NoteChanged(_) => "noteChanged",
             Self::SearchStatusChanged(_) => "searchStatusChanged",
+            Self::HistoryChanged(_) => "historyChanged",
             Self::NoteContentChangedRemotely(_) => "noteContentChangedRemotely",
             Self::SyncStateChanged(_) => "syncStateChanged",
             Self::Notice(_) => "notice",
@@ -213,6 +223,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::commands::{HistoryPhase, HistoryRow, HistorySection, HistoryVersionView};
     use crate::envelope::{Incoming, parse_incoming};
     use crate::error::CoreErrorKind;
     use crate::settings::SettingScope;
@@ -390,6 +401,81 @@ mod tests {
             })
         );
         assert_eq!(idle.name(), "searchStatusChanged");
+    }
+
+    #[test]
+    fn history_changed_with_null() {
+        let decoded =
+            event(r#"{"kind":"event","event":"historyChanged","payload":{"history":null}}"#);
+        assert_eq!(
+            decoded,
+            CoreEvent::HistoryChanged(HistoryChanged { history: None })
+        );
+        assert_eq!(decoded.name(), "historyChanged");
+    }
+
+    #[test]
+    fn history_changed_with_single_and_session_rows() {
+        let decoded = event(
+            r#"{"kind":"event","event":"historyChanged","payload":{"history":{
+            "path":["Work","Plan"],"phase":"ready","message":null,"loading":false,"error":null,
+            "end":null,"canLoadMore":true,
+            "sections":[{"title":"Today","rows":[
+              {"kind":"single","version":{"sha":"a1","time":"10:30","dateTime":"Today, 10:30",
+               "current":true,"shared":false,"events":[],"name":"Plan"}},
+              {"kind":"session","title":"2 edits","shared":true,"versions":[
+               {"sha":"b1","time":"09:10","dateTime":"Today, 09:10","current":false,"shared":true,
+                "events":["Edited"],"name":null}]}]}]}}}"#,
+        );
+        let version = |sha: &str,
+                       time: &str,
+                       current: bool,
+                       shared: bool,
+                       events: Vec<String>,
+                       name: Option<&str>| {
+            HistoryVersionView {
+                sha: sha.into(),
+                time: time.into(),
+                date_time: format!("Today, {time}"),
+                current,
+                shared,
+                events,
+                name: name.map(Into::into),
+            }
+        };
+        let expected = HistoryChanged {
+            history: Some(HistoryView {
+                path: vec!["Work".into(), "Plan".into()],
+                phase: HistoryPhase::Ready,
+                message: None,
+                sections: vec![HistorySection {
+                    title: "Today".into(),
+                    rows: vec![
+                        HistoryRow::Single {
+                            version: version("a1", "10:30", true, false, vec![], Some("Plan")),
+                        },
+                        HistoryRow::Session {
+                            title: "2 edits".into(),
+                            shared: true,
+                            versions: vec![version(
+                                "b1",
+                                "09:10",
+                                false,
+                                true,
+                                vec!["Edited".into()],
+                                None,
+                            )],
+                        },
+                    ],
+                }],
+                loading: false,
+                error: None,
+                end: None,
+                can_load_more: true,
+            }),
+        };
+        assert_eq!(decoded, CoreEvent::HistoryChanged(expected.clone()));
+        payload_round_trip(&expected);
     }
 
     #[test]
