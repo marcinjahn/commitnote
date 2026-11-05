@@ -24,13 +24,22 @@ pub fn can_zoom_out(zoom: f64) -> bool {
     zoom > MIN_ZOOM + EPSILON
 }
 
-/// The largest size with the image's ratio that fits the viewport; (0, 0) while either is empty.
-pub fn fit_size(image: (f64, f64), viewport: (f64, f64)) -> (f64, f64) {
+/// The largest size with the image's ratio that fits the viewport without exceeding the image's
+/// natural size (its pixels over the display scale factor); (0, 0) while either is empty.
+pub fn fit_size(image: (f64, f64), viewport: (f64, f64), scale_factor: f64) -> (f64, f64) {
     if image.0 <= 0.0 || image.1 <= 0.0 || viewport.0 <= 0.0 || viewport.1 <= 0.0 {
         return (0.0, 0.0);
     }
-    let scale = (viewport.0 / image.0).min(viewport.1 / image.1);
-    (image.0 * scale, image.1 * scale)
+    let scale_factor = if scale_factor > 0.0 {
+        scale_factor
+    } else {
+        1.0
+    };
+    let natural = (image.0 / scale_factor, image.1 / scale_factor);
+    let scale = (viewport.0 / natural.0)
+        .min(viewport.1 / natural.1)
+        .min(1.0);
+    (natural.0 * scale, natural.1 * scale)
 }
 
 pub fn content_size(fit: (f64, f64), zoom: f64) -> (f64, f64) {
@@ -92,12 +101,52 @@ mod tests {
     }
 
     #[test]
-    fn the_image_fits_the_viewport_by_its_tighter_side() {
-        assert_eq!(fit_size((400.0, 200.0), (800.0, 800.0)), (800.0, 400.0));
-        assert_eq!(fit_size((200.0, 400.0), (800.0, 800.0)), (400.0, 800.0));
-        assert_eq!(fit_size((400.0, 200.0), (100.0, 100.0)), (100.0, 50.0));
-        assert_eq!(fit_size((400.0, 200.0), (0.0, 100.0)), (0.0, 0.0));
-        assert_eq!(fit_size((0.0, 200.0), (100.0, 100.0)), (0.0, 0.0));
+    fn a_small_image_keeps_its_natural_size() {
+        assert_eq!(fit_size((64.0, 48.0), (900.0, 700.0), 1.0), (64.0, 48.0));
+        assert_eq!(fit_size((64.0, 48.0), (900.0, 700.0), 2.0), (32.0, 24.0));
+    }
+
+    #[test]
+    fn a_large_image_fits_the_viewport_by_its_tighter_side() {
+        assert_eq!(
+            fit_size((4000.0, 2000.0), (800.0, 800.0), 1.0),
+            (800.0, 400.0)
+        );
+        assert_eq!(
+            fit_size((2000.0, 4000.0), (800.0, 800.0), 1.0),
+            (400.0, 800.0)
+        );
+        assert_eq!(fit_size((400.0, 200.0), (100.0, 100.0), 1.0), (100.0, 50.0));
+        assert_eq!(
+            fit_size((4000.0, 2000.0), (800.0, 800.0), 2.0),
+            (800.0, 400.0)
+        );
+    }
+
+    #[test]
+    fn an_image_larger_on_one_side_only_is_limited_by_that_side() {
+        assert_eq!(
+            fit_size((1000.0, 100.0), (500.0, 500.0), 1.0),
+            (500.0, 50.0)
+        );
+        assert_eq!(
+            fit_size((100.0, 1000.0), (500.0, 500.0), 1.0),
+            (50.0, 500.0)
+        );
+    }
+
+    #[test]
+    fn an_empty_image_or_viewport_has_no_fit() {
+        assert_eq!(fit_size((400.0, 200.0), (0.0, 100.0), 1.0), (0.0, 0.0));
+        assert_eq!(fit_size((400.0, 200.0), (100.0, 0.0), 1.0), (0.0, 0.0));
+        assert_eq!(fit_size((0.0, 200.0), (100.0, 100.0), 1.0), (0.0, 0.0));
+        assert_eq!(fit_size((400.0, 0.0), (100.0, 100.0), 1.0), (0.0, 0.0));
+    }
+
+    #[test]
+    fn a_non_positive_scale_factor_counts_as_one() {
+        assert_eq!(fit_size((64.0, 48.0), (900.0, 700.0), 0.0), (64.0, 48.0));
+        assert_eq!(fit_size((64.0, 48.0), (900.0, 700.0), -2.0), (64.0, 48.0));
     }
 
     #[test]

@@ -156,7 +156,8 @@ impl ZoomView {
             .borrow()
             .as_ref()
             .map(|image| (f64::from(image.width), f64::from(image.height)));
-        let fit = dims.map_or((0.0, 0.0), |dims| fit_size(dims, viewport));
+        let scale_factor = f64::from(self.picture.scale_factor());
+        let fit = dims.map_or((0.0, 0.0), |dims| fit_size(dims, viewport, scale_factor));
         let content = content_size(fit, self.zoom.get());
         let content = (content.0.round(), content.1.round());
         let old = self.content.replace(content);
@@ -192,6 +193,14 @@ impl ZoomView {
     }
 
     fn connect_layout(self: &Rc<Self>) {
+        self.picture.connect_scale_factor_notify({
+            let view = Rc::downgrade(self);
+            move |_| {
+                if let Some(view) = view.upgrade() {
+                    view.relayout();
+                }
+            }
+        });
         for adjustment in [self.scrolled.hadjustment(), self.scrolled.vadjustment()] {
             let view = Rc::downgrade(self);
             adjustment.connect_page_size_notify({

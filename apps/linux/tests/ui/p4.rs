@@ -495,17 +495,32 @@ fn wait_zoom(h: &Harness, viewer: &ImageViewer, zoom: f64) -> Result<(), String>
     })
 }
 
+fn wait_best_fit(h: &Harness, sensitive: bool) -> Result<(), String> {
+    let button = h.widget_as::<gtk::Button>("image-zoom-fit")?;
+    let state = if sensitive {
+        "sensitive"
+    } else {
+        "insensitive"
+    };
+    h.wait(&format!("Best Fit to be {state}"), || {
+        button.is_sensitive() == sensitive
+    })
+}
+
 fn image_viewer_keys(h: &mut Harness) -> Result<(), String> {
     launch_and_log_in(h, false)?;
     let editor = open_editor(h, WHITEBOARD)?;
     wait_images_ready(h, &editor, 1)?;
     let viewer = open_viewer(h, &editor)?;
     wait_zoom(h, &viewer, 1.0)?;
+    wait_best_fit(h, false)?;
 
     h.press_keys("<Control>plus")?;
     wait_zoom(h, &viewer, 1.25)?;
+    wait_best_fit(h, true)?;
     h.press_keys("<Control>0")?;
     wait_zoom(h, &viewer, 1.0)?;
+    wait_best_fit(h, false)?;
     h.click("image-zoom-in")?;
     h.click("image-zoom-in")?;
     wait_zoom(h, &viewer, 1.5625)?;

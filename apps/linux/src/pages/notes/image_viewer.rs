@@ -197,7 +197,7 @@ impl ImageViewer {
         for (name, enabled) in [
             (ZOOM_IN, ready && can_zoom_in(zoom)),
             (ZOOM_OUT, ready && can_zoom_out(zoom)),
-            (ZOOM_FIT, ready),
+            (ZOOM_FIT, ready && can_zoom_out(zoom)),
         ] {
             if let Some(action) = group
                 .lookup_action(name)

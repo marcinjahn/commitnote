@@ -122,8 +122,9 @@ decoded pictures in memory. The Markdown stays the note text, so the reference i
   768 px wide). While it loads there is a placeholder, and a picture that cannot be read shows "Image
   unavailable"; it is read again after a save or a refresh, and when the viewer is opened.
 - **Viewer.** A click on an image opens it in a dialog. The picture fits the window at first
-  (zoom 1×) and zooms up to 8× in steps of 1.25: Zoom In, Zoom Out and Best Fit in the header bar,
-  the shortcuts in the table below, Ctrl and the scroll wheel (around the pointer), or a pinch. A
+  (zoom 1×) but is never shown larger than its natural size, and zooms up to 8× in steps of 1.25:
+  Zoom In, Zoom Out and Best Fit in the header bar, the shortcuts in the table below, Ctrl and the
+  scroll wheel (around the pointer), or a pinch. Best Fit returns to the 1× size once zoomed in. A
   zoomed picture is panned by dragging it. Escape closes the dialog.
 - **Animation.** A GIF plays while its widget is mapped and visible, with each frame's own delay (a
   delay under 10 ms plays as 100 ms), and shows its first frame still when the GNOME setting
