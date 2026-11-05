@@ -17,16 +17,20 @@ use gtk4::{self as gtk, gdk, gio, glib};
 use libadwaita as adw;
 
 use super::MarkdownView;
+use super::image_insertion::{ImageInserter, InsertAt, place_images, target_selection};
+use super::image_source::ImageSource;
 use super::markdown_view::buffer_selection;
 use super::vim::{self, KeyRoute, Vim};
 use crate::links;
-use crate::model::NoteContentUpdate;
+use crate::model::{ImageInput, NoteContentUpdate};
 
 const GROUPING_INTERVAL: f64 = 1.0;
 const CARET_SCROLL_MARGIN: f64 = 24.0;
 const CARET_SCROLL_RETRIES: u8 = 10;
 
 type Command = fn(&str, TextSelection) -> Option<CommandResult>;
+
+const IMAGE_REFERENCE_MARKER: &str = "image:";
 
 const FORMAT_ACTIONS: [(&str, Command); 4] = [
     ("bold", toggle_bold),
@@ -45,6 +49,40 @@ const SHORTCUTS: [(&str, &str); 8] = [
     ("<Control>Return", "editor.toggle-task"),
     ("<Control>KP_Enter", "editor.toggle-task"),
 ];
+
+#[derive(Clone)]
+pub(super) struct InserterHandle(Rc<dyn ImageInserter>);
+
+impl std::fmt::Debug for InserterHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ImageInserter")
+    }
+}
+
+/// Where a late result may still go: the note shown when it started, and where in it.
+#[derive(Debug, Clone)]
+struct Pending {
+    switch: Option<u64>,
+    at: InsertAt,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Paste {
+    Files,
+    Texture,
+    Text,
+}
+
+fn file_inputs(list: &gdk::FileList) -> Vec<ImageInput> {
+    list.files().into_iter().map(ImageInput::File).collect()
+}
+
+fn texture_input(texture: &gdk::Texture) -> ImageInput {
+    ImageInput::Bytes {
+        bytes: texture.save_to_png_bytes(),
+        mime_type: "image/png".to_owned(),
+    }
+}
 
 #[derive(Debug)]
 struct EditState {
@@ -87,6 +125,8 @@ mod imp {
         pub(super) scroll_pending: Cell<bool>,
         pub(super) scroll_retries: Cell<u8>,
         pub(super) vim: RefCell<Option<Vim>>,
+        pub(super) inserter: RefCell<Option<InserterHandle>>,
+        pub(super) drop_target: OnceCell<gtk::DropTarget>,
     }
 
     #[glib::object_subclass]
@@ -106,6 +146,7 @@ mod imp {
                         .build(),
                     Signal::builder("vim-changed").build(),
                     Signal::builder("save-requested").build(),
+                    Signal::builder("insert-image-requested").build(),
                 ]
             })
         }
@@ -126,6 +167,7 @@ mod imp {
             editor.set_child(Some(&view));
             let _ = self.view.set(view.clone());
             editor.connect_buffer(&view.buffer());
+            editor.setup_drop();
             editor.setup_actions();
             editor.setup_paste();
         }
@@ -154,6 +196,18 @@ impl NoteEditor {
             .clone()
     }
 
+    pub fn set_image_source(&self, source: Option<Rc<dyn ImageSource>>) {
+        self.view().set_image_source(source);
+    }
+
+    pub fn image_changed(&self, image_id: &str) {
+        self.view().image_changed(image_id);
+    }
+
+    pub fn set_image_inserter(&self, inserter: Option<Rc<dyn ImageInserter>>) {
+        self.imp().inserter.replace(inserter.map(InserterHandle));
+    }
+
     pub fn text(&self) -> String {
         let buffer = self.view().buffer();
         let (start, end) = buffer.bounds();
@@ -177,6 +231,14 @@ impl NoteEditor {
     /// Runs when the user asks Vim to write the note.
     pub fn connect_save_requested<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_unit_signal("save-requested", f)
+    }
+
+    /// Runs when Insert Image is chosen, to let the user pick the images.
+    pub fn connect_insert_image_requested<F: Fn(&Self) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_unit_signal("insert-image-requested", f)
     }
 
     fn connect_unit_signal<F: Fn(&Self) + 'static>(
@@ -454,6 +516,58 @@ impl NoteEditor {
         true
     }
 
+    /// Places image references by the insertion rule as one undoable step, replacing the
+    /// selection `at` resolves to.
+    pub fn insert_image_references(&self, references: &[String], at: InsertAt) {
+        if !self.is_ready() || references.is_empty() {
+            return;
+        }
+        let (text, selection) = self.current_text_and_selection();
+        let selection = target_selection(&at, &text, selection);
+        self.apply_command(place_images(&text, selection, references));
+    }
+
+    /// Adds the inputs as images and inserts their references, unless another note is shown by
+    /// the time they are ready.
+    pub fn insert_images(&self, inputs: Vec<ImageInput>, at: InsertAt) {
+        if inputs.is_empty() {
+            return;
+        }
+        let (Some(inserter), Some(pending)) = (self.inserter(), self.pending(at)) else {
+            return;
+        };
+        let editor = self.downgrade();
+        glib::spawn_future_local(async move {
+            let references = inserter.0.insert_images(inputs).await;
+            if let Some(editor) = editor.upgrade()
+                && editor.still_showing(&pending)
+            {
+                editor.insert_image_references(&references, pending.at);
+            }
+        });
+    }
+
+    /// Where the selection is now, for a result that arrives later.
+    pub fn capture_position(&self) -> InsertAt {
+        let (text, selection) = self.current_text_and_selection();
+        InsertAt::Captured { text, selection }
+    }
+
+    fn inserter(&self) -> Option<InserterHandle> {
+        self.imp().inserter.borrow().clone()
+    }
+
+    fn pending(&self, at: InsertAt) -> Option<Pending> {
+        self.is_ready().then(|| Pending {
+            switch: self.imp().state.borrow().applied_switch,
+            at,
+        })
+    }
+
+    fn still_showing(&self, pending: &Pending) -> bool {
+        self.is_ready() && self.imp().state.borrow().applied_switch == pending.switch
+    }
+
     pub fn undo(&self) {
         if !self.is_ready() {
             return;
@@ -531,28 +645,79 @@ impl NoteEditor {
                 let Some(editor) = editor.upgrade() else {
                     return;
                 };
-                if !editor.is_ready() {
-                    return;
-                }
                 let clipboard = view.clipboard();
-                if !clipboard.formats().contains_type(String::static_type()) {
+                let Some(paste) = editor.paste_kind(&clipboard.formats()) else {
                     return;
-                }
+                };
+                let Some(pending) = editor.pending(editor.capture_position()) else {
+                    return;
+                };
                 view.stop_signal_emission_by_name("paste-clipboard");
                 glib::spawn_future_local(async move {
-                    if let Ok(Some(text)) = clipboard.read_text_future().await {
-                        editor.finish_paste(text.as_str());
-                    }
+                    editor.paste(&clipboard, paste, pending).await;
                 });
             }
         });
     }
 
-    fn finish_paste(&self, pasted: &str) {
+    fn paste_kind(&self, formats: &gdk::ContentFormats) -> Option<Paste> {
+        if self.inserter().is_some() {
+            if formats.contains_type(gdk::FileList::static_type()) {
+                return Some(Paste::Files);
+            }
+            let text = formats.contains_type(String::static_type());
+            if !text && formats.contains_type(gdk::Texture::static_type()) {
+                return Some(Paste::Texture);
+            }
+        }
+        formats
+            .contains_type(String::static_type())
+            .then_some(Paste::Text)
+    }
+
+    async fn paste(&self, clipboard: &gdk::Clipboard, paste: Paste, pending: Pending) {
+        let inputs = match paste {
+            Paste::Files => clipboard
+                .read_value_future(gdk::FileList::static_type(), glib::Priority::DEFAULT)
+                .await
+                .ok()
+                .and_then(|value| value.get::<gdk::FileList>().ok())
+                .map(|list| file_inputs(&list))
+                .unwrap_or_default(),
+            Paste::Texture => match clipboard.read_texture_future().await {
+                Ok(Some(texture)) => vec![texture_input(&texture)],
+                _ => Vec::new(),
+            },
+            Paste::Text => {
+                if let Ok(Some(text)) = clipboard.read_text_future().await {
+                    self.paste_text(text.into(), pending).await;
+                }
+                return;
+            }
+        };
+        if self.still_showing(&pending) {
+            self.insert_images(inputs, pending.at);
+        }
+    }
+
+    async fn paste_text(&self, mut pasted: String, pending: Pending) {
+        if pasted.contains(IMAGE_REFERENCE_MARKER)
+            && let (Some(inserter), InsertAt::Captured { text, .. }) =
+                (self.inserter(), &pending.at)
+        {
+            pasted = inserter.0.clone_pasted_images(text.clone(), pasted).await;
+        }
+        if self.still_showing(&pending) {
+            self.finish_paste(&pasted, &pending.at);
+        }
+    }
+
+    fn finish_paste(&self, pasted: &str, at: &InsertAt) {
         if !self.is_ready() {
             return;
         }
         let (text, selection) = self.current_text_and_selection();
+        let selection = target_selection(at, &text, selection);
         let result = paste_link(&text, selection, pasted).unwrap_or_else(|| CommandResult {
             edits: vec![TextEdit::new(
                 selection.location,
@@ -562,6 +727,50 @@ impl NoteEditor {
             selection: TextSelection::new(selection.location + pasted.encode_utf16().count(), 0),
         });
         self.apply_command(result);
+    }
+
+    fn setup_drop(&self) {
+        let target = gtk::DropTarget::new(glib::Type::INVALID, gdk::DragAction::empty());
+        target.set_types(&[gdk::FileList::static_type(), gdk::Texture::static_type()]);
+        target.set_propagation_phase(gtk::PropagationPhase::Capture);
+        target.connect_drop({
+            let editor = self.downgrade();
+            move |_, value, x, y| {
+                editor
+                    .upgrade()
+                    .is_some_and(|editor| editor.drop_value(value, x, y))
+            }
+        });
+        self.view().add_controller(target.clone());
+        let _ = self.imp().drop_target.set(target);
+    }
+
+    /// Inserts dropped image files or an image where they were dropped, in view coordinates.
+    fn drop_value(&self, value: &glib::Value, x: f64, y: f64) -> bool {
+        if !self.is_ready() || self.inserter().is_none() {
+            return false;
+        }
+        let inputs = if let Ok(list) = value.get::<gdk::FileList>() {
+            file_inputs(&list)
+        } else if let Ok(texture) = value.get::<gdk::Texture>() {
+            vec![texture_input(&texture)]
+        } else {
+            return false;
+        };
+        let view = self.view();
+        let (bx, by) =
+            view.window_to_buffer_coords(gtk::TextWindowType::Widget, x as i32, y as i32);
+        if let Some(iter) = view.iter_at_location(bx, by) {
+            view.buffer().place_cursor(&iter);
+        }
+        view.grab_focus();
+        self.insert_images(inputs, self.capture_position());
+        true
+    }
+
+    #[cfg(feature = "testing")]
+    pub fn testing_drop(&self, value: &glib::Value, x: f64, y: f64) -> bool {
+        self.drop_value(value, x, y)
     }
 
     fn is_ready(&self) -> bool {
@@ -623,6 +832,10 @@ impl NoteEditor {
             entry("redo", Box::new(Self::redo)),
             entry("toggle-task", Box::new(Self::toggle_task_or_open_link)),
             entry("open-link", Box::new(Self::open_link_at_caret)),
+            entry(
+                "insert-image",
+                Box::new(|editor| editor.emit_by_name::<()>("insert-image-requested", &[])),
+            ),
         ];
         for (name, command) in FORMAT_ACTIONS {
             entries.push(entry(name, Box::new(move |editor| editor.format(command))));
@@ -657,7 +870,7 @@ impl NoteEditor {
         let actions = &self.imp().actions;
         let ready = self.is_ready();
         let history = [("undo", self.can_undo()), ("redo", self.can_redo())];
-        let others = ["toggle-task", "open-link"]
+        let others = ["toggle-task", "open-link", "insert-image"]
             .into_iter()
             .chain(FORMAT_ACTIONS.map(|(name, _)| name))
             .map(|name| (name, ready));
@@ -668,6 +881,13 @@ impl NoteEditor {
             {
                 action.set_enabled(enabled);
             }
+        }
+        if let Some(target) = self.imp().drop_target.get() {
+            target.set_actions(if ready {
+                gdk::DragAction::COPY
+            } else {
+                gdk::DragAction::empty()
+            });
         }
     }
 

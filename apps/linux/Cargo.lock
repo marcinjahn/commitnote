@@ -421,6 +421,7 @@ dependencies = [
  "commitnote-core-api",
  "commitnote-core-runtime",
  "commitnote-editor-text",
+ "commitnote-image-codec",
  "commitnote-interaction",
  "commitnote-markdown",
  "futures-util",

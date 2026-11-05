@@ -78,7 +78,6 @@ impl CoreClient {
         self.keyring_available
     }
 
-    #[allow(dead_code)]
     pub fn staged_inputs(&self) -> SharedStagedInputs {
         self.staged_inputs.clone()
     }

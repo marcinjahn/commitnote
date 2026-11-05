@@ -1,5 +1,6 @@
 mod details_dialog;
 mod folder_dialog;
+mod image_viewer;
 mod move_dialog;
 mod node_object;
 mod node_row;
@@ -15,7 +16,10 @@ mod trash_confirm;
 mod trash_dialog;
 mod tree_logic;
 mod tree_view;
+mod zoom_logic;
+mod zoom_view;
 
+pub use image_viewer::ImageViewer;
 pub use note_view::NoteView;
 pub use notes_page::NotesPage;
 pub use search_view::SearchView;

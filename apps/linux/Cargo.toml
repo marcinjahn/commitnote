@@ -75,6 +75,7 @@ commitnote-core-runtime.workspace = true
 commitnote-markdown.workspace = true
 commitnote-editor-text.workspace = true
 commitnote-interaction.workspace = true
+commitnote-image-codec.workspace = true
 sourceview5.workspace = true
 zeroize.workspace = true
 

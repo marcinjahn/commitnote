@@ -11,13 +11,17 @@ use libadwaita as adw;
 use commitnote_core_api::commands::{ConflictResolution, NoteDraftOutcome};
 use commitnote_core_api::shapes::OpenNoteConflict;
 use commitnote_editor_text::EditorTextSync;
+use futures_util::future::LocalBoxFuture;
 
+use super::image_viewer::ImageViewer;
 use super::note_state::{NoteDisplay, display_state, loaded_update, note_title};
 use super::sync_feedback::{
     BannerAction, conflict_locks_note, is_conflict_marker, note_banner, open_conflict,
 };
-use crate::editor::NoteEditor;
-use crate::model::{AppModel, DraftFocus, EditorTarget, NoteContentUpdate, RenameResult};
+use crate::editor::{EditorImage, ImageInserter, ImageSource, NoteEditor};
+use crate::model::{
+    AppModel, DraftFocus, EditorTarget, ImageInput, ImageState, NoteContentUpdate, RenameResult,
+};
 
 const SPINNER_DELAY: Duration = Duration::from_millis(300);
 const MARKER_ALPHA: f32 = 0.55;
@@ -58,6 +62,8 @@ mod imp {
         pub(super) handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) settings_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) sync_handler: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) image_handler: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) image_viewer: glib::WeakRef<ImageViewer>,
         pub(super) banner_action: Cell<Option<super::BannerAction>>,
         pub(super) spinner_timer: RefCell<Option<glib::SourceId>>,
         pub(super) loading_path: RefCell<Option<Vec<String>>>,
@@ -115,6 +121,7 @@ mod imp {
                     self.settings_handler.take(),
                     self.sync_handler.take(),
                     self.tree_handler.take(),
+                    self.image_handler.take(),
                 ]
                 .into_iter()
                 .flatten()
@@ -133,6 +140,53 @@ mod imp {
 
     impl WidgetImpl for NoteView {}
     impl BinImpl for NoteView {}
+}
+
+struct ModelImages(glib::WeakRef<AppModel>);
+
+struct ModelImageInserter(glib::WeakRef<AppModel>);
+
+impl ImageInserter for ModelImageInserter {
+    fn insert_images(&self, inputs: Vec<ImageInput>) -> LocalBoxFuture<'static, Vec<String>> {
+        let model = self.0.upgrade();
+        Box::pin(async move {
+            match model {
+                Some(model) => model.insert_images(inputs).await,
+                None => Vec::new(),
+            }
+        })
+    }
+
+    fn clone_pasted_images(
+        &self,
+        current: String,
+        pasted: String,
+    ) -> LocalBoxFuture<'static, String> {
+        let model = self.0.upgrade();
+        Box::pin(async move {
+            match model {
+                Some(model) => model.clone_pasted_images(&current, &pasted).await,
+                None => pasted,
+            }
+        })
+    }
+}
+
+impl ImageSource for ModelImages {
+    fn image(&self, image_id: &str) -> EditorImage {
+        let Some(model) = self.0.upgrade() else {
+            return EditorImage::Unavailable;
+        };
+        match model.image(image_id) {
+            ImageState::Loading => EditorImage::Loading,
+            ImageState::Unavailable => EditorImage::Unavailable,
+            ImageState::Ready(image) => EditorImage::Ready {
+                width: image.width,
+                height: image.height,
+                frames: image.frames.clone(),
+            },
+        }
+    }
 }
 
 glib::wrapper! {
@@ -213,6 +267,31 @@ impl NoteView {
             }
         });
         widget.imp().tree_handler.replace(Some(tree_handler));
+        widget
+            .imp()
+            .editor
+            .set_image_source(Some(Rc::new(ModelImages(model.downgrade()))));
+        widget
+            .imp()
+            .editor
+            .set_image_inserter(Some(Rc::new(ModelImageInserter(model.downgrade()))));
+        let image_handler = model.connect_image_changed({
+            let widget = widget.downgrade();
+            move |_, image_id| {
+                if let Some(widget) = widget.upgrade() {
+                    widget.imp().editor.image_changed(image_id);
+                }
+            }
+        });
+        widget.imp().image_handler.replace(Some(image_handler));
+        widget.imp().editor.view().connect_image_activated({
+            let widget = widget.downgrade();
+            move |_, image_id| {
+                if let Some(widget) = widget.upgrade() {
+                    widget.open_image(image_id);
+                }
+            }
+        });
         widget.imp().banner.connect_button_clicked({
             let widget = widget.downgrade();
             move |_| {
@@ -222,6 +301,24 @@ impl NoteView {
             }
         });
         widget
+    }
+
+    fn open_image(&self, image_id: &str) {
+        let imp = self.imp();
+        let Some(model) = imp.model.get() else {
+            return;
+        };
+        if imp
+            .image_viewer
+            .upgrade()
+            .is_some_and(|viewer| viewer.is_open())
+        {
+            return;
+        }
+        model.retry_image(image_id);
+        let viewer = ImageViewer::new(model, image_id);
+        imp.image_viewer.set(Some(&viewer));
+        viewer.present(Some(self));
     }
 
     pub fn editor(&self) -> NoteEditor {

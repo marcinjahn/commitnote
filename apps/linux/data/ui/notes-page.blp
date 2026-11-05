@@ -196,6 +196,18 @@ template $CommitnoteNotesPage: Adw.NavigationPage {
             }
 
             Gtk.Button {
+              name: "format-image-button";
+              icon-name: "insert-image-symbolic";
+              tooltip-text: _("Insert Image");
+              action-name: "editor.insert-image";
+              focus-on-click: false;
+
+              accessibility {
+                label: _("Insert Image");
+              }
+            }
+
+            Gtk.Button {
               name: "format-task-button";
               icon-name: "checkbox-checked-symbolic";
               tooltip-text: _("Toggle Task");
@@ -245,6 +257,11 @@ menu note_menu {
       label: _("Insert Link");
       action: "editor.insert-link";
       accel: "<Control>k";
+    }
+
+    item {
+      label: _("Insert Image…");
+      action: "editor.insert-image";
     }
 
     item {

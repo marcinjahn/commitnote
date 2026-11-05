@@ -45,6 +45,10 @@ impl SharedStagedInputs {
         self.inputs().clear();
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.inputs().is_empty()
+    }
+
     fn inputs(&self) -> MutexGuard<'_, HashMap<String, StagedInput>> {
         self.inputs
             .lock()
@@ -120,6 +124,7 @@ mod tests {
 
         inputs.clear();
 
+        assert!(inputs.is_empty());
         assert!(staged(&inputs, &first).is_none());
         assert!(staged(&inputs, &second).is_none());
     }

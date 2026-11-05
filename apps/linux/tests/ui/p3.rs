@@ -88,7 +88,7 @@ const ROADMAP: &[&str] = &["Projects", "commitnote", "Roadmap"];
 const IDEAS: &[&str] = &["Projects", "commitnote", "Ideas"];
 const MEETING_MINUTES: &[&str] = &["Projects", "commitnote", "Meeting minutes"];
 
-fn path(parts: &[&str]) -> Vec<String> {
+pub fn path(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).to_owned()).collect()
 }
 
@@ -2029,7 +2029,7 @@ fn undo_move(h: &mut Harness) -> Result<(), String> {
     })
 }
 
-fn focus_editor(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
+pub fn focus_editor(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
     let view = editor.view();
     view.grab_focus();
     h.wait("the editor to take focus", || {
@@ -2387,7 +2387,7 @@ fn expand_with_key(h: &Harness, target: &[&str]) -> Result<(), String> {
     h.wait("the folder to expand", || is_expanded(h, name))
 }
 
-fn open_note_at(h: &Harness, target: &[&str]) -> Result<(), String> {
+pub fn open_note_at(h: &Harness, target: &[&str]) -> Result<(), String> {
     let model = h.model()?;
     let target = path(target);
     let title = target.last().cloned().unwrap_or_default();

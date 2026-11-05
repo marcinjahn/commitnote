@@ -41,10 +41,12 @@ use super::edit_sender::{EditDestination, EditSender};
 use super::editor_lane::EditorLane;
 use super::editor_settings::EditorSettings;
 
+mod images;
 mod last_view;
 mod organise;
 mod search;
 
+pub use images::{ImageInput, ImageState, LoadedImage};
 pub use last_view::NoteDetails;
 pub use organise::{COLOR_TAGS, TrashResult, TrashState};
 pub use search::SearchStatus;
@@ -269,6 +271,7 @@ struct State {
     trash: Option<TrashState>,
     search: search::SearchState,
     last_view: last_view::LastViewTracker,
+    image_cache: images::ImageCache,
     notice_actions: HashMap<String, NoticeAction>,
     open_note_path: Option<Vec<String>>,
     core_open_path: Option<Vec<String>>,
@@ -354,6 +357,9 @@ mod imp {
                     Signal::builder("toast")
                         .param_types([String::static_type()])
                         .build(),
+                    Signal::builder("image-changed")
+                        .param_types([String::static_type()])
+                        .build(),
                 ]
             })
         }
@@ -374,6 +380,7 @@ impl AppModel {
         let _ = imp.edit_sender.set(model.new_edit_sender());
         model.attach_search_triggers();
         model.attach_last_view_triggers();
+        model.attach_image_triggers();
         {
             let mut state = imp.state.borrow_mut();
             state.visible = true;
@@ -700,6 +707,7 @@ impl AppModel {
 
     pub async fn choose_repository(&self, url: &str) {
         self.state_mut().repository_url = Some(url.to_owned());
+        self.reset_image_cache();
         self.inspect().await;
     }
 
@@ -1901,8 +1909,9 @@ impl AppModel {
                 failure: Some(failure),
             });
         }
-        self.state_mut().sync = Some(sync);
+        let previous = self.state_mut().sync.replace(sync);
         self.emit_by_name::<()>("sync-state-changed", &[]);
+        self.recheck_unavailable_images(previous.as_ref());
     }
 
     fn show_notice(&self, notice: Notice) {
@@ -1957,6 +1966,7 @@ impl AppModel {
                 visible: previous.visible,
                 online: previous.online,
                 keyring_warned: previous.keyring_warned,
+                image_cache: previous.image_cache.next_generation(),
                 last_view,
                 ..State::default()
             };

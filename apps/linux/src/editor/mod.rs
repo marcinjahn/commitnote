@@ -1,3 +1,6 @@
+mod image_insertion;
+mod image_source;
+mod inline_image;
 mod markdown_view;
 mod note_editor;
 mod overlay;
@@ -5,6 +8,9 @@ mod spans;
 mod tags;
 pub mod vim;
 
+pub use image_insertion::{ImageInserter, InsertAt};
+pub use image_source::{EditorImage, ImageSource};
+pub use inline_image::frame_at;
 pub use markdown_view::{MarkdownView, ParsedText};
 pub use note_editor::NoteEditor;
 pub use overlay::{HitBehaviour, Overlay, OverlayKind, OverlayStyle, Painter, Reserve};
