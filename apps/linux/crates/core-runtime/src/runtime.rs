@@ -350,8 +350,10 @@ fn boot(
     config: RuntimeConfig,
 ) -> Result<(Rc<Host>, jsc::Value), StartError> {
     let post_router = router.clone();
+    let js_context = jsc::Context::new();
+    js::ensure_main_run_loop();
     let host = Host::new(
-        jsc::Context::new(),
+        js_context,
         context.clone(),
         config.services,
         move |message| post_router.receive(message),

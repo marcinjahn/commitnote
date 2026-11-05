@@ -95,6 +95,9 @@ fn typed_commands_are_declared_in_typescript() {
         LastViewLoad::NAME,
         LastViewSave::NAME,
         LastViewSetEnabled::NAME,
+        ImageRead::NAME,
+        ImageInsert::NAME,
+        ImageClonePasted::NAME,
     ];
     for name in typed {
         assert!(declared.iter().any(|d| d == name), "{name}");

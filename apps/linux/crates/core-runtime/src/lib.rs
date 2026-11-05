@@ -10,3 +10,5 @@ pub use memory::{
 };
 pub use runtime::{CoreRuntime, RequestError, RuntimeConfig, StartError};
 pub use services::HostServices;
+pub use services::images::HostImageCodec;
+pub use services::staged_inputs::SharedStagedInputs;

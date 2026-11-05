@@ -114,6 +114,9 @@ fn every_command_has_a_distinct_name() {
         TrashDelete::NAME,
         TrashEmpty::NAME,
         TagsSetFilter::NAME,
+        ImageRead::NAME,
+        ImageInsert::NAME,
+        ImageClonePasted::NAME,
     ];
     let mut sorted = names.to_vec();
     sorted.sort_unstable();
@@ -1341,4 +1344,73 @@ fn last_view_commands_encode_and_decode() {
     );
     decode::<LastViewSave>("{}");
     decode::<LastViewSetEnabled>("{}");
+}
+
+#[test]
+fn image_read_decodes_an_image_or_null() {
+    let webp = decode::<ImageRead>(r#"{"image":{"type":"image/webp","base64":"UklG"}}"#);
+    assert_eq!(
+        webp.image,
+        Some(ReadImage {
+            image_type: ReadImageType::Webp,
+            base64: "UklG".into()
+        })
+    );
+    let gif = decode::<ImageRead>(r#"{"image":{"type":"image/gif","base64":"R0lG"}}"#);
+    assert_eq!(
+        gif.image.map(|image| image.image_type),
+        Some(ReadImageType::Gif)
+    );
+    assert_eq!(decode::<ImageRead>(r#"{"image":null}"#).image, None);
+    assert_eq!(
+        params_json::<ImageRead>(&ImageReadParams {
+            image_id: "abc".into()
+        }),
+        json!({"imageId":"abc"})
+    );
+}
+
+#[test]
+fn image_read_rejects_unknown_types() {
+    let value: Value =
+        serde_json::from_str(r#"{"image":{"type":"image/png","base64":""}}"#).unwrap();
+    assert!(crate::decode_result::<ImageRead>(value).is_err());
+}
+
+#[test]
+fn image_insert_uses_camel_case_wire_names() {
+    assert_eq!(
+        params_json::<ImageInsert>(&ImageInsertParams {
+            inputs: vec!["a".into(), "b".into()]
+        }),
+        json!({"inputs":["a","b"]})
+    );
+    let result = decode::<ImageInsert>(r#"{"references":["![](image:abc#640x480)"]}"#);
+    assert_eq!(result.references, vec!["![](image:abc#640x480)".to_owned()]);
+    assert!(
+        decode::<ImageInsert>(r#"{"references":[]}"#)
+            .references
+            .is_empty()
+    );
+}
+
+#[test]
+fn image_clone_pasted_encodes_draft_and_saved_targets() {
+    assert_eq!(
+        params_json::<ImageClonePasted>(&ImageClonePastedParams {
+            path: Some(path(&["A", "B"])),
+            current: "c".into(),
+            pasted: "p".into(),
+        }),
+        json!({"path":["A","B"],"current":"c","pasted":"p"})
+    );
+    assert_eq!(
+        params_json::<ImageClonePasted>(&ImageClonePastedParams {
+            path: None,
+            current: "c".into(),
+            pasted: "p".into(),
+        }),
+        json!({"path":null,"current":"c","pasted":"p"})
+    );
+    assert_eq!(decode::<ImageClonePasted>(r#"{"text":"x"}"#).text, "x");
 }

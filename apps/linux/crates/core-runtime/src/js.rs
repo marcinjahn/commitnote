@@ -1,11 +1,35 @@
-use std::ffi::CString;
+use std::ffi::{CString, c_void};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::Once;
 
 use glib::prelude::StaticType;
 use glib::translate::{FromGlibPtrFull, FromGlibPtrNone, IntoGlib, IntoGlibPtr, ToGlibPtr};
 use javascriptcore6 as jsc;
 use javascriptcore6::ffi;
 use zeroize::Zeroizing;
+
+unsafe extern "C" {
+    #[link_name = "_ZN3WTF7RunLoop13mainSingletonEv"]
+    fn wtf_main_run_loop() -> *mut c_void;
+    #[link_name = "_ZN3WTF7RunLoop14initializeMainEv"]
+    fn wtf_initialize_main_run_loop();
+    #[link_name = "_ZN3WTF21MemoryPressureHandler9singletonEv"]
+    fn wtf_memory_pressure_handler() -> *mut c_void;
+}
+
+/// JavaScriptCore's full GC timer builds WTF's memory pressure handler on first use, and the
+/// handler dereferences the main run loop, which only WebKit embedders initialise; without it a
+/// large enough heap crashes the process. Must run on the core thread after a context exists.
+/// The handler keeps its run loop alive, so the core thread may exit and restart afterwards.
+pub(crate) fn ensure_main_run_loop() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| unsafe {
+        if wtf_main_run_loop().is_null() {
+            wtf_initialize_main_run_loop();
+        }
+        wtf_memory_pressure_handler();
+    });
+}
 
 /// Its message becomes a JavaScript error message, so it must never carry note contents,
 /// names or paths.

@@ -12,7 +12,9 @@ use commitnote_core_runtime::services::remembered_session::{
     HostRememberedSession, open_remembered_session_store,
 };
 use commitnote_core_runtime::services::{HostServices, ServiceError};
-use commitnote_core_runtime::{CoreRuntime, RequestError, RuntimeConfig, StartError};
+use commitnote_core_runtime::{
+    CoreRuntime, HostImageCodec, RequestError, RuntimeConfig, SharedStagedInputs, StartError,
+};
 #[cfg(feature = "testing")]
 use serde_json::Value;
 
@@ -36,6 +38,7 @@ pub struct CoreClient {
     remembered_session: Arc<HostRememberedSession>,
     keyring_available: bool,
     blob_cache: Arc<FileBlobCacheStore>,
+    staged_inputs: SharedStagedInputs,
     runtime: RefCell<Option<CoreRuntime>>,
 }
 
@@ -63,6 +66,7 @@ impl CoreClient {
             remembered_session: remembered.store,
             keyring_available: remembered.keyring_available,
             blob_cache: Arc::new(FileBlobCacheStore::new(config.cache_dir.join("blobs"))),
+            staged_inputs: SharedStagedInputs::default(),
             runtime: RefCell::new(None),
         };
         let runtime = client.start_runtime().await?;
@@ -72,6 +76,11 @@ impl CoreClient {
 
     pub fn keyring_available(&self) -> bool {
         self.keyring_available
+    }
+
+    #[allow(dead_code)]
+    pub fn staged_inputs(&self) -> SharedStagedInputs {
+        self.staged_inputs.clone()
     }
 
     pub async fn set_persist(&self, persist: bool) -> Result<(), ServiceError> {
@@ -124,6 +133,7 @@ impl CoreClient {
         if let Some(previous) = previous {
             let _ = gio::spawn_blocking(move || previous.stop()).await;
         }
+        self.staged_inputs.clear();
         self.blob_cache.flush();
         let runtime = self.start_runtime().await?;
         self.runtime.replace(Some(runtime));
@@ -134,6 +144,7 @@ impl CoreClient {
         if let Some(runtime) = self.runtime.take() {
             runtime.stop();
         }
+        self.staged_inputs.clear();
         self.blob_cache.flush();
     }
 
@@ -156,6 +167,8 @@ impl CoreClient {
             device_settings: Box::new(FileDeviceSettingsStore::new(
                 self.device_settings_path.clone(),
             )),
+            staged_inputs: Box::new(self.staged_inputs.clone()),
+            image_codec: Box::new(HostImageCodec::default()),
             ..HostServices::default()
         }
     }
