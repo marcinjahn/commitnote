@@ -1,0 +1,790 @@
+{
+  "format": 1,
+  "insertions": [
+    {
+      "name": "plain mid-line",
+      "text": "abcd",
+      "selection": {
+        "anchor": 2,
+        "head": 2
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "ab\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\ncd",
+        "selection": {
+          "anchor": 49,
+          "head": 49
+        }
+      }
+    },
+    {
+      "name": "plain after a space",
+      "text": "hello world",
+      "selection": {
+        "anchor": 6,
+        "head": 6
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "hello \n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\nworld",
+        "selection": {
+          "anchor": 53,
+          "head": 53
+        }
+      }
+    },
+    {
+      "name": "at a line end",
+      "text": "text\nnext",
+      "selection": {
+        "anchor": 4,
+        "head": 4
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "text\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\nnext",
+        "selection": {
+          "anchor": 51,
+          "head": 51
+        }
+      }
+    },
+    {
+      "name": "at the document end",
+      "text": "text",
+      "selection": {
+        "anchor": 4,
+        "head": 4
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "text\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n",
+        "selection": {
+          "anchor": 51,
+          "head": 51
+        }
+      }
+    },
+    {
+      "name": "in an empty document",
+      "text": "",
+      "selection": {
+        "anchor": 0,
+        "head": 0
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n",
+        "selection": {
+          "anchor": 46,
+          "head": 46
+        }
+      }
+    },
+    {
+      "name": "on a blank line",
+      "text": "one\n\ntwo",
+      "selection": {
+        "anchor": 4,
+        "head": 4
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "one\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\ntwo",
+        "selection": {
+          "anchor": 50,
+          "head": 50
+        }
+      }
+    },
+    {
+      "name": "with a non-collapsed selection",
+      "text": "abcd",
+      "selection": {
+        "anchor": 1,
+        "head": 3
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "abc\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\nd",
+        "selection": {
+          "anchor": 50,
+          "head": 50
+        }
+      }
+    },
+    {
+      "name": "several references mid-line",
+      "text": "abcd",
+      "selection": {
+        "anchor": 2,
+        "head": 2
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)",
+        "![](image:bcdefghijklmnopqrstuvwxyz2#1024x768)"
+      ],
+      "expected": {
+        "text": "ab\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n![](image:bcdefghijklmnopqrstuvwxyz2#1024x768)\ncd",
+        "selection": {
+          "anchor": 96,
+          "head": 96
+        }
+      }
+    },
+    {
+      "name": "several references at a line end",
+      "text": "text\nnext",
+      "selection": {
+        "anchor": 4,
+        "head": 4
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)",
+        "![](image:bcdefghijklmnopqrstuvwxyz2#1024x768)",
+        "![](image:cdefghijklmnopqrstuvwxyz23#320x200)"
+      ],
+      "expected": {
+        "text": "text\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n![](image:bcdefghijklmnopqrstuvwxyz2#1024x768)\n![](image:cdefghijklmnopqrstuvwxyz23#320x200)\n\nnext",
+        "selection": {
+          "anchor": 144,
+          "head": 144
+        }
+      }
+    },
+    {
+      "name": "right after a table",
+      "text": "| a |\n| - |\n| 1 |\n\nnext",
+      "selection": {
+        "anchor": 18,
+        "head": 18
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a |\n| - |\n| 1 |\n\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\nnext",
+        "selection": {
+          "anchor": 65,
+          "head": 65
+        }
+      }
+    },
+    {
+      "name": "at the end of a table's last line",
+      "text": "| a |\n| - |\n| 1 |\n# next",
+      "selection": {
+        "anchor": 17,
+        "head": 17
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a |\n| - |\n| 1 |\n\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n# next",
+        "selection": {
+          "anchor": 65,
+          "head": 65
+        }
+      }
+    },
+    {
+      "name": "at the end of a table at the document end",
+      "text": "| a |\n| - |\n| 1 |",
+      "selection": {
+        "anchor": 17,
+        "head": 17
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a |\n| - |\n| 1 |\n\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n",
+        "selection": {
+          "anchor": 65,
+          "head": 65
+        }
+      }
+    },
+    {
+      "name": "at a header line start",
+      "text": "| a |\n| - |",
+      "selection": {
+        "anchor": 0,
+        "head": 0
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n| a |\n| - |",
+        "selection": {
+          "anchor": 46,
+          "head": 46
+        }
+      }
+    },
+    {
+      "name": "at a header line start after text",
+      "text": "intro\n\n| a |\n| - |",
+      "selection": {
+        "anchor": 7,
+        "head": 7
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "intro\n\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n| a |\n| - |",
+        "selection": {
+          "anchor": 53,
+          "head": 53
+        }
+      }
+    },
+    {
+      "name": "paragraph line directly above a table",
+      "text": "para\n| a |\n| - |",
+      "selection": {
+        "anchor": 4,
+        "head": 4
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "para\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n| a |\n| - |",
+        "selection": {
+          "anchor": 51,
+          "head": 51
+        }
+      }
+    },
+    {
+      "name": "blank line above a table",
+      "text": "para\n\n| a |\n| - |",
+      "selection": {
+        "anchor": 5,
+        "head": 5
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "para\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n| a |\n| - |",
+        "selection": {
+          "anchor": 51,
+          "head": 51
+        }
+      }
+    },
+    {
+      "name": "paragraph above a table after a blank line",
+      "text": "para\n\n| a |\n| - |",
+      "selection": {
+        "anchor": 4,
+        "head": 4
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "para\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n| a |\n| - |",
+        "selection": {
+          "anchor": 51,
+          "head": 51
+        }
+      }
+    },
+    {
+      "name": "mid cell",
+      "text": "| ab |\n| - |",
+      "selection": {
+        "anchor": 3,
+        "head": 3
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a ![](image:abcdefghijklmnopqrstuvwxy2#640x480) b |\n| - |",
+        "selection": {
+          "anchor": 49,
+          "head": 49
+        }
+      }
+    },
+    {
+      "name": "cell content start",
+      "text": "| ab |\n| - |",
+      "selection": {
+        "anchor": 2,
+        "head": 2
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| ![](image:abcdefghijklmnopqrstuvwxy2#640x480) ab |\n| - |",
+        "selection": {
+          "anchor": 47,
+          "head": 47
+        }
+      }
+    },
+    {
+      "name": "cell content end",
+      "text": "| ab |\n| - |",
+      "selection": {
+        "anchor": 4,
+        "head": 4
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| ab ![](image:abcdefghijklmnopqrstuvwxy2#640x480) |\n| - |",
+        "selection": {
+          "anchor": 50,
+          "head": 50
+        }
+      }
+    },
+    {
+      "name": "cell without padding",
+      "text": "|ab|\n|-|",
+      "selection": {
+        "anchor": 2,
+        "head": 2
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "|a ![](image:abcdefghijklmnopqrstuvwxy2#640x480) b|\n|-|",
+        "selection": {
+          "anchor": 48,
+          "head": 48
+        }
+      }
+    },
+    {
+      "name": "empty cell",
+      "text": "| a |\n| - |\n|  |",
+      "selection": {
+        "anchor": 14,
+        "head": 14
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a |\n| - |\n| ![](image:abcdefghijklmnopqrstuvwxy2#640x480) |",
+        "selection": {
+          "anchor": 59,
+          "head": 59
+        }
+      }
+    },
+    {
+      "name": "empty cell without spaces",
+      "text": "| a |\n| - |\n||",
+      "selection": {
+        "anchor": 13,
+        "head": 13
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a |\n| - |\n| ![](image:abcdefghijklmnopqrstuvwxy2#640x480) |",
+        "selection": {
+          "anchor": 59,
+          "head": 59
+        }
+      }
+    },
+    {
+      "name": "extra cell",
+      "text": "| a |\n| - |\n| 1 | xy |",
+      "selection": {
+        "anchor": 19,
+        "head": 19
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a |\n| - |\n| 1 | x ![](image:abcdefghijklmnopqrstuvwxy2#640x480) y |",
+        "selection": {
+          "anchor": 65,
+          "head": 65
+        }
+      }
+    },
+    {
+      "name": "row without a trailing pipe",
+      "text": "| a |\n| - |\n| 1 | x",
+      "selection": {
+        "anchor": 19,
+        "head": 19
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a |\n| - |\n| 1 | x ![](image:abcdefghijklmnopqrstuvwxy2#640x480)",
+        "selection": {
+          "anchor": 65,
+          "head": 65
+        }
+      }
+    },
+    {
+      "name": "row lead",
+      "text": "| a |\n| - |\n  | x |",
+      "selection": {
+        "anchor": 14,
+        "head": 14
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a |\n| - |\n  | ![](image:abcdefghijklmnopqrstuvwxy2#640x480) x |",
+        "selection": {
+          "anchor": 61,
+          "head": 61
+        }
+      }
+    },
+    {
+      "name": "cell without a leading pipe",
+      "text": "ab | c\n-- | --",
+      "selection": {
+        "anchor": 1,
+        "head": 1
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "a ![](image:abcdefghijklmnopqrstuvwxy2#640x480) b | c\n-- | --",
+        "selection": {
+          "anchor": 47,
+          "head": 47
+        }
+      }
+    },
+    {
+      "name": "delimiter line",
+      "text": "| ab | cd |\n| -- | -- |",
+      "selection": {
+        "anchor": 15,
+        "head": 15
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| ab ![](image:abcdefghijklmnopqrstuvwxy2#640x480) | cd |\n| -- | -- |",
+        "selection": {
+          "anchor": 50,
+          "head": 50
+        }
+      }
+    },
+    {
+      "name": "delimiter line second column",
+      "text": "| ab | cd |\n| -- | -- |",
+      "selection": {
+        "anchor": 20,
+        "head": 20
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| ab | cd ![](image:abcdefghijklmnopqrstuvwxy2#640x480) |\n| -- | -- |",
+        "selection": {
+          "anchor": 55,
+          "head": 55
+        }
+      }
+    },
+    {
+      "name": "delimiter line with an empty header cell",
+      "text": "|  | cd |\n| -- | -- |",
+      "selection": {
+        "anchor": 13,
+        "head": 13
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| ![](image:abcdefghijklmnopqrstuvwxy2#640x480) | cd |\n| -- | -- |",
+        "selection": {
+          "anchor": 47,
+          "head": 47
+        }
+      }
+    },
+    {
+      "name": "end of a table ending with the delimiter line",
+      "text": "| ab |\n| -- |",
+      "selection": {
+        "anchor": 13,
+        "head": 13
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| ab |\n| -- |\n\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n",
+        "selection": {
+          "anchor": 61,
+          "head": 61
+        }
+      }
+    },
+    {
+      "name": "several references in a cell",
+      "text": "| ab |\n| - |",
+      "selection": {
+        "anchor": 3,
+        "head": 3
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)",
+        "![](image:bcdefghijklmnopqrstuvwxyz2#1024x768)"
+      ],
+      "expected": {
+        "text": "| a ![](image:abcdefghijklmnopqrstuvwxy2#640x480) ![](image:bcdefghijklmnopqrstuvwxyz2#1024x768) b |\n| - |",
+        "selection": {
+          "anchor": 96,
+          "head": 96
+        }
+      }
+    },
+    {
+      "name": "several references in a body cell",
+      "text": "| a |\n| - |\n| xy |",
+      "selection": {
+        "anchor": 15,
+        "head": 15
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)",
+        "![](image:bcdefghijklmnopqrstuvwxyz2#1024x768)",
+        "![](image:cdefghijklmnopqrstuvwxyz23#320x200)"
+      ],
+      "expected": {
+        "text": "| a |\n| - |\n| x ![](image:abcdefghijklmnopqrstuvwxy2#640x480) ![](image:bcdefghijklmnopqrstuvwxyz2#1024x768) ![](image:cdefghijklmnopqrstuvwxyz23#320x200) y |",
+        "selection": {
+          "anchor": 154,
+          "head": 154
+        }
+      }
+    },
+    {
+      "name": "next to whitespace in a cell",
+      "text": "| a  b |\n| - |",
+      "selection": {
+        "anchor": 4,
+        "head": 4
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a ![](image:abcdefghijklmnopqrstuvwxy2#640x480) b |\n| - |",
+        "selection": {
+          "anchor": 49,
+          "head": 49
+        }
+      }
+    },
+    {
+      "name": "grapheme cluster cell",
+      "text": "| 👍🏽 |\n| - |",
+      "selection": {
+        "anchor": 6,
+        "head": 6
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| 👍🏽 ![](image:abcdefghijklmnopqrstuvwxy2#640x480) |\n| - |",
+        "selection": {
+          "anchor": 52,
+          "head": 52
+        }
+      }
+    },
+    {
+      "name": "blockquote table cell",
+      "text": "> | a |\n> | - |\n> | xy |",
+      "selection": {
+        "anchor": 21,
+        "head": 21
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "> | a |\n> | - |\n> | x ![](image:abcdefghijklmnopqrstuvwxy2#640x480) y |",
+        "selection": {
+          "anchor": 67,
+          "head": 67
+        }
+      }
+    },
+    {
+      "name": "blockquote table line end",
+      "text": "> | a |\n> | - |\n> | 1 |\n# next",
+      "selection": {
+        "anchor": 23,
+        "head": 23
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "> | a |\n> | - |\n> | 1 |\n\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n# next",
+        "selection": {
+          "anchor": 71,
+          "head": 71
+        }
+      }
+    },
+    {
+      "name": "blockquote table header start",
+      "text": "> | a |\n> | - |",
+      "selection": {
+        "anchor": 2,
+        "head": 2
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n> | a |\n> | - |",
+        "selection": {
+          "anchor": 46,
+          "head": 46
+        }
+      }
+    },
+    {
+      "name": "list item table cell",
+      "text": "- item\n\n  | a |\n  | - |\n  | xy |",
+      "selection": {
+        "anchor": 29,
+        "head": 29
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "- item\n\n  | a |\n  | - |\n  | x ![](image:abcdefghijklmnopqrstuvwxy2#640x480) y |",
+        "selection": {
+          "anchor": 75,
+          "head": 75
+        }
+      }
+    },
+    {
+      "name": "irregular nested table cell",
+      "text": "> | a | b |\n> | - | - |\n| 1 | xy |",
+      "selection": {
+        "anchor": 31,
+        "head": 31
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "> | a | b |\n> | - | - |\n| 1 | x ![](image:abcdefghijklmnopqrstuvwxy2#640x480) y |",
+        "selection": {
+          "anchor": 77,
+          "head": 77
+        }
+      }
+    },
+    {
+      "name": "cell with a non-collapsed selection",
+      "text": "| a |\n| - |\n| xy |",
+      "selection": {
+        "anchor": 15,
+        "head": 16
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a |\n| - |\n| xy ![](image:abcdefghijklmnopqrstuvwxy2#640x480) |",
+        "selection": {
+          "anchor": 62,
+          "head": 62
+        }
+      }
+    }
+  ]
+}

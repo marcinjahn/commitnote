@@ -77,18 +77,25 @@ function parseAlignments(separator: string): TableAlignment[] {
     });
 }
 
-function rowSegments(row: SyntaxNode): Array<[number, number]> {
-  const delimiters = row.getChildren("TableDelimiter");
+export function pipeSegments(
+  from: number,
+  to: number,
+  pipes: readonly { readonly from: number; readonly to: number }[],
+): Array<[number, number]> {
   const segments: Array<[number, number]> = [];
-  let start = row.from;
-  for (const delimiter of delimiters) {
-    segments.push([start, delimiter.from]);
-    start = delimiter.to;
+  let start = from;
+  for (const pipe of pipes) {
+    segments.push([start, pipe.from]);
+    start = pipe.to;
   }
-  segments.push([start, row.to]);
-  if (delimiters[0]?.from === row.from) segments.shift();
-  if (delimiters[delimiters.length - 1]?.to === row.to) segments.pop();
+  segments.push([start, to]);
+  if (pipes[0]?.from === from) segments.shift();
+  if (pipes[pipes.length - 1]?.to === to) segments.pop();
   return segments;
+}
+
+function rowSegments(row: SyntaxNode): Array<[number, number]> {
+  return pipeSegments(row.from, row.to, row.getChildren("TableDelimiter"));
 }
 
 function readRow(row: SyntaxNode, columns: number): MarkdownTableRow {

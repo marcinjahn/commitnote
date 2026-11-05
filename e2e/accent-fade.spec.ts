@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { chooseRepository, expectTree, SAMPLE, openNotes, logOut, fakeForge, onFakeForgeReady } from "./helpers";
-import { chooseAccent, closeSettings, openSettings, rootAccent } from "./helpers/settings";
+import { rootAccent, saveAccent } from "./helpers/settings";
 
 const TEAL = "rgb(0, 133, 115)";
 
@@ -146,14 +146,8 @@ function expectFade(
   expect(fade.endRoot).toBe(to);
 }
 
-async function saveTeal(page: Page): Promise<void> {
-  await openSettings(page);
-  await chooseAccent(page, "Teal");
-  await expect
-    .poll(() => fakeForge(page).commitMessages(), { timeout: 10_000 })
-    .toContainEqual(expect.stringContaining("accentColor"));
-  await closeSettings(page);
-  await expect.poll(() => rootAccent(page)).toBe(TEAL);
+function saveTeal(page: Page): Promise<void> {
+  return saveAccent(page, "Teal", TEAL);
 }
 
 async function settle(page: Page, accent: string): Promise<void> {

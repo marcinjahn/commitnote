@@ -398,3 +398,23 @@ test("Move up is disabled on the first sibling and Move down on the last", async
   await expect(page.getByRole("menuitem", { name: "Move down" })).toBeDisabled();
   await expect(page.getByRole("menuitem", { name: "Move up" })).toBeEnabled();
 });
+
+test("A disabled Move up stays focusable and ignores activation", async ({ page }) => {
+  const menu = await openRowMenu(page, "Empty folder");
+  const moveUp = page.getByRole("menuitem", { name: "Move up" });
+  await expect(moveUp).toHaveAttribute("aria-disabled", "true");
+
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(moveUp).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Move down" })).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(moveUp).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await expect(menu).toBeVisible();
+  await expect(moveUp).toBeFocused();
+  await expect(treeRows(page)).toHaveText(ROOT_ORDER);
+});

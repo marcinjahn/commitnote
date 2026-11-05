@@ -51,6 +51,19 @@ import {
   SHARE_IMAGE_PROFILE,
   type ImageProfile,
 } from "../../src/images/pipeline/image-profile";
+import { formatImageReference } from "../../src/images/image-reference";
+import { insertImageReferences } from "../../src/markdown/insertion-rule";
+import {
+  TABLE_COMMANDS,
+  applyTableCommand,
+  availableTableCommands,
+  type ColumnAlignment,
+  type TableCommand,
+} from "../../src/markdown/table-commands";
+import {
+  applyTextEdit,
+  type TextSelection,
+} from "../../src/markdown/text-edit";
 import { createSeededRandom } from "../../src/testing/sample-notes-repo/seeded-random";
 
 export const KEYRING_PASSPHRASE = "commitnote known answer";
@@ -964,6 +977,522 @@ async function imagePipelineFile() {
   return { format: FORMAT, cases };
 }
 
+const CARET_MARK = "¦";
+const ANCHOR_MARK = "«";
+const HEAD_MARK = "»";
+
+function parseMarked(marked: string): {
+  text: string;
+  selection: TextSelection;
+} {
+  const caret = marked.indexOf(CARET_MARK);
+  if (caret >= 0) {
+    return {
+      text: marked.replace(CARET_MARK, ""),
+      selection: { anchor: caret, head: caret },
+    };
+  }
+  const anchor = marked.indexOf(ANCHOR_MARK);
+  const head = marked.indexOf(HEAD_MARK);
+  if (anchor < 0 || head < 0) throw new Error("Missing selection marker");
+  return {
+    text: marked.replace(ANCHOR_MARK, "").replace(HEAD_MARK, ""),
+    selection: {
+      anchor: anchor < head ? anchor : anchor - 1,
+      head: head < anchor ? head : head - 1,
+    },
+  };
+}
+
+type TableCommandCase = readonly [
+  name: string,
+  marked: string,
+  command: TableCommand,
+  argument?: string,
+];
+
+const ALIGN_TABLE = "| a | b |\n| :-: | -: |\n| 1¦ | 22 |";
+const COMBINING = "e\u0301";
+
+function containerTable(
+  prefix: string,
+  lead: string,
+  caret: "first" | "last",
+): string {
+  const body = caret === "first" ? "| 1¦ | 22 |" : "| 1 | 22¦ |";
+  return (
+    lead +
+    ["| a | b |", "| - | - |", body].map((row) => prefix + row).join("\n")
+  );
+}
+
+const CONTAINERS: readonly (readonly [string, string, string])[] = [
+  ["blockquote", "> ", ""],
+  ["two-level blockquote", "> > ", ""],
+  ["list item", "  ", "- item\n\n"],
+];
+
+const CONTAINER_COMMANDS: readonly TableCommand[] = TABLE_COMMANDS.filter(
+  (command) => command !== "insert-table",
+);
+
+function containerCases(): TableCommandCase[] {
+  return CONTAINERS.flatMap(([container, prefix, lead]) =>
+    CONTAINER_COMMANDS.map((command): TableCommandCase => {
+      const marked = containerTable(
+        prefix,
+        lead,
+        command === "next-cell" ? "last" : "first",
+      );
+      const name = `${container}: ${command}`;
+      return command === "align-column"
+        ? [name, marked, command, "right"]
+        : [name, marked, command];
+    }),
+  );
+}
+
+const OUTSIDE_OR_IRREGULAR: readonly (readonly [string, string])[] = [
+  ["outside a table", "text¦\n\n| a |\n| - |"],
+  ["irregular nested table", "> | a | b |\n> | - | - |\n| 1¦ | 2 |"],
+];
+
+function outsideCases(): TableCommandCase[] {
+  return OUTSIDE_OR_IRREGULAR.flatMap(([where, marked]) =>
+    CONTAINER_COMMANDS.map((command): TableCommandCase => {
+      const name = `${where}: ${command}`;
+      return command === "align-column"
+        ? [name, marked, command, "left"]
+        : [name, marked, command];
+    }),
+  );
+}
+
+const TABLE_COMMAND_CASES: readonly TableCommandCase[] = [
+  ["top level: insert-row-above", ALIGN_TABLE, "insert-row-above"],
+  ["top level: insert-row-below", ALIGN_TABLE, "insert-row-below"],
+  ["top level: insert-column-left", ALIGN_TABLE, "insert-column-left"],
+  ["top level: insert-column-right", ALIGN_TABLE, "insert-column-right"],
+  ["top level: delete-row", ALIGN_TABLE, "delete-row"],
+  ["top level: delete-column", ALIGN_TABLE, "delete-column"],
+  ["top level: format-table", "| a | b |\n|-|-|\n| 1¦ | 22 |", "format-table"],
+  ["top level: next-cell", ALIGN_TABLE, "next-cell"],
+  ["top level: previous-cell", ALIGN_TABLE, "previous-cell"],
+  ["align-column left", ALIGN_TABLE, "align-column", "left"],
+  ["align-column center", ALIGN_TABLE, "align-column", "center"],
+  ["align-column right", ALIGN_TABLE, "align-column", "right"],
+  ["align-column default", ALIGN_TABLE, "align-column", "default"],
+  ["align-column without an argument", ALIGN_TABLE, "align-column"],
+  [
+    "align-column with an invalid argument",
+    ALIGN_TABLE,
+    "align-column",
+    "justify",
+  ],
+
+  ["insert-table on a blank line", "one\n¦\ntwo", "insert-table"],
+  ["insert-table after a non-empty line", "ab¦", "insert-table"],
+  ["insert-table mid-line before text", "ab¦\nnext", "insert-table"],
+  [
+    "insert-table inside a table",
+    "| a |\n| - |\n| 1¦ |\n\nnext",
+    "insert-table",
+  ],
+  ["insert-table in an empty document", "¦", "insert-table"],
+  ["insert-table with a non-collapsed selection", "a«b\nc»d", "insert-table"],
+
+  [
+    "insert-row-below on the header",
+    "| a¦ | b |\n|-|-|\n| 1 | 2 |",
+    "insert-row-below",
+  ],
+  [
+    "insert-row-above on the header",
+    "| a¦ | b |\n|-|-|\n| 1 | 2 |",
+    "insert-row-above",
+  ],
+  ["delete-row on the header", "| a¦ | b |\n|-|-|\n| 1 | 2 |", "delete-row"],
+  [
+    "delete-row on the last body row",
+    "| a |\n| - |\n| 1 |\n| 2¦ |",
+    "delete-row",
+  ],
+  ["delete-row on the only body row", "| a |\n| - |\n| 1¦ |", "delete-row"],
+  [
+    "delete-row on a middle body row",
+    "| a |\n| - |\n| 1 |\n| 2¦ |\n| 3 |",
+    "delete-row",
+  ],
+  [
+    "delete-column on a one-column table",
+    "| a¦ |\n| - |\n| 1 |",
+    "delete-column",
+  ],
+  [
+    "delete-column on the last column",
+    "| a | b |\n| - | - |\n| 1 | 2¦ |",
+    "delete-column",
+  ],
+
+  ["next-cell appends a row", "| a | b |\n|-|-|\n| 1 | 2¦ |", "next-cell"],
+  ["next-cell appends the first body row", "| a | b¦ |\n|-|-|", "next-cell"],
+  ["next-cell within a row", "| a | b |\n|-|-|\n| 1¦ | 2 |", "next-cell"],
+  [
+    "next-cell from the header to the next column",
+    "| a¦ | b |\n|-|-|\n| 1 | 2 |",
+    "next-cell",
+  ],
+  [
+    "next-cell from the delimiter line to the header's next column",
+    "| a | b | c |\n| - | -¦ | - |\n| 1 | 2 | 3 |",
+    "next-cell",
+  ],
+  [
+    "next-cell from the last delimiter cell",
+    "| a | b |\n| - | -¦ |\n| 1 | 2 |",
+    "next-cell",
+  ],
+  [
+    "next-cell from an extra cell",
+    "| a | b |\n|-|-|\n| 1 | 2 | x¦y |\n| 3 | 4 |",
+    "next-cell",
+  ],
+  [
+    "next-cell with a non-collapsed selection",
+    "| a | b |\n|-|-|\n| «1» | 2 |",
+    "next-cell",
+  ],
+  [
+    "previous-cell in the first header cell",
+    "| ¦a | b |\n|-|-|",
+    "previous-cell",
+  ],
+  [
+    "previous-cell in the first header cell with a selection",
+    "| «a» | b |\n|-|-|",
+    "previous-cell",
+  ],
+  [
+    "previous-cell at the start of the delimiter line",
+    "| a | b |\n¦| - | - |",
+    "previous-cell",
+  ],
+  [
+    "previous-cell from the delimiter line at column 1",
+    "| a | b |\n| - | -¦ |",
+    "previous-cell",
+  ],
+  [
+    "previous-cell from the first body cell",
+    "| a | b |\n|-|-|\n| ¦1 | 2 |",
+    "previous-cell",
+  ],
+  [
+    "previous-cell to the previous row",
+    "| a | b |\n|-|-|\n| 1 | 2 |\n| ¦3 | 4 |",
+    "previous-cell",
+  ],
+  [
+    "previous-cell within a row",
+    "| a | b |\n|-|-|\n| 1 | 2¦ |",
+    "previous-cell",
+  ],
+
+  [
+    "format-table with escaped pipes",
+    "| a | b |\n|-|-|\n| x \\| y¦ | `c\\|d` |",
+    "format-table",
+  ],
+  [
+    "insert-column-right with escaped pipes",
+    "| a | b |\n|-|-|\n| x \\| y¦ | `c\\|d` |",
+    "insert-column-right",
+  ],
+  [
+    "next-cell across an escaped pipe in a code span",
+    "| a | b |\n|-|-|\n| `x\\|y`¦ | z |",
+    "next-cell",
+  ],
+  [
+    "format-table with a grapheme cluster",
+    "| a | b |\n|-|-|\n| 👍🏽¦ | x |",
+    "format-table",
+  ],
+  [
+    "insert-row-below with a grapheme cluster header",
+    "| 👍🏽¦ | b |\n|-|-|\n| 1 | 2 |",
+    "insert-row-below",
+  ],
+  [
+    "format-table with a combining sequence",
+    `| a | b |\n|-|-|\n| ${COMBINING}¦ | x |`,
+    "format-table",
+  ],
+  [
+    "next-cell from a combining sequence",
+    `| ${COMBINING}¦ | b |\n|-|-|\n| 1 | 2 |`,
+    "next-cell",
+  ],
+  [
+    "format-table with a non-collapsed selection",
+    "| a | b |\n|-|-|\n| «1» | 2 |",
+    "format-table",
+  ],
+  [
+    "insert-row-below with a selection across cells",
+    "| a | b |\n|-|-|\n| 1«1 | 2» |",
+    "insert-row-below",
+  ],
+  [
+    "align-column with a non-collapsed selection",
+    "| a | b |\n|-|-|\n| 1 | «2» |",
+    "align-column",
+    "center",
+  ],
+
+  [
+    "delimiter line: insert-row-above",
+    "| a | b |\n| -¦- | - |\n| 1 | 2 |",
+    "insert-row-above",
+  ],
+  [
+    "delimiter line: insert-row-below",
+    "| a | b |\n| -¦- | - |\n| 1 | 2 |",
+    "insert-row-below",
+  ],
+  [
+    "delimiter line: insert-column-left",
+    "| a | b |\n| - | -¦ |\n| 1 | 2 |",
+    "insert-column-left",
+  ],
+  [
+    "delimiter line: insert-column-right",
+    "| a | b |\n| -¦ | - |\n| 1 | 2 |",
+    "insert-column-right",
+  ],
+  [
+    "delimiter line: delete-row",
+    "| a | b |\n| -¦ | - |\n| 1 | 2 |",
+    "delete-row",
+  ],
+  [
+    "delimiter line: delete-column",
+    "| a | b |\n| - | -¦ |\n| 1 | 2 |",
+    "delete-column",
+  ],
+  [
+    "delimiter line: align-column",
+    "| abcd | b |\n| --¦-- | - |\n| 1 | 2 |",
+    "align-column",
+    "right",
+  ],
+  [
+    "delimiter line: format-table clamps the caret",
+    "| a | b |\n| -----¦----- | - |",
+    "format-table",
+  ],
+  [
+    "delimiter line: format-table keeps the caret offset",
+    "| abcde | b |\n| -¦ | - |",
+    "format-table",
+  ],
+
+  [
+    "extra cell: format-table",
+    "| a | b |\n|-|-|\n| 1 | 2 | x¦y |",
+    "format-table",
+  ],
+  [
+    "extra cell: insert-column-left",
+    "| a | b |\n|-|-|\n| 1 | 2 | x¦y |",
+    "insert-column-left",
+  ],
+  [
+    "extra cell: align-column",
+    "| a | b |\n|-|-|\n| 1 | 2 | x¦y |",
+    "align-column",
+    "left",
+  ],
+  [
+    "short rows are padded",
+    "| a | b |\n| - | - |\n| 1 |\n| 2 | 3 | x |\n| ¦4 | 5 |",
+    "insert-column-left",
+  ],
+  [
+    "indented table: format-table",
+    "text\n\n  | a | b |\n  |-|-|\n  | 1¦ | 22 |",
+    "format-table",
+  ],
+
+  ...containerCases(),
+  ...outsideCases(),
+];
+
+function tableCommandCase(entry: TableCommandCase) {
+  const [name, marked, command, argument] = entry;
+  const { text, selection } = parseMarked(marked);
+  const edit = applyTableCommand(
+    text,
+    selection,
+    command,
+    argument as ColumnAlignment | undefined,
+  );
+  return {
+    name,
+    text,
+    selection,
+    command,
+    ...(command === "align-column" && argument !== undefined
+      ? { argument }
+      : {}),
+    expected: edit
+      ? { text: applyTextEdit(text, edit), selection: edit.selection }
+      : null,
+  };
+}
+
+const AVAILABILITY_CASES: readonly (readonly [string, string])[] = [
+  ["outside a table", "text¦\n\n| a |\n| - |"],
+  ["empty document", "¦"],
+  ["blank line before a table", "text\n¦\n| a |\n| - |"],
+  ["header", "| a¦ | b |\n|-|-|\n| 1 | 2 |"],
+  ["delimiter line", "| a | b |\n| -¦ | - |\n| 1 | 2 |"],
+  ["first body row", "| a | b |\n|-|-|\n| 1¦ | 2 |"],
+  ["later body row", "| a | b |\n|-|-|\n| 1 | 2 |\n| 3 | 4¦ |"],
+  ["one-column header", "| a¦ |\n| - |\n| 1 |"],
+  ["one-column body", "| a |\n| - |\n| 1¦ |"],
+  ["extra cell", "| a | b |\n|-|-|\n| 1 | 2 | x¦y |"],
+  ["non-collapsed selection", "| a | b |\n|-|-|\n| «1» | 2 |"],
+  ["blockquote", "> | a | b |\n> | - | - |\n> | 1¦ | 2 |"],
+  ["nested regular", "> > | a | b |\n> > | - | - |\n> > | 1¦ | 2 |"],
+  ["list item", "- item\n\n  | a | b |\n  | - | - |\n  | 1¦ | 2 |"],
+  ["irregular nested", "> | a | b |\n> | - | - |\n| 1¦ | 2 |"],
+  ["irregular nested header", "> | a¦ | b |\n> | - | - |\n| 1 | 2 |"],
+];
+
+function availabilityCase([name, marked]: readonly [string, string]) {
+  const { text, selection } = parseMarked(marked);
+  return {
+    name,
+    text,
+    selection,
+    available: availableTableCommands(text, selection),
+  };
+}
+
+function tableCommandsFile() {
+  return {
+    format: FORMAT,
+    commands: TABLE_COMMAND_CASES.map(tableCommandCase),
+    availability: AVAILABILITY_CASES.map(availabilityCase),
+  };
+}
+
+const IMAGE_REFERENCES = (
+  [
+    ["abcdefghijklmnopqrstuvwxy2", 640, 480],
+    ["bcdefghijklmnopqrstuvwxyz2", 1024, 768],
+    ["cdefghijklmnopqrstuvwxyz23", 320, 200],
+  ] as const
+).map(([imageId, width, height]) =>
+  formatImageReference({ imageId, alt: "", width, height }),
+);
+const [REF_A, REF_B, REF_C] = IMAGE_REFERENCES;
+
+type InsertionCase = readonly [
+  name: string,
+  marked: string,
+  references: readonly string[],
+];
+
+const INSERTION_CASES: readonly InsertionCase[] = [
+  ["plain mid-line", "ab¦cd", [REF_A]],
+  ["plain after a space", "hello ¦world", [REF_A]],
+  ["at a line end", "text¦\nnext", [REF_A]],
+  ["at the document end", "text¦", [REF_A]],
+  ["in an empty document", "¦", [REF_A]],
+  ["on a blank line", "one\n¦\ntwo", [REF_A]],
+  ["with a non-collapsed selection", "a«bc»d", [REF_A]],
+  ["several references mid-line", "ab¦cd", [REF_A, REF_B]],
+  ["several references at a line end", "text¦\nnext", [REF_A, REF_B, REF_C]],
+  ["right after a table", "| a |\n| - |\n| 1 |\n¦\nnext", [REF_A]],
+  [
+    "at the end of a table's last line",
+    "| a |\n| - |\n| 1 |¦\n# next",
+    [REF_A],
+  ],
+  [
+    "at the end of a table at the document end",
+    "| a |\n| - |\n| 1 |¦",
+    [REF_A],
+  ],
+  ["at a header line start", "¦| a |\n| - |", [REF_A]],
+  ["at a header line start after text", "intro\n\n¦| a |\n| - |", [REF_A]],
+  ["paragraph line directly above a table", "para¦\n| a |\n| - |", [REF_A]],
+  ["blank line above a table", "para\n¦\n| a |\n| - |", [REF_A]],
+  [
+    "paragraph above a table after a blank line",
+    "para¦\n\n| a |\n| - |",
+    [REF_A],
+  ],
+  ["mid cell", "| a¦b |\n| - |", [REF_A]],
+  ["cell content start", "| ¦ab |\n| - |", [REF_A]],
+  ["cell content end", "| ab¦ |\n| - |", [REF_A]],
+  ["cell without padding", "|a¦b|\n|-|", [REF_A]],
+  ["empty cell", "| a |\n| - |\n| ¦ |", [REF_A]],
+  ["empty cell without spaces", "| a |\n| - |\n|¦|", [REF_A]],
+  ["extra cell", "| a |\n| - |\n| 1 | x¦y |", [REF_A]],
+  ["row without a trailing pipe", "| a |\n| - |\n| 1 | x¦", [REF_A]],
+  ["row lead", "| a |\n| - |\n  ¦| x |", [REF_A]],
+  ["cell without a leading pipe", "a¦b | c\n-- | --", [REF_A]],
+  ["delimiter line", "| ab | cd |\n| -¦- | -- |", [REF_A]],
+  ["delimiter line second column", "| ab | cd |\n| -- | -¦- |", [REF_A]],
+  [
+    "delimiter line with an empty header cell",
+    "|  | cd |\n| -¦- | -- |",
+    [REF_A],
+  ],
+  ["end of a table ending with the delimiter line", "| ab |\n| -- |¦", [REF_A]],
+  ["several references in a cell", "| a¦b |\n| - |", [REF_A, REF_B]],
+  [
+    "several references in a body cell",
+    "| a |\n| - |\n| x¦y |",
+    [REF_A, REF_B, REF_C],
+  ],
+  ["next to whitespace in a cell", "| a ¦ b |\n| - |", [REF_A]],
+  ["grapheme cluster cell", "| 👍🏽¦ |\n| - |", [REF_A]],
+  ["blockquote table cell", "> | a |\n> | - |\n> | x¦y |", [REF_A]],
+  ["blockquote table line end", "> | a |\n> | - |\n> | 1 |¦\n# next", [REF_A]],
+  ["blockquote table header start", "> ¦| a |\n> | - |", [REF_A]],
+  ["list item table cell", "- item\n\n  | a |\n  | - |\n  | x¦y |", [REF_A]],
+  [
+    "irregular nested table cell",
+    "> | a | b |\n> | - | - |\n| 1 | x¦y |",
+    [REF_A],
+  ],
+  ["cell with a non-collapsed selection", "| a |\n| - |\n| x«y» |", [REF_A]],
+];
+
+function insertionCase([name, marked, references]: InsertionCase) {
+  const { text, selection } = parseMarked(marked);
+  const edit = insertImageReferences(text, selection.head, references);
+  return {
+    name,
+    text,
+    selection,
+    command: "insert-image-references",
+    argument: [...references],
+    expected: {
+      text: applyTextEdit(text, edit),
+      selection: edit.selection,
+    },
+  };
+}
+
+function imageInsertionFile() {
+  return { format: FORMAT, insertions: INSERTION_CASES.map(insertionCase) };
+}
+
 export async function generateTestVectors(
   argon2id: Argon2idFunction = memoizeArgon2id(argon2idDirect),
 ): Promise<Record<string, unknown>> {
@@ -983,5 +1512,7 @@ export async function generateTestVectors(
     "device-trailer.json": await deviceTrailerFile(a.keyring),
     "shares.json": await sharesFile(argon2id),
     "git-blob-sha1.json": await gitBlobFile(asciiNote.stored),
+    "table-commands.json": tableCommandsFile(),
+    "image-insertion.json": imageInsertionFile(),
   };
 }

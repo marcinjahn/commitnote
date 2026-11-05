@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { argon2idDirect } from "../../crypto/argon2";
-import { checkTestVectors } from "./check-vectors";
+import { TEST_VECTOR_FILES, checkTestVectors } from "./check-vectors";
 import { createNodeHostServices } from "./node-host-services";
 
 const vectorModules = import.meta.glob<unknown>(
@@ -46,6 +46,75 @@ describe("checkTestVectors", () => {
       "notes.json: notes[2]",
       "device-trailer.json: trailers",
       "git-blob-sha1.json: vectors[0]",
+    ]);
+  });
+
+  it("counts one format check per file plus one per vector, as the native runtimes do", async () => {
+    const files = freshFiles();
+    const expected = TEST_VECTOR_FILES.reduce(
+      (total, file) =>
+        total +
+        1 +
+        Object.values(files[file]).reduce<number>(
+          (sum, value) => sum + (Array.isArray(value) ? value.length : 0),
+          0,
+        ),
+      0,
+    );
+
+    const result = await checkTestVectors(
+      files,
+      argon2idDirect,
+      createNodeHostServices().imageCodec,
+    );
+
+    expect(result.failures).toEqual([]);
+    expect(result.checked).toBe(expected);
+  });
+
+  it("reports a tampered table command or image insertion by its name", async () => {
+    const files = freshFiles();
+    const commands = files["table-commands.json"];
+    const insertions = files["image-insertion.json"];
+    const command = commands.commands.find((vector: any) => vector.expected);
+    command.expected.text += "x";
+    commands.commands.find((vector: any) => vector.expected === null).expected =
+      { text: "", selection: { anchor: 0, head: 0 } };
+    commands.availability[0].available.push("format-table");
+    insertions.insertions[0].expected.selection.head += 1;
+
+    const result = await checkTestVectors(
+      files,
+      argon2idDirect,
+      createNodeHostServices().imageCodec,
+    );
+
+    expect(result.failures).toEqual([
+      `table-commands.json: ${command.name}`,
+      `table-commands.json: ${
+        commands.commands.find((vector: any) => vector.expected?.text === "")
+          .name
+      }`,
+      `table-commands.json: ${commands.availability[0].name}`,
+      `image-insertion.json: ${insertions.insertions[0].name}`,
+    ]);
+  });
+
+  it("reports a missing vector array and a missing file", async () => {
+    const files = freshFiles();
+    delete files["table-commands.json"].availability;
+    delete files["image-insertion.json"];
+
+    const result = await checkTestVectors(
+      files,
+      argon2idDirect,
+      createNodeHostServices().imageCodec,
+    );
+
+    expect(result.failures).toEqual([
+      "image-insertion.json: format",
+      "table-commands.json: availability",
+      "image-insertion.json: insertions",
     ]);
   });
 });

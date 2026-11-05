@@ -10,6 +10,7 @@ import { EditorView, ViewPlugin } from "@codemirror/view";
 import type { PendingImage } from "../images/pending-image";
 import type { PrepareImagesOutcome } from "../images/prepare-images";
 import { formatImageReference } from "../images/image-reference";
+import { insertImageReferences } from "../markdown/insertion-rule";
 import { imageCloneExempt } from "./image-clone-on-insert";
 
 export interface ImageInsertionConfig {
@@ -130,7 +131,6 @@ function insertReferences(
   images: readonly PendingImage[],
 ): void {
   const { state } = view;
-  const line = state.doc.lineAt(pos);
   const references = images.map((image) =>
     formatImageReference({
       imageId: image.imageId,
@@ -139,17 +139,14 @@ function insertReferences(
       height: image.height,
     }),
   );
+  const edit = insertImageReferences(state.doc.toString(), pos, references);
+  const changes = state.changes([...edit.changes]);
   const main = state.selection.main;
   const caretAtAnchor = main.empty && main.head === pos;
-  const insert =
-    (pos === line.from ? "" : "\n") +
-    references.join("\n") +
-    (pos !== line.to || caretAtAnchor ? "\n" : "");
-  const changes = state.changes({ from: pos, insert });
   let selection = state.selection.map(changes);
   if (caretAtAnchor) {
     selection = selection.replaceRange(
-      EditorSelection.cursor(pos + insert.length),
+      EditorSelection.cursor(edit.selection.head),
       selection.mainIndex,
     );
   }

@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
+import { fakeForge } from "../helpers";
 
 export function settingsDialog(page: Page): Locator {
   return page.getByRole("dialog", { name: "Settings" });
@@ -50,6 +51,20 @@ export async function chooseOption(
 
 export function chooseAccent(page: Page, name: string): Promise<void> {
   return chooseOption(page, "Accent color", name);
+}
+
+export async function saveAccent(
+  page: Page,
+  name: string,
+  value: string,
+): Promise<void> {
+  await openSettings(page);
+  await chooseAccent(page, name);
+  await expect
+    .poll(() => fakeForge(page).commitMessages(), { timeout: 10_000 })
+    .toContainEqual(expect.stringContaining("accentColor"));
+  await closeSettings(page);
+  await expect.poll(() => rootAccent(page)).toBe(value);
 }
 
 export function rootAccent(page: Page): Promise<string> {
