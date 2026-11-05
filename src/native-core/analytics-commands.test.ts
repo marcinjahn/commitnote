@@ -13,11 +13,13 @@ afterEach(() => {
 });
 
 describe("analytics.visit", () => {
-  it("returns the exact native visit URL for an endpoint", async () => {
-    ctx = await createCoreTestContext({ analyticsEndpoint: FAKE_ENDPOINT });
+  it("returns the exact Linux visit URL for an endpoint", async () => {
+    ctx = await createCoreTestContext({
+      analyticsEndpoint: FAKE_ENDPOINT,
+    });
     const core = ctx.startCore();
     expect(await ctx.call(core, "analytics.visit")).toEqual({
-      url: "https://analytics.invalid/count?p=%2Fapp%2Fnative&t=App%20(native)",
+      url: "https://analytics.invalid/count?p=%2Fapp%2Flinux&t=App%20(Linux)",
     });
   });
 

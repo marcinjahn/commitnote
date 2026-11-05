@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/io/github/marcinjahn/commitnote">
+    <file>ui/window.ui</file>
+    <file>ui/startup-error-page.ui</file>
+    <file>ui/token-page.ui</file>
+    <file>ui/repository-list-page.ui</file>
+    <file>ui/unusable-repository-page.ui</file>
+    <file>ui/unlock-page.ui</file>
+    <file>ui/initialize-page.ui</file>
+    <file>ui/loading-page.ui</file>
+    <file>ui/key-changed-page.ui</file>
+    <file>ui/notes-page.ui</file>
+    <file>ui/tree-view.ui</file>
+    <file>ui/note-view.ui</file>
+    <file alias="core/commitnote-core.js">commitnote-core.js</file>
+    <file>style.css</file>
+  </gresource>
+</gresources>

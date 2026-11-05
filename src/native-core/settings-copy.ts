@@ -43,11 +43,15 @@ import {
   THIS_DEVICE_SECTION,
   TYPE_TO_START_HINT,
   TYPE_TO_START_LABEL,
+  VIM_MODE_HINT,
+  VIM_MODE_LABEL,
 } from "../ui/settings/settings-messages";
-import type { SettingOptionView, SettingsCopy } from "./api";
+import type { NativePlatform, SettingOptionView, SettingsCopy } from "./api";
 
-export const EDITOR_UNAVAILABLE_MESSAGE =
-  "Vim mode and the animated caret are not available in this app. Their settings stay as they are for your other devices.";
+const EDITOR_UNAVAILABLE_MESSAGES: Record<NativePlatform, string> = {
+  linux:
+    "The animated caret is not available on Linux. Its setting stays as it is for your other devices.",
+};
 export const EXPORT_SHARE_LABEL = "Share";
 export const EXPORT_FILES_LABEL = "Save to Files";
 
@@ -61,7 +65,7 @@ function optionViews(
   }));
 }
 
-export function buildSettingsCopy(): SettingsCopy {
+export function buildSettingsCopy(platform: NativePlatform): SettingsCopy {
   return {
     title: SETTINGS_TITLE,
     intro: SETTINGS_INTRO,
@@ -93,8 +97,9 @@ export function buildSettingsCopy(): SettingsCopy {
       previewBody: NOTE_FONT_PREVIEW_BODY,
       previewCode: NOTE_FONT_PREVIEW_CODE,
     },
-    editorUnavailable: EDITOR_UNAVAILABLE_MESSAGE,
+    editorUnavailable: EDITOR_UNAVAILABLE_MESSAGES[platform],
     typeToStart: { label: TYPE_TO_START_LABEL, hint: TYPE_TO_START_HINT },
+    vimMode: { label: VIM_MODE_LABEL, hint: VIM_MODE_HINT },
     newNotePlacement: {
       label: NEW_NOTES_LABEL,
       options: optionViews(NEW_NOTE_PLACEMENT_OPTIONS),

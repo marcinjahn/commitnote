@@ -26,6 +26,8 @@ import {
   SETTINGS_RETRY_LABEL,
   SETTINGS_TITLE,
   THIS_DEVICE_SECTION,
+  VIM_MODE_HINT,
+  VIM_MODE_LABEL,
 } from "./settings-messages";
 
 describe("describeSystemAccent", () => {
@@ -87,6 +89,13 @@ describe("settings copy", () => {
       "New folders",
       "Retry",
     ]);
+  });
+
+  it("words the Vim mode setting for editors without a status bar", () => {
+    expect(VIM_MODE_LABEL).toBe("Vim mode");
+    expect(VIM_MODE_HINT).toBe(
+      "Edit notes with Vim keys: Normal, Insert and Visual modes.",
+    );
   });
 
   it("labels the scope toggle", () => {

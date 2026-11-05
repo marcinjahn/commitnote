@@ -1,0 +1,32 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CommitnoteWindow: Adw.ApplicationWindow {
+  title: "commitnote";
+  default-width: 960;
+  default-height: 680;
+  width-request: 360;
+  height-request: 294;
+
+  content: Adw.ToastOverlay toast_overlay {
+    Adw.NavigationView navigation_view {
+      Adw.NavigationPage starting_page {
+        title: "commitnote";
+        can-pop: false;
+
+        child: Adw.ToolbarView {
+          [top]
+          Adw.HeaderBar {}
+
+          content: Adw.Spinner starting_spinner {
+            visible: false;
+            width-request: 32;
+            height-request: 32;
+            halign: center;
+            valign: center;
+          };
+        };
+      }
+    }
+  };
+}

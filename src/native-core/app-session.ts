@@ -29,6 +29,7 @@ import {
   KEY_CHANGED_MESSAGE,
 } from "../ui/browse/sync-messages";
 import { exportNotesLabel } from "../ui/session/session-messages";
+import type { NativePlatform } from "./api";
 import type { EmitCoreEvent } from "./commands/command-context";
 import { createHostBlobStore } from "./host-blob-store";
 import {
@@ -58,6 +59,7 @@ export interface AppSession {
   readonly blobStore: BlobStoreProvider;
   readonly deviceSettings: DeviceSettingsStore;
   readonly deviceModel: string;
+  readonly platform: NativePlatform;
   deviceName(): string;
   registry(): Promise<ForgeRegistry>;
   forgeName(forge: ForgeId): Promise<string>;
@@ -111,6 +113,7 @@ function hostBlobStoreProvider(host: HostServices): BlobStoreProvider {
 export function createAppSession(options: {
   readonly host: HostServices;
   readonly deviceModel: string;
+  readonly platform: NativePlatform;
   readonly registry: () => Promise<ForgeRegistry>;
   readonly emit: EmitCoreEvent;
 }): AppSession {
@@ -252,6 +255,7 @@ export function createAppSession(options: {
     blobStore,
     deviceSettings,
     deviceModel: options.deviceModel,
+    platform: options.platform,
     deviceName,
     registry,
     async forgeName(forge) {

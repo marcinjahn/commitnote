@@ -3,14 +3,21 @@ import {
   visitUrl,
   type AnalyticsStorage,
 } from "../analytics/analytics";
+import type { NativePlatform } from "./api";
 
-export const NATIVE_VISIT_PATH = "/app/native";
-export const NATIVE_VISIT_TITLE = "App (native)";
+export const NATIVE_VISITS: Record<
+  NativePlatform,
+  { path: string; title: string }
+> = {
+  linux: { path: "/app/linux", title: "App (Linux)" },
+};
 
 export function nativeVisitUrl(
   endpoint: string | null,
   storage: AnalyticsStorage,
+  platform: NativePlatform,
 ): string | null {
   if (endpoint === null || readAnalyticsOptOut(storage)) return null;
-  return visitUrl(endpoint, NATIVE_VISIT_PATH, NATIVE_VISIT_TITLE);
+  const { path, title } = NATIVE_VISITS[platform];
+  return visitUrl(endpoint, path, title);
 }

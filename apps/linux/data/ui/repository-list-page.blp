@@ -1,0 +1,49 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CommitnoteRepositoryListPage: Adw.NavigationPage {
+  title: "Choose Repository";
+  tag: "repositories";
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+
+    content: Gtk.ScrolledWindow {
+      hscrollbar-policy: never;
+
+      child: Adw.Clamp {
+        maximum-size: 480;
+        tightening-threshold: 360;
+
+        child: Gtk.Box {
+          orientation: vertical;
+          spacing: 24;
+          margin-top: 24;
+          margin-bottom: 24;
+          margin-start: 12;
+          margin-end: 12;
+
+          Adw.PreferencesGroup repositories_group {
+            description: "Repositories this access token can open. Pick your notes repo, or an empty one to start a new notes repo.";
+          }
+
+          Gtk.Box progress_box {
+            visible: false;
+            spacing: 12;
+            halign: center;
+
+            Adw.Spinner {
+              width-request: 24;
+              height-request: 24;
+            }
+
+            Gtk.Label progress_label {
+              wrap: true;
+            }
+          }
+        };
+      };
+    };
+  };
+}

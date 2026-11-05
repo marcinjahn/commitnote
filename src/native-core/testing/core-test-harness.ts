@@ -7,7 +7,11 @@ import {
   type FakeForgeControls,
 } from "../../testing/fake-forge/fake-forge-factory";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../../testing/sample-notes-repo/sample-source";
-import type { CoreEventMessage, CoreResponse, NativeCoreHandle } from "../api";
+import type {
+  CoreEventMessage,
+  CoreResponse,
+  NativeCoreHandle,
+} from "../api";
 import type { AppSession } from "../app-session";
 import { createNativeCore } from "../native-core";
 import { createCryptoShim } from "../runtime/crypto-shim";
@@ -99,6 +103,7 @@ export async function createCoreTestContext(
     const core = createNativeCore({
       host,
       deviceModel: "ThinkPad",
+      platform: "linux",
       analyticsEndpoint: options.analyticsEndpoint ?? null,
       registry: () => Promise.resolve(forges),
       extraCommands: (app) => ({

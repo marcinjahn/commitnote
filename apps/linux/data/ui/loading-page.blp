@@ -1,0 +1,45 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CommitnoteLoadingPage: Adw.NavigationPage {
+  title: "Loading";
+  tag: "loading";
+  can-pop: false;
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+
+    content: Adw.StatusPage status_page {
+      name: "loading-status";
+
+      child: Gtk.Box actions {
+        orientation: vertical;
+        spacing: 12;
+        halign: center;
+
+        Adw.Spinner spinner {
+          width-request: 32;
+          height-request: 32;
+          halign: center;
+        }
+
+        Gtk.Button try_again_button {
+          name: "loading-try-again-button";
+          label: "Try Again";
+          visible: false;
+          halign: center;
+          css-classes: ["suggested-action", "pill"];
+        }
+
+        Gtk.Button log_in_button {
+          name: "loading-log-in-button";
+          label: "Log In";
+          visible: false;
+          halign: center;
+          css-classes: ["pill"];
+        }
+      };
+    };
+  };
+}

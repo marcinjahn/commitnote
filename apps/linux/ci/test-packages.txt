@@ -1,0 +1,7 @@
+adwaita-icon-theme
+adwaita-mono-fonts
+adwaita-sans-fonts
+dbus-daemon
+gnome-keyring
+mesa-dri-drivers
+weston

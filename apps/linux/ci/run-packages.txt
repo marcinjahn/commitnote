@@ -1,0 +1,8 @@
+glib2
+gtk4
+gtksourceview5
+javascriptcoregtk6.0
+libadwaita
+libsoup3
+libwebp
+webkitgtk6.0

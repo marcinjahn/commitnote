@@ -1,0 +1,53 @@
+.tag-dot {
+  border-radius: 50%;
+}
+
+.tag-red {
+  background-color: #ce2c31;
+}
+
+.tag-orange {
+  background-color: #cc4e00;
+}
+
+.tag-yellow {
+  background-color: #9a6700;
+}
+
+.tag-green {
+  background-color: #218358;
+}
+
+.tag-blue {
+  background-color: #3358d4;
+}
+
+.tag-purple {
+  background-color: #8a46b8;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tag-red {
+    background-color: #ff9592;
+  }
+
+  .tag-orange {
+    background-color: #ffa057;
+  }
+
+  .tag-yellow {
+    background-color: #ffc53d;
+  }
+
+  .tag-green {
+    background-color: #3dd68c;
+  }
+
+  .tag-blue {
+    background-color: #86a4ff;
+  }
+
+  .tag-purple {
+    background-color: #d59cff;
+  }
+}

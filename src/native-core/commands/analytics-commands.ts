@@ -18,7 +18,11 @@ export function createAnalyticsCommands(context: {
   return {
     async "analytics.visit"(): Promise<Result<"analytics.visit">> {
       return {
-        url: nativeVisitUrl(context.analyticsEndpoint, context.host.deviceSettings),
+        url: nativeVisitUrl(
+          context.analyticsEndpoint,
+          context.host.deviceSettings,
+          context.app.platform,
+        ),
       };
     },
   };

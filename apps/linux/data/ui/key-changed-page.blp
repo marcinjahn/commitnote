@@ -1,0 +1,45 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CommitnoteKeyChangedPage: Adw.NavigationPage {
+  title: "Passphrase Changed";
+  tag: "key-changed";
+  can-pop: false;
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+
+    content: Adw.StatusPage status_page {
+      icon-name: "dialog-password-symbolic";
+
+      child: Gtk.Box {
+        orientation: vertical;
+        spacing: 12;
+        halign: center;
+
+        Gtk.Button log_in_again_button {
+          name: "key-changed-log-in-again-button";
+          label: "Log In Again";
+          halign: center;
+          css-classes: ["suggested-action", "pill"];
+        }
+
+        Gtk.Button log_out_button {
+          name: "key-changed-log-out-button";
+          label: "Log Out";
+          halign: center;
+          css-classes: ["pill"];
+        }
+
+        Gtk.Label error_label {
+          visible: false;
+          wrap: true;
+          justify: center;
+          css-classes: ["error"];
+          accessible-role: alert;
+        }
+      };
+    };
+  };
+}

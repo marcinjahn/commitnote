@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseRepoConfig } from "../crypto/repo-config";
 import { REPO_CONFIG_PATH, TRAILER } from "../format/v1";
-import type { NativeCoreHandle, SettingsSaveView, SettingsView } from "./api";
+import type {
+  NativeCoreHandle,
+  SettingsSaveView,
+  SettingsView,
+} from "./api";
 import type { AppSession, NativeRunningApp } from "./app-session";
 import { REOPEN_LAST_VIEW_OFF_KEY } from "./reopen-last-view";
 import {
@@ -109,8 +113,9 @@ describe("settings.change", () => {
   });
 
   it.each([
-    { key: "vimMode", value: "true" },
     { key: "animatedCaret", value: "false" },
+    { key: "vimMode", value: "yes" },
+    { key: "vimMode", value: "True" },
     { key: "typeToStart", value: "yes" },
     { key: "colorMode", value: "sepia" },
     { key: "noteFont", value: "comic-sans" },
@@ -122,6 +127,58 @@ describe("settings.change", () => {
       error: { kind: "invalidParams" },
     });
     expect(current().settingsSaver.hasPending).toBe(false);
+    expect(app.deviceSettings.read().values.vimMode).toBeUndefined();
+  });
+});
+
+describe("vimMode setting", () => {
+  it("is device-scoped by default and stays out of the repo", async () => {
+    const core = await started();
+    const commitsBefore = ctx.controls.commitMessages(REPO).length;
+    expect(lastView().values.vimMode).toBe(false);
+
+    await ctx.call(core, "settings.change", {
+      key: "vimMode",
+      value: "true",
+    });
+
+    expect(app.deviceSettings.read().values.vimMode).toBe(true);
+    expect(current().settingsSaver.hasPending).toBe(false);
+    expect(ctx.controls.commitMessages(REPO)).toHaveLength(commitsBefore);
+    expect(lastView().values.vimMode).toBe(true);
+    expect((await ctx.call(core, "settings.open")).view.values.vimMode).toBe(
+      true,
+    );
+
+    await ctx.call(core, "settings.change", {
+      key: "vimMode",
+      value: "false",
+    });
+    expect(lastView().values.vimMode).toBe(false);
+  });
+
+  it("cannot have its scope changed", async () => {
+    const core = await started();
+    const response = await ctx.send(core, "settings.setScope", {
+      key: "vimMode",
+      scope: "synced",
+    });
+    expect(response).toMatchObject({
+      ok: false,
+      error: { kind: "invalidParams" },
+    });
+  });
+
+  it("has the Linux label and hint and only the caret as unavailable", async () => {
+    const core = await started();
+    const { copy } = await ctx.call(core, "settings.open");
+    expect(copy.vimMode).toEqual({
+      label: "Vim mode",
+      hint: "Edit notes with Vim keys: Normal, Insert and Visual modes.",
+    });
+    expect(copy.editorUnavailable).toBe(
+      "The animated caret is not available on Linux. Its setting stays as it is for your other devices.",
+    );
   });
 });
 

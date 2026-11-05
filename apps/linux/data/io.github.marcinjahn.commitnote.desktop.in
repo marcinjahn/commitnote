@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=@NAME@
+Comment=Encrypted markdown notes, stored in a Git repository you own
+Exec=commitnote
+Icon=@APP_ID@
+Terminal=false
+Type=Application
+Categories=Office;Utility;
+Keywords=notes;markdown;encrypted;git;
+StartupNotify=true

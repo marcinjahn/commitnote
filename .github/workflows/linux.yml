@@ -1,0 +1,105 @@
+name: Linux
+
+on:
+  push:
+    branches: [main, "linux-ci/**"]
+    paths:
+      - "apps/linux/**"
+      - "apps/test-vectors/**"
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "analytics.config.ts"
+      - "svelte.config.js"
+      - "tsconfig*.json"
+      - ".github/workflows/linux.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "linux-${{ github.ref }}"
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  linux:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run build:native-core
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Prepare image context
+        id: image
+        run: |
+          set -eu
+          apps/linux/scripts/container.sh --write-context "$RUNNER_TEMP/linux-image"
+          echo "tag=$(apps/linux/scripts/container.sh --print-image-tag)" >> "$GITHUB_OUTPUT"
+
+      - name: Build container image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ runner.temp }}/linux-image
+          tags: ${{ steps.image.outputs.tag }}
+          load: true
+          push: false
+          cache-from: type=gha,scope=linux-builder
+          cache-to: type=gha,mode=max,scope=linux-builder
+
+      - name: Set cache directory
+        run: echo "COMMITNOTE_LINUX_CACHE_DIR=$RUNNER_TEMP/linux-cache" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/linux-cache
+          key: linux-cargo-${{ runner.os }}-${{ hashFiles('apps/linux/Cargo.lock', 'apps/linux/rust-toolchain.toml', 'apps/linux/ci/Dockerfile') }}-${{ github.sha }}
+          restore-keys: |
+            linux-cargo-${{ runner.os }}-${{ hashFiles('apps/linux/Cargo.lock', 'apps/linux/rust-toolchain.toml', 'apps/linux/ci/Dockerfile') }}-
+
+      - name: Build
+        run: apps/linux/scripts/build.sh
+
+      - name: Static checks
+        run: apps/linux/scripts/lint.sh
+
+      - name: Tests
+        run: apps/linux/scripts/test.sh
+
+      - name: Release check
+        run: apps/linux/scripts/release-check.sh
+
+      - name: Fix ownership of container output
+        if: always()
+        run: |
+          for dir in "$RUNNER_TEMP/linux-cache" apps/linux/out; do
+            if [ -d "$dir" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$dir"
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-screenshots
+          path: apps/linux/out/screenshots
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-logs
+          path: apps/linux/out/logs
+          if-no-files-found: ignore
+          retention-days: 30
