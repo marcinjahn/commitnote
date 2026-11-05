@@ -21,12 +21,15 @@ The app and its crates:
 - **Core API** (`crates/core-api`) — the typed command, event and error shapes shared with the core
   bundle, plus the fake commands the testing build uses.
 - **Markdown** (`crates/markdown`, `commitnote-markdown`) — the Markdown parser, the live-preview
-  renderer (style runs and placements for a selection) and the Markdown commands (bold, italic,
-  strikethrough, links, tasks).
+  renderer (style runs and placements for a selection), the Markdown commands (bold, italic,
+  strikethrough, links, tasks) and the rule that places inserted image references in the text.
 - **Editor text** (`crates/editor-text`, `commitnote-editor-text`) — UTF-16 text edits, the grouped
   undo history and the merge of remote text into what is being typed.
 - **Interaction** (`crates/interaction`, `commitnote-interaction`) — the rules for starting a note by
   typing.
+- **Image codec** (`crates/image-codec`, `commitnote-image-codec`) — decodes images, re-encodes them
+  as WebP and decodes GIF frames for display. It sits behind the core runtime's `imageCodec`
+  service and needs libwebp.
 
 Every text offset between the app and the core is in UTF-16 code units, as in the web app. The
 editor widget converts to and from GTK's character offsets at the edge.
@@ -44,7 +47,7 @@ The note view has a title field above the editor. Everything below is in the edi
   marks, task checkboxes and horizontal rules are drawn as they will read. The Markdown markers
   (`#`, `**`, link brackets and the like) are hidden on every line the caret or selection does not
   touch. Hiding is only styling: the buffer text is always exactly the note text, so what is saved
-  is what was typed. Clicking a checkbox toggles the task. Images are not shown yet.
+  is what was typed. Clicking a checkbox toggles the task. Images are drawn in place of their reference (see Images).
 - **Autosave.** The core saves a note about 2 s after typing stops, at most 30 s later, and also when
   you switch notes, hide the window or log out. Ctrl+S (Save Now, also in the note menu) saves at
   once. Typing keeps working offline; the edits are saved when the connection returns.
@@ -62,7 +65,7 @@ The note view has a title field above the editor. Everything below is in the edi
   selection. Ctrl+K wraps the selection in a link with an empty destination and puts the caret in it;
   pasting a URL over a selection makes a link too. Toggle Task with nothing selected in a link opens
   it. In the narrow layout a formatting bar sits at the bottom of the note, and in both layouts the
-  note menu holds Save Now and the same commands.
+  note menu holds Save Now and the same commands, Insert Image… among them.
 - **Undo.** Ctrl+Z and Ctrl+Shift+Z use the app's own history, which groups typing that is less than
   a second apart. A remote change merges into the text without becoming an undo step, so
   Ctrl+Z takes back only your own typing.
@@ -92,6 +95,77 @@ The note view has a title field above the editor. Everything below is in the edi
   loading page shows a failure). An empty early draft closes at once. While anything is unsaved, or
   the early draft holds text, the app also holds a GNOME logout inhibit, so a session logout or
   shutdown warns first.
+
+## Images
+
+An image reference in the text (`![](image:<id>)`, optionally with a size) is drawn as the picture
+itself, on its own line, in the editor and in the shared version. The core
+keeps the pictures encrypted in the repo; the app asks it for the bytes and keeps up to 256 MiB of
+decoded pictures in memory. The Markdown stays the note text, so the reference is still there to edit.
+
+- **Inserting.** Insert Image… (the note menu, and the image button of the formatting bar in the
+  narrow layout) opens a file chooser filtered to images. Pasting an image file or an image from the
+  clipboard, and dropping image files or an image onto the editor, insert too. Pasting text that
+  holds image references from another note gives the open note its own copies. The references go in
+  where the caret or selection is, placed by the shared insertion rule: as blocks on their own lines,
+  inline inside a table cell, and after a table when the caret is at the end of its last row.
+  Several images keep their order. A result that arrives after you kept typing lands at the old
+  spot when the text is unchanged, and at the caret otherwise.
+- **What is accepted.** PNG, JPEG, GIF, WebP, BMP, TIFF and ICO, read by the image codec; HEIC and
+  SVG are refused. A file over 25 MiB or a picture over 50 million pixels is refused, and so is
+  anything that is not an image; the core says why in a notice, and the text stays as it was. At
+  most 10 images go in at once, and more than that are all refused. A file that cannot be read shows
+  the toast "Could not read the file". Pictures are shrunk to 2560 px on the long edge (smaller
+  where needed to fit 2 MiB) and stored as WebP, and an animated GIF stays a GIF if it is at most
+  5 MiB.
+- **In the note.** An image shows at its size up to 360 px high (260 px in the narrow layout, below
+  768 px wide). While it loads there is a placeholder, and a picture that cannot be read shows "Image
+  unavailable"; it is read again after a save or a refresh, and when the viewer is opened.
+- **Viewer.** A click on an image opens it in a dialog. The picture fits the window at first
+  (zoom 1×) and zooms up to 8× in steps of 1.25: Zoom In, Zoom Out and Best Fit in the header bar,
+  the shortcuts in the table below, Ctrl and the scroll wheel (around the pointer), or a pinch. A
+  zoomed picture is panned by dragging it. Escape closes the dialog.
+- **Animation.** A GIF plays while its widget is mapped and visible, with each frame's own delay (a
+  delay under 10 ms plays as 100 ms), and shows its first frame still when the GNOME setting
+  `gtk-enable-animations` is off. An animation larger than 64 MiB decoded keeps only its first
+  frame.
+
+## History
+
+History in the note menu (the open note only) saves any pending edit first, so the newest version
+is the one just typed, then lists the versions of the note.
+
+- **List.** Versions are grouped under the core's date headings, newest first; the newest carries a
+  Current mark, and a version that was shared carries a Shared mark. Close-together saves are
+  collapsed into one row (for example "14:02–14:31 · 18 saves") that expands to the single versions.
+  A row shows the time and what the change did (and the name the note had then). Load Older Versions
+  fetches more, with a spinner while it works; a failure shows its message with Retry, and the end of the history is stated.
+  While the note is still saving, or cannot be saved, the dialog shows the core's message instead of
+  the list.
+- **Preview and restore.** A row opens the version: the change as a line diff, with the changed words
+  marked and long unchanged stretches folded (the core decides what is shown, and says when the
+  version is too large to show or the same as the current one). When the title changed, the heading
+  names the change and a switch offers restoring the title as well. Restore (the label and whether it
+  is enabled come from the core, with the reason when it is not) saves pending edits, then restores
+  the version; the dialog closes and the core's notice with Undo appears as a toast. A failure shows
+  as a toast and keeps the dialog.
+
+## Sharing
+
+A note can be shared as a link that opens a read-only copy, with an optional password.
+
+- **Share….** The first item of the note menu opens the dialog for the open note; pending edits are
+  saved first. The form has a Password (optional) and a Name (optional) field and the core's
+  explanation. Create gives the link and, when there is a password, the password (hidden as dots)
+  with a copy button each; a toast confirms a copy. Create Another returns to the form. A refusal
+  from the core shows under the form, with a link when the core gives one. Shares the note already
+  has are listed below.
+- **Shared Links.** The main menu lists every share: its note, its name and date, and a lock when it
+  has a password. When there are none it says so, and when the shares cannot be read it shows why.
+- **Row actions.** A share's menu (here and in the Share… dialog) offers Copy Link, Copy Password,
+  Update (brings the shared copy to the current version, with a spinner on the row while it runs), View (the shared
+  version, read-only), Open (the note, when it still exists), Rename (the name) and Revoke. Revoke
+  asks for confirmation. The labels and the confirmation texts come from the core.
 
 ## Organising notes
 
@@ -202,6 +276,10 @@ Typing in the tree does not start a search.
 | Ctrl+K           | editor                         | Insert link.                                                                            |
 | Ctrl+Return      | editor                         | Toggle task; with nothing selected inside a link, open it.                              |
 | Ctrl+click       | a link in the editor           | Opens the link.                                                                         |
+| Ctrl+plus        | image viewer                   | Zoom in. Ctrl+equals and Ctrl+keypad plus work too.                                     |
+| Ctrl+minus       | image viewer                   | Zoom out. Ctrl+keypad minus works too.                                                  |
+| Ctrl+0           | image viewer                   | Best fit. Ctrl+keypad 0 works too.                                                      |
+| Ctrl+scroll      | image viewer                   | Zooms around the pointer.                                                               |
 | `u`              | editor, Vim normal mode        | Undo through the app's history.                                                         |
 | `:undo`, `:redo` | editor, Vim command line       | Undo and redo through the app's history.                                                |
 | `:w`             | editor, Vim command line       | Save Now.                                                                               |
@@ -352,7 +430,10 @@ The tests (`test.sh`) run, in this order:
 
 1. The crate tests (`cargo test --workspace`) inside a D-Bus session with an unlocked
    gnome-keyring, because the remembered-session store uses the Secret Service. One more test checks
-   that the app copes with no Secret Service at all.
+   that the app copes with no Secret Service at all. The image codec tests run here, in the
+   container, because they need libwebp. The core runtime runs every file of `apps/test-vectors/`,
+   including the shared image vectors (`image-pipeline.json`, `images.json`) and the insertion
+   vectors (`image-insertion.json`, also run by the Markdown crate).
 2. The app's own unit tests (meson `cargo` suite).
 3. The UI suite (`ci/steps/ui-test.sh`): the testing build at 1280x800 under headless mutter
    (a 1920x1200 virtual monitor, so the window is never maximised) with an unlocked keyring, driving real pages and saving screenshots to
@@ -363,7 +444,16 @@ The tests (`test.sh`) run, in this order:
    tags and the filter, the note menu, Undo, the Trash dialog and its confirmations, search, the
    Details dialog and the last view. `p3-shot-tree-context-menu`, `p3-shot-trash-dialog` and
    `p3-search-shot` also save the `p3-tree-context-menu`, `p3-trash-dialog` and `p3-search`
-   screenshots, each narrow and wide, light and dark, with the violet accent. A failing case saves
+   screenshots, each narrow and wide, light and dark, with the violet accent. The `p4` cases cover
+   inserting images (the file chooser, paste of a file, a texture and references, drop, the limit of
+   ten, a file that is not an image), the inline loading and unavailable states, the viewer's keys,
+   GIF animation, History (open, the shared mark, the unsaved state, preview and restore, restoring
+   the title, keys) and sharing (create, Create Another, saving first, an error, the Shared Links
+   actions and Revoke). `p4-shot-note-images`, `p4-shot-history` and `p4-shot-shared-links` save
+   `p4-note-images`, `p4-history` and `p4-shared-links`, narrow and wide, light and dark;
+   `p4-shot-image-viewer`, `p4-shot-version-preview` and `p4-shot-share-dialog` save
+   `p4-image-viewer`, `p4-version-preview` and `p4-share-dialog`, wide and light only. All use the
+   violet accent. A failing case saves
    `failure-<case>.png` there. Logs go to `apps/linux/out/logs/`, with per-case timings in
    `ui-testlog.txt`. The filter of `ui-test.sh` matches case names only. The harness sends real key
    events through mutter's remote desktop virtual keyboard: `press_keys("<Control>r")` presses one
@@ -374,7 +464,9 @@ The tests (`test.sh`) run, in this order:
    (a repo made by the Rust runtime and what a reader should find in it) into `apps/linux/out/read-back`, and
    `npx tsx scripts/read-back-native-repo.ts apps/linux/out/read-back` has the shared TypeScript
    reader open every scenario there, so this step needs `npm ci` but no container. It proves the
-   TypeScript side can read what the Linux app wrote, including a note typed in the editor.
+   TypeScript side can read what the Linux app wrote, including a note typed in the editor and a
+   note with images inserted through the Linux runtime (a large JPEG stored as WebP and a GIF kept as
+   a GIF).
 
 The crates that need no GTK (`commitnote-markdown`, `commitnote-editor-text`,
 `commitnote-interaction` and `commitnote-core-api`) also build and test on a machine without the
