@@ -161,8 +161,9 @@ A note can be shared as a link that opens a read-only copy, with an optional pas
   with a copy button each; a toast confirms a copy. Create Another returns to the form. A refusal
   from the core shows under the form, with a link when the core gives one. Shares the note already
   has are listed below.
-- **Shared Links.** The main menu lists every share: its note, its name and date, and a lock when it
-  has a password. When there are none it says so, and when the shares cannot be read it shows why.
+- **Shared Links.** The main menu lists every share: its name (the label, or the note's name), the
+  note's name under a label, the date, and a lock when it has a password. When there are none it
+  says so, and when the shares cannot be read it shows why.
 - **Row actions.** A share's menu (here and in the Share… dialog) offers Copy Link, Copy Password,
   Update (brings the shared copy to the current version, with a spinner on the row while it runs), View (the shared
   version, read-only), Open (the note, when it still exists), Rename (the name) and Revoke. Revoke

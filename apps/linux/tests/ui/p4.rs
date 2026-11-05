@@ -1268,9 +1268,17 @@ fn rename_failure(h: &Harness, share: &ShareRowView) -> Result<String, String> {
     .ok_or_else(|| "the core accepted a label over the limit".to_owned())
 }
 
-fn row_subtitle(h: &Harness, share: &ShareRowView) -> Option<String> {
+fn share_action_row(h: &Harness, share: &ShareRowView) -> Option<adw::ActionRow> {
     h.widget_as::<adw::ActionRow>(&format!("share-row-{}", share.id))
         .ok()
+}
+
+fn row_title(h: &Harness, share: &ShareRowView) -> Option<String> {
+    share_action_row(h, share).map(|row| row.title().to_string())
+}
+
+fn row_subtitle(h: &Harness, share: &ShareRowView) -> Option<String> {
+    share_action_row(h, share)
         .and_then(|row| row.subtitle())
         .map(|subtitle| subtitle.to_string())
 }
@@ -1308,8 +1316,9 @@ fn shared_links_actions(h: &mut Harness) -> Result<(), String> {
     focus_field(h, "share-rename-entry")?;
     h.press_keys("<Control>a")?;
     h.type_keys("Renamed\n")?;
-    h.wait("the new label in the row", || {
-        row_subtitle(h, &welcome).is_some_and(|subtitle| subtitle.contains("Renamed"))
+    h.wait("the new label as the row title over the note name", || {
+        row_title(h, &welcome).is_some_and(|title| title == "Renamed")
+            && row_subtitle(h, &welcome).is_some_and(|subtitle| subtitle.starts_with("Welcome"))
     })?;
     h.wait("the rename prompt to close", || {
         !h.shown("share-rename-dialog")

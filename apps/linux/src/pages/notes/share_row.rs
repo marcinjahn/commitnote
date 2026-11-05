@@ -30,7 +30,11 @@ pub fn row(
     let row = adw::ActionRow::builder()
         .name(format!("share-row-{}", share.id))
         .title(&share.title)
-        .subtitle(subtitle(share.label.as_deref(), &share.date))
+        .subtitle(subtitle(
+            share.label.as_deref(),
+            share.note_path.as_deref(),
+            &share.date,
+        ))
         .use_markup(false)
         .build();
     if share.password_protected {
@@ -80,12 +84,12 @@ fn actions(share: &ShareRowView, on_action: ActionHandler) -> gio::SimpleActionG
     group
 }
 
-fn subtitle(label: Option<&str>, date: &str) -> String {
-    [label.filter(|label| !label.is_empty()), Some(date)]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(" · ")
+fn subtitle(label: Option<&str>, note_path: Option<&[String]>, date: &str) -> String {
+    let note_name = note_path.and_then(<[String]>::last);
+    match (label.filter(|label| !label.is_empty()), note_name) {
+        (Some(label), Some(note_name)) if label != note_name => format!("{note_name} · {date}"),
+        _ => date.to_owned(),
+    }
 }
 
 fn menu(share: &ShareRowView) -> gio::Menu {
@@ -112,13 +116,42 @@ fn menu(share: &ShareRowView) -> gio::Menu {
 mod tests {
     use super::*;
 
+    fn path(segments: &[&str]) -> Vec<String> {
+        segments
+            .iter()
+            .map(|segment| (*segment).to_owned())
+            .collect()
+    }
+
     #[test]
-    fn the_subtitle_joins_a_set_label_and_the_date() {
+    fn the_subtitle_names_the_note_under_a_different_label() {
         assert_eq!(
-            subtitle(Some("For Sam"), "1 May 2026"),
-            "For Sam · 1 May 2026"
+            subtitle(
+                Some("For Sam"),
+                Some(&path(&["Projects", "commitnote", "Ideas"])),
+                "1 May 2026"
+            ),
+            "Ideas · 1 May 2026"
         );
-        assert_eq!(subtitle(None, "1 May 2026"), "1 May 2026");
-        assert_eq!(subtitle(Some(""), "1 May 2026"), "1 May 2026");
+    }
+
+    #[test]
+    fn the_subtitle_is_the_date_when_the_title_already_names_the_note() {
+        let ideas = path(&["Projects", "Ideas"]);
+        assert_eq!(
+            subtitle(Some("Ideas"), Some(&ideas), "1 May 2026"),
+            "1 May 2026"
+        );
+        assert_eq!(subtitle(None, Some(&ideas), "1 May 2026"), "1 May 2026");
+        assert_eq!(subtitle(Some(""), Some(&ideas), "1 May 2026"), "1 May 2026");
+    }
+
+    #[test]
+    fn the_subtitle_is_the_date_when_the_note_is_gone() {
+        assert_eq!(subtitle(Some("For Sam"), None, "1 May 2026"), "1 May 2026");
+        assert_eq!(
+            subtitle(Some("For Sam"), Some(&[]), "1 May 2026"),
+            "1 May 2026"
+        );
     }
 }
