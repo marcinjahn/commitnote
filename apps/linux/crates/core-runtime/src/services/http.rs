@@ -44,7 +44,7 @@ pub fn soup_http_factory(policy: HttpPolicy) -> HttpFactory {
     Box::new(move || Rc::new(SoupHttp::new(policy)))
 }
 
-fn is_allowed(uri: &glib::Uri, allow_loopback_http: bool) -> bool {
+pub(crate) fn is_allowed(uri: &glib::Uri, allow_loopback_http: bool) -> bool {
     let host = uri.host();
     let host = host.as_deref().unwrap_or("");
     match uri.scheme().as_str() {
