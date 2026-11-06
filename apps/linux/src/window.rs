@@ -47,6 +47,7 @@ mod imp {
         pub(super) toasts: RefCell<HashMap<String, adw::Toast>>,
         pub(super) toast_hosts: RefCell<Vec<WeakToastHost>>,
         pub(super) preferences: glib::WeakRef<adw::PreferencesDialog>,
+        pub(super) change_passphrase: glib::WeakRef<adw::Dialog>,
         pub(super) applying_route: Cell<bool>,
         pub(super) lifecycle: RefCell<Option<Lifecycle>>,
         pub(super) import_prompts: RefCell<Option<ImportPrompts>>,
@@ -236,6 +237,9 @@ impl CommitnoteWindow {
         let import_notes = gio::ActionEntry::builder("import-notes")
             .activate(|window: &Self, _, _| window.import_notes())
             .build();
+        let change_passphrase = gio::ActionEntry::builder("change-passphrase")
+            .activate(|window: &Self, _, _| window.change_passphrase())
+            .build();
         self.add_action_entries([
             log_out,
             quit,
@@ -245,6 +249,7 @@ impl CommitnoteWindow {
             preferences,
             export_notes,
             import_notes,
+            change_passphrase,
         ]);
         #[cfg(feature = "testing")]
         self.setup_testing_actions();
@@ -303,6 +308,15 @@ impl CommitnoteWindow {
                     window.update_preferences_action();
                     window.update_export_action();
                     window.update_import_action();
+                    window.update_change_passphrase_action();
+                }
+            }
+        });
+        model.connect_passphrase_change_changed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.update_change_passphrase_action();
                 }
             }
         });
@@ -571,6 +585,7 @@ impl CommitnoteWindow {
         self.update_preferences_action();
         self.update_export_action();
         self.update_import_action();
+        self.update_change_passphrase_action();
         imp.applying_route.set(false);
     }
 
@@ -631,6 +646,62 @@ impl CommitnoteWindow {
         glib::spawn_future_local(async move {
             import::import_notes(&model, Some(window.upcast_ref())).await;
         });
+    }
+
+    fn update_change_passphrase_action(&self) {
+        let model = self.model();
+        if let Some(action) = self
+            .lookup_action("change-passphrase")
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_enabled(
+                model.route() == Route::Notes
+                    && model.settings_copy().is_some()
+                    && model
+                        .settings_view()
+                        .is_some_and(|view| view.can_change_passphrase)
+                    && model.passphrase_change().is_none(),
+            );
+        }
+    }
+
+    fn change_passphrase(&self) {
+        let model = self.model().clone();
+        let window = self.downgrade();
+        glib::spawn_future_local(async move {
+            if let Err(error) = model.open_change_passphrase().await {
+                model.report_error(&error);
+                return;
+            }
+            if let Some(window) = window.upgrade() {
+                window.show_change_passphrase();
+            }
+        });
+    }
+
+    /// Opens over Preferences when they are showing, as the change is started from there.
+    fn show_change_passphrase(&self) {
+        let imp = self.imp();
+        let anchor = imp
+            .preferences
+            .upgrade()
+            .map_or_else(|| self.clone().upcast::<gtk::Widget>(), Cast::upcast);
+        if let Some(open) = imp.change_passphrase.upgrade() {
+            open.present(Some(&anchor));
+            return;
+        }
+        let Some(dialog) = preferences::present_change_passphrase(self.model(), &anchor) else {
+            return;
+        };
+        dialog.connect_closed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.imp().change_passphrase.set(None);
+                }
+            }
+        });
+        imp.change_passphrase.set(Some(&dialog));
     }
 
     fn show_preferences(&self) {

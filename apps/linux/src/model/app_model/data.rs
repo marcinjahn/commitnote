@@ -3,7 +3,6 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
-use commitnote_core_api::Command;
 use commitnote_core_api::commands::{
     AtomicBlockedView, ExportNotes, ExportNotesParams, ImportArchiveOutcome, ImportCancel,
     ImportCancelParams, ImportCommit, ImportCommitParams, ImportDestinationView, ImportDropFiles,
@@ -13,7 +12,7 @@ use commitnote_core_api::commands::{
     ImportSaveWithoutAtomicParams,
 };
 use commitnote_core_api::events::ImportStatusChanged;
-use commitnote_core_runtime::{RequestError, SharedStagedInputs};
+use commitnote_core_runtime::SharedStagedInputs;
 use gio::prelude::*;
 use glib::subclass::types::ObjectSubclassIsExt;
 
@@ -569,16 +568,6 @@ impl AppModel {
         let result = change(&mut self.state_mut().import);
         self.emit_by_name::<()>("import-changed", &[]);
         result
-    }
-
-    /// `None` when the session ended meanwhile, so a late reply cannot touch the next session.
-    async fn request_in_session<C: Command>(
-        &self,
-        params: C::Params,
-    ) -> Option<Result<C::Result, RequestError>> {
-        let generation = self.imp().generation.get();
-        let result = self.request::<C>(params).await;
-        (self.imp().generation.get() == generation).then_some(result)
     }
 
     /// Reads every file before staging any, so one unreadable file stops the whole import.

@@ -49,6 +49,7 @@ mod history;
 mod images;
 mod last_view;
 mod organise;
+mod passphrase;
 mod search;
 mod settings;
 mod shares;
@@ -58,6 +59,7 @@ pub use history::RestoreResult;
 pub use images::{ImageInput, ImageState, LoadedImage};
 pub use last_view::NoteDetails;
 pub use organise::{COLOR_TAGS, TrashResult, TrashState};
+pub use passphrase::{PassphraseChangeState, PassphraseStage};
 pub use search::SearchStatus;
 
 pub const GENERIC_ERROR_MESSAGE: &str = "Something went wrong. Try again.";
@@ -306,6 +308,7 @@ struct State {
     key_changed: Option<KeyChangedView>,
     settings: settings::SettingsState,
     import: data::ImportState,
+    passphrase: Option<passphrase::PassphraseChangeState>,
     appearance: Appearance,
     editor_settings: EditorSettings,
     visible: bool,
@@ -362,6 +365,7 @@ mod imp {
                     Signal::builder("settings-save-changed").build(),
                     Signal::builder("import-changed").build(),
                     Signal::builder("export-changed").build(),
+                    Signal::builder("passphrase-change-changed").build(),
                     Signal::builder("import-expand")
                         .param_types([glib::StrV::static_type()])
                         .build(),
@@ -1804,7 +1808,8 @@ impl AppModel {
             CoreEvent::HistoryChanged(changed) => self.history_changed(changed),
             CoreEvent::SharesChanged(changed) => self.shares_changed(changed),
             CoreEvent::ImportStatusChanged(status) => self.import_status_changed(status),
-            CoreEvent::PassphraseChangeProgress(_) | CoreEvent::Other { .. } => {}
+            CoreEvent::PassphraseChangeProgress(progress) => self.passphrase_progress(progress),
+            CoreEvent::Other { .. } => {}
         }
     }
 
@@ -1949,6 +1954,7 @@ impl AppModel {
         let shares_ended = self.state().shares.is_some();
         let settings_ended = self.state().settings.is_loaded();
         let import_ended = self.state().import.is_active();
+        let passphrase_ended = self.state().passphrase.is_some();
         let last_view = self.end_last_view();
         {
             let mut state = self.state_mut();
@@ -1994,6 +2000,9 @@ impl AppModel {
         }
         if import_ended {
             self.emit_by_name::<()>("import-changed", &[]);
+        }
+        if passphrase_ended {
+            self.emit_passphrase_change_cleared();
         }
         self.bump_generation();
         self.imp().editor_lane.supersede();
@@ -2080,6 +2089,16 @@ impl AppModel {
 
     fn show_toast(&self, message: &str) {
         self.emit_by_name::<()>("toast", &[&message]);
+    }
+
+    /// `None` when the session ended meanwhile, so a late reply cannot touch the next session.
+    async fn request_in_session<C: Command>(
+        &self,
+        params: C::Params,
+    ) -> Option<Result<C::Result, RequestError>> {
+        let generation = self.imp().generation.get();
+        let result = self.request::<C>(params).await;
+        (self.imp().generation.get() == generation).then_some(result)
     }
 
     fn request<C: Command>(
@@ -2412,7 +2431,7 @@ mod tests {
     use crate::pages::notes::note_state::{NoteDisplay, display_state, loaded_update};
 
     const NOTES_URL: &str = "https://github.com/sample/notes";
-    const PASSPHRASE: &str = "sample notes repo passphrase";
+    pub(super) const PASSPHRASE: &str = "sample notes repo passphrase";
     const BUNDLE_PATH: &str = "/io/github/marcinjahn/commitnote/core/commitnote-core.js";
 
     static NEXT_ID: AtomicU32 = AtomicU32::new(0);

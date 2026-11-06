@@ -1,5 +1,6 @@
 mod appearance;
 mod binding;
+mod change_passphrase;
 mod data;
 mod device;
 mod editor;
@@ -26,6 +27,8 @@ use self::notes::Notes;
 use self::save_status::SaveStatus;
 use crate::model::{AppModel, Route};
 use crate::window::host_dialog_toasts;
+
+pub use self::change_passphrase::present as present_change_passphrase;
 
 const NARROW_WIDTH_SP: f64 = 500.0;
 

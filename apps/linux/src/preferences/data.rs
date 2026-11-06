@@ -19,6 +19,7 @@ impl Data {
         let import = import_row(copy);
         group.add(&export);
         group.add(&import);
+        group.add(&change_passphrase_row(copy));
         Self {
             group,
             export,
@@ -57,5 +58,13 @@ fn import_row(copy: &SettingsCopy) -> adw::ButtonRow {
         .name("settings-import")
         .title(&copy.data.import_label)
         .action_name("win.import-notes")
+        .build()
+}
+
+fn change_passphrase_row(copy: &SettingsCopy) -> adw::ButtonRow {
+    adw::ButtonRow::builder()
+        .name("settings-change-passphrase")
+        .title(&copy.data.change_passphrase_label)
+        .action_name("win.change-passphrase")
         .build()
 }

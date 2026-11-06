@@ -6,7 +6,7 @@ use adw::prelude::*;
 use commitnote::accent;
 use commitnote::editor::{MarkdownView, NoteEditor};
 use commitnote::file_dialogs;
-use commitnote::model::{AppModel, EditorTarget, Route};
+use commitnote::model::{AppModel, EditorTarget, PassphraseStage, Route};
 use commitnote::pages::notes::NotesPage;
 use commitnote_core_api::commands::AtomicBlockedView;
 use commitnote_core_api::events::ImportStatusChanged;
@@ -17,7 +17,7 @@ use commitnote_core_api::shapes::TreeNode;
 use gtk4::{self as gtk, gdk, gio, glib};
 use libadwaita as adw;
 
-use crate::flows::{ensure, launch_and_log_in, log_in, wait_tree};
+use crate::flows::{PASSPHRASE, ensure, launch_and_log_in, log_in, wait_tree};
 use crate::p2::{
     EDITOR, answer, fail_commits, focus_within, submit_title, tree_notes, type_at_end, wait_draft,
     wait_for_font,
@@ -57,6 +57,18 @@ pub const CASES: &[Case] = &[
     ("p5-import-atomic-blocked", import_atomic_blocked),
     ("p5-import-atomic-enable", import_atomic_enable),
     ("p5-import-screenshots", import_screenshots),
+    ("p5-passphrase-change", passphrase_change),
+    ("p5-passphrase-mismatch", passphrase_mismatch),
+    ("p5-passphrase-wrong-current", passphrase_wrong_current),
+    ("p5-passphrase-cancel-review", passphrase_cancel_review),
+    (
+        "p5-passphrase-no-close-while-working",
+        passphrase_no_close_while_working,
+    ),
+    (
+        "p5-change-passphrase-screenshots",
+        change_passphrase_screenshots,
+    ),
 ];
 
 const DIALOG: &str = "preferences-dialog";
@@ -1280,4 +1292,281 @@ fn import_screenshots(h: &mut Harness) -> Result<(), String> {
     })?;
     h.show_variant(Width::Wide, Theme::Light)?;
     h.capture_variant("import-conflicts", Width::Wide, Theme::Light)
+}
+
+const CHANGE_PASSPHRASE_ROW: &str = "settings-change-passphrase";
+const PASSPHRASE_DIALOG: &str = "change-passphrase-dialog";
+const PASSPHRASE_CURRENT: &str = "passphrase-current";
+const PASSPHRASE_NEW: &str = "passphrase-new";
+const PASSPHRASE_REPEAT: &str = "passphrase-repeat";
+const PASSPHRASE_STRENGTH: &str = "passphrase-strength";
+const PASSPHRASE_ERROR: &str = "passphrase-error";
+const PASSPHRASE_CONTINUE: &str = "passphrase-continue";
+const PASSPHRASE_CONFIRM: &str = "passphrase-confirm";
+const PASSPHRASE_CANCEL: &str = "passphrase-cancel";
+const NEW_PASSPHRASE: &str = "violet harbour lantern seventeen";
+const OTHER_PASSPHRASE: &str = "copper meadow whistle ninety";
+
+fn change_passphrase_enabled(h: &Harness) -> bool {
+    h.window()
+        .ok()
+        .and_then(|window| window.lookup_action("change-passphrase"))
+        .is_some_and(|action| action.is_enabled())
+}
+
+fn start_passphrase_change(h: &Harness) -> Result<adw::Dialog, String> {
+    h.wait("the Change Passphrase action", || {
+        change_passphrase_enabled(h)
+    })?;
+    h.activate_row(CHANGE_PASSPHRASE_ROW)?;
+    h.wait_shown(PASSPHRASE_CURRENT)?;
+    let current = h.widget(PASSPHRASE_CURRENT)?;
+    h.wait("the focus in the current passphrase", || {
+        focus_within(h, &current)
+    })?;
+    h.widget_as::<adw::Dialog>(PASSPHRASE_DIALOG)
+}
+
+fn open_passphrase_change(h: &Harness) -> Result<adw::Dialog, String> {
+    launch_notes(h)?;
+    open_preferences(h)?;
+    start_passphrase_change(h)
+}
+
+fn type_passphrase(h: &Harness, name: &str, text: &str) -> Result<(), String> {
+    h.wait_shown(name)?;
+    let entry = h.widget(name)?;
+    entry.grab_focus();
+    h.wait(&format!("the focus in {name}"), || focus_within(h, &entry))?;
+    h.type_keys(text)?;
+    h.wait(&format!("{name} to hold the typed passphrase"), || {
+        h.text(name).is_ok_and(|typed| typed == text)
+    })
+}
+
+fn strength_label(h: &Harness) -> Result<String, String> {
+    let meter = h.widget(PASSPHRASE_STRENGTH)?;
+    Ok(h.widget_in(&meter, "strength-label")?
+        .downcast::<gtk::Label>()
+        .map_err(|_| "the strength label is not a label".to_owned())?
+        .label()
+        .to_string())
+}
+
+fn wait_strength(h: &Harness) -> Result<String, String> {
+    h.wait("the strength meter", || {
+        h.shown(PASSPHRASE_STRENGTH) && strength_label(h).is_ok_and(|label| !label.is_empty())
+    })?;
+    strength_label(h)
+}
+
+fn fill_passphrases(h: &Harness, current: &str, next: &str, repeated: &str) -> Result<(), String> {
+    type_passphrase(h, PASSPHRASE_CURRENT, current)?;
+    ensure(!h.shown(PASSPHRASE_STRENGTH), || {
+        "the strength meter shows before a new passphrase is typed".to_owned()
+    })?;
+    type_passphrase(h, PASSPHRASE_NEW, next)?;
+    wait_strength(h)?;
+    type_passphrase(h, PASSPHRASE_REPEAT, repeated)
+}
+
+fn passphrase_stage(h: &Harness) -> Result<Option<PassphraseStage>, String> {
+    Ok(h.model()?.passphrase_change().map(|change| change.stage))
+}
+
+fn wait_review(h: &Harness) -> Result<(), String> {
+    h.wait("the review stage", || {
+        h.shown(PASSPHRASE_CONFIRM)
+            && matches!(
+                passphrase_stage(h),
+                Ok(Some(PassphraseStage::Review { .. }))
+            )
+    })?;
+    ensure(!h.label("passphrase-review-summary")?.is_empty(), || {
+        "the review shows no summary".to_owned()
+    })
+}
+
+fn reach_review(h: &Harness, current: &str) -> Result<(), String> {
+    fill_passphrases(h, current, OTHER_PASSPHRASE, OTHER_PASSPHRASE)?;
+    h.click(PASSPHRASE_CONTINUE)?;
+    wait_review(h)
+}
+
+fn wait_passphrase_closed(h: &Harness) -> Result<(), String> {
+    let model = h.model()?;
+    h.wait("the Change Passphrase dialog to close", || {
+        !h.shown(PASSPHRASE_DIALOG) && model.passphrase_change().is_none()
+    })
+}
+
+fn wait_form_error(h: &Harness) -> Result<String, String> {
+    h.wait("the form error", || {
+        h.shown(PASSPHRASE_ERROR)
+            && h.label(PASSPHRASE_ERROR)
+                .is_ok_and(|error| !error.is_empty())
+    })?;
+    ensure(
+        matches!(passphrase_stage(h)?, Some(PassphraseStage::Form))
+            && h.shown(PASSPHRASE_CONTINUE)
+            && !h.shown(PASSPHRASE_CONFIRM),
+        || "the dialog left the form".to_owned(),
+    )?;
+    h.label(PASSPHRASE_ERROR)
+}
+
+fn wait_current_cleared(h: &Harness) -> Result<(), String> {
+    let current = h.widget(PASSPHRASE_CURRENT)?;
+    h.wait("the current passphrase to be emptied and focused", || {
+        h.text(PASSPHRASE_CURRENT).is_ok_and(|text| text.is_empty()) && focus_within(h, &current)
+    })?;
+    wait_form_error(h).map(|_| ())
+}
+
+fn passphrase_change(h: &mut Harness) -> Result<(), String> {
+    open_passphrase_change(h)?;
+    type_passphrase(h, PASSPHRASE_CURRENT, PASSPHRASE)?;
+    let (start, rest) = NEW_PASSPHRASE.split_at(3);
+    type_passphrase(h, PASSPHRASE_NEW, start)?;
+    let short = wait_strength(h)?;
+    h.type_keys(rest)?;
+    h.wait("the strength meter to rate the whole passphrase", || {
+        h.text(PASSPHRASE_NEW)
+            .is_ok_and(|text| text == NEW_PASSPHRASE)
+            && strength_label(h).is_ok_and(|label| !label.is_empty() && label != short)
+    })?;
+    type_passphrase(h, PASSPHRASE_REPEAT, NEW_PASSPHRASE)?;
+    h.click(PASSPHRASE_CONTINUE)?;
+    wait_review(h)?;
+    h.click(PASSPHRASE_CONFIRM)?;
+    wait_passphrase_closed(h)?;
+    ensure(h.shown(DIALOG), || {
+        "Preferences closed with the passphrase dialog".to_owned()
+    })?;
+
+    start_passphrase_change(h)?;
+    fill_passphrases(h, PASSPHRASE, OTHER_PASSPHRASE, OTHER_PASSPHRASE)?;
+    h.type_keys("\n")?;
+    wait_current_cleared(h)?;
+    type_passphrase(h, PASSPHRASE_CURRENT, NEW_PASSPHRASE)?;
+    h.click(PASSPHRASE_CONTINUE)?;
+    wait_review(h)?;
+    h.click(PASSPHRASE_CANCEL)?;
+    h.wait("the form", || h.shown(PASSPHRASE_CONTINUE))?;
+    h.widget_as::<adw::Dialog>(PASSPHRASE_DIALOG)?.close();
+    wait_passphrase_closed(h)
+}
+
+fn passphrase_mismatch(h: &mut Harness) -> Result<(), String> {
+    open_passphrase_change(h)?;
+    fill_passphrases(h, PASSPHRASE, NEW_PASSPHRASE, OTHER_PASSPHRASE)?;
+    h.type_keys("\n")?;
+    wait_form_error(h)?;
+    ensure(
+        h.text(PASSPHRASE_CURRENT)? == PASSPHRASE && h.text(PASSPHRASE_NEW)? == NEW_PASSPHRASE,
+        || "a mismatched repeat emptied the other entries".to_owned(),
+    )
+}
+
+fn passphrase_wrong_current(h: &mut Harness) -> Result<(), String> {
+    open_passphrase_change(h)?;
+    fill_passphrases(
+        h,
+        "not the repository passphrase",
+        NEW_PASSPHRASE,
+        NEW_PASSPHRASE,
+    )?;
+    h.click(PASSPHRASE_CONTINUE)?;
+    wait_current_cleared(h)?;
+    ensure(h.text(PASSPHRASE_NEW)? == NEW_PASSPHRASE, || {
+        "a wrong current passphrase emptied the new one".to_owned()
+    })
+}
+
+fn passphrase_cancel_review(h: &mut Harness) -> Result<(), String> {
+    let dialog = open_passphrase_change(h)?;
+    reach_review(h, PASSPHRASE)?;
+    h.click(PASSPHRASE_CANCEL)?;
+    h.wait("the form after cancelling the review", || {
+        h.shown(PASSPHRASE_CONTINUE)
+            && !h.shown(PASSPHRASE_CONFIRM)
+            && matches!(passphrase_stage(h), Ok(Some(PassphraseStage::Form)))
+    })?;
+    h.wait("the focus to stay in the dialog", || {
+        focus_within(h, &dialog)
+    })?;
+    h.press_keys("Escape")?;
+    wait_passphrase_closed(h)
+}
+
+/// Activates the shortcut for `accelerator` on the focused widget or the nearest ancestor that
+/// handles it, as a key press bubbling up from the focus would, without leaving the main loop.
+fn press_at_focus(h: &Harness, accelerator: &str) -> Result<(), String> {
+    let mut widget = GtkWindowExt::focus(&h.window()?);
+    while let Some(current) = widget {
+        if h.press_shortcut(&current, accelerator).is_ok() {
+            return Ok(());
+        }
+        widget = current.parent();
+    }
+    Err(format!("nothing around the focus handles {accelerator}"))
+}
+
+fn passphrase_no_close_while_working(h: &mut Harness) -> Result<(), String> {
+    let dialog = open_passphrase_change(h)?;
+    let model = h.model()?;
+    fill_passphrases(h, PASSPHRASE, NEW_PASSPHRASE, NEW_PASSPHRASE)?;
+    let attempts = Rc::new(Cell::new(0_u32));
+    let closed = Rc::new(Cell::new(false));
+    dialog.connect_close_attempt({
+        let attempts = attempts.clone();
+        move |_| attempts.set(attempts.get() + 1)
+    });
+    dialog.connect_closed({
+        let closed = closed.clone();
+        move |_| closed.set(true)
+    });
+
+    h.click(PASSPHRASE_CONTINUE)?;
+    h.wait("the working stage", || {
+        model
+            .passphrase_change()
+            .is_some_and(|change| change.is_working())
+    })?;
+    let change = model
+        .passphrase_change()
+        .ok_or("the change ended while working")?;
+    ensure(!change.can_close() && !dialog.can_close(), || {
+        "the dialog can close while working".to_owned()
+    })?;
+    press_at_focus(h, "Escape")?;
+    ensure(attempts.get() == 1, || {
+        "Escape did not try to close the dialog".to_owned()
+    })?;
+
+    wait_review(h)?;
+    ensure(!closed.get() && h.shown(PASSPHRASE_DIALOG), || {
+        "Escape closed the dialog while working".to_owned()
+    })?;
+    ensure(dialog.can_close(), || {
+        "the review cannot be closed".to_owned()
+    })
+}
+
+fn change_passphrase_screenshots(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    open_note_at(h, WELCOME)?;
+    open_preferences(h)?;
+    start_passphrase_change(h)?;
+    fill_passphrases(h, PASSPHRASE, NEW_PASSPHRASE, NEW_PASSPHRASE)?;
+    let repeat = h
+        .widget(PASSPHRASE_REPEAT)?
+        .dynamic_cast::<gtk::Editable>()
+        .map_err(|_| "the repeat entry is not editable".to_owned())?;
+    for &(width, theme) in ALL_VARIANTS {
+        h.show_variant(width, theme)?;
+        repeat.set_position(-1);
+        h.capture_variant("change-passphrase", width, theme)?;
+    }
+    Ok(())
 }
