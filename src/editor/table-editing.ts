@@ -36,7 +36,7 @@ export function runTableCommand(
   );
   if (edit.changes.length === 0) {
     if (!selection.eq(state.selection)) {
-      view.dispatch({ selection, userEvent: "select" });
+      view.dispatch({ selection, userEvent: "select", scrollIntoView: true });
     }
     return true;
   }

@@ -703,10 +703,86 @@
         "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
       ],
       "expected": {
-        "text": "> | a |\n> | - |\n> | 1 |\n\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n# next",
+        "text": "> | a |\n> | - |\n> | 1 |\n>\n> ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n# next",
         "selection": {
-          "anchor": 71,
-          "head": 71
+          "anchor": 74,
+          "head": 74
+        }
+      }
+    },
+    {
+      "name": "ordered list item table line end before the next item",
+      "text": "1. x\n\n   | a |\n   | - |\n   | 1 |\n2. y",
+      "selection": {
+        "anchor": 32,
+        "head": 32
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "1. x\n\n   | a |\n   | - |\n   | 1 |\n\n   ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n2. y",
+        "selection": {
+          "anchor": 83,
+          "head": 83
+        }
+      }
+    },
+    {
+      "name": "blockquote table line end before a quoted paragraph",
+      "text": "> | a |\n> | - |\n> | 1 |\n>\n> after",
+      "selection": {
+        "anchor": 23,
+        "head": 23
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "> | a |\n> | - |\n> | 1 |\n>\n> ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n>\n> after",
+        "selection": {
+          "anchor": 75,
+          "head": 75
+        }
+      }
+    },
+    {
+      "name": "blockquote table line end before a quoted heading",
+      "text": "> | a |\n> | - |\n> | 1 |\n> # head",
+      "selection": {
+        "anchor": 23,
+        "head": 23
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "> | a |\n> | - |\n> | 1 |\n>\n> ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n>\n> # head",
+        "selection": {
+          "anchor": 75,
+          "head": 75
+        }
+      }
+    },
+    {
+      "name": "two-level blockquote table line end",
+      "text": "> > | a |\n> > | - |\n> > | 1 |",
+      "selection": {
+        "anchor": 29,
+        "head": 29
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "> > | a |\n> > | - |\n> > | 1 |\n> >\n> > ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n",
+        "selection": {
+          "anchor": 84,
+          "head": 84
         }
       }
     },
@@ -722,10 +798,86 @@
         "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
       ],
       "expected": {
-        "text": "![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n> | a |\n> | - |",
+        "text": "> ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n>\n> | a |\n> | - |",
         "selection": {
-          "anchor": 46,
-          "head": 46
+          "anchor": 49,
+          "head": 49
+        }
+      }
+    },
+    {
+      "name": "list item table header start",
+      "text": "- x\n\n  | a |\n  | - |",
+      "selection": {
+        "anchor": 7,
+        "head": 7
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "- x\n\n  ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n  | a |\n  | - |",
+        "selection": {
+          "anchor": 53,
+          "head": 53
+        }
+      }
+    },
+    {
+      "name": "list item table header line start",
+      "text": "- x\n\n  | a |\n  | - |",
+      "selection": {
+        "anchor": 5,
+        "head": 5
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "- x\n\n  ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n  | a |\n  | - |",
+        "selection": {
+          "anchor": 53,
+          "head": 53
+        }
+      }
+    },
+    {
+      "name": "ordered list item table header start",
+      "text": "1. x\n\n   | a |\n   | - |",
+      "selection": {
+        "anchor": 9,
+        "head": 9
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "1. x\n\n   ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\n   | a |\n   | - |",
+        "selection": {
+          "anchor": 55,
+          "head": 55
+        }
+      }
+    },
+    {
+      "name": "two-level blockquote table header start",
+      "text": "> > | a |\n> > | - |",
+      "selection": {
+        "anchor": 4,
+        "head": 4
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "> > ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n> >\n> > | a |\n> > | - |",
+        "selection": {
+          "anchor": 53,
+          "head": 53
         }
       }
     },
@@ -783,6 +935,82 @@
         "selection": {
           "anchor": 62,
           "head": 62
+        }
+      }
+    },
+    {
+      "name": "row with no cells after its pipe",
+      "text": "| a | b |\n| - | - |\n|",
+      "selection": {
+        "anchor": 21,
+        "head": 21
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a | b |\n| - | - |\n|\n\n![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n",
+        "selection": {
+          "anchor": 69,
+          "head": 69
+        }
+      }
+    },
+    {
+      "name": "row with no cells in the middle of a table",
+      "text": "| a | b |\n| - | - |\n|\n| c | d |",
+      "selection": {
+        "anchor": 21,
+        "head": 21
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "| a | b |\n| - | - |\n| ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n| c | d |",
+        "selection": {
+          "anchor": 67,
+          "head": 67
+        }
+      }
+    },
+    {
+      "name": "blockquote row with no cells before its pipe",
+      "text": "> | a |\n> | - |\n> |\n",
+      "selection": {
+        "anchor": 18,
+        "head": 18
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "> | a |\n> | - |\n> ![](image:abcdefghijklmnopqrstuvwxy2#640x480) |\n",
+        "selection": {
+          "anchor": 63,
+          "head": 63
+        }
+      }
+    },
+    {
+      "name": "list item row with no cells after its pipe",
+      "text": "- item\n\n  | a |\n  | - |\n  |",
+      "selection": {
+        "anchor": 27,
+        "head": 27
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "- item\n\n  | a |\n  | - |\n  |\n\n  ![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n",
+        "selection": {
+          "anchor": 77,
+          "head": 77
         }
       }
     }

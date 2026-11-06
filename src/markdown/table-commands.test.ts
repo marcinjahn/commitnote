@@ -65,6 +65,13 @@ const NEW_TABLE = [
   "|          |          |          |",
 ].join("\n");
 
+function indented(block: string, lead: string): string {
+  return block
+    .split("\n")
+    .map((line) => lead + line)
+    .join("\n");
+}
+
 describe("table commands inside containers", () => {
   const containers: [string, string, string][] = [
     ["top level", "", ""],
@@ -182,11 +189,16 @@ describe("table commands inside containers", () => {
       expect(run(nest(input), command, argument)).toBe(nest(expected));
     });
 
-    it("insert table goes after the table, at the top level", () => {
+    it("insert table goes after the table, inside its container", () => {
       const input = ["| a | b |", "| - | :-: |", "| 1¦ | 2 |"];
       const kept = ["| a | b |", "| - | :-: |", "| 1 | 2 |"];
       expect(run(nest(input), "insert-table")).toBe(
-        nest(kept) + "\n\n" + NEW_TABLE + "\n",
+        nest(kept) +
+          "\n" +
+          lead.trimEnd() +
+          "\n" +
+          indented(NEW_TABLE, lead) +
+          "\n",
       );
     });
   });
@@ -205,6 +217,18 @@ describe("insert table", () => {
       "inside an irregular nested table",
       "> | a | b |\n> | - | - |\n| 1¦ | 2 |",
       "> | a | b |\n> | - | - |\n| 1 | 2 |\n\n" + NEW_TABLE + "\n",
+    ],
+    [
+      "inside a list item table before the next item",
+      "- x\n\n  | a |\n  | - |\n  | 1¦ |\n- y",
+      "- x\n\n  | a |\n  | - |\n  | 1 |\n\n" +
+        indented(NEW_TABLE, "  ") +
+        "\n\n- y",
+    ],
+    [
+      "inside a blockquote table before a paragraph",
+      "> | a |\n> | - |\n> | 1¦ |\n\nnext",
+      "> | a |\n> | - |\n> | 1 |\n>\n" + indented(NEW_TABLE, "> ") + "\n\nnext",
     ],
     ["at the document end", "ab¦", "ab\n\n" + NEW_TABLE + "\n"],
     ["in an empty document", "¦", NEW_TABLE + "\n"],
