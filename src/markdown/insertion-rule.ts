@@ -8,7 +8,7 @@ import {
 } from "./table-source";
 
 function lineStart(text: string, position: number): number {
-  return text.lastIndexOf("\n", position - 1) + 1;
+  return position <= 0 ? 0 : text.lastIndexOf("\n", position - 1) + 1;
 }
 
 function lineEnd(text: string, position: number): number {

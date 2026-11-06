@@ -116,6 +116,25 @@
       }
     },
     {
+      "name": "on an empty first line",
+      "text": "\nabc",
+      "selection": {
+        "anchor": 0,
+        "head": 0
+      },
+      "command": "insert-image-references",
+      "argument": [
+        "![](image:abcdefghijklmnopqrstuvwxy2#640x480)"
+      ],
+      "expected": {
+        "text": "![](image:abcdefghijklmnopqrstuvwxy2#640x480)\n\nabc",
+        "selection": {
+          "anchor": 46,
+          "head": 46
+        }
+      }
+    },
+    {
       "name": "with a non-collapsed selection",
       "text": "abcd",
       "selection": {
