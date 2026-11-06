@@ -18,14 +18,13 @@ use commitnote_core_api::commands::{
     NoteEdit, NoteEditParams, NoteOpen, NoteOpenParams, NoteRename, NoteRenameParams,
     NoticeIdParams, NoticesDismiss, NoticesPerform, PassphraseParams, PassphraseStrengthCheck,
     PassphraseStrengthParams, SessionLogout, SessionLogoutParams, SessionLogoutResult,
-    SessionResume, SessionResumeParams, SessionResumeResult, SettingsOpen, SettingsOpenParams,
-    SyncFlush, SyncFlushParams, SyncRefresh, SyncRefreshParams, SyncRetry, SyncRetryParams,
-    TreeGet, TreeGetParams, TreeGetResult,
+    SessionResume, SessionResumeParams, SessionResumeResult, SyncFlush, SyncFlushParams,
+    SyncRefresh, SyncRefreshParams, SyncRetry, SyncRetryParams, TreeGet, TreeGetParams,
+    TreeGetResult,
 };
 use commitnote_core_api::events::{
     NoteChanged, Notice, SharesChanged, SyncStateChanged, TreeChanged,
 };
-use commitnote_core_api::settings::{AccentOptionView, SettingsView};
 use commitnote_core_api::shapes::{
     ColorTag, ForgeKind, ForgeView, LogoutOutcome, NoticeAction, OpenNote, PassphraseStrength,
     RemoteTextEdit, RepositoryView, TagOptionView, TreeNode,
@@ -42,12 +41,14 @@ use super::core_client::{ClientConfig, CoreClient, startup_message};
 use super::edit_sender::{EditDestination, EditSender};
 use super::editor_lane::EditorLane;
 use super::editor_settings::EditorSettings;
+use crate::fonts::NoteFont;
 
 mod history;
 mod images;
 mod last_view;
 mod organise;
 mod search;
+mod settings;
 mod shares;
 
 pub use history::RestoreResult;
@@ -300,7 +301,7 @@ struct State {
     note_update_serial: u64,
     sync: Option<SyncStateChanged>,
     key_changed: Option<KeyChangedView>,
-    accent_options: Vec<AccentOptionView>,
+    settings: settings::SettingsState,
     appearance: Appearance,
     editor_settings: EditorSettings,
     visible: bool,
@@ -352,6 +353,8 @@ mod imp {
                     Signal::builder("last-view-restored").build(),
                     Signal::builder("history-changed").build(),
                     Signal::builder("shares-changed").build(),
+                    Signal::builder("settings-changed").build(),
+                    Signal::builder("settings-save-changed").build(),
                     Signal::builder("notice")
                         .param_types([
                             String::static_type(),
@@ -601,6 +604,10 @@ impl AppModel {
         self.state().editor_settings.type_to_start
     }
 
+    pub fn note_font(&self) -> NoteFont {
+        self.state().editor_settings.note_font
+    }
+
     pub fn connect_route_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_unit_signal("route-changed", f)
     }
@@ -716,6 +723,7 @@ impl AppModel {
 
     pub async fn choose_repository(&self, url: &str) {
         self.state_mut().repository_url = Some(url.to_owned());
+        self.clear_settings();
         self.reset_image_cache();
         self.inspect().await;
     }
@@ -1077,6 +1085,7 @@ impl AppModel {
 
     /// Logs out once every edit is saved; otherwise reports what would be lost and stays.
     pub async fn log_out(&self) -> Result<LogOutResult, UserError> {
+        self.flush_settings_before_leaving().await;
         self.flush_edits().await;
         self.flush_last_view().await;
         let result = self
@@ -1183,6 +1192,7 @@ impl AppModel {
 
     /// Saves every edit for a close; a failed request counts the edits last reported unsaved.
     pub async fn flush_for_close(&self) -> FlushOutcome {
+        self.flush_settings_before_leaving().await;
         self.flush_edits().await;
         match self.request::<SyncFlush>(SyncFlushParams {}).await {
             Ok(result) => result.result,
@@ -1533,40 +1543,6 @@ impl AppModel {
         Ok(())
     }
 
-    async fn load_settings(&self) {
-        match self.request::<SettingsOpen>(SettingsOpenParams {}).await {
-            Ok(result) => {
-                self.state_mut().accent_options = result.copy.accent_color.options;
-                self.apply_settings_view(&result.view);
-            }
-            Err(error) => warn("could not read settings", &error),
-        }
-    }
-
-    fn apply_settings_view(&self, view: &SettingsView) {
-        let appearance = {
-            let state = self.state();
-            Appearance::from_settings(&view.values, &state.accent_options)
-        };
-        let changed = {
-            let mut state = self.state_mut();
-            let changed = state.appearance != appearance;
-            state.appearance = appearance;
-            changed
-        };
-        if changed {
-            self.emit_by_name::<()>("appearance-changed", &[]);
-        }
-        let editor_settings = EditorSettings::from_settings(&view.values);
-        let editor_changed = {
-            let mut state = self.state_mut();
-            std::mem::replace(&mut state.editor_settings, editor_settings) != editor_settings
-        };
-        if editor_changed {
-            self.emit_by_name::<()>("editor-settings-changed", &[]);
-        }
-    }
-
     async fn load_login_context(&self) {
         let (forges, last_repository, device_name) = futures_util::join!(
             self.request::<ForgesList>(ForgesListParams {}),
@@ -1737,6 +1713,7 @@ impl AppModel {
     }
 
     pub async fn log_out_anyway(&self) -> Result<(), UserError> {
+        self.flush_settings_before_leaving().await;
         self.leave_draft().await;
         self.flush_last_view().await;
         logout_result(
@@ -1808,14 +1785,14 @@ impl AppModel {
                 self.set_route(Route::KeyChanged { view });
             }
             CoreEvent::SessionEnded { .. } => self.session_ended(),
-            CoreEvent::SettingsChanged { view } => self.apply_settings_view(&view),
+            CoreEvent::SettingsChanged { view } => self.apply_settings_view(view),
+            CoreEvent::SettingsSaveChanged { save } => self.settings_save_changed(save),
             CoreEvent::NoteContentChangedRemotely(changed) => self.show_toast(&changed.message),
             CoreEvent::TrashChanged(changed) => self.trash_changed(changed),
             CoreEvent::SearchStatusChanged(changed) => self.search_status_changed(changed),
             CoreEvent::HistoryChanged(changed) => self.history_changed(changed),
             CoreEvent::SharesChanged(changed) => self.shares_changed(changed),
-            CoreEvent::SettingsSaveChanged { .. }
-            | CoreEvent::ImportStatusChanged(_)
+            CoreEvent::ImportStatusChanged(_)
             | CoreEvent::PassphraseChangeProgress(_)
             | CoreEvent::Other { .. } => {}
         }
@@ -1960,6 +1937,7 @@ impl AppModel {
         let search_ended = self.end_search();
         let history_ended = self.state().history.is_some();
         let shares_ended = self.state().shares.is_some();
+        let settings_ended = self.state().settings.is_loaded();
         let last_view = self.end_last_view();
         {
             let mut state = self.state_mut();
@@ -1976,7 +1954,6 @@ impl AppModel {
                 note_switch: previous.note_switch + 1,
                 editor_lineage: previous.editor_lineage + 1,
                 note_update_serial: previous.note_update_serial,
-                accent_options: previous.accent_options,
                 appearance: previous.appearance,
                 editor_settings: previous.editor_settings,
                 visible: previous.visible,
@@ -2000,6 +1977,9 @@ impl AppModel {
         }
         if shares_ended {
             self.emit_by_name::<()>("shares-changed", &[]);
+        }
+        if settings_ended {
+            self.emit_settings_cleared();
         }
         self.bump_generation();
         self.imp().editor_lane.supersede();

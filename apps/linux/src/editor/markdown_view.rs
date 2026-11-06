@@ -21,6 +21,7 @@ use super::overlay::{
 };
 use super::spans::{self, Spans};
 use super::tags::{Palette, PreviewTags};
+use crate::fonts::NoteFont;
 use crate::{accent, links};
 
 const MARGIN: i32 = 12;
@@ -305,7 +306,7 @@ mod imp {
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             let view = self.obj();
-            if self.palette.get() != Some(view.current_palette()) {
+            if self.palette.get() != Some(view.current_palette()) || view.line_height_changed() {
                 view.queue_palette();
             }
             self.parent_snapshot(snapshot);
@@ -332,6 +333,13 @@ glib::wrapper! {
 impl MarkdownView {
     pub fn new() -> Self {
         glib::Object::new()
+    }
+
+    /// Shows the text in a note font. Code stays monospace. The overlays are measured again once
+    /// the new font has been applied to the view.
+    pub fn set_note_font(&self, font: NoteFont) {
+        font.apply_to(self);
+        self.queue_draw();
     }
 
     pub fn source_buffer(&self) -> sourceview5::Buffer {
@@ -529,6 +537,16 @@ impl MarkdownView {
         if let Some(image_id) = image_id {
             self.emit_image_activated(&image_id);
         }
+    }
+
+    #[cfg(feature = "testing")]
+    pub fn testing_line_metrics(&self) -> (Option<f32>, f32) {
+        let measured = self
+            .imp()
+            .overlay_style
+            .get()
+            .map(|style| style.line_height);
+        (measured, self.line_height())
     }
 
     #[cfg(feature = "testing")]
@@ -795,12 +813,23 @@ impl MarkdownView {
     }
 
     fn current_overlay_style(&self, palette: &Palette) -> OverlayStyle {
-        let metrics = self.pango_context().metrics(None, None);
         OverlayStyle {
             foreground: palette.foreground,
             accent: palette.accent,
-            line_height: metrics.height() as f32 / gtk::pango::SCALE as f32,
+            line_height: self.line_height(),
         }
+    }
+
+    fn line_height(&self) -> f32 {
+        let metrics = self.pango_context().metrics(None, None);
+        metrics.height() as f32 / gtk::pango::SCALE as f32
+    }
+
+    fn line_height_changed(&self) -> bool {
+        self.imp()
+            .overlay_style
+            .get()
+            .is_some_and(|style| style.line_height != self.line_height())
     }
 
     fn update_scheme(&self) {
@@ -846,13 +875,18 @@ impl MarkdownView {
     fn refresh_palette(&self) {
         let imp = self.imp();
         let palette = self.current_palette();
-        if imp.palette.replace(Some(palette)) == Some(palette) {
-            return;
+        if imp.palette.replace(Some(palette)) != Some(palette) {
+            if let Some(tags) = imp.tags.get() {
+                tags.set_palette(&palette);
+            }
+            self.queue_draw();
         }
-        if let Some(tags) = imp.tags.get() {
-            tags.set_palette(&palette);
-        }
-        let style = self.current_overlay_style(&palette);
+        self.remeasure_overlays(&palette);
+    }
+
+    fn remeasure_overlays(&self, palette: &Palette) {
+        let imp = self.imp();
+        let style = self.current_overlay_style(palette);
         let previous = imp.overlay_style.replace(Some(style));
         if previous.map(|previous| previous.line_height) != Some(style.line_height) {
             if let Some(tags) = imp.overlay_tags.get() {
@@ -860,8 +894,8 @@ impl MarkdownView {
             }
             imp.unavailable_art.replace(None);
             self.rebuild_overlays(false);
+            self.queue_draw();
         }
-        self.queue_draw();
     }
 }
 

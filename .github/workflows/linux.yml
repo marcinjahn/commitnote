@@ -5,6 +5,7 @@ on:
     branches: [main, "linux-ci/**"]
     paths:
       - "apps/linux/**"
+      - "apps/ios/Commitnote/Fonts/**"
       - "apps/test-vectors/**"
       - "src/**"
       - "scripts/**"

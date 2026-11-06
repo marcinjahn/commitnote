@@ -466,6 +466,17 @@ impl Harness {
             .ok_or_else(|| format!("no row is titled {title}"))
     }
 
+    /// Whether a preferences row titled `title` is on screen.
+    pub fn row_shown(&self, title: &str) -> bool {
+        let Ok(window) = self.window() else {
+            return false;
+        };
+        descendants(window.upcast_ref())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<adw::PreferencesRow>().ok())
+            .any(|row| row.title() == title && row.is_mapped())
+    }
+
     pub fn widget_as<T: IsA<gtk::Widget>>(&self, name: &str) -> Result<T, String> {
         self.widget(name)?
             .downcast::<T>()
@@ -801,15 +812,21 @@ impl Harness {
         self.render_over(&self.screenshot_dir.join(file), Some(popover))
     }
 
+    /// Changes a setting through the core, as a change from another device would.
+    pub fn change_setting(&self, key: &str, value: &str) -> Result<(), String> {
+        let change = self.model()?.testing_send(
+            "settings.change",
+            serde_json::json!({ "key": key, "value": value }),
+        );
+        self.run(&format!("the {key} setting to change"), change)?
+            .map(|_| ())
+            .map_err(|error| format!("cannot change {key}: {}", error.message))
+    }
+
     fn apply_session_appearance(&self, theme: Theme) -> Result<(), String> {
         let model = self.model()?;
         for (key, value) in [("colorMode", theme.name()), ("accentColor", SESSION_ACCENT)] {
-            let change = model.testing_send(
-                "settings.change",
-                serde_json::json!({ "key": key, "value": value }),
-            );
-            self.run(&format!("the {key} setting to change"), change)?
-                .map_err(|error| format!("cannot change {key}: {}", error.message))?;
+            self.change_setting(key, value)?;
         }
         let style_manager = adw::StyleManager::default();
         self.wait(
@@ -1012,7 +1029,7 @@ fn layout_signature(root: &gtk::Widget) -> u64 {
     hasher.finish()
 }
 
-fn descendants(root: &gtk::Widget) -> Vec<gtk::Widget> {
+pub fn descendants(root: &gtk::Widget) -> Vec<gtk::Widget> {
     let mut found = Vec::new();
     let mut pending = vec![root.clone()];
     while let Some(widget) = pending.pop() {

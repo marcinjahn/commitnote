@@ -224,12 +224,12 @@ impl NoteView {
             }
         });
         widget.setup_title();
-        widget.imp().editor.set_vim_mode(model.vim_mode());
+        widget.apply_editor_settings(model);
         let settings_handler = model.connect_editor_settings_changed({
             let widget = widget.downgrade();
             move |model| {
                 if let Some(widget) = widget.upgrade() {
-                    widget.imp().editor.set_vim_mode(model.vim_mode());
+                    widget.apply_editor_settings(model);
                 }
             }
         });
@@ -519,6 +519,12 @@ impl NoteView {
         imp.name_error
             .set_label(error.as_deref().unwrap_or_default());
         imp.name_error.set_visible(error.is_some());
+    }
+
+    fn apply_editor_settings(&self, model: &AppModel) {
+        let editor = &self.imp().editor;
+        editor.set_vim_mode(model.vim_mode());
+        editor.set_note_font(model.note_font());
     }
 
     fn update_vim_status(&self) {

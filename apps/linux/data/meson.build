@@ -63,6 +63,36 @@ install_data(
   rename: app_id + '-symbolic.svg',
 )
 
+note_fonts_dir = meson.project_source_root() / '..' / 'ios' / 'Commitnote' / 'Fonts'
+install_data(
+  note_fonts_dir / 'AtkinsonHyperlegibleNext-Variable.ttf',
+  note_fonts_dir / 'AtkinsonHyperlegibleNext-VariableItalic.ttf',
+  note_fonts_dir / 'IBMPlexMono-Italic.ttf',
+  note_fonts_dir / 'IBMPlexMono-Regular.ttf',
+  note_fonts_dir / 'IBMPlexMono-SemiBold.ttf',
+  note_fonts_dir / 'IBMPlexMono-SemiBoldItalic.ttf',
+  note_fonts_dir / 'IBMPlexSans-Variable.ttf',
+  note_fonts_dir / 'IBMPlexSans-VariableItalic.ttf',
+  note_fonts_dir / 'Inter-Variable.ttf',
+  note_fonts_dir / 'Inter-VariableItalic.ttf',
+  note_fonts_dir / 'JetBrainsMono-Variable.ttf',
+  note_fonts_dir / 'JetBrainsMono-VariableItalic.ttf',
+  note_fonts_dir / 'Literata-Variable.ttf',
+  note_fonts_dir / 'Literata-VariableItalic.ttf',
+  note_fonts_dir / 'Lora-Variable.ttf',
+  note_fonts_dir / 'Lora-VariableItalic.ttf',
+  note_fonts_dir / 'Nunito-Variable.ttf',
+  note_fonts_dir / 'Nunito-VariableItalic.ttf',
+  note_fonts_dir / 'SourceSerif4-Variable.ttf',
+  note_fonts_dir / 'SourceSerif4-VariableItalic.ttf',
+  note_fonts_dir / 'iAWriterQuattroS-Bold.ttf',
+  note_fonts_dir / 'iAWriterQuattroS-BoldItalic.ttf',
+  note_fonts_dir / 'iAWriterQuattroS-Italic.ttf',
+  note_fonts_dir / 'iAWriterQuattroS-Regular.ttf',
+  install_dir: datadir / app_id / 'fonts',
+  install_tag: 'fonts',
+)
+
 subdir('ui')
 
 core_bundle_copy = fs.copyfile(core_bundle, 'commitnote-core.js')

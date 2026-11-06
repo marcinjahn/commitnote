@@ -18,6 +18,12 @@ glib-compile-schemas --strict --targetdir="$schema_dir" "$build_dir/data"
 export GSETTINGS_SCHEMA_DIR="$schema_dir"
 export GSETTINGS_BACKEND=memory
 
+fonts_root=$(mktemp -d)
+meson install -C "$build_dir" --tags fonts --destdir "$fonts_root" --no-rebuild --quiet
+data_dir=$(meson introspect --buildoptions "$build_dir" \
+  | python3 -c 'import json, os, sys; o = {x["name"]: x["value"] for x in json.load(sys.stdin)}; print(os.path.join(o["prefix"], o["datadir"]))')
+export XDG_DATA_DIRS="$fonts_root$data_dir:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+
 XDG_RUNTIME_DIR=$(mktemp -d)
 chmod 0700 "$XDG_RUNTIME_DIR"
 export XDG_RUNTIME_DIR

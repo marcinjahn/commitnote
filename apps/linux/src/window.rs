@@ -22,6 +22,7 @@ use crate::pages::StartupErrorPage;
 use crate::pages::login::{RepositoryListPage, TokenPage, UnusableRepositoryPage};
 use crate::pages::notes::NotesPage;
 use crate::pages::unlock::{InitializePage, KeyChangedPage, LoadingPage, UnlockPage};
+use crate::preferences;
 
 const SPINNER_DELAY: Duration = Duration::from_millis(300);
 const NOTICE_TIMEOUT_SECONDS: u32 = 4;
@@ -42,7 +43,8 @@ mod imp {
         pub(super) starting_spinner: TemplateChild<adw::Spinner>,
         pub(super) model: OnceCell<AppModel>,
         pub(super) toasts: RefCell<HashMap<String, adw::Toast>>,
-        pub(super) toast_hosts: RefCell<Vec<glib::WeakRef<adw::ToastOverlay>>>,
+        pub(super) toast_hosts: RefCell<Vec<WeakToastHost>>,
+        pub(super) preferences: glib::WeakRef<adw::PreferencesDialog>,
         pub(super) applying_route: Cell<bool>,
         pub(super) lifecycle: RefCell<Option<Lifecycle>>,
         pub(super) close_released: Cell<bool>,
@@ -139,6 +141,7 @@ impl CommitnoteWindow {
         window.setup_type_to_start();
         application.set_accels_for_action("win.save-now", &["<Control>s"]);
         application.set_accels_for_action("win.new-note", &["<Control>n"]);
+        application.set_accels_for_action("win.preferences", &["<Control>comma"]);
         application.set_accels_for_action("window.close", &["<Control>w"]);
         application.set_accels_for_action("win.quit", &["<Control>q"]);
         imp.logout_inhibit
@@ -218,7 +221,10 @@ impl CommitnoteWindow {
                 window.run_reporting(model.start_draft(Vec::new(), DraftFocus::Name));
             })
             .build();
-        self.add_action_entries([log_out, quit, refresh, save_now, new_note]);
+        let preferences = gio::ActionEntry::builder("preferences")
+            .activate(|window: &Self, _, _| window.show_preferences())
+            .build();
+        self.add_action_entries([log_out, quit, refresh, save_now, new_note, preferences]);
         #[cfg(feature = "testing")]
         self.setup_testing_actions();
     }
@@ -269,6 +275,14 @@ impl CommitnoteWindow {
 
     fn connect_model(&self) {
         let model = self.model();
+        model.connect_settings_changed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.update_preferences_action();
+                }
+            }
+        });
         model.connect_route_changed({
             let window = self.downgrade();
             move |_| {
@@ -515,7 +529,38 @@ impl CommitnoteWindow {
                 Route::Notes | Route::Loading { .. }
             ));
         }
+        self.update_preferences_action();
         imp.applying_route.set(false);
+    }
+
+    fn update_preferences_action(&self) {
+        let model = self.model();
+        if let Some(action) = self
+            .lookup_action("preferences")
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_enabled(model.route() == Route::Notes && model.settings_copy().is_some());
+        }
+    }
+
+    fn show_preferences(&self) {
+        let imp = self.imp();
+        if let Some(open) = imp.preferences.upgrade() {
+            open.present(Some(self));
+            return;
+        }
+        let Some(dialog) = preferences::present(self.model(), self) else {
+            return;
+        };
+        dialog.connect_closed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.imp().preferences.set(None);
+                }
+            }
+        });
+        imp.preferences.set(Some(&dialog));
     }
 
     fn focus_early_draft(&self) {
@@ -671,27 +716,24 @@ impl CommitnoteWindow {
         self.toast_host().add_toast(toast);
     }
 
-    fn toast_host(&self) -> adw::ToastOverlay {
+    fn toast_host(&self) -> ToastHost {
         let mut hosts = self.imp().toast_hosts.borrow_mut();
         hosts.retain(|host| host.upgrade().is_some());
         hosts
             .last()
-            .and_then(|host| host.upgrade())
-            .unwrap_or_else(|| self.imp().toast_overlay.get())
+            .and_then(WeakToastHost::upgrade)
+            .unwrap_or_else(|| ToastHost::Overlay(self.imp().toast_overlay.get()))
     }
 
-    fn push_toast_host(&self, overlay: &adw::ToastOverlay) {
+    fn push_toast_host(&self, host: &ToastHost) {
+        self.imp().toast_hosts.borrow_mut().push(host.downgrade());
+    }
+
+    fn pop_toast_host(&self, host: &ToastHost) {
         self.imp()
             .toast_hosts
             .borrow_mut()
-            .push(overlay.downgrade());
-    }
-
-    fn pop_toast_host(&self, overlay: &adw::ToastOverlay) {
-        self.imp()
-            .toast_hosts
-            .borrow_mut()
-            .retain(|host| host.upgrade().is_some_and(|host| &host != overlay));
+            .retain(|other| other.upgrade().is_some_and(|other| &other != host));
     }
 
     fn restore_state(&self) {
@@ -711,23 +753,73 @@ impl CommitnoteWindow {
     }
 }
 
-/// Routes the window's notices and toasts into `overlay` while `dialog` is open, because the
+/// Where the window shows its notices and toasts while a dialog covers the window's own overlay.
+#[derive(Clone, PartialEq)]
+pub enum ToastHost {
+    Overlay(adw::ToastOverlay),
+    Preferences(adw::PreferencesDialog),
+}
+
+impl ToastHost {
+    fn add_toast(&self, toast: adw::Toast) {
+        match self {
+            Self::Overlay(overlay) => overlay.add_toast(toast),
+            Self::Preferences(dialog) => dialog.add_toast(toast),
+        }
+    }
+
+    fn downgrade(&self) -> WeakToastHost {
+        match self {
+            Self::Overlay(overlay) => WeakToastHost::Overlay(overlay.downgrade()),
+            Self::Preferences(dialog) => WeakToastHost::Preferences(dialog.downgrade()),
+        }
+    }
+}
+
+impl From<&adw::ToastOverlay> for ToastHost {
+    fn from(overlay: &adw::ToastOverlay) -> Self {
+        Self::Overlay(overlay.clone())
+    }
+}
+
+impl From<&adw::PreferencesDialog> for ToastHost {
+    fn from(dialog: &adw::PreferencesDialog) -> Self {
+        Self::Preferences(dialog.clone())
+    }
+}
+
+enum WeakToastHost {
+    Overlay(glib::WeakRef<adw::ToastOverlay>),
+    Preferences(glib::WeakRef<adw::PreferencesDialog>),
+}
+
+impl WeakToastHost {
+    fn upgrade(&self) -> Option<ToastHost> {
+        match self {
+            Self::Overlay(overlay) => overlay.upgrade().map(ToastHost::Overlay),
+            Self::Preferences(dialog) => dialog.upgrade().map(ToastHost::Preferences),
+        }
+    }
+}
+
+/// Routes the window's notices and toasts into `host` while `dialog` is open, because the
 /// window's own overlay is drawn beneath a dialog.
 pub fn host_dialog_toasts(
     anchor: &impl IsA<gtk::Widget>,
     dialog: &adw::Dialog,
-    overlay: &adw::ToastOverlay,
+    host: impl Into<ToastHost>,
 ) {
     let Some(window) = anchor.root().and_downcast::<CommitnoteWindow>() else {
         return;
     };
-    window.push_toast_host(overlay);
+    let host = host.into();
+    window.push_toast_host(&host);
     dialog.connect_closed({
         let window = window.downgrade();
-        let overlay = overlay.downgrade();
+        let host = host.downgrade();
         move |_| {
-            if let (Some(window), Some(overlay)) = (window.upgrade(), overlay.upgrade()) {
-                window.pop_toast_host(&overlay);
+            if let (Some(window), Some(host)) = (window.upgrade(), host.upgrade()) {
+                window.pop_toast_host(&host);
             }
         }
     });

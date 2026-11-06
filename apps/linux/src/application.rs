@@ -5,6 +5,7 @@ use gtk4::{gio, glib, prelude::*};
 use libadwaita as adw;
 
 use crate::config;
+use crate::fonts;
 use crate::model::appearance::AppearanceApplier;
 use crate::model::{AppConfig, AppModel};
 use crate::window::CommitnoteWindow;
@@ -34,6 +35,7 @@ mod imp {
         fn startup(&self) {
             self.parent_startup();
             sourceview5::init();
+            fonts::register_bundled_fonts();
             let applier = AppearanceApplier::new();
             let model = AppModel::new(app_config());
             applier.apply(&model.appearance());

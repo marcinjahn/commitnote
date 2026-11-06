@@ -13,7 +13,7 @@ use commitnote_core_api::events::RemoteChange;
 use commitnote_core_api::shapes::{OpenNote, OpenNoteConflict, SyncState, TreeNode};
 use commitnote_editor_text::Utf16Index;
 use gtk4 as gtk;
-use gtk4::gdk;
+use gtk4::{gdk, gio};
 use libadwaita as adw;
 
 use crate::flows::{
@@ -42,6 +42,8 @@ pub const CASES: &[Case] = &[
     ("paste_link", paste_link),
     ("ctrl_click_opens_link", ctrl_click_opens_link),
     ("formatting_bar_narrow", formatting_bar_narrow),
+    ("editor_note_font", editor_note_font),
+    ("editor_follows_document_font", editor_follows_document_font),
     ("vim_status_line", vim_status_line),
     ("vim_edit_undo", vim_edit_undo),
     ("vim_no_corruption", vim_no_corruption),
@@ -71,7 +73,7 @@ pub const CASES: &[Case] = &[
     ("editor_read_back", editor_read_back),
 ];
 
-const EDITOR: &str = "note-editor";
+pub(crate) const EDITOR: &str = "note-editor";
 const VIEW: &str = "note-editor-view";
 const HIDDEN: &str = "preview-hidden";
 const STRONG: &str = "preview-strong";
@@ -114,7 +116,7 @@ fn expect_tag(
 }
 
 /// Saves `text` as the open note, waits for the editor to show it and puts the caret at the start.
-fn show_saved(h: &Harness, editor: &NoteEditor, text: &str) -> Result<(), String> {
+pub(crate) fn show_saved(h: &Harness, editor: &NoteEditor, text: &str) -> Result<(), String> {
     let model = h.model()?;
     model.edit(text.to_owned());
     h.run("the sample to be saved", {
@@ -379,7 +381,7 @@ fn editor_overlays(h: &mut Harness) -> Result<(), String> {
     })
 }
 
-fn caret(editor: &NoteEditor) -> i32 {
+pub(crate) fn caret(editor: &NoteEditor) -> i32 {
     let buffer = editor.view().buffer();
     buffer.iter_at_mark(&buffer.get_insert()).offset()
 }
@@ -857,20 +859,119 @@ fn formatting_bar_narrow(h: &mut Harness) -> Result<(), String> {
     h.wait_shown("note-menu-button")
 }
 
+const CODE_NOTE: &str = "A line with `code` in it.\n\n- [ ] a task\n";
+const FONT_CLASS_PREFIX: &str = "note-font-";
+
+pub(crate) fn font_classes(view: &commitnote::editor::MarkdownView) -> Vec<String> {
+    view.css_classes()
+        .iter()
+        .map(|class| class.to_string())
+        .filter(|class| class.starts_with(FONT_CLASS_PREFIX))
+        .collect()
+}
+
+pub(crate) fn wait_for_font(
+    h: &Harness,
+    view: &commitnote::editor::MarkdownView,
+    id: &str,
+) -> Result<(), String> {
+    let wanted = format!("{FONT_CLASS_PREFIX}{id}");
+    h.wait(&format!("the editor to use the {id} font"), || {
+        font_classes(view) == [wanted.clone()]
+    })
+}
+
+/// Waits until the overlays were measured with the font the view now has, and returns that
+/// line height.
+fn wait_for_measured_line_height(
+    h: &Harness,
+    view: &commitnote::editor::MarkdownView,
+    previous: f32,
+) -> Result<f32, String> {
+    h.wait("the overlays to be measured again", || {
+        let (measured, current) = view.testing_line_metrics();
+        measured == Some(current) && current != previous
+    })?;
+    Ok(view.testing_line_metrics().1)
+}
+
+fn wait_for_measurement(
+    h: &Harness,
+    view: &commitnote::editor::MarkdownView,
+) -> Result<f32, String> {
+    h.wait("the overlays to be measured", || {
+        let (measured, current) = view.testing_line_metrics();
+        measured == Some(current)
+    })?;
+    Ok(view.testing_line_metrics().1)
+}
+
+fn editor_note_font(h: &mut Harness) -> Result<(), String> {
+    let editor = open_editor(h)?;
+    let view = editor.view();
+    show_saved(h, &editor, CODE_NOTE)?;
+    h.wait("the task checkbox", || {
+        count_overlays(&editor, OverlayKind::Checkbox) == 1
+    })?;
+    wait_for_font(h, &view, "inter")?;
+    let inter = wait_for_measurement(h, &view)?;
+
+    h.change_setting("noteFont", "lora")?;
+    wait_for_font(h, &view, "lora")?;
+    let lora = wait_for_measured_line_height(h, &view, inter)?;
+
+    h.change_setting("noteFont", "jetbrains-mono")?;
+    wait_for_font(h, &view, "jetbrains-mono")?;
+    let mono = wait_for_measured_line_height(h, &view, lora)?;
+    let code = offset_of(CODE_NOTE, "code", 0)?;
+    let tags = view.buffer().tag_table();
+    let code_tag = tags
+        .lookup("preview-inline-code")
+        .ok_or("the view has no code tag")?;
+    ensure(
+        code_tag.family().as_deref() == Some("monospace")
+            && h.tags_at(VIEW, code)?
+                .iter()
+                .any(|tag| tag == "preview-inline-code"),
+        || "code does not stay monospace".to_owned(),
+    )?;
+    ensure(editor.text() == CODE_NOTE, || {
+        "changing the font changed the text".to_owned()
+    })?;
+
+    h.change_setting("noteFont", "inter")?;
+    wait_for_font(h, &view, "inter")?;
+    let restored = wait_for_measured_line_height(h, &view, mono)?;
+    ensure(restored == inter, || {
+        "the default font is measured differently the second time".to_owned()
+    })
+}
+
+fn editor_follows_document_font(h: &mut Harness) -> Result<(), String> {
+    let editor = open_editor(h)?;
+    let view = editor.view();
+    show_saved(h, &editor, CODE_NOTE)?;
+    h.change_setting("noteFont", "system")?;
+    wait_for_font(h, &view, "system")?;
+    h.settle()?;
+    let before = wait_for_measurement(h, &view)?;
+
+    let desktop = gio::Settings::new("org.gnome.desktop.interface");
+    desktop
+        .set_string("document-font-name", "Sans 40")
+        .map_err(|error| error.to_string())?;
+    wait_for_measured_line_height(h, &view, before)?;
+    desktop.reset("document-font-name");
+    h.wait("the document font to be measured again", || {
+        view.testing_line_metrics().1 == before && view.testing_line_metrics().0 == Some(before)
+    })
+}
+
 const VIM_TEXT: &str = "first line\nsecond line 😀\nthird line\n";
 const VIM_RENAMED: &str = "first line\n2nd 😀é line 😀\nthird line\n";
 
 fn set_vim_mode(h: &Harness, editor: &NoteEditor, on: bool) -> Result<(), String> {
-    let model = h.model()?;
-    let value = if on { "true" } else { "false" };
-    h.run(
-        "the Vim setting to change",
-        model.testing_send(
-            "settings.change",
-            serde_json::json!({ "key": "vimMode", "value": value }),
-        ),
-    )?
-    .map_err(|error| format!("cannot change vimMode: {}", error.message))?;
+    h.change_setting("vimMode", if on { "true" } else { "false" })?;
     h.wait("the editor to follow the Vim setting", || {
         editor.vim_active() == on && h.shown("vim-status-line") == on
     })
@@ -1218,22 +1319,22 @@ fn note_paths(nodes: &[TreeNode]) -> Vec<Vec<String>> {
         .collect()
 }
 
-fn tree_notes(model: &AppModel) -> Vec<Vec<String>> {
+pub(crate) fn tree_notes(model: &AppModel) -> Vec<Vec<String>> {
     note_paths(&model.tree().unwrap_or_default())
 }
 
-fn title_entry(h: &Harness) -> Result<gtk::Entry, String> {
+pub(crate) fn title_entry(h: &Harness) -> Result<gtk::Entry, String> {
     h.widget_as::<gtk::Entry>(TITLE)
 }
 
-fn focus_within(h: &Harness, widget: &impl IsA<gtk::Widget>) -> bool {
+pub(crate) fn focus_within(h: &Harness, widget: &impl IsA<gtk::Widget>) -> bool {
     h.window()
         .ok()
         .and_then(|window| GtkWindowExt::focus(&window))
         .is_some_and(|focus| &focus == widget.upcast_ref() || focus.is_ancestor(widget))
 }
 
-fn submit_title(h: &Harness, text: &str) -> Result<(), String> {
+pub(crate) fn submit_title(h: &Harness, text: &str) -> Result<(), String> {
     let entry = title_entry(h)?;
     entry.grab_focus();
     h.set_text(TITLE, text)?;
@@ -1241,7 +1342,7 @@ fn submit_title(h: &Harness, text: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn wait_draft(h: &Harness) -> Result<(), String> {
+pub(crate) fn wait_draft(h: &Harness) -> Result<(), String> {
     let model = h.model()?;
     h.wait("a draft to start", || {
         model.editor_target().is_draft()
@@ -1577,7 +1678,7 @@ fn early_draft_body_only(h: &mut Harness) -> Result<(), String> {
     wait_open_note(h, &format!("{BODY_ONLY}!"))
 }
 
-fn press_to_start(
+pub(crate) fn press_to_start(
     h: &Harness,
     key: gdk::Key,
     state: gdk::ModifierType,
@@ -1645,21 +1746,13 @@ fn type_to_start_starts_note(h: &mut Harness) -> Result<(), String> {
 
 fn set_type_to_start(h: &Harness, on: bool) -> Result<(), String> {
     let model = h.model()?;
-    let value = if on { "true" } else { "false" };
-    h.run(
-        "the type-to-start setting to change",
-        model.testing_send(
-            "settings.change",
-            serde_json::json!({ "key": "typeToStart", "value": value }),
-        ),
-    )?
-    .map_err(|error| format!("cannot change typeToStart: {}", error.message))?;
+    h.change_setting("typeToStart", if on { "true" } else { "false" })?;
     h.wait("the model to follow the type-to-start setting", || {
         model.type_to_start() == on
     })
 }
 
-fn expect_not_started(
+pub(crate) fn expect_not_started(
     h: &Harness,
     why: &str,
     key: gdk::Key,
@@ -1767,7 +1860,7 @@ fn show_light(h: &Harness) -> Result<(), String> {
     wait_exported_change(h, &before)
 }
 
-fn fail_commits(h: &Harness, fail: bool) -> Result<(), String> {
+pub(crate) fn fail_commits(h: &Harness, fail: bool) -> Result<(), String> {
     let model = h.model()?;
     let repo = model
         .testing_repo_key()

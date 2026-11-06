@@ -3,6 +3,7 @@ mod p1;
 mod p2;
 mod p3;
 mod p4;
+mod p5;
 mod support;
 
 use std::process::ExitCode;
@@ -20,6 +21,7 @@ const SUITES: &[(&str, &[Case])] = &[
     ("p2", p2::CASES),
     ("p3", p3::CASES),
     ("p4", p4::CASES),
+    ("p5", p5::CASES),
 ];
 
 fn main() -> ExitCode {
@@ -29,6 +31,7 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     sourceview5::init();
+    commitnote::fonts::register_bundled_fonts();
     commitnote::register_resources();
     if let Some(settings) = gtk::Settings::default() {
         settings.set_gtk_enable_animations(false);

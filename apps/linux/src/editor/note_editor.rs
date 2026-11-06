@@ -21,6 +21,7 @@ use super::image_insertion::{ImageInserter, InsertAt, place_images, target_selec
 use super::image_source::ImageSource;
 use super::markdown_view::buffer_selection;
 use super::vim::{self, KeyRoute, Vim};
+use crate::fonts::NoteFont;
 use crate::links;
 use crate::model::{ImageInput, NoteContentUpdate};
 
@@ -194,6 +195,10 @@ impl NoteEditor {
             .get()
             .expect("the view is created on construction")
             .clone()
+    }
+
+    pub fn set_note_font(&self, font: NoteFont) {
+        self.view().set_note_font(font);
     }
 
     pub fn set_image_source(&self, source: Option<Rc<dyn ImageSource>>) {

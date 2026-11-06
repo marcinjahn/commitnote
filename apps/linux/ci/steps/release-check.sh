@@ -46,4 +46,13 @@ if ! meson introspect --buildoptions target/meson/release \
   exit 1
 fi
 
+fonts_dir=$(meson introspect --buildoptions target/meson/release \
+  | python3 -c 'import json, os, sys; o = {x["name"]: x["value"] for x in json.load(sys.stdin)}; print(os.path.join(o["prefix"], o["datadir"], "io.github.marcinjahn.commitnote", "fonts"))')
+font_count=$(meson introspect --installed target/meson/release \
+  | python3 -c 'import json, os, sys; print(sum(1 for dest in json.load(sys.stdin).values() if os.path.dirname(dest) == sys.argv[1] and dest.endswith(".ttf")))' "$fonts_dir")
+if [ "$font_count" -ne 24 ]; then
+  echo "release build installs $font_count note fonts under $fonts_dir, expected 24" >&2
+  exit 1
+fi
+
 echo "release check passed"

@@ -1223,7 +1223,11 @@ fn press_menu_keys(keys: &'static str) -> impl Fn(&Harness) -> Result<(), String
     }
 }
 
-fn string_attribute(model: &gtk::gio::MenuModel, index: i32, name: &str) -> Option<String> {
+pub(crate) fn string_attribute(
+    model: &gtk::gio::MenuModel,
+    index: i32,
+    name: &str,
+) -> Option<String> {
     model
         .item_attribute_value(index, name, Some(glib::VariantTy::STRING))
         .and_then(|value| value.get::<String>())
