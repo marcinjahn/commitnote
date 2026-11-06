@@ -98,40 +98,61 @@ impl NoteFont {
         widget.add_css_class(self.css_class());
     }
 
-    fn files(self) -> &'static [&'static str] {
-        match self {
-            Self::Inter => &["Inter-Variable.ttf", "Inter-VariableItalic.ttf"],
-            Self::System => &[],
-            Self::IbmPlexSans => &["IBMPlexSans-Variable.ttf", "IBMPlexSans-VariableItalic.ttf"],
-            Self::AtkinsonHyperlegible => &[
+    /// The regular and italic files, the faces a document embeds; `None` for the desktop's
+    /// document font.
+    pub fn face_files(self) -> Option<FaceFiles> {
+        let (regular, italic) = match self {
+            Self::Inter => ("Inter-Variable.ttf", "Inter-VariableItalic.ttf"),
+            Self::System => return None,
+            Self::IbmPlexSans => ("IBMPlexSans-Variable.ttf", "IBMPlexSans-VariableItalic.ttf"),
+            Self::AtkinsonHyperlegible => (
                 "AtkinsonHyperlegibleNext-Variable.ttf",
                 "AtkinsonHyperlegibleNext-VariableItalic.ttf",
-            ],
-            Self::Nunito => &["Nunito-Variable.ttf", "Nunito-VariableItalic.ttf"],
-            Self::IaWriterQuattro => &[
+            ),
+            Self::Nunito => ("Nunito-Variable.ttf", "Nunito-VariableItalic.ttf"),
+            Self::IaWriterQuattro => (
                 "iAWriterQuattroS-Regular.ttf",
                 "iAWriterQuattroS-Italic.ttf",
+            ),
+            Self::Literata => ("Literata-Variable.ttf", "Literata-VariableItalic.ttf"),
+            Self::SourceSerif => (
+                "SourceSerif4-Variable.ttf",
+                "SourceSerif4-VariableItalic.ttf",
+            ),
+            Self::Lora => ("Lora-Variable.ttf", "Lora-VariableItalic.ttf"),
+            Self::JetBrainsMono => (
+                "JetBrainsMono-Variable.ttf",
+                "JetBrainsMono-VariableItalic.ttf",
+            ),
+            Self::IbmPlexMono => ("IBMPlexMono-Regular.ttf", "IBMPlexMono-Italic.ttf"),
+        };
+        Some(FaceFiles { regular, italic })
+    }
+
+    /// The bold files of the families that are not variable.
+    fn bold_files(self) -> &'static [&'static str] {
+        match self {
+            Self::IaWriterQuattro => &[
                 "iAWriterQuattroS-Bold.ttf",
                 "iAWriterQuattroS-BoldItalic.ttf",
             ],
-            Self::Literata => &["Literata-Variable.ttf", "Literata-VariableItalic.ttf"],
-            Self::SourceSerif => &[
-                "SourceSerif4-Variable.ttf",
-                "SourceSerif4-VariableItalic.ttf",
-            ],
-            Self::Lora => &["Lora-Variable.ttf", "Lora-VariableItalic.ttf"],
-            Self::JetBrainsMono => &[
-                "JetBrainsMono-Variable.ttf",
-                "JetBrainsMono-VariableItalic.ttf",
-            ],
-            Self::IbmPlexMono => &[
-                "IBMPlexMono-Regular.ttf",
-                "IBMPlexMono-Italic.ttf",
-                "IBMPlexMono-SemiBold.ttf",
-                "IBMPlexMono-SemiBoldItalic.ttf",
-            ],
+            Self::IbmPlexMono => &["IBMPlexMono-SemiBold.ttf", "IBMPlexMono-SemiBoldItalic.ttf"],
+            _ => &[],
         }
     }
+
+    fn files(self) -> impl Iterator<Item = &'static str> {
+        self.face_files()
+            .into_iter()
+            .flat_map(|faces| [faces.regular, faces.italic])
+            .chain(self.bold_files().iter().copied())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FaceFiles {
+    pub regular: &'static str,
+    pub italic: &'static str,
 }
 
 /// Calls `apply` with the chosen note font now and after every change of it, until `owner` is
@@ -174,7 +195,8 @@ pub fn register_bundled_fonts() {
     }
 }
 
-fn bundled_fonts_dir() -> Option<PathBuf> {
+/// The first XDG data directory that holds the app's installed note fonts.
+pub fn bundled_fonts_dir() -> Option<PathBuf> {
     let data_dirs = std::iter::once(glib::user_data_dir()).chain(glib::system_data_dirs());
     find_fonts_dir(data_dirs, config::APP_ID)
 }
@@ -211,7 +233,6 @@ mod tests {
         NoteFont::ALL
             .into_iter()
             .flat_map(NoteFont::files)
-            .copied()
             .collect()
     }
 
@@ -234,7 +255,7 @@ mod tests {
     #[test]
     fn only_system_has_no_bundled_family_or_files() {
         assert_eq!(NoteFont::System.family(), None);
-        assert!(NoteFont::System.files().is_empty());
+        assert_eq!(NoteFont::System.files().count(), 0);
         assert_eq!(NoteFont::Inter.family(), Some("Inter"));
         assert_eq!(
             NoteFont::IaWriterQuattro.family(),
@@ -245,7 +266,75 @@ mod tests {
             .filter(|font| *font != NoteFont::System)
         {
             assert!(font.family().is_some(), "{font:?}");
-            assert!(!font.files().is_empty(), "{font:?}");
+            assert!(font.files().count() > 0, "{font:?}");
+        }
+    }
+
+    #[test]
+    fn every_core_id_maps_to_its_regular_and_italic_files() {
+        let expected = [
+            (
+                "inter",
+                Some(("Inter-Variable.ttf", "Inter-VariableItalic.ttf")),
+            ),
+            ("system", None),
+            (
+                "ibm-plex-sans",
+                Some(("IBMPlexSans-Variable.ttf", "IBMPlexSans-VariableItalic.ttf")),
+            ),
+            (
+                "atkinson-hyperlegible",
+                Some((
+                    "AtkinsonHyperlegibleNext-Variable.ttf",
+                    "AtkinsonHyperlegibleNext-VariableItalic.ttf",
+                )),
+            ),
+            (
+                "nunito",
+                Some(("Nunito-Variable.ttf", "Nunito-VariableItalic.ttf")),
+            ),
+            (
+                "ia-writer-quattro",
+                Some((
+                    "iAWriterQuattroS-Regular.ttf",
+                    "iAWriterQuattroS-Italic.ttf",
+                )),
+            ),
+            (
+                "literata",
+                Some(("Literata-Variable.ttf", "Literata-VariableItalic.ttf")),
+            ),
+            (
+                "source-serif",
+                Some((
+                    "SourceSerif4-Variable.ttf",
+                    "SourceSerif4-VariableItalic.ttf",
+                )),
+            ),
+            (
+                "lora",
+                Some(("Lora-Variable.ttf", "Lora-VariableItalic.ttf")),
+            ),
+            (
+                "jetbrains-mono",
+                Some((
+                    "JetBrainsMono-Variable.ttf",
+                    "JetBrainsMono-VariableItalic.ttf",
+                )),
+            ),
+            (
+                "ibm-plex-mono",
+                Some(("IBMPlexMono-Regular.ttf", "IBMPlexMono-Italic.ttf")),
+            ),
+        ];
+        assert_eq!(expected.map(|(id, _)| id), CORE_IDS.map(|(id, _)| id));
+        for (id, files) in expected {
+            let faces = NoteFont::from_id(id).face_files();
+            assert_eq!(
+                faces,
+                files.map(|(regular, italic)| FaceFiles { regular, italic }),
+                "{id}"
+            );
         }
     }
 

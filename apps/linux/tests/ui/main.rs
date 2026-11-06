@@ -30,6 +30,7 @@ fn main() -> ExitCode {
         eprintln!("FAILED to start GTK: {error}");
         return ExitCode::FAILURE;
     }
+    commitnote::print::initialize_web_engine();
     sourceview5::init();
     commitnote::fonts::register_bundled_fonts();
     commitnote::register_resources();

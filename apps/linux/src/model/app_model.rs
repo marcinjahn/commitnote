@@ -50,6 +50,7 @@ mod images;
 mod last_view;
 mod organise;
 mod passphrase;
+mod print;
 mod search;
 mod settings;
 mod shares;
@@ -531,7 +532,8 @@ impl AppModel {
         self.state_mut().draft_name = name;
     }
 
-    /// The text a draft starts with when it comes from the early draft.
+    /// The draft's text: what it starts with when it comes from the early draft, then what was
+    /// typed into it.
     pub fn draft_body(&self) -> String {
         self.state().draft_body.clone()
     }
@@ -1188,10 +1190,16 @@ impl AppModel {
     }
 
     pub fn edit(&self, text: String) {
-        let destination = match &self.state().editor_target {
-            EditorTarget::None => return,
-            EditorTarget::Note(path) => EditDestination::Note(path.clone()),
-            EditorTarget::Draft(_) => EditDestination::Draft,
+        let destination = {
+            let mut state = self.state_mut();
+            match &state.editor_target {
+                EditorTarget::None => return,
+                EditorTarget::Note(path) => EditDestination::Note(path.clone()),
+                EditorTarget::Draft(_) => {
+                    state.draft_body.clone_from(&text);
+                    EditDestination::Draft
+                }
+            }
         };
         self.edit_sender().submit(text, destination);
     }

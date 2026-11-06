@@ -24,6 +24,9 @@ data_dir=$(meson introspect --buildoptions "$build_dir" \
   | python3 -c 'import json, os, sys; o = {x["name"]: x["value"] for x in json.load(sys.stdin)}; print(os.path.join(o["prefix"], o["datadir"]))')
 export XDG_DATA_DIRS="$fonts_root$data_dir:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 
+# The build container cannot create the namespaces WebKit's bubblewrap sandbox needs.
+export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+
 XDG_RUNTIME_DIR=$(mktemp -d)
 chmod 0700 "$XDG_RUNTIME_DIR"
 export XDG_RUNTIME_DIR

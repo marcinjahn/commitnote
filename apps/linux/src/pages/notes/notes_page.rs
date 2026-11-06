@@ -16,6 +16,7 @@ use super::{
 use crate::editor::{InsertAt, NoteEditor};
 use crate::file_dialogs;
 use crate::model::{AppModel, COLOR_TAGS, DraftFocus, EditorTarget, ImageInput};
+use crate::print;
 
 const FALLBACK_TITLE: &str = "commitnote";
 const DRAFT_TITLE: &str = "New Note";
@@ -77,6 +78,7 @@ mod imp {
         pub(super) trash_dialog: glib::WeakRef<adw::Dialog>,
         pub(super) shared_links_dialog: glib::WeakRef<adw::Dialog>,
         pub(super) trashing: Cell<bool>,
+        pub(super) printing: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -199,6 +201,9 @@ mod imp {
             });
             klass.install_action("notes.share-note", None, |page, _, _| {
                 page.show_share();
+            });
+            klass.install_action("notes.print-note", None, |page, _, _| {
+                page.print_note();
             });
             klass.install_action("notes.trash-note", None, |page, _, _| {
                 if let Some(path) = page.open_saved_path() {
@@ -674,6 +679,26 @@ impl NotesPage {
         });
     }
 
+    fn print_note(&self) {
+        let imp = self.imp();
+        let Some(model) = imp.model.get() else {
+            return;
+        };
+        if imp.printing.replace(true) {
+            return;
+        }
+        self.update_note_actions();
+        let (model, page) = (model.clone(), self.clone());
+        glib::spawn_future_local(async move {
+            let parent = page.root().and_downcast::<gtk::Window>();
+            if let Err(error) = print::print_note(&model, parent.as_ref()).await {
+                model.report_error(&error);
+            }
+            page.imp().printing.set(false);
+            page.update_note_actions();
+        });
+    }
+
     fn show_trash(&self) {
         let imp = self.imp();
         let (Some(model), Some(tree)) = (imp.model.get(), imp.tree.get()) else {
@@ -952,6 +977,10 @@ impl NotesPage {
             .as_deref()
             .and_then(|path| open_note_menu_tag(model, path));
         self.action_set_enabled("notes.color-tag", tag.is_some());
+        self.action_set_enabled(
+            "notes.print-note",
+            model.can_print() && !self.imp().printing.get(),
+        );
         let id = tag.flatten().map_or("", tag_id);
         if self.note_color_tag() != id {
             self.set_note_color_tag(id.to_owned());
@@ -1086,6 +1115,7 @@ fn shortcuts() -> gtk::ShortcutController {
         ("<Control>f", "notes.search"),
         ("<Control>k", "notes.search"),
         ("<Control><Shift>n", "notes.new-folder"),
+        ("<Control>p", "notes.print-note"),
     ] {
         controller.add_shortcut(gtk::Shortcut::new(
             gtk::ShortcutTrigger::parse_string(trigger),

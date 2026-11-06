@@ -6,6 +6,7 @@ use adw::prelude::*;
 use commitnote::accent;
 use commitnote::editor::{MarkdownView, NoteEditor};
 use commitnote::file_dialogs;
+use commitnote::fonts::NoteFont;
 use commitnote::model::{AppModel, EditorTarget, PassphraseStage, Route};
 use commitnote::pages::notes::NotesPage;
 use commitnote_core_api::commands::AtomicBlockedView;
@@ -22,7 +23,7 @@ use crate::p2::{
     EDITOR, answer, fail_commits, focus_within, submit_title, tree_notes, type_at_end, wait_draft,
     wait_for_font,
 };
-use crate::p3::{focus_editor, open_note_at, string_attribute};
+use crate::p3::{action_enabled, focus_editor, open_note_at, string_attribute};
 use crate::support::{ALL_VARIANTS, Case, Harness, Theme, WIDE_LIGHT, Width, descendants};
 
 pub const CASES: &[Case] = &[
@@ -69,6 +70,10 @@ pub const CASES: &[Case] = &[
         "p5-change-passphrase-screenshots",
         change_passphrase_screenshots,
     ),
+    ("p5-print-loads", print_loads),
+    ("p5-print-dialog", print_dialog),
+    ("p5-print-system-font", print_system_font),
+    ("p5-print-menu", print_menu),
 ];
 
 const DIALOG: &str = "preferences-dialog";
@@ -1569,4 +1574,206 @@ fn change_passphrase_screenshots(h: &mut Harness) -> Result<(), String> {
         h.capture_variant("change-passphrase", width, theme)?;
     }
     Ok(())
+}
+
+const WHITEBOARD: &[&str] = &["Journal", "2026", "Whiteboard"];
+const PRINT_NOTE: &str = "notes.print-note";
+
+/// Collects the toasts shown while it lives.
+struct ToastWatch {
+    model: AppModel,
+    handler: Option<glib::SignalHandlerId>,
+    toasts: Rc<RefCell<Vec<String>>>,
+}
+
+impl ToastWatch {
+    fn new(model: &AppModel) -> Self {
+        let toasts = Rc::new(RefCell::new(Vec::new()));
+        let handler = model.connect_toast({
+            let toasts = toasts.clone();
+            move |_, message| toasts.borrow_mut().push(message.to_owned())
+        });
+        Self {
+            model: model.clone(),
+            handler: Some(handler),
+            toasts,
+        }
+    }
+
+    fn toasts(&self) -> Vec<String> {
+        self.toasts.borrow().clone()
+    }
+}
+
+impl Drop for ToastWatch {
+    fn drop(&mut self) {
+        if let Some(handler) = self.handler.take() {
+            self.model.disconnect(handler);
+        }
+    }
+}
+
+fn print_note(h: &Harness) -> Result<(), String> {
+    WidgetExt::activate_action(&h.widget("notes-tree")?, PRINT_NOTE, None)
+        .map_err(|error| format!("cannot activate {PRINT_NOTE}: {error}"))
+}
+
+fn open_print_dialog(h: &Harness) -> Option<gtk::Window> {
+    let main = h.window().ok()?;
+    gtk::Window::list_toplevels()
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Window>().ok())
+        .find(|window| window != main.upcast_ref::<gtk::Window>() && window.is_visible())
+}
+
+fn wait_print_dialog(h: &Harness) -> Result<gtk::Window, String> {
+    let mut dialog = None;
+    h.wait("the print dialog to open", || {
+        dialog = open_print_dialog(h);
+        dialog.is_some()
+    })?;
+    dialog.ok_or_else(|| "no print dialog opened".to_owned())
+}
+
+/// The document the open print dialog prints; the dialog opens only once it has loaded.
+fn printed_document(name: &str) -> Result<String, String> {
+    let title = format!("<title>{name}</title>");
+    commitnote::print::testing_last_document()
+        .filter(|document| commitnote::print::testing_load_finished() && document.contains(&title))
+        .ok_or_else(|| format!("the print dialog opened without a loaded {name} document"))
+}
+
+fn close_print_dialog(h: &Harness, dialog: &gtk::Window) -> Result<(), String> {
+    dialog.close();
+    h.wait("the print dialog to close and printing to end", || {
+        open_print_dialog(h).is_none() && action_enabled(h, PRINT_NOTE).unwrap_or(false)
+    })
+}
+
+fn print_loads(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    let model = h.model()?;
+    h.change_setting("noteFont", LORA)?;
+    h.wait("the Lora note font", || model.note_font() == NoteFont::Lora)?;
+    open_note_at(h, WHITEBOARD)?;
+    h.wait("printing to be enabled", || {
+        action_enabled(h, PRINT_NOTE).unwrap_or(false)
+    })?;
+    let toasts = ToastWatch::new(&model);
+
+    print_note(h)?;
+    let dialog = wait_print_dialog(h)?;
+    let document = printed_document("Whiteboard")?;
+
+    ensure(
+        document.contains(
+            "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; \
+             img-src data:; font-src data:; style-src 'unsafe-inline'\">",
+        ),
+        || "the print document has no content security policy".to_owned(),
+    )?;
+    ensure(
+        document.contains("@font-face{font-family:\"commitnote-note\""),
+        || "the print document embeds no note font face".to_owned(),
+    )?;
+    ensure(document.contains("data:image/"), || {
+        "the print document holds no inline image".to_owned()
+    })?;
+    close_print_dialog(h, &dialog)?;
+    ensure(toasts.toasts().is_empty(), || {
+        format!("closing the print dialog showed {:?}", toasts.toasts())
+    })
+}
+
+fn print_dialog(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    let model = h.model()?;
+    open_note_at(h, WELCOME)?;
+    let editor = h.widget_as::<NoteEditor>(EDITOR)?;
+    focus_editor(h, &editor)?;
+    h.wait("printing to be enabled", || {
+        action_enabled(h, PRINT_NOTE).unwrap_or(false)
+    })?;
+    let toasts = ToastWatch::new(&model);
+
+    h.press_keys("<Control>p")?;
+    let dialog = wait_print_dialog(h)?;
+    ensure(!action_enabled(h, PRINT_NOTE)?, || {
+        "printing stays enabled while the print dialog is open".to_owned()
+    })?;
+    h.press_keys_in(&dialog, "Escape")?;
+
+    h.wait("the print dialog to close and printing to end", || {
+        open_print_dialog(h).is_none() && action_enabled(h, PRINT_NOTE).unwrap_or(false)
+    })?;
+    h.settle()?;
+    ensure(toasts.toasts().is_empty(), || {
+        format!("cancelling the print dialog showed {:?}", toasts.toasts())
+    })
+}
+
+fn print_system_font(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    let model = h.model()?;
+    h.change_setting("noteFont", "system")?;
+    h.wait("the system note font", || {
+        model.note_font() == NoteFont::System
+    })?;
+    open_note_at(h, WELCOME)?;
+    h.wait("printing to be enabled", || {
+        action_enabled(h, PRINT_NOTE).unwrap_or(false)
+    })?;
+
+    print_note(h)?;
+    let dialog = wait_print_dialog(h)?;
+    let document = printed_document("Welcome")?;
+
+    ensure(!document.contains("@font-face"), || {
+        "the system font print document embeds a font face".to_owned()
+    })?;
+    close_print_dialog(h, &dialog)
+}
+
+fn print_menu(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    ensure(!action_enabled(h, PRINT_NOTE)?, || {
+        "printing is enabled with no note open".to_owned()
+    })?;
+    open_note_at(h, WELCOME)?;
+    h.wait_shown("note-menu-button")?;
+    h.wait("printing to be enabled", || {
+        action_enabled(h, PRINT_NOTE).unwrap_or(false)
+    })?;
+
+    let menu = h
+        .widget_as::<gtk::MenuButton>("note-menu-button")?
+        .menu_model()
+        .ok_or("the note menu has no model")?;
+    let sections: Vec<Vec<(String, String)>> = (0..menu.n_items())
+        .filter_map(|index| menu.item_link(index, "section"))
+        .map(|section| {
+            (0..section.n_items())
+                .map(|item| {
+                    (
+                        string_attribute(&section, item, "label").unwrap_or_default(),
+                        string_attribute(&section, item, "action").unwrap_or_default(),
+                    )
+                })
+                .collect()
+        })
+        .collect();
+    let actions = |section: &[(String, String)]| -> Vec<String> {
+        section.iter().map(|(_, action)| action.clone()).collect()
+    };
+    let share = sections
+        .iter()
+        .find(|section| actions(section).contains(&"notes.share-note".to_owned()))
+        .ok_or_else(|| format!("the note menu has no Share section: {sections:?}"))?;
+    ensure(
+        actions(share) == ["notes.share-note", "notes.show-history", PRINT_NOTE],
+        || format!("the Share section holds {share:?}"),
+    )?;
+    ensure(share[2].0 == "Print…", || {
+        format!("the print item is labelled {:?}", share[2].0)
+    })
 }

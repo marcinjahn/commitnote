@@ -11,6 +11,7 @@ pub mod links;
 pub mod model;
 pub mod pages;
 pub mod preferences;
+pub mod print;
 pub mod type_to_start;
 pub mod window;
 
