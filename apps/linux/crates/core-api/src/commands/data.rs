@@ -41,19 +41,35 @@ impl fmt::Debug for ExportedArchive {
 
 pub type ExportNotesResult = ExportedArchive;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportReadArchiveParams {
     pub input: String,
     pub file_name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl fmt::Debug for ImportReadArchiveParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ImportReadArchiveParams")
+            .field("input", &self.input)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportTargetView {
     pub path: Vec<String>,
     pub label: String,
     pub depth: u32,
+}
+
+impl fmt::Debug for ImportTargetView {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ImportTargetView")
+            .field("depth", &self.depth)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,7 +91,7 @@ pub struct ImportFormCopy {
     pub cancel_label: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportForm {
     pub file_name: String,
@@ -84,6 +100,15 @@ pub struct ImportForm {
     pub empty: bool,
     pub targets: Vec<ImportTargetView>,
     pub copy: ImportFormCopy,
+}
+
+impl fmt::Debug for ImportForm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ImportForm")
+            .field("empty", &self.empty)
+            .field("targets", &self.targets.len())
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,7 +120,7 @@ pub enum ImportArchiveOutcome {
 
 pub type ImportReadArchiveResult = ImportArchiveOutcome;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -105,6 +130,16 @@ pub enum ImportDestinationView {
     Root,
     Folder { path: Vec<String> },
     NewFolder { parent: Vec<String>, name: String },
+}
+
+impl fmt::Debug for ImportDestinationView {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Root => "Root",
+            Self::Folder { .. } => "Folder",
+            Self::NewFolder { .. } => "NewFolder",
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,7 +176,7 @@ pub struct ImportCommitParams {
     pub policy: ImportPolicy,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -165,6 +200,26 @@ pub enum ImportOutcomeView {
     },
 }
 
+impl fmt::Debug for ImportOutcomeView {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Queued { expand } => f
+                .debug_struct("Queued")
+                .field("expands", &expand.is_some())
+                .finish(),
+            Self::Conflicts { count, .. } => f
+                .debug_struct("Conflicts")
+                .field("count", count)
+                .finish_non_exhaustive(),
+            Self::NeedsSetup { can_configure, .. } => f
+                .debug_struct("NeedsSetup")
+                .field("can_configure", can_configure)
+                .finish_non_exhaustive(),
+            Self::Error { .. } => f.debug_struct("Error").finish_non_exhaustive(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportOutcomeResult {
@@ -174,11 +229,19 @@ pub struct ImportOutcomeResult {
 pub type ImportCommitResult = ImportOutcomeResult;
 pub type ImportDropFilesResult = ImportOutcomeResult;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportDroppedFile {
     pub input: String,
     pub name: String,
+}
+
+impl fmt::Debug for ImportDroppedFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ImportDroppedFile")
+            .field("input", &self.input)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -188,12 +251,22 @@ pub enum ImportDropSource {
     Tree,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportDropFilesParams {
     pub files: Vec<ImportDroppedFile>,
     pub parent: Option<Vec<String>>,
     pub source: ImportDropSource,
+}
+
+impl fmt::Debug for ImportDropFilesParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ImportDropFilesParams")
+            .field("files", &self.files)
+            .field("has_parent", &self.parent.is_some())
+            .field("source", &self.source)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -421,6 +494,59 @@ mod tests {
             round_trip(&archive),
             json!({"fileName":"notes.zip","mimeType":"application/zip","base64":"UEsDBHNlY3JldC1ub3RlLXRleHQ="})
         );
+    }
+
+    #[test]
+    fn debug_output_leaves_out_file_and_folder_names() {
+        let form: ImportArchiveOutcome = serde_json::from_str(READY).unwrap();
+        let ImportArchiveOutcome::Ready { form } = form else {
+            panic!("expected a ready outcome");
+        };
+        let destination = ImportDestinationView::NewFolder {
+            parent: vec!["Secret parent".into()],
+            name: "Secret folder".into(),
+        };
+        let outputs = [
+            format!("{form:?}"),
+            format!("{:?}", form.targets[1]),
+            format!("{destination:?}"),
+            format!(
+                "{:?}",
+                ImportCommitParams {
+                    destination,
+                    policy: ImportPolicy::Stop
+                }
+            ),
+            format!(
+                "{:?}",
+                ImportReadArchiveParams {
+                    input: "input-1".into(),
+                    file_name: "Secret file.zip".into(),
+                }
+            ),
+            format!(
+                "{:?}",
+                ImportDropFilesParams {
+                    files: vec![ImportDroppedFile {
+                        input: "input-2".into(),
+                        name: "Secret file.md".into(),
+                    }],
+                    parent: Some(vec!["Secret parent".into()]),
+                    source: ImportDropSource::Tree,
+                }
+            ),
+            format!(
+                "{:?}",
+                ImportOutcomeView::Queued {
+                    expand: Some(vec!["Secret folder".into()])
+                }
+            ),
+        ];
+        for output in outputs {
+            assert!(!output.contains("Secret"), "{output}");
+            assert!(!output.contains("commitnote"), "{output}");
+            assert!(!output.contains("sample-import"), "{output}");
+        }
     }
 
     #[test]

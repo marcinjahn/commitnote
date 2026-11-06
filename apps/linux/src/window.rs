@@ -14,6 +14,8 @@ use crate::close_guard::{
     after_flush, on_close_request, should_inhibit_logout, unsaved_body,
 };
 use crate::config;
+use crate::export;
+use crate::import::{self, ImportPrompts};
 use crate::model::lifecycle::Lifecycle;
 use crate::model::{
     AppModel, DraftFocus, LoadingFailure, LogOutResult, NoticeView, Route, UserError,
@@ -47,6 +49,7 @@ mod imp {
         pub(super) preferences: glib::WeakRef<adw::PreferencesDialog>,
         pub(super) applying_route: Cell<bool>,
         pub(super) lifecycle: RefCell<Option<Lifecycle>>,
+        pub(super) import_prompts: RefCell<Option<ImportPrompts>>,
         pub(super) close_released: Cell<bool>,
         pub(super) guarding_close: Cell<bool>,
         pub(super) logging_out: Cell<bool>,
@@ -80,6 +83,7 @@ mod imp {
 
         fn dispose(&self) {
             self.lifecycle.take();
+            self.import_prompts.take();
             self.logout_inhibit.take();
         }
     }
@@ -153,6 +157,8 @@ impl CommitnoteWindow {
         window.update_logout_inhibit();
         imp.lifecycle
             .replace(Some(Lifecycle::attach(&window, model)));
+        imp.import_prompts
+            .replace(Some(ImportPrompts::attach(&window, model)));
         imp.navigation_view.connect_popped({
             let window = window.downgrade();
             move |_, _| {
@@ -224,7 +230,22 @@ impl CommitnoteWindow {
         let preferences = gio::ActionEntry::builder("preferences")
             .activate(|window: &Self, _, _| window.show_preferences())
             .build();
-        self.add_action_entries([log_out, quit, refresh, save_now, new_note, preferences]);
+        let export_notes = gio::ActionEntry::builder("export-notes")
+            .activate(|window: &Self, _, _| window.export_notes())
+            .build();
+        let import_notes = gio::ActionEntry::builder("import-notes")
+            .activate(|window: &Self, _, _| window.import_notes())
+            .build();
+        self.add_action_entries([
+            log_out,
+            quit,
+            refresh,
+            save_now,
+            new_note,
+            preferences,
+            export_notes,
+            import_notes,
+        ]);
         #[cfg(feature = "testing")]
         self.setup_testing_actions();
     }
@@ -280,6 +301,24 @@ impl CommitnoteWindow {
             move |_| {
                 if let Some(window) = window.upgrade() {
                     window.update_preferences_action();
+                    window.update_export_action();
+                    window.update_import_action();
+                }
+            }
+        });
+        model.connect_import_changed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.update_import_action();
+                }
+            }
+        });
+        model.connect_export_changed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.update_export_action();
                 }
             }
         });
@@ -530,6 +569,8 @@ impl CommitnoteWindow {
             ));
         }
         self.update_preferences_action();
+        self.update_export_action();
+        self.update_import_action();
         imp.applying_route.set(false);
     }
 
@@ -541,6 +582,55 @@ impl CommitnoteWindow {
         {
             action.set_enabled(model.route() == Route::Notes && model.settings_copy().is_some());
         }
+    }
+
+    fn update_export_action(&self) {
+        let model = self.model();
+        if let Some(action) = self
+            .lookup_action("export-notes")
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_enabled(
+                model.route() == Route::Notes
+                    && model.settings_copy().is_some()
+                    && !model.exporting(),
+            );
+        }
+    }
+
+    fn export_notes(&self) {
+        let model = self.model().clone();
+        let window = self.clone();
+        glib::spawn_future_local(async move {
+            if let Err(error) = export::export_notes(&model, Some(window.upcast_ref()), true).await
+            {
+                model.report_error(&error);
+            }
+        });
+    }
+
+    fn update_import_action(&self) {
+        let model = self.model();
+        if let Some(action) = self
+            .lookup_action("import-notes")
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_enabled(
+                model.route() == Route::Notes
+                    && model.settings_copy().is_some()
+                    && model.settings_view().is_some_and(|view| view.can_import)
+                    && !model.import_busy()
+                    && !model.is_importing(),
+            );
+        }
+    }
+
+    fn import_notes(&self) {
+        let model = self.model().clone();
+        let window = self.clone();
+        glib::spawn_future_local(async move {
+            import::import_notes(&model, Some(window.upcast_ref())).await;
+        });
     }
 
     fn show_preferences(&self) {

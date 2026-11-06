@@ -1884,7 +1884,7 @@ pub(crate) fn fail_commits(h: &Harness, fail: bool) -> Result<(), String> {
     .map_err(|error| format!("cannot set the fake forge failures: {}", error.message))
 }
 
-fn type_at_end(h: &Harness, editor: &NoteEditor) -> Result<String, String> {
+pub(crate) fn type_at_end(h: &Harness, editor: &NoteEditor) -> Result<String, String> {
     let buffer = editor.view().buffer();
     buffer.place_cursor(&buffer.end_iter());
     type_text(editor, TYPED);
@@ -2175,7 +2175,7 @@ fn wait_window_closed(h: &Harness) -> Result<(), String> {
     h.wait("the window to close", || !window.is_visible())
 }
 
-fn answer(h: &Harness, name: &str, label: &str) -> Result<(), String> {
+pub(crate) fn answer(h: &Harness, name: &str, label: &str) -> Result<(), String> {
     let dialog = h.widget_as::<adw::AlertDialog>(name)?;
     find_button(dialog.upcast_ref(), label)
         .ok_or_else(|| format!("{name} has no {label} button"))?

@@ -18,6 +18,13 @@ template $CommitnoteKeyChangedPage: Adw.NavigationPage {
         spacing: 12;
         halign: center;
 
+        Gtk.Button export_button {
+          name: "key-changed-export";
+          visible: false;
+          halign: center;
+          css-classes: ["pill"];
+        }
+
         Gtk.Button log_in_again_button {
           name: "key-changed-log-in-again-button";
           label: "Log In Again";

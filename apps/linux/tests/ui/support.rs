@@ -206,6 +206,11 @@ impl Harness {
         self.clear_remembered_session()
     }
 
+    /// The directory of the running case, removed when the case ends.
+    pub fn case_dir(&self) -> PathBuf {
+        self.case_dir.borrow().clone()
+    }
+
     pub fn finish(&mut self) {
         self.close();
         let case_dir = self.case_dir.take();

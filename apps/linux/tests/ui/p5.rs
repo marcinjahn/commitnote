@@ -1,23 +1,29 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use adw::prelude::*;
 use commitnote::accent;
 use commitnote::editor::{MarkdownView, NoteEditor};
-use commitnote::model::EditorTarget;
+use commitnote::file_dialogs;
+use commitnote::model::{AppModel, EditorTarget, Route};
+use commitnote::pages::notes::NotesPage;
+use commitnote_core_api::commands::AtomicBlockedView;
+use commitnote_core_api::events::ImportStatusChanged;
 use commitnote_core_api::settings::{
     SettingOptionView, SettingScope, SettingsCopy, SettingsSaveState, SettingsView,
 };
 use commitnote_core_api::shapes::TreeNode;
-use gtk4::{self as gtk, gdk};
+use gtk4::{self as gtk, gdk, gio, glib};
 use libadwaita as adw;
 
 use crate::flows::{ensure, launch_and_log_in, log_in, wait_tree};
 use crate::p2::{
-    EDITOR, fail_commits, focus_within, submit_title, tree_notes, wait_draft, wait_for_font,
+    EDITOR, answer, fail_commits, focus_within, submit_title, tree_notes, type_at_end, wait_draft,
+    wait_for_font,
 };
 use crate::p3::{focus_editor, open_note_at, string_attribute};
-use crate::support::{ALL_VARIANTS, Case, Harness, WIDE_LIGHT, descendants};
+use crate::support::{ALL_VARIANTS, Case, Harness, Theme, WIDE_LIGHT, Width, descendants};
 
 pub const CASES: &[Case] = &[
     ("p5-preferences-shortcut", preferences_shortcut),
@@ -36,6 +42,21 @@ pub const CASES: &[Case] = &[
     ("p5-log-out-closes", log_out_closes),
     ("p5-preferences-screenshots", preferences_screenshots),
     ("p5-note-font-screenshot", note_font_screenshot),
+    ("p5-export-preferences", export_preferences),
+    ("p5-export-cancel", export_cancel),
+    ("p5-export-failure", export_failure),
+    ("p5-export-key-changed", export_key_changed),
+    ("p5-export-key-changed-clean", export_key_changed_clean),
+    ("p5-import-zip", import_zip),
+    ("p5-import-existing", import_existing),
+    ("p5-import-conflicts", import_conflicts),
+    ("p5-import-cancel", import_cancel),
+    ("p5-import-markdown", import_markdown),
+    ("p5-import-drop", import_drop),
+    ("p5-import-action-disabled", import_action_disabled),
+    ("p5-import-atomic-blocked", import_atomic_blocked),
+    ("p5-import-atomic-enable", import_atomic_enable),
+    ("p5-import-screenshots", import_screenshots),
 ];
 
 const DIALOG: &str = "preferences-dialog";
@@ -669,4 +690,594 @@ fn note_font_screenshot(h: &mut Harness) -> Result<(), String> {
     h.change_setting("noteFont", LORA)?;
     wait_for_font(h, &editor.view(), LORA)?;
     h.session_screenshots("note-font", WIDE_LIGHT)
+}
+
+const EXPORT_ROW: &str = "settings-export";
+const IMPORT_ROW: &str = "settings-import";
+const KEY_CHANGED_EXPORT: &str = "key-changed-export";
+const IMPORT_DIALOG: &str = "import-dialog";
+const IMPORT_TARGET: &str = "import-target";
+const IMPORT_FOLDER_NAME: &str = "import-folder-name";
+const IMPORT_PREVIEW: &str = "import-preview";
+const IMPORT_CONFIRM: &str = "import-confirm";
+const IMPORT_RENAME: &str = "import-rename";
+const ATOMIC_BLOCKED_DIALOG: &str = "import-atomic-blocked-dialog";
+const NEW_FOLDER: &str = "new-folder";
+const EXISTING_FOLDER: &str = "existing-folder";
+const ZIP_SIGNATURE: &[u8] = b"PK\x03\x04";
+
+fn path(parts: &[&str]) -> Vec<String> {
+    parts.iter().map(|part| (*part).to_owned()).collect()
+}
+
+fn files_dir(h: &Harness) -> Result<PathBuf, String> {
+    let directory = h.case_dir().join("files");
+    std::fs::create_dir_all(&directory)
+        .map_err(|error| format!("cannot create the files directory: {error}"))?;
+    Ok(directory)
+}
+
+fn write_file(h: &Harness, name: &str, text: &str) -> Result<gio::File, String> {
+    let file = files_dir(h)?.join(name);
+    std::fs::write(&file, text).map_err(|error| format!("cannot write {name}: {error}"))?;
+    Ok(gio::File::for_path(file))
+}
+
+/// What the app showed while an export ran, from the signals of one model.
+struct ExportWatch {
+    model: AppModel,
+    handlers: Vec<glib::SignalHandlerId>,
+    started: Rc<Cell<u32>>,
+    finished: Rc<Cell<u32>>,
+    toasts: Rc<RefCell<Vec<String>>>,
+    row_titles: Rc<RefCell<Vec<String>>>,
+}
+
+impl ExportWatch {
+    fn new(model: &AppModel, row: Option<adw::ButtonRow>) -> Self {
+        let started = Rc::new(Cell::new(0_u32));
+        let finished = Rc::new(Cell::new(0_u32));
+        let toasts = Rc::new(RefCell::new(Vec::new()));
+        let row_titles = Rc::new(RefCell::new(Vec::new()));
+        let changed = model.connect_export_changed({
+            let (started, finished, row_titles) =
+                (started.clone(), finished.clone(), row_titles.clone());
+            move |model| {
+                if model.exporting() {
+                    started.set(started.get() + 1);
+                    if let Some(row) = &row {
+                        row_titles.borrow_mut().push(row.title().to_string());
+                    }
+                } else {
+                    finished.set(finished.get() + 1);
+                }
+            }
+        });
+        let toast = model.connect_toast({
+            let toasts = toasts.clone();
+            move |_, message| toasts.borrow_mut().push(message.to_owned())
+        });
+        Self {
+            model: model.clone(),
+            handlers: vec![changed, toast],
+            started,
+            finished,
+            toasts,
+            row_titles,
+        }
+    }
+
+    fn wait_finished(&self, h: &Harness) -> Result<(), String> {
+        h.wait("the export to finish", || {
+            self.started.get() > 0 && self.finished.get() > 0 && !self.model.exporting()
+        })
+    }
+}
+
+impl Drop for ExportWatch {
+    fn drop(&mut self) {
+        for handler in self.handlers.drain(..) {
+            self.model.disconnect(handler);
+        }
+    }
+}
+
+fn row_title(h: &Harness, name: &str) -> Result<String, String> {
+    Ok(h.widget_as::<adw::ButtonRow>(name)?.title().to_string())
+}
+
+fn button_label(h: &Harness, name: &str) -> Result<String, String> {
+    h.widget_as::<gtk::Button>(name)?
+        .label()
+        .map(|label| label.to_string())
+        .ok_or_else(|| format!("{name} has no label"))
+}
+
+fn zip_target(h: &Harness) -> Result<(PathBuf, gio::File), String> {
+    let path = files_dir(h)?.join("export.zip");
+    let file = gio::File::for_path(&path);
+    Ok((path, file))
+}
+
+fn ensure_zip(path: &std::path::Path) -> Result<(), String> {
+    let bytes =
+        std::fs::read(path).map_err(|error| format!("the export was not written: {error}"))?;
+    ensure(bytes.starts_with(ZIP_SIGNATURE), || {
+        "the export is not a zip archive".to_owned()
+    })
+}
+
+fn export_to_zip(h: &Harness) -> Result<gio::File, String> {
+    let (path, file) = zip_target(h)?;
+    let model = h.model()?;
+    let watch = ExportWatch::new(&model, None);
+    file_dialogs::testing_queue_save(file.clone());
+    h.window_action("export-notes")?;
+    watch.wait_finished(h)?;
+    ensure_zip(&path)?;
+    Ok(file)
+}
+
+fn export_preferences(h: &mut Harness) -> Result<(), String> {
+    let copy = launch_notes(h)?;
+    let model = h.model()?;
+    open_preferences(h)?;
+    ensure(row_title(h, EXPORT_ROW)? == copy.data.export_label, || {
+        "the export row does not show the export label".to_owned()
+    })?;
+    let watch = ExportWatch::new(&model, Some(h.widget_as::<adw::ButtonRow>(EXPORT_ROW)?));
+    let (path, file) = zip_target(h)?;
+    file_dialogs::testing_queue_save(file);
+
+    h.activate_row(EXPORT_ROW)?;
+    watch.wait_finished(h)?;
+    ensure(
+        watch
+            .row_titles
+            .borrow()
+            .iter()
+            .any(|title| *title == copy.data.exporting_label),
+        || "the row never showed the exporting label".to_owned(),
+    )?;
+    ensure(row_title(h, EXPORT_ROW)? == copy.data.export_label, || {
+        "the row kept the exporting label".to_owned()
+    })?;
+    ensure(watch.toasts.borrow().is_empty(), || {
+        "a successful export showed a toast".to_owned()
+    })?;
+    ensure_zip(&path)
+}
+
+fn export_cancel(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    let model = h.model()?;
+    open_preferences(h)?;
+    let watch = ExportWatch::new(&model, None);
+    let (path, _) = zip_target(h)?;
+    file_dialogs::testing_queue_cancel();
+
+    h.activate_row(EXPORT_ROW)?;
+    watch.wait_finished(h)?;
+    h.settle()?;
+    ensure(!path.exists(), || {
+        "a cancelled export wrote a file".to_owned()
+    })?;
+    ensure(watch.toasts.borrow().is_empty(), || {
+        "a cancelled export showed a toast".to_owned()
+    })?;
+    ensure(row_title(h, EXPORT_ROW)? == view_export_label(h)?, || {
+        "the row did not return to the export label".to_owned()
+    })
+}
+
+fn view_export_label(h: &Harness) -> Result<String, String> {
+    h.model()?
+        .settings_copy()
+        .map(|copy| copy.data.export_label.clone())
+        .ok_or_else(|| "the settings copy is not loaded".to_owned())
+}
+
+fn export_failure(h: &mut Harness) -> Result<(), String> {
+    let copy = launch_notes(h)?;
+    let model = h.model()?;
+    open_preferences(h)?;
+    let watch = ExportWatch::new(&model, None);
+    let unwritable = files_dir(h)?.join("missing").join("export.zip");
+    file_dialogs::testing_queue_save(gio::File::for_path(&unwritable));
+
+    h.activate_row(EXPORT_ROW)?;
+    watch.wait_finished(h)?;
+    h.wait("the failure toast", || {
+        watch.toasts.borrow().contains(&copy.data.export_failed)
+    })?;
+    ensure(!unwritable.exists(), || {
+        "the failed export left a file".to_owned()
+    })?;
+    ensure(row_title(h, EXPORT_ROW)? == copy.data.export_label, || {
+        "the row did not return to the export label".to_owned()
+    })
+}
+
+fn reach_key_changed(
+    h: &Harness,
+    unsynced_edit: bool,
+) -> Result<commitnote::model::KeyChangedView, String> {
+    launch_and_log_in(h, false)?;
+    let model = h.model()?;
+    if unsynced_edit {
+        open_note_at(h, WELCOME)?;
+        let editor = h.widget_as::<NoteEditor>(EDITOR)?;
+        model.set_online(false);
+        type_at_end(h, &editor)?;
+    }
+    h.window_action("testing-change-passphrase")?;
+    model.set_online(true);
+    h.refresh_until("the key change to be noticed", || {
+        matches!(h.route(), Ok(Route::KeyChanged { .. }))
+    })?;
+    h.wait_page("key-changed")?;
+    model
+        .key_changed()
+        .ok_or_else(|| "the key-changed view is missing".to_owned())
+}
+
+fn export_from_key_changed(h: &Harness, label: &str) -> Result<(), String> {
+    h.wait_shown(KEY_CHANGED_EXPORT)?;
+    ensure(button_label(h, KEY_CHANGED_EXPORT)? == label, || {
+        "the export button does not show the core's label".to_owned()
+    })?;
+    let (path, file) = zip_target(h)?;
+    let model = h.model()?;
+    let watch = ExportWatch::new(&model, None);
+    file_dialogs::testing_queue_save(file);
+
+    h.click(KEY_CHANGED_EXPORT)?;
+    watch.wait_finished(h)?;
+    ensure(watch.toasts.borrow().is_empty(), || {
+        "the export showed a toast".to_owned()
+    })?;
+    ensure_zip(&path)
+}
+
+fn export_key_changed(h: &mut Harness) -> Result<(), String> {
+    let key_changed = reach_key_changed(h, true)?;
+    ensure(key_changed.unsaved_count == 1, || {
+        format!(
+            "{} unsaved notes are reported, not 1",
+            key_changed.unsaved_count
+        )
+    })?;
+    ensure(!key_changed.export_label.is_empty(), || {
+        "the core offers no export label with unsaved edits".to_owned()
+    })?;
+    export_from_key_changed(h, &key_changed.export_label)
+}
+
+fn export_key_changed_clean(h: &mut Harness) -> Result<(), String> {
+    let key_changed = reach_key_changed(h, false)?;
+    ensure(key_changed.unsaved_count == 0, || {
+        format!("{} unsaved notes are reported", key_changed.unsaved_count)
+    })?;
+    export_from_key_changed(h, &key_changed.export_label)
+}
+
+fn wait_import_form(h: &Harness) -> Result<(), String> {
+    let model = h.model()?;
+    h.wait_shown(IMPORT_DIALOG)?;
+    h.wait("the import preview", || {
+        model.import_form().is_some() && model.import_preview().is_some() && h.shown(IMPORT_PREVIEW)
+    })?;
+    let dialog = h.widget_as::<adw::Dialog>(IMPORT_DIALOG)?;
+    h.wait("the focus to be in the import dialog", || {
+        focus_within(h, &dialog)
+    })
+}
+
+fn open_import(h: &Harness, files: Vec<gio::File>) -> Result<(), String> {
+    file_dialogs::testing_queue_open(files);
+    h.window_action("import-notes")?;
+    wait_import_form(h)
+}
+
+fn import_zip_dialog(h: &Harness) -> Result<(), String> {
+    let zip = export_to_zip(h)?;
+    open_import(h, vec![zip])
+}
+
+fn wait_dialog_closed(h: &Harness) -> Result<(), String> {
+    h.wait("the import dialog to close", || !h.shown(IMPORT_DIALOG))
+}
+
+fn choose_existing(h: &Harness) -> Result<(), String> {
+    h.widget_as::<adw::ToggleGroup>(IMPORT_TARGET)?
+        .set_active_name(Some(EXISTING_FOLDER));
+    h.wait("the folder list", || h.shown("import-targets"))
+}
+
+fn select_target(h: &Harness, target: &[&str]) -> Result<(), String> {
+    let wanted = path(target);
+    let form = h.model()?.import_form().ok_or("no import form")?;
+    let index = form
+        .targets
+        .iter()
+        .position(|candidate| candidate.path == wanted)
+        .ok_or("the form offers no such folder")?;
+    let row = h.widget_as::<gtk::ListBoxRow>(&format!("import-target-{index}"))?;
+    h.widget_as::<gtk::ListBox>("import-targets")?
+        .select_row(Some(&row));
+    Ok(())
+}
+
+fn import_zip(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    let model = h.model()?;
+    open_preferences(h)?;
+    let zip = export_to_zip(h)?;
+    file_dialogs::testing_queue_open(vec![zip]);
+    h.activate_row(IMPORT_ROW)?;
+    wait_import_form(h)?;
+
+    let form = model.import_form().ok_or("no import form")?;
+    ensure(
+        h.widget_as::<adw::ActionRow>("import-file-name")?.title() == form.file_name,
+        || "the form does not name the archive".to_owned(),
+    )?;
+    ensure(!form.empty, || "the archive is reported empty".to_owned())?;
+    ensure(
+        h.widget_as::<adw::Dialog>(IMPORT_DIALOG)?.title() == form.copy.title,
+        || "the form stage has the wrong title".to_owned(),
+    )?;
+    ensure(
+        h.widget_as::<adw::ToggleGroup>(IMPORT_TARGET)?
+            .active_name()
+            .as_deref()
+            == Some(NEW_FOLDER),
+        || "the form does not start on a new folder".to_owned(),
+    )?;
+
+    let row = h.widget_as::<adw::EntryRow>(IMPORT_FOLDER_NAME)?;
+    focus_name(h, &row)?;
+    h.press_keys("<Control>a")?;
+    h.type_keys("Imported")?;
+    h.wait("the folder name", || {
+        h.text(IMPORT_FOLDER_NAME)
+            .is_ok_and(|text| text == "Imported")
+    })?;
+    ensure(!h.label(IMPORT_PREVIEW)?.is_empty(), || {
+        "the form shows no preview".to_owned()
+    })?;
+
+    let expanded = Rc::new(RefCell::new(Vec::<Vec<String>>::new()));
+    let handler = model.connect_import_expand({
+        let expanded = expanded.clone();
+        move |_, path| expanded.borrow_mut().push(path)
+    });
+    let outcome = (|| {
+        h.click(IMPORT_CONFIRM)?;
+        wait_dialog_closed(h)?;
+        close_preferences(h)?;
+        let imported = path(&["Imported", "Welcome"]);
+        h.wait("the imported notes", || {
+            tree_notes(&model).contains(&imported)
+        })?;
+        ensure(*expanded.borrow() == [path(&["Imported"])], || {
+            "the new folder was not the one to reveal".to_owned()
+        })?;
+        h.wait("the new folder in the tree", || {
+            h.label_shown_with("Imported")
+        })
+    })();
+    model.disconnect(handler);
+    outcome
+}
+
+fn import_existing(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    let model = h.model()?;
+    import_zip_dialog(h)?;
+
+    let before = model.testing_previews_sent();
+    choose_existing(h)?;
+    select_target(h, &["Projects"])?;
+    h.wait("a preview for the chosen folder", || {
+        model.testing_previews_sent() > before && h.shown(IMPORT_PREVIEW)
+    })?;
+    ensure(!h.label(IMPORT_PREVIEW)?.is_empty(), || {
+        "the preview is empty after choosing a folder".to_owned()
+    })?;
+
+    h.click(IMPORT_CONFIRM)?;
+    wait_dialog_closed(h)?;
+    let imported = path(&["Projects", "Welcome"]);
+    h.wait("the imported notes", || {
+        tree_notes(&model).contains(&imported)
+    })
+}
+
+fn import_conflicts(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    let model = h.model()?;
+    import_zip_dialog(h)?;
+    let form = model.import_form().ok_or("no import form")?;
+    let notes_before = tree_notes(&model).len();
+
+    choose_existing(h)?;
+    h.click(IMPORT_CONFIRM)?;
+    h.wait("the conflicts stage", || {
+        model.import_offers_rename() && h.shown(IMPORT_RENAME)
+    })?;
+    ensure(
+        h.widget_as::<adw::Dialog>(IMPORT_DIALOG)?.title() == form.copy.conflicts_title,
+        || "the conflicts stage has the wrong title".to_owned(),
+    )?;
+    ensure(!h.shown(IMPORT_CONFIRM), || {
+        "the conflicts stage still offers the plain import".to_owned()
+    })?;
+    ensure(tree_notes(&model).len() == notes_before, || {
+        "a conflicting import changed the tree".to_owned()
+    })?;
+
+    h.click(IMPORT_RENAME)?;
+    wait_dialog_closed(h)?;
+    h.wait("the renamed notes", || {
+        tree_notes(&model).len() > notes_before
+    })
+}
+
+fn import_cancel(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    let model = h.model()?;
+    import_zip_dialog(h)?;
+    let notes = tree_notes(&model);
+
+    h.press_keys("Escape")?;
+    wait_dialog_closed(h)?;
+    h.wait("the import to be dropped", || {
+        model.import_form().is_none() && !model.is_importing()
+    })?;
+    ensure(tree_notes(&model) == notes, || {
+        "cancelling the import changed the tree".to_owned()
+    })?;
+    ensure(
+        h.window()?
+            .lookup_action("import-notes")
+            .is_some_and(|action| action.is_enabled()),
+        || "Import is disabled after cancelling".to_owned(),
+    )
+}
+
+fn import_markdown(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    let model = h.model()?;
+    let files = vec![
+        write_file(h, "Alpha import.md", "# Alpha import\n\nfirst\n")?,
+        write_file(h, "Beta import.md", "# Beta import\n\nsecond\n")?,
+    ];
+    file_dialogs::testing_queue_open(files);
+    h.window_action("import-notes")?;
+
+    let expected = [path(&["Alpha import"]), path(&["Beta import"])];
+    h.wait("both notes to be imported", || {
+        let notes = tree_notes(&model);
+        expected.iter().all(|note| notes.contains(note))
+    })?;
+    ensure(
+        !h.shown(IMPORT_DIALOG) && model.import_form().is_none(),
+        || "importing Markdown files opened the form".to_owned(),
+    )
+}
+
+fn import_drop(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    let model = h.model()?;
+    let file = write_file(h, "Dropped note.md", "# Dropped note\n\ntext\n")?;
+    let notes = h
+        .page("notes")?
+        .downcast::<NotesPage>()
+        .map_err(|_| "the notes page has an unexpected type")?;
+
+    ensure(
+        notes.testing_drop_files(&[file], Some(&["Projects".to_owned()])),
+        || "the tree refused the drop on a folder".to_owned(),
+    )?;
+    let dropped = path(&["Projects", "Dropped note"]);
+    h.wait("the dropped note", || tree_notes(&model).contains(&dropped))?;
+    ensure(!h.shown(IMPORT_DIALOG), || {
+        "a dropped Markdown file opened the form".to_owned()
+    })
+}
+
+fn import_enabled(h: &Harness) -> bool {
+    h.window()
+        .ok()
+        .and_then(|window| window.lookup_action("import-notes"))
+        .is_some_and(|action| action.is_enabled())
+}
+
+fn import_action_disabled(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    let model = h.model()?;
+    h.wait("Import to be enabled", || import_enabled(h))?;
+
+    model.testing_import_status(ImportStatusChanged {
+        importing: true,
+        atomic_blocked: None,
+    });
+    h.wait("Import to be disabled while importing", || {
+        model.is_importing() && !import_enabled(h)
+    })?;
+    model.testing_import_status(ImportStatusChanged {
+        importing: false,
+        atomic_blocked: None,
+    });
+    h.wait("Import to be enabled again", || import_enabled(h))
+}
+
+fn atomic_blocked_view() -> AtomicBlockedView {
+    AtomicBlockedView {
+        title: "Blocked".to_owned(),
+        message: "The branch needs atomic commits.".to_owned(),
+        enable_label: "Enable".to_owned(),
+        save_without_label: "Save Without".to_owned(),
+        can_configure: true,
+    }
+}
+
+fn answer_atomic_blocked(
+    h: &Harness,
+    label: impl Fn(&AtomicBlockedView) -> &str,
+) -> Result<(), String> {
+    let model = h.model()?;
+    let blocked = atomic_blocked_view();
+    model.testing_import_status(ImportStatusChanged {
+        importing: true,
+        atomic_blocked: Some(blocked.clone()),
+    });
+    h.wait_shown(ATOMIC_BLOCKED_DIALOG)?;
+    let dialog = h.widget_as::<adw::AlertDialog>(ATOMIC_BLOCKED_DIALOG)?;
+    ensure(
+        dialog.heading().as_deref() == Some(blocked.title.as_str()),
+        || "the alert does not show the title".to_owned(),
+    )?;
+
+    dialog.close();
+    h.settle()?;
+    ensure(
+        h.shown(ATOMIC_BLOCKED_DIALOG) && model.import_atomic_blocked().is_some(),
+        || "the alert was dismissed without an answer".to_owned(),
+    )?;
+
+    answer(h, ATOMIC_BLOCKED_DIALOG, label(&blocked))?;
+    h.wait("the alert to close", || !h.shown(ATOMIC_BLOCKED_DIALOG))?;
+    h.wait("the blocked state to clear", || {
+        model.import_atomic_blocked().is_none()
+    })
+}
+
+fn import_atomic_blocked(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    answer_atomic_blocked(h, |blocked| &blocked.save_without_label)
+}
+
+fn import_atomic_enable(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    answer_atomic_blocked(h, |blocked| &blocked.enable_label)
+}
+
+fn import_screenshots(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    open_note_at(h, WELCOME)?;
+    import_zip_dialog(h)?;
+    for &(width, theme) in ALL_VARIANTS {
+        h.show_variant(width, theme)?;
+        h.capture_variant("import", width, theme)?;
+    }
+
+    choose_existing(h)?;
+    h.click(IMPORT_CONFIRM)?;
+    h.wait("the conflicts stage", || {
+        h.model().is_ok_and(|model| model.import_offers_rename()) && h.shown(IMPORT_RENAME)
+    })?;
+    h.show_variant(Width::Wide, Theme::Light)?;
+    h.capture_variant("import-conflicts", Width::Wide, Theme::Light)
 }

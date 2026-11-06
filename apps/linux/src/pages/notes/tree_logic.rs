@@ -357,6 +357,27 @@ pub fn drop_action(
     })
 }
 
+/// Where files dropped from outside the app at height `y` of a row of `height` are imported:
+/// into a folder from the middle of its row, otherwise beside the target. `parent` is `None` for
+/// the top level.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileDrop {
+    pub zone: DropZone,
+    pub parent: Option<Vec<String>>,
+}
+
+pub fn file_drop(target: &[String], folder: bool, y: f64, height: f64) -> FileDrop {
+    let zone = drop_zone(folder, y, height);
+    let parent = match zone {
+        DropZone::Into => target,
+        DropZone::Before | DropZone::After => parent_of(target),
+    };
+    FileDrop {
+        zone,
+        parent: (!parent.is_empty()).then(|| parent.to_vec()),
+    }
+}
+
 /// Dropping `dragged` on the empty area below the rows places it last at the top level, unless it
 /// already is.
 pub fn drop_at_end(dragged: &[String], top_level: &[String]) -> Option<DropAction> {
@@ -909,5 +930,57 @@ mod tests {
         );
         assert!(drop_at_end(&path(&["a", "n2"]), &top).is_some());
         assert!(drop_at_end(&path(&["c", "n4"]), &top).is_some());
+    }
+
+    #[test]
+    fn files_dropped_on_a_folder_go_into_it_from_the_middle_only() {
+        let target = path(&["a", "dir"]);
+        let at = |fraction: f64| file_drop(&target, true, fraction * 40.0, 40.0);
+        assert_eq!(
+            at(0.5),
+            FileDrop {
+                zone: DropZone::Into,
+                parent: Some(path(&["a", "dir"]))
+            }
+        );
+        assert_eq!(
+            at(0.1),
+            FileDrop {
+                zone: DropZone::Before,
+                parent: Some(path(&["a"]))
+            }
+        );
+        assert_eq!(
+            at(0.9),
+            FileDrop {
+                zone: DropZone::After,
+                parent: Some(path(&["a"]))
+            }
+        );
+    }
+
+    #[test]
+    fn files_dropped_on_a_note_go_beside_it() {
+        assert_eq!(
+            file_drop(&path(&["a", "note"]), false, 30.0, 40.0),
+            FileDrop {
+                zone: DropZone::After,
+                parent: Some(path(&["a"]))
+            }
+        );
+        assert_eq!(
+            file_drop(&path(&["a", "note"]), false, 0.0, 40.0).parent,
+            Some(path(&["a"]))
+        );
+    }
+
+    #[test]
+    fn files_dropped_beside_a_top_level_row_go_to_the_top_level() {
+        assert_eq!(file_drop(&path(&["note"]), false, 10.0, 40.0).parent, None);
+        assert_eq!(file_drop(&path(&["dir"]), true, 39.0, 40.0).parent, None);
+        assert_eq!(
+            file_drop(&path(&["dir"]), true, 20.0, 40.0).parent,
+            Some(path(&["dir"]))
+        );
     }
 }

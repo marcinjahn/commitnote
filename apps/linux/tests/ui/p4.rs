@@ -4,8 +4,9 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use commitnote::editor::NoteEditor;
+use commitnote::file_dialogs;
 use commitnote::model::{DraftFocus, EditorTarget, ImageState};
-use commitnote::pages::notes::{ImageViewer, NotesPage, SharedLinksDialog};
+use commitnote::pages::notes::{ImageViewer, SharedLinksDialog};
 use commitnote_core_api::Secret;
 use commitnote_core_api::commands::{
     HistoryPhase, HistoryRow, HistoryVersionView, MessagePart, ShareActionId, ShareCreateOutcome,
@@ -231,15 +232,8 @@ fn open_welcome(h: &Harness) -> Result<(NoteEditor, String), String> {
     Ok((editor, original))
 }
 
-fn notes_page(editor: &NoteEditor) -> Result<NotesPage, String> {
-    editor
-        .ancestor(NotesPage::static_type())
-        .and_downcast::<NotesPage>()
-        .ok_or_else(|| "the editor is not on the notes page".to_owned())
-}
-
 fn pick_and_insert(editor: &NoteEditor, files: Vec<gio::File>) -> Result<(), String> {
-    notes_page(editor)?.testing_set_next_picked_files(files);
+    file_dialogs::testing_queue_open(files);
     WidgetExt::activate_action(editor, "editor.insert-image", None)
         .map_err(|error| format!("cannot activate editor.insert-image: {error}"))
 }
@@ -294,7 +288,7 @@ fn insert_file(h: &mut Harness) -> Result<(), String> {
         scratch.write("second.png", &png_bytes(64, 40, 128))?,
     ];
     editor.place_caret(0);
-    notes_page(&editor)?.testing_set_next_picked_files(files);
+    file_dialogs::testing_queue_open(files);
 
     h.click("format-image-button")?;
     h.wait("two references in the note", || {

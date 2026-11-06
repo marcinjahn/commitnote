@@ -1,5 +1,6 @@
 mod appearance;
 mod binding;
+mod data;
 mod device;
 mod editor;
 mod notes;
@@ -18,6 +19,7 @@ use libadwaita as adw;
 
 use self::appearance::Appearance;
 use self::binding::Binding;
+use self::data::Data;
 use self::device::Device;
 use self::editor::Editor;
 use self::notes::Notes;
@@ -36,6 +38,7 @@ struct Preferences {
     editor: Editor,
     notes: Notes,
     device: Rc<Device>,
+    data: Data,
 }
 
 struct Connections {
@@ -60,6 +63,7 @@ pub fn present(model: &AppModel, anchor: &impl IsA<gtk::Widget>) -> Option<adw::
         editor: Editor::new(&binding, &copy),
         notes: Notes::new(&binding, &copy),
         device: Device::new(&binding, &copy),
+        data: Data::new(&copy),
         copy,
         binding,
     });
@@ -88,6 +92,8 @@ pub fn present(model: &AppModel, anchor: &impl IsA<gtk::Widget>) -> Option<adw::
     host_dialog_toasts(anchor, dialog.upcast_ref(), &dialog);
     preferences.show_view();
     preferences.show_save();
+    preferences.show_export();
+    preferences.show_import();
     dialog.present(Some(anchor));
     Some(dialog)
 }
@@ -103,6 +109,7 @@ impl Preferences {
         page.add(&self.editor.group);
         page.add(&self.notes.group);
         page.add(&self.device.group);
+        page.add(&self.data.group);
         self.dialog.add(&page);
 
         let narrow = adw::Breakpoint::new(adw::BreakpointCondition::new_length(
@@ -132,6 +139,14 @@ impl Preferences {
             model.connect_settings_save_changed({
                 let preferences = self.clone();
                 move |_| preferences.show_save()
+            }),
+            model.connect_export_changed({
+                let preferences = self.clone();
+                move |_| preferences.show_export()
+            }),
+            model.connect_import_changed({
+                let preferences = self.clone();
+                move |_| preferences.show_import()
             }),
             model.connect_route_changed({
                 let preferences = self.clone();
@@ -189,6 +204,14 @@ impl Preferences {
             self.notes.show(&view);
             self.device.show(&view);
         });
+    }
+
+    fn show_export(&self) {
+        self.data.show_export(self.binding.model().exporting());
+    }
+
+    fn show_import(&self) {
+        self.data.show_import(self.binding.model().is_importing());
     }
 
     fn show_save(&self) {

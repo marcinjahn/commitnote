@@ -12,15 +12,12 @@ use commitnote_image_codec::{DisplayImage, decode_for_display};
 use gio::prelude::*;
 use gtk4::gdk;
 
+use super::file_input::{READ_FAILED_MESSAGE, log_read_failure, read_bounded};
 use super::organise::failed;
 use super::{AppModel, LOG_DOMAIN, warn};
 
 const MAX_IMAGE_INPUT_BYTES: usize = 25 * 1024 * 1024;
-/// One byte past the limit, so the core can tell an oversized input from one at the limit.
-const READ_LIMIT: usize = MAX_IMAGE_INPUT_BYTES + 1;
-const READ_CHUNK: usize = 1024 * 1024;
 const CACHE_BYTES: usize = 256 * 1024 * 1024;
-const READ_FAILED_MESSAGE: &str = "Could not read the file";
 const FALLBACK_MIME_TYPE: &str = "application/octet-stream";
 
 #[derive(Debug, Clone)]
@@ -181,11 +178,7 @@ impl AppModel {
             match read_input(input).await {
                 Ok((bytes, mime_type)) => ids.push(staged.stage(bytes, mime_type)),
                 Err(error) => {
-                    glib::g_warning!(
-                        LOG_DOMAIN,
-                        "could not read an image file: {:?}",
-                        error.kind::<gio::IOErrorEnum>()
-                    );
+                    log_read_failure(&error);
                     unreadable = true;
                 }
             }
@@ -352,34 +345,17 @@ impl AppModel {
 async fn read_input(input: ImageInput) -> Result<(Vec<u8>, String), glib::Error> {
     match input {
         ImageInput::Bytes { bytes, mime_type } => {
-            let end = bytes.len().min(READ_LIMIT);
+            let end = bytes.len().min(MAX_IMAGE_INPUT_BYTES + 1);
             Ok((bytes[..end].to_vec(), mime_type))
         }
         ImageInput::File(file) => {
-            let data = read_bounded(&file).await?;
+            let data = read_bounded(&file, MAX_IMAGE_INPUT_BYTES).await?;
             let (content_type, _) = gio::content_type_guess(file.basename(), &data[..]);
             let mime_type = gio::content_type_get_mime_type(&content_type)
                 .map_or_else(|| FALLBACK_MIME_TYPE.to_owned(), String::from);
             Ok((data, mime_type))
         }
     }
-}
-
-async fn read_bounded(file: &gio::File) -> Result<Vec<u8>, glib::Error> {
-    let stream = file.read_future(glib::Priority::DEFAULT).await?;
-    let mut data = Vec::new();
-    while data.len() < READ_LIMIT {
-        let count = (READ_LIMIT - data.len()).min(READ_CHUNK);
-        let chunk = stream
-            .read_bytes_future(count, glib::Priority::DEFAULT)
-            .await?;
-        if chunk.is_empty() {
-            break;
-        }
-        data.extend_from_slice(&chunk);
-    }
-    let _ = stream.close_future(glib::Priority::DEFAULT).await;
-    Ok(data)
 }
 
 async fn load(

@@ -43,6 +43,8 @@ use super::editor_lane::EditorLane;
 use super::editor_settings::EditorSettings;
 use crate::fonts::NoteFont;
 
+mod data;
+mod file_input;
 mod history;
 mod images;
 mod last_view;
@@ -51,6 +53,7 @@ mod search;
 mod settings;
 mod shares;
 
+pub use data::{DropSetup, ExportGuard, ExportedFile, ImportSetup};
 pub use history::RestoreResult;
 pub use images::{ImageInput, ImageState, LoadedImage};
 pub use last_view::NoteDetails;
@@ -302,6 +305,7 @@ struct State {
     sync: Option<SyncStateChanged>,
     key_changed: Option<KeyChangedView>,
     settings: settings::SettingsState,
+    import: data::ImportState,
     appearance: Appearance,
     editor_settings: EditorSettings,
     visible: bool,
@@ -324,6 +328,7 @@ mod imp {
         pub(super) client: RefCell<Option<Rc<CoreClient>>>,
         pub(super) state: RefCell<State>,
         pub(super) generation: Cell<u64>,
+        pub(super) exporting: Cell<bool>,
         pub(super) edit_sender: OnceCell<EditSender>,
         pub(super) editor_lane: EditorLane,
     }
@@ -355,6 +360,11 @@ mod imp {
                     Signal::builder("shares-changed").build(),
                     Signal::builder("settings-changed").build(),
                     Signal::builder("settings-save-changed").build(),
+                    Signal::builder("import-changed").build(),
+                    Signal::builder("export-changed").build(),
+                    Signal::builder("import-expand")
+                        .param_types([glib::StrV::static_type()])
+                        .build(),
                     Signal::builder("notice")
                         .param_types([
                             String::static_type(),
@@ -724,6 +734,7 @@ impl AppModel {
     pub async fn choose_repository(&self, url: &str) {
         self.state_mut().repository_url = Some(url.to_owned());
         self.clear_settings();
+        self.reset_import_state();
         self.reset_image_cache();
         self.inspect().await;
     }
@@ -1792,9 +1803,8 @@ impl AppModel {
             CoreEvent::SearchStatusChanged(changed) => self.search_status_changed(changed),
             CoreEvent::HistoryChanged(changed) => self.history_changed(changed),
             CoreEvent::SharesChanged(changed) => self.shares_changed(changed),
-            CoreEvent::ImportStatusChanged(_)
-            | CoreEvent::PassphraseChangeProgress(_)
-            | CoreEvent::Other { .. } => {}
+            CoreEvent::ImportStatusChanged(status) => self.import_status_changed(status),
+            CoreEvent::PassphraseChangeProgress(_) | CoreEvent::Other { .. } => {}
         }
     }
 
@@ -1938,6 +1948,7 @@ impl AppModel {
         let history_ended = self.state().history.is_some();
         let shares_ended = self.state().shares.is_some();
         let settings_ended = self.state().settings.is_loaded();
+        let import_ended = self.state().import.is_active();
         let last_view = self.end_last_view();
         {
             let mut state = self.state_mut();
@@ -1980,6 +1991,9 @@ impl AppModel {
         }
         if settings_ended {
             self.emit_settings_cleared();
+        }
+        if import_ended {
+            self.emit_by_name::<()>("import-changed", &[]);
         }
         self.bump_generation();
         self.imp().editor_lane.supersede();
@@ -2236,6 +2250,10 @@ impl AppModel {
                 message: message.to_owned(),
             },
         ));
+    }
+
+    pub fn testing_import_status(&self, status: commitnote_core_api::events::ImportStatusChanged) {
+        self.handle_event(CoreEvent::ImportStatusChanged(status));
     }
 
     pub async fn testing_fail_next(&self) -> Result<(), UserError> {
