@@ -1,6 +1,6 @@
 import type { SyntaxNode } from "@lezer/common";
 import { describe, expect, it } from "vitest";
-import { insertBlock, insertImageReferences } from "./insertion-rule";
+import { insertImageReferences } from "./insertion-rule";
 import { markdownParser } from "./markdown-parser";
 import { tableSourceAt } from "./table-source";
 import { applyTextEdit, type TextEdit } from "./text-edit";
@@ -26,12 +26,6 @@ function run(
 function lines(marked: string, ...references: string[]): string {
   return run(marked, (text, position) =>
     insertImageReferences(text, position, references),
-  );
-}
-
-function table(marked: string, block = "TABLE"): string {
-  return run(marked, (text, position) =>
-    insertBlock(text, position, block, "table"),
   );
 }
 
@@ -581,38 +575,4 @@ describe("insertImageReferences on rows with no cells", () => {
       }
     },
   );
-});
-
-describe("insertBlock with a table", () => {
-  it("separates the table from text on both sides after a non-empty line", () => {
-    expect(table("ab¦\nnext")).toBe("ab\n\nTABLE\n¦\nnext");
-    expect(table("ab¦cd")).toBe("ab\n\nTABLE\n¦\ncd");
-  });
-
-  it("separates the table from the paragraph above on a blank line", () => {
-    expect(table("one\n¦\ntwo")).toBe("one\n\nTABLE\n¦\ntwo");
-  });
-
-  it("separates the table from the paragraph above when the caret ends it", () => {
-    expect(table("one¦\n\ntwo")).toBe("one\n\nTABLE\n¦\ntwo");
-  });
-
-  it("separates the table from a table above at its last line end", () => {
-    expect(table("| a |\n| - |¦\n\nnext")).toBe(
-      "| a |\n| - |\n\nTABLE\n¦\nnext",
-    );
-    expect(table("| a |\n| - |¦")).toBe("| a |\n| - |\n\nTABLE\n¦");
-  });
-
-  it("separates the table from a table below at the header line start", () => {
-    expect(table("¦| a |\n| - |")).toBe("TABLE\n¦\n| a |\n| - |");
-  });
-
-  it("starts an empty document", () => {
-    expect(table("¦")).toBe("TABLE\n¦");
-  });
-
-  it("keeps a multi-line block intact", () => {
-    expect(table("ab¦", "| h |\n| - |")).toBe("ab\n\n| h |\n| - |\n¦");
-  });
 });

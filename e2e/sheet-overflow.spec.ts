@@ -130,4 +130,31 @@ test.describe("sheets at phone widths", { tag: "@mobile" }, () => {
       page.getByRole("dialog", { name: "Change passphrase" }),
     );
   });
+
+  test("More commands scrolls on a short viewport and End reaches the last item", async ({
+    page,
+  }) => {
+    await openNotes(page);
+    await showTree(page);
+    await page.setViewportSize({ width: 412, height: 140 });
+    await page.getByRole("button", { name: "More commands" }).click();
+
+    const menu = page.getByRole("menu", { name: "Commands" });
+    await expect(menu).toBeVisible();
+    await expect
+      .poll(async () => {
+        const box = (await menu.boundingBox())!;
+        return box.y >= 0 && box.y + box.height <= 140;
+      })
+      .toBe(true);
+    await expect
+      .poll(() => menu.evaluate((el) => el.scrollHeight > el.clientHeight))
+      .toBe(true);
+
+    await menu.getByRole("menuitem").first().focus();
+    await page.keyboard.press("End");
+
+    await expect(menu.getByRole("menuitem").last()).toBeFocused();
+    await expect(menu.getByRole("menuitem").last()).toBeInViewport();
+  });
 });

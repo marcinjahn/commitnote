@@ -34,10 +34,6 @@ import {
   serializeOrderIndex,
 } from "../../order/order-index";
 import { insertImageReferences } from "../../markdown/insertion-rule";
-import {
-  applyTableCommand,
-  availableTableCommands,
-} from "../../markdown/table-commands";
 import { applyTextEdit, type TextEdit } from "../../markdown/text-edit";
 import { sealShare } from "../../share/share-envelope";
 import {
@@ -62,7 +58,6 @@ export const TEST_VECTOR_FILES = [
   "device-trailer.json",
   "shares.json",
   "git-blob-sha1.json",
-  "table-commands.json",
   "image-insertion.json",
 ] as const;
 
@@ -637,27 +632,6 @@ export async function checkTestVectors(
     async (vector) =>
       (await gitBlobShaOfBytes(fromHex(vector.contentHex))) === vector.sha,
   );
-
-  await eachVector("table-commands.json", "commands", byName, (vector) =>
-    reproduces(
-      vector.text,
-      applyTableCommand(
-        vector.text,
-        vector.selection,
-        vector.command,
-        vector.argument,
-      ),
-      vector.expected,
-    ),
-  );
-  await eachVector("table-commands.json", "availability", byName, (vector) => {
-    const available = availableTableCommands(vector.text, vector.selection);
-    return (
-      Array.isArray(vector.available) &&
-      available.length === vector.available.length &&
-      available.every((command, index) => command === vector.available[index])
-    );
-  });
 
   await eachVector("image-insertion.json", "insertions", byName, (vector) =>
     reproduces(

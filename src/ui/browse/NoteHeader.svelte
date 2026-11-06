@@ -12,15 +12,6 @@
   import type { MenuAnchor } from "./row-menu-types";
   import { colorTagStyle, type ColorTag } from "../../tags/color-tag";
   import { describeColorTag } from "./tag-messages";
-  import type {
-    ColumnAlignment,
-    TableCommand,
-  } from "../../markdown/table-commands";
-  import {
-    tableMenuCommand,
-    tableMenuItems,
-    type TableMenuId,
-  } from "./table-menu";
 
   interface Props {
     name: string;
@@ -52,11 +43,6 @@
     /** Shows the insert image button. */
     onInsertImage?: () => void;
     insertImageDisabled?: boolean;
-    /** Shows the table menu button. */
-    tableMenu?: {
-      availability: () => Readonly<Record<TableCommand, boolean>>;
-      run: (command: TableCommand, argument?: ColumnAlignment) => void;
-    };
   }
 
   const {
@@ -85,18 +71,12 @@
     onColorTag,
     onInsertImage,
     insertImageDisabled = false,
-    tableMenu,
   }: Props = $props();
 
   const descId = $props.id();
   const sharedDescId = `${descId}-shared`;
   let tagButton: HTMLButtonElement | undefined = $state();
   let tagAnchor = $state<MenuAnchor | null>(null);
-  let tableButton: HTMLButtonElement | undefined = $state();
-  let tableMenuState = $state<{
-    anchor: MenuAnchor;
-    items: ReturnType<typeof tableMenuItems>;
-  } | null>(null);
   let headerEl: HTMLElement | undefined = $state();
   let nameField: ReturnType<typeof NameField> | undefined = $state();
 
@@ -122,28 +102,6 @@
   function closeTagMenu(): void {
     tagAnchor = null;
     tagButton?.focus();
-  }
-
-  function toggleTableMenu(): void {
-    if (tableButton === undefined || tableMenu === undefined) return;
-    tableMenuState =
-      tableMenuState === null
-        ? {
-            anchor: { kind: "rect", rect: tableButton.getBoundingClientRect() },
-            items: tableMenuItems(tableMenu.availability()),
-          }
-        : null;
-  }
-
-  function closeTableMenu(): void {
-    tableMenuState = null;
-    tableButton?.focus();
-  }
-
-  function pickTableItem(id: TableMenuId): void {
-    tableMenuState = null;
-    const { command, argument } = tableMenuCommand(id);
-    tableMenu?.run(command, argument);
   }
 
   function pickColorTag(color: ColorTag | null): void {
@@ -203,34 +161,6 @@
         {/each}
       </svg>
     </button>
-  {/if}
-  {#if tableMenu !== undefined}
-    <button
-      type="button"
-      class="button button-ghost button-icon table-menu-button"
-      bind:this={tableButton}
-      aria-label="Table"
-      title="Table"
-      aria-haspopup="menu"
-      aria-expanded={tableMenuState !== null}
-      onclick={toggleTableMenu}
-    >
-      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        {#each noteIcons.table as d (d)}
-          <path {d} />
-        {/each}
-      </svg>
-    </button>
-    {#if tableMenuState !== null && tableButton !== undefined}
-      <MenuPopup
-        label="Table"
-        items={tableMenuState.items}
-        anchor={tableMenuState.anchor}
-        trigger={tableButton}
-        onSelect={pickTableItem}
-        onClose={closeTableMenu}
-      />
-    {/if}
   {/if}
   {#if !draft && onShare !== undefined}
     <button

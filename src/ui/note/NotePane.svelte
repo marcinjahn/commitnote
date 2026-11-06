@@ -11,15 +11,6 @@
     type ImageOpenRequest,
   } from "../../editor/image-widgets";
   import { tableWidgets } from "../../editor/table-widgets";
-  import {
-    runTableCommand as runTableCommandInView,
-    tableCommandAvailabilityOf,
-  } from "../../editor/table-editing";
-  import {
-    TABLE_COMMANDS,
-    type ColumnAlignment,
-    type TableCommand,
-  } from "../../markdown/table-commands";
   import type { ImageSource } from "../../images/image-source";
   import type { ImageId } from "../../images/image-id";
   import { noteOwnsImage } from "../../images/image-ownership";
@@ -410,28 +401,6 @@
 
   export function insertImageFiles(files: readonly File[], position?: number): void {
     editor?.withView((view) => insertImageFilesIntoView(view, files, position));
-  }
-
-  export function runTableCommand(
-    command: TableCommand,
-    argument?: ColumnAlignment,
-  ): boolean {
-    return (
-      editor?.withView((view) =>
-        runTableCommandInView(view, command, argument),
-      ) ?? false
-    );
-  }
-
-  export function tableCommandAvailability(): Readonly<
-    Record<TableCommand, boolean>
-  > {
-    return (
-      editor?.withView((view) => tableCommandAvailabilityOf(view.state)) ??
-      (Object.fromEntries(
-        TABLE_COMMANDS.map((command) => [command, false]),
-      ) as Record<TableCommand, boolean>)
-    );
   }
 
   export function seedPosition(path: NotePath, position: NotePosition): void {

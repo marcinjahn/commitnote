@@ -209,6 +209,89 @@ test("clicking a cell reveals the table with the caret after the cell's text", a
     .toBe(before.replace(HEADER, "| Column A | Column BX |"));
 });
 
+test("the empty rows of a typed table are as tall as a filled row and can be clicked @mobile", async ({
+  page,
+}) => {
+  await openWelcomeNote(page);
+  await caretBelowTable(page);
+  await page.keyboard.press("Enter");
+  await page.keyboard.insertText(
+    [
+      "",
+      row(["Empty A", "Empty B"]),
+      row(["---", "---"]),
+      "|  |  |",
+      "|  |  |",
+    ].join("\n"),
+  );
+  await page.keyboard.press("ControlOrMeta+Home");
+  await expect(tables(page)).toHaveCount(2);
+
+  const rows = tables(page)
+    .filter({ has: page.getByRole("columnheader", { name: "Empty A" }) })
+    .locator("tr");
+  await expect(rows).toHaveCount(3);
+  await expect
+    .poll(async () => {
+      const heights: number[] = [];
+      for (let index = 0; index < 3; index++) {
+        const box = await rows.nth(index).boundingBox();
+        heights.push(box?.height ?? 0);
+      }
+      const [header, ...body] = heights;
+      return (
+        header > 0 && body.every((h) => h >= header - 1 && h <= header + 1)
+      );
+    })
+    .toBe(true);
+
+  await rows.nth(1).locator("td").first().click();
+  await expect(tables(page)).toHaveCount(1);
+  await expect(editor(page)).toBeFocused();
+  await page.keyboard.type("X");
+  await expect(
+    pane(page).locator(".cm-line", { hasText: /^\|\s*X\s*\|/ }),
+  ).toHaveCount(1);
+});
+
+test("Tab inside a revealed table indents its row as it does any other line", async ({
+  page,
+}) => {
+  await openWelcomeNote(page);
+
+  await line(page, "Notes stay private").click();
+  await page.keyboard.press("Tab");
+  await expect
+    .poll(() =>
+      line(page, "Notes stay private").evaluate((el) => el.textContent),
+    )
+    .toMatch(/^ {2}> Notes stay private/);
+  await page.keyboard.press("Shift+Tab");
+  await expect
+    .poll(() =>
+      line(page, "Notes stay private").evaluate((el) => el.textContent),
+    )
+    .toMatch(/^> Notes stay private/);
+  await expect(tables(page)).toHaveCount(1);
+
+  await tables(page).getByRole("cell", { name: "1", exact: true }).click();
+  await expectRevealed(page);
+  const before = await pane(page).locator(".cm-content").innerText();
+
+  await page.keyboard.press("Tab");
+  await expect
+    .poll(() => pane(page).locator(".cm-content").innerText())
+    .toBe(before.replace(LAST_ROW, `  ${LAST_ROW}`));
+  await expectCaretIn(line(page, LAST_ROW));
+  await expectRevealed(page);
+
+  await page.keyboard.press("Shift+Tab");
+  await expect
+    .poll(() => pane(page).locator(".cm-content").innerText())
+    .toBe(before);
+  await expectCaretIn(line(page, LAST_ROW));
+});
+
 test.describe("keyboard entry", () => {
   test("ArrowDown from the line above lands on the first line", async ({
     page,

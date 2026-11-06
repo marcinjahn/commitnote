@@ -18,7 +18,6 @@ import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { readTable, tableContainerPrefix } from "../markdown/markdown-table";
 import { lineHasSelection } from "./live-preview";
-import { tableCellNavigation } from "./table-editing";
 import { tableSelection } from "./table-selection";
 import { TableWidget, tableLinkOpener } from "./table-widget";
 
@@ -399,7 +398,6 @@ export function tableWidgets(
   const extensions: Extension[] = [
     tableWidgetsField,
     tableEntryKeymap,
-    tableCellNavigation(),
     tableWidgetsTheme,
     tableSelection,
   ];
