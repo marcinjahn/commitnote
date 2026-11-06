@@ -1814,7 +1814,10 @@ impl AppModel {
             CoreEvent::SearchStatusChanged(changed) => self.search_status_changed(changed),
             CoreEvent::HistoryChanged(changed) => self.history_changed(changed),
             CoreEvent::SharesChanged(changed) => self.shares_changed(changed),
-            CoreEvent::Other { .. } => {}
+            CoreEvent::SettingsSaveChanged { .. }
+            | CoreEvent::ImportStatusChanged(_)
+            | CoreEvent::PassphraseChangeProgress(_)
+            | CoreEvent::Other { .. } => {}
         }
     }
 

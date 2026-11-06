@@ -19,6 +19,15 @@ pub enum SettingKeyView {
     VimMode,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ScopedSettingKey {
+    ColorMode,
+    AccentColor,
+    NoteFont,
+    TypeToStart,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingOptionView {
