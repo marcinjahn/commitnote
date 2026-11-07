@@ -6,6 +6,7 @@ export interface ImageReference {
   from: number;
   to: number;
   imageId: ImageId;
+  idFrom: number;
   alt: string;
   width?: number;
   height?: number;
@@ -18,12 +19,8 @@ const MAX_DIMENSION = 99999;
 
 const markdownParser = parser.configure(GFM);
 
-interface ParsedReference extends ImageReference {
-  idFrom: number;
-}
-
-function parseAll(text: string): ParsedReference[] {
-  const references: ParsedReference[] = [];
+function parseAll(text: string): ImageReference[] {
+  const references: ImageReference[] = [];
   markdownParser.parse(text).iterate({
     enter(node) {
       if (node.name !== "Image") return;
@@ -35,13 +32,15 @@ function parseAll(text: string): ParsedReference[] {
   return references;
 }
 
-function readImage(node: SyntaxNode, text: string): ParsedReference | null {
+function readImage(node: SyntaxNode, text: string): ImageReference | null {
   const image = readImageNode(node, text);
   if (!image) return null;
-  const target = parseImageUrl(text.slice(image.urlNode.from, image.urlNode.to));
+  const target = parseImageUrl(
+    text.slice(image.urlNode.from, image.urlNode.to),
+  );
   if (!target) return null;
 
-  const reference: ParsedReference = {
+  const reference: ImageReference = {
     from: image.from,
     to: image.to,
     imageId: target.imageId,
@@ -125,7 +124,7 @@ export function imageAltText(alt: string): string {
 }
 
 export function parseImageReferences(text: string): ImageReference[] {
-  return parseAll(text).map(({ idFrom: _idFrom, ...reference }) => reference);
+  return parseAll(text);
 }
 
 export function referencedImageIds(text: string): Set<ImageId> {

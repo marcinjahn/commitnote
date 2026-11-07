@@ -12,10 +12,8 @@ import {
 import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { ImageId } from "../images/image-id";
 import {
-  type ImageReference,
   parseImageReferences,
   referencedImageIds,
-  rewriteImageReferences,
 } from "../images/image-reference";
 
 export interface ImageCloning {
@@ -131,24 +129,6 @@ const pendingClones = StateField.define<readonly Batch[]>({
   },
 });
 
-function idOffset(
-  text: string,
-  reference: ImageReference,
-  replacement: ImageId,
-): number | null {
-  const original = text.slice(reference.from, reference.to);
-  const rewritten = rewriteImageReferences(
-    original,
-    new Map([[reference.imageId, replacement]]),
-  );
-  for (let index = 0; index < original.length; index++) {
-    if (original[index] !== rewritten[index]) {
-      return reference.from + index;
-    }
-  }
-  return null;
-}
-
 function rewriteChanges(
   state: EditorState,
   batch: Batch,
@@ -167,11 +147,9 @@ function rewriteChanges(
         found.imageId === candidate.imageId,
     );
     if (!reference) continue;
-    const from = idOffset(text, reference, replacement);
-    if (from === null) continue;
     changes.push({
-      from,
-      to: from + candidate.imageId.length,
+      from: reference.idFrom,
+      to: reference.idFrom + reference.imageId.length,
       insert: replacement,
     });
   }
