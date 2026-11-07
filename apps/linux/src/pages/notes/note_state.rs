@@ -1,5 +1,7 @@
 use commitnote_core_api::shapes::OpenNote;
 
+use crate::model::{EditorTarget, NoteContentUpdate};
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum NoteDisplay<'a> {
     Empty,
@@ -40,48 +42,34 @@ pub fn display_state<'a>(
     }
 }
 
+pub fn editor_update(
+    target: &EditorTarget,
+    update: Option<NoteContentUpdate>,
+) -> Option<NoteContentUpdate> {
+    let path = target.note_path()?;
+    update.filter(|update| update.path == path)
+}
+
+/// The update the editor takes: only one for the note on display, and only once it is loaded.
+pub fn loaded_update(
+    display: &NoteDisplay,
+    target: &EditorTarget,
+    update: Option<NoteContentUpdate>,
+) -> Option<NoteContentUpdate> {
+    let NoteDisplay::Loaded { path, .. } = display else {
+        return None;
+    };
+    editor_update(target, update).filter(|update| update.path.as_slice() == *path)
+}
+
 pub fn note_title(path: &[String]) -> &str {
     path.last().map_or("", String::as_str)
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct TextEdit<'a> {
-    pub start: i32,
-    pub end: i32,
-    pub insert: &'a str,
-}
-
-pub fn text_edit<'a>(old: &str, new: &'a str) -> Option<TextEdit<'a>> {
-    if old == new {
-        return None;
-    }
-    let prefix_bytes = old
-        .chars()
-        .zip(new.chars())
-        .take_while(|(a, b)| a == b)
-        .map(|(a, _)| a.len_utf8())
-        .sum::<usize>();
-    let old_rest = &old[prefix_bytes..];
-    let new_rest = &new[prefix_bytes..];
-    let suffix_bytes = old_rest
-        .chars()
-        .rev()
-        .zip(new_rest.chars().rev())
-        .take_while(|(a, b)| a == b)
-        .map(|(a, _)| a.len_utf8())
-        .sum::<usize>();
-    let start = old[..prefix_bytes].chars().count() as i32;
-    let removed = &old_rest[..old_rest.len() - suffix_bytes];
-    let insert = &new_rest[..new_rest.len() - suffix_bytes];
-    Some(TextEdit {
-        start,
-        end: start + removed.chars().count() as i32,
-        insert,
-    })
-}
-
 #[cfg(test)]
 mod tests {
+    use commitnote_core_api::commands::NoteDraft;
+
     use super::*;
 
     fn path(parts: &[&str]) -> Vec<String> {
@@ -152,82 +140,47 @@ mod tests {
         }
     }
 
+    fn update(parts: &[&str]) -> NoteContentUpdate {
+        NoteContentUpdate {
+            serial: 1,
+            path: path(parts),
+            content: "text".to_owned(),
+            edits: None,
+        }
+    }
+
+    #[test]
+    fn an_update_for_the_editor_target_reaches_the_editor() {
+        let target = EditorTarget::Note(path(&["f", "a"]));
+        assert_eq!(
+            editor_update(&target, Some(update(&["f", "a"]))),
+            Some(update(&["f", "a"]))
+        );
+    }
+
+    #[test]
+    fn an_update_for_another_note_never_reaches_the_editor() {
+        let target = EditorTarget::Note(path(&["a"]));
+        assert_eq!(editor_update(&target, Some(update(&["b"]))), None);
+        assert_eq!(editor_update(&target, None), None);
+    }
+
+    #[test]
+    fn a_draft_or_no_target_takes_no_update() {
+        let draft = EditorTarget::Draft(NoteDraft {
+            parent: Vec::new(),
+            name: String::new(),
+        });
+        assert_eq!(editor_update(&draft, Some(update(&["a"]))), None);
+        assert_eq!(
+            editor_update(&EditorTarget::None, Some(update(&["a"]))),
+            None
+        );
+    }
+
     #[test]
     fn the_title_is_the_last_path_element() {
         assert_eq!(note_title(&path(&["f", "Plan"])), "Plan");
         assert_eq!(note_title(&[]), "");
-    }
-
-    #[test]
-    fn text_edit_is_none_for_equal_text() {
-        assert_eq!(text_edit("same", "same"), None);
-    }
-
-    #[test]
-    fn text_edit_replaces_only_the_changed_middle() {
-        assert_eq!(
-            text_edit("hello world", "hello brave world"),
-            Some(TextEdit {
-                start: 6,
-                end: 6,
-                insert: "brave "
-            })
-        );
-        assert_eq!(
-            text_edit("one two three", "one three"),
-            Some(TextEdit {
-                start: 5,
-                end: 9,
-                insert: ""
-            })
-        );
-        assert_eq!(
-            text_edit("abc", "axc"),
-            Some(TextEdit {
-                start: 1,
-                end: 2,
-                insert: "x"
-            })
-        );
-    }
-
-    #[test]
-    fn text_edit_counts_characters_not_bytes() {
-        assert_eq!(
-            text_edit("zażółć gęślą", "zażółć jaźń gęślą"),
-            Some(TextEdit {
-                start: 7,
-                end: 7,
-                insert: "jaźń "
-            })
-        );
-    }
-
-    #[test]
-    fn text_edit_handles_full_replacement_and_empty_sides() {
-        assert_eq!(
-            text_edit("", "new"),
-            Some(TextEdit {
-                start: 0,
-                end: 0,
-                insert: "new"
-            })
-        );
-        assert_eq!(
-            text_edit("old", ""),
-            Some(TextEdit {
-                start: 0,
-                end: 3,
-                insert: ""
-            })
-        );
-        assert_eq!(
-            text_edit("aaa", "aa"),
-            Some(TextEdit {
-                start: 2,
-                end: 3,
-                insert: ""
-            })
-        );
     }
 }

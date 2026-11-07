@@ -2,12 +2,14 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 mod app;
+mod editing;
 mod login;
 mod notes;
 mod session;
 mod settings;
 
 pub use app::*;
+pub use editing::*;
 pub use login::*;
 pub use notes::*;
 pub use session::*;

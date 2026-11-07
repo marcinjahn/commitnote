@@ -2,4 +2,6 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec "$script_dir/container.sh" ci/steps/lint.sh
+"$script_dir/container.sh" ci/steps/lint.sh
+cd "$script_dir/../../.."
+npx tsx apps/linux/markdown-vectors/generate.ts --check

@@ -1,7 +1,11 @@
 pub mod application;
+pub mod close_guard;
 pub mod config;
+pub mod editor;
+pub mod links;
 pub mod model;
 pub mod pages;
+pub mod type_to_start;
 pub mod window;
 
 use std::sync::Once;

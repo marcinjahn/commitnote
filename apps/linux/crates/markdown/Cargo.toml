@@ -1,0 +1,13 @@
+[package]
+name = "commitnote-markdown"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+commitnote-editor-text.workspace = true
+pulldown-cmark.workspace = true
+
+[dev-dependencies]
+serde.workspace = true
+serde_json.workspace = true

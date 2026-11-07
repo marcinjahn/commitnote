@@ -48,6 +48,7 @@ WAYLAND_DISPLAY=commitnote-ui \
   GSK_RENDERER=cairo \
   ADW_DISABLE_PORTAL=1 \
   COMMITNOTE_SCREENSHOT_DIR=/src/apps/linux/out/screenshots \
+  COMMITNOTE_READBACK_DIR=/src/apps/linux/out/read-back \
   dbus-run-session -- sh -c '
     set -eu
     echo "" | gnome-keyring-daemon --unlock --components=secrets >/dev/null

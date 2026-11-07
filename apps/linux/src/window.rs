@@ -1,15 +1,23 @@
 use std::cell::{Cell, OnceCell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
+use std::rc::Rc;
 use std::time::Duration;
 
+use adw::prelude::*;
 use adw::subclass::prelude::*;
-use gtk4::{self as gtk, gio, glib, prelude::*};
+use gtk4::{self as gtk, gio, glib};
 use libadwaita as adw;
 
+use crate::close_guard::{
+    CloseScope, CloseStep, Inhibitor, LOGOUT_INHIBIT_REASON, LogoutInhibit, UNSAVED_HEADING,
+    after_flush, on_close_request, should_inhibit_logout, unsaved_body,
+};
 use crate::config;
 use crate::model::lifecycle::Lifecycle;
-use crate::model::{AppModel, NoticeView, Route, UserError};
+use crate::model::{
+    AppModel, DraftFocus, LoadingFailure, LogOutResult, NoticeView, Route, UserError,
+};
 use crate::pages::StartupErrorPage;
 use crate::pages::login::{RepositoryListPage, TokenPage, UnusableRepositoryPage};
 use crate::pages::notes::NotesPage;
@@ -36,6 +44,10 @@ mod imp {
         pub(super) toasts: RefCell<HashMap<String, adw::Toast>>,
         pub(super) applying_route: Cell<bool>,
         pub(super) lifecycle: RefCell<Option<Lifecycle>>,
+        pub(super) close_released: Cell<bool>,
+        pub(super) guarding_close: Cell<bool>,
+        pub(super) logging_out: Cell<bool>,
+        pub(super) logout_inhibit: RefCell<Option<LogoutInhibit<WindowInhibitor>>>,
     }
 
     #[glib::object_subclass]
@@ -65,6 +77,7 @@ mod imp {
 
         fn dispose(&self) {
             self.lifecycle.take();
+            self.logout_inhibit.take();
         }
     }
 
@@ -72,8 +85,34 @@ mod imp {
 
     impl WindowImpl for CommitnoteWindow {
         fn close_request(&self) -> glib::Propagation {
-            self.obj().save_state();
-            self.parent_close_request()
+            let window = self.obj();
+            window.save_state();
+            let scope =
+                self.model
+                    .get()
+                    .map_or(CloseScope::Elsewhere, |model| match model.route() {
+                        Route::Notes => CloseScope::Notes,
+                        Route::Loading { .. } if model.has_early_draft_text() => {
+                            CloseScope::EarlyDraft
+                        }
+                        _ => CloseScope::Elsewhere,
+                    });
+            match on_close_request(self.close_released.get(), self.guarding_close.get(), scope) {
+                CloseStep::CloseNow => {
+                    self.close_released.set(true);
+                    self.logout_inhibit.take();
+                    self.parent_close_request()
+                }
+                CloseStep::Flush => {
+                    window.flush_and_close();
+                    glib::Propagation::Stop
+                }
+                CloseStep::AskEarlyDraft => {
+                    window.ask_to_quit_early_draft();
+                    glib::Propagation::Stop
+                }
+                CloseStep::Ignore | CloseStep::Ask { .. } => glib::Propagation::Stop,
+            }
         }
     }
 
@@ -96,7 +135,18 @@ impl CommitnoteWindow {
         let imp = window.imp();
         let _ = imp.model.set(model.clone());
         window.setup_actions();
+        window.setup_type_to_start();
+        application.set_accels_for_action("win.save-now", &["<Control>s"]);
+        application.set_accels_for_action("win.new-note", &["<Control>n"]);
+        application.set_accels_for_action("window.close", &["<Control>w"]);
+        application.set_accels_for_action("win.quit", &["<Control>q"]);
+        imp.logout_inhibit
+            .replace(Some(LogoutInhibit::new(WindowInhibitor {
+                application: application.clone().upcast(),
+                window: window.downgrade(),
+            })));
         window.connect_model();
+        window.update_logout_inhibit();
         imp.lifecycle
             .replace(Some(Lifecycle::attach(&window, model)));
         imp.navigation_view.connect_popped({
@@ -134,10 +184,10 @@ impl CommitnoteWindow {
 
     fn setup_actions(&self) {
         let log_out = gio::ActionEntry::builder("log-out")
-            .activate(|window: &Self, _, _| {
-                let model = window.model().clone();
-                window.run_reporting(async move { model.log_out().await });
-            })
+            .activate(|window: &Self, _, _| window.log_out())
+            .build();
+        let quit = gio::ActionEntry::builder("quit")
+            .activate(|window: &Self, _, _| window.close())
             .build();
         let refresh = gio::ActionEntry::builder("refresh")
             .activate(|window: &Self, _, _| {
@@ -151,7 +201,23 @@ impl CommitnoteWindow {
                 });
             })
             .build();
-        self.add_action_entries([log_out, refresh]);
+        let save_now = gio::ActionEntry::builder("save-now")
+            .activate(|window: &Self, _, _| {
+                let model = window.model().clone();
+                glib::spawn_future_local(async move { model.save_now().await });
+            })
+            .build();
+        let new_note = gio::ActionEntry::builder("new-note")
+            .activate(|window: &Self, _, _| {
+                let model = window.model().clone();
+                if matches!(model.route(), Route::Loading { .. }) {
+                    window.focus_early_draft();
+                    return;
+                }
+                window.run_reporting(model.start_draft(Vec::new(), DraftFocus::Name));
+            })
+            .build();
+        self.add_action_entries([log_out, quit, refresh, save_now, new_note]);
         #[cfg(feature = "testing")]
         self.setup_testing_actions();
     }
@@ -210,6 +276,22 @@ impl CommitnoteWindow {
                 }
             }
         });
+        model.connect_sync_state_changed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.update_logout_inhibit();
+                }
+            }
+        });
+        model.connect_early_draft_presence_changed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.update_logout_inhibit();
+                }
+            }
+        });
         model.connect_notice({
             let window = self.downgrade();
             move |_, notice| {
@@ -237,6 +319,154 @@ impl CommitnoteWindow {
                 }
             }
         });
+    }
+
+    fn flush_and_close(&self) {
+        self.imp().guarding_close.set(true);
+        let model = self.model().clone();
+        let window = self.downgrade();
+        glib::spawn_future_local(async move {
+            let outcome = model.flush_for_close().await;
+            if let Some(window) = window.upgrade() {
+                match after_flush(&outcome) {
+                    CloseStep::Ask { count } => window.ask_to_quit(count),
+                    _ => window.close_now(),
+                }
+            }
+        });
+    }
+
+    fn close_now(&self) {
+        let imp = self.imp();
+        imp.guarding_close.set(false);
+        imp.close_released.set(true);
+        self.close();
+    }
+
+    fn ask_to_quit(&self, count: u32) {
+        self.present_close_dialog(count, |window| {
+            let model = window.model().clone();
+            glib::spawn_future_local(async move { model.retry_sync().await });
+        });
+    }
+
+    fn ask_to_quit_early_draft(&self) {
+        self.imp().guarding_close.set(true);
+        let window = self.clone();
+        glib::idle_add_local_once(move || window.present_early_draft_dialog());
+    }
+
+    fn present_early_draft_dialog(&self) {
+        self.present_close_dialog(1, |window| {
+            let model = window.model();
+            if matches!(
+                model.route(),
+                Route::Loading {
+                    failure: Some(LoadingFailure {
+                        can_retry: true,
+                        ..
+                    })
+                }
+            ) {
+                model.retry_resume();
+            }
+        });
+    }
+
+    fn present_close_dialog(&self, count: u32, keep_trying: fn(&Self)) {
+        let dialog = adw::AlertDialog::new(Some(UNSAVED_HEADING), Some(&unsaved_body(count)));
+        dialog.set_widget_name("close-unsaved-dialog");
+        dialog.add_responses(&[
+            ("keep-trying", "_Keep Trying"),
+            ("quit-anyway", "_Quit Anyway"),
+        ]);
+        dialog.set_response_appearance("quit-anyway", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("keep-trying"));
+        dialog.set_close_response("keep-trying");
+        dialog.connect_response(None, {
+            let window = self.downgrade();
+            move |_, response| {
+                let Some(window) = window.upgrade() else {
+                    return;
+                };
+                if response == "quit-anyway" {
+                    glib::idle_add_local_once(move || window.close_now());
+                    return;
+                }
+                window.imp().guarding_close.set(false);
+                keep_trying(&window);
+            }
+        });
+        dialog.present(Some(self));
+    }
+
+    fn log_out(&self) {
+        if self.imp().logging_out.replace(true) {
+            return;
+        }
+        let model = self.model().clone();
+        let window = self.downgrade();
+        glib::spawn_future_local(async move {
+            let result = model.log_out().await;
+            let Some(window) = window.upgrade() else {
+                return;
+            };
+            match result {
+                Ok(LogOutResult::Unsaved { message }) => window.ask_to_log_out(&message),
+                Ok(LogOutResult::LoggedOut) => window.imp().logging_out.set(false),
+                Err(error) => {
+                    window.imp().logging_out.set(false);
+                    window.show_toast(&error.message);
+                }
+            }
+        });
+    }
+
+    fn ask_to_log_out(&self, message: &str) {
+        let dialog = adw::AlertDialog::new(Some(UNSAVED_HEADING), Some(message));
+        dialog.set_widget_name("logout-unsaved-dialog");
+        dialog.add_responses(&[
+            ("cancel", "_Cancel"),
+            ("keep-trying", "_Keep Trying"),
+            ("log-out-anyway", "_Log Out Anyway"),
+        ]);
+        dialog.set_response_appearance("log-out-anyway", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        dialog.connect_response(None, {
+            let window = self.downgrade();
+            move |_, response| {
+                let Some(window) = window.upgrade() else {
+                    return;
+                };
+                window.imp().logging_out.set(false);
+                match response {
+                    "keep-trying" => window.log_out(),
+                    "log-out-anyway" => {
+                        let model = window.model().clone();
+                        window.run_reporting(async move { model.log_out_anyway().await });
+                    }
+                    _ => {}
+                }
+            }
+        });
+        dialog.present(Some(self));
+    }
+
+    fn update_logout_inhibit(&self) {
+        let model = self.model();
+        let needed = should_inhibit_logout(model.unsaved_count(), model.has_early_draft_text());
+        if let Some(inhibit) = self.imp().logout_inhibit.borrow_mut().as_mut() {
+            inhibit.update(needed);
+        }
+    }
+
+    pub fn holds_logout_inhibit(&self) -> bool {
+        self.imp()
+            .logout_inhibit
+            .borrow()
+            .as_ref()
+            .is_some_and(LogoutInhibit::is_held)
     }
 
     fn apply_route(&self) {
@@ -275,7 +505,60 @@ impl CommitnoteWindow {
                 self.replace_unless::<KeyChangedPage>(|| KeyChangedPage::new(model).upcast());
             }
         }
+        if let Some(action) = self
+            .lookup_action("new-note")
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_enabled(matches!(
+                model.route(),
+                Route::Notes | Route::Loading { .. }
+            ));
+        }
         imp.applying_route.set(false);
+    }
+
+    fn focus_early_draft(&self) {
+        if let Some(page) = self
+            .stack()
+            .iter()
+            .find_map(|page| page.downcast_ref::<LoadingPage>())
+        {
+            page.focus_name();
+        }
+    }
+
+    pub fn notes_placeholder_visible(&self) -> bool {
+        self.stack()
+            .iter()
+            .find_map(|page| page.downcast_ref::<NotesPage>())
+            .is_some_and(NotesPage::placeholder_visible)
+    }
+
+    fn setup_type_to_start(&self) {
+        let controller = gtk::EventControllerKey::new();
+        controller.set_propagation_phase(gtk::PropagationPhase::Bubble);
+        let held = Rc::new(RefCell::new(HashSet::<u32>::new()));
+        controller.connect_key_pressed({
+            let window = self.downgrade();
+            let held = held.clone();
+            move |_, keyval, keycode, state| {
+                let Some(window) = window.upgrade() else {
+                    return glib::Propagation::Proceed;
+                };
+                let is_repeat = !held.borrow_mut().insert(keycode);
+                crate::type_to_start::handle_type_to_start_key(
+                    window.model(),
+                    &window,
+                    keyval,
+                    state,
+                    is_repeat,
+                )
+            }
+        });
+        controller.connect_key_released(move |_, _, keycode, _| {
+            held.borrow_mut().remove(&keycode);
+        });
+        self.add_controller(controller);
     }
 
     fn stack(&self) -> Vec<adw::NavigationPage> {
@@ -401,6 +684,26 @@ impl CommitnoteWindow {
         let _ = settings.set_int("window-width", width);
         let _ = settings.set_int("window-height", height);
         let _ = settings.set_boolean("is-maximized", self.is_maximized());
+    }
+}
+
+pub struct WindowInhibitor {
+    application: gtk::Application,
+    window: glib::WeakRef<CommitnoteWindow>,
+}
+
+impl Inhibitor for WindowInhibitor {
+    fn inhibit(&self) -> u32 {
+        let window = self.window.upgrade();
+        self.application.inhibit(
+            window.as_ref(),
+            gtk::ApplicationInhibitFlags::LOGOUT,
+            Some(LOGOUT_INHIBIT_REASON),
+        )
+    }
+
+    fn uninhibit(&self, cookie: u32) {
+        self.application.uninhibit(cookie);
     }
 }
 

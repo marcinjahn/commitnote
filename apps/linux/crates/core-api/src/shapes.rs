@@ -54,7 +54,7 @@ pub enum OpenNote {
     Loaded {
         path: Vec<String>,
         content: String,
-        conflict: Option<serde_json::Value>,
+        conflict: Option<OpenNoteConflict>,
         color_tag: Option<ColorTag>,
         shared: bool,
     },
@@ -71,6 +71,20 @@ pub enum OpenNote {
         message: String,
         error: CoreError,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenNoteConflict {
+    pub other_device: Option<String>,
+    pub heading: String,
+    pub text: String,
+    pub keep_this_label: String,
+    pub keep_other_label: String,
+    pub edit_merged_label: String,
+    pub edit_hint: String,
+    pub merged: String,
+    pub editing: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

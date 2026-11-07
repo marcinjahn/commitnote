@@ -1,0 +1,678 @@
+[
+  {
+    "name": "empty",
+    "text": ""
+  },
+  {
+    "name": "plain-paragraph",
+    "text": "Just a plain paragraph of text."
+  },
+  {
+    "name": "two-paragraphs",
+    "text": "First paragraph.\n\nSecond paragraph."
+  },
+  {
+    "name": "atx-level-1",
+    "text": "# Heading one"
+  },
+  {
+    "name": "atx-level-2",
+    "text": "## Heading two"
+  },
+  {
+    "name": "atx-level-3",
+    "text": "### Heading three"
+  },
+  {
+    "name": "atx-level-4",
+    "text": "#### Heading four"
+  },
+  {
+    "name": "atx-level-5",
+    "text": "##### Heading five"
+  },
+  {
+    "name": "atx-level-6",
+    "text": "###### Heading six"
+  },
+  {
+    "name": "atx-seven-hashes",
+    "text": "####### Not a heading"
+  },
+  {
+    "name": "atx-no-space",
+    "text": "#NoSpace"
+  },
+  {
+    "name": "atx-closing-hashes",
+    "text": "## Closed heading ##"
+  },
+  {
+    "name": "atx-empty",
+    "text": "#"
+  },
+  {
+    "name": "atx-with-emphasis",
+    "text": "# Title with *emphasis* and `code`"
+  },
+  {
+    "name": "atx-tab",
+    "text": "#\tTabbed heading"
+  },
+  {
+    "name": "setext-level-1",
+    "text": "Setext one\n=========="
+  },
+  {
+    "name": "setext-level-2",
+    "text": "Setext two\n----------"
+  },
+  {
+    "name": "setext-multiline",
+    "text": "Line one\nline two\n==="
+  },
+  {
+    "name": "rule-dashes",
+    "text": "above\n\n---\n\nbelow"
+  },
+  {
+    "name": "rule-stars",
+    "text": "***"
+  },
+  {
+    "name": "rule-underscores",
+    "text": "___"
+  },
+  {
+    "name": "rule-spaced",
+    "text": "- - -"
+  },
+  {
+    "name": "rule-after-paragraph-is-setext",
+    "text": "paragraph\n---"
+  },
+  {
+    "name": "blockquote-simple",
+    "text": "> A quote"
+  },
+  {
+    "name": "blockquote-multiline",
+    "text": "> line one\n> line two"
+  },
+  {
+    "name": "blockquote-lazy",
+    "text": "> line one\nlazy line"
+  },
+  {
+    "name": "blockquote-nested",
+    "text": "> outer\n>> inner\n> outer again"
+  },
+  {
+    "name": "blockquote-no-space",
+    "text": ">tight quote"
+  },
+  {
+    "name": "blockquote-deep-indent",
+    "text": "    > indented too far"
+  },
+  {
+    "name": "blockquote-with-heading",
+    "text": "> # Quoted heading\n> body"
+  },
+  {
+    "name": "blockquote-empty",
+    "text": ">"
+  },
+  {
+    "name": "bullet-list-dash",
+    "text": "- one\n- two\n- three"
+  },
+  {
+    "name": "bullet-list-star",
+    "text": "* one\n* two"
+  },
+  {
+    "name": "bullet-list-plus",
+    "text": "+ one\n+ two"
+  },
+  {
+    "name": "ordered-list",
+    "text": "1. one\n2. two\n3. three"
+  },
+  {
+    "name": "ordered-list-paren",
+    "text": "1) one\n2) two"
+  },
+  {
+    "name": "ordered-list-start",
+    "text": "7. seven\n8. eight"
+  },
+  {
+    "name": "list-nested",
+    "text": "- parent\n  - child\n    - grandchild\n- sibling"
+  },
+  {
+    "name": "list-loose",
+    "text": "- one\n\n- two\n\n- three"
+  },
+  {
+    "name": "list-with-continuation",
+    "text": "- item\n  continued text\n\n  second paragraph"
+  },
+  {
+    "name": "list-empty-item",
+    "text": "-\n- item"
+  },
+  {
+    "name": "list-empty-item-lazy",
+    "text": "-\ncontinued"
+  },
+  {
+    "name": "list-mixed-markers",
+    "text": "- a\n* b\n+ c"
+  },
+  {
+    "name": "list-ordered-in-bullet",
+    "text": "- parent\n  1. first\n  2. second"
+  },
+  {
+    "name": "task-unchecked",
+    "text": "- [ ] todo"
+  },
+  {
+    "name": "task-checked",
+    "text": "- [x] done"
+  },
+  {
+    "name": "task-checked-upper",
+    "text": "- [X] done upper"
+  },
+  {
+    "name": "task-list-mixed",
+    "text": "- [ ] one\n- [x] two\n- plain"
+  },
+  {
+    "name": "task-nested",
+    "text": "- [ ] parent\n  - [x] child"
+  },
+  {
+    "name": "task-ordered",
+    "text": "1. [ ] first\n2. [x] second"
+  },
+  {
+    "name": "task-formatted",
+    "text": "- [ ] **bold** and *italic* task"
+  },
+  {
+    "name": "task-empty",
+    "text": "- [ ]"
+  },
+  {
+    "name": "task-not-task",
+    "text": "- [] nope\n- [y] nope"
+  },
+  {
+    "name": "quote-list-task",
+    "text": "> - [ ] quoted todo\n> - [x] quoted done\n>   - [ ] nested"
+  },
+  {
+    "name": "fence-backticks",
+    "text": "```\ncode line\n```"
+  },
+  {
+    "name": "fence-with-info",
+    "text": "```ts\nconst a = 1;\n```"
+  },
+  {
+    "name": "fence-tildes",
+    "text": "~~~python\nprint(1)\n~~~"
+  },
+  {
+    "name": "fence-unequal-tildes",
+    "text": "~~~~\ncode\n~~~"
+  },
+  {
+    "name": "fence-unclosed",
+    "text": "```js\nlet x;\nlet y;"
+  },
+  {
+    "name": "fence-empty",
+    "text": "```\n```"
+  },
+  {
+    "name": "fence-longer-close",
+    "text": "```\ncode\n`````"
+  },
+  {
+    "name": "fence-in-list",
+    "text": "- item\n\n  ```\n  code\n  ```"
+  },
+  {
+    "name": "fence-in-quote",
+    "text": "> ```\n> code\n> ```"
+  },
+  {
+    "name": "fence-info-words",
+    "text": "```rust ignore\nfn main() {}\n```"
+  },
+  {
+    "name": "fence-markdown-inside",
+    "text": "```\n# not heading\n- not list\n**not bold**\n```"
+  },
+  {
+    "name": "indented-code",
+    "text": "    indented code\n    second line"
+  },
+  {
+    "name": "indented-code-after-paragraph",
+    "text": "paragraph\n    still paragraph"
+  },
+  {
+    "name": "indented-code-blank-inside",
+    "text": "    one\n\n    two"
+  },
+  {
+    "name": "indented-code-tab",
+    "text": "\ttab indented"
+  },
+  {
+    "name": "emphasis-star",
+    "text": "*emphasis*"
+  },
+  {
+    "name": "emphasis-underscore",
+    "text": "_emphasis_"
+  },
+  {
+    "name": "strong-stars",
+    "text": "**strong**"
+  },
+  {
+    "name": "strong-underscores",
+    "text": "__strong__"
+  },
+  {
+    "name": "strong-emphasis-combined",
+    "text": "***both***"
+  },
+  {
+    "name": "emphasis-nested",
+    "text": "*outer **inner** outer*"
+  },
+  {
+    "name": "emphasis-intraword-underscore",
+    "text": "snake_case_word and __init__ here"
+  },
+  {
+    "name": "emphasis-intraword-star",
+    "text": "intra*word*emphasis"
+  },
+  {
+    "name": "emphasis-unmatched",
+    "text": "*open only and **another"
+  },
+  {
+    "name": "emphasis-spaces",
+    "text": "* not emphasis * here"
+  },
+  {
+    "name": "emphasis-punctuation-flanking",
+    "text": "(*quoted*) and *«guillemets»*"
+  },
+  {
+    "name": "strikethrough",
+    "text": "~~struck~~ text"
+  },
+  {
+    "name": "strikethrough-single",
+    "text": "~single~ tilde"
+  },
+  {
+    "name": "strikethrough-nested",
+    "text": "~~struck *and italic*~~"
+  },
+  {
+    "name": "inline-code",
+    "text": "use `code` here"
+  },
+  {
+    "name": "inline-code-double",
+    "text": "``a ` b``"
+  },
+  {
+    "name": "inline-code-unclosed",
+    "text": "`unclosed code"
+  },
+  {
+    "name": "inline-code-with-stars",
+    "text": "`*not emphasis*` and *emphasis*"
+  },
+  {
+    "name": "link-inline",
+    "text": "[label](https://example.com)"
+  },
+  {
+    "name": "link-with-title",
+    "text": "[label](https://example.com \"title\")"
+  },
+  {
+    "name": "link-angle-destination",
+    "text": "[label](<https://example.com/a b>)"
+  },
+  {
+    "name": "link-empty-label",
+    "text": "[](https://example.com)"
+  },
+  {
+    "name": "link-empty-destination",
+    "text": "[label]()"
+  },
+  {
+    "name": "link-with-emphasis",
+    "text": "[*emphasised* and **strong** label](https://example.com)"
+  },
+  {
+    "name": "link-with-code",
+    "text": "[`code` label](https://example.com)"
+  },
+  {
+    "name": "link-nested-brackets",
+    "text": "[a [b] c](https://example.com)"
+  },
+  {
+    "name": "link-relative",
+    "text": "[note](../other/note.md)"
+  },
+  {
+    "name": "link-reference-full",
+    "text": "[text][ref]\n\n[ref]: https://example.com"
+  },
+  {
+    "name": "link-reference-collapsed",
+    "text": "[ref][]\n\n[ref]: https://example.com \"Title\""
+  },
+  {
+    "name": "link-reference-shortcut",
+    "text": "[ref]\n\n[ref]: https://example.com"
+  },
+  {
+    "name": "link-reference-undefined",
+    "text": "[no definition] and [also][none]"
+  },
+  {
+    "name": "link-reference-definition-only",
+    "text": "[ref]: https://example.com"
+  },
+  {
+    "name": "link-in-heading",
+    "text": "## See [docs](https://example.com)"
+  },
+  {
+    "name": "link-in-list",
+    "text": "- [item](https://example.com)\n- plain"
+  },
+  {
+    "name": "link-in-quote",
+    "text": "> [quoted](https://example.com)"
+  },
+  {
+    "name": "link-adjacent",
+    "text": "[a](https://a.example)[b](https://b.example)"
+  },
+  {
+    "name": "image-simple",
+    "text": "![alt](https://example.com/a.png)"
+  },
+  {
+    "name": "image-reference",
+    "text": "![alt text](image:abcdefghijklmnopqrstuvwxyz#640x480)"
+  },
+  {
+    "name": "image-escaped-alt",
+    "text": "![my \\[alt\\]](image:abcdefghijklmnopqrstuvwxyz)"
+  },
+  {
+    "name": "image-empty-alt",
+    "text": "![](image:abcdefghijklmnopqrstuvwxyz)"
+  },
+  {
+    "name": "image-in-paragraph",
+    "text": "before ![alt](image:abcdefghijklmnopqrstuvwxyz) after"
+  },
+  {
+    "name": "image-in-list",
+    "text": "- ![alt](image:abcdefghijklmnopqrstuvwxyz#10x20)"
+  },
+  {
+    "name": "image-in-link",
+    "text": "[![alt](image:abcdefghijklmnopqrstuvwxyz)](https://example.com)"
+  },
+  {
+    "name": "image-reference-style",
+    "text": "![alt][ref]\n\n[ref]: https://example.com/a.png"
+  },
+  {
+    "name": "autolink-angle",
+    "text": "<https://example.com/path>"
+  },
+  {
+    "name": "autolink-angle-email",
+    "text": "<user@example.com>"
+  },
+  {
+    "name": "autolink-bare-url",
+    "text": "see https://example.com for more"
+  },
+  {
+    "name": "autolink-www",
+    "text": "visit www.example.com today"
+  },
+  {
+    "name": "autolink-bare-email",
+    "text": "mail user@example.com now"
+  },
+  {
+    "name": "autolink-trailing-period",
+    "text": "go to https://example.com."
+  },
+  {
+    "name": "autolink-trailing-comma",
+    "text": "https://example.com, and more"
+  },
+  {
+    "name": "autolink-trailing-paren",
+    "text": "(https://example.com) and https://example.com/a_(b)"
+  },
+  {
+    "name": "autolink-trailing-question",
+    "text": "is it https://example.com?"
+  },
+  {
+    "name": "autolink-with-query",
+    "text": "https://example.com/a?b=c&d=e#frag"
+  },
+  {
+    "name": "autolink-in-emphasis",
+    "text": "*https://example.com*"
+  },
+  {
+    "name": "autolink-before-code",
+    "text": "https://example.com`code`"
+  },
+  {
+    "name": "autolink-in-link-label",
+    "text": "[https://example.com](https://other.example)"
+  },
+  {
+    "name": "autolink-in-list",
+    "text": "- https://example.com/item"
+  },
+  {
+    "name": "table-simple",
+    "text": "| a | b |\n| - | - |\n| 1 | 2 |"
+  },
+  {
+    "name": "table-aligned",
+    "text": "| left | center | right |\n| :--- | :---: | ---: |\n| a | b | c |"
+  },
+  {
+    "name": "table-no-outer-pipes",
+    "text": "a | b\n- | -\n1 | 2"
+  },
+  {
+    "name": "table-inline-formatting",
+    "text": "| **a** | `b` |\n| --- | --- |\n| [l](https://example.com) | *i* |"
+  },
+  {
+    "name": "table-escaped-pipe",
+    "text": "| a \\| b | c |\n| --- | --- |\n| 1 | 2 |"
+  },
+  {
+    "name": "table-indented-delimiter",
+    "text": "| a | b |\n   | - | - |\n| 1 | 2 |"
+  },
+  {
+    "name": "table-after-paragraph",
+    "text": "text before\n\n| a |\n| - |\n| 1 |\n\ntext after"
+  },
+  {
+    "name": "table-in-quote",
+    "text": "> | a | b |\n> | - | - |\n> | 1 | 2 |"
+  },
+  {
+    "name": "table-missing-delimiter",
+    "text": "| a | b |\n| 1 | 2 |"
+  },
+  {
+    "name": "hard-break-backslash",
+    "text": "line one\\\nline two"
+  },
+  {
+    "name": "hard-break-spaces",
+    "text": "line one  \nline two"
+  },
+  {
+    "name": "soft-break",
+    "text": "line one\nline two"
+  },
+  {
+    "name": "hard-break-in-list",
+    "text": "- item one\\\n  item two"
+  },
+  {
+    "name": "html-inline",
+    "text": "text <b>bold</b> text"
+  },
+  {
+    "name": "html-block",
+    "text": "<div>\nblock\n</div>"
+  },
+  {
+    "name": "html-comment",
+    "text": "<!-- comment -->"
+  },
+  {
+    "name": "html-comment-multiline",
+    "text": "<!--\nmulti\n-->\n\nafter"
+  },
+  {
+    "name": "html-entity",
+    "text": "fish &amp; chips &copy; &#35;"
+  },
+  {
+    "name": "escape-asterisks",
+    "text": "\\*not emphasis\\*"
+  },
+  {
+    "name": "escape-brackets",
+    "text": "\\[not link\\](url)"
+  },
+  {
+    "name": "escape-backslash-punctuation",
+    "text": "a \\# b \\> c \\` d \\\\ e"
+  },
+  {
+    "name": "escape-hash-line",
+    "text": "\\# not heading"
+  },
+  {
+    "name": "subscript",
+    "text": "H~2~O is water"
+  },
+  {
+    "name": "superscript",
+    "text": "x^2^ is squared"
+  },
+  {
+    "name": "emoji",
+    "text": "hello :smile: world :+1:"
+  },
+  {
+    "name": "unicode-accents",
+    "text": "# Zażółć gęślą jaźń\n\n*zażółć* **gęślą** `jaźń`"
+  },
+  {
+    "name": "unicode-cjk",
+    "text": "- 日本語のテキスト\n- **太字** と *斜体*"
+  },
+  {
+    "name": "astral-emoji",
+    "text": "😀 *😀 emphasis* 😀\n\n> 🎉 party\n\n- 🚀 [rocket](https://example.com/🚀)"
+  },
+  {
+    "name": "astral-in-heading",
+    "text": "## 🌍 World"
+  },
+  {
+    "name": "astral-in-code",
+    "text": "```\n😀 code\n```\n\n`😀`"
+  },
+  {
+    "name": "combining-marks",
+    "text": "é *éé* ~~á~~"
+  },
+  {
+    "name": "rtl-text",
+    "text": "# שלום\n\n*עולם*"
+  },
+  {
+    "name": "multi-line-note",
+    "text": "# Title\n\nIntro line one\nintro line two\n\n## Section\n\n- a\n- b\n\n> quote\n\nEnd."
+  },
+  {
+    "name": "blank-lines-between",
+    "text": "a\n\n\n\nb"
+  },
+  {
+    "name": "trailing-newline",
+    "text": "# Heading\n\ntext\n"
+  },
+  {
+    "name": "trailing-spaces",
+    "text": "text with trailing spaces   \n"
+  },
+  {
+    "name": "only-whitespace-lines",
+    "text": "   \n\n  "
+  },
+  {
+    "name": "setext-vs-rule-vs-list",
+    "text": "Title\n---\n\n---\n\n- item\n---\nafter"
+  },
+  {
+    "name": "nested-quote-list-emphasis",
+    "text": "> - *item* with [link](https://example.com)\n> - **second**\n>\n> > nested *quote*"
+  },
+  {
+    "name": "emphasis-in-link-in-emphasis",
+    "text": "*see [a *b* c](https://example.com) now*"
+  },
+  {
+    "name": "list-code-quote",
+    "text": "1. step one\n\n   > note\n\n   ```sh\n   run\n   ```\n2. step two"
+  },
+  {
+    "name": "realistic-note",
+    "text": "# Weekend plans\n\nThings to do **before** Monday:\n\n- [x] Buy groceries\n- [ ] Call *Anna* about the [trip](https://example.com/trip)\n- [ ] Finish the report\n  - [x] outline\n  - [ ] draft\n\n## Notes\n\n> Remember: the deadline is **Friday**.\n\nSome code:\n\n```sh\nnpm run build\n```\n\n| Day | Plan |\n| --- | ---- |\n| Sat | hike |\n| Sun | rest |\n\n---\n\nSee https://example.com/docs. ~~Cancelled~~ item.\n\n![chart](image:abcdefghijklmnopqrstuvwxyz#800x600)\n"
+  }
+]
