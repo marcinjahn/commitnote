@@ -6,7 +6,7 @@ use crate::error::CoreError;
 use crate::settings::SettingsView;
 use crate::shapes::{
     ColorTag, LoadingStep, NoticeAction, NoticeTone, OpenNote, RemoteTextEdit, SessionEndReason,
-    SyncState, SyncStatusMenuItem, TagOptionView, TreeNode,
+    SyncState, SyncStatusMenuItem, TagOptionView, TrashConfirmationText, TrashEntryView, TreeNode,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,6 +24,22 @@ pub struct TreeChanged {
     pub used_tags: Vec<ColorTag>,
     pub tags_writable: bool,
     pub tag_options: Vec<TagOptionView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashChanged {
+    pub entries: Vec<TrashEntryView>,
+    pub delete_confirmation: TrashConfirmationText,
+    pub empty_confirmation: TrashConfirmationText,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchStatusChanged {
+    pub status: Option<String>,
+    pub progress: Option<f64>,
+    pub partial: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,11 +117,13 @@ pub struct SettingsChangedPayload {
     pub view: SettingsView,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CoreEvent {
     LoadingProgress(LoadingProgress),
     TreeChanged(TreeChanged),
+    TrashChanged(TrashChanged),
     NoteChanged(NoteChanged),
+    SearchStatusChanged(SearchStatusChanged),
     NoteContentChangedRemotely(NoteContentChangedRemotely),
     SyncStateChanged(SyncStateChanged),
     Notice(Notice),
@@ -133,7 +151,9 @@ impl CoreEvent {
         Ok(match name {
             "loadingProgress" => Self::LoadingProgress(decode_value(payload)?),
             "treeChanged" => Self::TreeChanged(decode_value(payload)?),
+            "trashChanged" => Self::TrashChanged(decode_value(payload)?),
             "noteChanged" => Self::NoteChanged(decode_value(payload)?),
+            "searchStatusChanged" => Self::SearchStatusChanged(decode_value(payload)?),
             "noteContentChangedRemotely" => {
                 Self::NoteContentChangedRemotely(decode_value(payload)?)
             }
@@ -173,7 +193,9 @@ impl CoreEvent {
         match self {
             Self::LoadingProgress(_) => "loadingProgress",
             Self::TreeChanged(_) => "treeChanged",
+            Self::TrashChanged(_) => "trashChanged",
             Self::NoteChanged(_) => "noteChanged",
+            Self::SearchStatusChanged(_) => "searchStatusChanged",
             Self::NoteContentChangedRemotely(_) => "noteContentChangedRemotely",
             Self::SyncStateChanged(_) => "syncStateChanged",
             Self::Notice(_) => "notice",
@@ -194,7 +216,7 @@ mod tests {
     use crate::envelope::{Incoming, parse_incoming};
     use crate::error::CoreErrorKind;
     use crate::settings::SettingScope;
-    use crate::shapes::OutOfSyncReason;
+    use crate::shapes::{OutOfSyncReason, TrashItemKind, TrashItemView};
 
     fn event(text: &str) -> CoreEvent {
         match parse_incoming(text).unwrap() {
@@ -284,6 +306,90 @@ mod tests {
                 tag_options: vec![],
             })
         );
+    }
+
+    #[test]
+    fn trash_changed_with_nested_folder_entry() {
+        let decoded = event(
+            r#"{"kind":"event","event":"trashChanged","payload":{"entries":[
+            {"id":"e1","kind":"folder","name":"Plans","originalFolder":"Work","daysLeft":"29 days left",
+            "colorTag":null,"children":[
+              {"kind":"folder","name":"Q1","subPath":["Q1"],"children":[
+                {"kind":"note","name":"Goals","subPath":["Q1","Goals"],"children":[]}]}]},
+            {"id":"e2","kind":"note","name":"Idea","originalFolder":"","daysLeft":"1 day left",
+            "colorTag":"green","children":[]}],
+            "deleteConfirmation":{"title":"Delete forever?","message":"dm"},
+            "emptyConfirmation":{"title":"Empty Trash?","message":"em"}}}"#,
+        );
+        let expected = TrashChanged {
+            entries: vec![
+                TrashEntryView {
+                    id: "e1".into(),
+                    kind: TrashItemKind::Folder,
+                    name: "Plans".into(),
+                    original_folder: "Work".into(),
+                    days_left: "29 days left".into(),
+                    color_tag: None,
+                    children: vec![TrashItemView {
+                        kind: TrashItemKind::Folder,
+                        name: "Q1".into(),
+                        sub_path: vec!["Q1".into()],
+                        children: vec![TrashItemView {
+                            kind: TrashItemKind::Note,
+                            name: "Goals".into(),
+                            sub_path: vec!["Q1".into(), "Goals".into()],
+                            children: vec![],
+                        }],
+                    }],
+                },
+                TrashEntryView {
+                    id: "e2".into(),
+                    kind: TrashItemKind::Note,
+                    name: "Idea".into(),
+                    original_folder: String::new(),
+                    days_left: "1 day left".into(),
+                    color_tag: Some(ColorTag::Green),
+                    children: vec![],
+                },
+            ],
+            delete_confirmation: TrashConfirmationText {
+                title: "Delete forever?".into(),
+                message: "dm".into(),
+            },
+            empty_confirmation: TrashConfirmationText {
+                title: "Empty Trash?".into(),
+                message: "em".into(),
+            },
+        };
+        assert_eq!(decoded, CoreEvent::TrashChanged(expected.clone()));
+        assert_eq!(decoded.name(), "trashChanged");
+        payload_round_trip(&expected);
+    }
+
+    #[test]
+    fn search_status_changed_with_and_without_progress() {
+        assert_eq!(
+            event(
+                r#"{"kind":"event","event":"searchStatusChanged","payload":{"status":"Reading notes","progress":0.25,"partial":true}}"#
+            ),
+            CoreEvent::SearchStatusChanged(SearchStatusChanged {
+                status: Some("Reading notes".into()),
+                progress: Some(0.25),
+                partial: true,
+            })
+        );
+        let idle = event(
+            r#"{"kind":"event","event":"searchStatusChanged","payload":{"status":null,"progress":null,"partial":false}}"#,
+        );
+        assert_eq!(
+            idle,
+            CoreEvent::SearchStatusChanged(SearchStatusChanged {
+                status: None,
+                progress: None,
+                partial: false,
+            })
+        );
+        assert_eq!(idle.name(), "searchStatusChanged");
     }
 
     #[test]
@@ -530,8 +636,8 @@ mod tests {
             }
         );
         assert_eq!(
-            event(r#"{"kind":"event","event":"trashChanged","payload":{"entries":[]}}"#).name(),
-            "trashChanged"
+            event(r#"{"kind":"event","event":"historyChanged","payload":{"entries":[]}}"#).name(),
+            "historyChanged"
         );
     }
 
@@ -564,7 +670,15 @@ mod tests {
                 "treeChanged",
                 json!({"tree":null,"tagFilter":null,"usedTags":[],"tagsWritable":false,"tagOptions":[]}),
             ),
+            (
+                "trashChanged",
+                json!({"entries":[],"deleteConfirmation":{"title":"t","message":"m"},"emptyConfirmation":{"title":"t","message":"m"}}),
+            ),
             ("noteChanged", json!({"note":null,"edits":null})),
+            (
+                "searchStatusChanged",
+                json!({"status":null,"progress":null,"partial":false}),
+            ),
             (
                 "noteContentChangedRemotely",
                 json!({"change":"updated","message":"m"}),

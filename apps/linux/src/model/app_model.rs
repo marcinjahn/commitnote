@@ -25,7 +25,7 @@ use commitnote_core_api::commands::{
 use commitnote_core_api::events::{NoteChanged, Notice, SyncStateChanged, TreeChanged};
 use commitnote_core_api::settings::{AccentOptionView, SettingsView};
 use commitnote_core_api::shapes::{
-    ForgeKind, ForgeView, LogoutOutcome, NoticeAction, OpenNote, PassphraseStrength,
+    ColorTag, ForgeKind, ForgeView, LogoutOutcome, NoticeAction, OpenNote, PassphraseStrength,
     RemoteTextEdit, RepositoryView, TagOptionView, TreeNode,
 };
 use commitnote_core_api::{Command, CoreError, CoreErrorKind, CoreEvent, Secret};
@@ -40,6 +40,14 @@ use super::core_client::{ClientConfig, CoreClient, startup_message};
 use super::edit_sender::{EditDestination, EditSender};
 use super::editor_lane::EditorLane;
 use super::editor_settings::EditorSettings;
+
+mod last_view;
+mod organise;
+mod search;
+
+pub use last_view::NoteDetails;
+pub use organise::{COLOR_TAGS, TrashResult, TrashState};
+pub use search::SearchStatus;
 
 pub const GENERIC_ERROR_MESSAGE: &str = "Something went wrong. Try again.";
 const NO_KEYRING_MESSAGE: &str = "No keyring is available, so this session will not be remembered.";
@@ -255,6 +263,12 @@ struct State {
     loading_message: Option<String>,
     tree: Option<Vec<TreeNode>>,
     tag_options: Vec<TagOptionView>,
+    tag_filter: Option<ColorTag>,
+    used_tags: Vec<ColorTag>,
+    tags_writable: bool,
+    trash: Option<TrashState>,
+    search: search::SearchState,
+    last_view: last_view::LastViewTracker,
     notice_actions: HashMap<String, NoticeAction>,
     open_note_path: Option<Vec<String>>,
     core_open_path: Option<Vec<String>>,
@@ -317,12 +331,15 @@ mod imp {
                     Signal::builder("route-changed").build(),
                     Signal::builder("loading-message-changed").build(),
                     Signal::builder("tree-changed").build(),
+                    Signal::builder("trash-changed").build(),
                     Signal::builder("open-note-changed").build(),
                     Signal::builder("appearance-changed").build(),
                     Signal::builder("editor-settings-changed").build(),
                     Signal::builder("early-draft-changed").build(),
                     Signal::builder("early-draft-presence-changed").build(),
                     Signal::builder("sync-state-changed").build(),
+                    Signal::builder("search-changed").build(),
+                    Signal::builder("last-view-restored").build(),
                     Signal::builder("notice")
                         .param_types([
                             String::static_type(),
@@ -355,6 +372,8 @@ impl AppModel {
         let _ = imp.context.set(glib::MainContext::ref_thread_default());
         let _ = imp.config.set(config);
         let _ = imp.edit_sender.set(model.new_edit_sender());
+        model.attach_search_triggers();
+        model.attach_last_view_triggers();
         {
             let mut state = imp.state.borrow_mut();
             state.visible = true;
@@ -367,6 +386,11 @@ impl AppModel {
 
     /// Stops the core runtime and flushes the blob cache; the model is unusable afterwards.
     pub fn shutdown(&self) {
+        self.flush_last_view_on_exit();
+        self.stop();
+    }
+
+    fn stop(&self) {
         self.state_mut().shut_down = true;
         self.bump_generation();
         let client = self.imp().client.take();
@@ -432,6 +456,20 @@ impl AppModel {
 
     pub fn open_note_state(&self) -> Option<OpenNote> {
         self.state().open_note.clone()
+    }
+
+    /// The open note's tag and sharing as the core reads them from the whole tree, so they stay
+    /// known while a tag filter hides the note from `tree()`.
+    pub fn open_note_tag_and_sharing(&self, path: &[String]) -> Option<(Option<ColorTag>, bool)> {
+        match self.state().open_note.as_ref()? {
+            OpenNote::Loaded {
+                path: open,
+                color_tag,
+                shared,
+                ..
+            } if open == path => Some((*color_tag, *shared)),
+            _ => None,
+        }
     }
 
     pub fn note_switch(&self) -> u64 {
@@ -1023,6 +1061,7 @@ impl AppModel {
     /// Logs out once every edit is saved; otherwise reports what would be lost and stays.
     pub async fn log_out(&self) -> Result<LogOutResult, UserError> {
         self.flush_edits().await;
+        self.flush_last_view().await;
         let result = self
             .request::<SessionLogout>(SessionLogoutParams { anyway: false })
             .await;
@@ -1413,6 +1452,7 @@ impl AppModel {
             state.handing_off = true;
             state.early_draft.clone()
         };
+        self.mark_early_draft_handed_off();
         self.emit_by_name::<()>("early-draft-changed", &[]);
         let generation = self.imp().generation.get();
         let result = self
@@ -1681,6 +1721,7 @@ impl AppModel {
 
     pub async fn log_out_anyway(&self) -> Result<(), UserError> {
         self.leave_draft().await;
+        self.flush_last_view().await;
         logout_result(
             self.request::<SessionLogout>(SessionLogoutParams { anyway: true })
                 .await,
@@ -1752,6 +1793,8 @@ impl AppModel {
             CoreEvent::SessionEnded { .. } => self.session_ended(),
             CoreEvent::SettingsChanged { view } => self.apply_settings_view(&view),
             CoreEvent::NoteContentChangedRemotely(changed) => self.show_toast(&changed.message),
+            CoreEvent::TrashChanged(changed) => self.trash_changed(changed),
+            CoreEvent::SearchStatusChanged(changed) => self.search_status_changed(changed),
             CoreEvent::Other { .. } => {}
         }
     }
@@ -1761,6 +1804,9 @@ impl AppModel {
             let mut state = self.state_mut();
             state.tree = changed.tree;
             state.tag_options = changed.tag_options;
+            state.tag_filter = changed.tag_filter;
+            state.used_tags = changed.used_tags;
+            state.tags_writable = changed.tags_writable;
         }
         self.emit_by_name::<()>("tree-changed", &[]);
         self.finish_loading_if_ready();
@@ -1888,6 +1934,8 @@ impl AppModel {
         let Some(client) = self.client() else {
             return;
         };
+        let search_ended = self.end_search();
+        let last_view = self.end_last_view();
         {
             let mut state = self.state_mut();
             let previous = std::mem::take(&mut *state);
@@ -1909,13 +1957,18 @@ impl AppModel {
                 visible: previous.visible,
                 online: previous.online,
                 keyring_warned: previous.keyring_warned,
+                last_view,
                 ..State::default()
             };
         }
         self.emit_by_name::<()>("loading-message-changed", &[]);
         self.emit_by_name::<()>("tree-changed", &[]);
+        self.emit_by_name::<()>("trash-changed", &[]);
         self.emit_by_name::<()>("open-note-changed", &[]);
         self.emit_by_name::<()>("sync-state-changed", &[]);
+        if search_ended {
+            self.emit_by_name::<()>("search-changed", &[]);
+        }
         self.bump_generation();
         self.imp().editor_lane.supersede();
         let model = self.clone();
@@ -2334,20 +2387,21 @@ mod tests {
 
     static NEXT_ID: AtomicU32 = AtomicU32::new(0);
 
-    struct Session {
-        model: AppModel,
+    pub(super) struct Session {
+        pub(super) model: AppModel,
+        config: AppConfig,
         root: PathBuf,
     }
 
     impl Session {
-        fn start(bundle_source: String) -> Self {
+        pub(super) fn start(bundle_source: String) -> Self {
             let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
             let app_id = format!(
                 "io.github.marcinjahn.commitnote.Test{}x{id}",
                 std::process::id()
             );
             let root = std::env::temp_dir().join(&app_id);
-            let model = AppModel::new(AppConfig {
+            let config = AppConfig {
                 app_id,
                 version: "test".to_owned(),
                 bundle_source,
@@ -2355,11 +2409,29 @@ mod tests {
                 config_dir: root.join("config"),
                 device_model: "Linux".to_owned(),
                 testing: true,
-            });
-            Self { model, root }
+            };
+            let model = AppModel::new(config.clone());
+            Self {
+                model,
+                config,
+                root,
+            }
         }
 
-        async fn wait_until(&self, what: &str, done: impl Fn(&AppModel) -> bool) {
+        /// Starts a new model over the same storage, as relaunching the app does.
+        pub(super) fn restart(&mut self) {
+            self.model.stop();
+            self.model = AppModel::new(self.config.clone());
+        }
+
+        /// Restarts through the model's shutdown, which waits on the main context and so cannot
+        /// run inside a polled future.
+        pub(super) fn restart_with_flush(&mut self) {
+            self.model.shutdown();
+            self.model = AppModel::new(self.config.clone());
+        }
+
+        pub(super) async fn wait_until(&self, what: &str, done: impl Fn(&AppModel) -> bool) {
             let deadline = Instant::now() + Duration::from_secs(30);
             while !done(&self.model) {
                 assert!(
@@ -2371,7 +2443,7 @@ mod tests {
             }
         }
 
-        async fn choose(&self, url: &str) {
+        pub(super) async fn choose(&self, url: &str) {
             self.wait_until("the token page", |model| model.route() == Route::Token)
                 .await;
             self.model
@@ -2381,10 +2453,32 @@ mod tests {
             self.model.choose_repository(url).await;
         }
 
-        async fn log_in(&self) {
-            self.choose(NOTES_URL).await;
+        pub(super) async fn log_in(&self) {
+            self.log_in_to(NOTES_URL).await;
+        }
+
+        pub(super) async fn log_in_to(&self, url: &str) {
+            self.choose(url).await;
             self.model
                 .unlock(Secret::new(PASSPHRASE), false)
+                .await
+                .expect("the sample passphrase unlocks");
+            self.wait_until("the notes page", |model| model.route() == Route::Notes)
+                .await;
+        }
+
+        /// Logs in to be remembered, unless a keyring resumes the remembered session.
+        pub(super) async fn log_in_remembered(&self) {
+            self.wait_until("the token or notes page", |model| {
+                matches!(model.route(), Route::Token | Route::Notes)
+            })
+            .await;
+            if self.model.route() == Route::Notes {
+                return;
+            }
+            self.choose(NOTES_URL).await;
+            self.model
+                .unlock(Secret::new(PASSPHRASE), true)
                 .await
                 .expect("the sample passphrase unlocks");
             self.wait_until("the notes page", |model| model.route() == Route::Notes)
@@ -2394,19 +2488,19 @@ mod tests {
 
     impl Drop for Session {
         fn drop(&mut self) {
-            self.model.shutdown();
+            self.model.stop();
             let _ = std::fs::remove_dir_all(&self.root);
         }
     }
 
-    fn fake_bundle() -> String {
+    pub(super) fn fake_bundle() -> String {
         crate::register_resources();
         let bytes = gio::resources_lookup_data(BUNDLE_PATH, gio::ResourceLookupFlags::NONE)
             .expect("the core bundle is embedded");
         String::from_utf8(bytes.to_vec()).expect("the core bundle is UTF-8")
     }
 
-    fn run<F: Future<Output = ()>>(test: impl FnOnce() -> F) {
+    pub(super) fn run<F: Future<Output = ()>>(test: impl FnOnce() -> F) {
         glib::MainContext::new().block_on(test());
     }
 
@@ -2605,7 +2699,7 @@ mod tests {
         });
     }
 
-    async fn open_first_note(session: &Session) -> Vec<String> {
+    pub(super) async fn open_first_note(session: &Session) -> Vec<String> {
         let tree = session.model.tree().unwrap_or_default();
         let path = first_note(&tree).expect("the sample tree has a note");
         session.model.open_note(Some(path.clone()));
@@ -2619,7 +2713,7 @@ mod tests {
         path
     }
 
-    fn all_notes(nodes: &[TreeNode]) -> Vec<Vec<String>> {
+    pub(super) fn all_notes(nodes: &[TreeNode]) -> Vec<Vec<String>> {
         nodes
             .iter()
             .flat_map(|node| match node {
@@ -2629,13 +2723,13 @@ mod tests {
             .collect()
     }
 
-    fn tree_has(model: &AppModel, path: &[String]) -> bool {
+    pub(super) fn tree_has(model: &AppModel, path: &[String]) -> bool {
         all_notes(&model.tree().unwrap_or_default())
             .iter()
             .any(|note| note == path)
     }
 
-    fn renamed(path: &[String], name: &str) -> Vec<String> {
+    pub(super) fn renamed(path: &[String], name: &str) -> Vec<String> {
         let mut renamed = path.to_vec();
         if let Some(last) = renamed.last_mut() {
             *last = name.to_owned();
@@ -2675,7 +2769,7 @@ mod tests {
         });
     }
 
-    async fn open_and_read(session: &Session, path: &[String]) -> String {
+    pub(super) async fn open_and_read(session: &Session, path: &[String]) -> String {
         session.model.open_note(Some(path.to_vec()));
         session
             .wait_until("the opened note's content", |model| {

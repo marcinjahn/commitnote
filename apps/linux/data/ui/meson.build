@@ -1,0 +1,40 @@
+blueprints = files(
+  'window.blp',
+  'startup-error-page.blp',
+  'token-page.blp',
+  'repository-list-page.blp',
+  'unusable-repository-page.blp',
+  'unlock-page.blp',
+  'initialize-page.blp',
+  'loading-page.blp',
+  'key-changed-page.blp',
+  'notes-page.blp',
+  'tree-view.blp',
+  'note-view.blp',
+)
+
+ui_files = custom_target(
+  'blueprints',
+  input: blueprints,
+  output: [
+    'window.ui',
+    'startup-error-page.ui',
+    'token-page.ui',
+    'repository-list-page.ui',
+    'unusable-repository-page.ui',
+    'unlock-page.ui',
+    'initialize-page.ui',
+    'loading-page.ui',
+    'key-changed-page.ui',
+    'notes-page.ui',
+    'tree-view.ui',
+    'note-view.ui',
+  ],
+  command: [
+    find_program('blueprint-compiler'),
+    'batch-compile',
+    '@OUTDIR@',
+    '@CURRENT_SOURCE_DIR@',
+    '@INPUT@',
+  ],
+)

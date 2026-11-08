@@ -5,8 +5,8 @@ use std::sync::OnceLock;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use commitnote_editor_text::{
-    EditorHistory, EditorTextSync, HistoryStep, TextEdit, TextSelection, Utf16Index, apply, diff,
-    map_selection,
+    EditorHistory, EditorTextSync, HistoryStep, SentTexts, TextEdit, TextSelection, Utf16Index,
+    apply, diff, map_selection,
 };
 use commitnote_markdown::{
     CommandResult, insert_link, paste_link, toggle_bold, toggle_italic, toggle_strikethrough,
@@ -24,6 +24,7 @@ use crate::model::NoteContentUpdate;
 
 const GROUPING_INTERVAL: f64 = 1.0;
 const CARET_SCROLL_MARGIN: f64 = 24.0;
+const CARET_SCROLL_RETRIES: u8 = 10;
 
 type Command = fn(&str, TextSelection) -> Option<CommandResult>;
 
@@ -54,6 +55,7 @@ struct EditState {
     applied_switch: Option<u64>,
     base: String,
     synced: Option<(u64, u64)>,
+    sent: SentTexts,
 }
 
 impl Default for EditState {
@@ -66,6 +68,7 @@ impl Default for EditState {
             applied_switch: None,
             base: String::new(),
             synced: None,
+            sent: SentTexts::default(),
         }
     }
 }
@@ -82,6 +85,7 @@ mod imp {
         pub(super) user_action_depth: Cell<u32>,
         pub(super) changed_in_action: Cell<bool>,
         pub(super) scroll_pending: Cell<bool>,
+        pub(super) scroll_retries: Cell<u8>,
         pub(super) vim: RefCell<Option<Vim>>,
     }
 
@@ -331,6 +335,22 @@ impl NoteEditor {
         view.grab_focus();
     }
 
+    /// The caret's character offset in the buffer.
+    pub fn caret_offset(&self) -> i32 {
+        self.view().buffer().cursor_position()
+    }
+
+    /// Puts the caret at a character offset, clamped to the text, without scrolling to it.
+    pub fn place_caret(&self, offset: i32) {
+        let imp = self.imp();
+        let buffer = self.view().buffer();
+        imp.applying.set(true);
+        buffer.place_cursor(&buffer.iter_at_offset(offset.clamp(0, buffer.char_count())));
+        imp.applying.set(false);
+        let mut state = imp.state.borrow_mut();
+        state.last_selection = buffer_selection(&buffer, &state.last_index);
+    }
+
     /// Brings a note update from the core into the editor and returns what it did: a new
     /// note replaces everything, a change made elsewhere merges in place keeping the caret,
     /// the selection and the history, and an echo of what was typed here changes nothing.
@@ -344,11 +364,17 @@ impl NoteEditor {
 
         let doc = self.text();
         let decision = {
-            let state = imp.state.borrow();
+            let mut state = imp.state.borrow_mut();
+            let echo = state.sent.take_echo(&update.content);
             match state.applied_switch {
-                Some(applied) if applied == note_switch => {
-                    EditorTextSync::decide(note_switch, applied, &update.content, &doc, &state.base)
-                }
+                Some(applied) if applied == note_switch => EditorTextSync::decide(
+                    note_switch,
+                    applied,
+                    &update.content,
+                    &doc,
+                    &state.base,
+                    echo,
+                ),
                 _ => EditorTextSync::Set,
             }
         };
@@ -715,8 +741,13 @@ impl NoteEditor {
         if changed {
             self.update_actions();
             self.queue_scroll_to_caret();
-            self.emit_by_name::<()>("local-edit", &[&text]);
+            self.send(&text);
         }
+    }
+
+    fn send(&self, text: &str) {
+        self.imp().state.borrow_mut().sent.record(text);
+        self.emit_by_name::<()>("local-edit", &[&text]);
     }
 
     fn replace_all(&self, text: &str) {
@@ -730,6 +761,7 @@ impl NoteEditor {
         view.reset();
         let mut state = imp.state.borrow_mut();
         state.history.reset();
+        state.sent.clear();
         state.last_text = text.to_owned();
         state.last_index = Utf16Index::new(text);
         state.last_selection = TextSelection::new(0, 0);
@@ -785,7 +817,7 @@ impl NoteEditor {
         }
         self.update_actions();
         self.queue_scroll_to_caret();
-        self.emit_by_name::<()>("local-edit", &[&text]);
+        self.send(&text);
     }
 
     fn set_selection(&self, selection: TextSelection) {
@@ -829,7 +861,16 @@ impl NoteEditor {
                 }
                 if let Some(editor) = editor.upgrade() {
                     editor.imp().scroll_pending.set(false);
-                    editor.scroll_to_caret();
+                    if !editor.scroll_to_caret() {
+                        let imp = editor.imp();
+                        let retries = imp.scroll_retries.get();
+                        if retries < CARET_SCROLL_RETRIES {
+                            imp.scroll_retries.set(retries + 1);
+                            editor.queue_scroll_to_caret();
+                            return;
+                        }
+                    }
+                    editor.imp().scroll_retries.set(0);
                 }
             }
         });
@@ -837,9 +878,11 @@ impl NoteEditor {
         self.queue_draw();
     }
 
-    fn scroll_to_caret(&self) {
+    /// Returns whether the caret ended up in view; it is not while the page has yet to grow
+    /// to the laid-out text, which clamps the scroll position.
+    fn scroll_to_caret(&self) -> bool {
         let Some(scrolled) = self.scroll_window() else {
-            return;
+            return true;
         };
         let view = self.view();
         let buffer = view.buffer();
@@ -849,17 +892,20 @@ impl NoteEditor {
         let Some(top) =
             view.compute_point(&scrolled, &gtk::graphene::Point::new(x as f32, y as f32))
         else {
-            return;
+            return true;
         };
         let top = f64::from(top.y());
         let bottom = top + f64::from(caret.height());
         let adjustment = scrolled.vadjustment();
         let page = adjustment.page_size();
+        let before = adjustment.value();
         if top < 0.0 {
-            adjustment.set_value(adjustment.value() + top - CARET_SCROLL_MARGIN);
+            adjustment.set_value(before + top - CARET_SCROLL_MARGIN);
         } else if bottom > page {
-            adjustment.set_value(adjustment.value() + bottom - page + CARET_SCROLL_MARGIN);
+            adjustment.set_value(before + bottom - page + CARET_SCROLL_MARGIN);
         }
+        let moved = adjustment.value() - before;
+        top - moved >= 0.0 && bottom - moved <= page
     }
 }
 

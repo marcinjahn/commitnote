@@ -3,5 +3,6 @@ adwaita-mono-fonts
 adwaita-sans-fonts
 dbus-daemon
 gnome-keyring
+google-noto-color-emoji-fonts
 mesa-dri-drivers
-weston
+mutter
