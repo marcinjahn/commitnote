@@ -26,6 +26,7 @@ pub const HIT_SLOP_Y: f32 = 6.0;
 pub enum OverlayKind {
     Checkbox,
     Rule,
+    Image,
 }
 
 /// The room an overlay takes in the text layout, made with text tags only.
@@ -35,8 +36,17 @@ pub enum Reserve {
     /// display line.
     Inline { width: f32 },
     /// The range's line gets `height` extra pixels below it; the painter gets the line's whole
-    /// text width and height, that space included.
+    /// text width and height, that space included, or its slot of that space.
     Block { height: f32 },
+}
+
+/// A box inside a block reserve, `top` pixels below the reserved space's top edge and
+/// left-aligned to the text; it shrinks to fit a narrower line.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Slot {
+    pub top: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -54,6 +64,8 @@ pub enum HitBehaviour {
     Inert,
     /// A click runs the command over the current buffer text.
     Command(Command),
+    /// A click inside the painted area activates the image, in read-only views too.
+    Activate(String),
 }
 
 /// Something painted over a buffer range instead of its text, which stays in the buffer
@@ -64,6 +76,7 @@ pub struct Overlay {
     /// Buffer character offsets.
     pub range: Range<usize>,
     pub reserve: Reserve,
+    pub slot: Option<Slot>,
     pub painter: Painter,
     pub hit: HitBehaviour,
 }
@@ -74,12 +87,14 @@ impl fmt::Debug for Overlay {
             .field("kind", &self.kind)
             .field("range", &self.range)
             .field("reserve", &self.reserve)
-            .field("hits", &matches!(self.hit, HitBehaviour::Command(_)))
+            .field("slot", &self.slot)
+            .field("hits", &!matches!(self.hit, HitBehaviour::Inert))
             .finish()
     }
 }
 
-/// Maps each render placement that has an overlay to it; new placement kinds join here.
+/// Maps each checkbox and rule placement to its overlay; images have their own pass, which
+/// needs the view's size and an image source.
 pub fn overlays(
     placements: &[Placement],
     index: &Utf16Index,
@@ -108,6 +123,7 @@ pub fn overlays(
                     reserve: Reserve::Inline {
                         width: style.line_height.round(),
                     },
+                    slot: None,
                     painter: if *is_checked {
                         checked.clone()
                     } else {
@@ -122,6 +138,7 @@ pub fn overlays(
                 kind: OverlayKind::Rule,
                 range: chars(line_range),
                 reserve: Reserve::Block { height: 0.0 },
+                slot: None,
                 painter: rule.clone(),
                 hit: HitBehaviour::Inert,
             }),
@@ -146,19 +163,30 @@ pub fn overlay_rect(view: &gtk::TextView, overlay: &Overlay) -> graphene::Rect {
             };
             graphene::Rect::new(from.x() as f32, from.y() as f32, span, from.height() as f32)
         }
-        Reserve::Block { .. } => {
+        Reserve::Block { height: block } => {
             let mut line = start;
             line.set_line_offset(0);
             let (y, height) = view.line_yrange(&line);
             let left = view.iter_location(&line).x();
             let visible = view.visible_rect();
-            let right = visible.x() + visible.width() - view.right_margin();
-            graphene::Rect::new(
-                left as f32,
-                y as f32,
-                (right - left).max(0) as f32,
-                height as f32,
-            )
+            let room = (visible.x() + visible.width() - view.right_margin() - left).max(0) as f32;
+            match overlay.slot {
+                None => graphene::Rect::new(left as f32, y as f32, room, height as f32),
+                Some(slot) => {
+                    let scale = if slot.width > room && slot.width > 0.0 {
+                        room / slot.width
+                    } else {
+                        1.0
+                    };
+                    let top = (y + height) as f32 - block.round() + slot.top;
+                    graphene::Rect::new(
+                        left as f32,
+                        top,
+                        (slot.width * scale).round(),
+                        (slot.height * scale).round(),
+                    )
+                }
+            }
         }
     }
 }
@@ -211,7 +239,9 @@ impl OverlayTags {
             let range = overlay.range.clone();
             let from = buffer.iter_at_offset(range.start as i32);
             let to = buffer.iter_at_offset(range.end as i32);
-            spans.push((range.clone(), self.source.clone()));
+            if overlay.kind != OverlayKind::Image {
+                spans.push((range.clone(), self.source.clone()));
+            }
             match overlay.reserve {
                 Reserve::Inline { width } => {
                     let text = buffer.text(&from, &to, true);
@@ -232,10 +262,13 @@ impl OverlayTags {
                         start.set_line_offset(0);
                         let mut end = from;
                         end.forward_line();
-                        spans.push((
+                        let span = (
                             start.offset() as usize..end.offset() as usize,
                             self.below_tag(pixels),
-                        ));
+                        );
+                        if spans.last() != Some(&span) {
+                            spans.push(span);
+                        }
                     }
                 }
             }
@@ -337,7 +370,7 @@ impl OverlayTags {
     }
 }
 
-fn dim(color: gdk::RGBA, alpha: f32) -> gdk::RGBA {
+pub(super) fn dim(color: gdk::RGBA, alpha: f32) -> gdk::RGBA {
     color.with_alpha(color.alpha() * alpha)
 }
 

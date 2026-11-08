@@ -4,13 +4,12 @@ use std::fs;
 use std::path::Path;
 
 use commitnote_core_api::fake::{FakeCheckVectors, FakeCheckVectorsParams};
-use commitnote_core_runtime::HostServices;
+use commitnote_core_runtime::{HostImageCodec, HostServices};
 use serde_json::{Map, Value};
 
 use common::{block_on, start_fake};
 
 const VECTORS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../test-vectors");
-const IMAGE_PIPELINE_PREFIX: &str = "image-pipeline.json:";
 
 fn expected_checks(fields: &Map<String, Value>) -> usize {
     1 + fields
@@ -50,21 +49,20 @@ fn load_vectors(directory: &Path) -> (Map<String, Value>, usize) {
 }
 
 #[test]
-fn every_vector_passes_through_the_host_crypto_except_image_processing() {
+fn every_vector_passes_through_the_host_services() {
     let (files, expected) = load_vectors(Path::new(VECTORS_DIR));
-    let runtime = start_fake(HostServices::default());
+    let runtime = start_fake(HostServices {
+        image_codec: Box::new(HostImageCodec::default()),
+        ..HostServices::default()
+    });
 
     let result = block_on(runtime.request::<FakeCheckVectors>(FakeCheckVectorsParams { files }))
         .expect("fake.checkVectors");
 
-    let unexpected: Vec<&String> = result
-        .failures
-        .iter()
-        .filter(|failure| !failure.starts_with(IMAGE_PIPELINE_PREFIX))
-        .collect();
     assert!(
-        unexpected.is_empty(),
-        "vectors failed outside the image pipeline: {unexpected:?}"
+        result.failures.is_empty(),
+        "vectors failed: {:?}",
+        result.failures
     );
     assert_eq!(result.checked as usize, expected);
 }

@@ -7,6 +7,7 @@ publish = false
 [dependencies]
 commitnote-crypto.workspace = true
 commitnote-core-api.workspace = true
+commitnote-image-codec.workspace = true
 javascriptcore6.workspace = true
 javascriptcore6-sys.workspace = true
 glib.workspace = true
@@ -27,6 +28,7 @@ libc.workspace = true
 commitnote-core-api = { workspace = true, features = ["testing"] }
 tempfile.workspace = true
 hex.workspace = true
+image.workspace = true
 
 [features]
 testing = ["commitnote-core-api/testing"]

@@ -1,13 +1,15 @@
 mod common;
 
 use std::future::Future;
+use std::io::Cursor;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use commitnote_core_api::commands::{
-    LoginInitialize, LoginInitializeParams, LoginInspectRepository, LoginInspectRepositoryParams,
-    LoginInspectRepositoryResult, LoginListRepositories, LoginListRepositoriesParams, LoginUnlock,
-    LoginUnlockParams, NoteOpen, NoteOpenParams, TreeGet, TreeGetParams,
+    ImageInsert, ImageInsertParams, LoginInitialize, LoginInitializeParams, LoginInspectRepository,
+    LoginInspectRepositoryParams, LoginInspectRepositoryResult, LoginListRepositories,
+    LoginListRepositoriesParams, LoginUnlock, LoginUnlockParams, NoteOpen, NoteOpenParams, TreeGet,
+    TreeGetParams,
 };
 use commitnote_core_api::fake::{
     FakeExpectedSampleNotes, FakeExpectedSampleNotesParams, FakeExportRepo, FakeExportRepoParams,
@@ -15,7 +17,11 @@ use commitnote_core_api::fake::{
 };
 use commitnote_core_api::shapes::{ForgeKind, OpenNote, TreeNode};
 use commitnote_core_api::{CoreEvent, Secret};
-use commitnote_core_runtime::{CoreRuntime, HostServices};
+use commitnote_core_runtime::services::StagedInputs;
+use commitnote_core_runtime::{CoreRuntime, HostImageCodec, HostServices, SharedStagedInputs};
+use image::codecs::gif::GifEncoder;
+use image::codecs::jpeg::JpegEncoder;
+use image::{Delay, Frame, Rgb, RgbImage, Rgba, RgbaImage};
 use serde_json::{Value, json};
 
 use common::start_fake;
@@ -28,6 +34,11 @@ const EDITED_TEXT: &str = "Zażółć gęślą jaźń\n\nSecond line: naïve caf
 const SCENARIO_TIMEOUT: Duration = Duration::from_secs(90);
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 const HOUSEKEEPING_TIMEOUT: Duration = Duration::from_secs(30);
+
+const LARGE_JPEG_SIZE: (u32, u32) = (3000, 2000);
+const LARGE_JPEG_REFERENCE_SUFFIX: &str = "#2560x1707)";
+const GIF_SIZE: (u32, u32) = (48, 32);
+const MAX_IMAGES_PER_ACTION: usize = 10;
 
 fn run<F: Future>(future: F) -> F::Output {
     glib::MainContext::new()
@@ -571,5 +582,126 @@ fn organised_repo_reads_back() {
                 }),
             ),
         );
+    });
+}
+
+fn image_services(staged: &SharedStagedInputs) -> HostServices {
+    HostServices {
+        staged_inputs: Box::new(staged.clone()),
+        image_codec: Box::new(HostImageCodec::default()),
+        ..HostServices::default()
+    }
+}
+
+fn large_jpeg() -> Vec<u8> {
+    let (width, height) = LARGE_JPEG_SIZE;
+    let picture = RgbImage::from_fn(width, height, |x, y| {
+        Rgb([(x / 12) as u8, (y / 8) as u8, ((x + y) / 20) as u8])
+    });
+    let mut bytes = Vec::new();
+    JpegEncoder::new_with_quality(&mut bytes, 85)
+        .encode_image(&picture)
+        .expect("the JPEG encodes");
+    bytes
+}
+
+fn two_frame_gif() -> Vec<u8> {
+    let (width, height) = GIF_SIZE;
+    let frame = |shade: u8| {
+        Frame::from_parts(
+            RgbaImage::from_fn(width, height, |x, _| Rgba([shade, (x * 5) as u8, 90, 255])),
+            0,
+            0,
+            Delay::from_numer_denom_ms(100, 1),
+        )
+    };
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = GifEncoder::new(Cursor::new(&mut bytes));
+        encoder
+            .encode_frames([frame(20), frame(220)])
+            .expect("the GIF encodes");
+    }
+    bytes
+}
+
+fn references_of(result: &Value) -> Vec<String> {
+    serde_json::from_value(result["references"].clone()).expect("the result carries references")
+}
+
+#[test]
+fn inserted_images_read_back() {
+    run(async {
+        let staged = SharedStagedInputs::default();
+        let runtime = start_fake(image_services(&staged));
+        let tree = log_in(&runtime, "sample/notes", SAMPLE_PASSPHRASE).await;
+        let path = note_paths(&tree).into_iter().next().expect("a note exists");
+        open_note_loaded(&runtime, &path).await;
+
+        let jpeg = staged.stage(large_jpeg(), "image/jpeg");
+        let gif = staged.stage(two_frame_gif(), "image/gif");
+        let inserted = runtime
+            .request::<ImageInsert>(ImageInsertParams {
+                inputs: vec![jpeg, gif],
+            })
+            .await
+            .expect("image.insert");
+        assert_eq!(inserted.references.len(), 2);
+        let [first, second] = [&inserted.references[0], &inserted.references[1]];
+        assert!(first.ends_with(LARGE_JPEG_REFERENCE_SUFFIX), "{first}");
+        assert!(second.ends_with("#48x32)"), "{second}");
+
+        let text = format!("Pictures\n\n{first}\n\n{second}\n");
+        runtime
+            .request::<FakeSaveNote>(FakeSaveNoteParams {
+                path: path.clone(),
+                text: text.clone(),
+            })
+            .await
+            .expect("fake.saveNote");
+
+        let exported = export_repo(&runtime, "sample/notes").await;
+        write_scenario(
+            "images.json",
+            &scenario(
+                "linux images",
+                SAMPLE_PASSPHRASE,
+                &exported,
+                json!({
+                    "initialized": false,
+                    "notes": [{"path": path, "text": text}],
+                    "images": [
+                        {"reference": first, "type": "image/webp"},
+                        {"reference": second, "type": "image/gif"},
+                    ],
+                    "deviceName": DEVICE_MODEL,
+                }),
+            ),
+        );
+    });
+}
+
+#[test]
+fn too_many_images_are_returned_untouched() {
+    run(async {
+        let staged = SharedStagedInputs::default();
+        let runtime = start_fake(image_services(&staged));
+        let tree = log_in(&runtime, "sample/notes", SAMPLE_PASSPHRASE).await;
+        let path = note_paths(&tree).into_iter().next().expect("a note exists");
+        open_note_loaded(&runtime, &path).await;
+
+        let gif = two_frame_gif();
+        let ids: Vec<String> = (0..=MAX_IMAGES_PER_ACTION)
+            .map(|_| staged.stage(gif.clone(), "image/gif"))
+            .collect();
+        let inserted = command(&runtime, "image.insert", json!({"inputs": ids})).await;
+
+        assert!(references_of(&inserted).is_empty());
+        for id in &ids {
+            assert!(
+                staged.take(id).expect("take").is_some(),
+                "an input was taken although the action was refused"
+            );
+        }
     });
 }

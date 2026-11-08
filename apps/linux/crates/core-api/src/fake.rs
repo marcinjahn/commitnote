@@ -126,6 +126,92 @@ pub struct FakeSaveNoteParams {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FakeImageProfile {
+    Note,
+    Share,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FakeProcessImageParams {
+    pub base64: String,
+    #[serde(rename = "type")]
+    pub mime_type: String,
+    pub profile: FakeImageProfile,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FakeProcessImageResult {
+    pub result: FakeProcessedImage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FakeEncodedImage {
+    #[serde(rename = "type")]
+    pub mime_type: String,
+    pub width: u32,
+    pub height: u32,
+    pub base64: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RawProcessedImage", into = "RawProcessedImage")]
+pub enum FakeProcessedImage {
+    Encoded(FakeEncodedImage),
+    Rejected { rejection: String },
+}
+
+#[derive(Serialize, Deserialize)]
+struct RawProcessedImage {
+    ok: bool,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    image: Option<FakeEncodedImage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rejection: Option<String>,
+}
+
+impl TryFrom<RawProcessedImage> for FakeProcessedImage {
+    type Error = &'static str;
+
+    fn try_from(raw: RawProcessedImage) -> Result<Self, Self::Error> {
+        match raw {
+            RawProcessedImage {
+                ok: true,
+                image: Some(image),
+                ..
+            } => Ok(Self::Encoded(image)),
+            RawProcessedImage {
+                ok: false,
+                rejection: Some(rejection),
+                ..
+            } => Ok(Self::Rejected { rejection }),
+            RawProcessedImage { ok: true, .. } => Err("a processed image needs its encoding"),
+            RawProcessedImage { ok: false, .. } => Err("a rejected image needs its rejection"),
+        }
+    }
+}
+
+impl From<FakeProcessedImage> for RawProcessedImage {
+    fn from(processed: FakeProcessedImage) -> Self {
+        match processed {
+            FakeProcessedImage::Encoded(image) => Self {
+                ok: true,
+                image: Some(image),
+                rejection: None,
+            },
+            FakeProcessedImage::Rejected { rejection } => Self {
+                ok: false,
+                image: None,
+                rejection: Some(rejection),
+            },
+        }
+    }
+}
+
 command!(
     FakeRemoteEdit,
     "fake.remoteEdit",
@@ -198,6 +284,12 @@ command!(
     FakeSaveNoteParams,
     FakeSaveNoteResult
 );
+command!(
+    FakeProcessImage,
+    "fake.processImage",
+    FakeProcessImageParams,
+    FakeProcessImageResult
+);
 
 #[cfg(test)]
 mod tests {
@@ -242,6 +334,7 @@ mod tests {
             FakeExportRepo::NAME,
             FakeHttpRequest::NAME,
             FakeSaveNote::NAME,
+            FakeProcessImage::NAME,
         ];
         for name in typed {
             assert!(FAKE_CORE_COMMAND_NAMES.contains(&name), "{name}");
@@ -341,6 +434,54 @@ mod tests {
         assert_eq!(result.status, 201);
         assert_eq!(result.headers["etag"], "x");
         round_trip(&result);
+    }
+
+    #[test]
+    fn process_image_round_trips() {
+        assert_eq!(
+            round_trip(&FakeProcessImageParams {
+                base64: "AAEC".into(),
+                mime_type: "image/png".into(),
+                profile: FakeImageProfile::Share,
+            }),
+            json!({"base64":"AAEC","type":"image/png","profile":"share"})
+        );
+        let encoded =
+            json!({"result":{"ok":true,"type":"image/webp","width":3,"height":2,"base64":"UklG"}});
+        let result: FakeProcessImageResult = serde_json::from_value(encoded.clone()).unwrap();
+        assert_eq!(
+            result.result,
+            FakeProcessedImage::Encoded(FakeEncodedImage {
+                mime_type: "image/webp".into(),
+                width: 3,
+                height: 2,
+                base64: "UklG".into(),
+            })
+        );
+        assert_eq!(round_trip(&result), encoded);
+        let rejected = json!({"result":{"ok":false,"rejection":"unsupported"}});
+        let result: FakeProcessImageResult = serde_json::from_value(rejected.clone()).unwrap();
+        assert_eq!(
+            result.result,
+            FakeProcessedImage::Rejected {
+                rejection: "unsupported".into()
+            }
+        );
+        assert_eq!(round_trip(&result), rejected);
+        assert!(
+            serde_json::from_value::<FakeProcessImageResult>(json!({"result":{"ok":true}}))
+                .is_err()
+        );
+        assert!(
+            serde_json::from_value::<FakeProcessImageResult>(json!({"result":{"ok":false}}))
+                .is_err()
+        );
+        assert!(
+            serde_json::from_value::<FakeProcessImageParams>(
+                json!({"base64":"","type":"","profile":"other"})
+            )
+            .is_err()
+        );
     }
 
     #[test]

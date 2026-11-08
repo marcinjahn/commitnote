@@ -88,7 +88,7 @@ const ROADMAP: &[&str] = &["Projects", "commitnote", "Roadmap"];
 const IDEAS: &[&str] = &["Projects", "commitnote", "Ideas"];
 const MEETING_MINUTES: &[&str] = &["Projects", "commitnote", "Meeting minutes"];
 
-fn path(parts: &[&str]) -> Vec<String> {
+pub fn path(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).to_owned()).collect()
 }
 
@@ -100,7 +100,7 @@ fn find<'a>(nodes: &'a [TreeNode], target: &[String]) -> Option<&'a TreeNode> {
     })
 }
 
-fn has_node(h: &Harness, target: &[String]) -> bool {
+pub fn has_node(h: &Harness, target: &[String]) -> bool {
     h.model()
         .ok()
         .and_then(|model| model.tree())
@@ -282,7 +282,7 @@ fn find_labelled(h: &Harness, label: &str) -> Option<gtk::Button> {
     button_labelled(window.upcast_ref(), label)
 }
 
-fn click_labelled(h: &Harness, label: &str) -> Result<(), String> {
+pub fn click_labelled(h: &Harness, label: &str) -> Result<(), String> {
     h.wait(&format!("the {label} button"), || {
         find_labelled(h, label).is_some()
     })?;
@@ -1688,11 +1688,13 @@ fn drop_indicator(h: &mut Harness) -> Result<(), String> {
 }
 
 const TAG_BANNER: &str = "tag-filter-banner";
-const NOTE_ACTIONS: [&str; 5] = [
+const NOTE_ACTIONS: [&str; 7] = [
     "notes.rename-note",
     "notes.move-note",
     "notes.color-tag",
     "notes.show-details",
+    "notes.show-history",
+    "notes.share-note",
     "notes.trash-note",
 ];
 
@@ -1790,7 +1792,7 @@ fn tag_filter(h: &mut Harness) -> Result<(), String> {
     expect_choices(h, "after filtering")
 }
 
-fn action_enabled(h: &Harness, action: &str) -> Result<bool, String> {
+pub fn action_enabled(h: &Harness, action: &str) -> Result<bool, String> {
     let anchor = h.widget("notes-tree")?;
     let probe = gtk::Button::new();
     probe.set_action_name(Some(action));
@@ -2029,7 +2031,7 @@ fn undo_move(h: &mut Harness) -> Result<(), String> {
     })
 }
 
-fn focus_editor(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
+pub fn focus_editor(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
     let view = editor.view();
     view.grab_focus();
     h.wait("the editor to take focus", || {
@@ -2119,7 +2121,7 @@ fn create_share(h: &Harness, target: &[&str]) -> Result<(), String> {
     )
 }
 
-fn is_shared(h: &Harness, target: &[String]) -> bool {
+pub fn is_shared(h: &Harness, target: &[String]) -> bool {
     h.model()
         .ok()
         .and_then(|model| model.tree())
@@ -2387,7 +2389,7 @@ fn expand_with_key(h: &Harness, target: &[&str]) -> Result<(), String> {
     h.wait("the folder to expand", || is_expanded(h, name))
 }
 
-fn open_note_at(h: &Harness, target: &[&str]) -> Result<(), String> {
+pub fn open_note_at(h: &Harness, target: &[&str]) -> Result<(), String> {
     let model = h.model()?;
     let target = path(target);
     let title = target.last().cloned().unwrap_or_default();

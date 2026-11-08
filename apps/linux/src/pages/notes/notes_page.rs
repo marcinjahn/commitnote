@@ -4,17 +4,17 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use commitnote_core_api::commands::MoveDirection;
 use commitnote_core_api::shapes::ColorTag;
-use gtk4::{self as gtk, gdk, glib};
+use gtk4::{self as gtk, gdk, gio, glib};
 use libadwaita as adw;
 
 use super::sync_feedback::{SyncMenuAction, SyncStatusView, sync_status_view};
 use super::tree_logic::{new_folder_parent, tag_from_id, tag_id, tag_label};
 use super::{
-    NoteView, NotesTree, SearchView, details_dialog, folder_dialog, move_dialog, trash_confirm,
-    trash_dialog,
+    NoteView, NotesTree, SearchView, details_dialog, folder_dialog, history_dialog, move_dialog,
+    share_dialog, shared_links_dialog, trash_confirm, trash_dialog,
 };
-use crate::editor::NoteEditor;
-use crate::model::{AppModel, COLOR_TAGS, DraftFocus, EditorTarget};
+use crate::editor::{InsertAt, NoteEditor};
+use crate::model::{AppModel, COLOR_TAGS, DraftFocus, EditorTarget, ImageInput};
 
 const FALLBACK_TITLE: &str = "commitnote";
 const DRAFT_TITLE: &str = "New Note";
@@ -74,7 +74,10 @@ mod imp {
         pub(super) draft_switch: Cell<Option<u64>>,
         pub(super) model_handlers: RefCell<Vec<glib::SignalHandlerId>>,
         pub(super) trash_dialog: glib::WeakRef<adw::Dialog>,
+        pub(super) shared_links_dialog: glib::WeakRef<adw::Dialog>,
         pub(super) trashing: Cell<bool>,
+        #[cfg(feature = "testing")]
+        pub(super) next_picked_files: RefCell<Option<Vec<gio::File>>>,
     }
 
     #[glib::object_subclass]
@@ -170,6 +173,9 @@ mod imp {
             klass.install_action("notes.show-trash", None, |page, _, _| {
                 page.show_trash();
             });
+            klass.install_action("notes.show-shared-links", None, |page, _, _| {
+                page.show_shared_links();
+            });
             klass.install_property_action("notes.tag-filter", "filter-tag");
             klass.install_property_action("notes.color-tag", "note-color-tag");
             klass.install_action("notes.rename-note", None, |page, _, _| {
@@ -188,6 +194,12 @@ mod imp {
                 {
                     details_dialog::present(model, page);
                 }
+            });
+            klass.install_action("notes.show-history", None, |page, _, _| {
+                page.show_history();
+            });
+            klass.install_action("notes.share-note", None, |page, _, _| {
+                page.show_share();
             });
             klass.install_action("notes.trash-note", None, |page, _, _| {
                 if let Some(path) = page.open_saved_path() {
@@ -288,6 +300,14 @@ impl NotesPage {
         let note_view = NoteView::new(model);
         let editor = note_view.editor();
         page.insert_action_group("editor", Some(&editor.actions()));
+        editor.connect_insert_image_requested({
+            let page = page.downgrade();
+            move |_| {
+                if let Some(page) = page.upgrade() {
+                    glib::spawn_future_local(async move { page.insert_picked_images().await });
+                }
+            }
+        });
         editor.view().connect_editable_notify({
             let page = page.downgrade();
             move |_| {
@@ -342,6 +362,55 @@ impl NotesPage {
             .note_view
             .get()
             .is_some_and(NoteView::placeholder_visible)
+    }
+
+    async fn insert_picked_images(&self) {
+        let files = self.pick_images().await;
+        if files.is_empty() {
+            return;
+        }
+        if let Some(editor) = self.imp().editor.get() {
+            editor.insert_images(
+                files.into_iter().map(ImageInput::File).collect(),
+                InsertAt::Caret,
+            );
+        }
+    }
+
+    async fn pick_images(&self) -> Vec<gio::File> {
+        #[cfg(feature = "testing")]
+        if let Some(files) = self.imp().next_picked_files.take() {
+            return files;
+        }
+        let images = gtk::FileFilter::new();
+        images.set_name(Some("Images"));
+        images.add_mime_type("image/*");
+        let all = gtk::FileFilter::new();
+        all.set_name(Some("All Files"));
+        all.add_pattern("*");
+        let filters = gio::ListStore::new::<gtk::FileFilter>();
+        filters.append(&images);
+        filters.append(&all);
+        let dialog = gtk::FileDialog::builder()
+            .title("Insert Image")
+            .accept_label("Insert")
+            .modal(true)
+            .filters(&filters)
+            .default_filter(&images)
+            .build();
+        let window = self.root().and_downcast::<gtk::Window>();
+        let Ok(picked) = dialog.open_multiple_future(window.as_ref()).await else {
+            return Vec::new();
+        };
+        (0..picked.n_items())
+            .filter_map(|position| picked.item(position).and_downcast::<gio::File>())
+            .collect()
+    }
+
+    /// Makes the next Insert Image request use these files instead of asking.
+    #[cfg(feature = "testing")]
+    pub fn testing_set_next_picked_files(&self, files: Vec<gio::File>) {
+        self.imp().next_picked_files.replace(Some(files));
     }
 
     #[cfg(feature = "testing")]
@@ -630,6 +699,18 @@ impl NotesPage {
         imp.trash_dialog.set(Some(&dialog));
     }
 
+    fn show_shared_links(&self) {
+        let imp = self.imp();
+        let Some(model) = imp.model.get() else {
+            return;
+        };
+        if imp.shared_links_dialog.upgrade().is_some() {
+            return;
+        }
+        let dialog = shared_links_dialog::present(model, self);
+        imp.shared_links_dialog.set(Some(&dialog));
+    }
+
     fn toggle_sidebar(&self) {
         let split_view = &self.imp().split_view;
         if self.narrow() {
@@ -754,6 +835,29 @@ impl NotesPage {
         let _ = imp.organise_menu.set(organise);
     }
 
+    fn show_history(&self) {
+        let (Some(model), Some(path)) = (self.imp().model.get(), self.open_saved_path()) else {
+            return;
+        };
+        let dialog = history_dialog::present(model, self);
+        let model = model.clone();
+        glib::spawn_future_local(async move {
+            if let Err(error) = model.open_history(path).await {
+                dialog.force_close();
+                model.report_error(&error);
+            }
+        });
+    }
+
+    fn show_share(&self) {
+        let (Some(model), Some(path)) = (self.imp().model.get(), self.open_saved_path()) else {
+            return;
+        };
+        if let Some(copy) = model.share_copy() {
+            share_dialog::present(model, self, path, &copy);
+        }
+    }
+
     fn open_saved_path(&self) -> Option<Vec<String>> {
         match self.imp().model.get()?.editor_target() {
             EditorTarget::Note(path) => Some(path),
@@ -846,6 +950,8 @@ impl NotesPage {
             "notes.rename-note",
             "notes.move-note",
             "notes.show-details",
+            "notes.show-history",
+            "notes.share-note",
             "notes.trash-note",
         ] {
             self.action_set_enabled(action, path.is_some());

@@ -2,7 +2,9 @@ pub mod blob_cache;
 pub(crate) mod crypto;
 pub mod device_settings;
 pub mod http;
+pub mod images;
 pub mod remembered_session;
+pub mod staged_inputs;
 
 use std::fmt;
 use std::rc::Rc;

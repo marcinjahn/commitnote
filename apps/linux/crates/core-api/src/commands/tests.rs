@@ -65,6 +65,12 @@ fn empty_params_encode_as_empty_objects() {
     assert_eq!(params_json::<SyncFlush>(&SyncFlushParams {}), empty);
     assert_eq!(params_json::<SyncRetry>(&SyncRetryParams {}), empty);
     assert_eq!(params_json::<DraftLeave>(&DraftLeaveParams {}), empty);
+    assert_eq!(params_json::<HistoryClose>(&HistoryCloseParams {}), empty);
+    assert_eq!(
+        params_json::<HistoryLoadMore>(&HistoryLoadMoreParams {}),
+        empty
+    );
+    assert_eq!(params_json::<HistoryRetry>(&HistoryRetryParams {}), empty);
 }
 
 #[test]
@@ -114,6 +120,21 @@ fn every_command_has_a_distinct_name() {
         TrashDelete::NAME,
         TrashEmpty::NAME,
         TagsSetFilter::NAME,
+        ImageRead::NAME,
+        ImageInsert::NAME,
+        ImageClonePasted::NAME,
+        HistoryOpen::NAME,
+        HistoryClose::NAME,
+        HistoryLoadMore::NAME,
+        HistoryRetry::NAME,
+        HistoryPreview::NAME,
+        HistoryRestore::NAME,
+        ShareForm::NAME,
+        ShareCreate::NAME,
+        ShareUpdate::NAME,
+        ShareRename::NAME,
+        ShareRevoke::NAME,
+        ShareSharedVersion::NAME,
     ];
     let mut sorted = names.to_vec();
     sorted.sort_unstable();
@@ -1341,4 +1362,543 @@ fn last_view_commands_encode_and_decode() {
     );
     decode::<LastViewSave>("{}");
     decode::<LastViewSetEnabled>("{}");
+}
+
+#[test]
+fn image_read_decodes_an_image_or_null() {
+    let webp = decode::<ImageRead>(r#"{"image":{"type":"image/webp","base64":"UklG"}}"#);
+    assert_eq!(
+        webp.image,
+        Some(ReadImage {
+            image_type: ReadImageType::Webp,
+            base64: "UklG".into()
+        })
+    );
+    let gif = decode::<ImageRead>(r#"{"image":{"type":"image/gif","base64":"R0lG"}}"#);
+    assert_eq!(
+        gif.image.map(|image| image.image_type),
+        Some(ReadImageType::Gif)
+    );
+    assert_eq!(decode::<ImageRead>(r#"{"image":null}"#).image, None);
+    assert_eq!(
+        params_json::<ImageRead>(&ImageReadParams {
+            image_id: "abc".into()
+        }),
+        json!({"imageId":"abc"})
+    );
+}
+
+#[test]
+fn image_read_rejects_unknown_types() {
+    let value: Value =
+        serde_json::from_str(r#"{"image":{"type":"image/png","base64":""}}"#).unwrap();
+    assert!(crate::decode_result::<ImageRead>(value).is_err());
+}
+
+#[test]
+fn image_insert_uses_camel_case_wire_names() {
+    assert_eq!(
+        params_json::<ImageInsert>(&ImageInsertParams {
+            inputs: vec!["a".into(), "b".into()]
+        }),
+        json!({"inputs":["a","b"]})
+    );
+    let result = decode::<ImageInsert>(r#"{"references":["![](image:abc#640x480)"]}"#);
+    assert_eq!(result.references, vec!["![](image:abc#640x480)".to_owned()]);
+    assert!(
+        decode::<ImageInsert>(r#"{"references":[]}"#)
+            .references
+            .is_empty()
+    );
+}
+
+#[test]
+fn image_clone_pasted_encodes_draft_and_saved_targets() {
+    assert_eq!(
+        params_json::<ImageClonePasted>(&ImageClonePastedParams {
+            path: Some(path(&["A", "B"])),
+            current: "c".into(),
+            pasted: "p".into(),
+        }),
+        json!({"path":["A","B"],"current":"c","pasted":"p"})
+    );
+    assert_eq!(
+        params_json::<ImageClonePasted>(&ImageClonePastedParams {
+            path: None,
+            current: "c".into(),
+            pasted: "p".into(),
+        }),
+        json!({"path":null,"current":"c","pasted":"p"})
+    );
+    assert_eq!(decode::<ImageClonePasted>(r#"{"text":"x"}"#).text, "x");
+}
+
+fn version_json(sha: &str) -> Value {
+    json!({
+        "sha": sha,
+        "time": "10:30",
+        "dateTime": "Mon, 2 Mar 2026, 10:30",
+        "current": false,
+        "shared": true,
+        "events": ["Edited", "Renamed"],
+        "name": null
+    })
+}
+
+fn version(sha: &str) -> HistoryVersionView {
+    HistoryVersionView {
+        sha: sha.into(),
+        time: "10:30".into(),
+        date_time: "Mon, 2 Mar 2026, 10:30".into(),
+        current: false,
+        shared: true,
+        events: vec!["Edited".into(), "Renamed".into()],
+        name: None,
+    }
+}
+
+#[test]
+fn history_params_use_camel_case_wire_names() {
+    assert_eq!(
+        params_json::<HistoryOpen>(&HistoryOpenParams {
+            path: path(&["A", "B"])
+        }),
+        json!({"path":["A","B"]})
+    );
+    assert_eq!(
+        params_json::<HistoryPreview>(&HistoryPreviewParams {
+            sha: "abc".into(),
+            restore_title: true
+        }),
+        json!({"sha":"abc","restoreTitle":true})
+    );
+    assert_eq!(
+        params_json::<HistoryRestore>(&HistoryRestoreParams {
+            sha: "abc".into(),
+            restore_title: false
+        }),
+        json!({"sha":"abc","restoreTitle":false})
+    );
+    decode::<HistoryOpen>("{}");
+    decode::<HistoryClose>("{}");
+    decode::<HistoryLoadMore>("{}");
+    decode::<HistoryRetry>("{}");
+}
+
+#[test]
+fn history_view_round_trips_single_and_session_rows() {
+    let view = HistoryView {
+        path: path(&["A"]),
+        phase: HistoryPhase::Ready,
+        message: None,
+        sections: vec![HistorySection {
+            title: "Today".into(),
+            rows: vec![
+                HistoryRow::Single {
+                    version: version("a1"),
+                },
+                HistoryRow::Session {
+                    title: "3 edits".into(),
+                    shared: false,
+                    versions: vec![version("b1"), version("b2")],
+                },
+            ],
+        }],
+        loading: false,
+        error: None,
+        end: Some("That is all".into()),
+        can_load_more: false,
+    };
+    let json = round_trip(&view);
+    assert_eq!(json["phase"], "ready");
+    assert_eq!(json["sections"][0]["rows"][0]["kind"], "single");
+    assert_eq!(
+        json["sections"][0]["rows"][0]["version"],
+        version_json("a1")
+    );
+    assert_eq!(json["sections"][0]["rows"][1]["kind"], "session");
+    assert_eq!(json["canLoadMore"], false);
+}
+
+#[test]
+fn history_phases_use_their_wire_names() {
+    for (phase, name) in [
+        (HistoryPhase::Saving, "saving"),
+        (HistoryPhase::Unsaved, "unsaved"),
+        (HistoryPhase::Ready, "ready"),
+    ] {
+        assert_eq!(round_trip(&phase), json!(name));
+    }
+}
+
+#[test]
+fn version_preview_with_a_diff_round_trips() {
+    let text = r#"{"preview":{"kind":"version","titleChange":"Old title","body":{"kind":"diff",
+        "items":[
+        {"kind":"line","line":{"kind":"same","text":"kept"}},
+        {"kind":"line","line":{"kind":"added","segments":[
+            {"text":"new ","changed":false},{"text":"word","changed":true}]}},
+        {"kind":"line","line":{"kind":"removed","segments":[{"text":"gone","changed":true}]}},
+        {"kind":"fold","label":"2 unchanged lines","lines":[
+            {"kind":"same","text":"x"},{"kind":"same","text":"y"}]}],
+        "finalNewline":"No newline at end of file"},
+        "restoreTitle":"Also restore the title","restore":{"label":"Restore this version","enabled":true,"reason":null}}}"#;
+    let preview = decode::<HistoryPreview>(text).preview;
+    let VersionPreview::Version {
+        title_change,
+        body,
+        restore_title,
+        restore,
+    } = preview
+    else {
+        panic!("expected a version preview");
+    };
+    assert_eq!(title_change.as_deref(), Some("Old title"));
+    assert_eq!(restore_title.as_deref(), Some("Also restore the title"));
+    assert_eq!(
+        restore,
+        RestoreAction {
+            label: "Restore this version".into(),
+            enabled: true,
+            reason: None
+        }
+    );
+    let PreviewBody::Diff {
+        items,
+        final_newline,
+    } = body
+    else {
+        panic!("expected a diff");
+    };
+    assert_eq!(final_newline.as_deref(), Some("No newline at end of file"));
+    assert_eq!(items.len(), 4);
+    assert_eq!(
+        items[0],
+        DiffItemView::Line {
+            line: DiffLineView::Same {
+                text: "kept".into()
+            }
+        }
+    );
+    assert_eq!(
+        items[1],
+        DiffItemView::Line {
+            line: DiffLineView::Added {
+                segments: vec![
+                    DiffSegment {
+                        text: "new ".into(),
+                        changed: false
+                    },
+                    DiffSegment {
+                        text: "word".into(),
+                        changed: true
+                    },
+                ]
+            }
+        }
+    );
+    assert!(matches!(
+        &items[2],
+        DiffItemView::Line {
+            line: DiffLineView::Removed { .. }
+        }
+    ));
+    assert_eq!(
+        items[3],
+        DiffItemView::Fold {
+            label: "2 unchanged lines".into(),
+            lines: vec![
+                DiffLineView::Same { text: "x".into() },
+                DiffLineView::Same { text: "y".into() },
+            ]
+        }
+    );
+}
+
+#[test]
+fn version_preview_without_titles_keeps_nulls_on_the_wire() {
+    let preview = VersionPreview::Version {
+        title_change: None,
+        body: PreviewBody::Diff {
+            items: vec![],
+            final_newline: None,
+        },
+        restore_title: None,
+        restore: RestoreAction {
+            label: "Restore".into(),
+            enabled: false,
+            reason: Some("Unsaved changes".into()),
+        },
+    };
+    let json = round_trip(&preview);
+    assert_eq!(json["titleChange"], Value::Null);
+    assert_eq!(json["restoreTitle"], Value::Null);
+    assert_eq!(json["body"]["finalNewline"], Value::Null);
+    assert_eq!(json["restore"]["reason"], "Unsaved changes");
+}
+
+#[test]
+fn version_preview_failures_decode() {
+    for (kind, expected) in [
+        (
+            "failed",
+            VersionPreview::Failed {
+                message: "m".into(),
+            },
+        ),
+        (
+            "undecryptable",
+            VersionPreview::Undecryptable {
+                message: "m".into(),
+            },
+        ),
+        (
+            "closed",
+            VersionPreview::Closed {
+                message: "m".into(),
+            },
+        ),
+    ] {
+        let text = format!(r#"{{"preview":{{"kind":"{kind}","message":"m"}}}}"#);
+        assert_eq!(decode::<HistoryPreview>(&text).preview, expected);
+        assert_eq!(round_trip(&expected)["kind"], kind);
+    }
+}
+
+#[test]
+fn preview_bodies_without_a_diff_decode() {
+    let too_large = decode::<HistoryPreview>(
+        r#"{"preview":{"kind":"version","titleChange":null,"body":{"kind":"tooLarge","message":"Too large"},
+        "restoreTitle":null,"restore":{"label":"Restore","enabled":true,"reason":null}}}"#,
+    );
+    assert!(matches!(
+        too_large.preview,
+        VersionPreview::Version {
+            body: PreviewBody::TooLarge { .. },
+            ..
+        }
+    ));
+    let unchanged = decode::<HistoryPreview>(
+        r#"{"preview":{"kind":"version","titleChange":null,"body":{"kind":"unchanged","message":"Same"},
+        "restoreTitle":null,"restore":{"label":"Restore","enabled":false,"reason":"Current"}}}"#,
+    );
+    assert!(matches!(
+        unchanged.preview,
+        VersionPreview::Version {
+            body: PreviewBody::Unchanged { .. },
+            ..
+        }
+    ));
+}
+
+#[test]
+fn restore_outcomes_decode() {
+    assert_eq!(
+        decode::<HistoryRestore>(r#"{"outcome":{"kind":"restored"}}"#).outcome,
+        RestoreVersionOutcome::Restored
+    );
+    assert_eq!(
+        decode::<HistoryRestore>(r#"{"outcome":{"kind":"blocked","message":"b"}}"#).outcome,
+        RestoreVersionOutcome::Blocked {
+            message: "b".into()
+        }
+    );
+    assert_eq!(
+        decode::<HistoryRestore>(r#"{"outcome":{"kind":"error","message":"e"}}"#).outcome,
+        RestoreVersionOutcome::Error {
+            message: "e".into()
+        }
+    );
+    assert_eq!(
+        decode::<HistoryRestore>(r#"{"outcome":{"kind":"closed"}}"#).outcome,
+        RestoreVersionOutcome::Closed
+    );
+}
+
+#[test]
+fn share_commands_have_their_wire_names() {
+    assert_eq!(ShareForm::NAME, "share.form");
+    assert_eq!(ShareCreate::NAME, "share.create");
+    assert_eq!(ShareUpdate::NAME, "share.update");
+    assert_eq!(ShareRename::NAME, "share.rename");
+    assert_eq!(ShareRevoke::NAME, "share.revoke");
+    assert_eq!(ShareSharedVersion::NAME, "share.sharedVersion");
+}
+
+#[test]
+fn share_params_use_camel_case_wire_names() {
+    assert_eq!(
+        params_json::<ShareForm>(&ShareFormParams {
+            path: path(&["A", "B"])
+        }),
+        json!({"path":["A","B"]})
+    );
+    assert_eq!(
+        params_json::<ShareCreate>(&ShareCreateParams {
+            path: path(&["A"]),
+            password: "hunter2".into(),
+            label: String::new(),
+        }),
+        json!({"path":["A"],"password":"hunter2","label":""})
+    );
+    assert_eq!(
+        params_json::<ShareUpdate>(&ShareUpdateParams { id: "g".into() }),
+        json!({"id":"g"})
+    );
+    assert_eq!(
+        params_json::<ShareRename>(&ShareRenameParams {
+            id: "g".into(),
+            label: "Team".into()
+        }),
+        json!({"id":"g","label":"Team"})
+    );
+    assert_eq!(
+        params_json::<ShareRevoke>(&ShareRevokeParams { id: "g".into() }),
+        json!({"id":"g"})
+    );
+    assert_eq!(
+        params_json::<ShareSharedVersion>(&ShareSharedVersionParams { id: "g".into() }),
+        json!({"id":"g"})
+    );
+}
+
+#[test]
+fn share_form_and_empty_results_decode() {
+    assert_eq!(
+        decode::<ShareForm>(r#"{"title":"Share \"Welcome\""}"#).title,
+        "Share \"Welcome\""
+    );
+    assert_eq!(decode::<ShareUpdate>("{}"), ShareUpdateResult {});
+    assert_eq!(decode::<ShareRevoke>("{}"), ShareRevokeResult {});
+}
+
+#[test]
+fn share_create_outcomes_decode() {
+    let created = decode::<ShareCreate>(
+        r#"{"outcome":{"kind":"created","link":"https://example.test/s#k","password":"hunter2"}}"#,
+    )
+    .outcome;
+    assert_eq!(
+        created,
+        ShareCreateOutcome::Created {
+            link: "https://example.test/s#k".into(),
+            password: Some("hunter2".into()),
+        }
+    );
+    let without_password =
+        decode::<ShareCreate>(r#"{"outcome":{"kind":"created","link":"l","password":null}}"#)
+            .outcome;
+    assert_eq!(
+        without_password,
+        ShareCreateOutcome::Created {
+            link: "l".into(),
+            password: None
+        }
+    );
+
+    let error = decode::<ShareCreate>(
+        r#"{"outcome":{"kind":"error","parts":[
+        {"kind":"text","text":"Open "},
+        {"kind":"link","text":"settings","href":"https://example.test/settings"}]}}"#,
+    )
+    .outcome;
+    assert_eq!(
+        error,
+        ShareCreateOutcome::Error {
+            parts: vec![
+                MessagePart::Text {
+                    text: "Open ".into()
+                },
+                MessagePart::Link {
+                    text: "settings".into(),
+                    href: "https://example.test/settings".into()
+                },
+            ]
+        }
+    );
+    assert_eq!(round_trip(&error)["parts"][1]["kind"], "link");
+}
+
+#[test]
+fn a_created_share_keeps_its_password_and_link_out_of_debug_output() {
+    let created = ShareCreateOutcome::Created {
+        link: "https://example.test/s#key".into(),
+        password: Some("hunter2".into()),
+    };
+    let text = format!("{created:?}");
+    assert!(!text.contains("hunter2"));
+    assert!(!text.contains("example.test"));
+    let params = ShareCreateParams {
+        path: path(&["Welcome"]),
+        password: "hunter2".into(),
+        label: String::new(),
+    };
+    assert!(!format!("{params:?}").contains("hunter2"));
+}
+
+#[test]
+fn share_rename_outcomes_decode() {
+    assert_eq!(
+        decode::<ShareRename>(r#"{"outcome":{"kind":"ok"}}"#).outcome,
+        ShareRenameOutcome::Ok
+    );
+    assert_eq!(
+        decode::<ShareRename>(r#"{"outcome":{"kind":"error","message":"Too long"}}"#).outcome,
+        ShareRenameOutcome::Error {
+            message: "Too long".into()
+        }
+    );
+}
+
+#[test]
+fn shared_version_outcomes_decode() {
+    assert_eq!(
+        decode::<ShareSharedVersion>(
+            r#"{"outcome":{"kind":"readable","name":"Plan","content":"text","date":"Today"}}"#
+        )
+        .outcome,
+        SharedVersionOutcome::Readable {
+            name: Some("Plan".into()),
+            content: "text".into(),
+            date: "Today".into()
+        }
+    );
+    assert_eq!(
+        decode::<ShareSharedVersion>(
+            r#"{"outcome":{"kind":"readable","name":null,"content":"","date":"d"}}"#
+        )
+        .outcome,
+        SharedVersionOutcome::Readable {
+            name: None,
+            content: String::new(),
+            date: "d".into()
+        }
+    );
+    assert_eq!(
+        decode::<ShareSharedVersion>(r#"{"outcome":{"kind":"message","message":"Gone"}}"#).outcome,
+        SharedVersionOutcome::Message {
+            message: "Gone".into()
+        }
+    );
+    assert_eq!(
+        decode::<ShareSharedVersion>(r#"{"outcome":{"kind":"failed","message":"No"}}"#).outcome,
+        SharedVersionOutcome::Failed {
+            message: "No".into()
+        }
+    );
+}
+
+#[test]
+fn share_action_ids_use_kebab_case_wire_names() {
+    for (id, wire) in [
+        (ShareActionId::CopyLink, "copy-link"),
+        (ShareActionId::CopyPassword, "copy-password"),
+        (ShareActionId::Update, "update"),
+        (ShareActionId::View, "view"),
+        (ShareActionId::Open, "open"),
+        (ShareActionId::Rename, "rename"),
+        (ShareActionId::Revoke, "revoke"),
+    ] {
+        assert_eq!(round_trip(&id), json!(wire));
+    }
 }

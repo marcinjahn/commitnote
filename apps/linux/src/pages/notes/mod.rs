@@ -1,5 +1,7 @@
 mod details_dialog;
 mod folder_dialog;
+mod history_dialog;
+mod image_viewer;
 mod move_dialog;
 mod node_object;
 mod node_row;
@@ -9,14 +11,26 @@ mod notes_page;
 mod row_menu;
 mod search_logic;
 mod search_view;
+mod share_actions;
+mod share_dialog;
+mod share_prompts;
+mod share_row;
+mod shared_links_dialog;
+mod shared_version_page;
 mod sync_feedback;
 mod target_picker;
 mod trash_confirm;
 mod trash_dialog;
 mod tree_logic;
 mod tree_view;
+mod version_preview;
+mod zoom_logic;
+mod zoom_view;
 
+pub use image_viewer::ImageViewer;
 pub use note_view::NoteView;
 pub use notes_page::NotesPage;
 pub use search_view::SearchView;
+#[cfg(feature = "testing")]
+pub use shared_links_dialog::SharedLinksDialog;
 pub use tree_view::NotesTree;

@@ -10,7 +10,7 @@ use commitnote_core_api::commands::{
     ConflictResolution, ConflictResolve, ConflictResolveParams, DeviceName, DeviceNameParams,
     DraftCommitName, DraftCommitNameParams, DraftContent, DraftContentParams, DraftLeave,
     DraftLeaveParams, DraftStart, DraftStartParams, EarlyDraftHandOff, EarlyDraftHandOffParams,
-    EarlyDraftOutcome, FlushOutcome, ForgesList, ForgesListParams, LifecycleSetOnline,
+    EarlyDraftOutcome, FlushOutcome, ForgesList, ForgesListParams, HistoryView, LifecycleSetOnline,
     LifecycleSetOnlineParams, LifecycleSetVisible, LifecycleSetVisibleParams, LoginInitialize,
     LoginInspectRepository, LoginInspectRepositoryParams, LoginInspectRepositoryResult,
     LoginLastRepository, LoginLastRepositoryParams, LoginListRepositories,
@@ -22,7 +22,9 @@ use commitnote_core_api::commands::{
     SyncFlush, SyncFlushParams, SyncRefresh, SyncRefreshParams, SyncRetry, SyncRetryParams,
     TreeGet, TreeGetParams, TreeGetResult,
 };
-use commitnote_core_api::events::{NoteChanged, Notice, SyncStateChanged, TreeChanged};
+use commitnote_core_api::events::{
+    NoteChanged, Notice, SharesChanged, SyncStateChanged, TreeChanged,
+};
 use commitnote_core_api::settings::{AccentOptionView, SettingsView};
 use commitnote_core_api::shapes::{
     ColorTag, ForgeKind, ForgeView, LogoutOutcome, NoticeAction, OpenNote, PassphraseStrength,
@@ -41,10 +43,15 @@ use super::edit_sender::{EditDestination, EditSender};
 use super::editor_lane::EditorLane;
 use super::editor_settings::EditorSettings;
 
+mod history;
+mod images;
 mod last_view;
 mod organise;
 mod search;
+mod shares;
 
+pub use history::RestoreResult;
+pub use images::{ImageInput, ImageState, LoadedImage};
 pub use last_view::NoteDetails;
 pub use organise::{COLOR_TAGS, TrashResult, TrashState};
 pub use search::SearchStatus;
@@ -268,7 +275,10 @@ struct State {
     tags_writable: bool,
     trash: Option<TrashState>,
     search: search::SearchState,
+    history: Option<HistoryView>,
+    shares: Option<SharesChanged>,
     last_view: last_view::LastViewTracker,
+    image_cache: images::ImageCache,
     notice_actions: HashMap<String, NoticeAction>,
     open_note_path: Option<Vec<String>>,
     core_open_path: Option<Vec<String>>,
@@ -340,6 +350,8 @@ mod imp {
                     Signal::builder("sync-state-changed").build(),
                     Signal::builder("search-changed").build(),
                     Signal::builder("last-view-restored").build(),
+                    Signal::builder("history-changed").build(),
+                    Signal::builder("shares-changed").build(),
                     Signal::builder("notice")
                         .param_types([
                             String::static_type(),
@@ -352,6 +364,9 @@ mod imp {
                         .param_types([String::static_type()])
                         .build(),
                     Signal::builder("toast")
+                        .param_types([String::static_type()])
+                        .build(),
+                    Signal::builder("image-changed")
                         .param_types([String::static_type()])
                         .build(),
                 ]
@@ -374,6 +389,7 @@ impl AppModel {
         let _ = imp.edit_sender.set(model.new_edit_sender());
         model.attach_search_triggers();
         model.attach_last_view_triggers();
+        model.attach_image_triggers();
         {
             let mut state = imp.state.borrow_mut();
             state.visible = true;
@@ -700,6 +716,7 @@ impl AppModel {
 
     pub async fn choose_repository(&self, url: &str) {
         self.state_mut().repository_url = Some(url.to_owned());
+        self.reset_image_cache();
         self.inspect().await;
     }
 
@@ -1795,6 +1812,8 @@ impl AppModel {
             CoreEvent::NoteContentChangedRemotely(changed) => self.show_toast(&changed.message),
             CoreEvent::TrashChanged(changed) => self.trash_changed(changed),
             CoreEvent::SearchStatusChanged(changed) => self.search_status_changed(changed),
+            CoreEvent::HistoryChanged(changed) => self.history_changed(changed),
+            CoreEvent::SharesChanged(changed) => self.shares_changed(changed),
             CoreEvent::Other { .. } => {}
         }
     }
@@ -1901,8 +1920,9 @@ impl AppModel {
                 failure: Some(failure),
             });
         }
-        self.state_mut().sync = Some(sync);
+        let previous = self.state_mut().sync.replace(sync);
         self.emit_by_name::<()>("sync-state-changed", &[]);
+        self.recheck_unavailable_images(previous.as_ref());
     }
 
     fn show_notice(&self, notice: Notice) {
@@ -1935,6 +1955,8 @@ impl AppModel {
             return;
         };
         let search_ended = self.end_search();
+        let history_ended = self.state().history.is_some();
+        let shares_ended = self.state().shares.is_some();
         let last_view = self.end_last_view();
         {
             let mut state = self.state_mut();
@@ -1957,6 +1979,7 @@ impl AppModel {
                 visible: previous.visible,
                 online: previous.online,
                 keyring_warned: previous.keyring_warned,
+                image_cache: previous.image_cache.next_generation(),
                 last_view,
                 ..State::default()
             };
@@ -1968,6 +1991,12 @@ impl AppModel {
         self.emit_by_name::<()>("sync-state-changed", &[]);
         if search_ended {
             self.emit_by_name::<()>("search-changed", &[]);
+        }
+        if history_ended {
+            self.emit_by_name::<()>("history-changed", &[]);
+        }
+        if shares_ended {
+            self.emit_by_name::<()>("shares-changed", &[]);
         }
         self.bump_generation();
         self.imp().editor_lane.supersede();

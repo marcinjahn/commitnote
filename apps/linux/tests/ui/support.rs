@@ -610,6 +610,13 @@ impl Harness {
     /// Presses `accelerator` on the real keyboard: its modifiers, then the key, released in reverse
     /// order. The key goes to the focused widget of the harness window once it is active.
     pub fn press_keys(&self, accelerator: &str) -> Result<(), String> {
+        let window = self.window()?;
+        self.press_keys_in(window.upcast_ref::<gtk::Window>(), accelerator)
+    }
+
+    /// Like [`Self::press_keys`], for a window other than the harness window, such as a dialog
+    /// that took the focus away from it.
+    pub fn press_keys_in(&self, window: &gtk::Window, accelerator: &str) -> Result<(), String> {
         let (key, modifiers) = gtk::accelerator_parse(accelerator)
             .ok_or_else(|| format!("{accelerator} is not a valid accelerator"))?;
         let pressable = [
@@ -630,7 +637,7 @@ impl Harness {
             .filter(|&&(mask, _)| modifiers.contains(mask))
             .map(|&(_, keysym)| keysym)
             .collect();
-        self.wait_active()?;
+        self.wait("the window to be active", || window.is_active())?;
         self.keyboard.chord(&held, key.into_glib())
     }
 

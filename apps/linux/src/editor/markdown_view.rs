@@ -1,14 +1,21 @@
 use std::cell::{Cell, OnceCell, RefCell};
 use std::rc::Rc;
+use std::sync::OnceLock;
 
 use commitnote_editor_text::{TextSelection, Utf16Index};
 use commitnote_markdown::{CommandResult, MarkdownDocument, Placement, link_url, parse, render};
+use glib::subclass::Signal;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib, graphene};
 use libadwaita as adw;
 use sourceview5::prelude::*;
 use sourceview5::subclass::prelude::*;
 
+use super::image_source::ImageSource;
+use super::inline_image::{
+    self, ICON_SIZE, ImageLayout, InlineImage, NARROW_WIDTH, UNAVAILABLE_ICON, UNAVAILABLE_TEXT,
+    UnavailableArt,
+};
 use super::overlay::{
     self, HIT_SLOP_Y, HitBehaviour, Overlay, OverlayKind, OverlayStyle, OverlayTags, Reserved,
 };
@@ -37,6 +44,19 @@ impl std::fmt::Debug for CommandHandler {
     }
 }
 
+#[derive(Clone)]
+pub(super) struct SourceHandle(Rc<dyn ImageSource>);
+
+impl std::fmt::Debug for SourceHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ImageSource")
+    }
+}
+
+fn animations_enabled() -> bool {
+    gtk::Settings::default().is_none_or(|settings| settings.is_gtk_enable_animations())
+}
+
 mod imp {
     use super::*;
 
@@ -58,6 +78,14 @@ mod imp {
         pub(super) overlay_style: Cell<Option<OverlayStyle>>,
         pub(super) command_handler: RefCell<Option<CommandHandler>>,
         pub(super) pressed_overlay: Cell<Option<usize>>,
+        pub(super) image_source: RefCell<Option<SourceHandle>>,
+        pub(super) images: RefCell<Rc<Vec<InlineImage>>>,
+        pub(super) unavailable_art: RefCell<Option<Rc<UnavailableArt>>>,
+        pub(super) layout_width: Cell<i32>,
+        pub(super) elapsed: Rc<Cell<u64>>,
+        pub(super) epoch: Cell<Option<i64>>,
+        pub(super) tick: RefCell<Option<gtk::TickCallbackId>>,
+        pub(super) animations_handler: RefCell<Option<glib::SignalHandlerId>>,
     }
 
     #[glib::object_subclass]
@@ -68,6 +96,17 @@ mod imp {
     }
 
     impl ObjectImpl for MarkdownView {
+        fn signals() -> &'static [Signal] {
+            static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
+            SIGNALS.get_or_init(|| {
+                vec![
+                    Signal::builder("image-activated")
+                        .param_types([String::static_type()])
+                        .build(),
+                ]
+            })
+        }
+
         fn constructed(&self) {
             self.parent_constructed();
             let view = self.obj();
@@ -146,10 +185,7 @@ mod imp {
                     let Some(view) = view.upgrade() else {
                         return;
                     };
-                    let hit = view
-                        .is_editable()
-                        .then(|| view.command_overlay_at(x, y))
-                        .flatten();
+                    let hit = view.hit_overlay_at(x, y);
                     view.imp().pressed_overlay.set(hit);
                     gesture.set_state(if hit.is_some() {
                         gtk::EventSequenceState::Claimed
@@ -167,10 +203,18 @@ mod imp {
                     let Some(pressed) = view.imp().pressed_overlay.take() else {
                         return;
                     };
-                    if view.command_overlay_at(x, y) == Some(pressed)
-                        && let Some(result) = view.toggle_at_point(x, y)
-                    {
-                        view.run_command(result);
+                    if view.hit_overlay_at(x, y) != Some(pressed) {
+                        return;
+                    }
+                    let hit = view.overlays()[pressed].hit.clone();
+                    match hit {
+                        HitBehaviour::Command(_) => {
+                            if let Some(result) = view.toggle_at_point(x, y) {
+                                view.run_command(result);
+                            }
+                        }
+                        HitBehaviour::Activate(image_id) => view.emit_image_activated(&image_id),
+                        HitBehaviour::Inert => {}
                     }
                 }
             });
@@ -204,12 +248,33 @@ mod imp {
                 }
             });
             view.add_controller(link_click);
+
+            view.connect_scale_factor_notify(|view| {
+                view.imp().unavailable_art.replace(None);
+                view.queue_render();
+            });
+            if let Some(settings) = gtk::Settings::default() {
+                let handler = settings.connect_gtk_enable_animations_notify({
+                    let view = view.downgrade();
+                    move |_| {
+                        if let Some(view) = view.upgrade() {
+                            view.animations_changed();
+                        }
+                    }
+                });
+                self.animations_handler.replace(Some(handler));
+            }
         }
 
         fn dispose(&self) {
             let style_manager = adw::StyleManager::default();
             for handler in self.style_handlers.take() {
                 style_manager.disconnect(handler);
+            }
+            if let (Some(settings), Some(handler)) =
+                (gtk::Settings::default(), self.animations_handler.take())
+            {
+                settings.disconnect(handler);
             }
             for source in [self.render_source.take(), self.palette_source.take()]
                 .into_iter()
@@ -224,6 +289,18 @@ mod imp {
         fn map(&self) {
             self.parent_map();
             self.obj().refresh_palette();
+        }
+
+        fn unmap(&self) {
+            self.obj().stop_animation();
+            self.parent_unmap();
+        }
+
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            self.parent_size_allocate(width, height, baseline);
+            if self.layout_width.replace(width) != width && !self.images.borrow().is_empty() {
+                self.obj().queue_render();
+            }
         }
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
@@ -291,7 +368,7 @@ impl MarkdownView {
     /// The command of the overlay under a point in widget coordinates, run over the current
     /// text.
     pub fn toggle_at_point(&self, x: f64, y: f64) -> Option<CommandResult> {
-        let found = self.command_overlay_at(x, y)?;
+        let found = self.overlay_at(x, y, false)?;
         let overlays = self.overlays();
         let HitBehaviour::Command(command) = &overlays[found].hit else {
             return None;
@@ -351,7 +428,13 @@ impl MarkdownView {
         }
     }
 
-    fn command_overlay_at(&self, x: f64, y: f64) -> Option<usize> {
+    /// The overlay a primary press at a point in widget coordinates acts on: a command only
+    /// while the text is editable, an image in any view.
+    fn hit_overlay_at(&self, x: f64, y: f64) -> Option<usize> {
+        self.overlay_at(x, y, !self.is_editable())
+    }
+
+    fn overlay_at(&self, x: f64, y: f64, images_only: bool) -> Option<usize> {
         if self.imp().render_source.borrow().is_some() {
             self.render_now();
         }
@@ -369,12 +452,195 @@ impl MarkdownView {
         }
         let lines = lines.offset() as usize..until.offset().max(0) as usize + 1;
         self.overlays().iter().position(|overlay| {
-            matches!(overlay.hit, HitBehaviour::Command(_))
-                && overlay.range.start < lines.end
-                && overlay.range.end >= lines.start
-                && overlay::hit_area(&overlay::overlay_rect(self.upcast_ref(), overlay))
-                    .contains_point(&point)
+            if overlay.range.start >= lines.end || overlay.range.end < lines.start {
+                return false;
+            }
+            let rect = overlay::overlay_rect(self.upcast_ref(), overlay);
+            match overlay.hit {
+                HitBehaviour::Command(_) if !images_only => {
+                    overlay::hit_area(&rect).contains_point(&point)
+                }
+                HitBehaviour::Activate(_) => rect.contains_point(&point),
+                _ => false,
+            }
         })
+    }
+
+    pub fn connect_image_activated<F: Fn(&Self, &str) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_local("image-activated", false, move |args| {
+            let view = args[0].get::<Self>().ok()?;
+            let image_id = args[1].get::<&str>().ok()?;
+            f(&view, image_id);
+            None
+        })
+    }
+
+    fn emit_image_activated(&self, image_id: &str) {
+        self.emit_by_name::<()>("image-activated", &[&image_id]);
+    }
+
+    /// Where images come from; without a source every image reference shows as unavailable.
+    pub fn set_image_source(&self, source: Option<Rc<dyn ImageSource>>) {
+        self.imp().image_source.replace(source.map(SourceHandle));
+        self.queue_render();
+    }
+
+    /// Repaints the references to an image whose state changed in the source.
+    pub fn image_changed(&self, image_id: &str) {
+        let shown = self
+            .imp()
+            .images
+            .borrow()
+            .iter()
+            .any(|image| image.image_id == image_id);
+        if shown {
+            self.queue_render();
+        }
+    }
+
+    #[cfg(feature = "testing")]
+    pub fn testing_images(&self) -> Vec<(String, &'static str, usize)> {
+        let elapsed = self.imp().elapsed.get();
+        self.imp()
+            .images
+            .borrow()
+            .iter()
+            .map(|image| {
+                (
+                    image.image_id.clone(),
+                    image.state_name(),
+                    image.frame(elapsed),
+                )
+            })
+            .collect()
+    }
+
+    #[cfg(feature = "testing")]
+    pub fn testing_activate_image(&self, index: usize) {
+        let image_id = self
+            .imp()
+            .images
+            .borrow()
+            .get(index)
+            .map(|image| image.image_id.clone());
+        if let Some(image_id) = image_id {
+            self.emit_image_activated(&image_id);
+        }
+    }
+
+    #[cfg(feature = "testing")]
+    pub fn testing_animating(&self) -> bool {
+        self.imp().tick.borrow().is_some()
+    }
+
+    fn image_layout(&self) -> ImageLayout {
+        let width = self.width();
+        ImageLayout {
+            available: (width - self.left_margin() - self.right_margin()).max(0) as f32,
+            narrow: (width as f32) < NARROW_WIDTH,
+            pixel_ratio: self.scale_factor().max(1) as f32,
+        }
+    }
+
+    fn unavailable_art(&self) -> Rc<UnavailableArt> {
+        if let Some(art) = self.imp().unavailable_art.borrow().clone() {
+            return art;
+        }
+        let icon = gtk::IconTheme::for_display(&self.display()).lookup_icon(
+            UNAVAILABLE_ICON,
+            &[],
+            ICON_SIZE,
+            self.scale_factor(),
+            self.direction(),
+            gtk::IconLookupFlags::empty(),
+        );
+        let art = Rc::new(UnavailableArt {
+            text: self.create_pango_layout(Some(UNAVAILABLE_TEXT)),
+            icon: Some(icon),
+        });
+        self.imp().unavailable_art.replace(Some(art.clone()));
+        art
+    }
+
+    /// Whether an animated image shows in the visible rect, in buffer coordinates.
+    fn animated_image_visible(&self, visible: &graphene::Rect) -> bool {
+        let overlays = self.overlays();
+        self.imp().images.borrow().iter().any(|image| {
+            image.animated()
+                && overlays.get(image.overlay).is_some_and(|overlay| {
+                    overlay::overlay_rect(self.upcast_ref(), overlay)
+                        .intersection(visible)
+                        .is_some()
+                })
+        })
+    }
+
+    fn visible_buffer_rect(&self) -> graphene::Rect {
+        let visible = self.visible_rect();
+        graphene::Rect::new(
+            visible.x() as f32,
+            visible.y() as f32,
+            visible.width() as f32,
+            visible.height() as f32,
+        )
+    }
+
+    fn start_animation(&self) {
+        let imp = self.imp();
+        if imp.tick.borrow().is_some() || !animations_enabled() || !self.is_mapped() {
+            return;
+        }
+        imp.epoch.set(None);
+        let tick = self.add_tick_callback(|view, clock| view.advance_frames(clock));
+        imp.tick.replace(Some(tick));
+    }
+
+    fn advance_frames(&self, clock: &gtk::gdk::FrameClock) -> glib::ControlFlow {
+        let imp = self.imp();
+        if !animations_enabled()
+            || !self.is_mapped()
+            || !self.animated_image_visible(&self.visible_buffer_rect())
+        {
+            imp.tick.take();
+            imp.epoch.set(None);
+            return glib::ControlFlow::Break;
+        }
+        let now = clock.frame_time();
+        let epoch = imp.epoch.get().unwrap_or_else(|| {
+            let resumed = i64::try_from(imp.elapsed.get()).unwrap_or(0);
+            now.saturating_sub(resumed.saturating_mul(1000))
+        });
+        imp.epoch.set(Some(epoch));
+        let elapsed = u64::try_from(now.saturating_sub(epoch) / 1000).unwrap_or(0);
+        let previous = imp.elapsed.replace(elapsed);
+        let changed = imp
+            .images
+            .borrow()
+            .iter()
+            .any(|image| image.animated() && image.frame(previous) != image.frame(elapsed));
+        if changed {
+            self.queue_draw();
+        }
+        glib::ControlFlow::Continue
+    }
+
+    fn stop_animation(&self) {
+        let imp = self.imp();
+        if let Some(tick) = imp.tick.take() {
+            tick.remove();
+        }
+        imp.epoch.set(None);
+    }
+
+    fn animations_changed(&self) {
+        if !animations_enabled() {
+            self.stop_animation();
+            self.imp().elapsed.set(0);
+        }
+        self.queue_draw();
     }
 
     fn paint_overlays(&self, snapshot: &gtk::Snapshot) {
@@ -383,13 +649,7 @@ impl MarkdownView {
             return;
         }
         let style = self.overlay_style();
-        let visible = self.visible_rect();
-        let visible = graphene::Rect::new(
-            visible.x() as f32,
-            visible.y() as f32,
-            visible.width() as f32,
-            visible.height() as f32,
-        );
+        let visible = self.visible_buffer_rect();
         let (top, _) = self.line_at_y(visible.y() as i32);
         let (mut bottom, _) = self.line_at_y((visible.y() + visible.height()) as i32);
         if !bottom.ends_line() {
@@ -404,6 +664,12 @@ impl MarkdownView {
             if rect.intersection(&visible).is_some() {
                 (overlay.painter)(snapshot, &rect, &style);
             }
+        }
+        if self.imp().tick.borrow().is_none()
+            && animations_enabled()
+            && self.animated_image_visible(&visible)
+        {
+            self.start_animation();
         }
     }
 
@@ -487,12 +753,35 @@ impl MarkdownView {
             return;
         };
         let style = self.overlay_style();
-        let overlays = overlay::overlays(&imp.placements.borrow(), &parsed.index, &style);
+        let placements = imp.placements.borrow().clone();
+        let mut overlays = overlay::overlays(&placements, &parsed.index, &style);
+        let has_images = placements
+            .iter()
+            .any(|placement| matches!(placement, Placement::Image { .. }));
+        let mut images = Vec::new();
+        if has_images {
+            let source = imp.image_source.borrow().clone();
+            let art = self.unavailable_art();
+            let found = inline_image::overlays(
+                &placements,
+                &parsed.index,
+                source.as_ref().map(|SourceHandle(source)| source.as_ref()),
+                &self.image_layout(),
+                &imp.elapsed,
+                Some(&art),
+                overlays.len(),
+            );
+            for (overlay, image) in found {
+                overlays.push(overlay);
+                images.push(image);
+            }
+        }
         let wanted = tags.reserved(self.upcast_ref(), &overlays);
         let previous = imp.reserved.take();
         tags.apply(&self.buffer(), &previous, &wanted, full);
         imp.reserved.replace(wanted);
         imp.overlays.replace(Rc::new(overlays));
+        imp.images.replace(Rc::new(images));
         self.queue_draw();
     }
 
@@ -569,6 +858,7 @@ impl MarkdownView {
             if let Some(tags) = imp.overlay_tags.get() {
                 tags.forget_widths();
             }
+            imp.unavailable_art.replace(None);
             self.rebuild_overlays(false);
         }
         self.queue_draw();
