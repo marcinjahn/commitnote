@@ -485,9 +485,9 @@ page. The Keyboard Shortcuts dialog (Ctrl+? or the main menu) lists the same sho
   the dimmed markers of the previews get a stronger color.
 - **Reduced motion.** With the desktop's animations setting off, animated images in a note and in the
   viewer show their first frame still.
-- **Touch.** A long press on a link in the editor, or Open Link in its context menu, opens the link;
-  a long press on a tree row opens its menu; on the narrow layout a swipe back returns from the note
-  to the tree.
+- **Touch.** A link in the editor opens with Open Link in the editor's context menu, which a right
+  click or a long press opens; a long press on a tree row opens its menu; on the narrow layout a
+  swipe back returns from the note to the tree.
 
 ## Optional features by desktop
 
