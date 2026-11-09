@@ -80,6 +80,8 @@ mod imp {
         pub(super) label: gtk::Label,
         pub(super) requests: LatestRequest,
         pub(super) source: OnceCell<Source>,
+        #[cfg(feature = "testing")]
+        pub(super) verdicts_shown: Cell<u32>,
     }
 
     #[glib::object_subclass]
@@ -204,8 +206,15 @@ impl StrengthMeter {
         ));
     }
 
+    #[cfg(feature = "testing")]
+    pub fn testing_verdicts_shown(&self) -> u32 {
+        self.imp().verdicts_shown.get()
+    }
+
     fn show(&self, strength: &PassphraseStrength) {
         let imp = self.imp();
+        #[cfg(feature = "testing")]
+        imp.verdicts_shown.set(imp.verdicts_shown.get() + 1);
         imp.bar.set_value(f64::from(strength.filled_segments));
         if strength.weak {
             imp.bar.add_css_class("weak");

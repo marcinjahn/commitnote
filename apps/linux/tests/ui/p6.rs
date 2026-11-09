@@ -8,6 +8,7 @@ use commitnote::launch::action_from_arguments;
 use commitnote::links;
 use commitnote::model::Route;
 use commitnote::pages::notes::ImageViewer;
+use commitnote::pages::unlock::StrengthMeter;
 use commitnote_core_api::shapes::{ColorTag, TagOptionView};
 use gtk4::{self as gtk, gdk, gio, glib};
 use libadwaita as adw;
@@ -1137,6 +1138,10 @@ fn announce_strength(h: &mut Harness) -> Result<(), String> {
     h.wait_page("initialize")?;
     h.resize(Width::Wide)?;
     let meter = h.widget("init-strength")?;
+    let verdicts = meter
+        .clone()
+        .downcast::<StrengthMeter>()
+        .map_err(|_| "init-strength is not a strength meter".to_owned())?;
     let label = || {
         h.widget_in(&meter, "strength-label")
             .and_then(|label| {
@@ -1161,15 +1166,14 @@ fn announce_strength(h: &mut Harness) -> Result<(), String> {
         format!("the verdict announced {first:?}, expected {strong:?} once with Low")
     })?;
 
+    let before = verdicts.testing_verdicts_shown();
     h.set_text(
         "init-passphrase-row",
         "harbour lantern copper meadow violins",
     )?;
-    h.run(
-        "the strength request to be sent",
-        glib::timeout_future(std::time::Duration::from_millis(250)),
-    )?;
-    core_round_trip(h)?;
+    h.wait("the verdict for the second passphrase", || {
+        verdicts.testing_verdicts_shown() > before
+    })?;
     h.settle()?;
     ensure(label()? == strong, || {
         "the second passphrase changed the verdict".to_owned()
