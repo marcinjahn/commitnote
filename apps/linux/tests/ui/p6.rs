@@ -720,6 +720,15 @@ fn about_dialog(h: &mut Harness) -> Result<(), String> {
         )?;
     }
 
+    let font_sections = descendants(dialog.upcast_ref())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .filter(|label| label.text().starts_with("Copyright"))
+        .count();
+    ensure(font_sections == 10, || {
+        format!("the legal page shows {font_sections} font copyright labels, expected 10")
+    })?;
+
     h.press_keys("Escape")?;
     h.wait("Escape to close the about dialog", || {
         about_dialog_shown(h).is_none()

@@ -1,5 +1,5 @@
 use adw::prelude::*;
-use gtk4::{self as gtk, gio};
+use gtk4::{self as gtk, gio, glib};
 use libadwaita as adw;
 
 use crate::config;
@@ -42,12 +42,12 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
         .debug_info_filename(DEBUG_INFO_FILENAME)
         .build();
     for (family, file) in FONT_LICENSES {
-        let text = license_text(file);
+        let (copyright, license) = legal_section_markup(file);
         dialog.add_legal_section(
             family,
-            Some(copyright_line(&text, file)),
+            Some(&copyright),
             gtk::License::Custom,
-            Some(&text),
+            Some(&license),
         );
     }
     dialog.present(Some(parent));
@@ -85,6 +85,13 @@ fn copyright_line<'a>(text: &'a str, file: &str) -> &'a str {
         .unwrap_or_else(|| panic!("the {file} licence has a copyright line"))
 }
 
+fn legal_section_markup(file: &str) -> (String, String) {
+    let text = license_text(file);
+    let copyright = glib::markup_escape_text(copyright_line(&text, file));
+    let license = glib::markup_escape_text(&text);
+    (copyright.into(), license.into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +107,24 @@ mod tests {
                 "{family} has no usable copyright line"
             );
             assert!(text.len() > copyright.len(), "{family} has no licence text");
+        }
+    }
+
+    #[test]
+    fn legal_section_markup_parses_to_the_raw_licence_text() {
+        crate::register_resources();
+        for (family, file) in FONT_LICENSES {
+            let text = license_text(file);
+            let (copyright, license) = legal_section_markup(file);
+            let joined = format!("{copyright}\n\n{license}");
+            let (_, plain, _) = gtk::pango::parse_markup(&joined, '\0')
+                .unwrap_or_else(|_| panic!("{family} legal section is valid markup"));
+            let expected = format!("{}\n\n{text}", copyright_line(&text, file));
+            assert_eq!(
+                plain.as_str(),
+                expected.replace("\r\n", "\n"),
+                "{family} legal section text differs from the licence file"
+            );
         }
     }
 
