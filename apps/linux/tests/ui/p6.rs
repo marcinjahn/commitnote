@@ -5,6 +5,7 @@ use commitnote::a11y::testing_take_announcements;
 use commitnote::config;
 use commitnote::editor::OverlayKind;
 use commitnote::launch::action_from_arguments;
+use commitnote::links;
 use commitnote::model::Route;
 use commitnote::pages::notes::ImageViewer;
 use commitnote_core_api::shapes::{ColorTag, TagOptionView};
@@ -17,12 +18,12 @@ use crate::flows::{
 };
 use crate::p2::{
     FAILED_ICON, OFFLINE_ICON, SYNCED_ICON, fail_commits, finish_loading, focus_within,
-    reopen_held, save_now, show_saved, sync_text, title_entry, type_at_end, wait_draft,
-    wait_sync_icon,
+    reopen_held, save_now, set_note_text, show_saved, sync_text, title_entry, type_at_end,
+    wait_draft, wait_sync_icon,
 };
 use crate::p3::{
-    click_labelled, has_node, is_shared, open_note_at, path, row_expander, search_entry_focused,
-    search_with, trash_node_action,
+    click_labelled, close_menu, has_node, is_shared, open_menu, open_note_at, path, row_expander,
+    search_entry_focused, search_with, string_attribute, trash_node_action,
 };
 use crate::p4::{
     FIRST_TEXT, HISTORY_DIALOG, SHARE_PASSWORD, SHARED_LINKS_DIALOG, WELCOME as WELCOME_NOTE,
@@ -61,6 +62,10 @@ pub const CASES: &[Case] = &[
     ("p6-comfort-text-scaling", comfort_text_scaling),
     ("p6-comfort-high-contrast", comfort_high_contrast),
     ("p6-comfort-reduced-motion", comfort_reduced_motion),
+    ("p6-touch-open-link", touch_open_link),
+    ("p6-touch-editor-long-press", touch_editor_long_press),
+    ("p6-touch-tree-long-press", touch_tree_long_press),
+    ("p6-touch-swipe-back", touch_swipe_back),
 ];
 
 type Announcement = (String, gtk::AccessibleAnnouncementPriority);
@@ -1356,4 +1361,137 @@ fn comfort_reduced_motion(h: &mut Harness) -> Result<(), String> {
             })
         },
     )
+}
+
+const OPEN_LINK_ACTION: &str = "editor.open-link";
+const LINKED_TEXT: &str = "plain text then [site](https://example.com/x) end";
+const INSIDE_LINK: i32 = 18;
+
+fn action_sensitive(widget: &impl IsA<gtk::Widget>, action: &str) -> bool {
+    let probe = gtk::Button::new();
+    probe.set_action_name(Some(action));
+    probe.set_parent(widget);
+    let sensitive = probe.is_sensitive();
+    probe.unparent();
+    sensitive
+}
+
+fn long_press_gesture(widget: &impl IsA<gtk::Widget>) -> Option<gtk::GestureLongPress> {
+    let controllers = widget.observe_controllers();
+    (0..controllers.n_items())
+        .filter_map(|index| controllers.item(index))
+        .filter_map(|controller| controller.downcast::<gtk::GestureLongPress>().ok())
+        .find(GestureSingleExt::is_touch_only)
+}
+
+fn menu_has_action(menu: &gio::MenuModel, action: &str) -> bool {
+    (0..menu.n_items()).any(|index| {
+        string_attribute(menu, index, "action").as_deref() == Some(action)
+            || menu
+                .item_link(index, "section")
+                .or_else(|| menu.item_link(index, "submenu"))
+                .is_some_and(|nested| menu_has_action(&nested, action))
+    })
+}
+
+fn touch_open_link(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    let editor = open_editor(h, WELCOME_NOTE)?;
+    let view = editor.view();
+    set_note_text(&editor, LINKED_TEXT, 0, 0);
+    h.wait("the link action to stay off outside a link", || {
+        !action_sensitive(&editor, OPEN_LINK_ACTION)
+    })?;
+
+    set_note_text(&editor, LINKED_TEXT, INSIDE_LINK, INSIDE_LINK);
+    h.wait("the link action to turn on inside a link", || {
+        action_sensitive(&editor, OPEN_LINK_ACTION)
+    })?;
+
+    set_note_text(&editor, LINKED_TEXT, INSIDE_LINK, INSIDE_LINK + 2);
+    h.wait("the link action to turn off with a selection", || {
+        !action_sensitive(&editor, OPEN_LINK_ACTION)
+    })?;
+
+    set_note_text(&editor, LINKED_TEXT, INSIDE_LINK, INSIDE_LINK);
+    h.wait("the link action to turn on again", || {
+        action_sensitive(&editor, OPEN_LINK_ACTION)
+    })?;
+    let menu = view.extra_menu().ok_or("the editor has no extra menu")?;
+    ensure(menu_has_action(&menu, OPEN_LINK_ACTION), || {
+        "the editor menu has no Open Link item".to_owned()
+    })?;
+
+    links::testing_clear_opened_uris();
+    editor
+        .activate_action(OPEN_LINK_ACTION, None)
+        .map_err(|error| format!("cannot activate {OPEN_LINK_ACTION}: {error}"))?;
+    ensure(
+        links::testing_opened_uris() == ["https://example.com/x"],
+        || format!("opened {:?}", links::testing_opened_uris()),
+    )
+}
+
+fn touch_editor_long_press(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    let editor = open_editor(h, WELCOME_NOTE)?;
+    let view = editor.view();
+    let gesture = long_press_gesture(&view).ok_or("the editor has no touch-only long press")?;
+
+    set_note_text(&editor, LINKED_TEXT, 0, 0);
+    h.settle()?;
+    let at = view.iter_location(&view.buffer().iter_at_offset(INSIDE_LINK));
+    let (x, y) = view.buffer_to_window_coords(
+        gtk::TextWindowType::Widget,
+        at.x() + at.width() / 2,
+        at.y() + at.height() / 2,
+    );
+    gesture.emit_by_name::<()>("pressed", &[&f64::from(x), &f64::from(y)]);
+    h.wait("the long press to move the caret into the link", || {
+        editor.caret_offset() == INSIDE_LINK && action_sensitive(&editor, OPEN_LINK_ACTION)
+    })?;
+    h.wait("the editor menu to be built with Open Link", || {
+        descendants(view.upcast_ref())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::PopoverMenu>().ok())
+            .filter_map(|popover| popover.menu_model())
+            .any(|model| menu_has_action(&model, OPEN_LINK_ACTION))
+    })
+}
+
+fn touch_tree_long_press(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    let row = "Welcome";
+    let expander = row_expander(h, row)?;
+    let gesture = long_press_gesture(&expander).ok_or("the row has no touch-only long press")?;
+    let y = f64::from(expander.height()) / 2.0;
+    let menu = open_menu(h, row, |_| {
+        gesture.emit_by_name::<()>("pressed", &[&8f64, &y]);
+        Ok(())
+    })?;
+    close_menu(h, &menu)
+}
+
+fn touch_swipe_back(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    h.resize(Width::Narrow)?;
+    let split = split_view(h)?;
+    h.wait("the collapsed tree", || {
+        split.is_collapsed() && !split.shows_content()
+    })?;
+
+    open_first_note(h)?;
+    let page = h.page("note")?;
+    h.wait("the note page to be shown and poppable", || {
+        split.shows_content() && action_sensitive(&page, "navigation.pop")
+    })?;
+
+    page.activate_action("navigation.pop", None)
+        .map_err(|error| format!("cannot go back: {error}"))?;
+    h.wait("the tree after going back", || {
+        !split.shows_content() && h.shown("notes-tree-list")
+    })?;
+    ensure(h.model()?.open_note_path().is_some(), || {
+        "going back closed the note".to_owned()
+    })
 }

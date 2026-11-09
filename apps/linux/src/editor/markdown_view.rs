@@ -261,6 +261,19 @@ mod imp {
             });
             view.add_controller(link_click);
 
+            let long_press = gtk::GestureLongPress::new();
+            long_press.set_touch_only(true);
+            long_press.connect_pressed({
+                let view = view.downgrade();
+                move |gesture, x, y| {
+                    if let Some(view) = view.upgrade() {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        view.open_context_menu_at(x, y);
+                    }
+                }
+            });
+            view.add_controller(long_press);
+
             view.connect_scale_factor_notify(|view| {
                 view.imp().unavailable_art.replace(None);
                 view.queue_render();
@@ -416,6 +429,23 @@ impl MarkdownView {
     pub fn link_url_at(&self, offset: usize) -> Option<String> {
         let parsed = self.fresh_parsed()?;
         link_url(&parsed.document, offset)
+    }
+
+    /// Opens the context menu for a touch at a point in widget coordinates, moving the caret
+    /// there first unless the point is inside the current selection.
+    fn open_context_menu_at(&self, x: f64, y: f64) {
+        let (bx, by) =
+            self.window_to_buffer_coords(gtk::TextWindowType::Widget, x as i32, y as i32);
+        if let Some((iter, _)) = self.iter_at_position(bx, by) {
+            let buffer = self.buffer();
+            let selected = buffer
+                .selection_bounds()
+                .is_some_and(|(start, end)| iter >= start && iter < end);
+            if !selected {
+                buffer.place_cursor(&iter);
+            }
+        }
+        let _ = self.activate_action("menu.popup", None);
     }
 
     /// Opens the link under a point in widget coordinates when Control is held, and says

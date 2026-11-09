@@ -170,6 +170,7 @@ mod imp {
             editor.connect_buffer(&view.buffer());
             editor.setup_drop();
             editor.setup_actions();
+            editor.setup_context_menu();
             editor.setup_paste();
         }
     }
@@ -414,8 +415,11 @@ impl NoteEditor {
         imp.applying.set(true);
         buffer.place_cursor(&buffer.iter_at_offset(offset.clamp(0, buffer.char_count())));
         imp.applying.set(false);
-        let mut state = imp.state.borrow_mut();
-        state.last_selection = buffer_selection(&buffer, &state.last_index);
+        {
+            let mut state = imp.state.borrow_mut();
+            state.last_selection = buffer_selection(&buffer, &state.last_index);
+        }
+        self.update_open_link_action();
     }
 
     /// Brings a note update from the core into the editor and returns what it did: a new
@@ -871,22 +875,44 @@ impl NoteEditor {
         self.update_actions();
     }
 
+    fn setup_context_menu(&self) {
+        let section = gio::Menu::new();
+        section.append(Some("Open Link"), Some("editor.open-link"));
+        let menu = gio::Menu::new();
+        menu.append_section(None, &section);
+        self.view().set_extra_menu(Some(&menu));
+    }
+
+    fn set_action_enabled(&self, name: &str, enabled: bool) {
+        if let Some(action) = self
+            .imp()
+            .actions
+            .lookup_action(name)
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_enabled(enabled);
+        }
+    }
+
+    fn update_open_link_action(&self) {
+        let selection = self.imp().state.borrow().last_selection;
+        let enabled = self.is_ready()
+            && selection.length == 0
+            && self.view().link_url_at(selection.location).is_some();
+        self.set_action_enabled("open-link", enabled);
+    }
+
     fn update_actions(&self) {
-        let actions = &self.imp().actions;
         let ready = self.is_ready();
         let history = [("undo", self.can_undo()), ("redo", self.can_redo())];
-        let others = ["toggle-task", "open-link", "insert-image"]
+        let others = ["toggle-task", "insert-image"]
             .into_iter()
             .chain(FORMAT_ACTIONS.map(|(name, _)| name))
             .map(|name| (name, ready));
         for (name, enabled) in history.into_iter().chain(others) {
-            if let Some(action) = actions
-                .lookup_action(name)
-                .and_downcast::<gio::SimpleAction>()
-            {
-                action.set_enabled(enabled);
-            }
+            self.set_action_enabled(name, enabled);
         }
+        self.update_open_link_action();
         if let Some(target) = self.imp().drop_target.get() {
             target.set_actions(if ready {
                 gdk::DragAction::COPY
@@ -932,6 +958,7 @@ impl NoteEditor {
             let mut state = imp.state.borrow_mut();
             state.last_selection = buffer_selection(&buffer, &state.last_index);
         }
+        self.update_open_link_action();
         if self.view().is_editable() {
             self.queue_scroll_to_caret();
         }
@@ -1018,6 +1045,7 @@ impl NoteEditor {
             adjustment.set_value(offset);
         }
         imp.state.borrow_mut().last_selection = buffer_selection(&buffer, &index);
+        self.update_open_link_action();
     }
 
     /// Applies a step of local editing, whose edits follow one another, and sends the result.
@@ -1054,6 +1082,7 @@ impl NoteEditor {
         state.last_selection = buffer_selection(&buffer, &state.last_index);
         drop(state);
         imp.applying.set(false);
+        self.update_open_link_action();
     }
 
     fn scroll_window(&self) -> Option<gtk::ScrolledWindow> {

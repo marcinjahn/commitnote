@@ -1189,7 +1189,7 @@ fn right_click(expander: &gtk::TreeExpander) -> Result<(), String> {
 /// Opens the menu of the row showing `row` with `open`. The session has no pointer, so the
 /// compositor refuses the grab an autohiding menu needs and dismisses it, and a grab taken on a
 /// key press leaves the harness keyboard without a window: the menu opens with autohide off.
-fn open_menu(
+pub(crate) fn open_menu(
     h: &Harness,
     row: &str,
     open: impl Fn(&Harness) -> Result<(), String>,
@@ -1211,7 +1211,7 @@ fn open_menu(
     Ok(menu)
 }
 
-fn close_menu(h: &Harness, menu: &gtk::PopoverMenu) -> Result<(), String> {
+pub(crate) fn close_menu(h: &Harness, menu: &gtk::PopoverMenu) -> Result<(), String> {
     menu.popdown();
     h.wait("the menu to close", || !h.shown(MENU))
 }

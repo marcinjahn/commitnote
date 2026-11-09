@@ -680,7 +680,7 @@ fn checkbox_click_edits(h: &mut Harness) -> Result<(), String> {
 
 const WORDS: &str = "one two three";
 
-fn set_note_text(editor: &NoteEditor, text: &str, from: i32, to: i32) {
+pub(crate) fn set_note_text(editor: &NoteEditor, text: &str, from: i32, to: i32) {
     let buffer = editor.view().buffer();
     buffer.begin_user_action();
     buffer.set_text(text);
