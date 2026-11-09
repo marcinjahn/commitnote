@@ -87,6 +87,7 @@ mod imp {
         pub(super) epoch: Cell<Option<i64>>,
         pub(super) tick: RefCell<Option<gtk::TickCallbackId>>,
         pub(super) animations_handler: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) text_scale_handler: RefCell<Option<glib::SignalHandlerId>>,
     }
 
     #[glib::object_subclass]
@@ -175,7 +176,16 @@ mod imp {
                     }
                 }
             });
-            self.style_handlers.replace(vec![dark, accent]);
+            let high_contrast = style_manager.connect_high_contrast_notify({
+                let view = view.downgrade();
+                move |_| {
+                    if let Some(view) = view.upgrade() {
+                        view.queue_palette();
+                    }
+                }
+            });
+            self.style_handlers
+                .replace(vec![dark, accent, high_contrast]);
             view.update_scheme();
 
             let click = gtk::GestureClick::new();
@@ -265,6 +275,15 @@ mod imp {
                     }
                 });
                 self.animations_handler.replace(Some(handler));
+                let handler = settings.connect_gtk_xft_dpi_notify({
+                    let view = view.downgrade();
+                    move |_| {
+                        if let Some(view) = view.upgrade() {
+                            view.queue_palette();
+                        }
+                    }
+                });
+                self.text_scale_handler.replace(Some(handler));
             }
         }
 
@@ -273,10 +292,16 @@ mod imp {
             for handler in self.style_handlers.take() {
                 style_manager.disconnect(handler);
             }
-            if let (Some(settings), Some(handler)) =
-                (gtk::Settings::default(), self.animations_handler.take())
-            {
-                settings.disconnect(handler);
+            if let Some(settings) = gtk::Settings::default() {
+                for handler in [
+                    self.animations_handler.take(),
+                    self.text_scale_handler.take(),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    settings.disconnect(handler);
+                }
             }
             for source in [self.render_source.take(), self.palette_source.take()]
                 .into_iter()
@@ -551,6 +576,21 @@ impl MarkdownView {
     }
 
     #[cfg(feature = "testing")]
+    pub fn testing_high_contrast(&self) -> bool {
+        self.imp()
+            .palette
+            .get()
+            .is_some_and(|palette| palette.high_contrast)
+    }
+
+    #[cfg(feature = "testing")]
+    pub fn testing_dim_alpha(&self) -> Option<f32> {
+        let slot = super::tags::slot(commitnote_markdown::PreviewStyle::MutedMarker);
+        let tag = self.imp().tags.get()?.by_slot().get(slot)?;
+        Some(tag.foreground_rgba()?.alpha())
+    }
+
+    #[cfg(feature = "testing")]
     pub fn testing_animating(&self) -> bool {
         self.imp().tick.borrow().is_some()
     }
@@ -818,6 +858,7 @@ impl MarkdownView {
             foreground: palette.foreground,
             accent: palette.accent,
             line_height: self.line_height(),
+            high_contrast: palette.high_contrast,
         }
     }
 
@@ -853,6 +894,7 @@ impl MarkdownView {
             foreground: self.color(),
             accent,
             left_margin: self.left_margin(),
+            high_contrast: adw::StyleManager::default().is_high_contrast(),
         }
     }
 

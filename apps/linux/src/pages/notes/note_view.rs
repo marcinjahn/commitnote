@@ -18,13 +18,13 @@ use super::note_state::{NoteDisplay, display_state, loaded_update, note_title};
 use super::sync_feedback::{
     BannerAction, conflict_locks_note, is_conflict_marker, note_banner, open_conflict,
 };
-use crate::editor::{EditorImage, ImageInserter, ImageSource, NoteEditor};
+use crate::editor::{Contrast, EditorImage, ImageInserter, ImageSource, NoteEditor};
 use crate::model::{
     AppModel, DraftFocus, EditorTarget, ImageInput, ImageState, NoteContentUpdate, RenameResult,
 };
 
 const SPINNER_DELAY: Duration = Duration::from_millis(300);
-const MARKER_ALPHA: f32 = 0.55;
+const MARKER_ALPHA: Contrast = Contrast::new(0.55, 1.0);
 
 #[derive(Debug, Clone, Copy)]
 struct CaretMemory {
@@ -900,16 +900,16 @@ fn merged_preview(merged: &str) -> gtk::ScrolledWindow {
         let marker = marker.clone();
         move |view: &gtk::TextView| {
             let mut color = view.color();
-            color.set_alpha(MARKER_ALPHA);
+            color.set_alpha(MARKER_ALPHA.pick(adw::StyleManager::default().is_high_contrast()));
             marker.set_foreground_rgba(Some(&color));
         }
     };
     tint(&view);
     view.connect_map(tint.clone());
     let style_manager = adw::StyleManager::default();
-    let scheme = RefCell::new(Some(style_manager.connect_dark_notify({
+    let retint = {
         let view = view.downgrade();
-        move |_| {
+        move || {
             let view = view.clone();
             let tint = tint.clone();
             glib::idle_add_local_once(move || {
@@ -918,10 +918,17 @@ fn merged_preview(merged: &str) -> gtk::ScrolledWindow {
                 }
             });
         }
-    })));
+    };
+    let handlers = RefCell::new(vec![
+        style_manager.connect_dark_notify({
+            let retint = retint.clone();
+            move |_| retint()
+        }),
+        style_manager.connect_high_contrast_notify(move |_| retint()),
+    ]);
     view.connect_destroy(move |_| {
-        if let Some(scheme) = scheme.take() {
-            style_manager.disconnect(scheme);
+        for handler in handlers.take() {
+            style_manager.disconnect(handler);
         }
     });
     for (line, text) in merged.split('\n').enumerate() {

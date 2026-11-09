@@ -529,7 +529,7 @@ fn image_viewer_keys(h: &mut Harness) -> Result<(), String> {
     h.wait("the viewer to close", || !h.shown("image-viewer"))
 }
 
-fn run_animation(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
+pub(crate) fn run_animation(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
     let settings = gtk::Settings::default().ok_or("there are no GTK settings")?;
     settings.set_gtk_enable_animations(true);
     h.wait("the GIF to advance", || image_states(editor)[0].2 > 0)?;
@@ -561,7 +561,10 @@ fn run_animation(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
     })
 }
 
-fn gif_animation(h: &mut Harness) -> Result<(), String> {
+pub(crate) fn with_animated_gif(
+    h: &Harness,
+    check: impl FnOnce(&NoteEditor) -> Result<(), String>,
+) -> Result<(), String> {
     let (editor, _) = open_welcome(h)?;
     let scratch = Scratch::new("gif")?;
     editor.place_caret(0);
@@ -570,12 +573,17 @@ fn gif_animation(h: &mut Harness) -> Result<(), String> {
         vec![scratch.write("moving.gif", &animated_gif(24, 16, &[0, 1, 2, 3]))?],
     )?;
     wait_images_ready(h, &editor, 1)?;
+    check(&editor)
+}
 
-    let result = run_animation(h, &editor);
-    if let Some(settings) = gtk::Settings::default() {
-        settings.set_gtk_enable_animations(false);
-    }
-    result
+fn gif_animation(h: &mut Harness) -> Result<(), String> {
+    with_animated_gif(h, |editor| {
+        let result = run_animation(h, editor);
+        if let Some(settings) = gtk::Settings::default() {
+            settings.set_gtk_enable_animations(false);
+        }
+        result
+    })
 }
 
 fn shot_note_images(h: &mut Harness) -> Result<(), String> {

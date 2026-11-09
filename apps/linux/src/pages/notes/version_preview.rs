@@ -14,6 +14,7 @@ use crate::fonts::follow_note_font;
 use crate::model::{AppModel, RestoreResult};
 
 const CHANGED_OPEN: &str = "<span weight=\"bold\" bgcolor=\"#80808059\">";
+const CHANGED_OPEN_HIGH_CONTRAST: &str = "<span weight=\"bold\" bgcolor=\"#80808099\">";
 
 struct Preview {
     model: AppModel,
@@ -28,6 +29,7 @@ struct Preview {
     scroller: gtk::ScrolledWindow,
     body: gtk::Box,
     diff: RefCell<Option<gtk::Box>>,
+    shown_body: RefCell<Option<PreviewBody>>,
     toggle: adw::SwitchRow,
     toggle_list: gtk::ListBox,
     reason: gtk::Label,
@@ -159,6 +161,7 @@ pub fn page(
         scroller,
         body,
         diff: RefCell::new(None),
+        shown_body: RefCell::new(None),
         toggle: toggle.clone(),
         toggle_list,
         reason,
@@ -206,10 +209,22 @@ pub fn page(
             }
         }
     });
+    let style_manager = adw::StyleManager::default();
+    let contrast = RefCell::new(Some(style_manager.connect_high_contrast_notify({
+        let state = Rc::downgrade(&state);
+        move |_| {
+            if let Some(state) = state.upgrade() {
+                state.render_shown_body();
+            }
+        }
+    })));
     page.connect_destroy({
         let state = state.clone();
         move |_| {
             state.generation.set(state.generation.get() + 1);
+            if let Some(contrast) = contrast.take() {
+                style_manager.disconnect(contrast);
+            }
         }
     });
 
@@ -282,19 +297,8 @@ impl Preview {
         self.heading
             .set_label(title_change.as_deref().unwrap_or_default());
 
-        let scroll = self.scroller.vadjustment();
-        let position = scroll.value();
-        while let Some(child) = self.body.first_child() {
-            self.body.remove(&child);
-        }
-        let (widget, diff) = body_widget(body);
-        if let Some(diff) = &diff {
-            self.model.note_font().apply_to(diff);
-        }
-        self.body.append(&widget);
-        self.diff.replace(diff);
-        scroll.set_value(position);
-        glib::idle_add_local_once(move || scroll.set_value(position));
+        self.shown_body.replace(Some(body.clone()));
+        self.render_shown_body();
 
         self.toggle_offered.set(restore_title.is_some());
         if let Some(label) = &restore_title {
@@ -311,6 +315,25 @@ impl Preview {
 
         self.toolbar.set_reveal_bottom_bars(true);
         self.stack.set_visible_child_name("ready");
+    }
+
+    fn render_shown_body(&self) {
+        let Some(body) = self.shown_body.borrow().clone() else {
+            return;
+        };
+        let scroll = self.scroller.vadjustment();
+        let position = scroll.value();
+        while let Some(child) = self.body.first_child() {
+            self.body.remove(&child);
+        }
+        let (widget, diff) = body_widget(&body, adw::StyleManager::default().is_high_contrast());
+        if let Some(diff) = &diff {
+            self.model.note_font().apply_to(diff);
+        }
+        self.body.append(&widget);
+        self.diff.replace(diff);
+        scroll.set_value(position);
+        glib::idle_add_local_once(move || scroll.set_value(position));
     }
 
     fn update_restore(&self) {
@@ -362,7 +385,7 @@ impl Preview {
 
 /// The widget for the version's body and, when it is a diff of note text, that diff for the
 /// caller to put in the note font.
-fn body_widget(body: &PreviewBody) -> (gtk::Widget, Option<gtk::Box>) {
+fn body_widget(body: &PreviewBody, high_contrast: bool) -> (gtk::Widget, Option<gtk::Box>) {
     match body {
         PreviewBody::TooLarge { message } | PreviewBody::Unchanged { message } => (
             gtk::Label::builder()
@@ -385,7 +408,7 @@ fn body_widget(body: &PreviewBody) -> (gtk::Widget, Option<gtk::Box>) {
                 .build();
             for item in items {
                 match item {
-                    DiffItemView::Line { line } => lines.append(&line_widget(line)),
+                    DiffItemView::Line { line } => lines.append(&line_widget(line, high_contrast)),
                     DiffItemView::Fold {
                         label,
                         lines: folded,
@@ -394,7 +417,7 @@ fn body_widget(body: &PreviewBody) -> (gtk::Widget, Option<gtk::Box>) {
                             .orientation(gtk::Orientation::Vertical)
                             .build();
                         for line in folded {
-                            inner.append(&line_widget(line));
+                            inner.append(&line_widget(line, high_contrast));
                         }
                         lines.append(
                             &gtk::Expander::builder()
@@ -422,7 +445,7 @@ fn body_widget(body: &PreviewBody) -> (gtk::Widget, Option<gtk::Box>) {
     }
 }
 
-fn line_widget(line: &DiffLineView) -> gtk::Widget {
+fn line_widget(line: &DiffLineView, high_contrast: bool) -> gtk::Widget {
     let row = gtk::Box::builder().spacing(6).build();
     match line {
         DiffLineView::Added { .. } => row.add_css_class("diff-added"),
@@ -441,7 +464,7 @@ fn line_widget(line: &DiffLineView) -> gtk::Widget {
     row.append(
         &gtk::Label::builder()
             .use_markup(true)
-            .label(line_markup(line))
+            .label(line_markup(line, high_contrast))
             .wrap(true)
             .wrap_mode(gtk::pango::WrapMode::WordChar)
             .xalign(0.0)
@@ -459,21 +482,29 @@ fn gutter(line: &DiffLineView) -> &'static str {
     }
 }
 
-fn line_markup(line: &DiffLineView) -> String {
+fn line_markup(line: &DiffLineView, high_contrast: bool) -> String {
     match line {
         DiffLineView::Same { text } => glib::markup_escape_text(text).to_string(),
         DiffLineView::Added { segments } | DiffLineView::Removed { segments } => {
-            segment_markup(segments)
+            segment_markup(segments, high_contrast)
         }
     }
 }
 
-fn segment_markup(segments: &[DiffSegment]) -> String {
+fn changed_open(high_contrast: bool) -> &'static str {
+    if high_contrast {
+        CHANGED_OPEN_HIGH_CONTRAST
+    } else {
+        CHANGED_OPEN
+    }
+}
+
+fn segment_markup(segments: &[DiffSegment], high_contrast: bool) -> String {
     let mut markup = String::new();
     for segment in segments {
         let text = glib::markup_escape_text(&segment.text);
         if segment.changed {
-            markup.push_str(CHANGED_OPEN);
+            markup.push_str(changed_open(high_contrast));
             markup.push_str(&text);
             markup.push_str("</span>");
         } else {
@@ -496,7 +527,10 @@ mod tests {
 
     #[test]
     fn segment_text_is_escaped_so_markup_characters_show_literally() {
-        let markup = segment_markup(&[segment("a <b>&", false), segment("x</span>", true)]);
+        let markup = segment_markup(
+            &[segment("a <b>&", false), segment("x</span>", true)],
+            false,
+        );
 
         assert_eq!(
             markup,
@@ -506,10 +540,19 @@ mod tests {
 
     #[test]
     fn only_changed_segments_are_emphasised() {
-        let markup = segment_markup(&[segment("same ", false), segment("new", true)]);
+        let markup = segment_markup(&[segment("same ", false), segment("new", true)], false);
 
         assert_eq!(markup, format!("same {CHANGED_OPEN}new</span>"));
-        assert_eq!(segment_markup(&[]), "");
+        assert_eq!(segment_markup(&[], false), "");
+    }
+
+    #[test]
+    fn changed_segments_get_a_stronger_background_in_high_contrast() {
+        let markup = segment_markup(&[segment("new", true)], true);
+
+        assert_eq!(markup, format!("{CHANGED_OPEN_HIGH_CONTRAST}new</span>"));
+        assert!(markup.contains("#80808099"));
+        assert!(CHANGED_OPEN.contains("#80808059"));
     }
 
     #[test]
@@ -518,7 +561,7 @@ mod tests {
             text: "1 < 2 & \"3\"".to_owned(),
         };
 
-        assert_eq!(line_markup(&line), "1 &lt; 2 &amp; &quot;3&quot;");
+        assert_eq!(line_markup(&line, false), "1 &lt; 2 &amp; &quot;3&quot;");
     }
 
     #[test]

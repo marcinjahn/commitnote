@@ -3,19 +3,22 @@ use std::path::Path;
 use adw::prelude::*;
 use commitnote::a11y::testing_take_announcements;
 use commitnote::config;
+use commitnote::editor::OverlayKind;
 use commitnote::launch::action_from_arguments;
 use commitnote::model::Route;
 use commitnote::pages::notes::ImageViewer;
 use commitnote_core_api::shapes::{ColorTag, TagOptionView};
-use gtk4::{self as gtk, gdk, glib};
+use gtk4::{self as gtk, gdk, gio, glib};
 use libadwaita as adw;
 
 use crate::flows::{
-    choose_repository, ensure, launch_and_log_in, log_in, open_first_note, submit_token, wait_tree,
+    choose_repository, ensure, launch_and_log_in, log_in, open_first_note, split_view,
+    submit_token, wait_tree,
 };
 use crate::p2::{
     FAILED_ICON, OFFLINE_ICON, SYNCED_ICON, fail_commits, finish_loading, focus_within,
-    reopen_held, save_now, sync_text, title_entry, type_at_end, wait_draft, wait_sync_icon,
+    reopen_held, save_now, show_saved, sync_text, title_entry, type_at_end, wait_draft,
+    wait_sync_icon,
 };
 use crate::p3::{
     click_labelled, has_node, is_shared, open_note_at, path, row_expander, search_entry_focused,
@@ -24,7 +27,8 @@ use crate::p3::{
 use crate::p4::{
     FIRST_TEXT, HISTORY_DIALOG, SHARE_PASSWORD, SHARED_LINKS_DIALOG, WELCOME as WELCOME_NOTE,
     WHITEBOARD as WHITEBOARD_NOTE, open_editor, open_history, open_shared_links, open_viewer,
-    share_note_with, wait_images_ready, wait_shares, welcome_with_versions,
+    run_animation, share_note_with, wait_images_ready, wait_shares, welcome_with_versions,
+    with_animated_gif,
 };
 use crate::p5::{choose_existing, import_zip_dialog, menu_actions, select_target};
 use crate::support::{
@@ -54,6 +58,9 @@ pub const CASES: &[Case] = &[
     ("p6-announce-loading", announce_loading),
     ("p6-announce-strength", announce_strength),
     ("p6-announce-no-toast-repeat", announce_no_toast_repeat),
+    ("p6-comfort-text-scaling", comfort_text_scaling),
+    ("p6-comfort-high-contrast", comfort_high_contrast),
+    ("p6-comfort-reduced-motion", comfort_reduced_motion),
 ];
 
 type Announcement = (String, gtk::AccessibleAnnouncementPriority);
@@ -1202,4 +1209,151 @@ fn announce_no_toast_repeat(h: &mut Harness) -> Result<(), String> {
     ensure(repeated.is_empty(), || {
         format!("a toast was announced again: {repeated:?}")
     })
+}
+
+const COMFORT_TEXT: &str = "- [ ] a task\n- a list item\n\n---\n\nend";
+const HIGH_CONTRAST_SCHEMA: &str = "org.gnome.desktop.a11y.interface";
+const HIGH_CONTRAST_KEY: &str = "high-contrast";
+const NARROW_WINDOW_WIDTH: i32 = 360;
+const SCALED_XFT_DPI: i32 = 147_456;
+const DIM_ALPHA: f32 = 0.55;
+const DIM_ALPHA_HIGH_CONTRAST: f32 = 0.8;
+
+fn restoring(
+    restore: impl FnOnce(),
+    run: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let result = run();
+    restore();
+    result
+}
+
+fn open_comfort_editor(h: &Harness) -> Result<commitnote::editor::NoteEditor, String> {
+    launch_and_log_in(h, false)?;
+    let editor = open_editor(h, WELCOME_NOTE)?;
+    show_saved(h, &editor, COMFORT_TEXT)?;
+    let buffer = editor.view().buffer();
+    buffer.place_cursor(&buffer.end_iter());
+    h.wait("a checkbox and a rule", || {
+        let kinds: Vec<OverlayKind> = editor
+            .view()
+            .overlay_rects()
+            .into_iter()
+            .map(|(kind, _)| kind)
+            .collect();
+        kinds.contains(&OverlayKind::Checkbox) && kinds.contains(&OverlayKind::Rule)
+    })?;
+    Ok(editor)
+}
+
+fn comfort_text_scaling(h: &mut Harness) -> Result<(), String> {
+    let settings = gtk::Settings::default().ok_or("there are no GTK settings")?;
+    let original = settings.gtk_xft_dpi();
+    let editor = open_comfort_editor(h)?;
+    h.resize(Width::Narrow)?;
+    split_view(h)?.set_show_content(true);
+    restoring(
+        || settings.set_gtk_xft_dpi(original),
+        || {
+            let view = editor.view();
+            h.wait("the overlays to be measured", || {
+                let (measured, current) = view.testing_line_metrics();
+                measured == Some(current)
+            })?;
+            let before = view.testing_line_metrics().1;
+
+            settings.set_gtk_xft_dpi(SCALED_XFT_DPI);
+            h.wait(
+                "the overlays to be measured at the larger text size",
+                || {
+                    let (measured, current) = view.testing_line_metrics();
+                    current > before && measured == Some(current)
+                },
+            )?;
+            h.settle()?;
+            let actual = h.window()?.width();
+            ensure(actual == NARROW_WINDOW_WIDTH, || {
+                format!(
+                    "the window is {actual} wide at the larger text size, not {NARROW_WINDOW_WIDTH}"
+                )
+            })
+        },
+    )
+}
+
+fn comfort_high_contrast(h: &mut Harness) -> Result<(), String> {
+    let source =
+        gio::SettingsSchemaSource::default().ok_or("there is no GSettings schema source")?;
+    ensure(source.lookup(HIGH_CONTRAST_SCHEMA, true).is_some(), || {
+        format!("the {HIGH_CONTRAST_SCHEMA} schema is not installed")
+    })?;
+    let settings = gio::Settings::new(HIGH_CONTRAST_SCHEMA);
+    let original = settings.boolean(HIGH_CONTRAST_KEY);
+    let style_manager = adw::StyleManager::default();
+    let editor = open_comfort_editor(h)?;
+    let view = editor.view();
+    restoring(
+        || {
+            let _ = settings.set_boolean(HIGH_CONTRAST_KEY, original);
+        },
+        || {
+            ensure(
+                !style_manager.is_high_contrast() && !view.testing_high_contrast(),
+                || "high contrast is already on".to_owned(),
+            )?;
+            let foreground = view.color().alpha();
+            h.wait("the normal dim alpha", || {
+                view.testing_dim_alpha()
+                    .is_some_and(|alpha| (alpha - foreground * DIM_ALPHA).abs() < 0.01)
+            })?;
+
+            settings
+                .set_boolean(HIGH_CONTRAST_KEY, true)
+                .map_err(|error| format!("cannot set {HIGH_CONTRAST_KEY}: {error}"))?;
+            h.wait("libadwaita to report high contrast", || {
+                style_manager.is_high_contrast()
+            })
+            .map_err(|error| {
+                format!(
+                    "{error}; libadwaita does not follow {HIGH_CONTRAST_SCHEMA} \
+                     {HIGH_CONTRAST_KEY} in this environment"
+                )
+            })?;
+            h.wait("the editor to report high contrast", || {
+                view.testing_high_contrast()
+            })?;
+            h.wait("the dim alpha to strengthen", || {
+                view.testing_dim_alpha().is_some_and(|alpha| {
+                    (alpha - foreground * DIM_ALPHA_HIGH_CONTRAST).abs() < 0.01
+                })
+            })?;
+
+            settings
+                .set_boolean(HIGH_CONTRAST_KEY, false)
+                .map_err(|error| format!("cannot reset {HIGH_CONTRAST_KEY}: {error}"))?;
+            h.wait("the dim alpha to weaken again", || {
+                !view.testing_high_contrast()
+                    && view
+                        .testing_dim_alpha()
+                        .is_some_and(|alpha| (alpha - foreground * DIM_ALPHA).abs() < 0.01)
+            })
+        },
+    )
+}
+
+fn comfort_reduced_motion(h: &mut Harness) -> Result<(), String> {
+    let settings = gtk::Settings::default().ok_or("there are no GTK settings")?;
+    let original = settings.is_gtk_enable_animations();
+    settings.set_gtk_enable_animations(false);
+    restoring(
+        || settings.set_gtk_enable_animations(original),
+        || {
+            with_animated_gif(h, |editor| {
+                ensure(!editor.view().testing_animating(), || {
+                    "the GIF animates while animations are off".to_owned()
+                })?;
+                run_animation(h, editor)
+            })
+        },
+    )
 }
