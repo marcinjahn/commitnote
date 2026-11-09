@@ -371,6 +371,10 @@ impl NotesPage {
         page
     }
 
+    pub fn is_search_active(&self) -> bool {
+        self.imp().search_bar.is_search_mode()
+    }
+
     pub fn placeholder_visible(&self) -> bool {
         self.imp()
             .note_view

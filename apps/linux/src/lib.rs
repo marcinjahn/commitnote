@@ -7,6 +7,7 @@ pub mod export;
 pub mod file_dialogs;
 pub mod fonts;
 pub mod import;
+pub mod launch;
 pub mod links;
 pub mod model;
 pub mod pages;

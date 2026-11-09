@@ -4,6 +4,7 @@ mod p2;
 mod p3;
 mod p4;
 mod p5;
+mod p6;
 mod support;
 
 use std::process::ExitCode;
@@ -22,6 +23,7 @@ const SUITES: &[(&str, &[Case])] = &[
     ("p3", p3::CASES),
     ("p4", p4::CASES),
     ("p5", p5::CASES),
+    ("p6", p6::CASES),
 ];
 
 fn main() -> ExitCode {

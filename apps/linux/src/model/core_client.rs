@@ -75,6 +75,11 @@ impl CoreClient {
         Ok(client)
     }
 
+    /// False while a restart replaces the runtime.
+    pub fn is_running(&self) -> bool {
+        self.runtime.borrow().is_some()
+    }
+
     pub fn keyring_available(&self) -> bool {
         self.keyring_available
     }

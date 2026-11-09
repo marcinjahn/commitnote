@@ -140,6 +140,9 @@ fn every_command_has_a_distinct_name() {
         ShareRename::NAME,
         ShareRevoke::NAME,
         ShareSharedVersion::NAME,
+        LaunchDeliver::NAME,
+        LaunchAttach::NAME,
+        LaunchDetach::NAME,
     ];
     let mut sorted = names.to_vec();
     sorted.sort_unstable();
@@ -1952,4 +1955,47 @@ fn settings_commands_use_camel_case_wire_names() {
     decode::<SettingsRetry>("{}");
     decode::<SettingsFlush>("{}");
     decode::<AnalyticsSetCounted>("{}");
+}
+
+#[test]
+fn launch_commands_have_their_wire_names() {
+    assert_eq!(LaunchDeliver::NAME, "launch.deliver");
+    assert_eq!(LaunchAttach::NAME, "launch.attach");
+    assert_eq!(LaunchDetach::NAME, "launch.detach");
+}
+
+#[test]
+fn launch_actions_use_their_wire_names() {
+    for (action, wire) in [
+        (LaunchAction::NewNote, "new-note"),
+        (LaunchAction::Search, "search"),
+    ] {
+        assert_eq!(round_trip(&action), json!(wire));
+        assert_eq!(action.as_str(), wire);
+        assert_eq!(LaunchAction::from_wire(wire), Some(action));
+    }
+    assert_eq!(LaunchAction::from_wire("newNote"), None);
+}
+
+#[test]
+fn launch_params_match_the_typescript_shapes() {
+    assert_eq!(
+        round_trip(&LaunchDeliverParams {
+            action: LaunchAction::NewNote
+        }),
+        json!({"action":"new-note"})
+    );
+    assert_eq!(
+        round_trip(&LaunchAttachParams {
+            accepts: vec![LaunchAction::NewNote, LaunchAction::Search]
+        }),
+        json!({"accepts":["new-note","search"]})
+    );
+    assert_eq!(
+        params_json::<LaunchDetach>(&LaunchDetachParams {}),
+        json!({})
+    );
+    decode::<LaunchDeliver>("{}");
+    decode::<LaunchAttach>("{}");
+    decode::<LaunchDetach>("{}");
 }

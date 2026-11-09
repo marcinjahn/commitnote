@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use adw::prelude::*;
 use commitnote::config;
+use commitnote::launch;
 use commitnote::model::appearance::AppearanceApplier;
 use commitnote::model::{AppConfig, AppModel, Appearance, ColorMode, Route};
 use commitnote::window::CommitnoteWindow;
@@ -151,7 +152,7 @@ pub struct Harness {
     case: RefCell<String>,
     case_dir: RefCell<PathBuf>,
     model: RefCell<Option<AppModel>>,
-    window: RefCell<Option<CommitnoteWindow>>,
+    window: Rc<RefCell<Option<CommitnoteWindow>>>,
     changes: Rc<Cell<u64>>,
     routes: Rc<RefCell<Vec<Route>>>,
     failure_saved: Cell<bool>,
@@ -176,6 +177,16 @@ impl Harness {
             .map_err(|error| format!("cannot create the screenshot directory: {error}"))?;
         install_app_icons(&run_dir.join("icons"))?;
         let keyboard = Keyboard::start()?;
+        let window = Rc::<RefCell<Option<CommitnoteWindow>>>::default();
+        launch::install_actions(&application, {
+            let window = window.clone();
+            move |action| {
+                let current = window.borrow().clone();
+                if let Some(window) = current {
+                    window.launch(Some(action));
+                }
+            }
+        });
         Ok(Self {
             application,
             applier: Rc::new(AppearanceApplier::new()),
@@ -186,7 +197,7 @@ impl Harness {
             case: RefCell::default(),
             case_dir: RefCell::default(),
             model: RefCell::default(),
-            window: RefCell::default(),
+            window,
             changes: Rc::default(),
             routes: Rc::default(),
             failure_saved: Cell::new(false),
@@ -302,6 +313,10 @@ impl Harness {
         while context.pending() {
             context.iteration(false);
         }
+    }
+
+    pub fn application(&self) -> &adw::Application {
+        &self.application
     }
 
     pub fn model(&self) -> Result<AppModel, String> {

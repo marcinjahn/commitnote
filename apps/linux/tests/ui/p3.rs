@@ -566,7 +566,7 @@ fn trash_dialog(h: &mut Harness) -> Result<(), String> {
     })
 }
 
-fn search_entry_focused(h: &Harness) -> bool {
+pub(crate) fn search_entry_focused(h: &Harness) -> bool {
     let (Ok(window), Ok(entry)) = (h.window(), h.widget("search-entry")) else {
         return false;
     };

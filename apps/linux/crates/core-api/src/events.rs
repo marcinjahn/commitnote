@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::commands::{AtomicBlockedView, HistoryView, ShareCopy, ShareRowView};
+use crate::commands::{AtomicBlockedView, HistoryView, LaunchAction, ShareCopy, ShareRowView};
 use crate::envelope::{ParseError, decode_value};
 use crate::error::CoreError;
 use crate::settings::{SettingsSaveView, SettingsView};
@@ -154,6 +154,12 @@ pub struct SharesChanged {
     pub copy: Box<ShareCopy>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchActionPayload {
+    pub action: LaunchAction,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoreEvent {
     LoadingProgress(LoadingProgress),
@@ -184,6 +190,9 @@ pub enum CoreEvent {
     },
     ImportStatusChanged(ImportStatusChanged),
     PassphraseChangeProgress(PassphraseChangeProgress),
+    LaunchAction {
+        action: LaunchAction,
+    },
     Other {
         name: String,
         payload: Value,
@@ -234,6 +243,10 @@ impl CoreEvent {
             }
             "importStatusChanged" => Self::ImportStatusChanged(decode_value(payload)?),
             "passphraseChangeProgress" => Self::PassphraseChangeProgress(decode_value(payload)?),
+            "launchAction" => {
+                let LaunchActionPayload { action } = decode_value(payload)?;
+                Self::LaunchAction { action }
+            }
             other => Self::Other {
                 name: other.to_owned(),
                 payload,
@@ -260,6 +273,7 @@ impl CoreEvent {
             Self::SettingsSaveChanged { .. } => "settingsSaveChanged",
             Self::ImportStatusChanged(_) => "importStatusChanged",
             Self::PassphraseChangeProgress(_) => "passphraseChangeProgress",
+            Self::LaunchAction { .. } => "launchAction",
             Self::Other { name, .. } => name,
         }
     }
@@ -929,6 +943,7 @@ mod tests {
                 "passphraseChangeProgress",
                 json!({"message":"m","done":null,"total":null}),
             ),
+            ("launchAction", json!({"action":"search"})),
         ];
         for (name, payload) in names {
             let event = CoreEvent::from_parts(name, payload).unwrap();
@@ -1006,5 +1021,22 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn launch_action_carries_the_action() {
+        assert_eq!(
+            CoreEvent::from_parts("launchAction", json!({"action":"new-note"})).unwrap(),
+            CoreEvent::LaunchAction {
+                action: LaunchAction::NewNote
+            }
+        );
+        assert_eq!(
+            event(r#"{"kind":"event","event":"launchAction","payload":{"action":"search"}}"#),
+            CoreEvent::LaunchAction {
+                action: LaunchAction::Search
+            }
+        );
+        assert!(CoreEvent::from_parts("launchAction", json!({"action":"open"})).is_err());
     }
 }
