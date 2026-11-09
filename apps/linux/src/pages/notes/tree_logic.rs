@@ -92,15 +92,15 @@ impl RenameState {
     }
 }
 
-pub fn note_description(tag_label: Option<&str>, shared: bool) -> String {
-    let mut parts = Vec::new();
-    if let Some(label) = tag_label {
-        parts.push(format!("{label} tag"));
+pub fn tagged_name(name: &str, tag_label: Option<&str>) -> String {
+    match tag_label {
+        Some(label) => format!("{name}, {label} tag"),
+        None => name.to_owned(),
     }
-    if shared {
-        parts.push("Shared".to_owned());
-    }
-    parts.join(", ")
+}
+
+pub fn note_description(shared: bool) -> String {
+    if shared { "Shared" } else { "" }.to_owned()
 }
 
 pub fn folder_description(note_count: u32) -> String {
@@ -123,7 +123,10 @@ pub fn accessible_text(node: &TreeNode, options: &[TagOptionView]) -> (String, S
             ..
         } => {
             let label = color_tag.map(|tag| tag_label(tag, options));
-            (name.clone(), note_description(label.as_deref(), *shared))
+            (
+                tagged_name(name, label.as_deref()),
+                note_description(*shared),
+            )
         }
     }
 }
@@ -590,11 +593,18 @@ mod tests {
     }
 
     #[test]
-    fn note_description_joins_tag_and_shared() {
-        assert_eq!(note_description(Some("Blue"), true), "Blue tag, Shared");
-        assert_eq!(note_description(Some("Blue"), false), "Blue tag");
-        assert_eq!(note_description(None, true), "Shared");
-        assert_eq!(note_description(None, false), "");
+    fn tagged_name_appends_the_tag() {
+        assert_eq!(
+            tagged_name("Groceries", Some("Blue")),
+            "Groceries, Blue tag"
+        );
+        assert_eq!(tagged_name("Groceries", None), "Groceries");
+    }
+
+    #[test]
+    fn note_description_reports_sharing() {
+        assert_eq!(note_description(true), "Shared");
+        assert_eq!(note_description(false), "");
     }
 
     #[test]
@@ -618,7 +628,7 @@ mod tests {
         };
         assert_eq!(
             accessible_text(&tagged, &options),
-            ("Groceries".to_owned(), "Home tag, Shared".to_owned())
+            ("Groceries, Home tag".to_owned(), "Shared".to_owned())
         );
         assert_eq!(
             accessible_text(&folder("Trips", &[], vec![note("x", &["Trips"])]), &[]),

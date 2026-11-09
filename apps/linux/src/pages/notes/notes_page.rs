@@ -7,12 +7,16 @@ use commitnote_core_api::shapes::ColorTag;
 use gtk4::{self as gtk, gdk, glib};
 use libadwaita as adw;
 
-use super::sync_feedback::{SyncMenuAction, SyncStatusView, sync_status_view};
+use super::sync_feedback::{
+    SyncAttention, SyncMenuAction, SyncStatusView, sync_announcement, sync_attention,
+    sync_status_view,
+};
 use super::tree_logic::{new_folder_parent, tag_from_id, tag_id, tag_label};
 use super::{
     NoteView, NotesTree, SearchView, details_dialog, folder_dialog, history_dialog, move_dialog,
     share_dialog, shared_links_dialog, trash_confirm, trash_dialog,
 };
+use crate::a11y;
 use crate::editor::{InsertAt, NoteEditor};
 use crate::file_dialogs;
 use crate::model::{AppModel, COLOR_TAGS, DraftFocus, EditorTarget, ImageInput};
@@ -77,6 +81,7 @@ mod imp {
         pub(super) model_handlers: RefCell<Vec<glib::SignalHandlerId>>,
         pub(super) trash_dialog: glib::WeakRef<adw::Dialog>,
         pub(super) shared_links_dialog: glib::WeakRef<adw::Dialog>,
+        pub(super) sync_attention: Cell<Option<SyncAttention>>,
         pub(super) trashing: Cell<bool>,
         pub(super) printing: Cell<bool>,
     }
@@ -753,9 +758,15 @@ impl NotesPage {
         let Some(model) = imp.model.get() else {
             return;
         };
-        if let Some(view) = model.sync_state().as_ref().map(sync_status_view) {
+        if let Some(sync) = model.sync_state() {
+            let view = sync_status_view(&sync);
             for button in [&*imp.sync_status_button, &*imp.content_sync_status_button] {
                 self.show_sync_status(button, &view);
+            }
+            let attention = sync_attention(&sync);
+            let previous = imp.sync_attention.replace(Some(attention));
+            if let Some(priority) = sync_announcement(previous, attention) {
+                a11y::announce(self, &view.text, priority);
             }
         }
         self.update_sync_visibility();

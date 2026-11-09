@@ -112,6 +112,7 @@ mod imp {
             self.parent_constructed();
             let view = self.obj();
             view.set_widget_name("note-editor-view");
+            view.update_property(&[gtk::accessible::Property::Label("Note")]);
             view.set_editable(false);
             view.set_cursor_visible(false);
             view.set_wrap_mode(gtk::WrapMode::WordChar);

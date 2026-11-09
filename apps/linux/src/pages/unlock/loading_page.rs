@@ -5,6 +5,7 @@ use adw::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
+use crate::a11y;
 use crate::model::{AppModel, Route};
 
 const IN_PROGRESS_MESSAGE: &str = "Loading…";
@@ -181,17 +182,18 @@ impl LoadingPage {
         match failure {
             Some(failure) => {
                 status.set_icon_name(Some("dialog-error-symbolic"));
-                status.set_title(&failure.message);
+                self.show_title(&failure.message, gtk::AccessibleAnnouncementPriority::High);
                 imp.spinner.set_visible(false);
                 imp.try_again_button.set_visible(failure.can_retry);
                 imp.log_in_button.set_visible(true);
             }
             None => {
                 status.set_icon_name(None);
-                status.set_title(
+                self.show_title(
                     &model
                         .loading_message()
                         .unwrap_or_else(|| IN_PROGRESS_MESSAGE.to_owned()),
+                    gtk::AccessibleAnnouncementPriority::Low,
                 );
                 imp.spinner.set_visible(true);
                 imp.try_again_button.set_visible(false);
@@ -201,6 +203,14 @@ impl LoadingPage {
         #[cfg(feature = "testing")]
         if let Some(button) = imp.finish_loading_button.get() {
             button.set_visible(matches!(model.route(), Route::Loading { failure: None }));
+        }
+    }
+
+    fn show_title(&self, title: &str, priority: gtk::AccessibleAnnouncementPriority) {
+        let status = &self.imp().status_page;
+        if status.title() != title {
+            status.set_title(title);
+            a11y::announce(status.upcast_ref::<gtk::Widget>(), title, priority);
         }
     }
 

@@ -19,6 +19,7 @@ mod share_row;
 mod shared_links_dialog;
 mod shared_version_page;
 mod sync_feedback;
+mod tag_dot;
 mod target_picker;
 mod trash_confirm;
 mod trash_dialog;

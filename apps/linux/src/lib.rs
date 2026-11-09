@@ -1,3 +1,4 @@
+pub mod a11y;
 pub mod about;
 pub mod accent;
 pub mod application;

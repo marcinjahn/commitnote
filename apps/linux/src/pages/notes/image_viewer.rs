@@ -8,6 +8,7 @@ use libadwaita as adw;
 
 use super::zoom_logic::{can_zoom_in, can_zoom_out};
 use super::zoom_view::ZoomView;
+use crate::a11y::label_loading;
 use crate::model::{AppModel, ImageState};
 
 const LOADING: &str = "loading";
@@ -102,17 +103,16 @@ impl ImageViewer {
         let view = ZoomView::new();
         let actions = self.install_actions(&view);
 
+        let spinner = adw::Spinner::builder()
+            .name("image-viewer-spinner")
+            .width_request(32)
+            .height_request(32)
+            .halign(gtk::Align::Center)
+            .valign(gtk::Align::Center)
+            .build();
+        label_loading(&spinner);
         let stack = gtk::Stack::new();
-        stack.add_named(
-            &adw::Spinner::builder()
-                .name("image-viewer-spinner")
-                .width_request(32)
-                .height_request(32)
-                .halign(gtk::Align::Center)
-                .valign(gtk::Align::Center)
-                .build(),
-            Some(LOADING),
-        );
+        stack.add_named(&spinner, Some(LOADING));
         stack.add_named(view.widget(), Some(IMAGE));
         stack.add_named(
             &adw::StatusPage::builder()
@@ -134,14 +134,14 @@ impl ImageViewer {
             ("image-zoom-in", "zoom-in-symbolic", "Zoom In", ZOOM_IN),
             ("image-zoom-out", "zoom-out-symbolic", "Zoom Out", ZOOM_OUT),
         ] {
-            header.pack_end(
-                &gtk::Button::builder()
-                    .name(name)
-                    .icon_name(icon)
-                    .tooltip_text(tooltip)
-                    .action_name(format!("viewer.{action}"))
-                    .build(),
-            );
+            let button = gtk::Button::builder()
+                .name(name)
+                .icon_name(icon)
+                .tooltip_text(tooltip)
+                .action_name(format!("viewer.{action}"))
+                .build();
+            button.update_property(&[gtk::accessible::Property::Label(tooltip)]);
+            header.pack_end(&button);
         }
         let toolbar = adw::ToolbarView::new();
         toolbar.add_top_bar(&header);

@@ -10,6 +10,7 @@ use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
 use super::version_preview;
+use crate::a11y::label_loading;
 use crate::model::AppModel;
 use crate::window::host_dialog_toasts;
 
@@ -35,12 +36,12 @@ struct Dialog {
 
 pub fn present(model: &AppModel, anchor: &impl IsA<gtk::Widget>) -> adw::Dialog {
     let saving = status_page("history-saving");
-    saving.set_child(Some(
-        &adw::Spinner::builder()
-            .width_request(32)
-            .height_request(32)
-            .build(),
-    ));
+    let saving_spinner = adw::Spinner::builder()
+        .width_request(32)
+        .height_request(32)
+        .build();
+    label_loading(&saving_spinner);
+    saving.set_child(Some(&saving_spinner));
     let unsaved = status_page("history-unsaved");
     unsaved.set_icon_name(Some("document-open-recent-symbolic"));
 
@@ -89,6 +90,7 @@ pub fn present(model: &AppModel, anchor: &impl IsA<gtk::Widget>) -> adw::Dialog 
         .halign(gtk::Align::Center)
         .visible(false)
         .build();
+    label_loading(&spinner);
     let footer = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(12)
@@ -322,7 +324,7 @@ impl Dialog {
         if version.shared {
             row.add_suffix(&shared_mark());
         }
-        row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+        row.add_suffix(&decorative_image("go-next-symbolic"));
         row.connect_activated({
             let version = version.clone();
             let model = self.model.clone();
@@ -365,6 +367,13 @@ fn shared_mark() -> gtk::Box {
     mark(Some("emblem-shared-symbolic"), "Shared", "dim-label")
 }
 
+fn decorative_image(icon: &str) -> gtk::Image {
+    gtk::Image::builder()
+        .accessible_role(gtk::AccessibleRole::Presentation)
+        .icon_name(icon)
+        .build()
+}
+
 fn mark(icon: Option<&str>, text: &str, tone: &str) -> gtk::Box {
     let mark = gtk::Box::builder()
         .spacing(4)
@@ -372,7 +381,7 @@ fn mark(icon: Option<&str>, text: &str, tone: &str) -> gtk::Box {
         .css_classes(["history-mark", "pill", tone])
         .build();
     if let Some(icon) = icon {
-        mark.append(&gtk::Image::from_icon_name(icon));
+        mark.append(&decorative_image(icon));
     }
     mark.append(&gtk::Label::new(Some(text)));
     mark

@@ -21,6 +21,10 @@ template $CommitnoteLoadingPage: Adw.NavigationPage {
           width-request: 32;
           height-request: 32;
           halign: center;
+
+          accessibility {
+            label: _("Loading");
+          }
         }
 
         Gtk.Box early_draft {
@@ -31,6 +35,10 @@ template $CommitnoteLoadingPage: Adw.NavigationPage {
           Gtk.Entry early_draft_name_entry {
             name: "early-draft-name-entry";
             placeholder-text: "Name";
+
+            accessibility {
+              label: _("Note Name");
+            }
           }
 
           Gtk.Frame {

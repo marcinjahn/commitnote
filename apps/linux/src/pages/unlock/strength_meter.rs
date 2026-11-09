@@ -8,6 +8,7 @@ use commitnote_core_api::shapes::PassphraseStrength;
 use gtk4::{self as gtk, gdk, glib};
 use libadwaita as adw;
 
+use crate::a11y;
 use crate::model::AppModel;
 use crate::pages::secret_text;
 
@@ -211,8 +212,13 @@ impl StrengthMeter {
         } else {
             imp.bar.remove_css_class("weak");
         }
-        imp.label.set_text(&strength_text(strength));
+        let text = strength_text(strength);
+        let changed = imp.label.text() != text;
+        imp.label.set_text(&text);
         self.set_visible(true);
+        if changed {
+            a11y::announce(&imp.label, &text, gtk::AccessibleAnnouncementPriority::Low);
+        }
     }
 }
 

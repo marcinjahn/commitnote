@@ -403,7 +403,7 @@ fn wait_echo(h: &Harness, text: &str) -> Result<(), String> {
     })
 }
 
-fn save_now(h: &Harness) -> Result<(), String> {
+pub(crate) fn save_now(h: &Harness) -> Result<(), String> {
     let model = h.model()?;
     h.run("saving", async move { model.save_now().await })
 }
@@ -1812,11 +1812,11 @@ fn type_to_start_blocked(h: &mut Harness) -> Result<(), String> {
 const SYNC_BUTTON: &str = "sync-status-button";
 const CONTENT_SYNC_BUTTON: &str = "content-sync-status-button";
 const BANNER: &str = "note-banner";
-const SYNCED_ICON: &str = "object-select-symbolic";
+pub(crate) const SYNCED_ICON: &str = "object-select-symbolic";
 const SYNCING_ICON: &str = "emblem-synchronizing-symbolic";
 const PENDING_ICON: &str = "preferences-system-time-symbolic";
-const OFFLINE_ICON: &str = "network-offline-symbolic";
-const FAILED_ICON: &str = "dialog-warning-symbolic";
+pub(crate) const OFFLINE_ICON: &str = "network-offline-symbolic";
+pub(crate) const FAILED_ICON: &str = "dialog-warning-symbolic";
 const CONFLICT_ICON: &str = "dialog-error-symbolic";
 const LOCAL_LINE_START: &str = "Changed here ";
 const MERGED_BY_HAND: &str = "Merged by hand\n";
@@ -1829,13 +1829,13 @@ fn sync_icon(h: &Harness, name: &str) -> Option<String> {
         .map(|icon| icon.to_string())
 }
 
-fn wait_sync_icon(h: &Harness, icon: &str) -> Result<(), String> {
+pub(crate) fn wait_sync_icon(h: &Harness, icon: &str) -> Result<(), String> {
     h.wait(&format!("the sync status to show {icon}"), || {
         h.shown(SYNC_BUTTON) && sync_icon(h, SYNC_BUTTON).as_deref() == Some(icon)
     })
 }
 
-fn sync_text(model: &AppModel) -> Option<String> {
+pub(crate) fn sync_text(model: &AppModel) -> Option<String> {
     let sync = model.sync_state()?;
     Some(sync.status.unwrap_or(sync.label))
 }

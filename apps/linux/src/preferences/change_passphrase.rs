@@ -7,6 +7,7 @@ use commitnote_core_api::commands::PassphraseChangeCopy;
 use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
+use crate::a11y::{label_progress, show_fraction, show_pulse};
 use crate::model::{AppModel, PassphraseChangeState, PassphraseStage};
 use crate::pages::secret_text;
 use crate::pages::unlock::StrengthMeter;
@@ -336,6 +337,7 @@ fn working_page(stack: &gtk::Stack) -> (gtk::Label, gtk::ProgressBar) {
         .name("passphrase-progress")
         .pulse_step(0.1)
         .build();
+    label_progress(&progress, "Re-encryption Progress");
     let message = text_label(Some("passphrase-working-message"), "");
     message.set_xalign(0.5);
     message.set_justify(gtk::Justification::Center);
@@ -541,7 +543,7 @@ impl Dialog {
         match working {
             Some(Some(fraction)) => {
                 self.stop_pulsing();
-                self.progress.set_fraction(fraction);
+                show_fraction(&self.progress, fraction);
             }
             Some(None) => self.start_pulsing(),
             None => self.stop_pulsing(),
@@ -563,6 +565,7 @@ impl Dialog {
         if pulse.is_some() {
             return;
         }
+        show_pulse(&self.progress);
         let progress = self.progress.downgrade();
         *pulse = Some(glib::timeout_add_local(
             PULSE_INTERVAL,

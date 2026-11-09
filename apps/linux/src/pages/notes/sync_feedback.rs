@@ -1,5 +1,6 @@
 use commitnote_core_api::events::SyncStateChanged;
 use commitnote_core_api::shapes::{OpenNote, OpenNoteConflict, OutOfSyncReason, SyncState};
+use gtk4 as gtk;
 
 pub const OFFLINE_ICON: &str = "network-offline-symbolic";
 pub const SYNCED_ICON: &str = "object-select-symbolic";
@@ -68,6 +69,49 @@ pub fn sync_status_view(sync: &SyncStateChanged) -> SyncStatusView {
         icon,
         text: status_text(sync).to_owned(),
         entries,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncAttention {
+    Normal,
+    Offline,
+    Failed,
+    Conflict,
+}
+
+pub fn sync_attention(sync: &SyncStateChanged) -> SyncAttention {
+    if !sync.online {
+        return SyncAttention::Offline;
+    }
+    match sync.state {
+        SyncState::OutOfSync {
+            reason: OutOfSyncReason::Failed,
+        } => SyncAttention::Failed,
+        SyncState::OutOfSync {
+            reason: OutOfSyncReason::Conflict,
+        } => SyncAttention::Conflict,
+        SyncState::Synced
+        | SyncState::Syncing
+        | SyncState::OutOfSync {
+            reason: OutOfSyncReason::Pending,
+        } => SyncAttention::Normal,
+    }
+}
+
+pub fn sync_announcement(
+    previous: Option<SyncAttention>,
+    current: SyncAttention,
+) -> Option<gtk::AccessibleAnnouncementPriority> {
+    if previous == Some(current) {
+        return None;
+    }
+    match current {
+        SyncAttention::Failed | SyncAttention::Conflict => {
+            Some(gtk::AccessibleAnnouncementPriority::High)
+        }
+        SyncAttention::Offline => Some(gtk::AccessibleAnnouncementPriority::Medium),
+        SyncAttention::Normal => previous.map(|_| gtk::AccessibleAnnouncementPriority::Medium),
     }
 }
 
@@ -167,6 +211,13 @@ mod tests {
         }
     }
 
+    const ALL_ATTENTIONS: [SyncAttention; 4] = [
+        SyncAttention::Normal,
+        SyncAttention::Offline,
+        SyncAttention::Failed,
+        SyncAttention::Conflict,
+    ];
+
     fn out_of_sync(reason: OutOfSyncReason) -> SyncState {
         SyncState::OutOfSync { reason }
     }
@@ -236,6 +287,87 @@ mod tests {
             ..sync(SyncState::Synced)
         };
         assert_eq!(sync_status_view(&with_status).text, "status");
+    }
+
+    #[test]
+    fn attention_follows_the_state_and_offline_wins() {
+        for (state, attention) in [
+            (SyncState::Synced, SyncAttention::Normal),
+            (SyncState::Syncing, SyncAttention::Normal),
+            (out_of_sync(OutOfSyncReason::Pending), SyncAttention::Normal),
+            (out_of_sync(OutOfSyncReason::Failed), SyncAttention::Failed),
+            (
+                out_of_sync(OutOfSyncReason::Conflict),
+                SyncAttention::Conflict,
+            ),
+        ] {
+            assert_eq!(sync_attention(&sync(state.clone())), attention);
+            let offline = SyncStateChanged {
+                online: false,
+                ..sync(state)
+            };
+            assert_eq!(sync_attention(&offline), SyncAttention::Offline);
+        }
+    }
+
+    #[test]
+    fn an_unchanged_attention_announces_nothing() {
+        for attention in ALL_ATTENTIONS {
+            assert_eq!(sync_announcement(Some(attention), attention), None);
+        }
+    }
+
+    #[test]
+    fn failures_and_conflicts_announce_urgently() {
+        for previous in [
+            None,
+            Some(SyncAttention::Normal),
+            Some(SyncAttention::Offline),
+        ] {
+            for current in [SyncAttention::Failed, SyncAttention::Conflict] {
+                assert_eq!(
+                    sync_announcement(previous, current),
+                    Some(gtk::AccessibleAnnouncementPriority::High)
+                );
+            }
+        }
+        assert_eq!(
+            sync_announcement(Some(SyncAttention::Failed), SyncAttention::Conflict),
+            Some(gtk::AccessibleAnnouncementPriority::High)
+        );
+    }
+
+    #[test]
+    fn going_offline_announces_politely() {
+        for previous in [
+            None,
+            Some(SyncAttention::Normal),
+            Some(SyncAttention::Failed),
+        ] {
+            assert_eq!(
+                sync_announcement(previous, SyncAttention::Offline),
+                Some(gtk::AccessibleAnnouncementPriority::Medium)
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_announces_but_a_normal_start_or_cycle_does_not() {
+        for previous in [
+            SyncAttention::Offline,
+            SyncAttention::Failed,
+            SyncAttention::Conflict,
+        ] {
+            assert_eq!(
+                sync_announcement(Some(previous), SyncAttention::Normal),
+                Some(gtk::AccessibleAnnouncementPriority::Medium)
+            );
+        }
+        assert_eq!(sync_announcement(None, SyncAttention::Normal), None);
+        assert_eq!(
+            sync_announcement(Some(SyncAttention::Normal), SyncAttention::Normal),
+            None
+        );
     }
 
     #[test]

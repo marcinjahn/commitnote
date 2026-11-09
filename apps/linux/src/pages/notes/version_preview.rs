@@ -9,6 +9,7 @@ use commitnote_core_api::commands::{
 use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
+use crate::a11y::label_loading;
 use crate::fonts::follow_note_font;
 use crate::model::{AppModel, RestoreResult};
 
@@ -51,6 +52,7 @@ pub fn page(
         .halign(gtk::Align::Center)
         .valign(gtk::Align::Center)
         .build();
+    label_loading(&loading);
 
     let retry = gtk::Button::builder()
         .name("version-retry")
@@ -313,7 +315,9 @@ impl Preview {
 
     fn update_restore(&self) {
         if self.restoring.get() {
-            self.restore.set_child(Some(&adw::Spinner::new()));
+            let spinner = adw::Spinner::new();
+            label_loading(&spinner);
+            self.restore.set_child(Some(&spinner));
         } else {
             self.restore.set_label(&self.restore_label.borrow());
         }

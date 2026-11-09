@@ -1,18 +1,35 @@
 use std::path::Path;
 
 use adw::prelude::*;
+use commitnote::a11y::testing_take_announcements;
 use commitnote::config;
 use commitnote::launch::action_from_arguments;
 use commitnote::model::Route;
 use commitnote::pages::notes::ImageViewer;
+use commitnote_core_api::shapes::{ColorTag, TagOptionView};
 use gtk4::{self as gtk, gdk, glib};
 use libadwaita as adw;
 
-use crate::flows::{ensure, launch_and_log_in, log_in, wait_tree};
-use crate::p2::{finish_loading, focus_within, reopen_held, title_entry, wait_draft};
-use crate::p3::{open_note_at, search_entry_focused};
-use crate::p5::menu_actions;
-use crate::support::{Case, Harness};
+use crate::flows::{
+    choose_repository, ensure, launch_and_log_in, log_in, open_first_note, submit_token, wait_tree,
+};
+use crate::p2::{
+    FAILED_ICON, OFFLINE_ICON, SYNCED_ICON, fail_commits, finish_loading, focus_within,
+    reopen_held, save_now, sync_text, title_entry, type_at_end, wait_draft, wait_sync_icon,
+};
+use crate::p3::{
+    click_labelled, has_node, is_shared, open_note_at, path, row_expander, search_entry_focused,
+    search_with, trash_node_action,
+};
+use crate::p4::{
+    FIRST_TEXT, HISTORY_DIALOG, SHARE_PASSWORD, SHARED_LINKS_DIALOG, WELCOME as WELCOME_NOTE,
+    WHITEBOARD as WHITEBOARD_NOTE, open_editor, open_history, open_shared_links, open_viewer,
+    share_note_with, wait_images_ready, wait_shares, welcome_with_versions,
+};
+use crate::p5::{choose_existing, import_zip_dialog, menu_actions, select_target};
+use crate::support::{
+    Case, Harness, Width, assert_checked, assert_named, assert_presentation, descendants,
+};
 
 pub const CASES: &[Case] = &[
     ("p6-launch-desktop-new-note", launch_desktop_new_note),
@@ -28,7 +45,18 @@ pub const CASES: &[Case] = &[
     ("p6-shortcuts-dialog-matches", shortcuts_dialog_matches),
     ("p6-about-dialog", about_dialog),
     ("p6-about-menu", about_menu),
+    ("p6-a11y-names-notes", a11y_names_notes),
+    ("p6-a11y-names-dialogs", a11y_names_dialogs),
+    ("p6-a11y-presentation", a11y_presentation),
+    ("p6-a11y-spinners", a11y_spinners),
+    ("p6-announce-sync", announce_sync),
+    ("p6-announce-search", announce_search),
+    ("p6-announce-loading", announce_loading),
+    ("p6-announce-strength", announce_strength),
+    ("p6-announce-no-toast-repeat", announce_no_toast_repeat),
 ];
+
+type Announcement = (String, gtk::AccessibleAnnouncementPriority);
 
 const DESKTOP_FILE: &str = "data/io.github.marcinjahn.commitnote.desktop.in";
 const EARLY_NAME_ENTRY: &str = "early-draft-name-entry";
@@ -685,4 +713,493 @@ fn about_menu(h: &mut Harness) -> Result<(), String> {
         }),
         || format!("About does not follow Keyboard Shortcuts in the main menu: {sections:?}"),
     )
+}
+
+const TAGGED: ColorTag = ColorTag::Red;
+const TAG_DOT: &str = "tag-dot";
+const SHARED_ICON: &str = "emblem-shared-symbolic";
+const PASSWORD_ICON: &str = "channel-secure-symbolic";
+const CHECK_ICON: &str = "object-select-symbolic";
+const NEXT_ICON: &str = "go-next-symbolic";
+const TRASH_DIALOG_NAME: &str = "trash-dialog";
+const SEARCH_RESULTS: &str = "search-results-list";
+const VIEWER_BUTTONS: [(&str, &str); 3] = [
+    ("image-zoom-fit", "Best Fit"),
+    ("image-zoom-in", "Zoom In"),
+    ("image-zoom-out", "Zoom Out"),
+];
+
+fn tag_label(h: &Harness, tag: ColorTag) -> Result<String, String> {
+    let options: Vec<TagOptionView> = h.model()?.tag_options();
+    Ok(options
+        .iter()
+        .find(|option| option.tag == tag)
+        .map_or_else(|| "Red".to_owned(), |option| option.label.clone()))
+}
+
+fn tag_note(h: &Harness, target: &[&str], tag: ColorTag) -> Result<(), String> {
+    let model = h.model()?;
+    let target = path(target);
+    h.run("tagging the note", {
+        let target = target.clone();
+        async move { model.set_color_tag(target, Some(tag)).await }
+    })?
+    .map_err(|error| error.message)?;
+    h.wait("the tag dot in the tree", || {
+        row_expander(h, &target[target.len() - 1]).is_ok_and(|row| {
+            descendants(row.upcast_ref())
+                .iter()
+                .any(|widget| widget.has_css_class(TAG_DOT) && widget.is_visible())
+        })
+    })
+}
+
+fn find_image(root: &gtk::Widget, icon: &str) -> Option<gtk::Image> {
+    descendants(root)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Image>().ok())
+        .find(|image| image.icon_name().as_deref() == Some(icon))
+}
+
+fn tag_dots(root: &gtk::Widget) -> Vec<gtk::Widget> {
+    descendants(root)
+        .into_iter()
+        .filter(|widget| widget.has_css_class(TAG_DOT))
+        .collect()
+}
+
+fn a11y_names_notes(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    assert_named(&h.widget("notes-main-menu-button")?, "Main Menu")?;
+
+    tag_note(h, WELCOME_NOTE, TAGGED)?;
+    share_note_with(h, &path(WELCOME_NOTE), SHARE_PASSWORD, "Names")?;
+    h.wait("the note to be marked shared", || {
+        is_shared(h, &path(WELCOME_NOTE))
+    })?;
+    let expected = format!("Welcome, {} tag", tag_label(h, TAGGED)?);
+    h.wait("the tree row to be named with its tag", || {
+        row_expander(h, "Welcome")
+            .ok()
+            .and_then(|row| row.parent())
+            .is_some_and(|item| assert_named(&item, &expected).is_ok())
+    })?;
+    let row = row_expander(h, "Welcome")?;
+    h.wait("the shared icon in the row", || {
+        find_image(row.upcast_ref(), SHARED_ICON).is_some_and(|icon| icon.is_visible())
+    })?;
+    let icon = find_image(row.upcast_ref(), SHARED_ICON).ok_or("the row has no shared icon")?;
+    assert_named(&icon, "Shared")?;
+
+    open_editor(h, WHITEBOARD_NOTE)?;
+    assert_named(&h.widget("note-editor-view")?, "Note")?;
+    let editor = h.widget_as::<commitnote::editor::NoteEditor>("note-editor")?;
+    wait_images_ready(h, &editor, 1)?;
+    open_viewer(h, &editor)?;
+    for (name, label) in VIEWER_BUTTONS {
+        assert_named(&h.widget(name)?, label)?;
+    }
+    Ok(())
+}
+
+fn a11y_names_dialogs(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, true)?;
+    reopen_held(h)?;
+    let loading = h.page("loading")?;
+    let spinners = descendants(loading.upcast_ref())
+        .into_iter()
+        .filter(|widget| widget.is::<adw::Spinner>())
+        .collect::<Vec<_>>();
+    ensure(!spinners.is_empty(), || {
+        "the loading page shows no spinner".to_owned()
+    })?;
+    for spinner in &spinners {
+        assert_named(spinner, "Loading")?;
+    }
+    assert_named(&h.widget(EARLY_NAME_ENTRY)?, "Note Name")?;
+    finish_loading(h)?;
+    wait_tree(h)?;
+
+    share_note_with(h, &path(WELCOME_NOTE), SHARE_PASSWORD, "Names")?;
+    wait_shares(h, &path(WELCOME_NOTE), 1)?;
+    let dialog = open_shared_links(h)?;
+    h.wait("the password image of the share", || {
+        find_image(dialog.upcast_ref(), PASSWORD_ICON).is_some()
+    })?;
+    let lock = find_image(dialog.upcast_ref(), PASSWORD_ICON).ok_or("no password image")?;
+    assert_named(&lock, "Password Protected")?;
+    dialog.close();
+    h.wait("the shared links dialog to close", || {
+        !h.shown(SHARED_LINKS_DIALOG)
+    })?;
+
+    let model = h.model()?;
+    h.wait("the settings", || model.settings_view().is_some())?;
+    import_zip_dialog(h)?;
+    choose_existing(h)?;
+    select_target(h, &["Projects"])?;
+    let form = model.import_form().ok_or("no import form")?;
+    let selected = form
+        .targets
+        .iter()
+        .position(|target| target.path == path(&["Projects"]))
+        .ok_or("the form offers no Projects folder")?;
+    let other = usize::from(selected == 0);
+    let row = |index: usize| h.widget(&format!("import-target-{index}"));
+    h.wait("the selected target to be checked", || {
+        row(selected).is_ok_and(|row| assert_checked(&row, true).is_ok())
+    })?;
+    assert_checked(&row(other)?, false)?;
+    let check = find_image(&row(selected)?, CHECK_ICON).ok_or("the row has no check image")?;
+    assert_presentation(&check)
+}
+
+fn a11y_presentation(h: &mut Harness) -> Result<(), String> {
+    welcome_with_versions(h, &[FIRST_TEXT])?;
+    open_history(h)?;
+    h.wait("the version rows", || h.widget("history-version-0").is_ok())?;
+    let history = h.widget(HISTORY_DIALOG)?;
+    let next = find_image(&history, NEXT_ICON).ok_or("the history rows have no next image")?;
+    assert_presentation(&next)?;
+    h.widget_as::<adw::Dialog>(HISTORY_DIALOG)?.close();
+    h.wait("the history to close", || !h.shown(HISTORY_DIALOG))?;
+
+    tag_note(h, WELCOME_NOTE, TAGGED)?;
+    let tree_dots = tag_dots(row_expander(h, "Welcome")?.upcast_ref());
+    ensure(!tree_dots.is_empty(), || {
+        "the tree row has no tag dot".to_owned()
+    })?;
+    for dot in &tree_dots {
+        assert_presentation(dot)?;
+    }
+
+    let expected = format!("Welcome, {} tag", tag_label(h, TAGGED)?);
+    search_with(h, "<Control>f", "welcome")?;
+    h.wait("a tagged search result", || {
+        h.widget(SEARCH_RESULTS)
+            .is_ok_and(|list| !tag_dots(&list).is_empty())
+    })?;
+    let list = h.widget(SEARCH_RESULTS)?;
+    for dot in tag_dots(&list) {
+        assert_presentation(&dot)?;
+    }
+    let result = descendants(&list)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::ListBoxRow>().ok())
+        .find(|row| !tag_dots(row.upcast_ref()).is_empty())
+        .ok_or("no search row carries the dot")?;
+    assert_named(&result, &expected)?;
+    h.press_keys("Escape")?;
+    h.wait("the search to close", || !h.shown("search-entry"))?;
+
+    let model = h.model()?;
+    let welcome = path(WELCOME_NOTE);
+    h.run("trashing the note", {
+        let (model, welcome) = (model.clone(), welcome.clone());
+        async move {
+            let preview = model.trash_preview(welcome.clone()).await?;
+            model.trash_node(welcome, preview.share_count).await
+        }
+    })?
+    .map_err(|error| error.message)?;
+    h.wait("the note in the trash", || {
+        model
+            .trash()
+            .is_some_and(|trash| trash.entries.iter().any(|entry| entry.name == "Welcome"))
+    })?;
+    WidgetExt::activate_action(&h.widget("notes-tree-list")?, "notes.show-trash", None)
+        .map_err(|error| format!("cannot activate notes.show-trash: {error}"))?;
+    h.wait_shown(TRASH_DIALOG_NAME)?;
+    h.wait("the trashed row", || h.row_titled("Welcome").is_ok())?;
+    let row = h.row_titled("Welcome")?;
+    let dots = tag_dots(row.upcast_ref());
+    ensure(!dots.is_empty(), || {
+        "the trash row has no tag dot".to_owned()
+    })?;
+    for dot in &dots {
+        assert_presentation(dot)?;
+    }
+    assert_named(&row, &expected)
+}
+
+fn spinners_in(root: &gtk::Widget) -> Vec<gtk::Widget> {
+    descendants(root)
+        .into_iter()
+        .filter(|widget| widget.is::<adw::Spinner>() || widget.is::<gtk::Spinner>())
+        .collect()
+}
+
+fn audit_spinners(h: &Harness) -> Result<usize, String> {
+    let spinners = spinners_in(h.window()?.upcast_ref());
+    for spinner in &spinners {
+        assert_named(spinner, "Loading")?;
+    }
+    Ok(spinners.len())
+}
+
+fn close_dialog(h: &Harness, name: &str) -> Result<(), String> {
+    h.widget_as::<adw::Dialog>(name)?.close();
+    h.wait("the dialog to close", || !h.shown(name))
+}
+
+fn a11y_spinners(h: &mut Harness) -> Result<(), String> {
+    h.launch()?;
+    h.wait_page("token")?;
+    let mut audited = audit_spinners(h)?;
+    log_in(h, false)?;
+    wait_tree(h)?;
+    audited += audit_spinners(h)?;
+
+    open_note_at(h, WELCOME_NOTE)?;
+    let tree = h.widget("notes-tree-list")?;
+    for (action, dialog) in [
+        ("notes.show-trash", TRASH_DIALOG_NAME),
+        ("notes.show-details", "details-dialog"),
+        ("notes.show-history", HISTORY_DIALOG),
+        ("notes.show-shared-links", SHARED_LINKS_DIALOG),
+    ] {
+        h.wait(&format!("{action} to be enabled"), || {
+            crate::p3::action_enabled(h, action).unwrap_or(false)
+        })?;
+        WidgetExt::activate_action(&tree, action, None)
+            .map_err(|error| format!("cannot activate {action}: {error}"))?;
+        h.wait_shown(dialog)?;
+        audited += audit_spinners(h)?;
+        close_dialog(h, dialog)?;
+    }
+    ensure(audited > 0, || {
+        "the audit found no spinner at all".to_owned()
+    })
+}
+
+fn only_announcement(what: &str) -> Result<Announcement, String> {
+    let mut announcements = testing_take_announcements();
+    ensure(announcements.len() == 1, || {
+        format!(
+            "{what} produced {} announcements: {announcements:?}",
+            announcements.len()
+        )
+    })?;
+    Ok(announcements.remove(0))
+}
+
+fn announce_sync(h: &mut Harness) -> Result<(), String> {
+    use gtk::AccessibleAnnouncementPriority::{High, Medium};
+
+    launch_and_log_in(h, false)?;
+    wait_sync_icon(h, SYNCED_ICON)?;
+    open_first_note(h)?;
+    let model = h.model()?;
+    let editor = h.widget_as::<commitnote::editor::NoteEditor>("note-editor")?;
+
+    testing_take_announcements();
+    type_at_end(h, &editor)?;
+    save_now(h)?;
+    wait_sync_icon(h, SYNCED_ICON)?;
+    let announced = testing_take_announcements();
+    ensure(announced.is_empty(), || {
+        format!("a normal save announced {announced:?}")
+    })?;
+
+    model.set_online(false);
+    wait_sync_icon(h, OFFLINE_ICON)?;
+    let offline_text = sync_text(&model).ok_or("the model has no sync state")?;
+    let offline = only_announcement("going offline")?;
+    ensure(offline == (offline_text.clone(), Medium), || {
+        format!("going offline announced {offline:?}, expected {offline_text:?} with Medium")
+    })?;
+
+    model.emit_by_name::<()>("sync-state-changed", &[]);
+    h.settle()?;
+    let repeated = testing_take_announcements();
+    ensure(repeated.is_empty(), || {
+        format!("an unchanged state announced {repeated:?}")
+    })?;
+
+    model.set_online(true);
+    wait_sync_icon(h, SYNCED_ICON)?;
+    let recovered = only_announcement("recovering")?;
+    ensure(recovered.1 == Medium && recovered.0 != offline_text, || {
+        format!("recovering announced {recovered:?}")
+    })?;
+
+    fail_commits(h, true)?;
+    type_at_end(h, &editor)?;
+    save_now(h)?;
+    wait_sync_icon(h, FAILED_ICON)?;
+    let failed_text = sync_text(&model).ok_or("the model has no sync state")?;
+    let failed = only_announcement("a failed push")?;
+    let outcome = ensure(failed == (failed_text.clone(), High), || {
+        format!("a failed push announced {failed:?}, expected {failed_text:?} with High")
+    });
+    fail_commits(h, false)?;
+    outcome
+}
+
+fn announce_search(h: &mut Harness) -> Result<(), String> {
+    use gtk::AccessibleAnnouncementPriority::Medium;
+
+    launch_and_log_in(h, false)?;
+    let model = h.model()?;
+    let count_text = || {
+        model
+            .search_results()
+            .and_then(|results| results.count_text)
+            .filter(|_| model.search_status().is_none_or(|status| !status.partial))
+    };
+
+    testing_take_announcements();
+    search_with(h, "<Control>f", "road")?;
+    h.wait("the search to settle", || count_text().is_some())?;
+    let text = count_text().ok_or("the search has no count")?;
+    h.settle()?;
+    let first = testing_take_announcements();
+    ensure(first == [(text.clone(), Medium)], || {
+        format!("searching announced {first:?}, expected {text:?} once with Medium")
+    })?;
+
+    h.type_keys("m")?;
+    h.wait("the longer query", || {
+        h.text("search-entry").is_ok_and(|query| query == "roadm")
+    })?;
+    h.settle()?;
+    ensure(count_text().as_ref() == Some(&text), || {
+        "the longer query changed the count text".to_owned()
+    })?;
+    let same = testing_take_announcements();
+    ensure(same.is_empty(), || {
+        format!("an unchanged count announced {same:?}")
+    })?;
+
+    h.press_keys("Escape")?;
+    h.wait("search to close", || !h.shown("search-entry"))?;
+    testing_take_announcements();
+    search_with(h, "<Control>f", "road")?;
+    h.wait("the second search to settle", || count_text().is_some())?;
+    h.settle()?;
+    let again = testing_take_announcements();
+    ensure(again == [(text.clone(), Medium)], || {
+        format!("a new search announced {again:?}, expected {text:?} once with Medium")
+    })
+}
+
+fn announce_loading(h: &mut Harness) -> Result<(), String> {
+    use gtk::AccessibleAnnouncementPriority::Low;
+
+    launch_and_log_in(h, true)?;
+    testing_take_announcements();
+    reopen_held(h)?;
+    let status = h.widget_as::<adw::StatusPage>("loading-status")?;
+    let title = status.title().to_string();
+    ensure(!title.is_empty(), || {
+        "the loading page has no message".to_owned()
+    })?;
+    let announced = testing_take_announcements();
+    ensure(announced.last() == Some(&(title.clone(), Low)), || {
+        format!("the loading message {title:?} was announced as {announced:?}")
+    })?;
+    ensure(
+        announced.iter().all(|(_, priority)| *priority == Low),
+        || format!("a loading message was announced above Low: {announced:?}"),
+    )?;
+    finish_loading(h)
+}
+
+fn announce_strength(h: &mut Harness) -> Result<(), String> {
+    use gtk::AccessibleAnnouncementPriority::Low;
+
+    h.launch()?;
+    submit_token(h)?;
+    choose_repository(h, "https://github.com/sample/empty")?;
+    h.wait_page("initialize")?;
+    h.resize(Width::Wide)?;
+    let meter = h.widget("init-strength")?;
+    let label = || {
+        h.widget_in(&meter, "strength-label")
+            .and_then(|label| {
+                label
+                    .downcast::<gtk::Label>()
+                    .map_err(|_| "the strength label is not a label".to_owned())
+            })
+            .map(|label| label.label().to_string())
+    };
+
+    testing_take_announcements();
+    h.set_text(
+        "init-passphrase-row",
+        "harbour lantern copper meadow violin",
+    )?;
+    h.wait("the strength verdict", || {
+        label().is_ok_and(|text| !text.is_empty())
+    })?;
+    let strong = label()?;
+    let first = testing_take_announcements();
+    ensure(first == [(strong.clone(), Low)], || {
+        format!("the verdict announced {first:?}, expected {strong:?} once with Low")
+    })?;
+
+    h.set_text(
+        "init-passphrase-row",
+        "harbour lantern copper meadow violins",
+    )?;
+    h.run(
+        "the strength request to be sent",
+        glib::timeout_future(std::time::Duration::from_millis(250)),
+    )?;
+    core_round_trip(h)?;
+    h.settle()?;
+    ensure(label()? == strong, || {
+        "the second passphrase changed the verdict".to_owned()
+    })?;
+    let unchanged = testing_take_announcements();
+    ensure(unchanged.is_empty(), || {
+        format!("an unchanged verdict announced {unchanged:?}")
+    })?;
+
+    h.set_text("init-passphrase-row", "abc")?;
+    h.wait("the weaker verdict", || {
+        label().is_ok_and(|text| !text.is_empty() && text != strong)
+    })?;
+    let weak = label()?;
+    let changed = testing_take_announcements();
+    ensure(changed == [(weak.clone(), Low)], || {
+        format!("the weaker verdict announced {changed:?}, expected {weak:?} once with Low")
+    })
+}
+
+fn announce_no_toast_repeat(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    let model = h.model()?;
+    let shown = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+    let notices = model.connect_notice({
+        let shown = shown.clone();
+        move |_, notice| shown.borrow_mut().push(notice.message.clone())
+    });
+    let toasts = model.connect_toast({
+        let shown = shown.clone();
+        move |_, message| shown.borrow_mut().push(message.to_owned())
+    });
+
+    let welcome = path(&["Welcome"]);
+    testing_take_announcements();
+    trash_node_action(h, &["Welcome"])?;
+    h.wait_shown("trash-confirm-dialog")?;
+    let confirm = h
+        .widget_as::<adw::AlertDialog>("trash-confirm-dialog")?
+        .response_label("confirm");
+    click_labelled(h, &confirm)?;
+    h.wait("the note to leave the tree", || !has_node(h, &welcome))?;
+    h.wait("the undo toast", || !shown.borrow().is_empty())?;
+    h.settle()?;
+    model.disconnect(notices);
+    model.disconnect(toasts);
+
+    let announced = testing_take_announcements();
+    let repeated = announced
+        .iter()
+        .filter(|(message, _)| shown.borrow().contains(message))
+        .collect::<Vec<_>>();
+    ensure(repeated.is_empty(), || {
+        format!("a toast was announced again: {repeated:?}")
+    })
 }

@@ -292,7 +292,7 @@ pub fn click_labelled(h: &Harness, label: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn trash_node_action(h: &Harness, target: &[&str]) -> Result<(), String> {
+pub(crate) fn trash_node_action(h: &Harness, target: &[&str]) -> Result<(), String> {
     let list = h.widget(TREE_LIST)?;
     WidgetExt::activate_action(&list, "tree.trash", Some(&path(target).to_variant()))
         .map_err(|error| format!("cannot activate tree.trash: {error}"))
@@ -714,7 +714,7 @@ fn focus_tree(h: &Harness) -> Result<(), String> {
     h.wait("the tree to have focus", || tree_focused(h))
 }
 
-fn search_with(h: &Harness, shortcut: &str, query: &str) -> Result<(), String> {
+pub(crate) fn search_with(h: &Harness, shortcut: &str, query: &str) -> Result<(), String> {
     h.press_keys(shortcut)?;
     h.wait("the search entry to show with focus", || {
         h.shown("search-entry") && search_entry_focused(h)
@@ -1164,7 +1164,7 @@ fn widgets_under(root: &gtk::Widget) -> Vec<gtk::Widget> {
     found
 }
 
-fn row_expander(h: &Harness, name: &str) -> Result<gtk::TreeExpander, String> {
+pub(crate) fn row_expander(h: &Harness, name: &str) -> Result<gtk::TreeExpander, String> {
     widgets_under(&h.widget(TREE_LIST)?)
         .into_iter()
         .filter_map(|widget| widget.downcast::<gtk::Label>().ok())

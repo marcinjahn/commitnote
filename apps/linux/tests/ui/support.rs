@@ -12,7 +12,7 @@ use commitnote::model::{AppConfig, AppModel, Appearance, ColorMode, Route};
 use commitnote::window::CommitnoteWindow;
 use commitnote_core_runtime::services::RememberedSessionStore;
 use commitnote_core_runtime::services::remembered_session::open_remembered_session_store;
-use gtk4::glib::translate::IntoGlib;
+use gtk4::glib::translate::{IntoGlib, ToGlibPtr};
 use gtk4::{self as gtk, gdk, gio, glib, graphene};
 use libadwaita as adw;
 
@@ -1076,5 +1076,80 @@ pub fn route_name(route: &Route) -> &'static str {
         Route::Loading { failure: Some(_) } => "loading failed",
         Route::Notes => "notes",
         Route::KeyChanged { .. } => "key changed",
+    }
+}
+
+fn accessible(widget: &impl IsA<gtk::Widget>) -> &gtk::Accessible {
+    widget.upcast_ref::<gtk::Widget>().upcast_ref()
+}
+
+fn check_failure(message: *mut std::ffi::c_char) -> Option<String> {
+    if message.is_null() {
+        return None;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(message) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glib::ffi::g_free(message.cast()) };
+    Some(text)
+}
+
+pub fn assert_named(widget: &impl IsA<gtk::Widget>, expected: &str) -> Result<(), String> {
+    let label = std::ffi::CString::new(expected).map_err(|error| error.to_string())?;
+    let failure = check_failure(unsafe {
+        gtk::ffi::gtk_test_accessible_check_property(
+            accessible(widget).to_glib_none().0,
+            gtk::ffi::GTK_ACCESSIBLE_PROPERTY_LABEL,
+            label.as_ptr(),
+        )
+    });
+    match failure {
+        Some(failure) => Err(format!(
+            "{} is not named {expected:?}: {failure}",
+            describe(widget.upcast_ref::<gtk::Widget>())
+        )),
+        None => Ok(()),
+    }
+}
+
+pub fn assert_checked(widget: &impl IsA<gtk::Widget>, checked: bool) -> Result<(), String> {
+    let tristate = if checked {
+        gtk::ffi::GTK_ACCESSIBLE_TRISTATE_TRUE
+    } else {
+        gtk::ffi::GTK_ACCESSIBLE_TRISTATE_FALSE
+    };
+    let failure = check_failure(unsafe {
+        gtk::ffi::gtk_test_accessible_check_state(
+            accessible(widget).to_glib_none().0,
+            gtk::ffi::GTK_ACCESSIBLE_STATE_CHECKED,
+            tristate,
+        )
+    });
+    match failure {
+        Some(failure) => Err(format!(
+            "{} is not checked={checked}: {failure}",
+            describe(widget.upcast_ref::<gtk::Widget>())
+        )),
+        None => Ok(()),
+    }
+}
+
+pub fn assert_presentation(widget: &impl IsA<gtk::Widget>) -> Result<(), String> {
+    let role = widget.upcast_ref::<gtk::Widget>().accessible_role();
+    if role == gtk::AccessibleRole::Presentation {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} has the role {role:?}, not Presentation",
+            describe(widget.upcast_ref::<gtk::Widget>())
+        ))
+    }
+}
+
+fn describe(widget: &gtk::Widget) -> String {
+    if widget.widget_name().is_empty() {
+        widget.type_().name().to_owned()
+    } else {
+        format!("{} {:?}", widget.type_().name(), widget.widget_name())
     }
 }

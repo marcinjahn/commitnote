@@ -94,7 +94,7 @@ fn preferences_enabled(h: &Harness) -> bool {
         .is_some_and(|action| action.is_enabled())
 }
 
-fn launch_notes(h: &Harness) -> Result<Rc<SettingsCopy>, String> {
+pub(crate) fn launch_notes(h: &Harness) -> Result<Rc<SettingsCopy>, String> {
     launch_and_log_in(h, false)?;
     let model = h.model()?;
     h.wait("the settings and the Preferences action", || {
@@ -998,7 +998,7 @@ fn open_import(h: &Harness, files: Vec<gio::File>) -> Result<(), String> {
     wait_import_form(h)
 }
 
-fn import_zip_dialog(h: &Harness) -> Result<(), String> {
+pub(crate) fn import_zip_dialog(h: &Harness) -> Result<(), String> {
     let zip = export_to_zip(h)?;
     open_import(h, vec![zip])
 }
@@ -1007,13 +1007,13 @@ fn wait_dialog_closed(h: &Harness) -> Result<(), String> {
     h.wait("the import dialog to close", || !h.shown(IMPORT_DIALOG))
 }
 
-fn choose_existing(h: &Harness) -> Result<(), String> {
+pub(crate) fn choose_existing(h: &Harness) -> Result<(), String> {
     h.widget_as::<adw::ToggleGroup>(IMPORT_TARGET)?
         .set_active_name(Some(EXISTING_FOLDER));
     h.wait("the folder list", || h.shown("import-targets"))
 }
 
-fn select_target(h: &Harness, target: &[&str]) -> Result<(), String> {
+pub(crate) fn select_target(h: &Harness, target: &[&str]) -> Result<(), String> {
     let wanted = path(target);
     let form = h.model()?.import_form().ok_or("no import form")?;
     let index = form

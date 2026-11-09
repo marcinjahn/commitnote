@@ -13,6 +13,7 @@ use super::text::{
     forge_id, is_blank, linked_markup, preferred_forge_index, progress_message, token_error_text,
     token_link_text,
 };
+use crate::a11y;
 use crate::config;
 use crate::model::{AppModel, GENERIC_ERROR_MESSAGE};
 use crate::pages::{secret_text, set_secret_text};
@@ -193,7 +194,8 @@ impl TokenPage {
             let imp = page.imp();
             imp.token_row.grab_focus();
             if imp.error_label.is_visible() {
-                imp.error_label.announce(
+                a11y::announce(
+                    &*imp.error_label,
                     &imp.error_label.label(),
                     gtk::AccessibleAnnouncementPriority::High,
                 );
@@ -259,7 +261,7 @@ impl TokenPage {
         label.set_label(message);
         label.set_visible(true);
         if label.root().is_some() {
-            label.announce(message, gtk::AccessibleAnnouncementPriority::High);
+            a11y::announce(&**label, message, gtk::AccessibleAnnouncementPriority::High);
         }
     }
 

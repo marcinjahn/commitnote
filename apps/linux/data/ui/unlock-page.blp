@@ -72,7 +72,11 @@ template $CommitnoteUnlockPage: Adw.NavigationPage {
               use-markup: false;
 
               [prefix]
-              Adw.Spinner {}
+              Adw.Spinner {
+                accessibility {
+                  label: _("Loading");
+                }
+              }
             }
           }
 
