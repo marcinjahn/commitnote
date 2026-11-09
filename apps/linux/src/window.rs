@@ -10,6 +10,7 @@ use commitnote_core_api::commands::LaunchAction;
 use gtk4::{self as gtk, gio, glib};
 use libadwaita as adw;
 
+use crate::about;
 use crate::close_guard::{
     CloseScope, CloseStep, Inhibitor, LOGOUT_INHIBIT_REASON, LogoutInhibit, UNSAVED_HEADING,
     after_flush, on_close_request, should_inhibit_logout, unsaved_body,
@@ -226,6 +227,9 @@ impl CommitnoteWindow {
         let preferences = gio::ActionEntry::builder("preferences")
             .activate(|window: &Self, _, _| window.show_preferences())
             .build();
+        let about = gio::ActionEntry::builder("about")
+            .activate(|window: &Self, _, _| about::present(window))
+            .build();
         let export_notes = gio::ActionEntry::builder("export-notes")
             .activate(|window: &Self, _, _| window.export_notes())
             .build();
@@ -242,6 +246,7 @@ impl CommitnoteWindow {
             save_now,
             new_note,
             preferences,
+            about,
             export_notes,
             import_notes,
             change_passphrase,

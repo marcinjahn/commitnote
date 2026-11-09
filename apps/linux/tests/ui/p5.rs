@@ -183,7 +183,7 @@ fn preferences_shortcut(h: &mut Harness) -> Result<(), String> {
     h.wait("Escape to close the dialog", || !h.shown(DIALOG))
 }
 
-fn menu_actions(h: &Harness) -> Result<Vec<Vec<String>>, String> {
+pub(crate) fn menu_actions(h: &Harness) -> Result<Vec<Vec<String>>, String> {
     let menu = h
         .widget_as::<gtk::MenuButton>(MAIN_MENU)?
         .menu_model()
@@ -204,18 +204,20 @@ fn menu_actions(h: &Harness) -> Result<Vec<Vec<String>>, String> {
 fn preferences_menu(h: &mut Harness) -> Result<(), String> {
     launch_notes(h)?;
     let sections = menu_actions(h)?;
-    let own = |action: &str| vec![action.to_owned()];
+    let section = |actions: &[&str]| -> Vec<String> {
+        actions.iter().map(|action| (*action).to_owned()).collect()
+    };
     ensure(
         sections.windows(3).any(|run| {
             run == [
-                own("win.refresh"),
-                own("win.preferences"),
-                own("win.log-out"),
+                section(&["win.refresh"]),
+                section(&["win.preferences", "app.shortcuts", "win.about"]),
+                section(&["win.log-out"]),
             ]
         }),
         || {
             format!(
-                "Preferences is not in its own section between Refresh and Log Out: {sections:?}"
+                "Preferences, Keyboard Shortcuts and About are not their own section between Refresh and Log Out: {sections:?}"
             )
         },
     )?;

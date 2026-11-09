@@ -13,7 +13,18 @@
     <file>ui/notes-page.ui</file>
     <file>ui/tree-view.ui</file>
     <file>ui/note-view.ui</file>
+    <file alias="shortcuts-dialog.ui">ui/shortcuts-dialog.ui</file>
     <file alias="core/commitnote-core.js">commitnote-core.js</file>
+    <file alias="licenses/AtkinsonHyperlegibleNext-OFL.txt">AtkinsonHyperlegibleNext-OFL.txt</file>
+    <file alias="licenses/IBMPlexMono-OFL.txt">IBMPlexMono-OFL.txt</file>
+    <file alias="licenses/IBMPlexSans-OFL.txt">IBMPlexSans-OFL.txt</file>
+    <file alias="licenses/Inter-OFL.txt">Inter-OFL.txt</file>
+    <file alias="licenses/JetBrainsMono-OFL.txt">JetBrainsMono-OFL.txt</file>
+    <file alias="licenses/Literata-OFL.txt">Literata-OFL.txt</file>
+    <file alias="licenses/Lora-OFL.txt">Lora-OFL.txt</file>
+    <file alias="licenses/Nunito-OFL.txt">Nunito-OFL.txt</file>
+    <file alias="licenses/SourceSerif4-OFL.txt">SourceSerif4-OFL.txt</file>
+    <file alias="licenses/iAWriterQuattro-LICENSE.md">iAWriterQuattro-LICENSE.md</file>
     <file>style.css</file>
   </gresource>
 </gresources>

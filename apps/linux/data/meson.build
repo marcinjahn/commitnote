@@ -101,6 +101,10 @@ resources = gnome.compile_resources(
   'resources',
   'resources.gresource.xml',
   gresource_bundle: true,
-  source_dir: [meson.current_source_dir(), meson.current_build_dir()],
+  source_dir: [
+    meson.current_source_dir(),
+    meson.current_build_dir(),
+    note_fonts_dir / 'Licenses',
+  ],
   dependencies: [ui_files, core_bundle_copy],
 )
