@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use adw::prelude::*;
 use commitnote::config;
 use commitnote::launch;
-use commitnote::model::appearance::AppearanceApplier;
+use commitnote::model::appearance::{AccentColor, AppearanceApplier};
 use commitnote::model::{AppConfig, AppModel, Appearance, ColorMode, Route};
 use commitnote::window::CommitnoteWindow;
 use commitnote_core_runtime::services::RememberedSessionStore;
@@ -809,18 +809,55 @@ impl Harness {
 
     /// Renders the views before a session exists, with the system accent and a forced scheme.
     pub fn screenshots(&self, view: &str, variants: &[(Width, Theme)]) -> Result<(), String> {
+        self.pre_session_screenshots(view, variants, None, "system")
+    }
+
+    /// Like [`Self::screenshots`], with the session accent applied as it is once settings load.
+    pub fn screenshots_in_accent(
+        &self,
+        view: &str,
+        variants: &[(Width, Theme)],
+        accent: &AccentColor,
+    ) -> Result<(), String> {
+        self.pre_session_screenshots(view, variants, Some(accent), SESSION_ACCENT)
+    }
+
+    /// The session accent as the core's settings define it, which is only loaded while a session
+    /// is open.
+    pub fn session_accent(&self) -> Result<AccentColor, String> {
+        let model = self.model()?;
+        self.wait("the settings copy", || model.settings_copy().is_some())?;
+        let copy = model.settings_copy().ok_or("the settings copy vanished")?;
+        copy.accent_color
+            .options
+            .iter()
+            .find(|option| option.id == SESSION_ACCENT)
+            .map(|option| AccentColor {
+                light: option.light.clone(),
+                dark: option.dark.clone(),
+            })
+            .ok_or_else(|| format!("the core offers no {SESSION_ACCENT} accent"))
+    }
+
+    fn pre_session_screenshots(
+        &self,
+        view: &str,
+        variants: &[(Width, Theme)],
+        accent: Option<&AccentColor>,
+        accent_name: &str,
+    ) -> Result<(), String> {
         let style_manager = adw::StyleManager::default();
         for &(width, theme) in variants {
             self.resize(width)?;
             self.applier.apply(&Appearance {
                 color_mode: theme.color_mode(),
-                accent: None,
+                accent: accent.cloned(),
             });
             self.wait(&format!("the {} scheme", theme.name()), || {
                 style_manager.is_dark() == theme.is_dark()
             })?;
             self.settle()?;
-            self.capture(view, width, theme, "system")?;
+            self.capture(view, width, theme, accent_name)?;
         }
         Ok(())
     }

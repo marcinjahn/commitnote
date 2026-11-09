@@ -13,27 +13,34 @@ use gtk4::{self as gtk, gdk, gio, glib};
 use libadwaita as adw;
 
 use crate::flows::{
-    choose_repository, ensure, launch_and_log_in, log_in, open_first_note, split_view,
+    NOTES_URL, choose_repository, ensure, launch_and_log_in, log_in, open_first_note, split_view,
     submit_token, wait_tree,
 };
+use crate::p1::HELD_LOADING_MESSAGE;
 use crate::p2::{
     FAILED_ICON, OFFLINE_ICON, SYNCED_ICON, fail_commits, finish_loading, focus_within,
     reopen_held, save_now, set_note_text, show_saved, sync_text, title_entry, type_at_end,
     wait_draft, wait_sync_icon,
 };
 use crate::p3::{
-    click_labelled, close_menu, has_node, is_shared, open_menu, open_note_at, path, row_expander,
-    search_entry_focused, search_with, string_attribute, trash_node_action,
+    TRASH_DIALOG, click_labelled, close_menu, focus_tree, has_node, is_shared,
+    launch_search_repository, open_menu, open_note_at, path, row_expander, search_entry_focused,
+    search_with, string_attribute, trash_entry, trash_node_action, wait_search_shot_ready,
 };
 use crate::p4::{
-    FIRST_TEXT, HISTORY_DIALOG, SHARE_PASSWORD, SHARED_LINKS_DIALOG, WELCOME as WELCOME_NOTE,
-    WHITEBOARD as WHITEBOARD_NOTE, open_editor, open_history, open_shared_links, open_viewer,
-    run_animation, share_note_with, wait_images_ready, wait_shares, welcome_with_versions,
-    with_animated_gif,
+    FIRST_TEXT, HISTORY_DIALOG, SECOND_TEXT, SHARE_LABEL, SHARE_PASSWORD, SHARED_LINKS_DIALOG,
+    WELCOME as WELCOME_NOTE, WHITEBOARD as WHITEBOARD_NOTE, activate_page_action, open_editor,
+    open_history, open_shared_links, open_viewer, run_animation, share_note_with,
+    wait_history_ready, wait_images_ready, wait_shares, welcome_with_versions,
+    whiteboard_with_inserted_image, with_animated_gif,
 };
-use crate::p5::{choose_existing, import_zip_dialog, menu_actions, select_target};
+use crate::p5::{
+    capture_preferences, choose_existing, close_preferences, import_zip_dialog, launch_notes,
+    menu_actions, select_target,
+};
 use crate::support::{
-    Case, Harness, Width, assert_checked, assert_named, assert_presentation, descendants,
+    ALL_VARIANTS, Case, Harness, NARROW_VARIANTS, WIDE_VARIANTS, Width, assert_checked,
+    assert_named, assert_presentation, descendants,
 };
 
 pub const CASES: &[Case] = &[
@@ -66,6 +73,10 @@ pub const CASES: &[Case] = &[
     ("p6-touch-editor-long-press", touch_editor_long_press),
     ("p6-touch-tree-long-press", touch_tree_long_press),
     ("p6-touch-swipe-back", touch_swipe_back),
+    ("p6-shots-pre-session", shots_pre_session),
+    ("p6-shots-notes", shots_notes),
+    ("p6-shots-dialogs", shots_dialogs),
+    ("p6-shots-app", shots_app),
 ];
 
 type Announcement = (String, gtk::AccessibleAnnouncementPriority);
@@ -1494,4 +1505,140 @@ fn touch_swipe_back(h: &mut Harness) -> Result<(), String> {
     ensure(h.model()?.open_note_path().is_some(), || {
         "going back closed the note".to_owned()
     })
+}
+
+const IDEAS: &[&str] = &["Projects", "commitnote", "Ideas"];
+const ROADMAP: &[&str] = &["Projects", "commitnote", "Roadmap"];
+const SHOW_TRASH: &str = "notes.show-trash";
+
+fn expand_folder(h: &Harness, name: &str) -> Result<(), String> {
+    row_expander(h, name)?
+        .list_row()
+        .ok_or_else(|| format!("{name} has no tree row"))?
+        .set_expanded(true);
+    Ok(())
+}
+
+fn shots_pre_session(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, true)?;
+    let violet = h.session_accent()?;
+
+    reopen_held(h)?;
+    h.wait_shown("loading-status")?;
+    let model = h.model()?;
+    h.wait("the held load to report its last progress", || {
+        model.loading_message().as_deref() == Some(HELD_LOADING_MESSAGE)
+    })?;
+    h.wait_shown("loading-finish-button")?;
+    h.widget("loading-finish-button")?.set_visible(false);
+    h.wait("the finish button to hide", || {
+        !h.shown("loading-finish-button")
+    })?;
+    h.screenshots_in_accent("loading", ALL_VARIANTS, &violet)?;
+    finish_loading(h)?;
+    wait_tree(h)?;
+
+    h.window_action("log-out")?;
+    h.wait_page("token")?;
+    h.screenshots_in_accent("login", ALL_VARIANTS, &violet)?;
+
+    submit_token(h)?;
+    choose_repository(h, NOTES_URL)?;
+    h.wait_page("unlock")?;
+    h.screenshots_in_accent("unlock", ALL_VARIANTS, &violet)
+}
+
+fn shots_notes(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    expand_folder(h, "Projects")?;
+    expand_folder(h, "Journal")?;
+    h.wait("the children of the expanded folders", || {
+        row_expander(h, "commitnote").is_ok() && row_expander(h, "2026").is_ok()
+    })?;
+    h.session_screenshots("tree", ALL_VARIANTS)?;
+
+    let editor = whiteboard_with_inserted_image(h)?;
+    h.session_screenshots("note-images", WIDE_VARIANTS)?;
+    h.resize(Width::Narrow)?;
+    split_view(h)?.set_show_content(true);
+    h.session_screenshots("note-images", NARROW_VARIANTS)?;
+    wait_images_ready(h, &editor, 2)?;
+
+    launch_search_repository(h)?;
+    focus_tree(h)?;
+    search_with(h, "<Control>f", "road")?;
+    for &(width, theme) in ALL_VARIANTS {
+        h.show_variant(width, theme)?;
+        wait_search_shot_ready(h, width)?;
+        h.capture_variant("search", width, theme)?;
+    }
+    Ok(())
+}
+
+fn shots_dialogs(h: &mut Harness) -> Result<(), String> {
+    welcome_with_versions(h, &[FIRST_TEXT, SECOND_TEXT])?;
+    share_note_with(h, &path(WELCOME), SHARE_PASSWORD, SHARE_LABEL)?;
+    share_note_with(h, &path(IDEAS), "", "")?;
+    let welcome = wait_shares(h, &path(WELCOME), 1)?;
+    let ideas = wait_shares(h, &path(IDEAS), 1)?;
+
+    open_history(h)?;
+    wait_history_ready(h, 3)?;
+    h.session_screenshots("history", ALL_VARIANTS)?;
+    close_dialog(h, HISTORY_DIALOG)?;
+
+    open_shared_links(h)?;
+    h.wait("both shared links to be listed", || {
+        [&welcome[0], &ideas[0]]
+            .iter()
+            .all(|share| h.shown(&format!("share-row-{}", share.id)))
+    })?;
+    h.session_screenshots("shared-links", ALL_VARIANTS)?;
+    close_dialog(h, SHARED_LINKS_DIALOG)?;
+
+    let model = h.model()?;
+    for target in [path(ROADMAP), path(WHITEBOARD_NOTE)] {
+        let name = target.last().cloned().unwrap_or_default();
+        h.run("trashing a note", {
+            let model = model.clone();
+            async move {
+                let preview = model.trash_preview(target.clone()).await?;
+                model.trash_node(target, preview.share_count).await
+            }
+        })?
+        .map_err(|error| error.message)?;
+        h.wait("the note in the trash", || trash_entry(h, &name).is_some())?;
+    }
+    activate_page_action(h, SHOW_TRASH)?;
+    h.wait_shown(TRASH_DIALOG)?;
+    h.wait("the trashed rows", || {
+        ["Roadmap", "Whiteboard"]
+            .iter()
+            .all(|title| h.row_titled(title).is_ok_and(|row| row.is_mapped()))
+    })?;
+    h.session_screenshots("trash", ALL_VARIANTS)
+}
+
+fn shots_app(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    open_note_at(h, WELCOME)?;
+    capture_preferences(h)?;
+    close_preferences(h)?;
+
+    h.window_action("about")?;
+    h.wait("the about dialog to show", || {
+        about_dialog_shown(h).is_some()
+    })?;
+    h.session_screenshots("about", ALL_VARIANTS)?;
+    about_dialog_shown(h)
+        .ok_or("the about dialog vanished")?
+        .close();
+    h.wait("the about dialog to close", || {
+        about_dialog_shown(h).is_none()
+    })?;
+
+    h.application().activate_action("shortcuts", None);
+    wait_shortcuts_dialog(h)?;
+    h.session_screenshots("shortcuts", ALL_VARIANTS)?;
+    close_shortcuts_dialog_with_escape(h)
 }

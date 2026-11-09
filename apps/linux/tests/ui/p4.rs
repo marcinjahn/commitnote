@@ -586,8 +586,7 @@ fn gif_animation(h: &mut Harness) -> Result<(), String> {
     })
 }
 
-fn shot_note_images(h: &mut Harness) -> Result<(), String> {
-    launch_and_log_in(h, false)?;
+pub(crate) fn whiteboard_with_inserted_image(h: &Harness) -> Result<NoteEditor, String> {
     let editor = open_editor(h, WHITEBOARD)?;
     wait_images_ready(h, &editor, 1)?;
     let scratch = Scratch::new("shot")?;
@@ -595,6 +594,12 @@ fn shot_note_images(h: &mut Harness) -> Result<(), String> {
     editor.place_caret(i32::MAX);
     pick_and_insert(&editor, vec![file])?;
     wait_images_ready(h, &editor, 2)?;
+    Ok(editor)
+}
+
+fn shot_note_images(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    let editor = whiteboard_with_inserted_image(h)?;
 
     h.session_screenshots("note-images", WIDE_VARIANTS)?;
     h.resize(Width::Narrow)?;
@@ -622,7 +627,7 @@ const VERSION_PREVIEW: &str = "version-preview";
 const SHOW_HISTORY: &str = "notes.show-history";
 pub(crate) const FIRST_TEXT: &str =
     "# Welcome\n\nThis is your notes repo.\n\n- First bullet\n- Second bullet\n";
-const SECOND_TEXT: &str =
+pub(crate) const SECOND_TEXT: &str =
     "# Welcome\n\nThis is your notes repo.\n\n- First bullet\n- Third bullet\n";
 
 fn save_version(h: &Harness, target: &[String], text: &str) -> Result<(), String> {
@@ -637,7 +642,7 @@ fn save_version(h: &Harness, target: &[String], text: &str) -> Result<(), String
     .map(|_| ())
 }
 
-fn share_note(h: &Harness, target: &[String]) -> Result<(), String> {
+pub(crate) fn share_note(h: &Harness, target: &[String]) -> Result<(), String> {
     share_note_with(h, target, "correct horse battery staple", "History")
 }
 
@@ -670,7 +675,7 @@ pub(crate) fn welcome_with_versions(h: &Harness, texts: &[&str]) -> Result<NoteE
     open_editor(h, WELCOME)
 }
 
-fn activate_page_action(h: &Harness, action: &str) -> Result<(), String> {
+pub(crate) fn activate_page_action(h: &Harness, action: &str) -> Result<(), String> {
     WidgetExt::activate_action(&h.widget("notes-tree")?, action, None)
         .map_err(|error| format!("cannot activate {action}: {error}"))
 }
@@ -697,7 +702,10 @@ fn listed_versions(h: &Harness) -> Vec<HistoryVersionView> {
         .collect()
 }
 
-fn wait_history_ready(h: &Harness, count: usize) -> Result<Vec<HistoryVersionView>, String> {
+pub(crate) fn wait_history_ready(
+    h: &Harness,
+    count: usize,
+) -> Result<Vec<HistoryVersionView>, String> {
     h.wait("the history to be ready", || {
         h.model()
             .ok()

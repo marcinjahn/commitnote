@@ -77,7 +77,7 @@ const SEARCH_URL: &str = "https://github.com/sample/search";
 const SEARCH_LIST: &str = "search-results-list";
 const LISBON: &[&str] = &["Journal", "Trips", "Lisbon"];
 const TRASH_CONFIRM: &str = "trash-confirm-dialog";
-const TRASH_DIALOG: &str = "trash-dialog";
+pub(crate) const TRASH_DIALOG: &str = "trash-dialog";
 const RESTORE_LIST: &str = "restore-to-list";
 const RENAME_ENTRY: &str = "tree-rename-entry";
 const RENAME_ERROR: &str = "tree-rename-error";
@@ -350,7 +350,10 @@ fn trash_confirm(h: &mut Harness) -> Result<(), String> {
     h.wait("the note to come back", || has_node(h, &welcome))
 }
 
-fn trash_entry(h: &Harness, name: &str) -> Option<commitnote_core_api::shapes::TrashEntryView> {
+pub(crate) fn trash_entry(
+    h: &Harness,
+    name: &str,
+) -> Option<commitnote_core_api::shapes::TrashEntryView> {
     h.model()
         .ok()?
         .trash()?
@@ -701,7 +704,7 @@ fn search_row(h: &Harness, name: &str) -> Option<ResultRow> {
     search_rows(h).1.into_iter().find(|row| row.name == name)
 }
 
-fn launch_search_repository(h: &Harness) -> Result<(), String> {
+pub(crate) fn launch_search_repository(h: &Harness) -> Result<(), String> {
     h.launch()?;
     submit_token(h)?;
     choose_repository(h, SEARCH_URL)?;
@@ -709,7 +712,7 @@ fn launch_search_repository(h: &Harness) -> Result<(), String> {
     wait_tree(h)
 }
 
-fn focus_tree(h: &Harness) -> Result<(), String> {
+pub(crate) fn focus_tree(h: &Harness) -> Result<(), String> {
     h.widget(TREE_LIST)?.grab_focus();
     h.wait("the tree to have focus", || tree_focused(h))
 }
@@ -899,24 +902,29 @@ fn shot_search(h: &mut Harness) -> Result<(), String> {
     search_with(h, "<Control>f", "road")?;
     for &(width, theme) in ALL_VARIANTS {
         h.show_variant(width, theme)?;
-        h.wait("a highlighted name row and a snippet row", || {
-            let rows = search_rows(h).1;
-            rows.iter()
-                .any(|row| row.name == "Roadmap" && is_bold(&row.name_label))
-                && rows
-                    .iter()
-                    .any(|row| row.snippet.as_ref().is_some_and(is_bold))
-        })?;
-        h.wait("the match highlight in the accent colour", || {
-            highlight_follows_accent(h)
-        })?;
-        h.wait("the search entry", || h.shown("search-entry"))?;
-        if width == Width::Narrow {
-            ensure(!crate::flows::split_view(h)?.shows_content(), || {
-                "the sidebar is not the visible page".to_owned()
-            })?;
-        }
+        wait_search_shot_ready(h, width)?;
         h.capture_variant("search", width, theme)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn wait_search_shot_ready(h: &Harness, width: Width) -> Result<(), String> {
+    h.wait("a highlighted name row and a snippet row", || {
+        let rows = search_rows(h).1;
+        rows.iter()
+            .any(|row| row.name == "Roadmap" && is_bold(&row.name_label))
+            && rows
+                .iter()
+                .any(|row| row.snippet.as_ref().is_some_and(is_bold))
+    })?;
+    h.wait("the match highlight in the accent colour", || {
+        highlight_follows_accent(h)
+    })?;
+    h.wait("the search entry", || h.shown("search-entry"))?;
+    if width == Width::Narrow {
+        ensure(!crate::flows::split_view(h)?.shows_content(), || {
+            "the sidebar is not the visible page".to_owned()
+        })?;
     }
     Ok(())
 }

@@ -123,7 +123,7 @@ fn wait_dialog_focus(h: &Harness) -> Result<(), String> {
     h.wait("the focus to be in the dialog", || focus_within(h, &dialog))
 }
 
-fn close_preferences(h: &Harness) -> Result<(), String> {
+pub(crate) fn close_preferences(h: &Harness) -> Result<(), String> {
     h.widget_as::<adw::PreferencesDialog>(DIALOG)?.close();
     h.wait("the dialog to close", || !h.shown(DIALOG))
 }
@@ -690,16 +690,31 @@ fn scroll_to_top(h: &Harness) -> Result<(), String> {
     Ok(())
 }
 
-fn preferences_screenshots(h: &mut Harness) -> Result<(), String> {
-    launch_notes(h)?;
-    open_note_at(h, WELCOME)?;
+pub(crate) fn capture_preferences(h: &Harness) -> Result<(), String> {
     open_preferences(h)?;
     for &(width, theme) in ALL_VARIANTS {
         h.show_variant(width, theme)?;
+        wait_settings_saved(h)?;
         scroll_to_top(h)?;
         h.capture_variant("preferences", width, theme)?;
     }
     Ok(())
+}
+
+fn wait_settings_saved(h: &Harness) -> Result<(), String> {
+    let model = h.model()?;
+    h.wait("the settings save status to show synced", || {
+        model.settings_save().is_none_or(|save| {
+            save.state == SettingsSaveState::Synced
+                && h.label(SAVE_STATUS).is_ok_and(|label| label == save.label)
+        })
+    })
+}
+
+fn preferences_screenshots(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    open_note_at(h, WELCOME)?;
+    capture_preferences(h)
 }
 
 fn note_font_screenshot(h: &mut Harness) -> Result<(), String> {
