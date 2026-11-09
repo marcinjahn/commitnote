@@ -687,7 +687,8 @@ sudo dnf install \
   gnome-keyring \
   google-noto-color-emoji-fonts \
   mesa-dri-drivers \
-  mutter
+  mutter \
+  sway
 ```
 
 ### Caches and resources

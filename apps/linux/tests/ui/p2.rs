@@ -17,7 +17,8 @@ use gtk4::{gdk, gio};
 use libadwaita as adw;
 
 use crate::flows::{
-    PASSPHRASE, UNLOCK_TIMEOUT, ensure, launch_and_log_in, open_first_note, split_view,
+    PASSPHRASE, SAMPLE_REPO_KEY, UNLOCK_TIMEOUT, ensure, export_repo, exported_main,
+    launch_and_log_in, open_first_note, split_view, wait_exported_change, wait_open_note,
 };
 use crate::support::{
     Case, Harness, NARROW_LIGHT, NARROW_VARIANTS, Theme, WIDE_LIGHT, WIDE_VARIANTS, Width,
@@ -427,22 +428,6 @@ fn remotely_edited(text: &str) -> String {
     }
 }
 
-fn export_repo(model: &AppModel) -> impl Future<Output = Option<serde_json::Value>> + use<> {
-    let repo = model
-        .testing_repo_key()
-        .unwrap_or_else(|| SAMPLE_REPO_KEY.to_owned());
-    let export = model.testing_send("fake.exportRepo", serde_json::json!({ "repoKey": repo }));
-    async move {
-        let result = export.await.ok()?;
-        serde_json::from_str(result["exported"].as_str()?).ok()
-    }
-}
-
-fn export_main(model: &AppModel) -> impl Future<Output = Option<serde_json::Value>> + use<> {
-    let export = export_repo(model);
-    async move { Some(export.await?["main"].clone()) }
-}
-
 /// The (encrypted) file paths in the fake forge's branch head.
 fn head_paths(exported: &serde_json::Value) -> Option<BTreeSet<String>> {
     let main = exported["main"].as_str()?;
@@ -491,42 +476,6 @@ fn wait_head(
 
 fn head_files(h: &Harness) -> Result<BTreeSet<String>, String> {
     wait_head(h, "the repository export", |_| true)
-}
-
-/// The fake forge's branch head, which moves with every commit; the note contents in it are
-/// encrypted.
-fn exported_main(h: &Harness) -> Result<serde_json::Value, String> {
-    let model = h.model()?;
-    h.run("the repository export", export_main(&model))?
-        .ok_or_else(|| "the fake forge did not export the repository".to_owned())
-}
-
-fn wait_exported_change(h: &Harness, before: &serde_json::Value) -> Result<(), String> {
-    let model = h.model()?;
-    let latest = Rc::new(RefCell::new(None::<serde_json::Value>));
-    let in_flight = Rc::new(Cell::new(false));
-    h.wait("a new commit on the fake forge", || {
-        if latest.borrow().as_ref().is_some_and(|main| main != before) {
-            return true;
-        }
-        if !in_flight.replace(true) {
-            let export = export_main(&model);
-            let latest = latest.clone();
-            let in_flight = in_flight.clone();
-            glib::spawn_future_local(async move {
-                latest.replace(export.await);
-                in_flight.set(false);
-            });
-        }
-        false
-    })
-}
-
-fn wait_open_note(h: &Harness, text: &str) -> Result<(), String> {
-    let model = h.model()?;
-    h.wait("the open note to hold the edited text", || {
-        matches!(model.open_note_state(), Some(OpenNote::Loaded { content, .. }) if content == text)
-    })
 }
 
 fn edit_saves(h: &mut Harness) -> Result<(), String> {
@@ -1542,7 +1491,6 @@ fn draft_leave(h: &mut Harness) -> Result<(), String> {
     })
 }
 
-const SAMPLE_REPO_KEY: &str = "sample/notes";
 const EARLY_NAME: &str = "Typed while loading";
 pub(crate) const EARLY_BODY: &str = "Body typed before the notes were ready";
 const EARLY_NAME_ENTRY: &str = "early-draft-name-entry";

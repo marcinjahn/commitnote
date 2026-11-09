@@ -36,14 +36,13 @@ datadir = get_option('datadir')
 subdir('data')
 
 cargo_script = find_program('build-aux/cargo.sh')
-cargo_env = environment(
-  {
-    'COMMITNOTE_APP_ID': app_id,
-    'COMMITNOTE_PROFILE': profile,
-    'COMMITNOTE_VERSION': meson.project_version(),
-    'COMMITNOTE_TESTING': testing ? 'true' : 'false',
-  },
-)
+cargo_vars = {
+  'COMMITNOTE_APP_ID': app_id,
+  'COMMITNOTE_PROFILE': profile,
+  'COMMITNOTE_VERSION': meson.project_version(),
+  'COMMITNOTE_TESTING': testing ? 'true' : 'false',
+}
+cargo_env = environment(cargo_vars)
 cargo_args = [meson.project_build_root(), meson.project_source_root()]
 
 commitnote = custom_target(
@@ -71,6 +70,7 @@ test(
 )
 
 if testing
+  ui_smoke_env = environment(cargo_vars + {'COMMITNOTE_UI_SUITES': 'smoke'})
   test(
     'ui',
     cargo_script,
@@ -79,6 +79,17 @@ if testing
     depends: resources,
     suite: 'ui',
     timeout: 900,
+    is_parallel: false,
+  )
+
+  test(
+    'ui-smoke',
+    cargo_script,
+    args: ['ui', cargo_args, 'commitnote'],
+    env: ui_smoke_env,
+    depends: resources,
+    suite: 'ui-smoke',
+    timeout: 300,
     is_parallel: false,
   )
 endif

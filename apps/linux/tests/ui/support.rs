@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -17,6 +17,13 @@ use gtk4::{self as gtk, gdk, gio, glib, graphene};
 use libadwaita as adw;
 
 pub type Case = (&'static str, fn(&mut Harness) -> Result<(), String>);
+
+/// What a suite expects of the Secret Service in the session the harness runs in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Keyring {
+    Provided,
+    Absent,
+}
 
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 const WAKE_INTERVAL: Duration = Duration::from_millis(50);
@@ -156,7 +163,7 @@ pub struct Harness {
     changes: Rc<Cell<u64>>,
     routes: Rc<RefCell<Vec<Route>>>,
     failure_saved: Cell<bool>,
-    keyboard: Keyboard,
+    keyboard: OnceCell<Keyboard>,
 }
 
 impl Harness {
@@ -176,7 +183,6 @@ impl Harness {
         std::fs::create_dir_all(&screenshot_dir)
             .map_err(|error| format!("cannot create the screenshot directory: {error}"))?;
         install_app_icons(&run_dir.join("icons"))?;
-        let keyboard = Keyboard::start()?;
         let window = Rc::<RefCell<Option<CommitnoteWindow>>>::default();
         launch::install_actions(&application, {
             let window = window.clone();
@@ -201,11 +207,16 @@ impl Harness {
             changes: Rc::default(),
             routes: Rc::default(),
             failure_saved: Cell::new(false),
-            keyboard,
+            keyboard: OnceCell::new(),
         })
     }
 
-    pub fn begin(&mut self, prefix: &'static str, case: &str) -> Result<(), String> {
+    pub fn begin(
+        &mut self,
+        prefix: &'static str,
+        keyring: Keyring,
+        case: &str,
+    ) -> Result<(), String> {
         self.prefix.set(prefix);
         self.case.replace(case.to_owned());
         self.failure_saved.set(false);
@@ -214,7 +225,10 @@ impl Harness {
             .map_err(|error| format!("cannot create the case directory: {error}"))?;
         self.case_dir.replace(case_dir);
         self.applier.apply(&Appearance::default());
-        self.clear_remembered_session()
+        match keyring {
+            Keyring::Provided => self.clear_remembered_session(),
+            Keyring::Absent => self.require_no_keyring(),
+        }
     }
 
     /// The directory of the running case, removed when the case ends.
@@ -232,6 +246,20 @@ impl Harness {
 
     pub fn cleanup(&self) {
         let _ = std::fs::remove_dir_all(&self.run_dir);
+    }
+
+    fn require_no_keyring(&self) -> Result<(), String> {
+        let session = self.run(
+            "the remembered session store to open",
+            open_remembered_session_store(config::APP_ID),
+        )?;
+        if session.keyring_available {
+            return Err(
+                "a Secret Service keyring is available, so this case would not prove that the app works without one"
+                    .to_owned(),
+            );
+        }
+        Ok(())
     }
 
     fn clear_remembered_session(&self) -> Result<(), String> {
@@ -668,8 +696,9 @@ impl Harness {
             .filter(|&&(mask, _)| modifiers.contains(mask))
             .map(|&(_, keysym)| keysym)
             .collect();
+        let keyboard = self.keyboard()?;
         self.wait("the window to be active", || window.is_active())?;
-        self.keyboard.chord(&held, key.into_glib())
+        keyboard.chord(&held, key.into_glib())
     }
 
     /// Types `text` on the real keyboard into the focused widget of the harness window: printable
@@ -687,12 +716,21 @@ impl Harness {
                 _ => Err(format!("the harness cannot type {character:?}")),
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let keyboard = self.keyboard()?;
         self.wait_active()?;
         for (shifted, keysym) in strokes {
             let held: &[u32] = if shifted { &[keysym::SHIFT_L] } else { &[] };
-            self.keyboard.chord(held, keysym)?;
+            keyboard.chord(held, keysym)?;
         }
         Ok(())
+    }
+
+    fn keyboard(&self) -> Result<&Keyboard, String> {
+        if self.keyboard.get().is_none() {
+            let started = Keyboard::start()?;
+            let _ = self.keyboard.set(started);
+        }
+        Ok(self.keyboard.get().expect("the keyboard was just started"))
     }
 
     fn wait_active(&self) -> Result<(), String> {

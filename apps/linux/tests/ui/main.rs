@@ -5,6 +5,7 @@ mod p3;
 mod p4;
 mod p5;
 mod p6;
+mod smoke;
 mod support;
 
 use std::process::ExitCode;
@@ -15,16 +16,54 @@ use commitnote::config;
 use gtk4::{self as gtk, gio};
 use libadwaita as adw;
 
-use support::{Case, Harness};
+use support::{Case, Harness, Keyring};
 
-const SUITES: &[(&str, &[Case])] = &[
-    ("p1", p1::CASES),
-    ("p2", p2::CASES),
-    ("p3", p3::CASES),
-    ("p4", p4::CASES),
-    ("p5", p5::CASES),
-    ("p6", p6::CASES),
+struct Suite {
+    prefix: &'static str,
+    cases: &'static [Case],
+    keyring: Keyring,
+}
+
+const fn suite(prefix: &'static str, cases: &'static [Case], keyring: Keyring) -> Suite {
+    Suite {
+        prefix,
+        cases,
+        keyring,
+    }
+}
+
+const SUITES: &[Suite] = &[
+    suite("p1", p1::CASES, Keyring::Provided),
+    suite("p2", p2::CASES, Keyring::Provided),
+    suite("p3", p3::CASES, Keyring::Provided),
+    suite("p4", p4::CASES, Keyring::Provided),
+    suite("p5", p5::CASES, Keyring::Provided),
+    suite("p6", p6::CASES, Keyring::Provided),
+    suite("smoke", smoke::CASES, Keyring::Absent),
 ];
+
+/// The suites named by `COMMITNOTE_UI_SUITES`; without it, the ones that run against a keyring.
+fn selected_suites() -> Result<Vec<&'static Suite>, String> {
+    let Some(names) = std::env::var("COMMITNOTE_UI_SUITES")
+        .ok()
+        .filter(|names| !names.trim().is_empty())
+    else {
+        return Ok(SUITES
+            .iter()
+            .filter(|suite| suite.keyring == Keyring::Provided)
+            .collect());
+    };
+    names
+        .split(',')
+        .map(str::trim)
+        .map(|name| {
+            SUITES
+                .iter()
+                .find(|suite| suite.prefix == name)
+                .ok_or_else(|| format!("unknown suite \"{name}\""))
+        })
+        .collect()
+}
 
 fn main() -> ExitCode {
     support::prepare_environment();
@@ -58,18 +97,25 @@ fn main() -> ExitCode {
         }
     };
 
+    let suites = match selected_suites() {
+        Ok(suites) => suites,
+        Err(error) => {
+            eprintln!("FAILED to select the suites: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
     let filter = std::env::var("COMMITNOTE_UI_FILTER").unwrap_or_default();
     let mut ran = 0;
     let mut failed = 0;
-    for &(prefix, cases) in SUITES {
-        for &(name, case) in cases {
+    for suite in suites {
+        for &(name, case) in suite.cases {
             if !name.contains(filter.as_str()) {
                 continue;
             }
             ran += 1;
             let started = Instant::now();
             let result = harness
-                .begin(prefix, name)
+                .begin(suite.prefix, suite.keyring, name)
                 .and_then(|()| case(&mut harness));
             if result.is_err() {
                 harness.save_failure();

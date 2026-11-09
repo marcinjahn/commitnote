@@ -74,10 +74,13 @@ if [ -t 0 ] && [ -t 1 ]; then
   tty_flags=-it
 fi
 
+# sway is installed with the cap_sys_nice file capability, so it cannot start without it in the
+# container's bounding set.
 # shellcheck disable=SC2086
 exec docker run --rm --init $tty_flags \
   -e CI \
   -e COMMITNOTE_UI_FILTER \
+  --cap-add SYS_NICE \
   --cpus "${COMMITNOTE_DOCKER_CPUS:-4}" \
   --memory "${COMMITNOTE_DOCKER_MEMORY:-8g}" \
   -v "$workspace_root:/src" \
