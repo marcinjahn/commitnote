@@ -1,12 +1,14 @@
-# commitnote for GNOME
+# commitnote for Linux
 
-A native GNOME client for the same encrypted notes repo the web app uses. It is a Rust, GTK 4 and
-libadwaita app that runs the shared native core bundle (`commitnote-core.js`, built from
-`src/native-core/`) in JavaScriptCore, so it reads and writes exactly what the web app does. It logs
-in, unlocks a notes repo or sets a new one up, browses and organises the note tree, searches notes,
-and edits them in a live-preview Markdown editor with autosave, sync status and conflict
-resolution. It also has Preferences, a choice of note fonts, export and import, a passphrase
-change, printing and an anonymous launch count.
+The Linux client for the same encrypted notes repo the web app uses. It is a native GTK 4 and
+libadwaita app, written in Rust, that runs on any Wayland or X11 desktop (GNOME, KDE Plasma, niri,
+sway, …) and is meant to ship as a Flatpak wherever Flatpak runs, with xdg-desktop-portal providing
+the file chooser, printing, link opening and system settings. It runs the shared native core bundle
+(`commitnote-core.js`, built from `src/native-core/`) in JavaScriptCore, so it reads and writes
+exactly what the web app does. It logs in, unlocks a notes repo or sets a new one up, browses and
+organises the note tree, searches notes, and edits them in a live-preview Markdown editor with
+autosave, sync status and conflict resolution. It also has Preferences, a choice of note fonts,
+export and import, a passphrase change, printing and an anonymous launch count.
 
 ## Overview
 
@@ -19,9 +21,9 @@ The app and its crates:
   `src/fonts.rs`, and `src/file_dialogs.rs` wraps the file chooser (the testing build answers it
   from a queue). `src/export.rs` and `src/import.rs` run export and import.
 - **Core runtime** (`crates/core-runtime`) — loads the core bundle into JavaScriptCore and provides
-  the host services it needs: crypto, network (libsoup), the remembered session in the Secret
-  Service keyring, a blob cache, device settings and the image codec. It also sends the anonymous
-  launch visit (`visit.rs`).
+  the host services it needs: crypto, network (libsoup), the remembered session in a Secret Service
+  provider's keyring, a blob cache, device settings and the image codec. It also sends the
+  anonymous launch visit (`visit.rs`).
 - **Crypto** (`crates/crypto`) — the cryptographic operations behind the host crypto service.
 - **Core API** (`crates/core-api`) — the typed command, event and error shapes shared with the core
   bundle, plus the fake commands the testing build uses.
@@ -97,8 +99,8 @@ The note view has a title field above the editor. Everything below is in the edi
   Text typed into the early draft on the loading page is guarded too: closing with it asks the same
   way, and Keep Trying keeps the text and lets the hand-off finish (or runs Try Again when the
   loading page shows a failure). An empty early draft closes at once. While anything is unsaved, or
-  the early draft holds text, the app also holds a GNOME logout inhibit, so a session logout or
-  shutdown warns first.
+  the early draft holds text, the app also holds a logout inhibit, so a session logout or
+  shutdown warns first where the desktop supports it (see Optional features by desktop).
 
 ## Images
 
@@ -131,9 +133,9 @@ decoded pictures in memory. The Markdown stays the note text, so the reference i
   scroll wheel (around the pointer), or a pinch. Best Fit returns to the 1× size once zoomed in. A
   zoomed picture is panned by dragging it. Escape closes the dialog.
 - **Animation.** A GIF plays while its widget is mapped and visible, with each frame's own delay (a
-  delay under 10 ms plays as 100 ms), and shows its first frame still when the GNOME setting
-  `gtk-enable-animations` is off. An animation larger than 64 MiB decoded keeps only its first
-  frame.
+  delay under 10 ms plays as 100 ms), and shows its first frame still when the desktop's animations
+  setting (GTK's `gtk-enable-animations`) is off. An animation larger than 64 MiB decoded keeps only
+  its first frame.
 
 ## History
 
@@ -289,6 +291,10 @@ up in the open dialog.
 
 The dialog's search (its search button, or Ctrl+F) keeps only the rows that match the typed text.
 
+The main menu also has Keyboard Shortcuts (Ctrl+?, see Shortcuts) and About commitnote, which shows
+the version, the debug information (the app, GTK, libadwaita and WebKitGTK versions) and the licence
+of every bundled note font.
+
 ### Note fonts
 
 The Note font row offers the core's list: Inter (the default), IBM Plex Sans, Atkinson
@@ -393,11 +399,36 @@ The app counts launches with one anonymous request, the Linux visit:
 - The testing build never sends: it records the URL the app would have sent, and the tests read it
   back.
 
+## Launching
+
+The desktop file (`data/io.github.marcinjahn.commitnote.desktop.in`) has `Exec=commitnote %U`, the
+MIME type `x-scheme-handler/commitnote` and two desktop actions, so the app can be started at an
+action from a launcher, a link or the command line:
+
+- **Desktop actions.** "New Note" (`commitnote --action new-note`) and "Search Notes"
+  (`commitnote --action search`), in the launcher entry's menu on desktops that show desktop
+  actions. The same two actions are exported on the application, as `app.new-note` and `app.search`.
+- **`--action`.** `--action <value>` or `--action=<value>`, anywhere in the arguments. The values are
+  `new-note` and `search`; the first valid one wins and anything else is ignored, so an unknown value
+  only starts the app.
+- **`commitnote://` links.** `commitnote://new-note` and `commitnote://search`: the scheme is
+  case-insensitive, the host is the action, and a `?action=` query is the fallback when the host
+  names none (`commitnote://open?action=search`). A desktop that honours the MIME handler starts the
+  app from such a link with the action applied, for example `xdg-open commitnote://search`.
+- **Single instance.** The application is unique by its app id and has one main window. A second
+  launch hands its arguments to the running instance and exits; the running instance presents its
+  window and applies the action.
+- **When the action runs.** A new note requested while the app is still loading opens the early
+  draft (see Editing). An action that arrives on a screen that cannot take it (login, unlock, a
+  repository that is still loading) waits in the core until a screen accepts it. On the notes page it
+  is dropped while a dialog is open or search is already active.
+
 ## Shortcuts
 
 | Shortcut         | Where                          | What it does                                                                            |
 | ---------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
 | Ctrl+S           | anywhere in the window         | Save Now: sends the edits and saves them.                                               |
+| Ctrl+?           | anywhere in the window         | Keyboard Shortcuts: opens the dialog that lists the shortcuts.                          |
 | Ctrl+N           | notes and loading pages        | New note at the top level; on the loading page it focuses the early draft's name field. |
 | Ctrl+Shift+N     | notes page                     | New Folder….                                                                            |
 | Ctrl+W           | anywhere in the window         | Closes the window, through the close guard.                                             |
@@ -436,7 +467,57 @@ The app counts launches with one anonymous request, the Linux visit:
 The editor shortcuts work while the editor has focus. Ctrl+KP_Enter also toggles the task. The tree
 shortcuts need the tree focused and a row selected; the keypad Delete, Up and Down work like the
 main keys. Ctrl+F, Ctrl+K (outside the editor), Ctrl+Shift+N, Ctrl+P and F9 work anywhere on the notes
-page.
+page. The Keyboard Shortcuts dialog (Ctrl+? or the main menu) lists the same shortcuts by group.
+
+## Accessibility
+
+- **Names.** Controls that show only an icon (the main menu and sync status buttons, the image
+  viewer's buttons, the tree row's shared icon and color tag) have an accessible name, a tagged note's
+  row is named with its tag, and spinners and progress bars say what they are waiting for. Purely
+  decorative images are hidden from assistive technology.
+- **Announcements.** A screen reader hears what a sighted user sees change: sync problems and their
+  recovery, the number of search results, the loading page's progress and failures, the login errors
+  and the passphrase strength. The app does not announce the text of a toast a second time.
+- **Text scaling.** The painted parts of the editor (task checkboxes, horizontal rules and images)
+  are measured again when the desktop's text scaling factor changes, so they stay aligned with the
+  text.
+- **High contrast.** When the system asks for high contrast, the faint marks the editor paints and
+  the dimmed markers of the previews get a stronger color.
+- **Reduced motion.** With the desktop's animations setting off, animated images in a note and in the
+  viewer show their first frame still.
+- **Touch.** A long press on a link in the editor, or Open Link in its context menu, opens the link;
+  a long press on a tree row opens its menu; on the narrow layout a swipe back returns from the note
+  to the tree.
+
+## Optional features by desktop
+
+The app needs no particular desktop, only the run packages below. Everything in this table is an
+extra that a desktop or the Flatpak runtime may or may not provide, and none of it is needed to
+start the app, log in, read, edit or save.
+
+| Feature               | What provides it                                                                                               | Without it                                                                                                                                                                                                                                                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Remembered session    | A Secret Service provider such as gnome-keyring, KWallet 6 or KeePassXC (`org.freedesktop.secrets`)            | Login works and the session stays in memory. If you asked to remember it, the toast "No keyring is available, so this session will not be remembered." appears once per run, and the next launch asks for the token again. A service that does not answer is given up after 5 s, an unanswered unlock prompt after 60 s. |
+| System light/dark     | xdg-desktop-portal Settings (`org.freedesktop.appearance` color scheme)                                        | The app follows libadwaita's default light style. The Color mode row in Preferences still forces light or dark.                                                                                                                                                                                                          |
+| High contrast         | xdg-desktop-portal Settings (the contrast preference)                                                          | Normal contrast.                                                                                                                                                                                                                                                                                                         |
+| Text scaling          | xdg-desktop-portal Settings (the text scaling factor and font settings)                                        | The default text size.                                                                                                                                                                                                                                                                                                   |
+| Reduced motion        | xdg-desktop-portal Settings (the animations setting)                                                           | Animated images play.                                                                                                                                                                                                                                                                                                    |
+| Logout inhibit        | xdg-desktop-portal Inhibit in a Flatpak; outside one, a session manager that offers `org.gnome.SessionManager` | No warning when the session ends while something is unsaved. The window's own close and Log Out guards still work.                                                                                                                                                                                                       |
+| Launcher actions      | The desktop file's actions (New Note, Search Notes)                                                            | The launcher entry shows no extra items. `commitnote --action new-note` and `--action search` still work from a terminal or a key binding.                                                                                                                                                                               |
+| `commitnote://` links | The desktop's handler for `x-scheme-handler/commitnote`, registered by the desktop file                        | Links do nothing. `commitnote --action <value>` does the same.                                                                                                                                                                                                                                                           |
+| Opening links         | xdg-desktop-portal OpenURI                                                                                     | GTK starts the default handler itself. If nothing handles the link, nothing happens.                                                                                                                                                                                                                                     |
+| File chooser          | xdg-desktop-portal FileChooser                                                                                 | GTK's own file dialog.                                                                                                                                                                                                                                                                                                   |
+| Printing              | xdg-desktop-portal Print                                                                                       | GTK's own print dialog.                                                                                                                                                                                                                                                                                                  |
+
+Only standard portal interfaces are used, so no portal backend is special (GNOME, KDE Plasma, GTK
+and the others work alike). The remembered session talks to the Secret Service D-Bus API, never to a
+particular keyring.
+
+The app draws its own header bar (client-side decorations). A tiled window under sway, like under
+any tiling wlroots compositor, gets a title bar from the compositor above every GTK app unless the
+sway configuration sets `default_border pixel`. That is the compositor's policy, not an app issue.
+The sway smoke test (see Checks and tests) floats the window and checks that sway reports `csd`
+with no second title bar.
 
 ## Build on the host (Fedora 43)
 
@@ -471,6 +552,24 @@ sudo dnf install \
   webkitgtk6.0-devel
 ```
 
+Each package has a reason: `gtk4` and `libadwaita` are the toolkit, `gtksourceview5` is the editor's
+text view, `libsoup3` is the network client, `libwebp` is the image codec, and `javascriptcoregtk6.0`
+runs the core bundle. `webkitgtk6.0` is on the lists because printing lays the note out in an
+offscreen WebKit view (see Printing). `blueprint-compiler` compiles the UI files, `appstream` and
+`desktop-file-utils` validate the metadata, and the `-devel` packages, `gcc`, `meson`, `ninja-build`
+and `pkgconf-pkg-config` are for building only. No D-Bus development package is needed, because
+the Secret Service client speaks D-Bus from Rust. `google-noto-color-emoji-fonts` is needed only for the tests (the screenshots render emoji), see
+Checks and tests.
+
+Check that they are installed (every line must print a version):
+
+```sh
+rpm -q appstream blueprint-compiler desktop-file-utils gcc glib2 glib2-devel gtk4 gtk4-devel \
+  gtksourceview5 gtksourceview5-devel javascriptcoregtk6.0 javascriptcoregtk6.0-devel libadwaita \
+  libadwaita-devel libsoup3 libsoup3-devel libwebp libwebp-devel meson ninja-build \
+  pkgconf-pkg-config webkitgtk6.0 webkitgtk6.0-devel
+```
+
 Node.js and npm are needed for the core bundle, and rustup for the Rust toolchain. rustup reads
 `rust-toolchain.toml` and installs the pinned toolchain with clippy and rustfmt on the first cargo
 command inside `apps/linux/`. Fedora packages it as `rustup`; run `rustup-init` once after
@@ -493,8 +592,26 @@ system-wide. `apps/linux/scripts/run-host.sh --testing` builds and runs the test
 
 `install-prefix.sh` builds the app in the Docker build container and installs it into
 `apps/linux/out/prefix`; `run-installed.sh` starts it on the host. This needs Docker (or Podman's
-Docker API) and only the run packages on the host. Most of them are on a default Fedora
-Workstation.
+Docker API) and only the run packages on the host.
+
+A default Fedora Workstation 43 install already has all eight: a clean Workstation 43 container
+(`@workstation-product-environment`, weak dependencies off) answers `rpm -q` for every run package
+(glib2 2.86.5, gtk4 4.20.4, gtksourceview5 5.18.0, javascriptcoregtk6.0 2.54.2, libadwaita 1.8.8,
+libsoup3 3.6.6, libwebp 1.6.0, webkitgtk6.0 2.54.2). On other desktops install them with the command
+below, then check with:
+
+```sh
+rpm -q glib2 gtk4 gtksourceview5 javascriptcoregtk6.0 libadwaita libsoup3 libwebp webkitgtk6.0
+```
+
+The run packages install no GNOME session component. A dry-run transaction of
+`dnf install --assumeno --setopt=install_weak_deps=False <run packages>` on a minimal Fedora 43
+image lists no `gnome-shell`, `mutter`, `gnome-session`, `gnome-settings-daemon` or `gnome-keyring`.
+
+Remembering the session needs a Secret Service provider, which is not a package dependency: the
+app talks to it over D-Bus and works without one (see "Optional features by desktop"). Workstation
+ships gnome-keyring for this; KDE ships KWallet's Secret Service; elsewhere install any provider
+such as KeePassXC.
 
 <!-- packages: run -->
 
@@ -582,14 +699,21 @@ The static checks (`lint.sh`) are:
 The tests (`test.sh`) run, in this order:
 
 1. The crate tests (`cargo test --workspace`) inside a D-Bus session with an unlocked
-   gnome-keyring, because the remembered-session store uses the Secret Service. The visit test
+   gnome-keyring, because the remembered-session store uses the Secret Service; the keyring is
+   a test fixture, not a requirement of the app. The visit test
    (`crates/core-runtime/tests/visit.rs`) checks that the core builds the Linux visit, that an
    opt-out sends nothing, that the sender makes one anonymous `GET` to a local server and that it
-   refuses anything but `https` in production. One more test checks
-   that the app copes with no Secret Service at all. The image codec tests run here, in the
+   refuses anything but `https` in production.
+   The image codec tests run here, in the
    container, because they need libwebp. The core runtime runs every file of `apps/test-vectors/`,
    including the shared image vectors (`image-pipeline.json`, `images.json`) and the insertion
    vectors (`image-insertion.json`, also run by the Markdown crate).
+   After the workspace tests, two ignored tests run on their own buses to check the app without a
+   keyring: `remembered_session_no_service` runs with no session bus at all and checks that the
+   store reports no keyring, keeps the session in memory and writes nothing to disk, and
+   `remembered_session_unresponsive_service` runs on a bus whose `org.freedesktop.secrets` owner
+   never answers and checks that opening the store waits, within a bound, and then falls back to
+   memory instead of hanging.
 2. The app's own unit tests (meson `cargo` suite).
 3. The UI suite (`ci/steps/ui-test.sh`): the testing build at 1280x800 under headless mutter
    (a 1920x1200 virtual monitor, so the window is never maximised) with an unlocked keyring, driving real pages and saving screenshots to
@@ -622,7 +746,18 @@ The tests (`test.sh`) run, in this order:
    `p5-preferences`, `p5-import-screenshots` saves `p5-import` and `p5-import-conflicts` and
    `p5-change-passphrase-screenshots` saves `p5-change-passphrase`, each narrow and wide, light and
    dark except `p5-import-conflicts` (wide, light); `p5-note-font-screenshot` saves `p5-note-font`
-   (wide, light, with the Lora font). All use the violet accent. The UI harness runs with
+   (wide, light, with the Lora font). All use the violet accent. The `p6` cases cover launching
+   (the Exec lines of the desktop actions, a `commitnote://` link and its bogus forms, the
+   application actions, an action before login, while starting and while loading, and a second
+   instance handing over to the first), the Keyboard Shortcuts dialog (opening it, from the main
+   menu, and a check that it lists exactly the shortcuts that are bound), the About dialog, the
+   accessible names, presentation and spinners, the announcements (sync, search, loading, passphrase
+   strength, and no second announcement of a toast), the comfort settings (text scaling, high
+   contrast, reduced motion) and touch (opening a link, long press in the editor and in the tree,
+   swipe back). The `p6-shots-*` cases save the final screenshots, each narrow and wide, light and
+   dark, with the violet accent: `p6-loading`, `p6-login` and `p6-unlock`; `p6-tree`,
+   `p6-note-images` and `p6-search`; `p6-history`, `p6-shared-links` and `p6-trash`;
+   `p6-preferences`, `p6-about` and `p6-shortcuts`. The UI harness runs with
    `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1` (set in `ci/steps/ui-test.sh`), because WebKit's
    bubblewrap sandbox cannot create the namespaces it needs inside the build container; the app
    itself keeps the sandbox. The step also installs the `fonts` tag of the meson install into a
@@ -633,8 +768,21 @@ The tests (`test.sh`) run, in this order:
    events through mutter's remote desktop virtual keyboard: `press_keys("<Control>r")` presses one
    accelerator and `type_keys("text")` types ASCII text, both into the focused widget of the
    active window; older cases still drive some keys by calling the controllers and the Vim input
-   method directly. The container has the Noto Color Emoji font, so screenshots show emoji.
-4. On the host, the read-back: the crate tests and the UI case `editor_read_back` write scenarios
+   method directly. The container has the Noto Color Emoji font (`google-noto-color-emoji-fonts`, a test-only package), so screenshots show emoji.
+4. The sway smoke run, also from `ci/steps/ui-test.sh`: four `smoke-*` cases run in a headless
+   sway session with no Secret Service and no portal backend, in a D-Bus session that never
+   activates one (the container has gnome-keyring for the mutter run, so the step starts a bus
+   without service activation and checks that nothing owns `org.freedesktop.secrets`). The cases
+   cover launch, login with no keyring (the session is not remembered, the no-keyring toast shows and
+   the next launch asks for the token again), opening a note, editing and saving it, and the
+   window decorations: sway tiles windows without marking them client-side
+   decorated, so the step floats the app window, and the case asks sway for the window's tree and
+   requires the border `csd` with a title bar of 0 px next to the app's header bar. It is the proof
+   that the app starts and works on a non-GNOME compositor. `sway` is a test-only package
+   (`ci/test-packages.txt`) and nothing else in the image depends on it. The log of the run is
+   `apps/linux/out/logs/ui-smoke-testlog.txt`, next to `sway.log`, and `ui-test.sh smoke` runs
+   only this step (any other filter skips it).
+5. On the host, the read-back: the crate tests and the UI case `editor_read_back` write scenarios
    (a repo made by the Rust runtime and what a reader should find in it) into `apps/linux/out/read-back`, and
    `npx tsx scripts/read-back-native-repo.ts apps/linux/out/read-back` has the shared TypeScript
    reader open every scenario there, so this step needs `npm ci` but no container. It proves the
@@ -735,7 +883,8 @@ minutes. The cargo cache makes a warm run take about 3 minutes against about 15 
 Every run uploads two artifacts, even when a step failed:
 
 - `linux-screenshots` — the UI screenshots, including `failure-*.png` for failed cases,
-- `linux-logs` — the mutter log (`mutter.log`) and the UI test log.
+- `linux-logs` — the mutter log (`mutter.log`), the sway log (`sway.log`) and the UI test logs
+  (`ui-testlog.txt` and `ui-smoke-testlog.txt`).
 
 Both are kept for 30 days. To fetch them, name them, because a bare `gh run download` fails on the
 `*.dockerbuild` artifact that the image build adds:
