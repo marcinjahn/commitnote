@@ -5,6 +5,7 @@ use adw::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
+use crate::export;
 use crate::model::{AppModel, UserError};
 
 mod imp {
@@ -15,6 +16,8 @@ mod imp {
     pub struct KeyChangedPage {
         #[template_child]
         pub(super) status_page: TemplateChild<adw::StatusPage>,
+        #[template_child]
+        pub(super) export_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub(super) log_in_again_button: TemplateChild<gtk::Button>,
         #[template_child]
@@ -64,6 +67,16 @@ impl KeyChangedPage {
         let page: Self = glib::Object::new();
         let imp = page.imp();
         let _ = imp.model.set(model.clone());
+        imp.export_button.connect_clicked(glib::clone!(
+            #[weak(rename_to = page)]
+            page,
+            move |_| {
+                let parent = page.root().and_downcast::<gtk::Window>();
+                page.run(|model| async move {
+                    export::export_notes(&model, parent.as_ref(), false).await
+                });
+            }
+        ));
         imp.log_in_again_button.connect_clicked(glib::clone!(
             #[weak(rename_to = page)]
             page,
@@ -98,11 +111,15 @@ impl KeyChangedPage {
         let status = &self.imp().status_page;
         status.set_title(&view.message);
         status.set_description(Some(&glib::markup_escape_text(&view.detail)));
+        let export = &self.imp().export_button;
+        export.set_label(&view.export_label);
+        export.set_visible(!view.export_label.is_empty());
     }
 
     fn set_busy(&self, busy: bool) {
         let imp = self.imp();
         imp.busy.set(busy);
+        imp.export_button.set_sensitive(!busy);
         imp.log_in_again_button.set_sensitive(!busy);
         imp.log_out_button.set_sensitive(!busy);
     }

@@ -5,6 +5,7 @@ on:
     branches: [main, "linux-ci/**"]
     paths:
       - "apps/linux/**"
+      - "apps/fonts/**"
       - "apps/test-vectors/**"
       - "src/**"
       - "scripts/**"

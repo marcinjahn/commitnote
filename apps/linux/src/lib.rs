@@ -3,9 +3,15 @@ pub mod application;
 pub mod close_guard;
 pub mod config;
 pub mod editor;
+pub mod export;
+pub mod file_dialogs;
+pub mod fonts;
+pub mod import;
 pub mod links;
 pub mod model;
 pub mod pages;
+pub mod preferences;
+pub mod print;
 pub mod type_to_start;
 pub mod window;
 

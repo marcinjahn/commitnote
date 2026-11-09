@@ -4,7 +4,7 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use commitnote_core_api::commands::MoveDirection;
 use commitnote_core_api::shapes::ColorTag;
-use gtk4::{self as gtk, gdk, gio, glib};
+use gtk4::{self as gtk, gdk, glib};
 use libadwaita as adw;
 
 use super::sync_feedback::{SyncMenuAction, SyncStatusView, sync_status_view};
@@ -14,7 +14,9 @@ use super::{
     share_dialog, shared_links_dialog, trash_confirm, trash_dialog,
 };
 use crate::editor::{InsertAt, NoteEditor};
+use crate::file_dialogs;
 use crate::model::{AppModel, COLOR_TAGS, DraftFocus, EditorTarget, ImageInput};
+use crate::print;
 
 const FALLBACK_TITLE: &str = "commitnote";
 const DRAFT_TITLE: &str = "New Note";
@@ -76,8 +78,7 @@ mod imp {
         pub(super) trash_dialog: glib::WeakRef<adw::Dialog>,
         pub(super) shared_links_dialog: glib::WeakRef<adw::Dialog>,
         pub(super) trashing: Cell<bool>,
-        #[cfg(feature = "testing")]
-        pub(super) next_picked_files: RefCell<Option<Vec<gio::File>>>,
+        pub(super) printing: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -200,6 +201,9 @@ mod imp {
             });
             klass.install_action("notes.share-note", None, |page, _, _| {
                 page.show_share();
+            });
+            klass.install_action("notes.print-note", None, |page, _, _| {
+                page.print_note();
             });
             klass.install_action("notes.trash-note", None, |page, _, _| {
                 if let Some(path) = page.open_saved_path() {
@@ -351,8 +355,18 @@ impl NotesPage {
                 }
             }
         });
+        let expand_handler = model.connect_import_expand({
+            let page = page.downgrade();
+            move |_, path| {
+                if let Some(page) = page.upgrade()
+                    && let Some(tree) = page.imp().tree.get()
+                {
+                    tree.reveal(path);
+                }
+            }
+        });
         imp.model_handlers
-            .replace(vec![handler, sync_handler, tree_handler]);
+            .replace(vec![handler, sync_handler, tree_handler, expand_handler]);
         page.update_sync_status();
         page
     }
@@ -365,7 +379,12 @@ impl NotesPage {
     }
 
     async fn insert_picked_images(&self) {
-        let files = self.pick_images().await;
+        let window = self.root().and_downcast::<gtk::Window>();
+        let Some(files) =
+            file_dialogs::pick_files(window.as_ref(), "Insert Image", &image_filters()).await
+        else {
+            return;
+        };
         if files.is_empty() {
             return;
         }
@@ -377,40 +396,18 @@ impl NotesPage {
         }
     }
 
-    async fn pick_images(&self) -> Vec<gio::File> {
-        #[cfg(feature = "testing")]
-        if let Some(files) = self.imp().next_picked_files.take() {
-            return files;
-        }
-        let images = gtk::FileFilter::new();
-        images.set_name(Some("Images"));
-        images.add_mime_type("image/*");
-        let all = gtk::FileFilter::new();
-        all.set_name(Some("All Files"));
-        all.add_pattern("*");
-        let filters = gio::ListStore::new::<gtk::FileFilter>();
-        filters.append(&images);
-        filters.append(&all);
-        let dialog = gtk::FileDialog::builder()
-            .title("Insert Image")
-            .accept_label("Insert")
-            .modal(true)
-            .filters(&filters)
-            .default_filter(&images)
-            .build();
-        let window = self.root().and_downcast::<gtk::Window>();
-        let Ok(picked) = dialog.open_multiple_future(window.as_ref()).await else {
-            return Vec::new();
-        };
-        (0..picked.n_items())
-            .filter_map(|position| picked.item(position).and_downcast::<gio::File>())
-            .collect()
-    }
-
-    /// Makes the next Insert Image request use these files instead of asking.
+    /// Drops `files` from another app on the row at `target_path`, or below the rows for `None`;
+    /// whether the tree took them.
     #[cfg(feature = "testing")]
-    pub fn testing_set_next_picked_files(&self, files: Vec<gio::File>) {
-        self.imp().next_picked_files.replace(Some(files));
+    pub fn testing_drop_files(
+        &self,
+        files: &[gtk::gio::File],
+        target_path: Option<&[String]>,
+    ) -> bool {
+        self.imp()
+            .tree
+            .get()
+            .is_some_and(|tree| tree.testing_drop_files(files, target_path))
     }
 
     #[cfg(feature = "testing")]
@@ -679,6 +676,26 @@ impl NotesPage {
         glib::spawn_future_local(async move {
             trash_confirm::move_to_trash(model, page.clone().upcast(), path).await;
             page.imp().trashing.set(false);
+        });
+    }
+
+    fn print_note(&self) {
+        let imp = self.imp();
+        let Some(model) = imp.model.get() else {
+            return;
+        };
+        if imp.printing.replace(true) {
+            return;
+        }
+        self.update_note_actions();
+        let (model, page) = (model.clone(), self.clone());
+        glib::spawn_future_local(async move {
+            let parent = page.root().and_downcast::<gtk::Window>();
+            if let Err(error) = print::print_note(&model, parent.as_ref()).await {
+                model.report_error(&error);
+            }
+            page.imp().printing.set(false);
+            page.update_note_actions();
         });
     }
 
@@ -960,6 +977,10 @@ impl NotesPage {
             .as_deref()
             .and_then(|path| open_note_menu_tag(model, path));
         self.action_set_enabled("notes.color-tag", tag.is_some());
+        self.action_set_enabled(
+            "notes.print-note",
+            model.can_print() && !self.imp().printing.get(),
+        );
         let id = tag.flatten().map_or("", tag_id);
         if self.note_color_tag() != id {
             self.set_note_color_tag(id.to_owned());
@@ -1075,6 +1096,16 @@ fn open_note_menu_tag(model: &AppModel, path: &[String]) -> Option<Option<ColorT
         .map(|(color_tag, _)| color_tag)
 }
 
+fn image_filters() -> [gtk::FileFilter; 2] {
+    let images = gtk::FileFilter::new();
+    images.set_name(Some("Images"));
+    images.add_mime_type("image/*");
+    let all = gtk::FileFilter::new();
+    all.set_name(Some("All Files"));
+    all.add_pattern("*");
+    [images, all]
+}
+
 fn shortcuts() -> gtk::ShortcutController {
     let controller = gtk::ShortcutController::new();
     controller.set_scope(gtk::ShortcutScope::Managed);
@@ -1084,6 +1115,7 @@ fn shortcuts() -> gtk::ShortcutController {
         ("<Control>f", "notes.search"),
         ("<Control>k", "notes.search"),
         ("<Control><Shift>n", "notes.new-folder"),
+        ("<Control>p", "notes.print-note"),
     ] {
         controller.add_shortcut(gtk::Shortcut::new(
             gtk::ShortcutTrigger::parse_string(trigger),

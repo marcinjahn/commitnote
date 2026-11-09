@@ -14,6 +14,8 @@ use crate::close_guard::{
     after_flush, on_close_request, should_inhibit_logout, unsaved_body,
 };
 use crate::config;
+use crate::export;
+use crate::import::{self, ImportPrompts};
 use crate::model::lifecycle::Lifecycle;
 use crate::model::{
     AppModel, DraftFocus, LoadingFailure, LogOutResult, NoticeView, Route, UserError,
@@ -22,6 +24,7 @@ use crate::pages::StartupErrorPage;
 use crate::pages::login::{RepositoryListPage, TokenPage, UnusableRepositoryPage};
 use crate::pages::notes::NotesPage;
 use crate::pages::unlock::{InitializePage, KeyChangedPage, LoadingPage, UnlockPage};
+use crate::preferences;
 
 const SPINNER_DELAY: Duration = Duration::from_millis(300);
 const NOTICE_TIMEOUT_SECONDS: u32 = 4;
@@ -42,9 +45,12 @@ mod imp {
         pub(super) starting_spinner: TemplateChild<adw::Spinner>,
         pub(super) model: OnceCell<AppModel>,
         pub(super) toasts: RefCell<HashMap<String, adw::Toast>>,
-        pub(super) toast_hosts: RefCell<Vec<glib::WeakRef<adw::ToastOverlay>>>,
+        pub(super) toast_hosts: RefCell<Vec<WeakToastHost>>,
+        pub(super) preferences: glib::WeakRef<adw::PreferencesDialog>,
+        pub(super) change_passphrase: glib::WeakRef<adw::Dialog>,
         pub(super) applying_route: Cell<bool>,
         pub(super) lifecycle: RefCell<Option<Lifecycle>>,
+        pub(super) import_prompts: RefCell<Option<ImportPrompts>>,
         pub(super) close_released: Cell<bool>,
         pub(super) guarding_close: Cell<bool>,
         pub(super) logging_out: Cell<bool>,
@@ -78,6 +84,7 @@ mod imp {
 
         fn dispose(&self) {
             self.lifecycle.take();
+            self.import_prompts.take();
             self.logout_inhibit.take();
         }
     }
@@ -139,6 +146,7 @@ impl CommitnoteWindow {
         window.setup_type_to_start();
         application.set_accels_for_action("win.save-now", &["<Control>s"]);
         application.set_accels_for_action("win.new-note", &["<Control>n"]);
+        application.set_accels_for_action("win.preferences", &["<Control>comma"]);
         application.set_accels_for_action("window.close", &["<Control>w"]);
         application.set_accels_for_action("win.quit", &["<Control>q"]);
         imp.logout_inhibit
@@ -150,6 +158,8 @@ impl CommitnoteWindow {
         window.update_logout_inhibit();
         imp.lifecycle
             .replace(Some(Lifecycle::attach(&window, model)));
+        imp.import_prompts
+            .replace(Some(ImportPrompts::attach(&window, model)));
         imp.navigation_view.connect_popped({
             let window = window.downgrade();
             move |_, _| {
@@ -218,7 +228,29 @@ impl CommitnoteWindow {
                 window.run_reporting(model.start_draft(Vec::new(), DraftFocus::Name));
             })
             .build();
-        self.add_action_entries([log_out, quit, refresh, save_now, new_note]);
+        let preferences = gio::ActionEntry::builder("preferences")
+            .activate(|window: &Self, _, _| window.show_preferences())
+            .build();
+        let export_notes = gio::ActionEntry::builder("export-notes")
+            .activate(|window: &Self, _, _| window.export_notes())
+            .build();
+        let import_notes = gio::ActionEntry::builder("import-notes")
+            .activate(|window: &Self, _, _| window.import_notes())
+            .build();
+        let change_passphrase = gio::ActionEntry::builder("change-passphrase")
+            .activate(|window: &Self, _, _| window.change_passphrase())
+            .build();
+        self.add_action_entries([
+            log_out,
+            quit,
+            refresh,
+            save_now,
+            new_note,
+            preferences,
+            export_notes,
+            import_notes,
+            change_passphrase,
+        ]);
         #[cfg(feature = "testing")]
         self.setup_testing_actions();
     }
@@ -269,6 +301,41 @@ impl CommitnoteWindow {
 
     fn connect_model(&self) {
         let model = self.model();
+        model.connect_settings_changed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.update_preferences_action();
+                    window.update_export_action();
+                    window.update_import_action();
+                    window.update_change_passphrase_action();
+                }
+            }
+        });
+        model.connect_passphrase_change_changed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.update_change_passphrase_action();
+                }
+            }
+        });
+        model.connect_import_changed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.update_import_action();
+                }
+            }
+        });
+        model.connect_export_changed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.update_export_action();
+                }
+            }
+        });
         model.connect_route_changed({
             let window = self.downgrade();
             move |_| {
@@ -515,7 +582,146 @@ impl CommitnoteWindow {
                 Route::Notes | Route::Loading { .. }
             ));
         }
+        self.update_preferences_action();
+        self.update_export_action();
+        self.update_import_action();
+        self.update_change_passphrase_action();
         imp.applying_route.set(false);
+    }
+
+    fn update_preferences_action(&self) {
+        let model = self.model();
+        if let Some(action) = self
+            .lookup_action("preferences")
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_enabled(model.route() == Route::Notes && model.settings_copy().is_some());
+        }
+    }
+
+    fn update_export_action(&self) {
+        let model = self.model();
+        if let Some(action) = self
+            .lookup_action("export-notes")
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_enabled(
+                model.route() == Route::Notes
+                    && model.settings_copy().is_some()
+                    && !model.exporting(),
+            );
+        }
+    }
+
+    fn export_notes(&self) {
+        let model = self.model().clone();
+        let window = self.clone();
+        glib::spawn_future_local(async move {
+            if let Err(error) = export::export_notes(&model, Some(window.upcast_ref()), true).await
+            {
+                model.report_error(&error);
+            }
+        });
+    }
+
+    fn update_import_action(&self) {
+        let model = self.model();
+        if let Some(action) = self
+            .lookup_action("import-notes")
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_enabled(
+                model.route() == Route::Notes
+                    && model.settings_copy().is_some()
+                    && model.settings_view().is_some_and(|view| view.can_import)
+                    && !model.import_busy()
+                    && !model.is_importing(),
+            );
+        }
+    }
+
+    fn import_notes(&self) {
+        let model = self.model().clone();
+        let window = self.clone();
+        glib::spawn_future_local(async move {
+            import::import_notes(&model, Some(window.upcast_ref())).await;
+        });
+    }
+
+    fn update_change_passphrase_action(&self) {
+        let model = self.model();
+        if let Some(action) = self
+            .lookup_action("change-passphrase")
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_enabled(
+                model.route() == Route::Notes
+                    && model.settings_copy().is_some()
+                    && model
+                        .settings_view()
+                        .is_some_and(|view| view.can_change_passphrase)
+                    && model.passphrase_change().is_none(),
+            );
+        }
+    }
+
+    fn change_passphrase(&self) {
+        let model = self.model().clone();
+        let window = self.downgrade();
+        glib::spawn_future_local(async move {
+            if let Err(error) = model.open_change_passphrase().await {
+                model.report_error(&error);
+                return;
+            }
+            if let Some(window) = window.upgrade() {
+                window.show_change_passphrase();
+            }
+        });
+    }
+
+    /// Opens over Preferences when they are showing, as the change is started from there.
+    fn show_change_passphrase(&self) {
+        let imp = self.imp();
+        let anchor = imp
+            .preferences
+            .upgrade()
+            .map_or_else(|| self.clone().upcast::<gtk::Widget>(), Cast::upcast);
+        if let Some(open) = imp.change_passphrase.upgrade() {
+            open.present(Some(&anchor));
+            return;
+        }
+        let Some(dialog) = preferences::present_change_passphrase(self.model(), &anchor) else {
+            return;
+        };
+        dialog.connect_closed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.imp().change_passphrase.set(None);
+                }
+            }
+        });
+        imp.change_passphrase.set(Some(&dialog));
+    }
+
+    fn show_preferences(&self) {
+        let imp = self.imp();
+        if let Some(open) = imp.preferences.upgrade() {
+            open.present(Some(self));
+            return;
+        }
+        let Some(dialog) = preferences::present(self.model(), self) else {
+            return;
+        };
+        dialog.connect_closed({
+            let window = self.downgrade();
+            move |_| {
+                if let Some(window) = window.upgrade() {
+                    window.imp().preferences.set(None);
+                }
+            }
+        });
+        imp.preferences.set(Some(&dialog));
     }
 
     fn focus_early_draft(&self) {
@@ -671,27 +877,24 @@ impl CommitnoteWindow {
         self.toast_host().add_toast(toast);
     }
 
-    fn toast_host(&self) -> adw::ToastOverlay {
+    fn toast_host(&self) -> ToastHost {
         let mut hosts = self.imp().toast_hosts.borrow_mut();
         hosts.retain(|host| host.upgrade().is_some());
         hosts
             .last()
-            .and_then(|host| host.upgrade())
-            .unwrap_or_else(|| self.imp().toast_overlay.get())
+            .and_then(WeakToastHost::upgrade)
+            .unwrap_or_else(|| ToastHost::Overlay(self.imp().toast_overlay.get()))
     }
 
-    fn push_toast_host(&self, overlay: &adw::ToastOverlay) {
+    fn push_toast_host(&self, host: &ToastHost) {
+        self.imp().toast_hosts.borrow_mut().push(host.downgrade());
+    }
+
+    fn pop_toast_host(&self, host: &ToastHost) {
         self.imp()
             .toast_hosts
             .borrow_mut()
-            .push(overlay.downgrade());
-    }
-
-    fn pop_toast_host(&self, overlay: &adw::ToastOverlay) {
-        self.imp()
-            .toast_hosts
-            .borrow_mut()
-            .retain(|host| host.upgrade().is_some_and(|host| &host != overlay));
+            .retain(|other| other.upgrade().is_some_and(|other| &other != host));
     }
 
     fn restore_state(&self) {
@@ -711,23 +914,73 @@ impl CommitnoteWindow {
     }
 }
 
-/// Routes the window's notices and toasts into `overlay` while `dialog` is open, because the
+/// Where the window shows its notices and toasts while a dialog covers the window's own overlay.
+#[derive(Clone, PartialEq)]
+pub enum ToastHost {
+    Overlay(adw::ToastOverlay),
+    Preferences(adw::PreferencesDialog),
+}
+
+impl ToastHost {
+    fn add_toast(&self, toast: adw::Toast) {
+        match self {
+            Self::Overlay(overlay) => overlay.add_toast(toast),
+            Self::Preferences(dialog) => dialog.add_toast(toast),
+        }
+    }
+
+    fn downgrade(&self) -> WeakToastHost {
+        match self {
+            Self::Overlay(overlay) => WeakToastHost::Overlay(overlay.downgrade()),
+            Self::Preferences(dialog) => WeakToastHost::Preferences(dialog.downgrade()),
+        }
+    }
+}
+
+impl From<&adw::ToastOverlay> for ToastHost {
+    fn from(overlay: &adw::ToastOverlay) -> Self {
+        Self::Overlay(overlay.clone())
+    }
+}
+
+impl From<&adw::PreferencesDialog> for ToastHost {
+    fn from(dialog: &adw::PreferencesDialog) -> Self {
+        Self::Preferences(dialog.clone())
+    }
+}
+
+enum WeakToastHost {
+    Overlay(glib::WeakRef<adw::ToastOverlay>),
+    Preferences(glib::WeakRef<adw::PreferencesDialog>),
+}
+
+impl WeakToastHost {
+    fn upgrade(&self) -> Option<ToastHost> {
+        match self {
+            Self::Overlay(overlay) => overlay.upgrade().map(ToastHost::Overlay),
+            Self::Preferences(dialog) => dialog.upgrade().map(ToastHost::Preferences),
+        }
+    }
+}
+
+/// Routes the window's notices and toasts into `host` while `dialog` is open, because the
 /// window's own overlay is drawn beneath a dialog.
 pub fn host_dialog_toasts(
     anchor: &impl IsA<gtk::Widget>,
     dialog: &adw::Dialog,
-    overlay: &adw::ToastOverlay,
+    host: impl Into<ToastHost>,
 ) {
     let Some(window) = anchor.root().and_downcast::<CommitnoteWindow>() else {
         return;
     };
-    window.push_toast_host(overlay);
+    let host = host.into();
+    window.push_toast_host(&host);
     dialog.connect_closed({
         let window = window.downgrade();
-        let overlay = overlay.downgrade();
+        let host = host.downgrade();
         move |_| {
-            if let (Some(window), Some(overlay)) = (window.upgrade(), overlay.upgrade()) {
-                window.pop_toast_host(&overlay);
+            if let (Some(window), Some(host)) = (window.upgrade(), host.upgrade()) {
+                window.pop_toast_host(&host);
             }
         }
     });

@@ -5,15 +5,22 @@ use std::io::Cursor;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use commitnote_core_api::commands::{
-    ImageInsert, ImageInsertParams, LoginInitialize, LoginInitializeParams, LoginInspectRepository,
-    LoginInspectRepositoryParams, LoginInspectRepositoryResult, LoginListRepositories,
-    LoginListRepositoriesParams, LoginUnlock, LoginUnlockParams, NoteOpen, NoteOpenParams, TreeGet,
-    TreeGetParams,
+    ArchiveMimeType, ExportNotes, ExportNotesParams, ImageInsert, ImageInsertParams,
+    ImportArchiveOutcome, ImportCommit, ImportCommitParams, ImportDestinationView,
+    ImportOutcomeView, ImportPolicy, ImportReadArchive, ImportReadArchiveParams, LoginInitialize,
+    LoginInitializeParams, LoginInspectRepository, LoginInspectRepositoryParams,
+    LoginInspectRepositoryResult, LoginListRepositories, LoginListRepositoriesParams, LoginUnlock,
+    LoginUnlockParams, NoteOpen, NoteOpenParams, PassphraseChangeOutcome, PassphraseCommitChange,
+    PassphraseCommitChangeParams, PassphrasePrepareChange, PassphrasePrepareChangeParams,
+    PrintRender, PrintRenderParams, TreeGet, TreeGetParams,
 };
 use commitnote_core_api::fake::{
-    FakeExpectedSampleNotes, FakeExpectedSampleNotesParams, FakeExportRepo, FakeExportRepoParams,
-    FakeRemoteEdit, FakeRemoteEditParams, FakeSaveNote, FakeSaveNoteParams,
+    FakeChangeRepoKey, FakeChangeRepoKeyParams, FakeExpectedSampleNotes,
+    FakeExpectedSampleNotesParams, FakeExportRepo, FakeExportRepoParams, FakeRemoteEdit,
+    FakeRemoteEditParams, FakeSaveNote, FakeSaveNoteParams,
 };
 use commitnote_core_api::shapes::{ForgeKind, OpenNote, TreeNode};
 use commitnote_core_api::{CoreEvent, Secret};
@@ -21,7 +28,7 @@ use commitnote_core_runtime::services::StagedInputs;
 use commitnote_core_runtime::{CoreRuntime, HostImageCodec, HostServices, SharedStagedInputs};
 use image::codecs::gif::GifEncoder;
 use image::codecs::jpeg::JpegEncoder;
-use image::{Delay, Frame, Rgb, RgbImage, Rgba, RgbaImage};
+use image::{Delay, Frame, ImageFormat, Rgb, RgbImage, Rgba, RgbaImage};
 use serde_json::{Value, json};
 
 use common::start_fake;
@@ -39,6 +46,10 @@ const LARGE_JPEG_SIZE: (u32, u32) = (3000, 2000);
 const LARGE_JPEG_REFERENCE_SUFFIX: &str = "#2560x1707)";
 const GIF_SIZE: (u32, u32) = (48, 32);
 const MAX_IMAGES_PER_ACTION: usize = 10;
+
+const PHOTO_SIZE: (u32, u32) = (160, 120);
+const REKEYED_PASSPHRASE: &str = "round trip passphrase 2";
+const UNSYNCED_LINE: &str = "Written while the forge refused commits";
 
 fn run<F: Future>(future: F) -> F::Output {
     glib::MainContext::new()
@@ -703,5 +714,196 @@ fn too_many_images_are_returned_untouched() {
                 "an input was taken although the action was refused"
             );
         }
+    });
+}
+
+fn photo_png() -> Vec<u8> {
+    let (width, height) = PHOTO_SIZE;
+    let picture = RgbaImage::from_fn(width, height, |x, y| {
+        Rgba([x as u8, y as u8, ((x + y) / 2) as u8, 255])
+    });
+    let mut bytes = Vec::new();
+    picture
+        .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
+        .expect("the PNG encodes");
+    bytes
+}
+
+async fn export_archive(runtime: &CoreRuntime, include_images: bool) -> Vec<u8> {
+    let archive = runtime
+        .request::<ExportNotes>(ExportNotesParams { include_images })
+        .await
+        .expect("export.notes");
+    assert_eq!(archive.mime_type, ArchiveMimeType::Zip);
+    STANDARD
+        .decode(archive.base64)
+        .expect("the archive is base64")
+}
+
+async fn import_into_new_folder(
+    runtime: &CoreRuntime,
+    staged: &SharedStagedInputs,
+    archive: Vec<u8>,
+    folder: &str,
+) {
+    let input = staged.stage(archive, "application/zip");
+    let read = runtime
+        .request::<ImportReadArchive>(ImportReadArchiveParams {
+            input,
+            file_name: "round-trip.zip".to_owned(),
+        })
+        .await
+        .expect("import.readArchive");
+    assert!(
+        matches!(read, ImportArchiveOutcome::Ready { .. }),
+        "the archive was not accepted"
+    );
+    let committed = runtime
+        .request::<ImportCommit>(ImportCommitParams {
+            destination: ImportDestinationView::NewFolder {
+                parent: Vec::new(),
+                name: folder.to_owned(),
+            },
+            policy: ImportPolicy::Rename,
+        })
+        .await
+        .expect("import.commit");
+    assert!(
+        matches!(committed.outcome, ImportOutcomeView::Queued { .. }),
+        "the import was not queued"
+    );
+    flush_saved(runtime).await;
+}
+
+#[test]
+fn exported_imported_and_rekeyed_repo_reads_back() {
+    run(async {
+        let staged = SharedStagedInputs::default();
+        let runtime = start_fake(image_services(&staged));
+        log_in(&runtime, "sample/notes", SAMPLE_PASSPHRASE).await;
+        let welcome = paths(&["Welcome"]);
+        let original = open_note_loaded(&runtime, &welcome).await;
+
+        let inserted = runtime
+            .request::<ImageInsert>(ImageInsertParams {
+                inputs: vec![staged.stage(photo_png(), "image/png")],
+            })
+            .await
+            .expect("image.insert");
+        let original_reference = inserted
+            .references
+            .first()
+            .expect("the image is inserted")
+            .clone();
+        let edited = format!("{original}\n{original_reference}\n");
+        edit_note(&runtime, &welcome, &edited).await;
+        flush_saved(&runtime).await;
+
+        let archive = export_archive(&runtime, true).await;
+        let folder = "Round trip";
+        import_into_new_folder(&runtime, &staged, archive, folder).await;
+
+        let imported_path = vec![folder.to_owned(), "Welcome".to_owned()];
+        let imported_text = open_note_loaded(&runtime, &imported_path).await;
+        let imported_reference = imported_text
+            .lines()
+            .last()
+            .expect("the imported note has text")
+            .to_owned();
+        assert!(
+            imported_reference.contains("image:"),
+            "{imported_reference}"
+        );
+
+        let printed = runtime
+            .request::<PrintRender>(PrintRenderParams {
+                name: "Welcome".to_owned(),
+                text: edited.clone(),
+            })
+            .await
+            .expect("print.render");
+        assert!(printed.html.contains("data:image/"));
+
+        let prepared = runtime
+            .request::<PassphrasePrepareChange>(PassphrasePrepareChangeParams {
+                current: Secret::new(SAMPLE_PASSPHRASE.to_owned()),
+                next: Secret::new(REKEYED_PASSPHRASE.to_owned()),
+                remove_history: false,
+            })
+            .await
+            .expect("passphrase.prepareChange");
+        assert!(
+            matches!(prepared.outcome, PassphraseChangeOutcome::Review { .. }),
+            "the passphrase change was not ready for review"
+        );
+        let changed = runtime
+            .request::<PassphraseCommitChange>(PassphraseCommitChangeParams {})
+            .await
+            .expect("passphrase.commitChange");
+        assert_eq!(changed.outcome, PassphraseChangeOutcome::Changed);
+
+        let exported = export_repo(&runtime, "sample/notes").await;
+        write_scenario(
+            "data.json",
+            &scenario(
+                "linux data",
+                REKEYED_PASSPHRASE,
+                &exported,
+                json!({
+                    "initialized": false,
+                    "notes": [
+                        {"path": welcome, "text": edited},
+                        {"path": imported_path, "text": imported_text},
+                    ],
+                    "folders": [[folder]],
+                    "images": [
+                        {"reference": original_reference, "type": "image/webp"},
+                        {"reference": imported_reference, "type": "image/webp"},
+                    ],
+                    "deviceName": DEVICE_MODEL,
+                }),
+            ),
+        );
+    });
+}
+
+#[test]
+fn key_changed_export_keeps_unsynced_edits() {
+    run(async {
+        let runtime = start_fake(HostServices::default());
+        log_in(&runtime, "sample/notes", SAMPLE_PASSPHRASE).await;
+        let welcome = paths(&["Welcome"]);
+        let original = open_note_loaded(&runtime, &welcome).await;
+
+        let events = runtime.subscribe();
+        command(&runtime, "lifecycle.setOnline", json!({"online": false})).await;
+        let edited = format!("{original}\n{UNSYNCED_LINE}\n");
+        edit_note(&runtime, &welcome, &edited).await;
+        runtime
+            .request::<FakeChangeRepoKey>(FakeChangeRepoKeyParams {
+                repo: "sample/notes".to_owned(),
+            })
+            .await
+            .expect("fake.changeRepoKey");
+        command(&runtime, "lifecycle.setOnline", json!({"online": true})).await;
+        command(&runtime, "sync.flush", json!({})).await;
+        let unsaved_count = loop {
+            let event = events.recv().await.expect("the runtime keeps running");
+            if let CoreEvent::KeyChanged { unsaved_count, .. } = event {
+                break unsaved_count;
+            }
+        };
+        assert_eq!(unsaved_count, 1);
+
+        let archive = export_archive(&runtime, false).await;
+
+        let staged = SharedStagedInputs::default();
+        let recovery = start_fake(image_services(&staged));
+        log_in(&recovery, "sample/notes", SAMPLE_PASSPHRASE).await;
+        let folder = "Recovered";
+        import_into_new_folder(&recovery, &staged, archive, folder).await;
+        let recovered =
+            open_note_loaded(&recovery, &[folder.to_owned(), "Welcome".to_owned()]).await;
+        assert!(recovered.contains(UNSYNCED_LINE));
     });
 }

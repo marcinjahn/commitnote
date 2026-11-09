@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod test_server;
+
 use std::future::Future;
 use std::time::Duration;
 

@@ -1,8 +1,19 @@
 use serde::{Deserialize, Serialize};
 
-use crate::settings::{SettingKeyView, SettingsCopy, SettingsSaveView, SettingsView};
+use crate::settings::{
+    ScopedSettingKey, SettingKeyView, SettingScope, SettingsCopy, SettingsSaveView, SettingsView,
+};
 
-empty_shape!(SettingsOpenParams, SettingsChangeResult);
+empty_shape!(
+    SettingsOpenParams,
+    SettingsChangeResult,
+    SettingsSetScopeResult,
+    SettingsRetryParams,
+    SettingsRetryResult,
+    SettingsFlushParams,
+    SettingsFlushResult,
+    AnalyticsSetCountedResult,
+);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,6 +30,31 @@ pub struct SettingsChangeParams {
     pub value: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsSetScopeParams {
+    pub key: ScopedSettingKey,
+    pub scope: SettingScope,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceSetNameParams {
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceSetNameResult {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyticsSetCountedParams {
+    pub counted: bool,
+}
+
 command!(
     SettingsOpen,
     "settings.open",
@@ -30,4 +66,34 @@ command!(
     "settings.change",
     SettingsChangeParams,
     SettingsChangeResult
+);
+command!(
+    SettingsSetScope,
+    "settings.setScope",
+    SettingsSetScopeParams,
+    SettingsSetScopeResult
+);
+command!(
+    SettingsRetry,
+    "settings.retry",
+    SettingsRetryParams,
+    SettingsRetryResult
+);
+command!(
+    SettingsFlush,
+    "settings.flush",
+    SettingsFlushParams,
+    SettingsFlushResult
+);
+command!(
+    DeviceSetName,
+    "device.setName",
+    DeviceSetNameParams,
+    DeviceSetNameResult
+);
+command!(
+    AnalyticsSetCounted,
+    "analytics.setCounted",
+    AnalyticsSetCountedParams,
+    AnalyticsSetCountedResult
 );

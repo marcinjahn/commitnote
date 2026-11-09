@@ -7,6 +7,8 @@ mod ts_names;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::commands::ImportArchiveOutcome;
+
 empty_shape!(
     FakeRemoteEditResult,
     FakeChangeRepoKeyResult,
@@ -18,7 +20,10 @@ empty_shape!(
     FakeReleaseLoadingResult,
     FakeExpectedSampleNotesParams,
     FakeSaveNoteResult,
+    FakeImportArchiveParams,
 );
+
+pub type FakeImportArchiveResult = ImportArchiveOutcome;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -290,6 +295,12 @@ command!(
     FakeProcessImageParams,
     FakeProcessImageResult
 );
+command!(
+    FakeImportArchive,
+    "fake.importArchive",
+    FakeImportArchiveParams,
+    FakeImportArchiveResult
+);
 
 #[cfg(test)]
 mod tests {
@@ -335,6 +346,7 @@ mod tests {
             FakeHttpRequest::NAME,
             FakeSaveNote::NAME,
             FakeProcessImage::NAME,
+            FakeImportArchive::NAME,
         ];
         for name in typed {
             assert!(FAKE_CORE_COMMAND_NAMES.contains(&name), "{name}");
@@ -346,6 +358,7 @@ mod tests {
         assert_eq!(round_trip(&FakeHoldLoadingParams {}), json!({}));
         assert_eq!(round_trip(&FakeReleaseLoadingParams {}), json!({}));
         assert_eq!(round_trip(&FakeExpectedSampleNotesParams {}), json!({}));
+        assert_eq!(round_trip(&FakeImportArchiveParams {}), json!({}));
     }
 
     #[test]

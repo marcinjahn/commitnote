@@ -2,6 +2,7 @@ mod details_dialog;
 mod folder_dialog;
 mod history_dialog;
 mod image_viewer;
+mod import_dialog;
 mod move_dialog;
 mod node_object;
 mod node_row;
@@ -28,6 +29,7 @@ mod zoom_logic;
 mod zoom_view;
 
 pub use image_viewer::ImageViewer;
+pub use import_dialog::ImportDialog;
 pub use note_view::NoteView;
 pub use notes_page::NotesPage;
 pub use search_view::SearchView;

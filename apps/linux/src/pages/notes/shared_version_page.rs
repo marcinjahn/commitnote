@@ -8,6 +8,7 @@ use libadwaita as adw;
 
 use super::note_view::ModelImages;
 use crate::editor::MarkdownView;
+use crate::fonts::follow_note_font;
 use crate::model::AppModel;
 
 pub const PAGE_NAME: &str = "shared-version";
@@ -111,6 +112,14 @@ pub fn page(
             }
         }
     }))));
+    follow_note_font(model, &page, {
+        let text = text.downgrade();
+        move |font| {
+            if let Some(text) = text.upgrade() {
+                text.set_note_font(font);
+            }
+        }
+    });
     page.connect_destroy({
         let model = model.downgrade();
         move |_| {

@@ -4,8 +4,9 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use commitnote::editor::NoteEditor;
+use commitnote::file_dialogs;
 use commitnote::model::{DraftFocus, EditorTarget, ImageState};
-use commitnote::pages::notes::{ImageViewer, NotesPage, SharedLinksDialog};
+use commitnote::pages::notes::{ImageViewer, SharedLinksDialog};
 use commitnote_core_api::Secret;
 use commitnote_core_api::commands::{
     HistoryPhase, HistoryRow, HistoryVersionView, MessagePart, ShareActionId, ShareCreateOutcome,
@@ -46,9 +47,11 @@ pub const CASES: &[Case] = &[
     ("p4-history-keys", history_keys),
     ("p4-shot-history", shot_history),
     ("p4-shot-version-preview", shot_version_preview),
+    ("p4-version-preview-note-font", version_preview_note_font),
     ("p4-share-create", share_create),
     ("p4-share-create-another", share_create_another),
     ("p4-share-flushes-edits", share_flushes_edits),
+    ("p4-shared-version-note-font", shared_version_note_font),
     ("p4-share-error", share_error),
     ("p4-shared-links-actions", shared_links_actions),
     ("p4-shared-links-revoke", shared_links_revoke),
@@ -229,15 +232,8 @@ fn open_welcome(h: &Harness) -> Result<(NoteEditor, String), String> {
     Ok((editor, original))
 }
 
-fn notes_page(editor: &NoteEditor) -> Result<NotesPage, String> {
-    editor
-        .ancestor(NotesPage::static_type())
-        .and_downcast::<NotesPage>()
-        .ok_or_else(|| "the editor is not on the notes page".to_owned())
-}
-
 fn pick_and_insert(editor: &NoteEditor, files: Vec<gio::File>) -> Result<(), String> {
-    notes_page(editor)?.testing_set_next_picked_files(files);
+    file_dialogs::testing_queue_open(files);
     WidgetExt::activate_action(editor, "editor.insert-image", None)
         .map_err(|error| format!("cannot activate editor.insert-image: {error}"))
 }
@@ -292,7 +288,7 @@ fn insert_file(h: &mut Harness) -> Result<(), String> {
         scratch.write("second.png", &png_bytes(64, 40, 128))?,
     ];
     editor.place_caret(0);
-    notes_page(&editor)?.testing_set_next_picked_files(files);
+    file_dialogs::testing_queue_open(files);
 
     h.click("format-image-button")?;
     h.wait("two references in the note", || {
@@ -938,6 +934,32 @@ fn shot_version_preview(h: &mut Harness) -> Result<(), String> {
     Ok(())
 }
 
+fn version_preview_note_font(h: &mut Harness) -> Result<(), String> {
+    welcome_with_versions(h, &[FIRST_TEXT, SECOND_TEXT])?;
+    open_history(h)?;
+    wait_history_ready(h, 3)?;
+    open_version(h, 1)?;
+    let diff = h.widget("version-diff")?;
+    ensure(
+        diff.has_css_class("note-font-inter") && !diff.has_css_class("monospace"),
+        || "the diff is not in the default note font".to_owned(),
+    )?;
+
+    h.change_setting("noteFont", "lora")?;
+    h.wait("the diff to follow the note font", || {
+        diff.has_css_class("note-font-lora") && !diff.has_css_class("note-font-inter")
+    })?;
+    ensure(
+        diff_lines(h, "diff-added")? >= 1 && diff_lines(h, "diff-removed")? >= 1,
+        || "the diff lost its colouring".to_owned(),
+    )?;
+
+    h.change_setting("noteFont", "system")?;
+    h.wait("the diff to follow the system font", || {
+        diff.has_css_class("note-font-system") && !diff.has_css_class("note-font-lora")
+    })
+}
+
 const SHARE_DIALOG: &str = "share-dialog";
 const SHARED_LINKS_DIALOG: &str = "shared-links-dialog";
 const SHARE_NOTE: &str = "notes.share-note";
@@ -1202,6 +1224,34 @@ fn share_flushes_edits(h: &mut Harness) -> Result<(), String> {
     h.wait("the shared version to hold the typed text", || {
         h.text_view_text("shared-version-text")
             .is_ok_and(|text| text.contains(TYPED))
+    })
+}
+
+fn shared_version_note_font(h: &mut Harness) -> Result<(), String> {
+    open_welcome(h)?;
+    open_share_dialog(h)?;
+    h.click("share-create")?;
+    h.wait_shown("share-result")?;
+    h.press_keys("Escape")?;
+    h.wait("the share dialog to close", || !h.shown(SHARE_DIALOG))?;
+
+    let [share] = wait_shares(h, &path(WELCOME), 1)?
+        .try_into()
+        .map_err(|_| "one share expected")?;
+    let dialog = open_shared_links(h)?;
+    h.wait("the share row", || {
+        h.widget(&format!("share-row-{}", share.id)).is_ok()
+    })?;
+    activate_share_action(&dialog, &share, ShareActionId::View)?;
+    h.wait_shown("shared-version-text")?;
+    let text = h.widget("shared-version-text")?;
+    ensure(text.has_css_class("note-font-inter"), || {
+        "the shared version is not in the default note font".to_owned()
+    })?;
+
+    h.change_setting("noteFont", "literata")?;
+    h.wait("the shared version to follow the note font", || {
+        text.has_css_class("note-font-literata") && !text.has_css_class("note-font-inter")
     })
 }
 

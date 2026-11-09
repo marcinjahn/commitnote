@@ -9,6 +9,7 @@ use commitnote_core_api::commands::{
 use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
+use crate::fonts::follow_note_font;
 use crate::model::{AppModel, RestoreResult};
 
 const CHANGED_OPEN: &str = "<span weight=\"bold\" bgcolor=\"#80808059\">";
@@ -25,6 +26,7 @@ struct Preview {
     heading: gtk::Label,
     scroller: gtk::ScrolledWindow,
     body: gtk::Box,
+    diff: RefCell<Option<gtk::Box>>,
     toggle: adw::SwitchRow,
     toggle_list: gtk::ListBox,
     reason: gtk::Label,
@@ -154,6 +156,7 @@ pub fn page(
         heading,
         scroller,
         body,
+        diff: RefCell::new(None),
         toggle: toggle.clone(),
         toggle_list,
         reason,
@@ -187,6 +190,17 @@ pub fn page(
         move |_| {
             if let Some(state) = state.upgrade() {
                 state.restore();
+            }
+        }
+    });
+    follow_note_font(model, &page, {
+        let state = Rc::downgrade(&state);
+        move |font| {
+            if let Some(diff) = state
+                .upgrade()
+                .and_then(|state| state.diff.borrow().clone())
+            {
+                font.apply_to(&diff);
             }
         }
     });
@@ -271,7 +285,12 @@ impl Preview {
         while let Some(child) = self.body.first_child() {
             self.body.remove(&child);
         }
-        self.body.append(&body_widget(body));
+        let (widget, diff) = body_widget(body);
+        if let Some(diff) = &diff {
+            self.model.note_font().apply_to(diff);
+        }
+        self.body.append(&widget);
+        self.diff.replace(diff);
         scroll.set_value(position);
         glib::idle_add_local_once(move || scroll.set_value(position));
 
@@ -337,9 +356,11 @@ impl Preview {
     }
 }
 
-fn body_widget(body: &PreviewBody) -> gtk::Widget {
+/// The widget for the version's body and, when it is a diff of note text, that diff for the
+/// caller to put in the note font.
+fn body_widget(body: &PreviewBody) -> (gtk::Widget, Option<gtk::Box>) {
     match body {
-        PreviewBody::TooLarge { message } | PreviewBody::Unchanged { message } => {
+        PreviewBody::TooLarge { message } | PreviewBody::Unchanged { message } => (
             gtk::Label::builder()
                 .name("version-body-message")
                 .label(message)
@@ -347,8 +368,9 @@ fn body_widget(body: &PreviewBody) -> gtk::Widget {
                 .xalign(0.0)
                 .css_classes(["dim-label"])
                 .build()
-                .upcast()
-        }
+                .upcast(),
+            None,
+        ),
         PreviewBody::Diff {
             items,
             final_newline,
@@ -356,7 +378,6 @@ fn body_widget(body: &PreviewBody) -> gtk::Widget {
             let lines = gtk::Box::builder()
                 .name("version-diff")
                 .orientation(gtk::Orientation::Vertical)
-                .css_classes(["monospace"])
                 .build();
             for item in items {
                 match item {
@@ -392,7 +413,7 @@ fn body_widget(body: &PreviewBody) -> gtk::Widget {
                         .build(),
                 );
             }
-            lines.upcast()
+            (lines.clone().upcast(), Some(lines))
         }
     }
 }

@@ -63,31 +63,9 @@ template $CommitnoteInitializePage: Adw.NavigationPage {
               title: "Create passphrase";
             }
 
-            Gtk.Box strength_box {
-              visible: false;
-              orientation: vertical;
-              spacing: 6;
+            $CommitnoteStrengthMeter strength_meter {
+              name: "init-strength";
               margin-top: 12;
-
-              Gtk.LevelBar strength_bar {
-                mode: discrete;
-                min-value: 0;
-                max-value: 4;
-                value: 0;
-                hexpand: true;
-                css-classes: ["passphrase-strength"];
-
-                accessibility {
-                  hidden: true;
-                }
-              }
-
-              Gtk.Label strength_label {
-                name: "init-strength-label";
-                wrap: true;
-                xalign: 0;
-                css-classes: ["caption"];
-              }
             }
           }
 

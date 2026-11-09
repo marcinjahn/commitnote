@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::error::{CoreError, CoreErrorKind};
-use crate::settings::{SettingKeyView, SettingScope, SettingsSaveState};
+use crate::settings::{ScopedSettingKey, SettingKeyView, SettingScope, SettingsSaveState};
 use crate::shapes::*;
 
 fn params_json<C: Command>(params: &C::Params) -> Value {
@@ -95,6 +95,11 @@ fn every_command_has_a_distinct_name() {
         NoticesPerform::NAME,
         SettingsOpen::NAME,
         SettingsChange::NAME,
+        SettingsSetScope::NAME,
+        SettingsRetry::NAME,
+        SettingsFlush::NAME,
+        DeviceSetName::NAME,
+        AnalyticsSetCounted::NAME,
         AnalyticsVisit::NAME,
         NoteEdit::NAME,
         SyncFlush::NAME,
@@ -1901,4 +1906,50 @@ fn share_action_ids_use_kebab_case_wire_names() {
     ] {
         assert_eq!(round_trip(&id), json!(wire));
     }
+}
+
+#[test]
+fn settings_commands_use_camel_case_wire_names() {
+    assert_eq!(SettingsSetScope::NAME, "settings.setScope");
+    assert_eq!(DeviceSetName::NAME, "device.setName");
+    assert_eq!(
+        round_trip(&SettingsSetScopeParams {
+            key: ScopedSettingKey::AccentColor,
+            scope: SettingScope::Device,
+        }),
+        json!({"key":"accentColor","scope":"device"})
+    );
+    for (key, wire) in [
+        (ScopedSettingKey::ColorMode, "colorMode"),
+        (ScopedSettingKey::AccentColor, "accentColor"),
+        (ScopedSettingKey::NoteFont, "noteFont"),
+        (ScopedSettingKey::TypeToStart, "typeToStart"),
+    ] {
+        assert_eq!(round_trip(&key), json!(wire));
+    }
+    assert_eq!(
+        round_trip(&DeviceSetNameParams {
+            name: Some("Laptop".into())
+        }),
+        json!({"name":"Laptop"})
+    );
+    assert_eq!(
+        round_trip(&DeviceSetNameParams { name: None }),
+        json!({"name":null})
+    );
+    assert_eq!(
+        decode::<DeviceSetName>(r#"{"name":"Laptop"}"#).name,
+        "Laptop"
+    );
+    assert_eq!(
+        round_trip(&AnalyticsSetCountedParams { counted: true }),
+        json!({"counted":true})
+    );
+    let empty = json!({});
+    assert_eq!(params_json::<SettingsRetry>(&SettingsRetryParams {}), empty);
+    assert_eq!(params_json::<SettingsFlush>(&SettingsFlushParams {}), empty);
+    decode::<SettingsSetScope>("{}");
+    decode::<SettingsRetry>("{}");
+    decode::<SettingsFlush>("{}");
+    decode::<AnalyticsSetCounted>("{}");
 }

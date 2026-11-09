@@ -18,14 +18,13 @@ use commitnote_core_api::commands::{
     NoteEdit, NoteEditParams, NoteOpen, NoteOpenParams, NoteRename, NoteRenameParams,
     NoticeIdParams, NoticesDismiss, NoticesPerform, PassphraseParams, PassphraseStrengthCheck,
     PassphraseStrengthParams, SessionLogout, SessionLogoutParams, SessionLogoutResult,
-    SessionResume, SessionResumeParams, SessionResumeResult, SettingsOpen, SettingsOpenParams,
-    SyncFlush, SyncFlushParams, SyncRefresh, SyncRefreshParams, SyncRetry, SyncRetryParams,
-    TreeGet, TreeGetParams, TreeGetResult,
+    SessionResume, SessionResumeParams, SessionResumeResult, SyncFlush, SyncFlushParams,
+    SyncRefresh, SyncRefreshParams, SyncRetry, SyncRetryParams, TreeGet, TreeGetParams,
+    TreeGetResult,
 };
 use commitnote_core_api::events::{
     NoteChanged, Notice, SharesChanged, SyncStateChanged, TreeChanged,
 };
-use commitnote_core_api::settings::{AccentOptionView, SettingsView};
 use commitnote_core_api::shapes::{
     ColorTag, ForgeKind, ForgeView, LogoutOutcome, NoticeAction, OpenNote, PassphraseStrength,
     RemoteTextEdit, RepositoryView, TagOptionView, TreeNode,
@@ -42,18 +41,27 @@ use super::core_client::{ClientConfig, CoreClient, startup_message};
 use super::edit_sender::{EditDestination, EditSender};
 use super::editor_lane::EditorLane;
 use super::editor_settings::EditorSettings;
+use crate::fonts::NoteFont;
 
+mod data;
+mod file_input;
 mod history;
 mod images;
 mod last_view;
 mod organise;
+mod passphrase;
+mod print;
 mod search;
+mod settings;
 mod shares;
+mod visit;
 
+pub use data::{DropSetup, ExportGuard, ExportedFile, ImportSetup};
 pub use history::RestoreResult;
 pub use images::{ImageInput, ImageState, LoadedImage};
 pub use last_view::NoteDetails;
 pub use organise::{COLOR_TAGS, TrashResult, TrashState};
+pub use passphrase::{PassphraseChangeState, PassphraseStage};
 pub use search::SearchStatus;
 
 pub const GENERIC_ERROR_MESSAGE: &str = "Something went wrong. Try again.";
@@ -300,7 +308,9 @@ struct State {
     note_update_serial: u64,
     sync: Option<SyncStateChanged>,
     key_changed: Option<KeyChangedView>,
-    accent_options: Vec<AccentOptionView>,
+    settings: settings::SettingsState,
+    import: data::ImportState,
+    passphrase: Option<passphrase::PassphraseChangeState>,
     appearance: Appearance,
     editor_settings: EditorSettings,
     visible: bool,
@@ -323,6 +333,7 @@ mod imp {
         pub(super) client: RefCell<Option<Rc<CoreClient>>>,
         pub(super) state: RefCell<State>,
         pub(super) generation: Cell<u64>,
+        pub(super) exporting: Cell<bool>,
         pub(super) edit_sender: OnceCell<EditSender>,
         pub(super) editor_lane: EditorLane,
     }
@@ -352,6 +363,14 @@ mod imp {
                     Signal::builder("last-view-restored").build(),
                     Signal::builder("history-changed").build(),
                     Signal::builder("shares-changed").build(),
+                    Signal::builder("settings-changed").build(),
+                    Signal::builder("settings-save-changed").build(),
+                    Signal::builder("import-changed").build(),
+                    Signal::builder("export-changed").build(),
+                    Signal::builder("passphrase-change-changed").build(),
+                    Signal::builder("import-expand")
+                        .param_types([glib::StrV::static_type()])
+                        .build(),
                     Signal::builder("notice")
                         .param_types([
                             String::static_type(),
@@ -514,7 +533,8 @@ impl AppModel {
         self.state_mut().draft_name = name;
     }
 
-    /// The text a draft starts with when it comes from the early draft.
+    /// The draft's text: what it starts with when it comes from the early draft, then what was
+    /// typed into it.
     pub fn draft_body(&self) -> String {
         self.state().draft_body.clone()
     }
@@ -599,6 +619,10 @@ impl AppModel {
 
     pub fn type_to_start(&self) -> bool {
         self.state().editor_settings.type_to_start
+    }
+
+    pub fn note_font(&self) -> NoteFont {
+        self.state().editor_settings.note_font
     }
 
     pub fn connect_route_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
@@ -716,6 +740,8 @@ impl AppModel {
 
     pub async fn choose_repository(&self, url: &str) {
         self.state_mut().repository_url = Some(url.to_owned());
+        self.clear_settings();
+        self.reset_import_state();
         self.reset_image_cache();
         self.inspect().await;
     }
@@ -1077,6 +1103,7 @@ impl AppModel {
 
     /// Logs out once every edit is saved; otherwise reports what would be lost and stays.
     pub async fn log_out(&self) -> Result<LogOutResult, UserError> {
+        self.flush_settings_before_leaving().await;
         self.flush_edits().await;
         self.flush_last_view().await;
         let result = self
@@ -1164,10 +1191,16 @@ impl AppModel {
     }
 
     pub fn edit(&self, text: String) {
-        let destination = match &self.state().editor_target {
-            EditorTarget::None => return,
-            EditorTarget::Note(path) => EditDestination::Note(path.clone()),
-            EditorTarget::Draft(_) => EditDestination::Draft,
+        let destination = {
+            let mut state = self.state_mut();
+            match &state.editor_target {
+                EditorTarget::None => return,
+                EditorTarget::Note(path) => EditDestination::Note(path.clone()),
+                EditorTarget::Draft(_) => {
+                    state.draft_body.clone_from(&text);
+                    EditDestination::Draft
+                }
+            }
         };
         self.edit_sender().submit(text, destination);
     }
@@ -1183,6 +1216,7 @@ impl AppModel {
 
     /// Saves every edit for a close; a failed request counts the edits last reported unsaved.
     pub async fn flush_for_close(&self) -> FlushOutcome {
+        self.flush_settings_before_leaving().await;
         self.flush_edits().await;
         match self.request::<SyncFlush>(SyncFlushParams {}).await {
             Ok(result) => result.result,
@@ -1337,6 +1371,7 @@ impl AppModel {
         }
         self.imp().client.replace(Some(client));
         self.attach_events();
+        self.count_launch();
         #[cfg(feature = "testing")]
         self.hold_loading_if_requested().await;
         self.lifecycle_update().await;
@@ -1533,40 +1568,6 @@ impl AppModel {
         Ok(())
     }
 
-    async fn load_settings(&self) {
-        match self.request::<SettingsOpen>(SettingsOpenParams {}).await {
-            Ok(result) => {
-                self.state_mut().accent_options = result.copy.accent_color.options;
-                self.apply_settings_view(&result.view);
-            }
-            Err(error) => warn("could not read settings", &error),
-        }
-    }
-
-    fn apply_settings_view(&self, view: &SettingsView) {
-        let appearance = {
-            let state = self.state();
-            Appearance::from_settings(&view.values, &state.accent_options)
-        };
-        let changed = {
-            let mut state = self.state_mut();
-            let changed = state.appearance != appearance;
-            state.appearance = appearance;
-            changed
-        };
-        if changed {
-            self.emit_by_name::<()>("appearance-changed", &[]);
-        }
-        let editor_settings = EditorSettings::from_settings(&view.values);
-        let editor_changed = {
-            let mut state = self.state_mut();
-            std::mem::replace(&mut state.editor_settings, editor_settings) != editor_settings
-        };
-        if editor_changed {
-            self.emit_by_name::<()>("editor-settings-changed", &[]);
-        }
-    }
-
     async fn load_login_context(&self) {
         let (forges, last_repository, device_name) = futures_util::join!(
             self.request::<ForgesList>(ForgesListParams {}),
@@ -1737,6 +1738,7 @@ impl AppModel {
     }
 
     pub async fn log_out_anyway(&self) -> Result<(), UserError> {
+        self.flush_settings_before_leaving().await;
         self.leave_draft().await;
         self.flush_last_view().await;
         logout_result(
@@ -1808,12 +1810,15 @@ impl AppModel {
                 self.set_route(Route::KeyChanged { view });
             }
             CoreEvent::SessionEnded { .. } => self.session_ended(),
-            CoreEvent::SettingsChanged { view } => self.apply_settings_view(&view),
+            CoreEvent::SettingsChanged { view } => self.apply_settings_view(view),
+            CoreEvent::SettingsSaveChanged { save } => self.settings_save_changed(save),
             CoreEvent::NoteContentChangedRemotely(changed) => self.show_toast(&changed.message),
             CoreEvent::TrashChanged(changed) => self.trash_changed(changed),
             CoreEvent::SearchStatusChanged(changed) => self.search_status_changed(changed),
             CoreEvent::HistoryChanged(changed) => self.history_changed(changed),
             CoreEvent::SharesChanged(changed) => self.shares_changed(changed),
+            CoreEvent::ImportStatusChanged(status) => self.import_status_changed(status),
+            CoreEvent::PassphraseChangeProgress(progress) => self.passphrase_progress(progress),
             CoreEvent::Other { .. } => {}
         }
     }
@@ -1957,6 +1962,9 @@ impl AppModel {
         let search_ended = self.end_search();
         let history_ended = self.state().history.is_some();
         let shares_ended = self.state().shares.is_some();
+        let settings_ended = self.state().settings.is_loaded();
+        let import_ended = self.state().import.is_active();
+        let passphrase_ended = self.state().passphrase.is_some();
         let last_view = self.end_last_view();
         {
             let mut state = self.state_mut();
@@ -1973,7 +1981,6 @@ impl AppModel {
                 note_switch: previous.note_switch + 1,
                 editor_lineage: previous.editor_lineage + 1,
                 note_update_serial: previous.note_update_serial,
-                accent_options: previous.accent_options,
                 appearance: previous.appearance,
                 editor_settings: previous.editor_settings,
                 visible: previous.visible,
@@ -1997,6 +2004,15 @@ impl AppModel {
         }
         if shares_ended {
             self.emit_by_name::<()>("shares-changed", &[]);
+        }
+        if settings_ended {
+            self.emit_settings_cleared();
+        }
+        if import_ended {
+            self.emit_by_name::<()>("import-changed", &[]);
+        }
+        if passphrase_ended {
+            self.emit_passphrase_change_cleared();
         }
         self.bump_generation();
         self.imp().editor_lane.supersede();
@@ -2083,6 +2099,16 @@ impl AppModel {
 
     fn show_toast(&self, message: &str) {
         self.emit_by_name::<()>("toast", &[&message]);
+    }
+
+    /// `None` when the session ended meanwhile, so a late reply cannot touch the next session.
+    async fn request_in_session<C: Command>(
+        &self,
+        params: C::Params,
+    ) -> Option<Result<C::Result, RequestError>> {
+        let generation = self.imp().generation.get();
+        let result = self.request::<C>(params).await;
+        (self.imp().generation.get() == generation).then_some(result)
     }
 
     fn request<C: Command>(
@@ -2255,6 +2281,10 @@ impl AppModel {
         ));
     }
 
+    pub fn testing_import_status(&self, status: commitnote_core_api::events::ImportStatusChanged) {
+        self.handle_event(CoreEvent::ImportStatusChanged(status));
+    }
+
     pub async fn testing_fail_next(&self) -> Result<(), UserError> {
         use commitnote_core_api::fake::{FakeFailNext, FakeFailNextParams};
 
@@ -2411,7 +2441,7 @@ mod tests {
     use crate::pages::notes::note_state::{NoteDisplay, display_state, loaded_update};
 
     const NOTES_URL: &str = "https://github.com/sample/notes";
-    const PASSPHRASE: &str = "sample notes repo passphrase";
+    pub(super) const PASSPHRASE: &str = "sample notes repo passphrase";
     const BUNDLE_PATH: &str = "/io/github/marcinjahn/commitnote/core/commitnote-core.js";
 
     static NEXT_ID: AtomicU32 = AtomicU32::new(0);

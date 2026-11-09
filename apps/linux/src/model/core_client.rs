@@ -14,6 +14,7 @@ use commitnote_core_runtime::services::remembered_session::{
 use commitnote_core_runtime::services::{HostServices, ServiceError};
 use commitnote_core_runtime::{
     CoreRuntime, HostImageCodec, RequestError, RuntimeConfig, SharedStagedInputs, StartError,
+    VisitSender, run_visit,
 };
 #[cfg(feature = "testing")]
 use serde_json::Value;
@@ -99,6 +100,19 @@ impl CoreClient {
             match pending {
                 Some(pending) => pending.await,
                 None => Err(RequestError::Stopped),
+            }
+        }
+    }
+
+    pub fn run_visit<'a>(&self, sender: &'a dyn VisitSender) -> impl Future<Output = ()> + use<'a> {
+        let pending = self
+            .runtime
+            .borrow()
+            .as_ref()
+            .map(|runtime| run_visit(runtime, sender));
+        async move {
+            if let Some(pending) = pending {
+                pending.await;
             }
         }
     }

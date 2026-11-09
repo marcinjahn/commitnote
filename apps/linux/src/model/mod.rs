@@ -7,9 +7,10 @@ mod editor_settings;
 pub mod lifecycle;
 
 pub use app_model::{
-    AppConfig, AppModel, COLOR_TAGS, DraftFocus, EarlyDraftState, EditorTarget,
-    GENERIC_ERROR_MESSAGE, ImageInput, ImageState, KeyChangedView, LoadedImage, LoadingFailure,
-    LogOutResult, LoginDraft, NoteContentUpdate, NoteDetails, NoticeView, RenameResult,
+    AppConfig, AppModel, COLOR_TAGS, DraftFocus, DropSetup, EarlyDraftState, EditorTarget,
+    ExportGuard, ExportedFile, GENERIC_ERROR_MESSAGE, ImageInput, ImageState, ImportSetup,
+    KeyChangedView, LoadedImage, LoadingFailure, LogOutResult, LoginDraft, NoteContentUpdate,
+    NoteDetails, NoticeView, PassphraseChangeState, PassphraseStage, RenameResult,
     RepositoryChoice, RestoreResult, Route, SearchStatus, TokenError, TrashResult, TrashState,
     UnlockError, UnusableOutcome, UserError,
 };

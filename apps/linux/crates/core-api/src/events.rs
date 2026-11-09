@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::commands::{HistoryView, ShareCopy, ShareRowView};
+use crate::commands::{AtomicBlockedView, HistoryView, ShareCopy, ShareRowView};
 use crate::envelope::{ParseError, decode_value};
 use crate::error::CoreError;
-use crate::settings::SettingsView;
+use crate::settings::{SettingsSaveView, SettingsView};
 use crate::shapes::{
     ColorTag, LoadingStep, NoticeAction, NoticeTone, OpenNote, RemoteTextEdit, SessionEndReason,
     SyncState, SyncStatusMenuItem, TagOptionView, TrashConfirmationText, TrashEntryView, TreeNode,
@@ -120,6 +120,27 @@ pub struct SettingsChangedPayload {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SettingsSaveChangedPayload {
+    pub save: SettingsSaveView,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportStatusChanged {
+    pub importing: bool,
+    pub atomic_blocked: Option<AtomicBlockedView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PassphraseChangeProgress {
+    pub message: String,
+    pub done: Option<u32>,
+    pub total: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HistoryChanged {
     pub history: Option<HistoryView>,
 }
@@ -158,6 +179,11 @@ pub enum CoreEvent {
     SettingsChanged {
         view: SettingsView,
     },
+    SettingsSaveChanged {
+        save: SettingsSaveView,
+    },
+    ImportStatusChanged(ImportStatusChanged),
+    PassphraseChangeProgress(PassphraseChangeProgress),
     Other {
         name: String,
         payload: Value,
@@ -202,6 +228,12 @@ impl CoreEvent {
                 let SettingsChangedPayload { view } = decode_value(payload)?;
                 Self::SettingsChanged { view }
             }
+            "settingsSaveChanged" => {
+                let SettingsSaveChangedPayload { save } = decode_value(payload)?;
+                Self::SettingsSaveChanged { save }
+            }
+            "importStatusChanged" => Self::ImportStatusChanged(decode_value(payload)?),
+            "passphraseChangeProgress" => Self::PassphraseChangeProgress(decode_value(payload)?),
             other => Self::Other {
                 name: other.to_owned(),
                 payload,
@@ -225,6 +257,9 @@ impl CoreEvent {
             Self::KeyChanged { .. } => "keyChanged",
             Self::SessionEnded { .. } => "sessionEnded",
             Self::SettingsChanged { .. } => "settingsChanged",
+            Self::SettingsSaveChanged { .. } => "settingsSaveChanged",
+            Self::ImportStatusChanged(_) => "importStatusChanged",
+            Self::PassphraseChangeProgress(_) => "passphraseChangeProgress",
             Self::Other { name, .. } => name,
         }
     }
@@ -241,7 +276,7 @@ mod tests {
     use crate::envelope::{Incoming, parse_incoming};
     use crate::error::CoreErrorKind;
     use crate::secret::Secret;
-    use crate::settings::SettingScope;
+    use crate::settings::{SettingScope, SettingsSaveState};
     use crate::shapes::{OutOfSyncReason, TrashItemKind, TrashItemView};
 
     fn event(text: &str) -> CoreEvent {
@@ -882,11 +917,94 @@ mod tests {
                 "keyChanged",
                 json!({"unsavedCount":0,"message":"m","detail":"d","exportLabel":"e"}),
             ),
+            (
+                "settingsSaveChanged",
+                json!({"save":{"state":"synced","label":"l","detail":"d","canRetry":false}}),
+            ),
+            (
+                "importStatusChanged",
+                json!({"importing":false,"atomicBlocked":null}),
+            ),
+            (
+                "passphraseChangeProgress",
+                json!({"message":"m","done":null,"total":null}),
+            ),
         ];
         for (name, payload) in names {
             let event = CoreEvent::from_parts(name, payload).unwrap();
             assert_eq!(event.name(), name);
             assert!(crate::CORE_EVENT_NAMES.contains(&name));
         }
+    }
+
+    #[test]
+    fn settings_save_changed_carries_the_save_view() {
+        let decoded = event(
+            r#"{"kind":"event","event":"settingsSaveChanged","payload":{"save":{"state":"failed","label":"Not saved","detail":"Offline","canRetry":true}}}"#,
+        );
+        assert_eq!(
+            decoded,
+            CoreEvent::SettingsSaveChanged {
+                save: SettingsSaveView {
+                    state: SettingsSaveState::Failed,
+                    label: "Not saved".into(),
+                    detail: "Offline".into(),
+                    can_retry: true,
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn import_status_changed_reports_a_blocked_atomic_merge() {
+        let decoded = event(
+            r#"{"kind":"event","event":"importStatusChanged","payload":{"importing":true,"atomicBlocked":{"title":"t","message":"m","enableLabel":"e","saveWithoutLabel":"s","canConfigure":true}}}"#,
+        );
+        let expected = ImportStatusChanged {
+            importing: true,
+            atomic_blocked: Some(AtomicBlockedView {
+                title: "t".into(),
+                message: "m".into(),
+                enable_label: "e".into(),
+                save_without_label: "s".into(),
+                can_configure: true,
+            }),
+        };
+        payload_round_trip(&expected);
+        assert_eq!(decoded, CoreEvent::ImportStatusChanged(expected));
+        assert!(matches!(
+            event(
+                r#"{"kind":"event","event":"importStatusChanged","payload":{"importing":false,"atomicBlocked":null}}"#
+            ),
+            CoreEvent::ImportStatusChanged(ImportStatusChanged {
+                importing: false,
+                atomic_blocked: None
+            })
+        ));
+    }
+
+    #[test]
+    fn passphrase_change_progress_has_optional_counts() {
+        let decoded = event(
+            r#"{"kind":"event","event":"passphraseChangeProgress","payload":{"message":"Re-encrypting","done":3,"total":10}}"#,
+        );
+        assert_eq!(
+            decoded,
+            CoreEvent::PassphraseChangeProgress(PassphraseChangeProgress {
+                message: "Re-encrypting".into(),
+                done: Some(3),
+                total: Some(10),
+            })
+        );
+        assert!(matches!(
+            event(
+                r#"{"kind":"event","event":"passphraseChangeProgress","payload":{"message":"Starting","done":null,"total":null}}"#
+            ),
+            CoreEvent::PassphraseChangeProgress(PassphraseChangeProgress {
+                done: None,
+                total: None,
+                ..
+            })
+        ));
     }
 }

@@ -104,7 +104,7 @@ fn initialize(h: &mut Harness) -> Result<(), String> {
 
     h.resize(Width::Wide)?;
     h.set_text("init-passphrase-row", NEW_PASSPHRASE)?;
-    h.wait_shown("init-strength-label")?;
+    h.wait_shown("init-strength")?;
 
     h.set_text("init-repeat-row", "a different passphrase")?;
     h.click("init-button")?;

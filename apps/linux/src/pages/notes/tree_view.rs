@@ -12,10 +12,10 @@ use super::node_object::NodeObject;
 use super::node_row::NodeRow;
 use super::row_menu;
 use super::tree_logic::{
-    DropAction, DropZone, KeyStep, RenameState, RowList, RowRef, accessible_text, ancestors,
-    child_names, drop_action, drop_at_end, expanded_folders, expanded_paths, first_child_position,
-    left_step, menu_tag, node_path, parent_of, parent_position, position_of, restore_expanded,
-    right_step, siblings,
+    DropAction, DropZone, FileDrop, KeyStep, RenameState, RowList, RowRef, accessible_text,
+    ancestors, child_names, drop_action, drop_at_end, expanded_folders, expanded_paths, file_drop,
+    first_child_position, left_step, menu_tag, node_path, parent_of, parent_position, position_of,
+    restore_expanded, right_step, siblings,
 };
 use crate::model::{AppModel, UserError};
 
@@ -469,38 +469,51 @@ impl NotesTree {
         expander.add_controller(source);
     }
 
+    /// Takes nodes dragged within the tree, which move, and files dragged in from other apps,
+    /// which are imported.
     fn node_drop_target() -> gtk::DropTarget {
-        let target = gtk::DropTarget::new(glib::Type::INVALID, gdk::DragAction::MOVE);
-        target.set_types(&[NodeObject::static_type()]);
+        let target = gtk::DropTarget::new(
+            glib::Type::INVALID,
+            gdk::DragAction::MOVE | gdk::DragAction::COPY,
+        );
+        target.set_types(&[NodeObject::static_type(), gdk::FileList::static_type()]);
         target
+    }
+
+    fn offers_files(target: &gtk::DropTarget) -> bool {
+        target.current_drop().is_some_and(|drop| {
+            drop.formats()
+                .union_deserialize_types()
+                .contains_type(gdk::FileList::static_type())
+        })
     }
 
     fn connect_drop_target(&self, expander: &gtk::TreeExpander) {
         let target = Self::node_drop_target();
         let hover = Rc::new({
             let (tree, expander) = (self.downgrade(), expander.downgrade());
-            move |y: f64| {
+            move |target: &gtk::DropTarget, y: f64| {
                 let (Some(tree), Some(expander)) = (tree.upgrade(), expander.upgrade()) else {
                     return gdk::DragAction::empty();
                 };
                 let dragged = tree.imp().dragged.borrow().clone();
-                match dragged.and_then(|node| tree.row_drop(&expander, &node, y)) {
-                    Some(action) => {
-                        tree.set_drop_mark(Some((expander.upcast_ref(), action.zone)));
-                        gdk::DragAction::MOVE
-                    }
-                    None => {
-                        tree.set_drop_mark(None);
-                        gdk::DragAction::empty()
-                    }
-                }
+                let hovered = match dragged {
+                    Some(node) => tree
+                        .row_drop(&expander, &node, y)
+                        .map(|action| (action.zone, gdk::DragAction::MOVE)),
+                    None if Self::offers_files(target) => tree
+                        .row_file_drop(&expander, y)
+                        .map(|drop| (drop.zone, gdk::DragAction::COPY)),
+                    None => None,
+                };
+                tree.mark_hover(hovered.map(|(zone, action)| (expander.upcast_ref(), zone, action)))
             }
         });
         target.connect_enter({
             let hover = hover.clone();
-            move |_, _, y| hover(y)
+            move |target, _, y| hover(target, y)
         });
-        target.connect_motion(move |_, _, y| hover(y));
+        target.connect_motion(move |target, _, y| hover(target, y));
         target.connect_leave({
             let tree = self.downgrade();
             move |_| {
@@ -515,15 +528,7 @@ impl NotesTree {
                 let (Some(tree), Some(expander)) = (tree.upgrade(), expander.upgrade()) else {
                     return false;
                 };
-                tree.set_drop_mark(None);
-                let Ok(dragged) = value.get::<NodeObject>() else {
-                    return false;
-                };
-                let Some(action) = tree.row_drop(&expander, &dragged, y) else {
-                    return false;
-                };
-                tree.drop_node(&dragged, action);
-                true
+                tree.drop_on_row(&expander, value, y)
             }
         });
         expander.add_controller(target);
@@ -533,28 +538,32 @@ impl NotesTree {
         let target = Self::node_drop_target();
         let hover = Rc::new({
             let tree = self.downgrade();
-            move |y: f64| {
+            move |target: &gtk::DropTarget, y: f64| {
                 let Some(tree) = tree.upgrade() else {
                     return gdk::DragAction::empty();
                 };
                 let dragged = tree.imp().dragged.borrow().clone();
-                match dragged.and_then(|node| tree.end_drop(&node, y)) {
-                    Some((_, last)) => {
-                        tree.set_drop_mark(Some((last.upcast_ref(), DropZone::After)));
-                        gdk::DragAction::MOVE
-                    }
-                    None => {
-                        tree.set_drop_mark(None);
-                        gdk::DragAction::empty()
-                    }
-                }
+                let hovered = match dragged {
+                    Some(node) => tree
+                        .end_drop(&node, y)
+                        .map(|(_, last)| (last, gdk::DragAction::MOVE)),
+                    None if Self::offers_files(target) => tree
+                        .end_file_drop(y)
+                        .map(|last| (last, gdk::DragAction::COPY)),
+                    None => None,
+                };
+                tree.mark_hover(
+                    hovered
+                        .as_ref()
+                        .map(|(last, action)| (last.upcast_ref(), DropZone::After, *action)),
+                )
             }
         });
         target.connect_enter({
             let hover = hover.clone();
-            move |_, _, y| hover(y)
+            move |target, _, y| hover(target, y)
         });
-        target.connect_motion(move |_, _, y| hover(y));
+        target.connect_motion(move |target, _, y| hover(target, y));
         target.connect_leave({
             let tree = self.downgrade();
             move |_| {
@@ -569,18 +578,62 @@ impl NotesTree {
                 let Some(tree) = tree.upgrade() else {
                     return false;
                 };
-                tree.set_drop_mark(None);
-                let Ok(dragged) = value.get::<NodeObject>() else {
-                    return false;
-                };
-                let Some((action, _)) = tree.end_drop(&dragged, y) else {
-                    return false;
-                };
-                tree.drop_node(&dragged, action);
-                true
+                tree.drop_on_background(value, y)
             }
         });
         self.imp().scrolled.add_controller(target);
+    }
+
+    fn mark_hover(
+        &self,
+        hovered: Option<(&gtk::Widget, DropZone, gdk::DragAction)>,
+    ) -> gdk::DragAction {
+        match hovered {
+            Some((widget, zone, action)) => {
+                self.set_drop_mark(Some((widget, zone)));
+                action
+            }
+            None => {
+                self.set_drop_mark(None);
+                gdk::DragAction::empty()
+            }
+        }
+    }
+
+    fn drop_on_row(&self, expander: &gtk::TreeExpander, value: &glib::Value, y: f64) -> bool {
+        self.set_drop_mark(None);
+        if let Ok(dragged) = value.get::<NodeObject>() {
+            let Some(action) = self.row_drop(expander, &dragged, y) else {
+                return false;
+            };
+            self.drop_node(&dragged, action);
+            return true;
+        }
+        let Ok(files) = value.get::<gdk::FileList>() else {
+            return false;
+        };
+        let Some(drop) = self.row_file_drop(expander, y) else {
+            return false;
+        };
+        self.drop_files(&files, drop.parent)
+    }
+
+    fn drop_on_background(&self, value: &glib::Value, y: f64) -> bool {
+        self.set_drop_mark(None);
+        if let Ok(dragged) = value.get::<NodeObject>() {
+            let Some((action, _)) = self.end_drop(&dragged, y) else {
+                return false;
+            };
+            self.drop_node(&dragged, action);
+            return true;
+        }
+        let Ok(files) = value.get::<gdk::FileList>() else {
+            return false;
+        };
+        if self.end_file_drop(y).is_none() {
+            return false;
+        }
+        self.drop_files(&files, None)
     }
 
     /// What dropping `dragged` at height `y` of the row shown by `expander` does.
@@ -607,13 +660,53 @@ impl NotesTree {
         )
     }
 
+    /// Where files dropped at height `y` of the row shown by `expander` are imported.
+    fn row_file_drop(&self, expander: &gtk::TreeExpander, y: f64) -> Option<FileDrop> {
+        if !self.accepts_files() {
+            return None;
+        }
+        let target = expander.list_row()?.item().and_downcast::<NodeObject>()?;
+        Some(file_drop(
+            node_path(target.node()),
+            matches!(target.node(), TreeNode::Folder { .. }),
+            y,
+            f64::from(expander.height()),
+        ))
+    }
+
     /// What dropping `dragged` at height `y` of the scrolled window does when `y` is below the
     /// rows, with the last row, which shows the drop line.
     fn end_drop(&self, dragged: &NodeObject, y: f64) -> Option<(DropAction, gtk::TreeExpander)> {
-        let imp = self.imp();
-        if imp.rename.borrow().is_some() {
+        let expander = self.last_row_above(y)?;
+        let top_level = child_names(&self.model().tree()?, &[])?;
+        let action = drop_at_end(node_path(dragged.node()), &top_level)?;
+        Some((action, expander))
+    }
+
+    /// The last row, which shows the drop line, when files dropped at height `y` of the scrolled
+    /// window go to the top level.
+    fn end_file_drop(&self, y: f64) -> Option<gtk::TreeExpander> {
+        if !self.accepts_files() {
             return None;
         }
+        self.last_row_above(y)
+    }
+
+    fn accepts_files(&self) -> bool {
+        self.imp().rename.borrow().is_none() && !self.model().is_importing()
+    }
+
+    /// The last row when `y`, in the scrolled window's coordinates, is below it.
+    fn last_row_above(&self, y: f64) -> Option<gtk::TreeExpander> {
+        if self.imp().rename.borrow().is_some() {
+            return None;
+        }
+        let (expander, bottom) = self.last_row_bottom()?;
+        (y >= bottom).then_some(expander)
+    }
+
+    fn last_row_bottom(&self) -> Option<(gtk::TreeExpander, f64)> {
+        let imp = self.imp();
         let last = imp.tree_model.borrow().as_ref()?.n_items().checked_sub(1)?;
         let expander = self.expanders().into_iter().find(|expander| {
             expander
@@ -623,12 +716,40 @@ impl NotesTree {
         let bottom = expander
             .compute_bounds(&*imp.scrolled)
             .map(|bounds| bounds.y() + bounds.height())?;
-        if y < f64::from(bottom) {
-            return None;
+        Some((expander, f64::from(bottom)))
+    }
+
+    fn drop_files(&self, files: &gdk::FileList, parent: Option<Vec<String>>) -> bool {
+        let files = files.files();
+        if files.is_empty() {
+            return false;
         }
-        let top_level = child_names(&self.model().tree()?, &[])?;
-        let action = drop_at_end(node_path(dragged.node()), &top_level)?;
-        Some((action, expander))
+        let model = self.model().clone();
+        glib::spawn_future_local(async move { model.drop_import_files(files, parent).await });
+        true
+    }
+
+    /// Stands in for files dragged in from another app and dropped on the middle of the row at
+    /// `path`, or below the rows for `None`, which the harness cannot do through the compositor.
+    #[cfg(feature = "testing")]
+    pub fn testing_drop_files(&self, files: &[gio::File], path: Option<&[String]>) -> bool {
+        let value = gdk::FileList::from_array(files).to_value();
+        let Some(path) = path else {
+            return self
+                .last_row_bottom()
+                .is_some_and(|(_, bottom)| self.drop_on_background(&value, bottom));
+        };
+        let row = self.expanders().into_iter().find(|expander| {
+            expander
+                .list_row()
+                .and_then(|row| row.item())
+                .and_downcast::<NodeObject>()
+                .is_some_and(|node| node_path(node.node()) == path)
+        });
+        row.is_some_and(|expander| {
+            let y = f64::from(expander.height()) / 2.0;
+            self.drop_on_row(&expander, &value, y)
+        })
     }
 
     fn expanders(&self) -> Vec<gtk::TreeExpander> {

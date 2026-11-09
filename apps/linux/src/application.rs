@@ -5,8 +5,10 @@ use gtk4::{gio, glib, prelude::*};
 use libadwaita as adw;
 
 use crate::config;
+use crate::fonts;
 use crate::model::appearance::AppearanceApplier;
 use crate::model::{AppConfig, AppModel};
+use crate::print;
 use crate::window::CommitnoteWindow;
 
 const BUNDLE_RESOURCE: &str = "core/commitnote-core.js";
@@ -33,7 +35,9 @@ mod imp {
     impl ApplicationImpl for CommitnoteApplication {
         fn startup(&self) {
             self.parent_startup();
+            print::initialize_web_engine();
             sourceview5::init();
+            fonts::register_bundled_fonts();
             let applier = AppearanceApplier::new();
             let model = AppModel::new(app_config());
             applier.apply(&model.appearance());

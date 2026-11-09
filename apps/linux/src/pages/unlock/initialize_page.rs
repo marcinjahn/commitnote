@@ -1,40 +1,15 @@
 use std::cell::{Cell, OnceCell, RefCell};
-use std::sync::Once;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use commitnote_core_api::shapes::{PassphraseStrength, RepositoryView};
-use gtk4::{self as gtk, gdk, glib};
+use commitnote_core_api::shapes::RepositoryView;
+use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
-use super::forms::{LatestRequest, STRENGTH_DEBOUNCE, strength_text, validate_initialize};
+use super::forms::validate_initialize;
+use super::strength_meter::StrengthMeter;
 use crate::model::{AppModel, UnlockError};
 use crate::pages::secret_text;
-
-const STRENGTH_STYLE: &str = "
-levelbar.passphrase-strength > trough > block:not(.empty) {
-  background-color: var(--accent-bg-color);
-}
-levelbar.passphrase-strength.weak > trough > block:not(.empty) {
-  background-color: var(--error-bg-color);
-}
-";
-
-fn install_strength_style() {
-    static INSTALL: Once = Once::new();
-    INSTALL.call_once(|| {
-        let Some(display) = gdk::Display::default() else {
-            return;
-        };
-        let provider = gtk::CssProvider::new();
-        provider.load_from_string(STRENGTH_STYLE);
-        gtk::style_context_add_provider_for_display(
-            &display,
-            &provider,
-            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-        );
-    });
-}
 
 mod imp {
     use super::*;
@@ -53,11 +28,7 @@ mod imp {
         #[template_child]
         pub(super) passphrase_row: TemplateChild<adw::PasswordEntryRow>,
         #[template_child]
-        pub(super) strength_box: TemplateChild<gtk::Box>,
-        #[template_child]
-        pub(super) strength_bar: TemplateChild<gtk::LevelBar>,
-        #[template_child]
-        pub(super) strength_label: TemplateChild<gtk::Label>,
+        pub(super) strength_meter: TemplateChild<StrengthMeter>,
         #[template_child]
         pub(super) repeat_row: TemplateChild<adw::PasswordEntryRow>,
         #[template_child]
@@ -71,9 +42,7 @@ mod imp {
         #[template_child]
         pub(super) init_button: TemplateChild<gtk::Button>,
         pub(super) model: OnceCell<AppModel>,
-        pub(super) repository: OnceCell<RepositoryView>,
         pub(super) busy: Cell<bool>,
-        pub(super) strength_requests: LatestRequest,
         pub(super) loading_handler: RefCell<Option<glib::SignalHandlerId>>,
     }
 
@@ -84,6 +53,7 @@ mod imp {
         type ParentType = adw::NavigationPage;
 
         fn class_init(klass: &mut Self::Class) {
+            StrengthMeter::ensure_type();
             klass.bind_template();
         }
 
@@ -93,11 +63,6 @@ mod imp {
     }
 
     impl ObjectImpl for InitializePage {
-        fn constructed(&self) {
-            self.parent_constructed();
-            install_strength_style();
-        }
-
         fn dispose(&self) {
             if let (Some(model), Some(handler)) = (self.model.get(), self.loading_handler.take()) {
                 model.disconnect(handler);
@@ -122,11 +87,12 @@ impl InitializePage {
         let _ = imp.model.set(model.clone());
         imp.repository_row.set_subtitle(&repository.label);
         imp.description_label.set_text(&set_up_description);
+        imp.strength_meter
+            .follow(&*imp.passphrase_row, model, &repository.label);
         if let Some(warning) = &repository.public_warning {
             imp.warning_row.set_title(warning);
             imp.warning_group.set_visible(true);
         }
-        let _ = imp.repository.set(repository);
         page.connect_signals();
         page
     }
@@ -140,11 +106,6 @@ impl InitializePage {
 
     fn connect_signals(&self) {
         let imp = self.imp();
-        imp.passphrase_row.connect_changed(glib::clone!(
-            #[weak(rename_to = page)]
-            self,
-            move |_| page.passphrase_changed()
-        ));
         imp.passphrase_row.connect_entry_activated(glib::clone!(
             #[weak(rename_to = page)]
             self,
@@ -171,63 +132,6 @@ impl InitializePage {
             move |_| page.show_progress()
         ));
         imp.loading_handler.replace(Some(handler));
-    }
-
-    fn passphrase_changed(&self) {
-        let imp = self.imp();
-        let generation = imp.strength_requests.begin();
-        if secret_text(&*imp.passphrase_row).expose().is_empty() {
-            imp.strength_box.set_visible(false);
-            return;
-        }
-        glib::timeout_add_local_once(
-            STRENGTH_DEBOUNCE,
-            glib::clone!(
-                #[weak(rename_to = page)]
-                self,
-                move || page.request_strength(generation)
-            ),
-        );
-    }
-
-    fn request_strength(&self, generation: u64) {
-        let imp = self.imp();
-        if !imp.strength_requests.is_current(generation) {
-            return;
-        }
-        let passphrase = secret_text(&*imp.passphrase_row);
-        let label = imp
-            .repository
-            .get()
-            .map(|repository| repository.label.clone())
-            .unwrap_or_default();
-        let model = self.model().clone();
-        glib::spawn_future_local(glib::clone!(
-            #[weak(rename_to = page)]
-            self,
-            async move {
-                let result = model.passphrase_strength(passphrase, &label).await;
-                let imp = page.imp();
-                if let Ok(strength) = result
-                    && imp.strength_requests.is_current(generation)
-                {
-                    page.show_strength(&strength);
-                }
-            }
-        ));
-    }
-
-    fn show_strength(&self, strength: &PassphraseStrength) {
-        let imp = self.imp();
-        imp.strength_bar
-            .set_value(f64::from(strength.filled_segments));
-        if strength.weak {
-            imp.strength_bar.add_css_class("weak");
-        } else {
-            imp.strength_bar.remove_css_class("weak");
-        }
-        imp.strength_label.set_text(&strength_text(strength));
-        imp.strength_box.set_visible(true);
     }
 
     fn show_progress(&self) {
