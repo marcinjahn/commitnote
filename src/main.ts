@@ -49,22 +49,18 @@ async function mountViewer(target: HTMLElement): Promise<void> {
   let testModeBanner: string | null = null;
   let argon2id: Argon2idFunction = argon2idInWorker;
   if (__FAKE_FORGE__) {
-    const { FAKE_FORGE_BANNER } = await import(
-      "./testing/fake-forge/fake-forge-factory"
-    );
-    const { FAKE_FORGE_OPTIONS_KEY, readFakeForgeOptions } = await import(
-      "./testing/fake-forge/fake-forge-options"
-    );
-    const { createFakeShareStore, createFakeShareReaders } = await import(
-      "./forge/fake/fake-share-store"
-    );
+    const { FAKE_FORGE_BANNER } =
+      await import("./testing/fake-forge/fake-forge-factory");
+    const { FAKE_FORGE_OPTIONS_KEY, readFakeForgeOptions } =
+      await import("./testing/fake-forge/fake-forge-options");
+    const { createFakeShareStore, createFakeShareReaders } =
+      await import("./forge/fake/fake-share-store");
     const options = readFakeForgeOptions(
       (window as unknown as Record<string, unknown>)[FAKE_FORGE_OPTIONS_KEY],
     );
     if (options.argon2Results !== null) {
-      const { memoizedArgon2id } = await import(
-        "./crypto/testing/memoized-argon2id"
-      );
+      const { memoizedArgon2id } =
+        await import("./crypto/testing/memoized-argon2id");
       argon2id = memoizedArgon2id(argon2idInWorker, {
         seed: options.argon2Results,
       });
@@ -75,9 +71,8 @@ async function mountViewer(target: HTMLElement): Promise<void> {
     readers = createShareReaders();
   }
   const { createViewerController } = await import("./viewer/viewer-state");
-  const { default: SharedNoteViewer } = await import(
-    "./viewer/SharedNoteViewer.svelte"
-  );
+  const { default: SharedNoteViewer } =
+    await import("./viewer/SharedNoteViewer.svelte");
   const controller = createViewerController({
     hash: location.hash,
     readers,
@@ -108,70 +103,63 @@ function countVisit(): void {
   });
 }
 
-const appUpdates = import.meta.env.DEV || __DESKTOP_SHELL__
-  ? null
-  : startBrowserAppUpdates();
+const appUpdates =
+  import.meta.env.DEV || __DESKTOP_SHELL__ ? null : startBrowserAppUpdates();
 
 if (isShareHash(location.hash)) {
-  if (__DESKTOP_SHELL__) {
-    const { startDesktopShell } = await import("./desktop/desktop-shell");
-    await startDesktopShell({ launchActions: null });
-  }
   await mountViewer(target);
   countVisit();
 } else {
-let registry: ForgeRegistry = forgeRegistry;
-let testModeBanner: string | null = null;
-let argon2id: Argon2idFunction | undefined;
-if (__FAKE_FORGE__) {
-  const fake = await import("./testing/fake-forge/fake-forge-factory");
-  const {
-    FAKE_FORGE_ARGON2_BINDING,
-    FAKE_FORGE_OPTIONS_KEY,
-    readFakeForgeOptions,
-  } = await import("./testing/fake-forge/fake-forge-options");
-  const testWindow = window as unknown as Record<string, unknown>;
-  const options = readFakeForgeOptions(testWindow[FAKE_FORGE_OPTIONS_KEY]);
-  if (options.argon2Results !== null) {
-    const { memoizedArgon2id } = await import(
-      "./crypto/testing/memoized-argon2id"
-    );
-    argon2id = memoizedArgon2id(argon2idInWorker, {
-      seed: options.argon2Results,
-      onDerived: (key, hash) => {
-        const report = testWindow[FAKE_FORGE_ARGON2_BINDING];
-        if (typeof report === "function") report(key, hash);
-      },
-    });
-  }
-  const fakeForge = await fake.createFakeForge({
-    latency: options.latency,
-    argon2id,
-    shareStorage: localStorage,
-  });
-  registry = fakeForge.registry;
-  testModeBanner = fake.FAKE_FORGE_BANNER;
-  testWindow[fake.FAKE_FORGE_CONTROLS_KEY] = fakeForge.controls;
-
-  const { FAKE_FORGE_SESSION_PARAM, rememberFixtureSession } = await import(
-    "./testing/fake-forge/remembered-session"
-  );
-  const url = new URL(window.location.href);
-  const repoUrl = url.searchParams.get(FAKE_FORGE_SESSION_PARAM);
-  if (repoUrl !== null) {
-    url.searchParams.delete(FAKE_FORGE_SESSION_PARAM);
-    window.history.replaceState(window.history.state, "", url);
-    try {
-      await rememberFixtureSession({
-        registry: fakeForge.registry,
-        repoUrl,
-        argon2id,
+  let registry: ForgeRegistry = forgeRegistry;
+  let testModeBanner: string | null = null;
+  let argon2id: Argon2idFunction | undefined;
+  if (__FAKE_FORGE__) {
+    const fake = await import("./testing/fake-forge/fake-forge-factory");
+    const {
+      FAKE_FORGE_ARGON2_BINDING,
+      FAKE_FORGE_OPTIONS_KEY,
+      readFakeForgeOptions,
+    } = await import("./testing/fake-forge/fake-forge-options");
+    const testWindow = window as unknown as Record<string, unknown>;
+    const options = readFakeForgeOptions(testWindow[FAKE_FORGE_OPTIONS_KEY]);
+    if (options.argon2Results !== null) {
+      const { memoizedArgon2id } =
+        await import("./crypto/testing/memoized-argon2id");
+      argon2id = memoizedArgon2id(argon2idInWorker, {
+        seed: options.argon2Results,
+        onDerived: (key, hash) => {
+          const report = testWindow[FAKE_FORGE_ARGON2_BINDING];
+          if (typeof report === "function") report(key, hash);
+        },
       });
-    } catch (error) {
-      console.error(error);
+    }
+    const fakeForge = await fake.createFakeForge({
+      latency: options.latency,
+      argon2id,
+      shareStorage: localStorage,
+    });
+    registry = fakeForge.registry;
+    testModeBanner = fake.FAKE_FORGE_BANNER;
+    testWindow[fake.FAKE_FORGE_CONTROLS_KEY] = fakeForge.controls;
+
+    const { FAKE_FORGE_SESSION_PARAM, rememberFixtureSession } =
+      await import("./testing/fake-forge/remembered-session");
+    const url = new URL(window.location.href);
+    const repoUrl = url.searchParams.get(FAKE_FORGE_SESSION_PARAM);
+    if (repoUrl !== null) {
+      url.searchParams.delete(FAKE_FORGE_SESSION_PARAM);
+      window.history.replaceState(window.history.state, "", url);
+      try {
+        await rememberFixtureSession({
+          registry: fakeForge.registry,
+          repoUrl,
+          argon2id,
+        });
+      } catch (error) {
+        console.error(error);
+      }
     }
   }
-}
 
   const install = createBrowserInstallController(installEvents, standalone);
   const launchActions = startLaunchActions({
@@ -179,11 +167,6 @@ if (__FAKE_FORGE__) {
     launchQueue: (window as { launchQueue?: LaunchQueueLike }).launchQueue,
     clearUrl: () => clearLaunchAction(window.history, window.location),
   });
-  const desktop = __DESKTOP_SHELL__
-    ? await (await import("./desktop/desktop-shell")).startDesktopShell({
-        launchActions,
-      })
-    : null;
   mount(App, {
     target,
     props: {
@@ -194,7 +177,6 @@ if (__FAKE_FORGE__) {
       install,
       launchActions,
       standalone,
-      desktop,
     },
   });
   countVisit();

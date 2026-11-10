@@ -127,7 +127,6 @@ import { flushBeforeLogOut } from "./app/log-out";
   import { setStandalone } from "./ui/standalone-context";
   import { readPlatformInputs } from "./app/platform-inputs";
   import { effectiveDeviceName } from "./settings/device-name";
-  import type { DesktopShell } from "./desktop/desktop-shell-types";
 
   interface Props {
     registry: ForgeRegistry;
@@ -137,7 +136,6 @@ import { flushBeforeLogOut } from "./app/log-out";
     install: InstallController;
     launchActions: LaunchActions;
     standalone: boolean;
-    desktop?: DesktopShell | null;
   }
 
   const {
@@ -148,7 +146,6 @@ import { flushBeforeLogOut } from "./app/log-out";
     install,
     launchActions,
     standalone,
-    desktop = null,
   }: Props = $props();
 
   setStandalone(untrack(() => standalone));
@@ -394,20 +391,8 @@ import { flushBeforeLogOut } from "./app/log-out";
     },
     extraHasUnsaved: () => earlyDraftNeedsGuard(),
     onRefreshTrigger: () => appUpdates?.checkForUpdate(),
-    afterStart: ({ hasUnsaved, flush, onUnsavedChange, hasSettledUnsaved }) => {
-      const stopAutoUpdateWatch = onUnsavedChange(() => autoUpdate?.evaluate());
-      const uninstallCloseGuard =
-        desktop?.installCloseGuard({
-          hasUnsaved,
-          flush,
-          onUnsavedChange,
-          hasSettledUnsaved,
-        }) ?? null;
-      return () => {
-        stopAutoUpdateWatch();
-        uninstallCloseGuard?.();
-      };
-    },
+    afterStart: ({ onUnsavedChange }) =>
+      onUnsavedChange(() => autoUpdate?.evaluate()),
     onKeyChanged: (state) => {
       keyChanged = state;
       if (state !== null) resetReported();
@@ -1049,7 +1034,6 @@ import { flushBeforeLogOut } from "./app/log-out";
     engine={phase.engine}
     unsavedCount={keyChanged.unsavedCount}
     onLogInAgain={() => void logInAfterKeyChange()}
-    download={desktop?.download}
   />
 {:else if phase.kind === "app"}
   <ScreenScope current={() => phase.kind === "app" && keyChanged === null}>
@@ -1061,7 +1045,6 @@ import { flushBeforeLogOut } from "./app/log-out";
       {registerUpdateView}
       {install}
       {launchActions}
-      download={desktop?.download}
       contentIndexer={phase.contentIndexer}
       repoLabel={phase.repoLabel}
       repoUrl={phase.repoUrl}

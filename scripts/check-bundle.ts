@@ -15,7 +15,6 @@ import {
   LINUX_VISIT_NEEDLES,
   NATIVE_CORE_NEEDLES,
   PROD_LEAK_NEEDLES,
-  TAURI_NEEDLES,
 } from "./bundle-needles";
 import { buildCsp, inlineScriptHashes, type CspTarget } from "./csp";
 import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree-source";
@@ -435,17 +434,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  const tauriInWeb = await findForbidden(distDir, TAURI_NEEDLES);
-  if (tauriInWeb.length > 0) {
-    for (const hit of tauriInWeb) {
-      console.error(
-        `dist/ ships desktop shell code: "${hit.needle}" found in ${hit.file}`,
-      );
-    }
-    process.exitCode = 1;
-    return;
-  }
-
   for (const [platform, needles] of [
     ["iOS", IOS_VISIT_NEEDLES],
     ["Linux", LINUX_VISIT_NEEDLES],
@@ -488,18 +476,6 @@ async function main(): Promise<void> {
         `dist-desktop/ leaks fake forge fixture data: "${hit.needle}" found in ${hit.file}`,
       );
     }
-    process.exitCode = 1;
-    return;
-  }
-
-  const tauriInDesktop = new Set(
-    (await findForbidden(desktopDistDir, TAURI_NEEDLES)).map((hit) => hit.needle),
-  );
-  const missingTauri = TAURI_NEEDLES.filter((needle) => !tauriInDesktop.has(needle));
-  if (missingTauri.length > 0) {
-    console.error(
-      `dist-desktop/ does not contain ${missingTauri.map((needle) => `"${needle}"`).join(", ")}; the check cannot prove it can detect a Tauri leak`,
-    );
     process.exitCode = 1;
     return;
   }
@@ -550,7 +526,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `Bundle check passed: production build never ships fake forge fixtures or desktop shell code, no web build contains the native core, and serves the landing page at the root and the app under app/ with a complete web app manifest and service worker (${serviceWorkers.join("; ")}); landing html, css and js total ${budget.textBytes} of ${LANDING_TEXT_BUDGET_BYTES} bytes; desktop build ships the desktop shell but no fake forge fixtures or service worker, and its CSP matches the expected policy.`,
+    `Bundle check passed: production build never ships fake forge fixtures, no web build contains the native core, and serves the landing page at the root and the app under app/ with a complete web app manifest and service worker (${serviceWorkers.join("; ")}); landing html, css and js total ${budget.textBytes} of ${LANDING_TEXT_BUDGET_BYTES} bytes; desktop build ships no fake forge fixtures or service worker, and its CSP matches the expected policy.`,
   );
 }
 

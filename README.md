@@ -54,9 +54,9 @@ through a LAN IP address over plain HTTP does not work.
 - `check` — type-check the app and the Node-side config/scripts
 - `check:bundle` — build `dist/`, `dist-fake/` and `dist-desktop/` and verify the site layout, the
   landing page's CSP, and the landing size budget (see
-  [Landing page](#landing-page)), and that the production build never ships test-mode fixture data or desktop shell code, that the web app manifest and every icon
+  [Landing page](#landing-page)), and that the production build never ships test-mode fixture data, that the web app manifest and every icon
   and screenshot it references are in the production build, that `app/sw.js` is present and its
-  precache list equals the emitted files under `app/`, and that the desktop build ships the desktop shell but no fake-forge
+  precache list equals the emitted files under `app/`, and that the desktop build ships no fake-forge
   fixture data or `sw.js`, and that its CSP allows `https://gitlab.com` and `ipc:`
 - `generate:brand` — regenerate the brand SVGs and app icons (see above)
 - `generate:pwa-screenshots` — regenerate the web app manifest screenshots in `public/screenshots/` from

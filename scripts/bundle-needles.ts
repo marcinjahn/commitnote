@@ -13,13 +13,6 @@ import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
 import { FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
 
-export const TAURI_NEEDLES = [
-  "__TAURI_INTERNALS__",
-  "plugin:opener",
-  "plugin:dialog",
-  "plugin:fs",
-] as const;
-
 export const PROD_LEAK_NEEDLES: readonly string[] = [
   FAKE_FORGE_BANNER,
   SAMPLE_NOTES_REPO_PASSPHRASE,

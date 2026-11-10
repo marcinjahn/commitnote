@@ -46,9 +46,6 @@ export interface AppServicesContext {
 export interface AfterStartContext {
   readonly engine: SyncEngine;
   readonly settingsSaver: SettingsSaver;
-  hasUnsaved(): boolean;
-  hasSettledUnsaved(): boolean;
-  flush(): void;
   onUnsavedChange(listener: () => void): () => void;
 }
 
@@ -194,22 +191,7 @@ export async function startApp<S>(
     };
   };
   const disposeAfterStart =
-    deps.afterStart?.({
-      engine,
-      settingsSaver,
-      hasUnsaved,
-      flush,
-      onUnsavedChange,
-      hasSettledUnsaved: () => {
-        const state = engine.getState();
-        return (
-          state.save.kind === "waiting" ||
-          state.conflicts.length > 0 ||
-          state.stopped !== null ||
-          !state.online
-        );
-      },
-    }) ?? null;
+    deps.afterStart?.({ engine, settingsSaver, onUnsavedChange }) ?? null;
 
   // Forge errors resolve with `refresh.lastError` set, which the shell shows.
   let refreshed = true;
