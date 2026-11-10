@@ -7731,6 +7731,473 @@
       "tables": []
     },
     {
+      "name": "table-quote-lazy-list-marker",
+      "text": "> x |\n2. y\n> | a |\n> | - |",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 26
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 26
+        },
+        {
+          "kind": "quoteMark",
+          "from": 11,
+          "to": 12
+        },
+        {
+          "kind": "quoteMark",
+          "from": 19,
+          "to": 20
+        }
+      ],
+      "tables": []
+    },
+    {
+      "name": "table-list-lazy-empty-item",
+      "text": "- x\n1.\n  | a |\n  | - |",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 22
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 22
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 6
+        },
+        {
+          "kind": "table",
+          "from": 9,
+          "to": 22
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 7,
+            "to": 22
+          },
+          "containerPrefix": "  ",
+          "columnCount": 1,
+          "alignments": [
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 7,
+                "to": 14
+              },
+              "rowStart": 9,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 10,
+                    "to": 13
+                  },
+                  "contentRange": {
+                    "from": 11,
+                    "to": 12
+                  },
+                  "text": "a"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 15,
+                "to": 22
+              },
+              "rowStart": 17,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 18,
+                    "to": 21
+                  },
+                  "contentRange": {
+                    "from": 19,
+                    "to": 20
+                  },
+                  "text": "-"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-in-quote-html-block",
+      "text": "> <div>\n>\n> | b |\n> | - |",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 25
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "quoteMark",
+          "from": 8,
+          "to": 9
+        },
+        {
+          "kind": "quoteMark",
+          "from": 10,
+          "to": 11
+        },
+        {
+          "kind": "quoteMark",
+          "from": 18,
+          "to": 19
+        }
+      ],
+      "tables": []
+    },
+    {
+      "name": "table-after-link-reference-lazy-line",
+      "text": "- [x]: /u\ny\n  | a |\n  | - |",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 10,
+          "to": 11
+        },
+        {
+          "kind": "table",
+          "from": 14,
+          "to": 27
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 12,
+            "to": 27
+          },
+          "containerPrefix": "",
+          "columnCount": 1,
+          "alignments": [
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 12,
+                "to": 19
+              },
+              "rowStart": 14,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 15,
+                    "to": 18
+                  },
+                  "contentRange": {
+                    "from": 16,
+                    "to": 17
+                  },
+                  "text": "a"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 20,
+                "to": 27
+              },
+              "rowStart": 22,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 23,
+                    "to": 26
+                  },
+                  "contentRange": {
+                    "from": 24,
+                    "to": 25
+                  },
+                  "text": "-"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-in-quote-after-link-reference",
+      "text": "> [x]: /u\ny |\n> | a |\n> | - |",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 9
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 10,
+          "to": 13
+        },
+        {
+          "kind": "blockquote",
+          "from": 14,
+          "to": 29
+        },
+        {
+          "kind": "quoteMark",
+          "from": 14,
+          "to": 15
+        },
+        {
+          "kind": "table",
+          "from": 16,
+          "to": 29
+        },
+        {
+          "kind": "quoteMark",
+          "from": 22,
+          "to": 23
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 14,
+            "to": 29
+          },
+          "containerPrefix": "> ",
+          "columnCount": 1,
+          "alignments": [
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 14,
+                "to": 21
+              },
+              "rowStart": 16,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 17,
+                    "to": 20
+                  },
+                  "contentRange": {
+                    "from": 18,
+                    "to": 19
+                  },
+                  "text": "a"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 22,
+                "to": 29
+              },
+              "rowStart": 24,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 25,
+                    "to": 28
+                  },
+                  "contentRange": {
+                    "from": 26,
+                    "to": 27
+                  },
+                  "text": "-"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-after-nested-ordered-item",
+      "text": "1. x |\n   2. y\n   | a |\n   | - |\n   | 1 |",
+      "nodes": [
+        {
+          "kind": "orderedList",
+          "from": 0,
+          "to": 41
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 41
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 2
+        },
+        {
+          "kind": "paragraph",
+          "from": 3,
+          "to": 6
+        },
+        {
+          "kind": "orderedList",
+          "from": 10,
+          "to": 14
+        },
+        {
+          "kind": "listItem",
+          "from": 10,
+          "to": 14
+        },
+        {
+          "kind": "listMark",
+          "from": 10,
+          "to": 12
+        },
+        {
+          "kind": "paragraph",
+          "from": 13,
+          "to": 14
+        },
+        {
+          "kind": "table",
+          "from": 18,
+          "to": 41
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 15,
+            "to": 41
+          },
+          "containerPrefix": "   ",
+          "columnCount": 1,
+          "alignments": [
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 15,
+                "to": 23
+              },
+              "rowStart": 18,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 19,
+                    "to": 22
+                  },
+                  "contentRange": {
+                    "from": 20,
+                    "to": 21
+                  },
+                  "text": "a"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 24,
+                "to": 32
+              },
+              "rowStart": 27,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 28,
+                    "to": 31
+                  },
+                  "contentRange": {
+                    "from": 29,
+                    "to": 30
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 33,
+                "to": 41
+              },
+              "rowStart": 36,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 37,
+                    "to": 40
+                  },
+                  "contentRange": {
+                    "from": 38,
+                    "to": 39
+                  },
+                  "text": "1"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "hard-break-backslash",
       "text": "line one\\\nline two",
       "nodes": [

@@ -339,3 +339,32 @@ fn task_marker_counts_as_a_header_cell() {
     assert_eq!(parse("> - [ ] | a |\n>   | - |").tables(), []);
     assert_eq!(parse("- [X] | a |\n  | - |\n  | 1 |").tables(), []);
 }
+
+#[test]
+fn lazy_list_marker_that_cannot_interrupt_continues_the_pipe_paragraph() {
+    assert_eq!(parse("> x |\n2. y\n> | a |\n> | - |").tables(), []);
+}
+
+#[test]
+fn lazy_empty_list_item_continues_the_paragraph_before_the_table() {
+    let table = table("- x\n1.\n  | a |\n  | - |");
+    assert_eq!(table.container_prefix.as_deref(), Some("  "));
+}
+
+#[test]
+fn html_block_in_a_quote_ends_only_at_a_blank_line() {
+    assert_eq!(parse("> <div>\n>\n> | b |\n> | - |").tables(), []);
+}
+
+#[test]
+fn complete_link_reference_takes_no_lazy_line() {
+    let table = table("- [x]: /u\ny\n  | a |\n  | - |");
+    assert_eq!(table.container_prefix.as_deref(), Some(""));
+    assert_eq!(parse("> [x]: /u\ny |\n> | a |\n> | - |").tables().len(), 1);
+}
+
+#[test]
+fn ordered_item_not_numbered_one_interrupts_inside_an_ordered_list() {
+    let table = table("1. x |\n   2. y\n   | a |\n   | - |\n   | 1 |");
+    assert_eq!(line_ranges(&table), [15..23, 24..32, 33..41]);
+}

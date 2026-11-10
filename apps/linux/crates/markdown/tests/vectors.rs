@@ -191,6 +191,22 @@ const ALLOWED: &[(&str, &str)] = &[
         "table-task-marker-rejected",
         "lezer reads the [ ] task marker as a header cell, so two header cells against one delimiter cell leave the item a task with a checkbox; pulldown-cmark consumes the marker as the item's task marker and makes the rest a table, so the parser has no task node and shows no checkbox",
     ),
+    (
+        "table-quote-lazy-list-marker",
+        "lezer keeps a lazy 2. line in the quoted paragraph because only an item numbered 1 interrupts a paragraph, and styles it as a quote line; pulldown-cmark ends the quote there and starts an ordered list, so the parser styles its marker",
+    ),
+    (
+        "table-list-lazy-empty-item",
+        "lezer keeps a lazy 1. line in the item's paragraph because an empty item cannot interrupt a paragraph; pulldown-cmark starts an empty ordered list there, so the parser styles its marker",
+    ),
+    (
+        "table-in-quote-after-link-reference",
+        "lezer ends a complete link reference definition before the lazy y | line, which then leaves the quote as a plain paragraph; CommonMark reads the definition out of a paragraph whose lazy continuation stays in the quote, so the parser styles the line as a quote line",
+    ),
+    (
+        "table-after-nested-ordered-item",
+        "lezer lets a 2. line interrupt the paragraph inside an ordered list and styles the marker of the nested list it opens; CommonMark lets only an item numbered 1 start a list that interrupts a paragraph, so the parser keeps the line as paragraph text",
+    ),
 ];
 
 /// Differences in the table model that stem from the web readers disagreeing with each other. Each

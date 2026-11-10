@@ -648,6 +648,30 @@
     "text": "- [ ] | a |\n  | - |"
   },
   {
+    "name": "table-quote-lazy-list-marker",
+    "text": "> x |\n2. y\n> | a |\n> | - |"
+  },
+  {
+    "name": "table-list-lazy-empty-item",
+    "text": "- x\n1.\n  | a |\n  | - |"
+  },
+  {
+    "name": "table-in-quote-html-block",
+    "text": "> <div>\n>\n> | b |\n> | - |"
+  },
+  {
+    "name": "table-after-link-reference-lazy-line",
+    "text": "- [x]: /u\ny\n  | a |\n  | - |"
+  },
+  {
+    "name": "table-in-quote-after-link-reference",
+    "text": "> [x]: /u\ny |\n> | a |\n> | - |"
+  },
+  {
+    "name": "table-after-nested-ordered-item",
+    "text": "1. x |\n   2. y\n   | a |\n   | - |\n   | 1 |"
+  },
+  {
     "name": "hard-break-backslash",
     "text": "line one\\\nline two"
   },
