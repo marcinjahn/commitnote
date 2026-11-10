@@ -8,6 +8,7 @@ mod parser;
 mod scanners;
 mod syntax;
 mod table;
+mod table_layout;
 
 pub use commands::{
     CommandResult, insert_link, link_url, openable_url, paste_link, toggle_bold, toggle_checkbox,
@@ -19,3 +20,6 @@ pub use live_preview::{Placement, PreviewStyle, RenderOutput, StyleRun, render};
 pub use parser::parse;
 pub use syntax::{MarkdownDocument, SyntaxKind, SyntaxNode};
 pub use table::{MarkdownTable, MarkdownTableCell, MarkdownTableLine, TableAlignment};
+pub use table_layout::{
+    LayoutRect, TableGeometry, TableLayout, TableLayoutColumns, TableLayoutItem, TableLayoutMetrics,
+};
