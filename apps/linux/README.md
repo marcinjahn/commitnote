@@ -816,6 +816,11 @@ and placements. The differences the two parsers cannot avoid are listed in that 
 each with a reason, and each must still differ, so a fix that removes one has to remove it from the
 list.
 
+The generator also records each table's web model in `vectors.json`: its line spans, container
+prefix, column count, cells and alignments. `tables_match_the_web_table_model` compares it with
+`parse(text).tables()`. A difference in whether a table exists always fails, and the only allowed
+difference is the column count for a trailing blank after the last header pipe.
+
 After changing the Markdown configuration of the web editor, or the corpus, regenerate the file from
 the repository root and commit it:
 

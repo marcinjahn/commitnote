@@ -3,7 +3,8 @@
     {
       "name": "empty",
       "text": "",
-      "nodes": []
+      "nodes": [],
+      "tables": []
     },
     {
       "name": "plain-paragraph",
@@ -14,7 +15,8 @@
           "from": 0,
           "to": 31
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "two-paragraphs",
@@ -30,7 +32,8 @@
           "from": 18,
           "to": 35
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-level-1",
@@ -47,7 +50,8 @@
           "from": 0,
           "to": 1
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-level-2",
@@ -64,7 +68,8 @@
           "from": 0,
           "to": 2
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-level-3",
@@ -81,7 +86,8 @@
           "from": 0,
           "to": 3
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-level-4",
@@ -98,7 +104,8 @@
           "from": 0,
           "to": 4
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-level-5",
@@ -115,7 +122,8 @@
           "from": 0,
           "to": 5
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-level-6",
@@ -132,7 +140,8 @@
           "from": 0,
           "to": 6
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-seven-hashes",
@@ -143,7 +152,8 @@
           "from": 0,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-no-space",
@@ -154,7 +164,8 @@
           "from": 0,
           "to": 8
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-closing-hashes",
@@ -176,7 +187,8 @@
           "from": 18,
           "to": 20
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-empty",
@@ -193,7 +205,8 @@
           "from": 0,
           "to": 1
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-with-emphasis",
@@ -240,7 +253,8 @@
           "from": 33,
           "to": 34
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "atx-tab",
@@ -251,7 +265,8 @@
           "from": 0,
           "to": 16
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "setext-level-1",
@@ -268,7 +283,8 @@
           "from": 11,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "setext-level-2",
@@ -285,7 +301,8 @@
           "from": 11,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "setext-multiline",
@@ -302,7 +319,8 @@
           "from": 18,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "rule-dashes",
@@ -323,7 +341,8 @@
           "from": 12,
           "to": 17
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "rule-stars",
@@ -334,7 +353,8 @@
           "from": 0,
           "to": 3
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "rule-underscores",
@@ -345,7 +365,8 @@
           "from": 0,
           "to": 3
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "rule-spaced",
@@ -356,7 +377,8 @@
           "from": 0,
           "to": 5
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "rule-after-paragraph-is-setext",
@@ -373,7 +395,8 @@
           "from": 10,
           "to": 13
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "blockquote-simple",
@@ -394,7 +417,8 @@
           "from": 2,
           "to": 9
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "blockquote-multiline",
@@ -420,7 +444,8 @@
           "from": 11,
           "to": 12
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "blockquote-lazy",
@@ -441,7 +466,8 @@
           "from": 2,
           "to": 20
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "blockquote-nested",
@@ -487,7 +513,8 @@
           "from": 17,
           "to": 18
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "blockquote-no-space",
@@ -508,7 +535,8 @@
           "from": 1,
           "to": 12
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "blockquote-deep-indent",
@@ -524,7 +552,8 @@
           "from": 4,
           "to": 22
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "blockquote-with-heading",
@@ -561,7 +590,8 @@
           "from": 21,
           "to": 25
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "blockquote-empty",
@@ -577,7 +607,8 @@
           "from": 0,
           "to": 1
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "bullet-list-dash",
@@ -633,7 +664,8 @@
           "from": 14,
           "to": 19
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "bullet-list-star",
@@ -674,7 +706,8 @@
           "from": 8,
           "to": 11
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "bullet-list-plus",
@@ -715,7 +748,8 @@
           "from": 8,
           "to": 11
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "ordered-list",
@@ -771,7 +805,8 @@
           "from": 17,
           "to": 22
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "ordered-list-paren",
@@ -812,7 +847,8 @@
           "from": 10,
           "to": 13
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "ordered-list-start",
@@ -853,7 +889,8 @@
           "from": 12,
           "to": 17
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "list-nested",
@@ -934,7 +971,8 @@
           "from": 38,
           "to": 45
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "list-loose",
@@ -990,7 +1028,8 @@
           "from": 16,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "list-with-continuation",
@@ -1021,7 +1060,8 @@
           "from": 27,
           "to": 43
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "list-empty-item",
@@ -1057,7 +1097,8 @@
           "from": 4,
           "to": 8
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "list-empty-item-lazy",
@@ -1083,7 +1124,8 @@
           "from": 2,
           "to": 11
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "list-mixed-markers",
@@ -1149,7 +1191,8 @@
           "from": 10,
           "to": 11
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "list-ordered-in-bullet",
@@ -1210,7 +1253,8 @@
           "from": 25,
           "to": 31
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "task-unchecked",
@@ -1242,7 +1286,8 @@
           "from": 2,
           "to": 5
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "task-checked",
@@ -1274,7 +1319,8 @@
           "from": 2,
           "to": 5
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "task-checked-upper",
@@ -1306,7 +1352,8 @@
           "from": 2,
           "to": 5
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "task-list-mixed",
@@ -1374,7 +1421,8 @@
           "from": 22,
           "to": 27
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "task-nested",
@@ -1432,7 +1480,8 @@
           "from": 17,
           "to": 20
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "task-ordered",
@@ -1485,7 +1534,8 @@
           "from": 16,
           "to": 19
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "task-formatted",
@@ -1547,7 +1597,8 @@
           "from": 26,
           "to": 27
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "task-empty",
@@ -1573,7 +1624,8 @@
           "from": 2,
           "to": 5
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "task-not-task",
@@ -1629,7 +1681,8 @@
           "from": 14,
           "to": 15
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "quote-list-task",
@@ -1728,7 +1781,8 @@
           "from": 46,
           "to": 49
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "fence-backticks",
@@ -1754,7 +1808,8 @@
           "from": 14,
           "to": 17
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "fence-with-info",
@@ -1785,7 +1840,8 @@
           "from": 19,
           "to": 22
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "fence-tildes",
@@ -1816,7 +1872,8 @@
           "from": 19,
           "to": 22
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "fence-unequal-tildes",
@@ -1837,7 +1894,8 @@
           "from": 5,
           "to": 13
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "fence-unclosed",
@@ -1863,7 +1921,8 @@
           "from": 6,
           "to": 19
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "fence-empty",
@@ -1884,7 +1943,8 @@
           "from": 4,
           "to": 7
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "fence-longer-close",
@@ -1910,7 +1970,8 @@
           "from": 9,
           "to": 14
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "fence-in-list",
@@ -1956,7 +2017,8 @@
           "from": 23,
           "to": 26
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "fence-in-quote",
@@ -2002,7 +2064,8 @@
           "from": 15,
           "to": 18
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "fence-info-words",
@@ -2033,7 +2096,8 @@
           "from": 28,
           "to": 31
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "fence-markdown-inside",
@@ -2059,7 +2123,8 @@
           "from": 42,
           "to": 45
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "indented-code",
@@ -2080,7 +2145,8 @@
           "from": 22,
           "to": 33
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "indented-code-after-paragraph",
@@ -2091,7 +2157,8 @@
           "from": 0,
           "to": 29
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "indented-code-blank-inside",
@@ -2112,7 +2179,8 @@
           "from": 13,
           "to": 16
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "indented-code-tab",
@@ -2128,7 +2196,8 @@
           "from": 1,
           "to": 13
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "emphasis-star",
@@ -2154,7 +2223,8 @@
           "from": 9,
           "to": 10
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "emphasis-underscore",
@@ -2180,7 +2250,8 @@
           "from": 9,
           "to": 10
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "strong-stars",
@@ -2206,7 +2277,8 @@
           "from": 8,
           "to": 10
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "strong-underscores",
@@ -2232,7 +2304,8 @@
           "from": 8,
           "to": 10
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "strong-emphasis-combined",
@@ -2273,7 +2346,8 @@
           "from": 9,
           "to": 10
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "emphasis-nested",
@@ -2314,7 +2388,8 @@
           "from": 22,
           "to": 23
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "emphasis-intraword-underscore",
@@ -2340,7 +2415,8 @@
           "from": 26,
           "to": 28
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "emphasis-intraword-star",
@@ -2366,7 +2442,8 @@
           "from": 10,
           "to": 11
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "emphasis-unmatched",
@@ -2377,7 +2454,8 @@
           "from": 0,
           "to": 24
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "emphasis-spaces",
@@ -2403,7 +2481,8 @@
           "from": 2,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "emphasis-punctuation-flanking",
@@ -2444,7 +2523,8 @@
           "from": 28,
           "to": 29
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "strikethrough",
@@ -2470,7 +2550,8 @@
           "from": 8,
           "to": 10
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "strikethrough-single",
@@ -2481,7 +2562,8 @@
           "from": 0,
           "to": 14
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "strikethrough-nested",
@@ -2522,7 +2604,8 @@
           "from": 21,
           "to": 23
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "inline-code",
@@ -2548,7 +2631,8 @@
           "from": 9,
           "to": 10
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "inline-code-double",
@@ -2574,7 +2658,8 @@
           "from": 7,
           "to": 9
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "inline-code-unclosed",
@@ -2585,7 +2670,8 @@
           "from": 0,
           "to": 14
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "inline-code-with-stars",
@@ -2626,7 +2712,8 @@
           "from": 30,
           "to": 31
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-inline",
@@ -2672,7 +2759,8 @@
           "from": 27,
           "to": 28
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-with-title",
@@ -2718,7 +2806,8 @@
           "from": 35,
           "to": 36
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-angle-destination",
@@ -2764,7 +2853,8 @@
           "from": 33,
           "to": 34
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-empty-label",
@@ -2805,7 +2895,8 @@
           "from": 22,
           "to": 23
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-empty-destination",
@@ -2846,7 +2937,8 @@
           "from": 8,
           "to": 9
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-with-emphasis",
@@ -2922,7 +3014,8 @@
           "from": 55,
           "to": 56
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-with-code",
@@ -2983,7 +3076,8 @@
           "from": 34,
           "to": 35
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-nested-brackets",
@@ -3014,7 +3108,8 @@
           "from": 10,
           "to": 29
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-relative",
@@ -3060,7 +3155,8 @@
           "from": 23,
           "to": 24
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-reference-full",
@@ -3086,7 +3182,8 @@
           "from": 5,
           "to": 6
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-reference-collapsed",
@@ -3112,7 +3209,8 @@
           "from": 4,
           "to": 5
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-reference-shortcut",
@@ -3138,7 +3236,8 @@
           "from": 4,
           "to": 5
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-reference-undefined",
@@ -3179,12 +3278,14 @@
           "from": 25,
           "to": 26
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-reference-definition-only",
       "text": "[ref]: https://example.com",
-      "nodes": []
+      "nodes": [],
+      "tables": []
     },
     {
       "name": "link-in-heading",
@@ -3236,7 +3337,8 @@
           "from": 33,
           "to": 34
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-in-list",
@@ -3312,7 +3414,8 @@
           "from": 32,
           "to": 37
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-in-quote",
@@ -3368,7 +3471,8 @@
           "from": 30,
           "to": 31
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "link-adjacent",
@@ -3449,7 +3553,8 @@
           "from": 43,
           "to": 44
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "image-simple",
@@ -3495,7 +3600,8 @@
           "from": 32,
           "to": 33
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "image-reference",
@@ -3541,7 +3647,8 @@
           "from": 52,
           "to": 53
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "image-escaped-alt",
@@ -3587,7 +3694,8 @@
           "from": 46,
           "to": 47
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "image-empty-alt",
@@ -3628,7 +3736,8 @@
           "from": 36,
           "to": 37
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "image-in-paragraph",
@@ -3674,7 +3783,8 @@
           "from": 46,
           "to": 47
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "image-in-list",
@@ -3735,7 +3845,8 @@
           "from": 47,
           "to": 48
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "image-in-link",
@@ -3816,7 +3927,8 @@
           "from": 62,
           "to": 63
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "image-reference-style",
@@ -3842,7 +3954,8 @@
           "from": 5,
           "to": 6
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-angle",
@@ -3873,7 +3986,8 @@
           "from": 25,
           "to": 26
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-angle-email",
@@ -3904,7 +4018,8 @@
           "from": 17,
           "to": 18
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-bare-url",
@@ -3920,7 +4035,8 @@
           "from": 4,
           "to": 23
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-www",
@@ -3936,7 +4052,8 @@
           "from": 6,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-bare-email",
@@ -3952,7 +4069,8 @@
           "from": 5,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-trailing-period",
@@ -3968,7 +4086,8 @@
           "from": 6,
           "to": 25
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-trailing-comma",
@@ -3984,7 +4103,8 @@
           "from": 0,
           "to": 19
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-trailing-paren",
@@ -4005,7 +4125,8 @@
           "from": 26,
           "to": 51
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-trailing-question",
@@ -4021,7 +4142,8 @@
           "from": 6,
           "to": 25
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-with-query",
@@ -4037,7 +4159,8 @@
           "from": 0,
           "to": 34
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-in-emphasis",
@@ -4068,7 +4191,8 @@
           "from": 20,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-before-code",
@@ -4099,7 +4223,8 @@
           "from": 24,
           "to": 25
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-in-link-label",
@@ -4150,7 +4275,8 @@
           "from": 43,
           "to": 44
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "autolink-in-list",
@@ -4181,7 +4307,8 @@
           "from": 2,
           "to": 26
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "table-simple",
@@ -4191,6 +4318,118 @@
           "kind": "table",
           "from": 0,
           "to": 29
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 29
+          },
+          "containerPrefix": "",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 9
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 4
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 3
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 5,
+                    "to": 8
+                  },
+                  "contentRange": {
+                    "from": 6,
+                    "to": 7
+                  },
+                  "text": "b"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 10,
+                "to": 19
+              },
+              "rowStart": 10,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 11,
+                    "to": 14
+                  },
+                  "contentRange": {
+                    "from": 12,
+                    "to": 13
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 15,
+                    "to": 18
+                  },
+                  "contentRange": {
+                    "from": 16,
+                    "to": 17
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 20,
+                "to": 29
+              },
+              "rowStart": 20,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 21,
+                    "to": 24
+                  },
+                  "contentRange": {
+                    "from": 22,
+                    "to": 23
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 25,
+                    "to": 28
+                  },
+                  "contentRange": {
+                    "from": 26,
+                    "to": 27
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -4202,6 +4441,152 @@
           "kind": "table",
           "from": 0,
           "to": 63
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 63
+          },
+          "containerPrefix": "",
+          "columnCount": 3,
+          "alignments": [
+            "left",
+            "center",
+            "right"
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 25
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 7
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 6
+                  },
+                  "text": "left"
+                },
+                {
+                  "range": {
+                    "from": 8,
+                    "to": 16
+                  },
+                  "contentRange": {
+                    "from": 9,
+                    "to": 15
+                  },
+                  "text": "center"
+                },
+                {
+                  "range": {
+                    "from": 17,
+                    "to": 24
+                  },
+                  "contentRange": {
+                    "from": 18,
+                    "to": 23
+                  },
+                  "text": "right"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 26,
+                "to": 49
+              },
+              "rowStart": 26,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 27,
+                    "to": 33
+                  },
+                  "contentRange": {
+                    "from": 28,
+                    "to": 32
+                  },
+                  "text": ":---"
+                },
+                {
+                  "range": {
+                    "from": 34,
+                    "to": 41
+                  },
+                  "contentRange": {
+                    "from": 35,
+                    "to": 40
+                  },
+                  "text": ":---:"
+                },
+                {
+                  "range": {
+                    "from": 42,
+                    "to": 48
+                  },
+                  "contentRange": {
+                    "from": 43,
+                    "to": 47
+                  },
+                  "text": "---:"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 50,
+                "to": 63
+              },
+              "rowStart": 50,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 51,
+                    "to": 54
+                  },
+                  "contentRange": {
+                    "from": 52,
+                    "to": 53
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 55,
+                    "to": 58
+                  },
+                  "contentRange": {
+                    "from": 56,
+                    "to": 57
+                  },
+                  "text": "b"
+                },
+                {
+                  "range": {
+                    "from": 59,
+                    "to": 62
+                  },
+                  "contentRange": {
+                    "from": 60,
+                    "to": 61
+                  },
+                  "text": "c"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -4234,7 +4619,8 @@
           "from": 8,
           "to": 17
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "table-inline-formatting",
@@ -4325,6 +4711,118 @@
           "from": 61,
           "to": 62
         }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 64
+          },
+          "containerPrefix": "",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 15
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 8
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 7
+                  },
+                  "text": "**a**"
+                },
+                {
+                  "range": {
+                    "from": 9,
+                    "to": 14
+                  },
+                  "contentRange": {
+                    "from": 10,
+                    "to": 13
+                  },
+                  "text": "`b`"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 16,
+                "to": 29
+              },
+              "rowStart": 16,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 17,
+                    "to": 22
+                  },
+                  "contentRange": {
+                    "from": 18,
+                    "to": 21
+                  },
+                  "text": "---"
+                },
+                {
+                  "range": {
+                    "from": 23,
+                    "to": 28
+                  },
+                  "contentRange": {
+                    "from": 24,
+                    "to": 27
+                  },
+                  "text": "---"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 30,
+                "to": 64
+              },
+              "rowStart": 30,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 31,
+                    "to": 57
+                  },
+                  "contentRange": {
+                    "from": 32,
+                    "to": 56
+                  },
+                  "text": "[l](https://example.com)"
+                },
+                {
+                  "range": {
+                    "from": 58,
+                    "to": 63
+                  },
+                  "contentRange": {
+                    "from": 59,
+                    "to": 62
+                  },
+                  "text": "*i*"
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -4336,6 +4834,118 @@
           "from": 0,
           "to": 38
         }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 38
+          },
+          "containerPrefix": "",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 14
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 9
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 8
+                  },
+                  "text": "a \\| b"
+                },
+                {
+                  "range": {
+                    "from": 10,
+                    "to": 13
+                  },
+                  "contentRange": {
+                    "from": 11,
+                    "to": 12
+                  },
+                  "text": "c"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 15,
+                "to": 28
+              },
+              "rowStart": 15,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 16,
+                    "to": 21
+                  },
+                  "contentRange": {
+                    "from": 17,
+                    "to": 20
+                  },
+                  "text": "---"
+                },
+                {
+                  "range": {
+                    "from": 22,
+                    "to": 27
+                  },
+                  "contentRange": {
+                    "from": 23,
+                    "to": 26
+                  },
+                  "text": "---"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 29,
+                "to": 38
+              },
+              "rowStart": 29,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 30,
+                    "to": 33
+                  },
+                  "contentRange": {
+                    "from": 31,
+                    "to": 32
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 34,
+                    "to": 37
+                  },
+                  "contentRange": {
+                    "from": 35,
+                    "to": 36
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -4346,6 +4956,118 @@
           "kind": "table",
           "from": 0,
           "to": 32
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 32
+          },
+          "containerPrefix": "",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 9
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 4
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 3
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 5,
+                    "to": 8
+                  },
+                  "contentRange": {
+                    "from": 6,
+                    "to": 7
+                  },
+                  "text": "b"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 10,
+                "to": 22
+              },
+              "rowStart": 13,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 14,
+                    "to": 17
+                  },
+                  "contentRange": {
+                    "from": 15,
+                    "to": 16
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 18,
+                    "to": 21
+                  },
+                  "contentRange": {
+                    "from": 19,
+                    "to": 20
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 23,
+                "to": 32
+              },
+              "rowStart": 23,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 24,
+                    "to": 27
+                  },
+                  "contentRange": {
+                    "from": 25,
+                    "to": 26
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 28,
+                    "to": 31
+                  },
+                  "contentRange": {
+                    "from": 29,
+                    "to": 30
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -4367,6 +5089,84 @@
           "kind": "paragraph",
           "from": 32,
           "to": 42
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 13,
+            "to": 30
+          },
+          "containerPrefix": "",
+          "columnCount": 1,
+          "alignments": [
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 13,
+                "to": 18
+              },
+              "rowStart": 13,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 14,
+                    "to": 17
+                  },
+                  "contentRange": {
+                    "from": 15,
+                    "to": 16
+                  },
+                  "text": "a"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 19,
+                "to": 24
+              },
+              "rowStart": 19,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 20,
+                    "to": 23
+                  },
+                  "contentRange": {
+                    "from": 21,
+                    "to": 22
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 25,
+                "to": 30
+              },
+              "rowStart": 25,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 26,
+                    "to": 29
+                  },
+                  "contentRange": {
+                    "from": 27,
+                    "to": 28
+                  },
+                  "text": "1"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -4399,6 +5199,118 @@
           "from": 24,
           "to": 25
         }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 35
+          },
+          "containerPrefix": "> ",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 11
+              },
+              "rowStart": 2,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 3,
+                    "to": 6
+                  },
+                  "contentRange": {
+                    "from": 4,
+                    "to": 5
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 7,
+                    "to": 10
+                  },
+                  "contentRange": {
+                    "from": 8,
+                    "to": 9
+                  },
+                  "text": "b"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 12,
+                "to": 23
+              },
+              "rowStart": 14,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 15,
+                    "to": 18
+                  },
+                  "contentRange": {
+                    "from": 16,
+                    "to": 17
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 19,
+                    "to": 22
+                  },
+                  "contentRange": {
+                    "from": 20,
+                    "to": 21
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 24,
+                "to": 35
+              },
+              "rowStart": 26,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 27,
+                    "to": 30
+                  },
+                  "contentRange": {
+                    "from": 28,
+                    "to": 29
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 31,
+                    "to": 34
+                  },
+                  "contentRange": {
+                    "from": 32,
+                    "to": 33
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -4409,6 +5321,1530 @@
           "kind": "paragraph",
           "from": 0,
           "to": 19
+        }
+      ],
+      "tables": []
+    },
+    {
+      "name": "table-code-span-pipe",
+      "text": "| `a|b` | c |\n| - | - | - |\n| 1 | 2 | 3 |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 41
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 41
+          },
+          "containerPrefix": "",
+          "columnCount": 3,
+          "alignments": [
+            "",
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 13
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 4
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 4
+                  },
+                  "text": "`a"
+                },
+                {
+                  "range": {
+                    "from": 5,
+                    "to": 8
+                  },
+                  "contentRange": {
+                    "from": 5,
+                    "to": 7
+                  },
+                  "text": "b`"
+                },
+                {
+                  "range": {
+                    "from": 9,
+                    "to": 12
+                  },
+                  "contentRange": {
+                    "from": 10,
+                    "to": 11
+                  },
+                  "text": "c"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 14,
+                "to": 27
+              },
+              "rowStart": 14,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 15,
+                    "to": 18
+                  },
+                  "contentRange": {
+                    "from": 16,
+                    "to": 17
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 19,
+                    "to": 22
+                  },
+                  "contentRange": {
+                    "from": 20,
+                    "to": 21
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 23,
+                    "to": 26
+                  },
+                  "contentRange": {
+                    "from": 24,
+                    "to": 25
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 28,
+                "to": 41
+              },
+              "rowStart": 28,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 29,
+                    "to": 32
+                  },
+                  "contentRange": {
+                    "from": 30,
+                    "to": 31
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 33,
+                    "to": 36
+                  },
+                  "contentRange": {
+                    "from": 34,
+                    "to": 35
+                  },
+                  "text": "2"
+                },
+                {
+                  "range": {
+                    "from": 37,
+                    "to": 40
+                  },
+                  "contentRange": {
+                    "from": 38,
+                    "to": 39
+                  },
+                  "text": "3"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-code-span-escaped-pipe",
+      "text": "| `a\\|b` | c |\n| - | - |\n| 1 | 2 |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 34
+        },
+        {
+          "kind": "inlineCode",
+          "from": 2,
+          "to": 8
+        },
+        {
+          "kind": "codeMark",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "codeMark",
+          "from": 7,
+          "to": 8
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 34
+          },
+          "containerPrefix": "",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 14
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 9
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 8
+                  },
+                  "text": "`a\\|b`"
+                },
+                {
+                  "range": {
+                    "from": 10,
+                    "to": 13
+                  },
+                  "contentRange": {
+                    "from": 11,
+                    "to": 12
+                  },
+                  "text": "c"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 15,
+                "to": 24
+              },
+              "rowStart": 15,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 16,
+                    "to": 19
+                  },
+                  "contentRange": {
+                    "from": 17,
+                    "to": 18
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 20,
+                    "to": 23
+                  },
+                  "contentRange": {
+                    "from": 21,
+                    "to": 22
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 25,
+                "to": 34
+              },
+              "rowStart": 25,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 26,
+                    "to": 29
+                  },
+                  "contentRange": {
+                    "from": 27,
+                    "to": 28
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 30,
+                    "to": 33
+                  },
+                  "contentRange": {
+                    "from": 31,
+                    "to": 32
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-ragged-rows",
+      "text": "| a | b | c |\n| - | - | - |\n| 1 |\n| 1 | 2 | 3 | 4 |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 51
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 51
+          },
+          "containerPrefix": "",
+          "columnCount": 3,
+          "alignments": [
+            "",
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 13
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 4
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 3
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 5,
+                    "to": 8
+                  },
+                  "contentRange": {
+                    "from": 6,
+                    "to": 7
+                  },
+                  "text": "b"
+                },
+                {
+                  "range": {
+                    "from": 9,
+                    "to": 12
+                  },
+                  "contentRange": {
+                    "from": 10,
+                    "to": 11
+                  },
+                  "text": "c"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 14,
+                "to": 27
+              },
+              "rowStart": 14,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 15,
+                    "to": 18
+                  },
+                  "contentRange": {
+                    "from": 16,
+                    "to": 17
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 19,
+                    "to": 22
+                  },
+                  "contentRange": {
+                    "from": 20,
+                    "to": 21
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 23,
+                    "to": 26
+                  },
+                  "contentRange": {
+                    "from": 24,
+                    "to": 25
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 28,
+                "to": 33
+              },
+              "rowStart": 28,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 29,
+                    "to": 32
+                  },
+                  "contentRange": {
+                    "from": 30,
+                    "to": 31
+                  },
+                  "text": "1"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 34,
+                "to": 51
+              },
+              "rowStart": 34,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 35,
+                    "to": 38
+                  },
+                  "contentRange": {
+                    "from": 36,
+                    "to": 37
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 39,
+                    "to": 42
+                  },
+                  "contentRange": {
+                    "from": 40,
+                    "to": 41
+                  },
+                  "text": "2"
+                },
+                {
+                  "range": {
+                    "from": 43,
+                    "to": 46
+                  },
+                  "contentRange": {
+                    "from": 44,
+                    "to": 45
+                  },
+                  "text": "3"
+                },
+                {
+                  "range": {
+                    "from": 47,
+                    "to": 50
+                  },
+                  "contentRange": {
+                    "from": 48,
+                    "to": 49
+                  },
+                  "text": "4"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-every-alignment",
+      "text": "| a | b | c | d |\n| --- | :-- | :-: | --: |\n| 1 | 2 | 3 | 4 |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 61
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 61
+          },
+          "containerPrefix": "",
+          "columnCount": 4,
+          "alignments": [
+            "",
+            "left",
+            "center",
+            "right"
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 17
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 4
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 3
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 5,
+                    "to": 8
+                  },
+                  "contentRange": {
+                    "from": 6,
+                    "to": 7
+                  },
+                  "text": "b"
+                },
+                {
+                  "range": {
+                    "from": 9,
+                    "to": 12
+                  },
+                  "contentRange": {
+                    "from": 10,
+                    "to": 11
+                  },
+                  "text": "c"
+                },
+                {
+                  "range": {
+                    "from": 13,
+                    "to": 16
+                  },
+                  "contentRange": {
+                    "from": 14,
+                    "to": 15
+                  },
+                  "text": "d"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 18,
+                "to": 43
+              },
+              "rowStart": 18,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 19,
+                    "to": 24
+                  },
+                  "contentRange": {
+                    "from": 20,
+                    "to": 23
+                  },
+                  "text": "---"
+                },
+                {
+                  "range": {
+                    "from": 25,
+                    "to": 30
+                  },
+                  "contentRange": {
+                    "from": 26,
+                    "to": 29
+                  },
+                  "text": ":--"
+                },
+                {
+                  "range": {
+                    "from": 31,
+                    "to": 36
+                  },
+                  "contentRange": {
+                    "from": 32,
+                    "to": 35
+                  },
+                  "text": ":-:"
+                },
+                {
+                  "range": {
+                    "from": 37,
+                    "to": 42
+                  },
+                  "contentRange": {
+                    "from": 38,
+                    "to": 41
+                  },
+                  "text": "--:"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 44,
+                "to": 61
+              },
+              "rowStart": 44,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 45,
+                    "to": 48
+                  },
+                  "contentRange": {
+                    "from": 46,
+                    "to": 47
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 49,
+                    "to": 52
+                  },
+                  "contentRange": {
+                    "from": 50,
+                    "to": 51
+                  },
+                  "text": "2"
+                },
+                {
+                  "range": {
+                    "from": 53,
+                    "to": 56
+                  },
+                  "contentRange": {
+                    "from": 54,
+                    "to": 55
+                  },
+                  "text": "3"
+                },
+                {
+                  "range": {
+                    "from": 57,
+                    "to": 60
+                  },
+                  "contentRange": {
+                    "from": 58,
+                    "to": 59
+                  },
+                  "text": "4"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-empty-cells",
+      "text": "| a |  | c |\n| - | - | - |\n|  | 2 |  |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 38
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 38
+          },
+          "containerPrefix": "",
+          "columnCount": 3,
+          "alignments": [
+            "",
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 12
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 4
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 3
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 5,
+                    "to": 7
+                  },
+                  "contentRange": {
+                    "from": 5,
+                    "to": 5
+                  },
+                  "text": ""
+                },
+                {
+                  "range": {
+                    "from": 8,
+                    "to": 11
+                  },
+                  "contentRange": {
+                    "from": 9,
+                    "to": 10
+                  },
+                  "text": "c"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 13,
+                "to": 26
+              },
+              "rowStart": 13,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 14,
+                    "to": 17
+                  },
+                  "contentRange": {
+                    "from": 15,
+                    "to": 16
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 18,
+                    "to": 21
+                  },
+                  "contentRange": {
+                    "from": 19,
+                    "to": 20
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 22,
+                    "to": 25
+                  },
+                  "contentRange": {
+                    "from": 23,
+                    "to": 24
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 27,
+                "to": 38
+              },
+              "rowStart": 27,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 28,
+                    "to": 30
+                  },
+                  "contentRange": {
+                    "from": 28,
+                    "to": 28
+                  },
+                  "text": ""
+                },
+                {
+                  "range": {
+                    "from": 31,
+                    "to": 34
+                  },
+                  "contentRange": {
+                    "from": 32,
+                    "to": 33
+                  },
+                  "text": "2"
+                },
+                {
+                  "range": {
+                    "from": 35,
+                    "to": 37
+                  },
+                  "contentRange": {
+                    "from": 35,
+                    "to": 35
+                  },
+                  "text": ""
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-in-list",
+      "text": "- item\n\n  | a | b |\n  | - | - |\n  | 1 | 2 |",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 43
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 43
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 6
+        },
+        {
+          "kind": "table",
+          "from": 10,
+          "to": 43
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 8,
+            "to": 43
+          },
+          "containerPrefix": "  ",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 8,
+                "to": 19
+              },
+              "rowStart": 10,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 11,
+                    "to": 14
+                  },
+                  "contentRange": {
+                    "from": 12,
+                    "to": 13
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 15,
+                    "to": 18
+                  },
+                  "contentRange": {
+                    "from": 16,
+                    "to": 17
+                  },
+                  "text": "b"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 20,
+                "to": 31
+              },
+              "rowStart": 22,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 23,
+                    "to": 26
+                  },
+                  "contentRange": {
+                    "from": 24,
+                    "to": 25
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 27,
+                    "to": 30
+                  },
+                  "contentRange": {
+                    "from": 28,
+                    "to": 29
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 32,
+                "to": 43
+              },
+              "rowStart": 34,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 35,
+                    "to": 38
+                  },
+                  "contentRange": {
+                    "from": 36,
+                    "to": 37
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 39,
+                    "to": 42
+                  },
+                  "contentRange": {
+                    "from": 40,
+                    "to": 41
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-in-nested-quote",
+      "text": "> > | a | b |\n> > | - | - |\n> > | 1 | 2 |",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 41
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "blockquote",
+          "from": 2,
+          "to": 41
+        },
+        {
+          "kind": "quoteMark",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "table",
+          "from": 4,
+          "to": 41
+        },
+        {
+          "kind": "quoteMark",
+          "from": 14,
+          "to": 15
+        },
+        {
+          "kind": "quoteMark",
+          "from": 16,
+          "to": 17
+        },
+        {
+          "kind": "quoteMark",
+          "from": 28,
+          "to": 29
+        },
+        {
+          "kind": "quoteMark",
+          "from": 30,
+          "to": 31
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 41
+          },
+          "containerPrefix": "> > ",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 13
+              },
+              "rowStart": 4,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 5,
+                    "to": 8
+                  },
+                  "contentRange": {
+                    "from": 6,
+                    "to": 7
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 9,
+                    "to": 12
+                  },
+                  "contentRange": {
+                    "from": 10,
+                    "to": 11
+                  },
+                  "text": "b"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 14,
+                "to": 27
+              },
+              "rowStart": 18,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 19,
+                    "to": 22
+                  },
+                  "contentRange": {
+                    "from": 20,
+                    "to": 21
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 23,
+                    "to": 26
+                  },
+                  "contentRange": {
+                    "from": 24,
+                    "to": 25
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 28,
+                "to": 41
+              },
+              "rowStart": 32,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 33,
+                    "to": 36
+                  },
+                  "contentRange": {
+                    "from": 34,
+                    "to": 35
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 37,
+                    "to": 40
+                  },
+                  "contentRange": {
+                    "from": 38,
+                    "to": 39
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-irregular-prefix",
+      "text": "> | a | b |\n> | - | - |\n| 1 | 2 |",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 33
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "table",
+          "from": 2,
+          "to": 33
+        },
+        {
+          "kind": "quoteMark",
+          "from": 12,
+          "to": 13
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 33
+          },
+          "containerPrefix": null,
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 11
+              },
+              "rowStart": 2,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 3,
+                    "to": 6
+                  },
+                  "contentRange": {
+                    "from": 4,
+                    "to": 5
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 7,
+                    "to": 10
+                  },
+                  "contentRange": {
+                    "from": 8,
+                    "to": 9
+                  },
+                  "text": "b"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 12,
+                "to": 23
+              },
+              "rowStart": 14,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 15,
+                    "to": 18
+                  },
+                  "contentRange": {
+                    "from": 16,
+                    "to": 17
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 19,
+                    "to": 22
+                  },
+                  "contentRange": {
+                    "from": 20,
+                    "to": 21
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 24,
+                "to": 33
+              },
+              "rowStart": 24,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 25,
+                    "to": 28
+                  },
+                  "contentRange": {
+                    "from": 26,
+                    "to": 27
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 29,
+                    "to": 32
+                  },
+                  "contentRange": {
+                    "from": 30,
+                    "to": 31
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-non-bmp",
+      "text": "| 😀 | b |\n| - | - |\n| 𝒳 | 2 |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 31
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 31
+          },
+          "containerPrefix": "",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 10
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 5
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 4
+                  },
+                  "text": "😀"
+                },
+                {
+                  "range": {
+                    "from": 6,
+                    "to": 9
+                  },
+                  "contentRange": {
+                    "from": 7,
+                    "to": 8
+                  },
+                  "text": "b"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 11,
+                "to": 20
+              },
+              "rowStart": 11,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 12,
+                    "to": 15
+                  },
+                  "contentRange": {
+                    "from": 13,
+                    "to": 14
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 16,
+                    "to": 19
+                  },
+                  "contentRange": {
+                    "from": 17,
+                    "to": 18
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 21,
+                "to": 31
+              },
+              "rowStart": 21,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 22,
+                    "to": 26
+                  },
+                  "contentRange": {
+                    "from": 23,
+                    "to": 25
+                  },
+                  "text": "𝒳"
+                },
+                {
+                  "range": {
+                    "from": 27,
+                    "to": 30
+                  },
+                  "contentRange": {
+                    "from": 28,
+                    "to": 29
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-trailing-blank",
+      "text": "| a | b |  \n| - | - |\n| 1 | 2 |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 31
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 31
+          },
+          "containerPrefix": "",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 11
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 4
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 3
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 5,
+                    "to": 8
+                  },
+                  "contentRange": {
+                    "from": 6,
+                    "to": 7
+                  },
+                  "text": "b"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 12,
+                "to": 21
+              },
+              "rowStart": 12,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 13,
+                    "to": 16
+                  },
+                  "contentRange": {
+                    "from": 14,
+                    "to": 15
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 17,
+                    "to": 20
+                  },
+                  "contentRange": {
+                    "from": 18,
+                    "to": 19
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 22,
+                "to": 31
+              },
+              "rowStart": 22,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 23,
+                    "to": 26
+                  },
+                  "contentRange": {
+                    "from": 24,
+                    "to": 25
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 27,
+                    "to": 30
+                  },
+                  "contentRange": {
+                    "from": 28,
+                    "to": 29
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -4426,7 +6862,8 @@
           "from": 8,
           "to": 10
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "hard-break-spaces",
@@ -4442,7 +6879,8 @@
           "from": 8,
           "to": 11
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "soft-break",
@@ -4453,7 +6891,8 @@
           "from": 0,
           "to": 17
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "hard-break-in-list",
@@ -4484,7 +6923,8 @@
           "from": 10,
           "to": 12
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "html-inline",
@@ -4495,17 +6935,20 @@
           "from": 0,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "html-block",
       "text": "<div>\nblock\n</div>",
-      "nodes": []
+      "nodes": [],
+      "tables": []
     },
     {
       "name": "html-comment",
       "text": "<!-- comment -->",
-      "nodes": []
+      "nodes": [],
+      "tables": []
     },
     {
       "name": "html-comment-multiline",
@@ -4516,7 +6959,8 @@
           "from": 16,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "html-entity",
@@ -4527,7 +6971,8 @@
           "from": 0,
           "to": 29
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "escape-asterisks",
@@ -4538,7 +6983,8 @@
           "from": 0,
           "to": 16
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "escape-brackets",
@@ -4549,7 +6995,8 @@
           "from": 0,
           "to": 17
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "escape-backslash-punctuation",
@@ -4560,7 +7007,8 @@
           "from": 0,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "escape-hash-line",
@@ -4571,7 +7019,8 @@
           "from": 0,
           "to": 14
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "subscript",
@@ -4582,7 +7031,8 @@
           "from": 0,
           "to": 14
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "superscript",
@@ -4593,7 +7043,8 @@
           "from": 0,
           "to": 15
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "emoji",
@@ -4604,7 +7055,8 @@
           "from": 0,
           "to": 24
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "unicode-accents",
@@ -4671,7 +7123,8 @@
           "from": 45,
           "to": 46
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "unicode-cjk",
@@ -4742,7 +7195,8 @@
           "from": 25,
           "to": 26
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "astral-emoji",
@@ -4838,7 +7292,8 @@
           "from": 69,
           "to": 70
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "astral-in-heading",
@@ -4855,7 +7310,8 @@
           "from": 0,
           "to": 2
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "astral-in-code",
@@ -4901,7 +7357,8 @@
           "from": 20,
           "to": 21
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "combining-marks",
@@ -4942,7 +7399,8 @@
           "from": 14,
           "to": 16
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "rtl-text",
@@ -4979,7 +7437,8 @@
           "from": 13,
           "to": 14
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "multi-line-note",
@@ -5067,7 +7526,8 @@
           "from": 70,
           "to": 74
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "blank-lines-between",
@@ -5083,7 +7543,8 @@
           "from": 5,
           "to": 6
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "trailing-newline",
@@ -5105,7 +7566,8 @@
           "from": 11,
           "to": 15
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "trailing-spaces",
@@ -5116,12 +7578,14 @@
           "from": 0,
           "to": 28
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "only-whitespace-lines",
       "text": "   \n\n  ",
-      "nodes": []
+      "nodes": [],
+      "tables": []
     },
     {
       "name": "setext-vs-rule-vs-list",
@@ -5173,7 +7637,8 @@
           "from": 27,
           "to": 32
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "nested-quote-list-emphasis",
@@ -5334,7 +7799,8 @@
           "from": 78,
           "to": 79
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "emphasis-in-link-in-emphasis",
@@ -5410,7 +7876,8 @@
           "from": 39,
           "to": 40
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "list-code-quote",
@@ -5491,7 +7958,8 @@
           "from": 50,
           "to": 58
         }
-      ]
+      ],
+      "tables": []
     },
     {
       "name": "realistic-note",
@@ -5838,6 +8306,150 @@
           "kind": "linkMark",
           "from": 440,
           "to": 441
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 274,
+            "to": 333
+          },
+          "containerPrefix": "",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 274,
+                "to": 288
+              },
+              "rowStart": 274,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 275,
+                    "to": 280
+                  },
+                  "contentRange": {
+                    "from": 276,
+                    "to": 279
+                  },
+                  "text": "Day"
+                },
+                {
+                  "range": {
+                    "from": 281,
+                    "to": 287
+                  },
+                  "contentRange": {
+                    "from": 282,
+                    "to": 286
+                  },
+                  "text": "Plan"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 289,
+                "to": 303
+              },
+              "rowStart": 289,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 290,
+                    "to": 295
+                  },
+                  "contentRange": {
+                    "from": 291,
+                    "to": 294
+                  },
+                  "text": "---"
+                },
+                {
+                  "range": {
+                    "from": 296,
+                    "to": 302
+                  },
+                  "contentRange": {
+                    "from": 297,
+                    "to": 301
+                  },
+                  "text": "----"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 304,
+                "to": 318
+              },
+              "rowStart": 304,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 305,
+                    "to": 310
+                  },
+                  "contentRange": {
+                    "from": 306,
+                    "to": 309
+                  },
+                  "text": "Sat"
+                },
+                {
+                  "range": {
+                    "from": 311,
+                    "to": 317
+                  },
+                  "contentRange": {
+                    "from": 312,
+                    "to": 316
+                  },
+                  "text": "hike"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 319,
+                "to": 333
+              },
+              "rowStart": 319,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 320,
+                    "to": 325
+                  },
+                  "contentRange": {
+                    "from": 321,
+                    "to": 324
+                  },
+                  "text": "Sun"
+                },
+                {
+                  "range": {
+                    "from": 326,
+                    "to": 332
+                  },
+                  "contentRange": {
+                    "from": 327,
+                    "to": 331
+                  },
+                  "text": "rest"
+                }
+              ]
+            }
+          ]
         }
       ]
     }

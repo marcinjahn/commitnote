@@ -5,7 +5,8 @@ use std::path::PathBuf;
 
 use commitnote_editor_text::TextSelection;
 use commitnote_markdown::{
-    MarkdownDocument, Placement, RenderOutput, SyntaxKind, SyntaxNode, parse, render,
+    MarkdownDocument, MarkdownTable, Placement, RenderOutput, SyntaxKind, SyntaxNode,
+    TableAlignment, parse, render,
 };
 use serde::Deserialize;
 
@@ -19,6 +20,7 @@ struct Entry {
     name: String,
     text: String,
     nodes: Vec<VectorNode>,
+    tables: Vec<VectorTable>,
 }
 
 #[derive(Deserialize)]
@@ -28,6 +30,54 @@ struct VectorNode {
     checked: Option<bool>,
     from: usize,
     to: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VectorTable {
+    range: VectorRange,
+    container_prefix: Option<String>,
+    column_count: usize,
+    alignments: Vec<String>,
+    lines: Vec<VectorTableLine>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VectorTableLine {
+    range: VectorRange,
+    row_start: usize,
+    trailing_pipe: bool,
+    cells: Vec<VectorTableCell>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VectorTableCell {
+    range: VectorRange,
+    content_range: VectorRange,
+    text: String,
+}
+
+#[derive(Deserialize)]
+struct VectorRange {
+    from: usize,
+    to: usize,
+}
+
+impl VectorRange {
+    fn range(&self) -> Range<usize> {
+        self.from..self.to
+    }
+}
+
+fn alignment_name(alignment: TableAlignment) -> &'static str {
+    match alignment {
+        TableAlignment::Unspecified => "",
+        TableAlignment::Left => "left",
+        TableAlignment::Center => "center",
+        TableAlignment::Right => "right",
+    }
 }
 
 impl VectorNode {
@@ -113,7 +163,18 @@ const ALLOWED: &[(&str, &str)] = &[
         "table-no-outer-pipes",
         "a delimiter row of single hyphens makes a table in GFM; lezer reads the row as a list item and styles its marker",
     ),
+    (
+        "table-irregular-prefix",
+        "lezer keeps an unprefixed row after a quoted table inside the blockquote and styles it as a quote line; GFM ends the table at the lazy line, so the parser leaves it a paragraph outside the quote",
+    ),
 ];
+
+/// Differences in the table model that stem from the web readers disagreeing with each other. Each
+/// entry must still differ, and must match once the vector alignments are cut to the column count.
+const TABLE_ALLOWED: &[(&str, &str)] = &[(
+    "table-trailing-blank",
+    "readTable counts a column for the blank after the last header pipe; the table source reader and the Rust table structure do not",
+)];
 
 fn load() -> Vec<Entry> {
     let path =
@@ -225,6 +286,171 @@ fn allowed_entries_are_unique_and_explained() {
     for (name, reason) in ALLOWED {
         assert!(names.insert(*name), "{name} is listed twice");
         assert!(!reason.is_empty(), "{name} has no reason");
+    }
+}
+
+fn table_differences(
+    document: &MarkdownDocument,
+    expected: &VectorTable,
+    actual: &MarkdownTable,
+    truncate_alignments: bool,
+) -> Vec<String> {
+    let mut differences = Vec::new();
+    let mut compare = |what: &str, expected: String, actual: String| {
+        if expected != actual {
+            differences.push(format!("{what}: vector {expected}, parser {actual}"));
+        }
+    };
+    compare(
+        "range",
+        format!("{:?}", expected.range.range()),
+        format!("{:?}", actual.range),
+    );
+    compare(
+        "container prefix",
+        format!("{:?}", expected.container_prefix),
+        format!("{:?}", actual.container_prefix),
+    );
+    compare(
+        "column count",
+        expected.column_count.to_string(),
+        actual.column_count.to_string(),
+    );
+    let vector_alignments = if truncate_alignments {
+        &expected.alignments[..expected.column_count.min(expected.alignments.len())]
+    } else {
+        &expected.alignments[..]
+    };
+    compare(
+        "alignments",
+        format!("{vector_alignments:?}"),
+        format!(
+            "{:?}",
+            actual
+                .alignments
+                .iter()
+                .map(|alignment| alignment_name(*alignment))
+                .collect::<Vec<_>>()
+        ),
+    );
+    compare(
+        "line count",
+        expected.lines.len().to_string(),
+        actual.lines.len().to_string(),
+    );
+    for (index, (expected, actual)) in expected.lines.iter().zip(&actual.lines).enumerate() {
+        compare(
+            &format!("line {index} range"),
+            format!("{:?}", expected.range.range()),
+            format!("{:?}", actual.range),
+        );
+        compare(
+            &format!("line {index} row start"),
+            expected.row_start.to_string(),
+            actual.row_start.to_string(),
+        );
+        compare(
+            &format!("line {index} trailing pipe"),
+            expected.trailing_pipe.to_string(),
+            actual.trailing_pipe.to_string(),
+        );
+        compare(
+            &format!("line {index} cell count"),
+            expected.cells.len().to_string(),
+            actual.cells.len().to_string(),
+        );
+        for (column, (expected, actual)) in expected.cells.iter().zip(&actual.cells).enumerate() {
+            compare(
+                &format!("line {index} cell {column} range"),
+                format!("{:?}", expected.range.range()),
+                format!("{:?}", actual.range),
+            );
+            compare(
+                &format!("line {index} cell {column} content range"),
+                format!("{:?}", expected.content_range.range()),
+                format!("{:?}", actual.content_range),
+            );
+            compare(
+                &format!("line {index} cell {column} text"),
+                format!("{:?}", expected.text),
+                format!("{:?}", document.slice(actual.content_range.clone())),
+            );
+        }
+    }
+    differences
+}
+
+fn first_table_difference(
+    entry: &Entry,
+    document: &MarkdownDocument,
+    truncate_alignments: bool,
+) -> Option<String> {
+    let actual = document.tables();
+    if actual.len() != entry.tables.len() {
+        return Some(format!(
+            "table count: vector {}, parser {}",
+            entry.tables.len(),
+            actual.len()
+        ));
+    }
+    entry
+        .tables
+        .iter()
+        .zip(&actual)
+        .enumerate()
+        .find_map(|(index, (expected, actual))| {
+            table_differences(document, expected, actual, truncate_alignments)
+                .into_iter()
+                .next()
+                .map(|difference| format!("table {index} {difference}"))
+        })
+}
+
+#[test]
+fn tables_match_the_web_table_model() {
+    let entries = load();
+    let mut failures = Vec::new();
+    for entry in &entries {
+        let document = parse(&entry.text);
+        let allowed = TABLE_ALLOWED.iter().any(|(name, _)| *name == entry.name);
+        let exact = first_table_difference(entry, &document, false);
+        if allowed {
+            if exact.is_none() {
+                failures.push(format!(
+                    "{} is allowed to differ but matches the vector",
+                    entry.name
+                ));
+            } else if let Some(difference) = first_table_difference(entry, &document, true) {
+                failures.push(format!(
+                    "{} differs beyond the allowed alignments: {difference}",
+                    entry.name
+                ));
+            }
+        } else if let Some(difference) = exact {
+            failures.push(format!("{} differs: {difference}", entry.name));
+        }
+    }
+    for (name, reason) in TABLE_ALLOWED {
+        if !entries.iter().any(|entry| entry.name == *name) {
+            failures.push(format!(
+                "allowed table entry {name} ({reason}) has no vector"
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+#[test]
+fn allowed_table_entries_are_unique_and_explained() {
+    let entries = load();
+    let mut names = BTreeSet::new();
+    for (name, reason) in TABLE_ALLOWED {
+        assert!(names.insert(*name), "{name} is listed twice");
+        assert!(!reason.is_empty(), "{name} has no reason");
+        assert!(
+            entries.iter().any(|entry| entry.name == *name),
+            "{name} is not a corpus entry"
+        );
     }
 }
 

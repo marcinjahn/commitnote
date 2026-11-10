@@ -544,6 +544,46 @@
     "text": "| a | b |\n| 1 | 2 |"
   },
   {
+    "name": "table-code-span-pipe",
+    "text": "| `a|b` | c |\n| - | - | - |\n| 1 | 2 | 3 |"
+  },
+  {
+    "name": "table-code-span-escaped-pipe",
+    "text": "| `a\\|b` | c |\n| - | - |\n| 1 | 2 |"
+  },
+  {
+    "name": "table-ragged-rows",
+    "text": "| a | b | c |\n| - | - | - |\n| 1 |\n| 1 | 2 | 3 | 4 |"
+  },
+  {
+    "name": "table-every-alignment",
+    "text": "| a | b | c | d |\n| --- | :-- | :-: | --: |\n| 1 | 2 | 3 | 4 |"
+  },
+  {
+    "name": "table-empty-cells",
+    "text": "| a |  | c |\n| - | - | - |\n|  | 2 |  |"
+  },
+  {
+    "name": "table-in-list",
+    "text": "- item\n\n  | a | b |\n  | - | - |\n  | 1 | 2 |"
+  },
+  {
+    "name": "table-in-nested-quote",
+    "text": "> > | a | b |\n> > | - | - |\n> > | 1 | 2 |"
+  },
+  {
+    "name": "table-irregular-prefix",
+    "text": "> | a | b |\n> | - | - |\n| 1 | 2 |"
+  },
+  {
+    "name": "table-non-bmp",
+    "text": "| 😀 | b |\n| - | - |\n| 𝒳 | 2 |"
+  },
+  {
+    "name": "table-trailing-blank",
+    "text": "| a | b |  \n| - | - |\n| 1 | 2 |"
+  },
+  {
     "name": "hard-break-backslash",
     "text": "line one\\\nline two"
   },
