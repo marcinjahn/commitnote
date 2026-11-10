@@ -283,10 +283,44 @@ fn header_continuing_a_paragraph_with_a_pipe_is_not_a_table() {
 }
 
 #[test]
-fn header_continuing_a_paragraph_without_a_pipe_on_its_first_line_is_a_table() {
+fn header_starting_a_table_within_a_paragraph_is_a_table() {
     assert_eq!(table("x\ny |\n| a |\n| - |").range, 6..17);
     assert_eq!(table("a \\| b\n| a |\n| - |").range, 7..18);
     assert_eq!(table("x |\n\n| a |\n| - |").range, 5..16);
+}
+
+#[test]
+fn code_indented_header_continuing_a_paragraph_is_not_a_table() {
+    assert_eq!(parse("> t\n2.\n    | a |\n    | - |").tables(), []);
+}
+
+#[test]
+fn header_whose_next_line_is_not_a_delimiter_line_for_the_paragraph_is_not_a_table() {
+    assert_eq!(parse("> y\n> | a |\n  > | - |").tables(), []);
+}
+
+#[test]
+fn delimiter_line_that_leaves_the_header_paragraph_is_not_a_table() {
+    assert_eq!(parse(">\t- > | a |\n>\t  > | - |").tables(), []);
+}
+
+#[test]
+fn code_indented_delimiter_line_starting_with_a_dash_continues_the_header_paragraph() {
+    let table = table(">\t1. | a | b\n>\t     - | -\nx");
+    assert_eq!(line_ranges(&table), [0..12, 13..25, 26..27]);
+    assert_eq!(table.delimiter().row_start, 20);
+}
+
+#[test]
+fn delimiter_behind_a_quote_mark_the_line_does_not_continue_is_not_a_table() {
+    assert_eq!(parse(">\t- > a | b\n>     > :-|-:").tables(), []);
+}
+
+#[test]
+fn crlf_delimiter_without_a_trailing_pipe_keeps_its_last_alignment() {
+    let table = table("a | b\r\n:-|-:\r\n1 | 2");
+    assert_eq!(table.alignments, [A::Left, A::Right]);
+    assert_eq!(line_ranges(&table), [0..6, 7..13, 14..19]);
 }
 
 #[test]

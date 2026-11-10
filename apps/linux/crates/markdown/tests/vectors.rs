@@ -180,6 +180,18 @@ const ALLOWED: &[(&str, &str)] = &[
         "lezer keeps lazy text after a quoted table inside the blockquote as a row and styles it as a quote line; the parser ends the table and the quote at the lazy line",
     ),
     (
+        "table-code-indented-continuation",
+        "lezer keeps a 2. line after a quoted paragraph as lazy paragraph text, so the whole input is one quoted paragraph and every line is a quote line; the parser starts an ordered list item at 2., ending the blockquote and styling the marker as a list mark",
+    ),
+    (
+        "table-code-indented-dash-delimiter",
+        "lezer keeps lazy text after a table in a quoted list item inside the blockquote as a row and styles it as a quote line; the parser ends the table and the quote at the lazy line",
+    ),
+    (
+        "table-delimiter-behind-a-quote-mark",
+        "lezer takes a whole tab after > as the quote's spacer, so the second line falls short of the list item's content column and, indented four columns past the outer quote, continues the paragraph with its > as text; CommonMark takes one column of the tab, keeps the line in the item's inner blockquote and the parser hides that quote mark",
+    ),
+    (
         "table-indented-lazy-row",
         "lezer keeps a line indented four columns after a table as a row; the parser ends the table there and styles the line as an indented code block",
     ),

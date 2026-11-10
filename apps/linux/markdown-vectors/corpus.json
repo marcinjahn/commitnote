@@ -624,6 +624,30 @@
     "text": "> | a |\n> | - |\nfoo"
   },
   {
+    "name": "table-quote-continuation-not-a-table",
+    "text": "> y\n> | a |\n  > | - |"
+  },
+  {
+    "name": "table-code-indented-continuation",
+    "text": "> t\n2.\n    | a |\n    | - |"
+  },
+  {
+    "name": "table-delimiter-leaves-the-list",
+    "text": ">\t- > | a |\n>\t  > | - |"
+  },
+  {
+    "name": "table-code-indented-dash-delimiter",
+    "text": ">\t1. | a | b\n>\t     - | -\nx"
+  },
+  {
+    "name": "table-delimiter-behind-a-quote-mark",
+    "text": ">\t- > a | b\n>     > :-|-:"
+  },
+  {
+    "name": "table-crlf-delimiter-alignment",
+    "text": "a | b\r\n:-|-:\r\n1 | 2"
+  },
+  {
     "name": "table-in-list-lazy-text",
     "text": "- a\n\n  | x |\n  | - |\nfoo"
   },

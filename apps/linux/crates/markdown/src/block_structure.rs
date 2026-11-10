@@ -5,8 +5,8 @@ mod table_row;
 use crate::scanners::{column, find_column, is_space_unit, line_end, skip_spaces};
 use html_block::HtmlBlockEnd;
 use link_reference::{LinkReference, ReferenceProgress};
-use table_row::is_delimiter_line;
-pub(crate) use table_row::{has_pipe, is_delimiter_row, row_cell_count};
+use table_row::{has_pipe, is_delimiter_line};
+pub(crate) use table_row::{is_delimiter_row, row_cell_count};
 
 const HASH: u16 = b'#' as u16;
 const BACKTICK: u16 = b'`' as u16;
@@ -85,6 +85,12 @@ impl ContainerMatch {
 
     fn is_blank(&self) -> bool {
         self.content == self.end
+    }
+
+    /// Where the line's text starts after the markup of the containers it continues, as lezer's
+    /// `Line.pos` leaves it.
+    pub(crate) fn text_start(&self) -> usize {
+        self.content
     }
 
     /// Whether the line continues every container rather than leaving one, lazily or not.
@@ -436,7 +442,7 @@ impl BlockWalk<'_> {
                 LineRole::Paragraph { start } => Some(ParagraphLine {
                     containers: self.stack.clone(),
                     paragraph_start: start,
-                    text_start: self.line.content,
+                    text_start: self.line.text_start(),
                 }),
             });
         }

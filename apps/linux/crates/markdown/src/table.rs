@@ -1,17 +1,17 @@
 use std::ops::Range;
 
 use crate::block_structure::{
-    Container, continues_paragraph, has_pipe, is_delimiter_row, is_setext_underline,
-    match_containers, paragraph_lines, row_cell_count,
+    Container, continues_paragraph, is_delimiter_row, is_setext_underline, match_containers,
+    paragraph_lines, row_cell_count,
 };
-use crate::scanners::{is_blank_line, is_blank_unit, line_end, line_start, skip_blanks, slice16};
+use crate::scanners::{
+    is_blank_line, is_blank_unit, line_end, line_start, skip_blanks, slice16, trim_whitespace,
+};
 use crate::syntax::{MarkdownDocument, SyntaxKind};
 
 const PIPE: u16 = b'|' as u16;
 const BACKSLASH: u16 = b'\\' as u16;
-const QUOTE: u16 = b'>' as u16;
 const COLON: u16 = b':' as u16;
-const DASH: u16 = b'-' as u16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum TableAlignment {
@@ -104,45 +104,39 @@ impl MarkdownDocument {
             .into_iter()
             .flatten()
             .filter_map(|line| {
-                let table = read_table(units, line.text_start, &line.containers);
-                forms_table(units, &table, &line.containers, line.paragraph_start).then_some(table)
+                read_table(units, line.text_start, &line.containers).filter(|table| {
+                    forms_table(units, table, &line.containers, line.paragraph_start)
+                })
             })
             .collect()
     }
 }
 
 /// Reads the table from its header through the delimiter line, then on to where lezer ends the
-/// paragraph, which can be before or after the end of pulldown-cmark's table node.
-fn read_table(units: &[u16], header: usize, containers: &[Container]) -> MarkdownTable {
-    let first_line = line_start(units, header);
-    let quote_levels = units[first_line..header]
-        .iter()
-        .filter(|&&unit| unit == QUOTE)
-        .count();
+/// paragraph, which can be before or after the end of pulldown-cmark's table node. `None` when
+/// the paragraph ends at the header line.
+fn read_table(units: &[u16], header: usize, containers: &[Container]) -> Option<MarkdownTable> {
     let mut lines = vec![source_line(units, header, false)];
-    let mut line = first_line;
-    loop {
-        let following = line_end(units, line) + 1;
-        if following > units.len()
-            || (lines.len() > 1 && !continues_table(units, following, containers))
-        {
+    let mut next = line_end(units, header) + 1;
+    while next <= units.len() {
+        let matched = match_containers(units, next, containers);
+        if !continues_paragraph(units, &matched, containers) {
             break;
         }
-        line = following;
-        lines.push(source_line(
-            units,
-            row_start(units, line, quote_levels),
-            lines.len() == 1,
-        ));
+        lines.push(source_line(units, matched.text_start(), lines.len() == 1));
+        next = line_end(units, next) + 1;
+    }
+    if lines.len() < 2 {
+        return None;
     }
     let column_count = lines[0].cells.len();
-    MarkdownTable {
+    Some(MarkdownTable {
         range: lines[0].range.start..lines[lines.len() - 1].range.end,
         container_prefix: container_prefix(units, &lines, !containers.is_empty()),
         column_count,
         alignments: alignments(units, &lines[1], column_count),
         lines,
-    }
+    })
 }
 
 fn forms_table(
@@ -153,28 +147,21 @@ fn forms_table(
 ) -> bool {
     let header = row_text(units, table.header());
     let delimiter = row_text(units, table.delimiter());
-    !continues_pipe_paragraph(units, table, paragraph_start)
-        && !starts_with_list_marker(units, table.delimiter())
+    starts_its_paragraph(table, paragraph_start)
         && is_delimiter_row(delimiter)
         && row_cell_count(header) == row_cell_count(delimiter)
         && !becomes_setext_heading(units, table, containers)
 }
 
-/// A table can only start the paragraph it is in when that paragraph's first line has an
-/// unescaped pipe, even one inside a code span; the rest of such a paragraph is never a table.
-fn continues_pipe_paragraph(units: &[u16], table: &MarkdownTable, paragraph_start: usize) -> bool {
-    paragraph_start < table.header().row_start
-        && has_pipe(&units[paragraph_start..line_end(units, paragraph_start)])
+/// lezer starts a table only where its header line starts a paragraph, which the block walk
+/// reports as `paragraph_start`; a header it keeps inside a paragraph is never a table.
+fn starts_its_paragraph(table: &MarkdownTable, paragraph_start: usize) -> bool {
+    paragraph_start == table.header().row_start
 }
 
 /// The row as the line holds it after the container prefix, a trailing `\r` included.
 fn row_text<'a>(units: &'a [u16], line: &MarkdownTableLine) -> &'a [u16] {
     &units[line.row_start..line.range.end]
-}
-
-fn starts_with_list_marker(units: &[u16], line: &MarkdownTableLine) -> bool {
-    let at = line.row_start;
-    at + 1 < line.range.end && units[at] == DASH && is_blank_unit(units[at + 1])
 }
 
 /// Whether a body row or the line after the table underlines the block as a setext heading.
@@ -211,7 +198,10 @@ fn alignments(
     alignments
 }
 
+/// The colons at the ends of a delimiter cell once JavaScript's `trim` takes off its whitespace,
+/// a trailing `\r` included.
 fn alignment(content: &[u16]) -> TableAlignment {
+    let content = trim_whitespace(content);
     match (
         content.first() == Some(&COLON),
         content.last() == Some(&COLON),
@@ -291,31 +281,6 @@ fn source_line(units: &[u16], row_from: usize, delimiter_row: bool) -> MarkdownT
             .collect(),
         trailing_pipe,
     }
-}
-
-fn row_start(units: &[u16], line: usize, quote_levels: usize) -> usize {
-    let end = line_end(units, line);
-    let mut remaining = quote_levels;
-    let mut index = line;
-    loop {
-        index = skip_blanks(units, index, end);
-        if remaining > 0 && index < end && units[index] == QUOTE {
-            remaining -= 1;
-            index += 1;
-        } else {
-            return index;
-        }
-    }
-}
-
-/// A following line continues the table, lazily too, until a blank line or a line that
-/// interrupts the paragraph.
-fn continues_table(units: &[u16], line: usize, containers: &[Container]) -> bool {
-    continues_paragraph(
-        units,
-        &match_containers(units, line, containers),
-        containers,
-    )
 }
 
 fn container_prefix(units: &[u16], lines: &[MarkdownTableLine], nested: bool) -> Option<String> {

@@ -56,6 +56,19 @@ pub(crate) fn is_whitespace_unit(unit: u16) -> bool {
     is_whitespace(i32::from(unit))
 }
 
+/// `text` without the leading and trailing units JavaScript's `String.prototype.trim` removes.
+pub(crate) fn trim_whitespace(text: &[u16]) -> &[u16] {
+    let start = text
+        .iter()
+        .position(|&unit| !is_whitespace_unit(unit))
+        .unwrap_or(text.len());
+    let end = text
+        .iter()
+        .rposition(|&unit| !is_whitespace_unit(unit))
+        .map_or(start, |last| last + 1);
+    &text[start..end]
+}
+
 pub(crate) fn is_blank_unit(unit: u16) -> bool {
     unit == SPACE || unit == TAB
 }
