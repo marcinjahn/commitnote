@@ -41,7 +41,7 @@ use crate::p5::{
 };
 use crate::support::{
     ALL_VARIANTS, Case, Harness, NARROW_VARIANTS, WIDE_VARIANTS, Width, assert_checked,
-    assert_named, assert_presentation, descendants,
+    assert_named, assert_presentation, descendants, restoring,
 };
 
 pub const CASES: &[Case] = &[
@@ -1241,21 +1241,10 @@ fn announce_no_toast_repeat(h: &mut Harness) -> Result<(), String> {
 }
 
 const COMFORT_TEXT: &str = "- [ ] a task\n- a list item\n\n---\n\nend";
-const HIGH_CONTRAST_SCHEMA: &str = "org.gnome.desktop.a11y.interface";
-const HIGH_CONTRAST_KEY: &str = "high-contrast";
 const NARROW_WINDOW_WIDTH: i32 = 360;
 const SCALED_XFT_DPI: i32 = 147_456;
 const DIM_ALPHA: f32 = 0.55;
 const DIM_ALPHA_HIGH_CONTRAST: f32 = 0.8;
-
-fn restoring(
-    restore: impl FnOnce(),
-    run: impl FnOnce() -> Result<(), String>,
-) -> Result<(), String> {
-    let result = run();
-    restore();
-    result
-}
 
 fn open_comfort_editor(h: &Harness) -> Result<commitnote::editor::NoteEditor, String> {
     launch_and_log_in(h, false)?;
@@ -1311,58 +1300,33 @@ fn comfort_text_scaling(h: &mut Harness) -> Result<(), String> {
 }
 
 fn comfort_high_contrast(h: &mut Harness) -> Result<(), String> {
-    let source =
-        gio::SettingsSchemaSource::default().ok_or("there is no GSettings schema source")?;
-    ensure(source.lookup(HIGH_CONTRAST_SCHEMA, true).is_some(), || {
-        format!("the {HIGH_CONTRAST_SCHEMA} schema is not installed")
-    })?;
-    let settings = gio::Settings::new(HIGH_CONTRAST_SCHEMA);
-    let original = settings.boolean(HIGH_CONTRAST_KEY);
     let style_manager = adw::StyleManager::default();
     let editor = open_comfort_editor(h)?;
     let view = editor.view();
-    restoring(
-        || {
-            let _ = settings.set_boolean(HIGH_CONTRAST_KEY, original);
-        },
-        || {
-            ensure(
-                !style_manager.is_high_contrast() && !view.testing_high_contrast(),
-                || "high contrast is already on".to_owned(),
-            )?;
-            let dims_to = |factor: f32| {
-                view.testing_dim_alpha()
-                    .is_some_and(|alpha| (alpha - view.color().alpha() * factor).abs() < 0.01)
-            };
-            h.wait("the normal dim alpha", || dims_to(DIM_ALPHA))?;
+    h.restoring_high_contrast(|h| {
+        ensure(
+            !style_manager.is_high_contrast() && !view.testing_high_contrast(),
+            || "high contrast is already on".to_owned(),
+        )?;
+        let dims_to = |factor: f32| {
+            view.testing_dim_alpha()
+                .is_some_and(|alpha| (alpha - view.color().alpha() * factor).abs() < 0.01)
+        };
+        h.wait("the normal dim alpha", || dims_to(DIM_ALPHA))?;
 
-            settings
-                .set_boolean(HIGH_CONTRAST_KEY, true)
-                .map_err(|error| format!("cannot set {HIGH_CONTRAST_KEY}: {error}"))?;
-            h.wait("libadwaita to report high contrast", || {
-                style_manager.is_high_contrast()
-            })
-            .map_err(|error| {
-                format!(
-                    "{error}; libadwaita does not follow {HIGH_CONTRAST_SCHEMA} \
-                     {HIGH_CONTRAST_KEY} in this environment"
-                )
-            })?;
-            h.wait("the editor to report high contrast", || {
-                view.testing_high_contrast()
-            })?;
-            h.wait("the dim alpha to strengthen", || {
-                dims_to(DIM_ALPHA_HIGH_CONTRAST)
-            })?;
+        h.set_high_contrast(true)?;
+        h.wait("the editor to report high contrast", || {
+            view.testing_high_contrast()
+        })?;
+        h.wait("the dim alpha to strengthen", || {
+            dims_to(DIM_ALPHA_HIGH_CONTRAST)
+        })?;
 
-            settings
-                .set_boolean(HIGH_CONTRAST_KEY, false)
-                .map_err(|error| format!("cannot reset {HIGH_CONTRAST_KEY}: {error}"))?;
-            h.wait("the dim alpha to weaken again", || {
-                !view.testing_high_contrast() && dims_to(DIM_ALPHA)
-            })
-        },
-    )
+        h.set_high_contrast(false)?;
+        h.wait("the dim alpha to weaken again", || {
+            !view.testing_high_contrast() && dims_to(DIM_ALPHA)
+        })
+    })
 }
 
 fn comfort_reduced_motion(h: &mut Harness) -> Result<(), String> {

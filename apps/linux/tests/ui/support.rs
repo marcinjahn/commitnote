@@ -30,6 +30,8 @@ const WAKE_INTERVAL: Duration = Duration::from_millis(50);
 const REFRESH_GAP: Duration = Duration::from_millis(500);
 const BUNDLE_RESOURCE: &str = "core/commitnote-core.js";
 const SESSION_ACCENT: &str = "violet";
+const HIGH_CONTRAST_SCHEMA: &str = "org.gnome.desktop.a11y.interface";
+const HIGH_CONTRAST_KEY: &str = "high-contrast";
 const DEVICE_MODEL: &str = "Linux";
 const REMOTE_DESKTOP: &str = "org.gnome.Mutter.RemoteDesktop";
 const REMOTE_DESKTOP_PATH: &str = "/org/gnome/Mutter/RemoteDesktop";
@@ -825,18 +827,30 @@ impl Harness {
     /// The session accent as the core's settings define it, which is only loaded while a session
     /// is open.
     pub fn session_accent(&self) -> Result<AccentColor, String> {
+        self.accent(SESSION_ACCENT)?
+            .ok_or_else(|| format!("the {SESSION_ACCENT} accent is the system accent"))
+    }
+
+    /// The accent with this id as the core's settings define it, or `None` for the system accent,
+    /// which carries no colours of its own.
+    pub fn accent(&self, id: &str) -> Result<Option<AccentColor>, String> {
+        if id == "system" {
+            return Ok(None);
+        }
         let model = self.model()?;
         self.wait("the settings copy", || model.settings_copy().is_some())?;
         let copy = model.settings_copy().ok_or("the settings copy vanished")?;
         copy.accent_color
             .options
             .iter()
-            .find(|option| option.id == SESSION_ACCENT)
-            .map(|option| AccentColor {
-                light: option.light.clone(),
-                dark: option.dark.clone(),
+            .find(|option| option.id == id)
+            .map(|option| {
+                Some(AccentColor {
+                    light: option.light.clone(),
+                    dark: option.dark.clone(),
+                })
             })
-            .ok_or_else(|| format!("the core offers no {SESSION_ACCENT} accent"))
+            .ok_or_else(|| format!("the core offers no {id} accent"))
     }
 
     fn pre_session_screenshots(
@@ -878,14 +892,36 @@ impl Harness {
     /// Sizes the window and applies the scheme and session accent, so that a later
     /// [`Self::capture_variant`] shows a state that must not change in between.
     pub fn show_variant(&self, width: Width, theme: Theme) -> Result<(), String> {
+        self.show_appearance(width, theme, SESSION_ACCENT)
+    }
+
+    /// Like [`Self::show_variant`], with any accent the core offers, or `system`.
+    pub fn show_appearance(&self, width: Width, theme: Theme, accent: &str) -> Result<(), String> {
         self.resize(width)?;
-        self.apply_session_appearance(theme)?;
+        self.apply_appearance(theme, accent)?;
         self.settle()
     }
 
     pub fn capture_variant(&self, view: &str, width: Width, theme: Theme) -> Result<(), String> {
+        self.capture_in_accent(view, width, theme, SESSION_ACCENT)
+            .map(|_| ())
+    }
+
+    /// Saves the window as the screenshot for this accent and returns what was rendered.
+    pub fn capture_in_accent(
+        &self,
+        view: &str,
+        width: Width,
+        theme: Theme,
+        accent: &str,
+    ) -> Result<gdk::Texture, String> {
         self.settle()?;
-        self.capture(view, width, theme, SESSION_ACCENT)
+        let texture = self.render_texture(None)?;
+        let path = self.screenshot_path(view, width, theme, accent);
+        texture
+            .save_to_png(&path)
+            .map_err(|error| format!("cannot save {}: {error}", path.display()))?;
+        Ok(texture)
     }
 
     /// Like [`Self::capture_variant`], with an open popover painted over the window, which the
@@ -898,13 +934,10 @@ impl Harness {
         popover: &gtk::Popover,
     ) -> Result<(), String> {
         self.settle()?;
-        let file = format!(
-            "{}-{view}-{}-{}-{SESSION_ACCENT}.png",
-            self.prefix.get(),
-            width.name(),
-            theme.name()
-        );
-        self.render_over(&self.screenshot_dir.join(file), Some(popover))
+        self.render_over(
+            &self.screenshot_path(view, width, theme, SESSION_ACCENT),
+            Some(popover),
+        )
     }
 
     /// Changes a setting through the core, as a change from another device would.
@@ -918,34 +951,33 @@ impl Harness {
             .map_err(|error| format!("cannot change {key}: {}", error.message))
     }
 
-    fn apply_session_appearance(&self, theme: Theme) -> Result<(), String> {
+    fn apply_appearance(&self, theme: Theme, accent: &str) -> Result<(), String> {
         let model = self.model()?;
-        for (key, value) in [("colorMode", theme.name()), ("accentColor", SESSION_ACCENT)] {
+        for (key, value) in [("colorMode", theme.name()), ("accentColor", accent)] {
             self.change_setting(key, value)?;
         }
+        let expected = Appearance {
+            color_mode: theme.color_mode(),
+            accent: self.accent(accent)?,
+        };
         let style_manager = adw::StyleManager::default();
         self.wait(
-            &format!(
-                "the {} scheme with the {SESSION_ACCENT} accent",
-                theme.name()
-            ),
-            || {
-                let appearance = model.appearance();
-                appearance.color_mode == theme.color_mode()
-                    && appearance.accent.is_some()
-                    && style_manager.is_dark() == theme.is_dark()
-            },
+            &format!("the {} scheme with the {accent} accent", theme.name()),
+            || model.appearance() == expected && style_manager.is_dark() == theme.is_dark(),
         )
     }
 
-    fn capture(&self, view: &str, width: Width, theme: Theme, accent: &str) -> Result<(), String> {
-        let file = format!(
+    fn screenshot_path(&self, view: &str, width: Width, theme: Theme, accent: &str) -> PathBuf {
+        self.screenshot_dir.join(format!(
             "{}-{view}-{}-{}-{accent}.png",
             self.prefix.get(),
             width.name(),
             theme.name()
-        );
-        self.render(&self.screenshot_dir.join(file))
+        ))
+    }
+
+    fn capture(&self, view: &str, width: Width, theme: Theme, accent: &str) -> Result<(), String> {
+        self.render(&self.screenshot_path(view, width, theme, accent))
     }
 
     pub fn save_failure(&self) {
@@ -965,6 +997,13 @@ impl Harness {
     }
 
     fn render_over(&self, path: &Path, popover: Option<&gtk::Popover>) -> Result<(), String> {
+        self.render_texture(popover)?
+            .save_to_png(path)
+            .map_err(|error| format!("cannot save {}: {error}", path.display()))
+    }
+
+    /// Renders the window, with an open popover painted over it when given.
+    pub fn render_texture(&self, popover: Option<&gtk::Popover>) -> Result<gdk::Texture, String> {
         let window = self.window()?;
         let (width, height) = (window.width(), window.height());
         let paintable = gtk::WidgetPaintable::new(Some(&window));
@@ -988,11 +1027,70 @@ impl Harness {
             .renderer()
             .ok_or_else(|| "the window has no renderer".to_owned())?;
         let viewport = graphene::Rect::new(0.0, 0.0, width as f32, height as f32);
-        renderer
-            .render_texture(&node, Some(&viewport))
-            .save_to_png(path)
-            .map_err(|error| format!("cannot save {}: {error}", path.display()))
+        Ok(renderer.render_texture(&node, Some(&viewport)))
     }
+
+    /// Turns high contrast on or off through GSettings, which libadwaita follows when no portal
+    /// is in use.
+    pub fn set_high_contrast(&self, on: bool) -> Result<(), String> {
+        high_contrast_settings()?
+            .set_boolean(HIGH_CONTRAST_KEY, on)
+            .map_err(|error| format!("cannot set {HIGH_CONTRAST_KEY}: {error}"))?;
+        let style_manager = adw::StyleManager::default();
+        self.wait(
+            &format!(
+                "libadwaita to {} high contrast",
+                if on { "report" } else { "stop reporting" }
+            ),
+            || style_manager.is_high_contrast() == on,
+        )
+        .map_err(|error| {
+            format!(
+                "{error}; libadwaita does not follow {HIGH_CONTRAST_SCHEMA} \
+                 {HIGH_CONTRAST_KEY} in this environment"
+            )
+        })
+    }
+
+    /// Runs `run`, then puts high contrast back as it was, reporting `run`'s own error first.
+    pub fn restoring_high_contrast(
+        &self,
+        run: impl FnOnce(&Self) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let settings = high_contrast_settings()?;
+        let original = settings.boolean(HIGH_CONTRAST_KEY);
+        let result = restoring(
+            || {
+                let _ = settings.set_boolean(HIGH_CONTRAST_KEY, original);
+            },
+            || run(self),
+        );
+        let style_manager = adw::StyleManager::default();
+        let restored = self.wait("high contrast to be restored", || {
+            style_manager.is_high_contrast() == original
+        });
+        result.and(restored)
+    }
+}
+
+pub fn restoring(
+    restore: impl FnOnce(),
+    run: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let result = run();
+    restore();
+    result
+}
+
+fn high_contrast_settings() -> Result<gio::Settings, String> {
+    let source =
+        gio::SettingsSchemaSource::default().ok_or("there is no GSettings schema source")?;
+    if source.lookup(HIGH_CONTRAST_SCHEMA, true).is_none() {
+        return Err(format!(
+            "the {HIGH_CONTRAST_SCHEMA} schema is not installed"
+        ));
+    }
+    Ok(gio::Settings::new(HIGH_CONTRAST_SCHEMA))
 }
 
 /// A virtual keyboard from a mutter remote desktop session; the session lives as long as the
