@@ -3,6 +3,7 @@ use commitnote_core_api::commands::MoveTargetView;
 use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
+use crate::a11y::label_loading;
 use crate::model::{AppModel, UserError};
 
 const INDENT_PER_LEVEL: i32 = 12;
@@ -31,6 +32,7 @@ pub fn present(
         .halign(gtk::Align::Center)
         .valign(gtk::Align::Center)
         .build();
+    label_loading(&spinner);
     let stack = gtk::Stack::new();
     stack.add_named(&spinner, Some("loading"));
     stack.add_named(

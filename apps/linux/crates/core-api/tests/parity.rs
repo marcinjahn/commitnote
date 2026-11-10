@@ -130,6 +130,9 @@ fn typed_commands_are_declared_in_typescript() {
         ShareRename::NAME,
         ShareRevoke::NAME,
         ShareSharedVersion::NAME,
+        LaunchDeliver::NAME,
+        LaunchAttach::NAME,
+        LaunchDetach::NAME,
     ];
     for name in typed {
         assert!(declared.iter().any(|d| d == name), "{name}");

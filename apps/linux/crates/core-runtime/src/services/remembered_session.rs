@@ -1,5 +1,7 @@
+use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -20,9 +22,21 @@ use crate::memory::GLibLogger;
 const KEYRING_UNAVAILABLE: &str = "Keyring unavailable";
 const ITEM_LABEL: &str = "commitnote remembered session";
 const ITEM_KIND: &str = "remembered-session";
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const UNLOCK_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn keyring_error<E>(_: E) -> ServiceError {
     ServiceError::new(KEYRING_UNAVAILABLE)
+}
+
+async fn bounded<T, E>(
+    limit: Duration,
+    call: impl Future<Output = Result<T, E>>,
+) -> Result<T, ServiceError> {
+    glib::future_with_timeout(limit, call)
+        .await
+        .map_err(keyring_error)?
+        .map_err(keyring_error)
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -146,13 +160,16 @@ impl KeyringInner {
     }
 
     async fn unlocked(&self) -> Result<(), ServiceError> {
-        if self.collection.is_locked().await.map_err(keyring_error)? {
-            self.collection.unlock(None).await.map_err(keyring_error)?;
-            if self.collection.is_locked().await.map_err(keyring_error)? {
-                return Err(keyring_error(()));
+        bounded(UNLOCK_TIMEOUT, async {
+            if self.collection.is_locked().await? {
+                self.collection.unlock(None).await?;
+                if self.collection.is_locked().await? {
+                    return Err(oo7::dbus::Error::Dismissed);
+                }
             }
-        }
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     async fn save(&self, record: &RememberedSessionRecord) -> Result<(), ServiceError> {
@@ -207,8 +224,8 @@ pub struct KeyringRememberedSessionStore {
 
 impl KeyringRememberedSessionStore {
     pub async fn open(app_id: &str) -> Result<Self, ServiceError> {
-        let service = Service::new().await.map_err(keyring_error)?;
-        let collection = service.default_collection().await.map_err(keyring_error)?;
+        let service = bounded(CONNECT_TIMEOUT, Service::new()).await?;
+        let collection = bounded(CONNECT_TIMEOUT, service.default_collection()).await?;
         let inner = KeyringInner {
             collection,
             app_id: app_id.to_owned(),

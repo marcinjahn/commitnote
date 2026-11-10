@@ -7,6 +7,7 @@ use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
 use super::note_view::ModelImages;
+use crate::a11y::label_loading;
 use crate::editor::MarkdownView;
 use crate::fonts::follow_note_font;
 use crate::model::AppModel;
@@ -35,12 +36,12 @@ pub fn page(
         .halign(gtk::Align::Center)
         .valign(gtk::Align::Center)
         .build();
-    loading.append(
-        &adw::Spinner::builder()
-            .width_request(32)
-            .height_request(32)
-            .build(),
-    );
+    let spinner = adw::Spinner::builder()
+        .width_request(32)
+        .height_request(32)
+        .build();
+    label_loading(&spinner);
+    loading.append(&spinner);
     loading.append(&gtk::Label::new(Some(&copy.loading_shared_version)));
 
     let status = adw::StatusPage::builder()

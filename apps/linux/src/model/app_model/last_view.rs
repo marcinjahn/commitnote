@@ -58,6 +58,11 @@ pub(super) struct LastViewTracker {
 impl AppModel {
     #[cfg(feature = "testing")]
     pub fn testing_last_view_checked(&self) -> bool {
+        self.last_view_settled()
+    }
+
+    /// Whether the session's entry has settled: the last view was restored or skipped.
+    pub(super) fn last_view_settled(&self) -> bool {
         self.state().last_view.check == Check::Done
     }
 
@@ -255,6 +260,7 @@ impl AppModel {
         };
         if skip {
             self.last_view_changed();
+            self.sync_launch_attachment();
             return;
         }
         let generation = self.imp().generation.get();
@@ -316,6 +322,7 @@ impl AppModel {
             }
         }
         self.last_view_changed();
+        self.sync_launch_attachment();
     }
 
     /// Restarts the save debounce on every change; a timer whose ticket is no longer the

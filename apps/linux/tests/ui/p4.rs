@@ -59,8 +59,8 @@ pub const CASES: &[Case] = &[
     ("p4-shot-share-dialog", shot_share_dialog),
 ];
 
-const WELCOME: &[&str] = &["Welcome"];
-const WHITEBOARD: &[&str] = &["Journal", "2026", "Whiteboard"];
+pub(crate) const WELCOME: &[&str] = &["Welcome"];
+pub(crate) const WHITEBOARD: &[&str] = &["Journal", "2026", "Whiteboard"];
 const IDEAS: &[&str] = &["Projects", "commitnote", "Ideas"];
 const UNKNOWN_IMAGE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
 const IMAGE_LIMIT: usize = 10;
@@ -210,14 +210,18 @@ fn image_states(editor: &NoteEditor) -> Vec<(String, &'static str, usize)> {
     editor.view().testing_images()
 }
 
-fn wait_images_ready(h: &Harness, editor: &NoteEditor, count: usize) -> Result<(), String> {
+pub(crate) fn wait_images_ready(
+    h: &Harness,
+    editor: &NoteEditor,
+    count: usize,
+) -> Result<(), String> {
     h.wait(&format!("{count} image(s) to be ready"), || {
         let states = image_states(editor);
         states.len() == count && states.iter().all(|(_, state, _)| *state == "ready")
     })
 }
 
-fn open_editor(h: &Harness, target: &[&str]) -> Result<NoteEditor, String> {
+pub(crate) fn open_editor(h: &Harness, target: &[&str]) -> Result<NoteEditor, String> {
     open_note_at(h, target)?;
     let editor = h.widget_as::<NoteEditor>("note-editor")?;
     h.wait("the note text in the editor", || !editor.text().is_empty())?;
@@ -473,7 +477,7 @@ fn inline_states(h: &mut Harness) -> Result<(), String> {
     })
 }
 
-fn open_viewer(h: &Harness, editor: &NoteEditor) -> Result<ImageViewer, String> {
+pub(crate) fn open_viewer(h: &Harness, editor: &NoteEditor) -> Result<ImageViewer, String> {
     editor.view().testing_activate_image(0);
     h.wait_shown("image-viewer")?;
     let viewer = h.widget_as::<ImageViewer>("image-viewer")?;
@@ -525,7 +529,7 @@ fn image_viewer_keys(h: &mut Harness) -> Result<(), String> {
     h.wait("the viewer to close", || !h.shown("image-viewer"))
 }
 
-fn run_animation(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
+pub(crate) fn run_animation(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
     let settings = gtk::Settings::default().ok_or("there are no GTK settings")?;
     settings.set_gtk_enable_animations(true);
     h.wait("the GIF to advance", || image_states(editor)[0].2 > 0)?;
@@ -557,7 +561,10 @@ fn run_animation(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
     })
 }
 
-fn gif_animation(h: &mut Harness) -> Result<(), String> {
+pub(crate) fn with_animated_gif(
+    h: &Harness,
+    check: impl FnOnce(&NoteEditor) -> Result<(), String>,
+) -> Result<(), String> {
     let (editor, _) = open_welcome(h)?;
     let scratch = Scratch::new("gif")?;
     editor.place_caret(0);
@@ -566,16 +573,20 @@ fn gif_animation(h: &mut Harness) -> Result<(), String> {
         vec![scratch.write("moving.gif", &animated_gif(24, 16, &[0, 1, 2, 3]))?],
     )?;
     wait_images_ready(h, &editor, 1)?;
-
-    let result = run_animation(h, &editor);
-    if let Some(settings) = gtk::Settings::default() {
-        settings.set_gtk_enable_animations(false);
-    }
-    result
+    check(&editor)
 }
 
-fn shot_note_images(h: &mut Harness) -> Result<(), String> {
-    launch_and_log_in(h, false)?;
+fn gif_animation(h: &mut Harness) -> Result<(), String> {
+    with_animated_gif(h, |editor| {
+        let result = run_animation(h, editor);
+        if let Some(settings) = gtk::Settings::default() {
+            settings.set_gtk_enable_animations(false);
+        }
+        result
+    })
+}
+
+pub(crate) fn whiteboard_with_inserted_image(h: &Harness) -> Result<NoteEditor, String> {
     let editor = open_editor(h, WHITEBOARD)?;
     wait_images_ready(h, &editor, 1)?;
     let scratch = Scratch::new("shot")?;
@@ -583,6 +594,12 @@ fn shot_note_images(h: &mut Harness) -> Result<(), String> {
     editor.place_caret(i32::MAX);
     pick_and_insert(&editor, vec![file])?;
     wait_images_ready(h, &editor, 2)?;
+    Ok(editor)
+}
+
+fn shot_note_images(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    let editor = whiteboard_with_inserted_image(h)?;
 
     h.session_screenshots("note-images", WIDE_VARIANTS)?;
     h.resize(Width::Narrow)?;
@@ -605,12 +622,12 @@ fn shot_image_viewer(h: &mut Harness) -> Result<(), String> {
     Ok(())
 }
 
-const HISTORY_DIALOG: &str = "history-dialog";
+pub(crate) const HISTORY_DIALOG: &str = "history-dialog";
 const VERSION_PREVIEW: &str = "version-preview";
 const SHOW_HISTORY: &str = "notes.show-history";
-const FIRST_TEXT: &str =
+pub(crate) const FIRST_TEXT: &str =
     "# Welcome\n\nThis is your notes repo.\n\n- First bullet\n- Second bullet\n";
-const SECOND_TEXT: &str =
+pub(crate) const SECOND_TEXT: &str =
     "# Welcome\n\nThis is your notes repo.\n\n- First bullet\n- Third bullet\n";
 
 fn save_version(h: &Harness, target: &[String], text: &str) -> Result<(), String> {
@@ -625,11 +642,11 @@ fn save_version(h: &Harness, target: &[String], text: &str) -> Result<(), String
     .map(|_| ())
 }
 
-fn share_note(h: &Harness, target: &[String]) -> Result<(), String> {
+pub(crate) fn share_note(h: &Harness, target: &[String]) -> Result<(), String> {
     share_note_with(h, target, "correct horse battery staple", "History")
 }
 
-fn share_note_with(
+pub(crate) fn share_note_with(
     h: &Harness,
     target: &[String],
     password: &str,
@@ -649,7 +666,7 @@ fn share_note_with(
     })
 }
 
-fn welcome_with_versions(h: &Harness, texts: &[&str]) -> Result<NoteEditor, String> {
+pub(crate) fn welcome_with_versions(h: &Harness, texts: &[&str]) -> Result<NoteEditor, String> {
     launch_and_log_in(h, false)?;
     let target = path(WELCOME);
     for text in texts {
@@ -658,12 +675,12 @@ fn welcome_with_versions(h: &Harness, texts: &[&str]) -> Result<NoteEditor, Stri
     open_editor(h, WELCOME)
 }
 
-fn activate_page_action(h: &Harness, action: &str) -> Result<(), String> {
+pub(crate) fn activate_page_action(h: &Harness, action: &str) -> Result<(), String> {
     WidgetExt::activate_action(&h.widget("notes-tree")?, action, None)
         .map_err(|error| format!("cannot activate {action}: {error}"))
 }
 
-fn open_history(h: &Harness) -> Result<(), String> {
+pub(crate) fn open_history(h: &Harness) -> Result<(), String> {
     h.wait("History to be available", || {
         action_enabled(h, SHOW_HISTORY).unwrap_or(false)
     })?;
@@ -685,7 +702,10 @@ fn listed_versions(h: &Harness) -> Vec<HistoryVersionView> {
         .collect()
 }
 
-fn wait_history_ready(h: &Harness, count: usize) -> Result<Vec<HistoryVersionView>, String> {
+pub(crate) fn wait_history_ready(
+    h: &Harness,
+    count: usize,
+) -> Result<Vec<HistoryVersionView>, String> {
     h.wait("the history to be ready", || {
         h.model()
             .ok()
@@ -961,11 +981,11 @@ fn version_preview_note_font(h: &mut Harness) -> Result<(), String> {
 }
 
 const SHARE_DIALOG: &str = "share-dialog";
-const SHARED_LINKS_DIALOG: &str = "shared-links-dialog";
+pub(crate) const SHARED_LINKS_DIALOG: &str = "shared-links-dialog";
 const SHARE_NOTE: &str = "notes.share-note";
 const SHOW_SHARED_LINKS: &str = "notes.show-shared-links";
-const SHARE_PASSWORD: &str = "open sesame 42";
-const SHARE_LABEL: &str = "For Sam";
+pub(crate) const SHARE_PASSWORD: &str = "open sesame 42";
+pub(crate) const SHARE_LABEL: &str = "For Sam";
 const LABEL_LIMIT: usize = 101;
 
 fn focus_within(h: &Harness, name: &str) -> bool {
@@ -1001,7 +1021,7 @@ fn tab_to(h: &Harness, name: &str) -> Result<(), String> {
     Err(format!("Tab does not reach {name}"))
 }
 
-fn share_copy(h: &Harness) -> Result<commitnote_core_api::commands::ShareCopy, String> {
+pub(crate) fn share_copy(h: &Harness) -> Result<commitnote_core_api::commands::ShareCopy, String> {
     h.wait("the share copy", || {
         h.model().is_ok_and(|model| model.share_copy().is_some())
     })?;
@@ -1016,7 +1036,11 @@ fn shares_of(h: &Harness, target: &[String]) -> Vec<ShareRowView> {
         .unwrap_or_default()
 }
 
-fn wait_shares(h: &Harness, target: &[String], count: usize) -> Result<Vec<ShareRowView>, String> {
+pub(crate) fn wait_shares(
+    h: &Harness,
+    target: &[String],
+    count: usize,
+) -> Result<Vec<ShareRowView>, String> {
     h.wait(&format!("{count} share(s) of the note"), || {
         shares_of(h, target).len() == count
     })?;
@@ -1040,7 +1064,7 @@ fn open_share_dialog(h: &Harness) -> Result<(), String> {
     h.wait_shown("share-password")
 }
 
-fn open_shared_links(h: &Harness) -> Result<adw::Dialog, String> {
+pub(crate) fn open_shared_links(h: &Harness) -> Result<adw::Dialog, String> {
     share_copy(h)?;
     activate_page_action(h, SHOW_SHARED_LINKS)?;
     h.wait_shown(SHARED_LINKS_DIALOG)?;

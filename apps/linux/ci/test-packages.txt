@@ -6,3 +6,4 @@ gnome-keyring
 google-noto-color-emoji-fonts
 mesa-dri-drivers
 mutter
+sway

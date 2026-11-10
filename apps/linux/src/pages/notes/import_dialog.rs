@@ -117,7 +117,7 @@ struct Dialog {
     folder_name: adw::EntryRow,
     targets_group: adw::PreferencesGroup,
     targets: gtk::ListBox,
-    checks: Vec<gtk::Image>,
+    checks: Vec<TargetCheck>,
     preview: gtk::Label,
     message: gtk::Label,
     confirm: gtk::Button,
@@ -320,7 +320,25 @@ fn action_button(name: &str, label: &str) -> gtk::Button {
         .build()
 }
 
-fn fill_targets(list: &gtk::ListBox, form: &ImportForm) -> Vec<gtk::Image> {
+struct TargetCheck {
+    row: gtk::ListBoxRow,
+    image: gtk::Image,
+}
+
+impl TargetCheck {
+    fn set_checked(&self, checked: bool) {
+        self.image.set_visible(checked);
+        let state = if checked {
+            gtk::AccessibleTristate::True
+        } else {
+            gtk::AccessibleTristate::False
+        };
+        self.row
+            .update_state(&[gtk::accessible::State::Checked(state)]);
+    }
+}
+
+fn fill_targets(list: &gtk::ListBox, form: &ImportForm) -> Vec<TargetCheck> {
     form.targets
         .iter()
         .enumerate()
@@ -331,7 +349,8 @@ fn fill_targets(list: &gtk::ListBox, form: &ImportForm) -> Vec<gtk::Image> {
                 .hexpand(true)
                 .ellipsize(gtk::pango::EllipsizeMode::End)
                 .build();
-            let check = gtk::Image::builder()
+            let image = gtk::Image::builder()
+                .accessible_role(gtk::AccessibleRole::Presentation)
                 .icon_name("object-select-symbolic")
                 .visible(false)
                 .build();
@@ -343,13 +362,14 @@ fn fill_targets(list: &gtk::ListBox, form: &ImportForm) -> Vec<gtk::Image> {
                 .margin_end(BASE_MARGIN)
                 .build();
             content.append(&label);
-            content.append(&check);
-            list.append(
-                &gtk::ListBoxRow::builder()
-                    .name(format!("import-target-{index}"))
-                    .child(&content)
-                    .build(),
-            );
+            content.append(&image);
+            let row = gtk::ListBoxRow::builder()
+                .name(format!("import-target-{index}"))
+                .child(&content)
+                .build();
+            list.append(&row);
+            let check = TargetCheck { row, image };
+            check.set_checked(false);
             check
         })
         .collect()
@@ -534,7 +554,7 @@ impl Dialog {
             return;
         };
         for (position, check) in self.checks.iter().enumerate() {
-            check.set_visible(position == index);
+            check.set_checked(position == index);
         }
         if *self.selected.borrow() == target.path {
             return;

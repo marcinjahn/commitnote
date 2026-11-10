@@ -1,0 +1,150 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ShortcutsDialog shortcuts_dialog {
+  Adw.ShortcutsSection general_section {
+    title: _("General");
+
+    Adw.ShortcutsItem {
+      title: _("New Note");
+      action-name: "win.new-note";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Search");
+      subtitle: _("Ctrl+K inserts a link in the editor");
+      accelerator: "<Control>f <Control>k";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Refresh");
+      accelerator: "<Control>r";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Save Now");
+      action-name: "win.save-now";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Toggle Sidebar");
+      accelerator: "F9";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Preferences");
+      action-name: "win.preferences";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Keyboard Shortcuts");
+      action-name: "app.shortcuts";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Close Window");
+      action-name: "window.close";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Quit");
+      action-name: "win.quit";
+    }
+  }
+
+  Adw.ShortcutsSection notes_section {
+    title: _("Notes and Folders");
+
+    Adw.ShortcutsItem {
+      title: _("New Folder");
+      accelerator: "<Control><Shift>n";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Rename");
+      subtitle: _("In the tree");
+      accelerator: "F2";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Move to Trash");
+      subtitle: _("In the tree");
+      accelerator: "Delete";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Move Up");
+      subtitle: _("In the tree");
+      accelerator: "<Alt>Up";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Move Down");
+      subtitle: _("In the tree");
+      accelerator: "<Alt>Down";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Print");
+      accelerator: "<Control>p";
+    }
+  }
+
+  Adw.ShortcutsSection editor_section {
+    title: _("Editor");
+
+    Adw.ShortcutsItem {
+      title: _("Bold");
+      accelerator: "<Control>b";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Italic");
+      accelerator: "<Control>i";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Strikethrough");
+      accelerator: "<Control><Shift>x";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Insert Link");
+      accelerator: "<Control>k";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Toggle Task or Open Link");
+      accelerator: "<Control>Return";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Undo");
+      accelerator: "<Control>z";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Redo");
+      accelerator: "<Control><Shift>z";
+    }
+  }
+
+  Adw.ShortcutsSection image_viewer_section {
+    title: _("Image Viewer");
+
+    Adw.ShortcutsItem {
+      title: _("Zoom In");
+      accelerator: "<Control>plus";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Zoom Out");
+      accelerator: "<Control>minus";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Best Fit");
+      accelerator: "<Control>0";
+    }
+  }
+}

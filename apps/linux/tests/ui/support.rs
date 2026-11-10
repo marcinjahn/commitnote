@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -6,16 +6,24 @@ use std::time::{Duration, Instant};
 
 use adw::prelude::*;
 use commitnote::config;
-use commitnote::model::appearance::AppearanceApplier;
+use commitnote::launch;
+use commitnote::model::appearance::{AccentColor, AppearanceApplier};
 use commitnote::model::{AppConfig, AppModel, Appearance, ColorMode, Route};
 use commitnote::window::CommitnoteWindow;
 use commitnote_core_runtime::services::RememberedSessionStore;
 use commitnote_core_runtime::services::remembered_session::open_remembered_session_store;
-use gtk4::glib::translate::IntoGlib;
+use gtk4::glib::translate::{IntoGlib, ToGlibPtr};
 use gtk4::{self as gtk, gdk, gio, glib, graphene};
 use libadwaita as adw;
 
 pub type Case = (&'static str, fn(&mut Harness) -> Result<(), String>);
+
+/// What a suite expects of the Secret Service in the session the harness runs in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Keyring {
+    Provided,
+    Absent,
+}
 
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 const WAKE_INTERVAL: Duration = Duration::from_millis(50);
@@ -151,11 +159,11 @@ pub struct Harness {
     case: RefCell<String>,
     case_dir: RefCell<PathBuf>,
     model: RefCell<Option<AppModel>>,
-    window: RefCell<Option<CommitnoteWindow>>,
+    window: Rc<RefCell<Option<CommitnoteWindow>>>,
     changes: Rc<Cell<u64>>,
     routes: Rc<RefCell<Vec<Route>>>,
     failure_saved: Cell<bool>,
-    keyboard: Keyboard,
+    keyboard: OnceCell<Keyboard>,
 }
 
 impl Harness {
@@ -175,7 +183,16 @@ impl Harness {
         std::fs::create_dir_all(&screenshot_dir)
             .map_err(|error| format!("cannot create the screenshot directory: {error}"))?;
         install_app_icons(&run_dir.join("icons"))?;
-        let keyboard = Keyboard::start()?;
+        let window = Rc::<RefCell<Option<CommitnoteWindow>>>::default();
+        launch::install_actions(&application, {
+            let window = window.clone();
+            move |action| {
+                let current = window.borrow().clone();
+                if let Some(window) = current {
+                    window.launch(Some(action));
+                }
+            }
+        });
         Ok(Self {
             application,
             applier: Rc::new(AppearanceApplier::new()),
@@ -186,15 +203,20 @@ impl Harness {
             case: RefCell::default(),
             case_dir: RefCell::default(),
             model: RefCell::default(),
-            window: RefCell::default(),
+            window,
             changes: Rc::default(),
             routes: Rc::default(),
             failure_saved: Cell::new(false),
-            keyboard,
+            keyboard: OnceCell::new(),
         })
     }
 
-    pub fn begin(&mut self, prefix: &'static str, case: &str) -> Result<(), String> {
+    pub fn begin(
+        &mut self,
+        prefix: &'static str,
+        keyring: Keyring,
+        case: &str,
+    ) -> Result<(), String> {
         self.prefix.set(prefix);
         self.case.replace(case.to_owned());
         self.failure_saved.set(false);
@@ -203,7 +225,10 @@ impl Harness {
             .map_err(|error| format!("cannot create the case directory: {error}"))?;
         self.case_dir.replace(case_dir);
         self.applier.apply(&Appearance::default());
-        self.clear_remembered_session()
+        match keyring {
+            Keyring::Provided => self.clear_remembered_session(),
+            Keyring::Absent => self.require_no_keyring(),
+        }
     }
 
     /// The directory of the running case, removed when the case ends.
@@ -221,6 +246,20 @@ impl Harness {
 
     pub fn cleanup(&self) {
         let _ = std::fs::remove_dir_all(&self.run_dir);
+    }
+
+    fn require_no_keyring(&self) -> Result<(), String> {
+        let session = self.run(
+            "the remembered session store to open",
+            open_remembered_session_store(config::APP_ID),
+        )?;
+        if session.keyring_available {
+            return Err(
+                "a Secret Service keyring is available, so this case would not prove that the app works without one"
+                    .to_owned(),
+            );
+        }
+        Ok(())
     }
 
     fn clear_remembered_session(&self) -> Result<(), String> {
@@ -302,6 +341,10 @@ impl Harness {
         while context.pending() {
             context.iteration(false);
         }
+    }
+
+    pub fn application(&self) -> &adw::Application {
+        &self.application
     }
 
     pub fn model(&self) -> Result<AppModel, String> {
@@ -653,8 +696,9 @@ impl Harness {
             .filter(|&&(mask, _)| modifiers.contains(mask))
             .map(|&(_, keysym)| keysym)
             .collect();
+        let keyboard = self.keyboard()?;
         self.wait("the window to be active", || window.is_active())?;
-        self.keyboard.chord(&held, key.into_glib())
+        keyboard.chord(&held, key.into_glib())
     }
 
     /// Types `text` on the real keyboard into the focused widget of the harness window: printable
@@ -672,12 +716,21 @@ impl Harness {
                 _ => Err(format!("the harness cannot type {character:?}")),
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let keyboard = self.keyboard()?;
         self.wait_active()?;
         for (shifted, keysym) in strokes {
             let held: &[u32] = if shifted { &[keysym::SHIFT_L] } else { &[] };
-            self.keyboard.chord(held, keysym)?;
+            keyboard.chord(held, keysym)?;
         }
         Ok(())
+    }
+
+    fn keyboard(&self) -> Result<&Keyboard, String> {
+        if self.keyboard.get().is_none() {
+            let started = Keyboard::start()?;
+            let _ = self.keyboard.set(started);
+        }
+        Ok(self.keyboard.get().expect("the keyboard was just started"))
     }
 
     fn wait_active(&self) -> Result<(), String> {
@@ -756,18 +809,55 @@ impl Harness {
 
     /// Renders the views before a session exists, with the system accent and a forced scheme.
     pub fn screenshots(&self, view: &str, variants: &[(Width, Theme)]) -> Result<(), String> {
+        self.pre_session_screenshots(view, variants, None, "system")
+    }
+
+    /// Like [`Self::screenshots`], with the session accent applied as it is once settings load.
+    pub fn screenshots_in_accent(
+        &self,
+        view: &str,
+        variants: &[(Width, Theme)],
+        accent: &AccentColor,
+    ) -> Result<(), String> {
+        self.pre_session_screenshots(view, variants, Some(accent), SESSION_ACCENT)
+    }
+
+    /// The session accent as the core's settings define it, which is only loaded while a session
+    /// is open.
+    pub fn session_accent(&self) -> Result<AccentColor, String> {
+        let model = self.model()?;
+        self.wait("the settings copy", || model.settings_copy().is_some())?;
+        let copy = model.settings_copy().ok_or("the settings copy vanished")?;
+        copy.accent_color
+            .options
+            .iter()
+            .find(|option| option.id == SESSION_ACCENT)
+            .map(|option| AccentColor {
+                light: option.light.clone(),
+                dark: option.dark.clone(),
+            })
+            .ok_or_else(|| format!("the core offers no {SESSION_ACCENT} accent"))
+    }
+
+    fn pre_session_screenshots(
+        &self,
+        view: &str,
+        variants: &[(Width, Theme)],
+        accent: Option<&AccentColor>,
+        accent_name: &str,
+    ) -> Result<(), String> {
         let style_manager = adw::StyleManager::default();
         for &(width, theme) in variants {
             self.resize(width)?;
             self.applier.apply(&Appearance {
                 color_mode: theme.color_mode(),
-                accent: None,
+                accent: accent.cloned(),
             });
             self.wait(&format!("the {} scheme", theme.name()), || {
                 style_manager.is_dark() == theme.is_dark()
             })?;
             self.settle()?;
-            self.capture(view, width, theme, "system")?;
+            self.capture(view, width, theme, accent_name)?;
         }
         Ok(())
     }
@@ -1061,5 +1151,80 @@ pub fn route_name(route: &Route) -> &'static str {
         Route::Loading { failure: Some(_) } => "loading failed",
         Route::Notes => "notes",
         Route::KeyChanged { .. } => "key changed",
+    }
+}
+
+fn accessible(widget: &impl IsA<gtk::Widget>) -> &gtk::Accessible {
+    widget.upcast_ref::<gtk::Widget>().upcast_ref()
+}
+
+fn check_failure(message: *mut std::ffi::c_char) -> Option<String> {
+    if message.is_null() {
+        return None;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(message) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glib::ffi::g_free(message.cast()) };
+    Some(text)
+}
+
+pub fn assert_named(widget: &impl IsA<gtk::Widget>, expected: &str) -> Result<(), String> {
+    let label = std::ffi::CString::new(expected).map_err(|error| error.to_string())?;
+    let failure = check_failure(unsafe {
+        gtk::ffi::gtk_test_accessible_check_property(
+            accessible(widget).to_glib_none().0,
+            gtk::ffi::GTK_ACCESSIBLE_PROPERTY_LABEL,
+            label.as_ptr(),
+        )
+    });
+    match failure {
+        Some(failure) => Err(format!(
+            "{} is not named {expected:?}: {failure}",
+            describe(widget.upcast_ref::<gtk::Widget>())
+        )),
+        None => Ok(()),
+    }
+}
+
+pub fn assert_checked(widget: &impl IsA<gtk::Widget>, checked: bool) -> Result<(), String> {
+    let tristate = if checked {
+        gtk::ffi::GTK_ACCESSIBLE_TRISTATE_TRUE
+    } else {
+        gtk::ffi::GTK_ACCESSIBLE_TRISTATE_FALSE
+    };
+    let failure = check_failure(unsafe {
+        gtk::ffi::gtk_test_accessible_check_state(
+            accessible(widget).to_glib_none().0,
+            gtk::ffi::GTK_ACCESSIBLE_STATE_CHECKED,
+            tristate,
+        )
+    });
+    match failure {
+        Some(failure) => Err(format!(
+            "{} is not checked={checked}: {failure}",
+            describe(widget.upcast_ref::<gtk::Widget>())
+        )),
+        None => Ok(()),
+    }
+}
+
+pub fn assert_presentation(widget: &impl IsA<gtk::Widget>) -> Result<(), String> {
+    let role = widget.upcast_ref::<gtk::Widget>().accessible_role();
+    if role == gtk::AccessibleRole::Presentation {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} has the role {role:?}, not Presentation",
+            describe(widget.upcast_ref::<gtk::Widget>())
+        ))
+    }
+}
+
+fn describe(widget: &gtk::Widget) -> String {
+    if widget.widget_name().is_empty() {
+        widget.type_().name().to_owned()
+    } else {
+        format!("{} {:?}", widget.type_().name(), widget.widget_name())
     }
 }

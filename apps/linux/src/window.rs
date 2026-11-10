@@ -6,9 +6,11 @@ use std::time::Duration;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
+use commitnote_core_api::commands::LaunchAction;
 use gtk4::{self as gtk, gio, glib};
 use libadwaita as adw;
 
+use crate::about;
 use crate::close_guard::{
     CloseScope, CloseStep, Inhibitor, LOGOUT_INHIBIT_REASON, LogoutInhibit, UNSAVED_HEADING,
     after_flush, on_close_request, should_inhibit_logout, unsaved_body,
@@ -49,6 +51,7 @@ mod imp {
         pub(super) preferences: glib::WeakRef<adw::PreferencesDialog>,
         pub(super) change_passphrase: glib::WeakRef<adw::Dialog>,
         pub(super) applying_route: Cell<bool>,
+        pub(super) early_draft_focus_pending: Cell<bool>,
         pub(super) lifecycle: RefCell<Option<Lifecycle>>,
         pub(super) import_prompts: RefCell<Option<ImportPrompts>>,
         pub(super) close_released: Cell<bool>,
@@ -219,17 +222,13 @@ impl CommitnoteWindow {
             })
             .build();
         let new_note = gio::ActionEntry::builder("new-note")
-            .activate(|window: &Self, _, _| {
-                let model = window.model().clone();
-                if matches!(model.route(), Route::Loading { .. }) {
-                    window.focus_early_draft();
-                    return;
-                }
-                window.run_reporting(model.start_draft(Vec::new(), DraftFocus::Name));
-            })
+            .activate(|window: &Self, _, _| window.new_note())
             .build();
         let preferences = gio::ActionEntry::builder("preferences")
             .activate(|window: &Self, _, _| window.show_preferences())
+            .build();
+        let about = gio::ActionEntry::builder("about")
+            .activate(|window: &Self, _, _| about::present(window))
             .build();
         let export_notes = gio::ActionEntry::builder("export-notes")
             .activate(|window: &Self, _, _| window.export_notes())
@@ -247,6 +246,7 @@ impl CommitnoteWindow {
             save_now,
             new_note,
             preferences,
+            about,
             export_notes,
             import_notes,
             change_passphrase,
@@ -286,6 +286,59 @@ impl CommitnoteWindow {
                 model.testing_finish_loading().await
             }),
         ]);
+    }
+
+    pub fn launch(&self, action: Option<LaunchAction>) {
+        self.present();
+        if let Some(action) = action {
+            self.model().deliver_launch_action(action);
+        }
+    }
+
+    fn new_note(&self) {
+        let model = self.model().clone();
+        if matches!(model.route(), Route::Loading { .. }) {
+            self.focus_early_draft();
+            return;
+        }
+        self.run_reporting(model.start_draft(Vec::new(), DraftFocus::Name));
+    }
+
+    fn apply_launch_action(&self, action: LaunchAction) {
+        match (self.model().route(), action) {
+            (Route::Starting, LaunchAction::NewNote) => {
+                self.imp().early_draft_focus_pending.set(true);
+            }
+            (Route::Loading { .. }, LaunchAction::NewNote) => self.focus_early_draft(),
+            (Route::Notes, _) => {
+                let Some(page) = self.notes_page() else {
+                    return;
+                };
+                if self.visible_dialog().is_some() || page.is_search_active() {
+                    return;
+                }
+                match action {
+                    LaunchAction::NewNote => self.new_note(),
+                    LaunchAction::Search => {
+                        let _ = page.activate_action("notes.search", None);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn settle_pending_early_draft_focus(&self) {
+        let pending = &self.imp().early_draft_focus_pending;
+        match self.model().route() {
+            Route::Starting => {}
+            Route::Loading { .. } => {
+                if pending.replace(false) {
+                    self.focus_early_draft();
+                }
+            }
+            _ => pending.set(false),
+        }
     }
 
     fn run_reporting(&self, future: impl Future<Output = Result<(), UserError>> + 'static) {
@@ -341,6 +394,14 @@ impl CommitnoteWindow {
             move |_| {
                 if let Some(window) = window.upgrade() {
                     window.apply_route();
+                }
+            }
+        });
+        model.connect_launch_action({
+            let window = self.downgrade();
+            move |_, action| {
+                if let Some(window) = window.upgrade() {
+                    window.apply_launch_action(action);
                 }
             }
         });
@@ -586,6 +647,7 @@ impl CommitnoteWindow {
         self.update_export_action();
         self.update_import_action();
         self.update_change_passphrase_action();
+        self.settle_pending_early_draft_focus();
         imp.applying_route.set(false);
     }
 
@@ -734,11 +796,15 @@ impl CommitnoteWindow {
         }
     }
 
-    pub fn notes_placeholder_visible(&self) -> bool {
+    fn notes_page(&self) -> Option<NotesPage> {
         self.stack()
-            .iter()
-            .find_map(|page| page.downcast_ref::<NotesPage>())
-            .is_some_and(NotesPage::placeholder_visible)
+            .into_iter()
+            .find_map(|page| page.downcast::<NotesPage>().ok())
+    }
+
+    pub fn notes_placeholder_visible(&self) -> bool {
+        self.notes_page()
+            .is_some_and(|page| page.placeholder_visible())
     }
 
     fn setup_type_to_start(&self) {

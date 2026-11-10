@@ -60,6 +60,10 @@ template $CommitnoteNotesPage: Adw.NavigationPage {
               tooltip-text: "Main Menu";
               primary: true;
               menu-model: main_menu;
+
+              accessibility {
+                label: _("Main Menu");
+              }
             }
 
             [end]
@@ -322,6 +326,16 @@ menu main_menu {
       label: _("Preferences");
       action: "win.preferences";
       accel: "<Control>comma";
+    }
+
+    item {
+      label: _("Keyboard Shortcuts");
+      action: "app.shortcuts";
+    }
+
+    item {
+      label: _("About commitnote");
+      action: "win.about";
     }
   }
 

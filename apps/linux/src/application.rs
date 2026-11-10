@@ -1,11 +1,13 @@
 use std::cell::OnceCell;
 
 use adw::subclass::prelude::*;
+use commitnote_core_api::commands::LaunchAction;
 use gtk4::{gio, glib, prelude::*};
 use libadwaita as adw;
 
 use crate::config;
 use crate::fonts;
+use crate::launch;
 use crate::model::appearance::AppearanceApplier;
 use crate::model::{AppConfig, AppModel};
 use crate::print;
@@ -53,6 +55,14 @@ mod imp {
             });
             let _ = self.appearance.set(applier);
             let _ = self.model.set(model);
+            launch::install_actions(&*self.obj(), {
+                let application = self.obj().downgrade();
+                move |action| {
+                    if let Some(application) = application.upgrade() {
+                        application.launch(Some(action));
+                    }
+                }
+            });
         }
 
         fn activate(&self) {
@@ -68,6 +78,18 @@ mod imp {
             let window = CommitnoteWindow::new(application.upcast_ref(), model);
             self.window.set(Some(&window));
             window.present();
+        }
+
+        fn command_line(&self, command_line: &gio::ApplicationCommandLine) -> glib::ExitCode {
+            let action = launch::action_from_arguments(
+                command_line
+                    .arguments()
+                    .iter()
+                    .skip(1)
+                    .filter_map(|argument| argument.to_str()),
+            );
+            self.obj().launch(action);
+            glib::ExitCode::SUCCESS
         }
 
         fn shutdown(&self) {
@@ -92,11 +114,19 @@ impl CommitnoteApplication {
     pub fn new() -> Self {
         glib::Object::builder()
             .property("application-id", config::APP_ID)
+            .property("flags", gio::ApplicationFlags::HANDLES_COMMAND_LINE)
             .property(
                 "resource-base-path",
                 config::RESOURCE_PREFIX.trim_end_matches('/'),
             )
             .build()
+    }
+
+    pub fn launch(&self, action: Option<LaunchAction>) {
+        self.activate();
+        if let Some(window) = self.imp().window.upgrade() {
+            window.launch(action);
+        }
     }
 }
 

@@ -8,12 +8,15 @@ use commitnote_editor_text::Utf16Index;
 use commitnote_markdown::{CommandResult, Placement, toggle_checkbox};
 use gtk4::{self as gtk, gdk, graphene, gsk, pango, prelude::*};
 
+use super::contrast::Contrast;
+
 const CHECKBOX_SCALE: f32 = 0.75;
 const CHECKBOX_RADIUS: f32 = 0.2;
 const CHECKBOX_BORDER_FRACTION: f32 = 0.125;
 const CHECK_MARK_FRACTION: f32 = 0.13;
-const UNCHECKED_ALPHA: f32 = 0.55;
-const RULE_ALPHA: f32 = 0.2;
+const UNCHECKED_ALPHA: Contrast = Contrast::new(0.55, 0.85);
+const RULE_ALPHA: Contrast = Contrast::new(0.2, 0.5);
+const MARK_ALPHA: Contrast = Contrast::new(0.8, 1.0);
 const RULE_THICKNESS: f32 = 1.0;
 const LIGHT_ACCENT_LUMINANCE: f32 = 0.6;
 /// GTK draws a zero-alpha foreground as opaque, treating it as unset, so overlaid text gets the
@@ -54,6 +57,7 @@ pub struct OverlayStyle {
     pub foreground: gdk::RGBA,
     pub accent: gdk::RGBA,
     pub line_height: f32,
+    pub high_contrast: bool,
 }
 
 pub type Painter = Rc<dyn Fn(&gtk::Snapshot, &graphene::Rect, &OverlayStyle)>;
@@ -374,10 +378,10 @@ pub(super) fn dim(color: gdk::RGBA, alpha: f32) -> gdk::RGBA {
     color.with_alpha(color.alpha() * alpha)
 }
 
-fn mark_color(accent: gdk::RGBA) -> gdk::RGBA {
+fn mark_color(accent: gdk::RGBA, high_contrast: bool) -> gdk::RGBA {
     let luminance = 0.2126 * accent.red() + 0.7152 * accent.green() + 0.0722 * accent.blue();
     if luminance > LIGHT_ACCENT_LUMINANCE {
-        gdk::RGBA::new(0.0, 0.0, 0.0, 0.8)
+        gdk::RGBA::new(0.0, 0.0, 0.0, MARK_ALPHA.pick(high_contrast))
     } else {
         gdk::RGBA::WHITE
     }
@@ -400,7 +404,7 @@ fn paint_checkbox(
     let outline = gsk::RoundedRect::from_rect(bounds, side * CHECKBOX_RADIUS);
     if !checked {
         let width = (side * CHECKBOX_BORDER_FRACTION).round().max(1.0);
-        let color = dim(style.foreground, UNCHECKED_ALPHA);
+        let color = dim(style.foreground, UNCHECKED_ALPHA.pick(style.high_contrast));
         snapshot.append_border(&outline, &[width; 4], &[color; 4]);
         return;
     }
@@ -414,13 +418,17 @@ fn paint_checkbox(
     let stroke = gsk::Stroke::new((side * CHECK_MARK_FRACTION).max(1.5));
     stroke.set_line_cap(gsk::LineCap::Round);
     stroke.set_line_join(gsk::LineJoin::Round);
-    snapshot.append_stroke(&mark.to_path(), &stroke, &mark_color(style.accent));
+    snapshot.append_stroke(
+        &mark.to_path(),
+        &stroke,
+        &mark_color(style.accent, style.high_contrast),
+    );
 }
 
 fn paint_rule(snapshot: &gtk::Snapshot, rect: &graphene::Rect, style: &OverlayStyle) {
     let y = (rect.y() + (rect.height() - RULE_THICKNESS) / 2.0).round();
     snapshot.append_color(
-        &dim(style.foreground, RULE_ALPHA),
+        &dim(style.foreground, RULE_ALPHA.pick(style.high_contrast)),
         &graphene::Rect::new(rect.x(), y, rect.width(), RULE_THICKNESS),
     );
 }
@@ -437,6 +445,7 @@ mod tests {
             foreground: gdk::RGBA::BLACK,
             accent: gdk::RGBA::BLUE,
             line_height: 19.6,
+            high_contrast: false,
         }
     }
 
@@ -486,7 +495,22 @@ mod tests {
 
     #[test]
     fn the_check_mark_contrasts_with_the_accent() {
-        assert_eq!(mark_color(gdk::RGBA::BLUE), gdk::RGBA::WHITE);
-        assert_eq!(mark_color(gdk::RGBA::WHITE).alpha(), 0.8);
+        assert_eq!(mark_color(gdk::RGBA::BLUE, false), gdk::RGBA::WHITE);
+        assert_eq!(mark_color(gdk::RGBA::BLUE, true), gdk::RGBA::WHITE);
+        assert_eq!(mark_color(gdk::RGBA::WHITE, false).alpha(), 0.8);
+        assert_eq!(mark_color(gdk::RGBA::WHITE, true).alpha(), 1.0);
+    }
+
+    #[test]
+    fn faint_alphas_strengthen_in_high_contrast() {
+        let pairs = [
+            (UNCHECKED_ALPHA, 0.55, 0.85),
+            (RULE_ALPHA, 0.2, 0.5),
+            (MARK_ALPHA, 0.8, 1.0),
+        ];
+        for (alpha, normal, high) in pairs {
+            assert_eq!(alpha.pick(false), normal);
+            assert_eq!(alpha.pick(true), high);
+        }
     }
 }

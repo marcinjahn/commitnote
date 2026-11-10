@@ -94,7 +94,7 @@ fn preferences_enabled(h: &Harness) -> bool {
         .is_some_and(|action| action.is_enabled())
 }
 
-fn launch_notes(h: &Harness) -> Result<Rc<SettingsCopy>, String> {
+pub(crate) fn launch_notes(h: &Harness) -> Result<Rc<SettingsCopy>, String> {
     launch_and_log_in(h, false)?;
     let model = h.model()?;
     h.wait("the settings and the Preferences action", || {
@@ -123,7 +123,7 @@ fn wait_dialog_focus(h: &Harness) -> Result<(), String> {
     h.wait("the focus to be in the dialog", || focus_within(h, &dialog))
 }
 
-fn close_preferences(h: &Harness) -> Result<(), String> {
+pub(crate) fn close_preferences(h: &Harness) -> Result<(), String> {
     h.widget_as::<adw::PreferencesDialog>(DIALOG)?.close();
     h.wait("the dialog to close", || !h.shown(DIALOG))
 }
@@ -183,7 +183,7 @@ fn preferences_shortcut(h: &mut Harness) -> Result<(), String> {
     h.wait("Escape to close the dialog", || !h.shown(DIALOG))
 }
 
-fn menu_actions(h: &Harness) -> Result<Vec<Vec<String>>, String> {
+pub(crate) fn menu_actions(h: &Harness) -> Result<Vec<Vec<String>>, String> {
     let menu = h
         .widget_as::<gtk::MenuButton>(MAIN_MENU)?
         .menu_model()
@@ -204,18 +204,20 @@ fn menu_actions(h: &Harness) -> Result<Vec<Vec<String>>, String> {
 fn preferences_menu(h: &mut Harness) -> Result<(), String> {
     launch_notes(h)?;
     let sections = menu_actions(h)?;
-    let own = |action: &str| vec![action.to_owned()];
+    let section = |actions: &[&str]| -> Vec<String> {
+        actions.iter().map(|action| (*action).to_owned()).collect()
+    };
     ensure(
         sections.windows(3).any(|run| {
             run == [
-                own("win.refresh"),
-                own("win.preferences"),
-                own("win.log-out"),
+                section(&["win.refresh"]),
+                section(&["win.preferences", "app.shortcuts", "win.about"]),
+                section(&["win.log-out"]),
             ]
         }),
         || {
             format!(
-                "Preferences is not in its own section between Refresh and Log Out: {sections:?}"
+                "Preferences, Keyboard Shortcuts and About are not their own section between Refresh and Log Out: {sections:?}"
             )
         },
     )?;
@@ -688,16 +690,31 @@ fn scroll_to_top(h: &Harness) -> Result<(), String> {
     Ok(())
 }
 
-fn preferences_screenshots(h: &mut Harness) -> Result<(), String> {
-    launch_notes(h)?;
-    open_note_at(h, WELCOME)?;
+pub(crate) fn capture_preferences(h: &Harness) -> Result<(), String> {
     open_preferences(h)?;
     for &(width, theme) in ALL_VARIANTS {
         h.show_variant(width, theme)?;
+        wait_settings_saved(h)?;
         scroll_to_top(h)?;
         h.capture_variant("preferences", width, theme)?;
     }
     Ok(())
+}
+
+fn wait_settings_saved(h: &Harness) -> Result<(), String> {
+    let model = h.model()?;
+    h.wait("the settings save status to show synced", || {
+        model.settings_save().is_none_or(|save| {
+            save.state == SettingsSaveState::Synced
+                && h.label(SAVE_STATUS).is_ok_and(|label| label == save.label)
+        })
+    })
+}
+
+fn preferences_screenshots(h: &mut Harness) -> Result<(), String> {
+    launch_notes(h)?;
+    open_note_at(h, WELCOME)?;
+    capture_preferences(h)
 }
 
 fn note_font_screenshot(h: &mut Harness) -> Result<(), String> {
@@ -996,7 +1013,7 @@ fn open_import(h: &Harness, files: Vec<gio::File>) -> Result<(), String> {
     wait_import_form(h)
 }
 
-fn import_zip_dialog(h: &Harness) -> Result<(), String> {
+pub(crate) fn import_zip_dialog(h: &Harness) -> Result<(), String> {
     let zip = export_to_zip(h)?;
     open_import(h, vec![zip])
 }
@@ -1005,13 +1022,13 @@ fn wait_dialog_closed(h: &Harness) -> Result<(), String> {
     h.wait("the import dialog to close", || !h.shown(IMPORT_DIALOG))
 }
 
-fn choose_existing(h: &Harness) -> Result<(), String> {
+pub(crate) fn choose_existing(h: &Harness) -> Result<(), String> {
     h.widget_as::<adw::ToggleGroup>(IMPORT_TARGET)?
         .set_active_name(Some(EXISTING_FOLDER));
     h.wait("the folder list", || h.shown("import-targets"))
 }
 
-fn select_target(h: &Harness, target: &[&str]) -> Result<(), String> {
+pub(crate) fn select_target(h: &Harness, target: &[&str]) -> Result<(), String> {
     let wanted = path(target);
     let form = h.model()?.import_form().ok_or("no import form")?;
     let index = form

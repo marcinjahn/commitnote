@@ -1,3 +1,4 @@
+mod contrast;
 mod image_insertion;
 mod image_source;
 mod inline_image;
@@ -8,6 +9,7 @@ mod spans;
 mod tags;
 pub mod vim;
 
+pub use contrast::Contrast;
 pub use image_insertion::{ImageInserter, InsertAt};
 pub use image_source::{EditorImage, ImageSource};
 pub use inline_image::frame_at;

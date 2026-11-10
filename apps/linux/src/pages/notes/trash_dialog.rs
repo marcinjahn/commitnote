@@ -7,9 +7,11 @@ use commitnote_core_api::shapes::{ColorTag, TrashEntryView, TrashItemKind, Trash
 use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
+use super::tag_dot::TagDot;
 use super::target_picker::{self, Picker};
 use super::trash_confirm;
-use super::tree_logic::tag_id;
+use super::tree_logic::{tag_label, tagged_name};
+use crate::a11y::label_loading;
 use crate::model::AppModel;
 
 type ExpandedRows = Rc<RefCell<HashSet<(String, Vec<String>)>>>;
@@ -38,6 +40,7 @@ pub fn present(
         .halign(gtk::Align::Center)
         .valign(gtk::Align::Center)
         .build();
+    label_loading(&spinner);
     let empty = adw::StatusPage::builder()
         .icon_name("user-trash-symbolic")
         .title("Trash Is Empty")
@@ -200,6 +203,7 @@ fn row(env: &Env, spec: &RowSpec) -> gtk::Widget {
             .build();
         row.add_prefix(&icon);
         row.add_suffix(&suffix);
+        label_tagged(env, spec, &row);
         return row.upcast();
     }
 
@@ -210,6 +214,7 @@ fn row(env: &Env, spec: &RowSpec) -> gtk::Widget {
         .build();
     row.add_prefix(&icon);
     row.add_suffix(&suffix);
+    label_tagged(env, spec, &row);
     for child in spec.children {
         row.add_row(&item_row(env, spec.entry_id, child));
     }
@@ -226,20 +231,26 @@ fn row(env: &Env, spec: &RowSpec) -> gtk::Widget {
     row.upcast()
 }
 
+fn label_tagged(env: &Env, spec: &RowSpec, row: &impl IsA<gtk::Widget>) {
+    if let Some(tag) = spec.color_tag {
+        let label = tag_label(tag, &env.model.tag_options());
+        row.upcast_ref::<gtk::Widget>()
+            .update_property(&[gtk::accessible::Property::Label(&tagged_name(
+                spec.name,
+                Some(&label),
+            ))]);
+    }
+}
+
 fn suffix(env: &Env, spec: &RowSpec) -> gtk::Box {
     let suffix = gtk::Box::builder()
         .spacing(6)
         .valign(gtk::Align::Center)
         .build();
-    if let Some(tag) = spec.color_tag {
-        suffix.append(
-            &gtk::Box::builder()
-                .css_classes(["tag-dot".to_owned(), format!("tag-{}", tag_id(tag))])
-                .width_request(10)
-                .height_request(10)
-                .valign(gtk::Align::Center)
-                .build(),
-        );
+    if spec.color_tag.is_some() {
+        let dot = TagDot::new();
+        dot.set_tag(spec.color_tag);
+        suffix.append(dot.widget());
     }
 
     let restore = gtk::Button::builder()

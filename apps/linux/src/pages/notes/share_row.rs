@@ -5,6 +5,8 @@ use commitnote_core_api::commands::{ShareActionId, ShareCopy, ShareRowView};
 use gtk4::{self as gtk, gio};
 use libadwaita as adw;
 
+use crate::a11y::label_loading;
+
 pub const ACTION_GROUP: &str = "share";
 
 pub type ActionHandler = Rc<dyn Fn(&ShareRowView, ShareActionId)>;
@@ -38,21 +40,21 @@ pub fn row(
         .use_markup(false)
         .build();
     if share.password_protected {
-        row.add_prefix(
-            &gtk::Image::builder()
-                .icon_name("channel-secure-symbolic")
-                .tooltip_text(&copy.password_protected)
-                .build(),
-        );
+        let lock = gtk::Image::builder()
+            .icon_name("channel-secure-symbolic")
+            .tooltip_text(&copy.password_protected)
+            .build();
+        lock.update_property(&[gtk::accessible::Property::Label("Password Protected")]);
+        row.add_prefix(&lock);
     }
     if updating {
-        row.add_suffix(
-            &adw::Spinner::builder()
-                .name("share-updating")
-                .valign(gtk::Align::Center)
-                .tooltip_text(&copy.updating)
-                .build(),
-        );
+        let spinner = adw::Spinner::builder()
+            .name("share-updating")
+            .valign(gtk::Align::Center)
+            .tooltip_text(&copy.updating)
+            .build();
+        label_loading(&spinner);
+        row.add_suffix(&spinner);
     }
     let button = gtk::MenuButton::builder()
         .name("share-menu-button")

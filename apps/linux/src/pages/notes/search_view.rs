@@ -10,7 +10,9 @@ use gtk4::{self as gtk, gdk, glib, pango};
 use libadwaita as adw;
 
 use super::search_logic::{name_attributes, snippet_markup};
-use super::tree_logic::{note_description, tag_id, tag_label};
+use super::tag_dot::TagDot;
+use super::tree_logic::{tag_label, tagged_name};
+use crate::a11y::{announce, label_progress, show_fraction};
 use crate::accent;
 use crate::model::{AppModel, SearchStatus};
 
@@ -29,6 +31,7 @@ mod imp {
         pub(super) progress: gtk::ProgressBar,
         pub(super) hint: gtk::Label,
         pub(super) paths: RefCell<Vec<Option<Vec<String>>>>,
+        pub(super) announced_count: RefCell<Option<String>>,
         pub(super) model: OnceCell<AppModel>,
         pub(super) handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) accent_probe: OnceCell<gtk::Label>,
@@ -113,6 +116,7 @@ mod imp {
             }
             self.status_box.append(&self.status);
             self.status_box.append(&self.still_reading);
+            label_progress(&self.progress, "Search Progress");
             self.status_box.append(&self.progress);
             self.status_box.append(&self.hint);
 
@@ -275,7 +279,7 @@ impl SearchView {
         let had_focus = imp.list.focus_child().is_some();
 
         self.render_list(results.as_ref(), &tag_options, &self.highlight_accent());
-        self.render_count(results.as_ref());
+        self.render_count(results.as_ref(), status.as_ref(), query_empty);
         self.render_stack(results.as_ref(), query_empty);
         self.render_status(results.as_ref(), status.as_ref(), query_empty);
 
@@ -360,11 +364,33 @@ impl SearchView {
         }
     }
 
-    fn render_count(&self, results: Option<&SearchResults>) {
-        let count = &self.imp().count;
+    fn render_count(
+        &self,
+        results: Option<&SearchResults>,
+        status: Option<&SearchStatus>,
+        query_empty: bool,
+    ) {
+        let imp = self.imp();
         let text = results.and_then(|results| results.count_text.as_deref());
-        count.set_label(text.unwrap_or_default());
-        count.set_visible(text.is_some());
+        imp.count.set_label(text.unwrap_or_default());
+        imp.count.set_visible(text.is_some());
+
+        if query_empty {
+            imp.announced_count.take();
+            return;
+        }
+        let settled = status.is_none_or(|status| !status.partial && status.progress.is_none());
+        if let Some(text) = text
+            && settled
+            && imp.announced_count.borrow().as_deref() != Some(text)
+        {
+            announce(
+                &imp.count,
+                text,
+                gtk::AccessibleAnnouncementPriority::Medium,
+            );
+            imp.announced_count.replace(Some(text.to_owned()));
+        }
     }
 
     fn render_stack(&self, results: Option<&SearchResults>, query_empty: bool) {
@@ -397,7 +423,7 @@ impl SearchView {
         imp.still_reading.set_visible(show_still_reading);
 
         if let Some(fraction) = progress {
-            imp.progress.set_fraction(fraction.clamp(0.0, 1.0));
+            show_fraction(&imp.progress, fraction);
         }
         imp.progress.set_visible(progress.is_some());
 
@@ -466,13 +492,10 @@ fn result_row(
 
     let top = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     top.append(&name);
-    if let Some(tag) = result.color_tag {
-        let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        dot.add_css_class("tag-dot");
-        dot.add_css_class(&format!("tag-{}", tag_id(tag)));
-        dot.set_size_request(10, 10);
-        dot.set_valign(gtk::Align::Center);
-        top.append(&dot);
+    if result.color_tag.is_some() {
+        let dot = TagDot::new();
+        dot.set_tag(result.color_tag);
+        top.append(dot.widget());
     }
 
     let body = gtk::Box::new(gtk::Orientation::Vertical, 2);
@@ -481,9 +504,6 @@ fn result_row(
     body.append(&top);
 
     let mut description = Vec::new();
-    if let Some(tag) = result.color_tag {
-        description.push(note_description(Some(&tag_label(tag, tag_options)), false));
-    }
     if let Some(folder) = &result.folder {
         let label = gtk::Label::new(Some(folder));
         label.set_xalign(0.0);
@@ -504,10 +524,11 @@ fn result_row(
         description.push(text);
     }
 
+    let label_tag = result.color_tag.map(|tag| tag_label(tag, tag_options));
     let row = gtk::ListBoxRow::new();
     row.set_child(Some(&body));
     row.update_property(&[
-        gtk::accessible::Property::Label(&result.name),
+        gtk::accessible::Property::Label(&tagged_name(&result.name, label_tag.as_deref())),
         gtk::accessible::Property::Description(&description.join(", ")),
     ]);
     row

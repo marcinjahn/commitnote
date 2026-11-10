@@ -6,7 +6,8 @@ use commitnote_core_api::shapes::TreeNode;
 use gtk4::{self as gtk, glib, pango};
 use libadwaita as adw;
 
-use super::tree_logic::{RenameState, node_path, tag_id};
+use super::tag_dot::TagDot;
+use super::tree_logic::{RenameState, node_path};
 
 const FOLDER_ICON: &str = "folder-symbolic";
 const NOTE_ICON: &str = "text-x-generic-symbolic";
@@ -20,8 +21,7 @@ mod imp {
         pub(super) name: gtk::Label,
         pub(super) count: gtk::Label,
         pub(super) shared: gtk::Image,
-        pub(super) dot: gtk::Box,
-        pub(super) dot_class: RefCell<Option<String>>,
+        pub(super) dot: TagDot,
         pub(super) entry: gtk::Entry,
         pub(super) error_popover: RefCell<Option<gtk::Popover>>,
         pub(super) error_text: gtk::Label,
@@ -52,10 +52,8 @@ mod imp {
 
             self.shared.set_icon_name(Some("emblem-shared-symbolic"));
             self.shared.set_tooltip_text(Some("Shared"));
-
-            self.dot.add_css_class("tag-dot");
-            self.dot.set_size_request(10, 10);
-            self.dot.set_valign(gtk::Align::Center);
+            self.shared
+                .update_property(&[gtk::accessible::Property::Label("Shared")]);
 
             self.entry.set_widget_name("tree-rename-entry");
             self.entry.set_hexpand(true);
@@ -81,7 +79,7 @@ mod imp {
             row.append(&self.entry);
             row.append(&self.count);
             row.append(&self.shared);
-            row.append(&self.dot);
+            row.append(self.dot.widget());
         }
 
         fn dispose(&self) {
@@ -117,9 +115,6 @@ impl NodeRow {
     pub fn bind(&self, node: &TreeNode, rename: Option<&RenameState>) {
         let imp = self.imp();
         imp.path.replace(node_path(node).to_vec());
-        if let Some(class) = imp.dot_class.take() {
-            imp.dot.remove_css_class(&class);
-        }
         match node {
             TreeNode::Folder {
                 name, note_count, ..
@@ -129,7 +124,7 @@ impl NodeRow {
                 imp.count.set_label(&note_count.to_string());
                 imp.count.set_visible(true);
                 imp.shared.set_visible(false);
-                imp.dot.set_visible(false);
+                imp.dot.set_tag(None);
             }
             TreeNode::Note {
                 name,
@@ -141,15 +136,7 @@ impl NodeRow {
                 imp.name.set_label(name);
                 imp.count.set_visible(false);
                 imp.shared.set_visible(*shared);
-                match color_tag {
-                    Some(tag) => {
-                        let class = format!("tag-{}", tag_id(*tag));
-                        imp.dot.add_css_class(&class);
-                        imp.dot_class.replace(Some(class));
-                        imp.dot.set_visible(true);
-                    }
-                    None => imp.dot.set_visible(false),
-                }
+                imp.dot.set_tag(*color_tag);
             }
         }
         self.sync_rename(rename);

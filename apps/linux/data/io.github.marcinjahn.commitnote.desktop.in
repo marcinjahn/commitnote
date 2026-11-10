@@ -1,10 +1,21 @@
 [Desktop Entry]
 Name=@NAME@
 Comment=Encrypted markdown notes, stored in a Git repository you own
-Exec=commitnote
+Exec=commitnote %U
 Icon=@APP_ID@
 Terminal=false
 Type=Application
 Categories=Office;Utility;
 Keywords=notes;markdown;encrypted;git;
 StartupNotify=true
+MimeType=x-scheme-handler/commitnote;
+SingleMainWindow=true
+Actions=new-note;search;
+
+[Desktop Action new-note]
+Name=New Note
+Exec=commitnote --action new-note
+
+[Desktop Action search]
+Name=Search Notes
+Exec=commitnote --action search

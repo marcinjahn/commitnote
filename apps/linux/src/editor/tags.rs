@@ -2,12 +2,14 @@ use commitnote_markdown::PreviewStyle;
 use gtk4::glib::translate::IntoGlib;
 use gtk4::{self as gtk, gdk, pango, prelude::*};
 
+use super::contrast::Contrast;
+
 const HEADING_SCALES: [f64; 6] = [1.75, 1.25, 1.125, 1.0, 1.0, 1.0];
 const CODE_SCALE: f64 = 0.875;
 const QUOTE_INDENT: i32 = 12;
-const DIM_ALPHA: f32 = 0.55;
-const LIST_MARK_ALPHA: f32 = 0.5;
-const CODE_BACKGROUND_ALPHA: f32 = 0.08;
+const DIM_ALPHA: Contrast = Contrast::new(0.55, 0.8);
+const LIST_MARK_ALPHA: Contrast = Contrast::new(0.5, 0.8);
+const CODE_BACKGROUND_ALPHA: Contrast = Contrast::new(0.08, 0.16);
 
 /// Tag priority grows along this order, so later styles win where runs overlap: headings
 /// keep their scale over inline code, and the foreground goes muted marker, list mark, link,
@@ -72,6 +74,7 @@ pub struct Palette {
     pub foreground: gdk::RGBA,
     pub accent: gdk::RGBA,
     pub left_margin: i32,
+    pub high_contrast: bool,
 }
 
 /// One tag per preview style, owned by a buffer's tag table; only colours change later.
@@ -100,17 +103,16 @@ impl PreviewTags {
     }
 
     pub fn set_palette(&self, palette: &Palette) {
-        let dimmed = dim(palette.foreground, DIM_ALPHA);
+        let high = palette.high_contrast;
+        let dimmed = dim(palette.foreground, DIM_ALPHA.pick(high));
+        let code_background = dim(palette.foreground, CODE_BACKGROUND_ALPHA.pick(high));
         for (&style, tag) in STYLE_ORDER.iter().zip(&self.tags) {
             match style {
                 PreviewStyle::InlineCode => {
-                    tag.set_background_rgba(Some(&dim(palette.foreground, CODE_BACKGROUND_ALPHA)));
+                    tag.set_background_rgba(Some(&code_background));
                 }
                 PreviewStyle::CodeBlockLine => {
-                    tag.set_paragraph_background_rgba(Some(&dim(
-                        palette.foreground,
-                        CODE_BACKGROUND_ALPHA,
-                    )));
+                    tag.set_paragraph_background_rgba(Some(&code_background));
                 }
                 PreviewStyle::QuoteLine => {
                     tag.set_foreground_rgba(Some(&dimmed));
@@ -120,7 +122,7 @@ impl PreviewTags {
                     tag.set_foreground_rgba(Some(&palette.accent));
                 }
                 PreviewStyle::ListMark => {
-                    tag.set_foreground_rgba(Some(&dim(palette.accent, LIST_MARK_ALPHA)));
+                    tag.set_foreground_rgba(Some(&dim(palette.accent, LIST_MARK_ALPHA.pick(high))));
                 }
                 PreviewStyle::MutedMarker => tag.set_foreground_rgba(Some(&dimmed)),
                 _ => {}
@@ -177,6 +179,19 @@ mod tests {
             tag_name(PreviewStyle::Heading { level: 9 }),
             "preview-heading-6"
         );
+    }
+
+    #[test]
+    fn faint_alphas_strengthen_in_high_contrast() {
+        let pairs = [
+            (DIM_ALPHA, 0.55, 0.8),
+            (LIST_MARK_ALPHA, 0.5, 0.8),
+            (CODE_BACKGROUND_ALPHA, 0.08, 0.16),
+        ];
+        for (alpha, normal, high) in pairs {
+            assert_eq!(alpha.pick(false), normal);
+            assert_eq!(alpha.pick(true), high);
+        }
     }
 
     #[test]

@@ -26,7 +26,7 @@ const NEW_PASSPHRASE: &str = "harbour lantern copper meadow violin";
 const EMPTY_PASSPHRASE_MESSAGE: &str = "Enter the passphrase.";
 const MISMATCH_MESSAGE: &str = "Passphrases do not match.";
 const REMOTE_EDIT_LINE: &str = "Edited on another device";
-const HELD_LOADING_MESSAGE: &str = "Checking repository…";
+pub(crate) const HELD_LOADING_MESSAGE: &str = "Checking repository…";
 
 fn login_unlock_tree(h: &mut Harness) -> Result<(), String> {
     h.launch()?;

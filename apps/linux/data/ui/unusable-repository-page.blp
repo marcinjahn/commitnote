@@ -59,6 +59,10 @@ template $CommitnoteUnusableRepositoryPage: Adw.NavigationPage {
             Adw.Spinner {
               width-request: 24;
               height-request: 24;
+
+              accessibility {
+                label: _("Loading");
+              }
             }
 
             Gtk.Label progress_label {

@@ -10,6 +10,7 @@ dbus-run-session -- sh -c '
   cargo test --workspace --exclude commitnote --locked
 '
 DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent cargo test -p commitnote-core-runtime --locked --test remembered_session_no_service -- --ignored
+dbus-run-session -- cargo test -p commitnote-core-runtime --locked --test remembered_session_unresponsive_service -- --ignored
 
 if [ -d target/meson/testing ]; then
   meson setup --reconfigure target/meson/testing -Dprofile=development -Dtesting=true

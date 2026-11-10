@@ -1,3 +1,5 @@
+pub mod a11y;
+pub mod about;
 pub mod accent;
 pub mod application;
 pub mod close_guard;
@@ -7,6 +9,7 @@ pub mod export;
 pub mod file_dialogs;
 pub mod fonts;
 pub mod import;
+pub mod launch;
 pub mod links;
 pub mod model;
 pub mod pages;

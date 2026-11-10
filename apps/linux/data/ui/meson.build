@@ -11,6 +11,7 @@ blueprints = files(
   'notes-page.blp',
   'tree-view.blp',
   'note-view.blp',
+  'shortcuts-dialog.blp',
 )
 
 ui_files = custom_target(
@@ -29,6 +30,7 @@ ui_files = custom_target(
     'notes-page.ui',
     'tree-view.ui',
     'note-view.ui',
+    'shortcuts-dialog.ui',
   ],
   command: [
     find_program('blueprint-compiler'),

@@ -48,6 +48,7 @@ mod file_input;
 mod history;
 mod images;
 mod last_view;
+mod launch;
 mod organise;
 mod passphrase;
 mod print;
@@ -286,6 +287,7 @@ struct State {
     history: Option<HistoryView>,
     shares: Option<SharesChanged>,
     last_view: last_view::LastViewTracker,
+    launch: launch::LaunchState,
     image_cache: images::ImageCache,
     notice_actions: HashMap<String, NoticeAction>,
     open_note_path: Option<Vec<String>>,
@@ -388,6 +390,9 @@ mod imp {
                     Signal::builder("image-changed")
                         .param_types([String::static_type()])
                         .build(),
+                    Signal::builder("launch-action")
+                        .param_types([String::static_type()])
+                        .build(),
                 ]
             })
         }
@@ -409,6 +414,7 @@ impl AppModel {
         model.attach_search_triggers();
         model.attach_last_view_triggers();
         model.attach_image_triggers();
+        model.attach_launch_triggers();
         {
             let mut state = imp.state.borrow_mut();
             state.visible = true;
@@ -1371,6 +1377,7 @@ impl AppModel {
         }
         self.imp().client.replace(Some(client));
         self.attach_events();
+        self.launch_core_started();
         self.count_launch();
         #[cfg(feature = "testing")]
         self.hold_loading_if_requested().await;
@@ -1819,6 +1826,7 @@ impl AppModel {
             CoreEvent::SharesChanged(changed) => self.shares_changed(changed),
             CoreEvent::ImportStatusChanged(status) => self.import_status_changed(status),
             CoreEvent::PassphraseChangeProgress(progress) => self.passphrase_progress(progress),
+            CoreEvent::LaunchAction { action } => self.launch_action_received(action),
             CoreEvent::Other { .. } => {}
         }
     }
@@ -1988,6 +1996,7 @@ impl AppModel {
                 keyring_warned: previous.keyring_warned,
                 image_cache: previous.image_cache.next_generation(),
                 last_view,
+                launch: previous.launch,
                 ..State::default()
             };
         }
@@ -2025,6 +2034,7 @@ impl AppModel {
                         return;
                     }
                     model.attach_events();
+                    model.launch_core_started();
                     model.lifecycle_update().await;
                     model.load_login_context().await;
                     model.set_route(Route::Token);
@@ -2440,7 +2450,7 @@ mod tests {
     use super::*;
     use crate::pages::notes::note_state::{NoteDisplay, display_state, loaded_update};
 
-    const NOTES_URL: &str = "https://github.com/sample/notes";
+    pub(super) const NOTES_URL: &str = "https://github.com/sample/notes";
     pub(super) const PASSPHRASE: &str = "sample notes repo passphrase";
     const BUNDLE_PATH: &str = "/io/github/marcinjahn/commitnote/core/commitnote-core.js";
 

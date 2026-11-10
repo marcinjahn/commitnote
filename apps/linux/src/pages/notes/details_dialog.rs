@@ -7,6 +7,7 @@ use commitnote_core_api::shapes::OpenNote;
 use gtk4::{self as gtk, glib};
 use libadwaita as adw;
 
+use crate::a11y::label_loading;
 use crate::model::{AppModel, EditorTarget, NoteDetails};
 
 struct Dialog {
@@ -28,6 +29,7 @@ pub fn present(model: &AppModel, anchor: &impl IsA<gtk::Widget>) -> adw::Dialog 
         .halign(gtk::Align::Center)
         .valign(gtk::Align::Center)
         .build();
+    label_loading(&spinner);
     let group = adw::PreferencesGroup::new();
     let page = adw::PreferencesPage::new();
     page.add(&group);
