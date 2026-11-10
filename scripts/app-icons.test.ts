@@ -4,7 +4,6 @@ import type { Font } from "fontkit";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   APP_ICONS,
-  DESKTOP_ICONS,
   buildAppIconSvg,
   buildAppIcons,
   buildIconContactSheet,
@@ -141,7 +140,7 @@ describe("app icons", () => {
 
     expect(width).toBe(
       32 +
-        [...APP_ICONS, ...DESKTOP_ICONS, ...SHORTCUT_ICONS].reduce(
+        [...APP_ICONS, ...SHORTCUT_ICONS].reduce(
           (sum, i) => sum + i.size + 32,
           0,
         ),

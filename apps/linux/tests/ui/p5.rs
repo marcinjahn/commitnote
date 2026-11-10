@@ -111,7 +111,7 @@ fn view(h: &Harness) -> Result<SettingsView, String> {
         .ok_or_else(|| "the settings view is not loaded".to_owned())
 }
 
-fn open_preferences(h: &Harness) -> Result<(), String> {
+pub(crate) fn open_preferences(h: &Harness) -> Result<(), String> {
     h.window_action("preferences")?;
     h.wait_shown(DIALOG)?;
     h.wait_shown(COLOR_MODE)?;

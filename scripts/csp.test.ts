@@ -17,18 +17,6 @@ describe("buildCsp", () => {
       `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AAA' 'sha256-BBB'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com https://gitlab.com; ${TAIL}`,
     );
   });
-
-  it("builds the desktop policy with one hash", () => {
-    expect(buildCsp("desktop", ["'sha256-AAA'"], null)).toBe(
-      `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AAA'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com https://gitlab.com ipc: http://ipc.localhost; ${TAIL}`,
-    );
-  });
-
-  it("builds the desktop policy with two hashes", () => {
-    expect(buildCsp("desktop", ["'sha256-AAA'", "'sha256-BBB'"], null)).toBe(
-      `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AAA' 'sha256-BBB'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com https://gitlab.com ipc: http://ipc.localhost; ${TAIL}`,
-    );
-  });
 });
 
 describe("buildCsp with an analytics endpoint", () => {
@@ -37,12 +25,6 @@ describe("buildCsp with an analytics endpoint", () => {
   it("appends the origin to the web connect-src", () => {
     expect(buildCsp("web", ["'sha256-AAA'"], endpoint)).toBe(
       `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AAA'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com https://gitlab.com https://commitnote.goatcounter.com; ${TAIL}`,
-    );
-  });
-
-  it("appends the origin after the desktop ipc sources", () => {
-    expect(buildCsp("desktop", ["'sha256-AAA'"], endpoint)).toBe(
-      `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AAA'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com https://gitlab.com ipc: http://ipc.localhost https://commitnote.goatcounter.com; ${TAIL}`,
     );
   });
 

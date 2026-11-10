@@ -83,7 +83,6 @@
     type HistoryPhase,
   } from "../history/NoteHistoryDialog.svelte";
   import type { WorkingNode } from "../../sync/working-tree";
-  import type { ArchiveDownload } from "../../export/deliver-archive";
   import { exportNotesArchive } from "../../export/export-notes-archive";
   import type {
     CollisionPolicy,
@@ -307,7 +306,6 @@
     onColorMode: (id: ColorModeId) => void;
     onNoteFont: (id: NoteFont) => void;
     onPrintNote: (note: PrintNote | null) => void;
-    download?: ArchiveDownload;
   }
 
   const {
@@ -342,7 +340,6 @@
     onColorMode,
     onNoteFont,
     onPrintNote,
-    download,
   }: Props = $props();
 
   const standalone = getStandalone();
@@ -428,7 +425,7 @@
     | { readonly kind: "deleteEntry"; readonly entry: ReadableWorkingTrashEntry }
     | { readonly kind: "empty" };
 
-  const linkBase = shareLinkBase(location, __DESKTOP_SHELL__);
+  const linkBase = shareLinkBase(location);
   let sharedLinksOpen = $state(false);
   let sharePath = $state<NotePath | null>(null);
   let sharedVersionEntry = $state<ShareEntry | null>(null);
@@ -1783,7 +1780,7 @@
     exporting = true;
     clearToast("export");
     try {
-      await exportNotesArchive(snapshot, { download, readImage });
+      await exportNotesArchive(snapshot, { readImage });
     } catch {
       showToast("export", "error", SETTINGS_EXPORT_FAILED_MESSAGE);
     } finally {

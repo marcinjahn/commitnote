@@ -53,7 +53,6 @@ function inputs(overrides: Partial<VisitInputs> = {}): VisitInputs {
   return {
     endpoint: ENDPOINT,
     page: "app",
-    desktopShell: false,
     standalone: false,
     navigator: {},
     optedOut: false,
@@ -62,13 +61,11 @@ function inputs(overrides: Partial<VisitInputs> = {}): VisitInputs {
 }
 
 describe("analyticsPlatform", () => {
-  it.each<[boolean, boolean, AnalyticsPlatform]>([
-    [false, false, "web"],
-    [false, true, "pwa"],
-    [true, false, "appimage"],
-    [true, true, "appimage"],
-  ])("desktopShell %s, standalone %s -> %s", (shell, standalone, expected) => {
-    expect(analyticsPlatform(shell, standalone)).toBe(expected);
+  it.each<[boolean, AnalyticsPlatform]>([
+    [false, "web"],
+    [true, "pwa"],
+  ])("standalone %s -> %s", (standalone, expected) => {
+    expect(analyticsPlatform(standalone)).toBe(expected);
   });
 });
 
@@ -76,10 +73,8 @@ describe("visit path and title", () => {
   it.each<[AnalyticsPage, AnalyticsPlatform, string, string]>([
     ["landing", "web", "/landing/web", "Landing (web)"],
     ["landing", "pwa", "/landing/pwa", "Landing (PWA)"],
-    ["landing", "appimage", "/landing/appimage", "Landing (AppImage)"],
     ["app", "web", "/app/web", "App (web)"],
     ["app", "pwa", "/app/pwa", "App (PWA)"],
-    ["app", "appimage", "/app/appimage", "App (AppImage)"],
   ])("%s on %s", (page, platform, path, title) => {
     expect(visitPath(page, platform)).toBe(path);
     expect(visitTitle(page, platform)).toBe(title);
@@ -98,11 +93,6 @@ describe("decideVisit", () => {
       "app pwa",
       { standalone: true },
       `${ENDPOINT}?p=%2Fapp%2Fpwa&t=App%20(PWA)`,
-    ],
-    [
-      "app appimage",
-      { desktopShell: true },
-      `${ENDPOINT}?p=%2Fapp%2Fappimage&t=App%20(AppImage)`,
     ],
   ])("builds the exact URL for %s", (_name, overrides, url) => {
     expect(decideVisit(inputs(overrides))).toEqual({ url });
@@ -173,7 +163,6 @@ describe("sendVisit", () => {
     const scheduled: (() => void)[] = [];
     const deps: SendVisitDeps = {
       endpoint: ENDPOINT,
-      desktopShell: false,
       standalone: false,
       navigator: {},
       storage: new MemoryStorage(),
@@ -204,12 +193,10 @@ describe("sendVisit", () => {
   });
 
   it("reports the platform of the page", () => {
-    const { deps, fetched, scheduled } = setup({ desktopShell: true });
+    const { deps, fetched, scheduled } = setup({ standalone: true });
     sendVisit("app", deps);
     scheduled[0]();
-    expect(fetched[0].url).toBe(
-      `${ENDPOINT}?p=%2Fapp%2Fappimage&t=App%20(AppImage)`,
-    );
+    expect(fetched[0].url).toBe(`${ENDPOINT}?p=%2Fapp%2Fpwa&t=App%20(PWA)`);
   });
 
   it.each<[string, () => Partial<SendVisitDeps>]>([

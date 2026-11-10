@@ -69,7 +69,6 @@ initAnalyticsOptOut();
 
 sendVisit("landing", {
   endpoint: __ANALYTICS_ENDPOINT__,
-  desktopShell: false,
   standalone: false,
   navigator,
   fetch: (url, init) => fetch(url, init),

@@ -1079,6 +1079,28 @@ fn activate_share_action(
     SharedLinksDialog::testing_activate(dialog, &share.id, action)
 }
 
+/// Shares the open note and opens its shared version page from Shared Links, once the share
+/// dialog has closed; returns the Shared Links dialog, which hosts the page.
+pub(crate) fn view_shared_version(h: &Harness) -> Result<adw::Dialog, String> {
+    let target = h.model()?.open_note_path().ok_or("no note is open")?;
+    open_share_dialog(h)?;
+    h.click("share-create")?;
+    h.wait_shown("share-result")?;
+    h.press_keys("Escape")?;
+    h.wait("the share dialog to close", || !h.shown(SHARE_DIALOG))?;
+
+    let [share] = wait_shares(h, &target, 1)?
+        .try_into()
+        .map_err(|_| "one share expected")?;
+    let dialog = open_shared_links(h)?;
+    h.wait("the share row", || {
+        h.widget(&format!("share-row-{}", share.id)).is_ok()
+    })?;
+    activate_share_action(&dialog, &share, ShareActionId::View)?;
+    h.wait_shown("shared-version-text")?;
+    Ok(dialog)
+}
+
 fn clipboard_text(h: &Harness) -> Result<String, String> {
     let clipboard = WidgetExt::display(&h.window()?).clipboard();
     h.run("the clipboard text", async move {
@@ -1230,21 +1252,7 @@ fn share_flushes_edits(h: &mut Harness) -> Result<(), String> {
         editor.text().contains(TYPED)
     })?;
 
-    open_share_dialog(h)?;
-    h.click("share-create")?;
-    h.wait_shown("share-result")?;
-    h.press_keys("Escape")?;
-    h.wait("the share dialog to close", || !h.shown(SHARE_DIALOG))?;
-
-    let [share] = wait_shares(h, &path(WELCOME), 1)?
-        .try_into()
-        .map_err(|_| "one share expected")?;
-    let dialog = open_shared_links(h)?;
-    h.wait("the share row", || {
-        h.widget(&format!("share-row-{}", share.id)).is_ok()
-    })?;
-    activate_share_action(&dialog, &share, ShareActionId::View)?;
-    h.wait_shown("shared-version-text")?;
+    view_shared_version(h)?;
     h.wait("the shared version to hold the typed text", || {
         h.text_view_text("shared-version-text")
             .is_ok_and(|text| text.contains(TYPED))
@@ -1253,21 +1261,7 @@ fn share_flushes_edits(h: &mut Harness) -> Result<(), String> {
 
 fn shared_version_note_font(h: &mut Harness) -> Result<(), String> {
     open_welcome(h)?;
-    open_share_dialog(h)?;
-    h.click("share-create")?;
-    h.wait_shown("share-result")?;
-    h.press_keys("Escape")?;
-    h.wait("the share dialog to close", || !h.shown(SHARE_DIALOG))?;
-
-    let [share] = wait_shares(h, &path(WELCOME), 1)?
-        .try_into()
-        .map_err(|_| "one share expected")?;
-    let dialog = open_shared_links(h)?;
-    h.wait("the share row", || {
-        h.widget(&format!("share-row-{}", share.id)).is_ok()
-    })?;
-    activate_share_action(&dialog, &share, ShareActionId::View)?;
-    h.wait_shown("shared-version-text")?;
+    view_shared_version(h)?;
     let text = h.widget("shared-version-text")?;
     ensure(text.has_css_class("note-font-inter"), || {
         "the shared version is not in the default note font".to_owned()

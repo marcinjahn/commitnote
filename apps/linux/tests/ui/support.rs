@@ -1,4 +1,5 @@
 use std::cell::{Cell, OnceCell, RefCell};
+use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -10,6 +11,7 @@ use commitnote::launch;
 use commitnote::model::appearance::{AccentColor, AppearanceApplier};
 use commitnote::model::{AppConfig, AppModel, Appearance, ColorMode, Route};
 use commitnote::window::CommitnoteWindow;
+use commitnote_core_api::settings::SettingsCopy;
 use commitnote_core_runtime::services::RememberedSessionStore;
 use commitnote_core_runtime::services::remembered_session::open_remembered_session_store;
 use gtk4::glib::translate::{IntoGlib, ToGlibPtr};
@@ -29,7 +31,9 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 const WAKE_INTERVAL: Duration = Duration::from_millis(50);
 const REFRESH_GAP: Duration = Duration::from_millis(500);
 const BUNDLE_RESOURCE: &str = "core/commitnote-core.js";
-const SESSION_ACCENT: &str = "violet";
+pub const SESSION_ACCENT: &str = "violet";
+const HIGH_CONTRAST_SCHEMA: &str = "org.gnome.desktop.a11y.interface";
+const HIGH_CONTRAST_KEY: &str = "high-contrast";
 const DEVICE_MODEL: &str = "Linux";
 const REMOTE_DESKTOP: &str = "org.gnome.Mutter.RemoteDesktop";
 const REMOTE_DESKTOP_PATH: &str = "/org/gnome/Mutter/RemoteDesktop";
@@ -52,7 +56,7 @@ pub enum Width {
 }
 
 impl Width {
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Self::Narrow => "narrow",
             Self::Wide => "wide",
@@ -74,7 +78,7 @@ pub enum Theme {
 }
 
 impl Theme {
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Self::Light => "light",
             Self::Dark => "dark",
@@ -733,6 +737,25 @@ impl Harness {
         Ok(self.keyboard.get().expect("the keyboard was just started"))
     }
 
+    /// Makes the harness window active, as it becomes once the real keyboard exists, so that its
+    /// focused widget draws its caret.
+    pub fn activate_window(&self) -> Result<(), String> {
+        self.keyboard()?;
+        self.wait_active()
+    }
+
+    /// Runs `run` with the text caret drawn steadily instead of blinking, so that every capture
+    /// shows it, then lets it blink again as before.
+    pub fn with_steady_caret(
+        &self,
+        run: impl FnOnce(&Self) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let settings = gtk::Settings::default().ok_or("there are no GTK settings")?;
+        let blink = settings.is_gtk_cursor_blink();
+        settings.set_gtk_cursor_blink(false);
+        restoring(|| settings.set_gtk_cursor_blink(blink), || run(self))
+    }
+
     fn wait_active(&self) -> Result<(), String> {
         let window = self.window()?;
         self.wait("the window to be active", || window.is_active())
@@ -825,18 +848,47 @@ impl Harness {
     /// The session accent as the core's settings define it, which is only loaded while a session
     /// is open.
     pub fn session_accent(&self) -> Result<AccentColor, String> {
-        let model = self.model()?;
-        self.wait("the settings copy", || model.settings_copy().is_some())?;
-        let copy = model.settings_copy().ok_or("the settings copy vanished")?;
-        copy.accent_color
+        self.accent(SESSION_ACCENT)?
+            .ok_or_else(|| format!("the {SESSION_ACCENT} accent is the system accent"))
+    }
+
+    /// The accent with this id as the core's settings define it, or `None` for the system accent,
+    /// which carries no colours of its own.
+    pub fn accent(&self, id: &str) -> Result<Option<AccentColor>, String> {
+        if id == "system" {
+            return Ok(None);
+        }
+        self.settings_copy()?
+            .accent_color
             .options
             .iter()
-            .find(|option| option.id == SESSION_ACCENT)
-            .map(|option| AccentColor {
-                light: option.light.clone(),
-                dark: option.dark.clone(),
+            .find(|option| option.id == id)
+            .map(|option| {
+                Some(AccentColor {
+                    light: option.light.clone(),
+                    dark: option.dark.clone(),
+                })
             })
-            .ok_or_else(|| format!("the core offers no {SESSION_ACCENT} accent"))
+            .ok_or_else(|| format!("the core offers no {id} accent"))
+    }
+
+    /// The ids of every accent the core offers, `system` included.
+    pub fn accent_ids(&self) -> Result<Vec<String>, String> {
+        Ok(self
+            .settings_copy()?
+            .accent_color
+            .options
+            .iter()
+            .map(|option| option.id.clone())
+            .collect())
+    }
+
+    fn settings_copy(&self) -> Result<Rc<SettingsCopy>, String> {
+        let model = self.model()?;
+        self.wait("the settings copy", || model.settings_copy().is_some())?;
+        model
+            .settings_copy()
+            .ok_or_else(|| "the settings copy vanished".to_owned())
     }
 
     fn pre_session_screenshots(
@@ -878,14 +930,36 @@ impl Harness {
     /// Sizes the window and applies the scheme and session accent, so that a later
     /// [`Self::capture_variant`] shows a state that must not change in between.
     pub fn show_variant(&self, width: Width, theme: Theme) -> Result<(), String> {
+        self.show_appearance(width, theme, SESSION_ACCENT)
+    }
+
+    /// Like [`Self::show_variant`], with any accent the core offers, or `system`.
+    pub fn show_appearance(&self, width: Width, theme: Theme, accent: &str) -> Result<(), String> {
         self.resize(width)?;
-        self.apply_session_appearance(theme)?;
+        self.apply_appearance(theme, accent)?;
         self.settle()
     }
 
     pub fn capture_variant(&self, view: &str, width: Width, theme: Theme) -> Result<(), String> {
+        self.capture_in_accent(view, width, theme, SESSION_ACCENT)
+            .map(|_| ())
+    }
+
+    /// Saves the window as the screenshot for this accent and returns what was rendered.
+    pub fn capture_in_accent(
+        &self,
+        view: &str,
+        width: Width,
+        theme: Theme,
+        accent: &str,
+    ) -> Result<gdk::Texture, String> {
         self.settle()?;
-        self.capture(view, width, theme, SESSION_ACCENT)
+        let texture = self.render_texture(None)?;
+        let path = self.screenshot_path(view, width, theme, accent);
+        texture
+            .save_to_png(&path)
+            .map_err(|error| format!("cannot save {}: {error}", path.display()))?;
+        Ok(texture)
     }
 
     /// Like [`Self::capture_variant`], with an open popover painted over the window, which the
@@ -898,13 +972,10 @@ impl Harness {
         popover: &gtk::Popover,
     ) -> Result<(), String> {
         self.settle()?;
-        let file = format!(
-            "{}-{view}-{}-{}-{SESSION_ACCENT}.png",
-            self.prefix.get(),
-            width.name(),
-            theme.name()
-        );
-        self.render_over(&self.screenshot_dir.join(file), Some(popover))
+        self.render_over(
+            &self.screenshot_path(view, width, theme, SESSION_ACCENT),
+            Some(popover),
+        )
     }
 
     /// Changes a setting through the core, as a change from another device would.
@@ -918,34 +989,33 @@ impl Harness {
             .map_err(|error| format!("cannot change {key}: {}", error.message))
     }
 
-    fn apply_session_appearance(&self, theme: Theme) -> Result<(), String> {
+    fn apply_appearance(&self, theme: Theme, accent: &str) -> Result<(), String> {
         let model = self.model()?;
-        for (key, value) in [("colorMode", theme.name()), ("accentColor", SESSION_ACCENT)] {
+        for (key, value) in [("colorMode", theme.name()), ("accentColor", accent)] {
             self.change_setting(key, value)?;
         }
+        let expected = Appearance {
+            color_mode: theme.color_mode(),
+            accent: self.accent(accent)?,
+        };
         let style_manager = adw::StyleManager::default();
         self.wait(
-            &format!(
-                "the {} scheme with the {SESSION_ACCENT} accent",
-                theme.name()
-            ),
-            || {
-                let appearance = model.appearance();
-                appearance.color_mode == theme.color_mode()
-                    && appearance.accent.is_some()
-                    && style_manager.is_dark() == theme.is_dark()
-            },
+            &format!("the {} scheme with the {accent} accent", theme.name()),
+            || model.appearance() == expected && style_manager.is_dark() == theme.is_dark(),
         )
     }
 
-    fn capture(&self, view: &str, width: Width, theme: Theme, accent: &str) -> Result<(), String> {
-        let file = format!(
+    fn screenshot_path(&self, view: &str, width: Width, theme: Theme, accent: &str) -> PathBuf {
+        self.screenshot_dir.join(format!(
             "{}-{view}-{}-{}-{accent}.png",
             self.prefix.get(),
             width.name(),
             theme.name()
-        );
-        self.render(&self.screenshot_dir.join(file))
+        ))
+    }
+
+    fn capture(&self, view: &str, width: Width, theme: Theme, accent: &str) -> Result<(), String> {
+        self.render(&self.screenshot_path(view, width, theme, accent))
     }
 
     pub fn save_failure(&self) {
@@ -965,6 +1035,13 @@ impl Harness {
     }
 
     fn render_over(&self, path: &Path, popover: Option<&gtk::Popover>) -> Result<(), String> {
+        self.render_texture(popover)?
+            .save_to_png(path)
+            .map_err(|error| format!("cannot save {}: {error}", path.display()))
+    }
+
+    /// Renders the window, with an open popover painted over it when given.
+    pub fn render_texture(&self, popover: Option<&gtk::Popover>) -> Result<gdk::Texture, String> {
         let window = self.window()?;
         let (width, height) = (window.width(), window.height());
         let paintable = gtk::WidgetPaintable::new(Some(&window));
@@ -988,11 +1065,144 @@ impl Harness {
             .renderer()
             .ok_or_else(|| "the window has no renderer".to_owned())?;
         let viewport = graphene::Rect::new(0.0, 0.0, width as f32, height as f32);
-        renderer
-            .render_texture(&node, Some(&viewport))
-            .save_to_png(path)
-            .map_err(|error| format!("cannot save {}: {error}", path.display()))
+        Ok(renderer.render_texture(&node, Some(&viewport)))
     }
+
+    /// Turns high contrast on or off through GSettings, which libadwaita follows when no portal
+    /// is in use.
+    pub fn set_high_contrast(&self, on: bool) -> Result<(), String> {
+        high_contrast_settings()?
+            .set_boolean(HIGH_CONTRAST_KEY, on)
+            .map_err(|error| format!("cannot set {HIGH_CONTRAST_KEY}: {error}"))?;
+        let style_manager = adw::StyleManager::default();
+        self.wait(
+            &format!(
+                "libadwaita to {} high contrast",
+                if on { "report" } else { "stop reporting" }
+            ),
+            || style_manager.is_high_contrast() == on,
+        )
+        .map_err(|error| {
+            format!(
+                "{error}; libadwaita does not follow {HIGH_CONTRAST_SCHEMA} \
+                 {HIGH_CONTRAST_KEY} in this environment"
+            )
+        })
+    }
+
+    /// Runs `run`, then puts high contrast back as it was, reporting `run`'s own error first.
+    pub fn restoring_high_contrast(
+        &self,
+        run: impl FnOnce(&Self) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let settings = high_contrast_settings()?;
+        let original = settings.boolean(HIGH_CONTRAST_KEY);
+        let result = restoring(
+            || {
+                let _ = settings.set_boolean(HIGH_CONTRAST_KEY, original);
+            },
+            || run(self),
+        );
+        let style_manager = adw::StyleManager::default();
+        let restored = self.wait("high contrast to be restored", || {
+            style_manager.is_high_contrast() == original
+        });
+        result.and(restored)
+    }
+}
+
+pub fn restoring(
+    restore: impl FnOnce(),
+    run: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let result = run();
+    restore();
+    result
+}
+
+fn high_contrast_settings() -> Result<gio::Settings, String> {
+    let source =
+        gio::SettingsSchemaSource::default().ok_or("there is no GSettings schema source")?;
+    if source.lookup(HIGH_CONTRAST_SCHEMA, true).is_none() {
+        return Err(format!(
+            "the {HIGH_CONTRAST_SCHEMA} schema is not installed"
+        ));
+    }
+    Ok(gio::Settings::new(HIGH_CONTRAST_SCHEMA))
+}
+
+/// A window render read back as RGBA, addressed in the window's logical coordinates, as
+/// `compute_bounds` against the window gives them.
+pub struct WindowPixels {
+    bytes: glib::Bytes,
+    stride: usize,
+    width: usize,
+    height: usize,
+    scale_x: f32,
+    scale_y: f32,
+}
+
+impl WindowPixels {
+    pub fn new(texture: &gdk::Texture, window: &impl IsA<gtk::Widget>) -> Result<Self, String> {
+        let (window_width, window_height) = (window.width(), window.height());
+        if window_width <= 0 || window_height <= 0 {
+            return Err("the window has no size".to_owned());
+        }
+        let mut downloader = gdk::TextureDownloader::new(texture);
+        downloader.set_format(gdk::MemoryFormat::R8g8b8a8);
+        let (bytes, stride) = downloader.download_bytes();
+        Ok(Self {
+            bytes,
+            stride,
+            width: usize::try_from(texture.width()).unwrap_or_default(),
+            height: usize::try_from(texture.height()).unwrap_or_default(),
+            scale_x: texture.width() as f32 / window_width as f32,
+            scale_y: texture.height() as f32 / window_height as f32,
+        })
+    }
+
+    /// The most frequent color among the pixels wholly inside `area`, clipped to the render.
+    pub fn dominant(&self, area: &graphene::Rect) -> Result<[u8; 4], String> {
+        let columns = Self::span(area.x(), area.width(), self.scale_x, self.width);
+        let rows = Self::span(area.y(), area.height(), self.scale_y, self.height);
+        let mut counts = HashMap::<[u8; 4], usize>::new();
+        for y in rows {
+            for x in columns.clone() {
+                *counts.entry(self.pixel(x, y)).or_default() += 1;
+            }
+        }
+        counts
+            .into_iter()
+            .max_by_key(|&(rgba, count)| (count, rgba))
+            .map(|(rgba, _)| rgba)
+            .ok_or_else(|| format!("{area:?} covers no pixel of the render"))
+    }
+
+    pub fn at(&self, point: &graphene::Point) -> Result<[u8; 4], String> {
+        let x = (point.x() * self.scale_x).floor();
+        let y = (point.y() * self.scale_y).floor();
+        if x < 0.0 || y < 0.0 || x >= self.width as f32 || y >= self.height as f32 {
+            return Err(format!("{point:?} is outside the render"));
+        }
+        Ok(self.pixel(x as usize, y as usize))
+    }
+
+    fn span(start: f32, length: f32, scale: f32, limit: usize) -> std::ops::Range<usize> {
+        let first = (start * scale).ceil().clamp(0.0, limit as f32) as usize;
+        let end = ((start + length) * scale).floor().clamp(0.0, limit as f32) as usize;
+        first..end.max(first)
+    }
+
+    fn pixel(&self, x: usize, y: usize) -> [u8; 4] {
+        let offset = y * self.stride + x * 4;
+        let mut rgba = [0; 4];
+        rgba.copy_from_slice(&self.bytes[offset..offset + 4]);
+        rgba
+    }
+}
+
+pub fn hex([red, green, blue, alpha]: [u8; 4]) -> String {
+    format!("#{red:02x}{green:02x}{blue:02x}{alpha:02x}")
 }
 
 /// A virtual keyboard from a mutter remote desktop session; the session lives as long as the

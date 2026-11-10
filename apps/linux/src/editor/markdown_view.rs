@@ -25,8 +25,6 @@ use crate::fonts::NoteFont;
 use crate::{accent, links};
 
 const MARGIN: i32 = 12;
-const LIGHT_SCHEME: &str = "Adwaita";
-const DARK_SCHEME: &str = "Adwaita-dark";
 
 /// A parsed text version together with the offset index that maps its UTF-16 ranges to
 /// buffer characters.
@@ -123,8 +121,11 @@ mod imp {
             view.set_bottom_margin(MARGIN);
             view.set_show_line_numbers(false);
             view.set_highlight_current_line(false);
+            view.add_css_class("inline");
 
             let buffer = sourceview5::Buffer::new(None);
+            // A new buffer starts with a default scheme that paints its own background and text color.
+            buffer.set_style_scheme(None);
             buffer.set_enable_undo(false);
             buffer.set_highlight_syntax(false);
             buffer.set_highlight_matching_brackets(false);
@@ -163,7 +164,6 @@ mod imp {
                 let view = view.downgrade();
                 move |_| {
                     if let Some(view) = view.upgrade() {
-                        view.update_scheme();
                         view.queue_palette();
                     }
                 }
@@ -186,7 +186,6 @@ mod imp {
             });
             self.style_handlers
                 .replace(vec![dark, accent, high_contrast]);
-            view.update_scheme();
 
             let click = gtk::GestureClick::new();
             click.set_button(gtk::gdk::BUTTON_PRIMARY);
@@ -902,16 +901,6 @@ impl MarkdownView {
             .overlay_style
             .get()
             .is_some_and(|style| style.line_height != self.line_height())
-    }
-
-    fn update_scheme(&self) {
-        let id = if adw::StyleManager::default().is_dark() {
-            DARK_SCHEME
-        } else {
-            LIGHT_SCHEME
-        };
-        let scheme = sourceview5::StyleSchemeManager::default().scheme(id);
-        self.source_buffer().set_style_scheme(scheme.as_ref());
     }
 
     fn current_palette(&self) -> Palette {

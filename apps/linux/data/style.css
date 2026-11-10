@@ -161,7 +161,6 @@ toggle-group.scope-toggles {
 
 .font-preview {
   border-radius: 6px;
-  background-color: var(--view-bg-color);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 15%, transparent);
 }
 

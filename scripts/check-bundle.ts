@@ -14,7 +14,6 @@ import {
   LINUX_VISIT_NEEDLES,
   NATIVE_CORE_NEEDLES,
   PROD_LEAK_NEEDLES,
-  TAURI_NEEDLES,
 } from "./bundle-needles";
 import { buildCsp, inlineScriptHashes, type CspTarget } from "./csp";
 import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree-source";
@@ -321,7 +320,6 @@ function fail(message: string): void {
 async function main(): Promise<void> {
   const distDir = join(rootDir, "dist");
   const fakeDistDir = join(rootDir, "dist-fake");
-  const desktopDistDir = join(rootDir, "dist-desktop");
 
   const forbiddenInProd = await findForbidden(distDir, PROD_LEAK_NEEDLES);
   if (forbiddenInProd.length > 0) {
@@ -434,24 +432,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const tauriInWeb = await findForbidden(distDir, TAURI_NEEDLES);
-  if (tauriInWeb.length > 0) {
-    for (const hit of tauriInWeb) {
-      console.error(
-        `dist/ ships desktop shell code: "${hit.needle}" found in ${hit.file}`,
-      );
-    }
-    process.exitCode = 1;
-    return;
-  }
-
   for (const [platform, needles] of [
     ["Linux", LINUX_VISIT_NEEDLES],
   ] as const) {
     const visitInWeb = [
       ...(await findForbidden(distDir, needles)),
       ...(await findForbidden(fakeDistDir, needles)),
-      ...(await findForbidden(desktopDistDir, needles)),
     ];
     if (visitInWeb.length > 0) {
       for (const hit of visitInWeb) {
@@ -467,7 +453,6 @@ async function main(): Promise<void> {
   const nativeCoreInWeb = [
     ...(await findForbidden(distDir, NATIVE_CORE_NEEDLES)),
     ...(await findForbidden(fakeDistDir, NATIVE_CORE_NEEDLES)),
-    ...(await findForbidden(desktopDistDir, NATIVE_CORE_NEEDLES)),
   ];
   if (nativeCoreInWeb.length > 0) {
     for (const hit of nativeCoreInWeb) {
@@ -479,63 +464,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  const forbiddenInDesktop = await findForbidden(desktopDistDir, PROD_LEAK_NEEDLES);
-  if (forbiddenInDesktop.length > 0) {
-    for (const hit of forbiddenInDesktop) {
-      console.error(
-        `dist-desktop/ leaks fake forge fixture data: "${hit.needle}" found in ${hit.file}`,
-      );
-    }
-    process.exitCode = 1;
-    return;
-  }
-
-  const tauriInDesktop = new Set(
-    (await findForbidden(desktopDistDir, TAURI_NEEDLES)).map((hit) => hit.needle),
-  );
-  const missingTauri = TAURI_NEEDLES.filter((needle) => !tauriInDesktop.has(needle));
-  if (missingTauri.length > 0) {
-    console.error(
-      `dist-desktop/ does not contain ${missingTauri.map((needle) => `"${needle}"`).join(", ")}; the check cannot prove it can detect a Tauri leak`,
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  for (const landingOnly of ["app", "social.png"]) {
-    if (await exists(join(desktopDistDir, landingOnly))) {
-      console.error(
-        `dist-desktop/${landingOnly} exists; the desktop build is app-only and must not ship the landing page or an app path`,
-      );
-      process.exitCode = 1;
-      return;
-    }
-  }
-
-  if (await exists(join(desktopDistDir, "sw.js"))) {
-    console.error(
-      "dist-desktop/sw.js exists; the desktop build must not ship a service worker",
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  const desktopCspProblems = await findExactCspProblems(
-    join(desktopDistDir, "index.html"),
-    "dist-desktop",
-    "desktop",
-    "desktop",
-  );
-  if (desktopCspProblems.length > 0) {
-    fail(desktopCspProblems.join("\n"));
-    return;
-  }
-
   if (buildModeFacts("production").analyticsEndpoint === null) {
-    const goatCounterHits = [
-      ...(await findForbidden(distDir, [GOATCOUNTER_ENDPOINT_NEEDLE])),
-      ...(await findForbidden(desktopDistDir, [GOATCOUNTER_ENDPOINT_NEEDLE])),
-    ];
+    const goatCounterHits = await findForbidden(distDir, [
+      GOATCOUNTER_ENDPOINT_NEEDLE,
+    ]);
     if (goatCounterHits.length > 0) {
       for (const hit of goatCounterHits) {
         console.error(
@@ -548,7 +480,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `Bundle check passed: production build never ships fake forge fixtures or desktop shell code, no web build contains the native core, and serves the landing page at the root and the app under app/ with a complete web app manifest and service worker (${serviceWorkers.join("; ")}); landing html, css and js total ${budget.textBytes} of ${LANDING_TEXT_BUDGET_BYTES} bytes; desktop build ships the desktop shell but no fake forge fixtures or service worker, and its CSP matches the expected policy.`,
+    `Bundle check passed: production build never ships fake forge fixtures, no web build contains the native core, and serves the landing page at the root and the app under app/ with a complete web app manifest and service worker (${serviceWorkers.join("; ")}); landing html, css and js total ${budget.textBytes} of ${LANDING_TEXT_BUDGET_BYTES} bytes.`,
   );
 }
 

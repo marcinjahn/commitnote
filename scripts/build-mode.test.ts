@@ -7,18 +7,15 @@ import {
 
 describe("buildModeFacts", () => {
   it.each([
-    ["production", false, false, null],
-    ["fake-forge", false, true, FAKE_ANALYTICS_ENDPOINT],
-    ["desktop", true, false, null],
-    ["desktop-fake", true, true, FAKE_ANALYTICS_ENDPOINT],
-    ["native-core", false, false, null],
-    ["native-core-fake", false, true, FAKE_ANALYTICS_ENDPOINT],
-    ["development", false, false, null],
-    ["test", false, false, null],
-    ["something-else", false, false, null],
-  ])("maps %s", (mode, desktopShell, fakeForge, analyticsEndpoint) => {
+    ["production", false, null],
+    ["fake-forge", true, FAKE_ANALYTICS_ENDPOINT],
+    ["native-core", false, null],
+    ["native-core-fake", true, FAKE_ANALYTICS_ENDPOINT],
+    ["development", false, null],
+    ["test", false, null],
+    ["something-else", false, null],
+  ])("maps %s", (mode, fakeForge, analyticsEndpoint) => {
     expect(buildModeFacts(mode, null)).toEqual({
-      desktopShell,
       fakeForge,
       analyticsEndpoint,
     });
@@ -26,9 +23,7 @@ describe("buildModeFacts", () => {
 
   it.each([
     ["production", "https://commitnote.goatcounter.com/count"],
-    ["desktop", "https://commitnote.goatcounter.com/count"],
     ["fake-forge", FAKE_ANALYTICS_ENDPOINT],
-    ["desktop-fake", FAKE_ANALYTICS_ENDPOINT],
     ["native-core", "https://commitnote.goatcounter.com/count"],
     ["native-core-fake", FAKE_ANALYTICS_ENDPOINT],
     ["development", null],

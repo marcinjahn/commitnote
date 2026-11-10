@@ -16,10 +16,3 @@ export function isStandalone(env: DisplayModeEnvironment): boolean {
     (mode) => env.matchMedia(`(display-mode: ${mode})`).matches,
   );
 }
-
-export function resolveStandalone(
-  desktopShell: boolean,
-  environment: DisplayModeEnvironment,
-): boolean {
-  return desktopShell || isStandalone(environment);
-}

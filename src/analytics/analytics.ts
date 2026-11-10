@@ -1,5 +1,5 @@
 export type AnalyticsPage = "landing" | "app";
-export type AnalyticsPlatform = "web" | "pwa" | "appimage";
+export type AnalyticsPlatform = "web" | "pwa";
 
 export const ANALYTICS_OPT_OUT_KEY = "commitnote.analyticsOptOut";
 
@@ -17,7 +17,6 @@ export interface AnalyticsNavigator {
 export interface VisitInputs {
   readonly endpoint: string | null;
   readonly page: AnalyticsPage;
-  readonly desktopShell: boolean;
   readonly standalone: boolean;
   readonly navigator: AnalyticsNavigator;
   readonly optedOut: boolean;
@@ -26,14 +25,9 @@ export interface VisitInputs {
 const PLATFORM_LABELS: Record<AnalyticsPlatform, string> = {
   web: "web",
   pwa: "PWA",
-  appimage: "AppImage",
 };
 
-export function analyticsPlatform(
-  desktopShell: boolean,
-  standalone: boolean,
-): AnalyticsPlatform {
-  if (desktopShell) return "appimage";
+export function analyticsPlatform(standalone: boolean): AnalyticsPlatform {
   return standalone ? "pwa" : "web";
 }
 
@@ -75,7 +69,7 @@ export function decideVisit(
   ) {
     return null;
   }
-  const platform = analyticsPlatform(inputs.desktopShell, inputs.standalone);
+  const platform = analyticsPlatform(inputs.standalone);
   const path = visitPath(inputs.page, platform);
   const title = visitTitle(inputs.page, platform);
   return { url: visitUrl(inputs.endpoint, path, title) };
@@ -120,7 +114,6 @@ export function writeAnalyticsOptOut(
 
 export interface SendVisitDeps {
   readonly endpoint: string | null;
-  readonly desktopShell: boolean;
   readonly standalone: boolean;
   readonly navigator: AnalyticsNavigator;
   readonly fetch: (url: string, init: RequestInit) => Promise<unknown>;
@@ -141,7 +134,6 @@ export function sendVisit(page: AnalyticsPage, deps: SendVisitDeps): void {
     const visit = decideVisit({
       endpoint: deps.endpoint,
       page,
-      desktopShell: deps.desktopShell,
       standalone: deps.standalone,
       navigator: deps.navigator,
       optedOut: readAnalyticsOptOut(deps.storage),
