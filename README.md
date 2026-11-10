@@ -14,8 +14,7 @@ server. The only other request is an optional anonymous visit count (see
 [Privacy and analytics](#privacy-and-analytics)).
 
 [commitnote.eu](https://commitnote.eu) is the landing page; the app is at
-[commitnote.eu/app](https://commitnote.eu/app/). A Linux desktop build is available as an
-[AppImage download](https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.AppImage) (see [Desktop app](#desktop-app-linux-appimage)).
+[commitnote.eu/app](https://commitnote.eu/app/).
 
 ## Prerequisites
 
@@ -68,28 +67,6 @@ through a LAN IP address over plain HTTP does not work.
 - `build:desktop` — build only the web assets of the desktop app into `dist-desktop/`
 - `build:desktop-fake` — build the same in test mode (fake forge) into `dist-desktop-fake/`, for the
   local desktop-fake AppImage only (never published)
-- `appimage` — build the Linux AppImage in Docker (see below)
-- `tauri` — run the Tauri CLI
-
-### Build the AppImage locally
-
-Needs `docker`. The build runs in an Ubuntu 22.04 builder image (created on first use), the same
-base as the release workflow:
-
-```
-npm run appimage
-npm run appimage -- --mode desktop-fake
-```
-
-The first writes `dist-appimage/desktop/` (the AppImage, its `.zsync` file and `SHA256SUMS`). The
-second builds a fake-forge AppImage for local testing; it is never published. Cargo, npm and tool
-caches live in `~/.cache/commitnote-appimage`; set `COMMITNOTE_APPIMAGE_CACHE_DIR` to move them.
-
-`scripts/appimage/xvfb-smoke.sh` is a smoke test that starts a `desktop-fake` AppImage under Xvfb:
-
-```
-sh scripts/appimage/docker-run.sh bash scripts/appimage/xvfb-smoke.sh dist-appimage/desktop-fake/commitnote-x86_64.AppImage
-```
 
 ## Landing page
 
@@ -154,8 +131,7 @@ The dev server and unit tests always have no endpoint. Fake-forge builds use
    **Referrer**, **Size** and **Region** off; leave **Individual pageviews** and **Language** off. Save.
 3. Set `GOATCOUNTER_SITE_CODE` in `analytics.config.ts` to the site code, commit and push to `main`. The
    GoatCounter origin is then added to `connect-src` of the landing, web and desktop CSPs.
-4. "Deploy to GitHub Pages" enables the landing page and web app; the next "Desktop release" enables the
-   AppImage (older AppImages keep sending nothing).
+4. "Deploy to GitHub Pages" enables the landing page and web app.
 5. Verify: open `https://commitnote.eu/` with DevTools > Network and confirm exactly one
    `count?p=%2Flanding%2Fweb…` request to `<code>.goatcounter.com`, without `Referer` or `Cookie` headers.
 
@@ -165,13 +141,6 @@ Every push to `main` runs `.github/workflows/pages.yml`: type-check, unit tests,
 a publish of `dist/` to GitHub Pages. In the repository settings, set Pages > Source to "GitHub
 Actions" once. `dist/` is the whole site: the landing page at the root (with `social.png`) and the app in `dist/app/`, served at `https://commitnote.eu/app/`. The
 build uses relative asset paths. Desktop builds stay app-only: `dist-desktop/` has no landing page.
-
-Every push to `main` also runs `.github/workflows/desktop-release.yml`, separate from `pages.yml`:
-type-check and unit tests, the AppImage build in `ubuntu:22.04`, a build-provenance attestation, and a
-GitHub release `v0.1.<N>` (N is the commit count of `main`) titled `commitnote 0.1.<N>` and marked
-Latest. Its assets are `commitnote-x86_64.AppImage`, `commitnote-x86_64.AppImage.zsync` and
-`SHA256SUMS`. Only the 10 newest desktop releases are kept; older ones are deleted together with
-their tags. Manual runs only build and publish from `main`.
 
 ## End-to-end tests
 
@@ -385,42 +354,6 @@ Security Policy applied via a `<meta>` tag; its `connect-src` allows `https://ap
 - On iPhone and iPad the installed app keeps its own storage, separate from Safari, so you log in
   again there. On Android and desktop, the installed app shares storage with the browser it was
   installed from, so logging in or out in one also applies to the other.
-
-### Desktop app (Linux AppImage)
-
-Download the latest build:
-[commitnote-x86_64.AppImage](https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.AppImage).
-Linux x86_64 only.
-
-```
-chmod +x commitnote-x86_64.AppImage
-./commitnote-x86_64.AppImage
-```
-
-- **Requirements:** no `libfuse2` is needed (static runtime) and WebKitGTK is bundled. The AppImage
-  is built on Ubuntu 22.04 (glibc 2.35), so it runs on Ubuntu 22.04+, Debian 12+, Fedora 36+ and
-  current Arch and openSUSE.
-- **Updating:** the AppImage embeds zsync update information
-  (`gh-releases-zsync|marcinjahn|commitnote|latest|commitnote-x86_64.AppImage.zsync`), so
-  AppImageUpdate, Gear Lever or AppImageLauncher update it in place with a delta download. There is
-  no in-app updater and no service worker in the desktop app.
-- **Verifying:** download `SHA256SUMS` from the same release and run
-  `sha256sum -c SHA256SUMS`. The AppImage also has a GitHub build-provenance attestation:
-  `gh attestation verify commitnote-x86_64.AppImage --repo marcinjahn/commitnote`. There is no GPG
-  signature.
-- **Differences from the web app:** a native window with the system title bar. It counts as the
-  installed app: no Remember me option (the login is kept until **Log out**), and there is no
-  install bar or **Install app** command. Export opens a native save dialog, links open in the
-  default browser, and share links point at `https://commitnote.eu/app/`. Page zoom is disabled.
-  Closing the window with unsaved edits saves first, and asks before quitting if saving fails.
-  Starting the app again focuses the running window. The app menu offers **New note** and
-  **Search notes** (`commitnote --action new-note` or `--action search`).
-- **Blank window:** `WEBKIT_DISABLE_DMABUF_RENDERER=1` is set unless you set it yourself; it works
-  around a blank window on NVIDIA and some Wayland setups.
-- **Data:** `~/.local/share/io.github.marcinjahn.commitnote/` (user-only). The access token and
-  the non-extractable keys derived from your passphrase live in IndexedDB there, the same model as
-  the installed web app. The passphrase is never stored and the OS keyring is not used. Log out
-  deletes the stored record.
 
 ### What is cached
 

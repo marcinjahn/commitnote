@@ -4,8 +4,6 @@ import { expectNoA11yViolations } from "./helpers/a11y";
 
 const HEADING = "Encrypted markdown notes in your own git repository.";
 const REPOSITORY = "https://github.com/marcinjahn/commitnote";
-const APPIMAGE =
-  "https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.AppImage";
 
 async function openLanding(page: Page): Promise<void> {
   await page.goto("/");
@@ -38,9 +36,6 @@ test("the landing page renders its content and calls to action", async ({
   for (const href of await hrefs(openApp)) {
     expect(new URL(href, page.url()).pathname).toBe("/app/");
   }
-  expect(
-    await hrefs(page.getByRole("link", { name: "Download for Linux" })),
-  ).toEqual([APPIMAGE, APPIMAGE]);
   const github = await hrefs(page.getByRole("link", { name: /GitHub/ }));
   expect(github.length).toBeGreaterThanOrEqual(1);
   expect(new Set(github)).toEqual(new Set([REPOSITORY]));
