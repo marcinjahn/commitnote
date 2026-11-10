@@ -1,4 +1,5 @@
 use std::cell::{Cell, OnceCell, RefCell};
+use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -10,6 +11,7 @@ use commitnote::launch;
 use commitnote::model::appearance::{AccentColor, AppearanceApplier};
 use commitnote::model::{AppConfig, AppModel, Appearance, ColorMode, Route};
 use commitnote::window::CommitnoteWindow;
+use commitnote_core_api::settings::SettingsCopy;
 use commitnote_core_runtime::services::RememberedSessionStore;
 use commitnote_core_runtime::services::remembered_session::open_remembered_session_store;
 use gtk4::glib::translate::{IntoGlib, ToGlibPtr};
@@ -29,7 +31,7 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 const WAKE_INTERVAL: Duration = Duration::from_millis(50);
 const REFRESH_GAP: Duration = Duration::from_millis(500);
 const BUNDLE_RESOURCE: &str = "core/commitnote-core.js";
-const SESSION_ACCENT: &str = "violet";
+pub const SESSION_ACCENT: &str = "violet";
 const HIGH_CONTRAST_SCHEMA: &str = "org.gnome.desktop.a11y.interface";
 const HIGH_CONTRAST_KEY: &str = "high-contrast";
 const DEVICE_MODEL: &str = "Linux";
@@ -54,7 +56,7 @@ pub enum Width {
 }
 
 impl Width {
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Self::Narrow => "narrow",
             Self::Wide => "wide",
@@ -76,7 +78,7 @@ pub enum Theme {
 }
 
 impl Theme {
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Self::Light => "light",
             Self::Dark => "dark",
@@ -735,6 +737,25 @@ impl Harness {
         Ok(self.keyboard.get().expect("the keyboard was just started"))
     }
 
+    /// Makes the harness window active, as it becomes once the real keyboard exists, so that its
+    /// focused widget draws its caret.
+    pub fn activate_window(&self) -> Result<(), String> {
+        self.keyboard()?;
+        self.wait_active()
+    }
+
+    /// Runs `run` with the text caret drawn steadily instead of blinking, so that every capture
+    /// shows it, then lets it blink again as before.
+    pub fn with_steady_caret(
+        &self,
+        run: impl FnOnce(&Self) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let settings = gtk::Settings::default().ok_or("there are no GTK settings")?;
+        let blink = settings.is_gtk_cursor_blink();
+        settings.set_gtk_cursor_blink(false);
+        restoring(|| settings.set_gtk_cursor_blink(blink), || run(self))
+    }
+
     fn wait_active(&self) -> Result<(), String> {
         let window = self.window()?;
         self.wait("the window to be active", || window.is_active())
@@ -837,10 +858,8 @@ impl Harness {
         if id == "system" {
             return Ok(None);
         }
-        let model = self.model()?;
-        self.wait("the settings copy", || model.settings_copy().is_some())?;
-        let copy = model.settings_copy().ok_or("the settings copy vanished")?;
-        copy.accent_color
+        self.settings_copy()?
+            .accent_color
             .options
             .iter()
             .find(|option| option.id == id)
@@ -851,6 +870,25 @@ impl Harness {
                 })
             })
             .ok_or_else(|| format!("the core offers no {id} accent"))
+    }
+
+    /// The ids of every accent the core offers, `system` included.
+    pub fn accent_ids(&self) -> Result<Vec<String>, String> {
+        Ok(self
+            .settings_copy()?
+            .accent_color
+            .options
+            .iter()
+            .map(|option| option.id.clone())
+            .collect())
+    }
+
+    fn settings_copy(&self) -> Result<Rc<SettingsCopy>, String> {
+        let model = self.model()?;
+        self.wait("the settings copy", || model.settings_copy().is_some())?;
+        model
+            .settings_copy()
+            .ok_or_else(|| "the settings copy vanished".to_owned())
     }
 
     fn pre_session_screenshots(
@@ -1091,6 +1129,80 @@ fn high_contrast_settings() -> Result<gio::Settings, String> {
         ));
     }
     Ok(gio::Settings::new(HIGH_CONTRAST_SCHEMA))
+}
+
+/// A window render read back as RGBA, addressed in the window's logical coordinates, as
+/// `compute_bounds` against the window gives them.
+pub struct WindowPixels {
+    bytes: glib::Bytes,
+    stride: usize,
+    width: usize,
+    height: usize,
+    scale_x: f32,
+    scale_y: f32,
+}
+
+impl WindowPixels {
+    pub fn new(texture: &gdk::Texture, window: &impl IsA<gtk::Widget>) -> Result<Self, String> {
+        let (window_width, window_height) = (window.width(), window.height());
+        if window_width <= 0 || window_height <= 0 {
+            return Err("the window has no size".to_owned());
+        }
+        let mut downloader = gdk::TextureDownloader::new(texture);
+        downloader.set_format(gdk::MemoryFormat::R8g8b8a8);
+        let (bytes, stride) = downloader.download_bytes();
+        Ok(Self {
+            bytes,
+            stride,
+            width: usize::try_from(texture.width()).unwrap_or_default(),
+            height: usize::try_from(texture.height()).unwrap_or_default(),
+            scale_x: texture.width() as f32 / window_width as f32,
+            scale_y: texture.height() as f32 / window_height as f32,
+        })
+    }
+
+    /// The most frequent color among the pixels wholly inside `area`, clipped to the render.
+    pub fn dominant(&self, area: &graphene::Rect) -> Result<[u8; 4], String> {
+        let columns = Self::span(area.x(), area.width(), self.scale_x, self.width);
+        let rows = Self::span(area.y(), area.height(), self.scale_y, self.height);
+        let mut counts = HashMap::<[u8; 4], usize>::new();
+        for y in rows {
+            for x in columns.clone() {
+                *counts.entry(self.pixel(x, y)).or_default() += 1;
+            }
+        }
+        counts
+            .into_iter()
+            .max_by_key(|&(rgba, count)| (count, rgba))
+            .map(|(rgba, _)| rgba)
+            .ok_or_else(|| format!("{area:?} covers no pixel of the render"))
+    }
+
+    pub fn at(&self, point: &graphene::Point) -> Result<[u8; 4], String> {
+        let x = (point.x() * self.scale_x).floor();
+        let y = (point.y() * self.scale_y).floor();
+        if x < 0.0 || y < 0.0 || x >= self.width as f32 || y >= self.height as f32 {
+            return Err(format!("{point:?} is outside the render"));
+        }
+        Ok(self.pixel(x as usize, y as usize))
+    }
+
+    fn span(start: f32, length: f32, scale: f32, limit: usize) -> std::ops::Range<usize> {
+        let first = (start * scale).ceil().clamp(0.0, limit as f32) as usize;
+        let end = ((start + length) * scale).floor().clamp(0.0, limit as f32) as usize;
+        first..end.max(first)
+    }
+
+    fn pixel(&self, x: usize, y: usize) -> [u8; 4] {
+        let offset = y * self.stride + x * 4;
+        let mut rgba = [0; 4];
+        rgba.copy_from_slice(&self.bytes[offset..offset + 4]);
+        rgba
+    }
+}
+
+pub fn hex([red, green, blue, alpha]: [u8; 4]) -> String {
+    format!("#{red:02x}{green:02x}{blue:02x}{alpha:02x}")
 }
 
 /// A virtual keyboard from a mutter remote desktop session; the session lives as long as the

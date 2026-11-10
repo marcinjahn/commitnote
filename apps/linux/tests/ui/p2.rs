@@ -13,16 +13,18 @@ use commitnote_core_api::events::RemoteChange;
 use commitnote_core_api::shapes::{OpenNote, OpenNoteConflict, SyncState, TreeNode};
 use commitnote_editor_text::Utf16Index;
 use gtk4 as gtk;
-use gtk4::{gdk, gio};
+use gtk4::{gdk, gio, graphene};
 use libadwaita as adw;
 
 use crate::flows::{
     PASSPHRASE, SAMPLE_REPO_KEY, UNLOCK_TIMEOUT, ensure, export_repo, exported_main,
     launch_and_log_in, open_first_note, split_view, wait_exported_change, wait_open_note,
 };
+use crate::p4::{SHARED_LINKS_DIALOG, view_shared_version};
+use crate::p5::{close_preferences, open_preferences};
 use crate::support::{
-    Case, Harness, NARROW_LIGHT, NARROW_VARIANTS, Theme, WIDE_LIGHT, WIDE_VARIANTS, Width,
-    write_read_back,
+    Case, Harness, NARROW_LIGHT, NARROW_VARIANTS, SESSION_ACCENT, Theme, WIDE_LIGHT, WIDE_VARIANTS,
+    Width, WindowPixels, hex, write_read_back,
 };
 
 pub const CASES: &[Case] = &[
@@ -72,6 +74,7 @@ pub const CASES: &[Case] = &[
     ("logout_inhibit", logout_inhibit),
     ("early_draft_logout_inhibit", early_draft_logout_inhibit),
     ("editor_read_back", editor_read_back),
+    ("p2-surface-check", surface_check),
 ];
 
 pub(crate) const EDITOR: &str = "note-editor";
@@ -2459,4 +2462,257 @@ fn editor_read_back(h: &mut Harness) -> Result<(), String> {
         &[(renamed, first_text), (created, second_text)],
     )?;
     Ok(())
+}
+
+const SELECTED_WORD: &str = "words";
+const SHARED_VERSION_TEXT: &str = "shared-version-text";
+const SHARED_VERSION_NAME: &str = "shared-version-name";
+const FONT_PREVIEW: &str = "settings-font-preview";
+const FONT_PREVIEW_FRAME_CLASS: &str = "font-preview";
+
+/// A writing surface and a point beside it that shows only the background the surface sits on,
+/// both in window coordinates.
+struct SurfaceLayout {
+    surface: graphene::Rect,
+    background: graphene::Point,
+}
+
+/// The screenshot view of one writing surface, and where that surface is on screen.
+#[derive(Clone, Copy)]
+struct SurfaceView {
+    name: &'static str,
+    locate: fn(&Harness) -> Result<SurfaceLayout, String>,
+}
+
+impl SurfaceView {
+    const fn editor(name: &'static str) -> Self {
+        Self {
+            name,
+            locate: editor_layout,
+        }
+    }
+}
+
+const SHARED_VERSION_SURFACE: SurfaceView = SurfaceView {
+    name: "surface-shared-version",
+    locate: shared_version_layout,
+};
+const FONT_PREVIEW_SURFACE: SurfaceView = SurfaceView {
+    name: "surface-font-preview",
+    locate: font_preview_layout,
+};
+
+fn surface_check(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    open_first_note(h)?;
+    let mut mismatches = Vec::new();
+    h.with_steady_caret(|h| {
+        check_editor_surfaces(h, &mut mismatches)?;
+        check_shared_version_surface(h, &mut mismatches)?;
+        check_font_preview_surface(h, &mut mismatches)
+    })?;
+    ensure(mismatches.is_empty(), || mismatches.join("\n"))
+}
+
+fn check_editor_surfaces(h: &Harness, mismatches: &mut Vec<String>) -> Result<(), String> {
+    let editor = h.widget_as::<NoteEditor>(EDITOR)?;
+    show_saved(h, &editor, SAMPLE)?;
+    h.activate_window()?;
+    focus_editor(h, &editor)?;
+    select_sample_word(&editor, SELECTED_WORD)?;
+    scroll_to_top(h, &editor)?;
+
+    let plain = SurfaceView::editor("surface-editor");
+    for accent in h.accent_ids()? {
+        check_variants(h, mismatches, plain, WIDE_VARIANTS, &accent)?;
+    }
+    h.resize(Width::Narrow)?;
+    split_view(h)?.set_show_content(true);
+    h.wait_shown("formatting-bar")?;
+    focus_editor(h, &editor)?;
+    select_sample_word(&editor, SELECTED_WORD)?;
+    check_variants(h, mismatches, plain, NARROW_VARIANTS, SESSION_ACCENT)?;
+    h.resize(Width::Wide)?;
+    focus_editor(h, &editor)?;
+
+    place_caret_before(&editor, SELECTED_WORD)?;
+    set_vim_mode(h, &editor, true)?;
+    let vim = SurfaceView::editor("surface-editor-vim");
+    check_variants(h, mismatches, vim, WIDE_VARIANTS, SESSION_ACCENT)?;
+    h.restoring_high_contrast(|h| {
+        h.set_high_contrast(true)?;
+        let vim = SurfaceView::editor("surface-editor-vim-high-contrast");
+        check_variants(h, mismatches, vim, WIDE_VARIANTS, SESSION_ACCENT)?;
+        set_vim_mode(h, &editor, false)?;
+        let plain = SurfaceView::editor("surface-editor-high-contrast");
+        check_variants(h, mismatches, plain, WIDE_VARIANTS, SESSION_ACCENT)
+    })
+}
+
+fn check_shared_version_surface(h: &Harness, mismatches: &mut Vec<String>) -> Result<(), String> {
+    let shared_links = view_shared_version(h)?;
+    check_variants(
+        h,
+        mismatches,
+        SHARED_VERSION_SURFACE,
+        WIDE_VARIANTS,
+        SESSION_ACCENT,
+    )?;
+    shared_links.close();
+    h.wait("Shared Links to close", || !h.shown(SHARED_LINKS_DIALOG))
+}
+
+fn check_font_preview_surface(h: &Harness, mismatches: &mut Vec<String>) -> Result<(), String> {
+    open_preferences(h)?;
+    scroll_into_view(h, &font_preview_row(h)?)?;
+    check_variants(
+        h,
+        mismatches,
+        FONT_PREVIEW_SURFACE,
+        WIDE_VARIANTS,
+        SESSION_ACCENT,
+    )?;
+    close_preferences(h)
+}
+
+fn select_sample_word(editor: &NoteEditor, word: &str) -> Result<(), String> {
+    let start = offset_of(SAMPLE, word, 0)?;
+    let end = start + word.chars().count() as i32;
+    let buffer = editor.view().buffer();
+    buffer.select_range(&buffer.iter_at_offset(end), &buffer.iter_at_offset(start));
+    Ok(())
+}
+
+/// Puts the caret, with nothing selected, at the start of `word`: the text view draws no caret,
+/// and so no Vim block cursor, while text is selected.
+fn place_caret_before(editor: &NoteEditor, word: &str) -> Result<(), String> {
+    let buffer = editor.view().buffer();
+    buffer.place_cursor(&buffer.iter_at_offset(offset_of(SAMPLE, word, 0)?));
+    Ok(())
+}
+
+fn scroller_of(widget: &impl IsA<gtk::Widget>) -> Result<gtk::ScrolledWindow, String> {
+    widget
+        .ancestor(gtk::ScrolledWindow::static_type())
+        .and_downcast::<gtk::ScrolledWindow>()
+        .ok_or_else(|| format!("{} is not in a scrolled window", widget.widget_name()))
+}
+
+fn scroll_to_top(h: &Harness, widget: &impl IsA<gtk::Widget>) -> Result<(), String> {
+    let adjustment = scroller_of(widget)?.vadjustment();
+    adjustment.set_value(adjustment.lower());
+    h.settle()
+}
+
+fn scroll_into_view(h: &Harness, widget: &impl IsA<gtk::Widget>) -> Result<(), String> {
+    let scrolled = scroller_of(widget)?;
+    let bounds = widget
+        .compute_bounds(&scrolled)
+        .ok_or_else(|| format!("{} has no bounds", widget.widget_name()))?;
+    let adjustment = scrolled.vadjustment();
+    let top = f64::from(bounds.y());
+    let bottom = f64::from(bounds.y() + bounds.height());
+    let shift = if top < 0.0 {
+        top
+    } else {
+        (bottom - adjustment.page_size()).clamp(0.0, top)
+    };
+    adjustment.set_value(adjustment.value() + shift);
+    h.settle()
+}
+
+/// Shows each variant in `accent`, saves its screenshot and records every variant whose writing
+/// surface differs from its background.
+fn check_variants(
+    h: &Harness,
+    mismatches: &mut Vec<String>,
+    view: SurfaceView,
+    variants: &[(Width, Theme)],
+    accent: &str,
+) -> Result<(), String> {
+    for &(width, theme) in variants {
+        mismatches.extend(check_surface(h, view, width, theme, accent)?);
+    }
+    Ok(())
+}
+
+/// Shows and saves one state, and describes it when its writing surface differs from its
+/// background.
+fn check_surface(
+    h: &Harness,
+    view: SurfaceView,
+    width: Width,
+    theme: Theme,
+    accent: &str,
+) -> Result<Option<String>, String> {
+    h.show_appearance(width, theme, accent)?;
+    let texture = h.capture_in_accent(view.name, width, theme, accent)?;
+    let layout = (view.locate)(h)?;
+    let pixels = WindowPixels::new(&texture, &h.window()?)?;
+    let surface = pixels.dominant(&layout.surface)?;
+    let background = pixels.at(&layout.background)?;
+    Ok((surface != background).then(|| {
+        format!(
+            "{} {} {} {accent}: writing surface {}, background {}",
+            view.name,
+            width.name(),
+            theme.name(),
+            hex(surface),
+            hex(background)
+        )
+    }))
+}
+
+fn bounds_in_window(h: &Harness, widget: &impl IsA<gtk::Widget>) -> Result<graphene::Rect, String> {
+    widget
+        .compute_bounds(&h.window()?)
+        .ok_or_else(|| format!("{} has no bounds in the window", widget.widget_name()))
+}
+
+fn editor_layout(h: &Harness) -> Result<SurfaceLayout, String> {
+    let surface = bounds_in_window(h, &h.widget(VIEW)?)?;
+    let title = bounds_in_window(h, &title_entry(h)?)?;
+    Ok(SurfaceLayout {
+        // The note page's content box keeps a 24 px top margin above the title that no widget
+        // paints.
+        background: graphene::Point::new(surface.center().x(), title.y() - 12.0),
+        surface,
+    })
+}
+
+fn shared_version_layout(h: &Harness) -> Result<SurfaceLayout, String> {
+    let surface = bounds_in_window(h, &h.widget(SHARED_VERSION_TEXT)?)?;
+    let header = h
+        .widget(SHARED_VERSION_NAME)?
+        .parent()
+        .ok_or("the shared version name has no header")?;
+    let header = bounds_in_window(h, &header)?;
+    Ok(SurfaceLayout {
+        // The header box's 12 px top margin, between the header bar and the name.
+        background: graphene::Point::new(surface.center().x(), header.y() - 6.0),
+        surface,
+    })
+}
+
+fn font_preview_layout(h: &Harness) -> Result<SurfaceLayout, String> {
+    let preview = h.widget(FONT_PREVIEW)?;
+    let frame = preview
+        .parent()
+        .filter(|frame| frame.has_css_class(FONT_PREVIEW_FRAME_CLASS))
+        .ok_or("the font preview has no frame")?;
+    let surface = bounds_in_window(h, &preview)?;
+    let frame = bounds_in_window(h, &frame)?;
+    Ok(SurfaceLayout {
+        // The frame's 12 px start margin inside its preferences row shows the row's own
+        // background.
+        background: graphene::Point::new(frame.x() - 6.0, frame.center().y()),
+        surface,
+    })
+}
+
+fn font_preview_row(h: &Harness) -> Result<adw::PreferencesRow, String> {
+    h.widget(FONT_PREVIEW)?
+        .ancestor(adw::PreferencesRow::static_type())
+        .and_downcast::<adw::PreferencesRow>()
+        .ok_or_else(|| "the font preview is not in a preferences row".to_owned())
 }

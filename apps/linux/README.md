@@ -721,7 +721,10 @@ The tests (`test.sh`) run, in this order:
    (a 1920x1200 virtual monitor, so the window is never maximised) with an unlocked keyring, driving real pages and saving screenshots to
    `apps/linux/out/screenshots/p<phase>-<view>-<narrow|wide>-<light|dark>-<accent>.png`. The `p1`
    cases cover login, unlocking and reading; the `p2` cases cover the editor, Vim mode, drafts,
-   sync feedback, conflicts, the close guard and the early draft; the `p3` cases cover new folders,
+   sync feedback, conflicts, the close guard and the early draft, and `p2-surface-check` checks
+   that the writing surface of the note editor, the shared version page and the font preview shows
+   exactly the background it sits on, in light and dark, every accent option, high contrast and
+   Vim mode, saving the `p2-surface-*` screenshots; the `p3` cases cover new folders,
    Move To…, inline rename, the context menu and its keys, drag and drop, Move Up and Down, color
    tags and the filter, the note menu, Undo, the Trash dialog and its confirmations, search, the
    Details dialog and the last view. `p3-shot-tree-context-menu`, `p3-shot-trash-dialog` and
