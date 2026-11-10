@@ -47,9 +47,7 @@ final class EditingFlowTests: XCTestCase {
         // instead of the remote full-text edit overwriting an already saved local edit.
         useTestingMenu("testing-offline", in: app)
         waitForValue(status, "offline")
-        focusEditor(in: app)
-        editor.typeKey(.upArrow, modifierFlags: .command)
-        editor.typeText("local text")
+        typeAtStart("local text", in: app)
         useTestingMenu("testing-remote-edit-refresh", in: app)
         useTestingMenu("testing-offline", in: app)
 

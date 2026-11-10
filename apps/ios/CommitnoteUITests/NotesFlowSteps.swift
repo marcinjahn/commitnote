@@ -190,12 +190,22 @@ extension XCTestCase {
         return editor
     }
 
+    func typeAtStart(_ text: String, in app: XCUIApplication) {
+        typeText(text, afterMovingCaret: .upArrow, in: app)
+    }
+
     func typeAtEnd(_ text: String, in app: XCUIApplication) {
+        typeText(text, afterMovingCaret: .downArrow, in: app)
+    }
+
+    /// A caret move sent while a menu or the keyboard is still settling can leave the editor
+    /// without keyboard focus, so the editor is focused again and the move repeated.
+    private func typeText(_ text: String, afterMovingCaret key: XCUIKeyboardKey, in app: XCUIApplication) {
         var editor = focusEditor(in: app)
-        moveCaret(.downArrow, in: editor)
+        moveCaret(key, in: editor)
         if !hasKeyboardFocus(editor) {
             editor = focusEditor(in: app)
-            moveCaret(.downArrow, in: editor)
+            moveCaret(key, in: editor)
         }
         editor.typeText(text)
     }
