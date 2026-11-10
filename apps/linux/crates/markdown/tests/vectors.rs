@@ -167,6 +167,14 @@ const ALLOWED: &[(&str, &str)] = &[
         "table-irregular-prefix",
         "lezer keeps an unprefixed row after a quoted table inside the blockquote and styles it as a quote line; GFM ends the table at the lazy line, so the parser leaves it a paragraph outside the quote",
     ),
+    (
+        "table-setext-underline",
+        "lezer lets a --- line underline the pipe paragraph as a level 2 setext heading; GFM ends the table before it, so the parser styles the line as a thematic break",
+    ),
+    (
+        "table-setext-equals",
+        "lezer lets a = line underline the pipe paragraph as a level 1 setext heading; GFM keeps the line as a table row, so the parser leaves the text unstyled",
+    ),
 ];
 
 /// Differences in the table model that stem from the web readers disagreeing with each other. Each

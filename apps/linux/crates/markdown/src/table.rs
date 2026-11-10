@@ -1,6 +1,9 @@
 use std::ops::Range;
 
-use crate::scanners::{is_blank_line, is_blank_unit, line_end, line_start, skip_blanks, slice16};
+use crate::scanners::{
+    column, find_column, is_blank_line, is_blank_unit, is_space_unit, is_whitespace_unit, line_end,
+    line_start, skip_blanks, skip_spaces, slice16,
+};
 use crate::syntax::{MarkdownDocument, SyntaxKind};
 
 const PIPE: u16 = b'|' as u16;
@@ -8,6 +11,7 @@ const BACKSLASH: u16 = b'\\' as u16;
 const QUOTE: u16 = b'>' as u16;
 const COLON: u16 = b':' as u16;
 const DASH: u16 = b'-' as u16;
+const EQUALS: u16 = b'=' as u16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum TableAlignment {
@@ -91,12 +95,56 @@ impl MarkdownDocument {
         self.nodes
             .iter()
             .filter(|node| node.kind == SyntaxKind::Table)
-            .map(|node| self.read_table(node.range.clone()))
-            .filter(|table| !starts_with_list_marker(units, table.delimiter()))
+            .filter_map(|node| {
+                let containers = self.containers(&node.range);
+                let table = self.read_table(node.range.clone(), !containers.is_empty());
+                forms_table(units, &table, &containers).then_some(table)
+            })
             .collect()
     }
 
-    fn read_table(&self, node: Range<usize>) -> MarkdownTable {
+    /// The containers around `range`, outermost first.
+    fn containers(&self, range: &Range<usize>) -> Vec<Container> {
+        self.nodes
+            .iter()
+            .filter(|node| node.range.start <= range.start && range.end <= node.range.end)
+            .filter_map(|node| match node.kind {
+                SyntaxKind::Blockquote => Some(Container::Quote),
+                SyntaxKind::BulletList => Some(Container::List { bullet: true }),
+                SyntaxKind::OrderedList => Some(Container::List { bullet: false }),
+                SyntaxKind::ListItem => Some(Container::Item {
+                    content_offset: self.list_item_content_offset(&node.range),
+                }),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// How many columns past its base column a list item's content starts.
+    fn list_item_content_offset(&self, item: &Range<usize>) -> usize {
+        let units = self.units();
+        let line = line_start(units, item.start);
+        let end = line_end(units, item.start);
+        let marker_end = self
+            .nodes
+            .iter()
+            .filter(|node| {
+                node.kind == SyntaxKind::ListMark && (item.start..end).contains(&node.range.start)
+            })
+            .min_by_key(|mark| mark.range.start)
+            .map_or(item.start, |mark| mark.range.end);
+        let after_marker = column(units, line, marker_end);
+        let content = skip_spaces(units, marker_end, end);
+        let content_column = column(units, line, content);
+        let content_start = if content == end || content_column >= after_marker + 5 {
+            after_marker + 1
+        } else {
+            content_column
+        };
+        content_start - column(units, line, item.start)
+    }
+
+    fn read_table(&self, node: Range<usize>, nested: bool) -> MarkdownTable {
         let units = self.units();
         let first_row = node.start.min(units.len());
         let first_line = line_start(units, first_row);
@@ -105,7 +153,6 @@ impl MarkdownDocument {
             .iter()
             .filter(|&&unit| unit == QUOTE)
             .count();
-        let first_prefix = slice16(units, first_line, first_row);
         let mut lines = Vec::new();
         let mut line = first_line;
         loop {
@@ -116,22 +163,11 @@ impl MarkdownDocument {
             };
             lines.push(source_line(units, row_from, lines.len() == 1));
             let following = line_end(units, line) + 1;
-            if line >= last_line && !continues_table(units, following, quote_levels, &first_prefix)
-            {
+            if line >= last_line && !continues_table(units, following, quote_levels) {
                 break;
             }
             line = following;
         }
-        let nested = self.nodes.iter().any(|other| {
-            matches!(
-                other.kind,
-                SyntaxKind::Blockquote
-                    | SyntaxKind::ListItem
-                    | SyntaxKind::BulletList
-                    | SyntaxKind::OrderedList
-            ) && other.range.start <= node.start
-                && node.end <= other.range.end
-        });
         let column_count = lines[0].cells.len();
         MarkdownTable {
             range: lines[0].range.start..lines[lines.len() - 1].range.end,
@@ -143,9 +179,166 @@ impl MarkdownDocument {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Container {
+    Quote,
+    List { bullet: bool },
+    Item { content_offset: usize },
+}
+
+fn forms_table(units: &[u16], table: &MarkdownTable, containers: &[Container]) -> bool {
+    let header = row_text(units, table.header());
+    let delimiter = row_text(units, table.delimiter());
+    !starts_with_list_marker(units, table.delimiter())
+        && is_delimiter_row(delimiter)
+        && row_cell_count(header) == row_cell_count(delimiter)
+        && !becomes_setext_heading(units, table, containers)
+}
+
+/// The row as the line holds it after the container prefix, a trailing `\r` included.
+fn row_text<'a>(units: &'a [u16], line: &MarkdownTableLine) -> &'a [u16] {
+    &units[line.row_start..line.range.end]
+}
+
 fn starts_with_list_marker(units: &[u16], line: &MarkdownTableLine) -> bool {
     let at = line.row_start;
     at + 1 < line.range.end && units[at] == DASH && is_blank_unit(units[at + 1])
+}
+
+/// `|? (cell |)+ cell?` over the whole row, where a cell is `\s* :? -+ :? \s*`.
+fn is_delimiter_row(row: &[u16]) -> bool {
+    if !matches!(row.first(), Some(&(DASH | COLON | PIPE))) {
+        return false;
+    }
+    let mut index = usize::from(row[0] == PIPE);
+    let mut closed_cells = 0;
+    while let Some(cell_end) = delimiter_cell_end(row, index) {
+        match row.get(cell_end) {
+            None => return closed_cells > 0,
+            Some(&PIPE) => {
+                closed_cells += 1;
+                index = cell_end + 1;
+                if index == row.len() {
+                    return true;
+                }
+            }
+            Some(_) => return false,
+        }
+    }
+    false
+}
+
+fn delimiter_cell_end(row: &[u16], from: usize) -> Option<usize> {
+    let skip = |from: usize, accepts: fn(u16) -> bool| {
+        from + row[from..]
+            .iter()
+            .take_while(|&&unit| accepts(unit))
+            .count()
+    };
+    let colon = |at: usize| at + usize::from(row.get(at) == Some(&COLON));
+    let dashes = colon(skip(from, is_whitespace_unit));
+    let dashes_end = skip(dashes, |unit| unit == DASH);
+    (dashes_end > dashes).then(|| skip(colon(dashes_end), is_whitespace_unit))
+}
+
+/// The cells of a row: every unescaped pipe closes one, unless it is a leading pipe, and content
+/// after the last pipe adds one. Only spaces and tabs are blank.
+fn row_cell_count(row: &[u16]) -> usize {
+    let mut count = 0;
+    let mut leading = true;
+    let mut in_cell = false;
+    let mut escaped = false;
+    for &unit in row {
+        if unit == PIPE && !escaped {
+            if !leading || in_cell {
+                count += 1;
+            }
+            leading = false;
+            in_cell = false;
+        } else if escaped || !is_blank_unit(unit) {
+            in_cell = true;
+        }
+        escaped = !escaped && unit == BACKSLASH;
+    }
+    count + usize::from(in_cell)
+}
+
+/// Whether a body row or the line after the table underlines the block as a setext heading.
+fn becomes_setext_heading(units: &[u16], table: &MarkdownTable, containers: &[Container]) -> bool {
+    let following = (table.range.end < units.len()).then_some(table.range.end + 1);
+    table
+        .rows()
+        .iter()
+        .map(|row| row.range.start)
+        .chain(following)
+        .any(|line| is_setext_underline(units, line, containers))
+}
+
+/// Only a line that continues every container can underline the block; a lone `-` inside a
+/// bullet list starts an item instead.
+fn is_setext_underline(units: &[u16], line: usize, containers: &[Container]) -> bool {
+    let Some((base, base_column)) = container_content(units, line, containers) else {
+        return false;
+    };
+    let end = line_end(units, line);
+    let start = skip_spaces(units, base, end);
+    let Some(&marker) = units[..end].get(start) else {
+        return false;
+    };
+    if !matches!(marker, DASH | EQUALS) || column(units, line, start) >= base_column + 4 {
+        return false;
+    }
+    let run = units[start..end]
+        .iter()
+        .take_while(|&&unit| unit == marker)
+        .count();
+    let starts_bullet_item =
+        marker == DASH && run == 1 && containers.contains(&Container::List { bullet: true });
+    let only_spaces_after = units[start + run..end]
+        .iter()
+        .all(|&unit| is_space_unit(unit));
+    only_spaces_after && !starts_bullet_item
+}
+
+/// Where `line`'s content starts once it has continued every container, with the column the
+/// innermost container measures indentation from; `None` when the line leaves a container.
+fn container_content(
+    units: &[u16],
+    line: usize,
+    containers: &[Container],
+) -> Option<(usize, usize)> {
+    let end = line_end(units, line);
+    let mut position = line;
+    let mut base_column = 0;
+    for container in containers {
+        match *container {
+            Container::Quote => {
+                let mark = skip_spaces(units, position, end);
+                if units[..end].get(mark) != Some(&QUOTE) {
+                    return None;
+                }
+                position = mark + 1;
+                if units[..end]
+                    .get(position)
+                    .is_some_and(|&unit| is_space_unit(unit))
+                {
+                    position += 1;
+                }
+                base_column = column(units, line, position);
+            }
+            Container::Item { content_offset } => {
+                let target = base_column + content_offset;
+                let content = skip_spaces(units, position, end);
+                if content < end && column(units, line, content) < target {
+                    return None;
+                }
+                base_column = target;
+                position = find_column(units, line, end, target);
+            }
+            Container::List { .. } => {}
+        }
+    }
+    Some((position, base_column))
 }
 
 fn alignments(
@@ -284,19 +477,14 @@ fn starts_block(units: &[u16], from: usize, to: usize) -> bool {
     }
 }
 
-fn continues_table(units: &[u16], line: usize, quote_levels: usize, first_prefix: &str) -> bool {
+/// A following pipe line continues the table, lazily too, unless it is blank or starts a block.
+fn continues_table(units: &[u16], line: usize, quote_levels: usize) -> bool {
     if line >= units.len() {
         return false;
     }
     let end = line_end(units, line);
     let row_from = row_start(units, line, quote_levels);
     if is_blank_line(units, row_from, end) || starts_block(units, row_from, end) {
-        return false;
-    }
-    if quote_levels == 0
-        && !first_prefix.is_empty()
-        && slice16(units, line, row_from) != first_prefix
-    {
         return false;
     }
     !pipe_positions(units, row_from, end, false).is_empty()

@@ -60,18 +60,11 @@ fn alignments_follow_the_delimiter_colons() {
 }
 
 #[test]
-fn alignments_are_padded_to_the_column_count() {
-    // pulldown-cmark only builds tables whose delimiter has as many cells as the header.
+fn table_node_with_fewer_delimiter_cells_than_header_cells_is_not_a_table() {
     let text = "| a | b | c |\n| :-: |";
     let document =
         MarkdownDocument::from_nodes(text, vec![SyntaxNode::new(SyntaxKind::Table, 0..21)]);
-    let tables = document.tables();
-    assert_eq!(tables.len(), 1);
-    assert_eq!(tables[0].column_count, 3);
-    assert_eq!(
-        tables[0].alignments,
-        [A::Center, A::Unspecified, A::Unspecified]
-    );
+    assert_eq!(document.tables(), []);
 }
 
 #[test]
@@ -203,4 +196,73 @@ fn delimiter_that_reads_as_a_list_item_is_not_a_table() {
     assert_eq!(parse("a | b\n-\t| -\n1 | 2").tables(), []);
     assert_eq!(table("a | b\n-|-\n1 | 2").range, 0..15);
     assert_eq!(table("| a | b |\n| - | - |").range, 0..19);
+}
+
+#[test]
+fn delimiter_with_trailing_space_after_its_last_pipe_is_not_a_table() {
+    assert_eq!(parse("| a | b |\n| - | - | \n| 1 | 2 |").tables(), []);
+    assert_eq!(parse("| a | b |\n| - | - |\t").tables(), []);
+    assert_eq!(table("| a | b |\n| - | -\n| 1 | 2 |").range, 0..27);
+}
+
+#[test]
+fn delimiter_with_an_unclosed_dash_run_is_not_a_table() {
+    assert_eq!(parse("| a |\n| -").tables(), []);
+    assert_eq!(parse("| a\n| -").tables(), []);
+}
+
+#[test]
+fn quoted_delimiter_with_trailing_space_is_not_a_table() {
+    assert_eq!(parse("> | a |\n> | - | \n> | 1 |").tables(), []);
+}
+
+#[test]
+fn dash_underline_turns_the_table_into_a_heading() {
+    assert_eq!(parse("| a |\n| - |\n| 1 |\n---").tables(), []);
+    assert_eq!(parse("| a |\n| - |\n-").tables(), []);
+    assert_eq!(parse("| a |\n| - |\n   ---").tables(), []);
+    assert_eq!(table("| a |\n| - |\n| 1 |\n\n---").range, 0..17);
+}
+
+#[test]
+fn equals_underline_turns_the_table_into_a_heading() {
+    assert_eq!(parse("| a |\n| - |\n| 1 |\n=").tables(), []);
+    assert_eq!(parse("| a |\n| - |\n=\n| 1 |").tables(), []);
+}
+
+#[test]
+fn underline_inside_the_container_turns_a_nested_table_into_a_heading() {
+    assert_eq!(parse("> | a |\n> | - |\n> ---").tables(), []);
+    assert_eq!(parse("- | a |\n  | - |\n  =").tables(), []);
+    assert_eq!(parse("- a\n\n   | x |\n   | - |\n  ---").tables(), []);
+    assert_eq!(table("> | a |\n> | - |\n---").range, 0..15);
+    assert_eq!(table("- | a |\n  | - |\n---").range, 0..15);
+    assert_eq!(table("- | a |\n  | - |\n  -").range, 0..15);
+}
+
+#[test]
+fn header_and_delimiter_cell_counts_must_match() {
+    assert_eq!(parse("| a | b |\n| - |").tables(), []);
+    assert_eq!(parse("| a | \u{a0}\n| - |").tables(), []);
+}
+
+#[test]
+fn lazy_row_after_a_table_in_a_list_item_has_no_prefix() {
+    let table = table("- a\n\n  | x |\n  | - |\n  | 1 |\n| 2 |");
+    assert_eq!(table.range, 5..34);
+    assert_eq!(table.container_prefix, None);
+    assert_eq!(
+        table
+            .lines
+            .iter()
+            .map(|line| line.range.clone())
+            .collect::<Vec<_>>(),
+        [5..12, 13..20, 21..28, 29..34]
+    );
+}
+
+#[test]
+fn crlf_table_is_not_a_table() {
+    assert_eq!(parse("| a |\r\n| - |\r\n| 1 |").tables(), []);
+    assert_eq!(parse("| a |\n| - |\r\n| 1 |").tables(), []);
 }

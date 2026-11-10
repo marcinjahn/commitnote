@@ -6849,6 +6849,240 @@
       ]
     },
     {
+      "name": "table-delimiter-trailing-space",
+      "text": "| a | b |\n| - | - | \n| 1 | 2 |",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 30
+        }
+      ],
+      "tables": []
+    },
+    {
+      "name": "table-delimiter-unclosed-dash",
+      "text": "| a |\n| -",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 9
+        }
+      ],
+      "tables": []
+    },
+    {
+      "name": "table-setext-underline",
+      "text": "| a |\n| - |\n| 1 |\n---",
+      "nodes": [
+        {
+          "kind": "setextHeading",
+          "level": 2,
+          "from": 0,
+          "to": 21
+        },
+        {
+          "kind": "headerMark",
+          "from": 18,
+          "to": 21
+        }
+      ],
+      "tables": []
+    },
+    {
+      "name": "table-setext-equals",
+      "text": "| a |\n| - |\n| 1 |\n=",
+      "nodes": [
+        {
+          "kind": "setextHeading",
+          "level": 1,
+          "from": 0,
+          "to": 19
+        },
+        {
+          "kind": "headerMark",
+          "from": 18,
+          "to": 19
+        }
+      ],
+      "tables": []
+    },
+    {
+      "name": "table-in-list-lazy-row",
+      "text": "- a\n\n  | x |\n  | - |\n  | 1 |\n| 2 |",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 34
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 34
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "table",
+          "from": 7,
+          "to": 34
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 5,
+            "to": 34
+          },
+          "containerPrefix": null,
+          "columnCount": 1,
+          "alignments": [
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 5,
+                "to": 12
+              },
+              "rowStart": 7,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 8,
+                    "to": 11
+                  },
+                  "contentRange": {
+                    "from": 9,
+                    "to": 10
+                  },
+                  "text": "x"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 13,
+                "to": 20
+              },
+              "rowStart": 15,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 16,
+                    "to": 19
+                  },
+                  "contentRange": {
+                    "from": 17,
+                    "to": 18
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 21,
+                "to": 28
+              },
+              "rowStart": 23,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 24,
+                    "to": 27
+                  },
+                  "contentRange": {
+                    "from": 25,
+                    "to": 26
+                  },
+                  "text": "1"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 29,
+                "to": 34
+              },
+              "rowStart": 29,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 30,
+                    "to": 33
+                  },
+                  "contentRange": {
+                    "from": 31,
+                    "to": 32
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-in-quote-delimiter-trailing-space",
+      "text": "> | a |\n> | - | \n> | 1 |",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 24
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 24
+        },
+        {
+          "kind": "quoteMark",
+          "from": 8,
+          "to": 9
+        },
+        {
+          "kind": "quoteMark",
+          "from": 17,
+          "to": 18
+        }
+      ],
+      "tables": []
+    },
+    {
+      "name": "table-crlf",
+      "text": "| a |\r\n| - |\r\n| 1 |",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 19
+        }
+      ],
+      "tables": []
+    },
+    {
       "name": "hard-break-backslash",
       "text": "line one\\\nline two",
       "nodes": [

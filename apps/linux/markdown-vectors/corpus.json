@@ -584,6 +584,34 @@
     "text": "| a | b |  \n| - | - |\n| 1 | 2 |"
   },
   {
+    "name": "table-delimiter-trailing-space",
+    "text": "| a | b |\n| - | - | \n| 1 | 2 |"
+  },
+  {
+    "name": "table-delimiter-unclosed-dash",
+    "text": "| a |\n| -"
+  },
+  {
+    "name": "table-setext-underline",
+    "text": "| a |\n| - |\n| 1 |\n---"
+  },
+  {
+    "name": "table-setext-equals",
+    "text": "| a |\n| - |\n| 1 |\n="
+  },
+  {
+    "name": "table-in-list-lazy-row",
+    "text": "- a\n\n  | x |\n  | - |\n  | 1 |\n| 2 |"
+  },
+  {
+    "name": "table-in-quote-delimiter-trailing-space",
+    "text": "> | a |\n> | - | \n> | 1 |"
+  },
+  {
+    "name": "table-crlf",
+    "text": "| a |\r\n| - |\r\n| 1 |"
+  },
+  {
     "name": "hard-break-backslash",
     "text": "line one\\\nline two"
   },

@@ -1,4 +1,5 @@
 const NEWLINE: u16 = b'\n' as u16;
+const CARRIAGE_RETURN: u16 = b'\r' as u16;
 const SPACE: u16 = b' ' as u16;
 const TAB: u16 = b'\t' as u16;
 const HASH: i32 = b'#' as i32;
@@ -91,6 +92,46 @@ pub(crate) fn skip_blanks(units: &[u16], from: usize, to: usize) -> usize {
         index += 1;
     }
     index
+}
+
+/// A space, tab or line break, which block parsing skips around markers.
+pub(crate) fn is_space_unit(unit: u16) -> bool {
+    is_blank_unit(unit) || unit == NEWLINE || unit == CARRIAGE_RETURN
+}
+
+/// The first index in `from..to` that is not a space, tab or line break, or `to`.
+pub(crate) fn skip_spaces(units: &[u16], from: usize, to: usize) -> usize {
+    let mut index = from;
+    while index < to && is_space_unit(units[index]) {
+        index += 1;
+    }
+    index
+}
+
+/// The column of `position` on the line starting at `line`, with tab stops every four columns.
+pub(crate) fn column(units: &[u16], line: usize, position: usize) -> usize {
+    units[line..position]
+        .iter()
+        .fold(0, |column, &unit| advance_column(column, unit))
+}
+
+/// The first index in `line..end` at or past column `goal`, or `end`.
+pub(crate) fn find_column(units: &[u16], line: usize, end: usize, goal: usize) -> usize {
+    let mut index = line;
+    let mut column = 0;
+    while index < end && column < goal {
+        column = advance_column(column, units[index]);
+        index += 1;
+    }
+    index
+}
+
+fn advance_column(column: usize, unit: u16) -> usize {
+    if unit == TAB {
+        column + 4 - column % 4
+    } else {
+        column + 1
+    }
 }
 
 pub(crate) fn is_word_char(c: i32) -> bool {
