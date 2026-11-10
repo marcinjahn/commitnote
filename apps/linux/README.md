@@ -482,7 +482,9 @@ page. The Keyboard Shortcuts dialog (Ctrl+? or the main menu) lists the same sho
   are measured again when the desktop's text scaling factor changes, so they stay aligned with the
   text.
 - **High contrast.** When the system asks for high contrast, the faint marks the editor paints and
-  the dimmed markers of the previews get a stronger color.
+  the dimmed markers of the previews get a stronger color. The editor uses no GtkSourceView style
+  scheme and draws no background of its own, so its text sits on the window background and uses the
+  theme's text color in light, dark and high contrast.
 - **Reduced motion.** With the desktop's animations setting off, animated images in a note and in the
   viewer show their first frame still.
 - **Touch.** A link in the editor opens with Open Link in the editor's context menu, which a right

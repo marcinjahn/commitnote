@@ -1330,11 +1330,11 @@ fn comfort_high_contrast(h: &mut Harness) -> Result<(), String> {
                 !style_manager.is_high_contrast() && !view.testing_high_contrast(),
                 || "high contrast is already on".to_owned(),
             )?;
-            let foreground = view.color().alpha();
-            h.wait("the normal dim alpha", || {
+            let dims_to = |factor: f32| {
                 view.testing_dim_alpha()
-                    .is_some_and(|alpha| (alpha - foreground * DIM_ALPHA).abs() < 0.01)
-            })?;
+                    .is_some_and(|alpha| (alpha - view.color().alpha() * factor).abs() < 0.01)
+            };
+            h.wait("the normal dim alpha", || dims_to(DIM_ALPHA))?;
 
             settings
                 .set_boolean(HIGH_CONTRAST_KEY, true)
@@ -1352,19 +1352,14 @@ fn comfort_high_contrast(h: &mut Harness) -> Result<(), String> {
                 view.testing_high_contrast()
             })?;
             h.wait("the dim alpha to strengthen", || {
-                view.testing_dim_alpha().is_some_and(|alpha| {
-                    (alpha - foreground * DIM_ALPHA_HIGH_CONTRAST).abs() < 0.01
-                })
+                dims_to(DIM_ALPHA_HIGH_CONTRAST)
             })?;
 
             settings
                 .set_boolean(HIGH_CONTRAST_KEY, false)
                 .map_err(|error| format!("cannot reset {HIGH_CONTRAST_KEY}: {error}"))?;
             h.wait("the dim alpha to weaken again", || {
-                !view.testing_high_contrast()
-                    && view
-                        .testing_dim_alpha()
-                        .is_some_and(|alpha| (alpha - foreground * DIM_ALPHA).abs() < 0.01)
+                !view.testing_high_contrast() && dims_to(DIM_ALPHA)
             })
         },
     )
