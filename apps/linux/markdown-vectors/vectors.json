@@ -7083,6 +7083,515 @@
       "tables": []
     },
     {
+      "name": "table-after-pipe-paragraph",
+      "text": "x |\n| a |\n| - |\n| 1 |",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 21
+        }
+      ],
+      "tables": []
+    },
+    {
+      "name": "table-after-code-span-pipe-paragraph",
+      "text": "`a|b`\n| a |\n| - |",
+      "nodes": [
+        {
+          "kind": "paragraph",
+          "from": 0,
+          "to": 17
+        },
+        {
+          "kind": "inlineCode",
+          "from": 0,
+          "to": 5
+        },
+        {
+          "kind": "codeMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "codeMark",
+          "from": 4,
+          "to": 5
+        }
+      ],
+      "tables": []
+    },
+    {
+      "name": "table-in-quote-lazy-text",
+      "text": "> | a |\n> | - |\nfoo",
+      "nodes": [
+        {
+          "kind": "blockquote",
+          "from": 0,
+          "to": 19
+        },
+        {
+          "kind": "quoteMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "table",
+          "from": 2,
+          "to": 19
+        },
+        {
+          "kind": "quoteMark",
+          "from": 8,
+          "to": 9
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 19
+          },
+          "containerPrefix": null,
+          "columnCount": 1,
+          "alignments": [
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 7
+              },
+              "rowStart": 2,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 3,
+                    "to": 6
+                  },
+                  "contentRange": {
+                    "from": 4,
+                    "to": 5
+                  },
+                  "text": "a"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 8,
+                "to": 15
+              },
+              "rowStart": 10,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 11,
+                    "to": 14
+                  },
+                  "contentRange": {
+                    "from": 12,
+                    "to": 13
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 16,
+                "to": 19
+              },
+              "rowStart": 16,
+              "trailingPipe": false,
+              "cells": [
+                {
+                  "range": {
+                    "from": 16,
+                    "to": 19
+                  },
+                  "contentRange": {
+                    "from": 16,
+                    "to": 19
+                  },
+                  "text": "foo"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-in-list-lazy-text",
+      "text": "- a\n\n  | x |\n  | - |\nfoo",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 24
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 24
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "paragraph",
+          "from": 2,
+          "to": 3
+        },
+        {
+          "kind": "table",
+          "from": 7,
+          "to": 24
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 5,
+            "to": 24
+          },
+          "containerPrefix": null,
+          "columnCount": 1,
+          "alignments": [
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 5,
+                "to": 12
+              },
+              "rowStart": 7,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 8,
+                    "to": 11
+                  },
+                  "contentRange": {
+                    "from": 9,
+                    "to": 10
+                  },
+                  "text": "x"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 13,
+                "to": 20
+              },
+              "rowStart": 15,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 16,
+                    "to": 19
+                  },
+                  "contentRange": {
+                    "from": 17,
+                    "to": 18
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 21,
+                "to": 24
+              },
+              "rowStart": 21,
+              "trailingPipe": false,
+              "cells": [
+                {
+                  "range": {
+                    "from": 21,
+                    "to": 24
+                  },
+                  "contentRange": {
+                    "from": 21,
+                    "to": 24
+                  },
+                  "text": "foo"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-indented-lazy-row",
+      "text": "| a |\n| - |\n    ---",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 19
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 19
+          },
+          "containerPrefix": "",
+          "columnCount": 1,
+          "alignments": [
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 5
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 4
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 3
+                  },
+                  "text": "a"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 6,
+                "to": 11
+              },
+              "rowStart": 6,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 7,
+                    "to": 10
+                  },
+                  "contentRange": {
+                    "from": 8,
+                    "to": 9
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 12,
+                "to": 19
+              },
+              "rowStart": 16,
+              "trailingPipe": false,
+              "cells": [
+                {
+                  "range": {
+                    "from": 16,
+                    "to": 19
+                  },
+                  "contentRange": {
+                    "from": 16,
+                    "to": 19
+                  },
+                  "text": "---"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-ordered-not-one-row",
+      "text": "| a |\n| - |\n2. | b |",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 20
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 20
+          },
+          "containerPrefix": "",
+          "columnCount": 1,
+          "alignments": [
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 5
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 4
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 3
+                  },
+                  "text": "a"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 6,
+                "to": 11
+              },
+              "rowStart": 6,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 7,
+                    "to": 10
+                  },
+                  "contentRange": {
+                    "from": 8,
+                    "to": 9
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 12,
+                "to": 20
+              },
+              "rowStart": 12,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 12,
+                    "to": 15
+                  },
+                  "contentRange": {
+                    "from": 12,
+                    "to": 14
+                  },
+                  "text": "2."
+                },
+                {
+                  "range": {
+                    "from": 16,
+                    "to": 19
+                  },
+                  "contentRange": {
+                    "from": 17,
+                    "to": 18
+                  },
+                  "text": "b"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-html-after",
+      "text": "| a |\n| - |\n<div>|",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 11
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 11
+          },
+          "containerPrefix": "",
+          "columnCount": 1,
+          "alignments": [
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 5
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 4
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 3
+                  },
+                  "text": "a"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 6,
+                "to": 11
+              },
+              "rowStart": 6,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 7,
+                    "to": 10
+                  },
+                  "contentRange": {
+                    "from": 8,
+                    "to": 9
+                  },
+                  "text": "-"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "hard-break-backslash",
       "text": "line one\\\nline two",
       "nodes": [

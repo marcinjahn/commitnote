@@ -4,6 +4,7 @@ mod commands;
 mod image_reference;
 mod insertion_rule;
 mod live_preview;
+mod paragraph;
 mod parser;
 mod scanners;
 mod syntax;

@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use crate::paragraph::{ParagraphContext, interrupts_paragraph};
 use crate::scanners::{
     column, find_column, is_blank_line, is_blank_unit, is_space_unit, is_whitespace_unit, line_end,
     line_start, skip_blanks, skip_spaces, slice16,
@@ -92,15 +93,68 @@ impl MarkdownDocument {
     /// The tables in document order.
     pub fn tables(&self) -> Vec<MarkdownTable> {
         let units = self.units();
-        self.nodes
+        let mut tables = Vec::new();
+        for node in self
+            .nodes
             .iter()
             .filter(|node| node.kind == SyntaxKind::Table)
-            .filter_map(|node| {
-                let containers = self.containers(&node.range);
-                let table = self.read_table(node.range.clone(), !containers.is_empty());
-                forms_table(units, &table, &containers).then_some(table)
+        {
+            let containers = self.containers(&node.range);
+            let table = self.read_table(node.range.start, &containers);
+            let paragraph_start = self.paragraph_start(node.range.start, &tables);
+            if forms_table(units, &table, &containers, paragraph_start) {
+                tables.push(table);
+            }
+        }
+        tables
+    }
+
+    /// Where the paragraph holding the line at `from` starts. pulldown-cmark lets a table
+    /// interrupt any paragraph, so this follows its paragraph nodes back across those splits,
+    /// staying in the container around `from` or reaching out of it lazily; it stops at a table,
+    /// whose header always starts with a pipe line.
+    fn paragraph_start(&self, from: usize, tables: &[MarkdownTable]) -> usize {
+        let mut start = from;
+        loop {
+            let line = self.line_index_containing(start);
+            if line == 0 {
+                return start;
+            }
+            let previous = self.line_range(line - 1);
+            let container_start = self.innermost_container_start(start);
+            let continued = |range: &Range<usize>| {
+                container_start <= range.start
+                    && range.start <= previous.end
+                    && previous.start <= range.end
+            };
+            if let Some(table) = tables.iter().rev().find(|table| continued(&table.range)) {
+                return table.header().row_start;
+            }
+            let Some(block) = self.nodes.iter().rev().find(|node| {
+                matches!(
+                    node.kind,
+                    SyntaxKind::Paragraph | SyntaxKind::Task | SyntaxKind::Table
+                ) && continued(&node.range)
+            }) else {
+                return start;
+            };
+            if block.kind == SyntaxKind::Table {
+                return block.range.start;
+            }
+            start = block.range.start;
+        }
+    }
+
+    fn innermost_container_start(&self, position: usize) -> usize {
+        self.nodes
+            .iter()
+            .rev()
+            .find(|node| {
+                matches!(node.kind, SyntaxKind::Blockquote | SyntaxKind::ListItem)
+                    && node.range.start <= position
+                    && position <= node.range.end
             })
-            .collect()
+            .map_or(0, |node| node.range.start)
     }
 
     /// The containers around `range`, outermost first.
@@ -144,34 +198,36 @@ impl MarkdownDocument {
         content_start - column(units, line, item.start)
     }
 
-    fn read_table(&self, node: Range<usize>, nested: bool) -> MarkdownTable {
+    /// Reads the table from its header through the delimiter line, then on to where lezer ends the
+    /// paragraph, which can be before or after the end of pulldown-cmark's table node.
+    fn read_table(&self, header: usize, containers: &[Container]) -> MarkdownTable {
         let units = self.units();
-        let first_row = node.start.min(units.len());
+        let first_row = header.min(units.len());
         let first_line = line_start(units, first_row);
-        let last_line = line_start(units, node.end.max(first_row).min(units.len()));
         let quote_levels = units[first_line..first_row]
             .iter()
             .filter(|&&unit| unit == QUOTE)
             .count();
-        let mut lines = Vec::new();
+        let mut lines = vec![source_line(units, first_row, false)];
         let mut line = first_line;
         loop {
-            let row_from = if line == first_line {
-                first_row
-            } else {
-                row_start(units, line, quote_levels)
-            };
-            lines.push(source_line(units, row_from, lines.len() == 1));
             let following = line_end(units, line) + 1;
-            if line >= last_line && !continues_table(units, following, quote_levels) {
+            if following > units.len()
+                || (lines.len() > 1 && !continues_table(units, following, containers))
+            {
                 break;
             }
             line = following;
+            lines.push(source_line(
+                units,
+                row_start(units, line, quote_levels),
+                lines.len() == 1,
+            ));
         }
         let column_count = lines[0].cells.len();
         MarkdownTable {
             range: lines[0].range.start..lines[lines.len() - 1].range.end,
-            container_prefix: container_prefix(units, &lines, nested),
+            container_prefix: container_prefix(units, &lines, !containers.is_empty()),
             column_count,
             alignments: alignments(units, &lines[1], column_count),
             lines,
@@ -186,13 +242,32 @@ enum Container {
     Item { content_offset: usize },
 }
 
-fn forms_table(units: &[u16], table: &MarkdownTable, containers: &[Container]) -> bool {
+fn forms_table(
+    units: &[u16],
+    table: &MarkdownTable,
+    containers: &[Container],
+    paragraph_start: usize,
+) -> bool {
     let header = row_text(units, table.header());
     let delimiter = row_text(units, table.delimiter());
-    !starts_with_list_marker(units, table.delimiter())
+    !continues_pipe_paragraph(units, table, paragraph_start)
+        && !starts_with_list_marker(units, table.delimiter())
         && is_delimiter_row(delimiter)
         && row_cell_count(header) == row_cell_count(delimiter)
         && !becomes_setext_heading(units, table, containers)
+}
+
+/// A table can only start the paragraph it is in when that paragraph's first line has an
+/// unescaped pipe, even one inside a code span; the rest of such a paragraph is never a table.
+fn continues_pipe_paragraph(units: &[u16], table: &MarkdownTable, paragraph_start: usize) -> bool {
+    paragraph_start < table.header().row_start
+        && !pipe_positions(
+            units,
+            paragraph_start,
+            line_end(units, paragraph_start),
+            false,
+        )
+        .is_empty()
 }
 
 /// The row as the line holds it after the container prefix, a trailing `\r` included.
@@ -277,9 +352,11 @@ fn becomes_setext_heading(units: &[u16], table: &MarkdownTable, containers: &[Co
 /// Only a line that continues every container can underline the block; a lone `-` inside a
 /// bullet list starts an item instead.
 fn is_setext_underline(units: &[u16], line: usize, containers: &[Container]) -> bool {
-    let Some((base, base_column)) = container_content(units, line, containers) else {
+    let matched = match_containers(units, line, containers);
+    if !matched.complete {
         return false;
-    };
+    }
+    let (base, base_column) = (matched.position, matched.base_column);
     let end = line_end(units, line);
     let start = skip_spaces(units, base, end);
     let Some(&marker) = units[..end].get(start) else {
@@ -300,22 +377,31 @@ fn is_setext_underline(units: &[u16], line: usize, containers: &[Container]) -> 
     only_spaces_after && !starts_bullet_item
 }
 
-/// Where `line`'s content starts once it has continued every container, with the column the
-/// innermost container measures indentation from; `None` when the line leaves a container.
-fn container_content(
-    units: &[u16],
-    line: usize,
-    containers: &[Container],
-) -> Option<(usize, usize)> {
+/// How far a line continues the containers around a table, outermost first.
+struct ContainerMatch {
+    /// Where the line goes on after the markup of the containers it continues.
+    position: usize,
+    /// The column the innermost continued container measures indentation from.
+    base_column: usize,
+    /// Whether the line continues every container rather than leaving one, lazily or not.
+    complete: bool,
+}
+
+fn match_containers(units: &[u16], line: usize, containers: &[Container]) -> ContainerMatch {
     let end = line_end(units, line);
     let mut position = line;
     let mut base_column = 0;
+    let left = |position, base_column| ContainerMatch {
+        position,
+        base_column,
+        complete: false,
+    };
     for container in containers {
         match *container {
             Container::Quote => {
                 let mark = skip_spaces(units, position, end);
                 if units[..end].get(mark) != Some(&QUOTE) {
-                    return None;
+                    return left(position, base_column);
                 }
                 position = mark + 1;
                 if units[..end]
@@ -330,7 +416,7 @@ fn container_content(
                 let target = base_column + content_offset;
                 let content = skip_spaces(units, position, end);
                 if content < end && column(units, line, content) < target {
-                    return None;
+                    return left(position, base_column);
                 }
                 base_column = target;
                 position = find_column(units, line, end, target);
@@ -338,7 +424,11 @@ fn container_content(
             Container::List { .. } => {}
         }
     }
-    Some((position, base_column))
+    ContainerMatch {
+        position,
+        base_column,
+        complete: true,
+    }
 }
 
 fn alignments(
@@ -452,42 +542,22 @@ fn row_start(units: &[u16], line: usize, quote_levels: usize) -> usize {
     }
 }
 
-fn starts_block(units: &[u16], from: usize, to: usize) -> bool {
-    let Some(&first) = units.get(from).filter(|_| from < to) else {
-        return true;
-    };
-    let char_at = |index: usize| {
-        units
-            .get(index)
-            .filter(|_| index < to)
-            .and_then(|&unit| char::from_u32(u32::from(unit)))
-    };
-    let separated = |index: usize| char_at(index).is_none_or(|c| c == ' ' || c == '\t');
-    match char::from_u32(u32::from(first)).unwrap_or(' ') {
-        '>' | '#' => true,
-        '-' | '*' | '+' => separated(from + 1),
-        '`' | '~' => char_at(from + 1) == char_at(from) && char_at(from + 2) == char_at(from),
-        '0'..='9' => {
-            let digits = (from..to)
-                .take_while(|&index| char_at(index).is_some_and(|c| c.is_ascii_digit()))
-                .count();
-            matches!(char_at(from + digits), Some('.' | ')')) && separated(from + digits + 1)
-        }
-        _ => false,
-    }
-}
-
-/// A following pipe line continues the table, lazily too, unless it is blank or starts a block.
-fn continues_table(units: &[u16], line: usize, quote_levels: usize) -> bool {
-    if line >= units.len() {
-        return false;
-    }
+/// A following line continues the table, lazily too, until a blank line or a line that
+/// interrupts the paragraph; a line indented four or more columns cannot interrupt it.
+fn continues_table(units: &[u16], line: usize, containers: &[Container]) -> bool {
     let end = line_end(units, line);
-    let row_from = row_start(units, line, quote_levels);
-    if is_blank_line(units, row_from, end) || starts_block(units, row_from, end) {
+    let matched = match_containers(units, line, containers);
+    let content = skip_spaces(units, matched.position, end);
+    if content == end {
         return false;
     }
-    !pipe_positions(units, row_from, end, false).is_empty()
+    let context = ParagraphContext {
+        in_bullet_list: containers.contains(&Container::List { bullet: true }),
+        in_ordered_list: containers.contains(&Container::List { bullet: false }),
+        continues_containers: matched.complete,
+    };
+    column(units, line, content) >= matched.base_column + 4
+        || !interrupts_paragraph(units, content, end, context)
 }
 
 fn container_prefix(units: &[u16], lines: &[MarkdownTableLine], nested: bool) -> Option<String> {

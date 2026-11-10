@@ -612,6 +612,34 @@
     "text": "| a |\r\n| - |\r\n| 1 |"
   },
   {
+    "name": "table-after-pipe-paragraph",
+    "text": "x |\n| a |\n| - |\n| 1 |"
+  },
+  {
+    "name": "table-after-code-span-pipe-paragraph",
+    "text": "`a|b`\n| a |\n| - |"
+  },
+  {
+    "name": "table-in-quote-lazy-text",
+    "text": "> | a |\n> | - |\nfoo"
+  },
+  {
+    "name": "table-in-list-lazy-text",
+    "text": "- a\n\n  | x |\n  | - |\nfoo"
+  },
+  {
+    "name": "table-indented-lazy-row",
+    "text": "| a |\n| - |\n    ---"
+  },
+  {
+    "name": "table-ordered-not-one-row",
+    "text": "| a |\n| - |\n2. | b |"
+  },
+  {
+    "name": "table-html-after",
+    "text": "| a |\n| - |\n<div>|"
+  },
+  {
     "name": "hard-break-backslash",
     "text": "line one\\\nline two"
   },

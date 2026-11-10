@@ -175,6 +175,18 @@ const ALLOWED: &[(&str, &str)] = &[
         "table-setext-equals",
         "lezer lets a = line underline the pipe paragraph as a level 1 setext heading; GFM keeps the line as a table row, so the parser leaves the text unstyled",
     ),
+    (
+        "table-in-quote-lazy-text",
+        "lezer keeps lazy text after a quoted table inside the blockquote as a row and styles it as a quote line; the parser ends the table and the quote at the lazy line",
+    ),
+    (
+        "table-indented-lazy-row",
+        "lezer keeps a line indented four columns after a table as a row; the parser ends the table there and styles the line as an indented code block",
+    ),
+    (
+        "table-ordered-not-one-row",
+        "lezer keeps a 2. line after a table as a row because only an item numbered 1 interrupts a paragraph; the parser lets any list item end the table and styles its marker",
+    ),
 ];
 
 /// Differences in the table model that stem from the web readers disagreeing with each other. Each

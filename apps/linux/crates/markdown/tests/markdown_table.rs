@@ -266,3 +266,60 @@ fn crlf_table_is_not_a_table() {
     assert_eq!(parse("| a |\r\n| - |\r\n| 1 |").tables(), []);
     assert_eq!(parse("| a |\n| - |\r\n| 1 |").tables(), []);
 }
+
+fn line_ranges(table: &MarkdownTable) -> Vec<Range<usize>> {
+    table.lines.iter().map(|line| line.range.clone()).collect()
+}
+
+#[test]
+fn header_continuing_a_paragraph_with_a_pipe_is_not_a_table() {
+    assert_eq!(parse("x |\n| a |\n| - |").tables(), []);
+    assert_eq!(parse("`a|b`\n| a |\n| - |").tables(), []);
+    assert_eq!(parse("> x |\n> | a |\n> | - |").tables(), []);
+    assert_eq!(
+        table("x |\n| a |\n| - |\n| 1 |\n\n| b |\n| - |").range,
+        23..34
+    );
+}
+
+#[test]
+fn header_continuing_a_paragraph_without_a_pipe_on_its_first_line_is_a_table() {
+    assert_eq!(table("x\ny |\n| a |\n| - |").range, 6..17);
+    assert_eq!(table("a \\| b\n| a |\n| - |").range, 7..18);
+    assert_eq!(table("x |\n\n| a |\n| - |").range, 5..16);
+}
+
+#[test]
+fn lazy_text_after_a_quoted_table_is_a_row_without_a_prefix() {
+    let table = table("> | a |\n> | - |\nfoo");
+    assert_eq!(table.range, 0..19);
+    assert_eq!(line_ranges(&table), [0..7, 8..15, 16..19]);
+    assert_eq!(table.container_prefix, None);
+}
+
+#[test]
+fn lazy_text_after_a_table_in_a_list_item_is_a_row_without_a_prefix() {
+    let table = table("- a\n\n  | x |\n  | - |\nfoo");
+    assert_eq!(table.range, 5..24);
+    assert_eq!(line_ranges(&table), [5..12, 13..20, 21..24]);
+    assert_eq!(table.container_prefix, None);
+}
+
+#[test]
+fn line_indented_four_columns_is_a_row() {
+    let table = table("| a |\n| - |\n    ---");
+    assert_eq!(table.range, 0..19);
+    assert_eq!(line_ranges(&table), [0..5, 6..11, 12..19]);
+}
+
+#[test]
+fn ordered_item_not_numbered_one_is_a_row() {
+    let table = table("| a |\n| - |\n2. | b |");
+    assert_eq!(line_ranges(&table), [0..5, 6..11, 12..20]);
+}
+
+#[test]
+fn html_block_start_ends_the_table() {
+    let table = table("| a |\n| - |\n<div>|");
+    assert_eq!(line_ranges(&table), [0..5, 6..11]);
+}
