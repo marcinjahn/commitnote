@@ -7592,6 +7592,145 @@
       ]
     },
     {
+      "name": "table-task-marker-header",
+      "text": "- [ ] a | b\n  --- | ---",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 23
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 23
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "table",
+          "from": 2,
+          "to": 23
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 23
+          },
+          "containerPrefix": null,
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 11
+              },
+              "rowStart": 2,
+              "trailingPipe": false,
+              "cells": [
+                {
+                  "range": {
+                    "from": 2,
+                    "to": 8
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 7
+                  },
+                  "text": "[ ] a"
+                },
+                {
+                  "range": {
+                    "from": 9,
+                    "to": 11
+                  },
+                  "contentRange": {
+                    "from": 10,
+                    "to": 11
+                  },
+                  "text": "b"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 12,
+                "to": 23
+              },
+              "rowStart": 14,
+              "trailingPipe": false,
+              "cells": [
+                {
+                  "range": {
+                    "from": 14,
+                    "to": 18
+                  },
+                  "contentRange": {
+                    "from": 14,
+                    "to": 17
+                  },
+                  "text": "---"
+                },
+                {
+                  "range": {
+                    "from": 19,
+                    "to": 23
+                  },
+                  "contentRange": {
+                    "from": 20,
+                    "to": 23
+                  },
+                  "text": "---"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-task-marker-rejected",
+      "text": "- [ ] | a |\n  | - |",
+      "nodes": [
+        {
+          "kind": "bulletList",
+          "from": 0,
+          "to": 19
+        },
+        {
+          "kind": "listItem",
+          "from": 0,
+          "to": 19
+        },
+        {
+          "kind": "listMark",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "kind": "task",
+          "from": 2,
+          "to": 19
+        },
+        {
+          "kind": "taskMarker",
+          "checked": false,
+          "from": 2,
+          "to": 5
+        }
+      ],
+      "tables": []
+    },
+    {
       "name": "hard-break-backslash",
       "text": "line one\\\nline two",
       "nodes": [

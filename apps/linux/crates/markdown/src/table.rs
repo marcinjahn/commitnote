@@ -100,13 +100,38 @@ impl MarkdownDocument {
             .filter(|node| node.kind == SyntaxKind::Table)
         {
             let containers = self.containers(&node.range);
-            let table = self.read_table(node.range.start, &containers);
-            let paragraph_start = self.paragraph_start(node.range.start, &tables);
+            let header = self.header_start(&node.range);
+            let table = self.read_table(header, &containers);
+            let paragraph_start = self.paragraph_start(header, &tables);
             if forms_table(units, &table, &containers, paragraph_start) {
                 tables.push(table);
             }
         }
         tables
+    }
+
+    /// Where lezer's paragraph starts on the header line of pulldown-cmark's table node. On the
+    /// first line of a list item that is the item's content, so a task marker pulldown-cmark
+    /// consumed stays part of the header row.
+    fn header_start(&self, table: &Range<usize>) -> usize {
+        let units = self.units();
+        let line = line_start(units, table.start);
+        self.nodes
+            .iter()
+            .rev()
+            .find(|node| {
+                matches!(node.kind, SyntaxKind::Blockquote | SyntaxKind::ListItem)
+                    && node.range.start <= table.start
+                    && table.end <= node.range.end
+            })
+            .filter(|node| {
+                node.kind == SyntaxKind::ListItem && line_start(units, node.range.start) == line
+            })
+            .map_or(table.start, |item| {
+                let content_column = column(units, line, item.range.start)
+                    + self.list_item_content_offset(&item.range);
+                find_column(units, line, table.start, content_column)
+            })
     }
 
     /// Where the paragraph holding the line at `from` starts. pulldown-cmark lets a table

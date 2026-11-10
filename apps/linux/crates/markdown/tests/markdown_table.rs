@@ -323,3 +323,19 @@ fn html_block_start_ends_the_table() {
     let table = table("| a |\n| - |\n<div>|");
     assert_eq!(line_ranges(&table), [0..5, 6..11]);
 }
+
+#[test]
+fn task_marker_is_part_of_the_first_header_cell() {
+    let table = table("- [ ] a | b\n  --- | ---");
+    assert_eq!(table.range, 0..23);
+    assert_eq!(table.container_prefix, None);
+    assert_eq!(table.header().row_start, 2);
+    assert_eq!(cells(table.header()), [(2..8, 2..7), (9..11, 10..11)]);
+}
+
+#[test]
+fn task_marker_counts_as_a_header_cell() {
+    assert_eq!(parse("- [ ] | a |\n  | - |").tables(), []);
+    assert_eq!(parse("> - [ ] | a |\n>   | - |").tables(), []);
+    assert_eq!(parse("- [X] | a |\n  | - |\n  | 1 |").tables(), []);
+}

@@ -187,6 +187,10 @@ const ALLOWED: &[(&str, &str)] = &[
         "table-ordered-not-one-row",
         "lezer keeps a 2. line after a table as a row because only an item numbered 1 interrupts a paragraph; the parser lets any list item end the table and styles its marker",
     ),
+    (
+        "table-task-marker-rejected",
+        "lezer reads the [ ] task marker as a header cell, so two header cells against one delimiter cell leave the item a task with a checkbox; pulldown-cmark consumes the marker as the item's task marker and makes the rest a table, so the parser has no task node and shows no checkbox",
+    ),
 ];
 
 /// Differences in the table model that stem from the web readers disagreeing with each other. Each

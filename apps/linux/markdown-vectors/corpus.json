@@ -640,6 +640,14 @@
     "text": "| a |\n| - |\n<div>|"
   },
   {
+    "name": "table-task-marker-header",
+    "text": "- [ ] a | b\n  --- | ---"
+  },
+  {
+    "name": "table-task-marker-rejected",
+    "text": "- [ ] | a |\n  | - |"
+  },
+  {
     "name": "hard-break-backslash",
     "text": "line one\\\nline two"
   },
