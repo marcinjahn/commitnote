@@ -1134,6 +1134,10 @@ impl NoteEditor {
 
     /// Returns whether the caret ended up in view; it is not while the page has yet to grow
     /// to the laid-out text, which clamps the scroll position.
+    ///
+    /// Until its allocation grows to the laid-out text, the text view scrolls itself to keep
+    /// the caret inside it. That offset goes away with the next allocation, so the caret is
+    /// placed where the unscrolled text view will show it.
     fn scroll_to_caret(&self) -> bool {
         let Some(scrolled) = self.scroll_window() else {
             return true;
@@ -1143,12 +1147,13 @@ impl NoteEditor {
         let caret = view.iter_location(&buffer.iter_at_mark(&buffer.get_insert()));
         let (x, y) =
             view.buffer_to_window_coords(gtk::TextWindowType::Widget, caret.x(), caret.y());
+        let own_offset = view.vadjustment().map_or(0.0, |own| own.value());
         let Some(top) =
             view.compute_point(&scrolled, &gtk::graphene::Point::new(x as f32, y as f32))
         else {
             return true;
         };
-        let top = f64::from(top.y());
+        let top = f64::from(top.y()) + own_offset;
         let bottom = top + f64::from(caret.height());
         let adjustment = scrolled.vadjustment();
         let page = adjustment.page_size();
