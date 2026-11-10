@@ -1,7 +1,6 @@
 import { GOATCOUNTER_SITE_CODE } from "../analytics.config.ts";
 
 export interface BuildModeFacts {
-  desktopShell: boolean;
   fakeForge: boolean;
   analyticsEndpoint: string | null;
 }
@@ -25,15 +24,13 @@ export function buildModeFacts(
   siteCode: string | null = GOATCOUNTER_SITE_CODE,
 ): BuildModeFacts {
   const goatCounter = goatCounterEndpoint(siteCode);
-  const fakeForge =
-    mode === "fake-forge" || mode === "desktop-fake" || mode === "native-core-fake";
+  const fakeForge = mode === "fake-forge" || mode === "native-core-fake";
   const analyticsEndpoint = fakeForge
     ? FAKE_ANALYTICS_ENDPOINT
-    : mode === "production" || mode === "desktop" || mode === "native-core"
+    : mode === "production" || mode === "native-core"
       ? goatCounter
       : null;
   return {
-    desktopShell: mode === "desktop" || mode === "desktop-fake",
     fakeForge,
     analyticsEndpoint,
   };

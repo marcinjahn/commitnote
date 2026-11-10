@@ -55,7 +55,7 @@ export function createBrowserPlatformPorts(): PlatformPorts {
       request: () => requestPersistentStorage(navigator.storage),
     },
     navigation: {
-      shareLinkBase: () => shareLinkBase(location, __DESKTOP_SHELL__),
+      shareLinkBase: () => shareLinkBase(location),
       clearNoteFragment: () => clearNoteFragment(window.history, window.location),
     },
   };

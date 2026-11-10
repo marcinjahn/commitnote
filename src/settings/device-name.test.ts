@@ -36,7 +36,6 @@ const UA = {
 
 function inputs(overrides: Partial<PlatformInputs>): PlatformInputs {
   return {
-    desktopShell: false,
     standalone: false,
     userAgent: "",
     maxTouchPoints: 0,
@@ -45,36 +44,6 @@ function inputs(overrides: Partial<PlatformInputs>): PlatformInputs {
 }
 
 describe("automaticDeviceName", () => {
-  it("names the desktop shell by OS", () => {
-    expect(
-      automaticDeviceName(
-        inputs({ desktopShell: true, userAgent: UA.linuxChrome }),
-      ),
-    ).toBe("Desktop app on Linux");
-    expect(
-      automaticDeviceName(
-        inputs({ desktopShell: true, userAgent: UA.windowsEdge }),
-      ),
-    ).toBe("Desktop app on Windows");
-    expect(
-      automaticDeviceName(
-        inputs({ desktopShell: true, userAgent: UA.macSafari }),
-      ),
-    ).toBe("Desktop app on macOS");
-  });
-
-  it("prefers the desktop shell over standalone", () => {
-    expect(
-      automaticDeviceName(
-        inputs({
-          desktopShell: true,
-          standalone: true,
-          userAgent: UA.linuxChrome,
-        }),
-      ),
-    ).toBe("Desktop app on Linux");
-  });
-
   it("names an installed app by OS", () => {
     expect(
       automaticDeviceName(

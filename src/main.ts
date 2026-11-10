@@ -15,7 +15,7 @@ import { captureInstallEvents } from "./app/install-events";
 import { createBrowserInstallController } from "./app/install-controller";
 import { type LaunchQueueLike, startLaunchActions } from "./app/launch-action";
 import { clearLaunchAction } from "./app/note-navigation";
-import { isStandalone, resolveStandalone } from "./app/display-mode";
+import { isStandalone } from "./app/display-mode";
 import { sendVisit } from "./analytics/analytics";
 import { startKeyboardInset } from "./ui/dialogs/keyboard-inset";
 import "./note-fonts.css";
@@ -90,21 +90,18 @@ const displayEnvironment = {
   matchMedia: (q: string) => window.matchMedia(q),
   navigator: navigator as { standalone?: boolean },
 };
-const standalone = resolveStandalone(__DESKTOP_SHELL__, displayEnvironment);
-const browserStandalone = isStandalone(displayEnvironment);
+const standalone = isStandalone(displayEnvironment);
 
 function countVisit(): void {
   sendVisit("app", {
     endpoint: __ANALYTICS_ENDPOINT__,
-    desktopShell: __DESKTOP_SHELL__,
-    standalone: browserStandalone,
+    standalone,
     navigator,
     fetch: (url, init) => fetch(url, init),
   });
 }
 
-const appUpdates =
-  import.meta.env.DEV || __DESKTOP_SHELL__ ? null : startBrowserAppUpdates();
+const appUpdates = import.meta.env.DEV ? null : startBrowserAppUpdates();
 
 if (isShareHash(location.hash)) {
   await mountViewer(target);

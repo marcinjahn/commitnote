@@ -52,21 +52,17 @@ through a LAN IP address over plain HTTP does not work.
 - `test` — run unit tests with Vitest
 - `test:e2e` — run end-to-end tests with Playwright under the e2e lock (see below)
 - `check` — type-check the app and the Node-side config/scripts
-- `check:bundle` — build `dist/`, `dist-fake/` and `dist-desktop/` and verify the site layout, the
-  landing page's CSP, and the landing size budget (see
-  [Landing page](#landing-page)), and that the production build never ships test-mode fixture data, that the web app manifest and every icon
-  and screenshot it references are in the production build, that `app/sw.js` is present and its
-  precache list equals the emitted files under `app/`, and that the desktop build ships no fake-forge
-  fixture data or `sw.js`, and that its CSP allows `https://gitlab.com` and `ipc:`
+- `check:bundle` — build `dist/` and `dist-fake/` and verify the site layout, the landing page's CSP,
+  and the landing size budget (see [Landing page](#landing-page)), and that the production build
+  never ships test-mode fixture data, that the web app manifest and every icon and screenshot it
+  references are in the production build, and that `app/sw.js` is present and its precache list
+  equals the emitted files under `app/`
 - `generate:brand` — regenerate the brand SVGs and app icons (see above)
 - `generate:pwa-screenshots` — regenerate the web app manifest screenshots in `public/screenshots/` from
   the test-mode build, using the system Chrome (optional `E2E_PORT`)
 - `generate:landing-screenshots` — regenerate the landing screenshots in `landing/screenshots/`, in
   light and dark, from the test-mode build; run it after visible UI changes (optional `E2E_PORT`)
 - `fixture:sample-notes-repo` — regenerate the sample notes repo fixture
-- `build:desktop` — build only the web assets of the desktop app into `dist-desktop/`
-- `build:desktop-fake` — build the same in test mode (fake forge) into `dist-desktop-fake/`, for the
-  local desktop-fake AppImage only (never published)
 
 ## Landing page
 
@@ -106,7 +102,6 @@ does not count as a landing visit. The request is exactly
 | `/landing/web` | `Landing (web)`  |
 | `/app/web`     | `App (web)`      |
 | `/app/pwa`     | `App (PWA)`      |
-| `/app/appimage`| `App (AppImage)` |
 
 **What is never sent or stored.** No cookies or browser storage for counting, no note data, URLs, hashes,
 query strings, referrer or identifiers. GoatCounter does not store the IP address or the full User-Agent; it
@@ -117,7 +112,7 @@ up to 8 hours, and filters bot and headless User-Agents on the server.
 `navigator.globalPrivacyControl === true`, when the browser is offline, or after opting out. Opt out in
 Settings > This device > "Anonymous usage statistics", or with the button in the landing page's `#privacy`
 section. The choice is stored as `localStorage["commitnote.analyticsOptOut"] = "1"` and shared by the
-landing page and the web app (same origin); the AppImage keeps its own.
+landing page and the web app (same origin).
 
 The dev server and unit tests always have no endpoint. Fake-forge builds use
 `https://analytics.invalid/count`, which the e2e tests intercept.
@@ -130,7 +125,7 @@ The dev server and unit tests always have no endpoint. Fake-forge builds use
 2. In the site's Settings > Data collection keep **Sessions**, **User-Agent** and **Country** on; turn
    **Referrer**, **Size** and **Region** off; leave **Individual pageviews** and **Language** off. Save.
 3. Set `GOATCOUNTER_SITE_CODE` in `analytics.config.ts` to the site code, commit and push to `main`. The
-   GoatCounter origin is then added to `connect-src` of the landing, web and desktop CSPs.
+   GoatCounter origin is then added to `connect-src` of the landing and web CSPs.
 4. "Deploy to GitHub Pages" enables the landing page and web app.
 5. Verify: open `https://commitnote.eu/` with DevTools > Network and confirm exactly one
    `count?p=%2Flanding%2Fweb…` request to `<code>.goatcounter.com`, without `Referer` or `Cookie` headers.
@@ -140,7 +135,7 @@ The dev server and unit tests always have no endpoint. Fake-forge builds use
 Every push to `main` runs `.github/workflows/pages.yml`: type-check, unit tests, the bundle check, then
 a publish of `dist/` to GitHub Pages. In the repository settings, set Pages > Source to "GitHub
 Actions" once. `dist/` is the whole site: the landing page at the root (with `social.png`) and the app in `dist/app/`, served at `https://commitnote.eu/app/`. The
-build uses relative asset paths. Desktop builds stay app-only: `dist-desktop/` has no landing page.
+build uses relative asset paths.
 
 ## End-to-end tests
 
@@ -303,7 +298,7 @@ is none, so Forward still reaches the notes it skipped.
 
 A share is a fixed, encrypted copy of the note's saved version, uploaded as a secret gist (GitHub) or public
 snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu, or the Share button in its header, to create a share link
-(`https://commitnote.eu/app/#share=...` on the web; the desktop app uses the same app URL).
+(`https://commitnote.eu/app/#share=...`).
 
 - The link's secret stays in the URL fragment, so it never reaches a server. An optional share
   password is then needed in addition to the link.

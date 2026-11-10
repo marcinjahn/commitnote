@@ -17,9 +17,8 @@ export const WEB_APP_URL = "https://commitnote.eu/app/";
 
 export function shareLinkBase(
   location: Pick<Location, "origin" | "pathname">,
-  desktopShell: boolean,
 ): string {
-  return desktopShell ? WEB_APP_URL : location.origin + location.pathname;
+  return location.origin + location.pathname;
 }
 
 export function formatShareLink(

@@ -7,8 +7,6 @@ export const FAKE_FORGE_BUILD_FINGERPRINT_FILE = ".fake-forge-build-fingerprint"
 const EXCLUDED_PATHS = new Set([
   "dist",
   "dist-fake",
-  "dist-desktop",
-  "dist-desktop-fake",
   "dist-native-core",
   "dist-native-core-fake",
   "apps",

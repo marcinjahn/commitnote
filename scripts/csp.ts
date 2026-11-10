@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export type CspTarget = "web" | "desktop" | "landing";
+export type CspTarget = "web" | "landing";
 
 export function inlineScriptHashes(html: string): string[] {
   const hashes: string[] = [];
@@ -39,9 +39,6 @@ export function buildCsp(
   }
   const scriptSrc = ["script-src 'self' 'wasm-unsafe-eval'", ...scriptHashes];
   const connectSrc = ["connect-src https://api.github.com https://gitlab.com"];
-  if (target === "desktop") {
-    connectSrc.push("ipc: http://ipc.localhost");
-  }
   if (analyticsOrigin !== null) {
     connectSrc.push(analyticsOrigin);
   }

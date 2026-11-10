@@ -20,7 +20,7 @@ import type { SessionStore } from "../session/session-store";
 import type { Session } from "../session/session";
 import type { DeviceSettingsStore } from "../settings/device-settings-store";
 import type { SettingsSaver } from "../settings/settings-saver";
-import { shareLinkBase } from "../share/share-link";
+import { WEB_APP_URL } from "../share/share-link";
 import type { Clock } from "../sync/clock";
 import { createRateBudget, type RateBudget } from "../sync/rate-budget";
 import type { SyncEngine } from "../sync/sync-engine";
@@ -129,7 +129,7 @@ export function createAppSession(options: {
     visibility: lifecycle.visibility,
     persistentStorage: null,
     navigation: {
-      shareLinkBase: () => shareLinkBase({ origin: "", pathname: "" }, true),
+      shareLinkBase: () => WEB_APP_URL,
       clearNoteFragment: () => undefined,
     },
   };

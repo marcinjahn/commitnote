@@ -86,8 +86,6 @@ describe("fake-forge build fingerprint", () => {
   it.each([
     "dist/index.html",
     "dist-fake/index.html",
-    "dist-desktop/index.html",
-    "dist-desktop-fake/index.html",
     "dist-native-core/commitnote-core.js",
     "dist-native-core-fake/commitnote-core.js",
     "apps/ios/.build/debug/x",

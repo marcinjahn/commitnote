@@ -3,7 +3,6 @@ import { isIosDevice } from "../app/install-offer";
 export const DEVICE_NAME_MAX_LENGTH = 40;
 
 export interface PlatformInputs {
-  desktopShell: boolean;
   standalone: boolean;
   userAgent: string;
   maxTouchPoints: number;
@@ -31,7 +30,6 @@ function browserName(ua: string): string {
 
 export function automaticDeviceName(inputs: PlatformInputs): string {
   const os = osName(inputs);
-  if (inputs.desktopShell) return `Desktop app on ${os}`;
   if (inputs.standalone) return `${os} app`;
   return `${browserName(inputs.userAgent)} on ${os}`;
 }
