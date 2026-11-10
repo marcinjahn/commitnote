@@ -315,6 +315,23 @@ mod tests {
     }
 
     #[test]
+    fn the_row_of_a_created_share_is_there_when_its_reply_is() {
+        let session = glib::MainContext::new().block_on(ready_session());
+        let model = &session.model;
+
+        // Awaiting on another context leaves the model's event pump idle, so only the reply can
+        // apply the shares event the core sent before it.
+        let outcome = glib::MainContext::new().block_on(model.create_share(
+            welcome(),
+            Secret::new(PASSWORD),
+            LABEL.to_owned(),
+        ));
+
+        assert!(matches!(outcome, Ok(ShareCreateOutcome::Created { .. })));
+        assert_eq!(model.shares_for(&welcome()).len(), 1);
+    }
+
+    #[test]
     fn the_shared_version_of_a_gone_share_is_a_message() {
         run(|| async {
             let session = ready_session().await;

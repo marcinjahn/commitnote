@@ -333,6 +333,7 @@ mod imp {
         pub(super) config: OnceCell<AppConfig>,
         pub(super) context: OnceCell<glib::MainContext>,
         pub(super) client: RefCell<Option<Rc<CoreClient>>>,
+        pub(super) events: RefCell<Option<async_channel::Receiver<CoreEvent>>>,
         pub(super) state: RefCell<State>,
         pub(super) generation: Cell<u64>,
         pub(super) exporting: Cell<bool>,
@@ -1700,9 +1701,9 @@ impl AppModel {
         self.set_loading_message(None);
         let params = PassphraseParams { passphrase };
         let result = if initialize {
-            client.request::<LoginInitialize>(params).await
+            self.request::<LoginInitialize>(params).await
         } else {
-            client.request::<LoginUnlock>(params).await
+            self.request::<LoginUnlock>(params).await
         };
         match result {
             Ok(_) => {
@@ -1769,6 +1770,7 @@ impl AppModel {
         let Some(receiver) = self.client().and_then(|client| client.subscribe()) else {
             return;
         };
+        self.imp().events.replace(Some(receiver.clone()));
         let generation = self.imp().generation.get();
         let model = self.downgrade();
         self.spawn(async move {
@@ -1782,6 +1784,18 @@ impl AppModel {
                 model.handle_event(event);
             }
         });
+    }
+
+    /// The core emits events before the reply they lead to, but the pump task may not have run
+    /// yet when a reply arrives, so every reply first applies the events already received.
+    fn apply_received_events(&self) {
+        let receiver = self.imp().events.borrow().clone();
+        let Some(receiver) = receiver else {
+            return;
+        };
+        while let Ok(event) = receiver.try_recv() {
+            self.handle_event(event);
+        }
     }
 
     fn handle_event(&self, event: CoreEvent) {
@@ -2050,8 +2064,7 @@ impl AppModel {
     }
 
     fn lifecycle_update(&self) -> impl Future<Output = ()> + use<> {
-        let client = self.client();
-        let (visible, online) = if client.is_some() {
+        let (visible, online) = if self.client().is_some() {
             let mut state = self.state_mut();
             let visible = (state.sent_visible != Some(state.visible)).then_some(state.visible);
             let online = (state.sent_online != Some(state.online)).then_some(state.online);
@@ -2065,12 +2078,11 @@ impl AppModel {
         } else {
             (None, None)
         };
-        let visible = client.as_ref().zip(visible).map(|(client, visible)| {
-            client.request::<LifecycleSetVisible>(LifecycleSetVisibleParams { visible })
+        let visible = visible.map(|visible| {
+            self.request::<LifecycleSetVisible>(LifecycleSetVisibleParams { visible })
         });
-        let online = client.as_ref().zip(online).map(|(client, online)| {
-            client.request::<LifecycleSetOnline>(LifecycleSetOnlineParams { online })
-        });
+        let online = online
+            .map(|online| self.request::<LifecycleSetOnline>(LifecycleSetOnlineParams { online }));
         async move {
             if let Some(request) = visible
                 && let Err(error) = request.await
@@ -2126,11 +2138,16 @@ impl AppModel {
         params: C::Params,
     ) -> impl Future<Output = Result<C::Result, RequestError>> + use<C> {
         let pending = self.client().map(|client| client.request::<C>(params));
+        let model = self.downgrade();
         async move {
-            match pending {
+            let result = match pending {
                 Some(pending) => pending.await,
                 None => Err(RequestError::Stopped),
+            };
+            if let Some(model) = model.upgrade() {
+                model.apply_received_events();
             }
+            result
         }
     }
 
@@ -2161,6 +2178,7 @@ impl AppModel {
     fn bump_generation(&self) {
         let generation = &self.imp().generation;
         generation.set(generation.get().wrapping_add(1));
+        self.imp().events.take();
     }
 
     fn state(&self) -> Ref<'_, State> {
@@ -2208,11 +2226,16 @@ impl AppModel {
         params: serde_json::Value,
     ) -> impl Future<Output = Result<serde_json::Value, UserError>> + use<> {
         let pending = self.client().map(|client| client.send(name, params));
+        let model = self.downgrade();
         async move {
-            match pending {
+            let result = match pending {
                 Some(pending) => pending.await.map_err(UserError::from),
                 None => Err(UserError::generic()),
+            };
+            if let Some(model) = model.upgrade() {
+                model.apply_received_events();
             }
+            result
         }
     }
 
