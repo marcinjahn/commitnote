@@ -1,3 +1,6 @@
+const NEWLINE: u16 = b'\n' as u16;
+const SPACE: u16 = b' ' as u16;
+const TAB: u16 = b'\t' as u16;
 const HASH: i32 = b'#' as i32;
 const SEMICOLON: i32 = b';' as i32;
 const DASH: i32 = b'-' as i32;
@@ -46,6 +49,48 @@ pub(crate) fn is_whitespace(c: i32) -> bool {
             | 0x3000
             | 0xFEFF
     )
+}
+
+pub(crate) fn is_whitespace_unit(unit: u16) -> bool {
+    is_whitespace(i32::from(unit))
+}
+
+pub(crate) fn is_blank_unit(unit: u16) -> bool {
+    unit == SPACE || unit == TAB
+}
+
+pub(crate) fn line_start(units: &[u16], position: usize) -> usize {
+    let position = position.min(units.len());
+    units[..position]
+        .iter()
+        .rposition(|&unit| unit == NEWLINE)
+        .map_or(0, |index| index + 1)
+}
+
+/// End of the line at `position`, before its line break.
+pub(crate) fn line_end(units: &[u16], position: usize) -> usize {
+    units.get(position..).map_or(units.len(), |rest| {
+        rest.iter()
+            .position(|&unit| unit == NEWLINE)
+            .map_or(units.len(), |index| position + index)
+    })
+}
+
+pub(crate) fn is_blank_line(units: &[u16], from: usize, to: usize) -> bool {
+    units[from..to].iter().all(|&unit| is_whitespace_unit(unit))
+}
+
+pub(crate) fn slice16(units: &[u16], from: usize, to: usize) -> String {
+    String::from_utf16_lossy(&units[from..to])
+}
+
+/// The first index in `from..to` that is not a space or tab, or `to`.
+pub(crate) fn skip_blanks(units: &[u16], from: usize, to: usize) -> usize {
+    let mut index = from;
+    while index < to && is_blank_unit(units[index]) {
+        index += 1;
+    }
+    index
 }
 
 pub(crate) fn is_word_char(c: i32) -> bool {
