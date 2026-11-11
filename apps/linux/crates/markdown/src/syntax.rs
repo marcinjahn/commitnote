@@ -99,8 +99,17 @@ impl MarkdownDocument {
 
     /// The line around `offset`, without its line break.
     pub fn line_containing(&self, offset: usize) -> Range<usize> {
+        self.line_range(self.line_index_containing(offset))
+    }
+
+    /// The 0-based index of the line around `offset`, which is clamped to the document.
+    pub(crate) fn line_index_containing(&self, offset: usize) -> usize {
         let clamped = offset.min(self.length());
-        let index = self.lines.partition_point(|&start| start <= clamped) - 1;
+        self.lines.partition_point(|&start| start <= clamped) - 1
+    }
+
+    /// The line at a valid 0-based `index`, without its line break.
+    pub(crate) fn line_range(&self, index: usize) -> Range<usize> {
         let end = self
             .lines
             .get(index + 1)

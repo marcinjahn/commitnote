@@ -1,40 +1,11 @@
-use std::ops::Range;
-
 use commitnote_editor_text::{TextEdit, TextSelection};
 
 use crate::commands::CommandResult;
 use crate::parse;
-use crate::scanners::is_whitespace;
-use crate::syntax::SyntaxKind;
-
-const NEWLINE: u16 = b'\n' as u16;
-const PIPE: u16 = b'|' as u16;
-const BACKSLASH: u16 = b'\\' as u16;
-const QUOTE: u16 = b'>' as u16;
-const SPACE: u16 = b' ' as u16;
-const TAB: u16 = b'\t' as u16;
-
-struct Cell {
-    from: usize,
-    to: usize,
-    content_to: usize,
-    has_text: bool,
-}
-
-struct SourceLine {
-    from: usize,
-    to: usize,
-    row_from: usize,
-    cells: Vec<Cell>,
-    trailing_pipe: bool,
-}
-
-struct Table {
-    prefix: Option<String>,
-    column_count: usize,
-    lines: Vec<SourceLine>,
-    span: Range<usize>,
-}
+use crate::scanners::{
+    is_blank_line, is_whitespace, is_whitespace_unit, line_end, line_start, slice16,
+};
+use crate::table::{MarkdownTable, MarkdownTableLine};
 
 struct Insertion {
     at: usize,
@@ -46,269 +17,13 @@ fn len16(text: &str) -> usize {
     text.encode_utf16().count()
 }
 
-fn is_blank_unit(unit: u16) -> bool {
-    unit == SPACE || unit == TAB
-}
-
-fn is_whitespace_unit(unit: u16) -> bool {
-    is_whitespace(i32::from(unit))
-}
-
 fn trim_end_js(text: &str) -> &str {
     text.trim_end_matches(|c: char| i32::try_from(u32::from(c)).is_ok_and(is_whitespace))
 }
 
-fn line_start(units: &[u16], position: usize) -> usize {
-    let position = position.min(units.len());
-    units[..position]
-        .iter()
-        .rposition(|&unit| unit == NEWLINE)
-        .map_or(0, |index| index + 1)
-}
-
-fn line_end(units: &[u16], position: usize) -> usize {
-    units.get(position..).map_or(units.len(), |rest| {
-        rest.iter()
-            .position(|&unit| unit == NEWLINE)
-            .map_or(units.len(), |index| position + index)
-    })
-}
-
-fn is_blank_line(units: &[u16], from: usize, to: usize) -> bool {
-    units[from..to].iter().all(|&unit| is_whitespace_unit(unit))
-}
-
-fn slice16(units: &[u16], from: usize, to: usize) -> String {
-    String::from_utf16_lossy(&units[from..to])
-}
-
-fn skip_blanks(units: &[u16], from: usize, to: usize) -> usize {
-    let mut index = from;
-    while index < to && is_blank_unit(units[index]) {
-        index += 1;
-    }
-    index
-}
-
-fn source_cell(units: &[u16], from: usize, to: usize) -> Cell {
-    let mut content_to = to;
-    while content_to > from && is_blank_unit(units[content_to - 1]) {
-        content_to -= 1;
-    }
-    let content_from = skip_blanks(units, from, content_to);
-    Cell {
-        from,
-        to,
-        content_to,
-        has_text: content_from < content_to,
-    }
-}
-
-fn pipe_positions(units: &[u16], from: usize, to: usize, delimiter_row: bool) -> Vec<usize> {
-    let mut pipes = Vec::new();
-    let mut index = from;
-    while index < to {
-        let unit = units[index];
-        if unit == BACKSLASH && !delimiter_row {
-            index += 2;
-            continue;
-        }
-        if unit == PIPE {
-            pipes.push(index);
-        }
-        index += 1;
-    }
-    pipes
-}
-
-fn pipe_segments(from: usize, to: usize, pipes: &[usize]) -> Vec<(usize, usize)> {
-    let mut segments = Vec::new();
-    let mut start = from;
-    for &pipe in pipes {
-        segments.push((start, pipe));
-        start = pipe + 1;
-    }
-    segments.push((start, to));
-    if pipes.first() == Some(&from) {
-        segments.remove(0);
-    }
-    if pipes.last().is_some_and(|&pipe| pipe + 1 == to) {
-        segments.pop();
-    }
-    segments
-}
-
-fn source_line(units: &[u16], row_from: usize, delimiter_row: bool) -> SourceLine {
-    let from = line_start(units, row_from);
-    let to = line_end(units, row_from);
-    let pipes = pipe_positions(units, row_from, to, delimiter_row);
-    let mut segments = pipe_segments(row_from, to, &pipes);
-    let mut trailing_pipe = pipes.last().is_some_and(|&pipe| pipe + 1 == to);
-    if !trailing_pipe
-        && let (Some(&last_pipe), Some(&(start, end))) = (pipes.last(), segments.last())
-        && start == last_pipe + 1
-        && is_blank_line(units, start, end)
-    {
-        segments.pop();
-        trailing_pipe = true;
-    }
-    SourceLine {
-        from,
-        to,
-        row_from,
-        cells: segments
-            .into_iter()
-            .map(|(start, end)| source_cell(units, start, end))
-            .collect(),
-        trailing_pipe,
-    }
-}
-
-fn row_start(units: &[u16], line: usize, quote_levels: usize) -> usize {
-    let end = line_end(units, line);
-    let mut remaining = quote_levels;
-    let mut index = line;
-    loop {
-        index = skip_blanks(units, index, end);
-        if remaining > 0 && index < end && units[index] == QUOTE {
-            remaining -= 1;
-            index += 1;
-        } else {
-            return index;
-        }
-    }
-}
-
-fn starts_block(units: &[u16], from: usize, to: usize) -> bool {
-    let Some(&first) = units.get(from).filter(|_| from < to) else {
-        return true;
-    };
-    let char_at = |index: usize| {
-        units
-            .get(index)
-            .filter(|_| index < to)
-            .and_then(|&unit| char::from_u32(u32::from(unit)))
-    };
-    let separated = |index: usize| char_at(index).is_none_or(|c| c == ' ' || c == '\t');
-    match char::from_u32(u32::from(first)).unwrap_or(' ') {
-        '>' | '#' => true,
-        '-' | '*' | '+' => separated(from + 1),
-        '`' | '~' => char_at(from + 1) == char_at(from) && char_at(from + 2) == char_at(from),
-        '0'..='9' => {
-            let digits = (from..to)
-                .take_while(|&index| char_at(index).is_some_and(|c| c.is_ascii_digit()))
-                .count();
-            matches!(char_at(from + digits), Some('.' | ')')) && separated(from + digits + 1)
-        }
-        _ => false,
-    }
-}
-
-fn continues_table(units: &[u16], line: usize, quote_levels: usize, first_prefix: &str) -> bool {
-    if line >= units.len() {
-        return false;
-    }
-    let end = line_end(units, line);
-    let row_from = row_start(units, line, quote_levels);
-    if is_blank_line(units, row_from, end) || starts_block(units, row_from, end) {
-        return false;
-    }
-    if quote_levels == 0
-        && !first_prefix.is_empty()
-        && slice16(units, line, row_from) != first_prefix
-    {
-        return false;
-    }
-    !pipe_positions(units, row_from, end, false).is_empty()
-}
-
-fn container_prefix(units: &[u16], lines: &[SourceLine], nested: bool) -> Option<String> {
-    if !nested {
-        return Some(String::new());
-    }
-    let prefixes: Vec<String> = lines
-        .iter()
-        .map(|line| slice16(units, line.from, line.row_from))
-        .collect();
-    let prefix = prefixes.first()?;
-    if prefixes.iter().any(|other| other != prefix) {
-        return None;
-    }
-    prefix
-        .chars()
-        .all(|c| matches!(c, ' ' | '\t' | '>'))
-        .then(|| prefix.clone())
-}
-
-fn tables(text: &str, units: &[u16]) -> Vec<Table> {
-    let document = parse(text);
-    let mut tables = Vec::new();
-    for node in &document.nodes {
-        if node.kind != SyntaxKind::Table {
-            continue;
-        }
-        let first_row = node.range.start.min(units.len());
-        let first_line = line_start(units, first_row);
-        let last_line = line_start(units, node.range.end.max(first_row).min(units.len()));
-        let quote_levels = units[first_line..first_row]
-            .iter()
-            .filter(|&&unit| unit == QUOTE)
-            .count();
-        let first_prefix = slice16(units, first_line, first_row);
-        let mut lines = Vec::new();
-        let mut line = first_line;
-        loop {
-            let row_from = if line == first_line {
-                first_row
-            } else {
-                row_start(units, line, quote_levels)
-            };
-            lines.push(source_line(units, row_from, lines.len() == 1));
-            let following = line_end(units, line) + 1;
-            if line >= last_line && !continues_table(units, following, quote_levels, &first_prefix)
-            {
-                break;
-            }
-            line = following;
-        }
-        let nested = document.nodes.iter().any(|other| {
-            matches!(
-                other.kind,
-                SyntaxKind::Blockquote
-                    | SyntaxKind::ListItem
-                    | SyntaxKind::BulletList
-                    | SyntaxKind::OrderedList
-            ) && other.range.start <= node.range.start
-                && node.range.end <= other.range.end
-        });
-        let span = lines[0].from..lines[lines.len() - 1].to;
-        tables.push(Table {
-            prefix: container_prefix(units, &lines, nested),
-            column_count: lines[0].cells.len(),
-            lines,
-            span,
-        });
-    }
-    tables
-}
-
-fn cell_at(table: &Table, position: usize) -> (usize, usize) {
-    let line = table
-        .lines
-        .iter()
-        .position(|candidate| position <= candidate.to)
-        .unwrap_or(table.lines.len() - 1);
-    let cells = &table.lines[line].cells;
-    let column = cells
-        .iter()
-        .position(|cell| position <= cell.to)
-        .unwrap_or(cells.len().saturating_sub(1));
-    (line, column.min(table.column_count.saturating_sub(1)))
-}
-
 fn insert_block(
     units: &[u16],
-    tables: &[Table],
+    tables: &[MarkdownTable],
     position: usize,
     block: &str,
     prefix: &str,
@@ -334,7 +49,7 @@ fn insert_block(
         let previous_from = line_start(units, at - 1);
         let previous_in_table = tables
             .iter()
-            .any(|table| table.span.start <= previous_from && previous_from <= table.span.end);
+            .any(|table| table.range.start <= previous_from && previous_from <= table.range.end);
         if !is_blank_line(units, previous_from, at) && previous_in_table {
             before.push_str(separator);
             before.push('\n');
@@ -343,7 +58,7 @@ fn insert_block(
 
     let after = !is_blank_line(units, at, to)
         && at == from
-        && tables.iter().any(|table| table.span.start == from);
+        && tables.iter().any(|table| table.range.start == from);
 
     let prefixed = prefix_lines(block, prefix);
     let mut insert = format!("{before}{prefixed}\n");
@@ -385,7 +100,7 @@ fn closing_separator<'a>(line: &str, separator: &'a str) -> &'a str {
 
 fn insert_block_after_table(
     units: &[u16],
-    tables: &[Table],
+    tables: &[MarkdownTable],
     table_end: usize,
     block: &str,
     prefix: Option<&str>,
@@ -440,21 +155,26 @@ fn insert_inline(units: &[u16], position: usize, references: &[String]) -> Inser
     }
 }
 
-fn inline_point(table: &Table, line: &SourceLine, line_index: usize, position: usize) -> usize {
+fn inline_point(
+    table: &MarkdownTable,
+    line: &MarkdownTableLine,
+    line_index: usize,
+    position: usize,
+) -> usize {
     if line_index == 1 {
-        let (_, column) = cell_at(table, position);
-        return match table.lines[0].cells.get(column) {
-            Some(header) if header.has_text => header.content_to,
-            Some(header) => (header.from + 1).min(header.to),
+        let (_, column) = table.cell_at(position);
+        return match table.header().cells.get(column) {
+            Some(header) if !header.content_range.is_empty() => header.content_range.end,
+            Some(header) => (header.range.start + 1).min(header.range.end),
             None => position,
         };
     }
     let (Some(first), Some(last)) = (line.cells.first(), line.cells.last()) else {
         return position;
     };
-    let clamped = position.max(first.from).min(last.to);
-    match line.cells.iter().find(|cell| clamped <= cell.to) {
-        Some(cell) => clamped.max(cell.from),
+    let clamped = position.max(first.range.start).min(last.range.end);
+    match line.cells.iter().find(|cell| clamped <= cell.range.end) {
+        Some(cell) => clamped.max(cell.range.start),
         None => clamped,
     }
 }
@@ -467,11 +187,12 @@ pub fn insert_image_references(
     position: usize,
     references: &[String],
 ) -> CommandResult {
-    let units: Vec<u16> = text.encode_utf16().collect();
+    let document = parse(text);
+    let units = document.units();
     let at = position.min(units.len());
     let block = references.join("\n");
-    let tables = tables(text, &units);
-    let insertion = insert_at(&units, &tables, at, &block, references);
+    let tables = document.tables();
+    let insertion = insert_at(units, &tables, at, &block, references);
     CommandResult {
         edits: vec![TextEdit::new(insertion.at, insertion.at, insertion.insert)],
         selection: TextSelection::new(insertion.caret, 0),
@@ -480,41 +201,42 @@ pub fn insert_image_references(
 
 fn insert_at(
     units: &[u16],
-    tables: &[Table],
+    tables: &[MarkdownTable],
     at: usize,
     block: &str,
     references: &[String],
 ) -> Insertion {
     let Some(table) = tables
         .iter()
-        .find(|table| table.span.start <= at && at <= table.span.end)
+        .find(|table| table.range.start <= at && at <= table.range.end)
     else {
         return insert_block(units, tables, at, block, "");
     };
-    let after =
-        |end: usize| insert_block_after_table(units, tables, end, block, table.prefix.as_deref());
+    let after = |end: usize| {
+        insert_block_after_table(units, tables, end, block, table.container_prefix.as_deref())
+    };
 
-    let (line_index, _) = cell_at(table, at);
+    let (line_index, _) = table.cell_at(at);
     let line = &table.lines[line_index];
     let is_last = line_index == table.lines.len() - 1;
-    if line_index == 0 && at <= line.row_from {
+    if line_index == 0 && at <= line.row_start {
         return insert_block(
             units,
             tables,
-            line.from,
+            line.range.start,
             block,
-            table.prefix.as_deref().unwrap_or(""),
+            table.container_prefix.as_deref().unwrap_or(""),
         );
     }
     let Some(last_cell) = line.cells.last() else {
-        if is_last && at > line.row_from {
-            return after(line.to);
+        if is_last && at > line.row_start {
+            return after(line.range.end);
         }
-        let point = at.max(line.row_from).min(line.to);
+        let point = at.max(line.row_start).min(line.range.end);
         return insert_inline(units, point, references);
     };
-    if is_last && line.trailing_pipe && at > last_cell.to {
-        return after(line.to);
+    if is_last && line.trailing_pipe && at > last_cell.range.end {
+        return after(line.range.end);
     }
     insert_inline(units, inline_point(table, line, line_index, at), references)
 }
