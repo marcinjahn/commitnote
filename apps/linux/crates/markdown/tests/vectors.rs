@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use commitnote_editor_text::TextSelection;
 use commitnote_markdown::{
-    MarkdownDocument, MarkdownTable, Placement, RenderOutput, SyntaxKind, SyntaxNode,
+    MarkdownDocument, MarkdownTable, Placement, RenderMode, RenderOutput, SyntaxKind, SyntaxNode,
     TableAlignment, parse, render,
 };
 use serde::Deserialize;
@@ -295,11 +295,16 @@ fn first_difference(entry: &Entry) -> Option<String> {
             vec![TextSelection::new(start, 0)],
         ));
     }
-    for (label, selection) in selections {
-        let expected = normalized(&render(&from_vector, &selection));
-        let actual = normalized(&render(&from_parser, &selection));
-        if expected != actual {
-            return Some(format!("{label}\n{}", describe_diff(&expected, &actual)));
+    for mode in [RenderMode::Editable, RenderMode::ReadOnly] {
+        for (label, selection) in &selections {
+            let expected = normalized(&render(&from_vector, selection, mode));
+            let actual = normalized(&render(&from_parser, selection, mode));
+            if expected != actual {
+                return Some(format!(
+                    "{mode:?}, {label}\n{}",
+                    describe_diff(&expected, &actual)
+                ));
+            }
         }
     }
     None

@@ -102,6 +102,55 @@ The note view has a title field above the editor. Everything below is in the edi
   the early draft holds text, the app also holds a logout inhibit, so a session logout or
   shutdown warns first where the desktop supports it (see Optional features by desktop).
 
+## Rendered tables
+
+A Markdown table is drawn as a table in the editor and in the shared version, in place of its
+source. The grid is faint hairlines, the header row is bold and underlined by a rule in the accent
+color, and the table sits on the editor's own background. It takes the width of the text and wraps
+its cells to it, narrow window included; a table inside a quote or a list item starts where that
+item's text starts.
+
+- **What renders.** The header and body rows, each column aligned as its delimiter row says (left,
+  center or right), emphasis, strong text, strikethrough, inline code (monospace on a faint
+  background) and links (in the accent color, underlined), a cell with nothing in it, and a row with
+  fewer cells than the header, which gets empty cells. The rows follow the note font, the text size
+  and the window width.
+- **Source on demand.** While the caret or a selection touches any line of a table, the whole table
+  shows as its source in monospace, with the pipes and the delimiter row muted, so it can be edited
+  like any text. It renders again as soon as they leave, with no animation. A table whose lines
+  carry different prefixes (a quote mark on some lines only, say) is never rendered and always shows
+  as source. The text itself is never changed by any of this. In a read-only view, which the note is
+  while a conflict is unresolved and which the shared version always is, a table is rendered and
+  neither the caret nor a selection reveals it.
+- **Clicks.** A click in a cell puts the caret at the end of that cell's content, which shows the
+  table's source. Ctrl+click on a link in a cell opens it, in the shared version too. An image in a
+  cell is part of the cell: a click on it places the caret like any other click in the cell and does
+  not open the viewer.
+- **Keys.** In an editable note with no selection, Up and Down from the display line at the edge of
+  the text next to a rendered table put the caret on the source line of the table that the web
+  editor uses: the header line when coming from above and the last row when coming from below, at
+  the column the caret was at or the goal column of the run of vertical moves, cut to the line's
+  length. Shift+Up and Shift+Down select as in any text. PageUp and PageDown, with or without Shift,
+  move by the visible page of the note's scroller; unless Shift extends a selection, the caret lands
+  on the source line of the table row at the landing height, at the goal column. With Vim mode on,
+  in normal mode, `j` and `k`, with or without a count, enter a table by the same rule, and so do
+  the arrows in every mode. `gj` and `gk`, with or without a count, enter a table too and leave no
+  pending command behind. `Ctrl+F` and `Ctrl+B` (a page) and `Ctrl+D` and `Ctrl+U` (half a page),
+  with or without a count, scroll the note's scroller and put the caret on the row at the landing
+  height; they page in notes without tables too, while `gj` and `gk` act only where a table is
+  passed. Visual mode is not routed through any of this.
+- **Images in cells.** A picture shows at its size scaled into its column and at most 160 px high,
+  and its row grows to hold it; a GIF shows its first frame. While it loads, and when it cannot be
+  read, the cell shows the image's alt text, or "Image" when it has none, in a muted color.
+- **Other views.** The shared version page renders tables, and nothing there reveals them. The
+  conflict dialog's merged text, the version preview's diff, search snippets, export and printing
+  are unchanged.
+- **Screen readers.** The widget is a table, named "Table", with its row and column counts; each row
+  has its index, and each cell its row and column index and its text as the label ("Empty" for a
+  blank cell, the alt text or "Image" for a picture). The header cells are column headers. The
+  rendered table, its rows and cells are not focus stops: the caret stays in the editor, and moving
+  it into the table shows the source.
+
 ## Images
 
 An image reference in the text (`![](image:<id>)`, optionally with a size) is drawn as the picture
@@ -480,11 +529,12 @@ page. The Keyboard Shortcuts dialog (Ctrl+? or the main menu) lists the same sho
   and the passphrase strength. The app does not announce the text of a toast a second time.
 - **Text scaling.** The painted parts of the editor (task checkboxes, horizontal rules and images)
   are measured again when the desktop's text scaling factor changes, so they stay aligned with the
-  text.
-- **High contrast.** When the system asks for high contrast, the faint marks the editor paints and
-  the dimmed markers of the previews get a stronger color. The editor uses no GtkSourceView style
-  scheme and draws no background of its own, so its text sits on the window background and uses the
-  theme's text color in light, dark and high contrast.
+  text. Rendered tables are measured again too, so their rows grow and shrink with the text.
+- **High contrast.** When the system asks for high contrast, the faint marks the editor paints, the
+  dimmed markers of the previews and the grid lines, muted image text and inline code backgrounds of
+  a rendered table get a stronger color. The editor uses no GtkSourceView style scheme and draws no
+  background of its own, so its text sits on the window background and uses the theme's text color
+  in light, dark and high contrast.
 - **Reduced motion.** With the desktop's animations setting off, animated images in a note and in the
   viewer show their first frame still.
 - **Touch.** A link in the editor opens with Open Link in the editor's context menu, which a right
@@ -762,7 +812,19 @@ The tests (`test.sh`) run, in this order:
    swipe back). The `p6-shots-*` cases save the final screenshots, each narrow and wide, light and
    dark, with the violet accent: `p6-loading`, `p6-login` and `p6-unlock`; `p6-tree`,
    `p6-note-images` and `p6-search`; `p6-history`, `p6-shared-links` and `p6-trash`;
-   `p6-preferences`, `p6-about` and `p6-shortcuts`. The UI harness runs with
+   `p6-preferences`, `p6-about` and `p6-shortcuts`. The `tables` cases cover the table widget alone
+   (cells, alignment, accessible roles and labels), the editor's rendering, reveal and shared
+   version, clicks and Ctrl+click, the keys (entering a table, selecting, the goal column, wrapped
+   lines, read-only views), a table drawn in a test room (hit testing, paging and painting), paging
+   through a note, the Vim motions, the appearance (the grid lines and the accent header rule in
+   each theme, accent and high contrast, and the rows following the note font, the text size and the
+   window width), images in cells, tables in quotes and list items, typing in a cell with undo and
+   redo, the printed document, and the search snippets, the version diff and the conflict view,
+   which show the raw table. The `tables-editor` screenshot is saved narrow and wide, light and
+   dark; `tables-shared`, `tables-nested` and `tables-images` wide and light, `tables-nested` and
+   `tables-images` also narrow and dark; `tables-appearance` and `tables-appearance-high-contrast`
+   narrow and wide, light and dark. All use the violet accent, and `tables-appearance` also saves
+   the blue and pink accents, wide and light and narrow and dark. The UI harness runs with
    `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1` (set in `ci/steps/ui-test.sh`), because WebKit's
    bubblewrap sandbox cannot create the namespaces it needs inside the build container; the app
    itself keeps the sandbox. The step also installs the `fonts` tag of the meson install into a

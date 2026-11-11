@@ -1594,7 +1594,7 @@ fn change_passphrase_screenshots(h: &mut Harness) -> Result<(), String> {
 }
 
 const WHITEBOARD: &[&str] = &["Journal", "2026", "Whiteboard"];
-const PRINT_NOTE: &str = "notes.print-note";
+pub(crate) const PRINT_NOTE: &str = "notes.print-note";
 
 /// Collects the toasts shown while it lives.
 struct ToastWatch {
@@ -1630,7 +1630,7 @@ impl Drop for ToastWatch {
     }
 }
 
-fn print_note(h: &Harness) -> Result<(), String> {
+pub(crate) fn print_note(h: &Harness) -> Result<(), String> {
     WidgetExt::activate_action(&h.widget("notes-tree")?, PRINT_NOTE, None)
         .map_err(|error| format!("cannot activate {PRINT_NOTE}: {error}"))
 }
@@ -1643,7 +1643,7 @@ fn open_print_dialog(h: &Harness) -> Option<gtk::Window> {
         .find(|window| window != main.upcast_ref::<gtk::Window>() && window.is_visible())
 }
 
-fn wait_print_dialog(h: &Harness) -> Result<gtk::Window, String> {
+pub(crate) fn wait_print_dialog(h: &Harness) -> Result<gtk::Window, String> {
     let mut dialog = None;
     h.wait("the print dialog to open", || {
         dialog = open_print_dialog(h);
@@ -1653,14 +1653,14 @@ fn wait_print_dialog(h: &Harness) -> Result<gtk::Window, String> {
 }
 
 /// The document the open print dialog prints; the dialog opens only once it has loaded.
-fn printed_document(name: &str) -> Result<String, String> {
+pub(crate) fn printed_document(name: &str) -> Result<String, String> {
     let title = format!("<title>{name}</title>");
     commitnote::print::testing_last_document()
         .filter(|document| commitnote::print::testing_load_finished() && document.contains(&title))
         .ok_or_else(|| format!("the print dialog opened without a loaded {name} document"))
 }
 
-fn close_print_dialog(h: &Harness, dialog: &gtk::Window) -> Result<(), String> {
+pub(crate) fn close_print_dialog(h: &Harness, dialog: &gtk::Window) -> Result<(), String> {
     dialog.close();
     h.wait("the print dialog to close and printing to end", || {
         open_print_dialog(h).is_none() && action_enabled(h, PRINT_NOTE).unwrap_or(false)

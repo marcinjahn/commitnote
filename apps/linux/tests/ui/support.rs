@@ -721,7 +721,7 @@ impl Harness {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let keyboard = self.keyboard()?;
-        self.wait_active()?;
+        self.activate_window()?;
         for (shifted, keysym) in strokes {
             let held: &[u32] = if shifted { &[keysym::SHIFT_L] } else { &[] };
             keyboard.chord(held, keysym)?;
@@ -740,8 +740,13 @@ impl Harness {
     /// Makes the harness window active, as it becomes once the real keyboard exists, so that its
     /// focused widget draws its caret.
     pub fn activate_window(&self) -> Result<(), String> {
+        self.activate(&self.window()?)
+    }
+
+    /// Like [`Self::activate_window`], for a window other than the harness window.
+    pub fn activate(&self, window: &impl IsA<gtk::Window>) -> Result<(), String> {
         self.keyboard()?;
-        self.wait_active()
+        self.wait("the window to be active", || window.is_active())
     }
 
     /// Runs `run` with the text caret drawn steadily instead of blinking, so that every capture
@@ -754,11 +759,6 @@ impl Harness {
         let blink = settings.is_gtk_cursor_blink();
         settings.set_gtk_cursor_blink(false);
         restoring(|| settings.set_gtk_cursor_blink(blink), || run(self))
-    }
-
-    fn wait_active(&self) -> Result<(), String> {
-        let window = self.window()?;
-        self.wait("the window to be active", || window.is_active())
     }
 
     /// Refreshes repeatedly, spaced out, until `predicate` holds, so a change made on the fake
@@ -1394,6 +1394,43 @@ pub fn assert_named(widget: &impl IsA<gtk::Widget>, expected: &str) -> Result<()
             describe(widget.upcast_ref::<gtk::Widget>())
         )),
         None => Ok(()),
+    }
+}
+
+/// `relation` takes an integer value, such as a row or column index or count.
+pub fn assert_relation(
+    widget: &impl IsA<gtk::Widget>,
+    relation: gtk::ffi::GtkAccessibleRelation,
+    expected: i32,
+) -> Result<(), String> {
+    let failure = check_failure(unsafe {
+        gtk::ffi::gtk_test_accessible_check_relation(
+            accessible(widget).to_glib_none().0,
+            relation,
+            expected,
+        )
+    });
+    match failure {
+        Some(failure) => Err(format!(
+            "{} does not have the relation {relation} = {expected}: {failure}",
+            describe(widget.upcast_ref::<gtk::Widget>())
+        )),
+        None => Ok(()),
+    }
+}
+
+pub fn assert_role(
+    widget: &impl IsA<gtk::Widget>,
+    expected: gtk::AccessibleRole,
+) -> Result<(), String> {
+    let role = widget.upcast_ref::<gtk::Widget>().accessible_role();
+    if role == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} has the role {role:?}, not {expected:?}",
+            describe(widget.upcast_ref::<gtk::Widget>())
+        ))
     }
 }
 

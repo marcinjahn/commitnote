@@ -334,7 +334,8 @@ impl NoteEditor {
         self.emit_by_name::<()>("vim-changed", &[]);
     }
 
-    /// Sends a key that Vim must not see to the app's history, returning whether it did.
+    /// Handles a key that Vim must not see, sending it to the app's history or moving the caret
+    /// onto or across rendered tables, returning whether it did.
     pub fn route_vim_key(&self, keyval: gdk::Key, state: gdk::ModifierType) -> bool {
         if !self.vim_active() {
             return false;
@@ -343,9 +344,32 @@ impl NoteEditor {
         match vim::route_key(keyval, state, &bar, &command) {
             KeyRoute::Undo => self.undo(),
             KeyRoute::Redo => self.redo(),
+            KeyRoute::TableMotion { direction, count } => {
+                if !self.view().enter_table(direction, count) {
+                    return false;
+                }
+                self.clear_vim_command();
+            }
+            KeyRoute::TablePage {
+                direction,
+                half,
+                count,
+            } => {
+                if !self.view().vim_page(direction, half, count) {
+                    return false;
+                }
+                self.clear_vim_command();
+            }
             KeyRoute::PassThrough => return false,
         }
         true
+    }
+
+    fn clear_vim_command(&self) {
+        if let Some(vim) = self.imp().vim.borrow().as_ref() {
+            vim.clear_command();
+        }
+        self.emit_by_name::<()>("vim-changed", &[]);
     }
 
     pub fn set_editable(&self, editable: bool) {
