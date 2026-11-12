@@ -25,6 +25,7 @@ pub const CASES: &[Case] = &[
     ("tables-editor-reveal", editor_reveal),
     ("tables-editor-shared", editor_shared),
     ("tables-pointer", pointer),
+    ("tables-keys", keys),
 ];
 
 const IMAGE_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -905,6 +906,308 @@ fn check_dispose(h: &Harness) -> Result<(), String> {
     ensure(widget.parent().is_none(), || {
         "the table widget kept its parent after the view was disposed".to_owned()
     })
+}
+
+const KEYS_ABOVE: &str = "Paragraph above the table.";
+const KEYS_TABLE: &str = "| Item | Qty | Note |\n| :-- | :-: | --: |\n| tea | 2 | hot |\n| milk | 1 | cold |\n| jam | 3 | sweet |";
+const KEYS_BELOW: &str = "## Heading below the table";
+const KEYS_COLUMN: i32 = 9;
+const KEYS_BELOW_COLUMN: i32 = 3;
+const KEYS_LAST_ROW: i32 = 4;
+const GOAL_ABOVE: &str = "A long first line above the table.\nab";
+const SHORT_LINE: &str = "\nab\n";
+const WRAPPED_WORDS: &str = "wrapping words ";
+const PAGE_COLUMN: i32 = 5;
+const PAGE_ROWS: usize = 20;
+
+/// A paragraph line right above the table and a heading right below it: a paragraph line right
+/// below a table would be one of its rows.
+fn keys_note() -> String {
+    format!("{KEYS_ABOVE}\n{KEYS_TABLE}\n{KEYS_BELOW}")
+}
+
+fn page_table() -> String {
+    let rows: String = (1..=PAGE_ROWS)
+        .map(|row| format!("\n| row {row} | {row} | note {row} |"))
+        .collect();
+    format!("{HEADER}\n| :-- | :-: | --: |{rows}")
+}
+
+fn page_paragraph() -> String {
+    (1..=4)
+        .map(|line| format!("Line {line} of the paragraph beside the table."))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn keys(h: &mut Harness) -> Result<(), String> {
+    let note = keys_note();
+    let (editor, view) = open_note(h, &note, KEYS_COLUMN)?;
+    focus_view(h, &view)?;
+    keys_entry(h, &view)?;
+    keys_extend(h, &view)?;
+    keys_goal_column(h, &editor, &view)?;
+    keys_wrapped(h, &editor, &view)?;
+    keys_paging(h, &editor, &view)?;
+    show_note(h, &editor, &view, &note, char_count(&note))?;
+    keys_read_only(h, &note)
+}
+
+fn keys_entry(h: &Harness, view: &MarkdownView) -> Result<(), String> {
+    wait_placed(h, view)?;
+    press_in(h, view, "Down")?;
+    let header = table_line_offset(view, 0)?;
+    wait_caret(
+        h,
+        view,
+        "Down to enter the header line",
+        header + KEYS_COLUMN,
+    )?;
+    wait_revealed(h, view)?;
+
+    place_caret(
+        view,
+        offset_in(&view_text(view), KEYS_BELOW)? + KEYS_BELOW_COLUMN,
+    );
+    wait_placed(h, view)?;
+    press_in(h, view, "Up")?;
+    let last_row = table_line_offset(view, KEYS_LAST_ROW)?;
+    wait_caret(
+        h,
+        view,
+        "Up to enter the last body row",
+        last_row + KEYS_BELOW_COLUMN,
+    )?;
+    wait_revealed(h, view)
+}
+
+fn keys_extend(h: &Harness, view: &MarkdownView) -> Result<(), String> {
+    place_caret(view, KEYS_COLUMN);
+    wait_placed(h, view)?;
+    press_in(h, view, "<Shift>Down")?;
+    let buffer = view.buffer();
+    h.wait("Shift+Down to select", || buffer.has_selection())?;
+    let (start, end) = buffer.selection_bounds().ok_or("the selection went away")?;
+    ensure(
+        start.offset() == KEYS_COLUMN && end.offset() > KEYS_COLUMN,
+        || {
+            format!(
+                "Shift+Down selected {}..{} instead of extending from {KEYS_COLUMN}",
+                start.offset(),
+                end.offset()
+            )
+        },
+    )?;
+    let target = table_line_offset(view, 0)? + KEYS_COLUMN;
+    ensure(end.offset() != target, || {
+        "Shift+Down jumped to the table entry target".to_owned()
+    })?;
+    place_caret(view, KEYS_COLUMN);
+    Ok(())
+}
+
+fn keys_goal_column(h: &Harness, editor: &NoteEditor, view: &MarkdownView) -> Result<(), String> {
+    let note = format!("{GOAL_ABOVE}\n{KEYS_TABLE}\n{KEYS_BELOW}");
+    show_note(h, editor, view, &note, KEYS_COLUMN)?;
+    press_in(h, view, "Down")?;
+    let short_end = offset_in(&note, SHORT_LINE)? + char_count(SHORT_LINE) - 1;
+    wait_caret(
+        h,
+        view,
+        "Down to reach the end of the short line",
+        short_end,
+    )?;
+    press_in(h, view, "Down")?;
+    let header = table_line_offset(view, 0)?;
+    wait_caret(
+        h,
+        view,
+        "the second Down to enter the header line at the first line's column",
+        header + KEYS_COLUMN,
+    )?;
+    wait_revealed(h, view)
+}
+
+fn keys_wrapped(h: &Harness, editor: &NoteEditor, view: &MarkdownView) -> Result<(), String> {
+    let paragraph = WRAPPED_WORDS.repeat(60);
+    let paragraph = paragraph.trim_end();
+    let note = format!("{paragraph}\n{KEYS_TABLE}\n{KEYS_BELOW}");
+    show_note(h, editor, view, &note, 0)?;
+    let buffer = view.buffer();
+    let mut second = buffer.start_iter();
+    ensure(
+        view.forward_display_line(&mut second) && second.line() == 0,
+        || "the paragraph above the table does not wrap".to_owned(),
+    )?;
+    press_in(h, view, "Down")?;
+    h.wait("Down to move off the first display line", || {
+        caret_in(view) != 0
+    })?;
+    let at = buffer.iter_at_offset(caret_in(view));
+    ensure(at.line() == 0 && at.offset() >= second.offset(), || {
+        format!(
+            "Down from the first display line went to offset {} on line {}, not to the next \
+             display line of the paragraph",
+            at.offset(),
+            at.line()
+        )
+    })?;
+    wait_placed(h, view)?;
+
+    let end = char_count(paragraph);
+    place_caret(view, end);
+    press_in(h, view, "Down")?;
+    let header = table_line_offset(view, 0)?;
+    wait_caret(
+        h,
+        view,
+        "Down from the last display line to enter the header line at its end",
+        header + char_count(HEADER),
+    )?;
+    wait_revealed(h, view)
+}
+
+/// GTK pages the note editor's view, which grows to its text inside the page's scroller, straight
+/// to the end or the start of the text, so the page keys reach a table that ends or starts the
+/// note.
+fn keys_paging(h: &Harness, editor: &NoteEditor, view: &MarkdownView) -> Result<(), String> {
+    let table = page_table();
+    let paragraph = page_paragraph();
+    let ending = format!("{paragraph}\n\n{table}");
+    set_note_text(editor, &ending, PAGE_COLUMN, PAGE_COLUMN);
+    h.wait("the table that ends the note to show", || {
+        editor.text() == ending
+            && view
+                .shown_tables()
+                .first()
+                .is_some_and(|shown| shown.widget.is_mapped() && shown.widget.geometry().is_some())
+    })?;
+    h.settle()?;
+    focus_view(h, view)?;
+    press_in(h, view, "Page_Down")?;
+    let last_row = table_line_offset(view, PAGE_ROWS as i32 + 1)?;
+    wait_caret(
+        h,
+        view,
+        "Page_Down to put the caret on the last row at the goal column",
+        last_row + PAGE_COLUMN,
+    )?;
+    wait_revealed(h, view)?;
+
+    let starting = format!("{table}\n\n{paragraph}");
+    let caret = offset_in(&starting, &paragraph)? + PAGE_COLUMN;
+    show_note(h, editor, view, &starting, caret)?;
+    focus_view(h, view)?;
+    press_in(h, view, "Page_Up")?;
+    wait_caret(
+        h,
+        view,
+        "Page_Up to put the caret on the header line at the goal column",
+        PAGE_COLUMN,
+    )?;
+    wait_revealed(h, view)
+}
+
+fn keys_read_only(h: &Harness, note: &str) -> Result<(), String> {
+    view_shared_version(h)?;
+    let view = h.widget_as::<MarkdownView>(SHARED_VERSION_TEXT)?;
+    h.wait("the shared version to hold the note", || {
+        view_text(&view).contains(note)
+    })?;
+    ensure(!view.is_editable(), || {
+        "the shared version is editable".to_owned()
+    })?;
+    wait_placed(h, &view)?;
+    let above = offset_in(&view_text(&view), KEYS_ABOVE)? + KEYS_COLUMN;
+    after_render(h, &view, || place_caret(&view, above))?;
+    let shown = wait_placed(h, &view)?;
+    focus_view(h, &view)?;
+    let changes = TableChanges::new(&view);
+
+    press_in(h, &view, "Down")?;
+    h.settle()?;
+    ensure(caret_in(&view) == above, || {
+        format!(
+            "Down in the shared version moved its caret from {above} to {}",
+            caret_in(&view)
+        )
+    })?;
+    let after = placed(&view)?;
+    ensure(after.shown.widget == shown.shown.widget, || {
+        "Down in the shared version replaced its table widget".to_owned()
+    })?;
+    changes.expect(0, "pressing Down in the shared version")
+}
+
+/// Replaces the open note's text with `text`, puts the caret at `caret_at`, and waits until its
+/// table shows.
+fn show_note(
+    h: &Harness,
+    editor: &NoteEditor,
+    view: &MarkdownView,
+    text: &str,
+    caret_at: i32,
+) -> Result<Placed, String> {
+    set_note_text(editor, text, caret_at, caret_at);
+    h.wait("the editor to hold the note", || editor.text() == text)?;
+    wait_placed(h, view)
+}
+
+fn view_window(view: &MarkdownView) -> Result<gtk::Window, String> {
+    view.root()
+        .and_downcast::<gtk::Window>()
+        .ok_or_else(|| "the view is not in a window".to_owned())
+}
+
+fn focus_view(h: &Harness, view: &MarkdownView) -> Result<(), String> {
+    let window = view_window(view)?;
+    view.grab_focus();
+    h.wait("the view to take the focus", || {
+        GtkWindowExt::focus(&window).is_some_and(|focus| {
+            &focus == view.upcast_ref::<gtk::Widget>() || focus.is_ancestor(view)
+        })
+    })
+}
+
+/// Presses `accelerator` on the real keyboard and waits until its key comes back up in the view,
+/// so the view has handled the press. The view watches the key rather than its window because an
+/// open dialog's grab starts the key's propagation below the window.
+fn press_in(h: &Harness, view: &MarkdownView, accelerator: &str) -> Result<(), String> {
+    let (key, _) = gtk::accelerator_parse(accelerator)
+        .ok_or_else(|| format!("{accelerator} is not a valid accelerator"))?;
+    let window = view_window(view)?;
+    let released = Rc::new(Cell::new(false));
+    let controller = gtk::EventControllerKey::new();
+    controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+    controller.connect_key_released({
+        let released = released.clone();
+        move |_, keyval, _, _| {
+            if keyval.to_lower() == key.to_lower() {
+                released.set(true);
+            }
+        }
+    });
+    view.add_controller(controller.clone());
+    let pressed = h
+        .press_keys_in(&window, accelerator)
+        .and_then(|()| h.wait(&format!("{accelerator} to come back up"), || released.get()));
+    view.remove_controller(&controller);
+    pressed
+}
+
+fn wait_caret(
+    h: &Harness,
+    view: &MarkdownView,
+    description: &str,
+    offset: i32,
+) -> Result<(), String> {
+    h.wait(description, || caret_in(view) == offset)
+        .map_err(|error| format!("{error}: the caret is at {}, not {offset}", caret_in(view)))
+}
+
+fn caret_in(view: &MarkdownView) -> i32 {
+    let buffer = view.buffer();
+    buffer.iter_at_mark(&buffer.get_insert()).offset()
 }
 
 fn wait_placed(h: &Harness, view: &MarkdownView) -> Result<Placed, String> {

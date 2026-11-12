@@ -4,7 +4,8 @@ use std::sync::OnceLock;
 
 use commitnote_editor_text::{TextSelection, Utf16Index};
 use commitnote_markdown::{
-    CommandResult, MarkdownDocument, Placement, RenderMode, link_url, parse, render,
+    CommandResult, MarkdownDocument, Placement, RenderMode, VerticalDirection, link_url, parse,
+    render,
 };
 use glib::subclass::Signal;
 use gtk4::subclass::prelude::*;
@@ -27,6 +28,8 @@ use super::table_widget::TableWidget;
 use super::tags::{Palette, PreviewTags};
 use crate::fonts::NoteFont;
 use crate::{accent, links};
+
+mod table_keys;
 
 const MARGIN: i32 = 12;
 
@@ -92,6 +95,7 @@ mod imp {
         pub(super) tick: RefCell<Option<gtk::TickCallbackId>>,
         pub(super) animations_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) text_scale_handler: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) vertical_run: Cell<Option<table_keys::VerticalRun>>,
     }
 
     #[glib::object_subclass]
@@ -391,6 +395,25 @@ mod imp {
             self.parent_snapshot_layer(layer, snapshot.clone());
             if layer == gtk::TextViewLayer::AboveText {
                 self.obj().paint_overlays(&snapshot);
+            }
+        }
+
+        fn move_cursor(&self, step: gtk::MovementStep, count: i32, extend: bool) {
+            let view = self.obj();
+            let gtk_move = || self.parent_move_cursor(step, count, extend);
+            match step {
+                gtk::MovementStep::DisplayLines if !extend && count != 0 => {
+                    let direction = if count < 0 {
+                        VerticalDirection::Up
+                    } else {
+                        VerticalDirection::Down
+                    };
+                    if !view.enter_table(direction, 1) {
+                        view.move_display_lines(gtk_move);
+                    }
+                }
+                gtk::MovementStep::Pages if !extend => view.move_pages(count, gtk_move),
+                _ => gtk_move(),
             }
         }
     }

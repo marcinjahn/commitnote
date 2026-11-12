@@ -2,9 +2,10 @@ mod cell;
 mod layout;
 
 use std::cell::{Cell, OnceCell, Ref, RefCell};
+use std::rc::Rc;
 use std::sync::OnceLock;
 
-use commitnote_markdown::{RenderedTable, TableAlignment, TableLayoutMetrics};
+use commitnote_markdown::{RenderedTable, TableAlignment, TableGeometry, TableLayoutMetrics};
 use glib::subclass::Signal;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib, graphene, prelude::*};
@@ -289,6 +290,11 @@ impl TableWidget {
             f(&widget, x, y, control);
             None
         })
+    }
+
+    /// The layout of the last allocation, in the widget's coordinates.
+    pub fn geometry(&self) -> Option<Rc<TableGeometry>> {
+        self.table_layout().geometry()
     }
 
     pub fn cell_bounds(&self, row: usize, column: usize) -> Option<graphene::Rect> {
