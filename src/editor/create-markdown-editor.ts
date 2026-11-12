@@ -12,6 +12,7 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { editorInputKindAttributes } from "./editor-input-kind";
 import { formatKeymap } from "./format-keymap";
 import { pasteLink } from "./paste-link";
 import { minimalChanges } from "./minimal-changes";
@@ -50,6 +51,7 @@ function baseExtensions(): Extension[] {
     EditorView.lineWrapping,
     pasteLink(),
     formatKeymap(),
+    editorInputKindAttributes(),
   ];
 }
 
