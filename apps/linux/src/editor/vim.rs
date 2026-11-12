@@ -16,7 +16,7 @@ const MODIFIERS: gdk::ModifierType = gdk::ModifierType::CONTROL_MASK
 pub enum KeyRoute {
     Undo,
     Redo,
-    /// `gj` or `gk`, `count` lines down or up, which GtkSourceView 5.18 does not move for.
+    /// `gj` or `gk`, `count` lines down or up, which GtkSourceView 5.22 does not move for.
     TableMotion {
         direction: VerticalDirection,
         count: usize,
@@ -32,7 +32,7 @@ pub enum KeyRoute {
 
 /// Decides whether a key goes to the app's history instead of to Vim.
 ///
-/// The mode comes from the context's `command-bar-text` and `command-text` as GtkSourceView 5.18
+/// The mode comes from the context's `command-bar-text` and `command-text` as GtkSourceView 5.22
 /// reports them: normal mode has an empty `command-bar-text`, while insert, replace and visual
 /// modes show `-- INSERT --`, `-- REPLACE --`, `-- VISUAL --`, `-- VISUAL LINE --` and
 /// `-- VISUAL BLOCK --`, and the command and search lines start with `:` and `/` or `?`.
@@ -120,7 +120,7 @@ pub struct Vim {
     context: VimIMContext,
     controller: gtk::EventControllerKey,
     view: gtk::TextView,
-    /// Whether the pending command was cleared since Vim last handled a key: GtkSourceView 5.18
+    /// Whether the pending command was cleared since Vim last handled a key: GtkSourceView 5.22
     /// rebuilds `command-text` only when it handles one, so until then it still shows the cleared
     /// command.
     cleared: Rc<Cell<bool>>,

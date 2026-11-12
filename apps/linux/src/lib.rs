@@ -12,6 +12,7 @@ pub mod import;
 pub mod launch;
 pub mod links;
 pub mod model;
+pub mod motion;
 pub mod pages;
 pub mod preferences;
 pub mod print;

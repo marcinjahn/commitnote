@@ -6,6 +6,7 @@ use gtk4::{self as gtk, gdk, glib, prelude::*};
 use super::zoom_logic::{MIN_ZOOM, anchored_offset, clamp_zoom, content_size, fit_size, zoom_by};
 use crate::editor::frame_at;
 use crate::model::LoadedImage;
+use crate::motion::{self, MotionWatch};
 
 type ZoomCallback = Box<dyn Fn(f64)>;
 
@@ -28,12 +29,8 @@ pub struct ZoomView {
     shown_frame: Cell<usize>,
     epoch: Cell<Option<i64>>,
     tick: RefCell<Option<gtk::TickCallbackId>>,
-    animations_handler: RefCell<Option<glib::SignalHandlerId>>,
+    motion_watch: RefCell<Option<MotionWatch>>,
     on_zoom: RefCell<Option<ZoomCallback>>,
-}
-
-fn animations_enabled() -> bool {
-    gtk::Settings::default().is_none_or(|settings| settings.is_gtk_enable_animations())
 }
 
 impl ZoomView {
@@ -64,7 +61,7 @@ impl ZoomView {
             shown_frame: Cell::new(0),
             epoch: Cell::new(None),
             tick: RefCell::default(),
-            animations_handler: RefCell::default(),
+            motion_watch: RefCell::default(),
             on_zoom: RefCell::default(),
         });
         view.connect_layout();
@@ -119,13 +116,14 @@ impl ZoomView {
         self.zoom_to(MIN_ZOOM, None);
     }
 
+    #[cfg(feature = "testing")]
+    pub fn testing_animating(&self) -> bool {
+        self.tick.borrow().is_some()
+    }
+
     pub fn shutdown(&self) {
         self.stop_animation();
-        if let (Some(settings), Some(handler)) =
-            (gtk::Settings::default(), self.animations_handler.take())
-        {
-            settings.disconnect(handler);
-        }
+        self.motion_watch.take();
     }
 
     fn viewport(&self) -> (f64, f64) {
@@ -321,23 +319,20 @@ impl ZoomView {
                 }
             }
         });
-        if let Some(settings) = gtk::Settings::default() {
-            let handler = settings.connect_gtk_enable_animations_notify({
-                let view = Rc::downgrade(self);
-                move |_| {
-                    let Some(view) = view.upgrade() else {
-                        return;
-                    };
-                    if animations_enabled() {
-                        view.start_animation();
-                    } else {
-                        view.stop_animation();
-                        view.show_frame(0);
-                    }
+        self.motion_watch.replace(motion::watch({
+            let view = Rc::downgrade(self);
+            move || {
+                let Some(view) = view.upgrade() else {
+                    return;
+                };
+                if motion::may_animate() {
+                    view.start_animation();
+                } else {
+                    view.stop_animation();
+                    view.show_frame(0);
                 }
-            });
-            self.animations_handler.replace(Some(handler));
-        }
+            }
+        }));
     }
 
     fn animated(&self) -> bool {
@@ -361,7 +356,7 @@ impl ZoomView {
     fn start_animation(self: &Rc<Self>) {
         if self.tick.borrow().is_some()
             || !self.animated()
-            || !animations_enabled()
+            || !motion::may_animate()
             || !self.picture.is_mapped()
         {
             return;
@@ -376,7 +371,7 @@ impl ZoomView {
     }
 
     fn advance(&self, clock: &gdk::FrameClock) -> glib::ControlFlow {
-        if !animations_enabled() || !self.animated() || !self.picture.is_mapped() {
+        if !motion::may_animate() || !self.animated() || !self.picture.is_mapped() {
             self.tick.take();
             self.epoch.set(None);
             return glib::ControlFlow::Break;

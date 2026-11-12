@@ -46,7 +46,7 @@ pub enum Reserve {
     ///
     /// The space is the next displayed line's top margin, or the range's own line's bottom margin
     /// when no displayed line follows. A bottom margin on a line with invisible text, followed by
-    /// a displayed line, would break hit testing in GTK 4.20: for a height in it,
+    /// a displayed line, would break hit testing in GTK 4.24: for a height in it,
     /// `gtk_text_layout_get_iter_at_position` (gtk/gtktextlayout.c) hands the line's whole byte
     /// count, invisible bytes included, to `gtk_text_iter_set_visible_line_index`, which then runs
     /// past the end of the next displayed line and aborts. A height in a top margin is clamped to

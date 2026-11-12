@@ -3,10 +3,7 @@ set -eu
 
 dbus-run-session -- sh -c '
   set -eu
-  echo "" | gnome-keyring-daemon --unlock --components=secrets >/dev/null
-  # The daemon claims its bus name after it returns; a client arriving earlier would
-  # make D-Bus activate a second, locked keyring daemon.
-  gdbus wait --session --timeout 10 org.freedesktop.secrets
+  sh ci/steps/start-keyring.sh
   cargo test --workspace --exclude commitnote --locked
 '
 DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent cargo test -p commitnote-core-runtime --locked --test remembered_session_no_service -- --ignored
