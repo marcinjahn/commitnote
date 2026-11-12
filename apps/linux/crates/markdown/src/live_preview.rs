@@ -4,6 +4,9 @@ use commitnote_editor_text::TextSelection;
 
 use crate::image_reference::ImageReference;
 use crate::syntax::{MarkdownDocument, SyntaxKind, SyntaxNode};
+use crate::table::MarkdownTable;
+
+const PIPE: u16 = 124;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewStyle {
@@ -13,6 +16,7 @@ pub enum PreviewStyle {
     Strikethrough,
     InlineCode,
     CodeBlockLine,
+    TableSourceLine,
     QuoteLine,
     Link,
     Url,
@@ -147,6 +151,29 @@ impl Renderer<'_> {
             let parent = ancestors.last().map(|top| top.kind);
             ancestors.push(node);
             self.visit(node, parent);
+        }
+        for table in self.document.tables() {
+            self.style_table_source(&table);
+        }
+    }
+
+    fn style_table_source(&mut self, table: &MarkdownTable) {
+        for line in &table.lines {
+            self.block.push(StyleRun::new(
+                line.range.clone(),
+                PreviewStyle::TableSourceLine,
+            ));
+        }
+        let delimiter = table.delimiter();
+        self.muted(&(delimiter.row_start..delimiter.range.end));
+        let rows = std::iter::once(table.header()).chain(table.rows());
+        for line in rows {
+            for position in line.row_start..line.range.end {
+                let outside_cells = !line.cells.iter().any(|cell| cell.range.contains(&position));
+                if self.document.units()[position] == PIPE && outside_cells {
+                    self.muted(&(position..position + 1));
+                }
+            }
         }
     }
 

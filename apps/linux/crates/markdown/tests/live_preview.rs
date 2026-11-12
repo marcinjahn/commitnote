@@ -254,3 +254,90 @@ fn run_order_puts_hidden_last() {
             .all(|run| run.style == PreviewStyle::Hidden)
     );
 }
+
+fn table_source(text: &str, caret: Option<usize>) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
+    let runs = render(text, caret).runs;
+    (
+        styled(&runs, PreviewStyle::TableSourceLine),
+        styled(&runs, PreviewStyle::MutedMarker),
+    )
+}
+
+#[test]
+fn table_lines_are_source_lines_with_muted_pipes_and_delimiter_row() {
+    let text = "| a | b |\n| - | - |\n| 1 | 2 |";
+    let (lines, mut muted) = table_source(text, None);
+    assert_eq!(lines, [0..9, 10..19, 20..29]);
+    muted.sort_by_key(|range| range.start);
+    assert_eq!(muted, [0..1, 4..5, 8..9, 10..19, 20..21, 24..25, 28..29]);
+}
+
+#[test]
+fn escaped_pipe_in_a_cell_stays_unmuted() {
+    let text = "| a \\| b | c |\n| - | - |";
+    let (lines, mut muted) = table_source(text, None);
+    assert_eq!(lines, [0..14, 15..24]);
+    muted.sort_by_key(|range| range.start);
+    assert_eq!(muted, [0..1, 9..10, 13..14, 15..24]);
+}
+
+#[test]
+fn escaped_pipe_in_a_code_span_stays_unmuted() {
+    let text = "| `a\\|b` | c |\n| - | - |";
+    let (_, mut muted) = table_source(text, None);
+    muted.retain(|range| range.len() == 1);
+    muted.sort_by_key(|range| range.start);
+    assert_eq!(muted, [0..1, 9..10, 13..14]);
+}
+
+#[test]
+fn quoted_table_keeps_quote_lines_and_styles_whole_lines() {
+    let text = "> | a |\n> | - |";
+    let runs = render(text, None).runs;
+    assert_eq!(styled(&runs, PreviewStyle::TableSourceLine), [0..7, 8..15]);
+    assert_eq!(styled(&runs, PreviewStyle::QuoteLine), [0..7, 8..15]);
+}
+
+#[test]
+fn table_in_a_list_item_styles_only_its_own_lines() {
+    let text = "- x\n\n  | a |\n  | - |";
+    let (lines, _) = table_source(text, None);
+    assert_eq!(lines, [5..12, 13..20]);
+}
+
+#[test]
+fn cell_inline_styles_stay_on_table_source() {
+    let text = "| **a** | `b` |\n| - | - |";
+    let runs = render(text, None).runs;
+    assert_eq!(styled(&runs, PreviewStyle::Strong), [2..7]);
+    assert_eq!(styled(&runs, PreviewStyle::InlineCode), [10..13]);
+    assert_eq!(
+        styled(&runs, PreviewStyle::TableSourceLine),
+        [0..15, 16..25]
+    );
+    let muted = styled(&runs, PreviewStyle::MutedMarker);
+    for marker in [0..1, 8..9, 14..15, 16..25] {
+        assert!(muted.contains(&marker), "{marker:?} not muted in {muted:?}");
+    }
+    assert_eq!(
+        styled(&runs, PreviewStyle::Hidden),
+        [2..4, 5..7, 10..11, 12..13]
+    );
+}
+
+#[test]
+fn text_that_is_not_a_table_has_no_table_source() {
+    for text in ["a | b", "a | b\n- | -"] {
+        let (lines, _) = table_source(text, None);
+        assert!(lines.is_empty(), "{text:?} styled as a table");
+    }
+}
+
+#[test]
+fn table_source_styling_ignores_the_selection() {
+    let text = "| a | b |\n| - | - |\n| 1 | 2 |";
+    let expected = table_source(text, None);
+    for caret in [0, 5, 12, 22, 29] {
+        assert_eq!(table_source(text, Some(caret)), expected);
+    }
+}

@@ -14,8 +14,9 @@ const CODE_BACKGROUND_ALPHA: Contrast = Contrast::new(0.08, 0.16);
 /// Tag priority grows along this order, so later styles win where runs overlap: headings
 /// keep their scale over inline code, and the foreground goes muted marker, list mark, link,
 /// quote, as the iOS editor resolves it.
-pub const STYLE_ORDER: [PreviewStyle; 17] = [
+pub const STYLE_ORDER: [PreviewStyle; 18] = [
     PreviewStyle::CodeBlockLine,
+    PreviewStyle::TableSourceLine,
     PreviewStyle::InlineCode,
     PreviewStyle::QuoteLine,
     PreviewStyle::Heading { level: 1 },
@@ -37,17 +38,18 @@ pub const STYLE_ORDER: [PreviewStyle; 17] = [
 pub fn slot(style: PreviewStyle) -> usize {
     match style {
         PreviewStyle::CodeBlockLine => 0,
-        PreviewStyle::InlineCode => 1,
-        PreviewStyle::QuoteLine => 2,
-        PreviewStyle::Heading { level } => 2 + usize::from(level.clamp(1, 6)),
-        PreviewStyle::Emphasis => 9,
-        PreviewStyle::Strong => 10,
-        PreviewStyle::Strikethrough => 11,
-        PreviewStyle::Link => 12,
-        PreviewStyle::Url => 13,
-        PreviewStyle::ListMark => 14,
-        PreviewStyle::MutedMarker => 15,
-        PreviewStyle::Hidden => 16,
+        PreviewStyle::TableSourceLine => 1,
+        PreviewStyle::InlineCode => 2,
+        PreviewStyle::QuoteLine => 3,
+        PreviewStyle::Heading { level } => 3 + usize::from(level.clamp(1, 6)),
+        PreviewStyle::Emphasis => 10,
+        PreviewStyle::Strong => 11,
+        PreviewStyle::Strikethrough => 12,
+        PreviewStyle::Link => 13,
+        PreviewStyle::Url => 14,
+        PreviewStyle::ListMark => 15,
+        PreviewStyle::MutedMarker => 16,
+        PreviewStyle::Hidden => 17,
     }
 }
 
@@ -59,6 +61,7 @@ pub fn tag_name(style: PreviewStyle) -> String {
         PreviewStyle::Strikethrough => "strikethrough",
         PreviewStyle::InlineCode => "inline-code",
         PreviewStyle::CodeBlockLine => "code-block-line",
+        PreviewStyle::TableSourceLine => "table-source-line",
         PreviewStyle::QuoteLine => "quote-line",
         PreviewStyle::Link => "link",
         PreviewStyle::Url => "url",
@@ -144,7 +147,7 @@ fn configure(tag: &gtk::TextTag, style: PreviewStyle) {
         PreviewStyle::Emphasis => tag.set_style(pango::Style::Italic),
         PreviewStyle::Strong => tag.set_weight(pango::Weight::Semibold.into_glib()),
         PreviewStyle::Strikethrough => tag.set_strikethrough(true),
-        PreviewStyle::InlineCode | PreviewStyle::CodeBlockLine => {
+        PreviewStyle::InlineCode | PreviewStyle::CodeBlockLine | PreviewStyle::TableSourceLine => {
             tag.set_family(Some("monospace"));
             tag.set_scale(CODE_SCALE);
         }
