@@ -530,12 +530,31 @@ fn image_viewer_keys(h: &mut Harness) -> Result<(), String> {
     h.wait("the viewer to close", || !h.shown("image-viewer"))
 }
 
+pub(crate) fn wait_gif_advancing(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
+    h.wait("the GIF to advance", || image_states(editor)[0].2 > 0)
+}
+
+pub(crate) fn wait_viewer_animating(
+    h: &Harness,
+    viewer: &ImageViewer,
+    animating: bool,
+) -> Result<(), String> {
+    let state = if animating { "animate" } else { "hold still" };
+    h.wait(&format!("the viewer image to {state}"), || {
+        viewer.testing_animating() == animating
+    })
+}
+
 pub(crate) fn run_animation(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
     let settings = gtk::Settings::default().ok_or("there are no GTK settings")?;
     settings.set_gtk_enable_animations(true);
-    h.wait("the GIF to advance", || image_states(editor)[0].2 > 0)?;
+    wait_gif_advancing(h, editor)?;
 
     settings.set_gtk_enable_animations(false);
+    wait_gif_still(h, editor, "animations off")
+}
+
+pub(crate) fn wait_gif_still(h: &Harness, editor: &NoteEditor, cause: &str) -> Result<(), String> {
     h.wait("the GIF to return to its first frame", || {
         image_states(editor)[0].2 == 0
     })?;
@@ -558,7 +577,7 @@ pub(crate) fn run_animation(h: &Harness, editor: &NoteEditor) -> Result<(), Stri
     callback.remove();
     waited?;
     ensure(!moved.get() && !editor.view().testing_animating(), || {
-        "the GIF kept animating with animations off".to_owned()
+        format!("the GIF kept animating with {cause}")
     })
 }
 

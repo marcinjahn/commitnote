@@ -98,6 +98,14 @@ impl ImageViewer {
         self.imp().view.get().map_or(1.0, |view| view.zoom())
     }
 
+    #[cfg(feature = "testing")]
+    pub fn testing_animating(&self) -> bool {
+        self.imp()
+            .view
+            .get()
+            .is_some_and(|view| view.testing_animating())
+    }
+
     fn build(&self) {
         let imp = self.imp();
         let view = ZoomView::new();

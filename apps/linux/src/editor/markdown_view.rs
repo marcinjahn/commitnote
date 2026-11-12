@@ -27,6 +27,7 @@ use super::table_overlays::{ShownTable, TableGesture, TableOverlays};
 use super::table_widget::TableWidget;
 use super::tags::{Palette, PreviewTags};
 use crate::fonts::NoteFont;
+use crate::motion::{self, MotionWatch};
 use crate::{accent, links};
 
 mod paging;
@@ -61,10 +62,6 @@ impl std::fmt::Debug for SourceHandle {
     }
 }
 
-fn animations_enabled() -> bool {
-    gtk::Settings::default().is_none_or(|settings| settings.is_gtk_enable_animations())
-}
-
 mod imp {
     use super::*;
 
@@ -96,7 +93,7 @@ mod imp {
         pub(super) elapsed: Rc<Cell<u64>>,
         pub(super) epoch: Cell<Option<i64>>,
         pub(super) tick: RefCell<Option<gtk::TickCallbackId>>,
-        pub(super) animations_handler: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) motion_watch: RefCell<Option<MotionWatch>>,
         pub(super) text_scale_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) vertical_run: Cell<Option<table_keys::VerticalRun>>,
         pub(super) page_aim: Cell<Option<paging::PageAim>>,
@@ -333,16 +330,15 @@ mod imp {
                 view.imp().unavailable_art.replace(None);
                 view.queue_render();
             });
-            if let Some(settings) = gtk::Settings::default() {
-                let handler = settings.connect_gtk_enable_animations_notify({
-                    let view = view.downgrade();
-                    move |_| {
-                        if let Some(view) = view.upgrade() {
-                            view.animations_changed();
-                        }
+            self.motion_watch.replace(motion::watch({
+                let view = view.downgrade();
+                move || {
+                    if let Some(view) = view.upgrade() {
+                        view.motion_changed();
                     }
-                });
-                self.animations_handler.replace(Some(handler));
+                }
+            }));
+            if let Some(settings) = gtk::Settings::default() {
                 let handler = settings.connect_gtk_xft_dpi_notify({
                     let view = view.downgrade();
                     move |_| {
@@ -360,16 +356,11 @@ mod imp {
             for handler in self.style_handlers.take() {
                 style_manager.disconnect(handler);
             }
-            if let Some(settings) = gtk::Settings::default() {
-                for handler in [
-                    self.animations_handler.take(),
-                    self.text_scale_handler.take(),
-                ]
-                .into_iter()
-                .flatten()
-                {
-                    settings.disconnect(handler);
-                }
+            self.motion_watch.take();
+            if let Some(settings) = gtk::Settings::default()
+                && let Some(handler) = self.text_scale_handler.take()
+            {
+                settings.disconnect(handler);
             }
             for source in [
                 self.render_source.take(),
@@ -875,7 +866,7 @@ impl MarkdownView {
 
     fn start_animation(&self) {
         let imp = self.imp();
-        if imp.tick.borrow().is_some() || !animations_enabled() || !self.is_mapped() {
+        if imp.tick.borrow().is_some() || !motion::may_animate() || !self.is_mapped() {
             return;
         }
         imp.epoch.set(None);
@@ -885,7 +876,7 @@ impl MarkdownView {
 
     fn advance_frames(&self, clock: &gtk::gdk::FrameClock) -> glib::ControlFlow {
         let imp = self.imp();
-        if !animations_enabled()
+        if !motion::may_animate()
             || !self.is_mapped()
             || !self.animated_image_visible(&self.visible_buffer_rect())
         {
@@ -920,8 +911,8 @@ impl MarkdownView {
         imp.epoch.set(None);
     }
 
-    fn animations_changed(&self) {
-        if !animations_enabled() {
+    fn motion_changed(&self) {
+        if !motion::may_animate() {
             self.stop_animation();
             self.imp().elapsed.set(0);
         }
@@ -953,7 +944,7 @@ impl MarkdownView {
             }
         }
         if self.imp().tick.borrow().is_none()
-            && animations_enabled()
+            && motion::may_animate()
             && self.animated_image_visible(&visible)
         {
             self.start_animation();

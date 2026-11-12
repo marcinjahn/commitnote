@@ -32,8 +32,9 @@ use crate::p4::{
     FIRST_TEXT, HISTORY_DIALOG, SECOND_TEXT, SHARE_LABEL, SHARE_PASSWORD, SHARED_LINKS_DIALOG,
     WELCOME as WELCOME_NOTE, WHITEBOARD as WHITEBOARD_NOTE, activate_page_action, open_editor,
     open_history, open_shared_links, open_viewer, run_animation, share_note_with,
-    wait_history_ready, wait_images_ready, wait_shares, welcome_with_versions,
-    whiteboard_with_inserted_image, with_animated_gif,
+    wait_gif_advancing, wait_gif_still, wait_history_ready, wait_images_ready, wait_shares,
+    wait_viewer_animating, welcome_with_versions, whiteboard_with_inserted_image,
+    with_animated_gif,
 };
 use crate::p5::{
     capture_preferences, choose_existing, close_preferences, import_zip_dialog, launch_notes,
@@ -1331,16 +1332,39 @@ fn comfort_high_contrast(h: &mut Harness) -> Result<(), String> {
 
 fn comfort_reduced_motion(h: &mut Harness) -> Result<(), String> {
     let settings = gtk::Settings::default().ok_or("there are no GTK settings")?;
-    let original = settings.is_gtk_enable_animations();
+    let animations = settings.is_gtk_enable_animations();
+    let reduced_motion = settings.gtk_interface_reduced_motion();
     settings.set_gtk_enable_animations(false);
     restoring(
-        || settings.set_gtk_enable_animations(original),
+        || {
+            settings.set_gtk_enable_animations(animations);
+            settings.set_gtk_interface_reduced_motion(reduced_motion);
+        },
         || {
             with_animated_gif(h, |editor| {
                 ensure(!editor.view().testing_animating(), || {
                     "the GIF animates while animations are off".to_owned()
                 })?;
-                run_animation(h, editor)
+                run_animation(h, editor)?;
+
+                settings.set_gtk_enable_animations(true);
+                wait_gif_advancing(h, editor)?;
+                settings.set_gtk_interface_reduced_motion(gtk::ReducedMotion::Reduce);
+                wait_gif_still(h, editor, "reduced motion")?;
+                settings.set_gtk_interface_reduced_motion(gtk::ReducedMotion::NoPreference);
+                wait_gif_advancing(h, editor)?;
+
+                let viewer = open_viewer(h, editor)?;
+                wait_viewer_animating(h, &viewer, true)?;
+                settings.set_gtk_interface_reduced_motion(gtk::ReducedMotion::Reduce);
+                wait_viewer_animating(h, &viewer, false)?;
+                settings.set_gtk_interface_reduced_motion(gtk::ReducedMotion::NoPreference);
+                wait_viewer_animating(h, &viewer, true)?;
+                settings.set_gtk_enable_animations(false);
+                wait_viewer_animating(h, &viewer, false)?;
+
+                h.press_keys("Escape")?;
+                h.wait("the viewer to close", || !h.shown("image-viewer"))
             })
         },
     )
