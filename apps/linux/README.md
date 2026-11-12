@@ -203,9 +203,10 @@ decoded pictures in memory. The Markdown stays the note text, so the reference i
   scroll wheel (around the pointer), or a pinch. Best Fit returns to the 1× size once zoomed in. A
   zoomed picture is panned by dragging it. Escape closes the dialog.
 - **Animation.** A GIF plays while its widget is mapped and visible, with each frame's own delay (a
-  delay under 10 ms plays as 100 ms), and shows its first frame still when the desktop's animations
-  setting (GTK's `gtk-enable-animations`) is off. An animation larger than 64 MiB decoded keeps only
-  its first frame.
+  delay under 10 ms plays as 100 ms), and shows its first frame still while the desktop asks for
+  reduced motion (GTK's `gtk-interface-reduced-motion` is "reduce") or has animations turned off
+  (GTK's `gtk-enable-animations`). It plays again when both settings allow it. An animation larger
+  than 64 MiB decoded keeps only its first frame.
 
 ## History
 
@@ -556,8 +557,9 @@ page. The Keyboard Shortcuts dialog (Ctrl+? or the main menu) lists the same sho
   a rendered table get a stronger color. The editor uses no GtkSourceView style scheme and draws no
   background of its own, so its text sits on the window background and uses the theme's text color
   in light, dark and high contrast.
-- **Reduced motion.** With the desktop's animations setting off, animated images in a note and in the
-  viewer show their first frame still.
+- **Reduced motion.** When the desktop asks for reduced motion or turns animations off, animated
+  images in a note and in the viewer show their first frame still, and they play again when both
+  settings allow it.
 - **Touch.** A link in the editor opens with Open Link in the editor's context menu, which a right
   click or a long press opens; a long press on a tree row opens its menu; on the narrow layout a
   swipe back returns from the note to the tree.
@@ -574,7 +576,7 @@ start the app, log in, read, edit or save.
 | System light/dark     | xdg-desktop-portal Settings (`org.freedesktop.appearance` color scheme)                                        | The app follows libadwaita's default light style. The Color mode row in Preferences still forces light or dark.                                                                                                                                                                                                          |
 | High contrast         | xdg-desktop-portal Settings (the contrast preference)                                                          | Normal contrast.                                                                                                                                                                                                                                                                                                         |
 | Text scaling          | xdg-desktop-portal Settings (the text scaling factor and font settings)                                        | The default text size.                                                                                                                                                                                                                                                                                                   |
-| Reduced motion        | xdg-desktop-portal Settings (the animations setting)                                                           | Animated images play.                                                                                                                                                                                                                                                                                                    |
+| Reduced motion        | xdg-desktop-portal Settings (the reduced-motion preference; the animations setting where offered)              | Animated images play.                                                                                                                                                                                                                                                                                                    |
 | Logout inhibit        | xdg-desktop-portal Inhibit in a Flatpak; outside one, a session manager that offers `org.gnome.SessionManager` | No warning when the session ends while something is unsaved. The window's own close and Log Out guards still work.                                                                                                                                                                                                       |
 | Launcher actions      | The desktop file's actions (New Note, Search Notes)                                                            | The launcher entry shows no extra items. `commitnote --action new-note` and `--action search` still work from a terminal or a key binding.                                                                                                                                                                               |
 | `commitnote://` links | The desktop's handler for `x-scheme-handler/commitnote`, registered by the desktop file                        | Links do nothing. `commitnote --action <value>` does the same.                                                                                                                                                                                                                                                           |
@@ -592,7 +594,12 @@ sway configuration sets `default_border pixel`. That is the compositor's policy,
 The sway smoke test (see Checks and tests) floats the window and checks that sway reports `csd`
 with no second title bar.
 
-## Build on the host (Fedora 43)
+## Build on the host (Fedora 45)
+
+The app needs GTK 4.24, libadwaita 1.10, GtkSourceView 5.22 and Pango 1.58 at run time, so building
+or running it natively needs Fedora 45 or newer (or another distribution with those versions); older
+systems use the builder container. The JavaScriptCore binding stays at its `v2_48` feature level,
+the highest that `javascriptcore6` 0.6.0 offers; the system JavaScriptCore is 2.54.
 
 Install the build and run packages:
 
@@ -665,12 +672,12 @@ system-wide. `apps/linux/scripts/run-host.sh --testing` builds and runs the test
 
 `install-prefix.sh` builds the app in the Docker build container and installs it into
 `apps/linux/out/prefix`; `run-installed.sh` starts it on the host. This needs Docker (or Podman's
-Docker API) and only the run packages on the host.
+Docker API) and only the run packages on the host, at the versions given above.
 
-A default Fedora Workstation 43 install already has all eight: a clean Workstation 43 container
+A default Fedora Workstation 45 install already has all eight: a clean Workstation 45 container
 (`@workstation-product-environment`, weak dependencies off) answers `rpm -q` for every run package
-(glib2 2.86.5, gtk4 4.20.4, gtksourceview5 5.18.0, javascriptcoregtk6.0 2.54.2, libadwaita 1.8.8,
-libsoup3 3.6.6, libwebp 1.6.0, webkitgtk6.0 2.54.2). On other desktops install them with the command
+(glib2 2.90.1, gtk4 4.24.1, gtksourceview5 5.22.0, javascriptcoregtk6.0 2.54.2, libadwaita 1.10.0,
+libsoup3 3.8.1, libwebp 1.6.0, webkitgtk6.0 2.54.2). On other desktops install them with the command
 below, then check with:
 
 ```sh
@@ -678,7 +685,7 @@ rpm -q glib2 gtk4 gtksourceview5 javascriptcoregtk6.0 libadwaita libsoup3 libweb
 ```
 
 The run packages install no GNOME session component. A dry-run transaction of
-`dnf install --assumeno --setopt=install_weak_deps=False <run packages>` on a minimal Fedora 43
+`dnf install --assumeno --setopt=install_weak_deps=False <run packages>` on a minimal Fedora 45
 image lists no `gnome-shell`, `mutter`, `gnome-session`, `gnome-settings-daemon` or `gnome-keyring`.
 
 Remembering the session needs a Secret Service provider, which is not a package dependency: the
@@ -740,7 +747,7 @@ or, with the development packages installed, `apps/linux/scripts/run-host.sh --t
 ## Checks and tests
 
 Nothing needs GTK on the machine: these scripts run inside the Docker build container
-(`ci/Dockerfile`, Fedora 43 plus the three package lists in `ci/` and the pinned Rust toolchain).
+(`ci/Dockerfile`, Fedora 45 plus the three package lists in `ci/` and the pinned Rust toolchain).
 The image is built on first use and rebuilt when the Dockerfile, a package list or
 `rust-toolchain.toml` changes. Run them from the repository root, after
 `npm run build:native-core`:
@@ -773,7 +780,8 @@ The tests (`test.sh`) run, in this order:
 
 1. The crate tests (`cargo test --workspace`) inside a D-Bus session with an unlocked
    gnome-keyring, because the remembered-session store uses the Secret Service; the keyring is
-   a test fixture, not a requirement of the app. The visit test
+   a test fixture, not a requirement of the app. `ci/steps/start-keyring.sh` starts it, and the
+   container runs with the `IPC_LOCK` capability, without which gnome-keyring aborts as root. The visit test
    (`crates/core-runtime/tests/visit.rs`) checks that the core builds the Linux visit, that an
    opt-out sends nothing, that the sender makes one anonymous `GET` to a local server and that it
    refuses anything but `https` in production.
