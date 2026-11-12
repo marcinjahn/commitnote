@@ -1170,9 +1170,10 @@ impl KeyView {
 /// in Vim's normal and insert modes and in the shared version, and checks that a copy without
 /// cells is the text view's own. Real keys come before any menu opens: a menu closed before the
 /// compositor hands it the keyboard takes the next key press with it. Keys while a menu is shown
-/// go to the menu, so the view's key handling is called directly there. The Copy key itself is
-/// covered by unit tests only, as the harness keymap may lack it. The menus are opened by calling the view's methods rather than
-/// through gestures: that leaves out GTK's event delivery, real pointer motion, and the claiming
+/// go to the menu, so the view's key handling is called directly there. The Copy key and the
+/// non-Latin layouts are covered by unit tests only: the harness keymap may lack the key, and
+/// mutter's remote desktop session offers no way to give its virtual keyboard a second layout. The
+/// menus are opened by calling the view's methods rather than through gestures: that leaves out GTK's event delivery, real pointer motion, and the claiming
 /// and denying between the gestures of the view and of the table.
 pub(super) fn selection_copy(h: &mut Harness) -> Result<(), String> {
     let (editor, view) = open_note(h, COPY_NOTE, 0)?;
@@ -1333,13 +1334,13 @@ fn keys_while_menu_shown(
     let menu = expect_menu_at(view, point, "the secondary press")?;
     let held = Some(TableSelection::cell(ESCAPED_CELL));
     ensure(
-        !view.table_selection_key(gdk::Key::Down, gdk::ModifierType::empty()),
+        !view.table_selection_key_with(gdk::Key::Down, || false),
         || "Down while the menu is shown was consumed".to_owned(),
     )?;
     expect_selection(view, table, held, "Down while the menu is shown")?;
     close_menu(h, &menu)?;
     ensure(
-        !view.table_selection_key(gdk::Key::Down, gdk::ModifierType::empty()),
+        !view.table_selection_key_with(gdk::Key::Down, || false),
         || "Down once the menu closed was consumed".to_owned(),
     )?;
     expect_selection(view, table, None, "Down once the menu closed")
@@ -1414,8 +1415,27 @@ fn key_matrix(
         KeyView::VimInsert => h.wait(&format!("{what} to leave insert mode"), || {
             command_bar().is_some_and(|bar| bar != VIM_INSERT)
         }),
-        KeyView::Editor | KeyView::VimNormal | KeyView::Shared => Ok(()),
+        KeyView::Editor => extra_modifier_copy(h, view, &table),
+        KeyView::VimNormal | KeyView::Shared => Ok(()),
     }
+}
+
+/// Control+Shift+c is no copy shortcut: it copies nothing and clears the selection.
+fn extra_modifier_copy(
+    h: &Harness,
+    view: &MarkdownView,
+    table: &TableWidget,
+) -> Result<(), String> {
+    select_range(view, table)?;
+    focus_view(h, view)?;
+    set_sentinel(h)?;
+    press(h, view, "<Control><Shift>c")?;
+    let what = "Control+Shift+c in Editor";
+    expect_selection(view, table, None, what)?;
+    let kept = clipboard_text(h)?;
+    ensure(kept == SENTINEL, || {
+        format!("{what} put {kept:?} on the clipboard over the sentinel")
+    })
 }
 
 fn select_range(view: &MarkdownView, table: &TableWidget) -> Result<(), String> {

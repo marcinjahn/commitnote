@@ -74,20 +74,36 @@ impl MarkdownView {
     }
 
     /// Handles a key press while cells are selected, returning whether it consumed the key: a copy
-    /// key copies the cells, a bare modifier and any key while the context menu is shown leave the
+    /// shortcut, recognised as GTK recognises its own on any keyboard layout, copies the cells, a
+    /// bare modifier or layout-switch key and any key while the context menu is shown leave the
     /// selection alone, and any other key clears it and is left to act as usual.
-    pub fn table_selection_key(&self, keyval: gdk::Key, state: gdk::ModifierType) -> bool {
+    pub fn table_selection_key(&self, event: &gdk::KeyEvent) -> bool {
+        self.table_selection_key_with(event.keyval(), || {
+            is_copy_shortcut(|key, modifiers| event.matches(key, modifiers) != gdk::KeyMatch::None)
+        })
+    }
+
+    /// Handles a key press of `keyval` like [`Self::table_selection_key`], with `is_copy` saying
+    /// whether the press is a copy shortcut.
+    pub fn table_selection_key_with(
+        &self,
+        keyval: gdk::Key,
+        is_copy: impl FnOnce() -> bool,
+    ) -> bool {
         if self.imp().table_selection.borrow().is_none() || self.context_menu_shown() {
             return false;
         }
-        if is_copy_key(keyval, state) {
-            self.emit_copy_clipboard();
-            return true;
+        match selection_key_action(keyval, is_copy) {
+            SelectionKeyAction::Copy => {
+                self.emit_copy_clipboard();
+                true
+            }
+            SelectionKeyAction::Keep => false,
+            SelectionKeyAction::Clear => {
+                self.clear_table_selection();
+                false
+            }
         }
-        if !is_modifier_key(keyval) {
-            self.clear_table_selection();
-        }
-        false
     }
 
     pub fn clear_table_selection(&self) {
@@ -187,20 +203,29 @@ fn cell_at(widget: &TableWidget, point: &graphene::Point) -> Option<TableCellPos
     Some(TableCellPosition { row, column })
 }
 
-const MODIFIERS: gdk::ModifierType = gdk::ModifierType::SHIFT_MASK
-    .union(gdk::ModifierType::CONTROL_MASK)
-    .union(gdk::ModifierType::ALT_MASK)
-    .union(gdk::ModifierType::SUPER_MASK)
-    .union(gdk::ModifierType::HYPER_MASK)
-    .union(gdk::ModifierType::META_MASK);
+#[derive(Debug, PartialEq, Eq)]
+enum SelectionKeyAction {
+    Copy,
+    Keep,
+    Clear,
+}
 
-fn is_copy_key(keyval: gdk::Key, state: gdk::ModifierType) -> bool {
-    let modifiers = state & MODIFIERS;
-    if modifiers == gdk::ModifierType::CONTROL_MASK {
-        keyval.to_lower() == gdk::Key::c || matches!(keyval, gdk::Key::Insert | gdk::Key::KP_Insert)
+fn selection_key_action(keyval: gdk::Key, is_copy: impl FnOnce() -> bool) -> SelectionKeyAction {
+    if is_copy() {
+        SelectionKeyAction::Copy
+    } else if is_modifier_key(keyval) {
+        SelectionKeyAction::Keep
     } else {
-        modifiers.is_empty() && keyval == gdk::Key::Copy
+        SelectionKeyAction::Clear
     }
+}
+
+fn is_copy_shortcut(matches: impl Fn(gdk::Key, gdk::ModifierType) -> bool) -> bool {
+    let control = gdk::ModifierType::CONTROL_MASK;
+    matches(gdk::Key::c, control)
+        || matches(gdk::Key::Insert, control)
+        || matches(gdk::Key::KP_Insert, control)
+        || matches(gdk::Key::Copy, gdk::ModifierType::empty())
 }
 
 fn is_modifier_key(keyval: gdk::Key) -> bool {
@@ -223,6 +248,13 @@ fn is_modifier_key(keyval: gdk::Key) -> bool {
             | gdk::Key::Caps_Lock
             | gdk::Key::Shift_Lock
             | gdk::Key::Num_Lock
+            | gdk::Key::ISO_Next_Group
+            | gdk::Key::ISO_Prev_Group
+            | gdk::Key::ISO_First_Group
+            | gdk::Key::ISO_Last_Group
+            | gdk::Key::ISO_Group_Shift
+            | gdk::Key::ISO_Group_Latch
+            | gdk::Key::ISO_Group_Lock
     )
 }
 
@@ -231,8 +263,15 @@ mod tests {
     use super::*;
     use gdk::{Key, ModifierType};
 
+    const COPY_SHORTCUTS: [(Key, ModifierType); 4] = [
+        (Key::c, ModifierType::CONTROL_MASK),
+        (Key::Insert, ModifierType::CONTROL_MASK),
+        (Key::KP_Insert, ModifierType::CONTROL_MASK),
+        (Key::Copy, ModifierType::empty()),
+    ];
+
     #[test]
-    fn copy_keys_are_control_c_control_insert_and_the_bare_copy_key() {
+    fn a_latin_layout_copies_on_exactly_the_four_copy_shortcuts() {
         let keys = [
             Key::c,
             Key::C,
@@ -243,47 +282,75 @@ mod tests {
             Key::Down,
         ];
         let modifier_sets = [
-            ("none", ModifierType::empty()),
-            ("Control", ModifierType::CONTROL_MASK),
-            (
-                "Control+Shift",
-                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
-            ),
-            (
-                "Control+Alt",
-                ModifierType::CONTROL_MASK | ModifierType::ALT_MASK,
-            ),
-            ("Shift", ModifierType::SHIFT_MASK),
-            (
-                "Control+Lock",
-                ModifierType::CONTROL_MASK | ModifierType::LOCK_MASK,
-            ),
-            (
-                "Control+Button1",
-                ModifierType::CONTROL_MASK | ModifierType::BUTTON1_MASK,
-            ),
+            ModifierType::empty(),
+            ModifierType::CONTROL_MASK,
+            ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+            ModifierType::CONTROL_MASK | ModifierType::ALT_MASK,
+            ModifierType::SHIFT_MASK,
         ];
-        let copies = |key: Key, modifiers: &str| {
-            let control_only = matches!(modifiers, "Control" | "Control+Lock" | "Control+Button1");
-            match key {
-                Key::c | Key::C | Key::Insert | Key::KP_Insert => control_only,
-                Key::Copy => modifiers == "none",
-                _ => false,
-            }
-        };
         for key in keys {
-            for (name, state) in modifier_sets {
+            for modifiers in modifier_sets {
+                let matcher = |wanted: Key, wanted_modifiers: ModifierType| {
+                    wanted == key && wanted_modifiers == modifiers
+                };
                 assert_eq!(
-                    is_copy_key(key, state),
-                    copies(key, name),
-                    "{key:?} with {name}"
+                    is_copy_shortcut(matcher),
+                    COPY_SHORTCUTS.contains(&(key, modifiers)),
+                    "{key:?} with {modifiers:?}"
                 );
             }
         }
     }
 
     #[test]
-    fn modifier_keys_are_the_bare_modifiers_and_locks() {
+    fn a_second_layout_copies_on_the_keycode_of_c() {
+        let cyrillic_c = |wanted: Key, modifiers: ModifierType| {
+            wanted == Key::c && modifiers == ModifierType::CONTROL_MASK
+        };
+        assert!(is_copy_shortcut(cyrillic_c));
+        assert_eq!(
+            selection_key_action(Key::Cyrillic_es, || is_copy_shortcut(cyrillic_c)),
+            SelectionKeyAction::Copy
+        );
+    }
+
+    #[test]
+    fn nothing_matching_is_no_copy_shortcut() {
+        assert!(!is_copy_shortcut(|_, _| false));
+    }
+
+    #[test]
+    fn a_copy_match_copies_whatever_the_keyval() {
+        for keyval in [Key::Cyrillic_es, Key::c, Key::Copy] {
+            assert_eq!(
+                selection_key_action(keyval, || true),
+                SelectionKeyAction::Copy,
+                "{keyval:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_keyval_with_no_copy_match_clears_unless_it_is_a_modifier() {
+        assert_eq!(
+            selection_key_action(Key::Cyrillic_es, || false),
+            SelectionKeyAction::Clear
+        );
+        assert_eq!(
+            selection_key_action(Key::Down, || false),
+            SelectionKeyAction::Clear
+        );
+        for keyval in [Key::Shift_L, Key::Control_L, Key::ISO_Next_Group] {
+            assert_eq!(
+                selection_key_action(keyval, || false),
+                SelectionKeyAction::Keep,
+                "{keyval:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn modifier_keys_are_the_bare_modifiers_locks_and_layout_switches() {
         let modifiers = [
             Key::Shift_L,
             Key::Shift_R,
@@ -302,6 +369,14 @@ mod tests {
             Key::Caps_Lock,
             Key::Shift_Lock,
             Key::Num_Lock,
+            Key::ISO_Next_Group,
+            Key::ISO_Prev_Group,
+            Key::ISO_First_Group,
+            Key::ISO_Last_Group,
+            Key::ISO_Group_Shift,
+            Key::ISO_Group_Latch,
+            Key::ISO_Group_Lock,
+            Key::Mode_switch,
         ];
         for key in modifiers {
             assert!(is_modifier_key(key), "{key:?}");

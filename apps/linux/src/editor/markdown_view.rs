@@ -9,7 +9,7 @@ use commitnote_markdown::{
 };
 use glib::subclass::Signal;
 use gtk4::subclass::prelude::*;
-use gtk4::{self as gtk, glib, graphene};
+use gtk4::{self as gtk, gdk, glib, graphene};
 use libadwaita as adw;
 use sourceview5::prelude::*;
 use sourceview5::subclass::prelude::*;
@@ -320,8 +320,8 @@ mod imp {
             keys.set_propagation_phase(gtk::PropagationPhase::Capture);
             keys.connect_key_pressed({
                 let view = view.downgrade();
-                move |_, keyval, _, state| match view.upgrade() {
-                    Some(view) if view.table_selection_key(keyval, state) => {
+                move |keys, _, _, _| match (view.upgrade(), key_event(keys)) {
+                    (Some(view), Some(event)) if view.table_selection_key(&event) => {
                         glib::Propagation::Stop
                     }
                     _ => glib::Propagation::Proceed,
@@ -1215,6 +1215,10 @@ pub(super) fn buffer_selection(buffer: &gtk::TextBuffer, index: &Utf16Index) -> 
     let from = index.char_to_utf16(anchor.offset().max(0) as usize);
     let to = index.char_to_utf16(caret.offset().max(0) as usize);
     TextSelection::new(from.min(to), from.abs_diff(to))
+}
+
+pub(super) fn key_event(keys: &gtk::EventControllerKey) -> Option<gdk::KeyEvent> {
+    keys.current_event()?.downcast().ok()
 }
 
 fn iters(

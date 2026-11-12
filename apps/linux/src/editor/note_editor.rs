@@ -19,7 +19,7 @@ use libadwaita as adw;
 use super::MarkdownView;
 use super::image_insertion::{ImageInserter, InsertAt, place_images, target_selection};
 use super::image_source::ImageSource;
-use super::markdown_view::buffer_selection;
+use super::markdown_view::{buffer_selection, key_event};
 use super::vim::{self, KeyRoute, Vim};
 use crate::fonts::NoteFont;
 use crate::links;
@@ -890,9 +890,10 @@ impl NoteEditor {
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         keys.connect_key_pressed({
             let editor = self.downgrade();
-            move |_, keyval, _, state| match editor.upgrade() {
+            move |keys, keyval, _, state| match editor.upgrade() {
                 Some(editor)
-                    if editor.view().table_selection_key(keyval, state)
+                    if key_event(keys)
+                        .is_some_and(|event| editor.view().table_selection_key(&event))
                         || editor.route_vim_key(keyval, state) =>
                 {
                     glib::Propagation::Stop
