@@ -6,6 +6,7 @@ mod markdown_view;
 mod note_editor;
 mod overlay;
 mod spans;
+mod table_widget;
 mod tags;
 pub mod vim;
 
@@ -16,3 +17,4 @@ pub use inline_image::frame_at;
 pub use markdown_view::{MarkdownView, ParsedText};
 pub use note_editor::NoteEditor;
 pub use overlay::{HitBehaviour, Overlay, OverlayKind, OverlayStyle, Painter, Reserve};
+pub use table_widget::TableWidget;

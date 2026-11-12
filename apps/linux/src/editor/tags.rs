@@ -5,11 +5,11 @@ use gtk4::{self as gtk, gdk, pango, prelude::*};
 use super::contrast::Contrast;
 
 const HEADING_SCALES: [f64; 6] = [1.75, 1.25, 1.125, 1.0, 1.0, 1.0];
-const CODE_SCALE: f64 = 0.875;
+pub(super) const CODE_SCALE: f64 = 0.875;
 const QUOTE_INDENT: i32 = 12;
-const DIM_ALPHA: Contrast = Contrast::new(0.55, 0.8);
+pub(super) const DIM_ALPHA: Contrast = Contrast::new(0.55, 0.8);
 const LIST_MARK_ALPHA: Contrast = Contrast::new(0.5, 0.8);
-const CODE_BACKGROUND_ALPHA: Contrast = Contrast::new(0.08, 0.16);
+pub(super) const CODE_BACKGROUND_ALPHA: Contrast = Contrast::new(0.08, 0.16);
 
 /// Tag priority grows along this order, so later styles win where runs overlap: headings
 /// keep their scale over inline code, and the foreground goes muted marker, list mark, link,

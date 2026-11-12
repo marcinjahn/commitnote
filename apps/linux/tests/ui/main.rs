@@ -7,6 +7,7 @@ mod p5;
 mod p6;
 mod smoke;
 mod support;
+mod tables;
 
 use std::process::ExitCode;
 use std::time::Instant;
@@ -39,6 +40,7 @@ const SUITES: &[Suite] = &[
     suite("p4", p4::CASES, Keyring::Provided),
     suite("p5", p5::CASES, Keyring::Provided),
     suite("p6", p6::CASES, Keyring::Provided),
+    suite("tables", tables::CASES, Keyring::Provided),
     suite("smoke", smoke::CASES, Keyring::Absent),
 ];
 

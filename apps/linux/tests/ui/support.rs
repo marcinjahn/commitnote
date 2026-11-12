@@ -1397,6 +1397,43 @@ pub fn assert_named(widget: &impl IsA<gtk::Widget>, expected: &str) -> Result<()
     }
 }
 
+/// `relation` takes an integer value, such as a row or column index or count.
+pub fn assert_relation(
+    widget: &impl IsA<gtk::Widget>,
+    relation: gtk::ffi::GtkAccessibleRelation,
+    expected: i32,
+) -> Result<(), String> {
+    let failure = check_failure(unsafe {
+        gtk::ffi::gtk_test_accessible_check_relation(
+            accessible(widget).to_glib_none().0,
+            relation,
+            expected,
+        )
+    });
+    match failure {
+        Some(failure) => Err(format!(
+            "{} does not have the relation {relation} = {expected}: {failure}",
+            describe(widget.upcast_ref::<gtk::Widget>())
+        )),
+        None => Ok(()),
+    }
+}
+
+pub fn assert_role(
+    widget: &impl IsA<gtk::Widget>,
+    expected: gtk::AccessibleRole,
+) -> Result<(), String> {
+    let role = widget.upcast_ref::<gtk::Widget>().accessible_role();
+    if role == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} has the role {role:?}, not {expected:?}",
+            describe(widget.upcast_ref::<gtk::Widget>())
+        ))
+    }
+}
+
 pub fn assert_checked(widget: &impl IsA<gtk::Widget>, checked: bool) -> Result<(), String> {
     let tristate = if checked {
         gtk::ffi::GTK_ACCESSIBLE_TRISTATE_TRUE
