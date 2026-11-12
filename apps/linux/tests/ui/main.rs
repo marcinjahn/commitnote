@@ -1,3 +1,4 @@
+mod criticals;
 mod flows;
 mod p1;
 mod p2;
@@ -69,6 +70,7 @@ fn selected_suites() -> Result<Vec<&'static Suite>, String> {
 
 fn main() -> ExitCode {
     support::prepare_environment();
+    criticals::install();
     if let Err(error) = gtk::init() {
         eprintln!("FAILED to start GTK: {error}");
         return ExitCode::FAILURE;
@@ -99,6 +101,11 @@ fn main() -> ExitCode {
         }
     };
 
+    if let Some(reason) = criticals::take_failure() {
+        eprintln!("FAILED while starting: {reason}");
+        return ExitCode::FAILURE;
+    }
+
     let suites = match selected_suites() {
         Ok(suites) => suites,
         Err(error) => {
@@ -116,13 +123,16 @@ fn main() -> ExitCode {
             }
             ran += 1;
             let started = Instant::now();
-            let result = harness
+            let mut result = harness
                 .begin(suite.prefix, suite.keyring, name)
                 .and_then(|()| case(&mut harness));
             if result.is_err() {
                 harness.save_failure();
             }
             harness.finish();
+            if let Some(reason) = criticals::take_failure() {
+                result = result.and(Err(reason));
+            }
             let seconds = started.elapsed().as_secs_f32();
             match result {
                 Ok(()) => println!("ok {name} ({seconds:.1}s)"),
