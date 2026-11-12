@@ -300,7 +300,7 @@ fn paint_texture(
 #[cfg(test)]
 mod tests {
     use commitnote_editor_text::TextSelection;
-    use commitnote_markdown::{parse, render};
+    use commitnote_markdown::{RenderMode, parse, render};
 
     use super::*;
 
@@ -325,7 +325,7 @@ mod tests {
 
     fn images_for(text: &str, source: Option<&dyn ImageSource>) -> Vec<(Overlay, InlineImage)> {
         let document = parse(text);
-        let output = render(&document, &[TextSelection::new(0, 0)]);
+        let output = render(&document, &[TextSelection::new(0, 0)], RenderMode::Editable);
         overlays(
             &output.placements,
             &Utf16Index::new(text),

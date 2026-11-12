@@ -3,6 +3,7 @@ use std::ops::Range;
 use commitnote_editor_text::TextSelection;
 
 use crate::image_reference::ImageReference;
+use crate::rendered_table::{RenderedTable, rendered_table};
 use crate::syntax::{MarkdownDocument, SyntaxKind, SyntaxNode};
 use crate::table::MarkdownTable;
 
@@ -51,6 +52,16 @@ pub enum Placement {
         line_range: Range<usize>,
         source_visible: bool,
     },
+    Table {
+        table: RenderedTable,
+    },
+}
+
+/// Whether the text can be edited, which decides if a selection reveals a table's source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderMode {
+    Editable,
+    ReadOnly,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,10 +71,16 @@ pub struct RenderOutput {
 }
 
 /// Runs may overlap: apply block line styles first, inline styles next and `Hidden` last.
-pub fn render(document: &MarkdownDocument, selection: &[TextSelection]) -> RenderOutput {
+/// Placements come in document order.
+pub fn render(
+    document: &MarkdownDocument,
+    selection: &[TextSelection],
+    mode: RenderMode,
+) -> RenderOutput {
     let mut renderer = Renderer {
         document,
         selection,
+        mode,
         block: Vec::new(),
         inline: Vec::new(),
         hidden: Vec::new(),
@@ -73,19 +90,25 @@ pub fn render(document: &MarkdownDocument, selection: &[TextSelection]) -> Rende
     let mut runs = renderer.block;
     runs.extend(renderer.inline);
     runs.extend(renderer.hidden);
+    renderer.placements.sort_by_key(|(start, _)| *start);
     RenderOutput {
         runs,
-        placements: renderer.placements,
+        placements: renderer
+            .placements
+            .into_iter()
+            .map(|(_, placement)| placement)
+            .collect(),
     }
 }
 
 struct Renderer<'a> {
     document: &'a MarkdownDocument,
     selection: &'a [TextSelection],
+    mode: RenderMode,
     block: Vec<StyleRun>,
     inline: Vec<StyleRun>,
     hidden: Vec<StyleRun>,
-    placements: Vec<Placement>,
+    placements: Vec<(usize, Placement)>,
 }
 
 impl Renderer<'_> {
@@ -152,9 +175,55 @@ impl Renderer<'_> {
             ancestors.push(node);
             self.visit(node, parent);
         }
-        for table in self.document.tables() {
-            self.style_table_source(&table);
+        let tables = self.document.tables();
+        if tables.is_empty() {
+            return;
         }
+        let gathered: Vec<StyleRun> = self
+            .block
+            .iter()
+            .chain(&self.inline)
+            .chain(&self.hidden)
+            .cloned()
+            .collect();
+        for table in &tables {
+            match self.table_to_render(table, &gathered) {
+                Some(rendered) => self.render_table(table, rendered),
+                None => self.style_table_source(table),
+            }
+        }
+    }
+
+    fn table_to_render(
+        &self,
+        table: &MarkdownTable,
+        gathered: &[StyleRun],
+    ) -> Option<RenderedTable> {
+        let revealed = self.mode == RenderMode::Editable && self.lines_active(&table.range);
+        if revealed {
+            return None;
+        }
+        rendered_table(self.document, table, gathered)
+    }
+
+    fn render_table(&mut self, table: &MarkdownTable, rendered: RenderedTable) {
+        let (first, rest) = table
+            .lines
+            .split_first()
+            .expect("a table has a header line");
+        self.hidden
+            .push(StyleRun::new(first.range.clone(), PreviewStyle::Hidden));
+        if let Some(last) = rest.last() {
+            let line_break = usize::from(last.range.end < self.document.length());
+            self.hidden.push(StyleRun::new(
+                rest[0].range.start..last.range.end + line_break,
+                PreviewStyle::Hidden,
+            ));
+        }
+        self.placements
+            .retain(|(start, _)| !table.range.contains(start));
+        self.placements
+            .push((table.range.start, Placement::Table { table: rendered }));
     }
 
     fn style_table_source(&mut self, table: &MarkdownTable) {
@@ -228,17 +297,23 @@ impl Renderer<'_> {
             SyntaxKind::Url => self.visit_url(node, parent),
             SyntaxKind::Autolink => self.inline_style(range, PreviewStyle::Url),
             SyntaxKind::Image => self.visit_image(node),
-            SyntaxKind::TaskMarker { checked } => self.placements.push(Placement::Checkbox {
-                range: range.clone(),
-                checked,
-            }),
+            SyntaxKind::TaskMarker { checked } => self.placements.push((
+                range.start,
+                Placement::Checkbox {
+                    range: range.clone(),
+                    checked,
+                },
+            )),
             SyntaxKind::HorizontalRule => {
                 if !self.lines_active(range) {
                     self.hidden
                         .push(StyleRun::new(range.clone(), PreviewStyle::Hidden));
-                    self.placements.push(Placement::Rule {
-                        line_range: self.document.line_containing(range.start),
-                    });
+                    self.placements.push((
+                        range.start,
+                        Placement::Rule {
+                            line_range: self.document.line_containing(range.start),
+                        },
+                    ));
                 }
             }
             SyntaxKind::CodeInfo
@@ -285,10 +360,13 @@ impl Renderer<'_> {
             self.hidden
                 .push(StyleRun::new(node.range.clone(), PreviewStyle::Hidden));
         }
-        self.placements.push(Placement::Image {
-            reference,
-            line_range: self.document.line_containing(node.range.start),
-            source_visible: active,
-        });
+        self.placements.push((
+            node.range.start,
+            Placement::Image {
+                reference,
+                line_range: self.document.line_containing(node.range.start),
+                source_visible: active,
+            },
+        ));
     }
 }

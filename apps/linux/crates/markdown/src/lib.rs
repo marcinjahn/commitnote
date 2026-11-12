@@ -19,7 +19,7 @@ pub use commands::{
 };
 pub use image_reference::{ImageReference, ImageTarget};
 pub use insertion_rule::insert_image_references;
-pub use live_preview::{Placement, PreviewStyle, RenderOutput, StyleRun, render};
+pub use live_preview::{Placement, PreviewStyle, RenderMode, RenderOutput, StyleRun, render};
 pub use parser::parse;
 pub use rendered_table::{
     RenderedTable, TableCellContent, TableCellPiece, TableTextStyle, rendered_table,

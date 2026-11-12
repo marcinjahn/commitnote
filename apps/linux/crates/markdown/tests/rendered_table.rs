@@ -2,17 +2,26 @@ use std::fs;
 use std::path::PathBuf;
 
 use commitnote_markdown::{
-    ImageReference, MarkdownTable, RenderedTable, TableAlignment as A, TableCellContent,
-    TableCellPiece, TableTextStyle, parse, render, rendered_table,
+    ImageReference, MarkdownTable, Placement, RenderMode, RenderedTable, TableAlignment as A,
+    TableCellContent, TableCellPiece, TableTextStyle, parse, render,
 };
 use serde::Deserialize;
 
 const ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
 
+fn rendered_tables(text: &str) -> Vec<RenderedTable> {
+    render(&parse(text), &[], RenderMode::Editable)
+        .placements
+        .into_iter()
+        .filter_map(|placement| match placement {
+            Placement::Table { table } => Some(table),
+            _ => None,
+        })
+        .collect()
+}
+
 fn build(text: &str) -> Option<RenderedTable> {
-    let d = parse(text);
-    let runs = render(&d, &[]).runs;
-    rendered_table(&d, &d.tables()[0], &runs)
+    rendered_tables(text).into_iter().next()
 }
 
 fn table(text: &str) -> RenderedTable {
@@ -679,13 +688,15 @@ fn corpus_tables_render() {
     for entry in &entries {
         let name = &entry.name;
         let d = parse(&entry.text);
-        let runs = render(&d, &[]).runs;
-        for table in d.tables() {
-            if table.container_prefix.is_none() {
-                continue;
-            }
-            let rendered = rendered_table(&d, &table, &runs)
-                .unwrap_or_else(|| panic!("{name}: no rendered table"));
+        let tables: Vec<MarkdownTable> = d
+            .tables()
+            .into_iter()
+            .filter(|table| table.container_prefix.is_some())
+            .collect();
+        let rendered_tables = rendered_tables(&entry.text);
+        assert_eq!(rendered_tables.len(), tables.len(), "{name}");
+        for (table, rendered) in tables.iter().zip(rendered_tables) {
+            assert_eq!(rendered.source, *table, "{name}");
             assert_eq!(rendered.row_count(), 1 + table.rows().len(), "{name}");
             let lines = std::iter::once(table.header()).chain(table.rows());
             for (row, line) in rendered.rows.iter().zip(lines) {
@@ -716,12 +727,7 @@ fn corpus_tables_render() {
 fn same_content_ignores_ranges_and_carets() {
     let text = format!("| a | ![cat](image:{ID}) |\n| - | :-: |\n| *x* | |");
     let rendered = table(&text);
-    let moved = {
-        let shifted = format!("typed above\n\n{text}");
-        let d = parse(&shifted);
-        let runs = render(&d, &[]).runs;
-        rendered_table(&d, &d.tables()[0], &runs).unwrap()
-    };
+    let moved = table(&format!("typed above\n\n{text}"));
     assert_ne!(rendered, moved);
     assert!(rendered.same_content(&moved));
     assert!(moved.same_content(&rendered));

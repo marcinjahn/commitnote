@@ -3,7 +3,9 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 
 use commitnote_editor_text::{TextSelection, Utf16Index};
-use commitnote_markdown::{CommandResult, MarkdownDocument, Placement, link_url, parse, render};
+use commitnote_markdown::{
+    CommandResult, MarkdownDocument, Placement, RenderMode, link_url, parse, render,
+};
 use glib::subclass::Signal;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib, graphene};
@@ -20,6 +22,7 @@ use super::overlay::{
     self, HIT_SLOP_Y, HitBehaviour, Overlay, OverlayKind, OverlayStyle, OverlayTags, Reserved,
 };
 use super::spans::{self, Spans};
+use super::table_overlays::{ShownTable, TableOverlays};
 use super::tags::{Palette, PreviewTags};
 use crate::fonts::NoteFont;
 use crate::{accent, links};
@@ -75,6 +78,8 @@ mod imp {
         pub(super) overlays: RefCell<Rc<Vec<Overlay>>>,
         pub(super) reserved: RefCell<Reserved>,
         pub(super) overlay_style: Cell<Option<OverlayStyle>>,
+        pub(super) overlay_source: RefCell<Option<glib::SourceId>>,
+        pub(super) table_overlays: OnceCell<TableOverlays>,
         pub(super) command_handler: RefCell<Option<CommandHandler>>,
         pub(super) pressed_overlay: Cell<Option<usize>>,
         pub(super) image_source: RefCell<Option<SourceHandle>>,
@@ -103,6 +108,7 @@ mod imp {
                     Signal::builder("image-activated")
                         .param_types([String::static_type()])
                         .build(),
+                    Signal::builder("tables-changed").build(),
                 ]
             })
         }
@@ -158,6 +164,10 @@ mod imp {
             let probe = accent::probe();
             view.add_overlay(&probe, 0, 0);
             let _ = self.accent_probe.set(probe);
+            let _ = self
+                .table_overlays
+                .set(TableOverlays::new(view.upcast_ref()));
+            view.connect_editable_notify(|view| view.queue_render());
 
             let style_manager = adw::StyleManager::default();
             let dark = style_manager.connect_dark_notify({
@@ -315,11 +325,18 @@ mod imp {
                     settings.disconnect(handler);
                 }
             }
-            for source in [self.render_source.take(), self.palette_source.take()]
-                .into_iter()
-                .flatten()
+            for source in [
+                self.render_source.take(),
+                self.palette_source.take(),
+                self.overlay_source.take(),
+            ]
+            .into_iter()
+            .flatten()
             {
                 source.remove();
+            }
+            if let Some(tables) = self.table_overlays.get() {
+                tables.clear();
             }
         }
     }
@@ -337,8 +354,13 @@ mod imp {
 
         fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
             self.parent_size_allocate(width, height, baseline);
-            if self.layout_width.replace(width) != width && !self.images.borrow().is_empty() {
-                self.obj().queue_render();
+            let view = self.obj();
+            let tables = view.table_overlays();
+            let resized = self.layout_width.replace(width) != width;
+            if resized && (!self.images.borrow().is_empty() || !tables.is_empty()) {
+                view.queue_render();
+            } else if tables.needs_rebuild(view.upcast_ref()) {
+                view.queue_overlay_rebuild();
             }
         }
 
@@ -448,9 +470,9 @@ impl MarkdownView {
     }
 
     /// Opens the link under a point in widget coordinates when Control is held, and says
-    /// whether it did.
+    /// whether it did. A table widget's text is never a link here.
     pub fn handle_primary_press(&self, x: f64, y: f64, control: bool) -> bool {
-        if !control {
+        if !control || self.table_overlays().contains(self.upcast_ref(), x, y) {
             return false;
         }
         let (bx, by) =
@@ -545,10 +567,42 @@ impl MarkdownView {
         self.emit_by_name::<()>("image-activated", &[&image_id]);
     }
 
+    /// Runs after a render that removed a table widget or built one, but not after one that
+    /// only moved widgets.
+    pub fn connect_tables_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_local("tables-changed", false, move |args| {
+            let view = args[0].get::<Self>().ok()?;
+            f(&view);
+            None
+        })
+    }
+
+    /// The rendered tables in document order, each with its widget.
+    pub fn shown_tables(&self) -> Vec<ShownTable> {
+        self.table_overlays().shown()
+    }
+
+    fn table_overlays(&self) -> &TableOverlays {
+        self.imp()
+            .table_overlays
+            .get()
+            .expect("the view is constructed with its table overlays")
+    }
+
     /// Where images come from; without a source every image reference shows as unavailable.
     pub fn set_image_source(&self, source: Option<Rc<dyn ImageSource>>) {
         self.imp().image_source.replace(source.map(SourceHandle));
+        self.table_overlays()
+            .refresh_images(None, self.image_source().as_deref());
         self.queue_render();
+    }
+
+    fn image_source(&self) -> Option<Rc<dyn ImageSource>> {
+        self.imp()
+            .image_source
+            .borrow()
+            .clone()
+            .map(|SourceHandle(source)| source)
     }
 
     /// Repaints the references to an image whose state changed in the source.
@@ -562,6 +616,8 @@ impl MarkdownView {
         if shown {
             self.queue_render();
         }
+        self.table_overlays()
+            .refresh_images(Some(image_id), self.image_source().as_deref());
     }
 
     #[cfg(feature = "testing")]
@@ -745,7 +801,10 @@ impl MarkdownView {
         }
         let shown = top.offset().max(0) as usize..bottom.offset().max(0) as usize + 1;
         for overlay in overlays.iter() {
-            if overlay.range.end < shown.start || overlay.range.start >= shown.end {
+            if overlay.kind == OverlayKind::Table
+                || overlay.range.end < shown.start
+                || overlay.range.start >= shown.end
+            {
                 continue;
             }
             let rect = overlay::overlay_rect(self.upcast_ref(), overlay);
@@ -767,6 +826,23 @@ impl MarkdownView {
         imp.parsed.replace(None);
         imp.text_changed.set(true);
         self.render_now();
+    }
+
+    fn queue_overlay_rebuild(&self) {
+        let imp = self.imp();
+        if imp.overlay_source.borrow().is_some() || imp.render_source.borrow().is_some() {
+            return;
+        }
+        let source = glib::idle_add_local_once({
+            let view = self.downgrade();
+            move || {
+                if let Some(view) = view.upgrade() {
+                    view.imp().overlay_source.take();
+                    view.rebuild_overlays(false);
+                }
+            }
+        });
+        imp.overlay_source.replace(Some(source));
     }
 
     fn queue_render(&self) {
@@ -808,7 +884,12 @@ impl MarkdownView {
             }
         };
         let selection = buffer_selection(&buffer, &parsed.index);
-        let output = render(&parsed.document, &[selection]);
+        let mode = if self.is_editable() {
+            RenderMode::Editable
+        } else {
+            RenderMode::ReadOnly
+        };
+        let output = render(&parsed.document, &[selection], mode);
         let spans = spans::from_runs(&output.runs, &parsed.index);
 
         let previous = imp.applied.replace(Spans::new());
@@ -840,6 +921,9 @@ impl MarkdownView {
         let Some(parsed) = imp.parsed.borrow().clone() else {
             return;
         };
+        if let Some(source) = imp.overlay_source.take() {
+            source.remove();
+        }
         let style = self.overlay_style();
         let placements = imp.placements.borrow().clone();
         let mut overlays = overlay::overlays(&placements, &parsed.index, &style);
@@ -848,12 +932,12 @@ impl MarkdownView {
             .any(|placement| matches!(placement, Placement::Image { .. }));
         let mut images = Vec::new();
         if has_images {
-            let source = imp.image_source.borrow().clone();
+            let source = self.image_source();
             let art = self.unavailable_art();
             let found = inline_image::overlays(
                 &placements,
                 &parsed.index,
-                source.as_ref().map(|SourceHandle(source)| source.as_ref()),
+                source.as_deref(),
                 &self.image_layout(),
                 &imp.elapsed,
                 Some(&art),
@@ -864,13 +948,27 @@ impl MarkdownView {
                 images.push(image);
             }
         }
+        let tables = self.table_overlays();
+        let wanted_tables = placements
+            .iter()
+            .filter_map(|placement| match placement {
+                Placement::Table { table } => Some(table.clone()),
+                _ => None,
+            })
+            .collect();
+        let tables_changed = tables.update(wanted_tables, &style, self.image_source().as_deref());
+        overlays.extend(tables.overlays(self.upcast_ref(), &parsed.index, &style));
         let wanted = tags.reserved(self.upcast_ref(), &overlays);
         let previous = imp.reserved.take();
         tags.apply(&self.buffer(), &previous, &wanted, full);
         imp.reserved.replace(wanted);
         imp.overlays.replace(Rc::new(overlays));
         imp.images.replace(Rc::new(images));
+        tables.place(self.upcast_ref());
         self.queue_draw();
+        if tables_changed {
+            self.emit_by_name::<()>("tables-changed", &[]);
+        }
     }
 
     fn overlay_style(&self) -> OverlayStyle {
@@ -944,6 +1042,7 @@ impl MarkdownView {
             self.queue_draw();
         }
         self.remeasure_overlays(&palette);
+        self.table_overlays().set_style(&self.overlay_style());
     }
 
     fn remeasure_overlays(&self, palette: &Palette) {

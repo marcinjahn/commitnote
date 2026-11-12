@@ -30,6 +30,8 @@ pub enum OverlayKind {
     Checkbox,
     Rule,
     Image,
+    /// Room for a table widget; the widget draws itself, so the painter draws nothing.
+    Table,
 }
 
 /// The room an overlay takes in the text layout, made with text tags only.
@@ -97,8 +99,8 @@ impl fmt::Debug for Overlay {
     }
 }
 
-/// Maps each checkbox and rule placement to its overlay; images have their own pass, which
-/// needs the view's size and an image source.
+/// Maps each checkbox and rule placement to its overlay; images and tables have their own
+/// passes, which need the view's size.
 pub fn overlays(
     placements: &[Placement],
     index: &Utf16Index,
@@ -146,7 +148,7 @@ pub fn overlays(
                 painter: rule.clone(),
                 hit: HitBehaviour::Inert,
             }),
-            Placement::Image { .. } => None,
+            Placement::Image { .. } | Placement::Table { .. } => None,
         })
         .collect()
 }
@@ -243,7 +245,7 @@ impl OverlayTags {
             let range = overlay.range.clone();
             let from = buffer.iter_at_offset(range.start as i32);
             let to = buffer.iter_at_offset(range.end as i32);
-            if overlay.kind != OverlayKind::Image {
+            if !matches!(overlay.kind, OverlayKind::Image | OverlayKind::Table) {
                 spans.push((range.clone(), self.source.clone()));
             }
             match overlay.reserve {
@@ -436,7 +438,7 @@ fn paint_rule(snapshot: &gtk::Snapshot, rect: &graphene::Rect, style: &OverlaySt
 #[cfg(test)]
 mod tests {
     use commitnote_editor_text::TextSelection;
-    use commitnote_markdown::{parse, render};
+    use commitnote_markdown::{RenderMode, parse, render};
 
     use super::*;
 
@@ -451,7 +453,11 @@ mod tests {
 
     fn overlays_for(text: &str, caret: usize) -> Vec<Overlay> {
         let document = parse(text);
-        let output = render(&document, &[TextSelection::new(caret, 0)]);
+        let output = render(
+            &document,
+            &[TextSelection::new(caret, 0)],
+            RenderMode::Editable,
+        );
         overlays(&output.placements, &Utf16Index::new(text), &style())
     }
 
