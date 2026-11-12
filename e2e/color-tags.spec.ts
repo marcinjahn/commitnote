@@ -205,7 +205,7 @@ async function expectTrashTagged(
   label: keyof typeof COLORS,
 ): Promise<void> {
   await expect(
-    page.getByRole("button", { name: `Restore ${name} to…`, exact: true }),
+    page.getByRole("button", { name: `Restore to… ${name}`, exact: true }),
   ).toHaveAccessibleDescription(`${label} tag`);
   const icon = trashRow(page, name).locator("svg.note-icon");
   await expect(icon).toHaveClass(/tag-colored/);
@@ -222,7 +222,7 @@ test("a trashed tagged note shows its color in the trash and keeps it on restore
   await openTrash(page);
   await expectTrashTagged(page, PURPLE_NOTE, "Purple");
   await expect(
-    page.getByRole("button", { name: "Restore Welcome to…", exact: true }),
+    page.getByRole("button", { name: "Restore to… Welcome", exact: true }),
   ).not.toHaveAccessibleDescription(/tag/);
   await expect(trashRow(page, "Welcome").locator("svg.note-icon")).not.toHaveClass(
     /tag-colored/,
@@ -251,7 +251,7 @@ test("notes inside a trashed folder show their colors in the trash", async ({
   await expectTrashTagged(page, "Roadmap", "Blue");
   await expectTrashTagged(page, "Ideas", "Green");
   await expect(
-    page.getByRole("button", { name: "Restore commitnote to…", exact: true }),
+    page.getByRole("button", { name: "Restore to… commitnote", exact: true }),
   ).not.toHaveAccessibleDescription(/tag/);
   await expect(trashRow(page, "commitnote").locator("svg.note-icon")).toHaveCount(0);
 

@@ -1315,7 +1315,7 @@ test("closing Change passphrase with Escape keeps Settings open and refocuses it
 
 test.describe("setting scope", () => {
   function scopeToggle(dialog: Locator, label: string): Locator {
-    return dialog.getByRole("button", { name: `${label} only on this device` });
+    return dialog.getByRole("button", { name: new RegExp(`^${label}: `) });
   }
 
   function storedDevice(page: Page) {
@@ -1334,12 +1334,12 @@ test.describe("setting scope", () => {
     ).toBeVisible();
     for (const label of ["Vim mode", "Start a note by typing"]) {
       const toggle = scopeToggle(dialog, label);
-      await expect(toggle).toHaveAttribute("aria-pressed", "true");
       await expect(toggle).toHaveText("This device");
+      await expect(toggle).toHaveAccessibleName(`${label}: This device`);
     }
     const accent = scopeToggle(dialog, "Accent color");
-    await expect(accent).toHaveAttribute("aria-pressed", "false");
     await expect(accent).toHaveText("All devices");
+    await expect(accent).toHaveAccessibleName("Accent color: All devices");
     await expect(dialog.getByRole("button", { name: /New notes only/ })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: /New folders only/ })).toHaveCount(0);
 
@@ -1359,10 +1359,7 @@ test.describe("setting scope", () => {
 
     await scopeToggle(dialog, "Accent color").click();
 
-    await expect(scopeToggle(dialog, "Accent color")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    await expect(scopeToggle(dialog, "Accent color")).toHaveText("This device");
     await expect(
       dialog
         .getByRole("radiogroup", { name: "Accent color" })
@@ -1393,10 +1390,7 @@ test.describe("setting scope", () => {
     const afterBack = await fakeForge(page).commitMessages();
     await scopeToggle(dialog, "Animated caret").click();
     await scopeToggle(dialog, "Animated caret").click();
-    await expect(scopeToggle(dialog, "Animated caret")).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    await expect(scopeToggle(dialog, "Animated caret")).toHaveText("All devices");
     await flushPendingSaves(page);
     expect(await fakeForge(page).commitCount()).toBe(afterBack.length);
   });

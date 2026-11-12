@@ -101,7 +101,12 @@ describe("settings copy", () => {
   it("labels the scope toggle", () => {
     expect(SCOPE_SYNCED_LABEL).toBe("All devices");
     expect(SCOPE_DEVICE_LABEL).toBe("This device");
-    expect(scopeToggleLabel("Note font")).toBe("Note font only on this device");
+    expect(scopeToggleLabel("Note font", SCOPE_DEVICE_LABEL)).toBe(
+      "Note font: This device",
+    );
+    expect(scopeToggleLabel("Note font", SCOPE_SYNCED_LABEL)).toBe(
+      "Note font: All devices",
+    );
   });
 
   it("keeps the note font preview and data actions wording", () => {

@@ -72,7 +72,7 @@ export async function openTrash(page: Page): Promise<Locator> {
 
 export function trashRow(page: Page, name: string): Locator {
   return page.getByTestId("trash-row").filter({
-    has: page.getByRole("button", { name: `Restore ${name} to…`, exact: true }),
+    has: page.getByRole("button", { name: `Restore to… ${name}`, exact: true }),
   });
 }
 
@@ -81,7 +81,7 @@ export async function restoreTo(
   name: string,
   folder: string,
 ): Promise<void> {
-  await page.getByRole("button", { name: `Restore ${name} to…`, exact: true }).click();
+  await page.getByRole("button", { name: `Restore to… ${name}`, exact: true }).click();
   const picker = page.getByRole("dialog", { name: /^Restore .* to folder$/ });
   await expect(picker).toBeVisible();
   await picker.getByRole("radio", { name: folder, exact: true }).check();

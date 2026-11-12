@@ -62,7 +62,7 @@
     <button
       type="button"
       class="button button-ghost trash-action"
-      aria-label={`Restore ${node.name} to…`}
+      aria-label={`Restore to… ${node.name}`}
       aria-describedby={colorTag !== null ? tagId : undefined}
       title="Restore to…"
       onclick={() => onRestore(node)}
