@@ -126,6 +126,27 @@ item's text starts.
   table's source. Ctrl+click on a link in a cell opens it, in the shared version too. An image in a
   cell is part of the cell: a click on it places the caret like any other click in the cell and does
   not open the viewer.
+- **Selecting cells.** Dragging across a rendered table selects cells like text: from the pressed
+  cell to the cell under the pointer in reading order, which is the rest of the first row, the rows
+  in between and the start of the last row, and never beyond that table. A long press with touch
+  selects the pressed cell and opens the context menu, and a right click selects the clicked cell,
+  unless it is already selected, and opens the same menu. Selecting cells never moves the caret,
+  never changes the text selection, never shows the table's source and keeps keyboard focus in the
+  editor; a plain click still places the caret as above, and a middle click on a table does
+  nothing. The selected cells are tinted with the accent color under their content, stronger in
+  high contrast. Any other press in the editor, any key except a copy key or a bare modifier (the
+  key still does its usual job), any edit of the text and a re-render that drops the table clear
+  the selection. While the context menu is open nothing clears it, so Copy can be reached with the
+  keyboard or by touch. Changing the theme or the window width keeps it. The shared version page
+  and a note in conflict select the same way.
+- **Copying cells.** Ctrl+C, Ctrl+Insert, the Copy key and Copy in the context menu, which has no
+  table-specific items, put the selected cells on the clipboard twice over: as plain text, one line
+  per row with a tab between cells, where tabs and line breaks inside a cell become spaces, and as
+  an HTML table, where header cells stay header cells, links, bold, italic, strikethrough and
+  inline code are kept and an image becomes its alt text. One selected cell copies too, and the
+  selection stays after copying. With no cells selected, copy works on text as before. With Vim
+  mode on, Ctrl+C copies the selected cells in every mode, without leaving insert mode, while `y`
+  does not see them. Read-only views copy cells the same way.
 - **Keys.** In an editable note with no selection, Up and Down from the display line at the edge of
   the text next to a rendered table put the caret on the source line of the table that the web
   editor uses: the header line when coming from above and the last row when coming from below, at
@@ -149,7 +170,7 @@ item's text starts.
   has its index, and each cell its row and column index and its text as the label ("Empty" for a
   blank cell, the alt text or "Image" for a picture). The header cells are column headers. The
   rendered table, its rows and cells are not focus stops: the caret stays in the editor, and moving
-  it into the table shows the source.
+  it into the table shows the source. Selected cells carry the selected state.
 
 ## Images
 
@@ -814,17 +835,20 @@ The tests (`test.sh`) run, in this order:
    `p6-note-images` and `p6-search`; `p6-history`, `p6-shared-links` and `p6-trash`;
    `p6-preferences`, `p6-about` and `p6-shortcuts`. The `tables` cases cover the table widget alone
    (cells, alignment, accessible roles and labels), the editor's rendering, reveal and shared
-   version, clicks and Ctrl+click, the keys (entering a table, selecting, the goal column, wrapped
-   lines, read-only views), a table drawn in a test room (hit testing, paging and painting), paging
-   through a note, the Vim motions, the appearance (the grid lines and the accent header rule in
-   each theme, accent and high contrast, and the rows following the note font, the text size and the
-   window width), images in cells, tables in quotes and list items, typing in a cell with undo and
-   redo, the printed document, and the search snippets, the version diff and the conflict view,
-   which show the raw table. The `tables-editor` screenshot is saved narrow and wide, light and
-   dark; `tables-shared`, `tables-nested` and `tables-images` wide and light, `tables-nested` and
-   `tables-images` also narrow and dark; `tables-appearance` and `tables-appearance-high-contrast`
-   narrow and wide, light and dark. All use the violet accent, and `tables-appearance` also saves
-   the blue and pink accents, wide and light and narrow and dark. The UI harness runs with
+   version, clicks and Ctrl+click, cell selection (drag, long press and right click, the tint and
+   the selected state, clearing) and copying (the plain text and HTML on the clipboard, in the
+   plain editor, Vim and the shared version), the keys (entering a table, selecting, the goal
+   column, wrapped lines, read-only views), a table drawn in a test room (hit testing, paging and
+   painting), paging through a note, the Vim motions, the appearance (the grid lines and the accent
+   header rule in each theme, accent and high contrast, and the rows following the note font, the
+   text size and the window width), images in cells, tables in quotes and list items, typing in a
+   cell with undo and redo, the printed document, and the search snippets, the version diff and the
+   conflict view, which show the raw table. The `tables-editor` screenshot is saved narrow and wide,
+   light and dark; `tables-selection` wide, light and dark; `tables-shared`, `tables-nested` and
+   `tables-images` wide and light, `tables-nested` and `tables-images` also narrow and dark;
+   `tables-appearance` and `tables-appearance-high-contrast` narrow and wide, light and dark. All
+   use the violet accent, and `tables-appearance` also saves the blue and pink accents, wide and
+   light and narrow and dark. The UI harness runs with
    `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1` (set in `ci/steps/ui-test.sh`), because WebKit's
    bubblewrap sandbox cannot create the namespaces it needs inside the build container; the app
    itself keeps the sandbox. The step also installs the `fonts` tag of the meson install into a
