@@ -286,22 +286,27 @@ const accentCaretTheme = EditorView.baseTheme({
 export function accentCaret(): Extension {
   registerCaretLightProperty();
 
+  // A transaction dispatched while a composition event is being handled makes
+  // CodeMirror put back its own selection over the word the keyboard has just
+  // selected for replacement, so the caret redraws once the event is over.
+  const redrawAfterEvent = (
+    state: AccentCaretState,
+    stillApplies: () => boolean,
+  ) =>
+    setTimeout(() => {
+      if (state.view.plugin(plugin) === state && stillApplies())
+        state.view.dispatch({ effects: compositionChanged.of(null) });
+    });
+
   const plugin = ViewPlugin.fromClass(AccentCaretState, {
     eventHandlers: {
-      compositionstart(_event, view) {
+      compositionstart() {
         this.composing = true;
-        view.dispatch({ effects: compositionChanged.of(null) });
+        redrawAfterEvent(this, () => this.composing);
       },
       compositionend(_event, view) {
         this.composing = false;
-        setTimeout(() => {
-          if (
-            view.plugin(plugin) === this &&
-            !this.composing &&
-            !view.composing
-          )
-            view.dispatch({ effects: compositionChanged.of(null) });
-        });
+        redrawAfterEvent(this, () => !this.composing && !view.composing);
       },
     },
   });
