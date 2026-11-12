@@ -23,6 +23,7 @@ use super::overlay::{
 };
 use super::spans::{self, Spans};
 use super::table_overlays::{ShownTable, TableOverlays};
+use super::table_widget::TableWidget;
 use super::tags::{Palette, PreviewTags};
 use crate::fonts::NoteFont;
 use crate::{accent, links};
@@ -164,9 +165,21 @@ mod imp {
             let probe = accent::probe();
             view.add_overlay(&probe, 0, 0);
             let _ = self.accent_probe.set(probe);
+            let on_click = {
+                let view = view.downgrade();
+                move |widget: &TableWidget, x: f64, y: f64, control: bool| {
+                    let Some(view) = view.upgrade() else {
+                        return;
+                    };
+                    let point = graphene::Point::new(x as f32, y as f32);
+                    if let Some(point) = widget.compute_point(&view, &point) {
+                        view.click_table_at(f64::from(point.x()), f64::from(point.y()), control);
+                    }
+                }
+            };
             let _ = self
                 .table_overlays
-                .set(TableOverlays::new(view.upcast_ref()));
+                .set(TableOverlays::new(view.upcast_ref(), on_click));
             view.connect_editable_notify(|view| view.queue_render());
 
             let style_manager = adw::StyleManager::default();
@@ -491,6 +504,44 @@ impl MarkdownView {
         true
     }
 
+    /// Acts on a click at a point in widget coordinates over a rendered table, and says whether
+    /// it did. With Control held over a link it opens the link; otherwise, while the text is
+    /// editable, it puts the caret at the end of the clicked cell's content and focuses the view.
+    pub fn click_table_at(&self, x: f64, y: f64, control: bool) -> bool {
+        let tables = self.table_overlays();
+        let Some((widget, point)) = tables.widget_at(self.upcast_ref(), x, y) else {
+            return false;
+        };
+        let (x, y) = (f64::from(point.x()), f64::from(point.y()));
+        if control && let Some(url) = widget.link_at_point(x, y) {
+            links::open_uri(self, &url);
+            return true;
+        }
+        if !self.is_editable() {
+            return false;
+        }
+        let Some((row, column)) = widget.cell_at_point(x, y) else {
+            return false;
+        };
+        let Some(parsed) = self.fresh_parsed() else {
+            return false;
+        };
+        let Some(offset) = tables.table_of(&widget).and_then(|table| {
+            table
+                .rows
+                .get(row)
+                .and_then(|cells| cells.get(column))
+                .map(|cell| cell.caret_offset)
+        }) else {
+            return false;
+        };
+        let buffer = self.buffer();
+        let caret = i32::try_from(parsed.index.utf16_to_char(offset)).unwrap_or(i32::MAX);
+        buffer.place_cursor(&buffer.iter_at_offset(caret));
+        self.grab_focus();
+        true
+    }
+
     fn fresh_parsed(&self) -> Option<Rc<ParsedText>> {
         let imp = self.imp();
         if imp.text_changed.get() || imp.parsed.borrow().is_none() {
@@ -514,8 +565,11 @@ impl MarkdownView {
     }
 
     /// The overlay a primary press at a point in widget coordinates acts on: a command only
-    /// while the text is editable, an image in any view.
+    /// while the text is editable, an image in any view, and none over a table widget.
     fn hit_overlay_at(&self, x: f64, y: f64) -> Option<usize> {
+        if self.table_overlays().contains(self.upcast_ref(), x, y) {
+            return None;
+        }
         self.overlay_at(x, y, !self.is_editable())
     }
 

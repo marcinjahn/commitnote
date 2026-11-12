@@ -5,13 +5,14 @@ use commitnote::editor::{
     EditorImage, ImageSource, MarkdownView, NoteEditor, OverlayKind, OverlayStyle, ShownTable,
     TableWidget,
 };
+use commitnote::links;
 use commitnote_markdown::{
     Placement, RenderMode, RenderedTable, TableLayoutMetrics, parse, render,
 };
 use gtk4::{self as gtk, gdk, glib, graphene, pango, prelude::*};
 
 use crate::flows::{ensure, launch_and_log_in, split_view};
-use crate::p2::{caret, set_note_text};
+use crate::p2::{caret, focus_within, set_note_text};
 use crate::p4::{WELCOME, open_editor, view_shared_version};
 use crate::support::{
     Case, Harness, NARROW_VARIANTS, WIDE_LIGHT, WIDE_VARIANTS, Width, assert_named,
@@ -23,6 +24,7 @@ pub const CASES: &[Case] = &[
     ("tables-editor-render", editor_render),
     ("tables-editor-reveal", editor_reveal),
     ("tables-editor-shared", editor_shared),
+    ("tables-pointer", pointer),
 ];
 
 const IMAGE_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -463,7 +465,7 @@ struct Placed {
 }
 
 fn editor_render(h: &mut Harness) -> Result<(), String> {
-    let (editor, view) = open_note(h, offset_in(NOTE, QTY)?)?;
+    let (editor, view) = open_note(h, NOTE, offset_in(NOTE, QTY)?)?;
     wait_revealed(h, &view)?;
     let above = lines_above_table(&view)?;
 
@@ -500,7 +502,7 @@ fn editor_render(h: &mut Harness) -> Result<(), String> {
 }
 
 fn editor_reveal(h: &mut Harness) -> Result<(), String> {
-    let (editor, view) = open_note(h, char_count(NOTE))?;
+    let (editor, view) = open_note(h, NOTE, char_count(NOTE))?;
     let shown = wait_placed(h, &view)?;
     let changes = TableChanges::new(&view);
 
@@ -570,7 +572,7 @@ fn editor_reveal(h: &mut Harness) -> Result<(), String> {
 }
 
 fn editor_shared(h: &mut Harness) -> Result<(), String> {
-    open_note(h, char_count(NOTE))?;
+    open_note(h, NOTE, char_count(NOTE))?;
     view_shared_version(h)?;
     let view = h.widget_as::<MarkdownView>(SHARED_VERSION_TEXT)?;
     h.wait("the shared version to hold the note", || {
@@ -607,14 +609,268 @@ fn editor_shared(h: &mut Harness) -> Result<(), String> {
     h.session_screenshots("shared", WIDE_LIGHT)
 }
 
-/// Opens the welcome note, replaces its text with [`NOTE`] and puts the caret at `caret_at`.
-fn open_note(h: &Harness, caret_at: i32) -> Result<(NoteEditor, MarkdownView), String> {
+/// Opens the welcome note, replaces its text with `text` and puts the caret at `caret_at`.
+fn open_note(h: &Harness, text: &str, caret_at: i32) -> Result<(NoteEditor, MarkdownView), String> {
     launch_and_log_in(h, false)?;
     let editor = open_editor(h, WELCOME)?;
-    set_note_text(&editor, NOTE, caret_at, caret_at);
-    h.wait("the editor to hold the note", || editor.text() == NOTE)?;
+    set_note_text(&editor, text, caret_at, caret_at);
+    h.wait("the editor to hold the note", || editor.text() == text)?;
     let view = editor.view();
     Ok((editor, view))
+}
+
+const POINTER_NOTE: &str = "Intro paragraph above the table.\n\n| Item | Qty | Note |\n| :-- | :-: | --: |\n| **Tea** | 2 | [shop](https://e.x/s) |\n| ![cat](image:aaaaaaaaaaaaaaaaaaaaaaaaaa) | | plain |\n| short |\n\nClosing paragraph below the table.";
+const FILLED_CELL: (usize, usize) = (1, 0);
+const FILLED_SOURCE: &str = "**Tea**";
+const LINK_SOURCE: &str = "[shop](https://e.x/s)";
+const POINTER_IMAGE_CELL: (usize, usize) = (2, 0);
+const IMAGE_SOURCE: &str = "![cat](image:aaaaaaaaaaaaaaaaaaaaaaaaaa)";
+const EMPTY_CELL: (usize, usize) = (2, 1);
+const EMPTY_CELL_SOURCE: &str = "| | plain |";
+const PADDING_CELL: (usize, usize) = (3, 1);
+const SHORT_ROW: &str = "| short |";
+
+/// A point in a view's widget coordinates.
+type ViewPoint = (f64, f64);
+
+fn pointer(h: &mut Harness) -> Result<(), String> {
+    let end = char_count(POINTER_NOTE);
+    let (editor, view) = open_note(h, POINTER_NOTE, end)?;
+    let activations = Rc::new(Cell::new(0_u32));
+    let activated = view.connect_image_activated({
+        let activations = activations.clone();
+        move |_, _| activations.set(activations.get() + 1)
+    });
+    let result = pointer_in_editor(h, &editor, &view, &activations);
+    view.disconnect(activated);
+    result?;
+    pointer_in_shared(h, &editor)
+}
+
+fn pointer_in_editor(
+    h: &Harness,
+    editor: &NoteEditor,
+    view: &MarkdownView,
+    activations: &Cell<u32>,
+) -> Result<(), String> {
+    let end = char_count(POINTER_NOTE);
+    let shown = wait_placed(h, view)?;
+
+    links::testing_clear_opened_uris();
+    let (x, y) = label_point(view, &shown, "shop")?;
+    ensure(view.click_table_at(x, y, true), || {
+        "Ctrl over the link in a cell did not act".to_owned()
+    })?;
+    ensure(links::testing_opened_uris() == [LINK], || {
+        format!(
+            "Ctrl over the link opened {:?}",
+            links::testing_opened_uris()
+        )
+    })?;
+    ensure(caret(editor) == end, || {
+        format!("Ctrl over the link moved the caret to {}", caret(editor))
+    })?;
+
+    let filled = end_of(FILLED_SOURCE)?;
+    click_cell(
+        h,
+        editor,
+        view,
+        "the filled cell",
+        filled,
+        false,
+        |placed| cell_centre(view, placed, FILLED_CELL),
+    )?;
+    click_cell(
+        h,
+        editor,
+        view,
+        "the empty cell",
+        offset_in(POINTER_NOTE, EMPTY_CELL_SOURCE)? + 2,
+        false,
+        |placed| cell_centre(view, placed, EMPTY_CELL),
+    )?;
+    click_cell(
+        h,
+        editor,
+        view,
+        "the padding cell",
+        end_of(SHORT_ROW)?,
+        false,
+        |placed| cell_centre(view, placed, PADDING_CELL),
+    )?;
+    click_cell(
+        h,
+        editor,
+        view,
+        "the band beside the grid",
+        end_of(LINK_SOURCE)?,
+        false,
+        |placed| beside_grid(view, placed, FILLED_CELL.0),
+    )?;
+    click_cell(
+        h,
+        editor,
+        view,
+        "the image cell",
+        end_of(IMAGE_SOURCE)?,
+        false,
+        |placed| cell_centre(view, placed, POINTER_IMAGE_CELL),
+    )?;
+    ensure(activations.get() == 0, || {
+        format!(
+            "clicking the image cell activated an image {} times",
+            activations.get()
+        )
+    })?;
+    click_cell(
+        h,
+        editor,
+        view,
+        "Ctrl over plain cell text",
+        filled,
+        true,
+        |placed| label_point(view, placed, "Tea"),
+    )?;
+    ensure(links::testing_opened_uris() == [LINK], || {
+        format!("the cell clicks opened {:?}", links::testing_opened_uris())
+    })
+}
+
+/// Clicks at the point `at` gives for the placed table and checks the caret lands at
+/// `expected`, the table is revealed and the view has focus; then renders the table again.
+fn click_cell(
+    h: &Harness,
+    editor: &NoteEditor,
+    view: &MarkdownView,
+    what: &str,
+    expected: i32,
+    control: bool,
+    at: impl Fn(&Placed) -> Result<ViewPoint, String>,
+) -> Result<(), String> {
+    let (x, y) = at(&wait_placed(h, view)?)?;
+    GtkWindowExt::set_focus(&h.window()?, None::<&gtk::Widget>);
+    ensure(!focus_within(h, view), || {
+        format!("the view kept the focus before clicking {what}")
+    })?;
+    ensure(view.click_table_at(x, y, control), || {
+        format!("clicking {what} did not act")
+    })?;
+    ensure(caret(editor) == expected, || {
+        format!(
+            "clicking {what} put the caret at {}, not {expected}",
+            caret(editor)
+        )
+    })?;
+    h.wait(&format!("clicking {what} to focus the view"), || {
+        focus_within(h, view)
+    })?;
+    wait_revealed(h, view)?;
+    ensure(caret(editor) == expected, || {
+        format!("the caret left {what} once the table was revealed")
+    })?;
+    place_caret(view, char_count(POINTER_NOTE));
+    wait_placed(h, view).map(|_| ())
+}
+
+fn pointer_in_shared(h: &Harness, editor: &NoteEditor) -> Result<(), String> {
+    let editor_caret = caret(editor);
+    view_shared_version(h)?;
+    let view = h.widget_as::<MarkdownView>(SHARED_VERSION_TEXT)?;
+    h.wait("the shared version to hold the note", || {
+        view_text(&view).contains(POINTER_NOTE)
+    })?;
+    ensure(!view.is_editable(), || {
+        "the shared version is editable".to_owned()
+    })?;
+    let shown = wait_placed(h, &view)?;
+    let shared_caret = || {
+        let buffer = view.buffer();
+        buffer.iter_at_mark(&buffer.get_insert()).offset()
+    };
+    let caret_before = shared_caret();
+
+    let (x, y) = cell_centre(&view, &shown, FILLED_CELL)?;
+    ensure(!view.click_table_at(x, y, false), || {
+        "a plain click in the shared version acted".to_owned()
+    })?;
+    h.settle()?;
+    let after = placed(&view)?;
+    ensure(after.shown.widget == shown.shown.widget, || {
+        "a plain click in the shared version replaced its table widget".to_owned()
+    })?;
+    ensure(shared_caret() == caret_before, || {
+        "a plain click in the shared version moved its caret".to_owned()
+    })?;
+
+    links::testing_clear_opened_uris();
+    let (x, y) = label_point(&view, &after, "shop")?;
+    ensure(view.click_table_at(x, y, true), || {
+        "Ctrl over the link in the shared version did not act".to_owned()
+    })?;
+    ensure(links::testing_opened_uris() == [LINK], || {
+        format!(
+            "Ctrl over the link in the shared version opened {:?}",
+            links::testing_opened_uris()
+        )
+    })?;
+    ensure(shared_caret() == caret_before, || {
+        "Ctrl over the link in the shared version moved its caret".to_owned()
+    })?;
+    ensure(caret(editor) == editor_caret, || {
+        "clicking the shared version moved the editor's caret".to_owned()
+    })
+}
+
+/// The character offset just past `source` in [`POINTER_NOTE`].
+fn end_of(source: &str) -> Result<i32, String> {
+    Ok(offset_in(POINTER_NOTE, source)? + char_count(source))
+}
+
+fn cell_centre(
+    view: &MarkdownView,
+    placed: &Placed,
+    (row, column): (usize, usize),
+) -> Result<ViewPoint, String> {
+    let widget = &placed.shown.widget;
+    to_view(view, widget, &cell_bounds(widget, row, column)?.center())
+}
+
+/// A point halfway between the grid's right edge and the band's, at the middle of `row`.
+fn beside_grid(view: &MarkdownView, placed: &Placed, row: usize) -> Result<ViewPoint, String> {
+    let widget = &placed.shown.widget;
+    let grid = widget.grid_bounds();
+    let band = widget.width() as f32;
+    ensure(grid.width() + 2.0 < band, || {
+        format!("the grid fills the band, {} of {band} wide", grid.width())
+    })?;
+    let y = cell_bounds(widget, row, 0)?.center().y();
+    to_view(
+        view,
+        widget,
+        &graphene::Point::new((grid.width() + band) / 2.0, y),
+    )
+}
+
+/// The middle of a label's second glyph.
+fn label_point(view: &MarkdownView, placed: &Placed, text: &str) -> Result<ViewPoint, String> {
+    let widget = &placed.shown.widget;
+    to_view(
+        view,
+        widget,
+        &glyph_centre(widget, &label_with(widget, text)?)?,
+    )
+}
+
+fn to_view(
+    view: &MarkdownView,
+    widget: &TableWidget,
+    point: &graphene::Point,
+) -> Result<ViewPoint, String> {
+    let point = widget
+        .compute_point(view, point)
+        .ok_or("the table widget is not inside the view")?;
+    Ok((f64::from(point.x()), f64::from(point.y())))
 }
 
 /// Builds a table in a view of its own, then checks the widget has no parent once the view is

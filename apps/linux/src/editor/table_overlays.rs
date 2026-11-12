@@ -65,6 +65,19 @@ struct Measured {
     height: i32,
 }
 
+/// Receives a table widget's click, with the release point in widget coordinates and whether
+/// Control was held.
+type ClickCallback = dyn Fn(&TableWidget, f64, f64, bool);
+
+#[derive(Clone)]
+struct ClickHandler(Rc<ClickCallback>);
+
+impl std::fmt::Debug for ClickHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ClickHandler")
+    }
+}
+
 #[derive(Debug)]
 struct Entry {
     widget: TableWidget,
@@ -78,15 +91,20 @@ struct Entry {
 pub struct TableOverlays {
     layer: TableLayer,
     entries: RefCell<Vec<Entry>>,
+    on_click: ClickHandler,
 }
 
 impl TableOverlays {
-    pub fn new(view: &gtk::TextView) -> Self {
+    pub fn new(
+        view: &gtk::TextView,
+        on_click: impl Fn(&TableWidget, f64, f64, bool) + 'static,
+    ) -> Self {
         let layer = TableLayer::default();
         view.add_overlay(&layer, 0, 0);
         Self {
             layer,
             entries: RefCell::default(),
+            on_click: ClickHandler(Rc::new(on_click)),
         }
     }
 
@@ -132,6 +150,10 @@ impl TableOverlays {
                 }
                 None => {
                     let widget = TableWidget::new(table.clone(), style, source);
+                    let ClickHandler(on_click) = self.on_click.clone();
+                    widget.connect_clicked(move |widget, x, y, control| {
+                        on_click(widget, x, y, control);
+                    });
                     self.layer.put(&widget);
                     changed = true;
                     entries.push(Entry {
@@ -236,13 +258,39 @@ impl TableOverlays {
 
     /// Whether a point in `view`'s widget coordinates lies on a table widget.
     pub fn contains(&self, view: &gtk::TextView, x: f64, y: f64) -> bool {
+        self.widget_at(view, x, y).is_some()
+    }
+
+    /// The shown table widget under a point in `view`'s widget coordinates, with the point in
+    /// the widget's coordinates.
+    pub fn widget_at(
+        &self,
+        view: &gtk::TextView,
+        x: f64,
+        y: f64,
+    ) -> Option<(TableWidget, graphene::Point)> {
         let point = graphene::Point::new(x as f32, y as f32);
-        self.entries.borrow().iter().any(|entry| {
-            entry
-                .widget
-                .compute_bounds(view)
-                .is_some_and(|bounds| bounds.contains_point(&point))
+        self.entries.borrow().iter().find_map(|entry| {
+            let widget = &entry.widget;
+            if !widget.is_drawable() {
+                return None;
+            }
+            let bounds = widget.compute_bounds(view)?;
+            if !bounds.contains_point(&point) {
+                return None;
+            }
+            let inside = view.compute_point(widget, &point)?;
+            Some((widget.clone(), inside))
         })
+    }
+
+    /// The table a widget shows now; `None` once the widget has been removed.
+    pub fn table_of(&self, widget: &TableWidget) -> Option<RenderedTable> {
+        self.entries
+            .borrow()
+            .iter()
+            .find(|entry| entry.widget == *widget)
+            .map(|entry| entry.table.clone())
     }
 
     pub fn clear(&self) {

@@ -2,8 +2,10 @@ mod cell;
 mod layout;
 
 use std::cell::{Cell, OnceCell, Ref, RefCell};
+use std::sync::OnceLock;
 
 use commitnote_markdown::{RenderedTable, TableAlignment, TableLayoutMetrics};
+use glib::subclass::Signal;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib, graphene, prelude::*};
 
@@ -26,6 +28,8 @@ mod imp {
         pub(super) table: OnceCell<RenderedTable>,
         pub(super) style: Cell<OverlayStyle>,
         pub(super) rows: RefCell<Vec<TableRow>>,
+        pub(super) click: gtk::GestureClick,
+        pub(super) pressed_at: Cell<Option<(f64, f64)>>,
     }
 
     impl Default for TableWidget {
@@ -39,6 +43,8 @@ mod imp {
                     high_contrast: false,
                 }),
                 rows: RefCell::default(),
+                click: gtk::GestureClick::new(),
+                pressed_at: Cell::new(None),
             }
         }
     }
@@ -57,11 +63,23 @@ mod imp {
     }
 
     impl ObjectImpl for TableWidget {
+        fn signals() -> &'static [Signal] {
+            static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
+            SIGNALS.get_or_init(|| {
+                vec![
+                    Signal::builder("clicked")
+                        .param_types([f64::static_type(), f64::static_type(), bool::static_type()])
+                        .build(),
+                ]
+            })
+        }
+
         fn constructed(&self) {
             self.parent_constructed();
             let widget = self.obj();
             widget.set_focusable(false);
             widget.connect_scale_factor_notify(|widget| widget.queue_resize());
+            self.set_up_click();
         }
 
         fn dispose(&self) {
@@ -69,6 +87,49 @@ mod imp {
             while let Some(child) = self.obj().first_child() {
                 child.unparent();
             }
+        }
+    }
+
+    impl TableWidget {
+        fn set_up_click(&self) {
+            let click = &self.click;
+            click.set_button(gtk::gdk::BUTTON_PRIMARY);
+            click.connect_pressed({
+                let widget = self.obj().downgrade();
+                move |gesture, _, x, y| {
+                    if let Some(widget) = widget.upgrade() {
+                        widget.imp().pressed_at.set(Some((x, y)));
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                    }
+                }
+            });
+            click.connect_released({
+                let widget = self.obj().downgrade();
+                move |gesture, _, x, y| {
+                    let Some(widget) = widget.upgrade() else {
+                        return;
+                    };
+                    let Some(pressed_at) = widget.imp().pressed_at.take() else {
+                        return;
+                    };
+                    let threshold = widget.settings().gtk_dnd_drag_threshold();
+                    if within_drag_threshold(pressed_at, (x, y), threshold) {
+                        let control = gesture
+                            .current_event_state()
+                            .contains(gtk::gdk::ModifierType::CONTROL_MASK);
+                        widget.emit_by_name::<()>("clicked", &[&x, &y, &control]);
+                    }
+                }
+            });
+            click.connect_cancel({
+                let widget = self.obj().downgrade();
+                move |_, _| {
+                    if let Some(widget) = widget.upgrade() {
+                        widget.imp().pressed_at.set(None);
+                    }
+                }
+            });
+            self.obj().add_controller(click.clone());
         }
     }
 
@@ -214,6 +275,22 @@ impl TableWidget {
             .link_at(self.upcast_ref(), x, y)
     }
 
+    /// Runs after a primary click that did not turn into a drag, with the release point in widget
+    /// coordinates and whether Control was held.
+    pub fn connect_clicked<F: Fn(&Self, f64, f64, bool) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_local("clicked", false, move |args| {
+            let widget = args[0].get::<Self>().ok()?;
+            let x = args[1].get::<f64>().ok()?;
+            let y = args[2].get::<f64>().ok()?;
+            let control = args[3].get::<bool>().ok()?;
+            f(&widget, x, y, control);
+            None
+        })
+    }
+
     pub fn cell_bounds(&self, row: usize, column: usize) -> Option<graphene::Rect> {
         let geometry = self.table_layout().geometry()?;
         let frame = geometry.cell_frames.get(row)?.get(column)?;
@@ -260,6 +337,12 @@ impl TableWidget {
     }
 }
 
+/// Whether a release `threshold` pixels or less from its press on both axes is still a click.
+fn within_drag_threshold(pressed: (f64, f64), released: (f64, f64), threshold: i32) -> bool {
+    let threshold = f64::from(threshold);
+    (released.0 - pressed.0).abs() <= threshold && (released.1 - pressed.1).abs() <= threshold
+}
+
 fn count(value: usize) -> i32 {
     i32::try_from(value).unwrap_or(i32::MAX)
 }
@@ -271,4 +354,27 @@ fn graphene_rect(rect: &gtk::gdk::Rectangle) -> graphene::Rect {
         rect.width() as f32,
         rect.height() as f32,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::within_drag_threshold;
+
+    #[test]
+    fn a_release_at_the_press_is_a_click() {
+        assert!(within_drag_threshold((10.0, 20.0), (10.0, 20.0), 8));
+    }
+
+    #[test]
+    fn a_release_up_to_the_threshold_away_on_both_axes_is_a_click() {
+        assert!(within_drag_threshold((10.0, 20.0), (18.0, 12.0), 8));
+        assert!(within_drag_threshold((10.0, 20.0), (2.0, 28.0), 8));
+    }
+
+    #[test]
+    fn a_release_past_the_threshold_on_either_axis_is_a_drag() {
+        assert!(!within_drag_threshold((10.0, 20.0), (18.5, 20.0), 8));
+        assert!(!within_drag_threshold((10.0, 20.0), (10.0, 11.5), 8));
+        assert!(!within_drag_threshold((10.0, 20.0), (40.0, 50.0), 8));
+    }
 }
