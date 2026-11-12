@@ -116,7 +116,7 @@ test.describe("sheets at phone widths", { tag: "@mobile" }, () => {
     const trash = await openTrash(page);
     await expectSheetFits(page, trash);
     await page
-      .getByRole("button", { name: "Restore Welcome to…", exact: true })
+      .getByRole("button", { name: "Restore to… Welcome", exact: true })
       .click();
     const picker = page.getByRole("dialog", { name: /^Restore .* to folder$/ });
     await expectSheetFits(page, picker);

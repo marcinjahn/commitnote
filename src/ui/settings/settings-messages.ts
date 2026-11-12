@@ -28,8 +28,8 @@ export const DATA_SECURITY_SECTION = "Data & security";
 export const SCOPE_SYNCED_LABEL = "All devices";
 export const SCOPE_DEVICE_LABEL = "This device";
 
-export function scopeToggleLabel(label: string): string {
-  return `${label} only on this device`;
+export function scopeToggleLabel(label: string, scopeText: string): string {
+  return `${label}: ${scopeText}`;
 }
 
 export const COLOR_MODE_LABEL = "Color mode";

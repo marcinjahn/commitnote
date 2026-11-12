@@ -128,10 +128,6 @@ impl VectorNode {
 /// deviates. Each entry must still differ from the vector, so stale rows fail the test.
 const ALLOWED: &[(&str, &str)] = &[
     (
-        "atx-tab",
-        "a tab after # opens a heading in CommonMark; lezer needs a space, so the web leaves the line as plain text",
-    ),
-    (
         "task-not-task",
         "lezer treats any bracket pair such as [y] as a link and hides its brackets; the parser keeps an undefined reference as plain text",
     ),

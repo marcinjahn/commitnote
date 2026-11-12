@@ -315,7 +315,7 @@ fn is_atx_heading(line: &[u16]) -> bool {
         return false;
     }
     let size = run_length(line, 0, HASH);
-    size <= 6 && line.get(size).is_none_or(|&unit| unit == SPACE)
+    size <= 6 && line.get(size).is_none_or(|&unit| is_space_unit(unit))
 }
 
 /// lezer's `isFencedCode`: the length of the opening fence.

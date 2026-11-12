@@ -550,6 +550,10 @@ textarea:focus-visible,
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    /* Only shortens declared transitions. With the initial `all`, every style
+       change would turn into a one-frame transition and land after code that
+       measures layout straight away, such as CodeMirror. */
+    transition-property: none;
   }
 
   ::view-transition-group(*),

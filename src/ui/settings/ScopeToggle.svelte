@@ -14,16 +14,18 @@
   }
 
   const { label, scope, onToggle }: Props = $props();
+
+  const scopeText = $derived(scope === "device" ? SCOPE_DEVICE_LABEL : SCOPE_SYNCED_LABEL);
 </script>
 
 <button
   type="button"
   class="scope-toggle"
-  aria-pressed={scope === "device"}
-  aria-label={scopeToggleLabel(label)}
+  class:device={scope === "device"}
+  aria-label={scopeToggleLabel(label, scopeText)}
   onclick={onToggle}
 >
-  {scope === "device" ? SCOPE_DEVICE_LABEL : SCOPE_SYNCED_LABEL}
+  {scopeText}
 </button>
 
 <style>
@@ -41,7 +43,7 @@
     cursor: pointer;
   }
 
-  .scope-toggle[aria-pressed="true"] {
+  .scope-toggle.device {
     color: var(--color-link);
     border-color: var(--color-accent);
   }
@@ -64,7 +66,7 @@
   }
 
   @media (forced-colors: active) {
-    .scope-toggle[aria-pressed="true"] {
+    .scope-toggle.device {
       border: 2px solid Highlight;
     }
   }
