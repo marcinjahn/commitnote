@@ -44,7 +44,7 @@ pub(super) enum PageLanding {
 }
 
 /// Where a page move of `count` pages from the caret height `caret_y` lands, as
-/// `gtk_text_view_scroll_pages` in GTK 4.20 decides it (gtk/gtktextview.c, lines 6975-7000): a
+/// `gtk_text_view_scroll_pages` in GTK 4.24 decides it (gtk/gtktextview.c, lines 6870-6897): a
 /// move up from the top of the scroll range goes to the buffer start and one down from its bottom
 /// to the buffer end; any other move shifts the height by `count` page increments, truncated to
 /// whole pixels, without clamping it to the scroll range.
@@ -76,7 +76,7 @@ enum VimCaret {
     Shifted(f64),
 }
 
-/// How GtkSourceView 5.18 pages for Vim, `pages` pages down (or up when negative), where the
+/// How GtkSourceView 5.22 pages for Vim, `pages` pages down (or up when negative), where the
 /// caret spans `caret_top` and `caret_height` in the same coordinates as `scroll`
 /// (gtksourceview/vim/gtksourcevimstate.c).
 ///
