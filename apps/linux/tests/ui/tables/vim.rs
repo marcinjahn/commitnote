@@ -5,7 +5,7 @@ use gtk4::{self as gtk, graphene, prelude::*};
 use super::paging::{landing_row, wait_caret_shown};
 use super::{
     KEYS_COLUMN, KEYS_TABLE, PAGE_COLUMN, focus_view, open_note, page_table, place_caret, rendered,
-    table_line_offset, view_window, wait_caret, wait_revealed,
+    table_line_offset, view_window, wait_caret, wait_placed, wait_revealed,
 };
 use crate::flows::ensure;
 use crate::p2::{set_note_text, set_vim_mode};
@@ -63,16 +63,6 @@ fn pending(editor: &NoteEditor) -> String {
     editor.vim_status().1
 }
 
-/// Waits until the note's one table shows as a widget. A quoted table's overlay ends a few
-/// pixels above the next line, so this does not check the placement the way `wait_placed` does.
-fn wait_shown(h: &Harness, view: &MarkdownView) -> Result<(), String> {
-    h.wait("the table widget to show", || {
-        let shown = view.shown_tables();
-        shown.len() == 1 && shown[0].widget.is_mapped()
-    })?;
-    h.settle()
-}
-
 fn show_note(
     h: &Harness,
     editor: &NoteEditor,
@@ -81,7 +71,7 @@ fn show_note(
 ) -> Result<(), String> {
     set_note_text(editor, text, 0, 0);
     h.wait("the editor to hold the note", || editor.text() == text)?;
-    wait_shown(h, view)
+    wait_placed(h, view).map(|_| ())
 }
 
 /// Presses `accelerator` without waiting for its release: the editor stops a key it takes from
@@ -156,7 +146,7 @@ fn motions(
                     _ => format!("{count}{}", motion.prefix),
                 };
                 place_caret(view, line_start(note, line) + KEYS_COLUMN);
-                wait_shown(h, view)?;
+                wait_placed(h, view)?;
                 type_pending(h, editor, &typed)?;
                 press(h, view, key)?;
                 let pressed = format!("{typed}{key} from line {line}");
@@ -184,7 +174,7 @@ fn pending_cleared(
     note: &str,
 ) -> Result<(), String> {
     place_caret(view, KEYS_COLUMN);
-    wait_shown(h, view)?;
+    wait_placed(h, view)?;
     type_pending(h, editor, "3g")?;
     press(h, view, "j")?;
     wait_caret(
@@ -214,7 +204,7 @@ fn operator(
 ) -> Result<(), String> {
     let rest: String = note.split_inclusive('\n').skip(2).collect();
     place_caret(view, KEYS_COLUMN);
-    wait_shown(h, view)?;
+    wait_placed(h, view)?;
     type_pending(h, editor, "d")?;
     press(h, view, "j")?;
     h.wait(
@@ -229,7 +219,7 @@ fn operator(
 fn insert(h: &Harness, editor: &NoteEditor, view: &MarkdownView, note: &str) -> Result<(), String> {
     show_note(h, editor, view, note)?;
     place_caret(view, KEYS_COLUMN);
-    wait_shown(h, view)?;
+    wait_placed(h, view)?;
     h.type_keys("i")?;
     h.wait("Vim to enter insert mode", || {
         editor.vim_status().0.contains("INSERT")

@@ -62,17 +62,17 @@ pub const CASES: &[Case] = &[
 pub(crate) const WELCOME: &[&str] = &["Welcome"];
 pub(crate) const WHITEBOARD: &[&str] = &["Journal", "2026", "Whiteboard"];
 const IDEAS: &[&str] = &["Projects", "commitnote", "Ideas"];
-const UNKNOWN_IMAGE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
+pub(crate) const UNKNOWN_IMAGE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
 const IMAGE_LIMIT: usize = 10;
 
 // Core copy, from src/ui/images/image-messages.ts.
 const COUNT_LIMIT_NOTICE: &str = "You can add up to 10 images at a time.";
 const NOT_AN_IMAGE_NOTICE: &str = "This file is not an image.";
 
-struct Scratch(PathBuf);
+pub(crate) struct Scratch(PathBuf);
 
 impl Scratch {
-    fn new(tag: &str) -> Result<Self, String> {
+    pub(crate) fn new(tag: &str) -> Result<Self, String> {
         let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
             .join(format!("commitnote-ui-images-{}-{tag}", std::process::id()));
         std::fs::create_dir_all(&directory)
@@ -80,7 +80,7 @@ impl Scratch {
         Ok(Self(directory))
     }
 
-    fn write(&self, name: &str, bytes: &[u8]) -> Result<gio::File, String> {
+    pub(crate) fn write(&self, name: &str, bytes: &[u8]) -> Result<gio::File, String> {
         let file = self.0.join(name);
         std::fs::write(&file, bytes).map_err(|error| format!("cannot write {name}: {error}"))?;
         Ok(gio::File::for_path(file))
@@ -125,11 +125,12 @@ fn texture(width: i32, height: i32, tint: u8) -> gdk::MemoryTexture {
     )
 }
 
-fn png_bytes(width: i32, height: i32, tint: u8) -> Vec<u8> {
+pub(crate) fn png_bytes(width: i32, height: i32, tint: u8) -> Vec<u8> {
     texture(width, height, tint).save_to_png_bytes().to_vec()
 }
 
-const GIF_PALETTE: [[u8; 3]; 4] = [[220, 40, 40], [40, 180, 60], [50, 80, 220], [240, 200, 40]];
+pub(crate) const GIF_PALETTE: [[u8; 3]; 4] =
+    [[220, 40, 40], [40, 180, 60], [50, 80, 220], [240, 200, 40]];
 
 fn animated_gif(width: u16, height: u16, frame_colors: &[u8]) -> Vec<u8> {
     const CLEAR: u32 = 4;
@@ -185,7 +186,7 @@ fn animated_gif(width: u16, height: u16, frame_colors: &[u8]) -> Vec<u8> {
     bytes
 }
 
-fn references(text: &str) -> Vec<String> {
+pub(crate) fn references(text: &str) -> Vec<String> {
     text.match_indices("](image:")
         .filter_map(|(at, _)| {
             let start = text[..at].rfind("![")?;
@@ -236,7 +237,7 @@ fn open_welcome(h: &Harness) -> Result<(NoteEditor, String), String> {
     Ok((editor, original))
 }
 
-fn pick_and_insert(editor: &NoteEditor, files: Vec<gio::File>) -> Result<(), String> {
+pub(crate) fn pick_and_insert(editor: &NoteEditor, files: Vec<gio::File>) -> Result<(), String> {
     file_dialogs::testing_queue_open(files);
     WidgetExt::activate_action(editor, "editor.insert-image", None)
         .map_err(|error| format!("cannot activate editor.insert-image: {error}"))
@@ -623,7 +624,7 @@ fn shot_image_viewer(h: &mut Harness) -> Result<(), String> {
 }
 
 pub(crate) const HISTORY_DIALOG: &str = "history-dialog";
-const VERSION_PREVIEW: &str = "version-preview";
+pub(crate) const VERSION_PREVIEW: &str = "version-preview";
 const SHOW_HISTORY: &str = "notes.show-history";
 pub(crate) const FIRST_TEXT: &str =
     "# Welcome\n\nThis is your notes repo.\n\n- First bullet\n- Second bullet\n";
@@ -750,7 +751,7 @@ fn row_marks(h: &Harness, index: usize) -> Result<Vec<String>, String> {
         .collect())
 }
 
-fn open_version(h: &Harness, index: usize) -> Result<(), String> {
+pub(crate) fn open_version(h: &Harness, index: usize) -> Result<(), String> {
     h.activate_row(&version_row(index))?;
     h.wait_shown(VERSION_PREVIEW)?;
     h.wait("the preview to load", || {

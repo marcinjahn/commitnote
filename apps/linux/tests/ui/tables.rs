@@ -1,4 +1,10 @@
+mod appearance;
+mod history;
+mod images;
+mod nested;
 mod paging;
+mod print;
+mod raw_surfaces;
 mod rooms;
 mod vim;
 
@@ -35,6 +41,12 @@ pub const CASES: &[Case] = &[
     ("tables-note-paging", paging::note_paging),
     ("tables-room-paint", rooms::room_paint),
     ("tables-vim", vim::vim),
+    ("tables-appearance", appearance::appearance),
+    ("tables-images", images::images),
+    ("tables-nested", nested::nested),
+    ("tables-history", history::history),
+    ("tables-print", print::print),
+    ("tables-raw-surfaces", raw_surfaces::raw_surfaces),
 ];
 
 const IMAGE_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -119,7 +131,7 @@ fn table_widget(harness: &mut Harness) -> Result<(), String> {
     })?;
 
     check_width(&table)?;
-    check_accessibility(&table)?;
+    check_accessibility(&table, &LABELS)?;
     check_cell_hits(&table)?;
     check_links(&table)?;
     check_image(harness, &table, &images)?;
@@ -170,28 +182,28 @@ fn check_width(table: &TableWidget) -> Result<(), String> {
     Ok(())
 }
 
-fn check_accessibility(table: &TableWidget) -> Result<(), String> {
+fn check_accessibility(table: &TableWidget, expected: &[[&str; 3]]) -> Result<(), String> {
     assert_role(table, gtk::AccessibleRole::Table)?;
     assert_named(table, "Table")?;
     assert_relation(
         table,
         gtk::ffi::GTK_ACCESSIBLE_RELATION_ROW_COUNT,
-        LABELS.len() as i32,
+        expected.len() as i32,
     )?;
     assert_relation(
         table,
         gtk::ffi::GTK_ACCESSIBLE_RELATION_COL_COUNT,
-        LABELS[0].len() as i32,
+        expected[0].len() as i32,
     )?;
     let rows = children(table);
-    if rows.len() != LABELS.len() {
+    if rows.len() != expected.len() {
         return Err(format!(
             "the table has {} rows, not {}",
             rows.len(),
-            LABELS.len()
+            expected.len()
         ));
     }
-    for (row_index, (row, labels)) in rows.iter().zip(LABELS).enumerate() {
+    for (row_index, (row, labels)) in rows.iter().zip(expected).enumerate() {
         let position = row_index as i32 + 1;
         assert_role(row, gtk::AccessibleRole::Row)?;
         assert_relation(row, gtk::ffi::GTK_ACCESSIBLE_RELATION_ROW_INDEX, position)?;
@@ -1203,25 +1215,54 @@ fn wait_placed_where(
 }
 
 fn placed(view: &MarkdownView) -> Result<Placed, String> {
-    let [shown]: [ShownTable; 1] = view
-        .shown_tables()
+    let [placed]: [Placed; 1] = placements(view)?
         .try_into()
-        .map_err(|tables: Vec<ShownTable>| format!("{} tables are shown", tables.len()))?;
+        .map_err(|tables: Vec<Placed>| format!("{} tables are shown", tables.len()))?;
+    Ok(placed)
+}
+
+/// Every shown table in text order, each sitting in its band on its overlay, with the line after
+/// it starting at the overlay's bottom.
+fn placements(view: &MarkdownView) -> Result<Vec<Placed>, String> {
+    let mut shown = view.shown_tables();
+    shown.sort_by_key(|table| table.table.range().start);
     let widgets = table_widgets(view);
-    ensure(widgets.len() == 1 && widgets[0] == shown.widget, || {
-        format!(
-            "the view holds {} table widgets, not just the shown one",
-            widgets.len()
-        )
-    })?;
-    let [rect]: [graphene::Rect; 1] = view
+    ensure(
+        widgets.len() == shown.len() && shown.iter().all(|table| widgets.contains(&table.widget)),
+        || {
+            format!(
+                "the view holds {} table widgets for {} shown tables",
+                widgets.len(),
+                shown.len()
+            )
+        },
+    )?;
+    let mut rects: Vec<graphene::Rect> = view
         .overlay_rects()
         .into_iter()
         .filter(|(kind, _)| *kind == OverlayKind::Table)
         .map(|(_, rect)| rect)
-        .collect::<Vec<_>>()
-        .try_into()
-        .map_err(|rects: Vec<graphene::Rect>| format!("{} table overlays", rects.len()))?;
+        .collect();
+    ensure(rects.len() == shown.len(), || {
+        format!(
+            "{} table overlays for {} shown tables",
+            rects.len(),
+            shown.len()
+        )
+    })?;
+    rects.sort_by(|a, b| a.y().total_cmp(&b.y()));
+    shown
+        .into_iter()
+        .zip(rects)
+        .map(|(shown, rect)| check_placed(view, shown, rect))
+        .collect()
+}
+
+fn check_placed(
+    view: &MarkdownView,
+    shown: ShownTable,
+    rect: graphene::Rect,
+) -> Result<Placed, String> {
     ensure(shown.widget.is_mapped() && rect.height() > 0.0, || {
         "the table widget is not shown yet".to_owned()
     })?;
@@ -1229,15 +1270,16 @@ fn placed(view: &MarkdownView) -> Result<Placed, String> {
         .widget
         .compute_bounds(view)
         .ok_or("the table widget has no bounds in the view")?;
+    let band_x = rect.x() + prefix_width(view, &shown.table) as f32;
     let near = |a: f32, b: f32| (a - b).abs() <= 1.0;
     ensure(
-        near(bounds.x(), rect.x())
+        near(bounds.x(), band_x)
             && near(bounds.y(), rect.y())
-            && near(bounds.width(), rect.width())
+            && near(bounds.x() + bounds.width(), rect.x() + rect.width())
             && near(bounds.height(), rect.height()),
         || {
             format!(
-                "the table widget is at {}, its overlay at {}",
+                "the table widget is at {}, its overlay at {} with the band from x {band_x}",
                 describe(&bounds),
                 describe(&rect)
             )
@@ -1248,12 +1290,21 @@ fn placed(view: &MarkdownView) -> Result<Placed, String> {
     ensure(next.forward_line(), || {
         "no line follows the table".to_owned()
     })?;
-    let next_top = text_top(view, &next);
+    let (next_top, _) = line_top(view, &next);
     let bottom = rect.y() + rect.height();
     ensure(near(next_top as f32, bottom), || {
-        format!("the text after the table starts at {next_top}, not at the overlay bottom {bottom}")
+        format!("the line after the table starts at {next_top}, not at the overlay bottom {bottom}")
     })?;
     Ok(Placed { shown, rect })
+}
+
+/// The rendered width of the list part of the table's container prefix, which the band starts
+/// after.
+fn prefix_width(view: &MarkdownView, table: &RenderedTable) -> i32 {
+    match table.list_prefix() {
+        "" => 0,
+        prefix => view.create_pango_layout(Some(prefix)).pixel_size().0,
+    }
 }
 
 fn wait_revealed(h: &Harness, view: &MarkdownView) -> Result<(), String> {
@@ -1333,13 +1384,6 @@ fn line_top(view: &MarkdownView, iter: &gtk::TextIter) -> (i32, i32) {
     let (y, height) = view.line_yrange(iter);
     let (_, top) = view.buffer_to_window_coords(gtk::TextWindowType::Widget, 0, y);
     (top, height)
-}
-
-/// Where the text of `iter`'s display line starts, below its top margin, in widget coordinates.
-fn text_top(view: &MarkdownView, iter: &gtk::TextIter) -> i32 {
-    let y = view.iter_location(iter).y();
-    let (_, top) = view.buffer_to_window_coords(gtk::TextWindowType::Widget, 0, y);
-    top
 }
 
 fn place_caret(view: &MarkdownView, offset: i32) {

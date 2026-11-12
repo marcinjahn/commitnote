@@ -626,7 +626,7 @@ fn line_strip(view: &MarkdownView, line: &gtk::TextIter) -> Result<graphene::Rec
 }
 
 /// The right edge of the text area, in view coordinates.
-fn text_right(view: &MarkdownView) -> f32 {
+pub(super) fn text_right(view: &MarkdownView) -> f32 {
     let visible = view.visible_rect();
     let (x, _) = to_widget(view, visible.x() + visible.width() - view.right_margin(), 0);
     x as f32

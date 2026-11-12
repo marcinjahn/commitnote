@@ -601,10 +601,10 @@ fn search_open_close(h: &mut Harness) -> Result<(), String> {
     h.wait("the tree to have focus", || tree_focused(h))
 }
 
-struct ResultRow {
+pub(crate) struct ResultRow {
     name: String,
     folder: Option<String>,
-    snippet: Option<gtk::Label>,
+    pub(crate) snippet: Option<gtk::Label>,
     name_label: gtk::Label,
 }
 
@@ -616,7 +616,7 @@ fn label_of(widget: &gtk::Widget) -> Option<gtk::Label> {
         .or_else(|| widget.first_child()?.downcast::<gtk::Label>().ok())
 }
 
-fn search_rows(h: &Harness) -> (Vec<String>, Vec<ResultRow>) {
+pub(crate) fn search_rows(h: &Harness) -> (Vec<String>, Vec<ResultRow>) {
     let mut headings = Vec::new();
     let mut rows = Vec::new();
     let Ok(list) = h.widget_as::<gtk::ListBox>(SEARCH_LIST) else {

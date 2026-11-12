@@ -398,7 +398,7 @@ fn type_text(editor: &NoteEditor, text: &str) {
 }
 
 /// Waits until the core reports `text` back as the open note's content.
-fn wait_echo(h: &Harness, text: &str) -> Result<(), String> {
+pub(crate) fn wait_echo(h: &Harness, text: &str) -> Result<(), String> {
     let model = h.model()?;
     h.wait("the core to hold the typed text", || {
         model
@@ -1996,7 +1996,10 @@ fn open_conflict(model: &AppModel) -> Option<OpenNoteConflict> {
 
 /// Edits the first line here and on another device, then saves, which leaves the open note in
 /// conflict.
-fn make_conflict(h: &Harness, editor: &NoteEditor) -> Result<(String, OpenNoteConflict), String> {
+pub(crate) fn make_conflict(
+    h: &Harness,
+    editor: &NoteEditor,
+) -> Result<(String, OpenNoteConflict), String> {
     let model = h.model()?;
     h.run("the remote edit", async move {
         model.testing_remote_edit().await
@@ -2016,7 +2019,7 @@ fn make_conflict(h: &Harness, editor: &NoteEditor) -> Result<(String, OpenNoteCo
     Ok((typed, conflict))
 }
 
-fn open_conflict_dialog(h: &Harness, conflict: &OpenNoteConflict) -> Result<(), String> {
+pub(crate) fn open_conflict_dialog(h: &Harness, conflict: &OpenNoteConflict) -> Result<(), String> {
     let banner = h.widget_as::<adw::Banner>(BANNER)?;
     banner.emit_by_name::<()>("button-clicked", &[]);
     h.wait_shown("conflict-dialog")?;

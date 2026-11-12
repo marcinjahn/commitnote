@@ -1242,7 +1242,7 @@ fn announce_no_toast_repeat(h: &mut Harness) -> Result<(), String> {
 
 const COMFORT_TEXT: &str = "- [ ] a task\n- a list item\n\n---\n\nend";
 const NARROW_WINDOW_WIDTH: i32 = 360;
-const SCALED_XFT_DPI: i32 = 147_456;
+pub(crate) const SCALED_XFT_DPI: i32 = 147_456;
 const DIM_ALPHA: f32 = 0.55;
 const DIM_ALPHA_HIGH_CONTRAST: f32 = 0.8;
 
