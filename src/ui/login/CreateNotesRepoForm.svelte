@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { inputKindAttributes } from "../../input-kind/input-kind";
   import PasswordManagerUsername from "./PasswordManagerUsername.svelte";
   import PassphraseStrength from "../passphrase/PassphraseStrength.svelte";
 
@@ -47,6 +48,7 @@
     <input
       id="login-create-passphrase"
       type="password"
+      {...inputKindAttributes("verbatim")}
       autocomplete="new-password"
       bind:this={passphraseInput}
       bind:value={passphrase}
@@ -69,6 +71,7 @@
     <input
       id="login-repeat-passphrase"
       type="password"
+      {...inputKindAttributes("verbatim")}
       autocomplete="new-password"
       bind:value={repeatedPassphrase}
       disabled={busy}

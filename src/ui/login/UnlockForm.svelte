@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { inputKindAttributes } from "../../input-kind/input-kind";
   import PasswordManagerUsername from "./PasswordManagerUsername.svelte";
 
   interface Props {
@@ -40,6 +41,7 @@
     <input
       id="login-passphrase"
       type="password"
+      {...inputKindAttributes("verbatim")}
       autocomplete="current-password"
       bind:this={passphraseInput}
       bind:value={passphrase}

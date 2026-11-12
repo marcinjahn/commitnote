@@ -21,6 +21,7 @@
     ForgeProvider,
     RepositorySummary,
   } from "../../forge/forge-provider";
+  import { inputKindAttributes } from "../../input-kind/input-kind";
   import { tick, untrack } from "svelte";
   import {
     DEFAULT_ACCESS_TOKEN_HINT,
@@ -442,6 +443,7 @@
         <input
           id="login-access-token"
           type="password"
+          {...inputKindAttributes("verbatim")}
           autocomplete="off"
           bind:value={accessToken}
           oninput={forgetRepositories}
