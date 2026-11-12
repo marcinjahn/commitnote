@@ -1043,29 +1043,10 @@ impl Harness {
     /// Renders the window, with an open popover painted over it when given.
     pub fn render_texture(&self, popover: Option<&gtk::Popover>) -> Result<gdk::Texture, String> {
         let window = self.window()?;
-        let (width, height) = (window.width(), window.height());
-        let paintable = gtk::WidgetPaintable::new(Some(&window));
-        let snapshot = gtk::Snapshot::new();
-        paintable.snapshot(&snapshot, f64::from(width), f64::from(height));
-        if let Some(popover) = popover {
-            let (x, y) = popover_origin(&window, popover)?;
-            snapshot.save();
-            snapshot.translate(&graphene::Point::new(x as f32, y as f32));
-            gtk::WidgetPaintable::new(Some(popover)).snapshot(
-                &snapshot,
-                f64::from(popover.width()),
-                f64::from(popover.height()),
-            );
-            snapshot.restore();
-        }
-        let node = snapshot
-            .to_node()
-            .ok_or_else(|| "the window rendered nothing".to_owned())?;
-        let renderer = window
-            .renderer()
-            .ok_or_else(|| "the window has no renderer".to_owned())?;
-        let viewport = graphene::Rect::new(0.0, 0.0, width as f32, height as f32);
-        Ok(renderer.render_texture(&node, Some(&viewport)))
+        let popover = popover
+            .map(|popover| Ok::<_, String>((popover, popover_origin(&window, popover)?)))
+            .transpose()?;
+        render_window(&window, popover)
     }
 
     /// Turns high contrast on or off through GSettings, which libadwaita follows when no portal
@@ -1109,6 +1090,37 @@ impl Harness {
         });
         result.and(restored)
     }
+}
+
+/// Draws a window through its own renderer, outside the frame cycle, with a popover painted over
+/// it at the given origin when there is one.
+pub fn render_window(
+    window: &impl IsA<gtk::Window>,
+    popover: Option<(&gtk::Popover, (f64, f64))>,
+) -> Result<gdk::Texture, String> {
+    let window = window.upcast_ref::<gtk::Window>();
+    let (width, height) = (window.width(), window.height());
+    let paintable = gtk::WidgetPaintable::new(Some(window));
+    let snapshot = gtk::Snapshot::new();
+    paintable.snapshot(&snapshot, f64::from(width), f64::from(height));
+    if let Some((popover, (x, y))) = popover {
+        snapshot.save();
+        snapshot.translate(&graphene::Point::new(x as f32, y as f32));
+        gtk::WidgetPaintable::new(Some(popover)).snapshot(
+            &snapshot,
+            f64::from(popover.width()),
+            f64::from(popover.height()),
+        );
+        snapshot.restore();
+    }
+    let node = snapshot
+        .to_node()
+        .ok_or_else(|| "the window rendered nothing".to_owned())?;
+    let renderer = window
+        .renderer()
+        .ok_or_else(|| "the window has no renderer".to_owned())?;
+    let viewport = graphene::Rect::new(0.0, 0.0, width as f32, height as f32);
+    Ok(renderer.render_texture(&node, Some(&viewport)))
 }
 
 pub fn restoring(
@@ -1450,6 +1462,34 @@ pub fn assert_checked(widget: &impl IsA<gtk::Widget>, checked: bool) -> Result<(
     match failure {
         Some(failure) => Err(format!(
             "{} is not checked={checked}: {failure}",
+            describe(widget.upcast_ref::<gtk::Widget>())
+        )),
+        None => Ok(()),
+    }
+}
+
+/// `selected = false` expects the state not to be set at all.
+pub fn assert_selected(widget: &impl IsA<gtk::Widget>, selected: bool) -> Result<(), String> {
+    let failure = if selected {
+        check_failure(unsafe {
+            gtk::ffi::gtk_test_accessible_check_state(
+                accessible(widget).to_glib_none().0,
+                gtk::ffi::GTK_ACCESSIBLE_STATE_SELECTED,
+                gtk::ffi::GTK_ACCESSIBLE_TRISTATE_TRUE,
+            )
+        })
+    } else {
+        let set = unsafe {
+            gtk::ffi::gtk_test_accessible_has_state(
+                accessible(widget).to_glib_none().0,
+                gtk::ffi::GTK_ACCESSIBLE_STATE_SELECTED,
+            )
+        } != 0;
+        set.then(|| "the state is set".to_owned())
+    };
+    match failure {
+        Some(failure) => Err(format!(
+            "{} is not selected={selected}: {failure}",
             describe(widget.upcast_ref::<gtk::Widget>())
         )),
         None => Ok(()),

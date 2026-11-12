@@ -5,15 +5,18 @@ use std::cell::{Cell, OnceCell, Ref, RefCell};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
-use commitnote_markdown::{RenderedTable, TableAlignment, TableGeometry, TableLayoutMetrics};
+use commitnote_markdown::{
+    RenderedTable, TableAlignment, TableCellPosition, TableGeometry, TableLayoutMetrics,
+    TableSelection,
+};
 use glib::subclass::Signal;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib, graphene, prelude::*};
 
 use self::cell::{TableCell, TablePart, accessible_index};
-use self::layout::{Hairline, TableLayoutManager, hairlines, pixel_rect};
+use self::layout::{Hairline, TableLayoutManager, hairlines, pixel_rect, selection_rects};
 use super::image_source::ImageSource;
-use super::overlay::{OverlayStyle, RULE_ALPHA, dim};
+use super::overlay::{OverlayStyle, RULE_ALPHA, SELECTION_ALPHA, dim};
 
 const ACCESSIBLE_NAME: &str = "Table";
 
@@ -29,6 +32,7 @@ mod imp {
         pub(super) table: OnceCell<RenderedTable>,
         pub(super) style: Cell<OverlayStyle>,
         pub(super) rows: RefCell<Vec<TableRow>>,
+        pub(super) selection: Cell<Option<TableSelection>>,
         pub(super) click: gtk::GestureClick,
         pub(super) pressed_at: Cell<Option<(f64, f64)>>,
     }
@@ -44,6 +48,7 @@ mod imp {
                     high_contrast: false,
                 }),
                 rows: RefCell::default(),
+                selection: Cell::new(None),
                 click: gtk::GestureClick::new(),
                 pressed_at: Cell::new(None),
             }
@@ -136,12 +141,18 @@ mod imp {
 
     impl WidgetImpl for TableWidget {
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
+            let geometry = self.obj().table_layout().geometry();
+            let style = self.style.get();
+            if let Some(geometry) = &geometry {
+                let tint = dim(style.accent, SELECTION_ALPHA.pick(style.high_contrast));
+                for rect in selection_rects(geometry, self.selection.get()) {
+                    snapshot.append_color(&tint, &graphene_rect(&rect));
+                }
+            }
             self.parent_snapshot(snapshot);
-            let widget = self.obj();
-            let Some(geometry) = widget.table_layout().geometry() else {
+            let Some(geometry) = geometry else {
                 return;
             };
-            let style = self.style.get();
             let rule = dim(style.foreground, RULE_ALPHA.pick(style.high_contrast));
             for (rect, kind) in hairlines(&geometry) {
                 let color = match kind {
@@ -238,6 +249,25 @@ impl TableWidget {
         } else {
             self.queue_resize();
         }
+    }
+
+    pub fn selection(&self) -> Option<TableSelection> {
+        self.imp().selection.get()
+    }
+
+    /// Tints the selected cells and marks them selected for assistive technology. The positions
+    /// must lie inside the table.
+    pub fn set_selection(&self, selection: Option<TableSelection>) {
+        if self.imp().selection.replace(selection) == selection {
+            return;
+        }
+        for (row, contents) in self.rows().iter().enumerate() {
+            for (column, cell) in contents.cells.iter().enumerate() {
+                let position = TableCellPosition { row, column };
+                cell.set_selected(selection.is_some_and(|selection| selection.contains(position)));
+            }
+        }
+        self.queue_draw();
     }
 
     /// Reads every image's state again and replaces the items of those that changed.

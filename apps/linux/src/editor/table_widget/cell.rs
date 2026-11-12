@@ -186,6 +186,15 @@ impl TableCell {
         })
     }
 
+    pub(super) fn set_selected(&self, selected: bool) {
+        if selected {
+            self.part
+                .update_state(&[gtk::accessible::State::Selected(Some(true))]);
+        } else {
+            self.part.reset_state(gtk::AccessibleState::Selected);
+        }
+    }
+
     pub(super) fn apply_style(&self, style: &OverlayStyle) {
         for item in &self.items {
             let Some(label) = item.widget.downcast_ref::<gtk::Label>() else {
