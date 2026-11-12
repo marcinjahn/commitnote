@@ -316,6 +316,19 @@ mod imp {
             });
             view.add_controller(long_press);
 
+            let keys = gtk::EventControllerKey::new();
+            keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+            keys.connect_key_pressed({
+                let view = view.downgrade();
+                move |_, keyval, _, state| match view.upgrade() {
+                    Some(view) if view.table_selection_key(keyval, state) => {
+                        glib::Propagation::Stop
+                    }
+                    _ => glib::Propagation::Proceed,
+                }
+            });
+            view.add_controller(keys);
+
             view.connect_scale_factor_notify(|view| {
                 view.imp().unavailable_art.replace(None);
                 view.queue_render();
@@ -431,6 +444,12 @@ mod imp {
                 }
                 gtk::MovementStep::Pages => view.move_pages(count, extend, gtk_move),
                 _ => gtk_move(),
+            }
+        }
+
+        fn copy_clipboard(&self) {
+            if !self.obj().copy_table_selection() {
+                self.parent_copy_clipboard();
             }
         }
     }

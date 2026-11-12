@@ -891,7 +891,12 @@ impl NoteEditor {
         keys.connect_key_pressed({
             let editor = self.downgrade();
             move |_, keyval, _, state| match editor.upgrade() {
-                Some(editor) if editor.route_vim_key(keyval, state) => glib::Propagation::Stop,
+                Some(editor)
+                    if editor.view().table_selection_key(keyval, state)
+                        || editor.route_vim_key(keyval, state) =>
+                {
+                    glib::Propagation::Stop
+                }
                 _ => glib::Propagation::Proceed,
             }
         });

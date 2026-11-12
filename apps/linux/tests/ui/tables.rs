@@ -50,6 +50,7 @@ pub const CASES: &[Case] = &[
     ("tables-raw-surfaces", raw_surfaces::raw_surfaces),
     ("tables-selection-tint", selection::selection_tint),
     ("tables-selection", selection::selection),
+    ("tables-selection-copy", selection::selection_copy),
 ];
 
 const IMAGE_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaa";

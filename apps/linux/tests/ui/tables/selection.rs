@@ -1,21 +1,23 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 use commitnote::editor::{MarkdownView, NoteEditor, OverlayStyle, TableWidget};
 use commitnote_markdown::{TableCellPosition, TableSelection};
-use gtk4::{self as gtk, gdk, graphene};
+use gtk4::{self as gtk, gdk, gio, glib, graphene};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
 use super::{
     BAND, Host, Placed, SHARED_VERSION_TEXT, ViewPoint, WINDOW_HEIGHT, WINDOW_WIDTH, allocated_at,
     caret_in, cell, cell_bounds, char_count, children, edit, focus_view, offset_in, open_note,
-    place_caret, placements, rendered, to_view, view_text,
+    place_caret, placements, rendered, to_view, view_text, view_window, wait_placed,
 };
 use crate::flows::{ensure, split_view};
 use crate::p2::{focus_within, set_vim_mode};
-use crate::p4::view_shared_version;
+use crate::p4::{SHARED_LINKS_DIALOG, clipboard_text, view_shared_version};
 use crate::support::{
-    Harness, Theme, WIDE_VARIANTS, Width, WindowPixels, assert_selected, render_window, restoring,
+    Harness, Theme, WIDE_VARIANTS, Width, WindowPixels, assert_selected, descendants,
+    render_window, restoring,
 };
 
 const TABLE: &str = "| Name | Qty | Note |\n| :- | :-: | -: |\n| **Tea** | 2 | [shop](https://e.x/s) |\n| code | | plain |\n| a | b |";
@@ -1124,4 +1126,429 @@ fn text_point(view: &MarkdownView, offset: i32) -> ViewPoint {
         at.y() + at.height() / 2,
     );
     (f64::from(x), f64::from(y))
+}
+
+const COPY_NOTE: &str = "Intro line one.\nIntro line two.\n\n| Name | Note |\n| --- | --- |\n| **Tea** | [shop](https://e.x/s) |\n| `code` |  |\n| a & b < c | end |\n\nClosing line.";
+const SECOND_LINE: &str = "Intro line two.";
+const SENTINEL: &str = "lrt-sentinel";
+const LINK_CELL: TableCellPosition = position(1, 1);
+const STRONG_CELL: TableCellPosition = position(1, 0);
+const ESCAPED_CELL: TableCellPosition = position(3, 0);
+const RANGE: TableSelection = TableSelection {
+    anchor: position(0, 1),
+    focus: position(3, 0),
+};
+const RANGE_TEXT: &str = "Note\nTea\tshop\ncode\t\na & b < c";
+const RANGE_HTML: &str = "<meta charset=\"utf-8\"><table><tr><th>Note</th></tr><tr><td><strong>Tea</strong></td><td><a href=\"https://e.x/s\">shop</a></td></tr><tr><td><code>code</code></td><td></td></tr><tr><td>a &amp; b &lt; c</td></tr></table>";
+const VIM_INSERT: &str = "-- INSERT --";
+
+/// Which view a key matrix runs in, and how Vim is set there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyView {
+    Editor,
+    VimNormal,
+    VimInsert,
+    Shared,
+}
+
+impl KeyView {
+    /// A key that is neither a copy key nor a modifier, and that moves the caret where it can.
+    fn other_key(self) -> &'static str {
+        match self {
+            Self::Editor | Self::Shared => "Down",
+            Self::VimNormal => "j",
+            Self::VimInsert => "Right",
+        }
+    }
+}
+
+/// Copies table cells through the context menu, the touch menu and real copy keys, in the editor,
+/// in Vim's normal and insert modes and in the shared version, and checks that a copy without
+/// cells is the text view's own. Real keys come before any menu opens: a menu closed before the
+/// compositor hands it the keyboard takes the next key press with it. Keys while a menu is shown
+/// go to the menu, so the view's key handling is called directly there. The Copy key itself is
+/// covered by unit tests only, as the harness keymap may lack it. The menus are opened by calling the view's methods rather than
+/// through gestures: that leaves out GTK's event delivery, real pointer motion, and the claiming
+/// and denying between the gestures of the view and of the table.
+pub(super) fn selection_copy(h: &mut Harness) -> Result<(), String> {
+    let (editor, view) = open_note(h, COPY_NOTE, 0)?;
+    h.show_variant(Width::Wide, Theme::Light)?;
+    let table = wait_placed(h, &view)?.shown.widget;
+
+    key_copies(h, &view, &table)?;
+    default_copy(h, &view, &table)?;
+    key_matrix(h, &view, None, KeyView::Editor)?;
+    set_vim_mode(h, &editor, true)?;
+    let vim = key_matrix(h, &view, Some(&editor), KeyView::VimNormal).and_then(|()| {
+        enter_insert_mode(h, &editor, &view)?;
+        key_matrix(h, &view, Some(&editor), KeyView::VimInsert)
+    });
+    let off = set_vim_mode(h, &editor, false);
+    vim.and(off)?;
+
+    let shared_links = view_shared_version(h)?;
+    let shared = h.widget_as::<MarkdownView>(SHARED_VERSION_TEXT)?;
+    h.wait("the shared version to hold the note", || {
+        view_text(&shared).contains(COPY_NOTE)
+    })?;
+    key_matrix(h, &shared, None, KeyView::Shared)?;
+    shared_links.close();
+    h.wait("Shared Links to close", || !h.shown(SHARED_LINKS_DIALOG))?;
+
+    menu_copies(h, &view, &table)?;
+    copy_screenshot(h, &view, &table)?;
+    copy_action_restored(h, &view, &table)?;
+    keys_while_menu_shown(h, &view, &table)
+}
+
+fn menu_copies(h: &Harness, view: &MarkdownView, table: &TableWidget) -> Result<(), String> {
+    type Open = fn(&MarkdownView, f64, f64) -> bool;
+    let cases: [(&str, TableCellPosition, Open, &str, &str); 2] = [
+        (
+            "the context menu's Copy",
+            LINK_CELL,
+            MarkdownView::secondary_press_table_at,
+            "shop",
+            "<meta charset=\"utf-8\"><table><tr><td><a href=\"https://e.x/s\">shop</a></td></tr></table>",
+        ),
+        (
+            "the touch menu's Copy",
+            STRONG_CELL,
+            MarkdownView::long_press_table_at,
+            "Tea",
+            "<meta charset=\"utf-8\"><table><tr><td><strong>Tea</strong></td></tr></table>",
+        ),
+    ];
+    for (what, at, open, text, html) in cases {
+        ensure(view.table_selection().is_none(), || {
+            format!("a selection is held before {what}")
+        })?;
+        set_sentinel(h)?;
+        let point = cell_point(view, table, at)?;
+        ensure(open(view, point.0, point.1), || {
+            format!("opening the menu for {what} did not act")
+        })?;
+        let menu = expect_menu_at(view, point, what)?;
+        let copy = expect_copy_enabled(h, &menu, true, what)?;
+        copy.emit_by_name::<()>("clicked", &[]);
+        expect_clipboard(h, text, html, what)?;
+        expect_selection(view, table, Some(TableSelection::cell(at)), what)?;
+        close_menu(h, &menu)?;
+        view.clear_table_selection();
+    }
+    Ok(())
+}
+
+fn key_copies(h: &Harness, view: &MarkdownView, table: &TableWidget) -> Result<(), String> {
+    select_range(view, table)?;
+    focus_view(h, view)?;
+    for accelerator in ["<Control>c", "<Control>Insert"] {
+        set_sentinel(h)?;
+        press(h, view, accelerator)?;
+        expect_clipboard(h, RANGE_TEXT, RANGE_HTML, accelerator)?;
+        expect_selection(view, table, Some(RANGE), accelerator)?;
+    }
+    Ok(())
+}
+
+fn copy_screenshot(h: &Harness, view: &MarkdownView, table: &TableWidget) -> Result<(), String> {
+    select_range(view, table)?;
+    let point = cell_point(view, table, STRONG_CELL)?;
+    ensure(view.secondary_press_table_at(point.0, point.1), || {
+        "the secondary press inside the range did not act".to_owned()
+    })?;
+    let menu = expect_menu_at(view, point, "the secondary press inside the range")?;
+    expect_copy_enabled(h, &menu, true, "the menu over the range")?;
+    h.capture_variant_with_popover(
+        "selection-copy",
+        Width::Wide,
+        Theme::Light,
+        menu.upcast_ref(),
+    )?;
+    close_menu(h, &menu)?;
+    expect_selection(view, table, Some(RANGE), "the menu over the range")
+}
+
+fn copy_action_restored(
+    h: &Harness,
+    view: &MarkdownView,
+    table: &TableWidget,
+) -> Result<(), String> {
+    place_caret(view, 0);
+    let (x, y) = text_point(view, 0);
+    view.table_press_at(x, y, gdk::BUTTON_PRIMARY);
+    expect_selection(view, table, None, "a primary press on the text")?;
+
+    let start = offset_in(COPY_NOTE, SECOND_LINE)?;
+    for (selected, what) in [
+        (false, "the menu over the text with no text selection"),
+        (true, "the menu over a text selection"),
+    ] {
+        if selected {
+            select_chars(view, start, start + char_count(SECOND_LINE));
+        }
+        view.activate_action("menu.popup", None)
+            .map_err(|error| format!("cannot open {what}: {error}"))?;
+        let menu = context_menu(view)?;
+        h.wait(&format!("{what} to open"), || menu.is_visible())?;
+        expect_copy_enabled(h, &menu, selected, what)?;
+        close_menu(h, &menu)?;
+    }
+    Ok(())
+}
+
+fn default_copy(h: &Harness, view: &MarkdownView, table: &TableWidget) -> Result<(), String> {
+    let (x, y) = text_point(view, 0);
+    view.table_press_at(x, y, gdk::BUTTON_PRIMARY);
+    expect_selection(view, table, None, "a primary press on the text")?;
+    let start = offset_in(COPY_NOTE, SECOND_LINE)?;
+    select_chars(view, start, start + char_count(SECOND_LINE));
+    set_sentinel(h)?;
+    focus_view(h, view)?;
+    press(h, view, "<Control>c")?;
+    let copied = clipboard_text(h)?;
+    ensure(copied == SECOND_LINE, || {
+        format!("Control+c on a text selection copied {copied:?}")
+    })?;
+    ensure(
+        !clipboard(h)?.formats().contain_mime_type("text/html"),
+        || "Control+c on a text selection offered HTML".to_owned(),
+    )
+}
+
+fn keys_while_menu_shown(
+    h: &Harness,
+    view: &MarkdownView,
+    table: &TableWidget,
+) -> Result<(), String> {
+    place_caret(view, 0);
+    let point = cell_point(view, table, ESCAPED_CELL)?;
+    ensure(view.secondary_press_table_at(point.0, point.1), || {
+        "the secondary press did not act".to_owned()
+    })?;
+    let menu = expect_menu_at(view, point, "the secondary press")?;
+    let held = Some(TableSelection::cell(ESCAPED_CELL));
+    ensure(
+        !view.table_selection_key(gdk::Key::Down, gdk::ModifierType::empty()),
+        || "Down while the menu is shown was consumed".to_owned(),
+    )?;
+    expect_selection(view, table, held, "Down while the menu is shown")?;
+    close_menu(h, &menu)?;
+    ensure(
+        !view.table_selection_key(gdk::Key::Down, gdk::ModifierType::empty()),
+        || "Down once the menu closed was consumed".to_owned(),
+    )?;
+    expect_selection(view, table, None, "Down once the menu closed")
+}
+
+/// Real copy keys, bare modifiers, another key and Escape over a selected range in one view.
+fn key_matrix(
+    h: &Harness,
+    view: &MarkdownView,
+    editor: Option<&NoteEditor>,
+    kind: KeyView,
+) -> Result<(), String> {
+    let in_view = |what: &str| format!("{what} in {kind:?}");
+    let command_bar = || editor.map(|editor| editor.vim_status().0);
+    let table = wait_placed(h, view)?.shown.widget;
+    let insert_bar = command_bar();
+    if kind == KeyView::VimInsert {
+        ensure(insert_bar.as_deref() == Some(VIM_INSERT), || {
+            format!("Vim is not in insert mode: {insert_bar:?}")
+        })?;
+    } else {
+        place_caret(view, 0);
+    }
+
+    select_range(view, &table)?;
+    focus_view(h, view)?;
+    set_sentinel(h)?;
+    press(h, view, "<Control>c")?;
+    let what = in_view("Control+c");
+    expect_clipboard(h, RANGE_TEXT, RANGE_HTML, &what)?;
+    expect_selection(view, &table, Some(RANGE), &what)?;
+    ensure(command_bar() == insert_bar, || {
+        format!(
+            "{what} changed Vim's command bar from {insert_bar:?} to {:?}",
+            command_bar()
+        )
+    })?;
+
+    for modifier in ["Shift_L", "Control_L"] {
+        press(h, view, modifier)?;
+        expect_selection(view, &table, Some(RANGE), &in_view(modifier))?;
+    }
+
+    let (caret, text) = (caret_in(view), view_text(view));
+    let key = kind.other_key();
+    press(h, view, key)?;
+    let what = in_view(key);
+    expect_selection(view, &table, None, &what)?;
+    match kind {
+        KeyView::Editor | KeyView::VimNormal => {
+            h.wait(&format!("{what} to move the caret down a line"), || {
+                caret_line(view) == 1
+            })?;
+        }
+        KeyView::VimInsert => {
+            h.wait(&format!("{what} to move the caret right"), || {
+                caret_in(view) == caret + 1
+            })?;
+        }
+        KeyView::Shared => {}
+    }
+    ensure(view_text(view) == text, || {
+        format!("{what} changed the text")
+    })?;
+
+    select_range(view, &table)?;
+    focus_view(h, view)?;
+    press(h, view, "Escape")?;
+    let what = in_view("Escape");
+    expect_selection(view, &table, None, &what)?;
+    match kind {
+        KeyView::VimInsert => h.wait(&format!("{what} to leave insert mode"), || {
+            command_bar().is_some_and(|bar| bar != VIM_INSERT)
+        }),
+        KeyView::Editor | KeyView::VimNormal | KeyView::Shared => Ok(()),
+    }
+}
+
+fn select_range(view: &MarkdownView, table: &TableWidget) -> Result<(), String> {
+    ensure(
+        view.drag_table_cells_between(table, RANGE.anchor, RANGE.focus)?,
+        || "dragging across the range did not act".to_owned(),
+    )?;
+    expect_selection(view, table, Some(RANGE), "dragging across the range")
+}
+
+fn enter_insert_mode(h: &Harness, editor: &NoteEditor, view: &MarkdownView) -> Result<(), String> {
+    ensure(view.table_selection().is_none(), || {
+        "a selection is held before entering insert mode".to_owned()
+    })?;
+    place_caret(view, 0);
+    focus_view(h, view)?;
+    press(h, view, "i")?;
+    h.wait("Vim to enter insert mode", || {
+        editor.vim_status().0 == VIM_INSERT
+    })
+}
+
+/// Presses `accelerator` on the real keyboard and waits until its key comes back up, so that the
+/// press has been handled. The release is watched in the capture phase of the view and of every
+/// ancestor, since GTK stops the release of a consumed key where the press was stopped, and an
+/// open dialog starts the propagation below the window.
+fn press(h: &Harness, view: &MarkdownView, accelerator: &str) -> Result<(), String> {
+    let (key, _) = gtk::accelerator_parse(accelerator)
+        .ok_or_else(|| format!("{accelerator} is not a valid accelerator"))?;
+    let released = Rc::new(Cell::new(false));
+    let mut watched = Vec::new();
+    let mut next = Some(view.clone().upcast::<gtk::Widget>());
+    while let Some(widget) = next {
+        let watcher = gtk::EventControllerKey::new();
+        watcher.set_propagation_phase(gtk::PropagationPhase::Capture);
+        watcher.connect_key_released({
+            let released = released.clone();
+            move |_, keyval, _, _| {
+                if keyval.to_lower() == key.to_lower() {
+                    released.set(true);
+                }
+            }
+        });
+        widget.add_controller(watcher.clone());
+        next = widget.parent();
+        watched.push((widget, watcher));
+    }
+    let pressed = h
+        .press_keys_in(&view_window(view)?, accelerator)
+        .and_then(|()| h.wait(&format!("{accelerator} to come back up"), || released.get()));
+    for (widget, watcher) in watched {
+        widget.remove_controller(&watcher);
+    }
+    pressed
+}
+
+fn clipboard(h: &Harness) -> Result<gdk::Clipboard, String> {
+    Ok(WidgetExt::display(&h.window()?).clipboard())
+}
+
+/// Puts a known text on the clipboard, so that a copy that writes nothing leaves it there.
+fn set_sentinel(h: &Harness) -> Result<(), String> {
+    clipboard(h)?.set_text(SENTINEL);
+    Ok(())
+}
+
+fn clipboard_html(h: &Harness) -> Result<String, String> {
+    let clipboard = clipboard(h)?;
+    let bytes = h
+        .run("the clipboard HTML", async move {
+            let (stream, _) = clipboard
+                .read_future(&["text/html"], glib::Priority::DEFAULT)
+                .await?;
+            let memory = gio::MemoryOutputStream::new_resizable();
+            memory
+                .splice_future(
+                    &stream,
+                    gio::OutputStreamSpliceFlags::CLOSE_SOURCE
+                        | gio::OutputStreamSpliceFlags::CLOSE_TARGET,
+                    glib::Priority::DEFAULT,
+                )
+                .await?;
+            Ok::<_, glib::Error>(memory.steal_as_bytes())
+        })?
+        .map_err(|error| format!("cannot read the clipboard HTML: {error}"))?;
+    String::from_utf8(bytes.to_vec()).map_err(|error| format!("the clipboard HTML: {error}"))
+}
+
+fn expect_clipboard(h: &Harness, text: &str, html: &str, what: &str) -> Result<(), String> {
+    let copied = clipboard_text(h)?;
+    ensure(copied == text, || {
+        format!("{what} put the text {copied:?} on the clipboard, not {text:?}")
+    })?;
+    let formats = clipboard(h)?.formats();
+    ensure(
+        formats.contain_mime_type("text/html")
+            && (formats.contain_mime_type("text/plain;charset=utf-8")
+                || formats.contain_mime_type("text/plain")),
+        || format!("{what} offered {}", formats.to_str()),
+    )?;
+    let copied = clipboard_html(h)?;
+    ensure(copied == html, || {
+        format!("{what} put the HTML {copied:?} on the clipboard, not {html:?}")
+    })
+}
+
+fn expect_copy_enabled(
+    h: &Harness,
+    menu: &gtk::PopoverMenu,
+    enabled: bool,
+    what: &str,
+) -> Result<gtk::Widget, String> {
+    let copy = descendants(menu.upcast_ref())
+        .into_iter()
+        .find(|widget| {
+            widget.type_().name() == "GtkModelButton"
+                && widget
+                    .property::<Option<String>>("text")
+                    .is_some_and(|text| text.replace('_', "") == "Copy")
+        })
+        .ok_or_else(|| format!("{what} has no Copy"))?;
+    h.wait(
+        &format!(
+            "Copy in {what} to be {}",
+            if enabled { "enabled" } else { "disabled" }
+        ),
+        || copy.is_sensitive() == enabled,
+    )?;
+    Ok(copy)
+}
+
+fn select_chars(view: &MarkdownView, from: i32, to: i32) {
+    let buffer = view.buffer();
+    buffer.select_range(&buffer.iter_at_offset(from), &buffer.iter_at_offset(to));
+}
+
+fn caret_line(view: &MarkdownView) -> i32 {
+    let buffer = view.buffer();
+    buffer.iter_at_mark(&buffer.get_insert()).line()
 }

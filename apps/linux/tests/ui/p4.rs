@@ -1102,7 +1102,7 @@ pub(crate) fn view_shared_version(h: &Harness) -> Result<adw::Dialog, String> {
     Ok(dialog)
 }
 
-fn clipboard_text(h: &Harness) -> Result<String, String> {
+pub(crate) fn clipboard_text(h: &Harness) -> Result<String, String> {
     let clipboard = WidgetExt::display(&h.window()?).clipboard();
     h.run("the clipboard text", async move {
         clipboard.read_text_future().await
