@@ -18,5 +18,5 @@ pub use inline_image::frame_at;
 pub use markdown_view::{MarkdownView, ParsedText};
 pub use note_editor::NoteEditor;
 pub use overlay::{HitBehaviour, Overlay, OverlayKind, OverlayStyle, Painter, Reserve};
-pub use table_overlays::ShownTable;
+pub use table_overlays::{ShownTable, TableGesture};
 pub use table_widget::TableWidget;

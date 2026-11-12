@@ -4,8 +4,8 @@ use std::sync::OnceLock;
 
 use commitnote_editor_text::{TextSelection, Utf16Index};
 use commitnote_markdown::{
-    CommandResult, MarkdownDocument, Placement, RenderMode, VerticalDirection, link_url, parse,
-    render,
+    CommandResult, MarkdownDocument, Placement, RenderMode, TableSelection, VerticalDirection,
+    link_url, parse, render,
 };
 use glib::subclass::Signal;
 use gtk4::subclass::prelude::*;
@@ -23,7 +23,7 @@ use super::overlay::{
     self, HIT_SLOP_Y, HitBehaviour, Overlay, OverlayKind, OverlayStyle, OverlayTags, Reserved,
 };
 use super::spans::{self, Spans};
-use super::table_overlays::{ShownTable, TableOverlays};
+use super::table_overlays::{ShownTable, TableGesture, TableOverlays};
 use super::table_widget::TableWidget;
 use super::tags::{Palette, PreviewTags};
 use crate::fonts::NoteFont;
@@ -31,6 +31,7 @@ use crate::{accent, links};
 
 mod paging;
 mod table_keys;
+mod table_selection;
 
 const MARGIN: i32 = 12;
 
@@ -85,6 +86,7 @@ mod imp {
         pub(super) overlay_style: Cell<Option<OverlayStyle>>,
         pub(super) overlay_source: RefCell<Option<glib::SourceId>>,
         pub(super) table_overlays: OnceCell<TableOverlays>,
+        pub(super) table_selection: RefCell<Option<(TableWidget, TableSelection)>>,
         pub(super) command_handler: RefCell<Option<CommandHandler>>,
         pub(super) pressed_overlay: Cell<Option<usize>>,
         pub(super) image_source: RefCell<Option<SourceHandle>>,
@@ -153,6 +155,7 @@ mod imp {
                 move |_| {
                     if let Some(view) = view.upgrade() {
                         view.imp().text_changed.set(true);
+                        view.clear_table_selection();
                         view.queue_render();
                     }
                 }
@@ -171,21 +174,18 @@ mod imp {
             let probe = accent::probe();
             view.add_overlay(&probe, 0, 0);
             let _ = self.accent_probe.set(probe);
-            let on_click = {
+            let on_gesture = {
                 let view = view.downgrade();
-                move |widget: &TableWidget, x: f64, y: f64, control: bool| {
-                    let Some(view) = view.upgrade() else {
-                        return;
-                    };
-                    let point = graphene::Point::new(x as f32, y as f32);
-                    if let Some(point) = widget.compute_point(&view, &point) {
-                        view.click_table_at(f64::from(point.x()), f64::from(point.y()), control);
+                move |widget: &TableWidget, gesture: TableGesture| {
+                    if let Some(view) = view.upgrade() {
+                        view.on_table_gesture(widget, gesture);
                     }
                 }
             };
             let _ = self
                 .table_overlays
-                .set(TableOverlays::new(view.upcast_ref(), on_click));
+                .set(TableOverlays::new(view.upcast_ref(), on_gesture));
+            view.connect_buffer_notify(|view| view.clear_table_selection());
             view.connect_editable_notify(|view| view.queue_render());
 
             let style_manager = adw::StyleManager::default();
@@ -289,6 +289,20 @@ mod imp {
             });
             view.add_controller(link_click);
 
+            let any_press = gtk::GestureClick::new();
+            any_press.set_button(0);
+            any_press.set_propagation_phase(gtk::PropagationPhase::Capture);
+            any_press.connect_pressed({
+                let view = view.downgrade();
+                move |gesture, _, x, y| {
+                    if let Some(view) = view.upgrade() {
+                        view.table_press_at(x, y, gesture.current_button());
+                    }
+                    gesture.set_state(gtk::EventSequenceState::Denied);
+                }
+            });
+            view.add_controller(any_press);
+
             let long_press = gtk::GestureLongPress::new();
             long_press.set_touch_only(true);
             long_press.connect_pressed({
@@ -354,6 +368,7 @@ mod imp {
             {
                 source.remove();
             }
+            self.table_selection.take();
             if let Some(tables) = self.table_overlays.get() {
                 tables.clear();
             }
@@ -527,6 +542,35 @@ impl MarkdownView {
         };
         links::open_uri(self, &url);
         true
+    }
+
+    fn on_table_gesture(&self, widget: &TableWidget, gesture: TableGesture) {
+        let in_view = |(x, y): (f64, f64)| {
+            let point = widget.compute_point(self, &graphene::Point::new(x as f32, y as f32))?;
+            Some((f64::from(point.x()), f64::from(point.y())))
+        };
+        match gesture {
+            TableGesture::Click { x, y, control } => {
+                if let Some((x, y)) = in_view((x, y)) {
+                    self.click_table_at(x, y, control);
+                }
+            }
+            TableGesture::Drag { from, to } => {
+                if let (Some(from), Some(to)) = (in_view(from), in_view(to)) {
+                    self.drag_table_cells(from.0, from.1, to.0, to.1);
+                }
+            }
+            TableGesture::LongPress { x, y } => {
+                if let Some((x, y)) = in_view((x, y)) {
+                    self.long_press_table_at(x, y);
+                }
+            }
+            TableGesture::ContextMenu { x, y } => {
+                if let Some((x, y)) = in_view((x, y)) {
+                    self.secondary_press_table_at(x, y);
+                }
+            }
+        }
     }
 
     /// Acts on a click at a point in widget coordinates over a rendered table, and says whether
@@ -1046,6 +1090,7 @@ impl MarkdownView {
         if tables_changed {
             self.emit_by_name::<()>("tables-changed", &[]);
         }
+        self.retain_table_selection();
     }
 
     fn overlay_style(&self) -> OverlayStyle {

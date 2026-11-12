@@ -1,5 +1,6 @@
 mod cell;
 mod layout;
+mod press;
 
 use std::cell::{Cell, OnceCell, Ref, RefCell};
 use std::rc::Rc;
@@ -15,6 +16,7 @@ use gtk4::{self as gtk, glib, graphene, prelude::*};
 
 use self::cell::{TableCell, TablePart, accessible_index};
 use self::layout::{Hairline, TableLayoutManager, hairlines, pixel_rect, selection_rects};
+use self::press::{PressOutcome, PressSequence};
 use super::image_source::ImageSource;
 use super::overlay::{OverlayStyle, RULE_ALPHA, SELECTION_ALPHA, dim};
 
@@ -33,8 +35,11 @@ mod imp {
         pub(super) style: Cell<OverlayStyle>,
         pub(super) rows: RefCell<Vec<TableRow>>,
         pub(super) selection: Cell<Option<TableSelection>>,
-        pub(super) click: gtk::GestureClick,
-        pub(super) pressed_at: Cell<Option<(f64, f64)>>,
+        pub(super) drag: gtk::GestureDrag,
+        pub(super) long_press: gtk::GestureLongPress,
+        pub(super) secondary: gtk::GestureClick,
+        pub(super) middle: gtk::GestureClick,
+        pub(super) press: RefCell<PressSequence>,
     }
 
     impl Default for TableWidget {
@@ -49,8 +54,11 @@ mod imp {
                 }),
                 rows: RefCell::default(),
                 selection: Cell::new(None),
-                click: gtk::GestureClick::new(),
-                pressed_at: Cell::new(None),
+                drag: gtk::GestureDrag::new(),
+                long_press: gtk::GestureLongPress::new(),
+                secondary: gtk::GestureClick::new(),
+                middle: gtk::GestureClick::new(),
+                press: RefCell::default(),
             }
         }
     }
@@ -76,6 +84,15 @@ mod imp {
                     Signal::builder("clicked")
                         .param_types([f64::static_type(), f64::static_type(), bool::static_type()])
                         .build(),
+                    Signal::builder("cells-dragged")
+                        .param_types([f64::static_type(); 4])
+                        .build(),
+                    Signal::builder("long-pressed")
+                        .param_types([f64::static_type(); 2])
+                        .build(),
+                    Signal::builder("context-menu-requested")
+                        .param_types([f64::static_type(); 2])
+                        .build(),
                 ]
             })
         }
@@ -85,7 +102,10 @@ mod imp {
             let widget = self.obj();
             widget.set_focusable(false);
             widget.connect_scale_factor_notify(|widget| widget.queue_resize());
-            self.set_up_click();
+            self.set_up_drag();
+            self.set_up_long_press();
+            self.set_up_secondary();
+            self.set_up_middle();
         }
 
         fn dispose(&self) {
@@ -97,45 +117,90 @@ mod imp {
     }
 
     impl TableWidget {
-        fn set_up_click(&self) {
-            let click = &self.click;
-            click.set_button(gtk::gdk::BUTTON_PRIMARY);
-            click.connect_pressed({
+        fn set_up_drag(&self) {
+            let drag = &self.drag;
+            drag.set_button(gtk::gdk::BUTTON_PRIMARY);
+            drag.connect_drag_begin({
                 let widget = self.obj().downgrade();
-                move |gesture, _, x, y| {
+                move |gesture, x, y| {
                     if let Some(widget) = widget.upgrade() {
-                        widget.imp().pressed_at.set(Some((x, y)));
                         gesture.set_state(gtk::EventSequenceState::Claimed);
+                        widget.imp().press.borrow_mut().begin(x, y);
                     }
                 }
             });
-            click.connect_released({
+            drag.connect_drag_update({
                 let widget = self.obj().downgrade();
-                move |gesture, _, x, y| {
-                    let Some(widget) = widget.upgrade() else {
-                        return;
-                    };
-                    let Some(pressed_at) = widget.imp().pressed_at.take() else {
-                        return;
-                    };
-                    let threshold = widget.settings().gtk_dnd_drag_threshold();
-                    if within_drag_threshold(pressed_at, (x, y), threshold) {
-                        let control = gesture
-                            .current_event_state()
-                            .contains(gtk::gdk::ModifierType::CONTROL_MASK);
-                        widget.emit_by_name::<()>("clicked", &[&x, &y, &control]);
+                move |gesture, dx, dy| {
+                    if let Some(widget) = widget.upgrade() {
+                        let threshold = widget.settings().gtk_dnd_drag_threshold();
+                        let outcome = widget.imp().press.borrow_mut().update(dx, dy, threshold);
+                        widget.emit_press_outcome(gesture, outcome);
                     }
                 }
             });
-            click.connect_cancel({
+            drag.connect_drag_end({
+                let widget = self.obj().downgrade();
+                move |gesture, dx, dy| {
+                    if let Some(widget) = widget.upgrade() {
+                        let threshold = widget.settings().gtk_dnd_drag_threshold();
+                        let outcome = widget.imp().press.borrow_mut().end(dx, dy, threshold);
+                        widget.emit_press_outcome(gesture, outcome);
+                    }
+                }
+            });
+            drag.connect_cancel({
                 let widget = self.obj().downgrade();
                 move |_, _| {
                     if let Some(widget) = widget.upgrade() {
-                        widget.imp().pressed_at.set(None);
+                        widget.imp().press.borrow_mut().cancel();
                     }
                 }
             });
-            self.obj().add_controller(click.clone());
+            self.obj().add_controller(drag.clone());
+        }
+
+        fn set_up_long_press(&self) {
+            let long_press = &self.long_press;
+            long_press.set_touch_only(true);
+            long_press.group_with(&self.drag);
+            long_press.connect_pressed({
+                let widget = self.obj().downgrade();
+                move |gesture, x, y| {
+                    if let Some(widget) = widget.upgrade() {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        let outcome = widget.imp().press.borrow_mut().long_press(x, y);
+                        widget.emit_press_outcome(gesture, outcome);
+                    }
+                }
+            });
+            self.obj().add_controller(long_press.clone());
+        }
+
+        fn set_up_secondary(&self) {
+            let secondary = &self.secondary;
+            secondary.set_button(gtk::gdk::BUTTON_SECONDARY);
+            secondary.connect_pressed({
+                let widget = self.obj().downgrade();
+                move |gesture, _, x, y| {
+                    if let Some(widget) = widget.upgrade() {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        widget.emit_by_name::<()>("context-menu-requested", &[&x, &y]);
+                    }
+                }
+            });
+            self.obj().add_controller(secondary.clone());
+        }
+
+        /// Claims middle presses so that neither the view's middle-click paste nor its hit test of
+        /// the table's room runs.
+        fn set_up_middle(&self) {
+            let middle = &self.middle;
+            middle.set_button(gtk::gdk::BUTTON_MIDDLE);
+            middle.connect_pressed(|gesture, _, _, _| {
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+            });
+            self.obj().add_controller(middle.clone());
         }
     }
 
@@ -322,6 +387,74 @@ impl TableWidget {
         })
     }
 
+    /// Runs for each move of a primary press past the drag threshold, and for its release, with the
+    /// press and the current point in widget coordinates.
+    pub fn connect_cells_dragged<F: Fn(&Self, (f64, f64), (f64, f64)) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_local("cells-dragged", false, move |args| {
+            let widget = args[0].get::<Self>().ok()?;
+            let from = (args[1].get::<f64>().ok()?, args[2].get::<f64>().ok()?);
+            let to = (args[3].get::<f64>().ok()?, args[4].get::<f64>().ok()?);
+            f(&widget, from, to);
+            None
+        })
+    }
+
+    /// Runs when a touch is held on the table before it moves, with its point in widget
+    /// coordinates.
+    pub fn connect_long_pressed<F: Fn(&Self, f64, f64) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_point_signal("long-pressed", f)
+    }
+
+    /// Runs on a secondary press, with its point in widget coordinates.
+    pub fn connect_context_menu_requested<F: Fn(&Self, f64, f64) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_point_signal("context-menu-requested", f)
+    }
+
+    fn connect_point_signal<F: Fn(&Self, f64, f64) + 'static>(
+        &self,
+        name: &str,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_local(name, false, move |args| {
+            let widget = args[0].get::<Self>().ok()?;
+            let x = args[1].get::<f64>().ok()?;
+            let y = args[2].get::<f64>().ok()?;
+            f(&widget, x, y);
+            None
+        })
+    }
+
+    fn emit_press_outcome(
+        &self,
+        gesture: &impl IsA<gtk::EventController>,
+        outcome: Option<PressOutcome>,
+    ) {
+        match outcome {
+            Some(PressOutcome::Click { x, y }) => {
+                let control = gesture
+                    .current_event_state()
+                    .contains(gtk::gdk::ModifierType::CONTROL_MASK);
+                self.emit_by_name::<()>("clicked", &[&x, &y, &control]);
+            }
+            Some(PressOutcome::Drag { from, to }) => {
+                self.emit_by_name::<()>("cells-dragged", &[&from.0, &from.1, &to.0, &to.1]);
+            }
+            Some(PressOutcome::LongPress { x, y }) => {
+                self.emit_by_name::<()>("long-pressed", &[&x, &y]);
+            }
+            None => {}
+        }
+    }
+
     /// The layout of the last allocation, in the widget's coordinates.
     pub fn geometry(&self) -> Option<Rc<TableGeometry>> {
         self.table_layout().geometry()
@@ -373,12 +506,6 @@ impl TableWidget {
     }
 }
 
-/// Whether a release `threshold` pixels or less from its press on both axes is still a click.
-fn within_drag_threshold(pressed: (f64, f64), released: (f64, f64), threshold: i32) -> bool {
-    let threshold = f64::from(threshold);
-    (released.0 - pressed.0).abs() <= threshold && (released.1 - pressed.1).abs() <= threshold
-}
-
 fn count(value: usize) -> i32 {
     i32::try_from(value).unwrap_or(i32::MAX)
 }
@@ -390,27 +517,4 @@ fn graphene_rect(rect: &gtk::gdk::Rectangle) -> graphene::Rect {
         rect.width() as f32,
         rect.height() as f32,
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::within_drag_threshold;
-
-    #[test]
-    fn a_release_at_the_press_is_a_click() {
-        assert!(within_drag_threshold((10.0, 20.0), (10.0, 20.0), 8));
-    }
-
-    #[test]
-    fn a_release_up_to_the_threshold_away_on_both_axes_is_a_click() {
-        assert!(within_drag_threshold((10.0, 20.0), (18.0, 12.0), 8));
-        assert!(within_drag_threshold((10.0, 20.0), (2.0, 28.0), 8));
-    }
-
-    #[test]
-    fn a_release_past_the_threshold_on_either_axis_is_a_drag() {
-        assert!(!within_drag_threshold((10.0, 20.0), (18.5, 20.0), 8));
-        assert!(!within_drag_threshold((10.0, 20.0), (10.0, 11.5), 8));
-        assert!(!within_drag_threshold((10.0, 20.0), (40.0, 50.0), 8));
-    }
 }
