@@ -5,9 +5,10 @@ use commitnote_markdown::{
     MarkdownDocument, MarkdownTable, TableGeometry, VerticalDirection, table_entry_target,
     table_page_target,
 };
+use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{self as gtk, prelude::*};
 
+use super::paging::PageLanding;
 use super::{MarkdownView, ParsedText};
 
 /// Where the last of a run of vertical moves left the caret, and what the next move of the run
@@ -16,8 +17,6 @@ use super::{MarkdownView, ParsedText};
 pub(super) struct VerticalRun {
     offset: i32,
     goal_column: usize,
-    /// GTK's virtual cursor height after a page move it made, in buffer coordinates.
-    page_y: Option<i32>,
 }
 
 /// The run a vertical move starting with the caret at buffer `offset` carries on, if any.
@@ -29,50 +28,6 @@ fn continued(kept: Option<VerticalRun>, offset: i32) -> Option<VerticalRun> {
 /// `column` when the caret is not where the previous move left it.
 fn goal_column(kept: Option<VerticalRun>, offset: i32, column: usize) -> usize {
     continued(kept, offset).map_or(column, |run| run.goal_column)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct PageScroll {
-    value: f64,
-    lower: f64,
-    upper: f64,
-    page_size: f64,
-    page_increment: f64,
-}
-
-impl From<&gtk::Adjustment> for PageScroll {
-    fn from(adjustment: &gtk::Adjustment) -> Self {
-        Self {
-            value: adjustment.value(),
-            lower: adjustment.lower(),
-            upper: adjustment.upper(),
-            page_size: adjustment.page_size(),
-            page_increment: adjustment.page_increment(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PageLanding {
-    Start,
-    End,
-    /// A height in buffer coordinates, which the layout clamps to the text.
-    At(i32),
-}
-
-/// Where a page move of `count` pages from the caret height `caret_y` lands, as
-/// `gtk_text_view_scroll_pages` in GTK 4.20 decides it (gtk/gtktextview.c, lines 6975-7000): a
-/// move up from the top of the scroll range goes to the buffer start and one down from its bottom
-/// to the buffer end; any other move shifts the height by `count` page increments, truncated to
-/// whole pixels, without clamping it to the scroll range.
-fn page_landing(caret_y: i32, count: i32, scroll: PageScroll) -> PageLanding {
-    if count < 0 && scroll.value <= scroll.lower + 1e-12 {
-        PageLanding::Start
-    } else if count > 0 && scroll.value >= scroll.upper - scroll.page_size - 1e-12 {
-        PageLanding::End
-    } else {
-        PageLanding::At((f64::from(caret_y) + f64::from(count) * scroll.page_increment) as i32)
-    }
 }
 
 fn line_containing(document: &MarkdownDocument, offset: usize) -> usize {
@@ -100,7 +55,6 @@ fn table_lines(document: &MarkdownDocument, table: &MarkdownTable) -> Range<usiz
 /// The caret of an editable view with no selection, among rendered tables.
 struct VerticalStart {
     parsed: Rc<ParsedText>,
-    offset: i32,
     line: usize,
     goal_column: usize,
 }
@@ -135,11 +89,9 @@ struct PagedTable {
     geometry: Rc<TableGeometry>,
 }
 
-/// What a page move needs from before GTK moved the caret.
-struct Paging {
+/// What correcting a page move needs from before the move.
+pub(super) struct TablePaging {
     start: VerticalStart,
-    caret_y: i32,
-    scroll: PageScroll,
     tables: Vec<PagedTable>,
 }
 
@@ -180,20 +132,8 @@ impl MarkdownView {
         let start = self.vertical_start();
         gtk_move();
         if let Some(start) = start {
-            self.keep_run(start.goal_column, None);
+            self.keep_run(start.goal_column);
         }
-    }
-
-    /// Runs a page move of `count` pages that GTK makes, then moves the caret onto the row at
-    /// the landing height when that height lies on a rendered table, or GTK left the caret on one.
-    pub(super) fn move_pages(&self, count: i32, gtk_move: impl FnOnce()) {
-        let Some(paging) = self.paging() else {
-            gtk_move();
-            return;
-        };
-        let landing = page_landing(paging.caret_y, count, paging.scroll);
-        gtk_move();
-        self.finish_paging(paging, landing);
     }
 
     fn vertical_start(&self) -> Option<VerticalStart> {
@@ -215,7 +155,6 @@ impl MarkdownView {
         Some(VerticalStart {
             goal_column: goal_column(self.imp().vertical_run.get(), offset, column),
             parsed,
-            offset,
             line,
         })
     }
@@ -244,30 +183,21 @@ impl MarkdownView {
         let buffer = self.buffer();
         buffer.place_cursor(&buffer.iter_at_offset(offset));
         self.scroll_mark_onscreen(&buffer.get_insert());
-        self.keep_run(start.goal_column, None);
+        self.keep_run(start.goal_column);
     }
 
-    fn keep_run(&self, goal_column: usize, page_y: Option<i32>) {
+    fn keep_run(&self, goal_column: usize) {
         let buffer = self.buffer();
         let offset = buffer.iter_at_mark(&buffer.get_insert()).offset();
         self.imp().vertical_run.set(Some(VerticalRun {
             offset,
             goal_column,
-            page_y,
         }));
     }
 
-    fn paging(&self) -> Option<Paging> {
+    /// The rendered tables a page move about to start may end on, with the caret it starts from.
+    pub(super) fn table_paging(&self) -> Option<TablePaging> {
         let start = self.vertical_start()?;
-        let buffer = self.buffer();
-        self.scroll_mark_onscreen(&buffer.get_insert());
-        let scroll = PageScroll::from(&self.vadjustment()?);
-        let caret_y = continued(self.imp().vertical_run.get(), start.offset)
-            .and_then(|run| run.page_y)
-            .unwrap_or_else(|| {
-                let (caret, _) = self.cursor_locations(None);
-                caret.y() + caret.height() / 2
-            });
         let tables = self
             .shown_tables()
             .into_iter()
@@ -286,16 +216,13 @@ impl MarkdownView {
                 })
             })
             .collect();
-        Some(Paging {
-            start,
-            caret_y,
-            scroll,
-            tables,
-        })
+        Some(TablePaging { start, tables })
     }
 
-    fn finish_paging(&self, paging: Paging, landing: PageLanding) {
-        let Paging { start, tables, .. } = paging;
+    /// Moves the caret onto the row at the landing height of a page move when that height lies
+    /// on a rendered table, or the move left the caret on one.
+    pub(super) fn finish_paging(&self, paging: TablePaging, landing: PageLanding) {
+        let TablePaging { start, tables } = paging;
         let buffer = self.buffer();
         let offset = buffer.iter_at_mark(&buffer.get_insert()).offset();
         let document = &start.parsed.document;
@@ -309,7 +236,7 @@ impl MarkdownView {
         };
         let spans = tables.iter().map(|table| &table.span);
         let Some(table) = landed_table(spans, page_y, line).map(|index| &tables[index]) else {
-            self.keep_run(start.goal_column, page_y);
+            self.keep_run(start.goal_column);
             return;
         };
         let y = match landing {
@@ -339,19 +266,10 @@ impl MarkdownView {
 mod tests {
     use super::*;
 
-    const SCROLL: PageScroll = PageScroll {
-        value: 400.0,
-        lower: 0.0,
-        upper: 2000.0,
-        page_size: 500.0,
-        page_increment: 450.0,
-    };
-
     fn run(offset: i32, goal_column: usize) -> Option<VerticalRun> {
         Some(VerticalRun {
             offset,
             goal_column,
-            page_y: None,
         })
     }
 
@@ -388,67 +306,5 @@ mod tests {
         assert_eq!(landed_table(spans.iter(), Some(160), 11), Some(1));
         assert_eq!(landed_table(spans.iter(), None, 2), Some(0));
         assert_eq!(landed_table(spans.iter(), Some(200), 7), None);
-    }
-
-    #[test]
-    fn a_page_move_shifts_the_caret_height_by_page_increments() {
-        assert_eq!(page_landing(300, 1, SCROLL), PageLanding::At(750));
-        assert_eq!(page_landing(800, -1, SCROLL), PageLanding::At(350));
-        assert_eq!(page_landing(300, 2, SCROLL), PageLanding::At(1200));
-    }
-
-    #[test]
-    fn the_landing_height_is_truncated_to_whole_pixels() {
-        let scroll = PageScroll {
-            page_increment: 450.9,
-            ..SCROLL
-        };
-        assert_eq!(page_landing(300, 1, scroll), PageLanding::At(750));
-        assert_eq!(page_landing(800, -1, scroll), PageLanding::At(349));
-    }
-
-    #[test]
-    fn the_landing_height_is_not_clamped_to_the_scroll_range() {
-        let near_top = PageScroll {
-            value: 100.0,
-            ..SCROLL
-        };
-        assert_eq!(page_landing(120, -1, near_top), PageLanding::At(-330));
-        let near_bottom = PageScroll {
-            value: 1400.0,
-            ..SCROLL
-        };
-        assert_eq!(page_landing(1800, 1, near_bottom), PageLanding::At(2250));
-    }
-
-    #[test]
-    fn paging_up_from_the_top_lands_on_the_document_start() {
-        let top = PageScroll {
-            value: 0.0,
-            ..SCROLL
-        };
-        assert_eq!(page_landing(120, -1, top), PageLanding::Start);
-        assert_eq!(page_landing(120, 1, top), PageLanding::At(570));
-    }
-
-    #[test]
-    fn paging_down_from_the_bottom_lands_on_the_document_end() {
-        let bottom = PageScroll {
-            value: 1500.0,
-            ..SCROLL
-        };
-        assert_eq!(page_landing(1800, 1, bottom), PageLanding::End);
-        assert_eq!(page_landing(1800, -1, bottom), PageLanding::At(1350));
-    }
-
-    #[test]
-    fn a_page_shorter_than_its_view_pages_to_both_ends() {
-        let short = PageScroll {
-            value: 0.0,
-            upper: 500.0,
-            ..SCROLL
-        };
-        assert_eq!(page_landing(40, 1, short), PageLanding::End);
-        assert_eq!(page_landing(40, -1, short), PageLanding::Start);
     }
 }

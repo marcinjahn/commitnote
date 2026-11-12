@@ -6,9 +6,10 @@ use commitnote::editor::{MarkdownView, OverlayKind};
 use gtk4::{self as gtk, gdk, graphene, prelude::*};
 use libadwaita as adw;
 
+use super::paging::{landing_row, page_landing};
 use super::{
-    HEADER, Host, IMAGE_ID, PAGE_COLUMN, SwitchableImages, WINDOW_WIDTH, cell_bounds, focus_view,
-    offset_in, page_paragraph, page_table, press_in, table_chars, wait_caret,
+    HEADER, Host, IMAGE_ID, PAGE_COLUMN, SwitchableImages, WINDOW_WIDTH, focus_view, offset_in,
+    page_table, press_in, table_chars, wait_caret,
 };
 use crate::flows::ensure;
 use crate::support::{Harness, WindowPixels, restoring};
@@ -25,8 +26,7 @@ const IMAGE_LINE: &str = "![cat](image:";
 const IMAGE_COLOR: [u8; 4] = [40, 120, 200, 255];
 const ROOM_FRACTIONS: [f64; 4] = [0.0, 0.25, 0.5, 0.75];
 const LINES_ABOVE_PAGED_TABLE: usize = 8;
-/// How far a page landing must stay from a row's edges for the row to be certain.
-const ROW_SLACK: f32 = 3.0;
+const PAGED_TABLE_ROWS: usize = 20;
 
 /// An image line with a long line under it, then one table at the top level, in a quote, in a list
 /// item, right before a heading and at the very end with no line break after it.
@@ -398,13 +398,24 @@ fn render(window: &gtk::Window) -> Result<gdk::Texture, String> {
     Ok(renderer.render_texture(&node, Some(&viewport)))
 }
 
+fn page_paragraph() -> String {
+    (1..=4)
+        .map(|line| format!("Line {line} of the paragraph beside the table."))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Pages down from a paragraph line in an editable view that scrolls itself, landing inside a
 /// table's room, and expects the caret on the row at the landing height.
 pub(super) fn room_paging(h: &mut Harness) -> Result<(), String> {
     let above: String = (1..=LINES_ABOVE_PAGED_TABLE)
         .map(|line| format!("Line {line} above the table.\n"))
         .collect();
-    let note = format!("{above}\n{}\n\n{}", page_table(), page_paragraph());
+    let note = format!(
+        "{above}\n{}\n\n{}",
+        page_table(PAGED_TABLE_ROWS),
+        page_paragraph()
+    );
     let (host, view) = self_scrolling(&note, None);
     view.set_editable(true);
     view.set_cursor_visible(true);
@@ -455,16 +466,7 @@ fn page_start(view: &MarkdownView) -> Result<(i32, usize), String> {
         };
         let mut caret = start;
         caret.forward_chars(PAGE_COLUMN);
-        let (cursor, _) = view.cursor_locations(Some(&caret));
-        let landing =
-            (f64::from(cursor.y() + cursor.height() / 2) + adjustment.page_increment()) as i32;
-        let local = (landing - shown.origin.1) as f32;
-        let row = (1..shown.table.source.lines.len().saturating_sub(1)).find(|&row| {
-            cell_bounds(&shown.widget, row, 0).is_ok_and(|cell| {
-                cell.y() + ROW_SLACK <= local && local <= cell.y() + cell.height() - ROW_SLACK
-            })
-        });
-        if let Some(row) = row {
+        if let Some(row) = landing_row(&shown, page_landing(view, &caret, 1, &adjustment)) {
             return Ok((caret.offset(), row));
         }
     }

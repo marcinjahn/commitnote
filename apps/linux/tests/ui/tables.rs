@@ -1,3 +1,4 @@
+mod paging;
 mod rooms;
 
 use std::cell::Cell;
@@ -30,6 +31,7 @@ pub const CASES: &[Case] = &[
     ("tables-keys", keys),
     ("tables-room-hits", rooms::room_hits),
     ("tables-room-paging", rooms::room_paging),
+    ("tables-note-paging", paging::note_paging),
     ("tables-room-paint", rooms::room_paint),
 ];
 
@@ -923,7 +925,6 @@ const GOAL_ABOVE: &str = "A long first line above the table.\nab";
 const SHORT_LINE: &str = "\nab\n";
 const WRAPPED_WORDS: &str = "wrapping words ";
 const PAGE_COLUMN: i32 = 5;
-const PAGE_ROWS: usize = 20;
 
 /// A paragraph line right above the table and a heading right below it: a paragraph line right
 /// below a table would be one of its rows.
@@ -931,18 +932,11 @@ fn keys_note() -> String {
     format!("{KEYS_ABOVE}\n{KEYS_TABLE}\n{KEYS_BELOW}")
 }
 
-fn page_table() -> String {
-    let rows: String = (1..=PAGE_ROWS)
+fn page_table(rows: usize) -> String {
+    let rows: String = (1..=rows)
         .map(|row| format!("\n| row {row} | {row} | note {row} |"))
         .collect();
     format!("{HEADER}\n| :-- | :-: | --: |{rows}")
-}
-
-fn page_paragraph() -> String {
-    (1..=4)
-        .map(|line| format!("Line {line} of the paragraph beside the table."))
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 fn keys(h: &mut Harness) -> Result<(), String> {
@@ -953,7 +947,6 @@ fn keys(h: &mut Harness) -> Result<(), String> {
     keys_extend(h, &view)?;
     keys_goal_column(h, &editor, &view)?;
     keys_wrapped(h, &editor, &view)?;
-    keys_paging(h, &editor, &view)?;
     show_note(h, &editor, &view, &note, char_count(&note))?;
     keys_read_only(h, &note)
 }
@@ -1068,47 +1061,6 @@ fn keys_wrapped(h: &Harness, editor: &NoteEditor, view: &MarkdownView) -> Result
         view,
         "Down from the last display line to enter the header line at its end",
         header + char_count(HEADER),
-    )?;
-    wait_revealed(h, view)
-}
-
-/// GTK pages the note editor's view, which grows to its text inside the page's scroller, straight
-/// to the end or the start of the text, so the page keys reach a table that ends or starts the
-/// note.
-fn keys_paging(h: &Harness, editor: &NoteEditor, view: &MarkdownView) -> Result<(), String> {
-    let table = page_table();
-    let paragraph = page_paragraph();
-    let ending = format!("{paragraph}\n\n{table}");
-    set_note_text(editor, &ending, PAGE_COLUMN, PAGE_COLUMN);
-    h.wait("the table that ends the note to show", || {
-        editor.text() == ending
-            && view
-                .shown_tables()
-                .first()
-                .is_some_and(|shown| shown.widget.is_mapped() && shown.widget.geometry().is_some())
-    })?;
-    h.settle()?;
-    focus_view(h, view)?;
-    press_in(h, view, "Page_Down")?;
-    let last_row = table_line_offset(view, PAGE_ROWS as i32 + 1)?;
-    wait_caret(
-        h,
-        view,
-        "Page_Down to put the caret on the last row at the goal column",
-        last_row + PAGE_COLUMN,
-    )?;
-    wait_revealed(h, view)?;
-
-    let starting = format!("{table}\n\n{paragraph}");
-    let caret = offset_in(&starting, &paragraph)? + PAGE_COLUMN;
-    show_note(h, editor, view, &starting, caret)?;
-    focus_view(h, view)?;
-    press_in(h, view, "Page_Up")?;
-    wait_caret(
-        h,
-        view,
-        "Page_Up to put the caret on the header line at the goal column",
-        PAGE_COLUMN,
     )?;
     wait_revealed(h, view)
 }

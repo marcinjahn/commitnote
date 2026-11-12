@@ -29,6 +29,7 @@ use super::tags::{Palette, PreviewTags};
 use crate::fonts::NoteFont;
 use crate::{accent, links};
 
+mod paging;
 mod table_keys;
 
 const MARGIN: i32 = 12;
@@ -96,6 +97,7 @@ mod imp {
         pub(super) animations_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) text_scale_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) vertical_run: Cell<Option<table_keys::VerticalRun>>,
+        pub(super) page_aim: Cell<Option<paging::PageAim>>,
     }
 
     #[glib::object_subclass]
@@ -412,7 +414,7 @@ mod imp {
                         view.move_display_lines(gtk_move);
                     }
                 }
-                gtk::MovementStep::Pages if !extend => view.move_pages(count, gtk_move),
+                gtk::MovementStep::Pages => view.move_pages(count, extend, gtk_move),
                 _ => gtk_move(),
             }
         }
