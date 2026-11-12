@@ -72,8 +72,7 @@ run_mutter_suite() {
         exit 1
       fi
 
-      echo "" | gnome-keyring-daemon --unlock --components=secrets >/dev/null
-      gdbus wait --session --timeout 10 org.freedesktop.secrets
+      sh ci/steps/start-keyring.sh
       meson test -C target/meson/testing --suite ui --print-errorlogs
     '
 }
