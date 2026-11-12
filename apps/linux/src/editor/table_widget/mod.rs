@@ -163,7 +163,6 @@ mod imp {
         fn set_up_long_press(&self) {
             let long_press = &self.long_press;
             long_press.set_touch_only(true);
-            long_press.group_with(&self.drag);
             long_press.connect_pressed({
                 let widget = self.obj().downgrade();
                 move |gesture, x, y| {
@@ -175,6 +174,8 @@ mod imp {
                 }
             });
             self.obj().add_controller(long_press.clone());
+            // Grouping needs both gestures attached to this widget already.
+            long_press.group_with(&self.drag);
         }
 
         fn set_up_secondary(&self) {

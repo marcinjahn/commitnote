@@ -511,7 +511,8 @@ impl Gestures {
 /// Drags, presses and clears cell selections on two rendered tables, in the editor, in Vim and in
 /// the shared version. The gestures are driven by emitting their signals and by calling the view's
 /// methods: that leaves out GTK's event delivery, real pointer motion against the drag threshold,
-/// and the claiming and denying between the gestures of the view and of the table.
+/// and the claiming and denying between the gestures of the view and of the table. It asserts that
+/// the table's long press is grouped with its drag.
 pub(super) fn selection(h: &mut Harness) -> Result<(), String> {
     let middle_end = offset_in(TWO_TABLES, MIDDLE)? + char_count(MIDDLE);
     let (editor, view) = open_note(h, TWO_TABLES, middle_end)?;
@@ -620,6 +621,9 @@ fn widget_signals(
 ) -> Result<Tables, String> {
     view.clear_table_selection();
     let gestures = Gestures::of(&tables.a)?;
+    ensure(gestures.long_press.is_grouped_with(&gestures.drag), || {
+        "the long press gesture is not grouped with the drag gesture".to_owned()
+    })?;
     let threshold = f64::from(tables.a.settings().gtk_dnd_drag_threshold());
     let from = widget_point(&tables.a, position(1, 0))?;
     let to = widget_point(&tables.a, position(2, 2))?;
