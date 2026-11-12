@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { inputKindAttributes } from "../../input-kind/input-kind";
   import { DEVICE_NAME_MAX_LENGTH, normalizeDeviceName } from "../../settings/device-name";
   import {
     ANALYTICS_LABEL,
@@ -55,7 +56,7 @@
     type="text"
     maxlength={DEVICE_NAME_MAX_LENGTH}
     autocomplete="off"
-    spellcheck="false"
+    {...inputKindAttributes("prose")}
     placeholder={automaticDeviceName}
     value={deviceName ?? ""}
     aria-describedby={deviceNameHintId}
