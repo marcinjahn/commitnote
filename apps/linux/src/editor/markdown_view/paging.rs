@@ -1,3 +1,4 @@
+use commitnote_markdown::VerticalDirection;
 use gtk4::glib::translate::{ToGlibPtr, ToGlibPtrMut};
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, graphene, prelude::*};
@@ -57,6 +58,61 @@ fn page_landing(caret_y: i32, count: i32, scroll: PageScroll) -> PageLanding {
     }
 }
 
+/// A Vim page move: the scroll value it ends at and where the caret goes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct VimPageMove {
+    value: f64,
+    caret: VimCaret,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum VimCaret {
+    Stays,
+    /// To the start of the line at this height, the top of the page.
+    PageTop(f64),
+    /// To the start of the last line wholly above this height, the bottom of the page.
+    PageBottom(f64),
+    /// By this distance, keeping its place in the page.
+    Shifted(f64),
+}
+
+/// How GtkSourceView 5.18 pages for Vim, `pages` pages down (or up when negative), where the
+/// caret spans `caret_top` and `caret_height` in the same coordinates as `scroll`
+/// (gtksourceview/vim/gtksourcevimstate.c).
+///
+/// A full page is `gtk_source_vim_state_scroll_page`: each page brings the line at the bottom
+/// edge to the top, or the one at the top edge to the bottom, then
+/// `gtk_source_vim_state_place_cursor_onscreen` moves a caret the page left behind to the line at
+/// the edge it went past. A half page is `gtk_source_vim_state_scroll_half_page`: each half page
+/// brings the middle line to the top or bottom edge, and the caret keeps its place in the page.
+/// Both align the page to whole lines, which this leaves out, so it lands within a line of them.
+fn vim_page_move(
+    caret_top: f64,
+    caret_height: f64,
+    pages: i32,
+    half: bool,
+    scroll: PageScroll,
+) -> VimPageMove {
+    let step = if half {
+        scroll.page_size / 2.0
+    } else {
+        scroll.page_size
+    };
+    let last = (scroll.upper - scroll.page_size).max(scroll.lower);
+    let value = (scroll.value + f64::from(pages) * step).clamp(scroll.lower, last);
+    let bottom = value + scroll.page_size;
+    let caret = if half {
+        VimCaret::Shifted(value - scroll.value)
+    } else if caret_top < value {
+        VimCaret::PageTop(value)
+    } else if caret_top + caret_height > bottom {
+        VimCaret::PageBottom(bottom)
+    } else {
+        VimCaret::Stays
+    };
+    VimPageMove { value, caret }
+}
+
 impl MarkdownView {
     /// Moves the caret `count` pages as GTK's page keys do, extending the selection when
     /// `extend` is set; `gtk_move` makes GTK's own move. A view that grows to its text inside a
@@ -85,6 +141,77 @@ impl MarkdownView {
         if let (Some(tables), Some(landing)) = (tables, landing) {
             self.finish_paging(tables, landing);
         }
+    }
+
+    /// Moves the page and the caret `count` pages, or half pages, as Vim's `<C-f>`, `<C-b>`,
+    /// `<C-d>` and `<C-u>` do, then onto the row at the caret's landing height when that height
+    /// lies on a rendered table; says whether it did. It does only for a view that grows to its
+    /// text inside a scroller, where GtkSourceView's own paging, which pages the view's own page
+    /// holding the whole text, moves nothing.
+    pub fn vim_page(&self, direction: VerticalDirection, half: bool, count: usize) -> bool {
+        let Some(scroller) = self.outer_scroller() else {
+            return false;
+        };
+        if !self.is_cursor_visible() {
+            return false;
+        }
+        let tables = self.table_paging();
+        self.scroll_caret_onscreen_in(&scroller);
+        let Some(origin) = self.content_origin_in(&scroller) else {
+            return false;
+        };
+        let count = i32::try_from(count).unwrap_or(i32::MAX);
+        let pages = match direction {
+            VerticalDirection::Down => count,
+            VerticalDirection::Up => -count,
+        };
+        let adjustment = scroller.vadjustment();
+        let (caret, _) = self.cursor_locations(None);
+        let page_move = vim_page_move(
+            origin + f64::from(caret.y()),
+            f64::from(caret.height()),
+            pages,
+            half,
+            PageScroll::from(&adjustment),
+        );
+        adjustment.set_value(page_move.value);
+        let to_buffer = |y: f64| (y - origin).floor() as i32;
+        let (target, landing) = match page_move.caret {
+            VimCaret::Stays => (None, caret.y() + caret.height() / 2),
+            VimCaret::PageTop(top) => {
+                let y = to_buffer(top);
+                let (line, _) = self.line_at_y(y);
+                (Some(past_blanks(line)), y)
+            }
+            VimCaret::PageBottom(bottom) => {
+                let y = to_buffer(bottom);
+                let (mut line, line_top) = self.line_at_y(y);
+                let (_, height) = self.line_yrange(&line);
+                if line_top + height > y {
+                    line.backward_line();
+                }
+                (Some(past_blanks(line)), y - 1)
+            }
+            VimCaret::Shifted(by) => {
+                let y = caret.y() + caret.height() / 2 + by.round() as i32;
+                (Some(self.iter_nearest(caret.x(), y)), y)
+            }
+        };
+        if let Some(target) = target {
+            self.buffer().place_cursor(&target);
+        }
+        if let Some(tables) = tables {
+            self.finish_paging(tables, PageLanding::At(landing));
+        }
+        self.imp().page_aim.set(None);
+        true
+    }
+
+    /// The content height in `scroller` of the buffer's top.
+    fn content_origin_in(&self, scroller: &gtk::ScrolledWindow) -> Option<f64> {
+        let (x, y) = self.buffer_to_window_coords(gtk::TextWindowType::Widget, 0, 0);
+        let point = self.compute_point(scroller, &graphene::Point::new(x as f32, y as f32))?;
+        Some(scroller.vadjustment().value() + f64::from(point.y()))
     }
 
     /// The scroller that scrolls this view from outside, when the view sits inside it rather
@@ -200,6 +327,13 @@ impl MarkdownView {
     }
 }
 
+fn past_blanks(mut iter: gtk::TextIter) -> gtk::TextIter {
+    while !iter.ends_line() && iter.char().is_whitespace() {
+        iter.forward_char();
+    }
+    iter
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,6 +345,108 @@ mod tests {
         page_size: 500.0,
         page_increment: 450.0,
     };
+
+    fn vim_scroll(value: f64) -> PageScroll {
+        PageScroll {
+            value,
+            lower: 0.0,
+            upper: 3000.0,
+            page_size: 600.0,
+            page_increment: 540.0,
+        }
+    }
+
+    #[test]
+    fn a_vim_page_scrolls_whole_pages_and_takes_a_caret_left_above_to_the_top() {
+        assert_eq!(
+            vim_page_move(1050.0, 20.0, 1, false, vim_scroll(1000.0)),
+            VimPageMove {
+                value: 1600.0,
+                caret: VimCaret::PageTop(1600.0),
+            }
+        );
+        assert_eq!(
+            vim_page_move(1050.0, 20.0, 2, false, vim_scroll(1000.0)).value,
+            2200.0
+        );
+    }
+
+    #[test]
+    fn a_vim_page_up_takes_a_caret_left_below_to_the_bottom() {
+        assert_eq!(
+            vim_page_move(1500.0, 20.0, -1, false, vim_scroll(1000.0)),
+            VimPageMove {
+                value: 400.0,
+                caret: VimCaret::PageBottom(1000.0),
+            }
+        );
+    }
+
+    #[test]
+    fn a_vim_page_leaves_a_caret_the_new_page_still_shows() {
+        let near_bottom = PageScroll {
+            upper: 800.0,
+            ..vim_scroll(100.0)
+        };
+        assert_eq!(
+            vim_page_move(250.0, 20.0, 1, false, near_bottom),
+            VimPageMove {
+                value: 200.0,
+                caret: VimCaret::Stays,
+            }
+        );
+    }
+
+    #[test]
+    fn a_vim_half_page_shifts_the_caret_with_the_page() {
+        assert_eq!(
+            vim_page_move(1050.0, 20.0, 1, true, vim_scroll(1000.0)),
+            VimPageMove {
+                value: 1300.0,
+                caret: VimCaret::Shifted(300.0),
+            }
+        );
+        assert_eq!(
+            vim_page_move(1050.0, 20.0, -3, true, vim_scroll(1000.0)),
+            VimPageMove {
+                value: 100.0,
+                caret: VimCaret::Shifted(-900.0),
+            }
+        );
+    }
+
+    #[test]
+    fn a_vim_page_stops_at_the_ends_of_the_scroll_range() {
+        assert_eq!(
+            vim_page_move(2500.0, 20.0, 1, true, vim_scroll(2300.0)),
+            VimPageMove {
+                value: 2400.0,
+                caret: VimCaret::Shifted(100.0),
+            }
+        );
+        assert_eq!(
+            vim_page_move(50.0, 20.0, -1, false, vim_scroll(0.0)),
+            VimPageMove {
+                value: 0.0,
+                caret: VimCaret::Stays,
+            }
+        );
+    }
+
+    #[test]
+    fn a_vim_page_in_a_page_taller_than_its_text_stays_put() {
+        let short = PageScroll {
+            upper: 300.0,
+            ..vim_scroll(0.0)
+        };
+        assert_eq!(
+            vim_page_move(100.0, 20.0, 2, false, short),
+            VimPageMove {
+                value: 0.0,
+                caret: VimCaret::Stays,
+            }
+        );
+    }
 
     #[test]
     fn a_page_move_shifts_the_caret_height_by_page_increments() {

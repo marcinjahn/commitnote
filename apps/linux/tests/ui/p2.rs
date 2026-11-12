@@ -922,7 +922,7 @@ fn editor_follows_document_font(h: &mut Harness) -> Result<(), String> {
 const VIM_TEXT: &str = "first line\nsecond line 😀\nthird line\n";
 const VIM_RENAMED: &str = "first line\n2nd 😀é line 😀\nthird line\n";
 
-fn set_vim_mode(h: &Harness, editor: &NoteEditor, on: bool) -> Result<(), String> {
+pub(crate) fn set_vim_mode(h: &Harness, editor: &NoteEditor, on: bool) -> Result<(), String> {
     h.change_setting("vimMode", if on { "true" } else { "false" })?;
     h.wait("the editor to follow the Vim setting", || {
         editor.vim_active() == on && h.shown("vim-status-line") == on

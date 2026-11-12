@@ -191,7 +191,7 @@ fn plain_paging(
     wait_caret_shown(h, view, scroller, "Shift+Page_Down")
 }
 
-fn wait_caret_shown(
+pub(super) fn wait_caret_shown(
     h: &Harness,
     view: &MarkdownView,
     scroller: &gtk::ScrolledWindow,

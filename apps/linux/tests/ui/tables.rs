@@ -1,5 +1,6 @@
 mod paging;
 mod rooms;
+mod vim;
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -33,6 +34,7 @@ pub const CASES: &[Case] = &[
     ("tables-room-paging", rooms::room_paging),
     ("tables-note-paging", paging::note_paging),
     ("tables-room-paint", rooms::room_paint),
+    ("tables-vim", vim::vim),
 ];
 
 const IMAGE_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
