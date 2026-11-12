@@ -1,7 +1,9 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use commitnote_markdown::{LayoutRect, TableGeometry, TableLayout, TableLayoutItem};
+use commitnote_markdown::{
+    LayoutRect, TableGeometry, TableLayout, TableLayoutItem, TableSelection,
+};
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, gdk, glib, prelude::*};
 
@@ -245,6 +247,23 @@ pub(super) fn hairlines(geometry: &TableGeometry) -> Vec<(gdk::Rectangle, Hairli
     lines
 }
 
+/// The bounds of every selected cell, in table coordinates.
+pub(super) fn selection_rects(
+    geometry: &TableGeometry,
+    selection: Option<TableSelection>,
+) -> Vec<gdk::Rectangle> {
+    let Some(selection) = selection else {
+        return Vec::new();
+    };
+    let column_count = geometry.column_widths.len();
+    selection
+        .rows(column_count)
+        .filter_map(|(row, columns)| geometry.cell_frames.get(row)?.get(columns))
+        .flatten()
+        .map(pixel_rect)
+        .collect()
+}
+
 /// The gaps before, between and after the sorted `(start, end)` spans within `0..end`, as
 /// `(start, length)`.
 fn gaps(spans: &[(i32, i32)], end: i32) -> Vec<(i32, i32)> {
@@ -259,7 +278,7 @@ fn gaps(spans: &[(i32, i32)], end: i32) -> Vec<(i32, i32)> {
 
 #[cfg(test)]
 mod tests {
-    use commitnote_markdown::{TableAlignment, TableLayoutMetrics};
+    use commitnote_markdown::{TableAlignment, TableCellPosition, TableLayoutMetrics};
 
     use super::*;
 
@@ -363,5 +382,53 @@ mod tests {
         );
 
         assert!(hairlines(&geometry).is_empty());
+    }
+
+    fn grid(rows: usize, columns: usize) -> TableGeometry {
+        let cells = vec![vec![vec![text(20.0, 30.5)]; columns]; rows];
+        TableLayout::new(TableLayoutMetrics::default()).layout(
+            &cells,
+            f64::INFINITY,
+            &vec![TableAlignment::Left; columns],
+            |_, _, _, _| 17.5,
+        )
+    }
+
+    fn positions(rows: usize, columns: usize) -> Vec<TableCellPosition> {
+        (0..rows)
+            .flat_map(|row| (0..columns).map(move |column| TableCellPosition { row, column }))
+            .collect()
+    }
+
+    #[test]
+    fn the_selection_rectangles_are_the_bounds_of_the_selected_cells() {
+        let geometry = grid(4, 3);
+        let cells = positions(4, 3);
+
+        for &anchor in &cells {
+            for &focus in &cells {
+                let selection = TableSelection::new(anchor, focus);
+                let expected: Vec<gdk::Rectangle> = cells
+                    .iter()
+                    .filter(|&&cell| selection.contains(cell))
+                    .map(|cell| pixel_rect(&geometry.cell_frames[cell.row][cell.column]))
+                    .collect();
+
+                let mut rects = selection_rects(&geometry, Some(selection));
+
+                assert_eq!(rects.len(), expected.len(), "{selection:?}");
+                for rect in &expected {
+                    let found = rects.iter().position(|candidate| candidate == rect);
+                    assert!(found.is_some(), "{selection:?} misses {rect:?}");
+                    rects.swap_remove(found.unwrap_or_default());
+                }
+                assert!(rects.is_empty(), "{selection:?} repeats {rects:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn no_selection_has_no_rectangles() {
+        assert!(selection_rects(&grid(4, 3), None).is_empty());
     }
 }

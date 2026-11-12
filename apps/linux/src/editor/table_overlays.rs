@@ -65,16 +65,59 @@ struct Measured {
     height: i32,
 }
 
-/// Receives a table widget's click, with the release point in widget coordinates and whether
-/// Control was held.
-type ClickCallback = dyn Fn(&TableWidget, f64, f64, bool);
+/// A pointer or touch gesture on a table widget, with its points in widget coordinates.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TableGesture {
+    /// A primary press released within the drag threshold.
+    Click {
+        x: f64,
+        y: f64,
+        control: bool,
+    },
+    /// A primary press moved past the drag threshold, from where it started to where it is.
+    Drag {
+        from: (f64, f64),
+        to: (f64, f64),
+    },
+    LongPress {
+        x: f64,
+        y: f64,
+    },
+    ContextMenu {
+        x: f64,
+        y: f64,
+    },
+}
+
+type GestureCallback = dyn Fn(&TableWidget, TableGesture);
 
 #[derive(Clone)]
-struct ClickHandler(Rc<ClickCallback>);
+struct GestureHandler(Rc<GestureCallback>);
 
-impl std::fmt::Debug for ClickHandler {
+impl GestureHandler {
+    fn connect(&self, widget: &TableWidget) {
+        let on_gesture = self.0.clone();
+        widget.connect_clicked(move |widget, x, y, control| {
+            on_gesture(widget, TableGesture::Click { x, y, control });
+        });
+        let on_gesture = self.0.clone();
+        widget.connect_cells_dragged(move |widget, from, to| {
+            on_gesture(widget, TableGesture::Drag { from, to });
+        });
+        let on_gesture = self.0.clone();
+        widget.connect_long_pressed(move |widget, x, y| {
+            on_gesture(widget, TableGesture::LongPress { x, y });
+        });
+        let on_gesture = self.0.clone();
+        widget.connect_context_menu_requested(move |widget, x, y| {
+            on_gesture(widget, TableGesture::ContextMenu { x, y });
+        });
+    }
+}
+
+impl std::fmt::Debug for GestureHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("ClickHandler")
+        f.write_str("GestureHandler")
     }
 }
 
@@ -91,20 +134,20 @@ struct Entry {
 pub struct TableOverlays {
     layer: TableLayer,
     entries: RefCell<Vec<Entry>>,
-    on_click: ClickHandler,
+    on_gesture: GestureHandler,
 }
 
 impl TableOverlays {
     pub fn new(
         view: &gtk::TextView,
-        on_click: impl Fn(&TableWidget, f64, f64, bool) + 'static,
+        on_gesture: impl Fn(&TableWidget, TableGesture) + 'static,
     ) -> Self {
         let layer = TableLayer::default();
         view.add_overlay(&layer, 0, 0);
         Self {
             layer,
             entries: RefCell::default(),
-            on_click: ClickHandler(Rc::new(on_click)),
+            on_gesture: GestureHandler(Rc::new(on_gesture)),
         }
     }
 
@@ -150,10 +193,7 @@ impl TableOverlays {
                 }
                 None => {
                     let widget = TableWidget::new(table.clone(), style, source);
-                    let ClickHandler(on_click) = self.on_click.clone();
-                    widget.connect_clicked(move |widget, x, y, control| {
-                        on_click(widget, x, y, control);
-                    });
+                    self.on_gesture.connect(&widget);
                     self.layer.put(&widget);
                     changed = true;
                     entries.push(Entry {

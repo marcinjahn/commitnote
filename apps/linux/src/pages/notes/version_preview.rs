@@ -364,7 +364,10 @@ impl Preview {
             this.update_restore();
             match result {
                 RestoreResult::Done => {
-                    if let Some(dialog) = this.dialog.upgrade() {
+                    // The history dialog already closed itself when the model closed the history.
+                    if this.model.history().is_some()
+                        && let Some(dialog) = this.dialog.upgrade()
+                    {
                         dialog.close();
                     }
                 }

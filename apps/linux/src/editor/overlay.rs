@@ -16,6 +16,7 @@ const CHECKBOX_BORDER_FRACTION: f32 = 0.125;
 const CHECK_MARK_FRACTION: f32 = 0.13;
 const UNCHECKED_ALPHA: Contrast = Contrast::new(0.55, 0.85);
 pub(super) const RULE_ALPHA: Contrast = Contrast::new(0.2, 0.5);
+pub(super) const SELECTION_ALPHA: Contrast = Contrast::new(0.22, 0.4);
 const MARK_ALPHA: Contrast = Contrast::new(0.8, 1.0);
 const RULE_THICKNESS: f32 = 1.0;
 const LIGHT_ACCENT_LUMINANCE: f32 = 0.6;
@@ -643,6 +644,7 @@ mod tests {
         let pairs = [
             (UNCHECKED_ALPHA, 0.55, 0.85),
             (RULE_ALPHA, 0.2, 0.5),
+            (SELECTION_ALPHA, 0.22, 0.4),
             (MARK_ALPHA, 0.8, 1.0),
         ];
         for (alpha, normal, high) in pairs {

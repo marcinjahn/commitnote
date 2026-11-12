@@ -12,6 +12,7 @@ mod syntax;
 mod table;
 mod table_entry;
 mod table_layout;
+mod table_selection;
 
 pub use commands::{
     CommandResult, insert_link, link_url, openable_url, paste_link, toggle_bold, toggle_checkbox,
@@ -30,3 +31,4 @@ pub use table_entry::{LinePosition, VerticalDirection, table_entry_target, table
 pub use table_layout::{
     LayoutRect, TableGeometry, TableLayout, TableLayoutColumns, TableLayoutItem, TableLayoutMetrics,
 };
+pub use table_selection::{TableCellPosition, TableCopy, TableSelection, table_copy};

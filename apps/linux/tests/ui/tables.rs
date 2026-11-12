@@ -6,6 +6,7 @@ mod paging;
 mod print;
 mod raw_surfaces;
 mod rooms;
+mod selection;
 mod vim;
 
 use std::cell::Cell;
@@ -47,6 +48,9 @@ pub const CASES: &[Case] = &[
     ("tables-history", history::history),
     ("tables-print", print::print),
     ("tables-raw-surfaces", raw_surfaces::raw_surfaces),
+    ("tables-selection-tint", selection::selection_tint),
+    ("tables-selection", selection::selection),
+    ("tables-selection-copy", selection::selection_copy),
 ];
 
 const IMAGE_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
