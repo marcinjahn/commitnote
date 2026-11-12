@@ -27,6 +27,18 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertEqual(parse("#hashtag"), [n(.paragraph, 0, 8)])
     }
 
+    func testTabAfterHashStartsAHeading() {
+        XCTAssertEqual(
+            parse("#\tTabbed heading"),
+            [n(.atxHeading(level: 1), 0, 16), n(.headerMark, 0, 1)])
+    }
+
+    func testTabbedATXHeadingInterruptsAParagraph() {
+        XCTAssertEqual(
+            parse("Paragraph line\n#\tTabbed heading"),
+            [n(.paragraph, 0, 14), n(.atxHeading(level: 1), 15, 31), n(.headerMark, 15, 16)])
+    }
+
     func testATXHeadingClosingSequenceIsAHeaderMark() {
         XCTAssertEqual(
             parse("# Title ##"),

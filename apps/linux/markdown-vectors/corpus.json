@@ -60,6 +60,14 @@
     "text": "#\tTabbed heading"
   },
   {
+    "name": "atx-tab-interrupts-paragraph",
+    "text": "Paragraph line\n#\tTabbed heading"
+  },
+  {
+    "name": "atx-tab-after-table",
+    "text": "| a | b |\n| - | - |\n| 1 | 2 |\n#\tTabbed heading"
+  },
+  {
     "name": "setext-level-1",
     "text": "Setext one\n=========="
   },

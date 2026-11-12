@@ -261,12 +261,175 @@
       "text": "#\tTabbed heading",
       "nodes": [
         {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 0,
+          "to": 16
+        },
+        {
+          "kind": "headerMark",
+          "from": 0,
+          "to": 1
+        }
+      ],
+      "tables": []
+    },
+    {
+      "name": "atx-tab-interrupts-paragraph",
+      "text": "Paragraph line\n#\tTabbed heading",
+      "nodes": [
+        {
           "kind": "paragraph",
           "from": 0,
+          "to": 14
+        },
+        {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 15,
+          "to": 31
+        },
+        {
+          "kind": "headerMark",
+          "from": 15,
           "to": 16
         }
       ],
       "tables": []
+    },
+    {
+      "name": "atx-tab-after-table",
+      "text": "| a | b |\n| - | - |\n| 1 | 2 |\n#\tTabbed heading",
+      "nodes": [
+        {
+          "kind": "table",
+          "from": 0,
+          "to": 29
+        },
+        {
+          "kind": "atxHeading",
+          "level": 1,
+          "from": 30,
+          "to": 46
+        },
+        {
+          "kind": "headerMark",
+          "from": 30,
+          "to": 31
+        }
+      ],
+      "tables": [
+        {
+          "range": {
+            "from": 0,
+            "to": 29
+          },
+          "containerPrefix": "",
+          "columnCount": 2,
+          "alignments": [
+            "",
+            ""
+          ],
+          "lines": [
+            {
+              "range": {
+                "from": 0,
+                "to": 9
+              },
+              "rowStart": 0,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 1,
+                    "to": 4
+                  },
+                  "contentRange": {
+                    "from": 2,
+                    "to": 3
+                  },
+                  "text": "a"
+                },
+                {
+                  "range": {
+                    "from": 5,
+                    "to": 8
+                  },
+                  "contentRange": {
+                    "from": 6,
+                    "to": 7
+                  },
+                  "text": "b"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 10,
+                "to": 19
+              },
+              "rowStart": 10,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 11,
+                    "to": 14
+                  },
+                  "contentRange": {
+                    "from": 12,
+                    "to": 13
+                  },
+                  "text": "-"
+                },
+                {
+                  "range": {
+                    "from": 15,
+                    "to": 18
+                  },
+                  "contentRange": {
+                    "from": 16,
+                    "to": 17
+                  },
+                  "text": "-"
+                }
+              ]
+            },
+            {
+              "range": {
+                "from": 20,
+                "to": 29
+              },
+              "rowStart": 20,
+              "trailingPipe": true,
+              "cells": [
+                {
+                  "range": {
+                    "from": 21,
+                    "to": 24
+                  },
+                  "contentRange": {
+                    "from": 22,
+                    "to": 23
+                  },
+                  "text": "1"
+                },
+                {
+                  "range": {
+                    "from": 25,
+                    "to": 28
+                  },
+                  "contentRange": {
+                    "from": 26,
+                    "to": 27
+                  },
+                  "text": "2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "setext-level-1",

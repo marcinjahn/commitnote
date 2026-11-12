@@ -415,7 +415,7 @@ final class BlockParser {
         if line.next != Ch.hash { return -1 }
         var pos = line.pos + 1
         while pos < line.length, line.code(pos) == Ch.hash { pos += 1 }
-        if pos < line.length, line.code(pos) != Ch.space { return -1 }
+        if pos < line.length, !isSpace(line.code(pos)) { return -1 }
         let size = pos - line.pos
         return size > 6 ? -1 : size
     }
