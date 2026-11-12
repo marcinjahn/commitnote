@@ -721,7 +721,7 @@ impl Harness {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let keyboard = self.keyboard()?;
-        self.wait_active()?;
+        self.activate_window()?;
         for (shifted, keysym) in strokes {
             let held: &[u32] = if shifted { &[keysym::SHIFT_L] } else { &[] };
             keyboard.chord(held, keysym)?;
@@ -740,8 +740,13 @@ impl Harness {
     /// Makes the harness window active, as it becomes once the real keyboard exists, so that its
     /// focused widget draws its caret.
     pub fn activate_window(&self) -> Result<(), String> {
+        self.activate(&self.window()?)
+    }
+
+    /// Like [`Self::activate_window`], for a window other than the harness window.
+    pub fn activate(&self, window: &impl IsA<gtk::Window>) -> Result<(), String> {
         self.keyboard()?;
-        self.wait_active()
+        self.wait("the window to be active", || window.is_active())
     }
 
     /// Runs `run` with the text caret drawn steadily instead of blinking, so that every capture
@@ -754,11 +759,6 @@ impl Harness {
         let blink = settings.is_gtk_cursor_blink();
         settings.set_gtk_cursor_blink(false);
         restoring(|| settings.set_gtk_cursor_blink(blink), || run(self))
-    }
-
-    fn wait_active(&self) -> Result<(), String> {
-        let window = self.window()?;
-        self.wait("the window to be active", || window.is_active())
     }
 
     /// Refreshes repeatedly, spaced out, until `predicate` holds, so a change made on the fake

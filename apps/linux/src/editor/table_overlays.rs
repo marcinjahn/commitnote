@@ -35,7 +35,7 @@ pub fn band(left: f32, room: f32, prefix_width: i32) -> TableBand {
     }
 }
 
-/// The room a table `height` pixels tall needs below its first line, which stays in the layout.
+/// The room a table `height` pixels tall needs above its first line, which stays in the layout.
 pub fn reserve_height(height: i32, line_height: f32) -> f32 {
     (height as f32 - line_height).max(0.0)
 }
@@ -190,7 +190,7 @@ impl TableOverlays {
                 let mut overlay = Overlay {
                     kind: OverlayKind::Table,
                     range: index.utf16_to_char(range.start)..index.utf16_to_char(range.end),
-                    reserve: Reserve::Block { height: 0.0 },
+                    reserve: Reserve::Cover { height: 0.0 },
                     slot: None,
                     painter: painter.clone(),
                     hit: HitBehaviour::Inert,
@@ -202,7 +202,7 @@ impl TableOverlays {
                     entry.widget.set_band_width(band.width);
                 }
                 let height = measured_height(&entry.widget, band.width);
-                overlay.reserve = Reserve::Block {
+                overlay.reserve = Reserve::Cover {
                     height: reserve_height(height, style.line_height),
                 };
                 entry.measured = Some(Measured {

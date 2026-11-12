@@ -604,15 +604,7 @@ impl MarkdownView {
             self.window_to_buffer_coords(gtk::TextWindowType::Widget, x as i32, y as i32);
         let point = graphene::Point::new(bx as f32, by as f32);
         let slop = HIT_SLOP_Y.ceil() as i32;
-        let (first, _) = self.line_at_y(by - slop);
-        let (last, _) = self.line_at_y(by + slop);
-        let mut lines = first;
-        lines.set_line_offset(0);
-        let mut until = last;
-        if !until.ends_line() {
-            until.forward_to_line_end();
-        }
-        let lines = lines.offset() as usize..until.offset().max(0) as usize + 1;
+        let lines = overlay::lines_between(self.upcast_ref(), by - slop, by + slop);
         self.overlays().iter().position(|overlay| {
             if overlay.range.start >= lines.end || overlay.range.end < lines.start {
                 return false;
@@ -725,6 +717,13 @@ impl MarkdownView {
         if let Some(image_id) = image_id {
             self.emit_image_activated(&image_id);
         }
+    }
+
+    /// The kind of overlay a primary press at a point in widget coordinates acts on.
+    #[cfg(feature = "testing")]
+    pub fn testing_overlay_at(&self, x: f64, y: f64) -> Option<OverlayKind> {
+        let index = self.hit_overlay_at(x, y)?;
+        Some(self.overlays()[index].kind)
     }
 
     #[cfg(feature = "testing")]
@@ -871,12 +870,11 @@ impl MarkdownView {
         }
         let style = self.overlay_style();
         let visible = self.visible_buffer_rect();
-        let (top, _) = self.line_at_y(visible.y() as i32);
-        let (mut bottom, _) = self.line_at_y((visible.y() + visible.height()) as i32);
-        if !bottom.ends_line() {
-            bottom.forward_to_line_end();
-        }
-        let shown = top.offset().max(0) as usize..bottom.offset().max(0) as usize + 1;
+        let shown = overlay::lines_between(
+            self.upcast_ref(),
+            visible.y() as i32,
+            (visible.y() + visible.height()) as i32,
+        );
         for overlay in overlays.iter() {
             if overlay.kind == OverlayKind::Table
                 || overlay.range.end < shown.start

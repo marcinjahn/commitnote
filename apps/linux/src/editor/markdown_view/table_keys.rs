@@ -105,10 +105,31 @@ struct VerticalStart {
     goal_column: usize,
 }
 
-struct PagedTable {
+/// Where a rendered table sits, in the document and on screen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TableSpan {
     lines: Range<usize>,
-    /// The buffer heights of the display line the table's room hangs below, the room included.
-    band: Range<i32>,
+    /// The buffer heights its widget covers.
+    extent: Range<i32>,
+}
+
+/// The table a page move ends on: the one whose widget covers the landing height `y`, else the
+/// one whose source holds the line GTK left the caret on.
+fn landed_table<'a>(
+    spans: impl Iterator<Item = &'a TableSpan> + Clone,
+    y: Option<i32>,
+    caret_line: usize,
+) -> Option<usize> {
+    y.and_then(|y| spans.clone().position(|span| span.extent.contains(&y)))
+        .or_else(|| {
+            spans
+                .clone()
+                .position(|span| span.lines.contains(&caret_line))
+        })
+}
+
+struct PagedTable {
+    span: TableSpan,
     source: MarkdownTable,
     top: i32,
     geometry: Rc<TableGeometry>,
@@ -164,34 +185,13 @@ impl MarkdownView {
     }
 
     /// Runs a page move of `count` pages that GTK makes, then moves the caret onto the row at
-    /// the landing height when GTK left it on a rendered table. A landing height inside a
-    /// table's band is never handed to GTK: for a height in the room below a line holding
-    /// invisible text, `gtk_text_layout_get_iter_at_position` (GTK 4.20, gtk/gtktextlayout.c)
-    /// passes the line's whole byte count to `gtk_text_iter_set_visible_line_index`, which runs
-    /// past the line end and aborts. The view scrolls by the pages itself instead.
+    /// the landing height when that height lies on a rendered table, or GTK left the caret on one.
     pub(super) fn move_pages(&self, count: i32, gtk_move: impl FnOnce()) {
         let Some(paging) = self.paging() else {
             gtk_move();
             return;
         };
         let landing = page_landing(paging.caret_y, count, paging.scroll);
-        let banded = match landing {
-            PageLanding::At(y) => paging
-                .tables
-                .iter()
-                .find(|table| table.band.contains(&y))
-                .map(|table| (table, y)),
-            PageLanding::Start | PageLanding::End => None,
-        };
-        if let Some((table, y)) = banded {
-            if let Some(adjustment) = self.vadjustment() {
-                adjustment.set_value(
-                    paging.scroll.value + f64::from(count) * paging.scroll.page_increment,
-                );
-            }
-            self.place_on_table_row(&paging.start, table, y);
-            return;
-        }
         gtk_move();
         self.finish_paging(paging, landing);
     }
@@ -273,17 +273,15 @@ impl MarkdownView {
             .into_iter()
             .filter(|shown| shown.widget.is_visible())
             .filter_map(|shown| {
-                let header = start
-                    .parsed
-                    .index
-                    .utf16_to_char(shown.table.source.range.start);
-                let header = buffer.iter_at_offset(i32::try_from(header).unwrap_or(i32::MAX));
-                let (band_top, band_height) = self.line_yrange(&header);
+                let geometry = shown.widget.geometry()?;
+                let top = shown.origin.1;
                 Some(PagedTable {
-                    lines: table_lines(&start.parsed.document, &shown.table.source),
-                    band: band_top..band_top + band_height,
-                    geometry: shown.widget.geometry()?,
-                    top: shown.origin.1,
+                    span: TableSpan {
+                        lines: table_lines(&start.parsed.document, &shown.table.source),
+                        extent: top..top + geometry.height.ceil() as i32,
+                    },
+                    geometry,
+                    top,
                     source: shown.table.source,
                 })
             })
@@ -305,11 +303,12 @@ impl MarkdownView {
             document,
             start.parsed.index.char_to_utf16(offset.max(0) as usize),
         );
-        let Some(table) = tables.iter().find(|table| table.lines.contains(&line)) else {
-            let page_y = match landing {
-                PageLanding::At(y) => Some(y),
-                PageLanding::Start | PageLanding::End => None,
-            };
+        let page_y = match landing {
+            PageLanding::At(y) => Some(y),
+            PageLanding::Start | PageLanding::End => None,
+        };
+        let spans = tables.iter().map(|table| &table.span);
+        let Some(table) = landed_table(spans, page_y, line).map(|index| &tables[index]) else {
             self.keep_run(start.goal_column, page_y);
             return;
         };
@@ -370,6 +369,25 @@ mod tests {
     fn a_caret_moved_elsewhere_drops_the_goal_column() {
         assert_eq!(goal_column(run(20, 9), 21, 2), 2);
         assert_eq!(goal_column(run(20, 9), 19, 0), 0);
+    }
+
+    fn span(lines: Range<usize>, extent: Range<i32>) -> TableSpan {
+        TableSpan { lines, extent }
+    }
+
+    #[test]
+    fn a_page_move_ends_on_the_table_its_landing_height_lies_on() {
+        let spans = [span(2..6, 40..160), span(10..13, 300..380)];
+        assert_eq!(landed_table(spans.iter(), Some(120), 7), Some(0));
+        assert_eq!(landed_table(spans.iter(), Some(300), 2), Some(1));
+    }
+
+    #[test]
+    fn a_landing_beside_every_table_ends_on_the_table_holding_the_caret() {
+        let spans = [span(2..6, 40..160), span(10..13, 300..380)];
+        assert_eq!(landed_table(spans.iter(), Some(160), 11), Some(1));
+        assert_eq!(landed_table(spans.iter(), None, 2), Some(0));
+        assert_eq!(landed_table(spans.iter(), Some(200), 7), None);
     }
 
     #[test]

@@ -1,3 +1,5 @@
+mod rooms;
+
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -26,6 +28,9 @@ pub const CASES: &[Case] = &[
     ("tables-editor-shared", editor_shared),
     ("tables-pointer", pointer),
     ("tables-keys", keys),
+    ("tables-room-hits", rooms::room_hits),
+    ("tables-room-paging", rooms::room_paging),
+    ("tables-room-paint", rooms::room_paint),
 ];
 
 const IMAGE_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -1289,10 +1294,10 @@ fn placed(view: &MarkdownView) -> Result<Placed, String> {
     ensure(next.forward_line(), || {
         "no line follows the table".to_owned()
     })?;
-    let next_top = line_top(view, &next).0;
+    let next_top = text_top(view, &next);
     let bottom = rect.y() + rect.height();
     ensure(near(next_top as f32, bottom), || {
-        format!("the line after the table starts at {next_top}, not at the overlay bottom {bottom}")
+        format!("the text after the table starts at {next_top}, not at the overlay bottom {bottom}")
     })?;
     Ok(Placed { shown, rect })
 }
@@ -1374,6 +1379,13 @@ fn line_top(view: &MarkdownView, iter: &gtk::TextIter) -> (i32, i32) {
     let (y, height) = view.line_yrange(iter);
     let (_, top) = view.buffer_to_window_coords(gtk::TextWindowType::Widget, 0, y);
     (top, height)
+}
+
+/// Where the text of `iter`'s display line starts, below its top margin, in widget coordinates.
+fn text_top(view: &MarkdownView, iter: &gtk::TextIter) -> i32 {
+    let y = view.iter_location(iter).y();
+    let (_, top) = view.buffer_to_window_coords(gtk::TextWindowType::Widget, 0, y);
+    top
 }
 
 fn place_caret(view: &MarkdownView, offset: i32) {

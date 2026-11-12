@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::ops::Range;
 use std::rc::Rc;
@@ -40,9 +40,22 @@ pub enum Reserve {
     /// The range is laid out exactly `width` pixels wide; the painter gets that span of its
     /// display line.
     Inline { width: f32 },
-    /// The range's line gets `height` extra pixels below it; the painter gets the line's whole
-    /// text width and height, that space included, or its slot of that space.
+    /// `height` extra pixels open below the range's line; the painter gets the line's whole text
+    /// width from its text top down to the bottom of that space, or its slot of that space.
+    ///
+    /// The space is the next displayed line's top margin, or the range's own line's bottom margin
+    /// when no displayed line follows. A bottom margin on a line with invisible text, followed by
+    /// a displayed line, would break hit testing in GTK 4.20: for a height in it,
+    /// `gtk_text_layout_get_iter_at_position` (gtk/gtktextlayout.c) hands the line's whole byte
+    /// count, invisible bytes included, to `gtk_text_iter_set_visible_line_index`, which then runs
+    /// past the end of the next displayed line and aborts. A height in a top margin is clamped to
+    /// the line's first display line instead. GTK paints a top margin as part of its own line,
+    /// though, with that line's paragraph background and selection.
     Block { height: f32 },
+    /// `height` extra pixels open above the range's line, as that line's own top margin; the
+    /// painter gets the line's whole text width from the top of that space down to the line's
+    /// bottom, so whatever GTK paints in the space belongs to the covered line.
+    Cover { height: f32 },
 }
 
 /// A box inside a block reserve, `top` pixels below the reserved space's top edge and
@@ -169,32 +182,81 @@ pub fn overlay_rect(view: &gtk::TextView, overlay: &Overlay) -> graphene::Rect {
             };
             graphene::Rect::new(from.x() as f32, from.y() as f32, span, from.height() as f32)
         }
-        Reserve::Block { height: block } => {
+        Reserve::Block { height } | Reserve::Cover { height } => {
             let mut line = start;
             line.set_line_offset(0);
-            let (y, height) = view.line_yrange(&line);
-            let left = view.iter_location(&line).x();
-            let visible = view.visible_rect();
-            let room = (visible.x() + visible.width() - view.right_margin() - left).max(0) as f32;
-            match overlay.slot {
-                None => graphene::Rect::new(left as f32, y as f32, room, height as f32),
-                Some(slot) => {
-                    let scale = if slot.width > room && slot.width > 0.0 {
-                        room / slot.width
+            let text = view.iter_location(&line);
+            let (line_top, line_height) = view.line_yrange(&line);
+            let room = height.round() as i32;
+            let span = match overlay.reserve {
+                Reserve::Cover { .. } => text.y() - room..line_top + line_height,
+                _ => {
+                    let below = if next_displayed_line(&line).is_some() {
+                        0
                     } else {
-                        1.0
+                        room
                     };
-                    let top = (y + height) as f32 - block.round() + slot.top;
-                    graphene::Rect::new(
-                        left as f32,
-                        top,
-                        (slot.width * scale).round(),
-                        (slot.height * scale).round(),
-                    )
+                    text.y()..line_top + line_height - below + room
                 }
-            }
+            };
+            let visible = view.visible_rect();
+            let width = visible.x() + visible.width() - view.right_margin() - text.x();
+            block_rect(
+                text.x() as f32,
+                span.start as f32..span.end as f32,
+                width.max(0) as f32,
+                height,
+                overlay.slot,
+            )
         }
     }
+}
+
+/// The area of a block reserve of `height` pixels whose line's text starts at `left`, spanning
+/// `span` down to the reserved space's bottom, `width` pixels at most: all of it, or the slot,
+/// placed from the reserved space's top and shrunk to fit.
+fn block_rect(
+    left: f32,
+    span: Range<f32>,
+    width: f32,
+    height: f32,
+    slot: Option<Slot>,
+) -> graphene::Rect {
+    let Some(slot) = slot else {
+        return graphene::Rect::new(left, span.start, width, span.end - span.start);
+    };
+    let scale = if slot.width > width && slot.width > 0.0 {
+        width / slot.width
+    } else {
+        1.0
+    };
+    graphene::Rect::new(
+        left,
+        span.end - height.round() + slot.top,
+        (slot.width * scale).round(),
+        (slot.height * scale).round(),
+    )
+}
+
+/// The first displayed character of the first line after `line` that has one; `None` when only
+/// invisible text, or an empty last line, follows.
+fn next_displayed_line(line: &gtk::TextIter) -> Option<gtk::TextIter> {
+    let mut next = *line;
+    next.forward_visible_line().then_some(next)
+}
+
+/// The buffer characters an overlay must touch to show in the buffer heights `top..=bottom`: the
+/// lines displayed there, and the displayed line before them, whose block reserve may be the
+/// first line's top margin.
+pub fn lines_between(view: &gtk::TextView, top: i32, bottom: i32) -> Range<usize> {
+    let (mut first, _) = view.line_at_y(top);
+    first.backward_visible_line();
+    first.set_line_offset(0);
+    let (mut last, _) = view.line_at_y(bottom);
+    if !last.ends_line() {
+        last.forward_to_line_end();
+    }
+    first.offset().max(0) as usize..last.offset().max(0) as usize + 1
 }
 
 pub fn hit_area(rect: &graphene::Rect) -> graphene::Rect {
@@ -203,6 +265,12 @@ pub fn hit_area(rect: &graphene::Rect) -> graphene::Rect {
 
 pub type Reserved = Vec<(Range<usize>, gtk::TextTag)>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Margin {
+    Above,
+    Below,
+}
+
 /// The tags that hide overlaid text and reserve room for overlays, kept apart from the preview
 /// tags and above them in priority.
 #[derive(Debug)]
@@ -210,6 +278,7 @@ pub struct OverlayTags {
     table: gtk::TextTagTable,
     source: gtk::TextTag,
     spacing: RefCell<HashMap<i32, gtk::TextTag>>,
+    above: RefCell<HashMap<i32, gtk::TextTag>>,
     below: RefCell<HashMap<i32, gtk::TextTag>>,
     natural_widths: RefCell<HashMap<String, i32>>,
 }
@@ -228,6 +297,7 @@ impl OverlayTags {
             table,
             source,
             spacing: RefCell::default(),
+            above: RefCell::default(),
             below: RefCell::default(),
             natural_widths: RefCell::default(),
         }
@@ -241,6 +311,8 @@ impl OverlayTags {
     pub fn reserved(&self, view: &gtk::TextView, overlays: &[Overlay]) -> Reserved {
         let buffer = view.buffer();
         let mut spans = Vec::with_capacity(overlays.len() * 2);
+        let mut reserving = HashSet::new();
+        let mut margins: BTreeMap<(usize, Margin), (Range<usize>, i32)> = BTreeMap::new();
         for overlay in overlays {
             let range = overlay.range.clone();
             let from = buffer.iter_at_offset(range.start as i32);
@@ -261,23 +333,29 @@ impl OverlayTags {
                         spans.push((range, self.spacing_tag(spacing)));
                     }
                 }
-                Reserve::Block { height } => {
+                Reserve::Block { height } | Reserve::Cover { height } => {
                     let pixels = height.round() as i32;
-                    if pixels > 0 {
-                        let mut start = from;
-                        start.set_line_offset(0);
-                        let mut end = from;
-                        end.forward_line();
-                        let span = (
-                            start.offset() as usize..end.offset() as usize,
-                            self.below_tag(pixels),
-                        );
-                        if spans.last() != Some(&span) {
-                            spans.push(span);
-                        }
+                    let mut line = from;
+                    line.set_line_offset(0);
+                    if pixels <= 0 || !reserving.insert(line.offset()) {
+                        continue;
                     }
+                    let (line, margin) = match (overlay.reserve, next_displayed_line(&line)) {
+                        (Reserve::Cover { .. }, _) => (line, Margin::Above),
+                        (_, Some(next)) => (next, Margin::Above),
+                        (_, None) => (line, Margin::Below),
+                    };
+                    let chars = line_chars(&line);
+                    margins.entry((chars.start, margin)).or_insert((chars, 0)).1 += pixels;
                 }
             }
+        }
+        for ((_, margin), (chars, pixels)) in margins {
+            let tag = match margin {
+                Margin::Above => self.above_tag(pixels),
+                Margin::Below => self.below_tag(pixels),
+            };
+            spans.push((chars, tag));
         }
         spans
     }
@@ -326,6 +404,7 @@ impl OverlayTags {
     fn all(&self) -> Vec<gtk::TextTag> {
         let mut tags = vec![self.source.clone()];
         tags.extend(self.spacing.borrow().values().cloned());
+        tags.extend(self.above.borrow().values().cloned());
         tags.extend(self.below.borrow().values().cloned());
         tags
     }
@@ -346,6 +425,15 @@ impl OverlayTags {
             gtk::TextTag::builder()
                 .name(format!("overlay-spacing-{spacing}"))
                 .letter_spacing(spacing)
+                .build()
+        })
+    }
+
+    fn above_tag(&self, pixels: i32) -> gtk::TextTag {
+        self.cached(&self.above, pixels, || {
+            gtk::TextTag::builder()
+                .name(format!("overlay-above-{pixels}"))
+                .pixels_above_lines(pixels)
                 .build()
         })
     }
@@ -374,6 +462,15 @@ impl OverlayTags {
             })
             .clone()
     }
+}
+
+/// The characters of the whole line `iter` is on, its line break included.
+fn line_chars(iter: &gtk::TextIter) -> Range<usize> {
+    let mut start = *iter;
+    start.set_line_offset(0);
+    let mut end = start;
+    end.forward_line();
+    start.offset() as usize..end.offset() as usize
 }
 
 pub(super) fn dim(color: gdk::RGBA, alpha: f32) -> gdk::RGBA {
@@ -497,6 +594,40 @@ mod tests {
         let text = "😀\n- [ ] task";
         let found = overlays_for(text, 0);
         assert_eq!(found[0].range, 4..7);
+    }
+
+    #[test]
+    fn a_block_without_a_slot_takes_its_whole_span() {
+        let rect = block_rect(12.0, 40.0..140.0, 600.0, 80.4, None);
+        assert_eq!(
+            (rect.x(), rect.y(), rect.width(), rect.height()),
+            (12.0, 40.0, 600.0, 100.0)
+        );
+    }
+
+    #[test]
+    fn a_slot_starts_at_the_top_of_the_reserved_space() {
+        let slot = Slot {
+            top: 4.0,
+            width: 300.0,
+            height: 72.0,
+        };
+        let rect = block_rect(12.0, 40.0..140.0, 600.0, 80.4, Some(slot));
+        assert_eq!(
+            (rect.x(), rect.y(), rect.width(), rect.height()),
+            (12.0, 64.0, 300.0, 72.0)
+        );
+    }
+
+    #[test]
+    fn a_wide_slot_shrinks_to_the_line() {
+        let slot = Slot {
+            top: 0.0,
+            width: 400.0,
+            height: 100.0,
+        };
+        let rect = block_rect(0.0, 0.0..120.0, 200.0, 100.0, Some(slot));
+        assert_eq!((rect.width(), rect.height()), (200.0, 50.0));
     }
 
     #[test]
