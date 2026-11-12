@@ -18,8 +18,11 @@ server. The only other request is an optional anonymous visit count (see
 
 ## Prerequisites
 
-- Node 26
+- Node 26 (CI uses the newest 26.x; Node 27 is still a pre-release)
 - npm
+
+TypeScript stays on 6.0.x until `svelte-check` and `svelte2tsx` support TypeScript 7; today they accept
+only TypeScript 5 and 6.
 
 ## Run locally
 
