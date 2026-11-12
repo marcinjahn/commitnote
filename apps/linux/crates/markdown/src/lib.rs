@@ -6,6 +6,7 @@ mod image_reference;
 mod insertion_rule;
 mod live_preview;
 mod parser;
+mod rendered_table;
 mod scanners;
 mod syntax;
 mod table;
@@ -20,6 +21,9 @@ pub use image_reference::{ImageReference, ImageTarget};
 pub use insertion_rule::insert_image_references;
 pub use live_preview::{Placement, PreviewStyle, RenderOutput, StyleRun, render};
 pub use parser::parse;
+pub use rendered_table::{
+    RenderedTable, TableCellContent, TableCellPiece, TableTextStyle, rendered_table,
+};
 pub use syntax::{MarkdownDocument, SyntaxKind, SyntaxNode};
 pub use table::{MarkdownTable, MarkdownTableCell, MarkdownTableLine, TableAlignment};
 pub use table_entry::{LinePosition, VerticalDirection, table_entry_target, table_page_target};

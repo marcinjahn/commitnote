@@ -89,13 +89,7 @@ impl ImageReference {
         if node.kind != SyntaxKind::Image {
             return None;
         }
-        let inside: Vec<&SyntaxNode> = document
-            .nodes_overlapping(node.range.clone())
-            .into_iter()
-            .filter(|inner| {
-                node.range.contains(&inner.range.start) && inner.range.end <= node.range.end
-            })
-            .collect();
+        let inside = nodes_inside(node, document);
         let openings: Vec<&&SyntaxNode> = inside
             .iter()
             .filter(|inner| {
@@ -109,13 +103,7 @@ impl ImageReference {
                     .any(|opening| opening.range.end == url.range.start)
         })?;
         let target = Self::parse(&document.slice(url.range.clone()))?;
-        let closing = inside.iter().rev().find(|inner| {
-            inner.kind == SyntaxKind::LinkMark && inner.range.end < url.range.start
-        })?;
-        let opening = inside
-            .iter()
-            .find(|inner| inner.kind == SyntaxKind::LinkMark)?;
-        let alt = document.slice(opening.range.end..closing.range.start);
+        let alt = document.slice(label_range(&inside, document)?);
         Some(ImageReference {
             image_id: target.image_id,
             width: target.width,
@@ -124,6 +112,35 @@ impl ImageReference {
             range: node.range.clone(),
         })
     }
+}
+
+/// The label of an `image` node, from the end of its `![` mark to the start of its `]` mark.
+pub(crate) fn image_label_range(
+    node: &SyntaxNode,
+    document: &MarkdownDocument,
+) -> Option<Range<usize>> {
+    label_range(&nodes_inside(node, document), document)
+}
+
+fn nodes_inside<'a>(node: &SyntaxNode, document: &'a MarkdownDocument) -> Vec<&'a SyntaxNode> {
+    document
+        .nodes_overlapping(node.range.clone())
+        .into_iter()
+        .filter(|inner| {
+            node.range.contains(&inner.range.start) && inner.range.end <= node.range.end
+        })
+        .collect()
+}
+
+fn label_range(inside: &[&SyntaxNode], document: &MarkdownDocument) -> Option<Range<usize>> {
+    let mut marks = inside
+        .iter()
+        .filter(|inner| inner.kind == SyntaxKind::LinkMark);
+    let opening = marks.next()?;
+    let closing = marks
+        .rev()
+        .find(|mark| document.slice(mark.range.clone()) == "]")?;
+    Some(opening.range.end..closing.range.start)
 }
 
 fn dimension(digits: &[u16]) -> Option<u32> {
