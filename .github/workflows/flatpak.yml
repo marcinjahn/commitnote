@@ -1,0 +1,67 @@
+name: Flatpak build
+
+on:
+  workflow_call:
+    inputs:
+      testing:
+        description: Build the testing Flatpak instead of the release one
+        type: boolean
+        default: false
+    outputs:
+      artifact-name:
+        description: Name of the artifact that holds the Flatpak bundle
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ inputs.testing && 'Build the testing Flatpak' || 'Build the Flatpak' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      # flatpak-builder needs privileges to create the bubblewrap sandbox it builds in.
+      options: --privileged
+    env:
+      MANIFEST: apps/linux/flatpak/${{ inputs.testing && 'io.github.marcinjahn.commitnote.Devel' || 'io.github.marcinjahn.commitnote' }}.yml
+      BUNDLE: ${{ inputs.testing && 'commitnote-testing-x86_64.flatpak' || 'commitnote-x86_64.flatpak' }}
+      ARTIFACT_NAME: ${{ inputs.testing && 'commitnote-flatpak-testing' || 'commitnote-flatpak' }}
+    outputs:
+      artifact-name: ${{ env.ARTIFACT_NAME }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Generate offline sources
+        run: apps/linux/flatpak/generate-sources.sh
+
+      - name: Generate the testing manifest
+        if: inputs.testing
+        run: apps/linux/flatpak/testing-manifest.py
+
+      - name: Build
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: ${{ env.MANIFEST }}
+          bundle: ${{ env.BUNDLE }}
+          upload-artifact: false
+          # Kept outside the checkout, which the manifest copies as a source.
+          build-dir: ${{ runner.temp }}/flatpak-build
+          repo-dir: ${{ runner.temp }}/flatpak-repo
+          state-dir: ${{ runner.temp }}/flatpak-builder
+          cache-key: flatpak-builder-${{ inputs.testing && 'testing' || 'release' }}-${{ hashFiles('apps/linux/flatpak/io.github.marcinjahn.commitnote.yml', 'apps/linux/Cargo.lock', 'package-lock.json') }}
+
+      - name: Lint
+        if: ${{ !inputs.testing }}
+        env:
+          BUILD_DIR: ${{ runner.temp }}/flatpak-build
+          REPO_DIR: ${{ runner.temp }}/flatpak-repo
+        run: apps/linux/flatpak/lint.sh "$MANIFEST" "$BUILD_DIR" "$REPO_DIR"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.BUNDLE }}
+          if-no-files-found: error
+          retention-days: 30
