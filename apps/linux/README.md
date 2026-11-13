@@ -2,7 +2,7 @@
 
 The Linux client for the same encrypted notes repo the web app uses. It is a native GTK 4 and
 libadwaita app, written in Rust, that runs on any Wayland or X11 desktop (GNOME, KDE Plasma, niri,
-sway, …) and is meant to ship as a Flatpak wherever Flatpak runs, with xdg-desktop-portal providing
+sway, …) and ships as a Flatpak for wherever Flatpak runs, with xdg-desktop-portal providing
 the file chooser, printing, link opening and system settings. It runs the shared native core bundle
 (`commitnote-core.js`, built from `src/native-core/`) in JavaScriptCore, so it reads and writes
 exactly what the web app does. It logs in, unlocks a notes repo or sets a new one up, browses and
@@ -752,6 +752,41 @@ or, with the development packages installed, `apps/linux/scripts/run-host.sh --t
 The Flatpak manifest is `apps/linux/flatpak/io.github.marcinjahn.commitnote.yml`: the GNOME 51
 runtime, the Rust and Node SDK extensions, and an offline build of the core bundle and the app. The
 finish arguments grant IPC, Wayland, fallback X11, DRI and network, nothing else.
+
+### Install the Flatpak
+
+Each [release](https://github.com/marcinjahn/commitnote/releases/latest) has the Flatpak bundle
+`commitnote-x86_64.flatpak` (x86_64 only) and its `SHA256SUMS`:
+[Download for Linux](https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.flatpak).
+The bundle holds only the app. Its GNOME runtime comes from Flathub, so a `--user` install needs the
+Flathub remote set up for your user first:
+
+```sh
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user commitnote-x86_64.flatpak
+flatpak run io.github.marcinjahn.commitnote
+```
+
+The app then appears in the desktop's app launcher. Its data is in
+`~/.var/app/io.github.marcinjahn.commitnote/`.
+
+**Update.** There is no update channel: download the newer bundle and install it the same way, which
+replaces the installed version and keeps the data. `flatpak update` updates the runtime, not the
+app.
+
+**Verify a download.** With `SHA256SUMS` from the same release next to the bundle, check the
+checksum, then the build provenance attestation with the GitHub CLI, which proves that the release
+workflow of this repository built the bundle:
+
+```sh
+sha256sum -c SHA256SUMS
+gh attestation verify commitnote-x86_64.flatpak --repo marcinjahn/commitnote
+```
+
+There is no GPG signature.
+
+**Uninstall.** `flatpak uninstall --user io.github.marcinjahn.commitnote` removes the app and keeps
+its data, including a remembered session; add `--delete-data` to delete the data too.
 
 ### Build locally
 
