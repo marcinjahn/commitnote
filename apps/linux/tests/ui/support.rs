@@ -53,6 +53,7 @@ mod keysym {
 pub enum Width {
     Narrow,
     Wide,
+    AppDefault,
 }
 
 impl Width {
@@ -60,6 +61,7 @@ impl Width {
         match self {
             Self::Narrow => "narrow",
             Self::Wide => "wide",
+            Self::AppDefault => "default",
         }
     }
 
@@ -67,6 +69,7 @@ impl Width {
         match self {
             Self::Narrow => (360, 720),
             Self::Wide => (1280, 800),
+            Self::AppDefault => (960, 680),
         }
     }
 }
@@ -938,6 +941,26 @@ impl Harness {
         self.resize(width)?;
         self.apply_appearance(theme, accent)?;
         self.settle()
+    }
+
+    /// Saves the window at the app's default size with the system accent and without the
+    /// development styling, as a store screenshot shows it.
+    pub fn store_screenshot(&self, view: &str, theme: Theme) -> Result<(), String> {
+        const DEVELOPMENT_CLASS: &str = "devel";
+        self.show_appearance(Width::AppDefault, theme, "system")?;
+        let window = self.window()?;
+        let was_development = window.has_css_class(DEVELOPMENT_CLASS);
+        window.remove_css_class(DEVELOPMENT_CLASS);
+        let captured = if window.has_css_class(DEVELOPMENT_CLASS) {
+            Err("the window still has the development styling".to_owned())
+        } else {
+            self.capture_in_accent(view, Width::AppDefault, theme, "system")
+                .map(|_| ())
+        };
+        if was_development {
+            window.add_css_class(DEVELOPMENT_CLASS);
+        }
+        captured
     }
 
     pub fn capture_variant(&self, view: &str, width: Width, theme: Theme) -> Result<(), String> {

@@ -9,7 +9,6 @@ use commitnote_core_api::Secret;
 use commitnote_core_api::shapes::ForgeKind;
 use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
-use oo7::dbus::{Collection, Service};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
@@ -150,7 +149,7 @@ fn decode_record(bytes: &[u8]) -> Option<RememberedSessionRecord> {
 }
 
 struct KeyringInner {
-    collection: Collection,
+    keyring: oo7::Keyring,
     app_id: String,
 }
 
@@ -160,29 +159,30 @@ impl KeyringInner {
     }
 
     async fn unlocked(&self) -> Result<(), ServiceError> {
-        bounded(UNLOCK_TIMEOUT, async {
-            if self.collection.is_locked().await? {
-                self.collection.unlock(None).await?;
-                if self.collection.is_locked().await? {
-                    return Err(oo7::dbus::Error::Dismissed);
-                }
+        let still_locked = bounded(UNLOCK_TIMEOUT, async {
+            if self.keyring.is_locked().await? {
+                self.keyring.unlock().await?;
+                return self.keyring.is_locked().await;
             }
-            Ok(())
+            Ok(false)
         })
-        .await
+        .await?;
+        if still_locked {
+            return Err(keyring_error(()));
+        }
+        Ok(())
     }
 
     async fn save(&self, record: &RememberedSessionRecord) -> Result<(), ServiceError> {
         let encoded = encode_record(record).ok_or_else(|| keyring_error(()))?;
         let text = std::str::from_utf8(&encoded).map_err(keyring_error)?;
         self.unlocked().await?;
-        self.collection
+        self.keyring
             .create_item(
                 ITEM_LABEL,
                 &self.attributes(),
                 oo7::Secret::text(text),
                 true,
-                None,
             )
             .await
             .map_err(keyring_error)?;
@@ -192,7 +192,7 @@ impl KeyringInner {
     async fn load(&self) -> Result<Option<RememberedSessionRecord>, ServiceError> {
         self.unlocked().await?;
         let items = self
-            .collection
+            .keyring
             .search_items(&self.attributes())
             .await
             .map_err(keyring_error)?;
@@ -205,15 +205,10 @@ impl KeyringInner {
 
     async fn clear(&self) -> Result<(), ServiceError> {
         self.unlocked().await?;
-        let items = self
-            .collection
-            .search_items(&self.attributes())
+        self.keyring
+            .delete(&self.attributes())
             .await
-            .map_err(keyring_error)?;
-        for item in items {
-            item.delete(None).await.map_err(keyring_error)?;
-        }
-        Ok(())
+            .map_err(keyring_error)
     }
 }
 
@@ -224,10 +219,9 @@ pub struct KeyringRememberedSessionStore {
 
 impl KeyringRememberedSessionStore {
     pub async fn open(app_id: &str) -> Result<Self, ServiceError> {
-        let service = bounded(CONNECT_TIMEOUT, Service::new()).await?;
-        let collection = bounded(CONNECT_TIMEOUT, service.default_collection()).await?;
+        let keyring = bounded(CONNECT_TIMEOUT, oo7::Keyring::new()).await?;
         let inner = KeyringInner {
-            collection,
+            keyring,
             app_id: app_id.to_owned(),
         };
         inner.unlocked().await?;
@@ -350,7 +344,7 @@ pub async fn open_remembered_session_store(app_id: &str) -> RememberedSession {
         Err(_) => {
             GLibLogger.log(
                 LogLevel::Warn,
-                "Secret Service is unavailable; the session is kept in memory only",
+                "No keyring is available; the session is kept in memory only",
             );
             RememberedSession {
                 store: Arc::new(HostRememberedSession::memory_only()),
