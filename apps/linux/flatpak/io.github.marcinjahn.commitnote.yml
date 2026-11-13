@@ -1,0 +1,72 @@
+app-id: io.github.marcinjahn.commitnote
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+command: commitnote
+finish-args:
+  # X11 shared memory for the fallback X11 socket
+  - --share=ipc
+  # Native Wayland display
+  - --socket=wayland
+  # X11 only where Wayland is unavailable
+  - --socket=fallback-x11
+  # GPU rendering for GTK and WebKit
+  - --device=dri
+  # The GitHub and GitLab APIs and the usage-statistics visit
+  - --share=network
+modules:
+  - name: commitnote-core-bundle
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin
+      env:
+        npm_config_cache: /run/build/commitnote-core-bundle/flatpak-node/npm-cache
+        npm_config_offline: "true"
+    build-commands:
+      - npm ci --offline
+      - npm run build:native-core
+      - install -Dm644 dist-native-core/commitnote-core.js /app/lib/commitnote-build/commitnote-core.js
+      - install -Dm644 dist-native-core-fake/commitnote-core.js /app/lib/commitnote-build/commitnote-core-fake.js
+    cleanup:
+      - /lib/commitnote-build
+    sources:
+      - &checkout
+        type: dir
+        path: ../../..
+        skip:
+          - .git
+          - .jj
+          - node_modules
+          - dist
+          - dist-fake
+          - dist-native-core
+          - dist-native-core-fake
+          - test-results
+          - playwright-report
+          - blob-report
+          - playwright/.cache
+          - .flatpak-builder
+          - apps/linux/target
+          - apps/linux/out
+          - apps/linux/_build
+          - apps/linux/flatpak/generated
+          - apps/linux/flatpak/io.github.marcinjahn.commitnote.Devel.yml
+      - generated/node-sources.json
+
+  - name: commitnote
+    buildsystem: meson
+    subdir: apps/linux
+    config-opts:
+      - -Dprofile=release
+      - -Dcore_bundle=/app/lib/commitnote-build/commitnote-core.js
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/commitnote/cargo
+        CARGO_NET_OFFLINE: "true"
+    sources:
+      - *checkout
+      - generated/cargo-sources.json

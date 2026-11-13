@@ -1,0 +1,6 @@
+{
+  "io.github.marcinjahn.commitnote": {
+    "appstream-external-screenshot-url": "Screenshots are served from GitHub because only Flathub's build pipeline mirrors them to dl.flathub.org",
+    "appstream-screenshots-not-mirrored-in-ostree": "Only Flathub's build pipeline mirrors screenshots into the exported repo"
+  }
+}
