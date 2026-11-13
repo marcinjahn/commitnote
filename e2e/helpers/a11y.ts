@@ -27,6 +27,7 @@ export type A11yState =
   | "trashed-note"
   | "viewer-password"
   | "viewer-unlocked"
+  | "viewer-invite"
   | "install-bar"
   | "install-bar-login"
   | "install-bar-ios"

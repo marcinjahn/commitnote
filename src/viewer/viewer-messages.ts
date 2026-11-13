@@ -6,6 +6,11 @@ export const PASSWORD_HEADING = "This note is protected with a password";
 export const WRONG_PASSWORD_TEXT = "Wrong password";
 export const UNLOCK_LABEL = "Unlock";
 export const UNLOCKING_LABEL = "Unlocking…";
+export const SHARE_INVITE_LABEL = "About commitnote";
+export const SHARE_INVITE_TEXT =
+  "Shared with commitnote: end-to-end encrypted notes kept in your own GitHub or GitLab repository.";
+export const SHARE_INVITE_LINK_LABEL = "Try commitnote yourself";
+export const SHARE_INVITE_DISMISS_LABEL = "No thanks";
 const PROVIDER_NAMES = { github: "GitHub", gitlab: "GitLab" } as const;
 
 export function footerText(standalone: boolean): string {

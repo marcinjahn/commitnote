@@ -6,6 +6,7 @@ import {
   openSharedLinks,
   shareAction,
   shareDialog,
+  shareInvite,
 } from "./helpers/sharing";
 import { openRowMenu, openWelcome, treeItem, waitForSynced } from "./helpers/tree";
 
@@ -55,6 +56,7 @@ test("a share link opens the note without logging in", async ({ page }) => {
   await expect(viewer).toHaveTitle("Shared note · commitnote");
   await expect(viewer.getByLabel("Access token")).toHaveCount(0);
   await expect(viewer.getByRole("button", { name: "Copy text" })).toBeVisible();
+  await expect(shareInvite(viewer)).toHaveCount(0);
 });
 
 test("a password-protected share asks for the password", async ({ page }) => {

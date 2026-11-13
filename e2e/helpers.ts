@@ -71,6 +71,15 @@ export async function setUpNotesRepo(
 // timeout.
 export const KEY_DERIVATION_TIMEOUT = 15_000;
 
+export function settleIdle(page: Page): Promise<void> {
+  return page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestIdleCallback(() => setTimeout(resolve, 0), { timeout: 10_000 }),
+      ),
+  );
+}
+
 export async function expectTree(page: Page): Promise<void> {
   await expect(page.getByRole("tree", { name: "Notes" })).toBeVisible({
     timeout: KEY_DERIVATION_TIMEOUT,

@@ -1,3 +1,4 @@
+import { LANDING_URL } from "../app/site-urls";
 import { fromBase64Url } from "../crypto/base64";
 import type { ShareLocator } from "../forge/share-host";
 
@@ -13,7 +14,7 @@ export function isShareHash(hash: string): boolean {
   return hash.startsWith(SHARE_HASH_PREFIX);
 }
 
-export const WEB_APP_URL = "https://commitnote.eu/app/";
+export const WEB_APP_URL = `${LANDING_URL}app/`;
 
 export function shareLinkBase(
   location: Pick<Location, "origin" | "pathname">,

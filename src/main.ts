@@ -17,6 +17,12 @@ import { type LaunchQueueLike, startLaunchActions } from "./app/launch-action";
 import { clearLaunchAction } from "./app/note-navigation";
 import { isStandalone } from "./app/display-mode";
 import { sendVisit } from "./analytics/analytics";
+import { hasLastLoginHint } from "./session/session-store";
+import {
+  readShareInviteDismissed,
+  writeShareInviteDismissed,
+} from "./viewer/share-invite-dismissal";
+import { shouldShowShareInvite } from "./viewer/share-invite-visibility";
 import { startKeyboardInset } from "./ui/dialogs/keyboard-inset";
 import "./note-fonts.css";
 
@@ -80,9 +86,20 @@ async function mountViewer(target: HTMLElement): Promise<void> {
     supported:
       window.isSecureContext && typeof crypto?.subtle?.importKey === "function",
   });
+  const showShareInvite = shouldShowShareInvite({
+    standalone,
+    hasLastLoginHint: hasLastLoginHint(),
+    dismissed: readShareInviteDismissed(),
+  });
   mount(SharedNoteViewer, {
     target,
-    props: { controller, testModeBanner, standalone },
+    props: {
+      controller,
+      testModeBanner,
+      standalone,
+      showShareInvite,
+      onShareInviteDismiss: () => writeShareInviteDismissed(),
+    },
   });
 }
 

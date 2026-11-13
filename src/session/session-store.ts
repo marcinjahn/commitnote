@@ -96,6 +96,33 @@ function isWellFormedRecord(value: unknown): value is StoredRecord {
   return keyringFields.every((field) => keyring[field] instanceof CryptoKey);
 }
 
+function defaultStorage(): StorageLike | null {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function readStorageItem(
+  storage: StorageLike | null,
+  key: string,
+): string | null {
+  if (!storage) return null;
+  try {
+    return storage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function hasLastLoginHint(
+  storage: StorageLike | null = defaultStorage(),
+): boolean {
+  const repoUrl = readStorageItem(storage, REPO_URL_STORAGE_KEY);
+  return repoUrl !== null && repoUrl !== "";
+}
+
 export function createSessionStore(options?: {
   readonly indexedDB?: IDBFactory;
   readonly storage?: StorageLike;
@@ -111,11 +138,7 @@ export function createSessionStore(options?: {
   }
 
   function getStorage(): StorageLike | null {
-    try {
-      return options?.storage ?? globalThis.localStorage ?? null;
-    } catch {
-      return null;
-    }
+    return options?.storage ?? defaultStorage();
   }
 
   function getDb(): Promise<IDBDatabase | null> {
@@ -130,13 +153,7 @@ export function createSessionStore(options?: {
   }
 
   function readItem(key: string): string | null {
-    const storage = getStorage();
-    if (!storage) return null;
-    try {
-      return storage.getItem(key);
-    } catch {
-      return null;
-    }
+    return readStorageItem(getStorage(), key);
   }
 
   function writeLastLogin(session: Session): void {
