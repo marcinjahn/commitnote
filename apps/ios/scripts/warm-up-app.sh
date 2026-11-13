@@ -7,6 +7,7 @@ if [ "$#" -ne 2 ]; then
 fi
 
 BUNDLE_ID="io.github.marcinjahn.commitnote"
+SAFARI="com.apple.mobilesafari"
 # Posted by the Testing build once its core has loaded and it shows the login or notes screen.
 READY="io.github.marcinjahn.commitnote.testing.ready"
 TIMEOUT=90
@@ -34,3 +35,13 @@ else
 fi
 
 xcrun simctl terminate "$1" "$BUNDLE_ID"
+
+# Safari's first launch on a fresh simulator is slow, and a UI test hands off to Safari and back.
+if xcrun simctl launch "$1" "$SAFARI"; then
+  sleep 10
+  if ! xcrun simctl terminate "$1" "$SAFARI"; then
+    echo "warning: could not close Safari after warming it up" >&2
+  fi
+else
+  echo "warning: could not warm up Safari" >&2
+fi

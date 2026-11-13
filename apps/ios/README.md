@@ -281,7 +281,9 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   shared build. These jobs start once `Build for testing` has finished, and boot and prepare their
   simulator while the test products download. `scripts/warm-up-app.sh` then installs the app, launches
   it once and waits until it reports ready (a notification the Testing build posts), instead of fixed
-  sleeps, so the first test does not pay for the slow first launch. The classes per job:
+  sleeps, so the first test does not pay for the slow first launch. It then launches Safari once and
+  closes it, because `EditorFlowTests` follows a link into Safari and Safari's first launch on a fresh
+  simulator is slow. The classes per job:
 
   | Job | Classes |
   | --- | --- |
