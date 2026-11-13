@@ -18,8 +18,7 @@ const FAKE_CORE_BUNDLE: &str = concat!(
 const TEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn read_bundle(path: &str) -> String {
-    std::fs::read_to_string(path)
-        .unwrap_or_else(|_| panic!("run `just build-native-core` first"))
+    std::fs::read_to_string(path).unwrap_or_else(|_| panic!("run `just build-native-core` first"))
 }
 
 pub fn core_bundle() -> String {
