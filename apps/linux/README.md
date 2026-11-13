@@ -867,8 +867,9 @@ The static checks (`lint.sh`) are:
   the testing build,
 - Blueprint compilation of `data/ui/`, which happens when meson builds the app for clippy,
 - the meson `static` suite: `desktop-file-validate`, `appstreamcli validate` on the metainfo, a
-  strict compile of the GSettings schema, and a check that the crate versions and the newest
-  release entry follow the meson project version, and that the entry has a description,
+  strict compile of the GSettings schema, a check that the crate versions and the newest
+  release entry follow the meson project version, and that the entry has a description, and the
+  conversion of that description to the GitHub release notes (`build-aux/release-notes.py`),
 - on the host, `npx tsx apps/linux/markdown-vectors/generate.ts --check`, which fails when the
   Markdown vectors are stale (see below).
 

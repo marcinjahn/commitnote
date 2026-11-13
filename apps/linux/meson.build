@@ -112,6 +112,16 @@ test(
   suite: 'static',
 )
 
+test(
+  'release-notes',
+  find_program('build-aux/release-notes.py'),
+  args: [
+    meson.project_version(),
+    meson.project_source_root() / 'data' / 'io.github.marcinjahn.commitnote.metainfo.xml.in',
+  ],
+  suite: 'static',
+)
+
 run_target(
   'cargo-clippy',
   command: [cargo_script, 'clippy', cargo_args, 'commitnote'],
