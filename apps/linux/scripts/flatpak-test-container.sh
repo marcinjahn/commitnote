@@ -9,7 +9,7 @@ image_hash=$(sha256sum <"$tests_dir/Dockerfile" | cut -c1-12)
 image="commitnote-flatpak-test:$image_hash"
 
 usage() {
-  echo "usage: $0 [--print-image-tag | --write-context <dir> | <bundle> <name> <command...>]" >&2
+  echo "usage: $0 [--print-image-tag | --write-context <dir> | <name> <bundle>... -- <command...>]" >&2
   exit 2
 }
 
@@ -26,15 +26,9 @@ case "${1:-}" in
     ;;
 esac
 
-[ "$#" -ge 3 ] || usage
-bundle=$1
-name=$2
-shift 2
-
-if [ ! -f "$bundle" ]; then
-  echo "no Flatpak bundle at $bundle" >&2
-  exit 2
-fi
+[ "$#" -ge 1 ] || usage
+name=$1
+shift
 case "$name" in
   "" | .* | *[!A-Za-z0-9._-]*)
     echo "the run name must be a plain directory name, got '$name'" >&2
@@ -51,14 +45,34 @@ if ! docker image inspect "$image" >/dev/null 2>&1; then
   [ "$build_status" -eq 0 ] || exit "$build_status"
 fi
 
-# The bundle may already live in the run directory from an earlier run, so it is staged next to
-# the run directory before that directory is recreated.
+# A bundle may already live in the run directory from an earlier run, so the bundles are staged
+# next to the run directory before that directory is recreated.
 runs_dir=$linux_dir/out/flatpak
 run_dir=$runs_dir/$name
 mkdir -p "$runs_dir"
 staging_dir=$(mktemp -d "$runs_dir/.staging.XXXXXX")
 chmod 0755 "$staging_dir"
-cp "$bundle" "$staging_dir/"
+bundles=0
+while [ "$#" -gt 0 ] && [ "$1" != -- ]; do
+  if [ ! -f "$1" ]; then
+    echo "no Flatpak bundle at $1" >&2
+    rm -rf "$staging_dir"
+    exit 2
+  fi
+  if [ -e "$staging_dir/$(basename -- "$1")" ]; then
+    echo "two bundles are named $(basename -- "$1")" >&2
+    rm -rf "$staging_dir"
+    exit 2
+  fi
+  cp "$1" "$staging_dir/"
+  bundles=$((bundles + 1))
+  shift
+done
+if [ "$bundles" -eq 0 ] || [ "$#" -lt 2 ]; then
+  rm -rf "$staging_dir"
+  usage
+fi
+shift
 rm -rf "$run_dir"
 mkdir "$run_dir"
 mv "$staging_dir" "$run_dir/input"
