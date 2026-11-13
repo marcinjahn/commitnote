@@ -76,7 +76,7 @@ What the app does:
 - `Packages/EditorText` — pure Swift text-edit mapping and undo history, tested on Linux.
 - `Packages/MarkdownStyling` — pure Swift, tested on Linux: the markdown syntax scanner, the
   live-preview style runs and the editing commands. Depends on `EditorText`.
-- `Packages/ImageCodec` — libwebp 1.5.0 vendored unmodified as a C target (BSD-3-Clause, its licence
+- `Packages/ImageCodec` — libwebp 1.6.0 vendored unmodified as a C target (BSD-3-Clause, its licence
   file is kept with the sources) and a Swift WebP encoder, tested on Linux.
 - `Packages/AppInteraction` — pure Swift, tested on Linux: the `commitnote://` link parser, the quick
   action mapping, the keyboard shortcut table, the type-to-start rules and key buffer, and the haptic

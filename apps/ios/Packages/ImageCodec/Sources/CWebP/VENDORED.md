@@ -1,9 +1,9 @@
 # Vendored libwebp
 
-WebP codec library (`webmproject/libwebp`), release tag `v1.5.0`.
+WebP codec library (`webmproject/libwebp`), release tag `v1.6.0`.
 
-Source tarball: `https://github.com/webmproject/libwebp/archive/refs/tags/v1.5.0.tar.gz`
-SHA-256 of the tarball: `668c9aba45565e24c27e17f7aaf7060a399f7f31dba6c97a044e1feacb930f37`
+Source tarball: `https://github.com/webmproject/libwebp/archive/refs/tags/v1.6.0.tar.gz`
+SHA-256 of the tarball: `93a852c2b3efafee3723efd4636de855b46f9fe1efddd607e1f42f60fc8f2136`
 
 Only the files needed for encoding and decoding are copied, unmodified:
 all `.c` and `.h` files of `src/enc/`, `src/dec/`, `src/dsp/`, `src/utils/` and `sharpyuv/`;
