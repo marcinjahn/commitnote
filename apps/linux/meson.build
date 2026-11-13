@@ -25,10 +25,17 @@ else
   schema_path = resource_path
 endif
 
-bundle_dir = testing ? 'dist-native-core-fake' : 'dist-native-core'
-core_bundle = meson.project_source_root() / '..' / '..' / bundle_dir / 'commitnote-core.js'
-if not fs.exists(core_bundle)
-  error('run `npm run build:native-core` first')
+core_bundle = get_option('core_bundle')
+if core_bundle == ''
+  bundle_dir = testing ? 'dist-native-core-fake' : 'dist-native-core'
+  core_bundle = meson.project_source_root() / '..' / '..' / bundle_dir / 'commitnote-core.js'
+  if not fs.exists(core_bundle)
+    error('run `npm run build:native-core` first')
+  endif
+elif not fs.is_absolute(core_bundle)
+  error('core_bundle must be an absolute path: ' + core_bundle)
+elif not fs.is_file(core_bundle)
+  error('core_bundle does not exist: ' + core_bundle)
 endif
 
 datadir = get_option('datadir')

@@ -973,6 +973,9 @@ The development build can run next to an installed release build without sharing
 remembered session or cached data. The `testing` option is a development-only switch on top of the
 profile (`-Dprofile=development -Dtesting=true`); the release profile rejects it.
 
+`-Dcore_bundle=/absolute/path/commitnote-core.js` embeds that bundle instead of the one `testing`
+selects, for either profile.
+
 ## CI
 
 The `Linux` workflow (`.github/workflows/linux.yml`) builds the container image and runs `build.sh`,

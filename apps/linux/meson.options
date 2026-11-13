@@ -1,2 +1,3 @@
 option('profile', type: 'combo', choices: ['development', 'release'], value: 'development', description: 'Build profile')
 option('testing', type: 'boolean', value: false, description: 'Embed the fake core bundle (development profile only)')
+option('core_bundle', type: 'string', value: '', description: 'Absolute path of the core bundle to embed; empty picks dist-native-core or, with testing, dist-native-core-fake')
