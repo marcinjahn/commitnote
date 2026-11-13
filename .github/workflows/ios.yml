@@ -34,8 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: npm
@@ -48,7 +48,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/ios-macos-setup
 
       - name: Build for testing
@@ -64,7 +64,7 @@ jobs:
           tar -C out/dd/Build/Products -cf out/test-products.tar .
           ls -l out/test-products.tar
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ios-test-products
           path: out/test-products.tar
@@ -77,9 +77,9 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Node runs only the TypeScript read-back; the tests run from the build job's products.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: npm
@@ -124,7 +124,7 @@ jobs:
       - name: Read back with TypeScript
         run: npx tsx scripts/read-back-native-repo.ts out/test-output
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-xcresults-runtime
@@ -132,7 +132,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-test-output
@@ -163,7 +163,7 @@ jobs:
           xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --info --style compact \
             --predicate 'subsystem == "io.github.marcinjahn.commitnote"' > out/xcresults-ui/app.log || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-xcresults-ui-ipad-runtime
@@ -183,7 +183,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: commitnote-unsigned-ipa
@@ -201,7 +201,7 @@ jobs:
         device: [iphone, ipad]
         suite: [flows, screens]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/ios-select-xcode
 
       - name: Prepare simulator
@@ -277,7 +277,7 @@ jobs:
             fi
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-screenshots-${{ matrix.device }}${{ matrix.suite == 'flows' && '-flows' || '' }}
@@ -285,7 +285,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-xcresults-ui-${{ matrix.device }}-${{ matrix.suite }}
