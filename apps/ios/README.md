@@ -337,6 +337,23 @@ The shared build, `ios-test-products`, is kept for a day.
 
 To download the unsigned IPA from a run, see Installing on a device.
 
+### Toolchain
+
+The macOS jobs run on the `macos-26` runner image with Xcode 26.6, which `XCODE_VERSION` in the
+workflow selects; the `linux` job runs on `ubuntu-26.04`. The Swift packages declare
+`swift-tools-version: 6.0`, and `scripts/swift-linux-test.sh` tests them in the `swift:6.2` Docker
+image.
+
+Some things stay where they are on purpose:
+
+- The deployment target stays iOS 18.0. It is the oldest system the app runs on, and raising it would
+  drop devices; the one place that needs a newer system, in `Commitnote/Settings/SettingsScreen.swift`,
+  checks `#available(iOS 26, *)`.
+- The app target and `CoreRuntime` stay in the Swift 5 language mode; the other packages use Swift 6.
+  Moving them is a strict-concurrency migration of its own, not part of a toolchain update.
+- Argon2 stays at the reference implementation's release 20190702 (see
+  `Packages/CommitnoteCrypto/Sources/CArgon2/VENDORED.md`), because there has been no release since.
+
 ## Local checks on Linux
 
 No Xcode, macOS or Simulator is needed for these:
