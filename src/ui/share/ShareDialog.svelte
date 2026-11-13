@@ -5,6 +5,7 @@
   import type { ShareError, ShareService } from "../../share/share-service";
   import type { WorkingTree } from "../../sync/working-tree";
   import { MAX_SHARE_LABEL_LENGTH } from "../../share/share-label";
+  import { inputKindAttributes } from "../../input-kind/input-kind";
   import Dialog from "../dialogs/Dialog.svelte";
   import {
     COPY_LINK_LABEL,
@@ -165,6 +166,7 @@
               id={labelId}
               type="text"
               autocomplete="off"
+              {...inputKindAttributes("prose")}
               maxlength={MAX_SHARE_LABEL_LENGTH}
               placeholder={noteName}
               bind:value={label}
@@ -177,7 +179,7 @@
               id={passwordId}
               type="text"
               autocomplete="off"
-              spellcheck="false"
+              {...inputKindAttributes("verbatim")}
               aria-describedby={hintId}
               bind:value={password}
               disabled={unreadable || running}
@@ -217,6 +219,7 @@
                 id={linkFieldId}
                 type="text"
                 readonly
+                {...inputKindAttributes("verbatim")}
                 value={created.link}
                 bind:this={linkField}
               />
@@ -237,6 +240,7 @@
                   id={passwordFieldId}
                   type="text"
                   readonly
+                  {...inputKindAttributes("verbatim")}
                   value={created.password}
                   bind:this={passwordField}
                 />

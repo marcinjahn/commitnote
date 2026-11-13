@@ -12,9 +12,11 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { editorInputKindAttributes } from "./editor-input-kind";
 import { formatKeymap } from "./format-keymap";
 import { pasteLink } from "./paste-link";
 import { minimalChanges } from "./minimal-changes";
+import { verbatimSpellcheck } from "./verbatim-spellcheck";
 
 const DEFAULT_ARIA_LABEL = "Note editor";
 
@@ -50,6 +52,8 @@ function baseExtensions(): Extension[] {
     EditorView.lineWrapping,
     pasteLink(),
     formatKeymap(),
+    editorInputKindAttributes(),
+    verbatimSpellcheck(),
   ];
 }
 

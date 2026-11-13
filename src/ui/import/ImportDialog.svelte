@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { inputKindAttributes } from "../../input-kind/input-kind";
   import type { NotePath } from "../../changes/change";
   import {
     planImport,
@@ -194,6 +195,7 @@
               <input
                 id={nameId}
                 type="text"
+                {...inputKindAttributes("prose")}
                 bind:value={folderName}
                 aria-describedby={nameErrorId}
                 aria-invalid={!nameValidation.ok}

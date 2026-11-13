@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { VimStatus } from "../../editor/vim/vim-status";
+  import { inputKindAttributes } from "../../input-kind/input-kind";
   import {
     commandLineLabel,
     editingModeAnnouncement,
@@ -82,10 +83,9 @@
         bind:this={input}
         class="command-input"
         type="text"
+        {...inputKindAttributes("verbatim")}
         aria-label={commandLineLabel(status.commandLine.kind)}
         autocomplete="off"
-        spellcheck="false"
-        autocapitalize="off"
         value={status.commandLine.value}
         onkeydown={(event) =>
           commands.keyDown(event, event.currentTarget.value)}

@@ -1,7 +1,12 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { KEY_DERIVATION_TIMEOUT, fakeForge, openNotes } from "./helpers";
-import { createLink, shareDialog } from "./helpers/sharing";
+import {
+  createLink,
+  openSharedLinks,
+  shareAction,
+  shareDialog,
+} from "./helpers/sharing";
 import { openRowMenu, openWelcome, treeItem, waitForSynced } from "./helpers/tree";
 
 const FAKELAB_NOTES_REPO = "https://fakelab.test/team/notes";
@@ -20,35 +25,6 @@ async function shareFromRowMenu(
 async function closeDialog(dialog: Locator): Promise<void> {
   await dialog.page().keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-}
-
-async function openSharedLinks(page: Page): Promise<Locator> {
-  await page.getByRole("button", { name: "More commands" }).click();
-  await page
-    .getByRole("menu", { name: "Commands" })
-    .getByRole("menuitem", { name: "Shared links" })
-    .click();
-  const dialog = page.getByRole("dialog", { name: "Shared links" });
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
-
-async function shareAction(
-  list: Locator,
-  title: string,
-  item: string,
-): Promise<void> {
-  await list.evaluate((el) =>
-    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
-  );
-  await list
-    .getByRole("button", { name: `Share actions for ${title}` })
-    .click();
-  await list
-    .page()
-    .getByRole("menu", { name: `Share actions for ${title}` })
-    .getByRole("menuitem", { name: item })
-    .click();
 }
 
 async function editWelcome(page: Page, text: string): Promise<void> {

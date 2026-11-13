@@ -3,6 +3,7 @@
   import { setStandalone } from "../ui/standalone-context";
   import MarkdownEditor from "../ui/editor/MarkdownEditor.svelte";
   import Wordmark from "../ui/wordmark/Wordmark.svelte";
+  import { inputKindAttributes } from "../input-kind/input-kind";
   import { livePreview } from "../editor/live-preview";
   import { linkOpen } from "../editor/link-open";
   import {
@@ -166,6 +167,7 @@
             id="share-password"
             type="password"
             autocomplete="off"
+            {...inputKindAttributes("verbatim")}
             bind:this={passwordInput}
             bind:value={password}
             aria-invalid={view.wrongPassword ? "true" : undefined}

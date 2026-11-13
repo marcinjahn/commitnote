@@ -10,6 +10,7 @@
     PassphraseChangeStep,
     PreparedPassphraseChange,
   } from "../../rekey/change-passphrase";
+  import { inputKindAttributes } from "../../input-kind/input-kind";
   import Dialog from "../dialogs/Dialog.svelte";
   import { ENABLE_ATOMIC_LABEL } from "../import/import-messages";
   import { getStandalone } from "../standalone-context";
@@ -338,6 +339,7 @@
             <input
               id={currentId}
               type="password"
+              {...inputKindAttributes("verbatim")}
               autocomplete="current-password"
               bind:this={currentInput}
               bind:value={currentPassphrase}
@@ -357,6 +359,7 @@
             <input
               id={newId}
               type="password"
+              {...inputKindAttributes("verbatim")}
               autocomplete="new-password"
               aria-describedby="{hintId} {strengthId}"
               bind:value={newPassphrase}
@@ -373,6 +376,7 @@
             <input
               id={repeatId}
               type="password"
+              {...inputKindAttributes("verbatim")}
               autocomplete="new-password"
               bind:value={repeatedPassphrase}
               aria-invalid={repeatError !== null ? "true" : undefined}

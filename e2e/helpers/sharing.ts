@@ -27,3 +27,32 @@ export async function createLink(
   await expect(link).toBeVisible({ timeout: KEY_DERIVATION_TIMEOUT });
   return link.inputValue();
 }
+
+export async function openSharedLinks(page: Page): Promise<Locator> {
+  await page.getByRole("button", { name: "More commands" }).click();
+  await page
+    .getByRole("menu", { name: "Commands" })
+    .getByRole("menuitem", { name: "Shared links" })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Shared links" });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+export async function shareAction(
+  list: Locator,
+  title: string,
+  item: string,
+): Promise<void> {
+  await list.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
+  );
+  await list
+    .getByRole("button", { name: `Share actions for ${title}` })
+    .click();
+  await list
+    .page()
+    .getByRole("menu", { name: `Share actions for ${title}` })
+    .getByRole("menuitem", { name: item })
+    .click();
+}

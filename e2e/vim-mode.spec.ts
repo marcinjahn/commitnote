@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { fakeForge, flushPendingSaves, openNotes } from "./helpers";
 import { startConflictOnWelcome } from "./helpers/conflict";
+import { expectInputKind } from "./helpers/input-kind";
 import { closeSettings, enableVimMode, openSettings } from "./helpers/settings";
 import { openWelcome, treeItem } from "./helpers/tree";
 
@@ -740,3 +741,33 @@ test("half-page and page motions scroll the note pane", async ({ page }) => {
     })
     .toBeLessThanOrEqual(2 * lineHeight);
 });
+
+test(
+  "the note editor switches input kind with the editing mode",
+  { tag: "@mobile" },
+  async ({ page }) => {
+    await openVimWelcome(page);
+    const paragraph = editor(page)
+      .locator(".cm-line")
+      .filter({ hasText: "This is your" });
+    await paragraph.click({ position: { x: 2, y: 4 } });
+    await expect(editor(page)).toBeFocused();
+
+    await expect(modeText(page)).toHaveText("NORMAL");
+    await expectInputKind(editor(page), "verbatim");
+
+    await page.keyboard.press("i");
+    await expect(modeText(page)).toHaveText("INSERT");
+    await expectInputKind(editor(page), "prose");
+    await page.keyboard.type("Word ");
+    await expect(paragraph).toContainText("Word This is your");
+
+    await page.keyboard.press("Escape");
+    await expect(modeText(page)).toHaveText("NORMAL");
+    await expectInputKind(editor(page), "verbatim");
+
+    await page.keyboard.press("x");
+    await expect(paragraph).toContainText("WordThis is your");
+    await expect(modeText(page)).toHaveText("NORMAL");
+  },
+);

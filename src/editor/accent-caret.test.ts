@@ -102,12 +102,31 @@ describe("accentCaret", () => {
     view.destroy();
   });
 
-  it("hands the caret back to the browser during IME composition", () => {
+  it("hands the caret back to the browser during IME composition", async () => {
     const view = createView(true);
 
     view.contentDOM.dispatchEvent(new CompositionEvent("compositionstart"));
-    expect(view.contentDOM.classList.contains("cm-own-caret")).toBe(false);
 
+    await vi.waitFor(() =>
+      expect(view.contentDOM.classList.contains("cm-own-caret")).toBe(false),
+    );
+    view.destroy();
+  });
+
+  it("keeps the word a keyboard selects for replacement as composition starts", async () => {
+    const view = createView(true);
+    view.focus();
+    view.dispatch({ selection: { anchor: 5 } });
+    const text = view.contentDOM.querySelector(".cm-line")!.firstChild!;
+    const selection = document.getSelection()!;
+
+    selection.setBaseAndExtent(text, 1, text, 4);
+    view.contentDOM.dispatchEvent(new CompositionEvent("compositionstart"));
+
+    await vi.waitFor(() =>
+      expect(view.contentDOM.classList.contains("cm-own-caret")).toBe(false),
+    );
+    expect([selection.anchorOffset, selection.focusOffset]).toEqual([1, 4]);
     view.destroy();
   });
 

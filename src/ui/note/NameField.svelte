@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
+  import { inputKindAttributes } from "../../input-kind/input-kind";
 
   interface Props {
     value: string;
@@ -100,7 +101,7 @@
     aria-describedby={error !== null ? errorId : undefined}
     readonly={readOnly}
     autocomplete="off"
-    spellcheck="false"
+    {...inputKindAttributes(readOnly ? "verbatim" : "prose")}
     bind:value={edited}
     onkeydown={handleKeydown}
     oninput={handleInput}

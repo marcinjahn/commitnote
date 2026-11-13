@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
   import type { NotePath } from "../../changes/change";
+  import { inputKindAttributes } from "../../input-kind/input-kind";
   import type { ContentIndexer, IndexerState } from "../../search/content-indexer";
   import {
     matchContents,
@@ -243,6 +244,7 @@
       <input
         class="search-input"
         type="text"
+        {...inputKindAttributes("verbatim")}
         role="combobox"
         aria-label="Search notes"
         aria-autocomplete="list"
@@ -251,7 +253,6 @@
         aria-activedescendant={active >= 0 ? optionId(active) : undefined}
         placeholder={SEARCH_PLACEHOLDER}
         autocomplete="off"
-        spellcheck="false"
         enterkeyhint="go"
         bind:value={query}
         onkeydown={handleKeydown}

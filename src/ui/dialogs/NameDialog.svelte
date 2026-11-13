@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { inputKindAttributes } from "../../input-kind/input-kind";
   import { validateName } from "../../tree/note-names";
   import Dialog from "./Dialog.svelte";
   import { describeNameError } from "./name-messages";
@@ -69,6 +70,7 @@
         <input
           id={inputId}
           type="text"
+          {...inputKindAttributes("prose")}
           bind:value={name}
           {placeholder}
           maxlength={maxLength}
