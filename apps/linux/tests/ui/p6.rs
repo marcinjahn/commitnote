@@ -41,7 +41,7 @@ use crate::p5::{
     menu_actions, select_target,
 };
 use crate::support::{
-    ALL_VARIANTS, Case, Harness, NARROW_VARIANTS, WIDE_VARIANTS, Width, assert_checked,
+    ALL_VARIANTS, Case, Harness, NARROW_VARIANTS, Theme, WIDE_VARIANTS, Width, assert_checked,
     assert_named, assert_presentation, descendants, restoring,
 };
 
@@ -79,6 +79,8 @@ pub const CASES: &[Case] = &[
     ("p6-shots-notes", shots_notes),
     ("p6-shots-dialogs", shots_dialogs),
     ("p6-shots-app", shots_app),
+    ("p6-shots-store-notes", shots_store_notes),
+    ("p6-shots-store-history", shots_store_history),
 ];
 
 type Announcement = (String, gtk::AccessibleAnnouncementPriority);
@@ -1613,6 +1615,33 @@ fn shots_dialogs(h: &mut Harness) -> Result<(), String> {
             .all(|title| h.row_titled(title).is_ok_and(|row| row.is_mapped()))
     })?;
     h.session_screenshots("trash", ALL_VARIANTS)
+}
+
+fn shots_store_notes(h: &mut Harness) -> Result<(), String> {
+    launch_and_log_in(h, false)?;
+    expand_folder(h, "Projects")?;
+    expand_folder(h, "Journal")?;
+    h.wait("the children of the expanded folders", || {
+        row_expander(h, "commitnote").is_ok() && row_expander(h, "2026").is_ok()
+    })?;
+    open_editor(h, WELCOME_NOTE)?;
+    h.store_screenshot("store-notes", Theme::Light)?;
+    h.store_screenshot("store-notes", Theme::Dark)?;
+
+    launch_search_repository(h)?;
+    open_editor(h, ROADMAP)?;
+    focus_tree(h)?;
+    search_with(h, "<Control>f", "road")?;
+    h.resize(Width::AppDefault)?;
+    wait_search_shot_ready(h, Width::AppDefault)?;
+    h.store_screenshot("store-search", Theme::Light)
+}
+
+fn shots_store_history(h: &mut Harness) -> Result<(), String> {
+    welcome_with_versions(h, &[FIRST_TEXT, SECOND_TEXT])?;
+    open_history(h)?;
+    wait_history_ready(h, 3)?;
+    h.store_screenshot("store-history", Theme::Dark)
 }
 
 fn shots_app(h: &mut Harness) -> Result<(), String> {

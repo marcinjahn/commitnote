@@ -841,7 +841,10 @@ The tests (`test.sh`) run, in this order:
    swipe back). The `p6-shots-*` cases save the final screenshots, each narrow and wide, light and
    dark, with the violet accent: `p6-loading`, `p6-login` and `p6-unlock`; `p6-tree`,
    `p6-note-images` and `p6-search`; `p6-history`, `p6-shared-links` and `p6-trash`;
-   `p6-preferences`, `p6-about` and `p6-shortcuts`. The `tables` cases cover the table widget alone
+   `p6-preferences`, `p6-about` and `p6-shortcuts`. The store screenshots in
+   `apps/linux/data/screenshots/` come from the `p6-shots-store-*` cases at the default window size
+   with the system accent and without the development styling, and are refreshed by running
+   `apps/linux/scripts/ui-test.sh p6-shots-store` and copying the four files. The `tables` cases cover the table widget alone
    (cells, alignment, accessible roles and labels), the editor's rendering, reveal and shared
    version, clicks and Ctrl+click, cell selection (drag, long press and right click, the tint and
    the selected state, clearing) and copying (the plain text and HTML on the clipboard, in the
