@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { SAMPLE, expectTree, openNotes } from "./helpers";
+import { SAMPLE, expectTree, openNotes, settleIdle } from "./helpers";
 import { emulateStandalone } from "./helpers/install";
 import { closeSettings, openSettings } from "./helpers/settings";
 import { createLink } from "./helpers/sharing";
@@ -12,15 +12,6 @@ const APP_WEB = `${ORIGIN}?p=%2Fapp%2Fweb&t=App%20(web)`;
 const APP_PWA = `${ORIGIN}?p=%2Fapp%2Fpwa&t=App%20(PWA)`;
 const SESSION = "fake-forge-session=" + encodeURIComponent(SAMPLE.repo);
 const OPT_OUT_LABEL = "Anonymous usage statistics";
-
-function settleIdle(page: Page): Promise<void> {
-  return page.evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestIdleCallback(() => setTimeout(resolve, 0), { timeout: 10_000 }),
-      ),
-  );
-}
 
 async function flushVisits(page: Page): Promise<void> {
   await page.clock.runFor(10_000);

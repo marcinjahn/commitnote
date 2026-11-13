@@ -18,7 +18,13 @@ import {
   openDataSecurityAction,
   openSettings,
 } from "./helpers/settings";
-import { createLink, shareDialog } from "./helpers/sharing";
+import {
+  createLink,
+  openRecipientViewer,
+  shareDialog,
+  shareInvite,
+  shareNote,
+} from "./helpers/sharing";
 import {
   moveToTrash,
   openHistory,
@@ -256,6 +262,18 @@ test("viewer-unlocked @mobile", async ({ page }) => {
     viewer.getByRole("heading", { name: "Welcome", level: 1 }).first(),
   ).toBeVisible({ timeout: KEY_DERIVATION_TIMEOUT });
   await expectNoA11yViolations(viewer, "viewer-unlocked");
+});
+
+test("viewer-invite @mobile", async ({ page }) => {
+  await openNotes(page);
+  const link = await shareNote(page);
+  const viewer = await openRecipientViewer(page, link);
+  await viewer.emulateMedia({ reducedMotion: "reduce" });
+  await expect(
+    viewer.getByRole("heading", { name: "Welcome", level: 1 }).first(),
+  ).toBeVisible();
+  await expect(shareInvite(viewer)).toBeVisible();
+  await expectNoA11yViolations(viewer, "viewer-invite");
 });
 
 test("install bar @mobile-only", async ({ page }) => {
