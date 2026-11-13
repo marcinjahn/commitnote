@@ -433,14 +433,19 @@ async function main(): Promise<void> {
     return;
   }
 
-  for (const [platform, needles] of [
-    ["iOS", IOS_VISIT_NEEDLES],
-    ["Linux", LINUX_VISIT_NEEDLES],
+  // The landing page's privacy text names the Linux visit, so only the app is checked for it.
+  for (const [platform, needles, dirs] of [
+    ["iOS", IOS_VISIT_NEEDLES, [distDir, fakeDistDir]],
+    [
+      "Linux",
+      LINUX_VISIT_NEEDLES,
+      [join(distDir, "app"), join(fakeDistDir, "app")],
+    ],
   ] as const) {
-    const visitInWeb = [
-      ...(await findForbidden(distDir, needles)),
-      ...(await findForbidden(fakeDistDir, needles)),
-    ];
+    const visitInWeb = [];
+    for (const dir of dirs) {
+      visitInWeb.push(...(await findForbidden(dir, needles)));
+    }
     if (visitInWeb.length > 0) {
       for (const hit of visitInWeb) {
         console.error(

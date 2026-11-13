@@ -105,6 +105,10 @@ does not count as a landing visit. The request is exactly
 | `/landing/web` | `Landing (web)`  |
 | `/app/web`     | `App (web)`      |
 | `/app/pwa`     | `App (PWA)`      |
+| `/app/linux`   | `App (Linux)`    |
+
+The Linux app sends `/app/linux` once per start, with the same two parameters, from its own HTTP
+session rather than a browser (see [Usage statistics](apps/linux/README.md#usage-statistics)).
 
 **What is never sent or stored.** No cookies or browser storage for counting, no note data, URLs, hashes,
 query strings, referrer or identifiers. GoatCounter does not store the IP address or the full User-Agent; it
@@ -115,7 +119,8 @@ up to 8 hours, and filters bot and headless User-Agents on the server.
 `navigator.globalPrivacyControl === true`, when the browser is offline, or after opting out. Opt out in
 Settings > This device > "Anonymous usage statistics", or with the button in the landing page's `#privacy`
 section. The choice is stored as `localStorage["commitnote.analyticsOptOut"] = "1"` and shared by the
-landing page and the web app (same origin).
+landing page and the web app (same origin). The Linux app does not read these browser signals; it has its
+own switch in Preferences > This device.
 
 The dev server and unit tests always have no endpoint. Fake-forge builds use
 `https://analytics.invalid/count`, which the e2e tests intercept.
