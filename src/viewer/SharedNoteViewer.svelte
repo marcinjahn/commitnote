@@ -19,6 +19,8 @@
   import { bindDialogHistory } from "../ui/dialogs/dialog-history";
   import { dialogStack } from "../ui/dialogs/dialog-stack";
   import { describeShareDate } from "../ui/share/share-messages";
+  import { LANDING_URL } from "../app/site-urls";
+  import ShareInvite from "./ShareInvite.svelte";
   import type { ViewerController, ViewerState } from "./viewer-state";
   import {
     describeViewerError,
@@ -35,9 +37,17 @@
     controller: ViewerController;
     testModeBanner: string | null;
     standalone: boolean;
+    showShareInvite: boolean;
+    onShareInviteDismiss: () => void;
   }
 
-  const { controller, testModeBanner, standalone }: Props = $props();
+  const {
+    controller,
+    testModeBanner,
+    standalone,
+    showShareInvite,
+    onShareInviteDismiss,
+  }: Props = $props();
 
   setStandalone(untrack(() => standalone));
 
@@ -45,6 +55,14 @@
   let password = $state("");
   let copyResult = $state<"copied" | "failed" | null>(null);
   let passwordInput = $state<HTMLInputElement>();
+  let shareInviteDismissed = $state(false);
+  let footer = $state<HTMLElement>();
+
+  function dismissShareInvite(): void {
+    shareInviteDismissed = true;
+    onShareInviteDismiss();
+    footer?.focus();
+  }
 
   const currentImageSource = $derived<ImageSource | null>(
     view.kind === "note" ? view.imageSource : null,
@@ -234,7 +252,10 @@
   {/if}
 
   {#if view.kind === "note"}
-    <footer class="footer">{footerText(standalone)}</footer>
+    {#if showShareInvite && !shareInviteDismissed}
+      <ShareInvite landingUrl={LANDING_URL} onDismiss={dismissShareInvite} />
+    {/if}
+    <footer class="footer" tabindex="-1" bind:this={footer}>{footerText(standalone)}</footer>
   {/if}
 </div>
 
