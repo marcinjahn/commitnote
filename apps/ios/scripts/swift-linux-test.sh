@@ -10,5 +10,5 @@ for package in "$ROOT"/apps/ios/Packages/*/; do
   echo "==> swift test: $name"
   docker run --rm --cpus 4 --memory 6g \
     -v "$ROOT:$ROOT" -w "$ROOT/apps/ios/Packages/$name" \
-    swift:6.2 swift test --scratch-path .build-linux
+    swift:6.3.3 swift test --scratch-path .build-linux
 done

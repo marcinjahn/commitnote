@@ -341,8 +341,8 @@ To download the unsigned IPA from a run, see Installing on a device.
 
 The macOS jobs run on the `macos-26` runner image with Xcode 26.6, which `XCODE_VERSION` in the
 workflow selects; the `linux` job runs on `ubuntu-26.04`. The Swift packages declare
-`swift-tools-version: 6.0`, and `scripts/swift-linux-test.sh` tests them in the `swift:6.2` Docker
-image.
+`swift-tools-version: 6.3`, and `scripts/swift-linux-test.sh` tests them in the `swift:6.3.3`
+Docker image, the Swift that Xcode 26.6 ships.
 
 Some things stay where they are on purpose:
 
@@ -361,7 +361,7 @@ No Xcode, macOS or Simulator is needed for these:
 - `npm run check:native-core` — builds the core bundle and the fake core bundle and runs them in a
   bare host (the bare-host check).
 - `apps/ios/scripts/swift-linux-test.sh` — runs the Swift package tests, `ImageCodec` included, in the
-  `swift:6.2` Docker image. Run it from a path under `~/code`; it skips `CoreRuntime`, which needs Apple frameworks.
+  `swift:6.3.3` Docker image. Run it from a path under `~/code`; it skips `CoreRuntime`, which needs Apple frameworks.
 - `npm run fixture:test-vectors` — regenerates `apps/test-vectors/`. A diff afterwards means the
   format or the generator changed.
 
