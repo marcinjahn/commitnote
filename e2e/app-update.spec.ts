@@ -105,6 +105,46 @@ test("an update found at launch applies before the user does anything", async ({
   await expectTree(page);
 });
 
+test("an update applied while the remembered session is restoring never shows the login screen", async ({
+  page,
+  shellServer,
+}) => {
+  await openControlledNotes(page);
+  await shellServer.serveSecondBuild();
+  // Firefox fails the requests still in flight once a reload starts; the
+  // first launch below holds the restore and fails it the same way.
+  await onFakeForgeReady(
+    page,
+    (controls, key) => {
+      if (sessionStorage.getItem("e2e-restore-interrupted") !== null) return;
+      sessionStorage.setItem("e2e-restore-interrupted", "1");
+      controls.hold(key, "inspect");
+      addEventListener("beforeunload", () => {
+        controls.failNext(key, "inspect", "Network");
+        controls.release(key, "inspect");
+        sessionStorage.setItem("e2e-restore-failed", "1");
+      });
+    },
+    SAMPLE.key,
+  );
+  await page.addInitScript(() => {
+    new MutationObserver(() => {
+      if (document.querySelector(".login-card") !== null) {
+        sessionStorage.setItem("e2e-login-shown", "1");
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  const loads = countDocumentLoads(page);
+
+  await page.reload();
+
+  await expect.poll(loads, { timeout: 15_000 }).toBe(2);
+  await expectTree(page);
+  expect(await activeBuildId(page)).toBe(SECOND_BUILD_ID);
+  expect(await page.evaluate(() => sessionStorage.getItem("e2e-restore-failed"))).toBe("1");
+  expect(await page.evaluate(() => sessionStorage.getItem("e2e-login-shown"))).toBeNull();
+});
+
 test("unsaved changes hold the update until they are saved, then it applies in the background", async ({
   page,
   shellServer,
