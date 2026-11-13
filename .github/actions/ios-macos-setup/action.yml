@@ -1,5 +1,5 @@
 name: iOS macOS setup
-description: Node, native core build, Xcode selection and project generation for the macOS jobs that build.
+description: Node, just, native core build, Xcode selection and project generation for the macOS jobs that build.
 
 runs:
   using: composite
@@ -12,7 +12,9 @@ runs:
     - run: npm ci
       shell: bash
 
-    - run: npm run build:native-core
+    - uses: ./.github/actions/setup-just
+
+    - run: just build-native-core
       shell: bash
 
     - uses: ./.github/actions/ios-select-xcode
@@ -22,5 +24,4 @@ runs:
       run: |
         set -eu
         brew install xcodegen
-        cd apps/ios
-        xcodegen generate
+        just ios generate-project

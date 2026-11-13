@@ -14,8 +14,10 @@ on:
       - "analytics.config.ts"
       - "svelte.config.js"
       - "tsconfig*.json"
+      - "justfile"
       - ".github/workflows/ios.yml"
       - ".github/actions/ios-*/**"
+      - ".github/actions/setup-just/**"
   workflow_dispatch:
 
 permissions:
@@ -40,8 +42,9 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
-      - run: npm run check:native-core
-      - run: apps/ios/scripts/swift-linux-test.sh
+      - uses: ./.github/actions/setup-just
+      - run: just check-native-core
+      - run: just ios swift-test
 
   build:
     name: Build for testing
@@ -84,6 +87,7 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
+      - uses: ./.github/actions/setup-just
       - uses: ./.github/actions/ios-select-xcode
 
       - name: Start simulator
@@ -121,7 +125,7 @@ jobs:
             -resultBundlePath out/xcresults/runtime.xcresult
 
       - name: Read back with TypeScript
-        run: npx tsx scripts/read-back-native-repo.ts out/test-output
+        run: just read-back-native-repo out/test-output
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -176,11 +180,11 @@ jobs:
 
       - name: Build unsigned IPA
         if: ${{ !cancelled() }}
-        run: apps/ios/scripts/build-unsigned-ipa.sh out/ipa
+        run: just ios build-unsigned-ipa out/ipa
 
       - name: Check IPA
         if: ${{ !cancelled() }}
-        run: apps/ios/scripts/check-ipa.sh out/ipa/commitnote-unsigned.ipa
+        run: just ios check-ipa out/ipa/commitnote-unsigned.ipa
 
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}

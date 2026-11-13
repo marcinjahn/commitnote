@@ -24,9 +24,10 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
-      - run: npm run check
-      - run: npm test
-      - run: npm run check:bundle
+      - uses: ./.github/actions/setup-just
+      - run: just check
+      - run: just test
+      - run: just check-bundle
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist

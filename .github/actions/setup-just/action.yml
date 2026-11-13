@@ -1,0 +1,9 @@
+name: Set up just
+description: Installs the pinned just that runs the repository's recipes.
+
+runs:
+  using: composite
+  steps:
+    - uses: taiki-e/install-action@v2
+      with:
+        tool: just@1.59.0
