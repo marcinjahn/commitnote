@@ -9,14 +9,18 @@ sdk_volume=commitnote-flatpak-sdk
 workspace_hash=$(printf '%s' "$workspace_root" | sha256sum | cut -c1-12)
 state_volume="commitnote-flatpak-state-$workspace_hash"
 
+build_args=
 case "${1:-}" in
   --remove-state-volume)
     exec docker volume rm "$state_volume"
     ;;
+  --testing)
+    build_args=--testing
+    ;;
   "")
     ;;
   *)
-    echo "usage: $0 [--remove-state-volume]" >&2
+    echo "usage: $0 [--testing | --remove-state-volume]" >&2
     exit 2
     ;;
 esac
@@ -34,4 +38,4 @@ exec docker run --rm --init --privileged \
   -v "$state_volume:/state" \
   -w /src \
   "$image" \
-  apps/linux/flatpak/build.sh
+  apps/linux/flatpak/build.sh $build_args

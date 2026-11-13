@@ -1,16 +1,42 @@
 #!/bin/sh
 set -eu
 
+usage() {
+  echo "usage: $0 [--testing]" >&2
+  exit 2
+}
+
+testing=
+case "${1:-}" in
+  --testing)
+    testing=1
+    shift
+    ;;
+esac
+[ "$#" -eq 0 ] || usage
+
 cd "$(dirname -- "$0")/../../.."
 
-app_id=io.github.marcinjahn.commitnote
-manifest=apps/linux/flatpak/$app_id.yml
+release_app_id=io.github.marcinjahn.commitnote
 state_dir=/state/flatpak-builder
-build_dir=/state/build
 repo_dir=/state/repo
-bundle=apps/linux/out/flatpak/commitnote-x86_64.flatpak
+
+if [ -n "$testing" ]; then
+  app_id=$release_app_id.Devel
+  build_dir=/state/build-testing
+  bundle=apps/linux/out/flatpak/commitnote-testing-x86_64.flatpak
+else
+  app_id=$release_app_id
+  build_dir=/state/build
+  bundle=apps/linux/out/flatpak/commitnote-x86_64.flatpak
+fi
+manifest=apps/linux/flatpak/$app_id.yml
 
 apps/linux/flatpak/generate-sources.sh
+
+if [ -n "$testing" ]; then
+  apps/linux/flatpak/testing-manifest.py
+fi
 
 flatpak-builder \
   --repo="$repo_dir" \
@@ -23,7 +49,9 @@ flatpak-builder \
   "$build_dir" \
   "$manifest"
 
-apps/linux/flatpak/lint.sh "$manifest" "$build_dir" "$repo_dir"
+if [ -z "$testing" ]; then
+  apps/linux/flatpak/lint.sh "$manifest" "$build_dir" "$repo_dir"
+fi
 
 mkdir -p "$(dirname "$bundle")"
 flatpak build-bundle "$repo_dir" "$bundle" \
