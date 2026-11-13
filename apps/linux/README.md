@@ -839,6 +839,67 @@ intended. The second bundle is optional; with one argument only the release Flat
 Screenshots, logs and `permissions.ini` land in `apps/linux/out/flatpak/smoke/release` and
 `apps/linux/out/flatpak/smoke/testing`.
 
+## Releases
+
+### Versioning
+
+Versions are semantic (`MAJOR.MINOR.PATCH`, no pre-releases) and a release is tagged `v` plus the
+version, such as `v0.2.0`. The `version` in `apps/linux/meson.build` is the source. The crate
+versions (`Cargo.toml` and every crate under `crates/`) and the newest `<release>` entry in
+`data/io.github.marcinjahn.commitnote.metainfo.xml.in` must equal it, and that entry must have a
+description; `build-aux/check-versions.py` checks this in the `static` suite.
+
+The release entry is written in the same commit that sets the version: newest first, with the
+date, and a description of two or three sentences or a short list of what users notice. It is the
+release's notes everywhere: app stores read it from the metainfo, and the GitHub release body is
+generated from it by `build-aux/release-notes.py <version> <metainfo>`, never typed by hand.
+
+Tags are never moved or deleted. A bad release is superseded by the next patch version.
+
+### Release workflow
+
+The `Release` workflow (`.github/workflows/release.yml`) runs on a pushed `v*.*.*` tag. It:
+
+1. checks that the tag is `v` plus the meson version and runs `check-versions.py`, then generates
+   the release notes,
+2. builds the Flatpak with the reusable Flatpak build, including `flatpak-builder-lint`, without
+   the `flatpak-builder` cache of earlier runs,
+3. runs the Flatpak smoke test on the release Flatpak bundle,
+4. writes `SHA256SUMS` for the bundle,
+5. stops if the release already exists, then attests the bundle's build provenance and creates the
+   GitHub release, marked latest, with the notes and two assets: `commitnote-x86_64.flatpak` and
+   `SHA256SUMS`.
+
+Only the last job has write permissions (`contents`, `id-token`, `attestations`), and it uses no
+secret but the workflow's own token.
+
+A manual run (`workflow_dispatch`) with a `tag` input is the dry run: it does steps 1 to 4 for the
+branch it runs on and stops before attesting or publishing. The `release` artifact holds what
+would be published.
+
+### Release procedure
+
+1. In one commit, set the new version in `meson.build`, in every crate's `Cargo.toml` and in
+   `Cargo.lock`, and add the release entry. Push it to `main` and wait for the Linux workflow.
+2. Dry-run the commit to be tagged:
+
+   ```sh
+   gh workflow run release.yml --ref main -f tag=v0.2.0
+   ```
+
+   Check that the run's commit is the one to be tagged (`gh run list --workflow release.yml`); if
+   `main` has moved on, point a temporary `linux-ci/release-<version>` branch at the commit, run
+   the dry run there and delete the branch afterwards.
+3. Tag that commit and push only the tag:
+
+   ```sh
+   jj tag set v0.2.0 -r <commit>
+   jj git push --tag v0.2.0
+   ```
+
+4. When the release workflow has finished, check the release and its assets with
+   `gh release view v0.2.0`.
+
 ## Checks and tests
 
 Nothing needs GTK on the machine: these scripts run inside the Docker build container
@@ -1102,8 +1163,10 @@ gh run download <run-id> -n linux-screenshots -n linux-logs
 
 The same workflow builds and tests the Flatpak (see Flatpak). The Flatpak build is the reusable
 workflow `.github/workflows/flatpak.yml` (input `testing`, output `artifact-name`), which the jobs
-`flatpak` and `flatpak-testing` call. The job `flatpak-smoke-test` downloads both bundles and runs
-the Flatpak smoke test. Their artifacts, each kept for 30 days, are:
+`flatpak` and `flatpak-testing` call. The job `flatpak-smoke-test` calls the reusable workflow
+`.github/workflows/flatpak-smoke-test.yml` (inputs `release-artifact` and the optional
+`testing-artifact`), which downloads the bundles and runs the Flatpak smoke test. The release
+workflow (see Releases) calls the same two. Their artifacts, each kept for 30 days, are:
 
 - `commitnote-flatpak` — `commitnote-x86_64.flatpak`,
 - `commitnote-flatpak-testing` — `commitnote-testing-x86_64.flatpak`,
