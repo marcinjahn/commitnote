@@ -1,3 +1,5 @@
+import { LANDING_URL } from "../../app/site-urls";
+
 export interface AnalyticsOption {
   readonly analyticsCounted: boolean;
   readonly analyticsBlockedByBrowser: boolean;
@@ -5,7 +7,7 @@ export interface AnalyticsOption {
 }
 
 export const ANALYTICS_LABEL = "Anonymous usage statistics";
-export const ANALYTICS_PRIVACY_URL = "https://commitnote.eu/#privacy";
+export const ANALYTICS_PRIVACY_URL = `${LANDING_URL}#privacy`;
 
 export function describeAnalytics(blockedByBrowser: boolean): string {
   return blockedByBrowser
