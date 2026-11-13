@@ -97,7 +97,7 @@ What the app does:
 - `Packages/CoreRuntime/Sources/CoreRuntime/IOSVisit.swift` — the iOS visit (see Usage statistics).
 - `Commitnote/Fonts/` — the bundled note fonts (see Fonts below).
 - `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `disable-password-autofill.sh`,
-  `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
+  `prepare-simulator.sh`, `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
 - `../test-vectors/` — JSON test vectors shared by the TypeScript and Swift tests.
 
 The Xcode project is generated and not committed.
