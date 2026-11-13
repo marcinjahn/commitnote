@@ -319,7 +319,7 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 
 [[package]]
 name = "commitnote"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-channel",
  "commitnote-core-api",
@@ -345,7 +345,7 @@ dependencies = [
 
 [[package]]
 name = "commitnote-core-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -354,7 +354,7 @@ dependencies = [
 
 [[package]]
 name = "commitnote-core-runtime"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-channel",
  "base64",
@@ -381,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "commitnote-crypto"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -398,11 +398,11 @@ dependencies = [
 
 [[package]]
 name = "commitnote-editor-text"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "commitnote-image-codec"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "image",
  "libwebp-sys",
@@ -410,14 +410,14 @@ dependencies = [
 
 [[package]]
 name = "commitnote-interaction"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "unicode-segmentation",
 ]
 
 [[package]]
 name = "commitnote-markdown"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "commitnote-editor-text",
  "pulldown-cmark",
