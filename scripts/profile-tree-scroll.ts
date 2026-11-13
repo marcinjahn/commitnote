@@ -154,7 +154,7 @@ function readArgs(): { out: string; runs: number } {
     },
   });
   if (values.out === undefined) {
-    fail("Usage: npm run profile:tree-scroll -- --out <dir> [--runs <n>]");
+    fail("Usage: just profile-tree-scroll --out <dir> [--runs <n>]");
   }
   const runs = Number(values.runs);
   if (!Number.isInteger(runs) || runs < 1) {
@@ -797,7 +797,7 @@ async function main(): Promise<void> {
   const port = readPort();
   if (!existsSync(resolve(distDir, "index.html"))) {
     fail(
-      `Missing ${distDir}/index.html. Build it first with: limited npm run build:fake`,
+      `Missing ${distDir}/index.html. Build it first with: just build-fake`,
     );
   }
   await mkdir(out, { recursive: true });

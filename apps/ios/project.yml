@@ -126,7 +126,7 @@ targets:
             SOURCE="$SRCROOT/../../dist-native-core/commitnote-core.js"
           fi
           if [ ! -f "$SOURCE" ]; then
-            echo "error: core bundle not found at $SOURCE; run 'npm run build:native-core' first" >&2
+            echo "error: core bundle not found at $SOURCE; run 'just build-native-core' first" >&2
             exit 1
           fi
           mkdir -p "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
