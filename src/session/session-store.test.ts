@@ -2,7 +2,11 @@ import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Keyring } from "../crypto/keyring";
 import type { RepoCoordinates } from "../forge/repo-coordinates";
-import { createSessionStore } from "./session-store";
+import {
+  REPO_URL_STORAGE_KEY,
+  createSessionStore,
+  hasLastLoginHint,
+} from "./session-store";
 import type { Session } from "./session";
 
 class MemoryStorage implements Pick<
@@ -302,4 +306,50 @@ describe("createSessionStore", () => {
 
     await expect(store.clear()).resolves.toBeUndefined();
   });
+});
+
+describe("hasLastLoginHint", () => {
+  let indexedDB: IDBFactory;
+  let storage: MemoryStorage;
+
+  beforeEach(() => {
+    indexedDB = new IDBFactory();
+    storage = new MemoryStorage();
+  });
+
+  it("is true when the last repo URL is stored", () => {
+    storage.setItem(REPO_URL_STORAGE_KEY, "https://github.com/alice/notes");
+
+    expect(hasLastLoginHint(storage)).toBe(true);
+  });
+
+  it("is false when no repo URL is stored", () => {
+    expect(hasLastLoginHint(storage)).toBe(false);
+  });
+
+  it("is false when the stored repo URL is empty", () => {
+    storage.setItem(REPO_URL_STORAGE_KEY, "");
+
+    expect(hasLastLoginHint(storage)).toBe(false);
+  });
+
+  it("is false without a storage", () => {
+    expect(hasLastLoginHint(null)).toBe(false);
+  });
+
+  it("is false when reading the storage throws", () => {
+    expect(hasLastLoginHint(new ThrowingStorage())).toBe(false);
+  });
+
+  it.each([true, false])(
+    "is true after a login with Remember me %s",
+    async (rememberMe) => {
+      await createSessionStore({ indexedDB, storage }).start(
+        await makeSession(),
+        { rememberMe },
+      );
+
+      expect(hasLastLoginHint(storage)).toBe(true);
+    },
+  );
 });

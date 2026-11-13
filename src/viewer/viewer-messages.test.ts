@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { describeViewerError, footerText } from "./viewer-messages";
+import {
+  SHARE_INVITE_DISMISS_LABEL,
+  SHARE_INVITE_LABEL,
+  SHARE_INVITE_LINK_LABEL,
+  SHARE_INVITE_TEXT,
+  describeViewerError,
+  footerText,
+} from "./viewer-messages";
 
 describe("describeViewerError", () => {
   it("describes link problems without a provider", () => {
@@ -52,5 +59,16 @@ describe("footerText", () => {
 
   it("describes decryption on the device in the installed app", () => {
     expect(footerText(true)).toBe("End-to-end encrypted. Decrypted on this device.");
+  });
+});
+
+describe("share invite texts", () => {
+  it("keeps the exact invite texts", () => {
+    expect(SHARE_INVITE_LABEL).toBe("About commitnote");
+    expect(SHARE_INVITE_TEXT).toBe(
+      "Shared with commitnote: end-to-end encrypted notes kept in your own GitHub or GitLab repository.",
+    );
+    expect(SHARE_INVITE_LINK_LABEL).toBe("Try commitnote yourself");
+    expect(SHARE_INVITE_DISMISS_LABEL).toBe("No thanks");
   });
 });
