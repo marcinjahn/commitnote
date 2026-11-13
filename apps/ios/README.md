@@ -166,7 +166,7 @@ The app counts launches with one anonymous request, the iOS visit:
   `commitnote.analyticsOptOut = "1"` in the device settings storage. iOS has no DNT or GPC signal, so
   this switch is the only opt-out.
 - The landing page's privacy copy and the root README intentionally do not list the `/app/ios` path
-  until the app is released. `npm run check:bundle` fails if `/app/ios` or `App (iOS)` reaches the
+  until the app is released. `just check-bundle` fails if `/app/ios` or `App (iOS)` reaches the
   landing or web bundles.
 
 ## Settings and data
@@ -264,7 +264,8 @@ it to a branch named `ios-ci/<something>`.
 
 The workflow runs only when something it builds or tests changes: `apps/**`, `src/**`, `scripts/**`,
 `package.json`, `package-lock.json`, `vite.config.ts`, `analytics.config.ts`, `svelte.config.js`,
-`tsconfig*.json`, the workflow itself and its `.github/actions/ios-*` actions. Manual runs always work.
+`tsconfig*.json`, `justfile`, the workflow itself and its `.github/actions/ios-*` and
+`.github/actions/setup-just` actions. Manual runs always work.
 
 - `linux` runs the native core check and the Swift package tests (every package except
   `CoreRuntime`). They run only here: the packages are pure Swift, and the Apple crypto backend is
@@ -358,11 +359,11 @@ Some things stay where they are on purpose:
 
 No Xcode, macOS or Simulator is needed for these:
 
-- `npm run check:native-core` — builds the core bundle and the fake core bundle and runs them in a
+- `just check-native-core` — builds the core bundle and the fake core bundle and runs them in a
   bare host (the bare-host check).
-- `apps/ios/scripts/swift-linux-test.sh` — runs the Swift package tests, `ImageCodec` included, in the
+- `just ios swift-test` — runs the Swift package tests, `ImageCodec` included, in the
   `swift:6.3.3` Docker image. Run it from a path under `~/code`; it skips `CoreRuntime`, which needs Apple frameworks.
-- `npm run fixture:test-vectors` — regenerates `apps/test-vectors/`. A diff afterwards means the
+- `just generate-test-vectors` — regenerates `apps/test-vectors/`. A diff afterwards means the
   format or the generator changed.
 
 ## Building on a Mac
@@ -371,15 +372,14 @@ Optional; CI does this for you.
 
 ```sh
 npm ci
-npm run build:native-core
-brew install xcodegen
-cd apps/ios
-xcodegen generate
-open Commitnote.xcodeproj
+just build-native-core
+brew install just xcodegen
+just ios generate-project
+open apps/ios/Commitnote.xcodeproj
 ```
 
-`npm run build:native-core` writes `dist-native-core/` and `dist-native-core-fake/`; the app build
-copies `commitnote-core.js` from the first, or from the second in the `Testing` configuration. The
+`just ios` lists the iOS recipes. `just build-native-core` writes `dist-native-core/` and
+`dist-native-core-fake/`; the app build copies `commitnote-core.js` from the first, or from the second in the `Testing` configuration. The
 build fails if the file is missing.
 
 ## Installing on a device

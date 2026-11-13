@@ -22,6 +22,8 @@ server. The only other request is an optional anonymous visit count (see
 
 - Node 26 (CI uses the newest 26.x; Node 27 is still a pre-release)
 - npm
+- [`just`](https://just.systems) 1.55 or newer (CI pins 1.59.0), the task runner; install it from
+  your distribution's packages, with `cargo install just`, or with `npm install -g rust-just`
 
 TypeScript stays on 6.0.x until `svelte-check` and `svelte2tsx` support TypeScript 7; today they accept
 only TypeScript 5 and 6.
@@ -30,13 +32,13 @@ only TypeScript 5 and 6.
 
 ```
 npm install
-npm run dev
+just dev
 ```
 
-Then open `http://localhost:5173`. `npm run dev:landing` starts the landing page dev server instead
+Then open `http://localhost:5173`. `just dev-landing` starts the landing page dev server instead
 (see [Landing page](#landing-page)).
 
-`npm run generate:brand` regenerates the brand SVGs from the app font: the README wordmark SVGs in `docs/brand/`, including their animated caret, and the favicon in `src/assets/favicon.svg`. It also rasterises the app icons (`any` 192/512, `maskable` 192/512, `monochrome` 512 and `apple-touch-icon` 180) into `public/icons/`. Never edit them by hand: the drift test fails when they are stale. `npm run generate:brand -- --contact-sheet <file.png>` also writes an uncommitted review sheet with the maskable safe-zone circle.
+`just generate-brand` regenerates the brand SVGs from the app font: the README wordmark SVGs in `docs/brand/`, including their animated caret, and the favicon in `src/assets/favicon.svg`. It also rasterises the app icons (`any` 192/512, `maskable` 192/512, `monochrome` 512 and `apple-touch-icon` 180) into `public/icons/`. Never edit them by hand: the drift test fails when they are stale. `just generate-brand --contact-sheet <file.png>` also writes an uncommitted review sheet with the maskable safe-zone circle.
 
 ### Secure context
 
@@ -44,30 +46,46 @@ WebCrypto is only available in a [secure context](https://developer.mozilla.org/
 `localhost` qualifies (both the dev server and the preview server), but opening the dev server
 through a LAN IP address over plain HTTP does not work.
 
-## Scripts
+## Recipes
 
-- `dev` — start the Vite dev server
-- `dev:fake` — start the Vite dev server in test mode (fake forge, see below)
-- `dev:landing` — start the Vite dev server for the landing page (`landing/`)
-- `build` — produce the production site in `dist/`: the landing build first (it empties `dist/`),
-  then the app build into `dist/app/`
-- `build:fake` — produce a test-mode build in `dist-fake/` (`--if-stale` reuses an up-to-date one)
-- `preview` — preview the built site locally: landing page at `/`, app at `/app/`
-- `preview:fake` — preview the test-mode build locally
-- `test` — run unit tests with Vitest
-- `test:e2e` — run end-to-end tests with Playwright under the e2e lock (see below)
-- `check` — type-check the app and the Node-side config/scripts
-- `check:bundle` — build `dist/` and `dist-fake/` and verify the site layout, the landing page's CSP,
-  and the landing size budget (see [Landing page](#landing-page)), and that the production build
+Every task runs through [`just`](https://just.systems); `just` on its own lists the recipes with a
+line about each. Arguments after the recipe name go to the underlying tool (`just test src/sync`), and
+paths are relative to the repository root. npm only installs the dependencies.
+
+- `just dev` — start the Vite dev server
+- `just dev-fake` — start the Vite dev server in test mode (fake forge, see below)
+- `just dev-landing` — start the Vite dev server for the landing page (`landing/`)
+- `just build` — produce the production site in `dist/`: the landing build first (it empties
+  `dist/`), then the app build into `dist/app/`
+- `just build-fake` — produce a test-mode build in `dist-fake/` (`--if-stale` reuses an up-to-date
+  one)
+- `just build-native-core` — build the core bundle and the fake core bundle for the native apps
+  (`dist-native-core/`, `dist-native-core-fake/`)
+- `just preview` — preview the built site locally: landing page at `/`, app at `/app/`
+- `just preview-fake` — preview the test-mode build locally
+- `just check` — type-check the app and the Node-side config/scripts
+- `just check-bundle` — build `dist/` and `dist-fake/` and verify the site layout, the landing page's
+  CSP, and the landing size budget (see [Landing page](#landing-page)), and that the production build
   never ships test-mode fixture data, that the web app manifest and every icon and screenshot it
   references are in the production build, and that `app/sw.js` is present and its precache list
   equals the emitted files under `app/`
-- `generate:brand` — regenerate the brand SVGs and app icons (see above)
-- `generate:pwa-screenshots` — regenerate the web app manifest screenshots in `public/screenshots/` from
-  the test-mode build, using the system Chrome (optional `E2E_PORT`)
-- `generate:landing-screenshots` — regenerate the landing screenshots in `landing/screenshots/`, in
-  light and dark, from the test-mode build; run it after visible UI changes (optional `E2E_PORT`)
-- `fixture:sample-notes-repo` — regenerate the sample notes repo fixture
+- `just check-native-core` — build the core bundles and run them in a bare host
+- `just test` — run unit tests with Vitest; `just test-related <files>` runs only the tests related
+  to the given files
+- `just test-e2e` — run end-to-end tests with Playwright under the e2e lock (see below)
+- `just validate` — `check`, `test`, `check-bundle` and `test-e2e` in turn
+- `just generate-brand` — regenerate the brand SVGs and app icons (see above)
+- `just generate-pwa-screenshots` — regenerate the web app manifest screenshots in
+  `public/screenshots/` from the test-mode build, using the system Chrome (optional `E2E_PORT`)
+- `just generate-landing-screenshots` — regenerate the landing screenshots in `landing/screenshots/`,
+  in light and dark, from the test-mode build; run it after visible UI changes (optional `E2E_PORT`)
+- `just generate-sample-notes-repo` — regenerate the sample notes repo fixture
+- `just generate-test-vectors` — regenerate `apps/test-vectors/`, shared with the native apps' tests
+- `just profile-tree-scroll --out <dir>` — profile tree scrolling in the test-mode build
+
+The native apps have recipe modules of their own: `just linux <recipe>` (see the
+[Linux README](apps/linux/README.md)) and `just ios <recipe>` (see the [iOS README](apps/ios/README.md)).
+`just linux` and `just ios` list them.
 
 ## Landing page
 
@@ -75,7 +93,7 @@ The landing page lives in `landing/`: plain HTML, CSS and a small TypeScript mod
 config (`landing/vite.config.ts`). It imports only the dependency-free analytics module
 (`src/analytics/analytics.ts`) from the app source; the app lives under `src/`.
 
-- `npm run dev:landing` runs it, and `npm run build` builds it into the root of `dist/` before the app.
+- `just dev-landing` runs it, and `just build` builds it into the root of `dist/` before the app.
 - `landing/src/boot.ts` is a pre-render script bundled and inlined into `<head>`. It applies the saved
   color mode and enables motion when the visitor allows it.
 - The page ships a strict CSP applied via a `<meta>` tag, which includes the hash of the inline boot
@@ -83,8 +101,8 @@ config (`landing/vite.config.ts`). It imports only the dependency-free analytics
 - The landing stylesheet copies the app's design tokens; `landing/src/tokens.test.ts` fails when they
   drift apart.
 - The landing screenshots are in `landing/screenshots/`; regenerate them with
-  `npm run generate:landing-screenshots`.
-- `npm run check:bundle` enforces the size budget: landing HTML, CSS and JS together at most 40 KB,
+  `just generate-landing-screenshots`.
+- `just check-bundle` enforces the size budget: landing HTML, CSS and JS together at most 40 KB,
   and each landing screenshot PNG at most 400 KB.
 
 ## Privacy and analytics
@@ -150,21 +168,21 @@ build uses relative asset paths.
 ## End-to-end tests
 
 ```
-npm run test:e2e
+just test-e2e
 ```
 
-Arguments after `--` go to Playwright, e.g. `npm run test:e2e -- e2e/refresh.spec.ts`. The script
+Arguments go to Playwright, e.g. `just test-e2e e2e/refresh.spec.ts`. The recipe
 installs Playwright's headless shell (`chromium-headless-shell`, with its bundled FFmpeg)
 automatically when it is missing. The `installability` project (the PWA installability test) runs
-on the system Google Chrome, so Chrome must be installed; `generate:pwa-screenshots` needs it too.
+on the system Google Chrome, so Chrome must be installed; `generate-pwa-screenshots` needs it too.
 
 The suite runs the built site in test mode (fake forge, no network, `dist-fake/`) with `baseURL` at
 `/app/`, in the `desktop` and `mobile` projects, with 5 workers by default. App specs navigate with
 relative paths (`./`), landing specs with root paths (`/`). Motion is reduced by default (`reducedMotion: "reduce"`);
 a test that needs motion opts in with `test.use({ reducedMotion: "no-preference" })`. The web
-server reuses `dist-fake/` when `check:bundle` just built it from the same inputs.
+server reuses `dist-fake/` when `check-bundle` just built it from the same inputs.
 
-Runs take the e2e lock on `/tmp/commitnote-e2e.lock`: a second `npm run test:e2e` anywhere on the
+Runs take the e2e lock on `/tmp/commitnote-e2e.lock`: a second `just test-e2e` anywhere on the
 machine (any jj workspace, the agent cage, your own shell) prints a waiting notice and starts when
 the first one finishes. `npx playwright test` bypasses the lock.
 
@@ -172,7 +190,8 @@ the first one finishes. `npx playwright test` bypasses the lock.
 same port at once; direct `playwright test` runs can still overlap.
 
 In the 6-CPU agent cage with nothing else running, the full e2e suite takes about 4.5 min (270 s).
-Full local validation (`check` + `test` + `check:bundle` + `test:e2e`) takes about 5.2 min.
+Full local validation (`just validate`: `check`, `test`, `check-bundle` and `test-e2e`) takes about
+5.2 min.
 
 ## Manual live check
 
@@ -183,7 +202,7 @@ Real-GitHub behaviour is not covered by automation; check it by hand against a r
 
 ## Test mode
 
-`npm run dev:fake` (and `npm run build:fake` / `preview:fake`) run the app against in-memory
+`just dev-fake` (and `just build-fake` / `just preview-fake`) run the app against in-memory
 fixture repositories instead of GitHub, with no network access. Every forge call is delayed by
 roughly what it takes on GitHub (a commit about 1.2 s), so saving and loading states are visible.
 Any access token lists all of these fixture repositories:
@@ -213,8 +232,8 @@ A second fake provider, "Fakelab", stands in for GitLab and lists its own fixtur
 
 The access token `invalid-token` is always rejected and `no-repositories-token` lists no
 repositories; any other non-empty token is accepted. All
-fixture state resets on reload. Test mode is never part of `npm run build`, which
-`npm run check:bundle` verifies.
+fixture state resets on reload. Test mode is never part of `just build`, which
+`just check-bundle` verifies.
 
 ## Logging in
 
@@ -324,7 +343,7 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
 
 ## Production build
 
-`npm run build` writes plain static files to `dist/`: the landing page at the root and the app in
+`just build` writes plain static files to `dist/`: the landing page at the root and the app in
 `dist/app/`. The app build ships with a strict Content
 Security Policy applied via a `<meta>` tag; its `connect-src` allows `https://api.github.com` and `https://gitlab.com` and, when analytics is enabled, the GoatCounter origin; it is not present in the dev server. The app build also ships a web app manifest
 (`public/manifest.webmanifest`, `id`, `start_url` and `scope` all `/app/`), so commitnote can be installed as an app.
@@ -406,8 +425,8 @@ The landing page at `/` has no service worker.
 
 ### Development
 
-`npm run dev` and `npm run dev:fake` never register a service worker. `npm run preview` and
-`npm run preview:fake` do, so when iterating on a build use DevTools → Application → Service
+`just dev` and `just dev-fake` never register a service worker. `just preview` and
+`just preview-fake` do, so when iterating on a build use DevTools → Application → Service
 workers → "Update on reload", or unregister the worker there. End-to-end tests block service
 workers unless a spec opts in with `test.use({ serviceWorkers: "allow" })`.
 
@@ -429,7 +448,7 @@ self.addEventListener("activate", (event) => {
 });
 ```
 
-The app build ships it unchanged as `app/sw.js` in place of the generated worker, and `check:bundle`
+The app build ships it unchanged as `app/sw.js` in place of the generated worker, and `just check-bundle`
 accepts it. It replaces only the app worker. It
 has no `fetch` handler and never navigates clients: it deletes the commitnote caches and
 unregisters itself. Open pages reload once through their `controllerchange` handling. In Chromium they may stay
