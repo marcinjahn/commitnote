@@ -14,7 +14,9 @@ server. The only other request is an optional anonymous visit count (see
 [Privacy and analytics](#privacy-and-analytics)).
 
 [commitnote.eu](https://commitnote.eu) is the landing page; the app is at
-[commitnote.eu/app](https://commitnote.eu/app/).
+[commitnote.eu/app](https://commitnote.eu/app/). The Linux app is a Flatpak bundle for x86_64:
+[Download for Linux](https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.flatpak)
+(see [Linux app](#linux-app)).
 
 ## Prerequisites
 
@@ -326,6 +328,22 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
 `dist/app/`. The app build ships with a strict Content
 Security Policy applied via a `<meta>` tag; its `connect-src` allows `https://api.github.com` and `https://gitlab.com` and, when analytics is enabled, the GoatCounter origin; it is not present in the dev server. The app build also ships a web app manifest
 (`public/manifest.webmanifest`, `id`, `start_url` and `scope` all `/app/`), so commitnote can be installed as an app.
+
+## Linux app
+
+The Linux app (`apps/linux/`) is a native app for the same encrypted notes repository. Each
+[release](https://github.com/marcinjahn/commitnote/releases/latest) has a Flatpak bundle for x86_64,
+`commitnote-x86_64.flatpak`. With Flatpak installed, add the Flathub remote for its runtime, then install
+and run it:
+
+```sh
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user commitnote-x86_64.flatpak
+flatpak run io.github.marcinjahn.commitnote
+```
+
+To update, download the newer bundle and install it the same way. Verifying, uninstalling and
+building it are in the [Linux README](apps/linux/README.md#install-the-flatpak).
 
 ## Installing and updates
 

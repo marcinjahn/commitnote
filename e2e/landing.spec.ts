@@ -4,6 +4,8 @@ import { expectNoA11yViolations } from "./helpers/a11y";
 
 const HEADING = "Encrypted markdown notes in your own git repository.";
 const REPOSITORY = "https://github.com/marcinjahn/commitnote";
+const FLATPAK = `${REPOSITORY}/releases/latest/download/commitnote-x86_64.flatpak`;
+const LATEST_RELEASE = `${REPOSITORY}/releases/latest`;
 
 async function openLanding(page: Page): Promise<void> {
   await page.goto("/");
@@ -36,6 +38,18 @@ test("the landing page renders its content and calls to action", async ({
   for (const href of await hrefs(openApp)) {
     expect(new URL(href, page.url()).pathname).toBe("/app/");
   }
+  expect(
+    await hrefs(page.getByRole("link", { name: "Download for Linux" })),
+  ).toEqual([FLATPAK, FLATPAK]);
+  expect(
+    await hrefs(page.getByRole("link", { name: "Latest release" })),
+  ).toEqual([LATEST_RELEASE]);
+  await expect(page.locator(".hero-note")).toContainText(
+    "Flatpak for x86_64 Linux",
+  );
+  await expect(
+    page.getByRole("heading", { level: 3, name: "Linux app" }),
+  ).toBeVisible();
   const github = await hrefs(page.getByRole("link", { name: /GitHub/ }));
   expect(github.length).toBeGreaterThanOrEqual(1);
   expect(new Set(github)).toEqual(new Set([REPOSITORY]));
