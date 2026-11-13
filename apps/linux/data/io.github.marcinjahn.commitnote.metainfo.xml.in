@@ -4,16 +4,52 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>LicenseRef-proprietary</project_license>
   <name>commitnote</name>
-  <summary>Encrypted markdown notes in a Git repository you own</summary>
+  <summary>Encrypted markdown notes in Git</summary>
   <description>
     <p>commitnote is a note-taking app for markdown notes. Notes are encrypted on your device before they leave it and are stored in a Git repository that you own, so nobody else can read them.</p>
+    <p>Every change is a commit, so earlier versions of a note can be browsed and restored, and the same notes repository works with the commitnote web app.</p>
+    <p>Features:</p>
+    <ul>
+      <li>Markdown editing with a live preview, tables and images</li>
+      <li>Folders, color tags and search across all notes</li>
+      <li>Note history with restore</li>
+      <li>Read-only share links with an optional password</li>
+      <li>Import, export and printing</li>
+      <li>Typing works offline; changes sync when the connection is back</li>
+    </ul>
   </description>
   <launchable type="desktop-id">@APP_ID@.desktop</launchable>
   <developer id="io.github.marcinjahn">
     <name>Marcin Jahn</name>
   </developer>
-  <url type="homepage">https://github.com/marcinjahn/commitnote</url>
-  <content_rating type="oars-1.1"/>
+  <url type="homepage">https://commitnote.eu</url>
+  <url type="bugtracker">https://github.com/marcinjahn/commitnote/issues</url>
+  <url type="vcs-browser">https://github.com/marcinjahn/commitnote</url>
+  <branding>
+    <color type="primary" scheme_preference="light">#86a4ff</color>
+    <color type="primary" scheme_preference="dark">#3358d4</color>
+  </branding>
+  <screenshots>
+    <screenshot type="default">
+      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/e86b224762894d79cfca5c3d69d05b166b1107b1/apps/linux/data/screenshots/notes-light.png</image>
+      <caption>Write markdown notes with a live preview</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/e86b224762894d79cfca5c3d69d05b166b1107b1/apps/linux/data/screenshots/notes-dark.png</image>
+      <caption>Follows the system's light and dark style</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/e86b224762894d79cfca5c3d69d05b166b1107b1/apps/linux/data/screenshots/search-light.png</image>
+      <caption>Search across all your notes</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/e86b224762894d79cfca5c3d69d05b166b1107b1/apps/linux/data/screenshots/history-dark.png</image>
+      <caption>Browse and restore earlier versions of a note</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-info">mild</content_attribute>
+  </content_rating>
   <releases>
     <release version="0.1.0" date="2026-10-29">
       <description>
@@ -28,9 +64,14 @@
   </releases>
   <requires>
     <display_length compare="ge">360</display_length>
+    <internet>first-run</internet>
   </requires>
+  <recommends>
+    <internet>always</internet>
+  </recommends>
   <supports>
     <control>keyboard</control>
     <control>pointing</control>
+    <control>touch</control>
   </supports>
 </component>
