@@ -7,6 +7,10 @@ on:
         description: Build the testing Flatpak instead of the release one
         type: boolean
         default: false
+      cache:
+        description: Restore and save the flatpak-builder cache; a release builds without it
+        type: boolean
+        default: true
     outputs:
       artifact-name:
         description: Name of the artifact that holds the Flatpak bundle
@@ -50,6 +54,7 @@ jobs:
           build-dir: ${{ runner.temp }}/flatpak-build
           repo-dir: ${{ runner.temp }}/flatpak-repo
           state-dir: ${{ runner.temp }}/flatpak-builder
+          cache: ${{ inputs.cache }}
           cache-key: flatpak-builder-${{ inputs.testing && 'testing' || 'release' }}-${{ hashFiles('apps/linux/flatpak/io.github.marcinjahn.commitnote.yml', 'apps/linux/Cargo.lock', 'package-lock.json') }}
 
       - name: Lint

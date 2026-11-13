@@ -1,0 +1,144 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag to check, such as v1.2.3. A manual run is a dry run that publishes nothing.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
+jobs:
+  check:
+    name: Check the version
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    # The image the Flatpak is built in, which has meson to read the project version.
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+    env:
+      METAINFO: apps/linux/data/io.github.marcinjahn.commitnote.metainfo.xml.in
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag against the versions
+        id: version
+        run: |
+          set -eu
+          version=$(meson introspect --projectinfo apps/linux/meson.build |
+            python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::The tag $TAG is not v$version, the version in apps/linux/meson.build."
+            exit 1
+          fi
+          apps/linux/build-aux/check-versions.py "$version" apps/linux/Cargo.toml "$METAINFO"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Generate the release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: apps/linux/build-aux/release-notes.py "$VERSION" "$METAINFO" > "$RUNNER_TEMP/release-notes.md"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release-notes.md
+          if-no-files-found: error
+          retention-days: 30
+
+  flatpak:
+    name: Flatpak
+    needs: check
+    uses: ./.github/workflows/flatpak.yml
+    with:
+      cache: false
+
+  flatpak-smoke-test:
+    name: Flatpak smoke test
+    needs: flatpak
+    uses: ./.github/workflows/flatpak-smoke-test.yml
+    with:
+      release-artifact: ${{ needs.flatpak.outputs.artifact-name }}
+
+  assets:
+    name: Prepare the release
+    needs: [flatpak, flatpak-smoke-test]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.flatpak.outputs.artifact-name }}
+          path: ${{ runner.temp }}/release/assets
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release
+
+      - name: Write SHA256SUMS
+        working-directory: ${{ runner.temp }}/release/assets
+        run: |
+          set -eu
+          sha256sum commitnote-x86_64.flatpak > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish the release
+    if: github.event_name == 'push'
+    needs: [check, assets]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check that the release does not exist yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::The release $TAG already exists; a version is released once and its tag is never moved."
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: ${{ runner.temp }}/release
+
+      - uses: actions/attest@v4
+        with:
+          subject-path: ${{ runner.temp }}/release/assets/commitnote-x86_64.flatpak
+
+      - name: Create the release
+        working-directory: ${{ runner.temp }}/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --latest \
+            --title "commitnote $VERSION" --notes-file release-notes.md \
+            assets/commitnote-x86_64.flatpak assets/SHA256SUMS
