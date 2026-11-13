@@ -15,7 +15,16 @@
   <url type="homepage">https://github.com/marcinjahn/commitnote</url>
   <content_rating type="oars-1.1"/>
   <releases>
-    <release version="0.1.0" date="2026-10-29"/>
+    <release version="0.1.0" date="2026-10-29">
+      <description>
+        <p>The first version of commitnote for Linux.</p>
+        <ul>
+          <li>Log in, unlock your notes repository, and browse, search and organise your notes</li>
+          <li>Markdown editor with a live preview, autosave, sync status and conflict handling</li>
+          <li>Note history, sharing, printing, import and export, and note fonts</li>
+        </ul>
+      </description>
+    </release>
   </releases>
   <requires>
     <display_length compare="ge">360</display_length>

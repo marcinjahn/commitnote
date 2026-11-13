@@ -771,8 +771,9 @@ The static checks (`lint.sh`) are:
 - `cargo clippy` with `-D warnings` on the crates and, through meson, on the app with and without
   the testing build,
 - Blueprint compilation of `data/ui/`, which happens when meson builds the app for clippy,
-- the meson `static` suite: `desktop-file-validate`, `appstreamcli validate` on the metainfo, and a
-  strict compile of the GSettings schema,
+- the meson `static` suite: `desktop-file-validate`, `appstreamcli validate` on the metainfo, a
+  strict compile of the GSettings schema, and a check that the crate versions and the newest
+  release entry follow the meson project version, and that the entry has a description,
 - on the host, `npx tsx apps/linux/markdown-vectors/generate.ts --check`, which fails when the
   Markdown vectors are stale (see below).
 

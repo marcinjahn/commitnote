@@ -101,6 +101,17 @@ if testing
   )
 endif
 
+test(
+  'versions',
+  find_program('build-aux/check-versions.py'),
+  args: [
+    meson.project_version(),
+    meson.project_source_root() / 'Cargo.toml',
+    meson.project_source_root() / 'data' / 'io.github.marcinjahn.commitnote.metainfo.xml.in',
+  ],
+  suite: 'static',
+)
+
 run_target(
   'cargo-clippy',
   command: [cargo_script, 'clippy', cargo_args, 'commitnote'],
