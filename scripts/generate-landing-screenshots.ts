@@ -10,14 +10,17 @@ import {
   type Page,
 } from "@playwright/test";
 import { preview } from "vite";
-import { openNotes } from "../e2e/helpers";
 import {
   headerSyncIcon,
   openHistory,
-  openWelcome,
   waitForSynced,
 } from "../e2e/helpers/tree";
 import { readPngSize } from "./png-size";
+import {
+  expandFolders,
+  openShowcase,
+  openShowcaseHeroNote,
+} from "./showcase-screens";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const screenshotsDir = resolve(root, "landing/screenshots");
@@ -38,20 +41,31 @@ interface Shot {
 const desktop = { width: 1280, height: 800 };
 const phone = { width: 412, height: 915 };
 
-async function openWelcomeSettled(page: Page): Promise<void> {
-  await openWelcome(page);
-  await expect(
-    page.getByRole("list", { name: "Note details" }).locator("time"),
-  ).toHaveCount(2);
-}
-
-async function appendText(page: Page, text: string): Promise<void> {
-  const editor = page.getByRole("textbox", { name: "Note editor" });
-  await editor.click();
-  await page.keyboard.press("ControlOrMeta+End");
-  await page.keyboard.type(text);
+async function saveEditAt(
+  page: Page,
+  time: string,
+  edit: () => Promise<void>,
+): Promise<void> {
+  await page.clock.setFixedTime(new Date(time));
+  await edit();
   await expect(headerSyncIcon(page)).toBeVisible();
   await waitForSynced(page);
+}
+
+async function editHeroNote(page: Page): Promise<void> {
+  await saveEditAt(page, "2026-10-01T10:12:00Z", () =>
+    page
+      .getByRole("checkbox", { name: "Task: Send a frost alert below 2 °C" })
+      .click(),
+  );
+  await saveEditAt(page, "2026-10-01T11:05:00Z", async () => {
+    await page
+      .locator(".cm-line", { hasText: "Send a frost alert below 2 °C" })
+      .click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("Weatherproof the enclosure");
+  });
 }
 
 const shots: readonly Shot[] = [
@@ -60,8 +74,7 @@ const shots: readonly Shot[] = [
     viewport: desktop,
     phone: false,
     async prepare(page) {
-      await openNotes(page);
-      await openWelcomeSettled(page);
+      await openShowcaseHeroNote(page);
     },
   },
   {
@@ -69,12 +82,10 @@ const shots: readonly Shot[] = [
     viewport: desktop,
     phone: false,
     async prepare(page) {
-      await openNotes(page);
-      await openWelcomeSettled(page);
-      await appendText(page, "one");
-      await appendText(page, " two");
-      await appendText(page, " three");
+      await openShowcaseHeroNote(page);
+      await editHeroNote(page);
       const dialog = await openHistory(page);
+      await dialog.getByRole("button", { name: /Created/ }).click();
       await expect(dialog.getByTestId("diff-summary")).toBeVisible();
     },
   },
@@ -83,7 +94,8 @@ const shots: readonly Shot[] = [
     viewport: phone,
     phone: true,
     async prepare(page) {
-      await openNotes(page);
+      await openShowcase(page);
+      await expandFolders(page, ["Projects", "Travel"]);
     },
   },
   {
@@ -91,8 +103,7 @@ const shots: readonly Shot[] = [
     viewport: phone,
     phone: true,
     async prepare(page) {
-      await openNotes(page);
-      await openWelcomeSettled(page);
+      await openShowcaseHeroNote(page);
     },
   },
 ];
@@ -102,8 +113,11 @@ const social: Shot = {
   viewport: { width: 1200, height: 630 },
   phone: false,
   async prepare(page) {
-    await openNotes(page);
-    await openWelcomeSettled(page);
+    await openShowcaseHeroNote(page);
+    // Scroll past the note details so the cut falls inside the code block.
+    await page.locator(".note-content").evaluate((pane) => {
+      pane.scrollTop = 64;
+    });
   },
 };
 
@@ -171,6 +185,7 @@ async function capture(
       content:
         ".test-mode-banner { display: none !important; } .commit-sha { visibility: hidden; }",
     });
+    await page.mouse.move(0, 0);
     await page.screenshot({ path, animations: "disabled", caret: "hide" });
   } finally {
     await context.close();
