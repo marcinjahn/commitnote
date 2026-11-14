@@ -27,10 +27,7 @@ afterEach(() => {
 async function started(
   platform?: NativePlatform,
 ): Promise<NativeCoreHandle> {
-  ctx = await createCoreTestContext({
-    analyticsEndpoint: "https://a.invalid/c",
-    platform,
-  });
+  ctx = await createCoreTestContext({ platform });
   const core = ctx.startCore(undefined, (session) => {
     app = session;
     return {};
@@ -396,7 +393,6 @@ describe("settings.open", () => {
       deviceName: "",
       automaticDeviceName: "iPhone",
       reopenLastView: true,
-      analyticsCounted: true,
       canExport: true,
       canImport: true,
       canChangePassphrase: true,
@@ -417,16 +413,13 @@ describe("settings.open", () => {
 
     await ctx.call(core, "device.setName", { name: "Pad" });
     expect(ctx.events("settingsChanged")).toHaveLength(afterLogin + 2);
-    await ctx.call(core, "analytics.setCounted", { counted: false });
-    expect(ctx.events("settingsChanged")).toHaveLength(afterLogin + 3);
     await ctx.call(core, "lastView.setEnabled", {
       enabled: false,
       view: { note: null, folders: [] },
     });
-    expect(ctx.events("settingsChanged")).toHaveLength(afterLogin + 4);
+    expect(ctx.events("settingsChanged")).toHaveLength(afterLogin + 3);
     expect(lastView()).toMatchObject({
       deviceName: "Pad",
-      analyticsCounted: false,
       reopenLastView: false,
     });
   });
@@ -492,25 +485,5 @@ describe("lastView.setEnabled", () => {
       expect((await ctx.call(core, "lastView.load")).view).toEqual(VIEW),
     );
     expect(lastView().reopenLastView).toBe(true);
-  });
-});
-
-describe("analytics.setCounted", () => {
-  it("stores the opt-out so analytics.visit returns no URL", async () => {
-    ctx = await createCoreTestContext({
-      analyticsEndpoint: "https://a.invalid/c",
-    });
-    const core = ctx.startCore();
-    await ctx.call(core, "analytics.setCounted", { counted: false });
-    expect(ctx.host.deviceSettings.getItem("commitnote.analyticsOptOut")).toBe(
-      "1",
-    );
-    expect(await ctx.call(core, "analytics.visit")).toEqual({ url: null });
-
-    await ctx.call(core, "analytics.setCounted", { counted: true });
-    expect(
-      ctx.host.deviceSettings.getItem("commitnote.analyticsOptOut"),
-    ).toBeNull();
-    expect((await ctx.call(core, "analytics.visit")).url).not.toBeNull();
   });
 });

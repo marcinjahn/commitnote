@@ -73,11 +73,6 @@ public struct ReopenLastViewCopy: Decodable, Equatable, Sendable {
     public var label: String
 }
 
-public struct AnalyticsCopy: Decodable, Equatable, Sendable {
-    public var label: String
-    public var hint: String
-}
-
 public struct TypeToStartCopy: Decodable, Equatable, Sendable {
     public var label: String
     public var hint: String
@@ -108,7 +103,6 @@ public struct SettingsCopy: Decodable, Equatable, Sendable {
     public var deviceName: DeviceNameCopy
     public var typeToStart: TypeToStartCopy
     public var reopenLastView: ReopenLastViewCopy
-    public var analytics: AnalyticsCopy
     public var data: SettingsDataCopy
     public var retryLabel: String
 }
@@ -135,7 +129,6 @@ public struct SettingsView: Decodable, Equatable, Sendable {
     public var deviceName: String
     public var automaticDeviceName: String
     public var reopenLastView: Bool
-    public var analyticsCounted: Bool
     public var canExport: Bool
     public var canImport: Bool
     public var canChangePassphrase: Bool

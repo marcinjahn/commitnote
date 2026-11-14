@@ -62,7 +62,6 @@ export interface CoreTestContext {
 export async function createCoreTestContext(
   options: {
     readonly extraCommands?: ExtraCommandsInput;
-    readonly analyticsEndpoint?: string | null;
     readonly platform?: NativePlatform;
   } = {},
 ): Promise<CoreTestContext> {
@@ -106,7 +105,6 @@ export async function createCoreTestContext(
       host,
       deviceModel: "iPhone",
       platform: options.platform ?? "ios",
-      analyticsEndpoint: options.analyticsEndpoint ?? null,
       registry: () => Promise.resolve(forges),
       extraCommands: (app) => ({
         ...resolveExtra(options.extraCommands, app),

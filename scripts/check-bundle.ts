@@ -11,8 +11,6 @@ import {
 } from "./precache-manifest";
 import { buildModeFacts, FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
 import {
-  IOS_VISIT_NEEDLES,
-  LINUX_VISIT_NEEDLES,
   NATIVE_CORE_NEEDLES,
   PROD_LEAK_NEEDLES,
 } from "./bundle-needles";
@@ -431,30 +429,6 @@ async function main(): Promise<void> {
       `Landing size budget check failed:\n${budget.problems.map((problem) => `  - ${problem}`).join("\n")}`,
     );
     return;
-  }
-
-  // The landing page's privacy text names the Linux visit, so only the app is checked for it.
-  for (const [platform, needles, dirs] of [
-    ["iOS", IOS_VISIT_NEEDLES, [distDir, fakeDistDir]],
-    [
-      "Linux",
-      LINUX_VISIT_NEEDLES,
-      [join(distDir, "app"), join(fakeDistDir, "app")],
-    ],
-  ] as const) {
-    const visitInWeb = [];
-    for (const dir of dirs) {
-      visitInWeb.push(...(await findForbidden(dir, needles)));
-    }
-    if (visitInWeb.length > 0) {
-      for (const hit of visitInWeb) {
-        console.error(
-          `A web bundle ships the ${platform} visit: "${hit.needle}" found in ${hit.file}`,
-        );
-      }
-      process.exitCode = 1;
-      return;
-    }
   }
 
   const nativeCoreInWeb = [

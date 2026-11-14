@@ -9,10 +9,6 @@ import {
 import type { SettingOption } from "../settings/setting-option";
 import { IMPORTING_LABEL } from "../ui/import/import-messages";
 import {
-  ANALYTICS_LABEL,
-  describeAnalytics,
-} from "../ui/settings/analytics-option";
-import {
   DEVICE_NAME_HINT,
   DEVICE_NAME_LABEL,
 } from "../ui/settings/device-name-option";
@@ -117,7 +113,6 @@ export function buildSettingsCopy(platform: NativePlatform): SettingsCopy {
       maxLength: DEVICE_NAME_MAX_LENGTH,
     },
     reopenLastView: { label: REOPEN_LAST_VIEW_LABEL },
-    analytics: { label: ANALYTICS_LABEL, hint: describeAnalytics(false) },
     data: {
       exportLabel: EXPORT_NOTES_LABEL,
       exportingLabel: EXPORTING_LABEL,

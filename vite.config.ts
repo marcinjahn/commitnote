@@ -31,7 +31,6 @@ export default defineConfig(({ mode, command }) => {
       publicDir: false,
       define: {
         __FAKE_FORGE__: JSON.stringify(fakeForge),
-        __ANALYTICS_ENDPOINT__: JSON.stringify(facts.analyticsEndpoint),
         "process.env.NODE_ENV": JSON.stringify("production"),
       },
       plugins: [nativeCoreArgon2Redirect()],

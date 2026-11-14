@@ -138,7 +138,6 @@ pub struct SettingsCopy {
     pub new_folder_placement: SettingChoiceCopy,
     pub device_name: DeviceNameCopy,
     pub reopen_last_view: LabelOnly,
-    pub analytics: LabelHint,
     pub data: DataCopy,
     pub retry_label: String,
 }
@@ -173,7 +172,6 @@ pub struct SettingsView {
     pub device_name: String,
     pub automatic_device_name: String,
     pub reopen_last_view: bool,
-    pub analytics_counted: bool,
     pub can_export: bool,
     pub can_import: bool,
     pub can_change_passphrase: bool,

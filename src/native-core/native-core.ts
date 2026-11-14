@@ -14,7 +14,6 @@ import {
   type CommandParams,
   type EmitCoreEvent,
 } from "./commands/command-context";
-import { createAnalyticsCommands } from "./commands/analytics-commands";
 import { createDraftCommands } from "./commands/draft-commands";
 import { createEditingCommands } from "./commands/editing-commands";
 import { createHistoryCommands } from "./commands/history-commands";
@@ -86,7 +85,6 @@ export function createNativeCore(options: {
   readonly host: HostServices;
   readonly deviceModel: string;
   readonly platform: NativePlatform;
-  readonly analyticsEndpoint: string | null;
   readonly registry: () => Promise<ForgeRegistry>;
   readonly extraCommands?: ExtraCommands | ((app: AppSession) => ExtraCommands);
 }): NativeCoreHandle {
@@ -168,13 +166,6 @@ export function createNativeCore(options: {
         events: engineEvents,
         notices,
         settings: settingsEvents,
-      }),
-      ...createAnalyticsCommands({
-        host,
-        app,
-        events: engineEvents,
-        notices,
-        analyticsEndpoint: options.analyticsEndpoint,
       }),
       ...createPrintCommands({ host, app, events: engineEvents, notices }),
       ...imports.handlers,

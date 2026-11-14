@@ -1,5 +1,5 @@
 public enum NativeCoreAPIVersion {
-    public static let current = 7
+    public static let current = 8
 }
 
 public protocol NativeCoreCommand: Encodable, Sendable {
@@ -852,8 +852,6 @@ public enum NativeCoreCommands {
         SettingsFlush.name,
         DeviceSetName.name,
         LastViewSetEnabled.name,
-        AnalyticsVisit.name,
-        AnalyticsSetCounted.name,
         PrintRender.name,
         ImportReadArchive.name,
         ImportPreview.name,
@@ -962,21 +960,6 @@ public struct LastViewSetEnabled: NativeCoreCommand {
         self.enabled = enabled
         self.view = view
     }
-}
-
-public struct AnalyticsVisit: NativeCoreCommand {
-    public static let name = "analytics.visit"
-    public struct Result: Decodable, Equatable, Sendable {
-        public var url: String?
-    }
-    public init() {}
-}
-
-public struct AnalyticsSetCounted: NativeCoreCommand {
-    public static let name = "analytics.setCounted"
-    public typealias Result = Empty
-    public var counted: Bool
-    public init(counted: Bool) { self.counted = counted }
 }
 
 public struct PrintRender: NativeCoreCommand {

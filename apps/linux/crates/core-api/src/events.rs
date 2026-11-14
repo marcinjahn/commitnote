@@ -851,7 +851,7 @@ mod tests {
     #[test]
     fn settings_changed() {
         let CoreEvent::SettingsChanged { view } = event(
-            r#"{"kind":"event","event":"settingsChanged","payload":{"view":{"values":{"colorMode":"system","accentColor":"system","noteFont":"sans","newNotePlacement":"top","newFolderPlacement":"bottom","typeToStart":true,"vimMode":false},"scopes":{"colorMode":"synced","accentColor":"device","noteFont":"synced","typeToStart":"device"},"deviceName":"","automaticDeviceName":"Laptop","reopenLastView":true,"analyticsCounted":false,"canExport":true,"canImport":true,"canChangePassphrase":false}}}"#,
+            r#"{"kind":"event","event":"settingsChanged","payload":{"view":{"values":{"colorMode":"system","accentColor":"system","noteFont":"sans","newNotePlacement":"top","newFolderPlacement":"bottom","typeToStart":true,"vimMode":false},"scopes":{"colorMode":"synced","accentColor":"device","noteFont":"synced","typeToStart":"device"},"deviceName":"","automaticDeviceName":"Laptop","reopenLastView":true,"canExport":true,"canImport":true,"canChangePassphrase":false}}}"#,
         ) else {
             panic!("settingsChanged");
         };

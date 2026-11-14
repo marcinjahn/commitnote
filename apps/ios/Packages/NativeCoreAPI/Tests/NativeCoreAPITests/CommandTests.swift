@@ -36,7 +36,6 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(try params(SettingsOpen()), empty)
         XCTAssertEqual(try params(SettingsRetry()), empty)
         XCTAssertEqual(try params(SettingsFlush()), empty)
-        XCTAssertEqual(try params(AnalyticsVisit()), empty)
         XCTAssertEqual(try params(ImportCancel()), empty)
         XCTAssertEqual(try params(ImportEnableAtomic()), empty)
         XCTAssertEqual(try params(ImportSaveWithoutAtomic()), empty)
@@ -373,7 +372,7 @@ final class CommandTests: XCTestCase {
     }
 
     func testVersion3CommandParams() throws {
-        XCTAssertEqual(NativeCoreAPIVersion.current, 7)
+        XCTAssertEqual(NativeCoreAPIVersion.current, 8)
         XCTAssertEqual(
             try params(NodeRename(path: ["a"], name: "b")), try json(#"{"path":["a"],"name":"b"}"#))
         XCTAssertEqual(
@@ -828,8 +827,6 @@ final class CommandTests: XCTestCase {
                 LastViewSetEnabled(enabled: true, view: LastView(note: nil, folders: [["a"]]))),
             try json(#"{"enabled":true,"view":{"note":null,"folders":[["a"]]}}"#))
         XCTAssertEqual(
-            try params(AnalyticsSetCounted(counted: false)), try json(#"{"counted":false}"#))
-        XCTAssertEqual(
             try params(PrintRender(name: "n", text: "t")), try json(#"{"name":"n","text":"t"}"#))
         XCTAssertEqual(
             try params(ImportReadArchive(input: "id", fileName: "a.zip")),
@@ -864,14 +861,14 @@ final class CommandTests: XCTestCase {
     }
 
     private let settingsViewJSON =
-        #"{"values":{"colorMode":"system","accentColor":"system","noteFont":"sans","newNotePlacement":"top","newFolderPlacement":"bottom","typeToStart":true},"scopes":{"colorMode":"synced","accentColor":"device","noteFont":"synced","typeToStart":"device"},"deviceName":"","automaticDeviceName":"iPhone","reopenLastView":true,"analyticsCounted":false,"canExport":true,"canImport":true,"canChangePassphrase":false}"#
+        #"{"values":{"colorMode":"system","accentColor":"system","noteFont":"sans","newNotePlacement":"top","newFolderPlacement":"bottom","typeToStart":true},"scopes":{"colorMode":"synced","accentColor":"device","noteFont":"synced","typeToStart":"device"},"deviceName":"","automaticDeviceName":"iPhone","reopenLastView":true,"canExport":true,"canImport":true,"canChangePassphrase":false}"#
     private let saveViewJSON =
         #"{"state":"failed","label":"Not saved","detail":"Settings not saved","canRetry":true}"#
     private let choiceJSON =
         #"{"label":"Mode","options":[{"id":"a","label":"A","description":null},{"id":"b","label":"B","description":"d"}]}"#
 
     private var settingsCopyJSON: String {
-        ##"{"title":"Settings","intro":"i","sections":{"appearance":"a","editor":"e","notes":"n","thisDevice":"t","dataSecurity":"d"},"scopeLabels":{"synced":"All devices","device":"This device"},"colorMode":\##(choiceJSON),"accentColor":{"label":"Accent","options":[{"id":"system","label":"System","light":null,"dark":null},{"id":"blue","label":"Blue","light":"#0000ff","dark":"#8888ff"}]},"noteFont":{"label":"Font","options":[{"id":"sans","label":"Sans","description":null}],"previewHeading":"h","previewBody":"b","previewCode":"c"},"editorUnavailable":"u","newNotePlacement":\##(choiceJSON),"newFolderPlacement":\##(choiceJSON),"deviceName":{"label":"l","hint":"h","maxLength":40},"typeToStart":{"label":"Type to start","hint":"th"},"reopenLastView":{"label":"r"},"analytics":{"label":"l","hint":"h"},"data":{"exportLabel":"1","exportingLabel":"2","exportShareLabel":"3","exportFilesLabel":"4","exportFailed":"5","importLabel":"6","importingLabel":"7","changePassphraseLabel":"8"},"retryLabel":"Retry"}"##
+        ##"{"title":"Settings","intro":"i","sections":{"appearance":"a","editor":"e","notes":"n","thisDevice":"t","dataSecurity":"d"},"scopeLabels":{"synced":"All devices","device":"This device"},"colorMode":\##(choiceJSON),"accentColor":{"label":"Accent","options":[{"id":"system","label":"System","light":null,"dark":null},{"id":"blue","label":"Blue","light":"#0000ff","dark":"#8888ff"}]},"noteFont":{"label":"Font","options":[{"id":"sans","label":"Sans","description":null}],"previewHeading":"h","previewBody":"b","previewCode":"c"},"editorUnavailable":"u","newNotePlacement":\##(choiceJSON),"newFolderPlacement":\##(choiceJSON),"deviceName":{"label":"l","hint":"h","maxLength":40},"typeToStart":{"label":"Type to start","hint":"th"},"reopenLastView":{"label":"r"},"data":{"exportLabel":"1","exportingLabel":"2","exportShareLabel":"3","exportFilesLabel":"4","exportFailed":"5","importLabel":"6","importingLabel":"7","changePassphraseLabel":"8"},"retryLabel":"Retry"}"##
     }
 
     func testVersion5SettingsResults() throws {
@@ -903,12 +900,7 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(try result(SettingsRetry.self, "{}"), Empty())
         XCTAssertEqual(try result(SettingsFlush.self, "{}"), Empty())
         XCTAssertEqual(try result(LastViewSetEnabled.self, "{}"), Empty())
-        XCTAssertEqual(try result(AnalyticsSetCounted.self, "{}"), Empty())
         XCTAssertEqual(try result(DeviceSetName.self, #"{"name":"iPhone"}"#).name, "iPhone")
-        XCTAssertEqual(
-            try result(AnalyticsVisit.self, #"{"url":"https://example.test/"}"#).url,
-            "https://example.test/")
-        XCTAssertNil(try result(AnalyticsVisit.self, #"{"url":null}"#).url)
         XCTAssertEqual(try result(PrintRender.self, #"{"html":"<p>x</p>"}"#).html, "<p>x</p>")
 
         for state in ["synced", "syncing", "pending", "failed"] {

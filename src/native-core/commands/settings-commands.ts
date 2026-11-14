@@ -1,4 +1,3 @@
-import { writeAnalyticsOptOut } from "../../analytics/analytics";
 import {
   changeSettings,
   changeSettingScope,
@@ -182,15 +181,6 @@ export function createSettingsCommands(context: {
       const view = lastViewParam(params.view);
       writeReopenLastViewOff(!enabled, host.deviceSettings);
       app.lastView()?.setEnabled(enabled, view);
-      settings.refresh();
-      return {};
-    },
-
-    async "analytics.setCounted"(
-      params,
-    ): Promise<Result<"analytics.setCounted">> {
-      const counted = booleanParam(params, "counted");
-      writeAnalyticsOptOut(!counted, host.deviceSettings);
       settings.refresh();
       return {};
     },
