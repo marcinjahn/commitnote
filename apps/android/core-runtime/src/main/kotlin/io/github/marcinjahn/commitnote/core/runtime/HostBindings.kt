@@ -149,17 +149,21 @@ internal class HostBindings(
         }
 
     /** A service's own message is safe to show; anything else is logged by type only. */
-    private fun failureMessage(error: Exception): String =
+    private fun failureMessage(error: Throwable): String =
         when (error) {
             is ServiceException, is HttpTransportException -> {
                 error.message ?: HOST_OPERATION_FAILED
             }
 
             else -> {
-                logger.log(LogLevel.ERROR, "$HOST_OPERATION_FAILED: ${error.javaClass.simpleName}")
+                logUnexpected(error)
                 HOST_OPERATION_FAILED
             }
         }
+
+    private fun logUnexpected(error: Throwable) {
+        logger.log(LogLevel.ERROR, "$HOST_OPERATION_FAILED: ${error.javaClass.simpleName}")
+    }
 
     /**
      * Runs [work] on [executor] and settles the returned promise on the engine thread. With
@@ -198,20 +202,14 @@ internal class HostBindings(
         val settled =
             try {
                 Result.success(settle(outcome.getOrThrow()))
-            } catch (error: Exception) {
+            } catch (error: Throwable) {
                 Result.failure(error)
             }
         try {
             settled.fold(
                 onSuccess = { task.deferred.resolve(it) },
                 onFailure = { error ->
-                    val message =
-                        failure ?: when (error) {
-                            is JsHostError -> error.message.orEmpty()
-                            is Exception -> failureMessage(error)
-                            else -> throw error
-                        }
-                    task.deferred.reject(JsValue.Error(message))
+                    task.deferred.reject(JsValue.Error(rejectionMessage(error, failure)))
                 },
             )
         } catch (error: JsException) {
@@ -223,6 +221,29 @@ internal class HostBindings(
             task.deferred.close()
         }
     }
+
+    private fun rejectionMessage(
+        error: Throwable,
+        failure: String?,
+    ): String =
+        when {
+            error is JsHostError -> {
+                failure ?: error.message.orEmpty()
+            }
+
+            failure == null -> {
+                failureMessage(error)
+            }
+
+            else -> {
+                if (error !is ServiceException &&
+                    error !is HttpTransportException
+                ) {
+                    logUnexpected(error)
+                }
+                failure
+            }
+        }
 
     private fun <T> storageOperation(
         failure: String,

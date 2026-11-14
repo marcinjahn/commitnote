@@ -69,8 +69,9 @@ suspend fun <T> loggedStep(
 private fun logThreadStacks() {
     Thread
         .getAllStackTraces()
-        .filterValues { it.isNotEmpty() }
-        .toSortedMap(compareBy({ !it.name.startsWith("commitnote") }, { it.name }))
+        .entries
+        .filter { it.value.isNotEmpty() }
+        .sortedWith(compareBy({ !it.key.name.startsWith("commitnote") }, { it.key.name }))
         .forEach { (thread, frames) ->
             Log.e(
                 LOG_TAG,

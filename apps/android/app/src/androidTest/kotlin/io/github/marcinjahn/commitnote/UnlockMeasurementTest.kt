@@ -26,6 +26,10 @@ class UnlockMeasurementTest {
     fun recordsUnlockTime() =
         runBlocking {
             val runtime = startTestRuntime()
+            Log.i(
+                LOG_TAG,
+                "Maximum heap size: ${Runtime.getRuntime().maxMemory() / BYTES_PER_MIB} MiB",
+            )
             try {
                 val accessToken = Secret(FAKE_ACCESS_TOKEN)
                 val repository =
@@ -75,6 +79,7 @@ class UnlockMeasurementTest {
 
     private companion object {
         const val STATUS_KEY = "unlockMilliseconds"
+        const val BYTES_PER_MIB = 1024 * 1024
         val STEP_LIMIT = 3.minutes
     }
 }

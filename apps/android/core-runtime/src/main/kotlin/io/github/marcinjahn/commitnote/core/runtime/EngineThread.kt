@@ -74,7 +74,7 @@ internal class EngineThread(
     private fun guarded(block: () -> Unit) {
         try {
             block()
-        } catch (error: Exception) {
+        } catch (error: Throwable) {
             logger.log(LogLevel.ERROR, "An engine task failed: ${error.javaClass.simpleName}")
         }
     }

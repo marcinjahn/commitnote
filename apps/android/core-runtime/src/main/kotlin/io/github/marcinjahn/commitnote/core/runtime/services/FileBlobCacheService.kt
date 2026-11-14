@@ -11,7 +11,7 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
-import java.util.concurrent.atomic.AtomicLong
+import java.util.UUID
 
 /**
  * One directory per repository key, named by the SHA-256 of the key, holding the blobs by id and
@@ -216,9 +216,7 @@ class FileBlobCacheService(
         val directory = checkNotNull(path.parent)
         Files.createDirectories(directory, PRIVATE_DIRECTORY)
         val temp =
-            directory.resolve(
-                ".tmp-${ProcessHandle.current().pid()}-${tempCounter.getAndIncrement()}",
-            )
+            directory.resolve(".tmp-${UUID.randomUUID()}")
         try {
             Files.createFile(temp, PRIVATE_FILE)
             FileOutputStream(temp.toFile()).use { output ->
@@ -255,6 +253,5 @@ class FileBlobCacheService(
             PosixFilePermissions.asFileAttribute(
                 PosixFilePermissions.fromString("rw-------"),
             )
-        val tempCounter = AtomicLong()
     }
 }
