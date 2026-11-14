@@ -48,10 +48,12 @@ import {
 import { generateLargeTreeRepo } from "../sample-notes-repo/generate-sample-notes-repo";
 import { LARGE_TREE_REPO_KEY } from "../sample-notes-repo/large-tree-source";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../sample-notes-repo/sample-source";
+import { SHOWCASE_REPO_KEY } from "../sample-notes-repo/showcase-source";
 import {
   createAdapterFor,
   createSampleNotesRepoAdapter,
   createSampleSearchRepoAdapter,
+  createSampleShowcaseRepoAdapter,
   createSampleTrashRepoAdapter,
   sampleNotesRepo,
 } from "../sample-notes-repo/seed-sample-notes-repo";
@@ -243,6 +245,10 @@ export async function createFakeForge(options?: {
     ["sample/newer", await createNewerRepoAdapter(githubShares)],
     ["sample/search", await createSampleSearchRepoAdapter({ shares: githubShares })],
     ["sample/trash", await createSampleTrashRepoAdapter({ shares: githubShares })],
+    [
+      SHOWCASE_REPO_KEY,
+      await createSampleShowcaseRepoAdapter({ shares: githubShares }),
+    ],
     [
       LARGE_TREE_REPO_KEY,
       createLazyForgeAdapter(async () =>

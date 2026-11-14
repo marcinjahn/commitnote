@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   generateSampleNotesRepo,
   generateSampleSearchRepo,
+  generateSampleShowcaseRepo,
   generateSampleTrashRepo,
 } from "../src/testing/sample-notes-repo/generate-sample-notes-repo";
 
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
     ["sample-notes-repo.json", await generateSampleNotesRepo()],
     ["sample-trash-repo.json", await generateSampleTrashRepo()],
     ["sample-search-repo.json", await generateSampleSearchRepo()],
+    ["sample-showcase-repo.json", await generateSampleShowcaseRepo()],
   ] as const;
   for (const [file, repo] of outputs) {
     await writeFile(

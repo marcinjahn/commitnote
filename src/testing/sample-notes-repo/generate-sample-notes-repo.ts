@@ -30,6 +30,7 @@ import {
   SAMPLE_IMAGE_WIDTH,
 } from "./sample-image";
 import { createSeededRandom } from "./seeded-random";
+import { showcaseRepoSource, showcaseRepoTags } from "./showcase-source";
 import {
   SAMPLE_NOTES_REPO_PASSPHRASE,
   sampleImageNote,
@@ -62,6 +63,7 @@ const SEED = 0x676e6f74;
 const LARGE_TREE_SEED = 0x6c617267;
 const TRASH_SEED = 0x74726173;
 const SEARCH_SEED = 0x73656172;
+const SHOWCASE_SEED = 0x73686f77;
 const IMAGE_SEED = 0x696d6167;
 const IMAGE_COMMIT_TIME = Date.parse("2026-01-15T12:00:00.000Z");
 const README_TEXT = "# Notes\n\nThis repository is managed by commitnote.\n";
@@ -149,6 +151,17 @@ export function generateSampleSearchRepo(): Promise<SampleNotesRepo> {
     sampleSearchRepoTrashed,
     [],
     sampleSearchRepoTags,
+    argon2idDirect,
+  );
+}
+
+export function generateSampleShowcaseRepo(): Promise<SampleNotesRepo> {
+  return generateRepo(
+    SHOWCASE_SEED,
+    showcaseRepoSource,
+    [],
+    [],
+    showcaseRepoTags,
     argon2idDirect,
   );
 }

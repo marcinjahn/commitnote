@@ -393,6 +393,7 @@ describe("createFakeForge registry", () => {
       "https://github.com/sample/newer",
       "https://github.com/sample/search",
       "https://github.com/sample/trash",
+      "https://github.com/sample/showcase",
       "https://github.com/sample/large-tree",
       "https://github.com/sample/almost-empty",
       "https://github.com/sample/public-empty",
