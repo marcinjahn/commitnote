@@ -40,5 +40,7 @@ tasks.test {
     systemProperty("commitnote.fakeCoreBundle", fakeCoreBundle.absolutePath)
     systemProperty("commitnote.testVectors", testVectors.absolutePath)
     systemProperty("commitnote.icuData", icuData.get().asFile.absolutePath)
-    systemProperty("commitnote.readBackDir", rootDir.resolve("out/read-back").absolutePath)
+    val readBackDir = rootDir.resolve("out/read-back")
+    outputs.dir(readBackDir)
+    systemProperty("commitnote.readBackDir", readBackDir.absolutePath)
 }

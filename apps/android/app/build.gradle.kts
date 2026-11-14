@@ -17,6 +17,9 @@ android {
         libs.versions.compile.sdk
             .get()
             .toInt()
+    buildToolsVersion =
+        libs.versions.build.tools
+            .get()
     ndkVersion = libs.versions.ndk.get()
 
     defaultConfig {
@@ -38,6 +41,8 @@ android {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
 
+        resValue("string", "app_name", "Commitnote")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["clearPackageData"] = "false"
     }
@@ -45,6 +50,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".devel"
+            resValue("string", "app_name", "Commitnote Devel")
         }
         create("fake") {
             initWith(getByName("debug"))
@@ -52,6 +58,22 @@ android {
         }
     }
     testBuildType = "fake"
+
+    buildFeatures {
+        buildConfig = true
+        resValues = true
+    }
+
+    // The ICU data asset is read through a file descriptor to get its length without unpacking it.
+    androidResources {
+        noCompress += "dat"
+    }
+
+    sourceSets {
+        getByName("androidTest") {
+            assets.directories += "../../test-vectors"
+        }
+    }
 
     compileOptions {
         val javaVersion = JavaVersion.toVersion(libs.versions.jdk.get())
@@ -75,12 +97,16 @@ kotlin {
 dependencies {
     implementation(project(":core-runtime"))
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.javet.android)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
 
     androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(testFixtures(project(":core-runtime")))
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.exifinterface)
