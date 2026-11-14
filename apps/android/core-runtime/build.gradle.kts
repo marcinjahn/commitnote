@@ -2,6 +2,7 @@ import io.github.marcinjahn.commitnote.build.FetchIcuData
 
 plugins {
     id("commitnote.kotlin-jvm")
+    alias(libs.plugins.kotlin.serialization)
     `java-test-fixtures`
 }
 

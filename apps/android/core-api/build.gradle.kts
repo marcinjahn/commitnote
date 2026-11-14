@@ -10,3 +10,10 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
+
+val coreApiSource = rootDir.resolve("../../src/native-core/api.ts")
+
+tasks.test {
+    inputs.file(coreApiSource)
+    systemProperty("commitnote.coreApiSource", coreApiSource.absolutePath)
+}
