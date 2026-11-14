@@ -24,7 +24,6 @@ The app and its crates:
   the host services it needs: crypto, network (libsoup), the remembered session (in a Secret
   Service provider's keyring, or in the Flatpak in an encrypted file in the app's data directory
   whose key comes from the Secret portal), a blob cache, device settings and the image codec.
-  It also sends the anonymous launch visit (`visit.rs`).
 - **Crypto** (`crates/crypto`) — the cryptographic operations behind the host crypto service.
 - **Core API** (`crates/core-api`) — the typed command, event and error shapes shared with the core
   bundle, plus the fake commands the testing build uses.
@@ -350,8 +349,7 @@ the device ones stay on this device. The groups, top to bottom:
   other devices.
 - **Notes.** New notes and New folders: where a new item lands among its siblings.
 - **This device.** The device name (committed on Enter or when the focus leaves the row; an empty
-  name goes back to the automatic one), Reopen last view (see Last view and details) and Anonymous
-  usage statistics (see Usage statistics).
+  name goes back to the automatic one) and Reopen last view (see Last view and details).
 - **Data & security.** Export notes, Import notes and Change passphrase (see Data).
 
 Color mode, Accent color, Note font and Start a note by typing each have a toggle between "All
@@ -453,23 +451,6 @@ CI checks the document and the print dialog, not a printout: the tests read back
 loaded and check the policy, the font face and an inline image in it, that the system font embeds no
 face, and that the print dialog opens and closes (Ctrl+P, Escape) without an error toast. No page is
 sent to a printer or a PDF.
-
-## Usage statistics
-
-The app counts launches with one anonymous request, the Linux visit:
-
-- One `GET` per process start with exactly `p=%2Fapp%2Flinux` and `t=App%20(Linux)`, sent after the
-  first core start. It uses a libsoup session of its own: no cookies, cache, `Referer`,
-  `Authorization`, body, identifiers or other parameters, only `https`, a 30 s timeout. It is never
-  awaited or retried, the URL is never logged, and logging out and in again, or a later core start,
-  sends nothing more.
-- The endpoint comes from `GOATCOUNTER_SITE_CODE` in `analytics.config.ts`, like on iOS: the
-  production bundle uses GoatCounter, and the fake core of the testing build uses
-  `https://analytics.invalid/count`. While the site code is `null`, nothing is sent.
-- Opt out in Preferences > This device > "Anonymous usage statistics". The choice is stored as
-  `commitnote.analyticsOptOut = "1"` in the device settings, and while it is set nothing is sent.
-- The testing build never sends: it records the URL the app would have sent, and the tests read it
-  back.
 
 ## Launching
 
@@ -738,8 +719,7 @@ note (or of the first note) with a commit from another device. Hold Loading make
 hold back the repository inspection of the sample repositories, so the loading page stays up: type
 there to try the early draft, then press Finish Loading, a button the loading page shows only in this
 build. Starting the app with `COMMITNOTE_TESTING_HOLD_LOADING=1` holds loading from the start. It also
-answers the file chooser from a queue instead of showing it, and records the usage-statistics visit
-instead of sending it. The UI tests run against this build.
+answers the file chooser from a queue instead of showing it. The UI tests run against this build.
 
 ```sh
 just linux install-prefix --testing
@@ -975,10 +955,7 @@ The tests (`just linux test`) run, in this order:
 1. The crate tests (`cargo test --workspace`) inside a D-Bus session with an unlocked
    gnome-keyring, because the remembered-session store uses the Secret Service; the keyring is
    a test fixture, not a requirement of the app. `ci/steps/start-keyring.sh` starts it, and the
-   container runs with the `IPC_LOCK` capability, without which gnome-keyring aborts as root. The visit test
-   (`crates/core-runtime/tests/visit.rs`) checks that the core builds the Linux visit, that an
-   opt-out sends nothing, that the sender makes one anonymous `GET` to a local server and that it
-   refuses anything but `https` in production.
+   container runs with the `IPC_LOCK` capability, without which gnome-keyring aborts as root.
    The image codec tests run here, in the
    container, because they need libwebp. The core runtime runs every file of `apps/test-vectors/`,
    including the shared image vectors (`image-pipeline.json`, `images.json`) and the insertion

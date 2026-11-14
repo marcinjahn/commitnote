@@ -15,7 +15,7 @@ finish-args:
   - --socket=fallback-x11
   # GPU rendering for GTK and WebKit
   - --device=dri
-  # The GitHub and GitLab APIs and the usage-statistics visit
+  # The GitHub and GitLab APIs
   - --share=network
 modules:
   - name: commitnote-core-bundle
