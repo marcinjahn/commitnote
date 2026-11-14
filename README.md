@@ -8,299 +8,55 @@
   </picture>
 </h1>
 
-commitnote is a static, client-side web app for encrypted markdown notes. Notes are encrypted
-entirely in your browser and stored as files in a GitHub or GitLab repository you own — there is no backend
-server. The app talks only to GitHub or GitLab.
+<p align="center">Encrypted markdown notes in a GitHub or GitLab repository you own.</p>
 
-[commitnote.eu](https://commitnote.eu) is the landing page; the app is at
-[commitnote.eu/app](https://commitnote.eu/app/). The Linux app is a Flatpak bundle for x86_64:
-[Download for Linux](https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.flatpak)
-(see [Linux app](#linux-app)).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="landing/screenshots/desktop-editor-dark@1x.png" />
+  <img src="landing/screenshots/desktop-editor-light@1x.png" alt="The commitnote editor with a note open next to the notes tree" />
+</picture>
 
-## Prerequisites
+## Why
 
-- Node 26 (CI uses the newest 26.x; Node 27 is still a pre-release)
-- npm
-- [`just`](https://just.systems) 1.55 or newer (CI pins 1.59.0), the task runner; install it from
-  your distribution's packages, with `cargo install just`, or with `npm install -g rust-just`
+Most notes apps keep your notes on their own servers. commitnote keeps them in a git repository on
+your own GitHub or GitLab account, encrypted before they leave your device. It's a markdown editor
+with live preview, and there is no backend: the app only ever talks to GitHub or GitLab.
 
-TypeScript stays on 6.0.x until `svelte-check` and `svelte2tsx` support TypeScript 7; today they accept
-only TypeScript 5 and 6.
+- Your passphrase derives the keys (Argon2id) and never leaves the device. Note contents are
+  encrypted with AES-256-GCM, and file and folder names are encrypted too.
+- Every save is one commit. The commit message is fixed text plus a few trailers, so it never
+  contains a note's name or contents.
+- Since it's git, every version is kept: open an earlier one and restore it. Deleted notes go to a
+  trash first.
+- Edits from several devices are merged without losing text. If two edits change the same lines,
+  you pick one version or edit the merged text.
 
-## Run locally
+It also does images (converted to WebP on your device, GIFs kept as GIFs, metadata stripped, stored
+encrypted), encrypted share links, search and zip import and export, and it has a Vim mode.
 
-```
-npm install
-just dev
-```
+## Get it
 
-Then open `http://localhost:5173`. `just dev-landing` starts the landing page dev server instead
-(see [Landing page](#landing-page)).
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="landing/screenshots/linux-notes-dark@1x.png" />
+    <img src="landing/screenshots/linux-notes-light@1x.png" alt="The Linux app with a note open" height="420" />
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="landing/screenshots/ios-tree-dark@1x.png" />
+    <img src="landing/screenshots/ios-tree-light@1x.png" alt="The notes tree in the iPhone app" height="420" />
+  </picture>
+</p>
 
-`just generate-brand` regenerates the brand SVGs from the app font: the README wordmark SVGs in `docs/brand/`, including their animated caret, and the favicon in `src/assets/favicon.svg`. It also rasterises the app icons (`any` 192/512, `maskable` 192/512, `monochrome` 512 and `apple-touch-icon` 180) into `public/icons/`. Never edit them by hand: the drift test fails when they are stale. `just generate-brand --contact-sheet <file.png>` also writes an uncommitted review sheet with the maskable safe-zone circle.
+### Web
 
-### Secure context
+Open [commitnote.eu/app](https://commitnote.eu/app/). It works in any current browser on desktop and
+phone, and you can install it as an app from the browser (on iPhone: Share, then Add to Home Screen).
+[commitnote.eu](https://commitnote.eu) is the landing page.
 
-WebCrypto is only available in a [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts).
-`localhost` qualifies (both the dev server and the preview server), but opening the dev server
-through a LAN IP address over plain HTTP does not work.
+### Linux
 
-## Recipes
-
-Every task runs through [`just`](https://just.systems); `just` on its own lists the recipes with a
-line about each. Arguments after the recipe name go to the underlying tool (`just test src/sync`), and
-paths are relative to the repository root. npm only installs the dependencies.
-
-- `just dev` — start the Vite dev server
-- `just dev-fake` — start the Vite dev server in test mode (fake forge, see below)
-- `just dev-landing` — start the Vite dev server for the landing page (`landing/`)
-- `just build` — produce the production site in `dist/`: the landing build first (it empties
-  `dist/`), then the app build into `dist/app/`
-- `just build-fake` — produce a test-mode build in `dist-fake/` (`--if-stale` reuses an up-to-date
-  one)
-- `just build-native-core` — build the core bundle and the fake core bundle for the native apps
-  (`dist-native-core/`, `dist-native-core-fake/`)
-- `just preview` — preview the built site locally: landing page at `/`, app at `/app/`
-- `just preview-fake` — preview the test-mode build locally
-- `just check` — type-check the app and the Node-side config/scripts
-- `just check-bundle` — build `dist/` and `dist-fake/` and verify the site layout, the landing page's
-  CSP, and the landing size budget (see [Landing page](#landing-page)), and that the production build
-  never ships test-mode fixture data, that the web app manifest and every icon and screenshot it
-  references are in the production build, and that `app/sw.js` is present and its precache list
-  equals the emitted files under `app/`
-- `just check-native-core` — build the core bundles and run them in a bare host
-- `just test` — run unit tests with Vitest; `just test-related <files>` runs only the tests related
-  to the given files
-- `just test-e2e` — run end-to-end tests with Playwright under the e2e lock (see below)
-- `just validate` — `check`, `test`, `check-bundle` and `test-e2e` in turn
-- `just generate-brand` — regenerate the brand SVGs and app icons (see above)
-- `just generate-pwa-screenshots` — regenerate the web app manifest screenshots in
-  `public/screenshots/` from the test-mode build, using the system Chrome (optional `E2E_PORT`)
-- `just generate-landing-screenshots` — regenerate the landing screenshots in `landing/screenshots/`,
-  in light and dark, from the test-mode build; run it after visible UI changes (optional `E2E_PORT`)
-- `just generate-sample-notes-repo` — regenerate the sample notes repo fixture
-- `just generate-test-vectors` — regenerate `apps/test-vectors/`, shared with the native apps' tests
-- `just profile-tree-scroll --out <dir>` — profile tree scrolling in the test-mode build
-
-The native apps have recipe modules of their own: `just linux <recipe>` (see the
-[Linux README](apps/linux/README.md)) and `just ios <recipe>` (see the [iOS README](apps/ios/README.md)).
-`just linux` and `just ios` list them.
-
-## Landing page
-
-The landing page lives in `landing/`: plain HTML, CSS and a small TypeScript module, with its own Vite
-config (`landing/vite.config.ts`). It imports nothing from the app source; the app lives under `src/`.
-
-- `just dev-landing` runs it, and `just build` builds it into the root of `dist/` before the app.
-- `landing/src/boot.ts` is a pre-render script bundled and inlined into `<head>`. It applies the saved
-  color mode and enables motion when the visitor allows it.
-- The page ships a strict CSP applied via a `<meta>` tag, which includes the hash of the inline boot
-  script. Its `connect-src` is `'none'`.
-- The landing stylesheet copies the app's design tokens; `landing/src/tokens.test.ts` fails when they
-  drift apart.
-- The landing screenshots are in `landing/screenshots/`. The web ones are regenerated with
-  `just generate-landing-screenshots`; the `ios-*` ones come from the artifact of the manually
-  dispatched "iOS screenshots" workflow; `linux-notes-*@1x.png` are copies of
-  `apps/linux/data/screenshots/notes-*.png`.
-- `just check-bundle` enforces the size budget: landing HTML, CSS and JS together at most 40 KB,
-  and each landing screenshot PNG at most 400 KB.
-
-## Deployment
-
-Every push to `main` runs `.github/workflows/pages.yml`: type-check, unit tests, the bundle check, then
-a publish of `dist/` to GitHub Pages. In the repository settings, set Pages > Source to "GitHub
-Actions" once. `dist/` is the whole site: the landing page at the root (with `social.png`) and the app in `dist/app/`, served at `https://commitnote.eu/app/`. The
-build uses relative asset paths.
-
-## End-to-end tests
-
-```
-just test-e2e
-```
-
-Arguments go to Playwright, e.g. `just test-e2e e2e/refresh.spec.ts`. The recipe
-installs Playwright's headless shell (`chromium-headless-shell`, with its bundled FFmpeg)
-automatically when it is missing. The `installability` project (the PWA installability test) runs
-on the system Google Chrome, so Chrome must be installed; `generate-pwa-screenshots` needs it too.
-
-The suite runs the built site in test mode (fake forge, no network, `dist-fake/`) with `baseURL` at
-`/app/`, in the `desktop` and `mobile` projects, with 5 workers by default. App specs navigate with
-relative paths (`./`), landing specs with root paths (`/`). Motion is reduced by default (`reducedMotion: "reduce"`);
-a test that needs motion opts in with `test.use({ reducedMotion: "no-preference" })`. The web
-server reuses `dist-fake/` when `check-bundle` just built it from the same inputs.
-
-Runs take the e2e lock on `/tmp/commitnote-e2e.lock`: a second `just test-e2e` anywhere on the
-machine (any jj workspace, the agent cage, your own shell) prints a waiting notice and starts when
-the first one finishes. `npx playwright test` bypasses the lock.
-
-`E2E_PORT` overrides the port the app is served on (default 4173). Never run two e2e runs on the
-same port at once; direct `playwright test` runs can still overlap.
-
-In the 6-CPU agent cage with nothing else running, the full e2e suite takes about 4.5 min (270 s).
-Full local validation (`just validate`: `check`, `test`, `check-bundle` and `test-e2e`) takes about
-5.2 min.
-
-## Manual live check
-
-Real-GitHub behaviour is not covered by automation; check it by hand against a real notes repo:
-
-- Reorder notes by dragging (mouse on desktop, long-press then drag on a phone), move one into and
-  out of a folder, then log in on a second real device and check it shows the same order.
-
-## Test mode
-
-`just dev-fake` (and `just build-fake` / `just preview-fake`) run the app against in-memory
-fixture repositories instead of GitHub, with no network access. Every forge call is delayed by
-roughly what it takes on GitHub (a commit about 1.2 s), so saving and loading states are visible.
-Any access token lists all of these fixture repositories:
-
-- `https://github.com/sample/notes` — an initialized notes repo, passphrase
-  `sample notes repo passphrase`
-- `https://github.com/sample/trash` — same passphrase; a few notes plus three trash entries. With
-  the clock pinned to `2026-09-30T12:00:00Z` (the `SAMPLE_TRASH_NOW` constant in
-  `src/testing/sample-notes-repo/sample-source.ts`), the note deleted 2026-01-05 and the folder
-  (with a nested note) deleted 2026-01-12 are expired, and the note deleted 2026-09-27 is fresh.
-  `sample/notes` has no trash, so it never triggers a startup purge
-- `https://github.com/sample/large-tree` — same passphrase; a large generated tree (600+ notes in
-  nested folders) for checking tree performance, built on first open
-- `https://github.com/sample/empty` — empty and writable
-- `https://github.com/sample/almost-empty` — writable, with only `README.md`, `LICENSE` and
-  `.gitignore`
-- `https://github.com/sample/public-empty` — empty and writable, listed as public
-- `https://github.com/sample/empty-read-only`, `https://github.com/sample/read-only` — read-only
-  variants
-- `https://github.com/sample/foreign` (a README and code), `https://github.com/sample/newer` —
-  repositories commitnote refuses to open
-
-A second fake provider, "Fakelab", stands in for GitLab and lists its own fixtures:
-
-- `https://fakelab.test/team/notes` — an initialized notes repo, same passphrase as `sample/notes`
-- `https://fakelab.test/team/empty` — empty and writable
-
-The access token `invalid-token` is always rejected and `no-repositories-token` lists no
-repositories; any other non-empty token is accepted. All
-fixture state resets on reload. Test mode is never part of `just build`, which
-`just check-bundle` verifies.
-
-## Logging in
-
-1. Paste a fine-grained access token. "Create a token on GitHub" opens GitHub's token form with the
-   name, a one-year expiry and the "Contents: read and write" and "Gists: read and write"
-   permissions already filled in; you only choose the notes repository there. Sharing needs the
-   account permission "Gists: read and write" (classic tokens: the `gist` scope); an existing token
-   can be edited to add it without logging in again. GitLab tokens need the `api` scope, which
-   already covers sharing.
-   No notes repo yet? The link under the token field opens the host's form for a new private
-   repository; create it empty (or with only a README, LICENSE or .gitignore) and give the token
-   access to it.
-2. Continue: commitnote lists the repositories the token can see. The last used repository is
-   preselected, and a single one is picked for you. Choosing a repository checks it, and only then
-   asks for a passphrase:
-   - a notes repo asks for its passphrase and logs in;
-   - an empty repository, or one holding only a README, LICENSE or .gitignore, asks you to create
-     a passphrase and repeat it, then sets it up as a notes repo, keeping those files;
-   - any other repository says why it can't be used, and you can pick another one with the same
-     token.
-     A repository that is not private shows a warning: notes stay encrypted, but when you save, how
-     many files there are and their sizes are visible to anyone who can see it.
-
-Each git host is a forge provider in `src/forge/` (token link, repository listing, adapter): GitHub
-and GitLab (gitlab.com only, personal access token with the `api` scope; self-hosted instances are
-not supported yet). A GitLab project in nested groups keeps the whole group path as its owner.
-
-## Remember me
-
-With Remember me checked, commitnote keeps your access token and the usable (non-extractable) keys
-derived from your passphrase in this browser profile's IndexedDB until you log out. Anyone with
-access to that browser profile can then read your notes. The passphrase itself is never stored.
-Without Remember me, only the repo URL is kept, so you re-enter the access token and passphrase
-next time.
-
-In the installed app there is no Remember me option: logging in always keeps you logged in on that
-device, the same as checking it, until you log out. Log out works the same in both.
-
-## Navigating notes
-
-Every opened note gets its own browser history entry, with the encrypted note path in the URL
-fragment. The browser's Back and Forward, and the system back gesture on Android, step through the
-notes you visited in order, closing an open dialog first. On a phone, the "Back to notes" button in
-the note header is an "up" button instead: one tap always returns to the note tree, however many
-notes you went through, even ones opened before the window was narrowed from the desktop layout.
-It rewinds the history to the latest tree entry, or turns the first entry into the tree when there
-is none, so Forward still reaches the notes it skipped.
-
-## Editing and saving
-
-- Each note has one view: an editable name field on top and the live-preview markdown editor below.
-  Task checkboxes toggle on click or tap, and the toggle autosaves like typing.
-- "New note" in the sidebar header, or "New note..." in a folder's row menu, opens an empty draft
-  with the name field focused. The note is created when you confirm a name (Enter or leaving the
-  field) or when you type content first; then it gets an auto name, the current local date and time
-  as `YYYY-MM-DD HH:mm:ss`, with ` (2)`, ` (3)`, ... appended on a clash. A draft left untouched
-  disappears without creating anything.
-- To rename a note, edit its name field and press Enter or leave the field. Escape or an empty
-  value restores the name, and an invalid or duplicate name shows an inline error. The field is
-  read-only while the note has a conflict. Folders are renamed from their row menu.
-- Remote changes are pulled only when you click Refresh in the sidebar header, at startup or login,
-  or when a save finds that the remote moved and merges. Switching windows or tabs does not
-  refresh.
-- Autosave saves 2 s after you stop typing, at least every 30 s while you keep typing, and
-  immediately on structure changes, note switch, tab hide, and logout.
-- The sync state is synced, syncing, or out of sync, with reason pending (waiting to save), failed
-  (retrying with back-off), or conflict.
-- If the access token is revoked or rejected mid-session, saving shows the failed state and keeps
-  retrying, and the edits stay unsaved. The unload warning and the logout choice still protect
-  them.
-- A conflicting change opens the conflict view, where you choose "Keep this device's version",
-  "Keep other device's version" (each with the device's name when known), or "Edit merged".
-- Each device has a name, set as Device name under Settings → This device. If left empty, an
-  automatic name such as "Firefox on Linux" is used. The name stays on that device, is stored
-  encrypted in commits, and is shown only when resolving a conflict.
-- Notices report failures, retries, and other sync events as they happen.
-
-### Images
-
-- Add an image by pasting or dropping it into a note, with "Insert image" in the note header or
-  the command menu, or with the Vim `:image` command. Up to 10 images can be added at a time.
-- Images are converted on your device to WebP (GIFs stay GIFs, so animation is kept), metadata and
-  file names are removed, and they are downscaled to at most 2560 px. Inputs are limited to 25 MB
-  and 50 megapixels.
-- Images are stored encrypted in the notes repository and committed with the note's next save.
-- Removing an image reference removes the image from the repository's current files at the next
-  save, but its encrypted copy stays in the git history. Only changing the passphrase with "Also
-  delete the old history" removes it from the history.
-
-## Sharing notes
-
-A share is a fixed, encrypted copy of the note's saved version, uploaded as a secret gist (GitHub) or public
-snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu, or the Share button in its header, to create a share link
-(`https://commitnote.eu/app/#share=...`).
-
-- The link's secret stays in the URL fragment, so it never reaches a server. An optional share
-  password is then needed in addition to the link.
-- "Shared links" in the command menu lists your shares. The list is stored encrypted in
-  `.commitnote/shares`, so it is the same on every device.
-- A share never changes on its own. "Update to current version" in the share's "⋯" menu (also opened by right-click) replaces the shared copy with the note's current saved version, keeping the same link and the same password.
-- The link always shows the latest update. On GitHub, recipients may see the previous content for up to about a minute after an update.
-- Revoking a share deletes its gist or snippet, and the link stops working. Shares never expire.
-- Moving a shared note (or a folder holding one) to the trash asks first, then revokes its links.
-  Restoring it from the trash doesn't bring them back.
-- After a passphrase change, existing links keep working, but "View shared version" can no longer
-  show the old version.
-
-## Production build
-
-`just build` writes plain static files to `dist/`: the landing page at the root and the app in
-`dist/app/`. The app build ships with a strict Content
-Security Policy applied via a `<meta>` tag; its `connect-src` allows `https://api.github.com` and `https://gitlab.com`; it is not present in the dev server. The app build also ships a web app manifest
-(`public/manifest.webmanifest`, `id`, `start_url` and `scope` all `/app/`), so commitnote can be installed as an app.
-
-## Linux app
-
-The Linux app (`apps/linux/`) is a native app for the same encrypted notes repository. Each
-[release](https://github.com/marcinjahn/commitnote/releases/latest) has a Flatpak bundle for x86_64,
-`commitnote-x86_64.flatpak`. With Flatpak installed, add the Flathub remote for its runtime, then install
-and run it:
+A native GTK 4 and libadwaita app, shipped as a Flatpak for x86_64. It works on any desktop that
+runs Flatpak (GNOME, KDE Plasma, sway, niri and so on). Download `commitnote-x86_64.flatpak` from the
+[latest release](https://github.com/marcinjahn/commitnote/releases/latest), then:
 
 ```sh
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
@@ -308,78 +64,176 @@ flatpak install --user commitnote-x86_64.flatpak
 flatpak run io.github.marcinjahn.commitnote
 ```
 
-To update, download the newer bundle and install it the same way. Verifying, uninstalling and
-building it are in the [Linux README](apps/linux/README.md#install-the-flatpak).
+The first line adds Flathub, where the GNOME runtime comes from. There's no update channel yet: to
+update, download the newer bundle and install it the same way. Each release also has a `SHA256SUMS`
+file and a build provenance attestation:
 
-## Installing and updates
+```sh
+sha256sum -c SHA256SUMS
+gh attestation verify commitnote-x86_64.flatpak --repo marcinjahn/commitnote
+```
 
-### Installing
+App data lives in `~/.var/app/io.github.marcinjahn.commitnote/`. "Remember me" needs a keyring
+(gnome-keyring, KWallet or KeePassXC); without one you log in again on every launch.
 
-- **Android and other Chromium phones:** an install bar at the top of the login screen and the
-  notes list offers **Install**, which opens the browser's own install dialog. Declining that
-  dialog hides the bar for good.
-- **iPhone and iPad:** the install bar says to add commitnote to the Home Screen from the Share
-  menu. **How to install** shows the steps; keep "Open as Web App" turned on.
-- **Desktop:** choose **Install app** in the command menu ("More commands"), or use the browser's
-  install action.
-- **Desktop window:** the installed app draws its headers into the title bar, next to the window
-  controls. Drag the window by an empty part of a header. Use the title-bar toggle (the chevron
-  next to the window controls) to switch back to a classic title bar; both work the same.
-- **Shortcuts:** the installed app's icon offers **New note** and **Search notes**. If you need to
-  log in first, the shortcut runs right after. Launching the app again focuses the window that is
-  already open instead of opening a second one. Where they appear:
-  - Android, installed from Chrome, Edge or Samsung Internet: long press the app icon.
-  - Desktop Chrome and Edge (Windows, macOS, Linux): right-click the app in the dock or taskbar, or
-    use the jump list.
-  - iPhone and iPad: not available. iOS does not show app shortcuts for Home Screen web apps, and
-    there is no way for a web app to add them.
-  - Firefox and desktop Safari web apps: not available.
-- Dismissing the install bar is remembered on that device (localStorage
-  `commitnote.installBarDismissed`); **Install app** in the command menu still works afterwards.
-  The bar never appears in the installed app, on desktop, in the note view or in the shared-note
-  viewer.
-- On iPhone and iPad the installed app keeps its own storage, separate from Safari, so you log in
-  again there. On Android and desktop, the installed app shares storage with the browser it was
-  installed from, so logging in or out in one also applies to the other.
+### iOS
 
-### What is cached
+There's a native SwiftUI app for iPhone and iPad (iOS 18 or newer), but it isn't on the App Store. CI builds an
+unsigned IPA, and you can sideload it yourself with a free Apple ID. Nobody has installed it on a
+real device yet, so treat this as experimental:
 
-The app's service worker (`/app/sw.js`, scope `/app/`, generated by the app build) precaches only the app shell into a Cache
-Storage cache named `commitnote-shell-<buildId>`. It never stores notes, tokens or forge responses.
-The remembered session's ciphertext blob cache in IndexedDB is unchanged and stays the only data
-cache. The build id hashes the path and content of every precached file, so any change to the shell
-produces a new build id and a new service worker.
+1. Download the `commitnote-unsigned-ipa` artifact from the latest green
+   [iOS run](https://github.com/marcinjahn/commitnote/actions/workflows/ios.yml) on `main`. With a
+   logged-in `gh`:
 
-The landing page at `/` has no service worker.
+   ```sh
+   gh run list -R marcinjahn/commitnote -w ios.yml -b main -s success -L 1   # first column is the run ID
+   gh run download <run-id> -R marcinjahn/commitnote -n commitnote-unsigned-ipa
+   ```
 
-### Update flow
+   Artifacts are kept for 30 days. If the latest one has expired, start a fresh build with
+   `gh workflow run ios.yml -R marcinjahn/commitnote --ref main`.
 
-- The app checks for an app update on start, when it becomes visible and when it comes online, at
-  most every 15 minutes.
-- The app also checks every 15 minutes while it stays open.
-- A downloaded app update applies by itself, with no prompt, at a moment that cannot cost any work:
-  - right after the app starts, before the first click or key press (within 10 seconds);
-  - when the tab or app goes to the background;
-  - after a minute without input, with no dialog or menu open and no text field focused.
-- It never applies while anything is unsaved: it waits until saving finishes, offline included.
-  Nor does it apply while a new note, a dialog, an import or a passphrase change is open, or while
-  you are logged in without Remember me (that would log you out); then it applies on the next start.
-- Applying reloads the page and keeps the open note, its cursor and scroll position, the expanded
-  folders and the tree scroll position. Other open tabs reload at their own safe moment.
-- At most one automatic reload happens per minute in a tab, so a broken update cannot loop.
-- The previous version's shell cache is kept, so pages of the old version that are still open keep
-  working.
+2. Turn on Developer Mode on the device (Settings, Privacy & Security) and restart it.
+3. Install [Impactor](https://github.com/claration/Impactor) (it's on Flathub as
+   `dev.khcrysalis.PlumeImpactor`), plug the device in over USB, sign in with your Apple ID and
+   install the IPA.
+4. Trust your Apple ID under Settings, General, VPN & Device Management, then open the app.
 
-### Development
+Free signatures expire after 7 days; reinstalling over the old app keeps its data.
 
-`just dev` and `just dev-fake` never register a service worker. `just preview` and
-`just preview-fake` do, so when iterating on a build use DevTools → Application → Service
-workers → "Update on reload", or unregister the worker there. End-to-end tests block service
-workers unless a spec opts in with `test.use({ serviceWorkers: "allow" })`.
+## First login
 
-### Kill switch
+You need a private repository (empty, or holding only a README, LICENSE or .gitignore) and an
+access token for it. On GitHub that's a fine-grained token with "Contents: read and write", plus
+"Gists: read and write" if you want share links; the login screen has a link that opens GitHub's
+token form with those already filled in. On GitLab (gitlab.com only for now) it's a personal access
+token with the `api` scope. Paste the token, pick the repository, choose a passphrase, done.
 
-If a broken app service worker ever ships, commit `public/sw.js` with the following content and push:
+A few things to know:
+
+- There's no passphrase recovery. Lose it and the notes are gone.
+- "Remember me" keeps the token and the derived keys (not the passphrase) in the browser profile, so
+  anyone with access to that profile can read your notes. The installed web app always remembers.
+- In a public repository the notes stay encrypted, but anyone can see how many files there are and
+  how big they are.
+- Removing an image from a note doesn't remove it from git history. Changing the passphrase with
+  "Also delete the old history" does.
+
+## Development
+
+You need Node 26, npm and [just](https://just.systems) 1.55 or newer. Every task is a `just` recipe;
+there are no npm scripts.
+
+```sh
+npm install
+just dev            # http://localhost:5173
+just                # lists every recipe, including the linux and ios modules
+```
+
+The ones you'll use most:
+
+| Recipe                   | What it does                                                    |
+| ------------------------ | --------------------------------------------------------------- |
+| `just dev-fake`          | Dev server against in-memory fixture repos, no network          |
+| `just check`             | svelte-check and tsc                                            |
+| `just test`              | Vitest; `just test-related <files>` runs only the related tests |
+| `just test-e2e`          | Playwright against the test-mode build                          |
+| `just validate`          | `check`, `test`, `check-bundle` and `test-e2e` in turn          |
+| `just build`             | Production site in `dist/`: landing at `/`, app at `/app/`      |
+| `just build-native-core` | The core bundle the native apps run                             |
+
+Recipe arguments go straight to the tool: `just test src/sync`, `just test-e2e e2e/login.spec.ts`.
+
+In test mode (`just dev-fake`) any token works; `invalid-token` is rejected and
+`no-repositories-token` sees no repositories. Log in to
+`https://github.com/sample/notes` with the passphrase `sample notes repo passphrase`. Other fixtures
+cover an empty repo (`sample/empty`), read-only and refused repos, a big tree (`sample/large-tree`)
+and a GitLab stand-in (`https://fakelab.test/team/notes`); the full list is in
+`src/testing/fake-forge/fake-forge-factory.ts`.
+
+Some things that will bite you otherwise:
+
+- WebCrypto needs a secure context. `localhost` is fine; the dev server over a LAN IP is not.
+- `just test-e2e` installs Playwright's headless shell on first run and takes a machine-wide lock,
+  so a second run waits for the first. `E2E_PORT` changes the port (default 4173). The installability
+  test runs on the system Google Chrome.
+- The brand SVGs and icons, the sample notes repo and the test vectors are generated
+  (`just generate-*`), and tests fail when they go stale, so don't edit them by hand.
+- The web screenshots in `landing/screenshots/` come from `just generate-landing-screenshots` and
+  `just generate-pwa-screenshots`. The `ios-*` ones are the artifact of the "iOS screenshots"
+  workflow, and `linux-notes-*` are copies of `apps/linux/data/screenshots/notes-*.png`.
+
+### Layout
+
+`src/` is the web app (Svelte 5, TypeScript, CodeMirror 6), `landing/` the landing page, `e2e/` the
+Playwright specs. `apps/linux/` and `apps/ios/` are the native apps. Both run the same TypeScript
+core (`src/native-core/`) in JavaScriptCore, so they read and write exactly what the web app does;
+`apps/test-vectors/` holds the JSON vectors the TypeScript, Rust and Swift tests share.
+
+### Linux app
+
+Rust, GTK 4 and libadwaita, built with meson. Run `just build-native-core` first. Builds and tests
+run in a Docker container, so you don't need any GTK development packages:
+
+```sh
+just linux build
+just linux lint
+just linux test                 # crate tests, UI suite under headless mutter, sway smoke run
+just linux ui-test <filter>     # one UI case; screenshots land in apps/linux/out/screenshots
+just linux install-prefix --testing && just linux run
+just linux flatpak-build        # bundle in apps/linux/out/flatpak/
+```
+
+The `--testing` build runs against a fake forge with the sample repo, same as the web test mode.
+`just linux run` starts the installed app on your machine, so that part needs the runtime packages
+from `apps/linux/ci/run-packages.txt` and Fedora 45 or newer (GTK 4.24, libadwaita 1.10). To build
+on the host as well, install the build packages too, plus rustup (it picks up
+`apps/linux/rust-toolchain.toml`):
+
+```sh
+sudo dnf install $(cat apps/linux/ci/build-packages.txt apps/linux/ci/run-packages.txt)
+just linux run-host
+```
+
+To release, say v0.3.0:
+
+1. In one commit, bump `version` in `apps/linux/meson.build`, every crate's `Cargo.toml` and
+   `Cargo.lock`, and add a `<release>` entry to
+   `apps/linux/data/io.github.marcinjahn.commitnote.metainfo.xml.in`. `just linux lint` checks that
+   they match, and the entry becomes the release notes.
+2. Push and wait for the Linux workflow to pass.
+3. Dry-run with `gh workflow run release.yml --ref main -f tag=v0.3.0` and check in
+   `gh run list --workflow release.yml` that it ran on the commit you're about to tag.
+4. Tag that commit and push only the tag: `jj tag set v0.3.0 -r <commit>`, then
+   `jj git push --tag v0.3.0`.
+
+The tag push builds the Flatpak, smoke-tests it and publishes it with its checksum and attestation.
+Tags are never moved; a bad release gets a new patch version.
+
+### iOS app
+
+SwiftUI, with the project generated by XcodeGen. Apple builds only run in CI
+(`.github/workflows/ios.yml`); push to an `ios-ci/<something>` branch to try a change on macOS
+without touching `main`. On Linux you can still run the Swift package tests (`just ios swift-test`,
+in Docker) and `just check-native-core`. On a Mac with Xcode 26:
+
+```sh
+brew install just xcodegen
+npm ci
+just build-native-core
+just ios generate-project
+open apps/ios/Commitnote.xcodeproj
+```
+
+### Deployment
+
+Every push to `main` type-checks, runs the unit tests and the bundle check, then publishes `dist/` to
+GitHub Pages at [commitnote.eu](https://commitnote.eu).
+
+If a broken service worker ever ships, commit this as `public/sw.js`. The build ships it in place of
+the generated worker; it clears commitnote's caches and unregisters itself. Delete the file again to
+go back to normal.
 
 ```js
 self.addEventListener("install", () => self.skipWaiting());
@@ -395,10 +249,6 @@ self.addEventListener("activate", (event) => {
 });
 ```
 
-The app build ships it unchanged as `app/sw.js` in place of the generated worker, and `just check-bundle`
-accepts it. It replaces only the app worker. It
-has no `fetch` handler and never navigates clients: it deletes the commitnote caches and
-unregisters itself. Open pages reload once through their `controllerchange` handling. In Chromium they may stay
-controlled by the kill-switch worker until every commitnote page is closed; it has no `fetch`
-handler, so everything then loads from the network, and there is no reload loop. Remove `public/sw.js` again to restore the normal
-service worker.
+## License
+
+No license yet, so all rights are reserved.
