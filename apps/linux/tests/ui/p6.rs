@@ -14,8 +14,8 @@ use gtk4::{self as gtk, gdk, gio, glib};
 use libadwaita as adw;
 
 use crate::flows::{
-    NOTES_URL, choose_repository, ensure, launch_and_log_in, log_in, open_first_note, split_view,
-    submit_token, wait_tree,
+    NOTES_URL, SHOWCASE_URL, choose_repository, ensure, launch_and_log_in, launch_repository,
+    log_in, open_first_note, split_view, submit_token, wait_tree,
 };
 use crate::p1::HELD_LOADING_MESSAGE;
 use crate::p2::{
@@ -31,9 +31,9 @@ use crate::p3::{
 use crate::p4::{
     FIRST_TEXT, HISTORY_DIALOG, SECOND_TEXT, SHARE_LABEL, SHARE_PASSWORD, SHARED_LINKS_DIALOG,
     WELCOME as WELCOME_NOTE, WHITEBOARD as WHITEBOARD_NOTE, activate_page_action, open_editor,
-    open_history, open_shared_links, open_viewer, run_animation, share_note_with,
-    wait_gif_advancing, wait_gif_still, wait_history_ready, wait_images_ready, wait_shares,
-    wait_viewer_animating, welcome_with_versions, whiteboard_with_inserted_image,
+    open_history, open_shared_links, open_version, open_viewer, run_animation, save_version,
+    share_note_with, wait_gif_advancing, wait_gif_still, wait_history_ready, wait_images_ready,
+    wait_shares, wait_viewer_animating, welcome_with_versions, whiteboard_with_inserted_image,
     with_animated_gif,
 };
 use crate::p5::{
@@ -1507,6 +1507,11 @@ fn touch_swipe_back(h: &mut Harness) -> Result<(), String> {
 
 const IDEAS: &[&str] = &["Projects", "commitnote", "Ideas"];
 const ROADMAP: &[&str] = &["Projects", "commitnote", "Roadmap"];
+const SHOWCASE_HERO: &[&str] = &["Projects", "Weather station"];
+const SHOWCASE_OTHER: &[&str] = &["Projects", "Bookshelf"];
+const SHOWCASE_OPEN_TASK: &str = "- [ ] Send a frost alert below 2 °C";
+const SHOWCASE_DONE_TASK: &str = "- [x] Send a frost alert below 2 °C";
+const SHOWCASE_NEW_TASK: &str = "- [ ] Weatherproof the enclosure";
 const SHOW_TRASH: &str = "notes.show-trash";
 
 fn expand_folder(h: &Harness, name: &str) -> Result<(), String> {
@@ -1567,7 +1572,7 @@ fn shots_notes(h: &mut Harness) -> Result<(), String> {
     search_with(h, "<Control>f", "road")?;
     for &(width, theme) in ALL_VARIANTS {
         h.show_variant(width, theme)?;
-        wait_search_shot_ready(h, width)?;
+        wait_search_shot_ready(h, width, "Roadmap")?;
         h.capture_variant("search", width, theme)?;
     }
     Ok(())
@@ -1618,29 +1623,48 @@ fn shots_dialogs(h: &mut Harness) -> Result<(), String> {
 }
 
 fn shots_store_notes(h: &mut Harness) -> Result<(), String> {
-    launch_and_log_in(h, false)?;
+    launch_repository(h, SHOWCASE_URL)?;
     expand_folder(h, "Projects")?;
-    expand_folder(h, "Journal")?;
+    expand_folder(h, "Travel")?;
     h.wait("the children of the expanded folders", || {
-        row_expander(h, "commitnote").is_ok() && row_expander(h, "2026").is_ok()
+        row_expander(h, "Weather station").is_ok() && row_expander(h, "Packing list").is_ok()
     })?;
-    open_editor(h, WELCOME_NOTE)?;
+    open_editor(h, SHOWCASE_HERO)?;
     h.store_screenshot("store-notes", Theme::Light)?;
     h.store_screenshot("store-notes", Theme::Dark)?;
 
-    launch_search_repository(h)?;
-    open_editor(h, ROADMAP)?;
     focus_tree(h)?;
-    search_with(h, "<Control>f", "road")?;
+    search_with(h, "<Control>f", "weather")?;
     h.resize(Width::AppDefault)?;
-    wait_search_shot_ready(h, Width::AppDefault)?;
+    wait_search_shot_ready(h, Width::AppDefault, "Weather station")?;
     h.store_screenshot("store-search", Theme::Light)
 }
 
+/// Gives the showcase note two later versions, ticking off a task and then adding one, and
+/// shows what restoring the version it was created with would change.
 fn shots_store_history(h: &mut Harness) -> Result<(), String> {
-    welcome_with_versions(h, &[FIRST_TEXT, SECOND_TEXT])?;
+    launch_repository(h, SHOWCASE_URL)?;
+    let created = open_editor(h, SHOWCASE_HERO)?.text();
+    let ticked = created.replacen(SHOWCASE_OPEN_TASK, SHOWCASE_DONE_TASK, 1);
+    let extended = ticked.replacen(
+        SHOWCASE_DONE_TASK,
+        &format!("{SHOWCASE_DONE_TASK}\n{SHOWCASE_NEW_TASK}"),
+        1,
+    );
+    ensure(ticked != created, || {
+        "the showcase note has no open frost alert task".to_owned()
+    })?;
+    open_editor(h, SHOWCASE_OTHER)?;
+    let hero = path(SHOWCASE_HERO);
+    save_version(h, &hero, &ticked)?;
+    save_version(h, &hero, &extended)?;
+    let editor = open_editor(h, SHOWCASE_HERO)?;
+    h.wait("the newest version in the editor", || {
+        editor.text() == extended
+    })?;
     open_history(h)?;
     wait_history_ready(h, 3)?;
+    open_version(h, 2)?;
     h.store_screenshot("store-history", Theme::Dark)
 }
 

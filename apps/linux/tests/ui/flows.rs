@@ -10,6 +10,7 @@ use libadwaita as adw;
 use crate::support::{Harness, route_name};
 
 pub const NOTES_URL: &str = "https://github.com/sample/notes";
+pub const SHOWCASE_URL: &str = "https://github.com/sample/showcase";
 pub const PASSPHRASE: &str = "sample notes repo passphrase";
 pub const UNLOCK_TIMEOUT: Duration = Duration::from_secs(60);
 pub const SAMPLE_REPO_KEY: &str = "sample/notes";
@@ -56,6 +57,14 @@ pub fn log_in(h: &Harness, remember: bool) -> Result<(), String> {
 pub fn launch_and_log_in(h: &Harness, remember: bool) -> Result<(), String> {
     h.launch()?;
     log_in(h, remember)?;
+    wait_tree(h)
+}
+
+pub fn launch_repository(h: &Harness, url: &str) -> Result<(), String> {
+    h.launch()?;
+    submit_token(h)?;
+    choose_repository(h, url)?;
+    unlock(h, false)?;
     wait_tree(h)
 }
 

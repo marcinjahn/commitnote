@@ -1014,8 +1014,9 @@ The tests (`just linux test`) run, in this order:
    `p6-note-images` and `p6-search`; `p6-history`, `p6-shared-links` and `p6-trash`;
    `p6-preferences`, `p6-about` and `p6-shortcuts`. The store screenshots in
    `apps/linux/data/screenshots/` come from the `p6-shots-store-*` cases at the default window size
-   with the system accent and without the development styling, and are refreshed by running
-   `just linux ui-test p6-shots-store` and copying the four files. The `tables` cases cover the table widget alone
+   with the system accent and without the development styling, show the `sample/showcase` repo, and
+   are refreshed by running `just linux ui-test p6-shots-store` and copying the four files; the two
+   notes images are also copied to `landing/screenshots/linux-notes-*@1x.png`. The `tables` cases cover the table widget alone
    (cells, alignment, accessible roles and labels), the editor's rendering, reveal and shared
    version, clicks and Ctrl+click, cell selection (drag, long press and right click, the tint and
    the selected state, clearing) and copying (the plain text and HTML on the clipboard, in the
