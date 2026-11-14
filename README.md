@@ -14,7 +14,9 @@ server. The only other request is an optional anonymous visit count (see
 [Privacy and analytics](#privacy-and-analytics)).
 
 [commitnote.eu](https://commitnote.eu) is the landing page; the app is at
-[commitnote.eu/app](https://commitnote.eu/app/).
+[commitnote.eu/app](https://commitnote.eu/app/). The Linux app is a Flatpak bundle for x86_64:
+[Download for Linux](https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.flatpak)
+(see [Linux app](#linux-app)).
 
 ## Prerequisites
 
@@ -105,6 +107,10 @@ does not count as a landing visit. The request is exactly
 | `/landing/web` | `Landing (web)`  |
 | `/app/web`     | `App (web)`      |
 | `/app/pwa`     | `App (PWA)`      |
+| `/app/linux`   | `App (Linux)`    |
+
+The Linux app sends `/app/linux` once per start, with the same two parameters, from its own HTTP
+session rather than a browser (see [Usage statistics](apps/linux/README.md#usage-statistics)).
 
 **What is never sent or stored.** No cookies or browser storage for counting, no note data, URLs, hashes,
 query strings, referrer or identifiers. GoatCounter does not store the IP address or the full User-Agent; it
@@ -115,7 +121,8 @@ up to 8 hours, and filters bot and headless User-Agents on the server.
 `navigator.globalPrivacyControl === true`, when the browser is offline, or after opting out. Opt out in
 Settings > This device > "Anonymous usage statistics", or with the button in the landing page's `#privacy`
 section. The choice is stored as `localStorage["commitnote.analyticsOptOut"] = "1"` and shared by the
-landing page and the web app (same origin).
+landing page and the web app (same origin). The Linux app does not read these browser signals; it has its
+own switch in Preferences > This device.
 
 The dev server and unit tests always have no endpoint. Fake-forge builds use
 `https://analytics.invalid/count`, which the e2e tests intercept.
@@ -321,6 +328,22 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
 `dist/app/`. The app build ships with a strict Content
 Security Policy applied via a `<meta>` tag; its `connect-src` allows `https://api.github.com` and `https://gitlab.com` and, when analytics is enabled, the GoatCounter origin; it is not present in the dev server. The app build also ships a web app manifest
 (`public/manifest.webmanifest`, `id`, `start_url` and `scope` all `/app/`), so commitnote can be installed as an app.
+
+## Linux app
+
+The Linux app (`apps/linux/`) is a native app for the same encrypted notes repository. Each
+[release](https://github.com/marcinjahn/commitnote/releases/latest) has a Flatpak bundle for x86_64,
+`commitnote-x86_64.flatpak`. With Flatpak installed, add the Flathub remote for its runtime, then install
+and run it:
+
+```sh
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user commitnote-x86_64.flatpak
+flatpak run io.github.marcinjahn.commitnote
+```
+
+To update, download the newer bundle and install it the same way. Verifying, uninstalling and
+building it are in the [Linux README](apps/linux/README.md#install-the-flatpak).
 
 ## Installing and updates
 
