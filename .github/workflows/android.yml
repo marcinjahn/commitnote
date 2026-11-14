@@ -13,7 +13,6 @@ on:
       - "package.json"
       - "package-lock.json"
       - "vite.config.ts"
-      - "analytics.config.ts"
       - "svelte.config.js"
       - "tsconfig*.json"
       - "justfile"
@@ -153,7 +152,8 @@ jobs:
       - name: Instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 37.0
+          # Quoted: unquoted, YAML reads it as the number 37 and the action asks for the nonexistent platform android-37.
+          api-level: "37.0"
           target: google_apis
           arch: x86_64
           disable-animations: true
