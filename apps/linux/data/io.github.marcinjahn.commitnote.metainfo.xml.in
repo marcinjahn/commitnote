@@ -31,19 +31,19 @@
   </branding>
   <screenshots>
     <screenshot type="default">
-      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/e86b224762894d79cfca5c3d69d05b166b1107b1/apps/linux/data/screenshots/notes-light.png</image>
+      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/6e4464db93036f192282e46f6aeb4f4a9c52a474/apps/linux/data/screenshots/notes-light.png</image>
       <caption>Write markdown notes with a live preview</caption>
     </screenshot>
     <screenshot>
-      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/e86b224762894d79cfca5c3d69d05b166b1107b1/apps/linux/data/screenshots/notes-dark.png</image>
+      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/6e4464db93036f192282e46f6aeb4f4a9c52a474/apps/linux/data/screenshots/notes-dark.png</image>
       <caption>Follows the system's light and dark style</caption>
     </screenshot>
     <screenshot>
-      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/e86b224762894d79cfca5c3d69d05b166b1107b1/apps/linux/data/screenshots/search-light.png</image>
+      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/6e4464db93036f192282e46f6aeb4f4a9c52a474/apps/linux/data/screenshots/search-light.png</image>
       <caption>Search across all your notes</caption>
     </screenshot>
     <screenshot>
-      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/e86b224762894d79cfca5c3d69d05b166b1107b1/apps/linux/data/screenshots/history-dark.png</image>
+      <image type="source" width="960" height="680">https://raw.githubusercontent.com/marcinjahn/commitnote/6e4464db93036f192282e46f6aeb4f4a9c52a474/apps/linux/data/screenshots/history-dark.png</image>
       <caption>Browse and restore earlier versions of a note</caption>
     </screenshot>
   </screenshots>

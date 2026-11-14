@@ -26,7 +26,6 @@ const nativeCore: NativeCoreGlobal = {
       host,
       deviceModel: options.deviceModel,
       platform,
-      analyticsEndpoint: __ANALYTICS_ENDPOINT__,
       registry: async () => ({
         github: createGitHubProvider({ fetch }),
         gitlab: createGitLabProvider({ fetch }),

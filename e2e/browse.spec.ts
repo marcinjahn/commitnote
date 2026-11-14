@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, FAKE_ANALYTICS_ORIGIN } from "./fixtures";
+import { test, expect } from "./fixtures";
 import { openNotes, showTree } from "./helpers";
 import { openRowMenu, openWelcome, treeItem, treeRows } from "./helpers/tree";
 
@@ -110,15 +110,10 @@ test("opening a note hides the tree on mobile", { tag: "@mobile-only" }, async (
   }
 });
 
-test("only the page's own origin is contacted", async ({
-  page,
-  baseURL,
-  analyticsRequests,
-}) => {
+test("only the page's own origin is contacted", async ({ page, baseURL }) => {
   const origins = new Set<string>();
   page.on("request", (request) => {
-    const origin = new URL(request.url()).origin;
-    if (origin !== FAKE_ANALYTICS_ORIGIN) origins.add(origin);
+    origins.add(new URL(request.url()).origin);
   });
 
   await openNotes(page);
@@ -131,7 +126,6 @@ test("only the page's own origin is contacted", async ({
   ).toContainText("Ideas");
 
   expect([...origins]).toEqual([new URL(baseURL!).origin]);
-  await expect.poll(() => analyticsRequests.length).toBe(1);
 });
 
 test.describe("selected note", () => {

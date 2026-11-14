@@ -51,8 +51,8 @@
           </div>
           <p class="hero-note">Flatpak for x86_64 Linux · Installable from your browser on phone and desktop · Source on <a href="https://github.com/marcinjahn/commitnote">GitHub</a></p>
           <div class="hero-shot frame">
-            <img class="shot-light" src="./screenshots/desktop-editor-light@1x.png" srcset="./screenshots/desktop-editor-light@1x.png 1x, ./screenshots/desktop-editor-light@2x.png 2x" width="1280" height="800" alt="The commitnote editor with the Welcome note open next to the notes tree" loading="eager" decoding="async" />
-            <img class="shot-dark" src="./screenshots/desktop-editor-dark@1x.png" srcset="./screenshots/desktop-editor-dark@1x.png 1x, ./screenshots/desktop-editor-dark@2x.png 2x" width="1280" height="800" alt="The commitnote editor with the Welcome note open next to the notes tree" loading="eager" decoding="async" />
+            <img class="shot-light" src="./screenshots/desktop-editor-light@1x.png" srcset="./screenshots/desktop-editor-light@1x.png 1x, ./screenshots/desktop-editor-light@2x.png 2x" width="1280" height="800" alt="The commitnote editor with the Weather station note open next to the notes tree" loading="eager" decoding="async" />
+            <img class="shot-dark" src="./screenshots/desktop-editor-dark@1x.png" srcset="./screenshots/desktop-editor-dark@1x.png 1x, ./screenshots/desktop-editor-dark@2x.png 2x" width="1280" height="800" alt="The commitnote editor with the Weather station note open next to the notes tree" loading="eager" decoding="async" />
           </div>
         </div>
       </section>
@@ -81,8 +81,8 @@
             <div class="commit-illustration" role="img" aria-label="A save becomes one commit: the note is encrypted, and the commit message names no note">
               <div class="commit-plain">
                 <span class="commit-label">Your note</span>
-                <span class="commit-line commit-name">Welcome</span>
-                <span class="commit-line">Notes stay private even to the forge that hosts them.</span>
+                <span class="commit-line commit-name">Weather station</span>
+                <span class="commit-line">A small Rust service on the home server reads the balcony sensor every minute.</span>
               </div>
               <div class="commit-cipher">
                 <span class="commit-label">Encrypted on your device</span>
@@ -98,7 +98,7 @@
               </div>
             </div>
             <ul class="privacy-list">
-              <li>No backend: the app talks only to GitHub or GitLab, plus one anonymous visit count (see <a href="#privacy">Privacy</a>).</li>
+              <li>No backend: the app talks only to GitHub or GitLab.</li>
               <li>Your passphrase never leaves your device and is never stored.</li>
               <li>Commit messages never contain note names or contents.</li>
             </ul>
@@ -145,33 +145,49 @@
               <h3>Installable, works offline</h3>
               <p>Install it on phone or desktop. Edits made offline are saved once you are back online.</p>
             </li>
-            <li>
-              <h3>Linux app</h3>
-              <p>A native app for your notes on any Linux desktop, as a Flatpak bundle for x86_64.</p>
-            </li>
           </ul>
-          <div class="showcase">
-            <figure>
-              <div class="frame">
-                <img class="shot-light" src="./screenshots/phone-tree-light@1x.png" srcset="./screenshots/phone-tree-light@1x.png 1x, ./screenshots/phone-tree-light@2x.png 2x" width="412" height="915" alt="The notes tree on a phone, with folders and notes" loading="lazy" decoding="async" />
-            <img class="shot-dark" src="./screenshots/phone-tree-dark@1x.png" srcset="./screenshots/phone-tree-dark@1x.png 1x, ./screenshots/phone-tree-dark@2x.png 2x" width="412" height="915" alt="The notes tree on a phone, with folders and notes" loading="lazy" decoding="async" />
+        </div>
+      </section>
+
+      <section class="section" id="platforms" aria-labelledby="platforms-title">
+        <div class="container">
+          <div class="section-head">
+            <h2 id="platforms-title">On every device</h2>
+            <p>The same notes, encrypted the same way, in your browser on any device, and on Linux.</p>
+          </div>
+          <div class="platforms">
+            <article class="platform" aria-labelledby="platform-web">
+              <div class="platform-text">
+                <p class="platform-name">Web</p>
+                <h3 id="platform-web">In your browser</h3>
+                <p>Runs in any modern browser on desktop and phone, with nothing to install. Add it to your home screen or dock to use it like an app, offline too.</p>
+                <a class="button button-primary" href="app/">Open app</a>
               </div>
-              <figcaption>Notes tree on a phone</figcaption>
-            </figure>
-            <figure>
-              <div class="frame">
-                <img class="shot-light" src="./screenshots/phone-note-light@1x.png" srcset="./screenshots/phone-note-light@1x.png 1x, ./screenshots/phone-note-light@2x.png 2x" width="412" height="915" alt="The Welcome note open in the live-preview editor on a phone" loading="lazy" decoding="async" />
-            <img class="shot-dark" src="./screenshots/phone-note-dark@1x.png" srcset="./screenshots/phone-note-dark@1x.png 1x, ./screenshots/phone-note-dark@2x.png 2x" width="412" height="915" alt="The Welcome note open in the live-preview editor on a phone" loading="lazy" decoding="async" />
+              <div class="platform-media platform-media-web">
+                <div class="frame">
+                  <img class="shot-light" src="./screenshots/desktop-history-light@1x.png" srcset="./screenshots/desktop-history-light@1x.png 1x, ./screenshots/desktop-history-light@2x.png 2x" width="1280" height="800" alt="The version history of a note in a desktop browser, comparing a saved version with the current one before restoring it" loading="lazy" decoding="async" />
+                  <img class="shot-dark" src="./screenshots/desktop-history-dark@1x.png" srcset="./screenshots/desktop-history-dark@1x.png 1x, ./screenshots/desktop-history-dark@2x.png 2x" width="1280" height="800" alt="The version history of a note in a desktop browser, comparing a saved version with the current one before restoring it" loading="lazy" decoding="async" />
+                </div>
+                <div class="frame">
+                  <img class="shot-light" src="./screenshots/phone-note-light@1x.png" srcset="./screenshots/phone-note-light@1x.png 1x, ./screenshots/phone-note-light@2x.png 2x" width="412" height="915" alt="The Weather station note open in the live-preview editor in a phone browser" loading="lazy" decoding="async" />
+                  <img class="shot-dark" src="./screenshots/phone-note-dark@1x.png" srcset="./screenshots/phone-note-dark@1x.png 1x, ./screenshots/phone-note-dark@2x.png 2x" width="412" height="915" alt="The Weather station note open in the live-preview editor in a phone browser" loading="lazy" decoding="async" />
+                </div>
               </div>
-              <figcaption>Live preview on a phone</figcaption>
-            </figure>
-            <figure class="showcase-wide">
-              <div class="frame">
-                <img class="shot-light" src="./screenshots/desktop-history-light@1x.png" srcset="./screenshots/desktop-history-light@1x.png 1x, ./screenshots/desktop-history-light@2x.png 2x" width="1280" height="800" alt="The version history of a note, comparing a saved version with the current one before restoring it" loading="lazy" decoding="async" />
-            <img class="shot-dark" src="./screenshots/desktop-history-dark@1x.png" srcset="./screenshots/desktop-history-dark@1x.png 1x, ./screenshots/desktop-history-dark@2x.png 2x" width="1280" height="800" alt="The version history of a note, comparing a saved version with the current one before restoring it" loading="lazy" decoding="async" />
+            </article>
+            <article class="platform" aria-labelledby="platform-linux">
+              <div class="platform-text">
+                <p class="platform-name">Linux</p>
+                <h3 id="platform-linux">On your Linux desktop</h3>
+                <p>A native GTK app that fits any Linux desktop, packaged as a Flatpak for x86_64.</p>
+                <a class="button" href="https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.flatpak">Download for Linux</a>
               </div>
-              <figcaption>Version history with restore</figcaption>
-            </figure>
+              <div class="platform-media">
+                <div class="frame">
+                  <img class="shot-light" src="./screenshots/linux-notes-light@1x.png" width="960" height="680" alt="The Linux app with the Weather station note open next to the notes tree" loading="lazy" decoding="async" />
+                  <img class="shot-dark" src="./screenshots/linux-notes-dark@1x.png" width="960" height="680" alt="The Linux app with the Weather station note open next to the notes tree" loading="lazy" decoding="async" />
+                </div>
+              </div>
+            </article>
           </div>
         </div>
       </section>
@@ -199,25 +215,6 @@
         </div>
       </section>
 
-      <section class="section" id="privacy" aria-labelledby="privacy-title">
-        <div class="container">
-          <div class="section-head">
-            <h2 id="privacy-title">Privacy</h2>
-            <p>Each page load of this site or the web app, and each start of the Linux app, sends one anonymous visit to GoatCounter, an open source analytics service hosted in the EU. It carries only two fixed values: the page (<code>landing</code> or <code>app</code>) and the platform (<code>web</code>, <code>pwa</code> or <code>linux</code>).</p>
-          </div>
-          <div class="privacy-details">
-            <p>The only visit paths ever sent, each with its visit title, are <code>/landing/web</code> as <code>Landing (web)</code>, <code>/app/web</code> as <code>App (web)</code>, <code>/app/pwa</code> as <code>App (PWA)</code> and <code>/app/linux</code> as <code>App (Linux)</code>. Each visit carries exactly two parameters, <code>p</code> (the visit path) and <code>t</code> (the visit title), and nothing else.</p>
-            <p>Never sent or stored: cookies or browser storage for counting, identifiers or fingerprints, the page URL, its path, <code>#</code> fragment or <code>?</code> query, note contents or names, repository or account names, tokens, the Referer header. GoatCounter derives the country from the IP address and browser and OS names from the User-Agent, and stores neither.</p>
-            <p>In a browser, nothing is sent when Do Not Track or Global Privacy Control is on, when you are offline, or after you opt out. Opting out here also covers the web app in this browser. The Linux app ignores browser signals and has its own switch in Preferences.</p>
-            <p><a href="https://www.goatcounter.com/help/privacy" rel="noopener noreferrer">GoatCounter privacy policy</a></p>
-            <div class="privacy-control">
-              <p id="analytics-status" aria-live="polite"></p>
-              <button type="button" class="button" id="analytics-opt-out" hidden>Don't count my visits in this browser</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section class="cta" aria-labelledby="cta-title">
         <div class="container">
           <h2 id="cta-title">Your notes. Your repository.</h2>
@@ -235,9 +232,8 @@
         <nav class="footer-links" aria-label="Project">
           <a href="https://github.com/marcinjahn/commitnote">Source on GitHub</a>
           <a href="https://github.com/marcinjahn/commitnote/releases/latest">Latest release</a>
-          <a href="#privacy">Privacy</a>
         </nav>
-        <p class="footer-note">No accounts, no cookies, no backend. One anonymous visit count — <a href="#privacy">Privacy</a>.</p>
+        <p class="footer-note">No accounts, no cookies, no backend.</p>
       </div>
     </footer>
   </body>

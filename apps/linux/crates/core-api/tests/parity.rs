@@ -66,8 +66,6 @@ fn typed_commands_are_declared_in_typescript() {
         SettingsRetry::NAME,
         SettingsFlush::NAME,
         DeviceSetName::NAME,
-        AnalyticsVisit::NAME,
-        AnalyticsSetCounted::NAME,
         ExportNotes::NAME,
         ImportReadArchive::NAME,
         ImportPreview::NAME,

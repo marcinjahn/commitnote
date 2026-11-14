@@ -22,6 +22,7 @@ import {
   SHARE_IMAGE_PROFILE,
 } from "../../images/pipeline/image-profile";
 import { LARGE_TREE_REPO_KEY } from "../../testing/sample-notes-repo/large-tree-source";
+import { SHOWCASE_REPO_KEY } from "../../testing/sample-notes-repo/showcase-source";
 import { findWorkingNode } from "../../sync/working-tree";
 import { buildNoteTree, listNotes } from "../../tree/note-tree";
 import {
@@ -145,6 +146,7 @@ const LOADING_REPOS: readonly string[] = [
   "sample/read-only",
   "sample/search",
   "sample/trash",
+  SHOWCASE_REPO_KEY,
   "sample/newer",
   "sample/foreign",
   "sample/almost-empty",

@@ -11,8 +11,8 @@ use gtk4::{self as gtk, gdk, glib, pango};
 use libadwaita as adw;
 
 use crate::flows::{
-    UNLOCK_TIMEOUT, choose_repository, ensure, launch_and_log_in, open_first_note, submit_token,
-    unlock, wait_tree,
+    UNLOCK_TIMEOUT, choose_repository, ensure, launch_and_log_in, launch_repository,
+    open_first_note, submit_token, unlock, wait_tree,
 };
 use crate::p2::{EARLY_BODY, finish_loading, reopen_held, set_early_body};
 use crate::support::{ALL_VARIANTS, Case, Harness, Width};
@@ -705,11 +705,7 @@ fn search_row(h: &Harness, name: &str) -> Option<ResultRow> {
 }
 
 pub(crate) fn launch_search_repository(h: &Harness) -> Result<(), String> {
-    h.launch()?;
-    submit_token(h)?;
-    choose_repository(h, SEARCH_URL)?;
-    unlock(h, false)?;
-    wait_tree(h)
+    launch_repository(h, SEARCH_URL)
 }
 
 pub(crate) fn focus_tree(h: &Harness) -> Result<(), String> {
@@ -902,17 +898,17 @@ fn shot_search(h: &mut Harness) -> Result<(), String> {
     search_with(h, "<Control>f", "road")?;
     for &(width, theme) in ALL_VARIANTS {
         h.show_variant(width, theme)?;
-        wait_search_shot_ready(h, width)?;
+        wait_search_shot_ready(h, width, "Roadmap")?;
         h.capture_variant("search", width, theme)?;
     }
     Ok(())
 }
 
-pub(crate) fn wait_search_shot_ready(h: &Harness, width: Width) -> Result<(), String> {
+pub(crate) fn wait_search_shot_ready(h: &Harness, width: Width, title: &str) -> Result<(), String> {
     h.wait("a highlighted name row and a snippet row", || {
         let rows = search_rows(h).1;
         rows.iter()
-            .any(|row| row.name == "Roadmap" && is_bold(&row.name_label))
+            .any(|row| row.name == title && is_bold(&row.name_label))
             && rows
                 .iter()
                 .any(|row| row.snippet.as_ref().is_some_and(is_bold))

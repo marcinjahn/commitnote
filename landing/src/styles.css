@@ -89,8 +89,7 @@ h2,
 h3,
 p,
 ol,
-ul,
-figure {
+ul {
   margin: 0;
 }
 
@@ -520,36 +519,6 @@ h3 {
   margin-bottom: var(--space-2);
 }
 
-.privacy-details {
-  display: grid;
-  gap: var(--space-3);
-  max-width: 40em;
-  color: var(--color-text-muted);
-}
-
-.privacy-details a {
-  color: var(--color-link);
-}
-
-.privacy-details code {
-  color: var(--color-text);
-  overflow-wrap: anywhere;
-}
-
-.privacy-control {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
-  color: var(--color-text);
-}
-
-.privacy-control .button {
-  white-space: normal;
-  padding-block: var(--space-2);
-  text-align: left;
-}
-
 .privacy-list li {
   position: relative;
   padding: var(--space-3) 0 var(--space-3) var(--space-5);
@@ -583,18 +552,59 @@ h3 {
   border-top: var(--hairline) solid var(--color-border-strong);
 }
 
-.showcase {
+.platforms {
   display: grid;
-  grid-template-columns: minmax(0, 452fr) minmax(0, 452fr) minmax(0, 1596fr);
-  gap: var(--space-4);
-  align-items: end;
-  margin-top: clamp(56px, 8vw, 96px);
+  gap: clamp(64px, 9vw, 120px);
 }
 
-.showcase figcaption {
-  margin-top: var(--space-3);
+.platform {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+  gap: var(--space-6);
+  align-items: center;
+}
+
+.platform:nth-child(even) {
+  grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
+}
+
+.platform:nth-child(even) .platform-text {
+  order: 1;
+}
+
+.platform-text {
+  padding-top: var(--space-4);
+  border-top: var(--hairline) solid var(--color-border-strong);
+}
+
+.platform-name {
+  margin-bottom: var(--space-3);
+  font-family: var(--font-mono);
   font-size: var(--font-size-sm);
+  color: var(--color-accent);
+}
+
+.platform h3 {
+  font-size: var(--font-size-xl);
+  letter-spacing: var(--letter-spacing-tighter);
+  line-height: 1.2;
+}
+
+.platform h3 + p {
+  margin-top: var(--space-3);
   color: var(--color-text-muted);
+  text-wrap: pretty;
+}
+
+.platform-text .button {
+  margin-top: var(--space-4);
+}
+
+.platform-media-web {
+  display: grid;
+  grid-template-columns: minmax(0, 3.55fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: end;
 }
 
 .needs {
@@ -671,12 +681,14 @@ h3 {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .showcase {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .platform,
+  .platform:nth-child(even) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-5);
   }
 
-  .showcase-wide {
-    grid-column: 1 / -1;
+  .platform:nth-child(even) .platform-text {
+    order: 0;
   }
 
   .footer-note {
@@ -853,7 +865,8 @@ h3 {
     .steps li,
     .privacy-list li,
     .features li,
-    .showcase figure,
+    .platform-text,
+    .platform-media,
     .needs li,
     .cta .container {
       animation: landing-rise linear both;

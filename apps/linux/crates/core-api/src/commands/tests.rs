@@ -58,10 +58,6 @@ fn empty_params_encode_as_empty_objects() {
     assert_eq!(params_json::<SyncRefresh>(&SyncRefreshParams {}), empty);
     assert_eq!(params_json::<DeviceName>(&DeviceNameParams {}), empty);
     assert_eq!(params_json::<SettingsOpen>(&SettingsOpenParams {}), empty);
-    assert_eq!(
-        params_json::<AnalyticsVisit>(&AnalyticsVisitParams {}),
-        empty
-    );
     assert_eq!(params_json::<SyncFlush>(&SyncFlushParams {}), empty);
     assert_eq!(params_json::<SyncRetry>(&SyncRetryParams {}), empty);
     assert_eq!(params_json::<DraftLeave>(&DraftLeaveParams {}), empty);
@@ -99,8 +95,6 @@ fn every_command_has_a_distinct_name() {
         SettingsRetry::NAME,
         SettingsFlush::NAME,
         DeviceSetName::NAME,
-        AnalyticsSetCounted::NAME,
-        AnalyticsVisit::NAME,
         NoteEdit::NAME,
         SyncFlush::NAME,
         SyncRetry::NAME,
@@ -416,13 +410,6 @@ fn empty_results_and_device_name() {
     decode::<SettingsChange>("{}");
     assert_eq!(decode::<DeviceName>(r#"{"name":"Laptop"}"#).name, "Laptop");
     assert!(crate::decode_result::<DeviceName>(json!({"nombre":"x"})).is_err());
-    assert_eq!(
-        decode::<AnalyticsVisit>(r#"{"url":"https://example.test/"}"#)
-            .url
-            .as_deref(),
-        Some("https://example.test/")
-    );
-    assert_eq!(decode::<AnalyticsVisit>(r#"{"url":null}"#).url, None);
 }
 
 fn plan_folder() -> TreeNode {
@@ -604,8 +591,8 @@ fn tree_nodes_round_trip() {
     assert_eq!(encoded["children"][0]["kind"], "note");
 }
 
-const SETTINGS_VIEW: &str = r#"{"values":{"colorMode":"system","accentColor":"system","noteFont":"sans","newNotePlacement":"top","newFolderPlacement":"bottom","typeToStart":true},"scopes":{"colorMode":"synced","accentColor":"device","noteFont":"synced","typeToStart":"device"},"deviceName":"","automaticDeviceName":"Laptop","reopenLastView":true,"analyticsCounted":false,"canExport":true,"canImport":true,"canChangePassphrase":false}"#;
-const SETTINGS_VIEW_WITH_VIM: &str = r#"{"values":{"colorMode":"dark","accentColor":"blue","noteFont":"mono","newNotePlacement":"bottom","newFolderPlacement":"top","typeToStart":false,"vimMode":true},"scopes":{"colorMode":"synced","accentColor":"device","noteFont":"synced","typeToStart":"device"},"deviceName":"Desk","automaticDeviceName":"Laptop","reopenLastView":false,"analyticsCounted":true,"canExport":false,"canImport":false,"canChangePassphrase":true}"#;
+const SETTINGS_VIEW: &str = r#"{"values":{"colorMode":"system","accentColor":"system","noteFont":"sans","newNotePlacement":"top","newFolderPlacement":"bottom","typeToStart":true},"scopes":{"colorMode":"synced","accentColor":"device","noteFont":"synced","typeToStart":"device"},"deviceName":"","automaticDeviceName":"Laptop","reopenLastView":true,"canExport":true,"canImport":true,"canChangePassphrase":false}"#;
+const SETTINGS_VIEW_WITH_VIM: &str = r#"{"values":{"colorMode":"dark","accentColor":"blue","noteFont":"mono","newNotePlacement":"bottom","newFolderPlacement":"top","typeToStart":false,"vimMode":true},"scopes":{"colorMode":"synced","accentColor":"device","noteFont":"synced","typeToStart":"device"},"deviceName":"Desk","automaticDeviceName":"Laptop","reopenLastView":false,"canExport":false,"canImport":false,"canChangePassphrase":true}"#;
 const SAVE_VIEW: &str =
     r#"{"state":"failed","label":"Not saved","detail":"Settings not saved","canRetry":true}"#;
 const CHOICE: &str = r#"{"label":"Mode","options":[{"id":"a","label":"A","description":null},{"id":"b","label":"B","description":"d"}]}"#;
@@ -617,7 +604,7 @@ fn settings_copy_json(vim: bool) -> String {
         ""
     };
     format!(
-        r##"{{"title":"Settings","intro":"i","sections":{{"appearance":"a","editor":"e","notes":"n","thisDevice":"t","dataSecurity":"d"}},"scopeLabels":{{"synced":"All devices","device":"This device"}},"colorMode":{CHOICE},"accentColor":{{"label":"Accent","options":[{{"id":"system","label":"System","light":null,"dark":null}},{{"id":"blue","label":"Blue","light":"#0000ff","dark":"#8888ff"}}]}},"noteFont":{{"label":"Font","options":[{{"id":"sans","label":"Sans","description":null}}],"previewHeading":"h","previewBody":"b","previewCode":"c"}},"editorUnavailable":"u","typeToStart":{{"label":"Type to start","hint":"th"}},{vim}"newNotePlacement":{CHOICE},"newFolderPlacement":{CHOICE},"deviceName":{{"label":"l","hint":"h","maxLength":40}},"reopenLastView":{{"label":"r"}},"analytics":{{"label":"l","hint":"h"}},"data":{{"exportLabel":"1","exportingLabel":"2","exportShareLabel":"3","exportFilesLabel":"4","exportFailed":"5","importLabel":"6","importingLabel":"7","changePassphraseLabel":"8"}},"retryLabel":"Retry"}}"##
+        r##"{{"title":"Settings","intro":"i","sections":{{"appearance":"a","editor":"e","notes":"n","thisDevice":"t","dataSecurity":"d"}},"scopeLabels":{{"synced":"All devices","device":"This device"}},"colorMode":{CHOICE},"accentColor":{{"label":"Accent","options":[{{"id":"system","label":"System","light":null,"dark":null}},{{"id":"blue","label":"Blue","light":"#0000ff","dark":"#8888ff"}}]}},"noteFont":{{"label":"Font","options":[{{"id":"sans","label":"Sans","description":null}}],"previewHeading":"h","previewBody":"b","previewCode":"c"}},"editorUnavailable":"u","typeToStart":{{"label":"Type to start","hint":"th"}},{vim}"newNotePlacement":{CHOICE},"newFolderPlacement":{CHOICE},"deviceName":{{"label":"l","hint":"h","maxLength":40}},"reopenLastView":{{"label":"r"}},"data":{{"exportLabel":"1","exportingLabel":"2","exportShareLabel":"3","exportFilesLabel":"4","exportFailed":"5","importLabel":"6","importingLabel":"7","changePassphraseLabel":"8"}},"retryLabel":"Retry"}}"##
     )
 }
 
@@ -670,7 +657,6 @@ fn settings_open_result_with_vim_mode() {
     assert_eq!(vim.hint, "vh");
     assert_eq!(value.view.values.vim_mode, Some(true));
     assert_eq!(value.view.device_name, "Desk");
-    assert!(value.view.analytics_counted);
 }
 
 #[test]
@@ -1944,17 +1930,12 @@ fn settings_commands_use_camel_case_wire_names() {
         decode::<DeviceSetName>(r#"{"name":"Laptop"}"#).name,
         "Laptop"
     );
-    assert_eq!(
-        round_trip(&AnalyticsSetCountedParams { counted: true }),
-        json!({"counted":true})
-    );
     let empty = json!({});
     assert_eq!(params_json::<SettingsRetry>(&SettingsRetryParams {}), empty);
     assert_eq!(params_json::<SettingsFlush>(&SettingsFlushParams {}), empty);
     decode::<SettingsSetScope>("{}");
     decode::<SettingsRetry>("{}");
     decode::<SettingsFlush>("{}");
-    decode::<AnalyticsSetCounted>("{}");
 }
 
 #[test]

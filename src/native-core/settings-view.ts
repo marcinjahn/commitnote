@@ -1,5 +1,4 @@
 import { effectiveSettingsOf } from "../app/settings-actions";
-import { readAnalyticsOptOut } from "../analytics/analytics";
 import { settingsSaveState } from "../settings/settings-save-state";
 import {
   describeSettingsSaveState,
@@ -48,7 +47,6 @@ export function settingsViewOf(
     deviceName: app.deviceSettings.readDeviceName() ?? "",
     automaticDeviceName: app.deviceModel,
     reopenLastView: !isReopenLastViewOff(host.deviceSettings),
-    analyticsCounted: !readAnalyticsOptOut(host.deviceSettings),
     canExport: ready,
     canImport,
     canChangePassphrase: canImport,

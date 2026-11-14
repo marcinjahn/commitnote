@@ -650,7 +650,7 @@ pub(crate) const FIRST_TEXT: &str =
 pub(crate) const SECOND_TEXT: &str =
     "# Welcome\n\nThis is your notes repo.\n\n- First bullet\n- Third bullet\n";
 
-fn save_version(h: &Harness, target: &[String], text: &str) -> Result<(), String> {
+pub(crate) fn save_version(h: &Harness, target: &[String], text: &str) -> Result<(), String> {
     h.run(
         "saving a version",
         h.model()?.testing_send(

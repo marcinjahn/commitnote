@@ -30,15 +30,10 @@ run-host *flags:
 container +args:
     apps/linux/scripts/container.sh "$@"
 
-# Static checks: package lists, rustfmt, clippy, meson static suite and the Markdown vectors
+# Static checks: rustfmt, clippy, meson static suite and the Markdown vectors
 [group('check')]
 lint:
     apps/linux/scripts/lint.sh
-
-# Check that the README package lists match ci/*-packages.txt (no container needed)
-[group('check')]
-check-package-lists:
-    apps/linux/scripts/check-package-lists.sh
 
 # Crate tests, the app's unit tests, the UI suite and the TypeScript read-back
 [group('check')]

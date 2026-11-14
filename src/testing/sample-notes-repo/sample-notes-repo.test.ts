@@ -34,14 +34,17 @@ import {
   SAMPLE_DEVICE_NAME,
   generateSampleNotesRepo,
   generateSampleSearchRepo,
+  generateSampleShowcaseRepo,
   generateSampleTrashRepo,
 } from "./generate-sample-notes-repo";
 import {
   createSampleNotesRepoAdapter,
   createSampleSearchRepoAdapter,
+  createSampleShowcaseRepoAdapter,
   createSampleTrashRepoAdapter,
   sampleNotesRepo,
   sampleSearchRepo,
+  sampleShowcaseRepo,
   sampleTrashRepo,
 } from "./seed-sample-notes-repo";
 import {
@@ -62,6 +65,7 @@ import {
   SAMPLE_TRASH_NOW,
   type SampleEntry,
 } from "./sample-source";
+import { showcaseRepoSource, showcaseRepoTags } from "./showcase-source";
 import { TRASH_DIR, TRASH_RETENTION_MS } from "../../format/v1";
 import { buildTrashIndex } from "../../trash/trash-index";
 import {
@@ -710,6 +714,39 @@ describe("sample search repo fixture", () => {
     for (const text of texts) {
       for (const name of names) expect(text).not.toContain(name);
       for (const markdown of markdowns) expect(text).not.toContain(markdown);
+    }
+  });
+});
+
+describe("sample showcase repo fixture", () => {
+  it("regenerating the fixture reproduces the committed JSON exactly", async () => {
+    expect(await generateSampleShowcaseRepo()).toEqual(sampleShowcaseRepo);
+  });
+
+  it("decrypts back to the source tree with the listed colour tags", async () => {
+    const adapter = await createSampleShowcaseRepoAdapter();
+    const inspection = await adapter.inspect();
+    if (inspection.kind !== "populated" || inspection.main?.repoConfigText == null) {
+      throw new Error("expected a populated repo with a config");
+    }
+    const parsed = parseRepoConfig(inspection.main.repoConfigText);
+    if (parsed.kind !== "valid") throw new Error("invalid repo config");
+    const keyring = await deriveKeyring(
+      sampleShowcaseRepo.passphrase,
+      parsed.config.kdf,
+      sharedMemoizedArgon2id,
+    );
+    const listing = await adapter.listTree(await adapter.getHead());
+
+    const tree = await buildNoteTree(listing, keyring);
+    await assertTreeMatchesSource(tree.root, showcaseRepoSource, adapter, keyring);
+
+    const entry = findTagEntry(listing);
+    if (entry === undefined) throw new Error("expected a tag file");
+    const index = await decryptTagIndex(keyring, await adapter.readBlob(entry.sha));
+    expect(index.notes.size).toBe(showcaseRepoTags.length);
+    for (const { path, color } of showcaseRepoTags) {
+      expect(index.notes.get(tagKey(path))).toEqual({ color });
     }
   });
 });

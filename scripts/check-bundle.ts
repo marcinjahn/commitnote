@@ -9,16 +9,12 @@ import {
   computeBuildId,
   parsePrecacheManifest,
 } from "./precache-manifest";
-import { buildModeFacts, FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
 import {
-  LINUX_VISIT_NEEDLES,
   NATIVE_CORE_NEEDLES,
   PROD_LEAK_NEEDLES,
 } from "./bundle-needles";
 import { buildCsp, inlineScriptHashes, type CspTarget } from "./csp";
 import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree-source";
-
-const GOATCOUNTER_ENDPOINT_NEEDLE = ".goatcounter.com/count";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -223,7 +219,6 @@ async function findExactCspProblems(
   htmlPath: string,
   label: string,
   target: CspTarget,
-  mode: string,
 ): Promise<string[]> {
   if (!(await exists(htmlPath))) {
     return [`${label}/index.html is missing`];
@@ -233,11 +228,7 @@ async function findExactCspProblems(
   if (policy === undefined) {
     return [`${label}/index.html has no Content-Security-Policy meta tag`];
   }
-  const expected = buildCsp(
-    target,
-    inlineScriptHashes(html),
-    buildModeFacts(mode).analyticsEndpoint,
-  );
+  const expected = buildCsp(target, inlineScriptHashes(html));
   return policy === expected
     ? []
     : [
@@ -248,7 +239,6 @@ async function findExactCspProblems(
 async function findLandingProblems(
   siteDir: string,
   name: string,
-  mode: string,
 ): Promise<string[]> {
   const problems: string[] = [];
   const htmlPath = join(siteDir, "index.html");
@@ -265,7 +255,7 @@ async function findLandingProblems(
       );
     } else {
       problems.push(
-        ...(await findExactCspProblems(htmlPath, name, "landing", mode)),
+        ...(await findExactCspProblems(htmlPath, name, "landing")),
       );
     }
     if (linkHrefs(html, "manifest").length > 0) {
@@ -336,15 +326,7 @@ async function main(): Promise<void> {
     FAKE_FORGE_BANNER,
     FAKE_FORGE_CONTROLS_KEY,
     LARGE_TREE_REPO_KEY,
-    new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
   ]);
-  if (!fakeHits.some((hit) => hit.needle === new URL(FAKE_ANALYTICS_ENDPOINT).hostname)) {
-    console.error(
-      `dist-fake/ does not contain the fake analytics host ("${new URL(FAKE_ANALYTICS_ENDPOINT).hostname}"); the check cannot prove it can detect a leak`,
-    );
-    process.exitCode = 1;
-    return;
-  }
 
   if (!fakeHits.some((hit) => hit.needle === FAKE_FORGE_BANNER)) {
     console.error(
@@ -371,17 +353,16 @@ async function main(): Promise<void> {
   }
 
   const layoutProblems: string[] = [];
-  for (const [siteDir, name, mode] of [
-    [distDir, "dist", "production"],
-    [fakeDistDir, "dist-fake", "fake-forge"],
+  for (const [siteDir, name] of [
+    [distDir, "dist"],
+    [fakeDistDir, "dist-fake"],
   ] as const) {
-    layoutProblems.push(...(await findLandingProblems(siteDir, name, mode)));
+    layoutProblems.push(...(await findLandingProblems(siteDir, name)));
     layoutProblems.push(
       ...(await findExactCspProblems(
         join(siteDir, "app", "index.html"),
         `${name}/app`,
         "web",
-        mode,
       )),
     );
   }
@@ -432,29 +413,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  // The landing page's privacy text names the Linux visit, so only the app is checked for it.
-  for (const [platform, needles, dirs] of [
-    [
-      "Linux",
-      LINUX_VISIT_NEEDLES,
-      [join(distDir, "app"), join(fakeDistDir, "app")],
-    ],
-  ] as const) {
-    const visitInWeb = [];
-    for (const dir of dirs) {
-      visitInWeb.push(...(await findForbidden(dir, needles)));
-    }
-    if (visitInWeb.length > 0) {
-      for (const hit of visitInWeb) {
-        console.error(
-          `A web bundle ships the ${platform} visit: "${hit.needle}" found in ${hit.file}`,
-        );
-      }
-      process.exitCode = 1;
-      return;
-    }
-  }
-
   const nativeCoreInWeb = [
     ...(await findForbidden(distDir, NATIVE_CORE_NEEDLES)),
     ...(await findForbidden(fakeDistDir, NATIVE_CORE_NEEDLES)),
@@ -467,21 +425,6 @@ async function main(): Promise<void> {
     }
     process.exitCode = 1;
     return;
-  }
-
-  if (buildModeFacts("production").analyticsEndpoint === null) {
-    const goatCounterHits = await findForbidden(distDir, [
-      GOATCOUNTER_ENDPOINT_NEEDLE,
-    ]);
-    if (goatCounterHits.length > 0) {
-      for (const hit of goatCounterHits) {
-        console.error(
-          `No analytics site code is configured, but "${hit.needle}" was found in ${hit.file}`,
-        );
-      }
-      process.exitCode = 1;
-      return;
-    }
   }
 
   console.log(

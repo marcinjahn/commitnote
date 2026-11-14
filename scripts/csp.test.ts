@@ -7,30 +7,14 @@ const TAIL =
 
 describe("buildCsp", () => {
   it("builds the web policy with one hash", () => {
-    expect(buildCsp("web", ["'sha256-AAA'"], null)).toBe(
+    expect(buildCsp("web", ["'sha256-AAA'"])).toBe(
       `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AAA'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com https://gitlab.com; ${TAIL}`,
     );
   });
 
   it("builds the web policy with two hashes", () => {
-    expect(buildCsp("web", ["'sha256-AAA'", "'sha256-BBB'"], null)).toBe(
+    expect(buildCsp("web", ["'sha256-AAA'", "'sha256-BBB'"])).toBe(
       `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AAA' 'sha256-BBB'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com https://gitlab.com; ${TAIL}`,
-    );
-  });
-});
-
-describe("buildCsp with an analytics endpoint", () => {
-  const endpoint = "https://commitnote.goatcounter.com/count";
-
-  it("appends the origin to the web connect-src", () => {
-    expect(buildCsp("web", ["'sha256-AAA'"], endpoint)).toBe(
-      `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AAA'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com https://gitlab.com https://commitnote.goatcounter.com; ${TAIL}`,
-    );
-  });
-
-  it("replaces 'none' in the landing connect-src", () => {
-    expect(buildCsp("landing", ["'sha256-AAA'"], endpoint)).toBe(
-      "default-src 'self'; script-src 'self' 'sha256-AAA'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://commitnote.goatcounter.com; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
     );
   });
 });
@@ -40,19 +24,17 @@ describe("buildCsp landing", () => {
     `default-src 'self'; script-src 'self' ${hashes}; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
 
   it("builds the landing policy with one hash", () => {
-    expect(buildCsp("landing", ["'sha256-AAA'"], null)).toBe(
-      policy("'sha256-AAA'"),
-    );
+    expect(buildCsp("landing", ["'sha256-AAA'"])).toBe(policy("'sha256-AAA'"));
   });
 
   it("builds the landing policy with two hashes", () => {
-    expect(buildCsp("landing", ["'sha256-AAA'", "'sha256-BBB'"], null)).toBe(
+    expect(buildCsp("landing", ["'sha256-AAA'", "'sha256-BBB'"])).toBe(
       policy("'sha256-AAA' 'sha256-BBB'"),
     );
   });
 
   it("keeps blob images out of the landing img-src", () => {
-    expect(buildCsp("landing", ["'sha256-AAA'"], null)).not.toContain("blob:");
+    expect(buildCsp("landing", ["'sha256-AAA'"])).not.toContain("blob:");
   });
 });
 

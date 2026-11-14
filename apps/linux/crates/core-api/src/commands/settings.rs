@@ -12,7 +12,6 @@ empty_shape!(
     SettingsRetryResult,
     SettingsFlushParams,
     SettingsFlushResult,
-    AnalyticsSetCountedResult,
 );
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,12 +46,6 @@ pub struct DeviceSetNameParams {
 #[serde(rename_all = "camelCase")]
 pub struct DeviceSetNameResult {
     pub name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AnalyticsSetCountedParams {
-    pub counted: bool,
 }
 
 command!(
@@ -90,10 +83,4 @@ command!(
     "device.setName",
     DeviceSetNameParams,
     DeviceSetNameResult
-);
-command!(
-    AnalyticsSetCounted,
-    "analytics.setCounted",
-    AnalyticsSetCountedParams,
-    AnalyticsSetCountedResult
 );

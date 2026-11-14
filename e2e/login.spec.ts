@@ -472,6 +472,7 @@ test("the repository list comes from the access token", async ({ page }) => {
     "sample/public-empty",
     "sample/read-only",
     "sample/search",
+    "sample/showcase",
     "sample/trash",
   ]);
 

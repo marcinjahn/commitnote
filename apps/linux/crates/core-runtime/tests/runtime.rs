@@ -8,7 +8,7 @@ use commitnote_core_api::commands::{
 };
 use commitnote_core_api::fake::{FakeTimerProbe, FakeTimerProbeParams};
 use commitnote_core_api::shapes::SessionEndReason;
-use commitnote_core_api::{CoreErrorKind, CoreEvent, NATIVE_CORE_MARKER};
+use commitnote_core_api::{CoreErrorKind, CoreEvent, NATIVE_CORE_API_VERSION, NATIVE_CORE_MARKER};
 use commitnote_core_runtime::services::{DeviceSettingsStore, ServiceError};
 use commitnote_core_runtime::{CoreRuntime, HostServices, RequestError, RuntimeConfig, StartError};
 use serde_json::json;
@@ -88,7 +88,7 @@ fn bundle_with_another_api_version_is_rejected() {
     assert_eq!(
         error,
         Some(StartError::ApiVersionMismatch {
-            expected: 7,
+            expected: NATIVE_CORE_API_VERSION,
             found: 999
         })
     );
@@ -96,7 +96,11 @@ fn bundle_with_another_api_version_is_rejected() {
 
 #[test]
 fn bundle_with_wrong_marker_is_invalid() {
-    let bundle = synthetic_bundle("another-core", 7, "return { send() {}, stop() {} };");
+    let bundle = synthetic_bundle(
+        "another-core",
+        NATIVE_CORE_API_VERSION,
+        "return { send() {}, stop() {} };",
+    );
 
     assert_eq!(start_bundle(bundle).err(), Some(StartError::BundleInvalid));
 }
@@ -111,7 +115,7 @@ fn bundle_without_global_is_invalid() {
 
 #[test]
 fn start_returning_nothing_is_invalid() {
-    let bundle = synthetic_bundle(NATIVE_CORE_MARKER, 7, "return null;");
+    let bundle = synthetic_bundle(NATIVE_CORE_MARKER, NATIVE_CORE_API_VERSION, "return null;");
 
     assert_eq!(start_bundle(bundle).err(), Some(StartError::BundleInvalid));
 }
@@ -128,7 +132,11 @@ fn throwing_bundle_reports_the_exception() {
 
 #[test]
 fn throwing_start_reports_the_exception() {
-    let bundle = synthetic_bundle(NATIVE_CORE_MARKER, 7, "throw new Error(\"start failed\");");
+    let bundle = synthetic_bundle(
+        NATIVE_CORE_MARKER,
+        NATIVE_CORE_API_VERSION,
+        "throw new Error(\"start failed\");",
+    );
 
     assert_eq!(
         start_bundle(bundle).err(),
@@ -261,8 +269,12 @@ fn subscribers_are_closed_when_the_runtime_stops() {
 
 #[test]
 fn host_converts_bytes_and_validates_arguments() {
-    let runtime = start_bundle(synthetic_bundle(NATIVE_CORE_MARKER, 7, PROBE_START))
-        .expect("the probe starts");
+    let runtime = start_bundle(synthetic_bundle(
+        NATIVE_CORE_MARKER,
+        NATIVE_CORE_API_VERSION,
+        PROBE_START,
+    ))
+    .expect("the probe starts");
 
     let result = block_on(runtime.send("bytes", json!({}))).expect("bytes");
 
@@ -279,8 +291,12 @@ fn host_converts_bytes_and_validates_arguments() {
 
 #[test]
 fn host_promises_resolve_and_reject_on_the_core_thread() {
-    let runtime = start_bundle(synthetic_bundle(NATIVE_CORE_MARKER, 7, PROBE_START))
-        .expect("the probe starts");
+    let runtime = start_bundle(synthetic_bundle(
+        NATIVE_CORE_MARKER,
+        NATIVE_CORE_API_VERSION,
+        PROBE_START,
+    ))
+    .expect("the probe starts");
 
     let result = block_on(runtime.send("storage", json!({}))).expect("storage");
 

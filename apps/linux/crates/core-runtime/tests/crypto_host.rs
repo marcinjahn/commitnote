@@ -1,12 +1,10 @@
 mod common;
 
-use commitnote_core_api::NATIVE_CORE_MARKER;
+use commitnote_core_api::{NATIVE_CORE_API_VERSION, NATIVE_CORE_MARKER};
 use commitnote_core_runtime::{CoreRuntime, RuntimeConfig};
 use serde_json::{Value, json};
 
 use common::block_on;
-
-const API_VERSION: u32 = 7;
 
 const PROBE_START: &str = r#"
   const reply = (id, result) =>
@@ -179,7 +177,7 @@ const PROBE_START: &str = r#"
 
 fn probe(command: &str) -> Value {
     let bundle = format!(
-        "globalThis.CommitnoteNativeCore = {{ marker: {NATIVE_CORE_MARKER:?}, apiVersion: {API_VERSION}, start(host) {{ {PROBE_START} }} }};"
+        "globalThis.CommitnoteNativeCore = {{ marker: {NATIVE_CORE_MARKER:?}, apiVersion: {NATIVE_CORE_API_VERSION}, start(host) {{ {PROBE_START} }} }};"
     );
     let runtime =
         CoreRuntime::start(RuntimeConfig::new(bundle, "Linux")).expect("the probe starts");

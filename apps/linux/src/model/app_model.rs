@@ -55,7 +55,6 @@ mod print;
 mod search;
 mod settings;
 mod shares;
-mod visit;
 
 pub use data::{DropSetup, ExportGuard, ExportedFile, ImportSetup};
 pub use history::RestoreResult;
@@ -1379,7 +1378,6 @@ impl AppModel {
         self.imp().client.replace(Some(client));
         self.attach_events();
         self.launch_core_started();
-        self.count_launch();
         #[cfg(feature = "testing")]
         self.hold_loading_if_requested().await;
         self.lifecycle_update().await;

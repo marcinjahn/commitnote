@@ -1,10 +1,18 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, type Browser, type BrowserContextOptions } from "@playwright/test";
+import {
+  chromium,
+  type Browser,
+  type BrowserContextOptions,
+  type Page,
+} from "@playwright/test";
 import { preview } from "vite";
-import { openNotes } from "../e2e/helpers";
-import { openWelcome } from "../e2e/helpers/tree";
+import {
+  expandFolders,
+  openShowcase,
+  openShowcaseHeroNote,
+} from "./showcase-screens";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = resolve(root, "public/screenshots");
@@ -14,7 +22,7 @@ async function capture(
   baseURL: string,
   options: BrowserContextOptions,
   file: string,
-  openNote: boolean,
+  prepare: (page: Page) => Promise<void>,
 ): Promise<void> {
   const context = await browser.newContext({
     ...options,
@@ -24,13 +32,11 @@ async function capture(
   });
   try {
     const page = await context.newPage();
-    await openNotes(page);
-    if (openNote) {
-      await openWelcome(page);
-    }
+    await prepare(page);
     await page.addStyleTag({
       content: ".test-mode-banner { display: none !important; }",
     });
+    await page.mouse.move(0, 0);
     const path = resolve(outDir, file);
     await page.screenshot({ path, animations: "disabled", caret: "hide" });
     console.log(path);
@@ -61,14 +67,17 @@ async function main(): Promise<void> {
           hasTouch: true,
         },
         "narrow.png",
-        false,
+        async (page) => {
+          await openShowcase(page);
+          await expandFolders(page, ["Projects", "Travel"]);
+        },
       );
       await capture(
         browser,
         baseURL,
         { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 },
         "wide.png",
-        true,
+        openShowcaseHeroNote,
       );
     } finally {
       await browser.close();

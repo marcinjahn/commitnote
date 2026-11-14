@@ -1,7 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, defineConfig, type Plugin } from "vite";
-import { buildModeFacts } from "../scripts/build-mode.ts";
 import { commitNoteCsp } from "../scripts/csp-plugin.ts";
 
 const landingRoot = dirname(fileURLToPath(import.meta.url));
@@ -54,18 +53,12 @@ function landingBoot(): Plugin {
   };
 }
 
-export default defineConfig(({ mode, command }) => {
-  const { analyticsEndpoint } = buildModeFacts(mode);
+export default defineConfig(({ mode }) => {
   return {
     root: landingRoot,
     base: "./",
     publicDir: resolve(landingRoot, "public"),
-    define: {
-      __ANALYTICS_ENDPOINT__: JSON.stringify(
-        command === "build" ? analyticsEndpoint : null,
-      ),
-    },
-    plugins: [landingBoot(), commitNoteCsp("landing", analyticsEndpoint)],
+    plugins: [landingBoot(), commitNoteCsp("landing")],
     server: { fs: { allow: [repoRoot] } },
     build: {
       outDir: resolve(repoRoot, mode === "fake-forge" ? "dist-fake" : "dist"),

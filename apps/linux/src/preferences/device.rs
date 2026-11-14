@@ -15,7 +15,6 @@ pub(super) struct Device {
     name_focus: gtk::EventControllerFocus,
     max_length: usize,
     reopen_last_view: adw::SwitchRow,
-    analytics: adw::SwitchRow,
 }
 
 impl Device {
@@ -45,14 +44,6 @@ impl Device {
             |model, enabled| async move { model.set_reopen_last_view(enabled).await },
         );
         group.add(&reopen_last_view);
-        let analytics = switch_row(
-            binding,
-            &copy.analytics.label,
-            Some(&copy.analytics.hint),
-            "settings-analytics",
-            |model, counted| async move { model.set_analytics_counted(counted).await },
-        );
-        group.add(&analytics);
 
         let device = Rc::new(Self {
             group,
@@ -61,7 +52,6 @@ impl Device {
             name_focus,
             max_length,
             reopen_last_view,
-            analytics,
         });
         device.name.connect_apply({
             let device = Rc::downgrade(&device);
@@ -88,7 +78,6 @@ impl Device {
             self.show_name(view);
         }
         self.reopen_last_view.set_active(view.reopen_last_view);
-        self.analytics.set_active(view.analytics_counted);
     }
 
     /// The name to store for what the entry shows, when that differs from the stored name.

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, FAKE_ANALYTICS_ORIGIN } from "./fixtures";
+import { test, expect } from "./fixtures";
 import { expectNoA11yViolations } from "./helpers/a11y";
 
 const HEADING = "Encrypted markdown notes in your own git repository.";
@@ -34,22 +34,28 @@ test("the landing page renders its content and calls to action", async ({
   await expect(page.locator("#main")).toHaveCount(1);
 
   const openApp = page.getByRole("link", { name: "Open app" });
-  await expect(openApp).toHaveCount(3);
+  await expect(openApp).toHaveCount(4);
   for (const href of await hrefs(openApp)) {
     expect(new URL(href, page.url()).pathname).toBe("/app/");
   }
   expect(
     await hrefs(page.getByRole("link", { name: "Download for Linux" })),
-  ).toEqual([FLATPAK, FLATPAK]);
+  ).toEqual([FLATPAK, FLATPAK, FLATPAK]);
   expect(
     await hrefs(page.getByRole("link", { name: "Latest release" })),
   ).toEqual([LATEST_RELEASE]);
   await expect(page.locator(".hero-note")).toContainText(
     "Flatpak for x86_64 Linux",
   );
-  await expect(
-    page.getByRole("heading", { level: 3, name: "Linux app" }),
-  ).toBeVisible();
+  const platforms = page.locator("#platforms");
+  for (const name of [
+    "In your browser",
+    "On your Linux desktop",
+  ]) {
+    await expect(
+      platforms.getByRole("heading", { level: 3, name }),
+    ).toBeVisible();
+  }
   const github = await hrefs(page.getByRole("link", { name: /GitHub/ }));
   expect(github.length).toBeGreaterThanOrEqual(1);
   expect(new Set(github)).toEqual(new Set([REPOSITORY]));
@@ -196,13 +202,11 @@ test.describe("motion", () => {
 
 test("the landing page contacts only its own origin and has no CSP violations", async ({
   page,
-  analyticsRequests,
 }) => {
   const origins = new Set<string>();
   const messages: string[] = [];
   page.on("request", (request) => {
-    const origin = new URL(request.url()).origin;
-    if (origin !== FAKE_ANALYTICS_ORIGIN) origins.add(origin);
+    origins.add(new URL(request.url()).origin);
   });
   page.on("console", (message) => messages.push(message.text()));
 
@@ -214,7 +218,6 @@ test("the landing page contacts only its own origin and has no CSP violations", 
   await page.waitForLoadState("networkidle");
 
   expect([...origins]).toEqual([new URL(page.url()).origin]);
-  await expect.poll(() => analyticsRequests.length).toBe(1);
   expect(messages.filter((m) => m.includes("Content Security Policy"))).toEqual(
     [],
   );

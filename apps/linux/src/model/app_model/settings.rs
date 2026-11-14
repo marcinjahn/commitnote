@@ -1,10 +1,9 @@
 use std::rc::Rc;
 
 use commitnote_core_api::commands::{
-    AnalyticsSetCounted, AnalyticsSetCountedParams, DeviceSetName, DeviceSetNameParams,
-    SettingsChange, SettingsChangeParams, SettingsFlush, SettingsFlushParams, SettingsOpen,
-    SettingsOpenParams, SettingsOpenResult, SettingsRetry, SettingsRetryParams, SettingsSetScope,
-    SettingsSetScopeParams,
+    DeviceSetName, DeviceSetNameParams, SettingsChange, SettingsChangeParams, SettingsFlush,
+    SettingsFlushParams, SettingsOpen, SettingsOpenParams, SettingsOpenResult, SettingsRetry,
+    SettingsRetryParams, SettingsSetScope, SettingsSetScopeParams,
 };
 use commitnote_core_api::settings::{
     AccentOptionView, ScopedSettingKey, SettingKeyView, SettingScope, SettingsCopy,
@@ -114,13 +113,6 @@ impl AppModel {
             .await
             .map(|result| result.name)
             .map_err(|error| failed("could not change the device name", error))
-    }
-
-    pub async fn set_analytics_counted(&self, counted: bool) -> Result<(), UserError> {
-        self.request::<AnalyticsSetCounted>(AnalyticsSetCountedParams { counted })
-            .await
-            .map(|_| ())
-            .map_err(|error| failed("could not change counting this device", error))
     }
 }
 
@@ -456,31 +448,6 @@ mod tests {
                     model
                         .settings_view()
                         .is_some_and(|view| view.device_name.is_empty())
-                })
-                .await;
-        });
-    }
-
-    #[test]
-    fn opting_out_of_counting_updates_the_view() {
-        run(|| async {
-            let session = ready_session().await;
-            let model = &session.model;
-            assert_eq!(
-                model.settings_view().map(|view| view.analytics_counted),
-                Some(true)
-            );
-
-            model
-                .set_analytics_counted(false)
-                .await
-                .expect("counting changes");
-
-            session
-                .wait_until("the opt-out", |model| {
-                    model
-                        .settings_view()
-                        .is_some_and(|view| !view.analytics_counted)
                 })
                 .await;
         });

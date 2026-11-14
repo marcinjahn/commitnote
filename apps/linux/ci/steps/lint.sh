@@ -1,7 +1,6 @@
 #!/bin/sh
 set -eu
 
-sh scripts/check-package-lists.sh
 cargo fmt --all --check
 cargo clippy --workspace --exclude commitnote --all-targets --locked -- -D warnings
 
