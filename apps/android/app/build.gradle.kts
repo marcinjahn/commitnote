@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     id("commitnote.android-core-assets")
 }
 
@@ -73,6 +74,7 @@ kotlin {
 
 dependencies {
     implementation(project(":core-runtime"))
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.javet.android)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)
@@ -81,6 +83,7 @@ dependencies {
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.exifinterface)
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestUtil(libs.androidx.test.orchestrator)
     debugImplementation(libs.compose.ui.test.manifest)
