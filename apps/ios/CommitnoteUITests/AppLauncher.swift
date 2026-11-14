@@ -10,6 +10,7 @@ enum Fixture {
     static let token = "test-token"
     static let passphrase = "sample notes repo passphrase"
     static let notes = "sample/notes"
+    static let showcase = "sample/showcase"
     static let empty = "sample/empty"
     static let newer = "sample/newer"
     static let publicEmpty = "sample/public-empty"

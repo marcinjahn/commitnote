@@ -96,7 +96,8 @@ What the app does:
   `Commitnote/App/PrintRenderer.swift` renders the print PDF.
 - `Commitnote/Fonts/` — the bundled note fonts (see Fonts below).
 - `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `disable-password-autofill.sh`,
-  `prepare-simulator.sh`, `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
+  `prepare-simulator.sh`, `export-screenshots.sh`, `landing-screenshots.sh`, `build-unsigned-ipa.sh`,
+  `check-ipa.sh`.
 - `../test-vectors/` — JSON test vectors shared by the TypeScript and Swift tests.
 
 The Xcode project is generated and not committed.
@@ -315,6 +316,15 @@ Artifacts, kept for 30 days:
 | `ios-test-output` | repos written by the runtime tests, and the performance timings (`perf/perf.json`, which names the iPad simulator that measured them) |
 
 The shared build, `ios-test-products`, is kept for a day.
+
+Store and landing screenshots come from the separate `iOS screenshots` workflow
+(`.github/workflows/ios-screenshots.yml`), started by hand from the Actions tab. It builds once and
+runs only `StoreScreenshotTests` on one iPhone simulator with a clean status bar (9:41, full
+battery), which logs in to the English `sample/showcase` repo and captures the note tree and the
+Weather station note in light and dark. `scripts/landing-screenshots.sh` scales them to
+`ios-<view>-<appearance>@1x.png` (logical width) and `@2x.png`; the `ios-store-screenshots` artifact
+holds both the full-size captures (`screenshots/`) and those (`landing/`), which go to
+`landing/screenshots/`.
 
 To download the unsigned IPA from a run, see Installing on a device.
 

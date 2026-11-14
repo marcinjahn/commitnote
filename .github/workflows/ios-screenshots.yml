@@ -1,0 +1,93 @@
+name: iOS screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  XCODE_VERSION: "26.6"
+
+concurrency:
+  group: "ios-screenshots-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    name: Store and landing screenshots
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/ios-select-xcode
+
+      - name: Start simulator
+        run: |
+          set -eu
+          SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh iphone)
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+          mkdir -p out
+          # Boots and prepares the simulator while the app builds.
+          nohup apps/ios/scripts/prepare-simulator.sh "$SIMULATOR_ID" out/simulator-ready > out/simulator-prep.log 2>&1 &
+
+      - uses: ./.github/actions/ios-macos-setup
+
+      - name: Build for testing
+        run: |
+          set -eu -o pipefail
+          xcodebuild build-for-testing \
+            -project apps/ios/Commitnote.xcodeproj \
+            -scheme Commitnote \
+            -configuration Testing \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath out/dd \
+            ARCHS=arm64
+          XCTESTRUN=$(find "$PWD/out/dd/Build/Products" -maxdepth 1 -name '*.xctestrun' | head -n 1)
+          echo "XCTESTRUN=$XCTESTRUN" >> "$GITHUB_ENV"
+
+      - name: Warm up simulator
+        run: |
+          set -eu
+          for _ in $(seq 600); do
+            [ -s out/simulator-ready ] && break
+            sleep 1
+          done
+          cat out/simulator-prep.log
+          [ "$(cat out/simulator-ready)" = 0 ]
+          apps/ios/scripts/warm-up-app.sh "$SIMULATOR_ID" out/dd/Build/Products/Testing-iphonesimulator/commitnote.app
+          xcrun simctl status_bar "$SIMULATOR_ID" override \
+            --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+
+      - name: Screenshot tests
+        run: |
+          set -eu -o pipefail
+          xcodebuild test-without-building \
+            -xctestrun "$XCTESTRUN" \
+            -destination "id=$SIMULATOR_ID" \
+            -only-testing:CommitnoteUITests/StoreScreenshotTests \
+            -parallel-testing-enabled NO \
+            -resultBundlePath out/xcresults/store.xcresult
+
+      - name: Export screenshots
+        run: |
+          set -eu
+          apps/ios/scripts/export-screenshots.sh out/xcresults/store.xcresult out/screenshots
+          apps/ios/scripts/landing-screenshots.sh out/screenshots out/landing
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios-store-screenshots
+          path: |
+            out/screenshots
+            out/landing
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: ios-xcresults-store
+          path: out/xcresults
+          if-no-files-found: ignore
+          retention-days: 30

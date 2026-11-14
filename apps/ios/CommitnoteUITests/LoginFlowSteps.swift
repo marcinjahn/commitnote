@@ -28,9 +28,9 @@ extension XCTestCase {
         tapRevealed(app.buttons["login-unlock-button"], in: app)
     }
 
-    func logInToNotes(in app: XCUIApplication) {
+    func logInToNotes(_ repository: String = Fixture.notes, in app: XCUIApplication) {
         submitToken(Fixture.token, in: app)
-        pickRepository(Fixture.notes, in: app)
+        pickRepository(repository, in: app)
         unlock(in: app)
         // Deriving the keys can take most of a minute on a freshly booted CI simulator.
         waitFor(app.element("notes-tree"), timeout: 60)
