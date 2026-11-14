@@ -1,4 +1,4 @@
-pub const NATIVE_CORE_API_VERSION: u32 = 8;
+pub const NATIVE_CORE_API_VERSION: u32 = 10;
 pub const NATIVE_CORE_MARKER: &str = "commitnote-native-core";
 
 pub const CORE_COMMAND_NAMES: &[&str] = &[
@@ -76,6 +76,7 @@ pub const CORE_COMMAND_NAMES: &[&str] = &[
     "settings.flush",
     "device.setName",
     "lastView.setEnabled",
+    "analytics.visit",
     "print.render",
     "import.readArchive",
     "import.preview",

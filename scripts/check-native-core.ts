@@ -24,6 +24,7 @@ import {
 } from "../src/native-core/testing/node-host-services";
 import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree-source";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
+import { buildModeFacts, FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
 import { PROD_LEAK_NEEDLES } from "./bundle-needles";
 import {
   readBackNativeRepo,
@@ -71,7 +72,10 @@ const FAKE_CORE_CONTROLS: readonly string[] = [
   "fake.saveNote",
   "fake.shareNote",
   "fake.processImage",
+  "/app/linux",
+  "App (Linux)",
   "Imported plan",
+  new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
   LARGE_TREE_REPO_KEY,
   SAMPLE_NOTES_REPO_PASSPHRASE,
 ];
@@ -138,6 +142,13 @@ async function positiveControlProblems(): Promise<string[]> {
     )
   ) {
     problems.push(`the core bundle does not contain "${NATIVE_CORE_MARKER}"`);
+  }
+  const endpoint = buildModeFacts("native-core").analyticsEndpoint;
+  if (
+    endpoint !== null &&
+    !(await foundNeedles(PROD_DIR, [endpoint])).has(endpoint)
+  ) {
+    problems.push(`the core bundle never sends visits to ${endpoint}`);
   }
   return problems;
 }
@@ -1047,6 +1058,10 @@ async function dataCheck(bundle: vm.Script): Promise<string> {
   return "exported with images, imported into a new folder, rendered a print page with the image, changed the passphrase, and read the notes and both images back under the new passphrase";
 }
 
+const VISIT_URLS = [
+  ["linux", `${FAKE_ANALYTICS_ENDPOINT}?p=%2Fapp%2Flinux&t=App%20(Linux)`],
+] as const;
+
 const REJECTED_START_OPTIONS: readonly [string, object][] = [
   ["no platform", {}],
   ["an unknown platform", { platform: "windows" }],
@@ -1073,6 +1088,23 @@ async function platformCheck(
   bundle: vm.Script,
   prodBundle: vm.Script,
 ): Promise<string> {
+  for (const [platform, expected] of VISIT_URLS) {
+    const core = new BareHostCore(bundle, createNodeHostServices(), {
+      platform,
+    });
+    try {
+      const { url } = await core.send<{ url: string | null }>(
+        "analytics.visit",
+      );
+      if (url !== expected) {
+        throw new Error(
+          `analytics.visit on ${platform} returned ${String(url)}, expected ${expected}`,
+        );
+      }
+    } finally {
+      core.stop();
+    }
+  }
   for (const [bundleLabel, target] of [
     ["fake core bundle", bundle],
     ["core bundle", prodBundle],
@@ -1085,7 +1117,7 @@ async function platformCheck(
       );
     }
   }
-  return "both bundles reject a missing or unknown platform";
+  return "analytics.visit returns the exact Linux visit URL, and both bundles reject a missing or unknown platform";
 }
 
 function describeError(error: unknown): string {

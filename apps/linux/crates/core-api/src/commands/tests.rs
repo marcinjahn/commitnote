@@ -58,6 +58,10 @@ fn empty_params_encode_as_empty_objects() {
     assert_eq!(params_json::<SyncRefresh>(&SyncRefreshParams {}), empty);
     assert_eq!(params_json::<DeviceName>(&DeviceNameParams {}), empty);
     assert_eq!(params_json::<SettingsOpen>(&SettingsOpenParams {}), empty);
+    assert_eq!(
+        params_json::<AnalyticsVisit>(&AnalyticsVisitParams {}),
+        empty
+    );
     assert_eq!(params_json::<SyncFlush>(&SyncFlushParams {}), empty);
     assert_eq!(params_json::<SyncRetry>(&SyncRetryParams {}), empty);
     assert_eq!(params_json::<DraftLeave>(&DraftLeaveParams {}), empty);
@@ -95,6 +99,7 @@ fn every_command_has_a_distinct_name() {
         SettingsRetry::NAME,
         SettingsFlush::NAME,
         DeviceSetName::NAME,
+        AnalyticsVisit::NAME,
         NoteEdit::NAME,
         SyncFlush::NAME,
         SyncRetry::NAME,
@@ -410,6 +415,13 @@ fn empty_results_and_device_name() {
     decode::<SettingsChange>("{}");
     assert_eq!(decode::<DeviceName>(r#"{"name":"Laptop"}"#).name, "Laptop");
     assert!(crate::decode_result::<DeviceName>(json!({"nombre":"x"})).is_err());
+    assert_eq!(
+        decode::<AnalyticsVisit>(r#"{"url":"https://example.test/"}"#)
+            .url
+            .as_deref(),
+        Some("https://example.test/")
+    );
+    assert_eq!(decode::<AnalyticsVisit>(r#"{"url":null}"#).url, None);
 }
 
 fn plan_folder() -> TreeNode {

@@ -9,7 +9,9 @@ import {
   computeBuildId,
   parsePrecacheManifest,
 } from "./precache-manifest";
+import { buildModeFacts, FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
 import {
+  LINUX_VISIT_NEEDLES,
   NATIVE_CORE_NEEDLES,
   PROD_LEAK_NEEDLES,
 } from "./bundle-needles";
@@ -32,7 +34,7 @@ async function collectFiles(dir: string): Promise<string[]> {
   return files;
 }
 
-async function findForbidden(
+async function findOccurrences(
   dir: string,
   needles: readonly string[],
 ): Promise<Array<{ readonly file: string; readonly needle: string }>> {
@@ -219,6 +221,7 @@ async function findExactCspProblems(
   htmlPath: string,
   label: string,
   target: CspTarget,
+  mode: string,
 ): Promise<string[]> {
   if (!(await exists(htmlPath))) {
     return [`${label}/index.html is missing`];
@@ -228,7 +231,11 @@ async function findExactCspProblems(
   if (policy === undefined) {
     return [`${label}/index.html has no Content-Security-Policy meta tag`];
   }
-  const expected = buildCsp(target, inlineScriptHashes(html));
+  const expected = buildCsp(
+    target,
+    inlineScriptHashes(html),
+    buildModeFacts(mode).analyticsEndpoint,
+  );
   return policy === expected
     ? []
     : [
@@ -239,6 +246,7 @@ async function findExactCspProblems(
 async function findLandingProblems(
   siteDir: string,
   name: string,
+  mode: string,
 ): Promise<string[]> {
   const problems: string[] = [];
   const htmlPath = join(siteDir, "index.html");
@@ -255,7 +263,7 @@ async function findLandingProblems(
       );
     } else {
       problems.push(
-        ...(await findExactCspProblems(htmlPath, name, "landing")),
+        ...(await findExactCspProblems(htmlPath, name, "landing", mode)),
       );
     }
     if (linkHrefs(html, "manifest").length > 0) {
@@ -302,6 +310,31 @@ async function findLandingBudgetProblems(
   return { problems, textBytes };
 }
 
+async function findEndpointProblems(
+  distDir: string,
+  fakeDistDir: string,
+): Promise<string[]> {
+  const endpoint = buildModeFacts("production").analyticsEndpoint;
+  if (endpoint === null) {
+    return [];
+  }
+  const problems: string[] = [];
+  for (const [name, assetsDir] of [
+    ["landing page", join(distDir, "assets")],
+    ["app", join(distDir, "app", "assets")],
+  ] as const) {
+    if ((await findOccurrences(assetsDir, [endpoint])).length === 0) {
+      problems.push(`The production ${name} never sends visits to ${endpoint}`);
+    }
+  }
+  for (const hit of await findOccurrences(fakeDistDir, [endpoint])) {
+    problems.push(
+      `The fake build sends visits to the production endpoint: "${hit.needle}" found in ${hit.file}`,
+    );
+  }
+  return problems;
+}
+
 function fail(message: string): void {
   console.error(message);
   process.exitCode = 1;
@@ -311,7 +344,7 @@ async function main(): Promise<void> {
   const distDir = join(rootDir, "dist");
   const fakeDistDir = join(rootDir, "dist-fake");
 
-  const forbiddenInProd = await findForbidden(distDir, PROD_LEAK_NEEDLES);
+  const forbiddenInProd = await findOccurrences(distDir, PROD_LEAK_NEEDLES);
   if (forbiddenInProd.length > 0) {
     for (const hit of forbiddenInProd) {
       console.error(
@@ -322,11 +355,19 @@ async function main(): Promise<void> {
     return;
   }
 
-  const fakeHits = await findForbidden(fakeDistDir, [
+  const fakeHits = await findOccurrences(fakeDistDir, [
     FAKE_FORGE_BANNER,
     FAKE_FORGE_CONTROLS_KEY,
     LARGE_TREE_REPO_KEY,
+    new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
   ]);
+  if (!fakeHits.some((hit) => hit.needle === new URL(FAKE_ANALYTICS_ENDPOINT).hostname)) {
+    console.error(
+      `dist-fake/ does not contain the fake analytics host ("${new URL(FAKE_ANALYTICS_ENDPOINT).hostname}"); the check cannot prove it can detect a leak`,
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   if (!fakeHits.some((hit) => hit.needle === FAKE_FORGE_BANNER)) {
     console.error(
@@ -353,16 +394,17 @@ async function main(): Promise<void> {
   }
 
   const layoutProblems: string[] = [];
-  for (const [siteDir, name] of [
-    [distDir, "dist"],
-    [fakeDistDir, "dist-fake"],
+  for (const [siteDir, name, mode] of [
+    [distDir, "dist", "production"],
+    [fakeDistDir, "dist-fake", "fake-forge"],
   ] as const) {
-    layoutProblems.push(...(await findLandingProblems(siteDir, name)));
+    layoutProblems.push(...(await findLandingProblems(siteDir, name, mode)));
     layoutProblems.push(
       ...(await findExactCspProblems(
         join(siteDir, "app", "index.html"),
         `${name}/app`,
         "web",
+        mode,
       )),
     );
   }
@@ -413,9 +455,23 @@ async function main(): Promise<void> {
     return;
   }
 
+  const linuxVisitInWeb = [
+    ...(await findOccurrences(distDir, LINUX_VISIT_NEEDLES)),
+    ...(await findOccurrences(fakeDistDir, LINUX_VISIT_NEEDLES)),
+  ];
+  if (linuxVisitInWeb.length > 0) {
+    for (const hit of linuxVisitInWeb) {
+      console.error(
+        `A web bundle ships the Linux visit: "${hit.needle}" found in ${hit.file}`,
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
+
   const nativeCoreInWeb = [
-    ...(await findForbidden(distDir, NATIVE_CORE_NEEDLES)),
-    ...(await findForbidden(fakeDistDir, NATIVE_CORE_NEEDLES)),
+    ...(await findOccurrences(distDir, NATIVE_CORE_NEEDLES)),
+    ...(await findOccurrences(fakeDistDir, NATIVE_CORE_NEEDLES)),
   ];
   if (nativeCoreInWeb.length > 0) {
     for (const hit of nativeCoreInWeb) {
@@ -427,8 +483,15 @@ async function main(): Promise<void> {
     return;
   }
 
+  const endpointProblems = await findEndpointProblems(distDir, fakeDistDir);
+  if (endpointProblems.length > 0) {
+    for (const problem of endpointProblems) console.error(problem);
+    process.exitCode = 1;
+    return;
+  }
+
   console.log(
-    `Bundle check passed: production build never ships fake forge fixtures, no web build contains the native core, and serves the landing page at the root and the app under app/ with a complete web app manifest and service worker (${serviceWorkers.join("; ")}); landing html, css and js total ${budget.textBytes} of ${LANDING_TEXT_BUDGET_BYTES} bytes.`,
+    `Bundle check passed: production build never ships fake forge fixtures, no web build contains the native core, the production landing page and app send visits to the configured endpoint, and serves the landing page at the root and the app under app/ with a complete web app manifest and service worker (${serviceWorkers.join("; ")}); landing html, css and js total ${budget.textBytes} of ${LANDING_TEXT_BUDGET_BYTES} bytes.`,
   );
 }
 

@@ -72,6 +72,7 @@ async function setUp() {
       host,
       deviceModel: "ThinkPad",
       platform: "linux",
+      analyticsEndpoint: null,
       registry: () => Promise.resolve(forge.registry),
       extraCommands: (app) =>
         createFakeCommands({

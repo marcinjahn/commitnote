@@ -22,14 +22,16 @@ const NATIVE_CORE_BUILDS: Record<string, { entry: string; outDir: string }> = {
   },
 };
 
-export default defineConfig(({ mode }) => {
-  const { fakeForge } = buildModeFacts(mode);
+export default defineConfig(({ mode, command }) => {
+  const facts = buildModeFacts(mode);
+  const { fakeForge } = facts;
   const nativeCore = NATIVE_CORE_BUILDS[mode];
   if (nativeCore !== undefined) {
     return {
       publicDir: false,
       define: {
         __FAKE_FORGE__: JSON.stringify(fakeForge),
+        __ANALYTICS_ENDPOINT__: JSON.stringify(facts.analyticsEndpoint),
         "process.env.NODE_ENV": JSON.stringify("production"),
       },
       plugins: [nativeCoreArgon2Redirect()],
@@ -54,10 +56,13 @@ export default defineConfig(({ mode }) => {
     base: "./",
     define: {
       __FAKE_FORGE__: JSON.stringify(fakeForge),
+      __ANALYTICS_ENDPOINT__: JSON.stringify(
+        command === "build" ? facts.analyticsEndpoint : null,
+      ),
     },
     plugins: [
       svelte(),
-      commitNoteCsp("web"),
+      commitNoteCsp("web", facts.analyticsEndpoint),
       dropUnusedWasmAsset(),
       serviceWorker(),
     ],

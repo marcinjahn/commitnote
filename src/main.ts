@@ -16,6 +16,7 @@ import { createBrowserInstallController } from "./app/install-controller";
 import { type LaunchQueueLike, startLaunchActions } from "./app/launch-action";
 import { clearLaunchAction } from "./app/note-navigation";
 import { isStandalone } from "./app/display-mode";
+import { sendVisit } from "./analytics/analytics";
 import { hasLastLoginHint } from "./session/session-store";
 import {
   readShareInviteDismissed,
@@ -108,10 +109,20 @@ const displayEnvironment = {
 };
 const standalone = isStandalone(displayEnvironment);
 
+function countVisit(): void {
+  sendVisit("app", {
+    endpoint: __ANALYTICS_ENDPOINT__,
+    standalone,
+    navigator,
+    fetch: (url, init) => fetch(url, init),
+  });
+}
+
 const appUpdates = import.meta.env.DEV ? null : startBrowserAppUpdates();
 
 if (isShareHash(location.hash)) {
   await mountViewer(target);
+  countVisit();
 } else {
   let registry: ForgeRegistry = forgeRegistry;
   let testModeBanner: string | null = null;
@@ -182,4 +193,5 @@ if (isShareHash(location.hash)) {
       standalone,
     },
   });
+  countVisit();
 }

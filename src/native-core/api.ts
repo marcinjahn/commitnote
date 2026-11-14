@@ -7,7 +7,7 @@ import type { HostServices } from "./host-services";
 
 export type { ColorTag, LaunchAction, MessagePart, SettingScope };
 
-export const NATIVE_CORE_API_VERSION = 8;
+export const NATIVE_CORE_API_VERSION = 10;
 export const NATIVE_CORE_MARKER = "commitnote-native-core";
 
 export type NativePlatform = "linux";
@@ -820,6 +820,7 @@ export type CoreCommands = {
     params: { enabled: boolean; view: LastViewState };
     result: {};
   };
+  "analytics.visit": { params: {}; result: { url: string | null } };
   "print.render": {
     params: { name: string; text: string };
     result: { html: string };
@@ -1085,6 +1086,7 @@ export const CORE_COMMAND_NAMES = [
   "settings.flush",
   "device.setName",
   "lastView.setEnabled",
+  "analytics.visit",
   "print.render",
   "import.readArchive",
   "import.preview",

@@ -6,6 +6,7 @@ empty_shape!(
     DeviceNameParams,
     NoticesDismissResult,
     NoticesPerformResult,
+    AnalyticsVisitParams,
 );
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,6 +35,12 @@ pub struct NoticeIdParams {
 
 pub type NoticesDismissParams = NoticeIdParams;
 pub type NoticesPerformParams = NoticeIdParams;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyticsVisitResult {
+    pub url: Option<String>,
+}
 
 command!(
     LifecycleSetVisible,
@@ -64,4 +71,10 @@ command!(
     "notices.perform",
     NoticesPerformParams,
     NoticesPerformResult
+);
+command!(
+    AnalyticsVisit,
+    "analytics.visit",
+    AnalyticsVisitParams,
+    AnalyticsVisitResult
 );

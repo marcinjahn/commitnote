@@ -19,7 +19,7 @@
 
 Most notes apps keep your notes on their own servers. commitnote keeps them in a git repository on
 your own GitHub or GitLab account, encrypted before they leave your device. It's a markdown editor
-with live preview, and there is no backend: the app only ever talks to GitHub or GitLab.
+with live preview, and there is no backend: your notes only ever go to GitHub or GitLab.
 
 - Your passphrase derives the keys (Argon2id) and never leaves the device. Note contents are
   encrypted with AES-256-GCM, and file and folder names are encrypted too.

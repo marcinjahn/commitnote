@@ -61,6 +61,7 @@ export interface CoreTestContext {
 export async function createCoreTestContext(
   options: {
     readonly extraCommands?: ExtraCommandsInput;
+    readonly analyticsEndpoint?: string | null;
   } = {},
 ): Promise<CoreTestContext> {
   const clock = createTestClock(Date.UTC(2026, 9, 1, 12));
@@ -103,6 +104,7 @@ export async function createCoreTestContext(
       host,
       deviceModel: "ThinkPad",
       platform: "linux",
+      analyticsEndpoint: options.analyticsEndpoint ?? null,
       registry: () => Promise.resolve(forges),
       extraCommands: (app) => ({
         ...resolveExtra(options.extraCommands, app),

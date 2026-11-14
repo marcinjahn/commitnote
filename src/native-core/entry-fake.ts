@@ -34,6 +34,7 @@ const nativeCore: NativeCoreGlobal = {
       host,
       deviceModel: options.deviceModel,
       platform,
+      analyticsEndpoint: __ANALYTICS_ENDPOINT__,
       registry: async () => (await fakeForge).registry,
       extraCommands: (app) =>
         createFakeCommands({

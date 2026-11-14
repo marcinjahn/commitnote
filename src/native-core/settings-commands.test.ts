@@ -24,7 +24,9 @@ afterEach(() => {
 });
 
 async function started(): Promise<NativeCoreHandle> {
-  ctx = await createCoreTestContext();
+  ctx = await createCoreTestContext({
+    analyticsEndpoint: "https://a.invalid/c",
+  });
   const core = ctx.startCore(undefined, (session) => {
     app = session;
     return {};

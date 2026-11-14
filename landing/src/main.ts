@@ -1,3 +1,5 @@
+import { sendVisit } from "../../src/analytics/analytics";
+
 const root = document.documentElement;
 
 function trackTyping(wordmark: HTMLElement): void {
@@ -34,3 +36,10 @@ if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
   const illustration = document.querySelector<HTMLElement>(".commit-illustration");
   if (illustration) playOnView(illustration);
 }
+
+sendVisit("landing", {
+  endpoint: __ANALYTICS_ENDPOINT__,
+  standalone: false,
+  navigator,
+  fetch: (url, init) => fetch(url, init),
+});
