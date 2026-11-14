@@ -9,12 +9,16 @@ import io.github.marcinjahn.commitnote.core.runtime.services.ImageHandle
 import io.github.marcinjahn.commitnote.core.runtime.services.ServiceException
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class PlatformImageCodecTest {
     private val codec = PlatformImageCodec()
@@ -81,7 +85,7 @@ class PlatformImageCodecTest {
 
         assertArrayEquals("RIFF".toByteArray(), webp.copyOfRange(0, 4))
         assertArrayEquals("WEBP".toByteArray(), webp.copyOfRange(8, 12))
-        assertArrayEquals("VP8 ".toByteArray(), webp.copyOfRange(12, 16))
+        assertIsLossy(webp)
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(webp, 0, webp.size, options)
         assertEquals(32, options.outWidth)
@@ -94,7 +98,7 @@ class PlatformImageCodecTest {
 
         val webp = codec.encodeWebp(decoded.handle, 64, 48, 1f)
 
-        assertArrayEquals("VP8 ".toByteArray(), webp.copyOfRange(12, 16))
+        assertIsLossy(webp)
         assertNotNull(BitmapFactory.decodeByteArray(webp, 0, webp.size))
     }
 
@@ -136,6 +140,25 @@ class PlatformImageCodecTest {
         assertEquals("Unknown image handle", failure.message)
     }
 
+    /** Newer platforms wrap the bitstream in an extended container, so look through the RIFF chunks for it. */
+    private fun assertIsLossy(webp: ByteArray) {
+        val chunks = riffChunkTypes(webp)
+        assertTrue("no lossy bitstream chunk in $chunks", "VP8 " in chunks)
+        assertFalse("lossless bitstream chunk in $chunks", "VP8L" in chunks)
+    }
+
+    private fun riffChunkTypes(webp: ByteArray): List<String> {
+        val buffer = ByteBuffer.wrap(webp).order(ByteOrder.LITTLE_ENDIAN)
+        val types = mutableListOf<String>()
+        var offset = RIFF_HEADER_SIZE
+        while (offset + CHUNK_HEADER_SIZE <= webp.size) {
+            types += webp.decodeToString(offset, offset + FOURCC_SIZE)
+            val size = buffer.getInt(offset + FOURCC_SIZE)
+            offset += CHUNK_HEADER_SIZE + size + (size and 1)
+        }
+        return types
+    }
+
     private fun jpeg(
         width: Int,
         height: Int,
@@ -161,5 +184,11 @@ class PlatformImageCodecTest {
         } finally {
             file.delete()
         }
+    }
+
+    private companion object {
+        const val RIFF_HEADER_SIZE = 12
+        const val FOURCC_SIZE = 4
+        const val CHUNK_HEADER_SIZE = 8
     }
 }

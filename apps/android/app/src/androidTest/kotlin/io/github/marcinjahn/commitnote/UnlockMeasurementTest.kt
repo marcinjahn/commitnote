@@ -11,7 +11,6 @@ import io.github.marcinjahn.commitnote.core.api.LoginListRepositoriesParams
 import io.github.marcinjahn.commitnote.core.api.PassphraseParams
 import io.github.marcinjahn.commitnote.core.api.Secret
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,16 +27,18 @@ class UnlockMeasurementTest {
         runBlocking {
             val runtime = startTestRuntime()
             try {
-                withTimeout(10.minutes) {
-                    val accessToken = Secret(FAKE_ACCESS_TOKEN)
-                    val repository =
+                val accessToken = Secret(FAKE_ACCESS_TOKEN)
+                val repository =
+                    loggedStep("login.listRepositories", STEP_LIMIT) {
                         runtime
                             .send(
                                 CoreCommands.loginListRepositories,
                                 LoginListRepositoriesParams(ForgeKind.GITHUB, accessToken),
                             ).repositories
                             .single { it.label == SAMPLE_REPOSITORY }
-                    val inspected =
+                    }
+                val inspected =
+                    loggedStep("login.inspectRepository", STEP_LIMIT) {
                         runtime.send(
                             CoreCommands.loginInspectRepository,
                             LoginInspectRepositoryParams(
@@ -46,24 +47,26 @@ class UnlockMeasurementTest {
                                 repository.url,
                             ),
                         )
-                    assertTrue(inspected is LoginInspectRepositoryResult.NotesRepo)
+                    }
+                assertTrue(inspected is LoginInspectRepositoryResult.NotesRepo)
 
-                    val elapsed =
+                val elapsed =
+                    loggedStep("login.unlock", STEP_LIMIT) {
                         measureTime {
                             runtime.send(
                                 CoreCommands.loginUnlock,
                                 PassphraseParams(Secret(SAMPLE_PASSPHRASE)),
                             )
                         }
-                    report(elapsed.inWholeMilliseconds)
-                }
+                    }
+                report(elapsed.inWholeMilliseconds)
             } finally {
                 runtime.stop()
             }
         }
 
     private fun report(milliseconds: Long) {
-        Log.i(TAG, "login.unlock on the sample notes repository took $milliseconds ms")
+        Log.i(LOG_TAG, "login.unlock on the sample notes repository took $milliseconds ms")
         InstrumentationRegistry.getInstrumentation().sendStatus(
             0,
             Bundle().apply { putLong(STATUS_KEY, milliseconds) },
@@ -71,7 +74,7 @@ class UnlockMeasurementTest {
     }
 
     private companion object {
-        const val TAG = "Commitnote"
         const val STATUS_KEY = "unlockMilliseconds"
+        val STEP_LIMIT = 3.minutes
     }
 }

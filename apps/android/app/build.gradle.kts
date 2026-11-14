@@ -109,6 +109,7 @@ dependencies {
     androidTestImplementation(testFixtures(project(":core-runtime")))
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(libs.androidx.exifinterface)
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestUtil(libs.androidx.test.orchestrator)
