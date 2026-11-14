@@ -1049,7 +1049,7 @@ async function dataCheck(bundle: vm.Script): Promise<string> {
 
 const REJECTED_START_OPTIONS: readonly [string, object][] = [
   ["no platform", {}],
-  ["an unknown platform", { platform: "android" }],
+  ["an unknown platform", { platform: "windows" }],
 ];
 
 function expectUnsupportedPlatform(

@@ -10,10 +10,11 @@ export type { ColorTag, LaunchAction, MessagePart, SettingScope };
 export const NATIVE_CORE_API_VERSION = 8;
 export const NATIVE_CORE_MARKER = "commitnote-native-core";
 
-export type NativePlatform = "ios" | "linux";
+export type NativePlatform = "ios" | "linux" | "android";
 export const NATIVE_PLATFORMS = [
   "ios",
   "linux",
+  "android",
 ] as const satisfies readonly NativePlatform[];
 
 type ForgeKind = "github" | "gitlab";

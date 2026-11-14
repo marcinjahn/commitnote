@@ -21,10 +21,21 @@ describe("buildSettingsCopy", () => {
     });
   });
 
+  it("names Vim mode and the animated caret as unavailable on Android", () => {
+    const copy = buildSettingsCopy("android");
+    expect(copy.editorUnavailable).toBe(
+      "Vim mode and the animated caret are not available on Android. Their settings stay as they are for your other devices.",
+    );
+    expect("vimMode" in copy).toBe(false);
+  });
+
   it("differs between the platforms only in the Vim copy", () => {
     const { editorUnavailable: _ios, ...ios } = buildSettingsCopy("ios");
     const { editorUnavailable: _linux, vimMode: _vim, ...linux } =
       buildSettingsCopy("linux");
     expect(linux).toEqual(ios);
+    const { editorUnavailable: _android, ...android } =
+      buildSettingsCopy("android");
+    expect(android).toEqual(ios);
   });
 });

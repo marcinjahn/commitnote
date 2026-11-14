@@ -48,6 +48,13 @@ export const EDITOR_UNAVAILABLE_MESSAGE =
   "Vim mode and the animated caret are not available on iOS. Their settings stay as they are for your other devices.";
 export const LINUX_EDITOR_UNAVAILABLE_MESSAGE =
   "The animated caret is not available on Linux. Its setting stays as it is for your other devices.";
+const ANDROID_EDITOR_UNAVAILABLE_MESSAGE =
+  "Vim mode and the animated caret are not available on Android. Their settings stay as they are for your other devices.";
+const EDITOR_UNAVAILABLE_MESSAGES: Record<NativePlatform, string> = {
+  ios: EDITOR_UNAVAILABLE_MESSAGE,
+  linux: LINUX_EDITOR_UNAVAILABLE_MESSAGE,
+  android: ANDROID_EDITOR_UNAVAILABLE_MESSAGE,
+};
 export const EXPORT_SHARE_LABEL = "Share";
 export const EXPORT_FILES_LABEL = "Save to Files";
 
@@ -94,9 +101,7 @@ export function buildSettingsCopy(platform: NativePlatform): SettingsCopy {
       previewBody: NOTE_FONT_PREVIEW_BODY,
       previewCode: NOTE_FONT_PREVIEW_CODE,
     },
-    editorUnavailable: linux
-      ? LINUX_EDITOR_UNAVAILABLE_MESSAGE
-      : EDITOR_UNAVAILABLE_MESSAGE,
+    editorUnavailable: EDITOR_UNAVAILABLE_MESSAGES[platform],
     typeToStart: { label: TYPE_TO_START_LABEL, hint: TYPE_TO_START_HINT },
     ...(linux ? { vimMode: { label: VIM_MODE_LABEL, hint: VIM_MODE_HINT } } : {}),
     newNotePlacement: {

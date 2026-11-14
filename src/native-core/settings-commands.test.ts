@@ -213,6 +213,34 @@ describe("iOS settings", () => {
   });
 });
 
+describe("Android settings", () => {
+  it("keep the Android copy without Vim mode and the view without a Vim value", async () => {
+    const core = await started("android");
+    const { copy, view } = await ctx.call(core, "settings.open");
+    expect(copy.editorUnavailable).toBe(
+      "Vim mode and the animated caret are not available on Android. Their settings stay as they are for your other devices.",
+    );
+    expect("vimMode" in copy).toBe(false);
+    expect("vimMode" in view.values).toBe(false);
+  });
+
+  it("reject the Vim mode and animated caret settings", async () => {
+    const core = await started("android");
+    for (const [key, value] of [
+      ["vimMode", "true"],
+      ["animatedCaret", "false"],
+    ]) {
+      const response = await ctx.send(core, "settings.change", { key, value });
+      expect(response).toMatchObject({
+        ok: false,
+        error: { kind: "invalidParams" },
+      });
+    }
+    expect(current().settingsSaver.hasPending).toBe(false);
+    expect(app.deviceSettings.read().values.vimMode).toBeUndefined();
+  });
+});
+
 describe("settings.setScope", () => {
   it("keeps device-scoped changes out of the repo and writes back only a differing value", async () => {
     const core = await started();
