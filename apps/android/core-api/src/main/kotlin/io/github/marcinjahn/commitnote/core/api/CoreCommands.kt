@@ -22,6 +22,8 @@ object CoreCommands {
     val noteEdit = command<NoteEditParams, Empty>("note.edit")
     val syncRefresh = command<Empty, Empty>("sync.refresh")
     val syncFlush = command<Empty, SyncFlushResult>("sync.flush")
+    val draftStart = command<DraftStartParams, DraftStartResult>("draft.start")
+    val draftContent = command<DraftContentParams, DraftOutcomeResult>("draft.content")
     val lifecycleSetVisible = command<LifecycleSetVisibleParams, Empty>("lifecycle.setVisible")
     val lifecycleSetOnline = command<LifecycleSetOnlineParams, Empty>("lifecycle.setOnline")
     val deviceName = command<Empty, DeviceNameResult>("device.name")
@@ -39,6 +41,8 @@ object CoreCommands {
             noteEdit,
             syncRefresh,
             syncFlush,
+            draftStart,
+            draftContent,
             lifecycleSetVisible,
             lifecycleSetOnline,
             deviceName,

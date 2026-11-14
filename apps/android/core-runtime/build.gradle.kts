@@ -19,6 +19,8 @@ dependencies {
     implementation(libs.okhttp)
     compileOnly(libs.javet)
 
+    testFixturesImplementation(libs.okhttp)
+
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)

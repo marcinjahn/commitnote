@@ -167,6 +167,33 @@ sealed interface FlushOutcome {
 }
 
 @Serializable
+data class NoteDraft(
+    val parent: List<String>,
+    val name: String,
+)
+
+@Serializable
+@JsonClassDiscriminator("kind")
+sealed interface NoteDraftOutcome {
+    @Serializable
+    @SerialName("none")
+    data object None : NoteDraftOutcome
+
+    @Serializable
+    @SerialName("error")
+    data class Error(
+        val message: String,
+    ) : NoteDraftOutcome
+
+    @Serializable
+    @SerialName("created")
+    data class Created(
+        val path: List<String>,
+        val fieldError: String?,
+    ) : NoteDraftOutcome
+}
+
+@Serializable
 enum class LoadingStep {
     @SerialName("listingRepositories")
     LISTING_REPOSITORIES,

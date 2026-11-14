@@ -300,6 +300,34 @@ class CommandShapesTest {
     }
 
     @Test
+    fun `draft commands decode the draft and each outcome`() {
+        assertEquals(
+            DraftStartResult(NoteDraft(listOf("Projects"), "")),
+            CoreCommands.draftStart.result("""{"draft":{"parent":["Projects"],"name":""}}"""),
+        )
+        assertEquals(
+            DraftOutcomeResult(NoteDraftOutcome.None),
+            CoreCommands.draftContent.result("""{"outcome":{"kind":"none"}}"""),
+        )
+        assertEquals(
+            DraftOutcomeResult(NoteDraftOutcome.Error("Name taken")),
+            CoreCommands.draftContent.result(
+                """{"outcome":{"kind":"error","message":"Name taken"}}""",
+            ),
+        )
+        assertEquals(
+            DraftOutcomeResult(NoteDraftOutcome.Created(listOf("Plan"), null)),
+            CoreCommands.draftContent.result(
+                """{"outcome":{"kind":"created","path":["Plan"],"fieldError":null}}""",
+            ),
+        )
+        assertEquals(
+            """{"id":2,"command":"draft.content","params":{"name":"","content":"x"}}""",
+            CoreCommands.draftContent.encodeRequest(2, DraftContentParams("", "x")),
+        )
+    }
+
+    @Test
     fun `processImage decodes an encoded and a rejected image`() {
         assertEquals(
             FakeProcessImageResult(FakeProcessedImage.Encoded("image/webp", 4, 3, "AAAA")),

@@ -118,6 +118,27 @@ data class SyncFlushResult(
 )
 
 @Serializable
+data class DraftStartParams(
+    val parent: List<String>,
+)
+
+@Serializable
+data class DraftStartResult(
+    val draft: NoteDraft,
+)
+
+@Serializable
+data class DraftContentParams(
+    val name: String,
+    val content: String,
+)
+
+@Serializable
+data class DraftOutcomeResult(
+    val outcome: NoteDraftOutcome,
+)
+
+@Serializable
 data class LifecycleSetVisibleParams(
     val visible: Boolean,
 )
