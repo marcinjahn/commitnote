@@ -21,9 +21,10 @@ The app and its crates:
   `src/fonts.rs`, and `src/file_dialogs.rs` wraps the file chooser (the testing build answers it
   from a queue). `src/export.rs` and `src/import.rs` run export and import.
 - **Core runtime** (`crates/core-runtime`) — loads the core bundle into JavaScriptCore and provides
-  the host services it needs: crypto, network (libsoup), the remembered session in a Secret Service
-  provider's keyring, a blob cache, device settings and the image codec. It also sends the
-  anonymous launch visit (`visit.rs`).
+  the host services it needs: crypto, network (libsoup), the remembered session (in a Secret
+  Service provider's keyring, or in the Flatpak in an encrypted file in the app's data directory
+  whose key comes from the Secret portal), a blob cache, device settings and the image codec.
+  It also sends the anonymous launch visit (`visit.rs`).
 - **Crypto** (`crates/crypto`) — the cryptographic operations behind the host crypto service.
 - **Core API** (`crates/core-api`) — the typed command, event and error shapes shared with the core
   bundle, plus the fake commands the testing build uses.
@@ -570,23 +571,25 @@ The app needs no particular desktop, only the run packages below. Everything in 
 extra that a desktop or the Flatpak runtime may or may not provide, and none of it is needed to
 start the app, log in, read, edit or save.
 
-| Feature               | What provides it                                                                                               | Without it                                                                                                                                                                                                                                                                                                               |
-| --------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Remembered session    | A Secret Service provider such as gnome-keyring, KWallet 6 or KeePassXC (`org.freedesktop.secrets`)            | Login works and the session stays in memory. If you asked to remember it, the toast "No keyring is available, so this session will not be remembered." appears once per run, and the next launch asks for the token again. A service that does not answer is given up after 5 s, an unanswered unlock prompt after 60 s. |
-| System light/dark     | xdg-desktop-portal Settings (`org.freedesktop.appearance` color scheme)                                        | The app follows libadwaita's default light style. The Color mode row in Preferences still forces light or dark.                                                                                                                                                                                                          |
-| High contrast         | xdg-desktop-portal Settings (the contrast preference)                                                          | Normal contrast.                                                                                                                                                                                                                                                                                                         |
-| Text scaling          | xdg-desktop-portal Settings (the text scaling factor and font settings)                                        | The default text size.                                                                                                                                                                                                                                                                                                   |
-| Reduced motion        | xdg-desktop-portal Settings (the reduced-motion preference; the animations setting where offered)              | Animated images play.                                                                                                                                                                                                                                                                                                    |
-| Logout inhibit        | xdg-desktop-portal Inhibit in a Flatpak; outside one, a session manager that offers `org.gnome.SessionManager` | No warning when the session ends while something is unsaved. The window's own close and Log Out guards still work.                                                                                                                                                                                                       |
-| Launcher actions      | The desktop file's actions (New Note, Search Notes)                                                            | The launcher entry shows no extra items. `commitnote --action new-note` and `--action search` still work from a terminal or a key binding.                                                                                                                                                                               |
-| `commitnote://` links | The desktop's handler for `x-scheme-handler/commitnote`, registered by the desktop file                        | Links do nothing. `commitnote --action <value>` does the same.                                                                                                                                                                                                                                                           |
-| Opening links         | xdg-desktop-portal OpenURI                                                                                     | GTK starts the default handler itself. If nothing handles the link, nothing happens.                                                                                                                                                                                                                                     |
-| File chooser          | xdg-desktop-portal FileChooser                                                                                 | GTK's own file dialog.                                                                                                                                                                                                                                                                                                   |
-| Printing              | xdg-desktop-portal Print                                                                                       | GTK's own print dialog.                                                                                                                                                                                                                                                                                                  |
+| Feature               | What provides it                                                                                                                                                                                                                         | Without it                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Remembered session    | Outside the Flatpak, a Secret Service provider such as gnome-keyring, KWallet 6 or KeePassXC (`org.freedesktop.secrets`). In the Flatpak, a Secret portal backend (`org.freedesktop.portal.Secret`), typically gnome-keyring or KWallet. | Login works and the session stays in memory. If you asked to remember it, the toast "No keyring is available, so this session will not be remembered." appears once per run, and the next launch asks for the token again. Outside the Flatpak, a Secret Service that does not answer is given up after 5 s and an unanswered unlock prompt after 60 s. In the Flatpak, the Secret portal request, including any unlock prompt its backend shows, is given up after 5 s. |
+| System light/dark     | xdg-desktop-portal Settings (`org.freedesktop.appearance` color scheme)                                                                                                                                                                  | The app follows libadwaita's default light style. The Color mode row in Preferences still forces light or dark.                                                                                                                                                                                                                                                                                                                                                          |
+| High contrast         | xdg-desktop-portal Settings (the contrast preference)                                                                                                                                                                                    | Normal contrast.                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Text scaling          | xdg-desktop-portal Settings (the text scaling factor and font settings)                                                                                                                                                                  | The default text size.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Reduced motion        | xdg-desktop-portal Settings (the reduced-motion preference; the animations setting where offered)                                                                                                                                        | Animated images play.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Logout inhibit        | xdg-desktop-portal Inhibit in a Flatpak; outside one, a session manager that offers `org.gnome.SessionManager`                                                                                                                           | No warning when the session ends while something is unsaved. The window's own close and Log Out guards still work.                                                                                                                                                                                                                                                                                                                                                       |
+| Launcher actions      | The desktop file's actions (New Note, Search Notes)                                                                                                                                                                                      | The launcher entry shows no extra items. `commitnote --action new-note` and `--action search` still work from a terminal or a key binding.                                                                                                                                                                                                                                                                                                                               |
+| `commitnote://` links | The desktop's handler for `x-scheme-handler/commitnote`, registered by the desktop file                                                                                                                                                  | Links do nothing. `commitnote --action <value>` does the same.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Opening links         | xdg-desktop-portal OpenURI                                                                                                                                                                                                               | GTK starts the default handler itself. If nothing handles the link, nothing happens.                                                                                                                                                                                                                                                                                                                                                                                     |
+| File chooser          | xdg-desktop-portal FileChooser                                                                                                                                                                                                           | GTK's own file dialog.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Printing              | xdg-desktop-portal Print                                                                                                                                                                                                                 | GTK's own print dialog.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 Only standard portal interfaces are used, so no portal backend is special (GNOME, KDE Plasma, GTK
 and the others work alike). The remembered session talks to the Secret Service D-Bus API, never to a
-particular keyring.
+particular keyring. Inside the Flatpak it talks to the Secret portal instead: the app keeps its
+sessions in its own data directory, and the key to them comes from the desktop's Secret portal
+backend.
 
 The app draws its own header bar (client-side decorations). A tiled window under sway, like under
 any tiling wlroots compositor, gets a title bar from the compositor above every GTK app unless the
@@ -688,8 +691,8 @@ The run packages install no GNOME session component. A dry-run transaction of
 `dnf install --assumeno --setopt=install_weak_deps=False <run packages>` on a minimal Fedora 45
 image lists no `gnome-shell`, `mutter`, `gnome-session`, `gnome-settings-daemon` or `gnome-keyring`.
 
-Remembering the session needs a Secret Service provider, which is not a package dependency: the
-app talks to it over D-Bus and works without one (see "Optional features by desktop"). Workstation
+Remembering the session needs a Secret Service provider (a Secret portal backend in the Flatpak),
+which is not a package dependency: the app talks to it over D-Bus and works without one (see "Optional features by desktop"). Workstation
 ships gnome-keyring for this; KDE ships KWallet's Secret Service; elsewhere install any provider
 such as KeePassXC.
 
@@ -744,6 +747,159 @@ apps/linux/scripts/run-installed.sh
 
 or, with the development packages installed, `apps/linux/scripts/run-host.sh --testing`.
 
+## Flatpak
+
+The Flatpak manifest is `apps/linux/flatpak/io.github.marcinjahn.commitnote.yml`: the GNOME 51
+runtime, the Rust and Node SDK extensions, and an offline build of the core bundle and the app. The
+finish arguments grant IPC, Wayland, fallback X11, DRI and network, nothing else.
+
+### Build locally
+
+Only Docker is needed, no Flatpak tooling. `flatpak-build.sh` runs `flatpak-builder` in the same
+container image the Flatpak build in CI uses (`ghcr.io/flathub-infra/flatpak-github-actions:gnome-51`,
+pulled on first use), so it needs network access for the image and the runtime from Flathub. From
+the repository root:
+
+```sh
+apps/linux/scripts/flatpak-build.sh
+```
+
+The Flatpak bundle is `apps/linux/out/flatpak/commitnote-x86_64.flatpak`. The build does not need
+`npm run build:native-core`: the manifest builds the core bundle itself.
+
+The build sandbox has no network, so `flatpak/generate-sources.sh` first writes the generated
+sources (`cargo-sources.json` and `node-sources.json` under `apps/linux/flatpak/generated/`, which
+git ignores) from `Cargo.lock` and `package-lock.json`, using `flatpak-builder-tools` at a pinned
+commit. The manifest builds from them offline.
+
+After the build, `flatpak/lint.sh` runs `flatpak-builder-lint` in four modes (manifest, appstream,
+builddir and repo) and fails the build if any of them reports an error. The lint exceptions are in
+`flatpak/lint-exceptions.json`, each with its reason.
+
+The script keeps two Docker volumes so a second build is incremental: `commitnote-flatpak-sdk`
+(the runtime and SDKs, shared by every workspace) and `commitnote-flatpak-state-<hash>`
+(`flatpak-builder`'s cache, the build directories and the local repo, one per workspace).
+`flatpak-build.sh --remove-state-volume` removes the state volume. The other one goes with
+`docker volume rm commitnote-flatpak-sdk`.
+
+### Testing Flatpak
+
+```sh
+apps/linux/scripts/flatpak-build.sh --testing
+```
+
+The testing Flatpak is the same Flatpak manifest rewritten by `flatpak/testing-manifest.py`: app ID
+`io.github.marcinjahn.commitnote.Devel`, the development profile with the `testing` option (see
+Testing build) and the fake core bundle, so any token logs in and the sample notes repo is served
+without a network. The bundle is `apps/linux/out/flatpak/commitnote-testing-x86_64.flatpak`. It is
+not linted and is only ever a test artifact, never published.
+
+### Run a bundle
+
+```sh
+apps/linux/scripts/flatpak-launch.sh apps/linux/out/flatpak/commitnote-x86_64.flatpak
+```
+
+installs the bundle in the Flatpak test container (below), starts it under headless sway and prints
+the path of the window's screenshot, `apps/linux/out/flatpak/launch/launch.png`. `app.log` and
+`processes.txt` are next to it.
+
+On a desktop with Flatpak, install and run the bundle directly; the runtime comes from Flathub:
+
+```sh
+flatpak install --user apps/linux/out/flatpak/commitnote-x86_64.flatpak
+flatpak run io.github.marcinjahn.commitnote
+```
+
+### Flatpak tests
+
+```sh
+apps/linux/scripts/flatpak-smoke-test.sh \
+  apps/linux/out/flatpak/commitnote-x86_64.flatpak \
+  apps/linux/out/flatpak/commitnote-testing-x86_64.flatpak
+```
+
+The Flatpak smoke test runs in a clean container (`flatpak/tests/Dockerfile`, started by
+`flatpak-test-container.sh`): Fedora 45 with headless sway and xdg-desktop-portal with its GTK
+backend, no Secret Service and no GNOME session, as a non-root user. It needs network access for
+the runtime from Flathub. It checks that:
+
+- each bundle installs, and is the only app installed,
+- the release Flatpak's permissions are exactly the ones in `flatpak/tests/expected-permissions.ini`,
+- the app's window maps with the right app ID and the release Flatpak shows its login page,
+- no GNOME session process is running,
+- the testing Flatpak logs in to the fake forge without remembering the session, opens the Welcome
+  note, edits it and saves it (seen as the logout inhibitor being taken and released through the
+  portal),
+- both quit with status 0, with no panic, `CRITICAL` message or font failure in `app.log`, and
+  uninstall with their data.
+
+Update `expected-permissions.ini` together with the finish arguments when a permission change is
+intended. The second bundle is optional; with one argument only the release Flatpak is checked.
+Screenshots, logs and `permissions.ini` land in `apps/linux/out/flatpak/smoke/release` and
+`apps/linux/out/flatpak/smoke/testing`.
+
+## Releases
+
+### Versioning
+
+Versions are semantic (`MAJOR.MINOR.PATCH`, no pre-releases) and a release is tagged `v` plus the
+version, such as `v0.2.0`. The `version` in `apps/linux/meson.build` is the source. The crate
+versions (`Cargo.toml` and every crate under `crates/`) and the newest `<release>` entry in
+`data/io.github.marcinjahn.commitnote.metainfo.xml.in` must equal it, and that entry must have a
+description; `build-aux/check-versions.py` checks this in the `static` suite.
+
+The release entry is written in the same commit that sets the version: newest first, with the
+date, and a description of two or three sentences or a short list of what users notice. It is the
+release's notes everywhere: app stores read it from the metainfo, and the GitHub release body is
+generated from it by `build-aux/release-notes.py <version> <metainfo>`, never typed by hand.
+
+Tags are never moved or deleted. A bad release is superseded by the next patch version.
+
+### Release workflow
+
+The `Release` workflow (`.github/workflows/release.yml`) runs on a pushed `v*.*.*` tag. It:
+
+1. checks that the tag is `v` plus the meson version and runs `check-versions.py`, then generates
+   the release notes,
+2. builds the Flatpak with the reusable Flatpak build, including `flatpak-builder-lint`, without
+   the `flatpak-builder` cache of earlier runs,
+3. runs the Flatpak smoke test on the release Flatpak bundle,
+4. writes `SHA256SUMS` for the bundle,
+5. stops if the release already exists, then attests the bundle's build provenance and creates the
+   GitHub release, marked latest, with the notes and two assets: `commitnote-x86_64.flatpak` and
+   `SHA256SUMS`.
+
+Only the last job has write permissions (`contents`, `id-token`, `attestations`), and it uses no
+secret but the workflow's own token.
+
+A manual run (`workflow_dispatch`) with a `tag` input is the dry run: it does steps 1 to 4 for the
+branch it runs on and stops before attesting or publishing. The `release` artifact holds what
+would be published.
+
+### Release procedure
+
+1. In one commit, set the new version in `meson.build`, in every crate's `Cargo.toml` and in
+   `Cargo.lock`, and add the release entry. Push it to `main` and wait for the Linux workflow.
+2. Dry-run the commit to be tagged:
+
+   ```sh
+   gh workflow run release.yml --ref main -f tag=v0.2.0
+   ```
+
+   Check that the run's commit is the one to be tagged (`gh run list --workflow release.yml`); if
+   `main` has moved on, point a temporary `linux-ci/release-<version>` branch at the commit, run
+   the dry run there and delete the branch afterwards.
+3. Tag that commit and push only the tag:
+
+   ```sh
+   jj tag set v0.2.0 -r <commit>
+   jj git push --tag v0.2.0
+   ```
+
+4. When the release workflow has finished, check the release and its assets with
+   `gh release view v0.2.0`.
+
 ## Checks and tests
 
 Nothing needs GTK on the machine: these scripts run inside the Docker build container
@@ -772,8 +928,9 @@ The static checks (`lint.sh`) are:
   the testing build,
 - Blueprint compilation of `data/ui/`, which happens when meson builds the app for clippy,
 - the meson `static` suite: `desktop-file-validate`, `appstreamcli validate` on the metainfo, a
-  strict compile of the GSettings schema, and a check that the crate versions and the newest
-  release entry follow the meson project version, and that the entry has a description,
+  strict compile of the GSettings schema, a check that the crate versions and the newest
+  release entry follow the meson project version, and that the entry has a description, and the
+  conversion of that description to the GitHub release notes (`build-aux/release-notes.py`),
 - on the host, `npx tsx apps/linux/markdown-vectors/generate.ts --check`, which fails when the
   Markdown vectors are stale (see below).
 
@@ -1002,4 +1159,19 @@ Both are kept for 30 days. To fetch them, name them, because a bare `gh run down
 
 ```sh
 gh run download <run-id> -n linux-screenshots -n linux-logs
+```
+
+The same workflow builds and tests the Flatpak (see Flatpak). The Flatpak build is the reusable
+workflow `.github/workflows/flatpak.yml` (input `testing`, output `artifact-name`), which the jobs
+`flatpak` and `flatpak-testing` call. The job `flatpak-smoke-test` calls the reusable workflow
+`.github/workflows/flatpak-smoke-test.yml` (inputs `release-artifact` and the optional
+`testing-artifact`), which downloads the bundles and runs the Flatpak smoke test. The release
+workflow (see Releases) calls the same two. Their artifacts, each kept for 30 days, are:
+
+- `commitnote-flatpak` — `commitnote-x86_64.flatpak`,
+- `commitnote-flatpak-testing` — `commitnote-testing-x86_64.flatpak`,
+- `flatpak-smoke-test` — the screenshots and logs of both runs, uploaded even when the test failed.
+
+```sh
+gh run download <run-id> -n commitnote-flatpak -n flatpak-smoke-test
 ```

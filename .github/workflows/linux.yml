@@ -16,6 +16,8 @@ on:
       - "svelte.config.js"
       - "tsconfig*.json"
       - ".github/workflows/linux.yml"
+      - ".github/workflows/flatpak.yml"
+      - ".github/workflows/flatpak-smoke-test.yml"
   workflow_dispatch:
 
 permissions:
@@ -104,3 +106,21 @@ jobs:
           path: apps/linux/out/logs
           if-no-files-found: ignore
           retention-days: 30
+
+  flatpak:
+    name: Flatpak
+    uses: ./.github/workflows/flatpak.yml
+
+  flatpak-testing:
+    name: Testing Flatpak
+    uses: ./.github/workflows/flatpak.yml
+    with:
+      testing: true
+
+  flatpak-smoke-test:
+    name: Flatpak smoke test
+    needs: [flatpak, flatpak-testing]
+    uses: ./.github/workflows/flatpak-smoke-test.yml
+    with:
+      release-artifact: ${{ needs.flatpak.outputs.artifact-name }}
+      testing-artifact: ${{ needs.flatpak-testing.outputs.artifact-name }}

@@ -1,0 +1,70 @@
+name: Flatpak smoke test
+
+on:
+  workflow_call:
+    inputs:
+      release-artifact:
+        description: Name of the artifact that holds the release Flatpak bundle
+        type: string
+        required: true
+      testing-artifact:
+        description: Name of the artifact that holds the testing Flatpak bundle; the testing part is skipped without it
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    name: Install and run the Flatpak
+    runs-on: ubuntu-26.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.release-artifact }}
+          path: ${{ runner.temp }}/flatpak-bundles
+
+      - uses: actions/download-artifact@v8
+        if: inputs.testing-artifact
+        with:
+          name: ${{ inputs.testing-artifact }}
+          path: ${{ runner.temp }}/flatpak-bundles
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Prepare test image context
+        id: image
+        run: |
+          set -eu
+          apps/linux/scripts/flatpak-test-container.sh --write-context "$RUNNER_TEMP/flatpak-test-image"
+          echo "tag=$(apps/linux/scripts/flatpak-test-container.sh --print-image-tag)" >> "$GITHUB_OUTPUT"
+
+      - name: Build test image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/flatpak-test-image
+          tags: ${{ steps.image.outputs.tag }}
+          load: true
+          push: false
+          cache-from: type=gha,scope=flatpak-test
+          cache-to: type=gha,mode=max,scope=flatpak-test
+
+      - name: Flatpak smoke test
+        env:
+          RELEASE_BUNDLE: ${{ runner.temp }}/flatpak-bundles/commitnote-x86_64.flatpak
+          TESTING_BUNDLE: ${{ inputs.testing-artifact && format('{0}/flatpak-bundles/commitnote-testing-x86_64.flatpak', runner.temp) || '' }}
+        run: apps/linux/scripts/flatpak-smoke-test.sh "$RELEASE_BUNDLE" ${TESTING_BUNDLE:+"$TESTING_BUNDLE"}
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: flatpak-smoke-test
+          path: |
+            apps/linux/out/flatpak/smoke
+            !apps/linux/out/flatpak/smoke/input
+          if-no-files-found: ignore
+          retention-days: 30

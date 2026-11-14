@@ -215,6 +215,9 @@ import { flushBeforeLogOut } from "./app/log-out";
   };
 
   let phase = $state.raw<Phase>({ kind: "restoring" });
+  // Set when the auto-update reloads this document; the next one redoes
+  // whatever this one still had in flight, whose requests may fail meanwhile.
+  let reloading = false;
   let loginKey = $state(0);
   let autoUpdate: AutoUpdate | null = null;
   let updateView: UpdateView | null = null;
@@ -430,6 +433,7 @@ import { flushBeforeLogOut } from "./app/log-out";
       purgeBlobCache,
       ...(knownHead === undefined ? {} : { knownHead }),
     });
+    if (reloading) return;
     phase = {
       kind: "app",
       running,
@@ -812,7 +816,10 @@ import { flushBeforeLogOut } from "./app/log-out";
         updates: appUpdates,
         clock: systemClock,
         reloadGuard: createReloadGuard(browserSessionStorage(), systemClock),
-        reload: () => location.reload(),
+        reload: () => {
+          reloading = true;
+          location.reload();
+        },
         host: {
           hasUnsaved: updateHasUnsaved,
           canReload: updateCanReload,
@@ -925,6 +932,7 @@ import { flushBeforeLogOut } from "./app/log-out";
         onSessionLoaded: loadEarlyDraftFor,
         clearAfterFailure: clearRememberedData,
       });
+      if (reloading) return;
       switch (result.kind) {
         case "none":
           leaveToLogin(null);
@@ -951,6 +959,7 @@ import { flushBeforeLogOut } from "./app/log-out";
         }
       }
     } catch (e) {
+      if (reloading) return;
       console.error(e);
       leaveToLogin(null);
     }

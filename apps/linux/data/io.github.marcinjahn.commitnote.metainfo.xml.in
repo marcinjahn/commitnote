@@ -51,6 +51,16 @@
     <content_attribute id="social-info">mild</content_attribute>
   </content_rating>
   <releases>
+    <release version="0.2.0" date="2026-11-13">
+      <description>
+        <p>commitnote for Linux now ships as a Flatpak that runs on any desktop with Flatpak, such as GNOME, KDE Plasma, sway or niri.</p>
+        <ul>
+          <li>Markdown tables render in the editor, with cell selection and copying</li>
+          <li>Launcher actions and commitnote links open notes</li>
+          <li>In the Flatpak, the remembered session is stored through the Secret portal</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-10-29">
       <description>
         <p>The first version of commitnote for Linux.</p>

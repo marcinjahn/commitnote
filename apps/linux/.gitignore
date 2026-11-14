@@ -1,3 +1,5 @@
 /target/
 /out/
 /_build/
+/flatpak/generated/
+/flatpak/io.github.marcinjahn.commitnote.Devel.yml

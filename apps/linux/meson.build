@@ -1,6 +1,6 @@
 project(
   'commitnote',
-  version: '0.1.0',
+  version: '0.2.0',
   meson_version: '>= 1.1.0',
   license: 'LicenseRef-proprietary',
 )
@@ -107,6 +107,16 @@ test(
   args: [
     meson.project_version(),
     meson.project_source_root() / 'Cargo.toml',
+    meson.project_source_root() / 'data' / 'io.github.marcinjahn.commitnote.metainfo.xml.in',
+  ],
+  suite: 'static',
+)
+
+test(
+  'release-notes',
+  find_program('build-aux/release-notes.py'),
+  args: [
+    meson.project_version(),
     meson.project_source_root() / 'data' / 'io.github.marcinjahn.commitnote.metainfo.xml.in',
   ],
   suite: 'static',
