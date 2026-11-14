@@ -53,14 +53,6 @@ extension AppModel {
         }
     }
 
-    func setAnalyticsCounted(_ on: Bool) async {
-        do {
-            _ = try await send(AnalyticsSetCounted(counted: on))
-        } catch {
-            showError(error)
-        }
-    }
-
     func handleSettingsChanged(_ view: SettingsView) {
         settingsView = view
         typeToStartEnabled = view.values.typeToStart

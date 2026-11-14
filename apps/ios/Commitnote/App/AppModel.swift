@@ -172,7 +172,6 @@ final class AppModel {
 
     @ObservationIgnored private var editSender: EditSender?
     @ObservationIgnored private var imageLoader: ImageLoader?
-    @ObservationIgnored private let visitSender = IOSVisitSender()
     @ObservationIgnored private var lastViewRestorePending = false
     @ObservationIgnored private var lastViewTracking = false
     @ObservationIgnored var settingsCopyRequested = false
@@ -253,12 +252,6 @@ final class AppModel {
             return
         }
         self.runtime = runtime
-
-        // Not at background priority: core work queued behind the visit would inherit it and starve.
-        let visitSender = visitSender
-        Task {
-            await IOSVisit.run(runtime: runtime, sender: visitSender)
-        }
 
         eventsTask = Task { [weak self] in
             for await event in runtime.events {

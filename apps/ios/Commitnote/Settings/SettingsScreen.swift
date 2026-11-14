@@ -346,21 +346,10 @@ private struct DeviceSection: View {
             )
             .accessibilityValue(view.reopenLastView ? "on" : "off")
             .accessibilityIdentifier("settings-reopen-last-view")
-            Toggle(
-                copy.analytics.label,
-                isOn: Binding(
-                    get: { view.analyticsCounted },
-                    set: { value in Task { await model.setAnalyticsCounted(value) } })
-            )
-            .accessibilityValue(view.analyticsCounted ? "on" : "off")
-            .accessibilityIdentifier("settings-analytics")
         } header: {
             Text(copy.sections.thisDevice)
         } footer: {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(copy.deviceName.hint)
-                Text(copy.analytics.hint)
-            }
+            Text(copy.deviceName.hint)
         }
     }
 

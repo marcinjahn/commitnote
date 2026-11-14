@@ -94,7 +94,6 @@ What the app does:
   passphrase, note font list). `Commitnote/App/AppModel+Settings.swift`, `AppModel+Data.swift`,
   `AppModel+Passphrase.swift` and `AppModel+Print.swift` hold their model side;
   `Commitnote/App/PrintRenderer.swift` renders the print PDF.
-- `Packages/CoreRuntime/Sources/CoreRuntime/IOSVisit.swift` — the iOS visit (see Usage statistics).
 - `Commitnote/Fonts/` — the bundled note fonts (see Fonts below).
 - `scripts/` — `swift-linux-test.sh`, `pick-simulator.sh`, `disable-password-autofill.sh`,
   `prepare-simulator.sh`, `export-screenshots.sh`, `build-unsigned-ipa.sh`, `check-ipa.sh`.
@@ -149,25 +148,6 @@ Rules:
   save failures, conflicts and finished actions. An iPad has no haptic engine, so nothing plays there.
 - Accessibility: Dynamic Type including the accessibility sizes (checked by an accessibility audit at
   the AccessibilityL size), VoiceOver labels and values, Reduce Motion, and Increase Contrast.
-
-## Usage statistics
-
-The app counts launches with one anonymous request, the iOS visit:
-
-- One `GET` per cold launch to the GoatCounter `count` endpoint with exactly `p=%2Fapp%2Fios` and
-  `t=App%20(iOS)`. It uses its own ephemeral session: no cookies, cache, `Referer`, body,
-  identifiers or other parameters. It is never awaited or retried, and returning from the
-  background sends nothing.
-- The endpoint comes from `GOATCOUNTER_SITE_CODE` in `analytics.config.ts` through `buildModeFacts`:
-  the `native-core` mode uses GoatCounter and `native-core-fake` uses `https://analytics.invalid/count`.
-  While the site code is `null`, nothing is sent. Setting it enables iOS counting on the next app
-  build.
-- Opt out in Settings › This device › "Anonymous usage statistics". The choice is stored as
-  `commitnote.analyticsOptOut = "1"` in the device settings storage. iOS has no DNT or GPC signal, so
-  this switch is the only opt-out.
-- The landing page's privacy copy and the root README intentionally do not list the `/app/ios` path
-  until the app is released. `just check-bundle` fails if `/app/ios` or `App (iOS)` reaches the
-  landing or web bundles.
 
 ## Settings and data
 
@@ -274,7 +254,7 @@ The workflow runs only when something it builds or tests changes: `apps/**`, `sr
   Simulator, and hands them to the jobs below as the `ios-test-products` artifact.
 - `Runtime tests` boots one iPad Simulator and uses it for everything in the job, so it boots once,
   while the test products download. It runs the core runtime tests (`CommitnoteTests`, including
-  `IOSVisitTests`, `NoteFontTests`, `LaunchActionTests`, the `data` read-back scenario and the
+  `NoteFontTests`, `LaunchActionTests`, the `data` read-back scenario and the
   performance measurement) on it from the shared build, reads the produced repos back with
   TypeScript, then runs `scripts/warm-up-app.sh` and the iPad UI classes `EditorFlowTests`,
   `DataFlowTests`, `EntryPointFlowTests` and `MediaFlowTests` on the same simulator.

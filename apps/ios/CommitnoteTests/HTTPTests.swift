@@ -35,7 +35,7 @@ final class StubURLProtocol: URLProtocol {
 
     override class func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host else { return false }
-        return ["stub.invalid", "analytics.invalid"].contains(host)
+        return host == "stub.invalid"
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest {

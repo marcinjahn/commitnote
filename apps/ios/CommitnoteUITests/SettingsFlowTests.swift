@@ -75,7 +75,6 @@ final class SettingsFlowTests: XCTestCase {
         let name = revealInSettings(app.textFields["settings-device-name"], in: app)
         typeInto(name, "Test device\n", in: app)
         setToggle("settings-reopen-last-view", on: false, in: app)
-        setToggle("settings-analytics", on: false, in: app)
         closeSettings(in: app)
         openWelcome(in: app)
         waitForValue(syncStatus(in: app), "synced")
@@ -84,14 +83,6 @@ final class SettingsFlowTests: XCTestCase {
         openSettings(in: app)
         waitForValue(revealInSettings(app.textFields["settings-device-name"], in: app), "Test device")
         XCTAssertFalse(isOn(revealInSettings(app.switches["settings-reopen-last-view"], in: app)))
-        XCTAssertFalse(isOn(revealInSettings(app.switches["settings-analytics"], in: app)))
-        setToggle("settings-analytics", on: true, in: app)
-        closeSettings(in: app)
-
-        app = relaunchWithoutReopening()
-        openSettings(in: app)
-        XCTAssertFalse(isOn(revealInSettings(app.switches["settings-reopen-last-view"], in: app)))
-        XCTAssertTrue(isOn(revealInSettings(app.switches["settings-analytics"], in: app)))
     }
 
     func testTypeToStartToggleAndScope() {
