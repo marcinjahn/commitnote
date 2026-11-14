@@ -56,6 +56,14 @@ modules:
           - apps/linux/_build
           - apps/linux/flatpak/generated
           - apps/linux/flatpak/io.github.marcinjahn.commitnote.Devel.yml
+          - apps/android/.gradle
+          - apps/android/build
+          - apps/android/app/build
+          - apps/android/core-api/build
+          - apps/android/core-runtime/build
+          - apps/android/build-logic/build
+          - apps/android/build-logic/.gradle
+          - apps/android/out
       - generated/node-sources.json
 
   - name: commitnote

@@ -127,6 +127,10 @@ profile-tree-scroll *args:
 [group('native')]
 mod linux 'apps/linux'
 
+# Android app: container builds, checks and instrumented tests (`just android`)
+[group('native')]
+mod android 'apps/android'
+
 # iOS app: Swift tests on Linux and the Xcode helpers (`just ios`)
 [group('native')]
 mod ios 'apps/ios'

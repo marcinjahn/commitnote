@@ -1,0 +1,179 @@
+name: Android
+
+on:
+  push:
+    branches: [main, "android-ci/**"]
+    paths:
+      - "apps/android/**"
+      - "apps/ios/Commitnote/Fonts/**"
+      - "apps/test-vectors/**"
+      - "apps/linux/markdown-vectors/**"
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "analytics.config.ts"
+      - "svelte.config.js"
+      - "tsconfig*.json"
+      - "justfile"
+      - ".github/actions/setup-just/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "android-${{ github.ref }}"
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: ./.github/actions/setup-just
+      - run: just build-native-core
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Prepare image context
+        id: image
+        run: |
+          set -eu
+          apps/android/scripts/container.sh --write-context "$RUNNER_TEMP/android-image"
+          echo "tag=$(apps/android/scripts/container.sh --print-image-tag)" >> "$GITHUB_OUTPUT"
+
+      - name: Build container image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/android-image
+          tags: ${{ steps.image.outputs.tag }}
+          load: true
+          push: false
+          cache-from: type=gha,scope=android-builder
+          cache-to: type=gha,mode=max,scope=android-builder
+
+      - name: Set cache directory
+        run: echo "COMMITNOTE_ANDROID_CACHE_DIR=$RUNNER_TEMP/android-cache" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/android-cache
+          key: android-gradle-${{ runner.os }}-${{ hashFiles('apps/android/gradle/libs.versions.toml', 'apps/android/gradle/wrapper/gradle-wrapper.properties', 'apps/android/ci/Dockerfile') }}-${{ github.sha }}
+          restore-keys: |
+            android-gradle-${{ runner.os }}-${{ hashFiles('apps/android/gradle/libs.versions.toml', 'apps/android/gradle/wrapper/gradle-wrapper.properties', 'apps/android/ci/Dockerfile') }}-
+
+      - name: Static checks
+        run: just android lint
+
+      - name: Tests
+        run: just android test
+
+      - name: Build
+        run: just android build
+
+      - name: Fix ownership of container output
+        if: always()
+        run: |
+          for dir in "$RUNNER_TEMP/android-cache" apps/android/.gradle apps/android/build apps/android/build-logic/.gradle apps/android/build-logic/build apps/android/app/build apps/android/core-api/build apps/android/core-runtime/build apps/android/out; do
+            if [ -d "$dir" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$dir"
+            fi
+          done
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-reports
+          path: |
+            apps/android/*/build/reports
+            apps/android/out
+          if-no-files-found: ignore
+          retention-days: 30
+
+  instrumented:
+    name: Instrumented tests
+    needs: build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: ./.github/actions/setup-just
+      - run: just build-native-core
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Prepare image context
+        id: image
+        run: |
+          set -eu
+          apps/android/scripts/container.sh --write-context "$RUNNER_TEMP/android-image"
+          echo "tag=$(apps/android/scripts/container.sh --print-image-tag)" >> "$GITHUB_OUTPUT"
+
+      - name: Build container image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/android-image
+          tags: ${{ steps.image.outputs.tag }}
+          load: true
+          push: false
+          cache-from: type=gha,scope=android-builder
+          cache-to: type=gha,mode=max,scope=android-builder
+
+      - name: Set cache directory
+        run: echo "COMMITNOTE_ANDROID_CACHE_DIR=$RUNNER_TEMP/android-cache" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/android-cache
+          key: android-gradle-${{ runner.os }}-${{ hashFiles('apps/android/gradle/libs.versions.toml', 'apps/android/gradle/wrapper/gradle-wrapper.properties', 'apps/android/ci/Dockerfile') }}-${{ github.sha }}
+          restore-keys: |
+            android-gradle-${{ runner.os }}-${{ hashFiles('apps/android/gradle/libs.versions.toml', 'apps/android/gradle/wrapper/gradle-wrapper.properties', 'apps/android/ci/Dockerfile') }}-
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 37.0
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: just android ui-test
+
+      - name: Fix ownership of container output
+        if: always()
+        run: |
+          for dir in "$RUNNER_TEMP/android-cache" apps/android/.gradle apps/android/build apps/android/build-logic/.gradle apps/android/build-logic/build apps/android/app/build apps/android/core-api/build apps/android/core-runtime/build apps/android/out; do
+            if [ -d "$dir" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$dir"
+            fi
+          done
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-instrumented-reports
+          path: |
+            apps/android/app/build/reports/androidTests
+            apps/android/app/build/outputs/androidTest-results
+          if-no-files-found: ignore
+          retention-days: 30

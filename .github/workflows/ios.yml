@@ -6,6 +6,7 @@ on:
     paths:
       - "apps/**"
       - "!apps/linux/**"
+      - "!apps/android/**"
       - "src/**"
       - "scripts/**"
       - "package.json"

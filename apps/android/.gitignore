@@ -1,0 +1,7 @@
+/.gradle/
+/build/
+/*/build/
+/build-logic/build/
+/build-logic/.gradle/
+/out/
+local.properties
