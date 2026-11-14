@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { test, expect, FAKE_ANALYTICS_ORIGIN } from "./fixtures";
+import { test, expect } from "./fixtures";
 import { KEY_DERIVATION_TIMEOUT, openNotes, settleIdle } from "./helpers";
 import { openRecipientViewer, shareInvite, shareNote } from "./helpers/sharing";
 
@@ -19,13 +19,11 @@ async function expectOutline(locator: Locator): Promise<void> {
 
 test("a recipient sees the share invite after the note, and it sends nothing", async ({
   page,
-  analyticsRequests,
 }) => {
   await openNotes(page);
   const link = await shareNote(page);
   const urls: string[] = [];
   page.context().on("request", (request) => urls.push(request.url()));
-  const before = analyticsRequests.length;
 
   const viewer = await openRecipientViewer(page, link);
   await expect(noteHeading(viewer)).toBeVisible();
@@ -68,15 +66,11 @@ test("a recipient sees the share invite after the note, and it sends nothing", a
   await expect(invite).toBeVisible();
 
   await settleIdle(viewer);
-  await expect.poll(() => analyticsRequests.length).toBe(before + 1);
   const viewerOrigin = new URL(viewer.url()).origin;
   const web = urls.filter((url) => /^https?:/.test(url));
   expect(web.length).toBeGreaterThan(0);
   for (const url of web) {
-    expect(
-      url.startsWith(`${viewerOrigin}/`) ||
-        url.startsWith(`${FAKE_ANALYTICS_ORIGIN}/`),
-    ).toBe(true);
+    expect(url.startsWith(`${viewerOrigin}/`)).toBe(true);
   }
 
   const requestsAfterDismiss: string[] = [];

@@ -11,7 +11,6 @@ import {
 import { FAKE_FORGE_SESSION_PARAM } from "../src/testing/fake-forge/remembered-session";
 import { LARGE_TREE_REPO_KEY } from "../src/testing/sample-notes-repo/large-tree-source";
 import { SAMPLE_NOTES_REPO_PASSPHRASE } from "../src/testing/sample-notes-repo/sample-source";
-import { FAKE_ANALYTICS_ENDPOINT } from "./build-mode";
 
 export const PROD_LEAK_NEEDLES: readonly string[] = [
   FAKE_FORGE_BANNER,
@@ -22,7 +21,6 @@ export const PROD_LEAK_NEEDLES: readonly string[] = [
   FAKE_FORGE_SESSION_PARAM,
   FAKE_SHARE_STORE_KEY,
   LARGE_TREE_REPO_KEY,
-  new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
 ];
 
 export const NATIVE_CORE_NEEDLES: readonly string[] = [

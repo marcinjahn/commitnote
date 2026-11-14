@@ -10,8 +10,7 @@
 
 commitnote is a static, client-side web app for encrypted markdown notes. Notes are encrypted
 entirely in your browser and stored as files in a GitHub or GitLab repository you own — there is no backend
-server. The only other request is an optional anonymous visit count (see
-[Privacy and analytics](#privacy-and-analytics)).
+server. The app talks only to GitHub or GitLab.
 
 [commitnote.eu](https://commitnote.eu) is the landing page; the app is at
 [commitnote.eu/app](https://commitnote.eu/app/). The Linux app is a Flatpak bundle for x86_64:
@@ -90,73 +89,19 @@ The native apps have recipe modules of their own: `just linux <recipe>` (see the
 ## Landing page
 
 The landing page lives in `landing/`: plain HTML, CSS and a small TypeScript module, with its own Vite
-config (`landing/vite.config.ts`). It imports only the dependency-free analytics module
-(`src/analytics/analytics.ts`) from the app source; the app lives under `src/`.
+config (`landing/vite.config.ts`). It imports nothing from the app source; the app lives under `src/`.
 
 - `just dev-landing` runs it, and `just build` builds it into the root of `dist/` before the app.
 - `landing/src/boot.ts` is a pre-render script bundled and inlined into `<head>`. It applies the saved
   color mode and enables motion when the visitor allows it.
 - The page ships a strict CSP applied via a `<meta>` tag, which includes the hash of the inline boot
-  script. Its `connect-src` is `'none'` unless analytics is enabled, then exactly the GoatCounter origin.
+  script. Its `connect-src` is `'none'`.
 - The landing stylesheet copies the app's design tokens; `landing/src/tokens.test.ts` fails when they
   drift apart.
 - The landing screenshots are in `landing/screenshots/`; regenerate them with
   `just generate-landing-screenshots`.
 - `just check-bundle` enforces the size budget: landing HTML, CSS and JS together at most 40 KB,
   and each landing screenshot PNG at most 400 KB.
-
-## Privacy and analytics
-
-commitnote counts anonymous visits with [GoatCounter](https://www.goatcounter.com/help/privacy), a hosted
-(EU: Hetzner, Finland/Germany), open source (EUPL-1.2) service. Analytics is inert until a site code is
-configured: with the default `GOATCOUNTER_SITE_CODE = null` in `analytics.config.ts` no request is made and
-the CSPs are unchanged. See also the [privacy section of the landing page](https://commitnote.eu/#privacy).
-
-**What is sent.** One visit per page load of the landing page or the app (the share viewer counts as the
-app), scheduled on an idle callback, never awaited, errors ignored. In-app navigation sends nothing, and a
-landing load that is forwarded to `/app/` (installed display mode, `#share=` or `#n=` links, `?action=`)
-does not count as a landing visit. The request is exactly
-`GET https://<site-code>.goatcounter.com/count?p=<visit path>&t=<visit title>`, sent with
-`mode: "no-cors"`, `credentials: "omit"`, `referrerPolicy: "no-referrer"`, `cache: "no-store"` and
-`keepalive: true`, with no other parameters and nothing derived from the URL:
-
-| Visit path     | Visit title      |
-| -------------- | ---------------- |
-| `/landing/web` | `Landing (web)`  |
-| `/app/web`     | `App (web)`      |
-| `/app/pwa`     | `App (PWA)`      |
-| `/app/linux`   | `App (Linux)`    |
-
-The Linux app sends `/app/linux` once per start, with the same two parameters, from its own HTTP
-session rather than a browser (see [Usage statistics](apps/linux/README.md#usage-statistics)).
-
-**What is never sent or stored.** No cookies or browser storage for counting, no note data, URLs, hashes,
-query strings, referrer or identifiers. GoatCounter does not store the IP address or the full User-Agent; it
-derives only the country, browser and OS names, counts unique visitors with an in-memory mapping that lasts
-up to 8 hours, and filters bot and headless User-Agents on the server.
-
-**When nothing is sent.** Nothing is sent when `navigator.doNotTrack === "1"`,
-`navigator.globalPrivacyControl === true`, when the browser is offline, or after opting out. Opt out in
-Settings > This device > "Anonymous usage statistics", or with the button in the landing page's `#privacy`
-section. The choice is stored as `localStorage["commitnote.analyticsOptOut"] = "1"` and shared by the
-landing page and the web app (same origin). The Linux app does not read these browser signals; it has its
-own switch in Preferences > This device.
-
-The dev server and unit tests always have no endpoint. Fake-forge builds use
-`https://analytics.invalid/count`, which the e2e tests intercept.
-
-### Enabling analytics
-
-1. Sign up at <https://www.goatcounter.com/signup> (free for non-commercial use) and pick a site code,
-   e.g. `commitnote` (the dashboard becomes `https://<code>.goatcounter.com`). The code must match
-   `^[a-z0-9-]+$` or the build fails.
-2. In the site's Settings > Data collection keep **Sessions**, **User-Agent** and **Country** on; turn
-   **Referrer**, **Size** and **Region** off; leave **Individual pageviews** and **Language** off. Save.
-3. Set `GOATCOUNTER_SITE_CODE` in `analytics.config.ts` to the site code, commit and push to `main`. The
-   GoatCounter origin is then added to `connect-src` of the landing and web CSPs.
-4. "Deploy to GitHub Pages" enables the landing page and web app.
-5. Verify: open `https://commitnote.eu/` with DevTools > Network and confirm exactly one
-   `count?p=%2Flanding%2Fweb…` request to `<code>.goatcounter.com`, without `Referer` or `Cookie` headers.
 
 ## Deployment
 
@@ -345,7 +290,7 @@ snippet (GitLab) that holds only ciphertext. Choose "Share…" in a note's menu,
 
 `just build` writes plain static files to `dist/`: the landing page at the root and the app in
 `dist/app/`. The app build ships with a strict Content
-Security Policy applied via a `<meta>` tag; its `connect-src` allows `https://api.github.com` and `https://gitlab.com` and, when analytics is enabled, the GoatCounter origin; it is not present in the dev server. The app build also ships a web app manifest
+Security Policy applied via a `<meta>` tag; its `connect-src` allows `https://api.github.com` and `https://gitlab.com`; it is not present in the dev server. The app build also ships a web app manifest
 (`public/manifest.webmanifest`, `id`, `start_url` and `scope` all `/app/`), so commitnote can be installed as an app.
 
 ## Linux app

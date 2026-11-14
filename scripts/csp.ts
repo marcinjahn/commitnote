@@ -16,10 +16,7 @@ export function inlineScriptHashes(html: string): string[] {
 export function buildCsp(
   target: CspTarget,
   scriptHashes: readonly string[],
-  analyticsEndpoint: string | null,
 ): string {
-  const analyticsOrigin =
-    analyticsEndpoint === null ? null : new URL(analyticsEndpoint).origin;
   if (target === "landing") {
     return [
       "default-src 'self'",
@@ -27,9 +24,7 @@ export function buildCsp(
       "style-src 'self'",
       "img-src 'self' data:",
       "font-src 'self'",
-      analyticsOrigin === null
-        ? "connect-src 'none'"
-        : `connect-src ${analyticsOrigin}`,
+      "connect-src 'none'",
       "worker-src 'none'",
       "manifest-src 'none'",
       "object-src 'none'",
@@ -38,15 +33,11 @@ export function buildCsp(
     ].join("; ");
   }
   const scriptSrc = ["script-src 'self' 'wasm-unsafe-eval'", ...scriptHashes];
-  const connectSrc = ["connect-src https://api.github.com https://gitlab.com"];
-  if (analyticsOrigin !== null) {
-    connectSrc.push(analyticsOrigin);
-  }
   return [
     "default-src 'self'",
     scriptSrc.join(" "),
     "style-src 'self' 'unsafe-inline'",
-    connectSrc.join(" "),
+    "connect-src https://api.github.com https://gitlab.com",
     "img-src 'self' https: data: blob:",
     "object-src 'none'",
     "base-uri 'none'",

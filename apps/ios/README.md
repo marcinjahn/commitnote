@@ -243,7 +243,7 @@ and to `ios-ci/**` branches, and manually. To prove a change on macOS before it 
 it to a branch named `ios-ci/<something>`.
 
 The workflow runs only when something it builds or tests changes: `apps/**`, `src/**`, `scripts/**`,
-`package.json`, `package-lock.json`, `vite.config.ts`, `analytics.config.ts`, `svelte.config.js`,
+`package.json`, `package-lock.json`, `vite.config.ts`, `svelte.config.js`,
 `tsconfig*.json`, `justfile`, the workflow itself and its `.github/actions/ios-*` and
 `.github/actions/setup-just` actions. Manual runs always work.
 

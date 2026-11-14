@@ -22,9 +22,8 @@ const NATIVE_CORE_BUILDS: Record<string, { entry: string; outDir: string }> = {
   },
 };
 
-export default defineConfig(({ mode, command }) => {
-  const facts = buildModeFacts(mode);
-  const { fakeForge } = facts;
+export default defineConfig(({ mode }) => {
+  const { fakeForge } = buildModeFacts(mode);
   const nativeCore = NATIVE_CORE_BUILDS[mode];
   if (nativeCore !== undefined) {
     return {
@@ -55,13 +54,10 @@ export default defineConfig(({ mode, command }) => {
     base: "./",
     define: {
       __FAKE_FORGE__: JSON.stringify(fakeForge),
-      __ANALYTICS_ENDPOINT__: JSON.stringify(
-        command === "build" ? facts.analyticsEndpoint : null,
-      ),
     },
     plugins: [
       svelte(),
-      commitNoteCsp("web", facts.analyticsEndpoint),
+      commitNoteCsp("web"),
       dropUnusedWasmAsset(),
       serviceWorker(),
     ],

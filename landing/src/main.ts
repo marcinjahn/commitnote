@@ -1,10 +1,3 @@
-import {
-  browserOptsOut,
-  readAnalyticsOptOut,
-  sendVisit,
-  writeAnalyticsOptOut,
-} from "../../src/analytics/analytics";
-
 const root = document.documentElement;
 
 function trackTyping(wordmark: HTMLElement): void {
@@ -41,35 +34,3 @@ if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
   const illustration = document.querySelector<HTMLElement>(".commit-illustration");
   if (illustration) playOnView(illustration);
 }
-
-function initAnalyticsOptOut(): void {
-  const button = document.querySelector<HTMLButtonElement>("#analytics-opt-out");
-  const status = document.querySelector<HTMLElement>("#analytics-status");
-  if (!button || !status) return;
-  const render = () => {
-    const optedOut = readAnalyticsOptOut();
-    button.hidden = false;
-    button.textContent = optedOut
-      ? "Count my visits again"
-      : "Don't count my visits in this browser";
-    status.textContent = browserOptsOut(navigator)
-      ? "Your browser's Do Not Track or Global Privacy Control setting already stops counting."
-      : optedOut
-        ? "Your visits in this browser are not counted."
-        : "Your visits in this browser are counted anonymously.";
-  };
-  button.addEventListener("click", () => {
-    writeAnalyticsOptOut(!readAnalyticsOptOut());
-    render();
-  });
-  render();
-}
-
-initAnalyticsOptOut();
-
-sendVisit("landing", {
-  endpoint: __ANALYTICS_ENDPOINT__,
-  standalone: false,
-  navigator,
-  fetch: (url, init) => fetch(url, init),
-});

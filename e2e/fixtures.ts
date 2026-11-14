@@ -3,12 +3,9 @@ import {
   type BrowserContext,
   type BrowserContextOptions,
   type Page,
-  type Request,
 } from "@playwright/test";
 
 export { expect } from "@playwright/test";
-
-export const FAKE_ANALYTICS_ORIGIN = "https://analytics.invalid";
 
 export type ForgeLatencyOption = "none" | "github";
 
@@ -16,7 +13,6 @@ export const test = base.extend<
   {
     forgeLatency: ForgeLatencyOption;
     argon2Cache: boolean;
-    analyticsRequests: Request[];
     prepareContext: (context: BrowserContext) => Promise<void>;
     openSecondDevice: (
       options?: BrowserContextOptions,
@@ -32,23 +28,11 @@ export const test = base.extend<
     },
     { scope: "worker" },
   ],
-  analyticsRequests: async ({ context }, use) => {
-    const requests: Request[] = [];
-    context.on("request", (request) => {
-      if (request.url().startsWith(`${FAKE_ANALYTICS_ORIGIN}/`)) {
-        requests.push(request);
-      }
-    });
-    await use(requests);
-  },
   prepareContext: async (
     { forgeLatency, argon2Cache, argon2Results },
     use,
   ) => {
     await use(async (context) => {
-      await context.route(`${FAKE_ANALYTICS_ORIGIN}/**`, (route) =>
-        route.fulfill({ status: 204 }),
-      );
       if (argon2Cache) {
         await context.exposeBinding(
           "__commitNoteFakeForgeArgon2Derived",

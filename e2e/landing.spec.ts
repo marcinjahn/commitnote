@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, FAKE_ANALYTICS_ORIGIN } from "./fixtures";
+import { test, expect } from "./fixtures";
 import { expectNoA11yViolations } from "./helpers/a11y";
 
 const HEADING = "Encrypted markdown notes in your own git repository.";
@@ -196,13 +196,11 @@ test.describe("motion", () => {
 
 test("the landing page contacts only its own origin and has no CSP violations", async ({
   page,
-  analyticsRequests,
 }) => {
   const origins = new Set<string>();
   const messages: string[] = [];
   page.on("request", (request) => {
-    const origin = new URL(request.url()).origin;
-    if (origin !== FAKE_ANALYTICS_ORIGIN) origins.add(origin);
+    origins.add(new URL(request.url()).origin);
   });
   page.on("console", (message) => messages.push(message.text()));
 
@@ -214,7 +212,6 @@ test("the landing page contacts only its own origin and has no CSP violations", 
   await page.waitForLoadState("networkidle");
 
   expect([...origins]).toEqual([new URL(page.url()).origin]);
-  await expect.poll(() => analyticsRequests.length).toBe(1);
   expect(messages.filter((m) => m.includes("Content Security Policy"))).toEqual(
     [],
   );
