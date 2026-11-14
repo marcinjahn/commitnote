@@ -34,22 +34,29 @@ test("the landing page renders its content and calls to action", async ({
   await expect(page.locator("#main")).toHaveCount(1);
 
   const openApp = page.getByRole("link", { name: "Open app" });
-  await expect(openApp).toHaveCount(3);
+  await expect(openApp).toHaveCount(4);
   for (const href of await hrefs(openApp)) {
     expect(new URL(href, page.url()).pathname).toBe("/app/");
   }
   expect(
     await hrefs(page.getByRole("link", { name: "Download for Linux" })),
-  ).toEqual([FLATPAK, FLATPAK]);
+  ).toEqual([FLATPAK, FLATPAK, FLATPAK]);
   expect(
     await hrefs(page.getByRole("link", { name: "Latest release" })),
   ).toEqual([LATEST_RELEASE]);
   await expect(page.locator(".hero-note")).toContainText(
     "Flatpak for x86_64 Linux",
   );
-  await expect(
-    page.getByRole("heading", { level: 3, name: "Linux app" }),
-  ).toBeVisible();
+  const platforms = page.locator("#platforms");
+  for (const name of [
+    "In your browser",
+    "On iPhone and iPad",
+    "On your Linux desktop",
+  ]) {
+    await expect(
+      platforms.getByRole("heading", { level: 3, name }),
+    ).toBeVisible();
+  }
   const github = await hrefs(page.getByRole("link", { name: /GitHub/ }));
   expect(github.length).toBeGreaterThanOrEqual(1);
   expect(new Set(github)).toEqual(new Set([REPOSITORY]));

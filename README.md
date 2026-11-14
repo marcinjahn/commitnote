@@ -98,8 +98,10 @@ config (`landing/vite.config.ts`). It imports nothing from the app source; the a
   script. Its `connect-src` is `'none'`.
 - The landing stylesheet copies the app's design tokens; `landing/src/tokens.test.ts` fails when they
   drift apart.
-- The landing screenshots are in `landing/screenshots/`; regenerate them with
-  `just generate-landing-screenshots`.
+- The landing screenshots are in `landing/screenshots/`. The web ones are regenerated with
+  `just generate-landing-screenshots`; the `ios-*` ones come from the artifact of the manually
+  dispatched "iOS screenshots" workflow; `linux-notes-*@1x.png` are copies of
+  `apps/linux/data/screenshots/notes-*.png`.
 - `just check-bundle` enforces the size budget: landing HTML, CSS and JS together at most 40 KB,
   and each landing screenshot PNG at most 400 KB.
 

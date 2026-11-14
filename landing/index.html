@@ -81,8 +81,8 @@
             <div class="commit-illustration" role="img" aria-label="A save becomes one commit: the note is encrypted, and the commit message names no note">
               <div class="commit-plain">
                 <span class="commit-label">Your note</span>
-                <span class="commit-line commit-name">Welcome</span>
-                <span class="commit-line">Notes stay private even to the forge that hosts them.</span>
+                <span class="commit-line commit-name">Weather station</span>
+                <span class="commit-line">A small Rust service on the home server reads the balcony sensor every minute.</span>
               </div>
               <div class="commit-cipher">
                 <span class="commit-label">Encrypted on your device</span>
@@ -145,33 +145,66 @@
               <h3>Installable, works offline</h3>
               <p>Install it on phone or desktop. Edits made offline are saved once you are back online.</p>
             </li>
-            <li>
-              <h3>Linux app</h3>
-              <p>A native app for your notes on any Linux desktop, as a Flatpak bundle for x86_64.</p>
-            </li>
           </ul>
-          <div class="showcase">
-            <figure>
-              <div class="frame">
-                <img class="shot-light" src="./screenshots/phone-tree-light@1x.png" srcset="./screenshots/phone-tree-light@1x.png 1x, ./screenshots/phone-tree-light@2x.png 2x" width="412" height="915" alt="The notes tree on a phone, with folders and notes" loading="lazy" decoding="async" />
-            <img class="shot-dark" src="./screenshots/phone-tree-dark@1x.png" srcset="./screenshots/phone-tree-dark@1x.png 1x, ./screenshots/phone-tree-dark@2x.png 2x" width="412" height="915" alt="The notes tree on a phone, with folders and notes" loading="lazy" decoding="async" />
+        </div>
+      </section>
+
+      <section class="section" id="platforms" aria-labelledby="platforms-title">
+        <div class="container">
+          <div class="section-head">
+            <h2 id="platforms-title">On every device</h2>
+            <p>The same notes, encrypted the same way, in your browser, on iPhone and iPad, and on Linux.</p>
+          </div>
+          <div class="platforms">
+            <article class="platform" aria-labelledby="platform-web">
+              <div class="platform-text">
+                <p class="platform-name">Web</p>
+                <h3 id="platform-web">In your browser</h3>
+                <p>Runs in any modern browser on desktop and phone, with nothing to install. Add it to your home screen or dock to use it like an app, offline too.</p>
+                <a class="button button-primary" href="app/">Open app</a>
               </div>
-              <figcaption>Notes tree on a phone</figcaption>
-            </figure>
-            <figure>
-              <div class="frame">
-                <img class="shot-light" src="./screenshots/phone-note-light@1x.png" srcset="./screenshots/phone-note-light@1x.png 1x, ./screenshots/phone-note-light@2x.png 2x" width="412" height="915" alt="The Weather station note open in the live-preview editor on a phone" loading="lazy" decoding="async" />
-            <img class="shot-dark" src="./screenshots/phone-note-dark@1x.png" srcset="./screenshots/phone-note-dark@1x.png 1x, ./screenshots/phone-note-dark@2x.png 2x" width="412" height="915" alt="The Weather station note open in the live-preview editor on a phone" loading="lazy" decoding="async" />
+              <div class="platform-media platform-media-web">
+                <div class="frame">
+                  <img class="shot-light" src="./screenshots/desktop-history-light@1x.png" srcset="./screenshots/desktop-history-light@1x.png 1x, ./screenshots/desktop-history-light@2x.png 2x" width="1280" height="800" alt="The version history of a note in a desktop browser, comparing a saved version with the current one before restoring it" loading="lazy" decoding="async" />
+                  <img class="shot-dark" src="./screenshots/desktop-history-dark@1x.png" srcset="./screenshots/desktop-history-dark@1x.png 1x, ./screenshots/desktop-history-dark@2x.png 2x" width="1280" height="800" alt="The version history of a note in a desktop browser, comparing a saved version with the current one before restoring it" loading="lazy" decoding="async" />
+                </div>
+                <div class="frame">
+                  <img class="shot-light" src="./screenshots/phone-note-light@1x.png" srcset="./screenshots/phone-note-light@1x.png 1x, ./screenshots/phone-note-light@2x.png 2x" width="412" height="915" alt="The Weather station note open in the live-preview editor in a phone browser" loading="lazy" decoding="async" />
+                  <img class="shot-dark" src="./screenshots/phone-note-dark@1x.png" srcset="./screenshots/phone-note-dark@1x.png 1x, ./screenshots/phone-note-dark@2x.png 2x" width="412" height="915" alt="The Weather station note open in the live-preview editor in a phone browser" loading="lazy" decoding="async" />
+                </div>
               </div>
-              <figcaption>Live preview on a phone</figcaption>
-            </figure>
-            <figure class="showcase-wide">
-              <div class="frame">
-                <img class="shot-light" src="./screenshots/desktop-history-light@1x.png" srcset="./screenshots/desktop-history-light@1x.png 1x, ./screenshots/desktop-history-light@2x.png 2x" width="1280" height="800" alt="The version history of a note, comparing a saved version with the current one before restoring it" loading="lazy" decoding="async" />
-            <img class="shot-dark" src="./screenshots/desktop-history-dark@1x.png" srcset="./screenshots/desktop-history-dark@1x.png 1x, ./screenshots/desktop-history-dark@2x.png 2x" width="1280" height="800" alt="The version history of a note, comparing a saved version with the current one before restoring it" loading="lazy" decoding="async" />
+            </article>
+            <article class="platform" aria-labelledby="platform-ios">
+              <div class="platform-text">
+                <p class="platform-name">iOS</p>
+                <h3 id="platform-ios">On iPhone and iPad</h3>
+                <p>A native app with the same editor, encryption and repository. It is not on the App Store yet.</p>
               </div>
-              <figcaption>Version history with restore</figcaption>
-            </figure>
+              <div class="platform-media platform-media-ios">
+                <div class="frame">
+                  <img class="shot-light" src="./screenshots/ios-tree-light@1x.png" srcset="./screenshots/ios-tree-light@1x.png 1x, ./screenshots/ios-tree-light@2x.png 2x" width="402" height="874" alt="The notes tree in the iPhone app, with folders and color-tagged notes" loading="lazy" decoding="async" />
+                  <img class="shot-dark" src="./screenshots/ios-tree-dark@1x.png" srcset="./screenshots/ios-tree-dark@1x.png 1x, ./screenshots/ios-tree-dark@2x.png 2x" width="402" height="874" alt="The notes tree in the iPhone app, with folders and color-tagged notes" loading="lazy" decoding="async" />
+                </div>
+                <div class="frame">
+                  <img class="shot-light" src="./screenshots/ios-note-light@1x.png" srcset="./screenshots/ios-note-light@1x.png 1x, ./screenshots/ios-note-light@2x.png 2x" width="402" height="874" alt="The Weather station note open in the iPhone app, with a task list, a table and Rust code" loading="lazy" decoding="async" />
+                  <img class="shot-dark" src="./screenshots/ios-note-dark@1x.png" srcset="./screenshots/ios-note-dark@1x.png 1x, ./screenshots/ios-note-dark@2x.png 2x" width="402" height="874" alt="The Weather station note open in the iPhone app, with a task list, a table and Rust code" loading="lazy" decoding="async" />
+                </div>
+              </div>
+            </article>
+            <article class="platform" aria-labelledby="platform-linux">
+              <div class="platform-text">
+                <p class="platform-name">Linux</p>
+                <h3 id="platform-linux">On your Linux desktop</h3>
+                <p>A native GTK app that fits any Linux desktop, packaged as a Flatpak for x86_64.</p>
+                <a class="button" href="https://github.com/marcinjahn/commitnote/releases/latest/download/commitnote-x86_64.flatpak">Download for Linux</a>
+              </div>
+              <div class="platform-media">
+                <div class="frame">
+                  <img class="shot-light" src="./screenshots/linux-notes-light@1x.png" width="960" height="680" alt="The Linux app with the Weather station note open next to the notes tree" loading="lazy" decoding="async" />
+                  <img class="shot-dark" src="./screenshots/linux-notes-dark@1x.png" width="960" height="680" alt="The Linux app with the Weather station note open next to the notes tree" loading="lazy" decoding="async" />
+                </div>
+              </div>
+            </article>
           </div>
         </div>
       </section>

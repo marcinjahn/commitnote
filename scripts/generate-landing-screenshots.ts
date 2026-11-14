@@ -16,11 +16,7 @@ import {
   waitForSynced,
 } from "../e2e/helpers/tree";
 import { readPngSize } from "./png-size";
-import {
-  expandFolders,
-  openShowcase,
-  openShowcaseHeroNote,
-} from "./showcase-screens";
+import { openShowcaseHeroNote } from "./showcase-screens";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const screenshotsDir = resolve(root, "landing/screenshots");
@@ -87,15 +83,6 @@ const shots: readonly Shot[] = [
       const dialog = await openHistory(page);
       await dialog.getByRole("button", { name: /Created/ }).click();
       await expect(dialog.getByTestId("diff-summary")).toBeVisible();
-    },
-  },
-  {
-    name: "phone-tree",
-    viewport: phone,
-    phone: true,
-    async prepare(page) {
-      await openShowcase(page);
-      await expandFolders(page, ["Projects", "Travel"]);
     },
   },
   {
