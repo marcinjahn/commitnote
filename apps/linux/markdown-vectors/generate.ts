@@ -258,7 +258,7 @@ if (process.argv.includes("--check")) {
   } catch {}
   if (current !== generated) {
     console.error(
-      "apps/linux/markdown-vectors/vectors.json is stale: run `npx tsx apps/linux/markdown-vectors/generate.ts` and commit the result",
+      "apps/linux/markdown-vectors/vectors.json is stale: run `just linux generate-markdown-vectors` and commit the result",
     );
     process.exit(1);
   }

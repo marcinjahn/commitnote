@@ -92,7 +92,7 @@ describe("brand SVGs", () => {
 
       expect(
         committed.equals(generated),
-        `${output.path} is out of date, run \`npm run generate:brand\``,
+        `${output.path} is out of date, run \`just generate-brand\``,
       ).toBe(true);
 
       const icon = APP_ICONS.find((candidate) => candidate.path === output.path);

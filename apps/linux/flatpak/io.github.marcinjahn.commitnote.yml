@@ -27,7 +27,9 @@ modules:
         npm_config_offline: "true"
     build-commands:
       - npm ci --offline
-      - npm run build:native-core
+      # The SDK has no just: these two builds are the `just build-native-core` recipe.
+      - node_modules/.bin/vite build --mode native-core
+      - node_modules/.bin/vite build --mode native-core-fake
       - install -Dm644 dist-native-core/commitnote-core.js /app/lib/commitnote-build/commitnote-core.js
       - install -Dm644 dist-native-core-fake/commitnote-core.js /app/lib/commitnote-build/commitnote-core-fake.js
     cleanup:

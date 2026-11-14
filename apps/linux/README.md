@@ -43,7 +43,7 @@ Every text offset between the app and the core is in UTF-16 code units, as in th
 editor widget converts to and from GTK's character offsets at the edge.
 
 The core bundle is embedded into the binary from `dist-native-core/` (`dist-native-core-fake/` for
-the testing build). Build it first with `npm run build:native-core` from the repository root.
+the testing build). Build it first with `just build-native-core` from the repository root.
 
 The build is meson wrapping cargo (`meson.build`, `meson.options`).
 
@@ -653,7 +653,7 @@ rpm -q appstream blueprint-compiler desktop-file-utils gcc glib2 glib2-devel gtk
   pkgconf-pkg-config webkitgtk6.0 webkitgtk6.0-devel
 ```
 
-Node.js and npm are needed for the core bundle, and rustup for the Rust toolchain. rustup reads
+Node.js, npm and [`just`](https://just.systems) are needed for the core bundle, and rustup for the Rust toolchain. rustup reads
 `rust-toolchain.toml` and installs the pinned toolchain with clippy and rustfmt on the first cargo
 command inside `apps/linux/`. Fedora packages it as `rustup`; run `rustup-init` once after
 installing it.
@@ -662,20 +662,21 @@ From the repository root:
 
 ```sh
 npm ci
-npm run build:native-core
-apps/linux/scripts/run-host.sh
+just build-native-core
+just linux run-host
 ```
 
-`run-host.sh` configures meson in `apps/linux/_build`, builds, installs into
+`just linux run-host` configures meson in `apps/linux/_build`, builds, installs into
 `apps/linux/out/host-prefix` and starts the installed binary from there, so nothing is installed
-system-wide. `apps/linux/scripts/run-host.sh --testing` builds and runs the testing build instead
+system-wide. `just linux run-host --testing` builds and runs the testing build instead
 (see below).
 
 ## Run without development packages
 
-`install-prefix.sh` builds the app in the Docker build container and installs it into
-`apps/linux/out/prefix`; `run-installed.sh` starts it on the host. This needs Docker (or Podman's
-Docker API) and only the run packages on the host, at the versions given above.
+`just linux install-prefix` builds the app in the Docker build container and installs it into
+`apps/linux/out/prefix`; `just linux run` starts it on the host. This needs Docker (or Podman's
+Docker API), Node.js, npm and `just` for the core bundle, and only the run packages on the host, at
+the versions given above.
 
 A default Fedora Workstation 45 install already has all eight: a clean Workstation 45 container
 (`@workstation-product-environment`, weak dependencies off) answers `rpm -q` for every run package
@@ -714,14 +715,14 @@ From the repository root:
 
 ```sh
 npm ci
-npm run build:native-core
-apps/linux/scripts/install-prefix.sh
-apps/linux/scripts/run-installed.sh
+just build-native-core
+just linux install-prefix
+just linux run
 ```
 
-`install-prefix.sh` takes `--release` (the release profile) or `--testing` (the testing build);
-without an option it installs the development profile. Each run replaces `out/prefix`.
-`run-installed.sh [<prefix>]` runs `<prefix>/usr/bin/commitnote` with the prefix's schemas and data
+`just linux install-prefix` takes `--release` (the release profile) or `--testing` (the testing
+build); without an option it installs the development profile. Each run replaces `out/prefix`.
+`just linux run [<prefix>]` runs `<prefix>/usr/bin/commitnote` with the prefix's schemas and data
 directories; without an argument it uses `apps/linux/out/prefix`. Extra arguments are passed to the
 app.
 
@@ -741,11 +742,11 @@ answers the file chooser from a queue instead of showing it, and records the usa
 instead of sending it. The UI tests run against this build.
 
 ```sh
-apps/linux/scripts/install-prefix.sh --testing
-apps/linux/scripts/run-installed.sh
+just linux install-prefix --testing
+just linux run
 ```
 
-or, with the development packages installed, `apps/linux/scripts/run-host.sh --testing`.
+or, with the development packages installed, `just linux run-host --testing`.
 
 ## Flatpak
 
@@ -790,17 +791,17 @@ its data, including a remembered session; add `--delete-data` to delete the data
 
 ### Build locally
 
-Only Docker is needed, no Flatpak tooling. `flatpak-build.sh` runs `flatpak-builder` in the same
+Only Docker is needed, no Flatpak tooling. `just linux flatpak-build` runs `flatpak-builder` in the same
 container image the Flatpak build in CI uses (`ghcr.io/flathub-infra/flatpak-github-actions:gnome-51`,
 pulled on first use), so it needs network access for the image and the runtime from Flathub. From
 the repository root:
 
 ```sh
-apps/linux/scripts/flatpak-build.sh
+just linux flatpak-build
 ```
 
 The Flatpak bundle is `apps/linux/out/flatpak/commitnote-x86_64.flatpak`. The build does not need
-`npm run build:native-core`: the manifest builds the core bundle itself.
+`just build-native-core`: the manifest builds the core bundle itself.
 
 The build sandbox has no network, so `flatpak/generate-sources.sh` first writes the generated
 sources (`cargo-sources.json` and `node-sources.json` under `apps/linux/flatpak/generated/`, which
@@ -814,13 +815,13 @@ builddir and repo) and fails the build if any of them reports an error. The lint
 The script keeps two Docker volumes so a second build is incremental: `commitnote-flatpak-sdk`
 (the runtime and SDKs, shared by every workspace) and `commitnote-flatpak-state-<hash>`
 (`flatpak-builder`'s cache, the build directories and the local repo, one per workspace).
-`flatpak-build.sh --remove-state-volume` removes the state volume. The other one goes with
+`just linux flatpak-build --remove-state-volume` removes the state volume. The other one goes with
 `docker volume rm commitnote-flatpak-sdk`.
 
 ### Testing Flatpak
 
 ```sh
-apps/linux/scripts/flatpak-build.sh --testing
+just linux flatpak-build --testing
 ```
 
 The testing Flatpak is the same Flatpak manifest rewritten by `flatpak/testing-manifest.py`: app ID
@@ -832,7 +833,7 @@ not linted and is only ever a test artifact, never published.
 ### Run a bundle
 
 ```sh
-apps/linux/scripts/flatpak-launch.sh apps/linux/out/flatpak/commitnote-x86_64.flatpak
+just linux flatpak-launch apps/linux/out/flatpak/commitnote-x86_64.flatpak
 ```
 
 installs the bundle in the Flatpak test container (below), starts it under headless sway and prints
@@ -849,7 +850,7 @@ flatpak run io.github.marcinjahn.commitnote
 ### Flatpak tests
 
 ```sh
-apps/linux/scripts/flatpak-smoke-test.sh \
+just linux flatpak-smoke-test \
   apps/linux/out/flatpak/commitnote-x86_64.flatpak \
   apps/linux/out/flatpak/commitnote-testing-x86_64.flatpak
 ```
@@ -937,27 +938,27 @@ would be published.
 
 ## Checks and tests
 
-Nothing needs GTK on the machine: these scripts run inside the Docker build container
+Nothing needs GTK on the machine: these recipes run inside the Docker build container
 (`ci/Dockerfile`, Fedora 45 plus the three package lists in `ci/` and the pinned Rust toolchain).
 The image is built on first use and rebuilt when the Dockerfile, a package list or
-`rust-toolchain.toml` changes. Run them from the repository root, after
-`npm run build:native-core`:
+`rust-toolchain.toml` changes. Run them after `just build-native-core`; `just linux` lists every
+Linux recipe. Each one wraps the script of the same name in `apps/linux/scripts/`.
 
-| Script                                   | What it does                                                                                                                                       |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/linux/scripts/build.sh`            | `cargo build` of the crates, then the meson testing build of the app.                                                                              |
-| `apps/linux/scripts/lint.sh`             | The static checks below.                                                                                                                           |
-| `apps/linux/scripts/test.sh`             | Crate tests, the app's unit tests, the UI suite and the read-back.                                                                                 |
-| `apps/linux/scripts/ui-test.sh [filter]` | Only the UI suite. The optional filter runs the cases whose name contains it; with no match it fails.                                              |
-| `apps/linux/scripts/release-check.sh`    | Builds the release profile and checks that the binary holds no fake command, that its embedded bundle equals `dist-native-core/` and not the fake. |
+| Recipe                          | What it does                                                                                                                                       |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `just linux build`              | `cargo build` of the crates, then the meson testing build of the app.                                                                              |
+| `just linux lint`               | The static checks below.                                                                                                                           |
+| `just linux test`               | Crate tests, the app's unit tests, the UI suite and the read-back.                                                                                 |
+| `just linux ui-test [filter]`   | Only the UI suite. The optional filter runs the cases whose name contains it; with no match it fails.                                              |
+| `just linux release-check`      | Builds the release profile and checks that the binary holds no fake command, that its embedded bundle equals `dist-native-core/` and not the fake. |
 
 `release-check.sh` also installs the release build into a scratch prefix and checks that it holds
 exactly the 24 note font files (`.ttf`) under `<datadir>/io.github.marcinjahn.commitnote/fonts`.
 
-The static checks (`lint.sh`) are:
+The static checks (`just linux lint`) are:
 
 - the check that the package lists in this README match `ci/*-packages.txt`
-  (`scripts/check-package-lists.sh`, which also runs on the host with plain `sh`),
+  (`just linux check-package-lists`, which also runs on the host, outside the container),
 - `cargo fmt --all --check`,
 - `cargo clippy` with `-D warnings` on the crates and, through meson, on the app with and without
   the testing build,
@@ -966,10 +967,10 @@ The static checks (`lint.sh`) are:
   strict compile of the GSettings schema, a check that the crate versions and the newest
   release entry follow the meson project version, and that the entry has a description, and the
   conversion of that description to the GitHub release notes (`build-aux/release-notes.py`),
-- on the host, `npx tsx apps/linux/markdown-vectors/generate.ts --check`, which fails when the
+- on the host, `just linux generate-markdown-vectors --check`, which fails when the
   Markdown vectors are stale (see below).
 
-The tests (`test.sh`) run, in this order:
+The tests (`just linux test`) run, in this order:
 
 1. The crate tests (`cargo test --workspace`) inside a D-Bus session with an unlocked
    gnome-keyring, because the remembered-session store uses the Secret Service; the keyring is
@@ -1037,7 +1038,7 @@ The tests (`test.sh`) run, in this order:
    `p6-preferences`, `p6-about` and `p6-shortcuts`. The store screenshots in
    `apps/linux/data/screenshots/` come from the `p6-shots-store-*` cases at the default window size
    with the system accent and without the development styling, and are refreshed by running
-   `apps/linux/scripts/ui-test.sh p6-shots-store` and copying the four files. The `tables` cases cover the table widget alone
+   `just linux ui-test p6-shots-store` and copying the four files. The `tables` cases cover the table widget alone
    (cells, alignment, accessible roles and labels), the editor's rendering, reveal and shared
    version, clicks and Ctrl+click, cell selection (drag, long press and right click, the tint and
    the selected state, clearing) and copying (the plain text and HTML on the clipboard, in the
@@ -1059,7 +1060,7 @@ The tests (`test.sh`) run, in this order:
    scratch directory that it adds to `XDG_DATA_DIRS`, so the tests see the bundled fonts. A
    failing case saves
    `failure-<case>.png` there. Logs go to `apps/linux/out/logs/`, with per-case timings in
-   `ui-testlog.txt`. The filter of `ui-test.sh` matches case names only. The harness sends real key
+   `ui-testlog.txt`. The filter of `just linux ui-test` matches case names only. The harness sends real key
    events through mutter's remote desktop virtual keyboard: `press_keys("<Control>r")` presses one
    accelerator and `type_keys("text")` types ASCII text, both into the focused widget of the
    active window; older cases still drive some keys by calling the controllers and the Vim input
@@ -1075,11 +1076,11 @@ The tests (`test.sh`) run, in this order:
    requires the border `csd` with a title bar of 0 px next to the app's header bar. It is the proof
    that the app starts and works on a non-GNOME compositor. `sway` is a test-only package
    (`ci/test-packages.txt`) and nothing else in the image depends on it. The log of the run is
-   `apps/linux/out/logs/ui-smoke-testlog.txt`, next to `sway.log`, and `ui-test.sh smoke` runs
+   `apps/linux/out/logs/ui-smoke-testlog.txt`, next to `sway.log`, and `just linux ui-test smoke` runs
    only this step (any other filter skips it).
 5. On the host, the read-back: the crate tests and the UI case `editor_read_back` write scenarios
    (a repo made by the Rust runtime and what a reader should find in it) into `apps/linux/out/read-back`, and
-   `npx tsx scripts/read-back-native-repo.ts apps/linux/out/read-back` has the shared TypeScript
+   `just read-back-native-repo apps/linux/out/read-back` has the shared TypeScript
    reader open every scenario there, so this step needs `npm ci` but no container. It proves the
    TypeScript side can read what the Linux app wrote, including a note typed in the editor and a
    note with images inserted through the Linux runtime (a large JPEG stored as WebP and a GIF kept as
@@ -1115,12 +1116,12 @@ After changing the Markdown configuration of the web editor, or the corpus, rege
 the repository root and commit it:
 
 ```sh
-npx tsx apps/linux/markdown-vectors/generate.ts
+just linux generate-markdown-vectors
 ```
 
-`lint.sh` runs the generator with `--check` and fails when `vectors.json` is stale.
+`just linux lint` runs the generator with `--check` and fails when `vectors.json` is stale.
 
-`ui-test.sh` needs the packages that the container adds for tests, listed here for running the UI
+`just linux ui-test` needs the packages that the container adds for tests, listed here for running the UI
 tests on the host. They are needed only for that; the container has them already, and building and
 running the app does not.
 
@@ -1144,15 +1145,15 @@ sudo dnf install \
 - Cargo's registry and git caches and the build output (`apps/linux/target`) live in Docker named
   volumes, so repeated runs are incremental. The registry and git volumes are shared; the target
   volume is per workspace (`commitnote-linux-target-<hash of the workspace path>`).
-  `apps/linux/scripts/container.sh --remove-target-volume` deletes this workspace's target volume.
+  `just linux container --remove-target-volume` deletes this workspace's target volume.
 - `COMMITNOTE_LINUX_CACHE_DIR` replaces the three named volumes with `registry`, `git` and
   `target` directories under the given path (CI uses this to cache them).
 - The container runs with 4 CPUs and 8 GB of memory. Override with `COMMITNOTE_DOCKER_CPUS` and
   `COMMITNOTE_DOCKER_MEMORY` (for example `COMMITNOTE_DOCKER_MEMORY=12g`).
-- `apps/linux/scripts/container.sh <command...>` runs any command in the container from
-  `apps/linux/`. `--print-image-tag` prints the image tag and `--write-context <dir>` writes the
-  files the image is built from; CI uses both.
-- Everything the scripts write for you to look at is under `apps/linux/out/` (`screenshots/`,
+- `just linux container <command...>` runs any command in the container from `apps/linux/`.
+  CI also calls the script behind it directly: `apps/linux/scripts/container.sh --print-image-tag`
+  prints the image tag and `--write-context <dir>` writes the files the image is built from.
+- Everything the recipes write for you to look at is under `apps/linux/out/` (`screenshots/`,
   `logs/`, `prefix/`, `host-prefix/`, `read-back/`), which git ignores.
 
 ## Profiles
@@ -1171,8 +1172,9 @@ selects, for either profile.
 
 ## CI
 
-The `Linux` workflow (`.github/workflows/linux.yml`) builds the container image and runs `build.sh`,
-`lint.sh`, `test.sh` and `release-check.sh` in that order. It runs on:
+The `Linux` workflow (`.github/workflows/linux.yml`) builds the container image and runs
+`just linux build`, `just linux lint`, `just linux test` and `just linux release-check` in that
+order, after `just build-native-core`. It runs on:
 
 - pushes to `main` and to `linux-ci/**` branches that touch the Linux app, the test vectors, the
   shared web sources and build configuration the core bundle is built from, the note font files in

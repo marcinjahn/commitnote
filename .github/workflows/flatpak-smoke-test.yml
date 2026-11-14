@@ -34,6 +34,8 @@ jobs:
           name: ${{ inputs.testing-artifact }}
           path: ${{ runner.temp }}/flatpak-bundles
 
+      - uses: ./.github/actions/setup-just
+
       - uses: docker/setup-buildx-action@v4
 
       - name: Prepare test image context
@@ -57,7 +59,7 @@ jobs:
         env:
           RELEASE_BUNDLE: ${{ runner.temp }}/flatpak-bundles/commitnote-x86_64.flatpak
           TESTING_BUNDLE: ${{ inputs.testing-artifact && format('{0}/flatpak-bundles/commitnote-testing-x86_64.flatpak', runner.temp) || '' }}
-        run: apps/linux/scripts/flatpak-smoke-test.sh "$RELEASE_BUNDLE" ${TESTING_BUNDLE:+"$TESTING_BUNDLE"}
+        run: just linux flatpak-smoke-test "$RELEASE_BUNDLE" "$TESTING_BUNDLE"
 
       - uses: actions/upload-artifact@v7
         if: always()

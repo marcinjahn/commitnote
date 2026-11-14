@@ -15,6 +15,8 @@ on:
       - "analytics.config.ts"
       - "svelte.config.js"
       - "tsconfig*.json"
+      - "justfile"
+      - ".github/actions/setup-just/**"
       - ".github/workflows/linux.yml"
       - ".github/workflows/flatpak.yml"
       - ".github/workflows/flatpak-smoke-test.yml"
@@ -39,7 +41,8 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
-      - run: npm run build:native-core
+      - uses: ./.github/actions/setup-just
+      - run: just build-native-core
 
       - uses: docker/setup-buildx-action@v4
 
@@ -71,16 +74,16 @@ jobs:
             linux-cargo-${{ runner.os }}-${{ hashFiles('apps/linux/Cargo.lock', 'apps/linux/rust-toolchain.toml', 'apps/linux/ci/Dockerfile') }}-
 
       - name: Build
-        run: apps/linux/scripts/build.sh
+        run: just linux build
 
       - name: Static checks
-        run: apps/linux/scripts/lint.sh
+        run: just linux lint
 
       - name: Tests
-        run: apps/linux/scripts/test.sh
+        run: just linux test
 
       - name: Release check
-        run: apps/linux/scripts/release-check.sh
+        run: just linux release-check
 
       - name: Fix ownership of container output
         if: always()

@@ -34,7 +34,7 @@ async function safeClear(): Promise<void> {
   try {
     await clearFakeForgeBuildFingerprint(rootDir);
   } catch (error) {
-    console.warn("build:fake: could not clear the fake-forge build fingerprint", error);
+    console.warn("build-fake: could not clear the fake-forge build fingerprint", error);
   }
 }
 
@@ -44,11 +44,11 @@ async function main(): Promise<number> {
   try {
     fingerprint = await computeFakeForgeBuildFingerprint(rootDir, process.env, process.version);
   } catch (error) {
-    console.warn("build:fake: could not compute the fake-forge build fingerprint", error);
+    console.warn("build-fake: could not compute the fake-forge build fingerprint", error);
   }
 
   if (fingerprint !== null && ifStale && (await isFakeForgeBuildFresh(rootDir, fingerprint))) {
-    console.log("dist-fake is fresh (fake-forge build fingerprint matches); skipping build:fake");
+    console.log("dist-fake is fresh (fake-forge build fingerprint matches); skipping build-fake");
     return 0;
   }
 
@@ -58,7 +58,7 @@ async function main(): Promise<number> {
     try {
       await recordFakeForgeBuildFingerprint(rootDir, fingerprint);
     } catch (error) {
-      console.warn("build:fake: could not record the fake-forge build fingerprint", error);
+      console.warn("build-fake: could not record the fake-forge build fingerprint", error);
     }
   }
   return code;
