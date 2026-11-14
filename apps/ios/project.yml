@@ -38,6 +38,7 @@ targets:
       - path: Commitnote
         excludes:
           - Info.plist
+          - Fonts/VENDORED.md
     dependencies:
       - package: CoreRuntime
         product: CoreRuntime
