@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { SyncError } from "../../sync/sync-engine";
+import type { SyncEngineState, SyncError } from "../../sync/sync-engine";
 import {
   autoRefreshFailureReport,
   INITIAL_AUTO_REFRESH_FAILURE_STATE,
   manualRefreshFailureState,
+  startupRefreshFailureReport,
   type AutoRefreshFailureState,
 } from "./auto-refresh-failure-report";
 
@@ -106,6 +107,35 @@ describe("manualRefreshFailureState", () => {
     expect(step(afterManual, rateLimited).action).toEqual({
       kind: "show",
       error: rateLimited,
+    });
+  });
+});
+
+describe("startupRefreshFailureReport", () => {
+  function engineState(
+    lastError: SyncError | null,
+    online: boolean,
+  ): Pick<SyncEngineState, "refresh" | "online"> {
+    return {
+      refresh: { inFlight: false, lastError, lastCompletedAt: null },
+      online,
+    };
+  }
+
+  it("shows even the first transient failure", () => {
+    const report = startupRefreshFailureReport(engineState(network, true));
+    expect(report.action).toEqual({ kind: "show", error: network });
+    expect(step(report.state, network).action).toEqual({ kind: "none" });
+    expect(step(report.state, null).action).toEqual({ kind: "clear" });
+  });
+
+  it("stays silent after a success or while offline", () => {
+    expect(startupRefreshFailureReport(engineState(null, true)).action).toEqual(
+      { kind: "none" },
+    );
+    expect(startupRefreshFailureReport(engineState(network, false))).toEqual({
+      state: INITIAL_AUTO_REFRESH_FAILURE_STATE,
+      action: { kind: "none" },
     });
   });
 });

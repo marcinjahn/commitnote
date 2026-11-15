@@ -1,4 +1,8 @@
-import type { BlobCache } from "../blob-cache/blob-cache";
+import { repoKeyOf, type BlobCache } from "../blob-cache/blob-cache";
+import {
+  createCachedTreeStore,
+  hasCachedTree,
+} from "../blob-cache/cached-tree";
 import { withBlobCache } from "../blob-cache/caching-adapter";
 import type { ForgeAdapter } from "../forge/forge-adapter";
 import type { ForgeId } from "../forge/repo-coordinates";
@@ -7,7 +11,7 @@ import {
   type ContentIndexer,
 } from "../search/content-indexer";
 import { createIndexerEnvironment } from "../search/indexer-environment";
-import type { SessionStore } from "../session/session-store";
+import type { SessionStore, StorageLike } from "../session/session-store";
 import type { Session } from "../session/session";
 import {
   createSettingsSaver,
@@ -29,6 +33,7 @@ import {
   openSessionBlobCache,
   purgeBlobCacheNow,
   purgeBlobCacheWhenIndexed,
+  saveCachedTreeOnChange,
   type BlobStoreProvider,
 } from "./blob-cache-lifecycle";
 import type { LifecycleHandlers } from "./lifecycle-triggers";
@@ -57,6 +62,8 @@ export interface StartAppDeps<S = undefined> {
   readonly deviceName: () => string;
   readonly requestPersistentStorageOnResume: boolean;
   readonly blobStore?: BlobStoreProvider;
+  /** Holds the pointer to the cached tree; defaults to localStorage. */
+  readonly deviceStorage?: StorageLike | null;
   installLifecycle(handlers: LifecycleHandlers): () => void;
   createServices?(context: AppServicesContext): S;
   disposeServices?(services: S): void;
@@ -92,15 +99,53 @@ export interface RunningApp<S = undefined> {
   readonly rememberMe: boolean;
   readonly remembered: boolean;
   readonly services: S;
+  /** The first refresh, still running in the background when the app started from the cached tree. */
+  readonly startupRefresh: Promise<void> | null;
   readonly teardown: (clearBlobCache: boolean) => Promise<void>;
 }
 
-export async function startApp<S>(
+export function startApp<S>(
   deps: StartAppDeps<S>,
   input: StartAppInput,
 ): Promise<RunningApp<S>> {
+  return launch(deps, input, false);
+}
+
+/**
+ * Starts a remembered session from the tree cached on this device, refreshing
+ * from the forge in the background. Resolves null, leaving nothing running,
+ * when no usable cached tree exists.
+ */
+export function startAppFromCache<S>(
+  deps: StartAppDeps<S>,
+  input: Omit<StartAppInput, "knownHead" | "rememberMe" | "resumed">,
+): Promise<RunningApp<S> | null> {
+  return launch(deps, { ...input, rememberMe: true, resumed: true }, true);
+}
+
+function launch<S>(
+  deps: StartAppDeps<S>,
+  input: StartAppInput,
+  fromCache: false,
+): Promise<RunningApp<S>>;
+function launch<S>(
+  deps: StartAppDeps<S>,
+  input: StartAppInput,
+  fromCache: true,
+): Promise<RunningApp<S> | null>;
+async function launch<S>(
+  deps: StartAppDeps<S>,
+  input: StartAppInput,
+  fromCache: boolean,
+): Promise<RunningApp<S> | null> {
   const { store, ports, clock } = deps;
   const { session, adapter, rememberMe } = input;
+  if (
+    fromCache &&
+    !hasCachedTree(repoKeyOf(session.coordinates), deps.deviceStorage)
+  ) {
+    return null;
+  }
 
   const { remembered } = await store.start(session, { rememberMe });
   deps.beforeEngine?.(session, remembered);
@@ -129,6 +174,35 @@ export async function startApp<S>(
     deviceName: deps.deviceName,
     ...(blobCache === null ? {} : { blobCache }),
   });
+  const cachedTreeStore =
+    blobCache === null
+      ? null
+      : createCachedTreeStore({
+          cache: blobCache,
+          repoKey: repoKeyOf(session.coordinates),
+          ...(deps.deviceStorage === undefined
+            ? {}
+            : { storage: deps.deviceStorage }),
+        });
+  let restoredHead: string | null = null;
+  if (fromCache) {
+    const cached = (await cachedTreeStore?.load()) ?? null;
+    if (cached === null || !(await engine.restoreCached(cached))) {
+      engine.dispose();
+      await blobCache?.dispose();
+      return null;
+    }
+    restoredHead = cached.head;
+  }
+  const stopSavingCachedTree =
+    cachedTreeStore === null
+      ? null
+      : saveCachedTreeOnChange({
+          engine,
+          store: cachedTreeStore,
+          clock,
+          savedHead: restoredHead,
+        });
   const contentIndexer = createContentIndexer({
     engine,
     clock,
@@ -195,11 +269,13 @@ export async function startApp<S>(
 
   // Forge errors resolve with `refresh.lastError` set, which the shell shows.
   let refreshed = true;
-  try {
-    await engine.refresh({ knownHead: input.knownHead });
-  } catch (e) {
-    console.error(e);
-    refreshed = false;
+  if (!fromCache) {
+    try {
+      await engine.refresh({ knownHead: input.knownHead });
+    } catch (e) {
+      console.error(e);
+      refreshed = false;
+    }
   }
 
   const refreshScheduler = createAutoRefresh({
@@ -232,7 +308,8 @@ export async function startApp<S>(
     clock,
   }) ?? undefined) as S;
 
-  if (refreshed) {
+  let stopped = false;
+  const runStartupMaintenance = () => {
     try {
       engine.purgeExpiredTrash();
     } catch {
@@ -249,9 +326,34 @@ export async function startApp<S>(
     if (input.purgeBlobCache && blobCache !== null) {
       purgeBlobCacheNow({ engine, cache: blobCache, clock });
     }
+  };
+
+  let startupRefresh: Promise<void> | null = null;
+  if (!fromCache) {
+    if (refreshed) runStartupMaintenance();
+  } else {
+    // Maintenance needs the forge's current tree; with local work the
+    // restored tree stays until the save merges, so it waits for a later start.
+    startupRefresh = engine.refresh().then(
+      () => {
+        const state = engine.getState();
+        if (
+          !stopped &&
+          state.refresh.lastError === null &&
+          !engine.hasLocalWork()
+        ) {
+          runStartupMaintenance();
+        }
+      },
+      (e: unknown) => {
+        console.error(e);
+      },
+    );
   }
 
   const teardown = (clearBlobCache: boolean): Promise<void> => {
+    stopped = true;
+    stopSavingCachedTree?.();
     uninstallLifecycle();
     disposeAfterStart?.();
     refreshScheduler.dispose();
@@ -280,6 +382,7 @@ export async function startApp<S>(
     rememberMe,
     remembered,
     services,
+    startupRefresh,
     teardown,
   };
 }

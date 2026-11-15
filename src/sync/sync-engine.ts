@@ -2,6 +2,7 @@ import type { Change, ChangeSet, NotePath } from "../changes/change";
 import { isAtOrWithin, notePathEquals, parentPath } from "../changes/change";
 import { readDeviceTrailer } from "../changes/device-trailer";
 import { encodeChangeSet } from "../changes/encode-change-set";
+import type { CachedTree } from "../blob-cache/cached-tree";
 import { verifyKeyCheck, type Keyring } from "../crypto/keyring";
 import { decryptNote, NoteDecryptionError } from "../crypto/note-cipher";
 import {
@@ -342,6 +343,11 @@ export interface SyncEngine {
   getState(): SyncEngineState;
   subscribe(run: (state: SyncEngineState) => void): () => void;
   refresh(options?: { knownHead?: string }): Promise<void>;
+  /**
+   * Shows a previously loaded tree using only cached blobs, before the first
+   * refresh. Resolves false, changing nothing, when any needed blob is missing.
+   */
+  restoreCached(cached: CachedTree): Promise<boolean>;
   openNote(path: NotePath | null): Promise<void>;
   editNote(path: NotePath, content: string): void;
   createNote(parent: NotePath, name: string): StructureResult;
@@ -589,6 +595,14 @@ class KeyChangedError extends Error {
   }
 }
 
+class CachedBlobMissingError extends Error {
+  constructor() {
+    super("A blob of the cached tree is no longer cached");
+  }
+}
+
+type BlobReader = (blobSha: string) => Promise<string>;
+
 export interface CachedBlobReader {
   read(blobSha: string): Promise<string | null>;
 }
@@ -793,11 +807,12 @@ export function createSyncEngine(options: {
 
   async function verifyConfig(
     listing: readonly TreeEntry[],
+    readBlob: BlobReader,
   ): Promise<RepoConfig> {
     const entry = findConfigEntry(listing);
     if (entry === undefined) throw new KeyChangedError();
     if (verifiedConfig?.sha === entry.sha) return verifiedConfig.config;
-    const parsed = parseRepoConfig(await adapter.readBlob(entry.sha));
+    const parsed = parseRepoConfig(await readBlob(entry.sha));
     if (
       parsed.kind !== "valid" ||
       !(await verifyKeyCheck(keyring, parsed.config))
@@ -808,15 +823,24 @@ export function createSyncEngine(options: {
     return parsed.config;
   }
 
+  const readForgeBlob: BlobReader = (blobSha) => adapter.readBlob(blobSha);
+
   async function loadSynced(head: string): Promise<SyncedState> {
-    const listing = await adapter.listTree(head);
-    const config = await verifyConfig(listing);
+    return buildSynced(head, await adapter.listTree(head), readForgeBlob);
+  }
+
+  async function buildSynced(
+    head: string,
+    listing: readonly TreeEntry[],
+    readBlob: BlobReader,
+  ): Promise<SyncedState> {
+    const config = await verifyConfig(listing, readBlob);
     const tree = await buildNoteTree(listing, keyring);
     const trash = await buildTrashIndex(listing, keyring);
-    const order = await loadOrder(listing);
-    const tags = await loadTags(listing);
-    const shares = await loadShares(listing);
-    const images = await loadImages(listing);
+    const order = await loadOrder(listing, readBlob);
+    const tags = await loadTags(listing, readBlob);
+    const shares = await loadShares(listing, readBlob);
+    const images = await loadImages(listing, readBlob);
     const undecryptableFiles = await countUndecryptableFiles(listing, keyring);
     return {
       head,
@@ -833,17 +857,44 @@ export function createSyncEngine(options: {
     };
   }
 
+  async function restoreCached(cached: CachedTree): Promise<boolean> {
+    const cache = options.blobCache;
+    if (cache === undefined || disposed || stopped || state.synced !== null) {
+      return false;
+    }
+    const readCachedBlob: BlobReader = async (blobSha) => {
+      const text = await cache.read(blobSha);
+      if (text === null) throw new CachedBlobMissingError();
+      return text;
+    };
+    let synced: SyncedState;
+    try {
+      synced = await buildSynced(cached.head, cached.listing, readCachedBlob);
+    } catch (error) {
+      if (
+        !(error instanceof CachedBlobMissingError) &&
+        !(error instanceof KeyChangedError)
+      ) {
+        console.error("Restoring the cached tree failed", error);
+      }
+      return false;
+    }
+    if (disposed || stopped || state.synced !== null) return false;
+    update((current) => ({ ...current, synced }));
+    return true;
+  }
+
   let loadedOrder: { readonly sha: string; readonly order: OrderIndex } | null =
     null;
 
-  async function loadOrder(listing: readonly TreeEntry[]): Promise<OrderIndex> {
+  async function loadOrder(
+    listing: readonly TreeEntry[],
+    readBlob: BlobReader,
+  ): Promise<OrderIndex> {
     const entry = findOrderEntry(listing);
     if (entry === undefined) return EMPTY_ORDER;
     if (loadedOrder?.sha === entry.sha) return loadedOrder.order;
-    const order = await decryptOrderIndex(
-      keyring,
-      await adapter.readBlob(entry.sha),
-    );
+    const order = await decryptOrderIndex(keyring, await readBlob(entry.sha));
     loadedOrder = { sha: entry.sha, order };
     return order;
   }
@@ -851,14 +902,14 @@ export function createSyncEngine(options: {
   let loadedTags: { readonly sha: string; readonly tags: TagIndex } | null =
     null;
 
-  async function loadTags(listing: readonly TreeEntry[]): Promise<TagIndex> {
+  async function loadTags(
+    listing: readonly TreeEntry[],
+    readBlob: BlobReader,
+  ): Promise<TagIndex> {
     const entry = findTagEntry(listing);
     if (entry === undefined) return EMPTY_TAGS;
     if (loadedTags?.sha === entry.sha) return loadedTags.tags;
-    const tags = await decryptTagIndex(
-      keyring,
-      await adapter.readBlob(entry.sha),
-    );
+    const tags = await decryptTagIndex(keyring, await readBlob(entry.sha));
     loadedTags = { sha: entry.sha, tags };
     return tags;
   }
@@ -870,14 +921,12 @@ export function createSyncEngine(options: {
 
   async function loadShares(
     listing: readonly TreeEntry[],
+    readBlob: BlobReader,
   ): Promise<ShareIndex> {
     const entry = findSharesFile(listing);
     if (entry === undefined) return EMPTY_SHARES;
     if (loadedShares?.sha === entry.sha) return loadedShares.shares;
-    const shares = await decryptShareIndex(
-      keyring,
-      await adapter.readBlob(entry.sha),
-    );
+    const shares = await decryptShareIndex(keyring, await readBlob(entry.sha));
     loadedShares = { sha: entry.sha, shares };
     return shares;
   }
@@ -889,14 +938,12 @@ export function createSyncEngine(options: {
 
   async function loadImages(
     listing: readonly TreeEntry[],
+    readBlob: BlobReader,
   ): Promise<ImageIndex> {
     const entry = findImageIndexEntry(listing);
     if (entry === undefined) return EMPTY_IMAGES;
     if (loadedImages?.sha === entry.sha) return loadedImages.images;
-    const images = await decryptImageIndex(
-      keyring,
-      await adapter.readBlob(entry.sha),
-    );
+    const images = await decryptImageIndex(keyring, await readBlob(entry.sha));
     loadedImages = { sha: entry.sha, images };
     return images;
   }
@@ -1855,6 +1902,11 @@ export function createSyncEngine(options: {
     const newConflicts = merged.conflicts.map((conflict) =>
       toHeldConflict(conflict, remote, mergedTree),
     );
+    const editedMeanwhile = await readSidesOfPendingEdits(
+      base,
+      remote,
+      merged.changeSet,
+    );
 
     let heldConflicts: readonly HeldConflict[] = [];
     update((current) => {
@@ -1874,7 +1926,36 @@ export function createSyncEngine(options: {
           touchesPath(change, conflict.path),
         );
         if (index === -1) {
-          toRebase.push(change);
+          const sides =
+            change.kind === "update-note"
+              ? editedMeanwhile.get(JSON.stringify(change.path))
+              : undefined;
+          if (change.kind !== "update-note" || sides === undefined) {
+            toRebase.push(change);
+            continue;
+          }
+          const result = mergeText(
+            sides.base,
+            change.content,
+            sides.theirs,
+            conflictLabels(null),
+          );
+          if (result.kind === "clean") {
+            toRebase.push({ ...change, content: result.text });
+          } else {
+            conflicts.push(
+              toHeldConflict(
+                {
+                  path: change.path,
+                  base: sides.base,
+                  mine: change.content,
+                  theirs: sides.theirs,
+                },
+                remote,
+                mergedTree,
+              ),
+            );
+          }
         } else if (
           change.kind === "update-note" ||
           change.kind === "create-note"
@@ -1946,8 +2027,67 @@ export function createSyncEngine(options: {
     return state.inFlight.length > 0;
   }
 
+  function noteChangedBetween(
+    before: NoteTree,
+    after: NoteTree,
+    path: NotePath,
+  ): boolean {
+    const was = findNode(before, path);
+    const is = findNode(after, path);
+    return (
+      was?.kind === "note" && is?.kind === "note" && was.blobSha !== is.blobSha
+    );
+  }
+
+  // Edits typed while a stale save merged were made on top of the in-flight
+  // version, so a note the remote also changed needs its own three-way merge
+  // against what the merge is about to commit. Reads both sides of every such
+  // note, again until no edit typed during the reads lacks them.
+  async function readSidesOfPendingEdits(
+    base: SyncedState,
+    remote: SyncedState,
+    mergedChanges: readonly Change[],
+  ): Promise<ReadonlyMap<string, { base: string; theirs: string }>> {
+    const sides = new Map<string, { base: string; theirs: string }>();
+    for (;;) {
+      const missing = state.pending.filter(
+        (change): change is Extract<Change, { kind: "update-note" }> =>
+          change.kind === "update-note" &&
+          !sides.has(JSON.stringify(change.path)) &&
+          noteChangedBetween(base.tree, remote.tree, change.path),
+      );
+      if (missing.length === 0) return sides;
+      for (const { path } of missing) {
+        sides.set(JSON.stringify(path), {
+          base:
+            lastContentOf(state.inFlight, path) ??
+            (await readNoteText(base.tree, path)),
+          theirs:
+            lastContentOf(mergedChanges, path) ??
+            (await readNoteText(remote.tree, path)),
+        });
+      }
+    }
+  }
+
+  function lastContentOf(
+    changes: readonly Change[],
+    path: NotePath,
+  ): string | undefined {
+    let content: string | undefined;
+    for (const change of changes) {
+      if (
+        (change.kind === "update-note" || change.kind === "create-note") &&
+        notePathEquals(change.path, path)
+      ) {
+        content = change.content;
+      }
+    }
+    return content;
+  }
+
   function toHeldConflict(
-    conflict: NoteConflict,
+    conflict: Pick<NoteConflict, "path" | "base" | "mine" | "theirs">,
     remote: SyncedState,
     mergedTree: WorkingTree,
   ): HeldConflict {
@@ -3088,6 +3228,7 @@ export function createSyncEngine(options: {
     getState: () => state,
     subscribe,
     refresh,
+    restoreCached,
     openNote,
     editNote,
     createNote: (parent, name) => create("create-note", parent, name),

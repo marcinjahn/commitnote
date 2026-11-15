@@ -10,6 +10,7 @@ import {
   flushPendingSaves,
   handOverRepo,
   onFakeForgeReady,
+  forgetCachedTree,
 } from "./helpers";
 import { closeSettings, openSettings } from "./helpers/settings";
 import { moveToTrash, openWelcome, treeItem, waitForSynced } from "./helpers/tree";
@@ -187,15 +188,10 @@ test.describe("last view", () => {
     );
   });
 
-  test("skips a trashed note and keeps the folders that remain", async ({
-    page,
-    openSecondDevice,
-  }) => {
-    await openNotes(page);
-    await enableOption(page);
-    await openIdeasWithJournalExpanded(page);
-    await expect.poll(() => storedNote(page)).not.toBeNull();
-
+  async function trashIdeasOnSecondDevice(
+    page: Page,
+    openSecondDevice: () => Promise<{ page: Page }>,
+  ): Promise<void> {
     const second = await openSecondDevice();
     await openNotes(second.page);
     await treeItem(second.page, "Projects").click();
@@ -211,9 +207,9 @@ test.describe("last view", () => {
       (controls, arg) => controls.adoptRepo(arg.key, arg.exported),
       { key: SAMPLE.key, exported: await fakeForge(second.page).exportRepo() },
     );
+  }
 
-    await revisit(page);
-
+  async function expectRemainingFoldersExpanded(page: Page): Promise<void> {
     await expect(treeItem(page, "Projects")).toHaveAttribute(
       "aria-expanded",
       "true",
@@ -223,9 +219,43 @@ test.describe("last view", () => {
       "true",
     );
     await expect(treeItem(page, "Roadmap")).toBeVisible();
+  }
+
+  test("skips a trashed note and keeps the folders that remain", async ({
+    page,
+    openSecondDevice,
+  }) => {
+    await openNotes(page);
+    await enableOption(page);
+    await openIdeasWithJournalExpanded(page);
+    await expect.poll(() => storedNote(page)).not.toBeNull();
+    await forgetCachedTree(page);
+    await trashIdeasOnSecondDevice(page, openSecondDevice);
+
+    await revisit(page);
+
+    await expectRemainingFoldersExpanded(page);
     await expect(page.getByRole("textbox", { name: "Note name" })).toHaveCount(
       0,
     );
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  });
+
+  test("a note reopened from the kept tree says it was trashed once the refresh lands", async ({
+    page,
+    openSecondDevice,
+  }) => {
+    await openNotes(page);
+    await enableOption(page);
+    await openIdeasWithJournalExpanded(page);
+    await expect.poll(() => storedNote(page)).not.toBeNull();
+    await trashIdeasOnSecondDevice(page, openSecondDevice);
+
+    await revisit(page);
+
+    await expect(page.getByText("This note was moved to trash.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Restore" })).toBeVisible();
+    await expectRemainingFoldersExpanded(page);
     await expect(page.getByRole("alert")).toHaveCount(0);
   });
 

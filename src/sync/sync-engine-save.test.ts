@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import type { NotePath } from "../changes/change";
 import { readDeviceTrailer } from "../changes/device-trailer";
 import { encodeInitializeMessage } from "../changes/encode-change-set";
 import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
@@ -50,19 +51,32 @@ interface Harness {
   readonly commits: CommitRequest[];
   // Makes every following commit wait until the returned release is called.
   gateCommits(): () => void;
-  // Makes every following blob read wait until the returned release is called.
-  gateReads(): () => void;
+  // Makes every following blob read, or only reads of the given blob, wait
+  // until the returned release is called.
+  gateReads(blobSha?: string): { reached: Promise<void>; release(): void };
+}
+
+interface ReadGate {
+  current: Promise<void> | null;
+  blobSha: string | null;
+  onReached: () => void;
 }
 
 function wrap(
   inner: FakeForgeAdapter,
   commits: CommitRequest[],
   gate: { current: Promise<void> | null },
-  readGate: { current: Promise<void> | null },
+  readGate: ReadGate,
 ): ForgeAdapter {
   return delegateAdapter(inner, {
     readBlob: async (sha) => {
-      if (readGate.current !== null) await readGate.current;
+      if (
+        readGate.current !== null &&
+        (readGate.blobSha === null || readGate.blobSha === sha)
+      ) {
+        readGate.onReached();
+        await readGate.current;
+      }
       return inner.readBlob(sha);
     },
     commit: async (request) => {
@@ -81,7 +95,11 @@ async function setup(
   const forge = fake ?? (await createSampleNotesRepoAdapter());
   const commits: CommitRequest[] = [];
   const gate: { current: Promise<void> | null } = { current: null };
-  const readGate: { current: Promise<void> | null } = { current: null };
+  const readGate: ReadGate = {
+    current: null,
+    blobSha: null,
+    onReached: () => {},
+  };
   const clock = createTestClock(1_000_000);
   const engine = createSyncEngine({
     adapter: wrap(forge, commits, gate, readGate),
@@ -105,15 +123,19 @@ async function setup(
       });
       return release;
     },
-    gateReads() {
+    gateReads(blobSha) {
       let release!: () => void;
+      readGate.blobSha = blobSha ?? null;
+      const reached = new Promise<void>((resolve) => {
+        readGate.onReached = resolve;
+      });
       readGate.current = new Promise((resolve) => {
         release = () => {
           readGate.current = null;
           resolve();
         };
       });
-      return release;
+      return { reached, release };
     },
   };
 }
@@ -468,6 +490,96 @@ describe("sync engine saves", () => {
     ).toEqual([expect.objectContaining({ kind: "conflict", path: WELCOME })]);
   });
 
+  describe("an edit typed while a stale save merges", () => {
+    // Holds the merge on reading the remote version of mergedPath, so the edit
+    // lands after the pending changes joined the in-flight ones.
+    async function typedDuringMerge(
+      h: Harness,
+      mergedPath: NotePath,
+      edit: () => void,
+    ): Promise<void> {
+      const node = findNode(await mainTree(h.fake), mergedPath);
+      if (node?.kind !== "note") throw new Error("expected a note");
+      const gate = h.gateReads(node.blobSha);
+      const saving = h.engine.flush();
+      await gate.reached;
+      edit();
+      gate.release();
+      await saving;
+      await h.engine.flush();
+      await waitIdle(h.engine);
+    }
+
+    it("keeps the remote change of the note being merged", async () => {
+      const h = await setup();
+      const original = await welcomeText(h.fake);
+      await pushRemote(h.fake, [
+        {
+          kind: "update-note",
+          path: WELCOME,
+          content: `${original}\nRemote line\n`,
+        },
+      ]);
+      h.engine.editNote(WELCOME, `Local ${original}`);
+
+      await typedDuringMerge(h, WELCOME, () =>
+        h.engine.editNote(WELCOME, `Local line\n${original}`),
+      );
+
+      const text = await welcomeText(h.fake);
+      expect(text).toContain("Local line\n# Welcome");
+      expect(text).toContain("Remote line");
+      expect(h.engine.getState().conflicts).toEqual([]);
+    });
+
+    it("keeps the remote change of a note only the remote changed", async () => {
+      const h = await setup();
+      const original = await welcomeText(h.fake);
+      const zazolc = (await mainContent(h.fake, ZAZOLC)) ?? "";
+      await pushRemote(h.fake, [
+        {
+          kind: "update-note",
+          path: WELCOME,
+          content: `${original}\nRemote line\n`,
+        },
+        { kind: "update-note", path: ZAZOLC, content: `${zazolc}\nRemote` },
+      ]);
+      h.engine.editNote(ZAZOLC, `Local ${zazolc}`);
+
+      await typedDuringMerge(h, ZAZOLC, () =>
+        h.engine.editNote(WELCOME, `Local line\n${original}`),
+      );
+
+      const text = await welcomeText(h.fake);
+      expect(text).toContain("Local line\n# Welcome");
+      expect(text).toContain("Remote line");
+    });
+
+    it("holds an overlapping edit back as a conflict", async () => {
+      const h = await setup();
+      const original = await welcomeText(h.fake);
+      const theirs = replaceLine(original, "# Welcome", "# Welcome (theirs)");
+      const mine = replaceLine(original, "# Welcome", "# Welcome (mine)");
+      await pushRemote(h.fake, [
+        { kind: "update-note", path: WELCOME, content: theirs },
+      ]);
+      h.engine.editNote(WELCOME, `${original}\nLocal line\n`);
+
+      await typedDuringMerge(h, WELCOME, () =>
+        h.engine.editNote(WELCOME, `${mine}\nLocal line\n`),
+      );
+
+      expect(await welcomeText(h.fake)).toBe(`${theirs}\nLocal line\n`);
+      await expect
+        .poll(() => h.engine.getState().conflicts[0]?.theirs)
+        .toBe(`${theirs}\nLocal line\n`);
+      const [conflict] = h.engine.getState().conflicts;
+      expect(conflict?.path).toEqual(WELCOME);
+      expect(conflict?.mine).toBe(`${mine}\nLocal line\n`);
+      expect(h.engine.getState().pending).toEqual([]);
+    });
+  });
+
   describe("an empty merged change set", () => {
     async function expectNothingCommitted(
       h: Harness,
@@ -797,7 +909,7 @@ describe("sync engine saves", () => {
           content: replaceLine(theirs, "- First bullet", "- First!"),
         },
       ]);
-      const release = h.gateReads();
+      const { release } = h.gateReads();
 
       const refreshing = h.engine.refresh();
       await vi.waitFor(() => {

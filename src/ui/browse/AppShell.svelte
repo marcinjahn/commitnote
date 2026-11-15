@@ -15,6 +15,7 @@
     autoRefreshFailureReport,
     INITIAL_AUTO_REFRESH_FAILURE_STATE,
   manualRefreshFailureState,
+    startupRefreshFailureReport,
   } from "./auto-refresh-failure-report";
   import { MediaQuery } from "svelte/reactivity";
   import type { NotePath } from "../../changes/change";
@@ -288,6 +289,7 @@
     repoKey: string;
     sessionRemembered: boolean;
     initialMessage?: Pick<ToastMessage, "tone" | "text"> | null;
+    startupRefresh?: Promise<void> | null;
     earlyDraft: EarlyDraft | null;
     earlyDraftImages: readonly PendingImage[];
     onEarlyDraftHandedOff: () => void;
@@ -326,6 +328,7 @@
     repoKey,
     sessionRemembered,
     initialMessage = null,
+    startupRefresh = null,
     earlyDraft,
     earlyDraftImages,
     onEarlyDraftHandedOff,
@@ -1734,6 +1737,22 @@
       }
     }),
   );
+
+  $effect(() => {
+    if (startupRefresh === null) return;
+    let active = true;
+    void startupRefresh.then(() => {
+      if (!active) return;
+      const { state, action } = startupRefreshFailureReport(engine.getState());
+      failureReport = state;
+      if (action.kind === "show") {
+        showRefreshError(describeSyncError(action.error, forgeName));
+      }
+    });
+    return () => {
+      active = false;
+    };
+  });
 
   async function handleRefresh(): Promise<boolean> {
     if (manualRefreshing) return false;

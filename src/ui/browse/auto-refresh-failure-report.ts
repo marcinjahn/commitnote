@@ -1,4 +1,4 @@
-import type { SyncError } from "../../sync/sync-engine";
+import type { SyncEngineState, SyncError } from "../../sync/sync-engine";
 
 export interface AutoRefreshFailureState {
   readonly shownKind: SyncError["kind"] | null;
@@ -44,6 +44,27 @@ export function autoRefreshFailureReport(
   }
   return {
     state: { shownKind: error.kind, transientFailures },
+    action: { kind: "show", error },
+  };
+}
+
+/**
+ * The background refresh after starting from cached notes reports a failure
+ * at once, since the notes shown may be out of date. Offline is already shown.
+ */
+export function startupRefreshFailureReport(
+  engineState: Pick<SyncEngineState, "refresh" | "online">,
+): { state: AutoRefreshFailureState; action: AutoRefreshFailureAction } {
+  const error = engineState.refresh.lastError;
+  const { online } = engineState;
+  if (error === null || !online) {
+    return {
+      state: INITIAL_AUTO_REFRESH_FAILURE_STATE,
+      action: { kind: "none" },
+    };
+  }
+  return {
+    state: manualRefreshFailureState(error),
     action: { kind: "show", error },
   };
 }

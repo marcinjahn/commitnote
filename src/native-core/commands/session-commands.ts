@@ -2,6 +2,7 @@ import { removeLastView } from "../../app/last-view";
 import { flushBeforeLogOut } from "../../app/log-out";
 import { resumeRemembered } from "../../app/resume-remembered";
 import { repoKeyOf } from "../../blob-cache/blob-cache";
+import { removeCachedTree } from "../../blob-cache/cached-tree";
 import type { ForgeId } from "../../forge/repo-coordinates";
 import { describeLoginStep } from "../../ui/login/login-messages";
 import { describeLogoutUnsaved } from "../../ui/session/session-messages";
@@ -49,14 +50,24 @@ export function createSessionCommands(context: {
         onSessionLoaded: async (session) => {
           loaded.forge = session.coordinates.forge;
         },
+        startFromCache: (session, adapter) =>
+          app.startFromCache({ session, adapter }),
         async clearAfterFailure(session) {
-          if (session !== null) await app.store.clear();
+          if (session !== null) {
+            await app.store.clear();
+            removeCachedTree(
+              repoKeyOf(session.coordinates),
+              host.deviceSettings,
+            );
+          }
           await app.blobStore.deleteAll();
         },
       });
       switch (result.kind) {
         case "none":
           return { kind: "none" };
+        case "startedFromCache":
+          return { kind: "resumed" };
         case "loggedIn":
           await app.start({
             session: result.session,
@@ -99,6 +110,10 @@ export function createSessionCommands(context: {
         drafts.discard();
         await app.stop({ clearBlobCache: true });
         removeLastView(
+          repoKeyOf(running.session.coordinates),
+          host.deviceSettings,
+        );
+        removeCachedTree(
           repoKeyOf(running.session.coordinates),
           host.deviceSettings,
         );

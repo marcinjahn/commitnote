@@ -13,6 +13,7 @@ import {
   autoRefreshFailureReport,
   INITIAL_AUTO_REFRESH_FAILURE_STATE,
   manualRefreshFailureState,
+  startupRefreshFailureReport,
   type AutoRefreshFailureState,
 } from "../ui/browse/auto-refresh-failure-report";
 import {
@@ -293,6 +294,19 @@ export function createEngineEvents(options: {
         showRefreshError(describeSyncError(action.error, app.activeForgeName()));
       } else if (action.kind === "clear") {
         clearRefreshNotice();
+      }
+    });
+    const hookedAutoRefresh = running.autoRefresh;
+    void running.startupRefresh?.then(() => {
+      if (hooked !== hookedAutoRefresh) return;
+      const { state, action } = startupRefreshFailureReport(
+        running.engine.getState(),
+      );
+      failureReport = state;
+      if (action.kind === "show") {
+        showRefreshError(
+          describeSyncError(action.error, app.activeForgeName()),
+        );
       }
     });
   }

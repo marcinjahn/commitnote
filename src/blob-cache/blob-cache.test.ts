@@ -49,6 +49,37 @@ describe("blob cache", () => {
     expect(await store.get(OTHER_REPO, "elsewhere")).not.toBeNull();
   });
 
+  it("keeps the retained blob through purges", async () => {
+    const { store, cache } = newCache();
+    await store.put(REPO, "retained", "v1:a", 1000);
+    await store.put(REPO, "stale", "v1:b", 1000);
+
+    cache.retain("retained");
+    await cache.purge(new Set(), 2000);
+
+    expect(await store.get(REPO, "retained")).not.toBeNull();
+    expect(await store.get(REPO, "stale")).toBeNull();
+  });
+
+  it("deletes the previously kept blob and keeps the new one through purges", async () => {
+    const { store, cache } = newCache();
+
+    expect(await cache.keep("first", "v1:a")).toBe(true);
+    expect(await cache.keep("second", "v1:b")).toBe(true);
+    await cache.purge(new Set(), Number.MAX_SAFE_INTEGER);
+
+    expect(await store.get(REPO, "first")).toBeNull();
+    expect(await store.get(REPO, "second")).not.toBeNull();
+  });
+
+  it("keeps nothing once disposed", async () => {
+    const { store, cache } = newCache();
+    await cache.dispose();
+
+    expect(await cache.keep("late", "v1:a")).toBe(false);
+    expect(await store.get(REPO, "late")).toBeNull();
+  });
+
   it("round-trips bytes, including commit fills", async () => {
     const { cache } = newCache();
     const bytes = new Uint8Array([9, 8, 7]);

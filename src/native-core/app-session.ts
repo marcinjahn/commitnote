@@ -2,6 +2,7 @@ import type { BlobStoreProvider } from "../app/blob-cache-lifecycle";
 import type { PlatformPorts } from "../app/platform-ports";
 import {
   startApp,
+  startAppFromCache,
   stopApp,
   type RunningApp,
   type StartAppDeps,
@@ -74,6 +75,11 @@ export interface AppSession {
     readonly knownHead?: string;
     readonly purgeBlobCache?: boolean;
   }): Promise<void>;
+  /** Resolves false, starting nothing, when no usable cached tree exists. */
+  startFromCache(input: {
+    readonly session: Session;
+    readonly adapter: ForgeAdapter;
+  }): Promise<boolean>;
   stop(options: { readonly clearBlobCache: boolean }): Promise<void>;
   current(): NativeRunningApp | null;
   lastView(): LastViewStore | null;
@@ -208,6 +214,7 @@ export function createAppSession(options: {
     deviceName,
     requestPersistentStorageOnResume: false,
     blobStore,
+    deviceStorage: host.deviceSettings,
     installLifecycle: (handlers) => lifecycle.install(handlers),
     createServices: (context) =>
       createNativeServices(context, host, ports.navigation.shareLinkBase()),
@@ -285,6 +292,23 @@ export function createAppSession(options: {
         return;
       }
       running = app;
+    },
+    async startFromCache(input) {
+      if (disposed) return false;
+      await stop({ clearBlobCache: false });
+      activeForge = input.session.coordinates.forge;
+      const app = await startAppFromCache(deps, {
+        session: input.session,
+        adapter: input.adapter,
+        purgeBlobCache: false,
+      });
+      if (app === null) return false;
+      if (disposed) {
+        await stopApp(app, { clearBlobCache: false });
+        return true;
+      }
+      running = app;
+      return true;
     },
     stop,
     current: () => running,

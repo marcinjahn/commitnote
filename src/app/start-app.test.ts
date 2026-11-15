@@ -1,16 +1,19 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { repoKeyOf } from "../blob-cache/blob-cache";
+import { cachedTreeStorageKey } from "../blob-cache/cached-tree";
 import { createMemoryBlobStoreProvider } from "../blob-cache/testing/memory-blob-store";
 import { createRepoConfig, type Keyring } from "../crypto/keyring";
 import { sharedMemoizedArgon2id } from "../crypto/testing/shared-argon2id";
+import { ForgeError } from "../forge/errors";
 import { delegateAdapter } from "../forge/fake/delegating-adapter";
 import type { ForgeAdapter } from "../forge/forge-adapter";
 import type { RepoCoordinates } from "../forge/repo-coordinates";
-import type { SessionStore } from "../session/session-store";
+import type { SessionStore, StorageLike } from "../session/session-store";
 import type { Session } from "../session/session";
 import { createRateBudget } from "../sync/rate-budget";
 import type { SyncError } from "../sync/sync-engine";
 import { createTestClock } from "../sync/testing/test-clock";
+import { CACHED_TREE_SAVE_DELAY_MS } from "../sync/tuning";
 import {
   sampleNotesRepoConfig,
   sampleNotesRepoKeyring,
@@ -19,6 +22,7 @@ import { createSampleNotesRepoAdapter } from "../testing/sample-notes-repo/seed-
 import type { PlatformPorts } from "./platform-ports";
 import {
   startApp,
+  startAppFromCache,
   stopApp,
   type StartAppDeps,
   type StartAppInput,
@@ -96,6 +100,19 @@ function createFakePorts(): PlatformPorts & {
   };
 }
 
+class MemoryStorage implements StorageLike {
+  readonly values = new Map<string, string>();
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
+}
+
 function createHarness() {
   const clock = createTestClock(1_000_000);
   const blobStore = createMemoryBlobStoreProvider();
@@ -105,6 +122,7 @@ function createHarness() {
   const uninstallLifecycle = vi.fn();
   const disposeAfterStart = vi.fn();
   const disposeServices = vi.fn();
+  const deviceStorage = new MemoryStorage();
   const deps: StartAppDeps<{ readonly label: string }> = {
     store: createMemorySessionStore(),
     ports: createFakePorts(),
@@ -113,6 +131,7 @@ function createHarness() {
     deviceName: () => "Test device",
     requestPersistentStorageOnResume: false,
     blobStore,
+    deviceStorage,
     installLifecycle: () => uninstallLifecycle,
     createServices: () => ({ label: "services" }),
     disposeServices,
@@ -122,6 +141,8 @@ function createHarness() {
   };
   return {
     deps,
+    clock,
+    deviceStorage,
     blobStore,
     refreshStates,
     keyChanges,
@@ -245,5 +266,89 @@ describe("startApp", () => {
     expect(h.blobStore.opened).toBe(0);
     expect(h.blobStore.deletedAll).toBe(1);
     await stopApp(running, { clearBlobCache: false });
+  });
+});
+
+describe("startAppFromCache", () => {
+  async function startedOnce(h: ReturnType<typeof createHarness>) {
+    const fake = await createSampleNotesRepoAdapter();
+    const running = await startApp(h.deps, await inputFor({ adapter: fake }));
+    h.clock.advance(CACHED_TREE_SAVE_DELAY_MS);
+    await vi.waitFor(() => {
+      expect(
+        h.deviceStorage.getItem(cachedTreeStorageKey(repoKeyOf(COORDINATES))),
+      ).not.toBeNull();
+    });
+    await stopApp(running, { clearBlobCache: false });
+    return fake;
+  }
+
+  it("starts nothing without a cached tree", async () => {
+    const h = createHarness();
+    const getHead = vi.fn(() => Promise.resolve("unused"));
+    const fake = await createSampleNotesRepoAdapter();
+
+    const running = await startAppFromCache(h.deps, {
+      session: sessionWith(keyring),
+      adapter: delegateAdapter(fake, { getHead }),
+      purgeBlobCache: false,
+    });
+
+    expect(running).toBeNull();
+    expect(getHead).not.toHaveBeenCalled();
+  });
+
+  it("shows the cached tree before the forge answers, then refreshes and runs housekeeping", async () => {
+    const h = createHarness();
+    const fake = await startedOnce(h);
+    let releaseHead = () => undefined as void;
+    const headHeld = new Promise<void>((resolve) => {
+      releaseHead = resolve;
+    });
+    const sweepAbandoned = vi.fn(() => Promise.resolve());
+    const adapter = delegateAdapter(fake, {
+      getHead: async () => {
+        await headHeld;
+        return fake.getHead();
+      },
+      sweepAbandoned,
+    });
+
+    const running = await startAppFromCache(h.deps, {
+      session: sessionWith(keyring),
+      adapter,
+      purgeBlobCache: false,
+    });
+
+    expect(running?.engine.getState().workingTree).not.toBeNull();
+    expect(running?.startupRefresh).not.toBeNull();
+    expect(sweepAbandoned).not.toHaveBeenCalled();
+
+    releaseHead();
+    await running?.startupRefresh;
+    expect(running?.engine.getState().refresh.lastError).toBeNull();
+    expect(sweepAbandoned).toHaveBeenCalledOnce();
+    await stopApp(running!, { clearBlobCache: false });
+  });
+
+  it("keeps the cached tree and skips housekeeping when the background refresh fails", async () => {
+    const h = createHarness();
+    const fake = await startedOnce(h);
+    const sweepAbandoned = vi.fn(() => Promise.resolve());
+
+    const running = await startAppFromCache(h.deps, {
+      session: sessionWith(keyring),
+      adapter: delegateAdapter(fake, {
+        getHead: () => Promise.reject(new ForgeError("Network")),
+        sweepAbandoned,
+      }),
+      purgeBlobCache: false,
+    });
+    await running?.startupRefresh;
+
+    expect(running?.engine.getState().workingTree).not.toBeNull();
+    expect(running?.engine.getState().refresh.lastError).not.toBeNull();
+    expect(sweepAbandoned).not.toHaveBeenCalled();
+    await stopApp(running!, { clearBlobCache: false });
   });
 });

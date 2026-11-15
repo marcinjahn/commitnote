@@ -5,10 +5,14 @@ import { createMemoryBlobStoreProvider } from "../blob-cache/testing/memory-blob
 import { gitBlobSha } from "../forge/git-blob-sha";
 import type { RepoCoordinates } from "../forge/repo-coordinates";
 import type { IndexStatus } from "../search/content-indexer";
+import type { SyncEngineState } from "../sync/sync-engine";
+import { createTestClock } from "../sync/testing/test-clock";
+import { CACHED_TREE_SAVE_DELAY_MS } from "../sync/tuning";
 import {
   openSessionBlobCache,
   purgeBlobCacheNow,
   purgeBlobCacheWhenIndexed,
+  saveCachedTreeOnChange,
 } from "./blob-cache-lifecycle";
 
 const COORDINATES: RepoCoordinates = {
@@ -213,5 +217,86 @@ describe("purgeBlobCacheWhenIndexed", () => {
     indexer.emit("complete");
 
     expect(cache.purge).not.toHaveBeenCalled();
+  });
+});
+
+describe("saveCachedTreeOnChange", () => {
+  function setup(savedHead: string | null) {
+    const listeners = new Set<(state: SyncEngineState) => void>();
+    const engine = {
+      subscribe(listener: (state: SyncEngineState) => void) {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    };
+    const emit = (head: string | null) => {
+      const state = {
+        synced: head === null ? null : { head, listing: [] },
+      } as unknown as SyncEngineState;
+      for (const listener of listeners) listener(state);
+    };
+    const save = vi.fn(() => Promise.resolve());
+    const clock = createTestClock(0);
+    const stop = saveCachedTreeOnChange({
+      engine,
+      store: { save },
+      clock,
+      savedHead,
+    });
+    return { emit, save, clock, stop, listeners };
+  }
+
+  it("saves the latest head once the changes settle", () => {
+    const h = setup(null);
+    h.emit("c1");
+    h.clock.advance(CACHED_TREE_SAVE_DELAY_MS - 1);
+    h.emit("c2");
+    h.clock.advance(CACHED_TREE_SAVE_DELAY_MS - 1);
+    expect(h.save).not.toHaveBeenCalled();
+
+    h.clock.advance(1);
+    expect(h.save).toHaveBeenCalledOnce();
+    expect(h.save).toHaveBeenCalledWith(
+      { head: "c2", listing: [] },
+      expect.any(Function),
+    );
+  });
+
+  it("skips the head it already saved or started from", () => {
+    const h = setup("c1");
+    h.emit(null);
+    h.emit("c1");
+    h.clock.advance(CACHED_TREE_SAVE_DELAY_MS);
+    expect(h.save).not.toHaveBeenCalled();
+
+    h.emit("c2");
+    h.clock.advance(CACHED_TREE_SAVE_DELAY_MS);
+    h.emit("c2");
+    h.clock.advance(CACHED_TREE_SAVE_DELAY_MS);
+    expect(h.save).toHaveBeenCalledOnce();
+  });
+
+  it("saves nothing after stop", () => {
+    const h = setup(null);
+    h.emit("c1");
+    h.stop();
+    h.clock.advance(CACHED_TREE_SAVE_DELAY_MS);
+    expect(h.save).not.toHaveBeenCalled();
+    expect(h.listeners.size).toBe(0);
+  });
+
+  it("cancels a save still running when stopped", () => {
+    const h = setup(null);
+    h.emit("c1");
+    h.clock.advance(CACHED_TREE_SAVE_DELAY_MS);
+    h.stop();
+
+    const [, cancelled] = h.save.mock.lastCall as unknown as [
+      unknown,
+      () => boolean,
+    ];
+    expect(cancelled()).toBe(true);
   });
 });

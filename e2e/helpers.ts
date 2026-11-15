@@ -338,6 +338,30 @@ export async function blobCacheEntryCount(page: Page): Promise<number> {
   );
 }
 
+const CACHED_TREE_KEY_PREFIX = "commitnote.cachedTree.";
+
+/** Waits until the app keeps the loaded tree for its next start. */
+export async function waitForCachedTree(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (prefix) => Object.keys(localStorage).some((k) => k.startsWith(prefix)),
+        CACHED_TREE_KEY_PREFIX,
+      ),
+    )
+    .toBe(true);
+}
+
+/** Makes the next start load from the forge, as on a device that has not kept a tree yet. */
+export async function forgetCachedTree(page: Page): Promise<void> {
+  await waitForCachedTree(page);
+  await page.evaluate((prefix) => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith(prefix)) localStorage.removeItem(key);
+    }
+  }, CACHED_TREE_KEY_PREFIX);
+}
+
 export async function handOverRepo(
   from: Page,
   to: Page,

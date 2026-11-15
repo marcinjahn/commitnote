@@ -14,11 +14,18 @@ export interface ResumeRememberedDeps {
   readonly loginDeps: LoginDependencies;
   readonly onStep?: (step: LoginStep) => void;
   onSessionLoaded?(session: Session): Promise<void>;
+  /**
+   * Starts the app from the notes cached on this device, leaving the forge
+   * checks to the background refresh. Resolves false when nothing usable is
+   * cached, and the session is then checked with the forge first.
+   */
+  startFromCache?(session: Session, adapter: ForgeAdapter): Promise<boolean>;
   clearAfterFailure(session: Session | null): Promise<void>;
 }
 
 export type ResumeRememberedResult =
   | { readonly kind: "none" }
+  | { readonly kind: "startedFromCache" }
   | {
       readonly kind: "loggedIn";
       readonly session: Session;
@@ -40,6 +47,14 @@ export async function resumeRemembered(
     return { kind: "none" };
   }
   await deps.onSessionLoaded?.(session);
+  if (deps.startFromCache !== undefined) {
+    const adapter = deps.loginDeps.createAdapter(session.coordinates, {
+      accessToken: session.accessToken,
+    });
+    if (await deps.startFromCache(session, adapter)) {
+      return { kind: "startedFromCache" };
+    }
+  }
   const result = await resumeSession(session, deps.loginDeps, deps.onStep);
   if (result.kind === "loggedIn") return result;
   const transient = isTransient(result.error);

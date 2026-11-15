@@ -15,6 +15,13 @@ export interface BlobCache {
   fill(blobSha: string, text: string): void;
   fillBytes(blobSha: string, bytes: Uint8Array): void;
   fillCommit(changes: readonly CommitFileChange[]): void;
+  /** Keeps one blob through purges although no listing references it. */
+  retain(blobSha: string | null): void;
+  /**
+   * Stores a blob, keeps it through purges in place of the previously kept
+   * one and deletes that one. Resolves to whether the blob was stored.
+   */
+  keep(blobSha: string, text: string): Promise<boolean>;
   purge(referenced: ReadonlySet<string>, snapshot: number): Promise<void>;
   dispose(): Promise<void>;
   clear(): Promise<void>;
@@ -38,6 +45,7 @@ export function createBlobCache(options: {
   const hashing = new Set<Promise<void>>();
   const inFlight = new Set<Promise<void>>();
   let purging: Promise<void> | null = null;
+  let retained: string | null = null;
   let closing = false;
   let shutdownPromise: Promise<void> | null = null;
 
@@ -154,10 +162,31 @@ export function createBlobCache(options: {
       }
     },
 
+    retain(blobSha) {
+      retained = blobSha;
+    },
+
+    async keep(blobSha, text) {
+      if (closing) return false;
+      const write = store.put(repoKey, blobSha, text, clock.now()).then(
+        () => true,
+        () => false,
+      );
+      track(write.then(() => undefined));
+      if (!(await write)) return false;
+      const previous = retained;
+      retained = blobSha;
+      if (previous !== null && previous !== blobSha && !closing) {
+        track(store.delete(repoKey, previous).catch(() => undefined));
+      }
+      return true;
+    },
+
     purge(referenced, snapshot) {
       if (closing) return Promise.resolve();
       if (purging) return purging;
       const keep = new Set(referenced);
+      if (retained !== null) keep.add(retained);
       for (const blobSha of pendingFills.keys()) keep.add(blobSha);
       const run: Promise<void> = store
         .deleteUnreferenced(repoKey, keep, snapshot)

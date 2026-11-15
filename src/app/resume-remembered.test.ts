@@ -23,7 +23,14 @@ function rememberedSession(): Session {
   };
 }
 
-function setup(session: Session | null, adapter: ForgeAdapter) {
+function setup(
+  session: Session | null,
+  adapter: ForgeAdapter,
+  startFromCache?: (
+    session: Session,
+    adapter: ForgeAdapter,
+  ) => Promise<boolean>,
+) {
   const clearAfterFailure = vi.fn((_session: Session | null) =>
     Promise.resolve(),
   );
@@ -33,6 +40,7 @@ function setup(session: Session | null, adapter: ForgeAdapter) {
       store: { loadRememberedSession: () => Promise.resolve(session) },
       loginDeps: { createAdapter: () => adapter },
       onSessionLoaded,
+      startFromCache,
       clearAfterFailure,
     });
   return { run, clearAfterFailure, onSessionLoaded };
@@ -91,5 +99,27 @@ describe("resumeRemembered", () => {
       transient: false,
     });
     expect(h.clearAfterFailure).toHaveBeenCalledExactlyOnceWith(session);
+  });
+
+  it("starts from the cache without checking the session with the forge", async () => {
+    const session = rememberedSession();
+    const inspect = vi.fn(() => Promise.reject(new ForgeError("Network")));
+    const adapter = delegateAdapter(await createSampleNotesRepoAdapter(), {
+      inspect,
+    });
+    const startFromCache = vi.fn(() => Promise.resolve(true));
+    const h = setup(session, adapter, startFromCache);
+
+    expect(await h.run()).toEqual({ kind: "startedFromCache" });
+    expect(startFromCache).toHaveBeenCalledExactlyOnceWith(session, adapter);
+    expect(inspect).not.toHaveBeenCalled();
+    expect(h.clearAfterFailure).not.toHaveBeenCalled();
+  });
+
+  it("checks the session with the forge when nothing is cached", async () => {
+    const adapter = await createSampleNotesRepoAdapter();
+    const h = setup(rememberedSession(), adapter, () => Promise.resolve(false));
+
+    expect(await h.run()).toMatchObject({ kind: "loggedIn", adapter });
   });
 });

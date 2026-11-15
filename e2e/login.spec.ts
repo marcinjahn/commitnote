@@ -16,6 +16,7 @@ import {
   onFakeForgeReady,
   holdOnLoad,
   fakeForge,
+  forgetCachedTree,
 } from "./helpers";
 
 const EMPTY_REPO = "https://github.com/sample/empty";
@@ -336,6 +337,11 @@ async function rememberSession(page: Page): Promise<void> {
   await openNotes(page, { via: "login", rememberMe: true });
 }
 
+async function rememberSessionWithoutKeptTree(page: Page): Promise<void> {
+  await rememberSession(page);
+  await forgetCachedTree(page);
+}
+
 test("a remembered session keeps the loading screen until the notes load", async ({
   page,
 }) => {
@@ -362,7 +368,7 @@ test("a remembered session keeps the loading screen until the notes load", async
 test("a held operation keeps the loading screen until it is released", async ({
   page,
 }) => {
-  await rememberSession(page);
+  await rememberSessionWithoutKeptTree(page);
   await holdOnLoad(page, "listTree");
 
   await page.reload();
@@ -375,7 +381,7 @@ test("a held operation keeps the loading screen until it is released", async ({
 test("a remembered session whose notes fail to load shows the error", async ({
   page,
 }) => {
-  await rememberSession(page);
+  await rememberSessionWithoutKeptTree(page);
   await failNextOnLoad(page, "sample/notes", "listTree", "Network");
 
   await page.reload();
@@ -391,7 +397,7 @@ test("a remembered session whose notes fail to load shows the error", async ({
 test("a remembered session that cannot reach GitHub stays on the loading screen until tried again", async ({
   page,
 }) => {
-  await rememberSession(page);
+  await rememberSessionWithoutKeptTree(page);
   await failNextOnLoad(page, "sample/notes", "inspect", "Network");
 
   await page.reload();
@@ -409,7 +415,7 @@ test("a remembered session that cannot reach GitHub stays on the loading screen 
 test("a remembered session that cannot reach GitHub can log in instead", async ({
   page,
 }) => {
-  await rememberSession(page);
+  await rememberSessionWithoutKeptTree(page);
   await failNextOnLoad(page, "sample/notes", "inspect", "Network");
 
   await page.reload();

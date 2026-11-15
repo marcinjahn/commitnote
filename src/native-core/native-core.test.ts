@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cachedTreeStorageKey } from "../blob-cache/cached-tree";
 import type { ForgeRegistry } from "../forge/registry";
-import { AUTO_REFRESH_THROTTLE_MS } from "../sync/tuning";
+import {
+  AUTO_REFRESH_THROTTLE_MS,
+  CACHED_TREE_SAVE_DELAY_MS,
+} from "../sync/tuning";
 import {
   FAKE_FORGE_INVALID_TOKEN,
   FAKE_FORGE_NO_REPOSITORIES_TOKEN,
@@ -426,6 +430,45 @@ describe("session commands", () => {
     expect(await call(startCore(), "session.resume")).toEqual({
       kind: "resumed",
     });
+  });
+
+  it("resumes from the cached tree while the forge is unreachable and reports the failed refresh", async () => {
+    const first = startCore();
+    await logIn(first);
+    clock.advance(CACHED_TREE_SAVE_DELAY_MS);
+    await vi.waitFor(() => {
+      expect(
+        host.deviceSettings.getItem(
+          cachedTreeStorageKey("github:sample/notes"),
+        ),
+      ).not.toBeNull();
+    });
+    first.stop();
+
+    controls.failNext("sample/notes", "getHead", "Server");
+    const core = startCore();
+    expect(await call(core, "session.resume")).toEqual({ kind: "resumed" });
+    const { tree } = await call(core, "tree.get");
+    expect(tree).not.toEqual([]);
+    await vi.waitFor(() => {
+      expect(
+        events("notice").filter(
+          (payload) => (payload as { id: string }).id === "refresh",
+        ),
+      ).toMatchObject([{ id: "refresh", tone: "error" }]);
+    });
+  });
+
+  it("forgets the cached tree on log out", async () => {
+    const core = startCore();
+    await logIn(core);
+    clock.advance(CACHED_TREE_SAVE_DELAY_MS);
+    const key = cachedTreeStorageKey("github:sample/notes");
+    await vi.waitFor(() => {
+      expect(host.deviceSettings.getItem(key)).not.toBeNull();
+    });
+    await call(core, "session.logout", { anyway: true });
+    expect(host.deviceSettings.getItem(key)).toBeNull();
   });
 
   it("clears the remembered session when resuming fails for good", async () => {

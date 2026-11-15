@@ -16,6 +16,7 @@ import { flushBeforeLogOut } from "./app/log-out";
   import { browserSessionStorage } from "./app/update-resume";
   import {
     startApp as startRunningApp,
+    startAppFromCache as startRunningAppFromCache,
     stopApp as stopRunningApp,
     type AppServicesContext,
     type RunningApp,
@@ -24,6 +25,7 @@ import { flushBeforeLogOut } from "./app/log-out";
   import { resumeRemembered as resumeRememberedSession } from "./app/resume-remembered";
   import { deleteBlobCacheDatabase } from "./blob-cache/blob-store";
   import { repoKeyOf } from "./blob-cache/blob-cache";
+  import { removeCachedTree } from "./blob-cache/cached-tree";
   import {
     createEarlyDraftStore,
     deleteEarlyDraftDatabase,
@@ -434,6 +436,28 @@ import { flushBeforeLogOut } from "./app/log-out";
       ...(knownHead === undefined ? {} : { knownHead }),
     });
     if (reloading) return;
+    enterApp(running, initialMessage);
+  }
+
+  async function startAppFromCache(
+    session: Session,
+    adapter: ForgeAdapter,
+  ): Promise<boolean> {
+    const running = await startRunningAppFromCache(appDeps, {
+      session,
+      adapter,
+      purgeBlobCache: false,
+    });
+    if (running === null) return false;
+    if (!reloading) enterApp(running, null);
+    return true;
+  }
+
+  function enterApp(
+    running: RunningApp<WebServices>,
+    initialMessage: Pick<ToastMessage, "tone" | "text"> | null,
+  ): void {
+    const { session } = running;
     phase = {
       kind: "app",
       running,
@@ -489,6 +513,7 @@ import { flushBeforeLogOut } from "./app/log-out";
       await discardEarlyDraftData();
     }
     removeLastView(repoKeyOf(session.coordinates));
+    removeCachedTree(repoKeyOf(session.coordinates));
     logout = null;
     platformPorts.navigation.clearNoteFragment();
     showLogin(null);
@@ -919,6 +944,7 @@ import { flushBeforeLogOut } from "./app/log-out";
     if (session !== null) {
       await store.clear();
       removeLastView(repoKeyOf(session.coordinates));
+      removeCachedTree(repoKeyOf(session.coordinates));
     }
     await deleteBlobCacheDatabase();
     await discardEarlyDraftData();
@@ -932,12 +958,15 @@ import { flushBeforeLogOut } from "./app/log-out";
         store,
         loginDeps: loginDeps(),
         onSessionLoaded: loadEarlyDraftFor,
+        startFromCache: startAppFromCache,
         clearAfterFailure: clearRememberedData,
       });
       if (reloading) return;
       switch (result.kind) {
         case "none":
           leaveToLogin(null);
+          return;
+        case "startedFromCache":
           return;
         case "loggedIn":
           await startApp(
@@ -1107,6 +1136,7 @@ import { flushBeforeLogOut } from "./app/log-out";
       repoKey={repoKeyOf(phase.session.coordinates)}
       sessionRemembered={phase.remembered}
       initialMessage={phase.initialMessage}
+      startupRefresh={phase.running.startupRefresh}
       {earlyDraft}
       earlyDraftImages={handoffImages}
       onEarlyDraftHandedOff={handleEarlyDraftHandedOff}
