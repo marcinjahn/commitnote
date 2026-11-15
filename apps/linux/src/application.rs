@@ -2,7 +2,7 @@ use std::cell::OnceCell;
 
 use adw::subclass::prelude::*;
 use commitnote_core_api::commands::LaunchAction;
-use gtk4::{gio, glib, prelude::*};
+use gtk4::{gdk, gio, glib, prelude::*};
 use libadwaita as adw;
 
 use crate::config;
@@ -149,6 +149,19 @@ fn app_config() -> AppConfig {
         cache_dir: glib::user_cache_dir().join(config::APP_ID),
         config_dir: glib::user_config_dir().join(config::APP_ID),
         device_model: "Linux".to_owned(),
+        screen_width: screen_width(),
         testing: cfg!(feature = "testing"),
     }
+}
+
+/// GTK 4 has no primary monitor, so this is the first one the display lists.
+fn screen_width() -> Option<u32> {
+    let monitor = gdk::Display::default()?
+        .monitors()
+        .item(0)?
+        .downcast::<gdk::Monitor>()
+        .ok()?;
+    u32::try_from(monitor.geometry().width())
+        .ok()
+        .filter(|width| *width > 0)
 }

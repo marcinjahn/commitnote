@@ -109,12 +109,16 @@ impl CoreClient {
         }
     }
 
-    pub fn run_visit<'a>(&self, sender: &'a dyn VisitSender) -> impl Future<Output = ()> + use<'a> {
+    pub fn run_visit<'a>(
+        &self,
+        sender: &'a dyn VisitSender,
+        screen_width: Option<u32>,
+    ) -> impl Future<Output = ()> + use<'a> {
         let pending = self
             .runtime
             .borrow()
             .as_ref()
-            .map(|runtime| run_visit(runtime, sender));
+            .map(|runtime| run_visit(runtime, sender, screen_width));
         async move {
             if let Some(pending) = pending {
                 pending.await;

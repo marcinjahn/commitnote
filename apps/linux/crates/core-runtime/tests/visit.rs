@@ -8,7 +8,9 @@ use commitnote_core_runtime::{HostServices, SoupVisitSender, VisitSender, run_vi
 use common::test_server::{Seen, TestServer};
 use common::{block_on, start_fake};
 
-const FAKE_VISIT_URL: &str = "https://analytics.invalid/count?p=%2Fapp%2Flinux&t=App%20(Linux)";
+const SCREEN_WIDTH: Option<u32> = Some(1920);
+const FAKE_VISIT_URL: &str =
+    "https://analytics.invalid/count?p=%2Fapp%2Flinux&t=App%20(Linux)&s=1920";
 const SEND_TIMEOUT: Duration = Duration::from_secs(20);
 const SETTLE: Duration = Duration::from_millis(300);
 const FORBIDDEN_HEADERS: [&str; 5] = [
@@ -57,7 +59,7 @@ fn the_core_builds_the_linux_visit_and_the_sender_gets_it_once() {
     let runtime = start_fake(HostServices::default());
     let sender = RecordingSender::default();
 
-    block_on(run_visit(&runtime, &sender));
+    block_on(run_visit(&runtime, &sender, SCREEN_WIDTH));
 
     assert_eq!(*sender.urls.borrow(), [FAKE_VISIT_URL]);
 }
@@ -72,7 +74,7 @@ fn the_soup_sender_makes_one_anonymous_get() {
             inner: SoupVisitSender::allowing_loopback_http(),
             server: &server,
         };
-        run_visit(&runtime, &sender).await;
+        run_visit(&runtime, &sender, SCREEN_WIDTH).await;
         wait_for_requests(&server, 1).await
     });
 
@@ -82,7 +84,7 @@ fn the_soup_sender_makes_one_anonymous_get() {
     assert_eq!(request.path, "/count");
     assert_eq!(
         request.query.as_deref(),
-        Some("p=%2Fapp%2Flinux&t=App%20(Linux)")
+        Some("p=%2Fapp%2Flinux&t=App%20(Linux)&s=1920")
     );
     assert!(request.body.is_empty());
     for name in FORBIDDEN_HEADERS {

@@ -6,7 +6,6 @@ empty_shape!(
     DeviceNameParams,
     NoticesDismissResult,
     NoticesPerformResult,
-    AnalyticsVisitParams,
 );
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,6 +34,13 @@ pub struct NoticeIdParams {
 
 pub type NoticesDismissParams = NoticeIdParams;
 pub type NoticesPerformParams = NoticeIdParams;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyticsVisitParams {
+    /// The screen width in logical pixels, or `None` when it is unknown.
+    pub screen_width: Option<u32>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

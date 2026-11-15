@@ -1058,8 +1058,10 @@ async function dataCheck(bundle: vm.Script): Promise<string> {
   return "exported with images, imported into a new folder, rendered a print page with the image, changed the passphrase, and read the notes and both images back under the new passphrase";
 }
 
+const VISIT_SCREEN_WIDTH = 390;
+
 const VISIT_URLS = [
-  ["linux", `${FAKE_ANALYTICS_ENDPOINT}?p=%2Fapp%2Flinux&t=App%20(Linux)`],
+  ["linux", `${FAKE_ANALYTICS_ENDPOINT}?p=%2Fapp%2Flinux&t=App%20(Linux)&s=${VISIT_SCREEN_WIDTH}`],
 ] as const;
 
 const REJECTED_START_OPTIONS: readonly [string, object][] = [
@@ -1095,6 +1097,7 @@ async function platformCheck(
     try {
       const { url } = await core.send<{ url: string | null }>(
         "analytics.visit",
+        { screenWidth: VISIT_SCREEN_WIDTH },
       );
       if (url !== expected) {
         throw new Error(

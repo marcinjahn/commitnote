@@ -58,10 +58,6 @@ fn empty_params_encode_as_empty_objects() {
     assert_eq!(params_json::<SyncRefresh>(&SyncRefreshParams {}), empty);
     assert_eq!(params_json::<DeviceName>(&DeviceNameParams {}), empty);
     assert_eq!(params_json::<SettingsOpen>(&SettingsOpenParams {}), empty);
-    assert_eq!(
-        params_json::<AnalyticsVisit>(&AnalyticsVisitParams {}),
-        empty
-    );
     assert_eq!(params_json::<SyncFlush>(&SyncFlushParams {}), empty);
     assert_eq!(params_json::<SyncRetry>(&SyncRetryParams {}), empty);
     assert_eq!(params_json::<DraftLeave>(&DraftLeaveParams {}), empty);
@@ -152,6 +148,16 @@ fn every_command_has_a_distinct_name() {
 
 #[test]
 fn params_use_camel_case_wire_names() {
+    assert_eq!(
+        round_trip(&AnalyticsVisitParams {
+            screen_width: Some(1920)
+        }),
+        json!({"screenWidth":1920})
+    );
+    assert_eq!(
+        round_trip(&AnalyticsVisitParams { screen_width: None }),
+        json!({"screenWidth":null})
+    );
     assert_eq!(
         round_trip(&LoginListRepositoriesParams {
             forge: ForgeKind::Github,

@@ -414,8 +414,9 @@ main:focus {
   box-shadow: var(--landing-elevation-high);
 }
 
-/* The capture is a rounded window on a transparent background, so the shadow follows its alpha. */
-.frame-window {
+/* The capture has its own rounded outline (a window) on a transparent background, so the
+   shadow follows its alpha. */
+.frame-shaped {
   border: 0;
   background: none;
   box-shadow: none;

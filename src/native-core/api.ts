@@ -7,7 +7,7 @@ import type { HostServices } from "./host-services";
 
 export type { ColorTag, LaunchAction, MessagePart, SettingScope };
 
-export const NATIVE_CORE_API_VERSION = 10;
+export const NATIVE_CORE_API_VERSION = 11;
 export const NATIVE_CORE_MARKER = "commitnote-native-core";
 
 export type NativePlatform = "linux";
@@ -825,7 +825,11 @@ export type CoreCommands = {
     params: { enabled: boolean; view: LastViewState };
     result: {};
   };
-  "analytics.visit": { params: {}; result: { url: string | null } };
+  "analytics.visit": {
+    /** The device's screen width in logical pixels, or null when the host can't tell. */
+    params: { screenWidth: number | null };
+    result: { url: string | null };
+  };
   "print.render": {
     params: { name: string; text: string };
     result: { html: string };

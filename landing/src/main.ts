@@ -41,5 +41,8 @@ sendVisit("landing", {
   endpoint: __ANALYTICS_ENDPOINT__,
   standalone: false,
   navigator,
+  screen,
+  document,
+  location,
   fetch: (url, init) => fetch(url, init),
 });

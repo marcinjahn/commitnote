@@ -16,9 +16,10 @@ impl AppModel {
         let Some(client) = self.client() else {
             return;
         };
+        let screen_width = self.config().screen_width;
         self.spawn(async move {
             let sender = launch_sender();
-            client.run_visit(&sender).await;
+            client.run_visit(&sender, screen_width).await;
         });
     }
 }
@@ -66,7 +67,8 @@ mod tests {
     use super::super::Route;
     use super::super::tests::{Session, fake_bundle, run};
 
-    const LINUX_VISIT: &str = "https://analytics.invalid/count?p=%2Fapp%2Flinux&t=App%20(Linux)";
+    const LINUX_VISIT: &str =
+        "https://analytics.invalid/count?p=%2Fapp%2Flinux&t=App%20(Linux)&s=1280";
 
     #[test]
     fn two_logins_in_one_process_record_one_visit() {

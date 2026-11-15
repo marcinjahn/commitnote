@@ -68,8 +68,9 @@ impl VisitSender for SoupVisitSender {
 pub fn run_visit<'a>(
     runtime: &CoreRuntime,
     sender: &'a dyn VisitSender,
+    screen_width: Option<u32>,
 ) -> impl Future<Output = ()> + use<'a> {
-    let pending = runtime.request::<AnalyticsVisit>(AnalyticsVisitParams {});
+    let pending = runtime.request::<AnalyticsVisit>(AnalyticsVisitParams { screen_width });
     async move {
         if let Ok(AnalyticsVisitResult { url: Some(url) }) = pending.await {
             sender.send(&url);

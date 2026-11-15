@@ -1,7 +1,10 @@
 import type { CoreCommands } from "../api";
 import type { AppSession } from "../app-session";
 import { nativeVisitUrl } from "../native-visit";
-import { type CommandHandler } from "./command-context";
+import {
+  type CommandHandler,
+  nullablePositiveIntegerParam,
+} from "./command-context";
 
 type Result<Name extends keyof CoreCommands> = CoreCommands[Name]["result"];
 
@@ -10,9 +13,14 @@ export function createAnalyticsCommands(context: {
   readonly app: AppSession;
 }): Record<string, CommandHandler> {
   return {
-    async "analytics.visit"(): Promise<Result<"analytics.visit">> {
+    async "analytics.visit"(params): Promise<Result<"analytics.visit">> {
+      const screenWidth = nullablePositiveIntegerParam(params, "screenWidth");
       return {
-        url: nativeVisitUrl(context.analyticsEndpoint, context.app.platform),
+        url: nativeVisitUrl(
+          context.analyticsEndpoint,
+          context.app.platform,
+          screenWidth,
+        ),
       };
     },
   };

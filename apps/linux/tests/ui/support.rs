@@ -302,6 +302,7 @@ impl Harness {
             cache_dir: case_dir.join("cache"),
             config_dir: case_dir.join("config"),
             device_model: DEVICE_MODEL.to_owned(),
+            screen_width: None,
             testing: true,
         });
         self.routes.borrow_mut().clear();

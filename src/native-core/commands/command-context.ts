@@ -56,6 +56,18 @@ export function optionalBooleanParam(
   return value;
 }
 
+export function nullablePositiveIntegerParam(
+  params: CommandParams,
+  name: string,
+): number | null {
+  const value = params[name];
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    throw invalidParams();
+  }
+  return value;
+}
+
 export function forgeParam(params: CommandParams, name: string): ForgeId {
   const value = params[name];
   if (!isForgeId(value)) throw invalidParams();

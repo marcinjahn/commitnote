@@ -77,6 +77,8 @@ pub struct AppConfig {
     pub cache_dir: PathBuf,
     pub config_dir: PathBuf,
     pub device_model: String,
+    /// Logical width of the screen the app opens on, as browsers report `screen.width`.
+    pub screen_width: Option<u32>,
     pub testing: bool,
 }
 
@@ -2500,6 +2502,7 @@ mod tests {
                 cache_dir: root.join("cache"),
                 config_dir: root.join("config"),
                 device_model: "Linux".to_owned(),
+                screen_width: Some(1280),
                 testing: true,
             };
             let model = AppModel::new(config.clone());

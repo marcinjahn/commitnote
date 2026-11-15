@@ -114,6 +114,9 @@ function countVisit(): void {
     endpoint: __ANALYTICS_ENDPOINT__,
     standalone,
     navigator,
+    screen,
+    document,
+    location: new URL(bootHref),
     fetch: (url, init) => fetch(url, init),
   });
 }

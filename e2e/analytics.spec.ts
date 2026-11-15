@@ -6,9 +6,12 @@ import { createLink } from "./helpers/sharing";
 import { treeItem } from "./helpers/tree";
 
 const ORIGIN = "https://analytics.invalid/count";
-const LANDING = `${ORIGIN}?p=%2Flanding%2Fweb&t=Landing%20(web)`;
-const APP_WEB = `${ORIGIN}?p=%2Fapp%2Fweb&t=App%20(web)`;
-const APP_PWA = `${ORIGIN}?p=%2Fapp%2Fpwa&t=App%20(PWA)`;
+// Desktop Chrome's 1920px screen, and the bot code for a WebDriver-controlled browser.
+const DIMENSIONS = "s=1920&b=153";
+const LANDING_PAGE = `${ORIGIN}?p=%2Flanding%2Fweb&t=Landing%20(web)`;
+const LANDING = `${LANDING_PAGE}&${DIMENSIONS}`;
+const APP_WEB = `${ORIGIN}?p=%2Fapp%2Fweb&t=App%20(web)&${DIMENSIONS}`;
+const APP_PWA = `${ORIGIN}?p=%2Fapp%2Fpwa&t=App%20(PWA)&${DIMENSIONS}`;
 const SESSION = "fake-forge-session=" + encodeURIComponent(SAMPLE.repo);
 
 async function flushVisits(page: Page): Promise<void> {
@@ -43,7 +46,7 @@ function urls(requests: { url(): string }[]): string[] {
   return requests.map((request) => request.url());
 }
 
-test("the landing page sends one bare visit", async ({
+test("the landing page sends one visit without cookies or a referer header", async ({
   page,
   analyticsRequests,
 }) => {
@@ -58,6 +61,33 @@ test("the landing page sends one bare visit", async ({
   const headers = await request.allHeaders();
   expect(headers).not.toHaveProperty("referer");
   expect(headers).not.toHaveProperty("cookie");
+});
+
+test("the landing visit carries the referrer and campaign without anything else", async ({
+  page,
+  analyticsRequests,
+}) => {
+  await page.clock.install();
+  await page.goto("/?utm_source=hn&utm_campaign=launch&utm_medium=post&code=secret", {
+    referer: "https://news.example/item?id=1",
+  });
+  await flushVisits(page);
+
+  await expectUrls(analyticsRequests, [
+    `${LANDING_PAGE}&r=https%3A%2F%2Fnews.example%2Fitem&${DIMENSIONS}` +
+      "&q=%3Futm_source%3Dhn%26utm_campaign%3Dlaunch",
+  ]);
+});
+
+test("the app visit keeps only campaign parameters from its address", async ({
+  page,
+  analyticsRequests,
+}) => {
+  await page.goto("./?code=secret&state=secret&access_token=secret&ref=newsletter");
+  await expect(page.getByLabel("Access token")).toBeVisible();
+  await settleIdle(page);
+
+  await expectUrls(analyticsRequests, [`${APP_WEB}&q=%3Fref%3Dnewsletter`]);
 });
 
 test("the app counts loads and launch actions but not hash navigation", async ({

@@ -1,4 +1,4 @@
-import { visitUrl } from "../analytics/analytics";
+import { visitUrl } from "../analytics/visit-url";
 import type { NativePlatform } from "./api";
 
 export const NATIVE_VISITS: Record<
@@ -11,8 +11,8 @@ export const NATIVE_VISITS: Record<
 export function nativeVisitUrl(
   endpoint: string | null,
   platform: NativePlatform,
+  screenWidth: number | null,
 ): string | null {
   if (endpoint === null) return null;
-  const { path, title } = NATIVE_VISITS[platform];
-  return visitUrl(endpoint, path, title);
+  return visitUrl(endpoint, { ...NATIVE_VISITS[platform], screenWidth });
 }
