@@ -106,6 +106,16 @@ pub fn split_view(h: &Harness) -> Result<adw::NavigationSplitView, String> {
     h.widget_as::<adw::NavigationSplitView>("notes-split-view")
 }
 
+/// Brings the note page of the narrow window, which the split view stacks over the sidebar, to
+/// the front.
+pub fn show_narrow_note(h: &Harness) -> Result<(), String> {
+    let split = split_view(h)?;
+    split.set_show_content(true);
+    h.wait("the note page to show", || {
+        split.is_collapsed() && h.shown("note-editor-view")
+    })
+}
+
 pub fn export_repo(model: &AppModel) -> impl Future<Output = Option<serde_json::Value>> + use<> {
     let repo = model
         .testing_repo_key()

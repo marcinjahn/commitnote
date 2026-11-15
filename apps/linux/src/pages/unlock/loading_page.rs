@@ -21,6 +21,8 @@ mod imp {
         #[template_child]
         pub(super) spinner: TemplateChild<adw::Spinner>,
         #[template_child]
+        pub(super) early_draft: TemplateChild<adw::Clamp>,
+        #[template_child]
         pub(super) early_draft_name_entry: TemplateChild<gtk::Entry>,
         #[template_child]
         pub(super) early_draft_body: TemplateChild<gtk::TextView>,
@@ -105,14 +107,19 @@ impl LoadingPage {
         ));
         imp.handlers.replace(vec![route, message, early_draft]);
         page.setup_early_draft(model);
+        page.sync_early_draft();
         #[cfg(feature = "testing")]
         page.add_finish_loading_button();
         page.refresh();
         page
     }
 
-    pub fn focus_name(&self) {
-        self.imp().early_draft_name_entry.grab_focus();
+    /// Shows the early draft, which stays shown for the rest of this page's life, and focuses
+    /// its name.
+    pub fn open_early_draft(&self) {
+        let imp = self.imp();
+        imp.early_draft.set_visible(true);
+        imp.early_draft_name_entry.grab_focus();
     }
 
     fn setup_early_draft(&self, model: &AppModel) {
@@ -157,6 +164,9 @@ impl LoadingPage {
         let imp = self.imp();
         let model = imp.model.get().expect("the page is created with a model");
         let early = model.early_draft();
+        if !early.is_empty() {
+            imp.early_draft.set_visible(true);
+        }
         imp.syncing.set(true);
         if imp.early_draft_name_entry.text() != early.name {
             imp.early_draft_name_entry.set_text(&early.name);

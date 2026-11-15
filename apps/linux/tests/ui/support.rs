@@ -40,6 +40,8 @@ const REMOTE_DESKTOP_PATH: &str = "/org/gnome/Mutter/RemoteDesktop";
 const REMOTE_DESKTOP_SESSION: &str = "org.gnome.Mutter.RemoteDesktop.Session";
 const DBUS_TIMEOUT_MS: i32 = 5_000;
 const SHIFTED_SYMBOLS: &str = "~!@#$%^&*()_+{}|:\"<>?";
+const STORE_DECORATION_LAYOUT: &str = ":close";
+const STORE_WINDOW_CSS: &str = "window.csd { box-shadow: none; }";
 
 mod keysym {
     pub const SHIFT_L: u32 = 0xffe1;
@@ -944,8 +946,29 @@ impl Harness {
     }
 
     /// Saves the window at the app's default size with the system accent and without the
-    /// development styling, as a store screenshot shows it.
+    /// development styling, as a store screenshot shows it. The window drops its shadow, which
+    /// would otherwise tint the transparent area outside the rounded corners.
     pub fn store_screenshot(&self, view: &str, theme: Theme) -> Result<(), String> {
+        let settings = gtk::Settings::default().ok_or("there are no GTK settings")?;
+        let display = gdk::Display::default().ok_or("there is no display")?;
+        settings.set_gtk_decoration_layout(Some(STORE_DECORATION_LAYOUT));
+        let shadowless = gtk::CssProvider::new();
+        shadowless.load_from_string(STORE_WINDOW_CSS);
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &shadowless,
+            gtk::STYLE_PROVIDER_PRIORITY_USER,
+        );
+        restoring(
+            || {
+                gtk::style_context_remove_provider_for_display(&display, &shadowless);
+                settings.reset_property("gtk-decoration-layout");
+            },
+            || self.capture_store_window(view, theme),
+        )
+    }
+
+    fn capture_store_window(&self, view: &str, theme: Theme) -> Result<(), String> {
         const DEVELOPMENT_CLASS: &str = "devel";
         self.show_appearance(Width::AppDefault, theme, "system")?;
         let window = self.window()?;

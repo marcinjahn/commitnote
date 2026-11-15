@@ -7,7 +7,10 @@ use crate::flows::{
     NOTES_URL, UNLOCK_TIMEOUT, choose_repository, ensure, launch_and_log_in, open_first_note,
     split_view, submit_token, unlock, wait_tree,
 };
-use crate::support::{ALL_VARIANTS, Case, Harness, NARROW_VARIANTS, Theme, WIDE_VARIANTS, Width};
+use crate::p2::focus_within;
+use crate::support::{
+    ALL_VARIANTS, Case, Harness, NARROW_VARIANTS, Theme, WIDE_VARIANTS, Width, descendants,
+};
 
 pub const CASES: &[Case] = &[
     ("login_unlock_tree", login_unlock_tree),
@@ -173,10 +176,35 @@ fn loading(h: &mut Harness) -> Result<(), String> {
     ensure(h.route()? == Route::Loading { failure: None }, || {
         "loading finished while it was held".to_owned()
     })?;
+    let page = h.page("loading")?;
+    ensure(page.title() == "commitnote", || {
+        format!("the loading page is titled {:?}", page.title())
+    })?;
+    let inputs = shown_text_inputs(page.upcast_ref());
+    ensure(inputs.is_empty(), || {
+        format!("the loading page shows text inputs: {inputs:?}")
+    })?;
+
+    h.click("loading-new-note-button")?;
+    let entry = h.widget_as::<gtk::Entry>("early-draft-name-entry")?;
+    h.wait(
+        "New Note to open the early draft with its name focused",
+        || h.shown("early-draft-body") && focus_within(h, &entry),
+    )?;
 
     h.window_action("testing-finish-loading")?;
     h.wait_page_for("notes", UNLOCK_TIMEOUT)?;
     wait_tree(h)
+}
+
+fn shown_text_inputs(root: &gtk::Widget) -> Vec<String> {
+    descendants(root)
+        .into_iter()
+        .filter(|widget| {
+            widget.is_mapped() && (widget.is::<gtk::Editable>() || widget.is::<gtk::TextView>())
+        })
+        .map(|widget| widget.widget_name().to_string())
+        .collect()
 }
 
 fn read_note(h: &mut Harness) -> Result<(), String> {

@@ -12,7 +12,7 @@ use super::{
     Placed, char_count, foreground_alpha, label_with, picture_in, place_caret, placed, rendered,
     table_line_offset, wait_placed, wait_placed_where, wait_revealed,
 };
-use crate::flows::{ensure, split_view};
+use crate::flows::{ensure, show_narrow_note};
 use crate::p2::set_note_text;
 use crate::p4::{
     GIF_PALETTE, Scratch, UNKNOWN_IMAGE, pick_and_insert, png_bytes, references, wait_images_ready,
@@ -62,8 +62,7 @@ pub(super) fn images(h: &mut Harness) -> Result<(), String> {
         check_gif_still(h, &view)?;
         h.session_screenshots("images", WIDE_LIGHT)?;
         h.show_variant(Width::Narrow, Theme::Dark)?;
-        split_view(h)?.set_show_content(true);
-        h.wait_shown("formatting-bar")?;
+        show_narrow_note(h)?;
         wait_pictures(h, &view)?;
         h.capture_variant("images", Width::Narrow, Theme::Dark)?;
         h.show_variant(Width::Wide, Theme::Light)?;

@@ -15,7 +15,7 @@ use crate::flows::{
     open_first_note, submit_token, unlock, wait_tree,
 };
 use crate::p2::{EARLY_BODY, finish_loading, reopen_held, set_early_body};
-use crate::support::{ALL_VARIANTS, Case, Harness, Width};
+use crate::support::{ALL_VARIANTS, Case, Harness, Theme, Width, descendants};
 
 pub const CASES: &[Case] = &[
     ("p3-new-folder-shortcut", new_folder_shortcut),
@@ -2352,6 +2352,15 @@ fn details(h: &mut Harness) -> Result<(), String> {
     ensure(!h.shown("details-not-saved"), || {
         "a saved note shows Not saved yet".to_owned()
     })?;
+    for &(width, theme) in ALL_VARIANTS {
+        h.show_variant(width, theme)?;
+        h.capture_variant("details-dialog", width, theme)?;
+        details_fit(h, width)?;
+    }
+    ensure(h.row_shown("Words"), || {
+        "the words row is not titled Words".to_owned()
+    })?;
+    h.show_variant(Width::Wide, Theme::Light)?;
 
     model.open_note(Some(roadmap.clone()));
     h.wait("the words of the second note", || {
@@ -2367,6 +2376,8 @@ fn details(h: &mut Harness) -> Result<(), String> {
     ensure(h.label("details-words")? == expected.words.value, || {
         "the dialog shows another note's words".to_owned()
     })?;
+    h.settle()?;
+    details_fit(h, Width::Wide)?;
     ensure(h.shown("details-dialog"), || {
         "the dialog closed when another note opened".to_owned()
     })?;
@@ -2377,6 +2388,51 @@ fn details(h: &mut Harness) -> Result<(), String> {
     })?
     .map_err(|error| error.message)?;
     h.wait("the dialog to close", || !h.shown("details-dialog"))
+}
+
+/// The details dialog takes a readable width and none of its labels wrap.
+fn details_fit(h: &Harness, width: Width) -> Result<(), String> {
+    const MIN_WIDTH: i32 = 320;
+    let content = h
+        .widget_as::<adw::Dialog>("details-dialog")?
+        .child()
+        .ok_or("the details dialog has no content")?;
+    ensure(content.width() >= MIN_WIDTH, || {
+        format!(
+            "the details dialog is {} px wide in the {} window",
+            content.width(),
+            width.name()
+        )
+    })?;
+    let labels: Vec<gtk::Label> = descendants(&content)
+        .into_iter()
+        .filter(|widget| widget.is_mapped())
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .collect();
+    let wrapped: Vec<String> = labels
+        .iter()
+        .filter(|label| label.layout().is_wrapped())
+        .map(|label| label.label().to_string())
+        .collect();
+    ensure(wrapped.is_empty(), || {
+        format!(
+            "the details dialog wraps {wrapped:?} in the {} window",
+            width.name()
+        )
+    })?;
+    let scroller = descendants(&content)
+        .into_iter()
+        .find_map(|widget| widget.downcast::<gtk::ScrolledWindow>().ok())
+        .ok_or("the details dialog has no scrolled window")?;
+    let adjustment = scroller.vadjustment();
+    ensure(adjustment.upper() <= adjustment.page_size(), || {
+        format!(
+            "the details dialog needs {} px but shows {} px in the {} window",
+            adjustment.upper(),
+            adjustment.page_size(),
+            width.name()
+        )
+    })
 }
 
 fn expanded_folders() -> Vec<Vec<String>> {

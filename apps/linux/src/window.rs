@@ -298,7 +298,7 @@ impl CommitnoteWindow {
     fn new_note(&self) {
         let model = self.model().clone();
         if matches!(model.route(), Route::Loading { .. }) {
-            self.focus_early_draft();
+            self.open_early_draft();
             return;
         }
         self.run_reporting(model.start_draft(Vec::new(), DraftFocus::Name));
@@ -309,7 +309,7 @@ impl CommitnoteWindow {
             (Route::Starting, LaunchAction::NewNote) => {
                 self.imp().early_draft_focus_pending.set(true);
             }
-            (Route::Loading { .. }, LaunchAction::NewNote) => self.focus_early_draft(),
+            (Route::Loading { .. }, LaunchAction::NewNote) => self.open_early_draft(),
             (Route::Notes, _) => {
                 let Some(page) = self.notes_page() else {
                     return;
@@ -334,7 +334,7 @@ impl CommitnoteWindow {
             Route::Starting => {}
             Route::Loading { .. } => {
                 if pending.replace(false) {
-                    self.focus_early_draft();
+                    self.open_early_draft();
                 }
             }
             _ => pending.set(false),
@@ -786,13 +786,13 @@ impl CommitnoteWindow {
         imp.preferences.set(Some(&dialog));
     }
 
-    fn focus_early_draft(&self) {
+    fn open_early_draft(&self) {
         if let Some(page) = self
             .stack()
             .iter()
             .find_map(|page| page.downcast_ref::<LoadingPage>())
         {
-            page.focus_name();
+            page.open_early_draft();
         }
     }
 

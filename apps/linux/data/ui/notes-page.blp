@@ -142,87 +142,6 @@ template $CommitnoteNotesPage: Adw.NavigationPage {
               visible: false;
             }
           }
-
-          [bottom]
-          Gtk.Box formatting_bar {
-            name: "formatting-bar";
-            halign: center;
-            spacing: 6;
-            visible: false;
-            styles ["toolbar"]
-
-            Gtk.Button {
-              name: "format-bold-button";
-              icon-name: "format-text-bold-symbolic";
-              tooltip-text: _("Bold");
-              action-name: "editor.bold";
-              focus-on-click: false;
-
-              accessibility {
-                label: _("Bold");
-              }
-            }
-
-            Gtk.Button {
-              name: "format-italic-button";
-              icon-name: "format-text-italic-symbolic";
-              tooltip-text: _("Italic");
-              action-name: "editor.italic";
-              focus-on-click: false;
-
-              accessibility {
-                label: _("Italic");
-              }
-            }
-
-            Gtk.Button {
-              name: "format-strikethrough-button";
-              icon-name: "format-text-strikethrough-symbolic";
-              tooltip-text: _("Strikethrough");
-              action-name: "editor.strikethrough";
-              focus-on-click: false;
-
-              accessibility {
-                label: _("Strikethrough");
-              }
-            }
-
-            Gtk.Button {
-              name: "format-link-button";
-              icon-name: "insert-link-symbolic";
-              tooltip-text: _("Insert Link");
-              action-name: "editor.insert-link";
-              focus-on-click: false;
-
-              accessibility {
-                label: _("Insert Link");
-              }
-            }
-
-            Gtk.Button {
-              name: "format-image-button";
-              icon-name: "insert-image-symbolic";
-              tooltip-text: _("Insert Image");
-              action-name: "editor.insert-image";
-              focus-on-click: false;
-
-              accessibility {
-                label: _("Insert Image");
-              }
-            }
-
-            Gtk.Button {
-              name: "format-task-button";
-              icon-name: "checkbox-checked-symbolic";
-              tooltip-text: _("Toggle Task");
-              action-name: "editor.toggle-task";
-              focus-on-click: false;
-
-              accessibility {
-                label: _("Toggle Task");
-              }
-            }
-          }
         };
       };
     };
@@ -258,38 +177,8 @@ menu note_menu {
 
   section {
     item {
-      label: _("Bold");
-      action: "editor.bold";
-      accel: "<Control>b";
-    }
-
-    item {
-      label: _("Italic");
-      action: "editor.italic";
-      accel: "<Control>i";
-    }
-
-    item {
-      label: _("Strikethrough");
-      action: "editor.strikethrough";
-      accel: "<Control><Shift>x";
-    }
-
-    item {
-      label: _("Insert Link");
-      action: "editor.insert-link";
-      accel: "<Control>k";
-    }
-
-    item {
       label: _("Insert Image…");
       action: "editor.insert-image";
-    }
-
-    item {
-      label: _("Toggle Task");
-      action: "editor.toggle-task";
-      accel: "<Control>Return";
     }
   }
 }

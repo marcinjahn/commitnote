@@ -2,7 +2,6 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use adw::prelude::*;
-use commitnote_core_api::commands::DetailItemText;
 use commitnote_core_api::shapes::OpenNote;
 use gtk4::{self as gtk, glib};
 use libadwaita as adw;
@@ -43,8 +42,7 @@ pub fn present(model: &AppModel, anchor: &impl IsA<gtk::Widget>) -> adw::Dialog 
     let dialog = adw::Dialog::builder()
         .name("details-dialog")
         .title("Details")
-        .content_width(400)
-        .follows_content_size(true)
+        .content_width(360)
         .child(&toolbar)
         .build();
 
@@ -151,9 +149,9 @@ impl Dialog {
             self.group.add(&row);
             rows.push(row);
         };
-        add(value_row("details-words", &details.words));
+        add(value_row("details-words", "Words", &details.words.value));
         if let Some(tasks) = &details.tasks {
-            add(value_row("details-tasks", tasks));
+            add(value_row("details-tasks", "Tasks done", &tasks.value));
         }
         if details.not_saved {
             let row = adw::ActionRow::builder()
@@ -164,33 +162,34 @@ impl Dialog {
             add(row);
         } else {
             if let Some(created) = &details.created {
-                add(value_row("details-created", created));
+                add(value_row("details-created", &created.label, &created.value));
             }
             if let Some(updated) = &details.updated {
-                add(value_row("details-updated", updated));
+                add(value_row("details-updated", &updated.label, &updated.value));
             }
         }
         add(value_row(
             "details-shared",
-            &DetailItemText {
-                label: "Shared".to_owned(),
-                value: if details.shared { "Yes" } else { "No" }.to_owned(),
-            },
+            "Shared",
+            if details.shared { "Yes" } else { "No" },
         ));
         self.stack.set_visible_child_name("details");
+        // libadwaita measures an unset content height only when the dialog is first shown, before
+        // the rows arrive.
+        self.dialog.set_content_height(-1);
     }
 }
 
-fn value_row(name: &str, item: &DetailItemText) -> adw::ActionRow {
+fn value_row(name: &str, title: &str, value: &str) -> adw::ActionRow {
     let value = gtk::Label::builder()
         .name(name)
-        .label(&item.value)
+        .label(value)
         .selectable(true)
         .valign(gtk::Align::Center)
         .css_classes(["dim-label"])
         .build();
     let row = adw::ActionRow::builder()
-        .title(&item.label)
+        .title(title)
         .use_markup(false)
         .build();
     row.add_suffix(&value);

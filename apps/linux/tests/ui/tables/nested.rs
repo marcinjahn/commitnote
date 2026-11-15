@@ -6,7 +6,7 @@ use super::{
     Placed, char_count, check_accessibility, check_not_focusable, open_note, place_caret,
     placements, prefix_width, table_line_offset,
 };
-use crate::flows::{ensure, split_view};
+use crate::flows::{ensure, show_narrow_note};
 use crate::support::{Harness, Theme, WIDE_LIGHT, Width};
 
 const NOTE: &str = "Plain line before the tables.\n\n\
@@ -25,8 +25,7 @@ pub(super) fn nested(h: &mut Harness) -> Result<(), String> {
     check_bands(&view, &placed)?;
     h.session_screenshots("nested", WIDE_LIGHT)?;
     h.show_variant(Width::Narrow, Theme::Dark)?;
-    split_view(h)?.set_show_content(true);
-    h.wait_shown("formatting-bar")?;
+    show_narrow_note(h)?;
     check_bands(&view, &wait_placements(h, &view, TABLES)?)?;
     h.capture_variant("nested", Width::Narrow, Theme::Dark)?;
     h.show_variant(Width::Wide, Theme::Light)?;

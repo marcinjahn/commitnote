@@ -171,6 +171,57 @@ test.describe("motion", () => {
     );
   });
 
+  test("the hero wordmark's accent tail blinks with its caret and settles plain", async ({
+    page,
+  }) => {
+    await openLanding(page);
+    const wordmark = page.locator(".hero-wordmark");
+    const lastTail = wordmark.locator(".wordmark-tail-3");
+    const caret = wordmark.locator(".wordmark-caret");
+
+    async function at(time: number): Promise<{ tail: string; caret: string }> {
+      await wordmark.evaluate((el, time) => {
+        for (const animation of document.getAnimations()) {
+          const target = (animation.effect as KeyframeEffect | null)?.target;
+          if (target && el.contains(target)) {
+            animation.pause();
+            animation.currentTime = time;
+          }
+        }
+      }, time);
+      return {
+        tail: await lastTail.evaluate(
+          (el) => getComputedStyle(el).backgroundImage,
+        ),
+        caret: await opacity(caret),
+      };
+    }
+
+    function plain(tail: string): boolean {
+      const stops = [...tail.matchAll(/[a-z]+\([^()]*\)/g)].map(
+        (color) => color[0],
+      );
+      return stops.length === 2 && stops[0] === stops[1];
+    }
+
+    const lit = await at(1600);
+    const fading = await at(1717 + 80);
+    const dark = await at(1717 + 400);
+    const relit = await at(1717 + 1200);
+    const settled = await at(1717 + 6000);
+
+    expect(lit.caret).toBe("1");
+    expect(plain(lit.tail)).toBe(false);
+    expect(Number(fading.caret)).toBeGreaterThan(0);
+    expect(Number(fading.caret)).toBeLessThan(1);
+    expect(fading.tail).not.toBe(lit.tail);
+    expect(plain(fading.tail)).toBe(false);
+    expect(dark.caret).toBe("0");
+    expect(plain(dark.tail)).toBe(true);
+    expect(relit).toEqual(lit);
+    expect(settled).toEqual(dark);
+  });
+
   test("a section below the fold reveals on scroll", async ({ page }) => {
     await openLanding(page);
     const head = page.locator("#what-you-need .section-head");

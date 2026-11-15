@@ -388,6 +388,38 @@ test("a remembered session whose notes fail to load shows the error", async ({
   await expect(page.getByRole("button", { name: /create a new note/i })).toHaveCount(0);
 });
 
+test("a remembered session that cannot reach GitHub stays on the loading screen until tried again", async ({
+  page,
+}) => {
+  await rememberSession(page);
+  await failNextOnLoad(page, "sample/notes", "inspect", "Network");
+
+  await page.reload();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "Could not reach GitHub. Check your connection and try again.",
+  );
+  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+  await expect(page.locator(".login-card")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expectTree(page);
+});
+
+test("a remembered session that cannot reach GitHub can log in instead", async ({
+  page,
+}) => {
+  await rememberSession(page);
+  await failNextOnLoad(page, "sample/notes", "inspect", "Network");
+
+  await page.reload();
+  await page.getByRole("button", { name: "Log in" }).click();
+
+  await expect(page.locator(".login-card").getByRole("alert")).toHaveText(
+    "Could not reach GitHub. Check your connection and try again.",
+  );
+});
+
 test("no Remember me", async ({ page }) => {
   await page.goto("./");
 

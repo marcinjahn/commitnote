@@ -22,7 +22,7 @@ use commitnote_markdown::{
 };
 use gtk4::{self as gtk, gdk, glib, graphene, pango, prelude::*};
 
-use crate::flows::{ensure, launch_and_log_in, split_view};
+use crate::flows::{ensure, launch_and_log_in, show_narrow_note};
 use crate::p2::{caret, focus_within, set_note_text};
 use crate::p4::{WELCOME, open_editor, view_shared_version};
 use crate::support::{
@@ -510,8 +510,7 @@ fn editor_render(h: &mut Harness) -> Result<(), String> {
     h.session_screenshots("editor", WIDE_VARIANTS)?;
 
     h.resize(Width::Narrow)?;
-    split_view(h)?.set_show_content(true);
-    h.wait_shown("formatting-bar")?;
+    show_narrow_note(h)?;
     let narrow = wait_placed(h, &view)?;
     ensure(narrow.rect.width() < wide.rect.width(), || {
         format!(

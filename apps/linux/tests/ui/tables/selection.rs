@@ -12,7 +12,7 @@ use super::{
     caret_in, cell, cell_bounds, char_count, children, edit, focus_view, offset_in, open_note,
     place_caret, placements, rendered, to_view, view_text, view_window, wait_placed,
 };
-use crate::flows::{ensure, split_view};
+use crate::flows::{ensure, show_narrow_note};
 use crate::p2::{focus_within, set_vim_mode};
 use crate::p4::{SHARED_LINKS_DIALOG, clipboard_text, view_shared_version};
 use crate::support::{
@@ -849,8 +849,7 @@ fn clearing_and_keeping(
     expect_selection(view, &tables.a, Some(range), "the light palette")?;
 
     h.show_variant(Width::Narrow, Theme::Light)?;
-    split_view(h)?.set_show_content(true);
-    h.wait_shown("formatting-bar")?;
+    show_narrow_note(h)?;
     let narrow = wait_tables(h, view)?;
     expect_selection(view, &narrow.a, Some(range), "the narrow window")?;
     h.show_variant(Width::Wide, Theme::Light)?;

@@ -2,13 +2,25 @@ using Gtk 4.0;
 using Adw 1;
 
 template $CommitnoteLoadingPage: Adw.NavigationPage {
-  title: "Loading";
+  title: "commitnote";
   tag: "loading";
   can-pop: false;
 
   child: Adw.ToolbarView {
     [top]
-    Adw.HeaderBar {}
+    Adw.HeaderBar {
+      [start]
+      Gtk.Button {
+        name: "loading-new-note-button";
+        icon-name: "document-new-symbolic";
+        tooltip-text: _("New Note");
+        action-name: "win.new-note";
+
+        accessibility {
+          label: _("New Note");
+        }
+      }
+    }
 
     content: Adw.StatusPage status_page {
       name: "loading-status";
@@ -27,39 +39,45 @@ template $CommitnoteLoadingPage: Adw.NavigationPage {
           }
         }
 
-        Gtk.Box early_draft {
-          orientation: vertical;
-          spacing: 12;
+        Adw.Clamp early_draft {
+          name: "early-draft";
+          maximum-size: 760;
+          visible: false;
           margin-top: 12;
 
-          Gtk.Entry early_draft_name_entry {
-            name: "early-draft-name-entry";
-            placeholder-text: "Name";
+          child: Gtk.Box {
+            orientation: vertical;
+            spacing: 12;
 
-            accessibility {
-              label: _("Note Name");
+            Gtk.Entry early_draft_name_entry {
+              name: "early-draft-name-entry";
+              placeholder-text: "Name";
+
+              accessibility {
+                label: _("Note Name");
+              }
             }
-          }
 
-          Gtk.Frame {
-            child: Gtk.ScrolledWindow {
-              min-content-height: 200;
-              hscrollbar-policy: never;
+            Gtk.Frame {
+              child: Gtk.ScrolledWindow {
+                min-content-height: 200;
+                hscrollbar-policy: never;
 
-              child: Gtk.TextView early_draft_body {
-                name: "early-draft-body";
-                wrap-mode: word_char;
-                top-margin: 8;
-                bottom-margin: 8;
-                left-margin: 8;
-                right-margin: 8;
+                child: Gtk.TextView early_draft_body {
+                  name: "early-draft-body";
+                  wrap-mode: word_char;
+                  top-margin: 8;
+                  bottom-margin: 8;
+                  left-margin: 8;
+                  right-margin: 8;
 
-                accessibility {
-                  label: "Note";
-                }
+                  accessibility {
+                    label: "Note";
+                  }
+                };
               };
-            };
-          }
+            }
+          };
         }
 
         Gtk.Button try_again_button {

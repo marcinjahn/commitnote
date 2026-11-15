@@ -18,8 +18,10 @@ use libadwaita as adw;
 
 use crate::flows::{
     PASSPHRASE, SAMPLE_REPO_KEY, UNLOCK_TIMEOUT, ensure, export_repo, exported_main,
-    launch_and_log_in, open_first_note, split_view, wait_exported_change, wait_open_note,
+    launch_and_log_in, open_first_note, show_narrow_note, split_view, wait_exported_change,
+    wait_open_note,
 };
+use crate::p3::string_attribute;
 use crate::p4::{SHARED_LINKS_DIALOG, view_shared_version};
 use crate::p5::{close_preferences, open_preferences};
 use crate::support::{
@@ -44,7 +46,7 @@ pub const CASES: &[Case] = &[
     ("toggle_task_shortcut", toggle_task_shortcut),
     ("paste_link", paste_link),
     ("ctrl_click_opens_link", ctrl_click_opens_link),
-    ("formatting_bar_narrow", formatting_bar_narrow),
+    ("note_menu_without_formatting", note_menu_without_formatting),
     ("editor_note_font", editor_note_font),
     ("editor_follows_document_font", editor_follows_document_font),
     ("vim_status_line", vim_status_line),
@@ -230,8 +232,7 @@ fn editor_preview(h: &mut Harness) -> Result<(), String> {
 
     h.session_screenshots("editor", WIDE_VARIANTS)?;
     h.resize(Width::Narrow)?;
-    split_view(h)?.set_show_content(true);
-    h.wait_shown("formatting-bar")?;
+    show_narrow_note(h)?;
     h.session_screenshots("editor-narrow", NARROW_VARIANTS)?;
     ensure(editor.text() == SAMPLE, || {
         "the note text changed while the sample was shown".to_owned()
@@ -785,30 +786,48 @@ fn ctrl_click_opens_link(h: &mut Harness) -> Result<(), String> {
     )
 }
 
-fn formatting_bar_narrow(h: &mut Harness) -> Result<(), String> {
+fn note_menu_without_formatting(h: &mut Harness) -> Result<(), String> {
     launch_and_log_in(h, false)?;
-    h.resize(Width::Narrow)?;
+    h.show_variant(Width::Narrow, Theme::Light)?;
     open_first_note(h)?;
-    let editor = h.widget_as::<NoteEditor>(EDITOR)?;
-    h.wait_shown("formatting-bar")?;
-    for name in [
-        "format-bold-button",
-        "format-italic-button",
-        "format-strikethrough-button",
-        "format-link-button",
-        "format-task-button",
-    ] {
-        ensure(h.shown(name), || format!("{name} is not shown"))?;
-    }
-    set_note_text(&editor, WORDS, 4, 7);
-    h.click("format-bold-button")?;
-    expect_text(&editor, "one **two** three", (6, 9))?;
-    h.press_shortcut(editor.upcast_ref::<gtk::Widget>(), "<Control>z")?;
-    expect_text(&editor, WORDS, (4, 7))?;
+    show_narrow_note(h)?;
+    capture_note_menu(h, Width::Narrow)?;
+    h.show_variant(Width::Wide, Theme::Light)?;
+    capture_note_menu(h, Width::Wide)?;
 
-    h.resize(Width::Wide)?;
-    h.wait("the formatting bar to hide", || !h.shown("formatting-bar"))?;
-    h.wait_shown("note-menu-button")
+    let menu = h
+        .widget_as::<gtk::MenuButton>("note-menu-button")?
+        .menu_model()
+        .ok_or("the note menu has no model")?;
+    let editor_actions: Vec<String> = (0..menu.n_items())
+        .filter_map(|index| menu.item_link(index, "section"))
+        .flat_map(|section| {
+            (0..section.n_items())
+                .filter_map(|item| string_attribute(&section, item, "action"))
+                .collect::<Vec<_>>()
+        })
+        .filter(|action| action.starts_with("editor."))
+        .collect();
+    ensure(editor_actions == ["editor.insert-image"], || {
+        format!("the note menu offers the editor actions {editor_actions:?}")
+    })
+}
+
+fn capture_note_menu(h: &Harness, width: Width) -> Result<(), String> {
+    h.wait_shown("note-menu-button")?;
+    let popover = h
+        .widget_as::<gtk::MenuButton>("note-menu-button")?
+        .popover()
+        .ok_or("the note menu has no popover")?;
+    // Without an input seat an autohiding popover cannot take its grab and closes at once.
+    popover.set_autohide(false);
+    popover.popup();
+    let shown = h
+        .wait("the note menu to open", || popover.is_mapped())
+        .and_then(|()| h.capture_variant_with_popover("note-menu", width, Theme::Light, &popover));
+    popover.popdown();
+    popover.set_autohide(true);
+    shown
 }
 
 const CODE_NOTE: &str = "A line with `code` in it.\n\n- [ ] a task\n";
@@ -1515,7 +1534,11 @@ pub(crate) fn reopen_held(h: &mut Harness) -> Result<(), String> {
     });
     unsafe { std::env::remove_var("COMMITNOTE_TESTING_HOLD_LOADING") };
     held?;
-    h.wait_page("loading")?;
+    h.wait_page("loading")
+}
+
+fn open_early_draft(h: &Harness) -> Result<(), String> {
+    h.window_action("new-note")?;
     h.wait_shown(EARLY_NAME_ENTRY)?;
     h.wait_shown(EARLY_BODY_VIEW)
 }
@@ -1534,6 +1557,7 @@ pub(crate) fn finish_loading(h: &Harness) -> Result<(), String> {
 
 fn early_draft_created(h: &mut Harness) -> Result<(), String> {
     hold_loading(h)?;
+    open_early_draft(h)?;
     let model = h.model()?;
     let body_view = h.widget_as::<gtk::TextView>(EARLY_BODY_VIEW)?;
     h.wait("the early body to be at least 200 px tall", || {
@@ -1593,6 +1617,7 @@ fn early_draft_created(h: &mut Harness) -> Result<(), String> {
 
 fn early_draft_body_only(h: &mut Harness) -> Result<(), String> {
     hold_loading(h)?;
+    open_early_draft(h)?;
     let model = h.model()?;
     set_early_body(h, BODY_ONLY)?;
     ensure(model.early_draft().body == BODY_ONLY, || {
@@ -2530,8 +2555,7 @@ fn check_editor_surfaces(h: &Harness, mismatches: &mut Vec<String>) -> Result<()
         check_variants(h, mismatches, plain, WIDE_VARIANTS, &accent)?;
     }
     h.resize(Width::Narrow)?;
-    split_view(h)?.set_show_content(true);
-    h.wait_shown("formatting-bar")?;
+    show_narrow_note(h)?;
     focus_editor(h, &editor)?;
     select_sample_word(&editor, SELECTED_WORD)?;
     check_variants(h, mismatches, plain, NARROW_VARIANTS, SESSION_ACCENT)?;

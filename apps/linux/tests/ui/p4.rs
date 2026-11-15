@@ -284,18 +284,13 @@ fn insert_file_dialog(h: &mut Harness) -> Result<(), String> {
 
 fn insert_file(h: &mut Harness) -> Result<(), String> {
     let (editor, original) = open_welcome(h)?;
-    h.resize(Width::Narrow)?;
-    split_view(h)?.set_show_content(true);
-    h.wait_shown("format-image-button")?;
     let scratch = Scratch::new("insert-file")?;
     let files = vec![
         scratch.write("first.png", &png_bytes(48, 32, 0))?,
         scratch.write("second.png", &png_bytes(64, 40, 128))?,
     ];
     editor.place_caret(0);
-    file_dialogs::testing_queue_open(files);
-
-    h.click("format-image-button")?;
+    pick_and_insert(&editor, files)?;
     h.wait("two references in the note", || {
         references(&editor.text()).len() == 2
     })?;

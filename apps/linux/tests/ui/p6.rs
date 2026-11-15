@@ -87,6 +87,7 @@ type Announcement = (String, gtk::AccessibleAnnouncementPriority);
 
 const DESKTOP_FILE: &str = "data/io.github.marcinjahn.commitnote.desktop.in";
 const EARLY_NAME_ENTRY: &str = "early-draft-name-entry";
+const EARLY_BODY_VIEW: &str = "early-draft-body";
 const SEARCH_BAR: &str = "search-bar";
 
 fn desktop_entry() -> Result<glib::KeyFile, String> {
@@ -227,8 +228,8 @@ fn launch_while_starting(h: &mut Harness) -> Result<(), String> {
     held?;
     h.wait_page("loading")?;
     let entry = h.widget_as::<gtk::Entry>(EARLY_NAME_ENTRY)?;
-    h.wait("the early draft's name to take focus", || {
-        focus_within(h, &entry)
+    h.wait("the early draft to show with its name focused", || {
+        h.shown(EARLY_BODY_VIEW) && focus_within(h, &entry)
     })?;
     finish_loading(h)
 }
@@ -243,8 +244,8 @@ fn launch_while_loading(h: &mut Harness) -> Result<(), String> {
     })?;
 
     launch_with(h, &["--action", "new-note"])?;
-    h.wait("the early draft's name to take focus", || {
-        focus_within(h, &entry)
+    h.wait("the early draft to show with its name focused", || {
+        h.shown(EARLY_BODY_VIEW) && focus_within(h, &entry)
     })?;
     finish_loading(h)
 }
@@ -853,6 +854,7 @@ fn a11y_names_dialogs(h: &mut Harness) -> Result<(), String> {
         assert_named(spinner, "Loading")?;
     }
     assert_named(&h.widget(EARLY_NAME_ENTRY)?, "Note Name")?;
+    assert_named(&h.widget("loading-new-note-button")?, "New Note")?;
     finish_loading(h)?;
     wait_tree(h)?;
 

@@ -53,8 +53,6 @@ mod imp {
         #[template_child]
         pub(super) note_menu: TemplateChild<gtk::gio::Menu>,
         #[template_child]
-        pub(super) formatting_bar: TemplateChild<gtk::Box>,
-        #[template_child]
         pub(super) note_menu_button: TemplateChild<gtk::MenuButton>,
         #[template_child]
         pub(super) sync_status_button: TemplateChild<gtk::MenuButton>,
@@ -317,14 +315,6 @@ impl NotesPage {
                 }
             }
         });
-        editor.view().connect_editable_notify({
-            let page = page.downgrade();
-            move |_| {
-                if let Some(page) = page.upgrade() {
-                    page.update_note_controls();
-                }
-            }
-        });
         let _ = imp.editor.set(editor);
         let _ = imp.note_view.set(note_view.clone());
         imp.content_toolbar.set_content(Some(&note_view));
@@ -334,7 +324,7 @@ impl NotesPage {
         let path = model.open_note_path();
         page.set_content_title(&model.editor_target(), path.as_deref());
         imp.open_path.replace(path);
-        page.update_note_controls();
+        page.update_note_menu_button();
         page.update_organisation();
         let handler = model.connect_open_note_changed({
             let page = page.downgrade();
@@ -1055,16 +1045,10 @@ impl NotesPage {
             self.set_sidebar_hidden(false);
         }
         self.update_collapsed();
-        self.update_note_controls();
     }
 
-    fn update_note_controls(&self) {
+    fn update_note_menu_button(&self) {
         let imp = self.imp();
-        let editable = imp
-            .editor
-            .get()
-            .is_some_and(|editor| editor.view().is_editable());
-        imp.formatting_bar.set_visible(self.narrow() && editable);
         imp.note_menu_button
             .set_visible(imp.open_path.borrow().is_some());
     }
@@ -1094,7 +1078,7 @@ impl NotesPage {
             opened |= imp.draft_switch.replace(switch) != switch;
         }
         imp.open_path.replace(path);
-        self.update_note_controls();
+        self.update_note_menu_button();
         self.update_organisation();
         if opened && imp.split_view.is_collapsed() {
             imp.split_view.set_show_content(true);

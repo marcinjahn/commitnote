@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { declarations, stripComments, topLevelRules } from "./css-test-utils";
 
 const SHARED_TOKENS = [
   "--color-background",
@@ -43,49 +44,6 @@ const SHARED_TOKENS = [
 
 function readCss(relativePath: string): string {
   return readFileSync(new URL(relativePath, import.meta.url), "utf8");
-}
-
-function stripComments(css: string): string {
-  return css.replace(/\/\*[\s\S]*?\*\//g, "");
-}
-
-function topLevelRules(css: string): { prelude: string; body: string }[] {
-  const rules: { prelude: string; body: string }[] = [];
-  let depth = 0;
-  let preludeStart = 0;
-  let bodyStart = 0;
-  for (let i = 0; i < css.length; i++) {
-    if (css[i] === "{") {
-      if (depth === 0) bodyStart = i + 1;
-      depth++;
-    } else if (css[i] === "}") {
-      depth--;
-      if (depth === 0) {
-        rules.push({
-          prelude: css.slice(preludeStart, bodyStart - 1).trim(),
-          body: css.slice(bodyStart, i),
-        });
-        preludeStart = i + 1;
-      }
-    }
-  }
-  return rules;
-}
-
-function declarations(body: string): Map<string, string> {
-  const result = new Map<string, string>();
-  for (const match of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
-    result.set(match[1], normalize(match[2]));
-  }
-  return result;
-}
-
-function normalize(value: string): string {
-  return value
-    .replace(/\s+/g, " ")
-    .replace(/\(\s+/g, "(")
-    .replace(/\s+\)/g, ")")
-    .trim();
 }
 
 function resolveAccentFallbacks(value: string): string {
@@ -152,7 +110,7 @@ describe("landing tokens", () => {
 
   it("declares no other unprefixed token than the app's", () => {
     const own = [...landing.keys()].filter(
-      (name) => !name.startsWith("--landing-"),
+      (name) => name.startsWith("--") && !name.startsWith("--landing-"),
     );
     expect(tokenMismatches(app, landing, own)).toEqual([]);
   });

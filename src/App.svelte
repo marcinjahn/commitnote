@@ -924,7 +924,9 @@ import { flushBeforeLogOut } from "./app/log-out";
     await discardEarlyDraftData();
   }
 
-  async function resumeRemembered(): Promise<void> {
+  let focusRetryOnFailure = false;
+
+  async function resumeRemembered(afterRetry = false): Promise<void> {
     try {
       const result = await resumeRememberedSession({
         store,
@@ -949,13 +951,20 @@ import { flushBeforeLogOut } from "./app/log-out";
           );
           return;
         case "failed": {
-          if (earlyDraft === null || isUntouched(earlyDraft)) {
+          const draftTouched = earlyDraft !== null && !isUntouched(earlyDraft);
+          if (result.transient) {
+            focusRetryOnFailure = afterRetry;
+            resumeError = result.error;
+            if (draftTouched) earlyDraftOpen = true;
+            return;
+          }
+          if (!draftTouched) {
             leaveToLogin(result.error);
             return;
           }
           resumeError = result.error;
           earlyDraftOpen = true;
-          if (!result.transient) showLogin(result.error);
+          showLogin(result.error);
         }
       }
     } catch (e) {
@@ -967,10 +976,16 @@ import { flushBeforeLogOut } from "./app/log-out";
 
   function retryResume(): void {
     resumeError = null;
-    void resumeRemembered();
+    void resumeRemembered(true);
   }
 
-  async function logInFromEarlyDraft(): Promise<void> {
+  function focusAfterFailedRetry(button: HTMLButtonElement): void {
+    if (!focusRetryOnFailure) return;
+    focusRetryOnFailure = false;
+    button.focus();
+  }
+
+  async function logInAfterLoadFailure(): Promise<void> {
     if (keyChanged !== null) {
       await logInAfterKeyChange();
       if (phase.kind === "login") earlyDraftOpen = false;
@@ -978,7 +993,7 @@ import { flushBeforeLogOut } from "./app/log-out";
     }
     const error = resumeError;
     resumeError = null;
-    earlyDraftOpen = false;
+    closeEarlyDraft();
     if (phase.kind !== "login") showLogin(error);
   }
 
@@ -999,7 +1014,30 @@ import { flushBeforeLogOut } from "./app/log-out";
 {#if phase.kind === "restoring"}
   <main class="restoring window-drag">
     <Wordmark element="h1" />
-    <p class="restoring-text">Loading…</p>
+    {#if earlyDraftStatus.kind === "failed"}
+      <div class="restoring-failure">
+        <p class="alert-error" role="alert">{earlyDraftStatus.message}</p>
+        <div class="restoring-actions">
+          {#if earlyDraftStatus.actions.includes("tryAgain")}
+            <button
+              type="button"
+              class="button"
+              onclick={retryResume}
+              {@attach focusAfterFailedRetry}
+            >
+              Try again
+            </button>
+          {/if}
+          {#if earlyDraftStatus.actions.includes("logIn")}
+            <button type="button" class="button" onclick={() => void logInAfterLoadFailure()}>
+              Log in
+            </button>
+          {/if}
+        </div>
+      </div>
+    {:else}
+      <p class="restoring-text">Loading…</p>
+    {/if}
   </main>
   {#if earlyDraftOffered && !earlyDraftOpen}
     <FloatingNewNoteButton
@@ -1115,7 +1153,7 @@ import { flushBeforeLogOut } from "./app/log-out";
                 <button
                   type="button"
                   class="button"
-                  onclick={() => void logInFromEarlyDraft()}
+                  onclick={() => void logInAfterLoadFailure()}
                 >
                   Log in
                 </button>
@@ -1201,6 +1239,25 @@ import { flushBeforeLogOut } from "./app/log-out";
     margin: 0;
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);
+  }
+
+  .restoring-failure {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-3);
+    max-width: 28rem;
+    text-align: center;
+  }
+
+  .restoring-failure p {
+    margin: 0;
+  }
+
+  .restoring-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-2);
   }
 
   @media (display-mode: window-controls-overlay) {

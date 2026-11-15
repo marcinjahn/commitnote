@@ -10,7 +10,7 @@ use super::{
     Placed, cell_bounds, char_count, describe, open_note, placed, wait_placed, wait_placed_where,
     widest_word,
 };
-use crate::flows::{ensure, split_view};
+use crate::flows::{ensure, show_narrow_note};
 use crate::p2::{font_classes, wait_for_font};
 use crate::p6::SCALED_XFT_DPI;
 use crate::support::{Harness, SESSION_ACCENT, Theme, Width, WindowPixels, descendants, restoring};
@@ -151,8 +151,7 @@ fn check_variant(
     })?;
     h.show_appearance(variant.width, variant.theme, accent_id)?;
     if variant.width == Width::Narrow {
-        split_view(h)?.set_show_content(true);
-        h.wait_shown("formatting-bar")?;
+        show_narrow_note(h)?;
     }
     wait_placed(h, view)?;
     let accent = accent_color(h, accent_id, variant.theme)?;
@@ -410,8 +409,7 @@ fn remeasure(h: &Harness, view: &MarkdownView) -> Result<(), String> {
     )?;
 
     h.resize(Width::Narrow)?;
-    split_view(h)?.set_show_content(true);
-    h.wait_shown("formatting-bar")?;
+    show_narrow_note(h)?;
     wait_rows(h, view, "the rows to grow in the narrow window", |rows| {
         rows.len() == baseline.len() && rows.iter().sum::<f64>() > baseline.iter().sum::<f64>()
     })?;
