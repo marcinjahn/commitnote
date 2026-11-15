@@ -53,7 +53,6 @@ fn empty_params_encode_as_empty_objects() {
         params_json::<LoginLastRepository>(&LoginLastRepositoryParams {}),
         empty
     );
-    assert_eq!(params_json::<SessionResume>(&SessionResumeParams {}), empty);
     assert_eq!(params_json::<TreeGet>(&TreeGetParams {}), empty);
     assert_eq!(params_json::<SyncRefresh>(&SyncRefreshParams {}), empty);
     assert_eq!(params_json::<DeviceName>(&DeviceNameParams {}), empty);
@@ -157,6 +156,10 @@ fn params_use_camel_case_wire_names() {
     assert_eq!(
         round_trip(&AnalyticsVisitParams { screen_width: None }),
         json!({"screenWidth":null})
+    );
+    assert_eq!(
+        round_trip(&SessionResumeParams { from_cache: true }),
+        json!({"fromCache":true})
     );
     assert_eq!(
         round_trip(&LoginListRepositoriesParams {

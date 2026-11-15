@@ -1383,7 +1383,7 @@ impl AppModel {
         self.launch_core_started();
         self.count_launch();
         #[cfg(feature = "testing")]
-        self.hold_loading_if_requested().await;
+        self.hold_start_if_requested().await;
         self.lifecycle_update().await;
         self.load_login_context().await;
         self.resume().await;
@@ -1391,7 +1391,10 @@ impl AppModel {
 
     async fn resume(&self) {
         self.set_route(Route::Loading { failure: None });
-        match self.request::<SessionResume>(SessionResumeParams {}).await {
+        match self
+            .request::<SessionResume>(SessionResumeParams { from_cache: true })
+            .await
+        {
             Ok(SessionResumeResult::None) => self.set_route(Route::Token),
             Ok(SessionResumeResult::Resumed) => self.begin_session(),
             Ok(SessionResumeResult::Failed {
@@ -1420,12 +1423,15 @@ impl AppModel {
     }
 
     fn begin_session(&self) {
-        {
+        let key_changed = {
             let mut state = self.state_mut();
             state.session_active = true;
-            state.awaiting_tree = true;
+            state.awaiting_tree = state.key_changed.is_none();
+            !state.awaiting_tree
+        };
+        if !key_changed {
+            self.set_route(Route::Loading { failure: None });
         }
-        self.set_route(Route::Loading { failure: None });
         let model = self.clone();
         self.spawn(async move {
             model.load_settings().await;
@@ -2248,6 +2254,7 @@ impl AppModel {
             .as_ref()
             .map(|repository| repository.url.as_str())
             .or(state.repository_url.as_deref())
+            .or(state.last_repository.as_ref().map(|(url, _)| url.as_str()))
             .and_then(repo_key)
     }
 
@@ -2354,12 +2361,46 @@ impl AppModel {
             .map_err(UserError::from)
     }
 
-    async fn hold_loading_if_requested(&self) {
-        if std::env::var_os("COMMITNOTE_TESTING_HOLD_LOADING").is_some_and(|value| value == "1")
+    async fn hold_start_if_requested(&self) {
+        let requested = |name: &str| std::env::var_os(name).is_some_and(|value| value == "1");
+        if requested("COMMITNOTE_TESTING_HOLD_LOADING")
             && let Err(error) = self.testing_hold_loading().await
         {
             glib::g_warning!(LOG_DOMAIN, "could not hold loading: {error}");
         }
+        if requested("COMMITNOTE_TESTING_HOLD_REFRESH")
+            && let Err(error) = self.testing_hold_refresh().await
+        {
+            glib::g_warning!(LOG_DOMAIN, "could not hold the refresh: {error}");
+        }
+    }
+
+    async fn testing_hold_refresh(&self) -> Result<(), UserError> {
+        use commitnote_core_api::fake::{FakeHoldRefresh, FakeHoldRefreshParams};
+
+        self.request::<FakeHoldRefresh>(FakeHoldRefreshParams {})
+            .await
+            .map(|_| ())
+            .map_err(UserError::from)
+    }
+
+    pub async fn testing_release_refresh(&self) -> Result<(), UserError> {
+        use commitnote_core_api::fake::{FakeReleaseRefresh, FakeReleaseRefreshParams};
+
+        self.request::<FakeReleaseRefresh>(FakeReleaseRefreshParams {})
+            .await
+            .map(|_| ())
+            .map_err(UserError::from)
+    }
+
+    pub async fn testing_has_cached_tree(&self) -> Result<bool, UserError> {
+        use commitnote_core_api::fake::{FakeHasCachedTree, FakeHasCachedTreeParams};
+
+        let repo = self.testing_repo_key().ok_or_else(UserError::generic)?;
+        self.request::<FakeHasCachedTree>(FakeHasCachedTreeParams { repo })
+            .await
+            .map(|result| result.cached)
+            .map_err(UserError::from)
     }
 
     pub async fn testing_finish_loading(&self) -> Result<(), UserError> {
@@ -3756,6 +3797,23 @@ mod tests {
             session.model.leave_draft().await;
 
             assert!(!session.model.type_to_start_pending());
+        });
+    }
+
+    #[test]
+    fn a_key_change_reported_before_the_session_begins_keeps_its_page() {
+        run(|| async {
+            let session = Session::start(fake_bundle());
+            session.model.handle_event(CoreEvent::KeyChanged {
+                unsaved_count: 0,
+                message: "The key changed".to_owned(),
+                detail: String::new(),
+                export_label: "Export".to_owned(),
+            });
+
+            session.model.begin_session();
+
+            assert!(matches!(session.model.route(), Route::KeyChanged { .. }));
         });
     }
 

@@ -235,7 +235,9 @@ fn logged_in_session_resumes_in_a_new_runtime_and_logout_clears_it() {
     let store = open_keyring_store(&id);
     let second = runtime_with(&store);
     let events = second.subscribe();
-    let resumed = block_on(second.request::<SessionResume>(SessionResumeParams {})).unwrap();
+    let resumed =
+        block_on(second.request::<SessionResume>(SessionResumeParams { from_cache: false }))
+            .unwrap();
     assert_eq!(resumed, SessionResumeResult::Resumed);
     assert!(!wait_for_tree(&second, &events).is_empty());
 
@@ -247,6 +249,8 @@ fn logged_in_session_resumes_in_a_new_runtime_and_logout_clears_it() {
 
     let store = open_keyring_store(&id);
     let third = runtime_with(&store);
-    let resumed = block_on(third.request::<SessionResume>(SessionResumeParams {})).unwrap();
+    let resumed =
+        block_on(third.request::<SessionResume>(SessionResumeParams { from_cache: false }))
+            .unwrap();
     assert_eq!(resumed, SessionResumeResult::None);
 }

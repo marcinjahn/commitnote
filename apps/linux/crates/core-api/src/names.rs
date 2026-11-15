@@ -129,6 +129,9 @@ pub const FAKE_CORE_COMMAND_NAMES: &[&str] = &[
     "fake.shareNote",
     "fake.holdLoading",
     "fake.releaseLoading",
+    "fake.holdRefresh",
+    "fake.releaseRefresh",
+    "fake.hasCachedTree",
     "fake.processImage",
     "fake.importArchive",
 ];

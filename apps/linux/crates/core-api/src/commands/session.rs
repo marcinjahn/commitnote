@@ -3,7 +3,11 @@ use serde::{Deserialize, Serialize};
 use crate::error::CoreError;
 use crate::shapes::LogoutOutcome;
 
-empty_shape!(SessionResumeParams);
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionResumeParams {
+    pub from_cache: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(

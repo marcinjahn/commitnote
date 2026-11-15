@@ -18,6 +18,10 @@ empty_shape!(
     FakeHoldLoadingResult,
     FakeReleaseLoadingParams,
     FakeReleaseLoadingResult,
+    FakeHoldRefreshParams,
+    FakeHoldRefreshResult,
+    FakeReleaseRefreshParams,
+    FakeReleaseRefreshResult,
     FakeExpectedSampleNotesParams,
     FakeSaveNoteResult,
     FakeImportArchiveParams,
@@ -32,6 +36,18 @@ pub struct FakeRemoteEditParams {
     pub path: Vec<String>,
     pub text: String,
     pub device: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FakeHasCachedTreeParams {
+    pub repo: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FakeHasCachedTreeResult {
+    pub cached: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -254,6 +270,24 @@ command!(
     FakeReleaseLoadingResult
 );
 command!(
+    FakeHoldRefresh,
+    "fake.holdRefresh",
+    FakeHoldRefreshParams,
+    FakeHoldRefreshResult
+);
+command!(
+    FakeReleaseRefresh,
+    "fake.releaseRefresh",
+    FakeReleaseRefreshParams,
+    FakeReleaseRefreshResult
+);
+command!(
+    FakeHasCachedTree,
+    "fake.hasCachedTree",
+    FakeHasCachedTreeParams,
+    FakeHasCachedTreeResult
+);
+command!(
     FakeTimerProbe,
     "fake.timerProbe",
     FakeTimerProbeParams,
@@ -339,6 +373,9 @@ mod tests {
             FakeClearFailures::NAME,
             FakeHoldLoading::NAME,
             FakeReleaseLoading::NAME,
+            FakeHoldRefresh::NAME,
+            FakeReleaseRefresh::NAME,
+            FakeHasCachedTree::NAME,
             FakeTimerProbe::NAME,
             FakeCheckVectors::NAME,
             FakeExpectedSampleNotes::NAME,
@@ -357,6 +394,8 @@ mod tests {
     fn empty_params_encode_as_empty_objects() {
         assert_eq!(round_trip(&FakeHoldLoadingParams {}), json!({}));
         assert_eq!(round_trip(&FakeReleaseLoadingParams {}), json!({}));
+        assert_eq!(round_trip(&FakeHoldRefreshParams {}), json!({}));
+        assert_eq!(round_trip(&FakeReleaseRefreshParams {}), json!({}));
         assert_eq!(round_trip(&FakeExpectedSampleNotesParams {}), json!({}));
         assert_eq!(round_trip(&FakeImportArchiveParams {}), json!({}));
     }

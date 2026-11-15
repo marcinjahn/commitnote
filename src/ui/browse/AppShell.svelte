@@ -3104,6 +3104,7 @@
       var(--space-2) var(--space-3);
     justify-content: space-between;
     border-bottom: var(--hairline) solid var(--color-border);
+    background: inherit;
   }
 
   .sidebar.with-install-bar .tree-header {
@@ -3288,6 +3289,17 @@
   @media (min-width: 768px) and (min-height: 481px) {
     .sidebar {
       overflow: visible;
+    }
+  }
+
+  /* iOS WebKit blurs the top screen edge unless an opaque, near full-width sticky
+     or fixed bar starts there. The sidebar does not scroll at this height, so
+     sticky only marks the header as that bar; shorter screens scroll it away. */
+  @media (min-height: 481px) {
+    .tree-header {
+      position: sticky;
+      top: 0;
+      z-index: 1;
     }
   }
 

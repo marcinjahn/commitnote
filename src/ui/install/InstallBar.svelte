@@ -78,4 +78,15 @@
       border-bottom: 1px solid CanvasText;
     }
   }
+
+  /* iOS WebKit blurs the top screen edge unless an opaque, near full-width sticky
+     or fixed bar starts there, and this bar can be the first thing on screen.
+     Short screens scroll it away with the content instead. */
+  @media (min-height: 481px) {
+    .install-bar {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+  }
 </style>

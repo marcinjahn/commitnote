@@ -241,7 +241,13 @@
 </header>
 
 <style>
+  /* iOS WebKit blurs the top screen edge unless an opaque, near full-width sticky
+     or fixed bar starts there. The note pane never scrolls (its content does), so
+     sticky only marks the header as that bar. */
   .note-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;

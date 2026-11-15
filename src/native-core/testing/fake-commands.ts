@@ -4,6 +4,8 @@ import { deriveKeyring } from "../../crypto/keyring";
 import { decryptNote } from "../../crypto/note-cipher";
 import { parseRepoConfig } from "../../crypto/repo-config";
 import { REPO_CONFIG_PATH } from "../../format/v1";
+import { repoKeyOf } from "../../blob-cache/blob-cache";
+import { hasCachedTree, removeCachedTree } from "../../blob-cache/cached-tree";
 import {
   sampleImageNote,
   SAMPLE_NOTES_REPO_PASSPHRASE,
@@ -95,7 +97,9 @@ function sampleImportArchive(): Uint8Array {
       "Imported plan.md": strToU8(
         "# Imported plan\n\n- [ ] Review the chart\n- [x] Import the archive\n\n![chart](_images/chart.png)\n",
       ),
-      "Welcome.md": strToU8("# Welcome\n\nA note that clashes with an existing one.\n"),
+      "Welcome.md": strToU8(
+        "# Welcome\n\nA note that clashes with an existing one.\n",
+      ),
       "Ideas/Later.md": strToU8("# Later\n\nIdeas for later.\n"),
       "_images/chart.png": samplePng(),
     },
@@ -119,7 +123,10 @@ function stringParam(params: Params, name: string): string {
 }
 
 function stringArrayParam(value: unknown): string[] {
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+  if (
+    !Array.isArray(value) ||
+    !value.every((item) => typeof item === "string")
+  ) {
     throw invalidParams();
   }
   return value;
@@ -152,6 +159,14 @@ const LOADING_REPOS: readonly string[] = [
   "sample/almost-empty",
   LARGE_TREE_REPO_KEY,
 ];
+
+const REFRESH_OPERATIONS: readonly HoldableOperation[] = ["inspect", "getHead"];
+
+function fakeRepoKey(repo: string): string {
+  const [owner, name] = repo.split("/");
+  if (owner === undefined || name === undefined) throw invalidParams();
+  return repoKeyOf({ forge: "github", owner, repo: name });
+}
 
 function failableOperation(params: Params): HoldableOperation {
   const operation = FAILABLE_OPERATIONS.find(
@@ -280,7 +295,8 @@ export function createFakeCommands(options: {
     async "fake.httpRequest"(raw) {
       const params = asParams(raw);
       const headers = params.headers;
-      if (typeof headers !== "object" || headers === null) throw invalidParams();
+      if (typeof headers !== "object" || headers === null)
+        throw invalidParams();
       const bodyText = stringParam(params, "bodyText");
       const response = await hostFetch(stringParam(params, "url"), {
         method: stringParam(params, "method"),
@@ -369,7 +385,10 @@ export function createFakeCommands(options: {
 
     async "fake.holdLoading"() {
       const controls = await options.controls();
-      for (const repo of LOADING_REPOS) controls.hold(repo, "inspect");
+      for (const repo of LOADING_REPOS) {
+        removeCachedTree(fakeRepoKey(repo), host.deviceSettings);
+        controls.hold(repo, "inspect");
+      }
       return {};
     },
 
@@ -377,6 +396,31 @@ export function createFakeCommands(options: {
       const controls = await options.controls();
       for (const repo of LOADING_REPOS) controls.release(repo, "inspect");
       return {};
+    },
+
+    async "fake.holdRefresh"() {
+      const controls = await options.controls();
+      for (const repo of LOADING_REPOS) {
+        for (const operation of REFRESH_OPERATIONS)
+          controls.hold(repo, operation);
+      }
+      return {};
+    },
+
+    async "fake.releaseRefresh"() {
+      const controls = await options.controls();
+      for (const repo of LOADING_REPOS) {
+        for (const operation of REFRESH_OPERATIONS)
+          controls.release(repo, operation);
+      }
+      return {};
+    },
+
+    async "fake.hasCachedTree"(raw) {
+      const repo = stringParam(asParams(raw), "repo");
+      return {
+        cached: hasCachedTree(fakeRepoKey(repo), host.deviceSettings),
+      };
     },
 
     async "fake.importArchive"() {

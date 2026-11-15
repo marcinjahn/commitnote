@@ -163,10 +163,7 @@ export type SettingKeyView =
   | "typeToStart"
   | "vimMode";
 export type ScopedSettingKey =
-  | "colorMode"
-  | "accentColor"
-  | "noteFont"
-  | "typeToStart";
+  "colorMode" | "accentColor" | "noteFont" | "typeToStart";
 
 export interface SettingOptionView {
   id: string;
@@ -929,8 +926,19 @@ export type FakeCoreCommands = {
     result: {};
   };
   "fake.shareNote": { params: { path: string[] }; result: {} };
+  /** Also forgets the kept trees, so a start from cache checks with the forge and stays on loading. */
   "fake.holdLoading": { params: {}; result: {} };
   "fake.releaseLoading": { params: {}; result: {} };
+  /**
+   * Holds every forge check of a start, so only a start from the kept tree can show notes, and its
+   * background refresh waits for the release.
+   */
+  "fake.holdRefresh": { params: {}; result: {} };
+  "fake.releaseRefresh": { params: {}; result: {} };
+  "fake.hasCachedTree": {
+    params: { repo: string };
+    result: { cached: boolean };
+  };
   "fake.processImage": {
     params: { base64: string; type: string; profile: "note" | "share" };
     result: {
@@ -1147,6 +1155,9 @@ export const FAKE_CORE_COMMAND_NAMES = [
   "fake.shareNote",
   "fake.holdLoading",
   "fake.releaseLoading",
+  "fake.holdRefresh",
+  "fake.releaseRefresh",
+  "fake.hasCachedTree",
   "fake.processImage",
   "fake.importArchive",
 ] as const satisfies readonly (keyof FakeCoreCommands)[];

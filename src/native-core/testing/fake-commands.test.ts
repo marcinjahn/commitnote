@@ -25,10 +25,7 @@ function pngBytes(width: number, height: number): Uint8Array {
   view.setUint32(8, width);
   view.setUint32(12, height);
   ihdr.set([8, 2, 0, 0, 0], 16);
-  return Uint8Array.of(
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    ...ihdr,
-  );
+  return Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...ihdr);
 }
 
 let host: NodeHostServices;
@@ -431,7 +428,9 @@ describe("fake core commands", () => {
     );
     const archive = await ok(send("export.notes", { includeImages: false }));
     expect(archive.mimeType).toBe("application/zip");
-    const files = unzipSync(new Uint8Array(Buffer.from(archive.base64, "base64")));
+    const files = unzipSync(
+      new Uint8Array(Buffer.from(archive.base64, "base64")),
+    );
     expect(strFromU8(files["Welcome.md"]!)).toBe("Unsaved words");
     core.stop();
   });
@@ -475,6 +474,98 @@ describe("fake core commands", () => {
     expect(await resumed).toMatchObject({
       ok: true,
       result: { kind: "resumed" },
+    });
+    ctx.core.stop();
+  });
+
+  async function keepSampleTree(ctx: Awaited<ReturnType<typeof setUp>>) {
+    expect(
+      await ok(ctx.send("fake.hasCachedTree", { repo: "sample/notes" })),
+    ).toEqual({ cached: false });
+    await ctx.openSampleSession();
+    await vi.waitFor(
+      async () => {
+        expect(
+          await ok(ctx.send("fake.hasCachedTree", { repo: "sample/notes" })),
+        ).toEqual({ cached: true });
+      },
+      { timeout: 5_000, interval: 50 },
+    );
+    ctx.restart();
+  }
+
+  it("holds loading for a start from cache by forgetting the kept tree", async () => {
+    const ctx = await setUp();
+    await keepSampleTree(ctx);
+
+    await ok(ctx.send("fake.holdLoading"));
+    expect(
+      await ok(ctx.send("fake.hasCachedTree", { repo: "sample/notes" })),
+    ).toEqual({ cached: false });
+    let settled: CoreResponse | null = null;
+    const resumed = ctx
+      .send("session.resume", { fromCache: true })
+      .then((response) => {
+        settled = response;
+        return response;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(settled).toBeNull();
+
+    await ok(ctx.send("fake.releaseLoading"));
+    expect(await resumed).toMatchObject({
+      ok: true,
+      result: { kind: "resumed" },
+    });
+    ctx.core.stop();
+  });
+
+  it("holds a start that checks with the forge while the refresh is held", async () => {
+    const ctx = await setUp();
+    await keepSampleTree(ctx);
+
+    await ok(ctx.send("fake.holdRefresh"));
+    let settled: CoreResponse | null = null;
+    const resumed = ctx
+      .send("session.resume", { fromCache: false })
+      .then((response) => {
+        settled = response;
+        return response;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(settled).toBeNull();
+
+    await ok(ctx.send("fake.releaseRefresh"));
+    expect(await resumed).toMatchObject({
+      ok: true,
+      result: { kind: "resumed" },
+    });
+    ctx.core.stop();
+  });
+
+  it("starts from the kept tree while the refresh is held", async () => {
+    const ctx = await setUp();
+    await keepSampleTree(ctx);
+
+    await ok(ctx.send("fake.holdRefresh"));
+    expect(await ok(ctx.send("session.resume", { fromCache: true }))).toEqual({
+      kind: "resumed",
+    });
+    const refreshing = () =>
+      ctx.events("syncStateChanged").at(-1) as
+        { refreshing: boolean; treeLoaded: boolean } | undefined;
+    await vi.waitFor(() => {
+      expect(refreshing()).toMatchObject({
+        refreshing: true,
+        treeLoaded: true,
+      });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(refreshing()?.refreshing).toBe(true);
+
+    await ok(ctx.send("fake.releaseRefresh"));
+    await vi.waitFor(() => {
+      expect(refreshing()?.refreshing).toBe(false);
     });
     ctx.core.stop();
   });

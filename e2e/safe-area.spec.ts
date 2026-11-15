@@ -48,6 +48,59 @@ test("the note header stays below the top inset", MOBILE, async ({ page }) => {
     .toBeGreaterThanOrEqual(48);
 });
 
+// iOS WebKit (LocalFrameView::fixedContainerEdges) lays a soft blur over the top
+// screen edge unless the hit at its midpoint has a sticky or fixed, opaque,
+// near full-width ancestor. Returns the classes of that ancestor, if any.
+function topEdgeBar(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    let element = document.elementFromPoint(innerWidth / 2, 4);
+    while (element !== null) {
+      const style = getComputedStyle(element);
+      if (style.position === "fixed" || style.position === "sticky") {
+        // Opaque sRGB colors compute to rgb(); translucent ones to rgba().
+        const opaque = style.backgroundColor.startsWith("rgb(");
+        const wide = element.getBoundingClientRect().width >= innerWidth * 0.9;
+        return opaque && wide ? element.className : null;
+      }
+      element = element.parentElement;
+    }
+    return null;
+  });
+}
+
+const hideTestBanner = { content: ".test-mode-banner { display: none; }" };
+
+test("an opaque sticky bar marks the top edge", MOBILE, async ({ page }) => {
+  await overrideInsets(page, { top: 48, bottom: 34, left: 0, right: 0 });
+  await openNotes(page);
+  await page.addStyleTag(hideTestBanner);
+  await expect.poll(() => topEdgeBar(page)).toContain("tree-header");
+  await openWelcome(page);
+  await expect.poll(() => topEdgeBar(page)).toContain("note-header");
+});
+
+test("on a short screen the tree header scrolls away", MOBILE, async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 400 });
+  await openNotes(page);
+  await page.addStyleTag(hideTestBanner);
+  await treeItem(page, "Journal").click();
+  await treeItem(page, "Projects").click();
+
+  const sidebar = page.getByRole("navigation", { name: "Notes" });
+  await expect
+    .poll(() => sidebar.evaluate((el) => el.scrollHeight > el.clientHeight))
+    .toBe(true);
+  await sidebar.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await expect
+    .poll(async () => {
+      const box = (await page.locator(".tree-header").boundingBox())!;
+      return box.y + box.height;
+    })
+    .toBeLessThanOrEqual(0);
+});
+
 test("the tree header stays inside the side insets", MOBILE, async ({ page }) => {
   await overrideInsets(page, { top: 0, bottom: 21, left: 47, right: 47 });
   await openNotes(page);

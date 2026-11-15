@@ -1,3 +1,4 @@
+mod cached;
 mod criticals;
 mod flows;
 mod p1;
@@ -42,6 +43,7 @@ const SUITES: &[Suite] = &[
     suite("p5", p5::CASES, Keyring::Provided),
     suite("p6", p6::CASES, Keyring::Provided),
     suite("tables", tables::CASES, Keyring::Provided),
+    suite("cached", cached::CASES, Keyring::Provided),
     suite("smoke", smoke::CASES, Keyring::Absent),
 ];
 
