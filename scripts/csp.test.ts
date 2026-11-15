@@ -20,17 +20,17 @@ describe("buildCsp", () => {
 });
 
 describe("buildCsp with an analytics endpoint", () => {
-  const endpoint = "https://commitnote.goatcounter.com/count";
+  const endpoint = "https://stats.commitnote.eu/count";
 
   it("appends the origin to the web connect-src", () => {
     expect(buildCsp("web", ["'sha256-AAA'"], endpoint)).toBe(
-      `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AAA'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com https://gitlab.com https://commitnote.goatcounter.com; ${TAIL}`,
+      `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AAA'; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com https://gitlab.com https://stats.commitnote.eu; ${TAIL}`,
     );
   });
 
   it("replaces 'none' in the landing connect-src", () => {
     expect(buildCsp("landing", ["'sha256-AAA'"], endpoint)).toBe(
-      "default-src 'self'; script-src 'self' 'sha256-AAA'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://commitnote.goatcounter.com; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
+      "default-src 'self'; script-src 'self' 'sha256-AAA'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://stats.commitnote.eu; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
     );
   });
 });

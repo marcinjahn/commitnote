@@ -15,16 +15,17 @@ async function flushVisits(page: Page): Promise<void> {
   await page.clock.runFor(10_000);
 }
 
-async function overrideNavigator(
-  page: Page,
-  property: "doNotTrack" | "globalPrivacyControl",
-): Promise<void> {
-  await page.addInitScript((name) => {
-    Object.defineProperty(Navigator.prototype, name, {
-      get: () => (name === "doNotTrack" ? "1" : true),
+async function sendPrivacySignals(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "doNotTrack", {
+      get: () => "1",
       configurable: true,
     });
-  }, property);
+    Object.defineProperty(Navigator.prototype, "globalPrivacyControl", {
+      get: () => true,
+      configurable: true,
+    });
+  });
 }
 
 function expectUrls(
@@ -120,32 +121,17 @@ test("opening a share link counts the viewer without the link", async ({
   }
 });
 
-test("Do Not Track suppresses every visit", async ({
+test("Do Not Track and Global Privacy Control do not suppress visits", async ({
   page,
   analyticsRequests,
 }) => {
-  await overrideNavigator(page, "doNotTrack");
+  await sendPrivacySignals(page);
   await openNotes(page);
   await settleIdle(page);
-  await expectCount(analyticsRequests, 0);
+  await expectUrls(analyticsRequests, [APP_WEB]);
 
   await page.clock.install();
   await page.goto("/");
   await flushVisits(page);
-  await expectCount(analyticsRequests, 0);
-});
-
-test("Global Privacy Control suppresses every visit", async ({
-  page,
-  analyticsRequests,
-}) => {
-  await overrideNavigator(page, "globalPrivacyControl");
-  await openNotes(page);
-  await settleIdle(page);
-  await expectCount(analyticsRequests, 0);
-
-  await page.clock.install();
-  await page.goto("/");
-  await flushVisits(page);
-  await expectCount(analyticsRequests, 0);
+  await expectUrls(analyticsRequests, [APP_WEB, LANDING]);
 });

@@ -2,8 +2,6 @@ export type AnalyticsPage = "landing" | "app";
 export type AnalyticsPlatform = "web" | "pwa";
 
 export interface AnalyticsNavigator {
-  readonly doNotTrack?: string | null;
-  readonly globalPrivacyControl?: boolean;
   readonly onLine?: boolean;
 }
 
@@ -38,10 +36,6 @@ export function visitTitle(
   return `${name} (${PLATFORM_LABELS[platform]})`;
 }
 
-function browserOptsOut(navigator: AnalyticsNavigator): boolean {
-  return navigator.doNotTrack === "1" || navigator.globalPrivacyControl === true;
-}
-
 export function visitUrl(
   endpoint: string,
   path: string,
@@ -54,9 +48,7 @@ export function decideVisit(
   inputs: VisitInputs,
 ): { readonly url: string } | null {
   if (inputs.endpoint === null) return null;
-  if (browserOptsOut(inputs.navigator) || inputs.navigator.onLine === false) {
-    return null;
-  }
+  if (inputs.navigator.onLine === false) return null;
   const platform = analyticsPlatform(inputs.standalone);
   const path = visitPath(inputs.page, platform);
   const title = visitTitle(inputs.page, platform);

@@ -65,18 +65,12 @@ describe("decideVisit", () => {
 
   it.each<[string, Partial<VisitInputs>]>([
     ["no endpoint", { endpoint: null }],
-    ["Do Not Track", { navigator: { doNotTrack: "1" } }],
-    ["Global Privacy Control", { navigator: { globalPrivacyControl: true } }],
     ["offline", { navigator: { onLine: false } }],
   ])("sends nothing with %s", (_name, overrides) => {
     expect(decideVisit(inputs(overrides))).toBeNull();
   });
 
   it.each<[string, AnalyticsNavigator]>([
-    ["DNT 0", { doNotTrack: "0" }],
-    ["DNT null", { doNotTrack: null }],
-    ["GPC false", { globalPrivacyControl: false }],
-    ["GPC undefined", { globalPrivacyControl: undefined }],
     ["onLine undefined", { onLine: undefined }],
     ["onLine true", { onLine: true }],
   ])("still sends with %s", (_name, navigator) => {
@@ -136,11 +130,6 @@ describe("sendVisit", () => {
 
   it.each<[string, () => Partial<SendVisitDeps>]>([
     ["no endpoint", () => ({ endpoint: null })],
-    ["Do Not Track", () => ({ navigator: { doNotTrack: "1" } })],
-    [
-      "Global Privacy Control",
-      () => ({ navigator: { globalPrivacyControl: true } }),
-    ],
     ["offline", () => ({ navigator: { onLine: false } })],
   ])("schedules nothing with %s", (_name, overrides) => {
     const { deps, scheduled } = setup(overrides());
