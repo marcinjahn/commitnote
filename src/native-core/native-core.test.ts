@@ -432,7 +432,7 @@ describe("session commands", () => {
     });
   });
 
-  it("resumes from the cached tree while the forge is unreachable and reports the failed refresh", async () => {
+  async function logInAndKeepTree(): Promise<void> {
     const first = startCore();
     await logIn(first);
     clock.advance(CACHED_TREE_SAVE_DELAY_MS);
@@ -444,10 +444,16 @@ describe("session commands", () => {
       ).not.toBeNull();
     });
     first.stop();
+  }
+
+  it("resumes from the cached tree while the forge is unreachable and reports the failed refresh", async () => {
+    await logInAndKeepTree();
 
     controls.failNext("sample/notes", "getHead", "Server");
     const core = startCore();
-    expect(await call(core, "session.resume")).toEqual({ kind: "resumed" });
+    expect(await call(core, "session.resume", { fromCache: true })).toEqual({
+      kind: "resumed",
+    });
     const { tree } = await call(core, "tree.get");
     expect(tree).not.toEqual([]);
     await vi.waitFor(() => {
@@ -457,6 +463,24 @@ describe("session commands", () => {
         ),
       ).toMatchObject([{ id: "refresh", tone: "error" }]);
     });
+  });
+
+  it("checks with the forge before resuming unless the shell asks to start from cache", async () => {
+    await logInAndKeepTree();
+
+    controls.hold("sample/notes", "inspect");
+    try {
+      let settled = false;
+      const resumed = call(startCore(), "session.resume").finally(() => {
+        settled = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(settled).toBe(false);
+      controls.release("sample/notes", "inspect");
+      expect(await resumed).toEqual({ kind: "resumed" });
+    } finally {
+      controls.release("sample/notes", "inspect");
+    }
   });
 
   it("forgets the cached tree on log out", async () => {

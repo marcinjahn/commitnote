@@ -46,6 +46,16 @@ export function booleanParam(params: CommandParams, name: string): boolean {
   return value;
 }
 
+export function optionalBooleanParam(
+  params: CommandParams,
+  name: string,
+): boolean | undefined {
+  const value = params[name];
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") throw invalidParams();
+  return value;
+}
+
 export function forgeParam(params: CommandParams, name: string): ForgeId {
   const value = params[name];
   if (!isForgeId(value)) throw invalidParams();

@@ -3,7 +3,9 @@ import { flushBeforeLogOut } from "../../app/log-out";
 import { resumeRemembered } from "../../app/resume-remembered";
 import { repoKeyOf } from "../../blob-cache/blob-cache";
 import { removeCachedTree } from "../../blob-cache/cached-tree";
+import type { ForgeAdapter } from "../../forge/forge-adapter";
 import type { ForgeId } from "../../forge/repo-coordinates";
+import type { Session } from "../../session/session";
 import { describeLoginStep } from "../../ui/login/login-messages";
 import { describeLogoutUnsaved } from "../../ui/session/session-messages";
 import type { CoreCommands } from "../api";
@@ -14,6 +16,7 @@ import type { DraftCommands } from "./draft-commands";
 import {
   booleanParam,
   notReady,
+  optionalBooleanParam,
   type CommandHandler,
   type EmitCoreEvent,
 } from "./command-context";
@@ -38,7 +41,8 @@ export function createSessionCommands(context: {
   const { host, app, emit, drafts } = context;
 
   return {
-    async "session.resume"(): Promise<Result<"session.resume">> {
+    async "session.resume"(params): Promise<Result<"session.resume">> {
+      const fromCache = optionalBooleanParam(params, "fromCache") ?? false;
       if (app.current() !== null) throw notReady();
       const loaded: { forge: ForgeId | null } = { forge: null };
       const result = await resumeRemembered({
@@ -50,8 +54,12 @@ export function createSessionCommands(context: {
         onSessionLoaded: async (session) => {
           loaded.forge = session.coordinates.forge;
         },
-        startFromCache: (session, adapter) =>
-          app.startFromCache({ session, adapter }),
+        ...(fromCache
+          ? {
+              startFromCache: (session: Session, adapter: ForgeAdapter) =>
+                app.startFromCache({ session, adapter }),
+            }
+          : {}),
         async clearAfterFailure(session) {
           if (session !== null) {
             await app.store.clear();

@@ -637,7 +637,12 @@ export type CoreCommands = {
     };
   };
   "session.resume": {
-    params: {};
+    /**
+     * With `fromCache`, a usable kept tree resolves `resumed` at once and the
+     * forge refresh runs in the background, so the shell must show the tree
+     * without waiting for the first full load.
+     */
+    params: { fromCache?: boolean };
     result:
       | { kind: "none" }
       | { kind: "resumed" }
