@@ -45,7 +45,7 @@ test("the landing page renders its content and calls to action", async ({
     await hrefs(page.getByRole("link", { name: "Latest release" })),
   ).toEqual([LATEST_RELEASE]);
   await expect(page.locator(".hero-note")).toContainText(
-    "Flatpak for x86_64 Linux",
+    "Flatpak for x86_64 Linux · Installable from your browser",
   );
   const platforms = page.locator("#platforms");
   for (const name of [

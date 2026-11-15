@@ -38,7 +38,7 @@ encrypted), encrypted share links, search and zip import and export, and it has 
 <p>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="landing/screenshots/linux-notes-dark@1x.png" />
-    <img src="landing/screenshots/linux-notes-light@1x.png" alt="The Linux app with a note open" height="420" />
+    <img src="landing/screenshots/linux-notes-light@1x.png" alt="The Linux app with a note open" height="340" />
   </picture>
 </p>
 

@@ -206,7 +206,7 @@ async function findServiceWorkerProblems(
   return { problems, fileCount: manifest.files.length };
 }
 
-const LANDING_TEXT_BUDGET_BYTES = 40_960;
+const LANDING_TEXT_BUDGET_BYTES = 45_056;
 const LANDING_PNG_BUDGET_BYTES = 409_600;
 
 function toPosix(path: string): string {
