@@ -95,7 +95,9 @@ impl Http for SoupHttp {
         request: HttpRequest,
     ) -> LocalBoxFuture<'static, Result<HttpResponse, HttpError>> {
         let allow_loopback_http = self.allow_loopback_http;
-        let message = match glib::Uri::parse(&request.url, glib::UriFlags::NONE) {
+        // Without ENCODED, GLib decodes the path, so GitLab's `group%2Fproject` ids would
+        // reach the server as extra path segments.
+        let message = match glib::Uri::parse(&request.url, glib::UriFlags::ENCODED) {
             Ok(uri) if is_allowed(&uri, allow_loopback_http) => {
                 soup::Message::from_uri(&request.method, &uri)
             }

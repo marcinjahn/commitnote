@@ -1,6 +1,8 @@
 mod common;
 
 use std::collections::BTreeMap;
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpListener;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -113,6 +115,38 @@ fn request_and_response_round_trip() {
     assert_eq!(seen[0].header("x-custom-header"), Some("Value 1"));
     assert_eq!(seen[0].header("content-type"), Some("text/plain"));
     assert_eq!(seen[0].body, "héllo\nbody".as_bytes());
+}
+
+// The libsoup test server decodes the path it reports, so this one reads the raw request line.
+#[test]
+fn percent_encoded_url_parts_are_sent_unchanged() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a free port");
+    let port = listener.local_addr().expect("a local address").port();
+    let server = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().expect("a connection");
+        let mut request_line = String::new();
+        BufReader::new(&stream)
+            .read_line(&mut request_line)
+            .expect("a request line");
+        (&stream)
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            .expect("the response is written");
+        request_line
+    });
+
+    call_directly(
+        policy(true, Duration::from_secs(60)),
+        "GET",
+        &format!(
+            "http://127.0.0.1:{port}/projects/group%2Fnotes/files/dir%2Fa%20b.md?ref=a%2Bb%26c"
+        ),
+    )
+    .expect("the request succeeds");
+
+    assert_eq!(
+        server.join().expect("the server thread finishes"),
+        "GET /projects/group%2Fnotes/files/dir%2Fa%20b.md?ref=a%2Bb%26c HTTP/1.1\r\n"
+    );
 }
 
 #[test]
