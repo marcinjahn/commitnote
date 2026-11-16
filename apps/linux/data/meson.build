@@ -93,6 +93,21 @@ install_data(
   install_tag: 'fonts',
 )
 
+# flatpak-builder picks up the top-level LICENSE on its own, but not the bundled fonts' licences.
+install_data(
+  note_fonts_dir / 'Licenses' / 'AtkinsonHyperlegibleNext-OFL.txt',
+  note_fonts_dir / 'Licenses' / 'IBMPlexMono-OFL.txt',
+  note_fonts_dir / 'Licenses' / 'IBMPlexSans-OFL.txt',
+  note_fonts_dir / 'Licenses' / 'Inter-OFL.txt',
+  note_fonts_dir / 'Licenses' / 'JetBrainsMono-OFL.txt',
+  note_fonts_dir / 'Licenses' / 'Literata-OFL.txt',
+  note_fonts_dir / 'Licenses' / 'Lora-OFL.txt',
+  note_fonts_dir / 'Licenses' / 'Nunito-OFL.txt',
+  note_fonts_dir / 'Licenses' / 'SourceSerif4-OFL.txt',
+  note_fonts_dir / 'Licenses' / 'iAWriterQuattro-LICENSE.md',
+  install_dir: datadir / 'licenses' / app_id / 'fonts',
+)
+
 subdir('ui')
 
 core_bundle_copy = fs.copyfile(core_bundle, 'commitnote-core.js')
