@@ -11,14 +11,18 @@ on:
         description: Name of the artifact that holds the testing Flatpak bundle; the testing part is skipped without it
         type: string
         default: ""
+      arch:
+        description: Architecture of the bundles, which picks the runner they run on
+        type: string
+        default: x86_64
 
 permissions:
   contents: read
 
 jobs:
   smoke-test:
-    name: Install and run the Flatpak
-    runs-on: ubuntu-26.04
+    name: Install and run the Flatpak (${{ inputs.arch }})
+    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-26.04-arm' || 'ubuntu-26.04' }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
@@ -52,19 +56,19 @@ jobs:
           tags: ${{ steps.image.outputs.tag }}
           load: true
           push: false
-          cache-from: type=gha,scope=flatpak-test
-          cache-to: type=gha,mode=max,scope=flatpak-test
+          cache-from: type=gha,scope=flatpak-test-${{ inputs.arch }}
+          cache-to: type=gha,mode=max,scope=flatpak-test-${{ inputs.arch }}
 
       - name: Flatpak smoke test
         env:
-          RELEASE_BUNDLE: ${{ runner.temp }}/flatpak-bundles/commitnote-x86_64.flatpak
-          TESTING_BUNDLE: ${{ inputs.testing-artifact && format('{0}/flatpak-bundles/commitnote-testing-x86_64.flatpak', runner.temp) || '' }}
+          RELEASE_BUNDLE: ${{ runner.temp }}/flatpak-bundles/commitnote-${{ inputs.arch }}.flatpak
+          TESTING_BUNDLE: ${{ inputs.testing-artifact && format('{0}/flatpak-bundles/commitnote-testing-{1}.flatpak', runner.temp, inputs.arch) || '' }}
         run: just linux flatpak-smoke-test "$RELEASE_BUNDLE" "$TESTING_BUNDLE"
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: flatpak-smoke-test
+          name: flatpak-smoke-test-${{ inputs.arch }}
           path: |
             apps/linux/out/flatpak/smoke
             !apps/linux/out/flatpak/smoke/input
