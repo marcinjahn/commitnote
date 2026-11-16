@@ -205,6 +205,26 @@ self.addEventListener("activate", (event) => {
 });
 ```
 
+## Contributing
+
+Issues and bug reports are welcome. Pull requests aren't accepted for now; see
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
-No license yet, so all rights are reserved.
+commitnote is free software under the [GNU General Public License, version 3 or later](LICENSE)
+(`GPL-3.0-or-later`): the web app, the shared core and the Linux app. The bundled
+fonts and vendored libraries keep their own licenses, which sit next to them.
+
+### Name and icon
+
+The GPL doesn't cover the commitnote name or its icon and logo artwork (© Marcin Jahn). You may pass
+on unmodified copies of commitnote with them, but if you change it and distribute your version, give
+it a different name and icon. The artwork this applies to:
+
+- the app icon: `src/assets/favicon.svg`, the app icons in `public/icons/` (the `shortcut-*` icons
+  are covered by the GPL like everything else) and `apps/linux/data/icons/`
+- the wordmark (the styled commitnote name), drawn in `docs/brand/`
+
+The scripts in `scripts/` that draw them are GPL code like the rest, but the icon and logo they
+produce aren't.

@@ -2,6 +2,7 @@
   "name": "commitnote",
   "private": true,
   "version": "0.0.0",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

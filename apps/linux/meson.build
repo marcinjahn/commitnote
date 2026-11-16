@@ -2,7 +2,7 @@ project(
   'commitnote',
   version: '0.2.0',
   meson_version: '>= 1.1.0',
-  license: 'LicenseRef-proprietary',
+  license: 'GPL-3.0-or-later',
 )
 
 fs = import('fs')

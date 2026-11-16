@@ -6,6 +6,7 @@ const HEADING = "Encrypted markdown notes in your own git repository.";
 const REPOSITORY = "https://github.com/marcinjahn/commitnote";
 const FLATPAK = `${REPOSITORY}/releases/latest/download/commitnote-x86_64.flatpak`;
 const LATEST_RELEASE = `${REPOSITORY}/releases/latest`;
+const LICENCE = `${REPOSITORY}/blob/main/LICENSE`;
 
 async function openLanding(page: Page): Promise<void> {
   await page.goto("/");
@@ -44,6 +45,9 @@ test("the landing page renders its content and calls to action", async ({
   expect(
     await hrefs(page.getByRole("link", { name: "Latest release" })),
   ).toEqual([LATEST_RELEASE]);
+  expect(
+    await hrefs(page.getByRole("link", { name: "GPL-3.0-or-later" })),
+  ).toEqual([LICENCE]);
   await expect(page.locator(".hero-note")).toContainText(
     "Flatpak for x86_64 Linux · Installable from your browser",
   );

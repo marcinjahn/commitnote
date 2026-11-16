@@ -2,6 +2,9 @@
 members = ["crates/crypto", "crates/core-api", "crates/core-runtime", "crates/markdown", "crates/editor-text", "crates/interaction", "crates/image-codec"]
 resolver = "3"
 
+[workspace.package]
+license = "GPL-3.0-or-later"
+
 [workspace.dependencies]
 commitnote-crypto = { path = "crates/crypto" }
 commitnote-core-api = { path = "crates/core-api" }
@@ -48,6 +51,7 @@ libwebp-sys = { version = "0.14.4", features = ["system-dylib"] }
 name = "commitnote"
 version = "0.2.0"
 edition = "2024"
+license.workspace = true
 publish = false
 
 [[bin]]

@@ -676,11 +676,7 @@ fn about_dialog(h: &mut Harness) -> Result<(), String> {
         dialog.copyright().into(),
         "© 2026 Marcin Jahn",
     )?;
-    same(
-        "the licence text",
-        dialog.license().into(),
-        "All rights reserved.",
-    )?;
+    same("the custom licence text", dialog.license().into(), "")?;
     same("the issue URL", dialog.issue_url().into(), "")?;
     same(
         "the debug info file name",
@@ -700,7 +696,7 @@ fn about_dialog(h: &mut Harness) -> Result<(), String> {
             )
         },
     )?;
-    ensure(dialog.license_type() == gtk::License::Custom, || {
+    ensure(dialog.license_type() == gtk::License::Gpl30, || {
         format!(
             "the about dialog has the licence type {:?}",
             dialog.license_type()

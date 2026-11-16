@@ -8,7 +8,6 @@ const APPLICATION_NAME: &str = "commitnote";
 const DEVELOPER: &str = "Marcin Jahn";
 const WEBSITE: &str = "https://github.com/marcinjahn/commitnote";
 const COPYRIGHT: &str = "© 2026 Marcin Jahn";
-const LICENSE: &str = "All rights reserved.";
 const DEBUG_INFO_FILENAME: &str = "commitnote-debug-info.txt";
 
 const FONT_LICENSES: &[(&str, &str)] = &[
@@ -36,8 +35,7 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
         .developers([DEVELOPER])
         .website(WEBSITE)
         .copyright(COPYRIGHT)
-        .license_type(gtk::License::Custom)
-        .license(LICENSE)
+        .license_type(gtk::License::Gpl30)
         .debug_info(debug_info())
         .debug_info_filename(DEBUG_INFO_FILENAME)
         .build();
