@@ -67,8 +67,8 @@ async function setUp() {
   const start = () =>
     createNativeCore({
       host,
-      deviceModel: "ThinkPad",
-      platform: "linux",
+      deviceModel: "iPhone",
+      platform: "ios",
       analyticsEndpoint: null,
       registry: () => Promise.resolve(forge.registry),
       extraCommands: (app) =>
@@ -338,7 +338,7 @@ describe("fake core commands", () => {
         repo: "sample/notes",
         path: ["Welcome"],
         text: ["# Remote title", ...lines.slice(1)].join("\n"),
-        device: "Other laptop",
+        device: "Other iPhone",
       }),
     );
     await ok(
@@ -351,7 +351,7 @@ describe("fake core commands", () => {
 
     await vi.waitFor(() => {
       const latest = events("noteChanged").at(-1)?.note;
-      expect(latest?.conflict).toMatchObject({ otherDevice: "Other laptop" });
+      expect(latest?.conflict).toMatchObject({ otherDevice: "Other iPhone" });
     });
     expect(
       events("notice").some(

@@ -72,6 +72,8 @@ const FAKE_CORE_CONTROLS: readonly string[] = [
   "fake.saveNote",
   "fake.shareNote",
   "fake.processImage",
+  "/app/ios",
+  "App (iOS)",
   "/app/linux",
   "App (Linux)",
   "Imported plan",
@@ -257,7 +259,7 @@ class BareHostCore {
   constructor(
     bundle: vm.Script,
     readonly host: NodeHostServices,
-    startOptions: object = { platform: "linux" },
+    startOptions: object = { platform: "ios" },
   ) {
     const context = vm.createContext({});
     vm.runInContext("delete globalThis.WebAssembly", context);
@@ -1061,7 +1063,12 @@ async function dataCheck(bundle: vm.Script): Promise<string> {
 const VISIT_SCREEN_WIDTH = 390;
 
 const VISIT_URLS = [
+  ["ios", `${FAKE_ANALYTICS_ENDPOINT}?p=%2Fapp%2Fios&t=App%20(iOS)&s=${VISIT_SCREEN_WIDTH}`],
   ["linux", `${FAKE_ANALYTICS_ENDPOINT}?p=%2Fapp%2Flinux&t=App%20(Linux)&s=${VISIT_SCREEN_WIDTH}`],
+  [
+    "android",
+    `${FAKE_ANALYTICS_ENDPOINT}?p=%2Fapp%2Fandroid&t=App%20(Android)&s=${VISIT_SCREEN_WIDTH}`,
+  ],
 ] as const;
 
 const REJECTED_START_OPTIONS: readonly [string, object][] = [
@@ -1120,7 +1127,7 @@ async function platformCheck(
       );
     }
   }
-  return "analytics.visit returns the exact Linux visit URL, and both bundles reject a missing or unknown platform";
+  return `analytics.visit returns the exact ${VISIT_URLS.map(([platform]) => platform).join(", ")} visit URLs, and both bundles reject a missing or unknown platform`;
 }
 
 function describeError(error: unknown): string {

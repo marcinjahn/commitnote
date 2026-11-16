@@ -5,6 +5,7 @@ import type { Font } from "fontkit";
 import { beforeAll, describe, expect, it } from "vitest";
 import { CARET_TAIL_LENGTH } from "../src/editor/caret-style";
 import { accentOption } from "../src/settings/accent-palette";
+import { ANDROID_ICONS } from "./android-icons";
 import { APP_ICONS } from "./app-icons";
 import { buildBrandOutputs } from "./brand-outputs";
 import { buildBrandSvgs, FONT_FILE, readmeWordmarkWidth } from "./brand-svgs";
@@ -78,6 +79,7 @@ describe("brand SVGs", () => {
         "public/icons/shortcut-search-96.png",
         GNOME_ICONS.scalable,
         GNOME_ICONS.symbolic,
+        ...Object.values(ANDROID_ICONS),
       ]),
     );
   });

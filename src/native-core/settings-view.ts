@@ -36,7 +36,7 @@ export function settingsViewOf(
       newNotePlacement: settings.newNotePlacement,
       newFolderPlacement: settings.newFolderPlacement,
       typeToStart: settings.typeToStart,
-      vimMode: settings.vimMode,
+      ...(app.platform === "linux" ? { vimMode: settings.vimMode } : {}),
     },
     scopes: {
       colorMode: scopes.colorMode,

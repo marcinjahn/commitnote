@@ -103,6 +103,16 @@ generate-brand *args:
 generate-landing-screenshots: build-fake
     tsx scripts/generate-landing-screenshots.ts
 
+# Turn the "iOS screenshots" workflow's store screenshots into the rounded iOS landing screenshots
+[group('generate')]
+generate-ios-landing-screenshots store_dir out_dir="landing/screenshots":
+    tsx scripts/generate-phone-landing-screenshots.ts ios "$@"
+
+# Turn the "Android screenshots" workflow's emulator screenshots into the rounded Android landing screenshots
+[group('generate')]
+generate-android-landing-screenshots screenshots_dir out_dir="landing/screenshots":
+    tsx scripts/generate-phone-landing-screenshots.ts android "$@"
+
 # Regenerate the web app manifest screenshots from the test-mode build (uses E2E_PORT)
 [group('generate')]
 generate-pwa-screenshots: build-fake
@@ -126,3 +136,11 @@ profile-tree-scroll *args:
 # Linux app: container builds, checks and the Flatpak (`just linux`)
 [group('native')]
 mod linux 'apps/linux'
+
+# Android app: container builds, checks and instrumented tests (`just android`)
+[group('native')]
+mod android 'apps/android'
+
+# iOS app: Swift tests on Linux and the Xcode helpers (`just ios`)
+[group('native')]
+mod ios 'apps/ios'

@@ -43,7 +43,7 @@ export const MASKABLE_SAFE_ZONE_RADIUS = 0.4;
 
 export const TILE = "#0a0a0a";
 export const LETTERS = "#fafafa";
-const MONOCHROME_LETTERS = "#000000";
+export const MONOCHROME_LETTERS = "#000000";
 export const CORNER_RADIUS = 0.2;
 const SAFE_ZONE_FIT = 0.36;
 const SHEET_GAP = 32;

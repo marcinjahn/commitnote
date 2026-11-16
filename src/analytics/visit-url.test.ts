@@ -30,13 +30,13 @@ describe("visitUrl", () => {
   it("leaves out null and empty dimensions", () => {
     expect(
       visitUrl(ENDPOINT, {
-        path: "/app/linux",
-        title: "App (Linux)",
+        path: "/app/ios",
+        title: "App (iOS)",
         referrer: "",
         screenWidth: null,
         bot: null,
         campaignQuery: null,
       }),
-    ).toBe(`${ENDPOINT}?p=%2Fapp%2Flinux&t=App%20(Linux)`);
+    ).toBe(`${ENDPOINT}?p=%2Fapp%2Fios&t=App%20(iOS)`);
   });
 });

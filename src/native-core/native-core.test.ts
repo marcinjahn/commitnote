@@ -761,7 +761,7 @@ describe("notes commands", () => {
 
   it("falls back to the device model for the device name", async () => {
     const core = startCore();
-    expect(await call(core, "device.name")).toEqual({ name: "ThinkPad" });
+    expect(await call(core, "device.name")).toEqual({ name: "iPhone" });
   });
 
   it("reports connectivity changes without duplicates", async () => {

@@ -10,9 +10,11 @@ export type { ColorTag, LaunchAction, MessagePart, SettingScope };
 export const NATIVE_CORE_API_VERSION = 11;
 export const NATIVE_CORE_MARKER = "commitnote-native-core";
 
-export type NativePlatform = "linux";
+export type NativePlatform = "ios" | "linux" | "android";
 export const NATIVE_PLATFORMS = [
+  "ios",
   "linux",
+  "android",
 ] as const satisfies readonly NativePlatform[];
 
 type ForgeKind = "github" | "gitlab";
@@ -203,7 +205,7 @@ export interface SettingsCopy {
   };
   editorUnavailable: string;
   typeToStart: { label: string; hint: string };
-  vimMode: { label: string; hint: string };
+  vimMode?: { label: string; hint: string };
   newNotePlacement: SettingChoiceCopy;
   newFolderPlacement: SettingChoiceCopy;
   deviceName: { label: string; hint: string; maxLength: number };
@@ -229,7 +231,7 @@ export interface SettingsView {
     newNotePlacement: string;
     newFolderPlacement: string;
     typeToStart: boolean;
-    vimMode: boolean;
+    vimMode?: boolean;
   };
   scopes: {
     colorMode: SettingScope;

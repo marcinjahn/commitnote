@@ -88,7 +88,7 @@ describe("fake-forge build fingerprint", () => {
     "dist-fake/index.html",
     "dist-native-core/commitnote-core.js",
     "dist-native-core-fake/commitnote-core.js",
-    "apps/linux/target/debug/x",
+    "apps/ios/.build/debug/x",
     "test-results/a.txt",
     "playwright-report/index.html",
     "blob-report/r.zip",

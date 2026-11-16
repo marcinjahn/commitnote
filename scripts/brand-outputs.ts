@@ -1,4 +1,5 @@
 import type { Font } from "fontkit";
+import { buildAndroidIcons } from "./android-icons";
 import { buildAppIcons } from "./app-icons";
 import { buildBrandSvgs } from "./brand-svgs";
 import { buildGnomeIcons } from "./gnome-icons";
@@ -14,5 +15,6 @@ export async function buildBrandOutputs(font: Font): Promise<BrandOutput[]> {
     ...buildBrandSvgs(font), ...(await buildAppIcons(font)),
     ...(await buildShortcutIcons()),
     ...buildGnomeIcons(font),
+    ...buildAndroidIcons(font),
   ];
 }

@@ -11,6 +11,7 @@ import type {
   CoreEventMessage,
   CoreResponse,
   NativeCoreHandle,
+  NativePlatform,
 } from "../api";
 import type { AppSession } from "../app-session";
 import { createNativeCore } from "../native-core";
@@ -62,6 +63,7 @@ export async function createCoreTestContext(
   options: {
     readonly extraCommands?: ExtraCommandsInput;
     readonly analyticsEndpoint?: string | null;
+    readonly platform?: NativePlatform;
   } = {},
 ): Promise<CoreTestContext> {
   const clock = createTestClock(Date.UTC(2026, 9, 1, 12));
@@ -102,8 +104,8 @@ export async function createCoreTestContext(
   ): NativeCoreHandle {
     const core = createNativeCore({
       host,
-      deviceModel: "ThinkPad",
-      platform: "linux",
+      deviceModel: "iPhone",
+      platform: options.platform ?? "ios",
       analyticsEndpoint: options.analyticsEndpoint ?? null,
       registry: () => Promise.resolve(forges),
       extraCommands: (app) => ({

@@ -181,7 +181,7 @@ describe("passphrase change", () => {
             initialized: false,
             notes: [{ path: WELCOME, text: "After the change" }],
             folders: [PROJECTS],
-            deviceName: "ThinkPad",
+            deviceName: "iPhone",
           },
         },
         { argon2id: sharedMemoizedArgon2id },

@@ -7,6 +7,7 @@ const REPOSITORY = "https://github.com/marcinjahn/commitnote";
 const FLATPAK = `${REPOSITORY}/releases/latest/download/commitnote-x86_64.flatpak`;
 const LATEST_RELEASE = `${REPOSITORY}/releases/latest`;
 const LICENCE = `${REPOSITORY}/blob/main/LICENSE`;
+const ANDROID_RELEASES = `${REPOSITORY}/releases?q=android&expanded=true`;
 
 async function openLanding(page: Page): Promise<void> {
   await page.goto("/");
@@ -43,17 +44,22 @@ test("the landing page renders its content and calls to action", async ({
     await hrefs(page.getByRole("link", { name: "Download for Linux" })),
   ).toEqual([FLATPAK, FLATPAK, FLATPAK]);
   expect(
+    await hrefs(page.getByRole("link", { name: "Download the APK" })),
+  ).toEqual([ANDROID_RELEASES]);
+  expect(
     await hrefs(page.getByRole("link", { name: "Latest release" })),
   ).toEqual([LATEST_RELEASE]);
   expect(
     await hrefs(page.getByRole("link", { name: "GPL-3.0-or-later" })),
   ).toEqual([LICENCE]);
   await expect(page.locator(".hero-note")).toContainText(
-    "Flatpak for x86_64 Linux · Installable from your browser",
+    "Flatpak for x86_64 Linux · APK for Android",
   );
   const platforms = page.locator("#platforms");
   for (const name of [
     "In your browser",
+    "On iPhone and iPad",
+    "On your Android phone",
     "On your Linux desktop",
   ]) {
     await expect(

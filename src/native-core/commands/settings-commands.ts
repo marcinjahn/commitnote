@@ -9,6 +9,7 @@ import { SETTINGS_SCHEMA } from "../../settings/settings";
 import type { ActionNotices } from "../action-notices";
 import type {
   CoreCommands,
+  NativePlatform,
   ScopedSettingKey,
   SettingKeyView,
 } from "../api";
@@ -39,6 +40,10 @@ const SETTING_KEYS: readonly SettingKeyView[] = [
   "newNotePlacement",
   "newFolderPlacement",
   "typeToStart",
+];
+
+const LINUX_SETTING_KEYS: readonly SettingKeyView[] = [
+  ...SETTING_KEYS,
   "vimMode",
 ];
 
@@ -46,6 +51,10 @@ const BOOLEAN_SETTING_KEYS: ReadonlySet<SettingKeyView> = new Set([
   "typeToStart",
   "vimMode",
 ]);
+
+function settingKeysFor(platform: NativePlatform): readonly SettingKeyView[] {
+  return platform === "linux" ? LINUX_SETTING_KEYS : SETTING_KEYS;
+}
 
 const SCOPED_SETTING_KEYS: readonly ScopedSettingKey[] = [
   "colorMode",
@@ -113,7 +122,7 @@ export function createSettingsCommands(context: {
     },
 
     async "settings.change"(params): Promise<Result<"settings.change">> {
-      const key = oneOf(params, "key", SETTING_KEYS);
+      const key = oneOf(params, "key", settingKeysFor(app.platform));
       const raw = stringParam(params, "value");
       const value = SETTINGS_SCHEMA[key].parse(
         BOOLEAN_SETTING_KEYS.has(key) ? booleanString(raw) : raw,

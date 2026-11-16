@@ -1,0 +1,327 @@
+name: iOS
+
+on:
+  push:
+    branches: [main, "ios-ci/**"]
+    paths:
+      - "apps/**"
+      - "!apps/linux/**"
+      - "!apps/android/**"
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "analytics.config.ts"
+      - "svelte.config.js"
+      - "tsconfig*.json"
+      - "justfile"
+      - ".github/workflows/ios.yml"
+      - ".github/actions/ios-*/**"
+      - ".github/actions/setup-just/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  XCODE_VERSION: "26.6"
+
+concurrency:
+  group: "ios-${{ github.ref }}"
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  linux:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: ./.github/actions/setup-just
+      - run: just check-native-core
+      - run: just ios swift-test
+
+  build:
+    name: Build for testing
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/ios-macos-setup
+
+      - name: Build for testing
+        run: |
+          set -eu -o pipefail
+          xcodebuild build-for-testing \
+            -project apps/ios/Commitnote.xcodeproj \
+            -scheme Commitnote \
+            -configuration Testing \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath out/dd \
+            ARCHS=arm64
+          tar -C out/dd/Build/Products -cf out/test-products.tar .
+          ls -l out/test-products.tar
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios-test-products
+          path: out/test-products.tar
+          compression-level: 1
+          retention-days: 1
+
+  macos:
+    name: Runtime tests
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      # Node runs only the TypeScript read-back; the tests run from the build job's products.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: ./.github/actions/setup-just
+      - uses: ./.github/actions/ios-select-xcode
+
+      - name: Start simulator
+        run: |
+          set -eu
+          SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ipad)
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+          mkdir -p out
+          # One iPad simulator runs the runtime tests and then the UI tests, so the job boots only
+          # once, while the test products download.
+          nohup apps/ios/scripts/prepare-simulator.sh "$SIMULATOR_ID" out/simulator-ready > out/simulator-prep.log 2>&1 &
+
+      - uses: ./.github/actions/ios-test-products
+
+      - name: Prepare simulator
+        run: |
+          set -eu
+          for _ in $(seq 600); do
+            [ -s out/simulator-ready ] && break
+            sleep 1
+          done
+          cat out/simulator-prep.log
+          [ "$(cat out/simulator-ready)" = 0 ]
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+
+      - name: Core runtime tests
+        run: |
+          set -eu -o pipefail
+          mkdir -p out/test-output out/xcresults
+          TEST_RUNNER_COMMITNOTE_READBACK_DIR="$PWD/out/test-output" \
+          xcodebuild test-without-building \
+            -xctestrun "$XCTESTRUN" \
+            -destination "id=$SIMULATOR_ID" \
+            -only-testing:CommitnoteTests \
+            -resultBundlePath out/xcresults/runtime.xcresult
+
+      - name: Read back with TypeScript
+        run: just read-back-native-repo out/test-output
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-xcresults-runtime
+          path: out/xcresults
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-test-output
+          path: out/test-output
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Warm up app
+        run: apps/ios/scripts/warm-up-app.sh "$SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
+
+      - name: iPad UI tests
+        run: |
+          set -eu -o pipefail
+          mkdir -p out/xcresults-ui
+          xcodebuild test-without-building \
+            -xctestrun "$XCTESTRUN" \
+            -destination "id=$SIMULATOR_ID" \
+            -only-testing:CommitnoteUITests/EditorFlowTests \
+            -only-testing:CommitnoteUITests/DataFlowTests \
+            -only-testing:CommitnoteUITests/EntryPointFlowTests \
+            -only-testing:CommitnoteUITests/MediaFlowTests \
+            -parallel-testing-enabled NO \
+            -resultBundlePath out/xcresults-ui/ui-ipad-runtime.xcresult
+
+      - name: Collect app log
+        if: failure()
+        run: |
+          xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --info --style compact \
+            --predicate 'subsystem == "io.github.marcinjahn.commitnote"' > out/xcresults-ui/app.log || true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-xcresults-ui-ipad-runtime
+          path: out/xcresults-ui
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # The IPA builds in the job that finishes its tests first, off the longest path.
+      - uses: ./.github/actions/ios-macos-setup
+        if: ${{ !cancelled() }}
+
+      - name: Build unsigned IPA
+        if: ${{ !cancelled() }}
+        run: just ios build-unsigned-ipa out/ipa
+
+      - name: Check IPA
+        if: ${{ !cancelled() }}
+        run: just ios check-ipa out/ipa/commitnote-unsigned.ipa
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: commitnote-unsigned-ipa
+          path: out/ipa/commitnote-unsigned.ipa
+          retention-days: 30
+
+  ui-tests:
+    name: UI tests (${{ matrix.device }}, ${{ matrix.suite }})
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iphone, ipad]
+        suite: [flows, screens]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/ios-select-xcode
+
+      - name: Prepare simulator
+        run: |
+          set -eu
+          SIMULATOR_ID=$(apps/ios/scripts/pick-simulator.sh ${{ matrix.device }})
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+          mkdir -p out
+          # Boots and prepares the simulator while the test products download.
+          nohup apps/ios/scripts/prepare-simulator.sh "$SIMULATOR_ID" out/simulator-ready > out/simulator-prep.log 2>&1 &
+
+      - uses: ./.github/actions/ios-test-products
+
+      - name: Warm up simulator
+        run: |
+          set -eu
+          for _ in $(seq 600); do
+            [ -s out/simulator-ready ] && break
+            sleep 1
+          done
+          cat out/simulator-prep.log
+          [ "$(cat out/simulator-ready)" = 0 ]
+          apps/ios/scripts/warm-up-app.sh "$SIMULATOR_ID" out/products/Testing-iphonesimulator/commitnote.app
+
+      - name: UI tests
+        shell: bash
+        run: |
+          set -eu -o pipefail
+          # On iPhone, EditingFlowTests and EntryPointFlowTests are split by method between the two
+          # jobs: the methods flows skips are the only ones screens runs, so a new method runs once,
+          # in flows.
+          IPHONE_EDITING=(EditingFlowTests/testEditAutosaves EditingFlowTests/testNewNoteDrafts EditingFlowTests/testOfflineEditSavesWhenOnline EditingFlowTests/testRemoteEditKeepsCaretAndUndo EditingFlowTests/testRemoteEditOverSelection)
+          IPHONE_ENTRY_POINTS=(EntryPointFlowTests/testEColdLinkWithoutSession)
+          case "${{ matrix.device }}-${{ matrix.suite }}" in
+            iphone-flows)
+              SELECTED=(
+                -only-testing:CommitnoteUITests/EditingFlowTests
+                -only-testing:CommitnoteUITests/OrganisationFlowTests
+                -only-testing:CommitnoteUITests/MediaFlowTests
+                -only-testing:CommitnoteUITests/SettingsFlowTests
+                -only-testing:CommitnoteUITests/EntryPointFlowTests
+                -only-testing:CommitnoteUITests/SettingsScreenshotTests
+              )
+              for TEST in "${IPHONE_EDITING[@]}" "${IPHONE_ENTRY_POINTS[@]}"; do SELECTED+=("-skip-testing:CommitnoteUITests/$TEST"); done
+              ;;
+            iphone-screens)
+              SELECTED=(
+                -only-testing:CommitnoteUITests/ScreenshotTests
+                -only-testing:CommitnoteUITests/OrganisationScreenshotTests
+                -only-testing:CommitnoteUITests/EditorFlowTests
+                -only-testing:CommitnoteUITests/MediaScreenshotTests
+                -only-testing:CommitnoteUITests/DataFlowTests
+                -only-testing:CommitnoteUITests/LoginFlowTests
+                -only-testing:CommitnoteUITests/CachedStartFlowTests
+                -only-testing:CommitnoteUITests/AccessibilityScreenshotTests
+              )
+              for TEST in "${IPHONE_EDITING[@]}" "${IPHONE_ENTRY_POINTS[@]}"; do SELECTED+=("-only-testing:CommitnoteUITests/$TEST"); done
+              ;;
+            ipad-flows)
+              SELECTED=(
+                -only-testing:CommitnoteUITests/EditingFlowTests
+                -only-testing:CommitnoteUITests/SettingsScreenshotTests
+                -only-testing:CommitnoteUITests/IPadFlowTests
+                -only-testing:CommitnoteUITests/AccessibilityScreenshotTests
+                -only-testing:CommitnoteUITests/LoginFlowTests
+                -only-testing:CommitnoteUITests/CachedStartFlowTests
+              )
+              ;;
+            ipad-screens)
+              SELECTED=(
+                -only-testing:CommitnoteUITests/ScreenshotTests
+                -only-testing:CommitnoteUITests/OrganisationFlowTests
+                -only-testing:CommitnoteUITests/MediaScreenshotTests
+                -only-testing:CommitnoteUITests/OrganisationScreenshotTests
+                -only-testing:CommitnoteUITests/SettingsFlowTests
+              )
+              ;;
+          esac
+          xcodebuild test-without-building \
+            -xctestrun "$XCTESTRUN" \
+            -destination "id=$SIMULATOR_ID" \
+            "${SELECTED[@]}" \
+            -parallel-testing-enabled NO \
+            -resultBundlePath out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}.xcresult
+
+      - name: Collect app log
+        if: failure()
+        run: |
+          xcrun simctl spawn "$SIMULATOR_ID" log show --last 90m --info --style compact \
+            --predicate 'subsystem == "io.github.marcinjahn.commitnote"' > out/xcresults/app.log || true
+
+      - name: Export screenshots
+        if: always()
+        run: |
+          set -eu
+          RESULT="out/xcresults/ui-${{ matrix.device }}-${{ matrix.suite }}.xcresult"
+          if [ -d "$RESULT" ]; then
+            if [ "${{ matrix.suite }}" = screens ]; then
+              apps/ios/scripts/export-screenshots.sh "$RESULT" out/screenshots
+            else
+              apps/ios/scripts/export-screenshots.sh "$RESULT" out/screenshots --allow-empty
+            fi
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-screenshots-${{ matrix.device }}${{ matrix.suite == 'flows' && '-flows' || '' }}
+          path: out/screenshots
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-xcresults-ui-${{ matrix.device }}-${{ matrix.suite }}
+          path: out/xcresults
+          if-no-files-found: ignore
+          retention-days: 30

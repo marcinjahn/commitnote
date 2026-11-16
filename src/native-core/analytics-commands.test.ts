@@ -13,15 +13,27 @@ afterEach(() => {
 });
 
 describe("analytics.visit", () => {
-  it("returns the exact Linux visit URL with the screen width", async () => {
-    ctx = await createCoreTestContext({ analyticsEndpoint: FAKE_ENDPOINT });
-    const core = ctx.startCore();
-    expect(
-      await ctx.call(core, "analytics.visit", { screenWidth: 1920 }),
-    ).toEqual({
-      url: `${FAKE_ENDPOINT}?p=%2Fapp%2Flinux&t=App%20(Linux)&s=1920`,
-    });
-  });
+  it.each([
+    ["ios", 390, `${FAKE_ENDPOINT}?p=%2Fapp%2Fios&t=App%20(iOS)&s=390`],
+    ["linux", 1920, `${FAKE_ENDPOINT}?p=%2Fapp%2Flinux&t=App%20(Linux)&s=1920`],
+    [
+      "android",
+      411,
+      `${FAKE_ENDPOINT}?p=%2Fapp%2Fandroid&t=App%20(Android)&s=411`,
+    ],
+  ] as const)(
+    "returns the exact %s visit URL with the screen width",
+    async (platform, screenWidth, url) => {
+      ctx = await createCoreTestContext({
+        analyticsEndpoint: FAKE_ENDPOINT,
+        platform,
+      });
+      const core = ctx.startCore();
+      expect(await ctx.call(core, "analytics.visit", { screenWidth })).toEqual({
+        url,
+      });
+    },
+  );
 
   it("leaves the screen width out when the host can't tell", async () => {
     ctx = await createCoreTestContext({ analyticsEndpoint: FAKE_ENDPOINT });
@@ -29,7 +41,7 @@ describe("analytics.visit", () => {
     expect(
       await ctx.call(core, "analytics.visit", { screenWidth: null }),
     ).toEqual({
-      url: `${FAKE_ENDPOINT}?p=%2Fapp%2Flinux&t=App%20(Linux)`,
+      url: `${FAKE_ENDPOINT}?p=%2Fapp%2Fios&t=App%20(iOS)`,
     });
   });
 

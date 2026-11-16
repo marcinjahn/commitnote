@@ -246,7 +246,7 @@ describe("conflict on the open note", () => {
     expect(conflict).toMatchObject({
       otherDevice: "Other device",
       heading: "This note was also changed on Other device",
-      keepThisLabel: "Keep this device's version (ThinkPad)",
+      keepThisLabel: "Keep this device's version (iPhone)",
       keepOtherLabel: "Keep other device's version (Other device)",
       editMergedLabel: "Edit merged",
       editing: false,

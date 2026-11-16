@@ -1,0 +1,192 @@
+name: Commitnote
+options:
+  bundleIdPrefix: io.github.marcinjahn
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+configs:
+  Debug: debug
+  Release: release
+  Testing: debug
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+  configs:
+    Testing:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG FAKE_CORE"
+packages:
+  CommitnoteCrypto:
+    path: Packages/CommitnoteCrypto
+  NativeCoreAPI:
+    path: Packages/NativeCoreAPI
+  EditorText:
+    path: Packages/EditorText
+  AppInteraction:
+    path: Packages/AppInteraction
+  MarkdownStyling:
+    path: Packages/MarkdownStyling
+  CoreRuntime:
+    path: Packages/CoreRuntime
+targets:
+  Commitnote:
+    type: application
+    platform: iOS
+    sources:
+      - path: Commitnote
+        excludes:
+          - Info.plist
+      - path: ../fonts
+        buildPhase: resources
+        excludes:
+          - VENDORED.md
+    dependencies:
+      - package: CoreRuntime
+        product: CoreRuntime
+      - package: NativeCoreAPI
+        product: NativeCoreAPI
+      - package: EditorText
+        product: EditorText
+      - package: AppInteraction
+        product: AppInteraction
+      - package: MarkdownStyling
+        product: MarkdownStyling
+    settings:
+      base:
+        PRODUCT_NAME: commitnote
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.marcinjahn.commitnote
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    info:
+      path: Commitnote/Info.plist
+      properties:
+        CFBundleDisplayName: commitnote
+        UILaunchScreen: {}
+        UIAppFonts:
+          - AtkinsonHyperlegibleNext-Variable.ttf
+          - AtkinsonHyperlegibleNext-VariableItalic.ttf
+          - IBMPlexMono-Italic.ttf
+          - IBMPlexMono-Regular.ttf
+          - IBMPlexMono-SemiBold.ttf
+          - IBMPlexMono-SemiBoldItalic.ttf
+          - IBMPlexSans-Variable.ttf
+          - IBMPlexSans-VariableItalic.ttf
+          - Inter-Variable.ttf
+          - Inter-VariableItalic.ttf
+          - JetBrainsMono-Variable.ttf
+          - JetBrainsMono-VariableItalic.ttf
+          - Literata-Variable.ttf
+          - Literata-VariableItalic.ttf
+          - Lora-Variable.ttf
+          - Lora-VariableItalic.ttf
+          - Nunito-Variable.ttf
+          - Nunito-VariableItalic.ttf
+          - SourceSerif4-Variable.ttf
+          - SourceSerif4-VariableItalic.ttf
+          - iAWriterQuattroS-Bold.ttf
+          - iAWriterQuattroS-BoldItalic.ttf
+          - iAWriterQuattroS-Italic.ttf
+          - iAWriterQuattroS-Regular.ttf
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        CFBundleURLTypes:
+          - CFBundleURLName: io.github.marcinjahn.commitnote
+            CFBundleURLSchemes:
+              - commitnote
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: io.github.marcinjahn.commitnote.new-note
+            UIApplicationShortcutItemTitle: New note
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeCompose
+          - UIApplicationShortcutItemType: io.github.marcinjahn.commitnote.search
+            UIApplicationShortcutItemTitle: Search notes
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeSearch
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIRequiresFullScreen: false
+        ITSAppUsesNonExemptEncryption: false
+        NSCameraUsageDescription: commitnote uses the camera to add photos to your notes.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: io.github.marcinjahn.commitnote.tree-node
+            UTTypeDescription: commitnote tree item
+            UTTypeConformsTo:
+              - public.data
+    preBuildScripts:
+      - name: Copy core bundle
+        basedOnDependencyAnalysis: false
+        script: |
+          set -eu
+          if [ "$CONFIGURATION" = "Testing" ]; then
+            SOURCE="$SRCROOT/../../dist-native-core-fake/commitnote-core.js"
+          else
+            SOURCE="$SRCROOT/../../dist-native-core/commitnote-core.js"
+          fi
+          if [ ! -f "$SOURCE" ]; then
+            echo "error: core bundle not found at $SOURCE; run 'just build-native-core' first" >&2
+            exit 1
+          fi
+          mkdir -p "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          cp "$SOURCE" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/commitnote-core.js"
+  CommitnoteTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - CommitnoteTests
+      - path: ../test-vectors
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: Commitnote
+      - package: CoreRuntime
+        product: CoreRuntime
+      - package: NativeCoreAPI
+        product: NativeCoreAPI
+      - package: CommitnoteCrypto
+        product: CommitnoteCrypto
+      - package: EditorText
+        product: EditorText
+      - package: AppInteraction
+        product: AppInteraction
+    settings:
+      base:
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/commitnote.app/commitnote"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        GENERATE_INFOPLIST_FILE: YES
+  CommitnoteUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - CommitnoteUITests
+    dependencies:
+      - target: Commitnote
+    settings:
+      base:
+        TEST_TARGET_NAME: Commitnote
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Commitnote:
+    build:
+      targets:
+        Commitnote: all
+    run:
+      config: Debug
+    test:
+      config: Testing
+      gatherCoverageData: false
+      targets:
+        - CommitnoteTests
+        - CommitnoteUITests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

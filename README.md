@@ -40,6 +40,14 @@ encrypted), encrypted share links, search and zip import and export, and it has 
     <source media="(prefers-color-scheme: dark)" srcset="landing/screenshots/linux-notes-dark@1x.png" />
     <img src="landing/screenshots/linux-notes-light@1x.png" alt="The Linux app with a note open" height="340" />
   </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="landing/screenshots/ios-tree-dark@1x.png" />
+    <img src="landing/screenshots/ios-tree-light@1x.png" alt="The notes tree in the iPhone app" height="340" />
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="landing/screenshots/android-note-dark@1x.png" />
+    <img src="landing/screenshots/android-note-light@1x.png" alt="A note open in the Android app" height="340" />
+  </picture>
 </p>
 
 ### Web
@@ -72,6 +80,51 @@ gh attestation verify commitnote-x86_64.flatpak --repo marcinjahn/commitnote
 App data lives in `~/.var/app/io.github.marcinjahn.commitnote/`. "Remember me" needs a keyring
 (gnome-keyring, KWallet or KeePassXC); without one you log in again on every launch.
 
+### iOS
+
+There's a native SwiftUI app for iPhone and iPad (iOS 18 or newer), but it isn't on the App Store. CI builds an
+unsigned IPA, and you can sideload it yourself with a free Apple ID. Nobody has installed it on a
+real device yet, so treat this as experimental:
+
+1. Download the `commitnote-unsigned-ipa` artifact from the latest green
+   [iOS run](https://github.com/marcinjahn/commitnote/actions/workflows/ios.yml) on `main`. With a
+   logged-in `gh`:
+
+   ```sh
+   gh run list -R marcinjahn/commitnote -w ios.yml -b main -s success -L 1   # first column is the run ID
+   gh run download <run-id> -R marcinjahn/commitnote -n commitnote-unsigned-ipa
+   ```
+
+   Artifacts are kept for 30 days. If the latest one has expired, start a fresh build with
+   `gh workflow run ios.yml -R marcinjahn/commitnote --ref main`.
+
+2. Turn on Developer Mode on the device (Settings, Privacy & Security) and restart it.
+3. Install [Impactor](https://github.com/claration/Impactor) (it's on Flathub as
+   `dev.khcrysalis.PlumeImpactor`), plug the device in over USB, sign in with your Apple ID and
+   install the IPA.
+4. Trust your Apple ID under Settings, General, VPN & Device Management, then open the app.
+
+Free signatures expire after 7 days; reinstalling over the old app keeps its data.
+
+### Android
+
+A native Kotlin and Jetpack Compose app for Android 10 or newer. It isn't on Google Play: you
+sideload the APK from GitHub. Open the newest
+[commitnote for Android release](https://github.com/marcinjahn/commitnote/releases?q=android&expanded=true)
+and download `commitnote-android-arm64-v8a-debugsigned.apk` (the `x86_64` one is for emulators and
+x86 Chromebooks). Open it on the phone and let your browser or file manager install apps when
+Android asks, or install it from a computer with `adb install <file>`.
+
+The builds are debug-signed for now, so a newer one can't be installed over an older one. Uninstall
+the app first, which also removes its data on the phone, including the remembered session; your
+notes stay in the repository. Like the Flatpak, each release has a `SHA256SUMS` file and a build
+provenance attestation:
+
+```sh
+sha256sum -c --ignore-missing SHA256SUMS
+gh attestation verify commitnote-android-arm64-v8a-debugsigned.apk --repo marcinjahn/commitnote
+```
+
 ## First login
 
 You need a private repository (empty, or holding only a README, LICENSE or .gitignore) and an
@@ -98,7 +151,7 @@ there are no npm scripts.
 ```sh
 npm install
 just dev            # http://localhost:5173
-just                # lists every recipe, including the linux module
+just                # lists every recipe, including the linux, ios and android modules
 ```
 
 The ones you'll use most:
@@ -111,7 +164,7 @@ The ones you'll use most:
 | `just test-e2e`          | Playwright against the test-mode build                          |
 | `just validate`          | `check`, `test`, `check-bundle` and `test-e2e` in turn          |
 | `just build`             | Production site in `dist/`: landing at `/`, app at `/app/`      |
-| `just build-native-core` | The core bundle the Linux app runs                              |
+| `just build-native-core` | The core bundle the native apps run                             |
 
 Recipe arguments go straight to the tool: `just test src/sync`, `just test-e2e e2e/login.spec.ts`.
 
@@ -131,16 +184,20 @@ Some things that will bite you otherwise:
 - The brand SVGs and icons, the sample notes repo and the test vectors are generated
   (`just generate-*`), and tests fail when they go stale, so don't edit them by hand.
 - The web screenshots in `landing/screenshots/` come from `just generate-landing-screenshots` and
-  `just generate-pwa-screenshots`; `linux-notes-*` are copies of
-  `apps/linux/data/screenshots/notes-*.png`.
+  `just generate-pwa-screenshots`. The `ios-*` ones come from the "iOS screenshots"
+  workflow: its artifact holds both the store screenshots and the landing images that
+  `just generate-ios-landing-screenshots <store-dir>` makes from them (scaled, with the screen's
+  rounded corners cut out). The `android-*` ones come from the "Android screenshots" workflow, which
+  runs an emulator and does the same with `just generate-android-landing-screenshots <dir>`.
+  `linux-notes-*` are copies of `apps/linux/data/screenshots/notes-*.png`.
 
 ### Layout
 
 `src/` is the web app (Svelte 5, TypeScript, CodeMirror 6), `landing/` the landing page, `e2e/` the
-Playwright specs. `apps/linux/` is the native Linux app. It runs the same TypeScript core
-(`src/native-core/`) in JavaScriptCore, so it reads and writes exactly what the web app does;
-`apps/test-vectors/` holds the JSON vectors the TypeScript and Rust tests share. `apps/fonts/` has
-the note fonts the Linux app bundles.
+Playwright specs. `apps/linux/`, `apps/ios/` and `apps/android/` are the native apps. All three run
+the same TypeScript core (`src/native-core/`), in JavaScriptCore or V8, so they read and write
+exactly what the web app does; `apps/test-vectors/` holds the JSON vectors the TypeScript, Rust,
+Swift and Kotlin tests share.
 
 ### Linux app
 
@@ -182,6 +239,28 @@ To release, say v0.3.0:
 The tag push builds the Flatpak, smoke-tests it and publishes it with its checksum and attestation.
 Tags are never moved; a bad release gets a new patch version.
 
+### iOS app
+
+SwiftUI, with the project generated by XcodeGen. Apple builds only run in CI
+(`.github/workflows/ios.yml`); push to an `ios-ci/<something>` branch to try a change on macOS
+without touching `main`. On Linux you can still run the Swift package tests (`just ios swift-test`,
+in Docker) and `just check-native-core`. On a Mac with Xcode 26:
+
+```sh
+brew install just xcodegen
+npm ci
+just build-native-core
+just ios generate-project
+open apps/ios/Commitnote.xcodeproj
+```
+
+### Android app
+
+Kotlin and Jetpack Compose. Builds and tests run in a Docker container, so you don't need the Android
+SDK; run `just build-native-core` first, then `just android build`, `just android lint` or
+`just android test`. The emulator tests run in CI. [apps/android/README.md](apps/android/README.md)
+has the rest, including how releases are cut.
+
 ### Deployment
 
 Every push to `main` type-checks, runs the unit tests and the bundle check, then publishes `dist/` to
@@ -213,7 +292,7 @@ Issues and bug reports are welcome. Pull requests aren't accepted for now; see
 ## License
 
 commitnote is free software under the [GNU General Public License, version 3 or later](LICENSE)
-(`GPL-3.0-or-later`): the web app, the shared core and the Linux app. The bundled
+(`GPL-3.0-or-later`): the web app, the shared core and the Linux, iOS and Android apps. The bundled
 fonts and vendored libraries keep their own licenses, which sit next to them.
 
 ### Name and icon
@@ -223,7 +302,10 @@ on unmodified copies of commitnote with them, but if you change it and distribut
 it a different name and icon. The artwork this applies to:
 
 - the app icon: `src/assets/favicon.svg`, the app icons in `public/icons/` (the `shortcut-*` icons
-  are covered by the GPL like everything else) and `apps/linux/data/icons/`
+  are covered by the GPL like everything else), `apps/linux/data/icons/`,
+  `apps/ios/Commitnote/Assets.xcassets/AppIcon.appiconset/`, and
+  `apps/android/app/src/main/res/mipmap-anydpi/ic_launcher.xml` with the `ic_launcher_*` drawables
+  in `apps/android/app/src/main/res/drawable/`
 - the wordmark (the styled commitnote name), drawn in `docs/brand/`
 
 The scripts in `scripts/` that draw them are GPL code like the rest, but the icon and logo they

@@ -1,0 +1,234 @@
+name: Android release
+
+on:
+  push:
+    tags: ["android-v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag to check, such as android-v0.1.0. A manual run is a dry run that publishes nothing.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
+jobs:
+  check:
+    name: Check the version
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      signed: ${{ steps.signing.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag against the version
+        id: version
+        run: |
+          set -eu
+          version=$(sed -n 's/^commitnote\.versionName=//p' apps/android/gradle.properties)
+          if [ "$TAG" != "android-v$version" ]; then
+            echo "::error::The tag $TAG is not android-v$version, the version in apps/android/gradle.properties."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check for the signing key
+        id: signing
+        env:
+          SIGNED: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        run: echo "signed=$SIGNED" >> "$GITHUB_OUTPUT"
+
+      - name: Write the release notes
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          set -eu
+          if [ "$SIGNED" = true ]; then
+            suffix=
+            status="This build is signed, so later releases install over it. The \`.aab\` is the same build as an Android App Bundle."
+          else
+            suffix=-debugsigned
+            status="This is a debug-signed build. A later build cannot be installed over it as an update: it has to be uninstalled first, which removes the app's data on the device, including the remembered session."
+          fi
+          {
+            echo "Two APKs: \`commitnote-android-arm64-v8a$suffix.apk\` for phones and \`commitnote-android-x86_64$suffix.apk\` for emulators and x86 Chromebooks."
+            echo
+            echo "$status"
+          } > "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-release-notes
+          path: ${{ runner.temp }}/release-notes.md
+          if-no-files-found: error
+          retention-days: 30
+
+  build:
+    name: Build the release
+    needs: check
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: ./.github/actions/setup-just
+      - run: just build-native-core
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Prepare image context
+        id: image
+        run: |
+          set -eu
+          apps/android/scripts/container.sh --write-context "$RUNNER_TEMP/android-image"
+          echo "tag=$(apps/android/scripts/container.sh --print-image-tag)" >> "$GITHUB_OUTPUT"
+
+      - name: Build container image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/android-image
+          tags: ${{ steps.image.outputs.tag }}
+          load: true
+          push: false
+          cache-from: type=gha,scope=android-builder
+
+      - name: Set cache directory
+        run: echo "COMMITNOTE_ANDROID_CACHE_DIR=$RUNNER_TEMP/android-cache" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/android-cache
+          key: android-gradle-${{ runner.os }}-${{ hashFiles('apps/android/gradle/libs.versions.toml', 'apps/android/gradle/wrapper/gradle-wrapper.properties', 'apps/android/ci/Dockerfile') }}-${{ github.sha }}
+          restore-keys: |
+            android-gradle-${{ runner.os }}-${{ hashFiles('apps/android/gradle/libs.versions.toml', 'apps/android/gradle/wrapper/gradle-wrapper.properties', 'apps/android/ci/Dockerfile') }}-
+
+      - name: Decode the signing keystore
+        if: needs.check.outputs.signed == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -eu
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/android-release.keystore"
+          echo "COMMITNOTE_ANDROID_KEYSTORE=$RUNNER_TEMP/android-release.keystore" >> "$GITHUB_ENV"
+
+      - name: Release check, signed
+        if: needs.check.outputs.signed == 'true'
+        env:
+          COMMITNOTE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          COMMITNOTE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          COMMITNOTE_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: just android release-check
+
+      - name: Release check, debug-signed
+        if: needs.check.outputs.signed != 'true'
+        run: just android release-check
+
+      - name: Delete the signing keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/android-release.keystore"
+
+      - name: Fix ownership of container output
+        if: always()
+        run: |
+          for dir in "$RUNNER_TEMP/android-cache" apps/android/.gradle apps/android/build apps/android/build-logic/.gradle apps/android/build-logic/build apps/android/app/build apps/android/core-api/build apps/android/core-runtime/build apps/android/out; do
+            if [ -d "$dir" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$dir"
+            fi
+          done
+
+      - name: Check the produced files
+        env:
+          SIGNED: ${{ needs.check.outputs.signed }}
+        run: |
+          set -eu
+          actual=$(find apps/android/out/release -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)
+          if [ "$SIGNED" = true ]; then
+            expected=$(printf '%s\n' commitnote-android-arm64-v8a.apk commitnote-android-x86_64.apk commitnote-android.aab)
+          else
+            expected=$(printf '%s\n' commitnote-android-arm64-v8a-debugsigned.apk commitnote-android-x86_64-debugsigned.apk)
+          fi
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::The release files do not match the signing mode (signed=$SIGNED)."
+            echo "$actual"
+            exit 1
+          fi
+
+      - name: Collect the release assets
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/release/assets"
+          cp apps/android/out/release/* "$RUNNER_TEMP/release/assets/"
+          cd "$RUNNER_TEMP/release/assets"
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-release
+          path: ${{ runner.temp }}/release/assets
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish the release
+    if: github.event_name == 'push'
+    needs: [check, build]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check that the release does not exist yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::The release $TAG already exists; a version is released once and its tag is never moved."
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-release
+          path: ${{ runner.temp }}/release/assets
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-release-notes
+          path: ${{ runner.temp }}/release
+
+      - uses: actions/attest@v4
+        with:
+          subject-path: ${{ runner.temp }}/release/assets/*.apk
+
+      - uses: actions/attest@v4
+        if: needs.check.outputs.signed == 'true'
+        with:
+          subject-path: ${{ runner.temp }}/release/assets/*.aab
+
+      - name: Create the release
+        working-directory: ${{ runner.temp }}/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+            --title "commitnote for Android $VERSION" --notes-file release-notes.md \
+            assets/*

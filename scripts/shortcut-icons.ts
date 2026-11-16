@@ -16,9 +16,9 @@ export const SHORTCUT_ICONS: readonly ShortcutIcon[] = [
   { path: "public/icons/shortcut-search-96.png", size: 96, glyph: searchIcon },
 ];
 
-const GLYPH_BOX = 16;
+export const GLYPH_BOX = 16;
 const GLYPH_SHARE = 0.6;
-const STROKE_WIDTH = 1.5;
+export const STROKE_WIDTH = 1.5;
 
 export function buildShortcutIconSvg(icon: ShortcutIcon): string {
   const edge = icon.size;

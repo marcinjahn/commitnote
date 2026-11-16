@@ -3,6 +3,7 @@ import { parseRepoConfig } from "../crypto/repo-config";
 import { REPO_CONFIG_PATH, TRAILER } from "../format/v1";
 import type {
   NativeCoreHandle,
+  NativePlatform,
   SettingsSaveView,
   SettingsView,
 } from "./api";
@@ -23,9 +24,12 @@ afterEach(() => {
   ctx.dispose();
 });
 
-async function started(): Promise<NativeCoreHandle> {
+async function started(
+  platform?: NativePlatform,
+): Promise<NativeCoreHandle> {
   ctx = await createCoreTestContext({
     analyticsEndpoint: "https://a.invalid/c",
+    platform,
   });
   const core = ctx.startCore(undefined, (session) => {
     app = session;
@@ -113,14 +117,31 @@ describe("settings.change", () => {
   });
 
   it.each([
+    { key: "vimMode", value: "true" },
+    { key: "animatedCaret", value: "false" },
+    { key: "typeToStart", value: "yes" },
+    { key: "colorMode", value: "sepia" },
+    { key: "noteFont", value: "comic-sans" },
+  ])("rejects $key = $value on iOS", async ({ key, value }) => {
+    const core = await started("ios");
+    const response = await ctx.send(core, "settings.change", { key, value });
+    expect(response).toMatchObject({
+      ok: false,
+      error: { kind: "invalidParams" },
+    });
+    expect(current().settingsSaver.hasPending).toBe(false);
+    expect(app.deviceSettings.read().values.vimMode).toBeUndefined();
+  });
+
+  it.each([
     { key: "animatedCaret", value: "false" },
     { key: "vimMode", value: "yes" },
     { key: "vimMode", value: "True" },
     { key: "typeToStart", value: "yes" },
     { key: "colorMode", value: "sepia" },
     { key: "noteFont", value: "comic-sans" },
-  ])("rejects $key = $value", async ({ key, value }) => {
-    const core = await started();
+  ])("rejects $key = $value on Linux", async ({ key, value }) => {
+    const core = await started("linux");
     const response = await ctx.send(core, "settings.change", { key, value });
     expect(response).toMatchObject({
       ok: false,
@@ -131,9 +152,9 @@ describe("settings.change", () => {
   });
 });
 
-describe("vimMode setting", () => {
+describe("vimMode setting on Linux", () => {
   it("is device-scoped by default and stays out of the repo", async () => {
-    const core = await started();
+    const core = await started("linux");
     const commitsBefore = ctx.controls.commitMessages(REPO).length;
     expect(lastView().values.vimMode).toBe(false);
 
@@ -158,7 +179,7 @@ describe("vimMode setting", () => {
   });
 
   it("cannot have its scope changed", async () => {
-    const core = await started();
+    const core = await started("linux");
     const response = await ctx.send(core, "settings.setScope", {
       key: "vimMode",
       scope: "synced",
@@ -170,7 +191,7 @@ describe("vimMode setting", () => {
   });
 
   it("has the Linux label and hint and only the caret as unavailable", async () => {
-    const core = await started();
+    const core = await started("linux");
     const { copy } = await ctx.call(core, "settings.open");
     expect(copy.vimMode).toEqual({
       label: "Vim mode",
@@ -179,6 +200,47 @@ describe("vimMode setting", () => {
     expect(copy.editorUnavailable).toBe(
       "The animated caret is not available on Linux. Its setting stays as it is for your other devices.",
     );
+  });
+});
+
+describe("iOS settings", () => {
+  it("keep the copy without Vim mode and the view without a Vim value", async () => {
+    const core = await started("ios");
+    const { copy, view } = await ctx.call(core, "settings.open");
+    expect(copy.editorUnavailable).toBe(
+      "Vim mode and the animated caret are not available on iOS. Their settings stay as they are for your other devices.",
+    );
+    expect("vimMode" in copy).toBe(false);
+    expect("vimMode" in view.values).toBe(false);
+    expect("vimMode" in lastView().values).toBe(false);
+  });
+});
+
+describe("Android settings", () => {
+  it("keep the Android copy without Vim mode and the view without a Vim value", async () => {
+    const core = await started("android");
+    const { copy, view } = await ctx.call(core, "settings.open");
+    expect(copy.editorUnavailable).toBe(
+      "Vim mode and the animated caret are not available on Android. Their settings stay as they are for your other devices.",
+    );
+    expect("vimMode" in copy).toBe(false);
+    expect("vimMode" in view.values).toBe(false);
+  });
+
+  it("reject the Vim mode and animated caret settings", async () => {
+    const core = await started("android");
+    for (const [key, value] of [
+      ["vimMode", "true"],
+      ["animatedCaret", "false"],
+    ]) {
+      const response = await ctx.send(core, "settings.change", { key, value });
+      expect(response).toMatchObject({
+        ok: false,
+        error: { kind: "invalidParams" },
+      });
+    }
+    expect(current().settingsSaver.hasPending).toBe(false);
+    expect(app.deviceSettings.read().values.vimMode).toBeUndefined();
   });
 });
 
@@ -360,7 +422,7 @@ describe("settings.open", () => {
     expect(view).toEqual(lastView());
     expect(view).toMatchObject({
       deviceName: "",
-      automaticDeviceName: "ThinkPad",
+      automaticDeviceName: "iPhone",
       reopenLastView: true,
       canExport: true,
       canImport: true,
@@ -402,16 +464,16 @@ describe("device.setName", () => {
     ).toEqual({ name: "My Pad" });
     expect(lastView()).toMatchObject({
       deviceName: "My Pad",
-      automaticDeviceName: "ThinkPad",
+      automaticDeviceName: "iPhone",
     });
 
     expect(await ctx.call(core, "device.setName", { name: "   " })).toEqual({
-      name: "ThinkPad",
+      name: "iPhone",
     });
     expect(lastView().deviceName).toBe("");
     await ctx.call(core, "device.setName", { name: "Pad" });
     await ctx.call(core, "device.setName", { name: null });
-    expect(app.deviceName()).toBe("ThinkPad");
+    expect(app.deviceName()).toBe("iPhone");
 
     await ctx.call(core, "device.setName", { name: "Pad" });
     expect(app.deviceName()).toBe("Pad");

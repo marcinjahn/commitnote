@@ -1,0 +1,104 @@
+name: Android screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "android-screenshots-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    name: Landing screenshots
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: ./.github/actions/setup-just
+      - run: just build-native-core
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Prepare image context
+        id: image
+        run: |
+          set -eu
+          apps/android/scripts/container.sh --write-context "$RUNNER_TEMP/android-image"
+          echo "tag=$(apps/android/scripts/container.sh --print-image-tag)" >> "$GITHUB_OUTPUT"
+
+      - name: Build container image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/android-image
+          tags: ${{ steps.image.outputs.tag }}
+          load: true
+          push: false
+          cache-from: type=gha,scope=android-builder
+          cache-to: type=gha,mode=max,scope=android-builder
+
+      - name: Set cache directory
+        run: echo "COMMITNOTE_ANDROID_CACHE_DIR=$RUNNER_TEMP/android-cache" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/android-cache
+          key: android-gradle-${{ runner.os }}-${{ hashFiles('apps/android/gradle/libs.versions.toml', 'apps/android/gradle/wrapper/gradle-wrapper.properties', 'apps/android/ci/Dockerfile') }}-${{ github.sha }}
+          restore-keys: |
+            android-gradle-${{ runner.os }}-${{ hashFiles('apps/android/gradle/libs.versions.toml', 'apps/android/gradle/wrapper/gradle-wrapper.properties', 'apps/android/ci/Dockerfile') }}-
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Screenshots
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          # Quoted: unquoted, YAML reads it as the number 37 and the action asks for the nonexistent platform android-37.
+          api-level: "37.0"
+          target: google_apis
+          arch: x86_64
+          # A common phone screen: 1080 x 2400 px at 420 dpi.
+          profile: pixel_7
+          disable-animations: true
+          script: just android landing-screenshots out/screenshots
+
+      - name: Landing images
+        run: just generate-android-landing-screenshots out/screenshots out/landing
+
+      - name: Fix ownership of container output
+        if: always()
+        run: |
+          for dir in "$RUNNER_TEMP/android-cache" apps/android/.gradle apps/android/build apps/android/build-logic/.gradle apps/android/build-logic/build apps/android/app/build apps/android/core-api/build apps/android/core-runtime/build apps/android/out; do
+            if [ -d "$dir" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$dir"
+            fi
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-landing-screenshots
+          path: |
+            out/screenshots
+            out/landing
+          if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: android-screenshots-reports
+          path: |
+            apps/android/app/build/reports/androidTests
+            apps/android/app/build/outputs/androidTest-results
+          if-no-files-found: ignore
+          retention-days: 30

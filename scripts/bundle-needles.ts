@@ -25,9 +25,16 @@ export const PROD_LEAK_NEEDLES: readonly string[] = [
   new URL(FAKE_ANALYTICS_ENDPOINT).hostname,
 ];
 
+export const IOS_VISIT_NEEDLES: readonly string[] = ["/app/ios", "App (iOS)"];
+
 export const LINUX_VISIT_NEEDLES: readonly string[] = [
   "/app/linux",
   "App (Linux)",
+];
+
+export const ANDROID_VISIT_NEEDLES: readonly string[] = [
+  "/app/android",
+  "App (Android)",
 ];
 
 export const NATIVE_CORE_NEEDLES: readonly string[] = [
