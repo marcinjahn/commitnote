@@ -1,4 +1,7 @@
+mod cpak;
+
 use std::future::Future;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -17,12 +20,15 @@ use super::{
     ServiceError,
 };
 use crate::memory::GLibLogger;
+use cpak::CpakRememberedSessionStore;
 
 const KEYRING_UNAVAILABLE: &str = "Keyring unavailable";
 const ITEM_LABEL: &str = "commitnote remembered session";
 const ITEM_KIND: &str = "remembered-session";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const UNLOCK_TIMEOUT: Duration = Duration::from_secs(60);
+
+pub const CPAK_SECRETS_SHIM: &str = "/usr/local/bin/cpak-secrets";
 
 fn keyring_error<E>(_: E) -> ServiceError {
     ServiceError::new(KEYRING_UNAVAILABLE)
@@ -252,7 +258,7 @@ impl RememberedSessionStore for KeyringRememberedSessionStore {
 }
 
 pub struct HostRememberedSession {
-    keyring: Option<KeyringRememberedSessionStore>,
+    persistent: Option<Arc<dyn RememberedSessionStore>>,
     persist: Arc<AtomicBool>,
     memory: Arc<Mutex<Option<RememberedSessionRecord>>>,
 }
@@ -262,23 +268,23 @@ impl HostRememberedSession {
         Self::new(None)
     }
 
-    pub fn with_keyring(keyring: KeyringRememberedSessionStore) -> Self {
-        Self::new(Some(keyring))
+    pub fn with_store(store: Arc<dyn RememberedSessionStore>) -> Self {
+        Self::new(Some(store))
     }
 
-    fn new(keyring: Option<KeyringRememberedSessionStore>) -> Self {
+    fn new(persistent: Option<Arc<dyn RememberedSessionStore>>) -> Self {
         Self {
-            keyring,
+            persistent,
             persist: Arc::new(AtomicBool::new(true)),
             memory: Arc::default(),
         }
     }
 
-    /// Switching to `false` removes the keyring item before the returned future completes.
+    /// Switching to `false` removes the stored item before the returned future completes.
     pub async fn set_persist(&self, persist: bool) -> Result<(), ServiceError> {
         self.persist.store(persist, Ordering::SeqCst);
-        match &self.keyring {
-            Some(keyring) if !persist => keyring.clear().await,
+        match &self.persistent {
+            Some(persistent) if !persist => persistent.clear().await,
             _ => Ok(()),
         }
     }
@@ -289,14 +295,14 @@ impl RememberedSessionStore for HostRememberedSession {
         &self,
         record: RememberedSessionRecord,
     ) -> BoxFuture<'static, Result<(), ServiceError>> {
-        let keyring = self.keyring.clone();
+        let persistent = self.persistent.clone();
         let persist = self.persist.clone();
         let memory = self.memory.clone();
         async move {
             *lock(&memory) = Some(record.clone());
-            match keyring {
-                Some(keyring) if persist.load(Ordering::SeqCst) => keyring.save(record).await,
-                Some(keyring) => keyring.clear().await,
+            match persistent {
+                Some(persistent) if persist.load(Ordering::SeqCst) => persistent.save(record).await,
+                Some(persistent) => persistent.clear().await,
                 None => Ok(()),
             }
         }
@@ -304,12 +310,12 @@ impl RememberedSessionStore for HostRememberedSession {
     }
 
     fn load(&self) -> BoxFuture<'static, Result<Option<RememberedSessionRecord>, ServiceError>> {
-        let keyring = self.keyring.clone();
+        let persistent = self.persistent.clone();
         let persist = self.persist.clone();
         let memory = self.memory.clone();
         async move {
-            match keyring {
-                Some(keyring) if persist.load(Ordering::SeqCst) => keyring.load().await,
+            match persistent {
+                Some(persistent) if persist.load(Ordering::SeqCst) => persistent.load().await,
                 _ => Ok(lock(&memory).clone()),
             }
         }
@@ -317,12 +323,12 @@ impl RememberedSessionStore for HostRememberedSession {
     }
 
     fn clear(&self) -> BoxFuture<'static, Result<(), ServiceError>> {
-        let keyring = self.keyring.clone();
+        let persistent = self.persistent.clone();
         let memory = self.memory.clone();
         async move {
             *lock(&memory) = None;
-            match keyring {
-                Some(keyring) => keyring.clear().await,
+            match persistent {
+                Some(persistent) => persistent.clear().await,
                 None => Ok(()),
             }
         }
@@ -336,9 +342,28 @@ pub struct RememberedSession {
 }
 
 pub async fn open_remembered_session_store(app_id: &str) -> RememberedSession {
-    match KeyringRememberedSessionStore::open(app_id).await {
-        Ok(keyring) => RememberedSession {
-            store: Arc::new(HostRememberedSession::with_keyring(keyring)),
+    open_remembered_session_store_with(app_id, Path::new(CPAK_SECRETS_SHIM)).await
+}
+
+/// Under cpak the Secret Service is unreachable from the sandbox, and its secrets shim, when the
+/// package is granted one, reaches the host keyring instead.
+pub async fn open_remembered_session_store_with(
+    app_id: &str,
+    cpak_secrets_shim: &Path,
+) -> RememberedSession {
+    let opened: Result<Arc<dyn RememberedSessionStore>, ServiceError> =
+        if cpak_secrets_shim.exists() {
+            CpakRememberedSessionStore::open(cpak_secrets_shim, app_id)
+                .await
+                .map(|store| Arc::new(store) as _)
+        } else {
+            KeyringRememberedSessionStore::open(app_id)
+                .await
+                .map(|store| Arc::new(store) as _)
+        };
+    match opened {
+        Ok(store) => RememberedSession {
+            store: Arc::new(HostRememberedSession::with_store(store)),
             keyring_available: true,
         },
         Err(_) => {
