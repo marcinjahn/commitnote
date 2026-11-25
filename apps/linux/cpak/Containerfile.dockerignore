@@ -1,0 +1,15 @@
+*
+!package.json
+!package-lock.json
+!vite.config.ts
+!tsconfig*.json
+!svelte.config.js
+!analytics.config.ts
+!scripts
+!src
+!apps/fonts
+!apps/linux
+apps/linux/target
+apps/linux/out
+apps/linux/_build
+apps/linux/flatpak

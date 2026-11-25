@@ -1,0 +1,51 @@
+# The cpak image of the Linux app. Build it from the repository root:
+#   docker build -f apps/linux/cpak/Containerfile .
+# Fedora rather than the Containerpak Ubuntu bases: the app needs the GNOME 51 stack (GTK 4.24,
+# libadwaita 1.10), newer than what Ubuntu 26.04 ships.
+
+FROM node:26-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5 AS core
+
+WORKDIR /src
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN node_modules/.bin/vite build --mode native-core
+
+
+FROM fedora:45@sha256:a7d72ba2745b100a3351087472e5ee7b2450af7cf331e7673007e3817612839c AS build
+
+COPY apps/linux/ci/build-packages.txt apps/linux/rust-toolchain.toml /tmp/build/
+RUN dnf install -y --setopt=install_weak_deps=False $(cat /tmp/build/build-packages.txt) rustup \
+    && dnf clean all
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+
+RUN rustup-init -y --no-modify-path --default-toolchain none \
+    && channel=$(sed -n 's/^channel = "\(.*\)"/\1/p' /tmp/build/rust-toolchain.toml) \
+    && rustup toolchain install "$channel" --profile minimal --component clippy,rustfmt \
+    && rustup default "$channel"
+
+WORKDIR /src
+COPY apps/linux apps/linux
+COPY apps/fonts apps/fonts
+COPY --from=core /src/dist-native-core/commitnote-core.js /core/commitnote-core.js
+RUN meson setup /build apps/linux --prefix=/usr \
+      -Dprofile=release -Dcore_bundle=/core/commitnote-core.js \
+    && meson compile -C /build \
+    && DESTDIR=/out meson install -C /build
+
+
+FROM fedora:45@sha256:a7d72ba2745b100a3351087472e5ee7b2450af7cf331e7673007e3817612839c
+
+COPY apps/linux/ci/run-packages.txt apps/linux/cpak/runtime-packages.txt /tmp/runtime/
+RUN dnf install -y --setopt=install_weak_deps=False \
+      $(cat /tmp/runtime/run-packages.txt /tmp/runtime/runtime-packages.txt) \
+    && dnf clean all \
+    && rm -rf /tmp/runtime /var/cache/dnf /var/log/dnf*
+
+COPY --from=build /out/usr/ /usr/
+RUN glib-compile-schemas /usr/share/glib-2.0/schemas
+
+ENTRYPOINT ["/usr/bin/commitnote"]

@@ -1,0 +1,133 @@
+name: cpak image
+
+on:
+  workflow_call:
+    inputs:
+      publish:
+        description: Push the image to ghcr.io instead of a throwaway local registry.
+        type: boolean
+        default: false
+      version:
+        description: The version the published image is tagged with.
+        type: string
+        default: ""
+    outputs:
+      image:
+        description: The published image repository, without a tag or digest.
+        value: ${{ jobs.image.outputs.image }}
+      digest:
+        description: The digest of the built image.
+        value: ${{ jobs.image.outputs.digest }}
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: Build and test
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    services:
+      registry:
+        image: registry:3
+        ports: ["5000:5000"]
+    outputs:
+      image: ${{ steps.target.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-cpak
+
+      - run: cpak validate cpak.json
+
+      - name: Choose the target registry
+        id: target
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          if [ "$PUBLISH" = true ]; then
+            image="ghcr.io/$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+            {
+              echo "image=$image"
+              echo "tags<<EOF"
+              echo "$image:v$VERSION"
+              echo "$image:latest"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            image=localhost:5000/commitnote
+            {
+              echo "image=$image"
+              echo "tags=$image:ci"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/login-action@v4
+        if: inputs.publish
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # The host network lets the builder push to the registry service on localhost.
+      - uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: network=host
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/linux/cpak/Containerfile
+          platforms: linux/amd64
+          tags: ${{ steps.target.outputs.tags }}
+          push: true
+          provenance: ${{ inputs.publish }}
+          sbom: ${{ inputs.publish }}
+          cache-from: type=gha,scope=cpak
+          cache-to: type=gha,mode=max,scope=cpak
+
+      - name: Check the image exports
+        env:
+          IMAGE: ${{ steps.target.outputs.image }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -eu
+          docker run --rm --entrypoint sh "$IMAGE" -euc '
+            test -x /usr/bin/commitnote
+            test -f /usr/share/applications/io.github.marcinjahn.commitnote.desktop
+            test -f /usr/share/icons/hicolor/scalable/apps/io.github.marcinjahn.commitnote.svg
+            if ldd /usr/bin/commitnote | grep "not found"; then exit 1; fi
+          '
+
+      - name: Pin the manifest to the built image
+        env:
+          IMAGE: ${{ steps.target.outputs.image }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/cpak"
+          jq --arg image "$IMAGE" '.image = $image' cpak.json > "$RUNNER_TEMP/cpak/cpak.json"
+          cpak validate "$RUNNER_TEMP/cpak/cpak.json"
+
+      # Ubuntu confines unprivileged user namespaces with AppArmor, which cpak needs.
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - run: cpak doctor
+
+      # Temporary: cpak v2.14.20 installs and validates the package, then exits 1 while cleaning up
+      # its temp directory (os.RemoveAll fails on the image's 0555 directories). Remove
+      # continue-on-error and the warning step once a cpak release with the fix ships.
+      - name: Install and check the package
+        id: cpak-test
+        continue-on-error: true
+        run: cpak test "$RUNNER_TEMP/cpak/cpak.json"
+
+      - name: Warn that the package check failed
+        if: steps.cpak-test.outcome == 'failure'
+        run: echo "::warning title=cpak test failed::cpak test exited non-zero. Known cleanup bug in cpak v2.14.20 (permission denied removing its rootfs); check the step log for any other cause."

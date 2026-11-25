@@ -1,0 +1,7 @@
+adwaita-icon-theme
+adwaita-mono-fonts
+adwaita-sans-fonts
+glib-networking
+google-noto-color-emoji-fonts
+mesa-dri-drivers
+mesa-vulkan-drivers

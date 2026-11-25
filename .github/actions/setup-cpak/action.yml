@@ -1,0 +1,25 @@
+name: Set up cpak
+description: Installs the pinned cpak, cpak-storaged and cpak-sign binaries, checked against their release checksums.
+
+runs:
+  using: composite
+  steps:
+    - shell: sh
+      env:
+        CPAK_VERSION: v2.14.20
+        CPAK_SHA256: d8699e4631dbde89f141daba330c8289943951684a06ed4278177792cb57b0b0
+        CPAK_STORAGED_SHA256: 3c0aa52fdd30846baf0a8f78b331ea3d80afaf368218ad50114a613b79923bee
+        CPAK_SIGN_SHA256: 01c3268cdadf41c07f758046d49c36f691be1801b93c4a9be1e4eebe0da12aa6
+      run: |
+        set -eu
+        dir=$(mktemp -d)
+        base="https://github.com/Containerpak/cpak/releases/download/$CPAK_VERSION"
+        curl -fsSL -o "$dir/cpak" "$base/cpak-linux-amd64"
+        curl -fsSL -o "$dir/cpak-storaged" "$base/cpak-storaged-linux-amd64"
+        curl -fsSL -o "$dir/cpak-sign" "$base/cpak-sign-linux-amd64"
+        printf '%s  %s\n' "$CPAK_SHA256" "$dir/cpak" "$CPAK_STORAGED_SHA256" "$dir/cpak-storaged" "$CPAK_SIGN_SHA256" "$dir/cpak-sign" | sha256sum -c -
+        sudo install -Dm755 "$dir/cpak" /usr/local/bin/cpak
+        sudo install -Dm755 "$dir/cpak-storaged" /usr/local/bin/cpak-storaged
+        sudo install -Dm755 "$dir/cpak-sign" /usr/local/bin/cpak-sign
+        rm -rf "$dir"
+        cpak --version

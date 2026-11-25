@@ -80,6 +80,16 @@ gh attestation verify commitnote-x86_64.flatpak --repo marcinjahn/commitnote
 App data lives in `~/.var/app/io.github.marcinjahn.commitnote/`. "Remember me" needs a keyring
 (gnome-keyring, KWallet or KeePassXC); without one you log in again on every launch.
 
+It's also packaged for [cpak](https://cpak.it), which installs the app from this repository and
+updates it with each release:
+
+```sh
+cpak install github.com/marcinjahn/commitnote
+```
+
+The cpak package is x86_64 and Wayland only. "Remember me" works there through cpak's secret
+storage, backed by the same desktop keyring.
+
 ### iOS
 
 There's a native SwiftUI app for iPhone and iPad (iOS 18 or newer), but it isn't on the App Store. CI builds an
@@ -237,6 +247,8 @@ To release, say v0.3.0:
    `jj git push --tag v0.3.0`.
 
 The tag push builds the Flatpak, smoke-tests it and publishes it with its checksum and attestation.
+It also pushes the cpak image (`apps/linux/cpak/Containerfile`, `just linux cpak-build` locally) to
+`ghcr.io/marcinjahn/commitnote`, then commits the new digest to `cpak.json` on main and signs it.
 Tags are never moved; a bad release gets a new patch version.
 
 ### iOS app

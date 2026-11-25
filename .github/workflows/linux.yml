@@ -16,10 +16,13 @@ on:
       - "svelte.config.js"
       - "tsconfig*.json"
       - "justfile"
+      - "cpak.json"
       - ".github/actions/setup-just/**"
+      - ".github/actions/setup-cpak/**"
       - ".github/workflows/linux.yml"
       - ".github/workflows/flatpak.yml"
       - ".github/workflows/flatpak-smoke-test.yml"
+      - ".github/workflows/cpak.yml"
   workflow_dispatch:
 
 permissions:
@@ -141,3 +144,10 @@ jobs:
     with:
       release-artifact: ${{ needs.flatpak-aarch64.outputs.artifact-name }}
       arch: aarch64
+
+  cpak:
+    name: cpak image
+    uses: ./.github/workflows/cpak.yml
+    permissions:
+      contents: read
+      packages: write

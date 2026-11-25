@@ -60,6 +60,11 @@ generate-markdown-vectors *args:
 flatpak-build *flags:
     apps/linux/scripts/flatpak-build.sh "$@"
 
+# Build the cpak image as commitnote-cpak:local
+[group('cpak')]
+cpak-build:
+    docker build -f apps/linux/cpak/Containerfile -t commitnote-cpak:local .
+
 # Install a bundle in the Flatpak test container, start it and print its screenshot path
 [group('flatpak')]
 flatpak-launch bundle:

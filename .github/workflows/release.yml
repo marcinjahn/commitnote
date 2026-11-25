@@ -74,6 +74,17 @@ jobs:
     with:
       release-artifact: ${{ needs.flatpak.outputs.artifact-name }}
 
+  cpak:
+    name: cpak image
+    needs: check
+    uses: ./.github/workflows/cpak.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      publish: ${{ github.event_name == 'push' }}
+      version: ${{ needs.check.outputs.version }}
+
   assets:
     name: Prepare the release
     needs: [flatpak, flatpak-smoke-test]
@@ -107,7 +118,7 @@ jobs:
   publish:
     name: Publish the release
     if: github.event_name == 'push'
-    needs: [check, assets]
+    needs: [check, assets, cpak]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
@@ -142,3 +153,52 @@ jobs:
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --latest \
             --title "commitnote $VERSION" --notes-file release-notes.md \
             assets/commitnote-x86_64.flatpak assets/SHA256SUMS
+
+  # cpak installs from the manifest on the default branch, so the release points it at the new
+  # image and signs the resulting state for the origin.
+  cpak-pin:
+    name: Pin the cpak image
+    needs: [check, cpak, publish]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    env:
+      IMAGE: ${{ needs.cpak.outputs.image }}
+      DIGEST: ${{ needs.cpak.outputs.digest }}
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: ./.github/actions/setup-cpak
+
+      - name: Commit the pinned manifest
+        run: |
+          set -eu
+          jq --arg image "$IMAGE@$DIGEST" --arg version "$VERSION" \
+            '.image = $image | .version = $version' cpak.json > "$RUNNER_TEMP/cpak.json"
+          mv "$RUNNER_TEMP/cpak.json" cpak.json
+          cpak validate cpak.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(cpak): pin the v$VERSION image" cpak.json
+          git push origin HEAD
+
+      - uses: sigstore/cosign-installer@v4.1.3
+
+      # The state covers the pinned manifest, so it is signed only after the pin is committed.
+      - name: Sign the cpak state
+        working-directory: ${{ runner.temp }}
+        env:
+          CPAK_REGISTRY_USERNAME: ${{ github.actor }}
+          CPAK_REGISTRY_PASSWORD: ${{ github.token }}
+          MANIFEST: ${{ github.workspace }}/cpak.json
+        run: |
+          set -eu
+          origin="github.com/$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          cpak-sign state --manifest "$MANIFEST" --origin "$origin" --generation "$GITHUB_RUN_NUMBER"
+          cosign sign-blob --yes --new-bundle-format=true --bundle cpak-state.sigstore.json cpak-state
+          cpak-sign attach --image "$IMAGE"
