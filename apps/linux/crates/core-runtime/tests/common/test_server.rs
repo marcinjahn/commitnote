@@ -1,8 +1,19 @@
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 use std::thread::JoinHandle;
 
 use soup::prelude::*;
+
+/// The server threads must not be the first to initialize the shared GLib state; see
+/// `init_gio`.
+fn ensure_server_types() {
+    static TYPES: Once = Once::new();
+    TYPES.call_once(|| {
+        commitnote_core_runtime::init_gio();
+        let class = glib::Class::<soup::Server>::from_type(soup::Server::static_type());
+        std::mem::forget(class.expect("the server class"));
+    });
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct Seen {
@@ -32,6 +43,7 @@ pub struct TestServer {
 
 impl TestServer {
     pub fn start() -> Self {
+        ensure_server_types();
         let seen = Arc::new(Mutex::new(Vec::new()));
         let context = glib::MainContext::new();
         let main_loop = glib::MainLoop::new(Some(&context), false);

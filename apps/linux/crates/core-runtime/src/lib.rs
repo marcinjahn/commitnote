@@ -1,3 +1,4 @@
+mod gio_init;
 mod host;
 mod js;
 mod memory;
@@ -5,6 +6,7 @@ mod runtime;
 pub mod services;
 mod visit;
 
+pub use gio_init::init_gio;
 pub use memory::{
     GLibLogger, LOG_DOMAIN, MemoryBlobCacheStore, MemoryDeviceSettingsStore,
     MemoryRememberedSessionStore, UnavailableHttp, UnavailableImageCodec, UnavailableStagedInputs,

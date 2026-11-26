@@ -3,6 +3,7 @@ use std::future::Future;
 use commitnote_core_api::commands::{AnalyticsVisit, AnalyticsVisitParams, AnalyticsVisitResult};
 use soup::prelude::*;
 
+use crate::gio_init::init_gio;
 use crate::runtime::CoreRuntime;
 use crate::services::http::is_allowed;
 
@@ -31,6 +32,7 @@ impl SoupVisitSender {
     }
 
     fn with_policy(allow_loopback_http: bool) -> Self {
+        init_gio();
         Self {
             session: soup::Session::builder().timeout(TIMEOUT_SECONDS).build(),
             allow_loopback_http,

@@ -8,6 +8,7 @@ use gio::prelude::*;
 use soup::prelude::*;
 
 use super::{Http, HttpError, HttpFactory, HttpRequest, HttpResponse, ServiceError};
+use crate::gio_init::init_gio;
 use crate::memory::LOG_DOMAIN;
 
 const FAILURE: &str = "Network request failed";
@@ -28,6 +29,7 @@ pub struct SoupHttp {
 impl SoupHttp {
     /// Must be called on the thread whose default main context will drive the requests.
     pub fn new(policy: HttpPolicy) -> Self {
+        init_gio();
         let timeout = policy.timeout.as_secs() + u64::from(policy.timeout.subsec_nanos() > 0);
         let session = soup::Session::builder()
             .user_agent(policy.user_agent)

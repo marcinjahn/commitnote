@@ -16,6 +16,7 @@ use javascriptcore6 as jsc;
 use serde_json::Value;
 use zeroize::Zeroizing;
 
+use crate::gio_init::init_gio;
 use crate::host::Host;
 use crate::js;
 use crate::services::{HostServices, LogLevel, Logger};
@@ -218,6 +219,7 @@ impl CoreRuntime {
             subscribers: Mutex::default(),
             logger: config.services.logger.clone(),
         });
+        init_gio();
         let context = glib::MainContext::new();
         let (ready, started) = mpsc::channel();
         let thread = thread::Builder::new()
